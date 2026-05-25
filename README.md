@@ -6,10 +6,11 @@ MVP региональной платформы объявлений, вакан
 
 - Next.js + TypeScript + Tailwind CSS.
 - Главная страница с категориями и стартовой географией.
-- Страница `/krasnodar/rabota` по макету: вакансии слева, специалисты справа, CTA, чипы, классификатор, короткие подборки.
-- Страницы полных списков `/krasnodar/rabota/vakansii` и `/krasnodar/rabota/specialisty`.
+- Страница `/blizhniy/rabota` по макету: вакансии слева, специалисты справа, CTA, чипы, классификатор, короткие подборки.
+- Страницы полных списков `/blizhniy/rabota/vakansii` и `/blizhniy/rabota/specialisty`.
 - Базовые SEO-файлы: metadata, canonical, `robots.txt`, `sitemap.xml`.
 - SQL-схема Supabase/PostgreSQL в `supabase/schema.sql`.
+- Инструкция подключения Supabase/Auth: `docs/SUPABASE_SETUP.md`.
 
 ## Запуск
 
@@ -21,10 +22,16 @@ npm run dev
 После запуска:
 
 - главная: `http://localhost:3000`
-- работа: `http://localhost:3000/krasnodar/rabota`
+- работа: `http://localhost:3000/blizhniy/rabota`
+- объявления: `http://localhost:3000/blizhniy/prodam`
+- категории: `http://localhost:3000/blizhniy/kategorii`
+- кабинет: `http://localhost:3000/cabinet`
+- админка: `http://localhost:3000/admin`
+- mock-оплата: `http://localhost:3000/blizhniy/oplata/listing-publication`
 
 ## Следующие этапы
 
+- Создать Supabase-проект, применить `schema.sql`, `seed.sql`, `rls.sql`, заполнить `.env.local`.
 - Подключить Supabase/Auth и заменить мок-данные на запросы.
 - Реализовать формы объявлений, вакансий и анкет специалистов.
 - Добавить mock payment provider и webhook-обработчик.

@@ -1,3 +1,5 @@
+create extension if not exists pgcrypto;
+
 create type publication_status as enum (
   'draft',
   'pending_payment',
@@ -11,15 +13,22 @@ create type publication_status as enum (
 create type listing_type as enum ('sell', 'buy', 'exchange', 'free');
 create type payment_status as enum ('created', 'pending', 'succeeded', 'failed', 'refunded');
 create type tariff_action as enum ('listing_publication', 'vacancy_publication', 'job_response');
+create type app_role as enum ('user', 'specialist', 'organization', 'admin');
 
 create table profiles (
-  id uuid primary key,
+  id uuid primary key references auth.users(id) on delete cascade,
   email text unique,
   phone text,
   display_name text,
-  is_admin boolean not null default false,
   is_blocked boolean not null default false,
   created_at timestamptz not null default now()
+);
+
+create table user_roles (
+  user_id uuid not null references profiles(id) on delete cascade,
+  role app_role not null,
+  created_at timestamptz not null default now(),
+  primary key (user_id, role)
 );
 
 create table regions (
@@ -35,6 +44,26 @@ create table cities (
   slug text not null unique,
   name text not null,
   active boolean not null default true
+);
+
+create table organization_profiles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  name text not null,
+  description text,
+  region_id uuid references regions(id),
+  city_id uuid references cities(id),
+  district text,
+  address text,
+  latitude numeric(10, 7),
+  longitude numeric(10, 7),
+  show_exact_address boolean not null default true,
+  contact_phone text,
+  email text,
+  logo_path text,
+  status publication_status not null default 'published',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table categories (
@@ -61,6 +90,11 @@ create table listings (
   category_id uuid not null references categories(id),
   region_id uuid not null references regions(id),
   city_id uuid not null references cities(id),
+  district text,
+  address text,
+  latitude numeric(10, 7),
+  longitude numeric(10, 7),
+  show_exact_address boolean not null default false,
   title text not null,
   description text not null,
   price numeric(12, 2),
@@ -89,6 +123,11 @@ create table vacancies (
   specialist_category_id uuid references specialist_categories(id),
   region_id uuid not null references regions(id),
   city_id uuid not null references cities(id),
+  district text,
+  address text,
+  latitude numeric(10, 7),
+  longitude numeric(10, 7),
+  show_exact_address boolean not null default true,
   description text not null,
   requirements text,
   responsibilities text,
@@ -110,6 +149,11 @@ create table specialist_profiles (
   photo_path text,
   region_id uuid not null references regions(id),
   city_id uuid not null references cities(id),
+  district text,
+  address text,
+  latitude numeric(10, 7),
+  longitude numeric(10, 7),
+  show_exact_address boolean not null default false,
   specialist_category_id uuid references specialist_categories(id),
   skills text[] not null default '{}',
   description text,
@@ -192,3 +236,31 @@ insert into tariffs (name, action, price, duration_days) values
   ('Размещение объявления', 'listing_publication', 199, 30),
   ('Размещение вакансии', 'vacancy_publication', 499, 30),
   ('Отклик на вакансию', 'job_response', 99, null);
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, display_name)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1))
+  )
+  on conflict (id) do nothing;
+
+  insert into public.user_roles (user_id, role)
+  values (new.id, 'user')
+  on conflict do nothing;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute function public.handle_new_user();

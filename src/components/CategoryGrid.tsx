@@ -34,7 +34,7 @@ export function CategoryGrid() {
           <p className="text-sm font-semibold uppercase tracking-wide text-[#0875d1]">Категории</p>
           <h2 className="mt-1 text-3xl font-black text-[#060b27]">Что ищем рядом</h2>
         </div>
-        <Link href="/krasnodar/kategorii" className="hidden font-semibold text-[#0875d1] sm:block">
+        <Link href="/blizhniy/kategorii" className="hidden font-semibold text-[#0875d1] sm:block">
           Все категории
         </Link>
       </div>
@@ -44,7 +44,7 @@ export function CategoryGrid() {
           return (
             <Link
               key={category.slug}
-              href={category.slug === "rabota" ? "/krasnodar/rabota" : `/krasnodar/${category.slug}`}
+              href={category.slug === "rabota" ? "/blizhniy/rabota" : `/blizhniy/${category.slug}`}
               className="group min-h-36 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-card"
             >
               <span className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-[#0875d1] group-hover:bg-blue-50">

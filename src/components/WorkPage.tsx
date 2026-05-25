@@ -7,7 +7,6 @@ import {
   MapPin,
   MessageCircle,
   Phone,
-  Search,
   UserRound,
   Video,
 } from "lucide-react";
@@ -88,6 +87,28 @@ function ContactButton({
   );
 }
 
+function SegmentTabs({ items, activeTone }: { items: string[]; activeTone: "green" | "blue" }) {
+  const activeClass =
+    activeTone === "green"
+      ? "border-[#0aa337] bg-emerald-50 text-[#0a8f32]"
+      : "border-[#0875d1] bg-blue-50 text-[#0875d1]";
+
+  return (
+    <div className="flex w-full flex-wrap gap-2">
+      {items.map((item, index) => (
+        <button
+          key={item}
+          className={`h-9 rounded-lg border px-4 text-sm font-bold transition ${
+            index === 0 ? activeClass : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-[#0875d1]"
+          }`}
+        >
+          {item}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
   return (
     <article className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:grid-cols-[112px_1fr_auto] sm:items-center">
@@ -104,7 +125,7 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
         <p className="text-xl font-black text-[#060b27]">{vacancy.salary}</p>
         <div className="flex flex-wrap gap-2 sm:justify-end">
           <Link
-            href={`/vakansiya/${vacancy.id}`}
+            href={`/blizhniy/vakansiya/${vacancy.id}`}
             className="inline-flex h-10 min-w-32 items-center justify-center rounded-lg bg-[#0aa337] px-4 text-sm font-bold text-white transition hover:bg-[#078a2e]"
           >
             Откликнуться
@@ -114,7 +135,7 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
           ) : vacancy.messengerUrl ? (
             <ContactButton href={vacancy.messengerUrl} icon={<MessageCircle className="h-4 w-4" />} label="Написать" tone="violet" />
           ) : (
-            <ContactButton href={`/vakansiya/${vacancy.id}`} icon={<Info className="h-4 w-4" />} label="Подробнее" tone="slate" />
+            <ContactButton href={`/blizhniy/vakansiya/${vacancy.id}`} icon={<Info className="h-4 w-4" />} label="Подробнее" tone="slate" />
           )}
         </div>
       </div>
@@ -128,7 +149,7 @@ function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
       <Avatar specialist={specialist} />
       <div className="min-w-0">
         <h3 className="text-xl font-black text-[#060b27]">{specialist.name}</h3>
-        <Link href={`/specialist/${specialist.id}`} className="mt-1 block font-semibold text-[#0875d1]">
+        <Link href={`/blizhniy/specialist/${specialist.id}`} className="mt-1 block font-semibold text-[#0875d1]">
           {specialist.profession}
         </Link>
         <p className="mt-2 text-sm text-slate-600">{specialist.skills}</p>
@@ -156,7 +177,7 @@ export function WorkPage() {
   return (
     <main className="page-container py-8 sm:py-10">
       <nav className="mb-5 text-sm text-slate-500" aria-label="Хлебные крошки">
-        <Link href="/krasnodar" className="hover:text-[#0875d1]">
+        <Link href="/blizhniy" className="hover:text-[#0875d1]">
           Краснодар
         </Link>
         <span className="mx-2">/</span>
@@ -167,7 +188,7 @@ export function WorkPage() {
 
       <section className="mt-6 grid gap-7 lg:grid-cols-2">
         <Link
-          href="/krasnodar/rabota/vakansii"
+          href="/blizhniy/rabota/vakansii"
           className="group flex min-h-32 items-center gap-6 rounded-2xl border border-emerald-200 bg-emerald-50/45 p-6 shadow-card transition hover:-translate-y-0.5 hover:border-emerald-300"
         >
           <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-white text-[#0aa337] shadow-card">
@@ -181,7 +202,7 @@ export function WorkPage() {
         </Link>
 
         <Link
-          href="/krasnodar/rabota/specialisty"
+          href="/blizhniy/rabota/specialisty"
           className="group flex min-h-32 items-center gap-6 rounded-2xl border border-blue-200 bg-blue-50/55 p-6 shadow-card transition hover:-translate-y-0.5 hover:border-blue-300"
         >
           <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full border border-blue-100 bg-white text-[#0875d1] shadow-card">
@@ -197,14 +218,14 @@ export function WorkPage() {
 
       <section className="mt-6 flex flex-wrap gap-4">
         <Link
-          href="/krasnodar/rabota/vakansii/sozdat"
+          href="/blizhniy/rabota/vakansii/sozdat"
           className="inline-flex h-12 items-center justify-center gap-3 rounded-lg bg-[#0aa337] px-8 font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]"
         >
           <BriefcaseBusiness className="h-5 w-5" />
           Разместить вакансию
         </Link>
         <Link
-          href="/krasnodar/rabota/specialisty/anketa"
+          href="/blizhniy/rabota/specialisty/anketa"
           className="inline-flex h-12 items-center justify-center gap-3 rounded-lg border border-[#0aa337] bg-white px-8 font-bold text-[#0a8f32] transition hover:bg-emerald-50"
         >
           <UserRound className="h-5 w-5" />
@@ -213,35 +234,49 @@ export function WorkPage() {
       </section>
 
       <section className="mt-9 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap gap-3">
-          {chips.map((chip, index) => (
-            <button
-              className={`h-9 rounded-full border px-5 text-sm font-semibold transition ${
-                index === 0
-                  ? "border-[#0875d1] bg-[#0875d1] text-white"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
-              }`}
-              key={chip}
-            >
-              {chip}
-            </button>
-          ))}
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-wrap gap-3">
+            {chips.map((chip, index) => (
+              <button
+                className={`h-9 rounded-full border px-5 text-sm font-semibold transition ${
+                  index === 0
+                    ? "border-[#0875d1] bg-[#0875d1] text-white"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
+                }`}
+                key={chip}
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+          <label className="grid gap-1 text-sm font-semibold text-slate-700 sm:min-w-80">
+            Классификатор специалистов
+            <select className="h-11 rounded-lg border border-[#0875d1] bg-white px-3 text-sm font-normal text-slate-700 outline-none">
+              <option>Все специальности</option>
+              {professions.map((profession) => (
+                <option key={profession.slug}>{profession.name}</option>
+              ))}
+            </select>
+          </label>
         </div>
       </section>
 
       <div className="mt-7 grid gap-8 xl:grid-cols-2">
         <section>
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <h2 className="flex items-center gap-3 text-2xl font-black text-[#060b27]">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0aa337] text-white">
-                <BriefcaseBusiness className="h-5 w-5" />
-              </span>
-              Новые вакансии / Заказчики
-            </h2>
-            <Link href="/krasnodar/rabota/vakansii" className="flex items-center gap-1 font-semibold text-[#0875d1]">
-              Смотреть все
-              <ChevronRight className="h-5 w-5" />
-            </Link>
+          <div className="mb-4 grid min-h-28 gap-3">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="flex items-center gap-3 text-2xl font-black text-[#060b27]">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0aa337] text-white">
+                  <BriefcaseBusiness className="h-5 w-5" />
+                </span>
+                Новые вакансии / Заказчики
+              </h2>
+              <Link href="/blizhniy/rabota/vakansii" className="flex items-center gap-1 font-semibold text-[#0875d1]">
+                Смотреть все
+                <ChevronRight className="h-5 w-5" />
+              </Link>
+            </div>
+            <SegmentTabs items={["Вакансии", "Заказчики"]} activeTone="green" />
           </div>
           <div className="space-y-4">
             {vacancies.map((vacancy) => (
@@ -249,7 +284,7 @@ export function WorkPage() {
             ))}
           </div>
           <Link
-            href="/krasnodar/rabota/vakansii"
+            href="/blizhniy/rabota/vakansii"
             className="mt-6 flex h-14 items-center justify-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 font-bold text-[#0a8f32] transition hover:bg-emerald-100"
           >
             Все вакансии
@@ -258,47 +293,20 @@ export function WorkPage() {
         </section>
 
         <section>
-          <div className="mb-5 rounded-xl border border-blue-200 bg-white shadow-card">
-            <label className="block px-4 pt-3 text-sm font-semibold text-slate-700" htmlFor="profession-search">
-              Классификатор специалистов
-            </label>
-            <div className="mx-4 mt-2 flex h-12 items-center gap-3 rounded-lg border border-[#0875d1] px-3 text-slate-500">
-              <Search className="h-5 w-5" />
-              <input
-                id="profession-search"
-                list="profession-options"
-                className="w-full border-0 bg-transparent outline-none placeholder:text-slate-400"
-                placeholder="Начните вводить: юрист, швея, сварщик..."
-              />
-              <datalist id="profession-options">
-                {professions.map((profession) => (
-                  <option key={profession.slug} value={profession.name} />
-                ))}
-              </datalist>
-            </div>
-            <div className="px-4 py-3">
-              {professions.slice(0, 3).map((profession) => (
-                <Link key={profession.slug} href={`/krasnodar/rabota/specialisty/${profession.slug}`} className="block py-1 text-slate-700 hover:text-[#0875d1]">
-                  {profession.name}
-                </Link>
-              ))}
-              <Link href="/krasnodar/rabota/specialisty/klassifikator" className="mt-2 block font-semibold text-[#0875d1]">
-                Показать все специальности
+          <div className="mb-4 grid min-h-28 gap-3">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="flex items-center gap-3 text-2xl font-black text-[#060b27]">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0875d1] text-white">
+                  <UserRound className="h-5 w-5" />
+                </span>
+                Новые специалисты / Исполнители
+              </h2>
+              <Link href="/blizhniy/rabota/specialisty" className="flex items-center gap-1 font-semibold text-[#0875d1]">
+                Смотреть все
+                <ChevronRight className="h-5 w-5" />
               </Link>
             </div>
-          </div>
-
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <h2 className="flex items-center gap-3 text-2xl font-black text-[#060b27]">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0875d1] text-white">
-                <UserRound className="h-5 w-5" />
-              </span>
-              Новые специалисты / Исполнители
-            </h2>
-            <Link href="/krasnodar/rabota/specialisty" className="flex items-center gap-1 font-semibold text-[#0875d1]">
-              Смотреть все
-              <ChevronRight className="h-5 w-5" />
-            </Link>
+            <SegmentTabs items={["Специалисты", "Исполнители"]} activeTone="blue" />
           </div>
           <div className="space-y-4">
             {specialists.map((specialist) => (
@@ -306,7 +314,7 @@ export function WorkPage() {
             ))}
           </div>
           <Link
-            href="/krasnodar/rabota/specialisty"
+            href="/blizhniy/rabota/specialisty"
             className="mt-6 flex h-14 items-center justify-center gap-3 rounded-xl border border-blue-200 bg-blue-50/75 font-bold text-[#0875d1] transition hover:bg-blue-100"
           >
             Все специалисты

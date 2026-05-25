@@ -20,14 +20,14 @@ export default function Home() {
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
               <Link
-                href="/krasnodar/rabota"
+                href="/blizhniy/rabota"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0875d1] px-7 font-bold text-white shadow-lg shadow-blue-100 transition hover:bg-[#0765b2]"
               >
                 Открыть раздел работы
                 <ArrowRight className="h-5 w-5" />
               </Link>
               <Link
-                href="/krasnodar/prodam"
+                href="/blizhniy/prodam"
                 className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-7 font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]"
               >
                 Смотреть объявления

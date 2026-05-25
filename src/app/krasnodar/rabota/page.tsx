@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description:
     "Вакансии, заказчики, специалисты и исполнители в Краснодаре и Краснодарском крае на платформе БЛИЖНИЙ.",
   alternates: {
-    canonical: "/krasnodar/rabota",
+    canonical: "/blizhniy/rabota",
   },
 };
 
