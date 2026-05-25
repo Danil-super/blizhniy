@@ -11,7 +11,7 @@ import {
   Phone,
   UserRound,
 } from "lucide-react";
-import { professions, specialists, vacancies, workRequests } from "@/lib/data";
+import { specialists, vacancies, workRequests } from "@/lib/data";
 import type { JobVacancy, SpecialistProfile, WorkRequest } from "@/lib/types";
 
 const chips = ["Все", "Вакансии", "Специалисты", "Краснодар", "Сочи", "Сантехник", "Маникюр", "Юрист"];
@@ -280,31 +280,20 @@ export function WorkPage() {
       </section>
 
       <section className="mt-9 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex flex-wrap gap-3">
-            {chips.map((chip, index) => (
-              <Link
-                href={index === 0 ? "/blizhniy/rabota" : `/poisk?q=${encodeURIComponent(chip)}`}
-                className={`h-9 rounded-full border px-5 text-sm font-semibold transition ${
-                  index === 0
-                    ? "border-[#0875d1] bg-[#0875d1] text-white"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
-                }`}
-                key={chip}
-              >
-                {chip}
-              </Link>
-            ))}
-          </div>
-          <label className="grid gap-1 text-sm font-semibold text-slate-700 sm:min-w-80">
-            Классификатор специалистов
-            <select className="h-11 rounded-lg border border-[#0875d1] bg-white px-3 text-sm font-normal text-slate-700 outline-none">
-              <option>Все специальности</option>
-              {professions.map((profession) => (
-                <option key={profession.slug}>{profession.name}</option>
-              ))}
-            </select>
-          </label>
+        <div className="flex flex-wrap items-center gap-3">
+          {chips.map((chip, index) => (
+            <Link
+              href={index === 0 ? "/blizhniy/rabota" : `/poisk?q=${encodeURIComponent(chip)}`}
+              className={`inline-flex h-9 items-center justify-center rounded-full border px-5 text-sm font-semibold transition ${
+                index === 0
+                  ? "border-[#0875d1] bg-[#0875d1] text-white"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
+              }`}
+              key={chip}
+            >
+              {chip}
+            </Link>
+          ))}
         </div>
       </section>
 
