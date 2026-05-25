@@ -87,7 +87,7 @@ function ContactButton({
   );
 }
 
-function SegmentTabs({ items, activeTone }: { items: string[]; activeTone: "green" | "blue" }) {
+function SegmentLinks({ items, activeTone }: { items: Array<{ label: string; href: string }>; activeTone: "green" | "blue" }) {
   const activeClass =
     activeTone === "green"
       ? "border-[#0aa337] bg-emerald-50 text-[#0a8f32]"
@@ -96,14 +96,15 @@ function SegmentTabs({ items, activeTone }: { items: string[]; activeTone: "gree
   return (
     <div className="flex w-full flex-wrap gap-2">
       {items.map((item, index) => (
-        <button
-          key={item}
+        <Link
+          key={item.label}
+          href={item.href}
           className={`h-9 rounded-lg border px-4 text-sm font-bold transition ${
             index === 0 ? activeClass : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-[#0875d1]"
           }`}
         >
-          {item}
-        </button>
+          {item.label}
+        </Link>
       ))}
     </div>
   );
@@ -269,14 +270,20 @@ export function WorkPage() {
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0aa337] text-white">
                   <BriefcaseBusiness className="h-5 w-5" />
                 </span>
-                Новые вакансии / Заказчики
+                Новые вакансии и заказчики
               </h2>
               <Link href="/blizhniy/rabota/vakansii" className="flex items-center gap-1 font-semibold text-[#0875d1]">
                 Смотреть все
                 <ChevronRight className="h-5 w-5" />
               </Link>
             </div>
-            <SegmentTabs items={["Вакансии", "Заказчики"]} activeTone="green" />
+            <SegmentLinks
+              activeTone="green"
+              items={[
+                { label: "Вакансии", href: "/blizhniy/rabota/vakansii" },
+                { label: "Заказчики", href: "/blizhniy/rabota/vakansii/sozdat" },
+              ]}
+            />
           </div>
           <div className="space-y-4">
             {vacancies.map((vacancy) => (
@@ -299,14 +306,20 @@ export function WorkPage() {
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0875d1] text-white">
                   <UserRound className="h-5 w-5" />
                 </span>
-                Новые специалисты / Исполнители
+                Новые специалисты и исполнители
               </h2>
               <Link href="/blizhniy/rabota/specialisty" className="flex items-center gap-1 font-semibold text-[#0875d1]">
                 Смотреть все
                 <ChevronRight className="h-5 w-5" />
               </Link>
             </div>
-            <SegmentTabs items={["Специалисты", "Исполнители"]} activeTone="blue" />
+            <SegmentLinks
+              activeTone="blue"
+              items={[
+                { label: "Специалисты", href: "/blizhniy/rabota/specialisty" },
+                { label: "Исполнители", href: "/blizhniy/rabota/specialisty/anketa" },
+              ]}
+            />
           </div>
           <div className="space-y-4">
             {specialists.map((specialist) => (

@@ -55,6 +55,10 @@ const nextConfig: NextConfig = {
         destination: "/oplata/:path*",
       },
       {
+        source: "/blizhniy/poisk",
+        destination: "/poisk",
+      },
+      {
         source: "/blizhniy",
         destination: "/krasnodar",
       },

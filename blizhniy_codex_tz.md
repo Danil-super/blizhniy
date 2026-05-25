@@ -565,21 +565,6 @@
   - админку;
   - технические страницы.
 
-Примеры URL:
-
-- `/krasnodarskiy-kray`
-- `/krasnodar`
-- `/krasnodar/prodam`
-- `/krasnodar/rabota`
-- `/krasnodar/rabota/vakansii`
-- `/krasnodar/rabota/specialisty`
-- `/krasnodar/remont-i-stroitelstvo/santehnika`
-- `/obyavlenie/prodam-mebel-123`
-- `/vakansiya/santehnik-123`
-- `/specialist/santehnik-aleksandr-123`
-
----
-
 ## 16. География
 
 Стартовая география:

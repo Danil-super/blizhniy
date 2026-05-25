@@ -13,13 +13,7 @@
 
 ## 2. Заполнить `.env.local`
 
-Скопируй `.env.example` в `.env.local`:
-
-```bash
-cp .env.example .env.local
-```
-
-Заполни:
+Создай или обнови `.env.local`:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=...
@@ -51,8 +45,10 @@ PAYMENT_PROVIDER=mock
 
 - Email/password: enabled.
 - Confirm email: можно выключить на dev, включить перед продом.
-- Site URL: локально `http://localhost:3001`, на проде реальный домен.
+- Site URL: локально `http://localhost:3000` или `http://localhost:3001`, на проде реальный домен.
 - Redirect URLs:
+  - `http://localhost:3000/auth`
+  - `http://localhost:3000/cabinet`
   - `http://localhost:3001/auth`
   - `http://localhost:3001/cabinet`
 
