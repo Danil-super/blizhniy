@@ -55,9 +55,7 @@ export function LocationMap({ location, exactLabel = "Точный адрес с
           </span>
           <span className="mt-2 max-w-56 rounded-lg bg-white px-3 py-2 text-center text-sm font-bold text-slate-700 shadow-card">{label}</span>
         </div>
-        <div className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-3 py-2 text-xs font-semibold text-slate-500">
-          MVP-карта без внутренней маршрутизации
-        </div>
+        <div className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-3 py-2 text-xs font-semibold text-slate-500">Примерная зона на карте</div>
       </div>
     </section>
   );

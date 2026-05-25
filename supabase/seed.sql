@@ -4,11 +4,14 @@ insert into categories (slug, name, sort_order) values
   ('krasota-i-uhod', 'Красота и уход', 30),
   ('meditsina', 'Медицина', 40),
   ('mebel-i-interer', 'Мебель и интерьер', 50),
+  ('otdyh', 'Отдых', 55),
   ('rabota', 'Работа', 60),
   ('remont-i-stroitelstvo', 'Ремонт и строительство', 70),
   ('sad-i-rasteniya', 'Сад и растения', 80),
   ('tovary-i-veshchi', 'Товары и вещи', 90),
-  ('uslugi-dlya-doma', 'Услуги для дома', 100)
+  ('uslugi-dlya-doma', 'Услуги для дома', 100),
+  ('yarmarka-masterov', 'Ярмарка мастеров', 110),
+  ('znakomstva', 'Знакомства', 120)
 on conflict (slug) do update set name = excluded.name, sort_order = excluded.sort_order;
 
 insert into categories (parent_id, slug, name, sort_order)
@@ -24,16 +27,29 @@ from (
     ('meditsina', 'meditsinskiy-personal', 'Медицинский персонал', 10),
     ('meditsina', 'uhod-na-domu', 'Уход на дому', 20),
     ('mebel-i-interer', 'mebel', 'Мебель', 10),
+    ('otdyh', 'turbazy', 'Турбазы', 10),
+    ('otdyh', 'gostinitsy', 'Гостиницы', 20),
+    ('otdyh', 'pohody', 'Походы', 30),
     ('rabota', 'vakansii', 'Вакансии', 10),
     ('rabota', 'ankety-spetsialistov', 'Анкеты специалистов', 20),
     ('remont-i-stroitelstvo', 'remont-kvartir', 'Ремонт квартир', 10),
     ('remont-i-stroitelstvo', 'santehnika', 'Сантехника', 20),
     ('sad-i-rasteniya', 'tsvety-i-sazhentsy', 'Цветы и саженцы', 10),
     ('tovary-i-veshchi', 'vykroyki-i-rukodelie', 'Выкройки и рукоделие', 10),
-    ('uslugi-dlya-doma', 'klining', 'Клининг', 10)
+    ('uslugi-dlya-doma', 'klining', 'Клининг', 10),
+    ('yarmarka-masterov', 'yarmarka-mebel', 'Мебель', 10),
+    ('yarmarka-masterov', 'posuda', 'Посуда', 20),
+    ('yarmarka-masterov', 'makrame', 'Макраме', 30),
+    ('yarmarka-masterov', 'odezhda-i-tekstil', 'Одежда и текстиль', 40),
+    ('yarmarka-masterov', 'yarmarka-raznoe', 'Разное', 50),
+    ('yarmarka-masterov', 'sazhentsy-i-rassada', 'Саженцы и рассада', 60)
 ) as child(parent_slug, slug, name, sort_order)
 join categories parent on parent.slug = child.parent_slug
 on conflict (slug) do update set name = excluded.name, parent_id = excluded.parent_id, sort_order = excluded.sort_order;
+
+insert into tariffs (name, action, price, duration_days) values
+  ('Участие в ярмарке мастеров', 'fair_participation', 1000, null)
+on conflict (action) do update set name = excluded.name, price = excluded.price, duration_days = excluded.duration_days, active = true;
 
 insert into specialist_categories (parent_name, slug, name) values
   ('Юридические услуги', 'yurist', 'Юрист'),

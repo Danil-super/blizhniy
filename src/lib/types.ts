@@ -70,6 +70,26 @@ export type JobVacancy = {
   status: PublicationStatus;
 };
 
+export type WorkRequest = {
+  id: string;
+  author: string;
+  title: string;
+  description: string;
+  profession: string;
+  city: string;
+  district?: string;
+  address?: string;
+  lat?: number;
+  lng?: number;
+  showExactAddress: boolean;
+  budget: string;
+  phone?: string;
+  messengerUrl?: string;
+  status: PublicationStatus;
+  createdAt: string;
+  publishedAt?: string;
+};
+
 export type SpecialistProfile = {
   id: string;
   name: string;
@@ -99,7 +119,7 @@ export type Profession = {
 export type Tariff = {
   id: string;
   name: string;
-  action: "listing_publication" | "vacancy_publication" | "job_response";
+  action: "listing_publication" | "vacancy_publication" | "job_response" | "fair_participation";
   price: number;
   durationDays: number | null;
   active: boolean;
@@ -107,7 +127,7 @@ export type Tariff = {
 
 export type Payment = {
   id: string;
-  targetType: "listing" | "vacancy" | "application";
+  targetType: "listing" | "vacancy" | "application" | "fair_application";
   targetTitle: string;
   tariffId: string;
   amount: number;
@@ -115,6 +135,27 @@ export type Payment = {
   provider: "mock";
   createdAt: string;
   paidAt?: string;
+};
+
+export type FairApplication = {
+  id: string;
+  participantName: string;
+  city: string;
+  category: string;
+  description: string;
+  productPhotos: string[];
+  videoUrl?: string;
+  phone: string;
+  email: string;
+  comment?: string;
+  status: PublicationStatus;
+  paymentStatus: "created" | "pending" | "succeeded" | "failed";
+  address?: string;
+  district?: string;
+  lat?: number;
+  lng?: number;
+  showExactAddress: boolean;
+  createdAt: string;
 };
 
 export type Application = {

@@ -59,6 +59,14 @@ const nextConfig: NextConfig = {
         destination: "/poisk",
       },
       {
+        source: "/blizhniy/yarmarka-masterov",
+        destination: "/yarmarka-masterov",
+      },
+      {
+        source: "/blizhniy/yarmarka-masterov/zayavka",
+        destination: "/yarmarka-masterov/zayavka",
+      },
+      {
         source: "/blizhniy",
         destination: "/krasnodar",
       },

@@ -8,8 +8,11 @@ alter table specialist_categories enable row level security;
 alter table listings enable row level security;
 alter table listing_images enable row level security;
 alter table vacancies enable row level security;
+alter table work_requests enable row level security;
 alter table specialist_profiles enable row level security;
 alter table applications enable row level security;
+alter table fair_applications enable row level security;
+alter table fair_application_images enable row level security;
 alter table tariffs enable row level security;
 alter table payments enable row level security;
 alter table notifications enable row level security;
@@ -70,6 +73,10 @@ create policy "Public can read published vacancies" on vacancies for select usin
 create policy "Users can manage own vacancies" on vacancies for all using (author_id = auth.uid()) with check (author_id = auth.uid());
 create policy "Admins can manage vacancies" on vacancies for all using (public.is_admin()) with check (public.is_admin());
 
+create policy "Public can read published work requests" on work_requests for select using (status = 'published');
+create policy "Users can manage own work requests" on work_requests for all using (author_id = auth.uid()) with check (author_id = auth.uid());
+create policy "Admins can manage work requests" on work_requests for all using (public.is_admin()) with check (public.is_admin());
+
 create policy "Public can read published specialists" on specialist_profiles for select using (status = 'published');
 create policy "Users can manage own specialist profile" on specialist_profiles for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "Admins can manage specialist profiles" on specialist_profiles for all using (public.is_admin()) with check (public.is_admin());
@@ -87,6 +94,35 @@ create policy "Specialists can create own applications" on applications for inse
   exists (select 1 from specialist_profiles where specialist_profiles.id = applications.specialist_profile_id and specialist_profiles.user_id = auth.uid())
 );
 create policy "Admins can manage applications" on applications for all using (public.is_admin()) with check (public.is_admin());
+
+create policy "Public can read published fair applications" on fair_applications for select using (status = 'published');
+create policy "Users can manage own fair applications" on fair_applications for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "Admins can manage fair applications" on fair_applications for all using (public.is_admin()) with check (public.is_admin());
+
+create policy "Public can read fair application images" on fair_application_images for select using (
+  exists (
+    select 1
+    from fair_applications
+    where fair_applications.id = fair_application_images.fair_application_id
+      and fair_applications.status = 'published'
+  )
+);
+create policy "Owners can manage fair application images" on fair_application_images for all using (
+  exists (
+    select 1
+    from fair_applications
+    where fair_applications.id = fair_application_images.fair_application_id
+      and fair_applications.user_id = auth.uid()
+  )
+) with check (
+  exists (
+    select 1
+    from fair_applications
+    where fair_applications.id = fair_application_images.fair_application_id
+      and fair_applications.user_id = auth.uid()
+  )
+);
+create policy "Admins can manage fair application images" on fair_application_images for all using (public.is_admin()) with check (public.is_admin());
 
 create policy "Users can read own payments" on payments for select using (user_id = auth.uid() or public.is_admin());
 create policy "Users can create own payments" on payments for insert with check (user_id = auth.uid());

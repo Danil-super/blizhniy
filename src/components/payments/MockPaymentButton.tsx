@@ -12,11 +12,11 @@ type MockPaymentButtonProps = {
 
 export function MockPaymentButton({ tariffId, returnHref }: MockPaymentButtonProps) {
   const [state, setState] = useState<PaymentState>("idle");
-  const [message, setMessage] = useState("После успешной mock-оплаты запись появится в API-ответе.");
+  const [message, setMessage] = useState("Заказ сформирован. Нажмите кнопку, чтобы перейти к оплате.");
 
   async function handlePayment() {
     setState("loading");
-    setMessage("Создаем заказ и подтверждаем оплату...");
+    setMessage("Создаем заказ и проводим оплату...");
 
     try {
       const createResponse = await fetch("/api/payments", {
@@ -45,7 +45,7 @@ export function MockPaymentButton({ tariffId, returnHref }: MockPaymentButtonPro
       const confirmPayload = await confirmResponse.json();
 
       setState("success");
-      setMessage(`Платеж ${confirmPayload.payment.id} успешен, следующий статус: ${confirmPayload.nextStatus}.`);
+      setMessage(confirmPayload.nextStatus === "sent" ? "Оплата прошла. Отклик отправлен работодателю." : "Оплата прошла. Заявка опубликована.");
     } catch (error) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "Оплата не прошла");
@@ -60,7 +60,7 @@ export function MockPaymentButton({ tariffId, returnHref }: MockPaymentButtonPro
         disabled={state === "loading" || state === "success"}
         className="inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#0aa337] font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300"
       >
-        {state === "loading" ? "Проводим оплату..." : state === "success" ? "Оплачено" : "Оплатить mock"}
+        {state === "loading" ? "Проводим оплату..." : state === "success" ? "Оплата прошла" : "Оплатить"}
       </button>
       <p className={state === "error" ? "text-sm font-semibold text-rose-600" : "text-sm leading-6 text-slate-600"}>{message}</p>
       {state === "success" ? (

@@ -43,7 +43,7 @@ export default function KrasnodarPage() {
               </Link>
             ))}
           </div>
-          <p className="mt-6 text-sm leading-6 text-slate-500">Города края в MVP: {cities.map((city) => city.name).join(", ")}.</p>
+          <p className="mt-6 text-sm leading-6 text-slate-500">Города края: {cities.map((city) => city.name).join(", ")}.</p>
         </section>
         <CategoryGrid />
       </main>

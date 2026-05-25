@@ -95,7 +95,7 @@ export const demoListings: DemoListing[] = [
     price: "Обмен",
     description: "Есть крепкие саженцы лаванды в контейнерах. Интересны фикусы, монстеры, сансевиерии или кашпо.",
     phone: "+78610002003",
-    messengerUrl: "https://t.me/blizhniy_demo",
+    messengerUrl: "https://t.me/blizhniy_support",
     status: "published",
     paid: true,
     createdAt: "15 мая 2026",
@@ -236,7 +236,7 @@ function ListingList({ listings }: { listings: DemoListing[] }) {
         listings.map((listing) => <ListingCard key={listing.slug} listing={listing} />)
       ) : (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
-          В этой подборке пока нет демо-объявлений. Каркас фильтров и маршрута уже готов.
+          В этой подборке пока нет объявлений. Попробуйте другой раздел или создайте новую публикацию.
         </div>
       )}
     </div>
@@ -465,9 +465,9 @@ export function ListingDetailPage({ slug }: { slug: string }) {
               <div className="flex items-start gap-3">
                 <CreditCard className="mt-1 h-5 w-5 text-amber-700" />
                 <div>
-                  <p className="font-black text-amber-900">Mock-оплата</p>
+                  <p className="font-black text-amber-900">Оплата</p>
                   <p className="mt-2 text-sm leading-6 text-amber-800">
-                    Тариф: {tariff?.name ?? "Размещение объявления"} за {tariff?.price ?? 199} ₽. После успешной оплаты статус становится published.
+                    Тариф: {tariff?.name ?? "Размещение объявления"} за {tariff?.price ?? 199} ₽. После успешной оплаты объявление будет опубликовано.
                   </p>
                 </div>
               </div>
@@ -477,7 +477,7 @@ export function ListingDetailPage({ slug }: { slug: string }) {
               className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]"
             >
               <FilePenLine className="h-5 w-5" />
-              Редактировать демо
+              Редактировать
             </Link>
           </aside>
         </div>
@@ -521,7 +521,7 @@ export function ListingFormPage({ slug }: { slug?: string }) {
           <section>
             <h1 className="text-5xl font-black text-[#060b27]">{editing ? "Редактировать объявление" : "Создать объявление"}</h1>
             <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-600">
-              Статическая MVP-форма показывает поля объявления, статусы публикации и следующий шаг с mock-оплатой.
+              Заполните поля объявления, проверьте контакты и перейдите к оплате публикации.
             </p>
 
             <form className="mt-7 grid gap-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -537,13 +537,13 @@ export function ListingFormPage({ slug }: { slug?: string }) {
                 </Field>
                 <Field label="Статус">
                   <SelectInput defaultValue={listing?.status ?? "draft"}>
-                    <option value="draft">draft - черновик</option>
-                    <option value="pending_payment">pending_payment - ожидает оплату</option>
-                    <option value="paid">paid - оплачено</option>
-                    <option value="published">published - опубликовано</option>
-                    <option value="archived">archived - архив</option>
-                    <option value="expired">expired - истек срок</option>
-                    <option value="rejected">rejected - отклонено</option>
+                    <option value="draft">Черновик</option>
+                    <option value="pending_payment">Ожидает оплаты</option>
+                    <option value="paid">Оплачено</option>
+                    <option value="published">Опубликовано</option>
+                    <option value="archived">Архив</option>
+                    <option value="expired">Истек срок</option>
+                    <option value="rejected">Отклонено</option>
                   </SelectInput>
                 </Field>
               </div>
@@ -628,15 +628,15 @@ export function ListingFormPage({ slug }: { slug?: string }) {
                   <Camera className="h-5 w-5 text-[#0875d1]" />
                   Фото объявления
                 </div>
-                <p className="mt-2 text-sm leading-6 text-slate-500">В MVP это статический блок загрузки. Позже здесь будет Supabase Storage или аналог.</p>
+                <p className="mt-2 text-sm leading-6 text-slate-500">Добавьте фотографии товара или услуги. Изображения помогут быстрее получить отклик.</p>
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <button type="button" className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 px-6 font-bold text-slate-800">
+                <Link href="/cabinet/obyavleniya" className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 px-6 font-bold text-slate-800">
                   Сохранить черновик
-                </button>
+                </Link>
                 <Link href="/blizhniy/oplata/listing-publication" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white">
-                  Перейти к mock-оплате
+                  Перейти к оплате
                   <ArrowRight className="h-5 w-5" />
                 </Link>
               </div>
@@ -650,7 +650,7 @@ export function ListingFormPage({ slug }: { slug?: string }) {
                 Публикация
               </div>
               <div className="mt-4 space-y-3">
-                {["draft", "pending_payment", "paid", "published"].map((status, index) => (
+                {["Черновик", "Ожидает оплаты", "Оплата прошла", "Объявление опубликовано"].map((status, index) => (
                   <div key={status} className="flex items-center gap-3 rounded-lg bg-slate-50 p-3">
                     {index < 2 ? <CheckCircle2 className="h-5 w-5 text-[#0aa337]" /> : <Clock3 className="h-5 w-5 text-slate-400" />}
                     <span className="text-sm font-semibold text-slate-700">{status}</span>
@@ -663,14 +663,14 @@ export function ListingFormPage({ slug }: { slug?: string }) {
               <div className="flex items-start gap-3">
                 <CreditCard className="mt-1 h-5 w-5 text-[#0875d1]" />
                 <div>
-                  <p className="font-black text-[#060b27]">Mock-оплата</p>
+                  <p className="font-black text-[#060b27]">Оплата</p>
                   <p className="mt-2 text-sm leading-6 text-slate-700">
                     Заказ сформирован: {tariff?.name ?? "Размещение объявления"} за {tariff?.price ?? 199} ₽ на {tariff?.durationDays ?? 30} дней.
                   </p>
-                  <button className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0875d1] font-bold text-white">
+                  <Link href="/blizhniy/oplata/listing-publication" className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0875d1] font-bold text-white">
                     <CreditCard className="h-5 w-5" />
-                    Тестовая успешная оплата
-                  </button>
+                    Оплатить
+                  </Link>
                 </div>
               </div>
             </div>

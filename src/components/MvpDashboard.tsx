@@ -17,6 +17,7 @@ import {
   Plus,
   Settings2,
   ShieldCheck,
+  Store,
   Tags,
   UsersRound,
   WalletCards,
@@ -24,9 +25,10 @@ import {
 import { AdminAuthGate } from "@/components/auth/AdminAuthGate";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
+import { LogoutButton } from "@/components/auth/LogoutButton";
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
-import { categories, professions, specialists, tariffs, vacancies } from "@/lib/data";
+import { categories, fairApplications, professions, specialists, tariffs, vacancies } from "@/lib/data";
 
 type StatusTone = "green" | "blue" | "amber" | "slate" | "red" | "violet";
 
@@ -50,7 +52,7 @@ const responses = [
 
 const payments = [
   { id: "PAY-2605-001", subject: "Размещение вакансии", amount: "499 ₽", method: "Карта", status: "paid" },
-  { id: "PAY-2605-002", subject: "Отклик на вакансию", amount: "99 ₽", method: "MockPay", status: "pending_payment" },
+  { id: "PAY-2605-002", subject: "Отклик на вакансию", amount: "99 ₽", method: "Карта", status: "pending_payment" },
   { id: "PAY-2605-003", subject: "Размещение объявления", amount: "199 ₽", method: "Карта", status: "failed" },
 ];
 
@@ -73,8 +75,10 @@ const statusLabels: Record<string, string> = {
   failed: "Ошибка",
   paid: "Оплачен",
   pending_payment: "Ждет оплату",
+  pending: "Ожидает",
   published: "Опубликовано",
   sent: "Отправлен",
+  succeeded: "Успешно",
   viewed: "Просмотрен",
 };
 
@@ -85,9 +89,11 @@ const statusTones: Record<string, StatusTone> = {
   draft: "slate",
   failed: "red",
   paid: "green",
+  pending: "amber",
   pending_payment: "amber",
   published: "blue",
   sent: "blue",
+  succeeded: "green",
   viewed: "violet",
 };
 
@@ -98,6 +104,7 @@ const cabinetNav = [
   { href: "/cabinet/organization", label: "Организация", icon: BadgeCheck },
   { href: "/cabinet/specialist", label: "Анкета", icon: CircleUserRound },
   { href: "/cabinet/otkliki", label: "Отклики", icon: MessageSquare },
+  { href: "/cabinet/fair-applications", label: "Ярмарка", icon: Store },
   { href: "/cabinet/oplata", label: "Оплата", icon: CreditCard },
 ];
 
@@ -111,6 +118,7 @@ const adminNav = [
   { href: "/admin/specialist-classifier", label: "Классификатор", icon: Settings2 },
   { href: "/admin/tariffs", label: "Тарифы", icon: WalletCards },
   { href: "/admin/payments", label: "Платежи", icon: Banknote },
+  { href: "/admin/fair-applications", label: "Ярмарка", icon: Store },
 ];
 
 function StatusBadge({ status }: { status: string }) {
@@ -177,6 +185,7 @@ function Shell({
               <Plus className="h-4 w-4" />
               Создать
             </ActionLink>
+            {nav ? <LogoutButton /> : null}
           </div>
         </div>
         {nav ? <NavPills items={nav} /> : null}
@@ -252,7 +261,11 @@ function DataTable<T extends Record<string, unknown>>({ columns, rows }: { colum
       return "/cabinet/otkliki";
     }
 
-    return String(row.href ?? row.editHref ?? "#");
+    if (id.startsWith("fair-")) {
+      return "/cabinet/fair-applications";
+    }
+
+    return String(row.href ?? row.editHref ?? "/cabinet");
   }
 
   return (
@@ -312,24 +325,29 @@ function SectionTitle({ title, actionHref, actionLabel }: { title: string; actio
 
 export function AuthPage() {
   return (
-    <>
-      <SiteHeader />
-      <main className="page-container grid gap-8 py-10 lg:grid-cols-[1fr_460px] lg:items-start">
-        <section className="pt-4">
-          <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Аккаунт</p>
-          <h1 className="mt-3 max-w-3xl text-5xl font-black leading-tight text-[#060b27]">Авторизация для публикаций и откликов</h1>
+    <main className="min-h-screen bg-slate-50">
+      <div className="page-container grid min-h-screen gap-10 py-8 lg:grid-cols-[minmax(0,1fr)_460px] lg:items-center">
+        <section>
+          <Link href="/" className="inline-flex items-center gap-3" aria-label="БЛИЖНИЙ, главная">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-card" aria-hidden="true">
+              <span className="text-2xl font-black text-[#0875d1]">Б</span>
+            </span>
+            <span className="text-3xl font-black italic tracking-normal text-[#0a1437]">БЛИЖНИЙ</span>
+          </Link>
+          <p className="mt-10 text-sm font-bold uppercase tracking-wide text-[#0aa337]">Аккаунт</p>
+          <h1 className="mt-3 max-w-3xl text-5xl font-black leading-tight text-[#060b27]">Вход и регистрация</h1>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600">
-            Регистрация и вход работают через Supabase Auth. После создания аккаунта пользователь получает доступ к личному кабинету.
+            Создайте аккаунт или войдите, чтобы размещать объявления, вакансии, анкеты специалистов и управлять публикациями.
           </p>
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
-            <MetricCard icon={<LockKeyhole className="h-5 w-5" />} label="Шаг 1" value="Email" detail="Пользователь вводит email и пароль." />
-            <MetricCard icon={<ShieldCheck className="h-5 w-5" />} label="Шаг 2" value="Supabase" detail="Auth создает сессию и профиль." />
-            <MetricCard icon={<BadgeCheck className="h-5 w-5" />} label="Шаг 3" value="Кабинет" detail="Дальше доступны публикации и оплаты." />
+            <MetricCard icon={<LockKeyhole className="h-5 w-5" />} label="Вход" value="Email" detail="Авторизация по email и паролю." />
+            <MetricCard icon={<ShieldCheck className="h-5 w-5" />} label="Права" value="Роли" detail="Обычный пользователь или администратор." />
+            <MetricCard icon={<BadgeCheck className="h-5 w-5" />} label="Доступ" value="Кабинет" detail="Публикации, анкеты, отклики и оплаты." />
           </div>
         </section>
         <AuthForm />
-      </main>
-    </>
+      </div>
+    </main>
   );
 }
 
@@ -341,7 +359,7 @@ export function CabinetPage() {
           <MetricCard icon={<FileText className="h-5 w-5" />} label="Объявления" value="3" detail="1 ждет оплату, 1 черновик." />
           <MetricCard icon={<BriefcaseBusiness className="h-5 w-5" />} label="Вакансии" value="3" detail="Публикации из раздела работы." />
           <MetricCard icon={<MessageSquare className="h-5 w-5" />} label="Отклики" value="3" detail="Последняя активность 24.05.2026." />
-          <MetricCard icon={<CreditCard className="h-5 w-5" />} label="Баланс оплат" value="798 ₽" detail="Демо-сумма активных тарифов." />
+          <MetricCard icon={<CreditCard className="h-5 w-5" />} label="Баланс оплат" value="798 ₽" detail="Сумма активных тарифов." />
         </div>
         <div className="mt-8 grid gap-8 xl:grid-cols-2">
           <section>
@@ -392,7 +410,7 @@ export function CabinetListingsPage() {
 
 export function CabinetVacanciesPage() {
   return (
-    <Shell title="Мои вакансии" description="MVP-список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Мои вакансии" description="Список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav}>
       <DataTable
         rows={vacancies as unknown as Record<string, unknown>[]}
         columns={[
@@ -425,7 +443,7 @@ export function CabinetSpecialistPage() {
         <div className="grid gap-4 md:grid-cols-2">
           <MetricCard icon={<PackageCheck className="h-5 w-5" />} label="Стоимость" value={profile.price} detail="Показывается в карточке специалиста." />
           <MetricCard icon={<ShieldCheck className="h-5 w-5" />} label="Проверка" value="80%" detail="Контакты заполнены, фото можно добавить позже." />
-          <MetricCard icon={<MessageSquare className="h-5 w-5" />} label="Каналы связи" value="2" detail="Телефон и мессенджер в демо-анкете." />
+          <MetricCard icon={<MessageSquare className="h-5 w-5" />} label="Каналы связи" value="2" detail="Телефон и мессенджер в анкете." />
           <MetricCard icon={<CreditCard className="h-5 w-5" />} label="Публикация" value="Активна" detail="Оплата для анкеты может быть добавлена тарифом." />
         </div>
       </section>
@@ -463,7 +481,7 @@ export function CabinetOrganizationPage() {
 
 export function CabinetResponsesPage() {
   return (
-    <Shell title="Мои отклики" description="Отклики на вакансии с демо-статусами оплаты, отправки и просмотра работодателем." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Мои отклики" description="Отклики на вакансии со статусами оплаты, отправки и просмотра работодателем." eyebrow="Кабинет" nav={cabinetNav}>
       <DataTable
         rows={responses}
         columns={[
@@ -480,7 +498,7 @@ export function CabinetResponsesPage() {
 
 export function CabinetPaymentsPage() {
   return (
-    <Shell title="Оплата и тарифы" description="Тарифы публикаций, история платежей и переход в fake payment flow." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Оплата и тарифы" description="Тарифы публикаций, история платежей и переход к оплате заказа." eyebrow="Кабинет" nav={cabinetNav}>
       <section className="grid gap-4 md:grid-cols-3">
         {tariffs.map((tariff) => (
           <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-card" key={tariff.id}>
@@ -510,31 +528,54 @@ export function CabinetPaymentsPage() {
   );
 }
 
+export function CabinetFairApplicationsPage() {
+  return (
+    <Shell title="Заявки на ярмарку" description="Заявки пользователя на участие в Ярмарке мастеров, статусы оплаты и публикации." eyebrow="Кабинет" nav={cabinetNav}>
+      <CabinetAuthGate>
+        <DataTable
+          rows={fairApplications as unknown as Record<string, unknown>[]}
+          columns={[
+            { key: "id", label: "ID" },
+            { key: "participantName", label: "Участник" },
+            { key: "category", label: "Категория" },
+            { key: "city", label: "Город" },
+            { key: "paymentStatus", label: "Оплата", render: (row) => <StatusBadge status={String(row.paymentStatus)} /> },
+            { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
+          ]}
+        />
+        <Link href="/yarmarka-masterov/zayavka" className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white">
+          Подать новую заявку
+        </Link>
+      </CabinetAuthGate>
+    </Shell>
+  );
+}
+
 export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
   const tariff = tariffs.find((item) => item.id === paymentId) ?? tariffs[0];
 
   return (
-    <Shell title="Оплата заказа" description="Fake payment flow для MVP: пользователь видит заказ, выбирает способ и получает демо-успех." eyebrow="MockPay">
+    <Shell title="Оплата заказа" description="Проверьте заказ, выберите способ оплаты и подтвердите платеж." eyebrow="Оплата">
       <section className="grid gap-8 lg:grid-cols-[1fr_420px]">
         <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
           <h2 className="text-2xl font-black text-[#060b27]">Заказ {paymentId ?? tariff.id}</h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тариф" value={tariff.name} detail="Демо-покупка без реального списания." />
-            <MetricCard icon={<Banknote className="h-5 w-5" />} label="Сумма" value={`${tariff.price} ₽`} detail="Фиксированная стоимость MVP." />
-            <MetricCard icon={<CheckCircle2 className="h-5 w-5" />} label="Статус" value="Готов" detail="После нажатия считаем оплату успешной." />
+            <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тариф" value={tariff.name} detail="Заказ сформирован." />
+            <MetricCard icon={<Banknote className="h-5 w-5" />} label="Сумма" value={`${tariff.price} ₽`} detail="Фиксированная стоимость." />
+            <MetricCard icon={<CheckCircle2 className="h-5 w-5" />} label="Статус" value="Ожидает оплаты" detail="После оплаты публикация обновит статус." />
           </div>
           <div className="mt-6 rounded-xl bg-slate-50 p-5">
             <p className="font-bold text-slate-700">Способы оплаты</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <button className="h-12 rounded-lg border border-blue-200 bg-white font-bold text-[#0875d1]">Банковская карта</button>
-              <button className="h-12 rounded-lg border border-slate-300 bg-white font-bold text-slate-700">Счет для бизнеса</button>
+              <div className="flex h-12 items-center justify-center rounded-lg border border-blue-200 bg-white font-bold text-[#0875d1]">Банковская карта</div>
+              <div className="flex h-12 items-center justify-center rounded-lg border border-slate-300 bg-white font-bold text-slate-700">Счет для бизнеса</div>
             </div>
           </div>
         </article>
         <aside className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-6 shadow-card">
           <ShieldCheck className="h-10 w-10 text-[#0aa337]" />
-          <h2 className="mt-4 text-2xl font-black text-[#060b27]">Демо-результат</h2>
-          <p className="mt-3 leading-7 text-slate-700">Кнопка ниже имитирует успешную оплату и возвращает пользователя в историю платежей.</p>
+          <h2 className="mt-4 text-2xl font-black text-[#060b27]">Подтверждение оплаты</h2>
+          <p className="mt-3 leading-7 text-slate-700">После подтверждения заказ получит статус «Оплата прошла», а публикация будет обновлена.</p>
           <MockPaymentButton tariffId={tariff.id} returnHref="/cabinet/oplata" />
         </aside>
       </section>
@@ -544,12 +585,12 @@ export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
 
 export function AdminPage() {
   return (
-    <Shell title="Админка" description="MVP-панель модерации пользователей, контента, классификаторов, тарифов и платежей." eyebrow="Администрирование">
+    <Shell title="Админка" description="Панель модерации пользователей, контента, классификаторов, тарифов и платежей." eyebrow="Администрирование">
       <AdminGuardedContent>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard icon={<UsersRound className="h-5 w-5" />} label="Пользователи" value="3" detail="Роли user, organization, admin." />
           <MetricCard icon={<ClipboardList className="h-5 w-5" />} label="Публикации" value="9" detail="Объявления, вакансии, анкеты." />
-          <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тарифы" value={String(tariffs.length)} detail="Все тарифы активны в MVP." />
+          <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тарифы" value={String(tariffs.length)} detail="Все тарифы активны." />
           <MetricCard icon={<Banknote className="h-5 w-5" />} label="Платежи" value="3" detail="Есть успешный, ожидающий и ошибка." />
         </div>
         <div className="mt-8 grid gap-8 xl:grid-cols-2">
@@ -710,13 +751,31 @@ export function AdminPaymentsPage() {
   return (
     <AdminTablePage
       title="Платежи"
-      description="История fake payment flow с суммами, пользователями и статусами."
+      description="История платежей с суммами, пользователями и статусами."
       rows={adminPayments}
       columns={[
         { key: "id", label: "ID" },
         { key: "user", label: "Пользователь" },
         { key: "subject", label: "Назначение" },
         { key: "amount", label: "Сумма" },
+        { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
+      ]}
+    />
+  );
+}
+
+export function AdminFairApplicationsPage() {
+  return (
+    <AdminTablePage
+      title="Заявки на ярмарку"
+      description="Административный список заявок участников Ярмарки мастеров."
+      rows={fairApplications as unknown as Record<string, unknown>[]}
+      columns={[
+        { key: "id", label: "ID" },
+        { key: "participantName", label: "Участник" },
+        { key: "category", label: "Категория" },
+        { key: "city", label: "Город" },
+        { key: "paymentStatus", label: "Оплата", render: (row) => <StatusBadge status={String(row.paymentStatus)} /> },
         { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
       ]}
     />

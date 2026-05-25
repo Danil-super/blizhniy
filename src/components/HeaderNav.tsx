@@ -7,6 +7,7 @@ const publicLinks = [
   ["Объявления", "/blizhniy/prodam"],
   ["Работа", "/blizhniy/rabota"],
   ["Специалисты", "/blizhniy/rabota/specialisty"],
+  ["Ярмарка", "/yarmarka-masterov"],
   ["Категории", "/blizhniy/kategorii"],
   ["Вход", "/auth"],
   ["Кабинет", "/cabinet"],

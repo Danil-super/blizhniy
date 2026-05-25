@@ -27,6 +27,18 @@ const icons = [
 ];
 
 export function CategoryGrid() {
+  function categoryHref(slug: string) {
+    if (slug === "rabota") {
+      return "/blizhniy/rabota";
+    }
+
+    if (slug === "yarmarka-masterov") {
+      return "/yarmarka-masterov";
+    }
+
+    return `/blizhniy/${slug}`;
+  }
+
   return (
     <section className="page-container py-10">
       <div className="mb-5 flex items-end justify-between gap-4">
@@ -44,7 +56,7 @@ export function CategoryGrid() {
           return (
             <Link
               key={category.slug}
-              href={category.slug === "rabota" ? "/blizhniy/rabota" : `/blizhniy/${category.slug}`}
+              href={categoryHref(category.slug)}
               className="group min-h-36 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-card"
             >
               <span className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-[#0875d1] group-hover:bg-blue-50">

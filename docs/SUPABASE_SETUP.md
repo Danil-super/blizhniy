@@ -37,6 +37,14 @@ PAYMENT_PROVIDER=mock
 
 `rls.sql` включает Row Level Security и базовые политики доступа.
 
+Если схема уже применялась раньше, перед повторным применением обновлений по ярмарке мастеров безопаснее сначала расширить enum:
+
+```sql
+alter type tariff_action add value if not exists 'fair_participation';
+```
+
+После этого можно применить новые таблицы `work_requests`, `fair_applications`, `fair_application_images`, обновленный seed категорий/тарифа и RLS-политики.
+
 ## 4. Настроить Auth
 
 В `Authentication -> Providers` включить Email.

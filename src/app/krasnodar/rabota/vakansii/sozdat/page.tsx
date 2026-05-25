@@ -7,7 +7,7 @@ export default function CreateVacancyPage() {
     <>
       <SiteHeader />
       <main className="page-container py-10">
-        <FormPanel title="Разместить вакансию" description="После заполнения создается заказ на оплату тарифа размещения вакансии. В MVP успешная mock-оплата сразу публикует вакансию.">
+        <FormPanel title="Разместить вакансию" description="После заполнения создается заказ на оплату тарифа размещения вакансии. После оплаты вакансия будет опубликована.">
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Организация" placeholder="ООО РемДом" />
             <Field label="Вакансия" placeholder="Сантехник" />

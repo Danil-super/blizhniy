@@ -16,7 +16,7 @@ export default function Home() {
               Объявления, вакансии и специалисты рядом
             </h1>
             <p className="mt-5 max-w-2xl text-xl leading-8 text-slate-600">
-              MVP платформы «БЛИЖНИЙ»: ресейл, работа, анкеты исполнителей, региональная структура и подготовка к платным публикациям.
+              Региональная площадка «БЛИЖНИЙ»: ресейл, работа, анкеты исполнителей, городские разделы и платные публикации.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
               <Link
@@ -48,7 +48,7 @@ export default function Home() {
               <div className="flex gap-3">
                 <WalletCards className="mt-1 h-6 w-6 shrink-0 text-[#0875d1]" />
                 <div>
-                  <p className="font-bold">Mock-платежи</p>
+                  <p className="font-bold">Оплата</p>
                   <p className="text-sm leading-6 text-slate-600">
                     Тарифы вынесены в данные и SQL-схему: {tariffs.map((tariff) => `${tariff.name} ${tariff.price} ₽`).join(", ")}.
                   </p>

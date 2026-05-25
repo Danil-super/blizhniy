@@ -3,7 +3,7 @@ import { ListingFormPage } from "@/components/listings/ListingPages";
 
 export const metadata: Metadata = {
   title: "Создать объявление в Краснодаре",
-  description: "MVP-форма создания объявления с подготовкой к mock-оплате.",
+  description: "Форма создания объявления с переходом к оплате публикации.",
   alternates: {
     canonical: "/blizhniy/sozdat",
   },

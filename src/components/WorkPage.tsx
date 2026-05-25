@@ -1,19 +1,22 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 import {
   BriefcaseBusiness,
   ChevronRight,
   CircleUserRound,
-  Info,
   MapPin,
   MessageCircle,
   Phone,
   UserRound,
-  Video,
 } from "lucide-react";
-import { professions, specialists, vacancies } from "@/lib/data";
-import type { JobVacancy, SpecialistProfile } from "@/lib/types";
+import { professions, specialists, vacancies, workRequests } from "@/lib/data";
+import type { JobVacancy, SpecialistProfile, WorkRequest } from "@/lib/types";
 
 const chips = ["Все", "Вакансии", "Специалисты", "Краснодар", "Сочи", "Сантехник", "Маникюр", "Юрист"];
+const demoPhone = "+78610009999";
+const supportMessengerUrl = "https://t.me/blizhniy_support";
 
 function LogoBadge({ vacancy }: { vacancy: JobVacancy }) {
   const tones = {
@@ -87,30 +90,44 @@ function ContactButton({
   );
 }
 
-function SegmentLinks({ items, activeTone }: { items: Array<{ label: string; href: string }>; activeTone: "green" | "blue" }) {
+function SegmentTabs({
+  items,
+  activeItem,
+  activeTone,
+  onChange,
+}: {
+  items: string[];
+  activeItem: string;
+  activeTone: "green" | "blue";
+  onChange: (item: string) => void;
+}) {
   const activeClass =
     activeTone === "green"
       ? "border-[#0aa337] bg-emerald-50 text-[#0a8f32]"
       : "border-[#0875d1] bg-blue-50 text-[#0875d1]";
 
   return (
-    <div className="flex w-full flex-wrap gap-2">
-      {items.map((item, index) => (
-        <Link
-          key={item.label}
-          href={item.href}
-          className={`h-9 rounded-lg border px-4 text-sm font-bold transition ${
-            index === 0 ? activeClass : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-[#0875d1]"
+    <div className="grid w-full grid-cols-2 gap-3">
+      {items.map((item) => (
+        <button
+          key={item}
+          type="button"
+          onClick={() => onChange(item)}
+          className={`inline-flex h-11 items-center justify-center rounded-xl border px-4 text-sm font-bold transition ${
+            item === activeItem ? activeClass : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-[#0875d1]"
           }`}
         >
-          {item.label}
-        </Link>
+          {item}
+        </button>
       ))}
     </div>
   );
 }
 
 function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
+  const phoneHref = `tel:${vacancy.phone ?? demoPhone}`;
+  const messageHref = vacancy.messengerUrl ?? `https://wa.me/${(vacancy.phone ?? demoPhone).replace(/\D/g, "")}`;
+
   return (
     <article className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:grid-cols-[112px_1fr_auto] sm:items-center">
       <LogoBadge vacancy={vacancy} />
@@ -131,13 +148,37 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
           >
             Откликнуться
           </Link>
-          {vacancy.phone ? (
-            <ContactButton href={`tel:${vacancy.phone}`} icon={<Phone className="h-4 w-4" />} label="Позвонить" tone="green" />
-          ) : vacancy.messengerUrl ? (
-            <ContactButton href={vacancy.messengerUrl} icon={<MessageCircle className="h-4 w-4" />} label="Написать" tone="violet" />
-          ) : (
-            <ContactButton href={`/blizhniy/vakansiya/${vacancy.id}`} icon={<Info className="h-4 w-4" />} label="Подробнее" tone="slate" />
-          )}
+          <ContactButton href={phoneHref} icon={<Phone className="h-4 w-4" />} label="Позвонить" tone="green" />
+          <ContactButton href={messageHref} icon={<MessageCircle className="h-4 w-4" />} label="Написать" tone="violet" />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function WorkRequestCard({ request }: { request: WorkRequest }) {
+  const phoneHref = `tel:${request.phone ?? demoPhone}`;
+  const messageHref = request.messengerUrl ?? `https://wa.me/${(request.phone ?? demoPhone).replace(/\D/g, "")}`;
+
+  return (
+    <article className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:grid-cols-[112px_1fr_auto] sm:items-center">
+      <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 text-center text-sm font-black leading-4 text-[#0a8f32]">
+        Заказ
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm text-slate-500">{request.author}</p>
+        <h3 className="mt-1 text-xl font-black text-[#060b27]">{request.title}</h3>
+        <p className="mt-2 text-sm leading-6 text-slate-600">{request.description}</p>
+        <p className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+          <MapPin className="h-4 w-4" />
+          {[request.city, request.showExactAddress ? request.address : request.district].filter(Boolean).join(", ")}
+        </p>
+      </div>
+      <div className="flex flex-col gap-3 sm:items-end">
+        <p className="text-xl font-black text-[#060b27]">{request.budget}</p>
+        <div className="flex flex-wrap gap-2 sm:flex-col">
+          <ContactButton href={phoneHref} icon={<Phone className="h-4 w-4" />} label="Позвонить" tone="green" />
+          <ContactButton href={messageHref} icon={<MessageCircle className="h-4 w-4" />} label="Написать" tone="violet" />
         </div>
       </div>
     </article>
@@ -145,6 +186,9 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
 }
 
 function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
+  const phoneHref = `tel:${specialist.phone ?? demoPhone}`;
+  const messageHref = specialist.messengerUrl ?? supportMessengerUrl;
+
   return (
     <article className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:grid-cols-[112px_1fr_auto] sm:items-center">
       <Avatar specialist={specialist} />
@@ -162,12 +206,8 @@ function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
       <div className="flex flex-col gap-3 sm:items-end">
         <p className="text-xl font-black text-[#060b27]">{specialist.price}</p>
         <div className="flex flex-wrap gap-2 sm:flex-col">
-          <ContactButton href={specialist.phone ? `tel:${specialist.phone}` : undefined} icon={<Phone className="h-4 w-4" />} label="Позвонить" />
-          <ContactButton
-            href={specialist.videoUrl ?? specialist.messengerUrl}
-            icon={specialist.videoUrl ? <Video className="h-4 w-4" /> : <MessageCircle className="h-4 w-4" />}
-            label={specialist.videoUrl ? "Видеозвонок" : "Написать"}
-          />
+          <ContactButton href={phoneHref} icon={<Phone className="h-4 w-4" />} label="Позвонить" />
+          <ContactButton href={messageHref} icon={<MessageCircle className="h-4 w-4" />} label="Написать" />
         </div>
       </div>
     </article>
@@ -175,6 +215,11 @@ function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
 }
 
 export function WorkPage() {
+  const [demandTab, setDemandTab] = useState("Новые вакансии");
+  const [supplyTab, setSupplyTab] = useState("Новые специалисты");
+  const visibleDemand = demandTab === "Заказчики" ? workRequests : vacancies;
+  const visibleSupply = supplyTab === "Исполнители" ? [...specialists].reverse() : specialists;
+
   return (
     <main className="page-container py-8 sm:py-10">
       <nav className="mb-5 text-sm text-slate-500" aria-label="Хлебные крошки">
@@ -188,33 +233,33 @@ export function WorkPage() {
       <h1 className="text-5xl font-black tracking-normal text-[#060b27] sm:text-6xl">Работа</h1>
 
       <section className="mt-6 grid gap-7 lg:grid-cols-2">
-        <Link
-          href="/blizhniy/rabota/vakansii"
-          className="group flex min-h-32 items-center gap-6 rounded-2xl border border-emerald-200 bg-emerald-50/45 p-6 shadow-card transition hover:-translate-y-0.5 hover:border-emerald-300"
-        >
+        <article className="flex min-h-32 items-center gap-6 rounded-2xl border border-emerald-200 bg-emerald-50/45 p-6 shadow-card">
           <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-white text-[#0aa337] shadow-card">
             <BriefcaseBusiness className="h-12 w-12" />
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-2xl font-black text-[#060b27]">Я ищу работу</span>
-            <span className="mt-2 block text-lg text-slate-700">Вакансии от компаний и заказчиков</span>
-          </span>
-          <ChevronRight className="h-10 w-10 text-[#0aa337] transition group-hover:translate-x-1" />
-        </Link>
+          <div className="min-w-0 flex-1">
+            <SegmentTabs
+              activeItem={demandTab}
+              activeTone="green"
+              items={["Новые вакансии", "Заказчики"]}
+              onChange={setDemandTab}
+            />
+          </div>
+        </article>
 
-        <Link
-          href="/blizhniy/rabota/specialisty"
-          className="group flex min-h-32 items-center gap-6 rounded-2xl border border-blue-200 bg-blue-50/55 p-6 shadow-card transition hover:-translate-y-0.5 hover:border-blue-300"
-        >
+        <article className="flex min-h-32 items-center gap-6 rounded-2xl border border-blue-200 bg-blue-50/55 p-6 shadow-card">
           <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full border border-blue-100 bg-white text-[#0875d1] shadow-card">
             <CircleUserRound className="h-12 w-12" />
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-2xl font-black text-[#060b27]">Я ищу специалиста</span>
-            <span className="mt-2 block text-lg text-slate-700">Анкеты исполнителей и мастеров</span>
-          </span>
-          <ChevronRight className="h-10 w-10 text-[#0875d1] transition group-hover:translate-x-1" />
-        </Link>
+          <div className="min-w-0 flex-1">
+            <SegmentTabs
+              activeItem={supplyTab}
+              activeTone="blue"
+              items={["Новые специалисты", "Исполнители"]}
+              onChange={setSupplyTab}
+            />
+          </div>
+        </article>
       </section>
 
       <section className="mt-6 flex flex-wrap gap-4">
@@ -238,7 +283,8 @@ export function WorkPage() {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap gap-3">
             {chips.map((chip, index) => (
-              <button
+              <Link
+                href={index === 0 ? "/blizhniy/rabota" : `/poisk?q=${encodeURIComponent(chip)}`}
                 className={`h-9 rounded-full border px-5 text-sm font-semibold transition ${
                   index === 0
                     ? "border-[#0875d1] bg-[#0875d1] text-white"
@@ -247,7 +293,7 @@ export function WorkPage() {
                 key={chip}
               >
                 {chip}
-              </button>
+              </Link>
             ))}
           </div>
           <label className="grid gap-1 text-sm font-semibold text-slate-700 sm:min-w-80">
@@ -264,73 +310,63 @@ export function WorkPage() {
 
       <div className="mt-7 grid gap-8 xl:grid-cols-2">
         <section>
-          <div className="mb-4 grid min-h-28 gap-3">
+          <div className="mb-4">
             <div className="flex items-center justify-between gap-4">
               <h2 className="flex items-center gap-3 text-2xl font-black text-[#060b27]">
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0aa337] text-white">
                   <BriefcaseBusiness className="h-5 w-5" />
                 </span>
-                Новые вакансии и заказчики
+                {demandTab}
               </h2>
-              <Link href="/blizhniy/rabota/vakansii" className="flex items-center gap-1 font-semibold text-[#0875d1]">
+              <Link href={demandTab === "Заказчики" ? "/blizhniy/rabota/vakansii/sozdat" : "/blizhniy/rabota/vakansii"} className="flex items-center gap-1 font-semibold text-[#0875d1]">
                 Смотреть все
                 <ChevronRight className="h-5 w-5" />
               </Link>
             </div>
-            <SegmentLinks
-              activeTone="green"
-              items={[
-                { label: "Вакансии", href: "/blizhniy/rabota/vakansii" },
-                { label: "Заказчики", href: "/blizhniy/rabota/vakansii/sozdat" },
-              ]}
-            />
           </div>
           <div className="space-y-4">
-            {vacancies.map((vacancy) => (
-              <VacancyCard key={vacancy.id} vacancy={vacancy} />
-            ))}
+            {visibleDemand.map((item) =>
+              demandTab === "Заказчики" ? (
+                <WorkRequestCard key={item.id} request={item as WorkRequest} />
+              ) : (
+                <VacancyCard key={item.id} vacancy={item as JobVacancy} />
+              ),
+            )}
           </div>
           <Link
-            href="/blizhniy/rabota/vakansii"
+            href={demandTab === "Заказчики" ? "/blizhniy/rabota/vakansii/sozdat" : "/blizhniy/rabota/vakansii"}
             className="mt-6 flex h-14 items-center justify-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 font-bold text-[#0a8f32] transition hover:bg-emerald-100"
           >
-            Все вакансии
+            {demandTab === "Заказчики" ? "Разместить заказ" : "Все вакансии"}
             <ChevronRight className="h-5 w-5" />
           </Link>
         </section>
 
         <section>
-          <div className="mb-4 grid min-h-28 gap-3">
+          <div className="mb-4">
             <div className="flex items-center justify-between gap-4">
               <h2 className="flex items-center gap-3 text-2xl font-black text-[#060b27]">
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0875d1] text-white">
                   <UserRound className="h-5 w-5" />
                 </span>
-                Новые специалисты и исполнители
+                {supplyTab}
               </h2>
-              <Link href="/blizhniy/rabota/specialisty" className="flex items-center gap-1 font-semibold text-[#0875d1]">
+              <Link href={supplyTab === "Исполнители" ? "/blizhniy/rabota/specialisty/anketa" : "/blizhniy/rabota/specialisty"} className="flex items-center gap-1 font-semibold text-[#0875d1]">
                 Смотреть все
                 <ChevronRight className="h-5 w-5" />
               </Link>
             </div>
-            <SegmentLinks
-              activeTone="blue"
-              items={[
-                { label: "Специалисты", href: "/blizhniy/rabota/specialisty" },
-                { label: "Исполнители", href: "/blizhniy/rabota/specialisty/anketa" },
-              ]}
-            />
           </div>
           <div className="space-y-4">
-            {specialists.map((specialist) => (
+            {visibleSupply.map((specialist) => (
               <SpecialistCard key={specialist.id} specialist={specialist} />
             ))}
           </div>
           <Link
-            href="/blizhniy/rabota/specialisty"
+            href={supplyTab === "Исполнители" ? "/blizhniy/rabota/specialisty/anketa" : "/blizhniy/rabota/specialisty"}
             className="mt-6 flex h-14 items-center justify-center gap-3 rounded-xl border border-blue-200 bg-blue-50/75 font-bold text-[#0875d1] transition hover:bg-blue-100"
           >
-            Все специалисты
+            {supplyTab === "Исполнители" ? "Создать анкету исполнителя" : "Все специалисты"}
             <ChevronRight className="h-5 w-5" />
           </Link>
         </section>

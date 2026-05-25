@@ -8,6 +8,11 @@ MVP региональной платформы объявлений, вакан
 - Главная страница с категориями и стартовой географией.
 - Страница `/blizhniy/rabota` по макету: вакансии слева, специалисты справа, CTA, чипы, классификатор, короткие подборки.
 - Страницы полных списков `/blizhniy/rabota/vakansii` и `/blizhniy/rabota/specialisty`.
+- Новые категории каталога: «Отдых», «Знакомства», «Ярмарка мастеров».
+- MVP-раздел `/yarmarka-masterov`: дата ближайшей ярмарки, категории мастеров, заявки/участники, заглушка онлайн-трансляции.
+- Форма `/yarmarka-masterov/zayavka` с полями участника, категории, описания, фото, ссылки на видео, контактов и согласия с правилами.
+- Раздел «Работа» с переключаемыми вкладками спроса/предложения: новые вакансии, заказчики, новые специалисты, исполнители.
+- Базовая карта/местоположение через `LocationMap`: адрес, район, координаты, скрытие точного адреса для частных лиц и внешний маршрут в Яндекс Картах.
 - Базовые SEO-файлы: metadata, canonical, `robots.txt`, `sitemap.xml`.
 - SQL-схема Supabase/PostgreSQL в `supabase/schema.sql`.
 - Инструкция подключения Supabase/Auth: `docs/SUPABASE_SETUP.md`.
@@ -25,9 +30,20 @@ npm run dev
 - работа: `http://localhost:3000/blizhniy/rabota`
 - объявления: `http://localhost:3000/blizhniy/prodam`
 - категории: `http://localhost:3000/blizhniy/kategorii`
+- ярмарка мастеров: `http://localhost:3000/yarmarka-masterov`
+- заявка на ярмарку: `http://localhost:3000/yarmarka-masterov/zayavka`
 - кабинет: `http://localhost:3000/cabinet`
+- заявки на ярмарку в кабинете: `http://localhost:3000/cabinet/fair-applications`
 - админка: `http://localhost:3000/admin`
+- заявки на ярмарку в админке: `http://localhost:3000/admin/fair-applications`
 - mock-оплата: `http://localhost:3000/blizhniy/oplata/listing-publication`
+
+## Новые SQL-изменения
+
+- `supabase/seed.sql` добавляет категории «Отдых», «Знакомства», «Ярмарка мастеров» и подкатегории без дублей через `on conflict`.
+- `tariff_action` расширен действием `fair_participation`, тариф «Участие в ярмарке мастеров» стоит 1000 ₽ и сидится как остальные тарифы.
+- Добавлены таблицы `work_requests`, `fair_applications`, `fair_application_images` и RLS-политики для публичного чтения опубликованных записей, управления своими заявками и админского доступа.
+- Поля местоположения используются в существующих сущностях и новых заявках: `address`, `district`, `latitude`, `longitude`, `show_exact_address`.
 
 ## Следующие этапы
 

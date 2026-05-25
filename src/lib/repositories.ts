@@ -2,6 +2,7 @@ import {
   applications,
   categories,
   cities,
+  fairApplications,
   listings,
   payments,
   professions,
@@ -10,6 +11,7 @@ import {
   tariffs,
   users,
   vacancies,
+  workRequests,
 } from "@/lib/data";
 
 export type CatalogRepository = {
@@ -22,7 +24,9 @@ export type CatalogRepository = {
 export type PublicationRepository = {
   getListings: () => typeof listings;
   getVacancies: () => typeof vacancies;
+  getWorkRequests: () => typeof workRequests;
   getSpecialists: () => typeof specialists;
+  getFairApplications: () => typeof fairApplications;
 };
 
 export type AccountRepository = {
@@ -41,7 +45,9 @@ export const mockRepository: AppRepository = {
   getProfessions: () => professions,
   getListings: () => listings,
   getVacancies: () => vacancies,
+  getWorkRequests: () => workRequests,
   getSpecialists: () => specialists,
+  getFairApplications: () => fairApplications,
   getUsers: () => users,
   getApplications: () => applications,
   getPayments: () => payments,

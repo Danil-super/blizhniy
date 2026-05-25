@@ -3,6 +3,10 @@ import type { Payment, Tariff } from "@/lib/types";
 
 type PaymentTargetType = Payment["targetType"];
 
+declare global {
+  var __blizhniyMockPayments: Payment[] | undefined;
+}
+
 export type CreatePaymentInput = {
   tariffId: string;
   targetType?: PaymentTargetType;
@@ -18,7 +22,10 @@ export type PaymentResult = {
   };
 };
 
-const mockPayments: Payment[] = [...payments];
+function getMockPayments() {
+  globalThis.__blizhniyMockPayments ??= [...payments];
+  return globalThis.__blizhniyMockPayments;
+}
 
 function resolveTargetType(tariff: Tariff): PaymentTargetType {
   if (tariff.action === "vacancy_publication") {
@@ -27,6 +34,10 @@ function resolveTargetType(tariff: Tariff): PaymentTargetType {
 
   if (tariff.action === "job_response") {
     return "application";
+  }
+
+  if (tariff.action === "fair_participation") {
+    return "fair_application";
   }
 
   return "listing";
@@ -49,11 +60,11 @@ export function getPaymentProviderName() {
 }
 
 export function listPayments() {
-  return mockPayments;
+  return getMockPayments();
 }
 
 export function getPayment(paymentId: string) {
-  return mockPayments.find((payment) => payment.id === paymentId);
+  return getMockPayments().find((payment) => payment.id === paymentId);
 }
 
 export function createPayment(input: CreatePaymentInput) {
@@ -74,7 +85,7 @@ export function createPayment(input: CreatePaymentInput) {
     createdAt: todayIsoDate(),
   };
 
-  mockPayments.unshift(payment);
+  getMockPayments().unshift(payment);
   return payment;
 }
 

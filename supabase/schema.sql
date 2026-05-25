@@ -12,7 +12,7 @@ create type publication_status as enum (
 
 create type listing_type as enum ('sell', 'buy', 'exchange', 'free');
 create type payment_status as enum ('created', 'pending', 'succeeded', 'failed', 'refunded');
-create type tariff_action as enum ('listing_publication', 'vacancy_publication', 'job_response');
+create type tariff_action as enum ('listing_publication', 'vacancy_publication', 'job_response', 'fair_participation');
 create type app_role as enum ('user', 'specialist', 'organization', 'admin');
 
 create table profiles (
@@ -142,6 +142,29 @@ create table vacancies (
   expires_at timestamptz
 );
 
+create table work_requests (
+  id uuid primary key default gen_random_uuid(),
+  author_id uuid not null references profiles(id),
+  request_type text not null default 'private_request',
+  title text not null,
+  description text not null,
+  specialist_category_id uuid references specialist_categories(id),
+  region_id uuid not null references regions(id),
+  city_id uuid not null references cities(id),
+  district text,
+  address text,
+  latitude numeric(10, 7),
+  longitude numeric(10, 7),
+  show_exact_address boolean not null default false,
+  budget numeric(12, 2),
+  photo_path text,
+  contact_phone text,
+  messenger_url text,
+  status publication_status not null default 'draft',
+  created_at timestamptz not null default now(),
+  published_at timestamptz
+);
+
 create table specialist_profiles (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null unique references profiles(id),
@@ -177,6 +200,36 @@ create table applications (
   is_paid boolean not null default false,
   created_at timestamptz not null default now(),
   sent_at timestamptz
+);
+
+create table fair_applications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id),
+  participant_name text not null,
+  region_id uuid references regions(id),
+  city_id uuid references cities(id),
+  fair_category text not null,
+  description text not null,
+  video_url text,
+  contact_phone text not null,
+  email text not null,
+  comment text,
+  district text,
+  address text,
+  latitude numeric(10, 7),
+  longitude numeric(10, 7),
+  show_exact_address boolean not null default false,
+  status publication_status not null default 'draft',
+  payment_status payment_status not null default 'created',
+  created_at timestamptz not null default now(),
+  published_at timestamptz
+);
+
+create table fair_application_images (
+  id uuid primary key default gen_random_uuid(),
+  fair_application_id uuid not null references fair_applications(id) on delete cascade,
+  storage_path text not null,
+  sort_order integer not null default 0
 );
 
 create table tariffs (
@@ -235,7 +288,8 @@ where regions.slug = 'krasnodarskiy-kray';
 insert into tariffs (name, action, price, duration_days) values
   ('Размещение объявления', 'listing_publication', 199, 30),
   ('Размещение вакансии', 'vacancy_publication', 499, 30),
-  ('Отклик на вакансию', 'job_response', 99, null);
+  ('Отклик на вакансию', 'job_response', 99, null),
+  ('Участие в ярмарке мастеров', 'fair_participation', 1000, null);
 
 create or replace function public.handle_new_user()
 returns trigger

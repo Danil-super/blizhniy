@@ -11,7 +11,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   return {
     title: `Редактирование: ${listing?.title ?? "объявление"}`,
-    description: "MVP-форма редактирования объявления с полями статуса и mock-оплаты.",
+    description: "Форма редактирования объявления с полями статуса и оплаты.",
     alternates: {
       canonical: `/blizhniy/obyavlenie/${slug}/redaktirovat`,
     },

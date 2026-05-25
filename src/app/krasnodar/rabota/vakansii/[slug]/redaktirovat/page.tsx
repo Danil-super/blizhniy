@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
 
@@ -11,10 +12,12 @@ export default function EditVacancyPage() {
             <Field label="Организация" placeholder="ООО РемДом" />
             <Field label="Вакансия" placeholder="Сантехник" />
             <Field label="Город" placeholder="Краснодар" />
-            <Field label="Статус" placeholder="published" />
+            <Field label="Статус" placeholder="Опубликовано" />
           </div>
           <TextAreaField label="Описание" />
-          <button className="h-12 w-fit rounded-xl bg-[#0875d1] px-7 font-bold text-white">Сохранить изменения</button>
+          <Link href="/cabinet/vakansii" className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0875d1] px-7 font-bold text-white">
+            Сохранить изменения
+          </Link>
         </FormPanel>
       </main>
     </>

@@ -2,13 +2,13 @@ import Link from "next/link";
 import { ArrowRight, BriefcaseBusiness, Search, UserRound } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { demoListings } from "@/components/listings/ListingPages";
-import { categories, cities, professions, region, specialists, vacancies } from "@/lib/data";
+import { categories, cities, fairApplications, professions, region, specialists, vacancies, workRequests } from "@/lib/data";
 
 type SearchResult = {
   title: string;
   description: string;
   href: string;
-  type: "Объявление" | "Вакансия" | "Специалист" | "Категория" | "Профессия";
+  type: "Объявление" | "Вакансия" | "Заказ" | "Специалист" | "Категория" | "Профессия" | "Ярмарка";
 };
 
 function normalize(value: string) {
@@ -66,12 +66,37 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       type: "Специалист",
     }));
 
+  const workRequestResults: SearchResult[] = workRequests
+    .filter(
+      (request) =>
+        matchesCity(request.city) && (query ? includesQuery([request.title, request.description, request.author, request.profession, request.city], query) : true),
+    )
+    .map((request) => ({
+      title: request.title,
+      description: `${request.author}, ${request.city}. ${request.budget}`,
+      href: "/blizhniy/rabota",
+      type: "Заказ",
+    }));
+
+  const fairResults: SearchResult[] = fairApplications
+    .filter(
+      (application) =>
+        matchesCity(application.city) &&
+        (query ? includesQuery([application.participantName, application.category, application.description, application.city], query) : true),
+    )
+    .map((application) => ({
+      title: application.participantName,
+      description: `${application.category}, ${application.city}. ${application.description}`,
+      href: "/yarmarka-masterov",
+      type: "Ярмарка",
+    }));
+
   const categoryResults: SearchResult[] = categories
     .filter((category) => (query ? includesQuery([category.name, ...category.children], query) : true))
     .map((category) => ({
       title: category.name,
       description: category.children.join(", "),
-      href: category.slug === "rabota" ? "/blizhniy/rabota" : `/blizhniy/${category.slug}`,
+      href: category.slug === "rabota" ? "/blizhniy/rabota" : category.slug === "yarmarka-masterov" ? "/yarmarka-masterov" : `/blizhniy/${category.slug}`,
       type: "Категория",
     }));
 
@@ -84,7 +109,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       type: "Профессия",
     }));
 
-  const results = [...listingResults, ...vacancyResults, ...specialistResults, ...categoryResults, ...professionResults].slice(0, 24);
+  const results = [...listingResults, ...vacancyResults, ...workRequestResults, ...specialistResults, ...fairResults, ...categoryResults, ...professionResults].slice(0, 24);
 
   return (
     <>
