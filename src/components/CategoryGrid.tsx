@@ -1,74 +1,65 @@
 import Link from "next/link";
-import {
-  BriefcaseBusiness,
-  Cat,
-  Gem,
-  Hammer,
-  HeartPulse,
-  Home,
-  Leaf,
-  Scissors,
-  Shirt,
-  Sparkles,
-} from "lucide-react";
-import { categories } from "@/lib/data";
 
-const icons = [
-  Gem,
-  Cat,
-  Scissors,
-  HeartPulse,
-  Home,
-  BriefcaseBusiness,
-  Hammer,
-  Leaf,
-  Shirt,
-  Sparkles,
+const categoryTiles = [
+  {
+    label: "Авто",
+    href: "/blizhniy/transport",
+    quickLinks: [
+      { label: "Продам", href: "/blizhniy/transport/prodam-avto" },
+      { label: "Куплю", href: "/blizhniy/transport/kuplyu-avto" },
+    ],
+  },
+  {
+    label: "Недвижимость",
+    href: "/blizhniy/nedvizhimost",
+    quickLinks: [
+      { label: "Продам", href: "/blizhniy/nedvizhimost/prodam-nedvizhimost" },
+      { label: "Куплю", href: "/blizhniy/nedvizhimost/kuplyu-nedvizhimost" },
+    ],
+  },
+  { label: "Работа", href: "/blizhniy/rabota" },
+  { label: "Одежда, обувь, аксессуары", href: "/blizhniy/tovary-i-veshchi" },
+  { label: "Хобби и отдых", href: "/blizhniy/otdyh" },
+  { label: "Животные", href: "/blizhniy/zhivotnye" },
+  {
+    label: "Готовый бизнес и оборудование",
+    href: "/blizhniy/biznes",
+    quickLinks: [
+      { label: "Продам", href: "/blizhniy/biznes/prodam-biznes" },
+      { label: "Куплю", href: "/blizhniy/biznes/kuplyu-biznes" },
+    ],
+  },
+  { label: "Услуги", href: "/blizhniy/uslugi-dlya-doma" },
+  { label: "Электроника", href: "/blizhniy/kategorii" },
+  { label: "Для дома и дачи", href: "/blizhniy/mebel-i-interer" },
+  { label: "Запчасти", href: "/blizhniy/transport/zapchasti" },
+  { label: "Товары для детей", href: "/blizhniy/tovary-i-veshchi" },
+  { label: "Жилье для путешествия", href: "/blizhniy/nedvizhimost/arenda" },
+  { label: "Красота и здоровье", href: "/blizhniy/krasota-i-uhod" },
+  { label: "Ритуальные услуги", href: "/blizhniy/ritualnye-uslugi" },
+  { label: "Меняю и отдам даром", href: "/blizhniy/obmen-i-darom" },
 ];
 
 export function CategoryGrid() {
-  function categoryHref(slug: string) {
-    if (slug === "rabota") {
-      return "/blizhniy/rabota";
-    }
-
-    if (slug === "yarmarka-masterov") {
-      return "/yarmarka-masterov";
-    }
-
-    return `/blizhniy/${slug}`;
-  }
-
   return (
-    <section className="page-container py-10">
-      <div className="mb-5 flex items-end justify-between gap-4">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-[#0875d1]">Категории</p>
-          <h2 className="mt-1 text-3xl font-black text-[#060b27]">Что ищем рядом</h2>
-        </div>
-        <Link href="/blizhniy/kategorii" className="hidden font-semibold text-[#0875d1] sm:block">
-          Все категории
-        </Link>
-      </div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        {categories.map((category, index) => {
-          const Icon = icons[index] ?? Sparkles;
-          return (
-            <Link
-              key={category.slug}
-              href={categoryHref(category.slug)}
-              className="group min-h-36 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-card"
-            >
-              <span className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-[#0875d1] group-hover:bg-blue-50">
-                <Icon className="h-6 w-6" />
-              </span>
-              <span className="block text-lg font-bold text-[#060b27]">{category.name}</span>
-              <span className="mt-2 block text-sm leading-5 text-slate-500">
-                {category.children.slice(0, 2).join(", ")}
-              </span>
+    <section className="page-container pb-6 pt-3 sm:pb-8">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+        {categoryTiles.map((category) => (
+          <div key={`${category.label}-${category.href}`} className="min-h-20 overflow-hidden rounded-xl bg-[#f0eeee] p-3 transition hover:bg-slate-200 sm:min-h-24">
+            <Link href={category.href} className="block text-sm font-bold leading-5 text-slate-950 [overflow-wrap:anywhere]">
+              {category.label}
             </Link>
-          );
-        })}
+            {category.quickLinks ? (
+              <div className="mt-3 flex gap-1.5">
+                {category.quickLinks.map((link) => (
+                  <Link key={link.href} href={link.href} className="rounded-md bg-white/75 px-2 py-1 text-[11px] font-bold text-slate-700 transition hover:text-[#0875d1]">
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
       </div>
     </section>
   );

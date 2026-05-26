@@ -169,14 +169,14 @@ function Shell({
   return (
     <>
       <SiteHeader />
-      <main className="page-container py-8 sm:py-10">
-        <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">{eyebrow}</p>
-        <div className="mt-3 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <main className="page-container py-6 sm:py-10">
+        <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">{eyebrow}</p>
+        <div className="mt-2 flex flex-col gap-4 sm:mt-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-4xl font-black leading-tight text-[#060b27] sm:text-5xl">{title}</h1>
-            <p className="mt-3 max-w-3xl text-lg leading-7 text-slate-600">{description}</p>
+            <h1 className="text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">{title}</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-lg sm:leading-7">{description}</p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
             <ActionLink href="/cabinet/oplata" tone="plain">
               <CreditCard className="h-4 w-4" />
               Тарифы
@@ -189,7 +189,7 @@ function Shell({
           </div>
         </div>
         {nav ? <NavPills items={nav} /> : null}
-        <div className="mt-7">{children}</div>
+        <div className="mt-5 sm:mt-7">{children}</div>
       </main>
     </>
   );
@@ -197,13 +197,13 @@ function Shell({
 
 function NavPills({ items }: { items: typeof cabinetNav }) {
   return (
-    <nav className="mt-7 flex gap-2 overflow-x-auto pb-1" aria-label="Разделы">
+    <nav className="mt-5 flex gap-2 overflow-x-auto pb-1 sm:mt-7" aria-label="Разделы">
       {items.map((item) => {
         const Icon = item.icon;
         return (
           <Link
             href={item.href}
-            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]"
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-11 sm:px-4 sm:text-sm"
             key={item.href}
           >
             <Icon className="h-4 w-4" />
@@ -226,12 +226,12 @@ function AdminGuardedContent({ children }: { children: React.ReactNode }) {
 
 function MetricCard({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) {
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
+    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm font-bold text-slate-500">{label}</p>
-        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">{icon}</span>
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1] sm:h-10 sm:w-10">{icon}</span>
       </div>
-      <p className="mt-4 text-3xl font-black text-[#060b27]">{value}</p>
+      <p className="mt-3 text-2xl font-black text-[#060b27] sm:mt-4 sm:text-3xl">{value}</p>
       <p className="mt-2 text-sm leading-6 text-slate-600">{detail}</p>
     </article>
   );
@@ -271,26 +271,26 @@ function DataTable<T extends Record<string, unknown>>({ columns, rows }: { colum
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] border-collapse text-left">
+        <table className="w-full min-w-[640px] border-collapse text-left">
           <thead className="bg-slate-50 text-sm text-slate-500">
             <tr>
               {columns.map((column) => (
-                <th className="border-b border-slate-200 px-5 py-4 font-bold" key={String(column.key)}>
+                <th className="border-b border-slate-200 px-4 py-3 font-bold sm:px-5 sm:py-4" key={String(column.key)}>
                   {column.label}
                 </th>
               ))}
-              <th className="border-b border-slate-200 px-5 py-4 font-bold">Действия</th>
+              <th className="border-b border-slate-200 px-4 py-3 font-bold sm:px-5 sm:py-4">Действия</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((row, index) => (
               <tr className="text-sm text-slate-700" key={String(row.id ?? index)}>
                 {columns.map((column) => (
-                  <td className="px-5 py-4 align-middle" key={String(column.key)}>
+                  <td className="px-4 py-3 align-middle sm:px-5 sm:py-4" key={String(column.key)}>
                     {column.render ? column.render(row) : String(row[column.key] ?? "")}
                   </td>
                 ))}
-                <td className="px-5 py-4">
+                <td className="px-4 py-3 sm:px-5 sm:py-4">
                   <div className="flex flex-wrap gap-2">
                     <Link href={getActionHref(row)} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">
                       Открыть

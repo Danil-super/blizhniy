@@ -31,8 +31,11 @@ export const cities: City[] = [
 ];
 
 export const categories: Category[] = [
+  { slug: "nedvizhimost", name: "Недвижимость", children: ["Продам недвижимость", "Куплю недвижимость", "Аренда", "Коммерческая недвижимость"] },
+  { slug: "transport", name: "Авто", children: ["Продам авто", "Куплю авто", "Мототехника", "Запчасти"] },
   { slug: "antikvariat-i-kollektsii", name: "Антиквариат и коллекции", children: ["Товары времен СССР", "Картины и живопись"] },
   { slug: "zhivotnye", name: "Животные", children: ["Животные", "Товары для животных"] },
+  { slug: "biznes", name: "Бизнес", children: ["Продам бизнес", "Куплю бизнес", "Оборудование", "Партнерство"] },
   { slug: "krasota-i-uhod", name: "Красота и уход", children: ["Парикмахеры", "Маникюр и педикюр"] },
   { slug: "meditsina", name: "Медицина", children: ["Медицинский персонал", "Уход на дому"] },
   { slug: "mebel-i-interer", name: "Мебель и интерьер", children: ["Мебель"] },
@@ -42,6 +45,7 @@ export const categories: Category[] = [
   { slug: "sad-i-rasteniya", name: "Сад и растения", children: ["Цветы и саженцы"] },
   { slug: "tovary-i-veshchi", name: "Товары и вещи", children: ["Выкройки и рукоделие"] },
   { slug: "uslugi-dlya-doma", name: "Услуги для дома", children: ["Клининг"] },
+  { slug: "ritualnye-uslugi", name: "Ритуальные услуги", children: ["Организация похорон", "Памятники", "Уход за местом"] },
   { slug: "yarmarka-masterov", name: "Ярмарка мастеров", children: ["Мебель", "Посуда", "Макраме", "Одежда и текстиль", "Разное", "Саженцы и рассада"] },
   { slug: "znakomstva", name: "Знакомства", children: [] },
 ];

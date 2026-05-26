@@ -1,16 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { LockKeyhole, Plus } from "lucide-react";
 import { useAdminAccess } from "@/components/auth/useAdminAccess";
 
 const publicLinks = [
-  ["Объявления", "/blizhniy/prodam"],
-  ["Работа", "/blizhniy/rabota"],
-  ["Специалисты", "/blizhniy/rabota/specialisty"],
-  ["Ярмарка", "/yarmarka-masterov"],
-  ["Категории", "/blizhniy/kategorii"],
-  ["Вход", "/auth"],
-  ["Кабинет", "/cabinet"],
+  ["Для бизнеса", "/cabinet/organization"],
+  ["Помощь", "/legal/user-agreement"],
+  ["Еще", "/blizhniy/kategorii"],
 ];
 
 export function HeaderNav() {
@@ -18,12 +15,24 @@ export function HeaderNav() {
   const links = state === "admin" ? [...publicLinks, ["Админка", "/admin"]] : publicLinks;
 
   return (
-    <nav className="page-container flex gap-2 overflow-x-auto pb-4 text-sm font-semibold text-slate-700" aria-label="Основная навигация">
-      {links.map(([label, href]) => (
-        <Link key={href} href={href} className="shrink-0 rounded-full border border-slate-200 bg-white px-4 py-2 transition hover:border-blue-200 hover:text-[#0875d1]">
-          {label}
+    <nav className="page-container flex min-h-9 items-center gap-4 overflow-x-auto text-sm [scrollbar-width:none] md:justify-between [&::-webkit-scrollbar]:hidden" aria-label="Основная навигация">
+      <div className="flex min-w-0 shrink-0 items-center gap-4 text-slate-600">
+        {links.map(([label, href]) => (
+          <Link key={href} href={href} className="transition hover:text-[#0875d1]">
+            {label}
+          </Link>
+        ))}
+      </div>
+      <div className="hidden shrink-0 items-center gap-5 font-semibold text-slate-950 md:flex">
+        <Link href="/auth" className="inline-flex items-center gap-1 transition hover:text-[#0875d1]">
+          <LockKeyhole className="h-4 w-4" />
+          Вход и регистрация
         </Link>
-      ))}
+        <Link href="/blizhniy/sozdat" className="inline-flex items-center gap-1 transition hover:text-[#0875d1]">
+          <Plus className="h-4 w-4" />
+          Разместить объявление
+        </Link>
+      </div>
     </nav>
   );
 }

@@ -18,6 +18,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "",
     "/blizhniy",
     "/blizhniy/kategorii",
+    "/blizhniy/obmen-i-darom",
     "/blizhniy/rabota",
     "/blizhniy/rabota/vakansii",
     "/blizhniy/rabota/vakansii/sozdat",

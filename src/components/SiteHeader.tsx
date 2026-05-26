@@ -4,11 +4,12 @@ import { HeaderNav } from "@/components/HeaderNav";
 
 export function SiteHeader() {
   return (
-    <header className="border-b border-slate-200/80 bg-white/85 backdrop-blur">
-      <div className="page-container flex min-h-24 flex-col gap-4 py-4 lg:flex-row lg:items-center">
-        <Link href="/" className="flex shrink-0 items-center gap-3" aria-label="БЛИЖНИЙ, главная">
-          <span className="flex h-12 w-12 items-center justify-center" aria-hidden="true">
-            <svg className="h-12 w-12" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <header className="border-b border-slate-200/80 bg-white">
+      <HeaderNav />
+      <div className="page-container flex flex-col gap-2 pb-3 pt-2 md:flex-row md:items-center md:gap-4">
+        <Link href="/" className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2 lg:gap-3" aria-label="БЛИЖНИЙ, главная">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center md:h-9 md:w-9" aria-hidden="true">
+            <svg className="h-7 w-7 md:h-9 md:w-9" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="20" cy="10" r="5" fill="#0875D1" />
               <circle cx="36" cy="10" r="5" fill="#0AA337" />
               <path
@@ -28,12 +29,11 @@ export function SiteHeader() {
               <path d="M20.5 25.5L28 33L35.5 25.5" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </span>
-          <span className="text-3xl font-black italic tracking-normal text-[#0a1437]">БЛИЖНИЙ</span>
+          <span className="text-lg font-black italic tracking-normal text-[#0a1437] md:text-2xl">БЛИЖНИЙ</span>
         </Link>
 
         <HeaderControls />
       </div>
-      <HeaderNav />
     </header>
   );
 }

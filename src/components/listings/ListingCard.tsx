@@ -56,8 +56,8 @@ export function ListingKindBadge({ kind }: { kind: ListingKind }) {
   const Icon = kindIcons[kind];
 
   return (
-    <span className="inline-flex h-8 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700">
-      <Icon className="h-4 w-4 text-[#0875d1]" />
+    <span className="inline-flex h-7 min-w-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 sm:h-8 sm:px-3 sm:text-sm">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-[#0875d1] sm:h-4 sm:w-4" />
       {kindLabels[kind]}
     </span>
   );
@@ -81,57 +81,60 @@ export function StatusBadge({ status }: { status: ListingStatus }) {
         ? "border-amber-200 bg-amber-50 text-amber-700"
         : "border-slate-200 bg-slate-50 text-slate-600";
 
-  return <span className={`inline-flex h-8 items-center rounded-full border px-3 text-sm font-bold ${tone}`}>{labels[status]}</span>;
+  return <span className={`inline-flex h-7 min-w-0 items-center rounded-full border px-2.5 text-xs font-bold sm:h-8 sm:px-3 sm:text-sm ${tone}`}>{labels[status]}</span>;
 }
 
 export function ListingCard({ listing }: { listing: DemoListing }) {
   const Icon = kindIcons[listing.kind];
 
   return (
-    <article className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:grid-cols-[160px_1fr_auto]">
-      <Link
-        href={`/blizhniy/obyavlenie/${listing.slug}`}
-        className={`flex aspect-[4/3] min-h-32 items-center justify-center rounded-lg bg-gradient-to-br ${imageTones[listing.imageTone]}`}
-        aria-label={listing.title}
-      >
-        <Icon className="h-12 w-12" />
-      </Link>
-
-      <div className="min-w-0">
-        <div className="flex flex-wrap gap-2">
-          <ListingKindBadge kind={listing.kind} />
-          <StatusBadge status={listing.status} />
-        </div>
-        <Link href={`/blizhniy/obyavlenie/${listing.slug}`} className="mt-3 block text-2xl font-black text-[#060b27] hover:text-[#0875d1]">
-          {listing.title}
+    <article className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card lg:grid-cols-[140px_1fr_auto] lg:gap-4 lg:p-4">
+      <div className="flex min-w-0 gap-3 lg:contents">
+        <Link
+          href={`/blizhniy/obyavlenie/${listing.slug}`}
+          className={`flex h-24 w-24 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br sm:h-28 sm:w-28 lg:h-auto lg:min-h-32 lg:w-auto ${imageTones[listing.imageTone]}`}
+          aria-label={listing.title}
+        >
+          <Icon className="h-8 w-8 sm:h-9 sm:w-9 lg:h-12 lg:w-12" />
         </Link>
-        <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{listing.description}</p>
-        <p className="mt-3 flex items-center gap-2 text-sm text-slate-500">
-          <MapPin className="h-4 w-4" />
-          {listing.city}, {listing.district}
-        </p>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
+            <ListingKindBadge kind={listing.kind} />
+            <StatusBadge status={listing.status} />
+          </div>
+          <Link href={`/blizhniy/obyavlenie/${listing.slug}`} className="mt-2 line-clamp-2 text-sm font-black leading-5 text-[#060b27] hover:text-[#0875d1] sm:text-base sm:leading-6 lg:text-2xl lg:leading-tight">
+            {listing.title}
+          </Link>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:text-sm lg:mt-2 lg:leading-6">{listing.description}</p>
+          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500 sm:text-sm lg:mt-3 lg:gap-2">
+            <MapPin className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+            {listing.city}, {listing.district}
+          </p>
+        </div>
       </div>
 
-      <div className="flex flex-col justify-between gap-4 sm:min-w-44 sm:items-end">
-        <div className="sm:text-right">
-          <p className="text-2xl font-black text-[#060b27]">{listing.price}</p>
-          <p className="mt-1 text-sm text-slate-500">{listing.publishedAt}</p>
+      <div className="grid min-w-0 gap-2 lg:flex lg:flex-col lg:items-end lg:justify-between lg:gap-4">
+        <div className="min-w-0 lg:text-right">
+          <p className="truncate text-base font-black text-[#060b27] sm:text-lg lg:text-2xl">{listing.price}</p>
+          <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">{listing.publishedAt}</p>
         </div>
-        <div className="flex flex-wrap gap-2 sm:justify-end">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1.5 sm:gap-2 lg:flex lg:flex-wrap lg:justify-end">
           <a
             href={`tel:${listing.phone}`}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#0aa337] px-4 text-sm font-bold text-[#0a8f32] transition hover:bg-emerald-50"
+            className="inline-flex h-8 min-w-0 overflow-hidden items-center justify-center gap-1.5 rounded-lg border border-[#0aa337] px-2 text-xs font-bold text-[#0a8f32] transition hover:bg-emerald-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
           >
-            <Phone className="h-4 w-4" />
-            Позвонить
+            <Phone className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+            <span className="truncate">Позвонить</span>
           </a>
           {listing.messengerUrl ? (
             <a
               href={listing.messengerUrl}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#0875d1] px-4 text-sm font-bold text-[#0875d1] transition hover:bg-blue-50"
+              className="inline-flex h-8 min-w-0 overflow-hidden items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] px-2 text-xs font-bold text-[#0875d1] transition hover:bg-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
             >
-              <MessageCircle className="h-4 w-4" />
-              Написать
+              <MessageCircle className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+              <span className="truncate sm:hidden">Чат</span>
+              <span className="hidden truncate sm:inline">Написать</span>
             </a>
           ) : null}
         </div>

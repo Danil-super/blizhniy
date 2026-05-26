@@ -31,7 +31,7 @@ export function FairHomePage() {
   const publishedApplications = fairApplications.filter((application) => application.status === "published");
 
   return (
-    <main className="page-container py-8 sm:py-10">
+    <main className="page-container py-6 sm:py-10">
       <nav className="mb-5 text-sm text-slate-500" aria-label="Хлебные крошки">
         <Link href="/blizhniy" className="hover:text-[#0875d1]">
           Краснодар
@@ -40,53 +40,53 @@ export function FairHomePage() {
         <span>Ярмарка мастеров</span>
       </nav>
 
-      <section className="grid gap-8 lg:grid-cols-[1fr_420px] lg:items-start">
+      <section className="grid gap-5 sm:gap-8 lg:grid-cols-[1fr_420px] lg:items-start">
         <div>
-          <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Последнее воскресенье месяца</p>
-          <h1 className="mt-3 text-5xl font-black leading-tight text-[#060b27] sm:text-6xl">Ярмарка мастеров</h1>
-          <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-600">
+          <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">Последнее воскресенье месяца</p>
+          <h1 className="mt-2 text-3xl font-black leading-tight text-[#060b27] sm:mt-3 sm:text-6xl">Ярмарка мастеров</h1>
+          <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600 sm:mt-5 sm:text-lg sm:leading-8">
             Раздел для мастеров и небольших мастерских Краснодарского края: участники заранее оставляют заявку, оплачивают участие и показывают свои
             товары на странице ярмарки.
           </p>
-          <div className="mt-8 flex flex-wrap gap-4">
-            <Link href="/yarmarka-masterov/zayavka" className="inline-flex h-12 items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]">
+          <div className="mt-5 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap sm:gap-4">
+            <Link href="/yarmarka-masterov/zayavka" className="inline-flex h-11 items-center justify-center rounded-xl bg-[#0aa337] px-5 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:px-7 sm:text-base">
               Подать заявку на участие
             </Link>
-            <Link href="/cabinet/fair-applications" className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-7 font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
+            <Link href="/cabinet/fair-applications" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-12 sm:px-7 sm:text-base">
               Мои заявки
             </Link>
           </div>
         </div>
 
-        <aside className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-          <CalendarDays className="h-10 w-10 text-[#0875d1]" />
-          <h2 className="mt-4 text-2xl font-black text-[#060b27]">Ближайшая ярмарка</h2>
-          <p className="mt-2 text-3xl font-black text-[#0aa337]">{formatFairDate(fairDate)}</p>
-          <p className="mt-3 leading-7 text-slate-600">Участие платное. Временный тариф: {fairTariff ? `${fairTariff.price} ₽` : "1000 ₽"}.</p>
+        <aside className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
+          <CalendarDays className="h-8 w-8 text-[#0875d1] sm:h-10 sm:w-10" />
+          <h2 className="mt-3 text-xl font-black text-[#060b27] sm:mt-4 sm:text-2xl">Ближайшая ярмарка</h2>
+          <p className="mt-2 text-2xl font-black text-[#0aa337] sm:text-3xl">{formatFairDate(fairDate)}</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">Участие платное. Временный тариф: {fairTariff ? `${fairTariff.price} ₽` : "1000 ₽"}.</p>
         </aside>
       </section>
 
-      <section className="mt-10">
-        <h2 className="text-3xl font-black text-[#060b27]">Категории ярмарки</h2>
-        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <section className="mt-8 sm:mt-10">
+        <h2 className="text-2xl font-black text-[#060b27] sm:text-3xl">Категории ярмарки</h2>
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-5 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
           {fairCategories.map((category) => (
-            <div key={category} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <Store className="h-7 w-7 text-[#0875d1]" />
-              <p className="mt-4 font-black text-[#060b27]">{category}</p>
+            <div key={category} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
+              <Store className="h-5 w-5 text-[#0875d1] sm:h-7 sm:w-7" />
+              <p className="mt-3 text-sm font-black text-[#060b27] [overflow-wrap:anywhere] sm:mt-4 sm:text-base">{category}</p>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="mt-10 grid gap-6 lg:grid-cols-[1fr_380px]">
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-          <div className="flex items-start gap-4">
-            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-[#0875d1]">
-              <Video className="h-6 w-6" />
+      <section className="mt-8 grid gap-4 sm:mt-10 sm:gap-6 lg:grid-cols-[1fr_380px]">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
+          <div className="flex items-start gap-3 sm:gap-4">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#0875d1] sm:h-12 sm:w-12">
+              <Video className="h-5 w-5 sm:h-6 sm:w-6" />
             </span>
             <div>
-              <h2 className="text-2xl font-black text-[#060b27]">Онлайн-трансляция</h2>
-              <p className="mt-2 leading-7 text-slate-600">Онлайн-трансляция будет доступна в день ярмарки.</p>
+              <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Онлайн-трансляция</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">Онлайн-трансляция будет доступна в день ярмарки.</p>
             </div>
           </div>
         </div>
@@ -102,19 +102,19 @@ export function FairHomePage() {
         />
       </section>
 
-      <section className="mt-10">
-        <h2 className="text-3xl font-black text-[#060b27]">Участники</h2>
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+      <section className="mt-8 sm:mt-10">
+        <h2 className="text-2xl font-black text-[#060b27] sm:text-3xl">Участники</h2>
+        <div className="mt-4 grid gap-3 sm:mt-5 sm:gap-4 lg:grid-cols-2">
           {publishedApplications.map((application) => (
-            <article key={application.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
-              <div className="flex items-start justify-between gap-4">
+            <article key={application.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
+              <div className="grid gap-3 sm:flex sm:items-start sm:justify-between sm:gap-4">
                 <div>
-                  <p className="text-sm font-bold uppercase tracking-wide text-[#0875d1]">{application.category}</p>
-                  <h3 className="mt-2 text-2xl font-black text-[#060b27]">{application.participantName}</h3>
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#0875d1] sm:text-sm">{application.category}</p>
+                  <h3 className="mt-1 text-xl font-black text-[#060b27] sm:mt-2 sm:text-2xl">{application.participantName}</h3>
                 </div>
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-[#0a8f32]">опубликовано</span>
+                <span className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-[#0a8f32]">опубликовано</span>
               </div>
-              <p className="mt-4 leading-7 text-slate-600">{application.description}</p>
+              <p className="mt-3 text-sm leading-6 text-slate-600 sm:mt-4 sm:text-base sm:leading-7">{application.description}</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {application.productPhotos.map((photo) => (
                   <span key={photo} className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
@@ -145,7 +145,7 @@ export function FairApplicationFormPage() {
   const fairTariff = tariffs.find((tariff) => tariff.action === "fair_participation");
 
   return (
-    <main className="page-container py-8 sm:py-10">
+    <main className="page-container py-6 sm:py-10">
       <nav className="mb-5 text-sm text-slate-500" aria-label="Хлебные крошки">
         <Link href="/yarmarka-masterov" className="hover:text-[#0875d1]">
           Ярмарка мастеров
@@ -153,23 +153,23 @@ export function FairApplicationFormPage() {
         <span className="mx-2">/</span>
         <span>Заявка</span>
       </nav>
-      <section className="grid gap-8 lg:grid-cols-[1fr_360px]">
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-          <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Заявка на участие</p>
-          <h1 className="mt-3 text-4xl font-black text-[#060b27]">Ярмарка мастеров</h1>
-          <form className="mt-6 grid gap-4">
+      <section className="grid gap-5 sm:gap-8 lg:grid-cols-[1fr_360px]">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
+          <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">Заявка на участие</p>
+          <h1 className="mt-2 text-3xl font-black text-[#060b27] sm:mt-3 sm:text-4xl">Ярмарка мастеров</h1>
+          <form className="mt-5 grid gap-3 sm:mt-6 sm:gap-4">
             <label className="grid gap-2 text-sm font-bold text-slate-600">
               Имя или название участника
-              <input className="h-12 rounded-lg border border-slate-300 px-4 font-normal outline-none focus:border-[#0875d1]" placeholder="Мастерская Кубань Дуб" />
+              <input className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="Мастерская Кубань Дуб" />
             </label>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-2 text-sm font-bold text-slate-600">
                 Город
-                <input className="h-12 rounded-lg border border-slate-300 px-4 font-normal outline-none focus:border-[#0875d1]" placeholder="Краснодар" />
+                <input className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="Краснодар" />
               </label>
               <label className="grid gap-2 text-sm font-bold text-slate-600">
                 Категория ярмарки
-                <select className="h-12 rounded-lg border border-slate-300 px-4 font-normal outline-none focus:border-[#0875d1]">
+                <select className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4">
                   {fairCategories.map((category) => (
                     <option key={category}>{category}</option>
                   ))}
@@ -178,45 +178,45 @@ export function FairApplicationFormPage() {
             </div>
             <label className="grid gap-2 text-sm font-bold text-slate-600">
               Описание работ или товаров
-              <textarea className="min-h-28 rounded-lg border border-slate-300 px-4 py-3 font-normal outline-none focus:border-[#0875d1]" placeholder="Что вы покажете на ярмарке" />
+              <textarea className="min-h-24 rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-[#0875d1] sm:min-h-28 sm:px-4" placeholder="Что вы покажете на ярмарке" />
             </label>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-2 text-sm font-bold text-slate-600">
                 Фото товаров
-                <input className="h-12 rounded-lg border border-slate-300 px-4 py-3 font-normal outline-none focus:border-[#0875d1]" type="file" multiple accept="image/*" />
+                <input className="h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4 sm:py-3" type="file" multiple accept="image/*" />
               </label>
               <label className="grid gap-2 text-sm font-bold text-slate-600">
                 Ссылка на видео
-                <input className="h-12 rounded-lg border border-slate-300 px-4 font-normal outline-none focus:border-[#0875d1]" placeholder="https://..." />
+                <input className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="https://..." />
               </label>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-2 text-sm font-bold text-slate-600">
                 Телефон
-                <input className="h-12 rounded-lg border border-slate-300 px-4 font-normal outline-none focus:border-[#0875d1]" placeholder="+7..." />
+                <input className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="+7..." />
               </label>
               <label className="grid gap-2 text-sm font-bold text-slate-600">
                 Email
-                <input className="h-12 rounded-lg border border-slate-300 px-4 font-normal outline-none focus:border-[#0875d1]" placeholder="you@example.ru" type="email" />
+                <input className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="you@example.ru" type="email" />
               </label>
             </div>
             <label className="grid gap-2 text-sm font-bold text-slate-600">
               Комментарий
-              <textarea className="min-h-24 rounded-lg border border-slate-300 px-4 py-3 font-normal outline-none focus:border-[#0875d1]" placeholder="Пожелания к месту, столу, электричеству" />
+              <textarea className="min-h-20 rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-[#0875d1] sm:min-h-24 sm:px-4" placeholder="Пожелания к месту, столу, электричеству" />
             </label>
             <label className="flex gap-3 text-sm leading-6 text-slate-700">
               <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-[#0875d1]" />
               <span>Согласен с правилами ярмарки и понимаю, что участие оплачивается после подачи заявки.</span>
             </label>
-            <Link href="/blizhniy/oplata/fair-participation" className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white transition hover:bg-[#078a2e]">
+            <Link href="/blizhniy/oplata/fair-participation" className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#0aa337] px-5 text-sm font-bold text-white transition hover:bg-[#078a2e] sm:h-12 sm:w-fit sm:px-7 sm:text-base">
               Создать заявку и перейти к оплате
             </Link>
           </form>
         </div>
-        <aside className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-          <CheckCircle2 className="h-10 w-10 text-[#0aa337]" />
-          <h2 className="mt-4 text-2xl font-black text-[#060b27]">После подачи заявки</h2>
-          <p className="mt-3 leading-7 text-slate-600">
+        <aside className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
+          <CheckCircle2 className="h-8 w-8 text-[#0aa337] sm:h-10 sm:w-10" />
+          <h2 className="mt-3 text-xl font-black text-[#060b27] sm:mt-4 sm:text-2xl">После подачи заявки</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">
             После оплаты заявка получает статус «Заявка опубликована». Видео можно добавить ссылкой на внешний сервис.
           </p>
           <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm font-bold text-slate-700">Тариф: {fairTariff ? `${fairTariff.price} ₽` : "1000 ₽"}</p>

@@ -38,7 +38,7 @@ select {
 }
 
 .page-container {
-  width: min(100% - 32px, 1500px);
+  width: min(calc(100% - 24px), 1500px);
   margin: 0 auto;
 }
 
@@ -56,4 +56,10 @@ select {
 
 .shadow-card {
   box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+}
+
+@media (min-width: 640px) {
+  .page-container {
+    width: min(calc(100% - 32px), 1500px);
+  }
 }

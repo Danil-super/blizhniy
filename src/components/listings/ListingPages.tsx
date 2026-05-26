@@ -21,7 +21,7 @@ import {
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
-import { categories, tariffs } from "@/lib/data";
+import { categories, cities, region, tariffs } from "@/lib/data";
 import { DemoListing, ListingCard, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
 
 const listingKinds: { slug: ListingKind; title: string; description: string }[] = [
@@ -150,12 +150,121 @@ export const demoListings: DemoListing[] = [
     expiresAt: "Через 30 дней после публикации",
     imageTone: "blue",
   },
+  {
+    slug: "prodam-kvartiru-festivalnyy",
+    title: "2-комнатная квартира в Фестивальном",
+    kind: "prodam",
+    categorySlug: "nedvizhimost",
+    categoryName: "Недвижимость",
+    subcategorySlug: "prodam-nedvizhimost",
+    subcategoryName: "Продам недвижимость",
+    city: "Краснодар",
+    district: "Фестивальный",
+    lat: 45.058,
+    lng: 38.957,
+    showExactAddress: false,
+    price: "8 900 000 ₽",
+    description: "Светлая квартира рядом с парком, две изолированные комнаты, документы готовы к сделке.",
+    phone: "+78610002006",
+    messengerUrl: "https://wa.me/78610002006",
+    status: "published",
+    paid: true,
+    createdAt: "19 мая 2026",
+    publishedAt: "19 мая 2026",
+    expiresAt: "18 июня 2026",
+    imageTone: "green",
+  },
+  {
+    slug: "kuplyu-avto-krossover",
+    title: "Куплю кроссовер до 1,8 млн ₽",
+    kind: "kuplyu",
+    categorySlug: "transport",
+    categoryName: "Авто",
+    subcategorySlug: "kuplyu-avto",
+    subcategoryName: "Куплю авто",
+    city: "Краснодар",
+    district: "Центр",
+    lat: 45.037,
+    lng: 38.975,
+    showExactAddress: false,
+    price: "до 1 800 000 ₽",
+    description: "Ищу живой автомобиль без серьезных ДТП, рассмотрю Краснодар и ближайшие города.",
+    phone: "+78610002007",
+    status: "published",
+    paid: true,
+    createdAt: "20 мая 2026",
+    publishedAt: "20 мая 2026",
+    expiresAt: "19 июня 2026",
+    imageTone: "blue",
+  },
+  {
+    slug: "prodam-kofeynyy-ostrovok",
+    title: "Кофейный островок в торговом центре",
+    kind: "prodam",
+    categorySlug: "biznes",
+    categoryName: "Бизнес",
+    subcategorySlug: "prodam-biznes",
+    subcategoryName: "Продам бизнес",
+    city: "Сочи",
+    district: "Адлер",
+    lat: 43.43,
+    lng: 39.92,
+    showExactAddress: false,
+    price: "1 250 000 ₽",
+    description: "Готовая точка с оборудованием, поставщиками и обученным персоналом.",
+    phone: "+78610002008",
+    messengerUrl: "https://wa.me/78610002008",
+    status: "published",
+    paid: true,
+    createdAt: "21 мая 2026",
+    publishedAt: "21 мая 2026",
+    expiresAt: "20 июня 2026",
+    imageTone: "amber",
+  },
+  {
+    slug: "ritualnye-uslugi-pamyatniki",
+    title: "Памятники и уход за местом",
+    kind: "prodam",
+    categorySlug: "ritualnye-uslugi",
+    categoryName: "Ритуальные услуги",
+    subcategorySlug: "pamyatniki",
+    subcategoryName: "Памятники",
+    city: "Краснодар",
+    district: "Прикубанский",
+    lat: 45.08,
+    lng: 39.01,
+    showExactAddress: false,
+    price: "по договоренности",
+    description: "Изготовление памятников, благоустройство и регулярный уход за местом.",
+    phone: "+78610002009",
+    status: "published",
+    paid: true,
+    createdAt: "22 мая 2026",
+    publishedAt: "22 мая 2026",
+    expiresAt: "21 июня 2026",
+    imageTone: "violet",
+  },
 ];
 
 export function slugifySubcategory(name: string) {
   const map: Record<string, string> = {
     "Товары времен СССР": "tovary-vremen-sssr",
     "Картины и живопись": "kartiny-i-zhivopis",
+    "Продам недвижимость": "prodam-nedvizhimost",
+    "Куплю недвижимость": "kuplyu-nedvizhimost",
+    Аренда: "arenda",
+    "Коммерческая недвижимость": "kommercheskaya-nedvizhimost",
+    "Продам авто": "prodam-avto",
+    "Куплю авто": "kuplyu-avto",
+    Мототехника: "mototehnika",
+    Запчасти: "zapchasti",
+    "Продам бизнес": "prodam-biznes",
+    "Куплю бизнес": "kuplyu-biznes",
+    Оборудование: "oborudovanie",
+    Партнерство: "partnerstvo",
+    "Организация похорон": "organizatsiya-pohoron",
+    Памятники: "pamyatniki",
+    "Уход за местом": "uhod-za-mestom",
     Животные: "zhivotnye",
     "Товары для животных": "tovary-dlya-zhivotnyh",
     Парикмахеры: "parikmahery",
@@ -177,7 +286,7 @@ export function slugifySubcategory(name: string) {
 
 function Breadcrumbs({ items }: { items: { label: string; href?: string }[] }) {
   return (
-    <nav className="mb-5 flex flex-wrap items-center gap-2 text-sm text-slate-500" aria-label="Хлебные крошки">
+    <nav className="mb-4 flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:text-sm" aria-label="Хлебные крошки">
       <Link href="/blizhniy/prodam" className="hover:text-[#0875d1]">
         Краснодар
       </Link>
@@ -197,41 +306,68 @@ function Breadcrumbs({ items }: { items: { label: string; href?: string }[] }) {
   );
 }
 
+function ListingFiltersFields() {
+  return (
+    <div className="mt-3 space-y-3 sm:mt-4 lg:mt-5 lg:space-y-4">
+      <label className="block">
+        <span className="text-xs font-bold text-slate-700 sm:text-sm">Поиск</span>
+        <span className="mt-1.5 flex h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm text-slate-500 sm:h-11">
+          <Search className="h-4 w-4" />
+          <input className="min-w-0 w-full bg-transparent outline-none" placeholder="Название или описание" />
+        </span>
+      </label>
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-1 lg:gap-3">
+        <label className="block">
+          <span className="text-xs font-bold text-slate-700 sm:text-sm">Цена от</span>
+          <input className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#0875d1] sm:h-11" placeholder="0 ₽" />
+        </label>
+        <label className="block">
+          <span className="text-xs font-bold text-slate-700 sm:text-sm">Цена до</span>
+          <input className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#0875d1] sm:h-11" placeholder="50 000 ₽" />
+        </label>
+      </div>
+      <label className="flex items-center gap-2 rounded-lg bg-slate-50 p-2.5 text-xs font-semibold text-slate-700 sm:gap-3 sm:p-3 sm:text-sm">
+        <input type="checkbox" className="h-4 w-4 accent-[#0875d1]" />
+        Только с сообщениями
+      </label>
+    </div>
+  );
+}
+
 function ListingFilters() {
   return (
-    <aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center gap-2 text-lg font-black text-[#060b27]">
-        <Filter className="h-5 w-5 text-[#0875d1]" />
+    <aside className="hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 lg:block lg:p-5">
+      <div className="flex items-center gap-2 text-base font-black text-[#060b27] sm:text-lg">
+        <Filter className="h-4 w-4 text-[#0875d1] sm:h-5 sm:w-5" />
         Фильтры
       </div>
-      <div className="mt-5 space-y-4">
-        <label className="block">
-          <span className="text-sm font-bold text-slate-700">Поиск</span>
-          <span className="mt-2 flex h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-slate-500">
-            <Search className="h-4 w-4" />
-            <input className="w-full bg-transparent outline-none" placeholder="Название или описание" />
-          </span>
-        </label>
-        <label className="block">
-          <span className="text-sm font-bold text-slate-700">Цена от</span>
-          <input className="mt-2 h-11 w-full rounded-lg border border-slate-300 px-3 outline-none focus:border-[#0875d1]" placeholder="0 ₽" />
-        </label>
-        <label className="block">
-          <span className="text-sm font-bold text-slate-700">Цена до</span>
-          <input className="mt-2 h-11 w-full rounded-lg border border-slate-300 px-3 outline-none focus:border-[#0875d1]" placeholder="50 000 ₽" />
-        </label>
-        <label className="flex items-center gap-3 rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-700">
-          <input type="checkbox" className="h-4 w-4 accent-[#0875d1]" />
-          Только с сообщениями
-        </label>
-      </div>
+      <ListingFiltersFields />
     </aside>
+  );
+}
+
+function MobileListingFilters() {
+  return (
+    <details className="group mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:hidden">
+      <summary className="flex h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-black text-[#060b27] marker:hidden [&::-webkit-details-marker]:hidden">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">
+            <Filter className="h-4 w-4" />
+          </span>
+          Фильтры
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-slate-500 transition group-open:rotate-90" />
+      </summary>
+      <div className="border-t border-slate-100 px-3 pb-3">
+        <ListingFiltersFields />
+      </div>
+    </details>
   );
 }
 
 function ListingList({ listings }: { listings: DemoListing[] }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {listings.length ? (
         listings.map((listing) => <ListingCard key={listing.slug} listing={listing} />)
       ) : (
@@ -248,36 +384,14 @@ export function CategoriesPage() {
     <>
       <SiteHeader />
       <main>
-        <section className="page-container py-10">
+        <section className="page-container py-5 sm:py-7 lg:py-10">
           <Breadcrumbs items={[{ label: "Категории" }]} />
-          <h1 className="text-5xl font-black text-[#060b27]">Категории объявлений</h1>
-          <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-600">
+          <h1 className="text-2xl font-black text-[#060b27] sm:text-3xl lg:text-5xl">Категории объявлений</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">
             Первый уровень каталога и подкатегории отображаются плитками. Структура готова для расширения по городам и регионам.
           </p>
         </section>
         <CategoryGrid />
-        <section className="page-container pb-12">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {categories.map((category) => (
-              <div key={category.slug} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <Link href={`/blizhniy/${category.slug}`} className="text-xl font-black text-[#060b27] hover:text-[#0875d1]">
-                  {category.name}
-                </Link>
-                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {category.children.map((child) => (
-                    <Link
-                      key={child}
-                      href={`/blizhniy/${category.slug}/${slugifySubcategory(child)}`}
-                      className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1]"
-                    >
-                      {child}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
       </main>
     </>
   );
@@ -286,34 +400,37 @@ export function CategoriesPage() {
 export function ListingKindPage({ kind }: { kind: ListingKind }) {
   const current = listingKinds.find((item) => item.slug === kind) ?? listingKinds[0];
   const listings = demoListings.filter((listing) => listing.kind === kind);
+  const primaryKinds = listingKinds.filter((item) => item.slug === "prodam" || item.slug === "kuplyu");
+  const exchangeKinds = listingKinds.filter((item) => item.slug === "menyayu" || item.slug === "otdam-darom");
+  const visibleKinds = kind === "prodam" || kind === "kuplyu" ? primaryKinds : exchangeKinds;
 
   return (
     <>
       <SiteHeader />
-      <main className="page-container py-10">
+      <main className="page-container py-6 sm:py-8 lg:py-10">
         <Breadcrumbs items={[{ label: current.title }]} />
         <div className="grid gap-7 lg:grid-cols-[1fr_320px]">
           <section>
-            <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
               <div>
                 <ListingKindBadge kind={kind} />
-                <h1 className="mt-4 text-5xl font-black text-[#060b27]">{current.title} в Краснодаре</h1>
-                <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-600">{current.description}</p>
+                <h1 className="mt-3 text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:mt-4 lg:text-4xl">{current.title} в Краснодаре</h1>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">{current.description}</p>
               </div>
               <Link
                 href="/blizhniy/sozdat"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5 lg:h-12 lg:px-6 lg:text-base"
               >
                 Разместить
-                <ArrowRight className="h-5 w-5" />
+                <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
               </Link>
             </div>
-            <div className="mt-6 flex flex-wrap gap-2">
-              {listingKinds.map((item) => (
+            <div className="mt-4 flex flex-wrap gap-2 sm:mt-5 lg:mt-6">
+              {visibleKinds.map((item) => (
                 <Link
                   key={item.slug}
                   href={`/blizhniy/${item.slug}`}
-                  className={`inline-flex h-10 items-center rounded-full border px-4 text-sm font-bold transition ${
+                  className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-bold transition sm:h-9 sm:text-sm lg:h-10 lg:px-4 ${
                     item.slug === kind
                       ? "border-[#0875d1] bg-[#0875d1] text-white"
                       : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
@@ -322,8 +439,67 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
                   {item.title}
                 </Link>
               ))}
+              {kind === "prodam" || kind === "kuplyu" ? (
+                <Link
+                  href="/blizhniy/obmen-i-darom"
+                  className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
+                >
+                  Меняю и отдам даром
+                </Link>
+              ) : null}
             </div>
-            <div className="mt-7">
+            <MobileListingFilters />
+            <div className="mt-5 sm:mt-6 lg:mt-7">
+              <ListingList listings={listings} />
+            </div>
+          </section>
+          <ListingFilters />
+        </div>
+      </main>
+    </>
+  );
+}
+
+export function ExchangeAndFreePage() {
+  const listings = demoListings.filter((listing) => listing.kind === "menyayu" || listing.kind === "otdam-darom");
+
+  return (
+    <>
+      <SiteHeader />
+      <main className="page-container py-6 sm:py-8 lg:py-10">
+        <Breadcrumbs items={[{ label: "Меняю и отдам даром" }]} />
+        <div className="grid gap-7 lg:grid-cols-[1fr_320px]">
+          <section>
+            <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
+              <div>
+                <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Меняю и отдам даром</h1>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">
+                  Отдельный раздел для обмена и бесплатных объявлений рядом с домом.
+                </p>
+              </div>
+              <Link
+                href="/blizhniy/sozdat"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5 lg:h-12 lg:px-6 lg:text-base"
+              >
+                Разместить
+                <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
+              </Link>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 sm:mt-5 lg:mt-6">
+              {listingKinds
+                .filter((item) => item.slug === "menyayu" || item.slug === "otdam-darom")
+                .map((item) => (
+                  <Link
+                    key={item.slug}
+                    href={`/blizhniy/${item.slug}`}
+                    className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
+                  >
+                    {item.title}
+                  </Link>
+                ))}
+            </div>
+            <MobileListingFilters />
+            <div className="mt-5 sm:mt-6 lg:mt-7">
               <ListingList listings={listings} />
             </div>
           </section>
@@ -354,23 +530,24 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
         />
         <div className="grid gap-7 lg:grid-cols-[1fr_320px]">
           <section>
-            <h1 className="text-5xl font-black text-[#060b27]">{subcategory ?? category?.name ?? "Категория"}</h1>
-            <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-600">
+            <h1 className="[overflow-wrap:anywhere] text-3xl font-black text-[#060b27] sm:text-5xl">{subcategory ?? category?.name ?? "Категория"}</h1>
+            <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
               Объявления Краснодара с ЧПУ-страницей категории, хлебными крошками, фильтрами и карточками.
             </p>
             {category ? (
-              <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3">
+              <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
                 {category.children.map((child) => (
                   <Link
                     key={child}
                     href={`/blizhniy/${category.slug}/${slugifySubcategory(child)}`}
-                    className="rounded-xl border border-slate-200 bg-white p-4 font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-[#0875d1]"
+                    className="[overflow-wrap:anywhere] rounded-xl border border-slate-200 bg-white p-3 font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-[#0875d1] sm:p-4"
                   >
                     {child}
                   </Link>
                 ))}
               </div>
             ) : null}
+            <MobileListingFilters />
             <div className="mt-7">
               <ListingList listings={listings} />
             </div>
@@ -403,13 +580,13 @@ export function ListingDetailPage({ slug }: { slug: string }) {
               <ArrowLeft className="h-4 w-4" />
               Назад к разделу
             </Link>
-            <h1 className="mt-4 text-5xl font-black text-[#060b27]">{listing.title}</h1>
+            <h1 className="[overflow-wrap:anywhere] mt-4 text-3xl font-black text-[#060b27] sm:text-5xl">{listing.title}</h1>
             <div className="mt-4 flex flex-wrap gap-2">
               <ListingKindBadge kind={listing.kind} />
               <StatusBadge status={listing.status} />
             </div>
-            <div className="mt-6 flex min-h-80 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400">
-              <Camera className="h-16 w-16" />
+            <div className="mt-6 flex min-h-56 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:min-h-80">
+              <Camera className="h-12 w-12 sm:h-16 sm:w-16" />
             </div>
             <div className="mt-7 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-2xl font-black text-[#060b27]">Описание</h2>
@@ -440,7 +617,7 @@ export function ListingDetailPage({ slug }: { slug: string }) {
 
           <aside className="space-y-4">
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
-              <p className="text-3xl font-black text-[#060b27]">{listing.price}</p>
+              <p className="[overflow-wrap:anywhere] text-2xl font-black text-[#060b27] sm:text-3xl">{listing.price}</p>
               <p className="mt-3 flex items-center gap-2 text-slate-600">
                 <MapPin className="h-5 w-5 text-[#0875d1]" />
                 {listing.city}, {listing.district}
@@ -499,6 +676,26 @@ function TextInput(props: { placeholder?: string; defaultValue?: string; type?: 
   return <input {...props} className="h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />;
 }
 
+function CityInput({ defaultCity }: { defaultCity?: string }) {
+  const defaultValue = `${defaultCity ?? "Краснодар"}, ${region.name}`;
+
+  return (
+    <>
+      <input
+        className="h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
+        defaultValue={defaultValue}
+        list="listing-city-options"
+        placeholder="Начните вводить город"
+      />
+      <datalist id="listing-city-options">
+        {cities.map((city) => (
+          <option key={city.slug} value={`${city.name}, ${region.name}`} />
+        ))}
+      </datalist>
+    </>
+  );
+}
+
 function SelectInput({ children, defaultValue }: { children: ReactNode; defaultValue?: string }) {
   return (
     <select defaultValue={defaultValue} className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 outline-none focus:border-[#0875d1]">
@@ -519,34 +716,21 @@ export function ListingFormPage({ slug }: { slug?: string }) {
         <Breadcrumbs items={[{ label: editing ? "Редактирование объявления" : "Создание объявления" }]} />
         <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
           <section>
-            <h1 className="text-5xl font-black text-[#060b27]">{editing ? "Редактировать объявление" : "Создать объявление"}</h1>
-            <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-600">
+            <h1 className="text-3xl font-black text-[#060b27] sm:text-5xl">{editing ? "Редактировать объявление" : "Создать объявление"}</h1>
+            <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
               Заполните поля объявления, проверьте контакты и перейдите к оплате публикации.
             </p>
 
             <form className="mt-7 grid gap-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Тип объявления">
-                  <SelectInput defaultValue={listing?.kind ?? "prodam"}>
-                    {listingKinds.map((kind) => (
-                      <option key={kind.slug} value={kind.slug}>
-                        {kind.title}
-                      </option>
-                    ))}
-                  </SelectInput>
-                </Field>
-                <Field label="Статус">
-                  <SelectInput defaultValue={listing?.status ?? "draft"}>
-                    <option value="draft">Черновик</option>
-                    <option value="pending_payment">Ожидает оплаты</option>
-                    <option value="paid">Оплачено</option>
-                    <option value="published">Опубликовано</option>
-                    <option value="archived">Архив</option>
-                    <option value="expired">Истек срок</option>
-                    <option value="rejected">Отклонено</option>
-                  </SelectInput>
-                </Field>
-              </div>
+              <Field label="Тип объявления">
+                <SelectInput defaultValue={listing?.kind ?? "prodam"}>
+                  {listingKinds.map((kind) => (
+                    <option key={kind.slug} value={kind.slug}>
+                      {kind.title}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Категория">
@@ -584,52 +768,61 @@ export function ListingFormPage({ slug }: { slug?: string }) {
                 />
               </label>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <Field label="Регион">
-                  <TextInput defaultValue="Краснодарский край" />
-                </Field>
-                <Field label="Город">
-                  <TextInput defaultValue={listing?.city ?? "Краснодар"} />
-                </Field>
-                <Field label="Район / примерная зона">
-                  <TextInput defaultValue={listing?.district ?? "Фестивальный район"} />
-                </Field>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-4">
-                <Field label="Адрес (скрыт для частных лиц)">
-                  <TextInput placeholder="ул. Красная, дом..." />
-                </Field>
-                <Field label="Широта">
-                  <TextInput defaultValue={listing?.lat ? String(listing.lat) : "45.056"} />
-                </Field>
-                <Field label="Долгота">
-                  <TextInput defaultValue={listing?.lng ? String(listing.lng) : "38.958"} />
+              <div className="grid gap-4 md:grid-cols-[1fr_220px]">
+                <Field label="Город и регион">
+                  <CityInput defaultCity={listing?.city} />
                 </Field>
                 <Field label="Цена">
                   <TextInput defaultValue={listing?.price} placeholder="Например, 12 000 ₽" />
                 </Field>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <Field label="Телефон">
-                  <TextInput defaultValue={listing?.phone} placeholder="+7..." type="tel" />
-                </Field>
-                <Field label="Telegram/WhatsApp">
-                  <TextInput defaultValue={listing?.messengerUrl} placeholder="https://..." />
-                </Field>
-                <Field label="Email для уведомлений">
-                  <TextInput placeholder="mail@example.ru" type="email" />
-                </Field>
+              <Field label="Адрес или ориентир (необязательно)">
+                <TextInput placeholder="Например, ТЦ, улица или ближайшая остановка" />
+              </Field>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 text-lg font-black text-[#060b27]">
+                  <Phone className="h-5 w-5 text-[#0aa337]" />
+                  Контакты
+                </div>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <Field label="Телефон">
+                    <TextInput defaultValue={listing?.phone} placeholder="+7..." type="tel" />
+                  </Field>
+                  <Field label="Telegram или WhatsApp">
+                    <TextInput defaultValue={listing?.messengerUrl} placeholder="@username или ссылка" />
+                  </Field>
+                </div>
+                <div className="mt-4 grid gap-4 md:grid-cols-[1fr_220px]">
+                  <Field label="Email для уведомлений">
+                    <TextInput placeholder="mail@example.ru" type="email" />
+                  </Field>
+                  <Field label="Основной способ связи">
+                    <SelectInput defaultValue="phone">
+                      <option value="phone">Телефон</option>
+                      <option value="messenger">Мессенджер</option>
+                      <option value="email">Email</option>
+                    </SelectInput>
+                  </Field>
+                </div>
               </div>
 
-              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5">
-                <div className="flex items-center gap-3 font-bold text-slate-700">
-                  <Camera className="h-5 w-5 text-[#0875d1]" />
-                  Фото объявления
-                </div>
-                <p className="mt-2 text-sm leading-6 text-slate-500">Добавьте фотографии товара или услуги. Изображения помогут быстрее получить отклик.</p>
-              </div>
+              <label className="block cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 transition hover:border-blue-300 hover:bg-blue-50/40">
+                <input className="sr-only" type="file" accept="image/*" multiple />
+                <span className="flex flex-wrap items-center justify-between gap-4">
+                  <span className="flex items-center gap-3 font-bold text-slate-700">
+                    <Camera className="h-5 w-5 text-[#0875d1]" />
+                    Фото объявления
+                  </span>
+                  <span className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white">
+                    Выбрать фото
+                  </span>
+                </span>
+                <span className="mt-2 block text-sm leading-6 text-slate-500">
+                  Можно добавить несколько изображений товара или услуги.
+                </span>
+              </label>
 
               <div className="flex flex-wrap gap-3">
                 <Link href="/cabinet/obyavleniya" className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 px-6 font-bold text-slate-800">

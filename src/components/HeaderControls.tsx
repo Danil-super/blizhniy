@@ -3,40 +3,25 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Bell, ChevronDown, MapPin, Plus, Search } from "lucide-react";
+import { ChevronDown, Grid3X3, MapPin, Search } from "lucide-react";
 import { cities, region } from "@/lib/data";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+
+const cityOptions = [{ slug: region.slug, name: region.name }, ...cities];
 
 export function HeaderControls() {
   const router = useRouter();
   const [selectedCity, setSelectedCity] = useState(cities[0]?.slug ?? "krasnodar");
   const [cityMenuOpen, setCityMenuOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [signedIn, setSignedIn] = useState(false);
   const cityMenuRef = useRef<HTMLDivElement>(null);
-  const cityOptions = [{ slug: region.slug, name: region.name }, ...cities];
   const selectedCityName = cityOptions.find((item) => item.slug === selectedCity)?.name ?? cities[0]?.name ?? region.name;
 
   useEffect(() => {
     const savedCity = window.localStorage.getItem("blizhniy-city");
 
-    if (savedCity && cities.some((city) => city.slug === savedCity)) {
+    if (savedCity && cityOptions.some((city) => city.slug === savedCity)) {
       setSelectedCity(savedCity);
     }
-
-    const supabase = getSupabaseBrowserClient();
-
-    supabase.auth.getSession().then(({ data }) => {
-      setSignedIn(Boolean(data.session));
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSignedIn(Boolean(session));
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -65,23 +50,45 @@ export function HeaderControls() {
       return;
     }
 
-    router.push(`/poisk?q=${encodeURIComponent(trimmedQuery)}&city=${encodeURIComponent(selectedCity)}`);
+    router.push(`/blizhniy/poisk?q=${encodeURIComponent(trimmedQuery)}&city=${encodeURIComponent(selectedCity)}`);
   }
 
   return (
-    <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-[250px_minmax(280px,1fr)_auto_auto_auto] lg:ml-8">
-      <div className="relative" ref={cityMenuRef}>
+    <div className="grid w-full min-w-0 flex-1 grid-cols-[56px_minmax(0,1fr)] items-center gap-2 md:grid-cols-[56px_minmax(320px,1fr)_auto]">
+      <Link
+        href="/blizhniy/kategorii"
+        className="order-1 flex h-12 w-14 items-center justify-center rounded-2xl bg-[#00aaff] text-white transition hover:bg-[#0796dd]"
+        aria-label="Каталог"
+      >
+        <Grid3X3 className="h-5 w-5" />
+      </Link>
+
+      <form onSubmit={handleSearch} className="order-2 flex h-12 min-w-0 items-center overflow-hidden rounded-2xl border-2 border-[#00aaff] bg-white text-slate-500">
+        <Search className="ml-4 h-4 w-4 shrink-0" />
+        <input
+          className="min-w-0 flex-1 border-0 bg-transparent px-3 text-base text-slate-900 outline-none placeholder:text-slate-400"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Поиск по объявлениям"
+        />
+        <button type="submit" className="hidden h-full items-center bg-[#00aaff] px-5 text-sm font-bold text-white transition hover:bg-[#0796dd] sm:flex">
+          Найти
+        </button>
+      </form>
+
+      <div className="relative order-3 col-span-2 md:col-span-1" ref={cityMenuRef}>
         <button
           type="button"
           onClick={() => setCityMenuOpen((current) => !current)}
-          className="flex h-14 w-full items-center rounded-xl border border-slate-300 bg-white px-4 text-left text-slate-700 transition hover:border-blue-200 focus:border-[#0875d1] focus:outline-none focus:ring-4 focus:ring-blue-100"
+          className="flex min-h-12 w-full items-center rounded-lg bg-white px-2 text-left text-sm text-slate-950 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-100 md:w-40 lg:w-44"
           aria-expanded={cityMenuOpen}
           aria-haspopup="listbox"
         >
-          <span className="flex min-w-0 flex-1 items-center gap-3">
-          <MapPin className="h-5 w-5 shrink-0 text-slate-500" />
-          <span className="sr-only">Регион</span>
-            <span className="truncate font-semibold">{selectedCityName}</span>
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2 md:gap-3">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-500 sm:h-4 sm:w-4" />
+            <span className="sr-only">Регион</span>
+            <span className="font-semibold leading-5 md:whitespace-normal">{selectedCityName === region.name ? "Во всех регионах" : selectedCityName}</span>
           </span>
           <ChevronDown className={`h-4 w-4 text-slate-500 transition ${cityMenuOpen ? "rotate-180" : ""}`} />
         </button>
@@ -112,39 +119,6 @@ export function HeaderControls() {
           </div>
         ) : null}
       </div>
-
-      <form onSubmit={handleSearch} className="flex h-14 items-center gap-3 rounded-xl border border-slate-300 bg-white px-4 text-slate-500">
-        <Search className="h-6 w-6 shrink-0" />
-        <input
-          className="w-full border-0 bg-transparent text-base text-slate-900 outline-none placeholder:text-slate-400"
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Поиск объявлений, вакансий и специалистов"
-        />
-        <button type="submit" className="rounded-lg bg-[#0875d1] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#0664b3]">
-          Найти
-        </button>
-      </form>
-
-      <Link className="icon-button" href="/cabinet/oplata" aria-label="Уведомления">
-        <Bell className="h-5 w-5" />
-      </Link>
-
-      <Link
-        className="inline-flex h-14 items-center justify-center rounded-xl border border-slate-300 bg-white px-5 font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]"
-        href={signedIn ? "/cabinet" : "/auth"}
-      >
-        {signedIn ? "Кабинет" : "Войти"}
-      </Link>
-
-      <Link
-        href="/blizhniy/sozdat"
-        className="inline-flex h-14 items-center justify-center gap-3 rounded-xl bg-[#0aa337] px-7 font-bold text-white shadow-lg shadow-emerald-200 transition hover:bg-[#078a2e]"
-      >
-        <Plus className="h-6 w-6" />
-        Разместить
-      </Link>
     </div>
   );
 }

@@ -16,8 +16,8 @@ export function ListingCard({ listing }: { listing: Listing }) {
   const kind = listingKinds.find((item) => item.slug === listing.kind)?.name ?? "Объявление";
 
   return (
-    <article className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-card sm:grid-cols-[128px_1fr_auto]">
-      <div className={`flex h-32 w-full items-center justify-center rounded-xl bg-gradient-to-br text-lg font-black sm:w-32 ${tones[listing.imageTone]}`}>
+    <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-card sm:grid-cols-[128px_1fr_auto] sm:gap-4 sm:p-4">
+      <div className={`flex h-24 w-full items-center justify-center rounded-xl bg-gradient-to-br px-3 text-center text-base font-black sm:h-32 sm:w-32 sm:text-lg ${tones[listing.imageTone]}`}>
         {kind}
       </div>
       <div className="min-w-0">
@@ -25,27 +25,27 @@ export function ListingCard({ listing }: { listing: Listing }) {
           <StatusBadge status={listing.status} />
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{listing.subcategory}</span>
         </div>
-        <Link href={`/blizhniy/obyavlenie/${listing.slug}`} className="text-xl font-black text-[#060b27] hover:text-[#0875d1]">
+        <Link href={`/blizhniy/obyavlenie/${listing.slug}`} className="[overflow-wrap:anywhere] text-lg font-black text-[#060b27] hover:text-[#0875d1] sm:text-xl">
           {listing.title}
         </Link>
         <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{listing.description}</p>
         <p className="mt-3 flex items-center gap-2 text-sm text-slate-600">
-          <MapPin className="h-4 w-4" />
+          <MapPin className="h-4 w-4 shrink-0" />
           {listing.city}
         </p>
       </div>
       <div className="flex flex-col gap-3 sm:items-end">
-        <p className="text-xl font-black text-[#060b27]">{listing.price ?? "Обмен"}</p>
+        <p className="[overflow-wrap:anywhere] text-lg font-black text-[#060b27] sm:text-xl">{listing.price ?? "Обмен"}</p>
         <div className="flex flex-wrap gap-2 sm:flex-col">
           {listing.phone ? (
-            <a className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#0aa337] px-4 text-sm font-semibold text-[#0a8f32]" href={`tel:${listing.phone}`}>
-              <Phone className="h-4 w-4" />
+            <a className="inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-[#0aa337] px-3 text-sm font-semibold text-[#0a8f32] sm:flex-none sm:px-4" href={`tel:${listing.phone}`}>
+              <Phone className="h-4 w-4 shrink-0" />
               Позвонить
             </a>
           ) : null}
           {listing.messengerUrl ? (
-            <a className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#0875d1] px-4 text-sm font-semibold text-[#0875d1]" href={listing.messengerUrl}>
-              <MessageCircle className="h-4 w-4" />
+            <a className="inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-[#0875d1] px-3 text-sm font-semibold text-[#0875d1] sm:flex-none sm:px-4" href={listing.messengerUrl}>
+              <MessageCircle className="h-4 w-4 shrink-0" />
               Написать
             </a>
           ) : null}
