@@ -5,7 +5,7 @@
 :root {
   --background: #f8fafc;
   --foreground: #060b27;
-  --mobile-nav-clearance: 160px;
+  --mobile-nav-clearance: 112px;
 }
 
 * {

@@ -5,9 +5,6 @@ import { LockKeyhole, Plus } from "lucide-react";
 import { useAuthState } from "@/components/auth/useAuthState";
 
 const publicLinks = [
-  ["Каталог", "/blizhniy/kategorii"],
-  ["Работа", "/blizhniy/rabota"],
-  ["Ярмарка мастеров", "/yarmarka-masterov"],
   ["Как работает", "/kak-rabotaet"],
   ["Для бизнеса", "/cabinet/organization"],
   ["Помощь", "/legal/user-agreement"],
