@@ -6,11 +6,12 @@ import { useState } from "react";
 type PaymentState = "idle" | "loading" | "success" | "error";
 
 type MockPaymentButtonProps = {
+  paymentId?: string;
   tariffId: string;
   returnHref: string;
 };
 
-export function MockPaymentButton({ tariffId, returnHref }: MockPaymentButtonProps) {
+export function MockPaymentButton({ paymentId, tariffId, returnHref }: MockPaymentButtonProps) {
   const [state, setState] = useState<PaymentState>("idle");
   const [message, setMessage] = useState("Заказ сформирован. Нажмите кнопку, чтобы перейти к оплате.");
 
@@ -19,24 +20,28 @@ export function MockPaymentButton({ tariffId, returnHref }: MockPaymentButtonPro
     setMessage("Создаем заказ и проводим оплату...");
 
     try {
-      const createResponse = await fetch("/api/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tariffId }),
-      });
+      let payableId = paymentId;
 
-      if (!createResponse.ok) {
-        throw new Error("Не удалось создать платеж");
+      if (!payableId) {
+        const createResponse = await fetch("/api/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tariffId }),
+        });
+
+        if (!createResponse.ok) {
+          throw new Error("Не удалось создать платеж");
+        }
+
+        const createPayload = await createResponse.json();
+        payableId = createPayload.payment?.id;
+
+        if (!payableId) {
+          throw new Error("API не вернул payment id");
+        }
       }
 
-      const createPayload = await createResponse.json();
-      const paymentId = createPayload.payment?.id;
-
-      if (!paymentId) {
-        throw new Error("API не вернул payment id");
-      }
-
-      const confirmResponse = await fetch(`/api/payments/${paymentId}/confirm`, { method: "POST" });
+      const confirmResponse = await fetch(`/api/payments/${payableId}/confirm`, { method: "POST" });
 
       if (!confirmResponse.ok) {
         throw new Error("Не удалось подтвердить платеж");

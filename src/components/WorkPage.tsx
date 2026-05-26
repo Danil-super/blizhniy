@@ -317,7 +317,7 @@ export function WorkPage() {
                 </span>
                 {demandTab}
               </h2>
-              <Link href={demandTab === "Заказчики" ? "/blizhniy/rabota/vakansii/sozdat" : "/blizhniy/rabota/vakansii"} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
+              <Link href={demandTab === "Заказчики" ? "/blizhniy/rabota/zakazy/sozdat" : "/blizhniy/rabota/vakansii"} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
                 Смотреть все
                 <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
               </Link>
@@ -333,7 +333,7 @@ export function WorkPage() {
             )}
           </div>
           <Link
-            href={demandTab === "Заказчики" ? "/blizhniy/rabota/vakansii/sozdat" : "/blizhniy/rabota/vakansii"}
+            href={demandTab === "Заказчики" ? "/blizhniy/rabota/zakazy/sozdat" : "/blizhniy/rabota/vakansii"}
             className="mt-4 flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 text-sm font-bold text-[#0a8f32] transition hover:bg-emerald-100 sm:mt-6 sm:h-14 sm:gap-3 sm:text-base"
           >
             {demandTab === "Заказчики" ? "Разместить заказ" : "Все вакансии"}

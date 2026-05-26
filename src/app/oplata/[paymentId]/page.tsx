@@ -1,6 +1,8 @@
 import { FakePaymentPage } from "@/components/MvpDashboard";
 import { tariffs } from "@/lib/data";
 
+export const dynamic = "force-dynamic";
+
 export function generateStaticParams() {
   return tariffs.map((tariff) => ({ paymentId: tariff.id }));
 }

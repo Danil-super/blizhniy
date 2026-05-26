@@ -418,7 +418,7 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">{current.description}</p>
               </div>
               <Link
-                href="/blizhniy/sozdat"
+                href="/blizhniy/sozdat/obyavlenie"
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5 lg:h-12 lg:px-6 lg:text-base"
               >
                 Разместить
@@ -478,7 +478,7 @@ export function ExchangeAndFreePage() {
                 </p>
               </div>
               <Link
-                href="/blizhniy/sozdat"
+                href="/blizhniy/sozdat/obyavlenie"
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5 lg:h-12 lg:px-6 lg:text-base"
               >
                 Разместить

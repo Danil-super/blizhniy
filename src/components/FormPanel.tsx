@@ -38,11 +38,12 @@ function validationForField(label: string, type: string) {
 
 export function Field({ label, placeholder, type = "text" }: { label: string; placeholder?: string; type?: string }) {
   const validation = validationForField(label, type);
+  const inputClassName = "h-12 rounded-xl border border-slate-300 px-4 font-normal outline-none focus:border-[#0875d1]";
 
   return (
     <label className="grid gap-2 text-sm font-bold text-slate-700">
       {label}
-      <ValidatedInput className="h-12 rounded-xl border border-slate-300 px-4 font-normal outline-none focus:border-[#0875d1]" type={type} placeholder={placeholder} validation={validation} />
+      {type === "file" ? <input className={inputClassName} type={type} placeholder={placeholder} /> : <ValidatedInput className={inputClassName} type={type} placeholder={placeholder} validation={validation} />}
     </label>
   );
 }

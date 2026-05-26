@@ -4,6 +4,7 @@ import type { Payment } from "@/lib/types";
 
 type CreatePaymentBody = {
   tariffId?: string;
+  targetId?: string;
   targetType?: Payment["targetType"];
   targetTitle?: string;
 };
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
   try {
     const payment = createPayment({
       tariffId: body.tariffId,
+      targetId: body.targetId,
       targetType: body.targetType,
       targetTitle: body.targetTitle,
     });

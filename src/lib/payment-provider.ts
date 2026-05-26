@@ -1,14 +1,12 @@
-import { payments, tariffs } from "@/lib/data";
+import { tariffs } from "@/lib/data";
+import { listMockPayments, markPaymentTargetSucceeded } from "@/lib/mock-store";
 import type { Payment, Tariff } from "@/lib/types";
 
 type PaymentTargetType = Payment["targetType"];
 
-declare global {
-  var __blizhniyMockPayments: Payment[] | undefined;
-}
-
 export type CreatePaymentInput = {
   tariffId: string;
+  targetId?: string;
   targetType?: PaymentTargetType;
   targetTitle?: string;
 };
@@ -21,11 +19,6 @@ export type PaymentResult = {
     body: string;
   };
 };
-
-function getMockPayments() {
-  globalThis.__blizhniyMockPayments ??= [...payments];
-  return globalThis.__blizhniyMockPayments;
-}
 
 function resolveTargetType(tariff: Tariff): PaymentTargetType {
   if (tariff.action === "vacancy_publication") {
@@ -60,11 +53,11 @@ export function getPaymentProviderName() {
 }
 
 export function listPayments() {
-  return getMockPayments();
+  return listMockPayments();
 }
 
 export function getPayment(paymentId: string) {
-  return getMockPayments().find((payment) => payment.id === paymentId);
+  return listMockPayments().find((payment) => payment.id === paymentId);
 }
 
 export function createPayment(input: CreatePaymentInput) {
@@ -77,6 +70,7 @@ export function createPayment(input: CreatePaymentInput) {
   const payment: Payment = {
     id: createPaymentId(),
     targetType: input.targetType ?? resolveTargetType(tariff),
+    targetId: input.targetId,
     targetTitle: resolveTargetTitle(tariff, input.targetTitle),
     tariffId: tariff.id,
     amount: tariff.price,
@@ -85,7 +79,7 @@ export function createPayment(input: CreatePaymentInput) {
     createdAt: todayIsoDate(),
   };
 
-  getMockPayments().unshift(payment);
+  listMockPayments().unshift(payment);
   return payment;
 }
 
@@ -99,7 +93,7 @@ export function confirmMockPayment(paymentId: string): PaymentResult {
   payment.status = "succeeded";
   payment.paidAt = todayIsoDate();
 
-  const nextStatus = payment.targetType === "application" ? "sent" : "published";
+  const nextStatus = markPaymentTargetSucceeded(payment);
 
   return {
     payment,

@@ -418,6 +418,7 @@ export const payments: Payment[] = [
   {
     id: "pay-listing-1",
     targetType: "listing",
+    targetId: "1",
     targetTitle: "Комод из массива дерева",
     tariffId: "listing-publication",
     amount: 199,
@@ -429,6 +430,7 @@ export const payments: Payment[] = [
   {
     id: "pay-vacancy-1",
     targetType: "vacancy",
+    targetId: "santehnik-remdom-123",
     targetTitle: "Сантехник",
     tariffId: "vacancy-publication",
     amount: 499,
@@ -440,6 +442,7 @@ export const payments: Payment[] = [
   {
     id: "pay-response-1",
     targetType: "application",
+    targetId: "app-1",
     targetTitle: "Отклик Александра на вакансию сантехника",
     tariffId: "job-response",
     amount: 99,

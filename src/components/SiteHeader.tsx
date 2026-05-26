@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { HeaderControls } from "@/components/HeaderControls";
 import { HeaderNav } from "@/components/HeaderNav";
+import { MobileBottomNav } from "@/components/MobileBottomNav";
 
 export function SiteHeader() {
   return (
@@ -34,6 +35,7 @@ export function SiteHeader() {
 
         <HeaderControls />
       </div>
+      <MobileBottomNav />
     </header>
   );
 }

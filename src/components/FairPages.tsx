@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { CalendarDays, CheckCircle2, ImagePlus, MapPin, PlaySquare, Store, Video } from "lucide-react";
+import { FairApplicationForm } from "@/components/FairApplicationForm";
 import { LocationMap } from "@/components/LocationMap";
-import { ValidatedInput } from "@/components/ValidatedInput";
-import { fairApplications, fairCategories, tariffs } from "@/lib/data";
+import { fairCategories, tariffs } from "@/lib/data";
+import { listFairApplications } from "@/lib/mock-store";
 
 function nextFairDate(today = new Date()) {
   const year = today.getFullYear();
@@ -29,7 +30,7 @@ function formatFairDate(date: Date) {
 export function FairHomePage() {
   const fairDate = nextFairDate();
   const fairTariff = tariffs.find((tariff) => tariff.action === "fair_participation");
-  const publishedApplications = fairApplications.filter((application) => application.status === "published");
+  const publishedApplications = listFairApplications().filter((application) => application.status === "published");
 
   return (
     <main className="page-container py-6 sm:py-10">
@@ -158,61 +159,7 @@ export function FairApplicationFormPage() {
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
           <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">Заявка на участие</p>
           <h1 className="mt-2 text-3xl font-black text-[#060b27] sm:mt-3 sm:text-4xl">Ярмарка мастеров</h1>
-          <form className="mt-5 grid gap-3 sm:mt-6 sm:gap-4">
-            <label className="grid gap-2 text-sm font-bold text-slate-600">
-              Имя или название участника
-              <input className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="Мастерская Кубань Дуб" />
-            </label>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-2 text-sm font-bold text-slate-600">
-                Город
-                <input className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="Краснодар" />
-              </label>
-              <label className="grid gap-2 text-sm font-bold text-slate-600">
-                Категория ярмарки
-                <select className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4">
-                  {fairCategories.map((category) => (
-                    <option key={category}>{category}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <label className="grid gap-2 text-sm font-bold text-slate-600">
-              Описание работ или товаров
-              <textarea className="min-h-24 rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-[#0875d1] sm:min-h-28 sm:px-4" placeholder="Что вы покажете на ярмарке" />
-            </label>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-2 text-sm font-bold text-slate-600">
-                Фото товаров
-                <input className="h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4 sm:py-3" type="file" multiple accept="image/*" />
-              </label>
-              <label className="grid gap-2 text-sm font-bold text-slate-600">
-                Ссылка на видео
-                <ValidatedInput className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="https://..." validation="url" />
-              </label>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-2 text-sm font-bold text-slate-600">
-                Телефон
-                <ValidatedInput className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="+7..." validation="phone" />
-              </label>
-              <label className="grid gap-2 text-sm font-bold text-slate-600">
-                Email
-                <ValidatedInput className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="you@example.ru" validation="email" />
-              </label>
-            </div>
-            <label className="grid gap-2 text-sm font-bold text-slate-600">
-              Комментарий
-              <textarea className="min-h-20 rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-[#0875d1] sm:min-h-24 sm:px-4" placeholder="Пожелания к месту, столу, электричеству" />
-            </label>
-            <label className="flex gap-3 text-sm leading-6 text-slate-700">
-              <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-[#0875d1]" />
-              <span>Согласен с правилами ярмарки и понимаю, что участие оплачивается после подачи заявки.</span>
-            </label>
-            <Link href="/blizhniy/oplata/fair-participation" className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#0aa337] px-5 text-sm font-bold text-white transition hover:bg-[#078a2e] sm:h-12 sm:w-fit sm:px-7 sm:text-base">
-              Создать заявку и перейти к оплате
-            </Link>
-          </form>
+          <FairApplicationForm />
         </div>
         <aside className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
           <CheckCircle2 className="h-8 w-8 text-[#0aa337] sm:h-10 sm:w-10" />

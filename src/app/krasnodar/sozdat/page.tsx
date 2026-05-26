@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
-import { ListingFormPage } from "@/components/listings/ListingPages";
+import { PublicationChoicePage } from "@/components/PublicationChoicePage";
 
 export const metadata: Metadata = {
-  title: "Создать объявление в Краснодаре",
-  description: "Форма создания объявления с переходом к оплате публикации.",
+  title: "Разместить публикацию в Краснодаре",
+  description: "Выбор типа публикации на платформе БЛИЖНИЙ.",
   alternates: {
     canonical: "/blizhniy/sozdat",
   },
 };
 
 export default function Page() {
-  return <ListingFormPage />;
+  return <PublicationChoicePage />;
 }

@@ -13,6 +13,7 @@ import {
   vacancies,
   workRequests,
 } from "@/lib/data";
+import { listApplications, listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies, listWorkRequests } from "@/lib/mock-store";
 
 export type CatalogRepository = {
   getRegion: () => typeof region;
@@ -43,14 +44,14 @@ export const mockRepository: AppRepository = {
   getCities: () => cities,
   getCategories: () => categories,
   getProfessions: () => professions,
-  getListings: () => listings,
-  getVacancies: () => vacancies,
-  getWorkRequests: () => workRequests,
-  getSpecialists: () => specialists,
-  getFairApplications: () => fairApplications,
+  getListings: () => listListings(),
+  getVacancies: () => listVacancies(),
+  getWorkRequests: () => listWorkRequests(),
+  getSpecialists: () => listSpecialists(),
+  getFairApplications: () => listFairApplications(),
   getUsers: () => users,
-  getApplications: () => applications,
-  getPayments: () => payments,
+  getApplications: () => listApplications(),
+  getPayments: () => listMockPayments(),
   getTariffs: () => tariffs,
 };
 

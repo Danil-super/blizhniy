@@ -28,7 +28,9 @@ import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
-import { categories, fairApplications, professions, specialists, tariffs, vacancies } from "@/lib/data";
+import { categories, professions, tariffs } from "@/lib/data";
+import { getPayment } from "@/lib/payment-provider";
+import { listApplications, listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies, listWorkRequests } from "@/lib/mock-store";
 
 type StatusTone = "green" | "blue" | "amber" | "slate" | "red" | "violet";
 
@@ -38,22 +40,10 @@ type TableColumn<T> = {
   render?: (row: T) => React.ReactNode;
 };
 
-const userListings = [
-  { id: "OB-1842", title: "Детская кровать с матрасом", category: "Мебель", city: "Краснодар", district: "Фестивальный", coords: "45.056, 38.958", status: "published", views: 124 },
-  { id: "OB-1843", title: "Набор инструментов для дома", category: "Товары", city: "Сочи", district: "Центральный", coords: "43.585, 39.723", status: "pending_payment", views: 18 },
-  { id: "OB-1844", title: "Услуги сиделки на выходные", category: "Медицина", city: "Анапа", district: "12-й микрорайон", coords: "44.894, 37.316", status: "draft", views: 0 },
-];
-
 const responses = [
   { id: "OT-901", target: "Сантехник", from: "ООО РемДом", date: "24.05.2026", status: "sent" },
   { id: "OT-902", target: "Мастер ремонта квартир", from: "ИП Чернов", date: "22.05.2026", status: "viewed" },
   { id: "OT-903", target: "Клинер", from: "Clean Home", date: "21.05.2026", status: "paid" },
-];
-
-const payments = [
-  { id: "PAY-2605-001", subject: "Размещение вакансии", amount: "499 ₽", method: "Карта", status: "paid" },
-  { id: "PAY-2605-002", subject: "Отклик на вакансию", amount: "99 ₽", method: "Карта", status: "pending_payment" },
-  { id: "PAY-2605-003", subject: "Размещение объявления", amount: "199 ₽", method: "Карта", status: "failed" },
 ];
 
 const adminUsers = [
@@ -62,15 +52,11 @@ const adminUsers = [
   { id: "U-1003", name: "Модератор", role: "admin", phone: "+7 861 000-11-03", status: "blocked" },
 ];
 
-const adminPayments = payments.map((payment, index) => ({
-  ...payment,
-  user: index === 0 ? "Сергей Орлов" : index === 1 ? "Ирина Котова" : "Анна Петрова",
-}));
-
 const statusLabels: Record<string, string> = {
   active: "Активен",
   archive: "Архив",
   blocked: "Заблокирован",
+  created: "Создан",
   draft: "Черновик",
   failed: "Ошибка",
   paid: "Оплачен",
@@ -86,6 +72,7 @@ const statusTones: Record<string, StatusTone> = {
   active: "green",
   archive: "slate",
   blocked: "red",
+  created: "amber",
   draft: "slate",
   failed: "red",
   paid: "green",
@@ -101,6 +88,7 @@ const cabinetNav = [
   { href: "/cabinet", label: "Обзор", icon: Gauge },
   { href: "/cabinet/obyavleniya", label: "Объявления", icon: FileText },
   { href: "/cabinet/vakansii", label: "Вакансии", icon: BriefcaseBusiness },
+  { href: "/cabinet/zakazy", label: "Заказы", icon: ClipboardList },
   { href: "/cabinet/organization", label: "Организация", icon: BadgeCheck },
   { href: "/cabinet/specialist", label: "Анкета", icon: CircleUserRound },
   { href: "/cabinet/otkliki", label: "Отклики", icon: MessageSquare },
@@ -120,6 +108,47 @@ const adminNav = [
   { href: "/admin/payments", label: "Платежи", icon: Banknote },
   { href: "/admin/fair-applications", label: "Ярмарка", icon: Store },
 ];
+
+function listingRows() {
+  return listListings().map((listing, index) => ({
+    id: listing.id,
+    title: listing.title,
+    category: categories.find((category) => category.slug === listing.categorySlug)?.name ?? listing.subcategory,
+    city: listing.city,
+    district: listing.district ?? listing.address ?? "",
+    coords: [listing.lat, listing.lng].filter(Boolean).join(", "),
+    status: listing.status,
+    views: index === 0 ? 124 : index === 1 ? 18 : 0,
+  }));
+}
+
+function workRequestRows() {
+  return listWorkRequests().map((request) => ({
+    id: request.id,
+    title: request.title,
+    profession: request.profession,
+    city: request.city,
+    budget: request.budget,
+    status: request.status,
+  }));
+}
+
+function paymentRows() {
+  return listMockPayments().map((payment) => ({
+    id: payment.id,
+    subject: payment.targetTitle,
+    amount: `${payment.amount} ₽`,
+    method: payment.provider === "mock" ? "Mock" : payment.provider,
+    status: payment.status,
+  }));
+}
+
+function adminPaymentRows() {
+  return paymentRows().map((payment, index) => ({
+    ...payment,
+    user: index === 0 ? "Текущий пользователь" : index === 1 ? "Сергей Орлов" : "Анна Петрова",
+  }));
+}
 
 function StatusBadge({ status }: { status: string }) {
   const tone = statusTones[status] ?? "slate";
@@ -257,7 +286,11 @@ function DataTable<T extends Record<string, unknown>>({ columns, rows }: { colum
       return "/admin/users";
     }
 
-    if (id.startsWith("APP-")) {
+    if (id.startsWith("request-")) {
+      return "/cabinet/zakazy";
+    }
+
+    if (id.startsWith("APP-") || id.startsWith("app-")) {
       return "/cabinet/otkliki";
     }
 
@@ -352,20 +385,25 @@ export function AuthPage() {
 }
 
 export function CabinetPage() {
+  const listingsCount = listingRows().length;
+  const vacanciesCount = listVacancies().length;
+  const workRequestsCount = workRequestRows().length;
+  const paymentsTotal = listMockPayments().reduce((sum, payment) => sum + payment.amount, 0);
+
   return (
     <Shell title="Личный кабинет" description="Панель пользователя для публикаций, откликов, анкеты специалиста и оплат." eyebrow="Кабинет" nav={cabinetNav}>
       <CabinetAuthGate>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard icon={<FileText className="h-5 w-5" />} label="Объявления" value="3" detail="1 ждет оплату, 1 черновик." />
-          <MetricCard icon={<BriefcaseBusiness className="h-5 w-5" />} label="Вакансии" value="3" detail="Публикации из раздела работы." />
-          <MetricCard icon={<MessageSquare className="h-5 w-5" />} label="Отклики" value="3" detail="Последняя активность 24.05.2026." />
-          <MetricCard icon={<CreditCard className="h-5 w-5" />} label="Баланс оплат" value="798 ₽" detail="Сумма активных тарифов." />
+          <MetricCard icon={<FileText className="h-5 w-5" />} label="Объявления" value={String(listingsCount)} detail="Ваши публикации в каталоге." />
+          <MetricCard icon={<BriefcaseBusiness className="h-5 w-5" />} label="Вакансии" value={String(vacanciesCount)} detail="Публикации из раздела работы." />
+          <MetricCard icon={<ClipboardList className="h-5 w-5" />} label="Заказы" value={String(workRequestsCount)} detail="Задачи для исполнителей." />
+          <MetricCard icon={<CreditCard className="h-5 w-5" />} label="Оплаты" value={`${paymentsTotal} ₽`} detail="Сумма созданных mock-платежей." />
         </div>
         <div className="mt-8 grid gap-8 xl:grid-cols-2">
           <section>
             <SectionTitle title="Последние объявления" actionHref="/cabinet/obyavleniya" actionLabel="Все объявления" />
             <DataTable
-              rows={userListings}
+              rows={listingRows()}
               columns={[
                 { key: "title", label: "Название" },
                 { key: "category", label: "Категория" },
@@ -376,7 +414,7 @@ export function CabinetPage() {
           <section>
             <SectionTitle title="Последние оплаты" actionHref="/cabinet/oplata" actionLabel="История" />
             <DataTable
-              rows={payments}
+              rows={paymentRows()}
               columns={[
                 { key: "id", label: "Платеж" },
                 { key: "subject", label: "Назначение" },
@@ -394,7 +432,7 @@ export function CabinetListingsPage() {
   return (
     <Shell title="Мои объявления" description="Статусы публикаций, просмотры и быстрые действия по объявлениям пользователя." eyebrow="Кабинет" nav={cabinetNav}>
       <DataTable
-        rows={userListings}
+        rows={listingRows()}
         columns={[
           { key: "id", label: "ID" },
           { key: "title", label: "Название" },
@@ -412,7 +450,7 @@ export function CabinetVacanciesPage() {
   return (
     <Shell title="Мои вакансии" description="Список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav}>
       <DataTable
-        rows={vacancies as unknown as Record<string, unknown>[]}
+        rows={listVacancies() as unknown as Record<string, unknown>[]}
         columns={[
           { key: "organization", label: "Компания" },
           { key: "title", label: "Вакансия" },
@@ -425,8 +463,31 @@ export function CabinetVacanciesPage() {
   );
 }
 
+export function CabinetWorkRequestsPage() {
+  return (
+    <Shell title="Мои заказы исполнителям" description="Задачи, которые пользователь размещает для специалистов и исполнителей." eyebrow="Кабинет" nav={cabinetNav}>
+      <CabinetAuthGate>
+        <DataTable
+          rows={workRequestRows()}
+          columns={[
+            { key: "id", label: "ID" },
+            { key: "title", label: "Заказ" },
+            { key: "profession", label: "Специалист" },
+            { key: "city", label: "Город" },
+            { key: "budget", label: "Бюджет" },
+            { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
+          ]}
+        />
+        <Link href="/blizhniy/rabota/zakazy/sozdat" className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-[#0875d1] px-7 font-bold text-white">
+          Разместить заказ
+        </Link>
+      </CabinetAuthGate>
+    </Shell>
+  );
+}
+
 export function CabinetSpecialistPage() {
-  const profile = specialists[0];
+  const profile = listSpecialists()[0];
 
   return (
     <Shell title="Анкета специалиста" description="Профиль исполнителя с услугами, контактами, статусом проверки и будущей публикацией." eyebrow="Кабинет" nav={cabinetNav}>
@@ -480,10 +541,18 @@ export function CabinetOrganizationPage() {
 }
 
 export function CabinetResponsesPage() {
+  const applicationRows = listApplications().map((application) => ({
+    id: application.id,
+    target: application.vacancyTitle,
+    from: application.specialistName,
+    date: "После оплаты",
+    status: application.status,
+  }));
+
   return (
     <Shell title="Мои отклики" description="Отклики на вакансии со статусами оплаты, отправки и просмотра работодателем." eyebrow="Кабинет" nav={cabinetNav}>
       <DataTable
-        rows={responses}
+        rows={[...applicationRows, ...responses]}
         columns={[
           { key: "id", label: "ID" },
           { key: "target", label: "Вакансия" },
@@ -514,7 +583,7 @@ export function CabinetPaymentsPage() {
       <section className="mt-8">
         <SectionTitle title="История платежей" />
         <DataTable
-          rows={payments}
+          rows={paymentRows()}
           columns={[
             { key: "id", label: "Платеж" },
             { key: "subject", label: "Назначение" },
@@ -533,7 +602,7 @@ export function CabinetFairApplicationsPage() {
     <Shell title="Заявки на ярмарку" description="Заявки пользователя на участие в Ярмарке мастеров, статусы оплаты и публикации." eyebrow="Кабинет" nav={cabinetNav}>
       <CabinetAuthGate>
         <DataTable
-          rows={fairApplications as unknown as Record<string, unknown>[]}
+          rows={listFairApplications() as unknown as Record<string, unknown>[]}
           columns={[
             { key: "id", label: "ID" },
             { key: "participantName", label: "Участник" },
@@ -552,17 +621,26 @@ export function CabinetFairApplicationsPage() {
 }
 
 export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
-  const tariff = tariffs.find((item) => item.id === paymentId) ?? tariffs[0];
+  const payment = paymentId ? getPayment(paymentId) : undefined;
+  const tariff = tariffs.find((item) => item.id === payment?.tariffId || item.id === paymentId) ?? tariffs[0];
+  const returnHref =
+    payment?.targetType === "fair_application"
+      ? "/cabinet/fair-applications"
+      : payment?.targetType === "vacancy"
+        ? "/cabinet/vakansii"
+        : payment?.targetType === "listing"
+          ? "/cabinet/obyavleniya"
+          : "/cabinet/oplata";
 
   return (
     <Shell title="Оплата заказа" description="Проверьте заказ, выберите способ оплаты и подтвердите платеж." eyebrow="Оплата">
       <section className="grid gap-8 lg:grid-cols-[1fr_420px]">
         <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-          <h2 className="text-2xl font-black text-[#060b27]">Заказ {paymentId ?? tariff.id}</h2>
+          <h2 className="text-2xl font-black text-[#060b27]">Заказ {payment?.id ?? paymentId ?? tariff.id}</h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
             <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тариф" value={tariff.name} detail="Заказ сформирован." />
-            <MetricCard icon={<Banknote className="h-5 w-5" />} label="Сумма" value={`${tariff.price} ₽`} detail="Фиксированная стоимость." />
-            <MetricCard icon={<CheckCircle2 className="h-5 w-5" />} label="Статус" value="Ожидает оплаты" detail="После оплаты публикация обновит статус." />
+            <MetricCard icon={<Banknote className="h-5 w-5" />} label="Сумма" value={`${payment?.amount ?? tariff.price} ₽`} detail="Фиксированная стоимость." />
+            <MetricCard icon={<CheckCircle2 className="h-5 w-5" />} label="Статус" value={payment?.status === "succeeded" ? "Оплачено" : "Ожидает оплаты"} detail="После оплаты публикация обновит статус." />
           </div>
           <div className="mt-6 rounded-xl bg-slate-50 p-5">
             <p className="font-bold text-slate-700">Способы оплаты</p>
@@ -576,7 +654,7 @@ export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
           <ShieldCheck className="h-10 w-10 text-[#0aa337]" />
           <h2 className="mt-4 text-2xl font-black text-[#060b27]">Подтверждение оплаты</h2>
           <p className="mt-3 leading-7 text-slate-700">После подтверждения заказ получит статус «Оплата прошла», а публикация будет обновлена.</p>
-          <MockPaymentButton tariffId={tariff.id} returnHref="/cabinet/oplata" />
+          <MockPaymentButton paymentId={payment?.id} tariffId={tariff.id} returnHref={returnHref} />
         </aside>
       </section>
     </Shell>
@@ -597,7 +675,7 @@ export function AdminPage() {
           <section>
             <SectionTitle title="Очередь модерации" actionHref="/admin/obyavleniya" actionLabel="Все объявления" />
             <DataTable
-              rows={userListings}
+              rows={listingRows()}
               columns={[
                 { key: "id", label: "ID" },
                 { key: "title", label: "Публикация" },
@@ -609,7 +687,7 @@ export function AdminPage() {
           <section>
             <SectionTitle title="Последние платежи" actionHref="/admin/payments" actionLabel="Все платежи" />
             <DataTable
-              rows={adminPayments}
+              rows={adminPaymentRows()}
               columns={[
                 { key: "id", label: "ID" },
                 { key: "user", label: "Пользователь" },
@@ -646,7 +724,7 @@ export function AdminListingsPage() {
     <AdminTablePage
       title="Объявления"
       description="Модерация пользовательских объявлений и перевод между статусами публикации."
-      rows={userListings}
+      rows={listingRows()}
       columns={[
         { key: "id", label: "ID" },
         { key: "title", label: "Название" },
@@ -665,7 +743,7 @@ export function AdminVacanciesPage() {
     <AdminTablePage
       title="Вакансии"
       description="Рабочие публикации компаний и заказчиков в административном виде."
-      rows={vacancies as unknown as Record<string, unknown>[]}
+      rows={listVacancies() as unknown as Record<string, unknown>[]}
       columns={[
         { key: "id", label: "ID" },
         { key: "organization", label: "Компания" },
@@ -684,7 +762,7 @@ export function AdminSpecialistsPage() {
     <AdminTablePage
       title="Специалисты"
       description="Анкеты исполнителей, профессии, города и статусы публикации."
-      rows={specialists as unknown as Record<string, unknown>[]}
+      rows={listSpecialists() as unknown as Record<string, unknown>[]}
       columns={[
         { key: "id", label: "ID" },
         { key: "name", label: "Имя" },
@@ -752,7 +830,7 @@ export function AdminPaymentsPage() {
     <AdminTablePage
       title="Платежи"
       description="История платежей с суммами, пользователями и статусами."
-      rows={adminPayments}
+      rows={adminPaymentRows()}
       columns={[
         { key: "id", label: "ID" },
         { key: "user", label: "Пользователь" },
@@ -769,7 +847,7 @@ export function AdminFairApplicationsPage() {
     <AdminTablePage
       title="Заявки на ярмарку"
       description="Административный список заявок участников Ярмарки мастеров."
-      rows={fairApplications as unknown as Record<string, unknown>[]}
+      rows={listFairApplications() as unknown as Record<string, unknown>[]}
       columns={[
         { key: "id", label: "ID" },
         { key: "participantName", label: "Участник" },

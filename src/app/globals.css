@@ -20,6 +20,7 @@ body {
   background: radial-gradient(circle at 50% 0%, #ffffff 0, #f8fafc 520px);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  padding-bottom: 78px;
 }
 
 a {
@@ -61,5 +62,11 @@ select {
 @media (min-width: 640px) {
   .page-container {
     width: min(calc(100% - 32px), 1500px);
+  }
+}
+
+@media (min-width: 768px) {
+  body {
+    padding-bottom: 0;
   }
 }
