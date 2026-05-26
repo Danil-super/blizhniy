@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { CategoryGrid } from "@/components/CategoryGrid";
+import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ValidatedInput } from "@/components/ValidatedInput";
@@ -676,12 +677,8 @@ function TextInput(props: { placeholder?: string; defaultValue?: string; type?: 
   return <ValidatedInput {...props} className="h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />;
 }
 
-function SelectInput({ children, defaultValue }: { children: ReactNode; defaultValue?: string }) {
-  return (
-    <select defaultValue={defaultValue} className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 outline-none focus:border-[#0875d1]">
-      {children}
-    </select>
-  );
+function SelectInput({ name, options, defaultValue }: { name?: string; options: DropdownOption[]; defaultValue?: string }) {
+  return <DropdownSelect name={name} defaultValue={defaultValue} options={options} />;
 }
 
 export function ListingFormPage({ slug }: { slug?: string }) {
@@ -703,13 +700,7 @@ export function ListingFormPage({ slug }: { slug?: string }) {
           <form className="mt-6 grid gap-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)]">
               <Field label="Тип объявления">
-                <SelectInput defaultValue={listing?.kind ?? "prodam"}>
-                  {listingKinds.map((kind) => (
-                    <option key={kind.slug} value={kind.slug}>
-                      {kind.title}
-                    </option>
-                  ))}
-                </SelectInput>
+                <SelectInput name="kind" defaultValue={listing?.kind ?? "prodam"} options={listingKinds.map((kind) => ({ value: kind.slug, label: kind.title }))} />
               </Field>
               <ListingCategoryFields defaultCategorySlug={listing?.categorySlug ?? "mebel-i-interer"} defaultSubcategorySlug={listing?.subcategorySlug ?? "mebel"} />
             </div>
@@ -752,11 +743,15 @@ export function ListingFormPage({ slug }: { slug?: string }) {
                   <TextInput placeholder="mail@example.ru" validation="email" />
                 </Field>
                 <Field label="Основной способ связи">
-                  <SelectInput defaultValue="phone">
-                    <option value="phone">Телефон</option>
-                    <option value="messenger">Мессенджер</option>
-                    <option value="email">Email</option>
-                  </SelectInput>
+                  <SelectInput
+                    name="contactMethod"
+                    defaultValue="phone"
+                    options={[
+                      { value: "phone", label: "Телефон" },
+                      { value: "messenger", label: "Мессенджер" },
+                      { value: "email", label: "Email" },
+                    ]}
+                  />
                 </Field>
               </div>
             </div>

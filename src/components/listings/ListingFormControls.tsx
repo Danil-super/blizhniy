@@ -2,6 +2,7 @@
 
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, X } from "lucide-react";
+import { DropdownSelect } from "@/components/DropdownSelect";
 import { categories, cities, fairApplications, listings, region, specialists, vacancies, workRequests } from "@/lib/data";
 
 type Suggestion = {
@@ -222,39 +223,27 @@ export function ListingCategoryFields({
       <label className="block">
         <span className="text-sm font-bold text-slate-700">Категория</span>
         <span className="mt-2 block">
-          <select
+          <DropdownSelect
             name="category"
             value={categorySlug}
-            onChange={(event) => setCategorySlug(event.target.value)}
-            className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 outline-none focus:border-[#0875d1]"
-          >
-            {categories.map((category) => (
-              <option key={category.slug} value={category.slug}>
-                {category.name}
-              </option>
-            ))}
-          </select>
+            onValueChange={setCategorySlug}
+            options={categories.map((category) => ({ value: category.slug, label: category.name }))}
+          />
         </span>
       </label>
       <label className="block">
         <span className="text-sm font-bold text-slate-700">Подкатегория</span>
         <span className="mt-2 block">
-          <select
+          <DropdownSelect
             key={categorySlug}
             name="subcategory"
             defaultValue={selectedSubcategory}
-            className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 outline-none focus:border-[#0875d1]"
-          >
-            {subcategories.length ? (
-              subcategories.map((child) => (
-                <option key={`${categorySlug}-${child}`} value={slugifySubcategoryValue(child)}>
-                  {child}
-                </option>
-              ))
-            ) : (
-              <option value="">Без подкатегории</option>
-            )}
-          </select>
+            options={
+              subcategories.length
+                ? subcategories.map((child) => ({ value: slugifySubcategoryValue(child), label: child }))
+                : [{ value: "", label: "Без подкатегории" }]
+            }
+          />
         </span>
       </label>
     </>

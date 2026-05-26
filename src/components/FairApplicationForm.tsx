@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { DropdownSelect } from "@/components/DropdownSelect";
 import { fairCategories } from "@/lib/data";
 import { ValidatedInput } from "@/components/ValidatedInput";
 
@@ -72,11 +73,7 @@ export function FairApplicationForm() {
       </div>
       <label className="grid gap-2 text-sm font-bold text-slate-600">
         Категория ярмарки
-        <select name="category" className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" required>
-          {fairCategories.map((category) => (
-            <option key={category}>{category}</option>
-          ))}
-        </select>
+        <DropdownSelect name="category" options={fairCategories.map((category) => ({ value: category, label: category }))} buttonClassName="h-11 font-normal sm:h-12" />
       </label>
       <label className="grid gap-2 text-sm font-bold text-slate-600">
         Описание работ или товаров
