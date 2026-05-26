@@ -26,6 +26,7 @@ import { AdminAuthGate } from "@/components/auth/AdminAuthGate";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
 import { LogoutButton } from "@/components/auth/LogoutButton";
+import { OrganizationAddressForm } from "@/components/OrganizationAddressForm";
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
 import { categories, professions, tariffs } from "@/lib/data";
@@ -514,26 +515,12 @@ export function CabinetSpecialistPage() {
 
 export function CabinetOrganizationPage() {
   return (
-    <Shell title="Профиль организации" description="Профиль заказчика с публичным адресом, координатами и контактами для вакансий." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Профиль организации" description="Профиль заказчика с публичным адресом и контактами для вакансий." eyebrow="Кабинет" nav={cabinetNav}>
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
         <h2 className="text-2xl font-black text-[#060b27]">ООО РемДом</h2>
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          {[
-            ["Регион", "Краснодарский край"],
-            ["Город", "Краснодар"],
-            ["Район", "Центральный округ"],
-            ["Точный адрес", "ул. Красная, 118"],
-            ["Широта", "45.037"],
-            ["Долгота", "38.975"],
-          ].map(([label, value]) => (
-            <label className="grid gap-2 text-sm font-bold text-slate-700" key={label}>
-              {label}
-              <input className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]" defaultValue={value} />
-            </label>
-          ))}
-        </div>
+        <OrganizationAddressForm />
         <p className="mt-5 rounded-lg bg-blue-50 p-4 text-sm leading-6 text-slate-700">
-          Для организаций и вакансий точный адрес можно показывать публично. Внутреннюю маршрутизацию сайт не строит, кнопка маршрута ведет во внешний сервис карт.
+          Для организаций и вакансий точный адрес можно показывать публично. Координаты вручную заполнять не нужно: адрес выбирается из подсказок и дальше может использоваться для внешних карт.
         </p>
       </section>
     </Shell>
