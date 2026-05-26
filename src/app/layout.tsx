@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://blizhniy.example"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://blizhniy.vercel.app"),
   title: {
     default: "БЛИЖНИЙ — объявления, работа и специалисты Краснодарского края",
     template: "%s | БЛИЖНИЙ",

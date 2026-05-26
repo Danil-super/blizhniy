@@ -5,6 +5,7 @@
 :root {
   --background: #f8fafc;
   --foreground: #060b27;
+  --mobile-nav-clearance: 160px;
 }
 
 * {
@@ -20,7 +21,7 @@ body {
   background: radial-gradient(circle at 50% 0%, #ffffff 0, #f8fafc 520px);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
-  padding-bottom: 78px;
+  padding-bottom: var(--mobile-nav-clearance);
 }
 
 a {
@@ -36,6 +37,10 @@ select {
 
 .app-shell {
   min-height: 100vh;
+}
+
+.app-shell main {
+  padding-bottom: var(--mobile-nav-clearance);
 }
 
 .page-container {
@@ -68,5 +73,9 @@ select {
 @media (min-width: 768px) {
   body {
     padding-bottom: 0;
+  }
+
+  .app-shell main {
+    padding-bottom: revert;
   }
 }

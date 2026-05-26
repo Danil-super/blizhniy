@@ -138,7 +138,7 @@ function paymentRows() {
     id: payment.id,
     subject: payment.targetTitle,
     amount: `${payment.amount} ₽`,
-    method: payment.provider === "mock" ? "Mock" : payment.provider,
+    method: payment.provider === "mock" ? "Тестовая оплата" : payment.provider,
     status: payment.status,
   }));
 }
@@ -397,7 +397,7 @@ export function CabinetPage() {
           <MetricCard icon={<FileText className="h-5 w-5" />} label="Объявления" value={String(listingsCount)} detail="Ваши публикации в каталоге." />
           <MetricCard icon={<BriefcaseBusiness className="h-5 w-5" />} label="Вакансии" value={String(vacanciesCount)} detail="Публикации из раздела работы." />
           <MetricCard icon={<ClipboardList className="h-5 w-5" />} label="Заказы" value={String(workRequestsCount)} detail="Задачи для исполнителей." />
-          <MetricCard icon={<CreditCard className="h-5 w-5" />} label="Оплаты" value={`${paymentsTotal} ₽`} detail="Сумма созданных mock-платежей." />
+          <MetricCard icon={<CreditCard className="h-5 w-5" />} label="Оплаты" value={`${paymentsTotal} ₽`} detail="Сумма созданных тестовых платежей." />
         </div>
         <div className="mt-8 grid gap-8 xl:grid-cols-2">
           <section>
@@ -636,7 +636,8 @@ export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
     <Shell title="Оплата заказа" description="Проверьте заказ, выберите способ оплаты и подтвердите платеж." eyebrow="Оплата">
       <section className="grid gap-8 lg:grid-cols-[1fr_420px]">
         <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-          <h2 className="text-2xl font-black text-[#060b27]">Заказ {payment?.id ?? paymentId ?? tariff.id}</h2>
+          <h2 className="text-2xl font-black text-[#060b27]">{payment?.targetTitle ?? `Заказ ${paymentId ?? tariff.id}`}</h2>
+          {payment ? <p className="mt-2 text-sm font-semibold text-slate-500">Платеж {payment.id}</p> : null}
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
             <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тариф" value={tariff.name} detail="Заказ сформирован." />
             <MetricCard icon={<Banknote className="h-5 w-5" />} label="Сумма" value={`${payment?.amount ?? tariff.price} ₽`} detail="Фиксированная стоимость." />
