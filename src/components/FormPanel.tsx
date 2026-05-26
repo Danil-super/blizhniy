@@ -56,3 +56,20 @@ export function TextAreaField({ label, placeholder }: { label: string; placehold
     </label>
   );
 }
+
+export function PhotoField({ label, description }: { label: string; description: string }) {
+  return (
+    <section className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-bold text-slate-700">{label}</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
+        </div>
+        <label className="inline-flex h-11 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white">
+          Добавить фото
+          <input className="sr-only" type="file" accept="image/*" multiple />
+        </label>
+      </div>
+    </section>
+  );
+}

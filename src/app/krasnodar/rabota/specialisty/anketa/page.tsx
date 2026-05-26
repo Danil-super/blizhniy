@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
-import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
+import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 
 export default function SpecialistProfileFormPage() {
   return (
@@ -19,10 +19,10 @@ export default function SpecialistProfileFormPage() {
             <Field label="Телефон" placeholder="+7..." />
             <Field label="Email" type="email" placeholder="name@example.ru" />
             <Field label="Telegram / WhatsApp" placeholder="https://..." />
-            <Field label="Фото" type="file" />
             <Field label="Широта примерной зоны" placeholder="45.056" />
             <Field label="Долгота примерной зоны" placeholder="38.958" />
           </div>
+          <PhotoField label="Фото специалиста и работ" description="Добавьте портфолио, фото выполненных работ или рабочей зоны. В демо файлы выбираются локально, без загрузки на сервер." />
           <TextAreaField label="Навыки" placeholder="Монтаж, ремонт, замена" />
           <TextAreaField label="О себе и опыт работы" />
           <Link href="/cabinet/specialist" className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0875d1] px-7 font-bold text-white">
