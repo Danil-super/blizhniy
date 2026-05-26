@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://blizhniy.vercel.app";
+
   return {
     rules: [
       {
@@ -9,6 +11,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/admin", "/cabinet", "/oplata", "/blizhniy/oplata", "/api"],
       },
     ],
-    sitemap: "https://blizhniy.example/sitemap.xml",
+    sitemap: `${base}/sitemap.xml`,
   };
 }

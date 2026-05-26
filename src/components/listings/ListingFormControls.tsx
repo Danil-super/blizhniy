@@ -2,7 +2,7 @@
 
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, X } from "lucide-react";
-import { cities, fairApplications, listings, region, specialists, vacancies, workRequests } from "@/lib/data";
+import { categories, cities, fairApplications, listings, region, specialists, vacancies, workRequests } from "@/lib/data";
 
 type Suggestion = {
   label: string;
@@ -65,6 +65,44 @@ function formatCityValue(city?: string) {
   }
 
   return city.includes(region.name) ? city : `${city}, ${region.name}`;
+}
+
+function slugifySubcategoryValue(name: string) {
+  const map: Record<string, string> = {
+    "Товары времен СССР": "tovary-vremen-sssr",
+    "Картины и живопись": "kartiny-i-zhivopis",
+    "Продам недвижимость": "prodam-nedvizhimost",
+    "Куплю недвижимость": "kuplyu-nedvizhimost",
+    Аренда: "arenda",
+    "Коммерческая недвижимость": "kommercheskaya-nedvizhimost",
+    "Продам авто": "prodam-avto",
+    "Куплю авто": "kuplyu-avto",
+    Мототехника: "mototehnika",
+    Запчасти: "zapchasti",
+    "Продам бизнес": "prodam-biznes",
+    "Куплю бизнес": "kuplyu-biznes",
+    Оборудование: "oborudovanie",
+    Партнерство: "partnerstvo",
+    "Организация похорон": "organizatsiya-pohoron",
+    Памятники: "pamyatniki",
+    "Уход за местом": "uhod-za-mestom",
+    Животные: "zhivotnye",
+    "Товары для животных": "tovary-dlya-zhivotnyh",
+    Парикмахеры: "parikmahery",
+    "Маникюр и педикюр": "manikyur-i-pedikyur",
+    "Медицинский персонал": "meditsinskiy-personal",
+    "Уход на дому": "uhod-na-domu",
+    Мебель: "mebel",
+    Вакансии: "vakansii",
+    "Анкеты специалистов": "ankety-spetsialistov",
+    "Ремонт квартир": "remont-kvartir",
+    Сантехника: "santehnika",
+    "Цветы и саженцы": "tsvety-i-sazhentsy",
+    "Выкройки и рукоделие": "vykroyki-i-rukodelie",
+    Клининг: "klining",
+  };
+
+  return map[name] ?? name.toLowerCase().replaceAll(" ", "-");
 }
 
 function filterSuggestions(suggestions: Suggestion[], value: string) {
@@ -159,6 +197,67 @@ export function ListingLocationFields({ defaultCity }: { defaultCity?: string })
         suggestions={addressSuggestions}
       />
     </div>
+  );
+}
+
+export function ListingCategoryFields({
+  defaultCategorySlug = "mebel-i-interer",
+  defaultSubcategorySlug,
+}: {
+  defaultCategorySlug?: string;
+  defaultSubcategorySlug?: string;
+}) {
+  const fallbackCategory = categories.find((category) => category.slug === defaultCategorySlug) ?? categories[0];
+  const [categorySlug, setCategorySlug] = useState(fallbackCategory?.slug ?? "");
+  const selectedCategory = categories.find((category) => category.slug === categorySlug) ?? fallbackCategory;
+  const subcategories = selectedCategory?.children ?? [];
+  const fallbackSubcategory = subcategories[0] ? slugifySubcategoryValue(subcategories[0]) : "";
+  const selectedSubcategory =
+    defaultSubcategorySlug && subcategories.some((child) => slugifySubcategoryValue(child) === defaultSubcategorySlug)
+      ? defaultSubcategorySlug
+      : fallbackSubcategory;
+
+  return (
+    <>
+      <label className="block">
+        <span className="text-sm font-bold text-slate-700">Категория</span>
+        <span className="mt-2 block">
+          <select
+            name="category"
+            value={categorySlug}
+            onChange={(event) => setCategorySlug(event.target.value)}
+            className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 outline-none focus:border-[#0875d1]"
+          >
+            {categories.map((category) => (
+              <option key={category.slug} value={category.slug}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </span>
+      </label>
+      <label className="block">
+        <span className="text-sm font-bold text-slate-700">Подкатегория</span>
+        <span className="mt-2 block">
+          <select
+            key={categorySlug}
+            name="subcategory"
+            defaultValue={selectedSubcategory}
+            className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 outline-none focus:border-[#0875d1]"
+          >
+            {subcategories.length ? (
+              subcategories.map((child) => (
+                <option key={`${categorySlug}-${child}`} value={slugifySubcategoryValue(child)}>
+                  {child}
+                </option>
+              ))
+            ) : (
+              <option value="">Без подкатегории</option>
+            )}
+          </select>
+        </span>
+      </label>
+    </>
   );
 }
 

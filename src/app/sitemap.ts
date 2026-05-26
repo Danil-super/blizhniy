@@ -3,7 +3,7 @@ import { categories, listingKinds, professions, specialists, vacancies } from "@
 import { demoListings, slugifySubcategory } from "@/components/listings/ListingPages";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = "https://blizhniy.example";
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://blizhniy.vercel.app";
   const categoryPaths = categories.flatMap((category) => [
     `/blizhniy/${category.slug}`,
     ...category.children.map((child) => `/blizhniy/${category.slug}/${slugifySubcategory(child)}`),
@@ -30,9 +30,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/blizhniy/rabota/specialisty/klassifikator",
     "/yarmarka-masterov",
     "/yarmarka-masterov/zayavka",
-    "/cabinet/fair-applications",
     "/poisk",
-    "/auth",
     "/legal/user-agreement",
     "/legal/privacy",
     ...listingKindPaths,

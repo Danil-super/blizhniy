@@ -9,16 +9,34 @@ type ValidatedInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onChange
   onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
 };
 
-const phonePattern = "^\\+?[0-9 ()-]{10,22}$";
+const maxPhoneDigits = 11;
+const maxPhoneLength = 18;
+const phonePattern = "^(?=(?:\\D*\\d){10,11}\\D*$)\\+?[0-9 ()-]+$";
 const emailPattern = "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$";
 const messengerPattern = "^(@[A-Za-z0-9_]{5,32}|https?://[^\\s]+)$";
 const urlPattern = "^https?://[^\\s]+$";
 
 function sanitizePhone(value: string) {
-  const withoutLetters = value.replace(/[^\d()+\-\s]/g, "");
-  const firstPlus = withoutLetters.startsWith("+") ? "+" : "";
+  let digitCount = 0;
+  let sanitized = value.trimStart().startsWith("+") ? "+" : "";
 
-  return `${firstPlus}${withoutLetters.replace(/\+/g, "")}`.slice(0, 22);
+  for (const char of value.replace(/\+/g, "")) {
+    if (/\d/.test(char)) {
+      if (digitCount >= maxPhoneDigits) {
+        continue;
+      }
+
+      digitCount += 1;
+      sanitized += char;
+      continue;
+    }
+
+    if (/[()\-\s]/.test(char) && sanitized.length < maxPhoneLength) {
+      sanitized += char;
+    }
+  }
+
+  return sanitized.slice(0, maxPhoneLength);
 }
 
 function sanitizeNoSpaces(value: string) {
@@ -42,9 +60,9 @@ function getValidationProps(validation?: ValidationKind) {
     return {
       autoComplete: "tel",
       inputMode: "tel" as const,
-      maxLength: 22,
+      maxLength: maxPhoneLength,
       pattern: phonePattern,
-      title: "Введите телефон цифрами, можно использовать +, пробелы, скобки и дефисы.",
+      title: "Введите телефон: 10-11 цифр, можно использовать +, пробелы, скобки и дефисы.",
       type: "tel",
     };
   }

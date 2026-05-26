@@ -21,7 +21,7 @@ import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { categories, tariffs } from "@/lib/data";
-import { ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
+import { ListingCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingCard, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
 
 const listingKinds: { slug: ListingKind; title: string; description: string }[] = [
@@ -711,26 +711,7 @@ export function ListingFormPage({ slug }: { slug?: string }) {
                   ))}
                 </SelectInput>
               </Field>
-              <Field label="Категория">
-                <SelectInput defaultValue={listing?.categorySlug ?? "mebel-i-interer"}>
-                  {categories.map((category) => (
-                    <option key={category.slug} value={category.slug}>
-                      {category.name}
-                    </option>
-                  ))}
-                </SelectInput>
-              </Field>
-              <Field label="Подкатегория">
-                <SelectInput defaultValue={listing?.subcategorySlug ?? "mebel"}>
-                  {categories.flatMap((category) =>
-                    category.children.map((child) => (
-                      <option key={`${category.slug}-${child}`} value={slugifySubcategory(child)}>
-                        {child}
-                      </option>
-                    )),
-                  )}
-                </SelectInput>
-              </Field>
+              <ListingCategoryFields defaultCategorySlug={listing?.categorySlug ?? "mebel-i-interer"} defaultSubcategorySlug={listing?.subcategorySlug ?? "mebel"} />
             </div>
 
             <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
