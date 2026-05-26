@@ -64,6 +64,10 @@ select {
   box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
 }
 
+.site-footer-inner {
+  padding-bottom: calc(var(--mobile-nav-clearance) + 96px);
+}
+
 @media (min-width: 640px) {
   .page-container {
     width: min(calc(100% - 32px), 1500px);
@@ -77,5 +81,9 @@ select {
 
   .app-shell main {
     padding-bottom: revert;
+  }
+
+  .site-footer-inner {
+    padding-bottom: 2rem;
   }
 }

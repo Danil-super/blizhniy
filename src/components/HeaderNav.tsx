@@ -8,6 +8,9 @@ const publicLinks = [
   ["Каталог", "/blizhniy/kategorii"],
   ["Работа", "/blizhniy/rabota"],
   ["Ярмарка мастеров", "/yarmarka-masterov"],
+  ["Как работает", "/kak-rabotaet"],
+  ["Тарифы", "/tarify"],
+  ["О проекте", "/o-proekte"],
   ["Для бизнеса", "/cabinet/organization"],
   ["Помощь", "/legal/user-agreement"],
 ];
