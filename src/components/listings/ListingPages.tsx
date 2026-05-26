@@ -380,7 +380,7 @@ export function CategoriesPage() {
             Первый уровень каталога и подкатегории отображаются плитками. Структура готова для расширения по городам и регионам.
           </p>
         </section>
-        <CategoryGrid />
+        <CategoryGrid variant="grid" />
       </main>
     </>
   );

@@ -40,11 +40,17 @@ const categoryTiles = [
   { label: "Меняю и отдам даром", href: "/blizhniy/obmen-i-darom" },
 ];
 
-export function CategoryGrid() {
+export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "grid" }) {
+  const outerClassName = variant === "scroll" ? "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "";
+  const gridClassName =
+    variant === "scroll"
+      ? "grid grid-flow-col grid-rows-2 auto-cols-[160px] gap-2 sm:grid-flow-row sm:grid-rows-none sm:grid-cols-3 sm:auto-cols-auto md:grid-cols-4 lg:grid-cols-7"
+      : "grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7";
+
   return (
     <section className="page-container pb-6 pt-3 sm:pb-8">
-      <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="grid grid-flow-col grid-rows-2 auto-cols-[160px] gap-2 sm:grid-flow-row sm:grid-rows-none sm:grid-cols-3 sm:auto-cols-auto md:grid-cols-4 lg:grid-cols-7">
+      <div className={outerClassName}>
+        <div className={gridClassName}>
           {categoryTiles.map((category) => (
             <div key={`${category.label}-${category.href}`} className="flex min-h-24 flex-col justify-between overflow-hidden rounded-xl bg-[#f0eeee] p-3 transition hover:bg-slate-200 sm:min-h-24">
               <Link href={category.href} className="line-clamp-2 block text-sm font-bold leading-5 text-slate-950 [overflow-wrap:anywhere]">
