@@ -19,13 +19,41 @@ import {
 } from "lucide-react";
 
 const categoryTones = {
-  blue: "bg-blue-50 text-[#0875d1] ring-blue-100",
-  green: "bg-emerald-50 text-[#0a8f32] ring-emerald-100",
-  amber: "bg-amber-50 text-amber-700 ring-amber-100",
-  violet: "bg-violet-50 text-violet-700 ring-violet-100",
-  rose: "bg-rose-50 text-rose-700 ring-rose-100",
-  cyan: "bg-cyan-50 text-cyan-700 ring-cyan-100",
-  slate: "bg-slate-100 text-slate-700 ring-slate-200",
+  blue: {
+    card: "from-blue-50 via-white to-white hover:border-blue-200",
+    icon: "bg-blue-100 text-[#0875d1] ring-blue-200",
+    glow: "bg-blue-100",
+  },
+  green: {
+    card: "from-emerald-50 via-white to-white hover:border-emerald-200",
+    icon: "bg-emerald-100 text-[#0a8f32] ring-emerald-200",
+    glow: "bg-emerald-100",
+  },
+  amber: {
+    card: "from-amber-50 via-white to-white hover:border-amber-200",
+    icon: "bg-amber-100 text-amber-700 ring-amber-200",
+    glow: "bg-amber-100",
+  },
+  violet: {
+    card: "from-violet-50 via-white to-white hover:border-violet-200",
+    icon: "bg-violet-100 text-violet-700 ring-violet-200",
+    glow: "bg-violet-100",
+  },
+  rose: {
+    card: "from-rose-50 via-white to-white hover:border-rose-200",
+    icon: "bg-rose-100 text-rose-700 ring-rose-200",
+    glow: "bg-rose-100",
+  },
+  cyan: {
+    card: "from-cyan-50 via-white to-white hover:border-cyan-200",
+    icon: "bg-cyan-100 text-cyan-700 ring-cyan-200",
+    glow: "bg-cyan-100",
+  },
+  slate: {
+    card: "from-slate-100 via-white to-white hover:border-slate-300",
+    icon: "bg-slate-100 text-slate-700 ring-slate-200",
+    glow: "bg-slate-100",
+  },
 };
 
 const categoryTiles = [
@@ -90,19 +118,20 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
             const tone = categoryTones[category.tone as keyof typeof categoryTones];
 
             return (
-              <div key={`${category.label}-${category.href}`} className="group flex min-h-32 flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-card sm:min-h-36">
-                <div>
-                  <span className={`flex h-10 w-10 items-center justify-center rounded-full ring-1 ${tone}`}>
-                    <Icon className="h-5 w-5" />
+              <div key={`${category.label}-${category.href}`} className={`group relative flex min-h-36 flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:min-h-44 sm:p-4 ${tone.card}`}>
+                <span className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-70 blur-sm transition group-hover:scale-110 sm:h-28 sm:w-28 ${tone.glow}`} />
+                <div className="relative">
+                  <span className={`flex h-14 w-14 items-center justify-center rounded-2xl ring-1 shadow-sm transition group-hover:scale-105 sm:h-16 sm:w-16 ${tone.icon}`}>
+                    <Icon className="h-7 w-7 sm:h-8 sm:w-8" />
                   </span>
-                  <Link href={category.href} className="mt-3 line-clamp-2 block text-sm font-black leading-5 text-slate-950 [overflow-wrap:anywhere] group-hover:text-[#0875d1]">
+                  <Link href={category.href} className="mt-4 line-clamp-2 block text-sm font-black leading-5 text-slate-950 [overflow-wrap:anywhere] group-hover:text-[#0875d1] sm:text-base sm:leading-6">
                     {category.label}
                   </Link>
                 </div>
                 {category.quickLinks ? (
-                  <div className="mt-3 flex min-w-0 flex-wrap gap-1.5">
+                  <div className="relative mt-4 flex min-w-0 flex-wrap gap-1.5">
                     {category.quickLinks.slice(0, 3).map((link) => (
-                      <Link key={link.href} href={link.href} className="min-w-0 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 transition hover:bg-blue-50 hover:text-[#0875d1]">
+                      <Link key={link.href} href={link.href} className="min-w-0 rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-blue-50 hover:text-[#0875d1]">
                         {link.label}
                       </Link>
                     ))}

@@ -11,7 +11,7 @@ export function HomeHero() {
             Краснодарский край
           </div>
           <h1 className="mt-4 max-w-4xl text-3xl font-black leading-tight text-[#060b27] sm:text-5xl lg:text-6xl">
-            БЛИЖНИЙ — объявления, работа и услуги рядом
+            <span className="italic">БЛИЖНИЙ</span> — объявления, работа и услуги рядом
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
             Платформа Краснодарского края для объявлений, вакансий, специалистов, услуг и Ярмарки мастеров.
