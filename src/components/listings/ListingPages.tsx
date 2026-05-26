@@ -337,19 +337,7 @@ function ListingFiltersFields() {
 
 function ListingFilters() {
   return (
-    <aside className="hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 lg:block lg:p-5">
-      <div className="flex items-center gap-2 text-base font-black text-[#060b27] sm:text-lg">
-        <Filter className="h-4 w-4 text-[#0875d1] sm:h-5 sm:w-5" />
-        Фильтры
-      </div>
-      <ListingFiltersFields />
-    </aside>
-  );
-}
-
-function MobileListingFilters() {
-  return (
-    <details className="group mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:hidden">
+    <details className="group mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm sm:mt-5 lg:mt-6">
       <summary className="flex h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-black text-[#060b27] marker:hidden [&::-webkit-details-marker]:hidden">
         <span className="flex min-w-0 items-center gap-2">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">
@@ -410,7 +398,7 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
       <SiteHeader />
       <main className="page-container py-6 sm:py-8 lg:py-10">
         <Breadcrumbs items={[{ label: current.title }]} />
-        <div className="grid gap-7 lg:grid-cols-[1fr_320px]">
+        <div className="grid gap-7">
           <section>
             <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
               <div>
@@ -449,12 +437,11 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
                 </Link>
               ) : null}
             </div>
-            <MobileListingFilters />
+            <ListingFilters />
             <div className="mt-5 sm:mt-6 lg:mt-7">
               <ListingList listings={listings} />
             </div>
           </section>
-          <ListingFilters />
         </div>
       </main>
     </>
@@ -469,7 +456,7 @@ export function ExchangeAndFreePage() {
       <SiteHeader />
       <main className="page-container py-6 sm:py-8 lg:py-10">
         <Breadcrumbs items={[{ label: "Меняю и отдам даром" }]} />
-        <div className="grid gap-7 lg:grid-cols-[1fr_320px]">
+        <div className="grid gap-7">
           <section>
             <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
               <div>
@@ -499,12 +486,11 @@ export function ExchangeAndFreePage() {
                   </Link>
                 ))}
             </div>
-            <MobileListingFilters />
+            <ListingFilters />
             <div className="mt-5 sm:mt-6 lg:mt-7">
               <ListingList listings={listings} />
             </div>
           </section>
-          <ListingFilters />
         </div>
       </main>
     </>
@@ -529,7 +515,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
             ...(subcategory ? [{ label: subcategory }] : []),
           ]}
         />
-        <div className="grid gap-7 lg:grid-cols-[1fr_320px]">
+        <div className="grid gap-7">
           <section>
             <h1 className="[overflow-wrap:anywhere] text-3xl font-black text-[#060b27] sm:text-5xl">{subcategory ?? category?.name ?? "Категория"}</h1>
             <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
@@ -548,12 +534,11 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
                 ))}
               </div>
             ) : null}
-            <MobileListingFilters />
+            <ListingFilters />
             <div className="mt-7">
               <ListingList listings={listings} />
             </div>
           </section>
-          <ListingFilters />
         </div>
       </main>
     </>
