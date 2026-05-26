@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CategoryGrid } from "@/components/CategoryGrid";
+import { HomeHero } from "@/components/HomeHero";
 import { HomeListings } from "@/components/HomeListings";
 import { SiteHeader } from "@/components/SiteHeader";
 
@@ -16,6 +17,7 @@ export default function KrasnodarPage() {
     <>
       <SiteHeader />
       <main>
+        <HomeHero />
         <CategoryGrid />
         <HomeListings />
       </main>
