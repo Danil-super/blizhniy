@@ -8,3 +8,5 @@ yarn-error.log*
 pnpm-debug.log*
 tsconfig.tsbuildinfo
 
+audit-screens/
+local-screens/
