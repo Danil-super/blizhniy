@@ -1,3 +1,5 @@
+import { ValidatedInput } from "@/components/ValidatedInput";
+
 export function FormPanel({
   title,
   description,
@@ -16,11 +18,31 @@ export function FormPanel({
   );
 }
 
+function validationForField(label: string, type: string) {
+  const normalizedLabel = label.toLowerCase();
+
+  if (normalizedLabel.includes("телефон")) {
+    return "phone";
+  }
+
+  if (normalizedLabel.includes("telegram") || normalizedLabel.includes("whatsapp")) {
+    return "messenger";
+  }
+
+  if (type === "email" || normalizedLabel.includes("email")) {
+    return "email";
+  }
+
+  return undefined;
+}
+
 export function Field({ label, placeholder, type = "text" }: { label: string; placeholder?: string; type?: string }) {
+  const validation = validationForField(label, type);
+
   return (
     <label className="grid gap-2 text-sm font-bold text-slate-700">
       {label}
-      <input className="h-12 rounded-xl border border-slate-300 px-4 font-normal outline-none focus:border-[#0875d1]" type={type} placeholder={placeholder} />
+      <ValidatedInput className="h-12 rounded-xl border border-slate-300 px-4 font-normal outline-none focus:border-[#0875d1]" type={type} placeholder={placeholder} validation={validation} />
     </label>
   );
 }

@@ -4,9 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Camera,
-  CheckCircle2,
   ChevronRight,
-  Clock3,
   CreditCard,
   FilePenLine,
   Filter,
@@ -21,7 +19,9 @@ import {
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
-import { categories, cities, region, tariffs } from "@/lib/data";
+import { ValidatedInput } from "@/components/ValidatedInput";
+import { categories, tariffs } from "@/lib/data";
+import { ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingCard, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
 
 const listingKinds: { slug: ListingKind; title: string; description: string }[] = [
@@ -672,28 +672,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function TextInput(props: { placeholder?: string; defaultValue?: string; type?: string }) {
-  return <input {...props} className="h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />;
-}
-
-function CityInput({ defaultCity }: { defaultCity?: string }) {
-  const defaultValue = `${defaultCity ?? "Краснодар"}, ${region.name}`;
-
-  return (
-    <>
-      <input
-        className="h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
-        defaultValue={defaultValue}
-        list="listing-city-options"
-        placeholder="Начните вводить город"
-      />
-      <datalist id="listing-city-options">
-        {cities.map((city) => (
-          <option key={city.slug} value={`${city.name}, ${region.name}`} />
-        ))}
-      </datalist>
-    </>
-  );
+function TextInput(props: { placeholder?: string; defaultValue?: string; type?: string; validation?: "phone" | "email" | "messenger" }) {
+  return <ValidatedInput {...props} className="h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />;
 }
 
 function SelectInput({ children, defaultValue }: { children: ReactNode; defaultValue?: string }) {
@@ -714,14 +694,14 @@ export function ListingFormPage({ slug }: { slug?: string }) {
       <SiteHeader />
       <main className="page-container py-10">
         <Breadcrumbs items={[{ label: editing ? "Редактирование объявления" : "Создание объявления" }]} />
-        <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
-          <section>
-            <h1 className="text-3xl font-black text-[#060b27] sm:text-5xl">{editing ? "Редактировать объявление" : "Создать объявление"}</h1>
-            <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-              Заполните поля объявления, проверьте контакты и перейдите к оплате публикации.
-            </p>
+        <section>
+          <h1 className="text-3xl font-black text-[#060b27] sm:text-5xl">{editing ? "Редактировать объявление" : "Создать объявление"}</h1>
+          <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
+            Заполните объявление, добавьте фото и выберите удобный способ связи.
+          </p>
 
-            <form className="mt-7 grid gap-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <form className="mt-6 grid gap-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)]">
               <Field label="Тип объявления">
                 <SelectInput defaultValue={listing?.kind ?? "prodam"}>
                   {listingKinds.map((kind) => (
@@ -731,152 +711,112 @@ export function ListingFormPage({ slug }: { slug?: string }) {
                   ))}
                 </SelectInput>
               </Field>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Категория">
-                  <SelectInput defaultValue={listing?.categorySlug ?? "mebel-i-interer"}>
-                    {categories.map((category) => (
-                      <option key={category.slug} value={category.slug}>
-                        {category.name}
+              <Field label="Категория">
+                <SelectInput defaultValue={listing?.categorySlug ?? "mebel-i-interer"}>
+                  {categories.map((category) => (
+                    <option key={category.slug} value={category.slug}>
+                      {category.name}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+              <Field label="Подкатегория">
+                <SelectInput defaultValue={listing?.subcategorySlug ?? "mebel"}>
+                  {categories.flatMap((category) =>
+                    category.children.map((child) => (
+                      <option key={`${category.slug}-${child}`} value={slugifySubcategory(child)}>
+                        {child}
                       </option>
-                    ))}
-                  </SelectInput>
-                </Field>
-                <Field label="Подкатегория">
-                  <SelectInput defaultValue={listing?.subcategorySlug ?? "mebel"}>
-                    {categories.flatMap((category) =>
-                      category.children.map((child) => (
-                        <option key={`${category.slug}-${child}`} value={slugifySubcategory(child)}>
-                          {child}
-                        </option>
-                      )),
-                    )}
-                  </SelectInput>
-                </Field>
-              </div>
+                    )),
+                  )}
+                </SelectInput>
+              </Field>
+            </div>
 
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
               <Field label="Название">
                 <TextInput defaultValue={listing?.title} placeholder="Например, Комод из массива дуба" />
               </Field>
-
-              <label className="block">
-                <span className="text-sm font-bold text-slate-700">Описание</span>
-                <textarea
-                  defaultValue={listing?.description}
-                  className="mt-2 min-h-36 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
-                  placeholder="Состояние, детали, условия передачи"
-                />
-              </label>
-
-              <div className="grid gap-4 md:grid-cols-[1fr_220px]">
-                <Field label="Город и регион">
-                  <CityInput defaultCity={listing?.city} />
-                </Field>
-                <Field label="Цена">
-                  <TextInput defaultValue={listing?.price} placeholder="Например, 12 000 ₽" />
-                </Field>
-              </div>
-
-              <Field label="Адрес или ориентир (необязательно)">
-                <TextInput placeholder="Например, ТЦ, улица или ближайшая остановка" />
+              <Field label="Цена">
+                <TextInput defaultValue={listing?.price} placeholder="Например, 12 000 ₽" />
               </Field>
+            </div>
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center gap-2 text-lg font-black text-[#060b27]">
-                  <Phone className="h-5 w-5 text-[#0aa337]" />
-                  Контакты
-                </div>
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <Field label="Телефон">
-                    <TextInput defaultValue={listing?.phone} placeholder="+7..." type="tel" />
-                  </Field>
-                  <Field label="Telegram или WhatsApp">
-                    <TextInput defaultValue={listing?.messengerUrl} placeholder="@username или ссылка" />
-                  </Field>
-                </div>
-                <div className="mt-4 grid gap-4 md:grid-cols-[1fr_220px]">
-                  <Field label="Email для уведомлений">
-                    <TextInput placeholder="mail@example.ru" type="email" />
-                  </Field>
-                  <Field label="Основной способ связи">
-                    <SelectInput defaultValue="phone">
-                      <option value="phone">Телефон</option>
-                      <option value="messenger">Мессенджер</option>
-                      <option value="email">Email</option>
-                    </SelectInput>
-                  </Field>
-                </div>
-              </div>
+            <label className="block">
+              <span className="text-sm font-bold text-slate-700">Описание</span>
+              <textarea
+                defaultValue={listing?.description}
+                className="mt-2 min-h-28 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
+                placeholder="Состояние, детали, условия передачи"
+              />
+            </label>
 
-              <label className="block cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 transition hover:border-blue-300 hover:bg-blue-50/40">
-                <input className="sr-only" type="file" accept="image/*" multiple />
-                <span className="flex flex-wrap items-center justify-between gap-4">
-                  <span className="flex items-center gap-3 font-bold text-slate-700">
-                    <Camera className="h-5 w-5 text-[#0875d1]" />
-                    Фото объявления
-                  </span>
-                  <span className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white">
-                    Выбрать фото
-                  </span>
-                </span>
-                <span className="mt-2 block text-sm leading-6 text-slate-500">
-                  Можно добавить несколько изображений товара или услуги.
-                </span>
-              </label>
+            <ListingLocationFields defaultCity={listing?.city} />
 
-              <div className="flex flex-wrap gap-3">
-                <Link href="/cabinet/obyavleniya" className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 px-6 font-bold text-slate-800">
-                  Сохранить черновик
-                </Link>
-                <Link href="/blizhniy/oplata/listing-publication" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white">
-                  Перейти к оплате
-                  <ArrowRight className="h-5 w-5" />
-                </Link>
-              </div>
-            </form>
-          </section>
-
-          <aside className="space-y-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-lg font-black text-[#060b27]">
+                <Phone className="h-5 w-5 text-[#0aa337]" />
+                Контакты
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <Field label="Телефон">
+                  <TextInput defaultValue={listing?.phone} placeholder="+7..." validation="phone" />
+                </Field>
+                <Field label="Telegram или WhatsApp">
+                  <TextInput defaultValue={listing?.messengerUrl} placeholder="@username или ссылка" validation="messenger" />
+                </Field>
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_220px]">
+                <Field label="Email для уведомлений">
+                  <TextInput placeholder="mail@example.ru" validation="email" />
+                </Field>
+                <Field label="Основной способ связи">
+                  <SelectInput defaultValue="phone">
+                    <option value="phone">Телефон</option>
+                    <option value="messenger">Мессенджер</option>
+                    <option value="email">Email</option>
+                  </SelectInput>
+                </Field>
+              </div>
+            </div>
+
+            <ListingPhotoUploader />
+
+            <div className="flex flex-wrap gap-3">
+              <Link href="/cabinet/obyavleniya" className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 px-6 font-bold text-slate-800">
+                Сохранить черновик
+              </Link>
+              <Link href="/blizhniy/oplata/listing-publication" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white">
+                Перейти к оплате
+                <ArrowRight className="h-5 w-5" />
+              </Link>
+            </div>
+          </form>
+
+          <div className="mt-6 grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2 font-black text-[#060b27]">
                 <ShieldCheck className="h-5 w-5 text-[#0aa337]" />
                 Публикация
               </div>
-              <div className="mt-4 space-y-3">
-                {["Черновик", "Ожидает оплаты", "Оплата прошла", "Объявление опубликовано"].map((status, index) => (
-                  <div key={status} className="flex items-center gap-3 rounded-lg bg-slate-50 p-3">
-                    {index < 2 ? <CheckCircle2 className="h-5 w-5 text-[#0aa337]" /> : <Clock3 className="h-5 w-5 text-slate-400" />}
-                    <span className="text-sm font-semibold text-slate-700">{status}</span>
-                  </div>
-                ))}
-              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-600">После оплаты объявление будет опубликовано на {tariff?.durationDays ?? 30} дней.</p>
             </div>
-
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
-              <div className="flex items-start gap-3">
-                <CreditCard className="mt-1 h-5 w-5 text-[#0875d1]" />
-                <div>
-                  <p className="font-black text-[#060b27]">Оплата</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-700">
-                    Заказ сформирован: {tariff?.name ?? "Размещение объявления"} за {tariff?.price ?? 199} ₽ на {tariff?.durationDays ?? 30} дней.
-                  </p>
-                  <Link href="/blizhniy/oplata/listing-publication" className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0875d1] font-bold text-white">
-                    <CreditCard className="h-5 w-5" />
-                    Оплатить
-                  </Link>
-                </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <div className="flex items-center gap-2 font-black text-[#060b27]">
+                <CreditCard className="h-5 w-5 text-[#0875d1]" />
+                Оплата
               </div>
+              <p className="mt-2 text-sm leading-6 text-slate-700">{tariff?.name ?? "Размещение объявления"}: {tariff?.price ?? 199} ₽.</p>
             </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2 font-black text-[#060b27]">
                 <Mail className="h-5 w-5 text-[#0875d1]" />
-                Email-уведомления
+                Уведомления
               </div>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Заказ сформирован, оплата прошла, объявление опубликовано.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Статус оплаты и публикации придет на указанный email.</p>
             </div>
-          </aside>
-        </div>
+          </div>
+        </section>
       </main>
     </>
   );

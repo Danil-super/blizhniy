@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CalendarDays, CheckCircle2, ImagePlus, MapPin, PlaySquare, Store, Video } from "lucide-react";
 import { LocationMap } from "@/components/LocationMap";
+import { ValidatedInput } from "@/components/ValidatedInput";
 import { fairApplications, fairCategories, tariffs } from "@/lib/data";
 
 function nextFairDate(today = new Date()) {
@@ -187,17 +188,17 @@ export function FairApplicationFormPage() {
               </label>
               <label className="grid gap-2 text-sm font-bold text-slate-600">
                 Ссылка на видео
-                <input className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="https://..." />
+                <ValidatedInput className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="https://..." validation="url" />
               </label>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-2 text-sm font-bold text-slate-600">
                 Телефон
-                <input className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="+7..." />
+                <ValidatedInput className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="+7..." validation="phone" />
               </label>
               <label className="grid gap-2 text-sm font-bold text-slate-600">
                 Email
-                <input className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="you@example.ru" type="email" />
+                <ValidatedInput className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="you@example.ru" validation="email" />
               </label>
             </div>
             <label className="grid gap-2 text-sm font-bold text-slate-600">
