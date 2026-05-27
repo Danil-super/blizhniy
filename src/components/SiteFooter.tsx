@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Mail } from "lucide-react";
+import { BrandName } from "@/components/BrandName";
 
 const footerLinks = [
   { href: "/o-proekte", label: "О проекте" },
@@ -14,11 +15,11 @@ export function SiteFooter() {
     <footer className="border-t border-slate-200 bg-white">
       <div className="site-footer-inner page-container grid gap-6 pt-8 md:grid-cols-[1.1fr_2fr] md:items-start">
         <div>
-          <Link href="/blizhniy" className="text-lg font-black italic text-[#0a1437]">
-            БЛИЖНИЙ
+          <Link href="/blizhniy" className="text-lg font-black text-[#0a1437]">
+            <BrandName />
           </Link>
           <p className="mt-3 max-w-md text-sm leading-6 text-slate-600">
-            БЛИЖНИЙ — платформа объявлений, работы, специалистов и услуг рядом. Первый регион запуска — Краснодарский край.
+            <BrandName /> — платформа объявлений, работы, специалистов и услуг рядом. Первый регион запуска — Краснодарский край.
           </p>
           <a href="mailto:demo@blizhniy.local" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             <Mail className="h-4 w-4" />

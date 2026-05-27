@@ -1,9 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, BriefcaseBusiness, Grid3X3, Search, Sparkles } from "lucide-react";
-
-function BrandName() {
-  return <span className="italic">БЛИЖНИЙ</span>;
-}
+import { BrandName } from "@/components/BrandName";
 
 export function HomeHero() {
   return (
@@ -18,7 +15,7 @@ export function HomeHero() {
             <BrandName /> — объявления, работа и услуги рядом
           </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-lg sm:leading-8">
-            Локальная платформа Краснодарского края: товары, услуги, специалисты, вакансии и частные заказы рядом с вами.
+            Запуск начинается с Краснодарского края. БЛИЖНИЙ объединяет товары, услуги, специалистов, вакансии и частные заказы рядом с вами.
           </p>
           <form action="/poisk" method="GET" className="mt-4 flex h-12 max-w-3xl items-center rounded-2xl border border-blue-100 bg-white p-1.5 shadow-sm sm:mt-5 sm:h-14 sm:p-2">
             <label className="flex min-w-0 flex-1 items-center gap-2 px-2 sm:px-3" aria-label="Поиск по объявлениям">

@@ -1,12 +1,17 @@
 import Link from "next/link";
 import { MapPinned, Search, UsersRound } from "lucide-react";
+import { BrandName } from "@/components/BrandName";
 import { SiteHeader } from "@/components/SiteHeader";
 
 const points = [
   {
     title: "Первый регион запуска",
     icon: MapPinned,
-    text: "БЛИЖНИЙ начинает работу с Краснодарского края, чтобы отточить сценарии поиска, публикации и связи рядом с пользователем.",
+    text: (
+      <>
+        <BrandName /> начинает работу с Краснодарского края, чтобы отточить сценарии поиска, публикации и связи рядом с пользователем.
+      </>
+    ),
   },
   {
     title: "Быстрый поиск рядом",
@@ -28,9 +33,11 @@ export default function Page() {
         <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div>
             <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">О проекте</p>
-            <h1 className="mt-3 text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">БЛИЖНИЙ: все рядом, регион за регионом</h1>
+            <h1 className="mt-3 text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">
+              <BrandName />: все рядом, регион за регионом
+            </h1>
             <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-              БЛИЖНИЙ запускается с Краснодарского края как первого региона, где жители и организации находят объявления, работу, исполнителей, услуги и частные заказы рядом с собой.
+              <BrandName /> запускается с Краснодарского края как первого региона, где жители и организации находят объявления, работу, исполнителей, услуги и частные заказы рядом с собой.
             </p>
             <p className="mt-4 text-base leading-7 text-slate-600">
               Проект не ограничивается одним краем: архитектура предполагает расширение на другие регионы, а региональные витрины позволят отдельно показывать объявления, специалистов, вакансии и заказы по каждому региону.

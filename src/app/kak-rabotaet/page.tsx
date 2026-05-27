@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BadgeCheck, CreditCard, MessageCircle, Search, Store, UploadCloud } from "lucide-react";
+import { BrandName } from "@/components/BrandName";
 import { SiteHeader } from "@/components/SiteHeader";
 
 const steps = [
@@ -37,7 +38,9 @@ export default function Page() {
       <main className="page-container py-8 sm:py-12">
         <section className="max-w-4xl">
           <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Сценарии сервиса</p>
-          <h1 className="mt-3 text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">Как работает БЛИЖНИЙ</h1>
+          <h1 className="mt-3 text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">
+            Как работает <BrandName />
+          </h1>
           <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
             Платформа объединяет объявления, работу, специалистов и ярмарку мастеров в понятный региональный сервис.
           </p>

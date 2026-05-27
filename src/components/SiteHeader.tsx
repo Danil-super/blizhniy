@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BrandName } from "@/components/BrandName";
 import { HeaderControls } from "@/components/HeaderControls";
 import { HeaderNav } from "@/components/HeaderNav";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
@@ -30,7 +31,9 @@ export function SiteHeader() {
               <path d="M20.5 25.5L28 33L35.5 25.5" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </span>
-          <span className="text-lg font-black italic tracking-normal text-[#0a1437] md:text-2xl">БЛИЖНИЙ</span>
+          <span className="text-lg font-black tracking-normal text-[#0a1437] md:text-2xl">
+            <BrandName />
+          </span>
         </Link>
 
         <HeaderControls />
