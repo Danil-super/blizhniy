@@ -12,6 +12,7 @@ import {
   FileText,
   Gauge,
   LockKeyhole,
+  Megaphone,
   MessageSquare,
   PackageCheck,
   Plus,
@@ -23,6 +24,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { AdminAuthGate } from "@/components/auth/AdminAuthGate";
+import { AdMarqueeAdminPanel } from "@/components/AdMarqueeAdminPanel";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
 import { LogoutButton } from "@/components/auth/LogoutButton";
@@ -107,6 +109,7 @@ const adminNav = [
   { href: "/admin/specialist-classifier", label: "Классификатор", icon: Settings2 },
   { href: "/admin/tariffs", label: "Тарифы", icon: WalletCards },
   { href: "/admin/payments", label: "Платежи", icon: Banknote },
+  { href: "/admin#ad-marquee", label: "Реклама", icon: Megaphone },
   { href: "/admin/fair-applications", label: "Ярмарка", icon: Store },
 ];
 
@@ -256,13 +259,13 @@ function AdminGuardedContent({ children }: { children: React.ReactNode }) {
 
 function MetricCard({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) {
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm font-bold text-slate-500">{label}</p>
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1] sm:h-10 sm:w-10">{icon}</span>
+    <article className="flex aspect-square min-h-0 flex-col justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:aspect-auto sm:min-h-0 sm:p-5">
+      <div className="flex items-start justify-between gap-2 sm:gap-4">
+        <p className="text-xs font-bold leading-4 text-slate-500 sm:text-sm">{label}</p>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1] sm:h-10 sm:w-10">{icon}</span>
       </div>
-      <p className="mt-3 text-2xl font-black text-[#060b27] sm:mt-4 sm:text-3xl">{value}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{detail}</p>
+      <p className="mt-2 line-clamp-2 text-xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-3xl">{value}</p>
+      <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{detail}</p>
     </article>
   );
 }
@@ -369,7 +372,7 @@ export function AuthPage() {
             <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
               Создайте аккаунт или войдите, чтобы размещать объявления, вакансии, анкеты специалистов и управлять публикациями.
             </p>
-            <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            <div className="mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:grid-cols-3 sm:gap-4">
               <MetricCard icon={<LockKeyhole className="h-5 w-5" />} label="Вход" value="Email" detail="Авторизация по email и паролю." />
               <MetricCard icon={<ShieldCheck className="h-5 w-5" />} label="Права" value="Роли" detail="Обычный пользователь или администратор." />
               <MetricCard icon={<BadgeCheck className="h-5 w-5" />} label="Доступ" value="Кабинет" detail="Публикации, анкеты, отклики и оплаты." />
@@ -391,7 +394,7 @@ export function CabinetPage() {
   return (
     <Shell title="Личный кабинет" description="Панель пользователя для публикаций, откликов, анкеты специалиста и оплат." eyebrow="Кабинет" nav={cabinetNav}>
       <CabinetAuthGate>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard icon={<FileText className="h-5 w-5" />} label="Объявления" value={String(listingsCount)} detail="Ваши публикации в каталоге." />
           <MetricCard icon={<BriefcaseBusiness className="h-5 w-5" />} label="Вакансии" value={String(vacanciesCount)} detail="Публикации из раздела работы." />
           <MetricCard icon={<ClipboardList className="h-5 w-5" />} label="Заказы" value={String(workRequestsCount)} detail="Задачи для исполнителей." />
@@ -489,17 +492,21 @@ export function CabinetSpecialistPage() {
 
   return (
     <Shell title="Анкета специалиста" description="Профиль исполнителя с услугами, контактами, статусом проверки и будущей публикацией." eyebrow="Кабинет" nav={cabinetNav}>
-      <section className="grid gap-6 lg:grid-cols-[360px_1fr]">
-        <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-blue-50 text-4xl font-black text-[#0875d1]">{profile.name.slice(0, 1)}</div>
-          <h2 className="mt-5 text-2xl font-black text-[#060b27]">{profile.name}</h2>
-          <p className="mt-1 font-bold text-[#0875d1]">{profile.profession}</p>
-          <p className="mt-3 leading-7 text-slate-600">{profile.skills}</p>
-          <div className="mt-4">
-            <StatusBadge status={profile.status} />
+      <section className="grid gap-3 sm:gap-4 lg:grid-cols-[300px_1fr]">
+        <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-5">
+          <div className="grid grid-cols-[56px_1fr] gap-3 sm:block">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-2xl font-black text-[#0875d1] sm:h-20 sm:w-20 sm:rounded-full sm:text-3xl">{profile.name.slice(0, 1)}</div>
+            <div className="min-w-0">
+              <h2 className="text-lg font-black leading-tight text-[#060b27] sm:mt-4 sm:text-2xl">{profile.name}</h2>
+              <p className="mt-1 text-sm font-bold text-[#0875d1] sm:text-base">{profile.profession}</p>
+              <div className="mt-2 sm:mt-4">
+                <StatusBadge status={profile.status} />
+              </div>
+            </div>
           </div>
+          <p className="mt-3 text-sm leading-6 text-slate-600 sm:leading-7">{profile.skills}</p>
         </article>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2">
           <MetricCard icon={<PackageCheck className="h-5 w-5" />} label="Стоимость" value={profile.price} detail="Показывается в карточке специалиста." />
           <MetricCard icon={<ShieldCheck className="h-5 w-5" />} label="Проверка" value="80%" detail="Контакты заполнены, фото можно добавить позже." />
           <MetricCard icon={<MessageSquare className="h-5 w-5" />} label="Каналы связи" value="2" detail="Телефон и мессенджер в анкете." />
@@ -552,13 +559,13 @@ export function CabinetResponsesPage() {
 export function CabinetPaymentsPage() {
   return (
     <Shell title="Оплата и тарифы" description="Тарифы публикаций, история платежей и переход к оплате заказа." eyebrow="Кабинет" nav={cabinetNav}>
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
         {tariffs.map((tariff) => (
-          <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-card" key={tariff.id}>
-            <h2 className="text-xl font-black text-[#060b27]">{tariff.name}</h2>
-            <p className="mt-3 text-3xl font-black text-[#0875d1]">{tariff.price} ₽</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{tariff.durationDays ? `${tariff.durationDays} дней размещения` : "Разовое действие"}</p>
-            <Link href={`/blizhniy/oplata/${tariff.id}`} className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#0aa337] font-bold text-white">
+          <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-5" key={tariff.id}>
+            <h2 className="line-clamp-2 text-sm font-black leading-5 text-[#060b27] sm:text-xl sm:leading-7">{tariff.name}</h2>
+            <p className="mt-2 text-2xl font-black text-[#0875d1] sm:mt-3 sm:text-3xl">{tariff.price} ₽</p>
+            <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{tariff.durationDays ? `${tariff.durationDays} дней размещения` : "Разовое действие"}</p>
+            <Link href={`/blizhniy/oplata/${tariff.id}`} className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0aa337] text-sm font-bold text-white sm:mt-5 sm:h-11">
               Оплатить
             </Link>
           </article>
@@ -618,27 +625,27 @@ export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
 
   return (
     <Shell title="Оплата заказа" description="Проверьте заказ, выберите способ оплаты и подтвердите платеж." eyebrow="Оплата">
-      <section className="grid gap-8 lg:grid-cols-[1fr_420px]">
-        <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-          <h2 className="text-2xl font-black text-[#060b27]">{payment?.targetTitle ?? `Заказ ${paymentId ?? tariff.id}`}</h2>
+      <section className="grid gap-4 lg:grid-cols-[1fr_380px]">
+        <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-5">
+          <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">{payment?.targetTitle ?? `Заказ ${paymentId ?? tariff.id}`}</h2>
           {payment ? <p className="mt-2 text-sm font-semibold text-slate-500">Платеж {payment.id}</p> : null}
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-6 sm:grid-cols-3 sm:gap-4">
             <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тариф" value={tariff.name} detail="Заказ сформирован." />
             <MetricCard icon={<Banknote className="h-5 w-5" />} label="Сумма" value={`${payment?.amount ?? tariff.price} ₽`} detail="Фиксированная стоимость." />
             <MetricCard icon={<CheckCircle2 className="h-5 w-5" />} label="Статус" value={payment?.status === "succeeded" ? "Оплачено" : "Ожидает оплаты"} detail="После оплаты публикация обновит статус." />
           </div>
-          <div className="mt-6 rounded-xl bg-slate-50 p-5">
+          <div className="mt-4 rounded-xl bg-slate-50 p-3 sm:mt-6 sm:p-5">
             <p className="font-bold text-slate-700">Способы оплаты</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="flex h-12 items-center justify-center rounded-lg border border-blue-200 bg-white font-bold text-[#0875d1]">Банковская карта</div>
-              <div className="flex h-12 items-center justify-center rounded-lg border border-slate-300 bg-white font-bold text-slate-700">Счет для бизнеса</div>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:gap-3">
+              <div className="flex h-11 items-center justify-center rounded-lg border border-blue-200 bg-white px-2 text-center text-xs font-bold text-[#0875d1] sm:h-12 sm:text-base">Банковская карта</div>
+              <div className="flex h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-center text-xs font-bold text-slate-700 sm:h-12 sm:text-base">Счет для бизнеса</div>
             </div>
           </div>
         </article>
-        <aside className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-6 shadow-card">
-          <ShieldCheck className="h-10 w-10 text-[#0aa337]" />
-          <h2 className="mt-4 text-2xl font-black text-[#060b27]">Подтверждение оплаты</h2>
-          <p className="mt-3 leading-7 text-slate-700">После подтверждения заказ получит статус «Оплата прошла», а публикация будет обновлена.</p>
+        <aside className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 shadow-card sm:p-5">
+          <ShieldCheck className="h-8 w-8 text-[#0aa337] sm:h-10 sm:w-10" />
+          <h2 className="mt-3 text-xl font-black text-[#060b27] sm:mt-4 sm:text-2xl">Подтверждение оплаты</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-700 sm:mt-3 sm:text-base sm:leading-7">После подтверждения заказ получит статус «Оплата прошла», а публикация будет обновлена.</p>
           <MockPaymentButton paymentId={payment?.id} tariffId={tariff.id} returnHref={returnHref} />
         </aside>
       </section>
@@ -650,13 +657,16 @@ export function AdminPage() {
   return (
     <Shell title="Админка" description="Панель модерации пользователей, контента, классификаторов, тарифов и платежей." eyebrow="Администрирование">
       <AdminGuardedContent>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard icon={<UsersRound className="h-5 w-5" />} label="Пользователи" value="3" detail="Роли user, organization, admin." />
           <MetricCard icon={<ClipboardList className="h-5 w-5" />} label="Публикации" value="9" detail="Объявления, вакансии, анкеты." />
           <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тарифы" value={String(tariffs.length)} detail="Все тарифы активны." />
           <MetricCard icon={<Banknote className="h-5 w-5" />} label="Платежи" value="3" detail="Есть успешный, ожидающий и ошибка." />
         </div>
-        <div className="mt-8 grid gap-8 xl:grid-cols-2">
+        <div id="ad-marquee" className="mt-4 scroll-mt-24 sm:mt-6">
+          <AdMarqueeAdminPanel />
+        </div>
+        <div className="mt-6 grid gap-6 xl:grid-cols-2">
           <section>
             <SectionTitle title="Очередь модерации" actionHref="/admin/obyavleniya" actionLabel="Все объявления" />
             <DataTable
