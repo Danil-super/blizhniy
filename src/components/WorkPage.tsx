@@ -71,13 +71,13 @@ function ContactButton({
     violet: "border-violet-400 text-violet-700 hover:bg-violet-50",
   };
 
-  const className = `inline-flex h-8 min-w-0 flex-1 overflow-hidden items-center justify-center gap-1 rounded-lg border px-1.5 text-xs font-bold leading-tight transition sm:h-9 sm:gap-2 sm:px-3 sm:text-sm lg:min-w-28 lg:flex-none lg:px-4 ${toneClass[tone]}`;
+  const className = `inline-flex h-8 min-w-0 flex-1 overflow-hidden items-center justify-center gap-0.5 rounded-lg border px-1 text-[11px] font-bold leading-tight transition sm:h-9 sm:gap-2 sm:px-3 sm:text-sm lg:min-w-28 lg:flex-none lg:px-4 ${toneClass[tone]}`;
 
   if (!href) {
     return (
       <button className={`${className} cursor-not-allowed opacity-55`} disabled>
         {icon}
-        <span className="hidden truncate sm:inline">{label}</span>
+        <span className="truncate">{label}</span>
       </button>
     );
   }
@@ -85,7 +85,7 @@ function ContactButton({
   return (
     <a href={href} className={className}>
       {icon}
-      <span className="hidden truncate sm:inline">{label}</span>
+      <span className="truncate">{label}</span>
     </a>
   );
 }
@@ -129,14 +129,15 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
   const messageHref = vacancy.messengerUrl ?? `https://wa.me/${(vacancy.phone ?? demoPhone).replace(/\D/g, "")}`;
 
   return (
-    <article className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-card sm:gap-3 sm:p-3 lg:p-4">
+    <article className="group relative grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-card transition hover:border-blue-200 hover:shadow-lg sm:gap-3 sm:p-3 lg:p-4">
+      <Link href={`/blizhniy/vakansiya/${vacancy.id}`} className="absolute inset-0 z-10 rounded-xl" aria-label={`Открыть вакансию ${vacancy.title}`} />
       <div className="flex min-w-0 gap-2 sm:gap-3">
         <LogoBadge vacancy={vacancy} />
         <div className="min-w-0 flex-1">
           <div className="min-w-0">
             <div className="min-w-0">
               <p className="truncate text-[11px] text-slate-500 sm:text-sm">{vacancy.organization}</p>
-              <h3 className="mt-0.5 line-clamp-2 text-sm font-black leading-4 text-[#060b27] sm:text-lg sm:leading-6 lg:mt-1 lg:text-xl">{vacancy.title}</h3>
+              <h3 className="mt-0.5 line-clamp-2 text-sm font-black leading-4 text-[#060b27] transition group-hover:text-[#0875d1] sm:text-lg sm:leading-6 lg:mt-1 lg:text-xl">{vacancy.title}</h3>
             </div>
             <p className="mt-1 text-xs font-black text-[#060b27] sm:text-base">{vacancy.salary}</p>
           </div>
@@ -147,7 +148,7 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-2 sm:gap-2 lg:grid-cols-3">
+      <div className="relative z-20 grid grid-cols-2 gap-1.5 sm:gap-2 lg:grid-cols-3">
           <Link href={`/blizhniy/vakansiya/${vacancy.id}`} className="col-span-2 inline-flex h-8 min-w-0 overflow-hidden items-center justify-center rounded-lg bg-[#0aa337] px-1.5 text-xs font-bold text-white transition hover:bg-[#078a2e] sm:h-9 sm:px-3 sm:text-sm lg:col-span-1 lg:px-4">
             <span className="sm:hidden">Отклик</span>
             <span className="hidden sm:inline">Откликнуться</span>
@@ -164,7 +165,8 @@ function WorkRequestCard({ request }: { request: WorkRequest }) {
   const messageHref = request.messengerUrl ?? `https://wa.me/${(request.phone ?? demoPhone).replace(/\D/g, "")}`;
 
   return (
-    <article className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-card sm:gap-3 sm:p-3 lg:p-4">
+    <article className="group relative grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-card transition hover:border-blue-200 hover:shadow-lg sm:gap-3 sm:p-3 lg:p-4">
+      <Link href={`/blizhniy/rabota/zakazy/${request.id}`} className="absolute inset-0 z-10 rounded-xl" aria-label={`Открыть заказ ${request.title}`} />
       <div className="flex min-w-0 gap-2 sm:gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 text-center text-[10px] font-black leading-3 text-[#0a8f32] sm:h-16 sm:w-16 sm:text-xs lg:h-20 lg:w-20 lg:text-sm lg:leading-4">
           Заказ
@@ -173,7 +175,7 @@ function WorkRequestCard({ request }: { request: WorkRequest }) {
           <div className="min-w-0">
             <div className="min-w-0">
               <p className="truncate text-[11px] text-slate-500 sm:text-sm">{request.author}</p>
-              <h3 className="mt-0.5 line-clamp-2 text-sm font-black leading-4 text-[#060b27] sm:text-lg sm:leading-6 lg:mt-1 lg:text-xl">{request.title}</h3>
+              <h3 className="mt-0.5 line-clamp-2 text-sm font-black leading-4 text-[#060b27] transition group-hover:text-[#0875d1] sm:text-lg sm:leading-6 lg:mt-1 lg:text-xl">{request.title}</h3>
             </div>
             <p className="mt-1 text-xs font-black text-[#060b27] sm:text-base">{request.budget}</p>
           </div>
@@ -184,7 +186,7 @@ function WorkRequestCard({ request }: { request: WorkRequest }) {
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+      <div className="relative z-20 grid grid-cols-2 gap-1.5 sm:gap-2">
           <ContactButton href={phoneHref} icon={<Phone className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />} label="Позвонить" tone="green" />
           <ContactButton href={messageHref} icon={<MessageCircle className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />} label="Написать" tone="violet" />
       </div>
@@ -197,16 +199,17 @@ function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
   const messageHref = specialist.messengerUrl ?? supportMessengerUrl;
 
   return (
-    <article className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-card sm:gap-3 sm:p-3 lg:p-4">
+    <article className="group relative grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-card transition hover:border-blue-200 hover:shadow-lg sm:gap-3 sm:p-3 lg:p-4">
+      <Link href={`/blizhniy/specialist/${specialist.id}`} className="absolute inset-0 z-10 rounded-xl" aria-label={`Открыть анкету ${specialist.name}`} />
       <div className="flex min-w-0 gap-2 sm:gap-3">
         <Avatar specialist={specialist} />
         <div className="min-w-0 flex-1">
           <div className="min-w-0">
             <div className="min-w-0">
               <h3 className="text-sm font-black text-[#060b27] sm:text-lg lg:text-xl">{specialist.name}</h3>
-              <Link href={`/blizhniy/specialist/${specialist.id}`} className="mt-0.5 line-clamp-2 block text-xs font-semibold leading-4 text-[#0875d1] sm:text-sm sm:leading-5">
+              <p className="mt-0.5 line-clamp-2 text-xs font-semibold leading-4 text-[#0875d1] sm:text-sm sm:leading-5">
                 {specialist.profession}
-              </Link>
+              </p>
             </div>
             <p className="mt-1 text-xs font-black text-[#060b27] sm:text-base">{specialist.price}</p>
           </div>
@@ -217,7 +220,7 @@ function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+      <div className="relative z-20 grid grid-cols-2 gap-1.5 sm:gap-2">
           <ContactButton href={phoneHref} icon={<Phone className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />} label="Позвонить" />
           <ContactButton href={messageHref} icon={<MessageCircle className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />} label="Написать" />
       </div>

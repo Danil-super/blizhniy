@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { categories, listingKinds, professions, specialists, vacancies } from "@/lib/data";
+import { categories, listingKinds, professions, specialists, vacancies, workRequests } from "@/lib/data";
 import { demoListings, slugifySubcategory } from "@/components/listings/ListingPages";
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -11,6 +11,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const listingKindPaths = listingKinds.map((kind) => `/blizhniy/${kind.slug}`);
   const listingPaths = demoListings.map((listing) => `/blizhniy/obyavlenie/${listing.slug}`);
   const vacancyPaths = vacancies.map((vacancy) => `/blizhniy/vakansiya/${vacancy.id}`);
+  const workRequestPaths = workRequests.map((request) => `/blizhniy/rabota/zakazy/${request.id}`);
   const specialistPaths = specialists.map((specialist) => `/blizhniy/specialist/${specialist.id}`);
   const professionPaths = professions.map((profession) => `/blizhniy/rabota/specialisty/${profession.slug}`);
 
@@ -40,6 +41,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...categoryPaths,
     ...listingPaths,
     ...vacancyPaths,
+    ...workRequestPaths,
     ...specialistPaths,
     ...professionPaths,
   ].map((path) => ({

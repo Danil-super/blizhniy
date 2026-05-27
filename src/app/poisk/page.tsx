@@ -74,7 +74,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     .map((request) => ({
       title: request.title,
       description: `${request.author}, ${request.city}. ${request.budget}`,
-      href: "/blizhniy/rabota",
+      href: `/blizhniy/rabota/zakazy/${request.id}`,
       type: "Заказ",
     }));
 

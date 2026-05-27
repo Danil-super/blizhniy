@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { BriefcaseBusiness, Mail, MapPin, Phone } from "lucide-react";
+import { BriefcaseBusiness, MapPin, MessageCircle, Phone } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LocationMap } from "@/components/LocationMap";
@@ -72,14 +72,14 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
                   Позвонить
                 </a>
               ) : null}
-              {vacancy.email ? (
-                <a className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 font-bold" href={`mailto:${vacancy.email}`}>
-                  <Mail className="h-5 w-5" />
-                  Email
+              {vacancy.messengerUrl || vacancy.email ? (
+                <a className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#0875d1] font-bold text-[#0875d1]" href={vacancy.messengerUrl ?? `mailto:${vacancy.email}`}>
+                  <MessageCircle className="h-5 w-5" />
+                  Написать
                 </a>
               ) : null}
               <Link href="/blizhniy/oplata/job-response" className="inline-flex h-11 items-center justify-center rounded-xl border border-[#0875d1] font-bold text-[#0875d1]">
-                Оплатить отклик
+                Откликнуться
               </Link>
             </div>
           </aside>
