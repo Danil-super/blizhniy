@@ -139,6 +139,10 @@ export function markPaymentTargetSucceeded(payment: Payment) {
     return "sent";
   }
 
+  if (payment.targetType === "ad_marquee") {
+    return "published";
+  }
+
   const listing = getMockStore().listings.find((item) => item.id === payment.targetId);
 
   if (listing) {

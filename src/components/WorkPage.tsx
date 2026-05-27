@@ -27,7 +27,7 @@ function LogoBadge({ vacancy }: { vacancy: JobVacancy }) {
 
   return (
     <div
-      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border px-1.5 text-center text-[11px] font-black leading-3 sm:h-16 sm:w-16 sm:text-xs lg:h-24 lg:w-24 lg:text-sm lg:leading-4 ${tones[vacancy.logoTone]}`}
+      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border px-1 text-center text-[10px] font-black leading-3 sm:h-16 sm:w-16 sm:text-xs lg:h-20 lg:w-20 lg:text-sm lg:leading-4 ${tones[vacancy.logoTone]}`}
     >
       {vacancy.logoText}
     </div>
@@ -45,7 +45,7 @@ function Avatar({ specialist }: { specialist: SpecialistProfile }) {
     <div
       className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${
         palettes[specialist.imageSeed] ?? "from-slate-100 to-blue-100"
-      } text-xl font-black shadow-inner sm:h-16 sm:w-16 sm:text-2xl lg:h-24 lg:w-24 lg:text-3xl`}
+      } text-xl font-black shadow-inner sm:h-16 sm:w-16 sm:text-2xl lg:h-20 lg:w-20 lg:text-3xl`}
       aria-hidden="true"
     >
       {specialist.name.slice(0, 1)}
@@ -71,13 +71,13 @@ function ContactButton({
     violet: "border-violet-400 text-violet-700 hover:bg-violet-50",
   };
 
-  const className = `inline-flex h-8 min-w-0 flex-1 overflow-hidden items-center justify-center gap-1 rounded-lg border px-1.5 text-xs font-bold leading-tight transition sm:h-9 sm:gap-2 sm:px-3 sm:text-sm lg:min-w-36 lg:flex-none lg:px-4 ${toneClass[tone]}`;
+  const className = `inline-flex h-8 min-w-0 flex-1 overflow-hidden items-center justify-center gap-1 rounded-lg border px-1.5 text-xs font-bold leading-tight transition sm:h-9 sm:gap-2 sm:px-3 sm:text-sm lg:min-w-28 lg:flex-none lg:px-4 ${toneClass[tone]}`;
 
   if (!href) {
     return (
       <button className={`${className} cursor-not-allowed opacity-55`} disabled>
         {icon}
-        <span className="truncate">{label}</span>
+        <span className="hidden truncate sm:inline">{label}</span>
       </button>
     );
   }
@@ -85,7 +85,7 @@ function ContactButton({
   return (
     <a href={href} className={className}>
       {icon}
-      <span className="truncate">{label}</span>
+      <span className="hidden truncate sm:inline">{label}</span>
     </a>
   );
 }
@@ -129,27 +129,28 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
   const messageHref = vacancy.messengerUrl ?? `https://wa.me/${(vacancy.phone ?? demoPhone).replace(/\D/g, "")}`;
 
   return (
-    <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-card lg:p-4">
-      <div className="flex min-w-0 gap-3">
+    <article className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-card sm:gap-3 sm:p-3 lg:p-4">
+      <div className="flex min-w-0 gap-2 sm:gap-3">
         <LogoBadge vacancy={vacancy} />
         <div className="min-w-0 flex-1">
           <div className="min-w-0">
             <div className="min-w-0">
-              <p className="truncate text-xs text-slate-500 sm:text-sm">{vacancy.organization}</p>
-              <h3 className="mt-0.5 text-base font-black leading-5 text-[#060b27] sm:text-lg sm:leading-6 lg:mt-1 lg:text-xl">{vacancy.title}</h3>
+              <p className="truncate text-[11px] text-slate-500 sm:text-sm">{vacancy.organization}</p>
+              <h3 className="mt-0.5 line-clamp-2 text-sm font-black leading-4 text-[#060b27] sm:text-lg sm:leading-6 lg:mt-1 lg:text-xl">{vacancy.title}</h3>
             </div>
-            <p className="mt-1 text-sm font-black text-[#060b27] sm:text-base">{vacancy.salary}</p>
+            <p className="mt-1 text-xs font-black text-[#060b27] sm:text-base">{vacancy.salary}</p>
           </div>
-          {vacancy.description ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:text-sm">{vacancy.description}</p> : null}
-          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-600 sm:text-sm">
+          {vacancy.description ? <p className="mt-1 hidden text-xs leading-5 text-slate-600 sm:line-clamp-2 sm:text-sm">{vacancy.description}</p> : null}
+          <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-600 sm:mt-1.5 sm:gap-1.5 sm:text-sm">
             <MapPin className="h-3.5 w-3.5 shrink-0" />
             {vacancy.city}
           </p>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-1.5 sm:gap-2 lg:grid-cols-3">
+      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-2 sm:gap-2 lg:grid-cols-3">
           <Link href={`/blizhniy/vakansiya/${vacancy.id}`} className="col-span-2 inline-flex h-8 min-w-0 overflow-hidden items-center justify-center rounded-lg bg-[#0aa337] px-1.5 text-xs font-bold text-white transition hover:bg-[#078a2e] sm:h-9 sm:px-3 sm:text-sm lg:col-span-1 lg:px-4">
-            Откликнуться
+            <span className="sm:hidden">Отклик</span>
+            <span className="hidden sm:inline">Откликнуться</span>
           </Link>
           <ContactButton href={phoneHref} icon={<Phone className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />} label="Позвонить" tone="green" />
           <ContactButton href={messageHref} icon={<MessageCircle className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />} label="Написать" tone="violet" />
@@ -163,21 +164,21 @@ function WorkRequestCard({ request }: { request: WorkRequest }) {
   const messageHref = request.messengerUrl ?? `https://wa.me/${(request.phone ?? demoPhone).replace(/\D/g, "")}`;
 
   return (
-    <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-card lg:p-4">
-      <div className="flex min-w-0 gap-3">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 text-center text-[11px] font-black leading-3 text-[#0a8f32] sm:h-16 sm:w-16 sm:text-xs lg:h-24 lg:w-24 lg:text-sm lg:leading-4">
+    <article className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-card sm:gap-3 sm:p-3 lg:p-4">
+      <div className="flex min-w-0 gap-2 sm:gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 text-center text-[10px] font-black leading-3 text-[#0a8f32] sm:h-16 sm:w-16 sm:text-xs lg:h-20 lg:w-20 lg:text-sm lg:leading-4">
           Заказ
         </div>
         <div className="min-w-0 flex-1">
           <div className="min-w-0">
             <div className="min-w-0">
-              <p className="truncate text-xs text-slate-500 sm:text-sm">{request.author}</p>
-              <h3 className="mt-0.5 text-base font-black leading-5 text-[#060b27] sm:text-lg sm:leading-6 lg:mt-1 lg:text-xl">{request.title}</h3>
+              <p className="truncate text-[11px] text-slate-500 sm:text-sm">{request.author}</p>
+              <h3 className="mt-0.5 line-clamp-2 text-sm font-black leading-4 text-[#060b27] sm:text-lg sm:leading-6 lg:mt-1 lg:text-xl">{request.title}</h3>
             </div>
-            <p className="mt-1 text-sm font-black text-[#060b27] sm:text-base">{request.budget}</p>
+            <p className="mt-1 text-xs font-black text-[#060b27] sm:text-base">{request.budget}</p>
           </div>
-          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:text-sm">{request.description}</p>
-          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-600 sm:text-sm">
+          <p className="mt-1 hidden text-xs leading-5 text-slate-600 sm:line-clamp-2 sm:text-sm">{request.description}</p>
+          <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-600 sm:mt-1.5 sm:gap-1.5 sm:text-sm">
             <MapPin className="h-3.5 w-3.5 shrink-0" />
             {[request.city, request.showExactAddress ? request.address : request.district].filter(Boolean).join(", ")}
           </p>
@@ -196,21 +197,21 @@ function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
   const messageHref = specialist.messengerUrl ?? supportMessengerUrl;
 
   return (
-    <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-card lg:p-4">
-      <div className="flex min-w-0 gap-3">
+    <article className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-card sm:gap-3 sm:p-3 lg:p-4">
+      <div className="flex min-w-0 gap-2 sm:gap-3">
         <Avatar specialist={specialist} />
         <div className="min-w-0 flex-1">
           <div className="min-w-0">
             <div className="min-w-0">
-              <h3 className="text-base font-black text-[#060b27] sm:text-lg lg:text-xl">{specialist.name}</h3>
-              <Link href={`/blizhniy/specialist/${specialist.id}`} className="mt-0.5 block text-sm font-semibold text-[#0875d1]">
+              <h3 className="text-sm font-black text-[#060b27] sm:text-lg lg:text-xl">{specialist.name}</h3>
+              <Link href={`/blizhniy/specialist/${specialist.id}`} className="mt-0.5 line-clamp-2 block text-xs font-semibold leading-4 text-[#0875d1] sm:text-sm sm:leading-5">
                 {specialist.profession}
               </Link>
             </div>
-            <p className="mt-1 text-sm font-black text-[#060b27] sm:text-base">{specialist.price}</p>
+            <p className="mt-1 text-xs font-black text-[#060b27] sm:text-base">{specialist.price}</p>
           </div>
-          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:text-sm">{specialist.skills}</p>
-          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-600 sm:text-sm">
+          <p className="mt-1 hidden text-xs leading-5 text-slate-600 sm:line-clamp-2 sm:text-sm">{specialist.skills}</p>
+          <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-600 sm:mt-1.5 sm:gap-1.5 sm:text-sm">
             <MapPin className="h-3.5 w-3.5 shrink-0" />
             {specialist.city}
           </p>
@@ -323,7 +324,7 @@ export function WorkPage() {
               </Link>
             </div>
           </div>
-          <div className="space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-4 xl:grid-cols-1">
             {visibleDemand.map((item) =>
               demandTab === "Заказчики" ? (
                 <WorkRequestCard key={item.id} request={item as WorkRequest} />
@@ -356,7 +357,7 @@ export function WorkPage() {
               </Link>
             </div>
           </div>
-          <div className="space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-4 xl:grid-cols-1">
             {visibleSupply.map((specialist) => (
               <SpecialistCard key={specialist.id} specialist={specialist} />
             ))}

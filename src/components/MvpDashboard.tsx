@@ -209,11 +209,7 @@ function Shell({
             <h1 className="text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">{title}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-lg sm:leading-7">{description}</p>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
-            <ActionLink href="/cabinet/oplata" tone="plain">
-              <CreditCard className="h-4 w-4" />
-              Тарифы
-            </ActionLink>
+          <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:gap-3">
             <ActionLink href="/blizhniy/sozdat" tone="green">
               <Plus className="h-4 w-4" />
               Создать
@@ -557,10 +553,32 @@ export function CabinetResponsesPage() {
 }
 
 export function CabinetPaymentsPage() {
+  const adTariff = tariffs.find((tariff) => tariff.action === "ad_marquee");
+  const publicationTariffs = tariffs.filter((tariff) => tariff.action !== "ad_marquee");
+
   return (
     <Shell title="Оплата и тарифы" description="Тарифы публикаций, история платежей и переход к оплате заказа." eyebrow="Кабинет" nav={cabinetNav}>
+      {adTariff ? (
+        <section className="mb-4 rounded-xl border border-blue-100 bg-blue-50/70 p-3 shadow-card sm:mb-6 sm:p-5">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div>
+              <p className="text-xs font-black uppercase text-[#0875d1]">Реклама</p>
+              <h2 className="mt-1 text-lg font-black text-[#060b27] sm:text-2xl">{adTariff.name}</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                Покупка места в бегущей строке на главной странице на {adTariff.durationDays} дней.
+              </p>
+            </div>
+            <div className="grid grid-cols-[1fr_auto] items-center gap-3 sm:block sm:text-right">
+              <p className="text-2xl font-black text-[#0875d1] sm:text-3xl">{adTariff.price} ₽</p>
+              <Link href={`/blizhniy/oplata/${adTariff.id}`} className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0aa337] px-4 text-sm font-bold text-white sm:mt-3 sm:w-full">
+                Купить
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : null}
       <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
-        {tariffs.map((tariff) => (
+        {publicationTariffs.map((tariff) => (
           <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-5" key={tariff.id}>
             <h2 className="line-clamp-2 text-sm font-black leading-5 text-[#060b27] sm:text-xl sm:leading-7">{tariff.name}</h2>
             <p className="mt-2 text-2xl font-black text-[#0875d1] sm:mt-3 sm:text-3xl">{tariff.price} ₽</p>

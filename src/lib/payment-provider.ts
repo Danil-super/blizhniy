@@ -33,6 +33,10 @@ function resolveTargetType(tariff: Tariff): PaymentTargetType {
     return "fair_application";
   }
 
+  if (tariff.action === "ad_marquee") {
+    return "ad_marquee";
+  }
+
   return "listing";
 }
 

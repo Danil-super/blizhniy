@@ -119,7 +119,7 @@ export type Profession = {
 export type Tariff = {
   id: string;
   name: string;
-  action: "listing_publication" | "vacancy_publication" | "job_response" | "fair_participation";
+  action: "listing_publication" | "vacancy_publication" | "job_response" | "fair_participation" | "ad_marquee";
   price: number;
   durationDays: number | null;
   active: boolean;
@@ -127,7 +127,7 @@ export type Tariff = {
 
 export type Payment = {
   id: string;
-  targetType: "listing" | "vacancy" | "application" | "fair_application";
+  targetType: "listing" | "vacancy" | "application" | "fair_application" | "ad_marquee";
   targetId?: string;
   targetTitle: string;
   tariffId: string;
