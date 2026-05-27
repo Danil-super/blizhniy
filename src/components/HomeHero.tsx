@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BriefcaseBusiness, MapPinned, ShoppingBag, Sparkles, Store, UsersRound } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, Grid3X3, MapPinned, ShoppingBag, Sparkles, UsersRound } from "lucide-react";
 
 const heroCards = [
   { label: "Объявления", detail: "вещи, дом, авто", icon: ShoppingBag, className: "bg-blue-50 text-[#0875d1]" },
@@ -15,26 +15,26 @@ export function HomeHero() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-black uppercase text-[#0a8f32] ring-1 ring-emerald-100">
               <Sparkles className="h-3.5 w-3.5" />
-              Краснодарский край
+              Первый регион: Краснодарский край
             </div>
             <h1 className="mt-4 max-w-6xl text-3xl font-black leading-tight text-[#060b27] sm:text-5xl xl:whitespace-nowrap xl:text-[56px]">
               <span className="italic">БЛИЖНИЙ</span> — объявления, работа и услуги рядом
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-              Платформа Краснодарского края для объявлений, вакансий, специалистов, услуг и Ярмарки мастеров.
+              Запуск начинается с Краснодарского края. Платформа объединяет объявления, вакансии, специалистов, услуги и частные заказы рядом с вами, а в дальнейшем может расширяться на другие регионы.
             </p>
             <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3">
               <Link href="/blizhniy/sozdat" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-5 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]">
                 Разместить
                 <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link href="/blizhniy/rabota/specialisty" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-5 text-sm font-black text-[#0875d1] transition hover:border-[#0875d1]">
-                <BriefcaseBusiness className="h-4 w-4" />
-                Найти специалиста
+              <Link href="/blizhniy/kategorii" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-5 text-sm font-black text-[#0875d1] transition hover:border-[#0875d1]">
+                <Grid3X3 className="h-4 w-4" />
+                Каталог
               </Link>
-              <Link href="/yarmarka-masterov" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
-                <Store className="h-4 w-4" />
-                Ярмарка мастеров
+              <Link href="/blizhniy/rabota" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
+                <BriefcaseBusiness className="h-4 w-4" />
+                Работа
               </Link>
             </div>
           </div>
@@ -45,8 +45,9 @@ export function HomeHero() {
                 <MapPinned className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-xs font-bold uppercase text-white/60">Региональная витрина</p>
+                <p className="text-xs font-bold uppercase text-white/60">Регион запуска</p>
                 <p className="mt-1 text-lg font-black">Краснодарский край</p>
+                <p className="mt-1 text-sm leading-5 text-white/70">Следующие регионы можно подключать поэтапно через региональные витрины.</p>
               </div>
             </div>
             <div className="mt-3 grid gap-2">

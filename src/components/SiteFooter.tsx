@@ -18,7 +18,7 @@ export function SiteFooter() {
             БЛИЖНИЙ
           </Link>
           <p className="mt-3 max-w-md text-sm leading-6 text-slate-600">
-            Региональная платформа объявлений, работы, специалистов и ярмарки мастеров для Краснодарского края.
+            БЛИЖНИЙ — платформа объявлений, работы, специалистов и услуг рядом. Первый регион запуска — Краснодарский край.
           </p>
           <a href="mailto:demo@blizhniy.local" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             <Mail className="h-4 w-4" />
