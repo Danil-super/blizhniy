@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   ArrowLeft,
@@ -22,6 +23,7 @@ import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { categories } from "@/lib/data";
+import { createListing } from "@/lib/mock-store";
 import { getTariffs } from "@/lib/tariff-store";
 import { ListingCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingCard, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
@@ -659,7 +661,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function TextInput(props: { placeholder?: string; defaultValue?: string; type?: string; validation?: "phone" | "email" | "messenger" }) {
+function TextInput(props: { name?: string; placeholder?: string; defaultValue?: string; type?: string; validation?: "phone" | "email" | "messenger" }) {
   return <ValidatedInput {...props} className="h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />;
 }
 
@@ -668,6 +670,38 @@ function SelectInput({ name, options, defaultValue }: { name?: string; options: 
 }
 
 export function ListingFormPage({ slug, adminMode = false }: { slug?: string; adminMode?: boolean }) {
+  async function publishWithoutPaymentAction(formData: FormData) {
+    "use server";
+
+    const title = String(formData.get("title") ?? "").trim() || "Новое объявление";
+    const kindValue = String(formData.get("kind") ?? "prodam");
+    const kind = listingKinds.some((item) => item.slug === kindValue) ? (kindValue as ListingKind) : "prodam";
+    const categorySlug = String(formData.get("category") ?? "").trim() || "mebel-i-interer";
+    const subcategorySlug = String(formData.get("subcategory") ?? "").trim();
+    const category = categories.find((item) => item.slug === categorySlug);
+    const subcategory =
+      category?.children.find((child) => slugifySubcategory(child) === subcategorySlug) ??
+      category?.children[0] ??
+      "Без подкатегории";
+    const location = String(formData.get("location") ?? "").trim();
+    const city = location.split(",")[0]?.trim() || "Краснодар";
+
+    createListing({
+      title,
+      kind,
+      categorySlug,
+      subcategory,
+      city,
+      address: String(formData.get("address") ?? "").trim() || undefined,
+      price: String(formData.get("price") ?? "").trim() || undefined,
+      description: String(formData.get("description") ?? "").trim() || undefined,
+      phone: String(formData.get("phone") ?? "").trim() || undefined,
+      messengerUrl: String(formData.get("messengerUrl") ?? "").trim() || undefined,
+    });
+
+    redirect("/cabinet/obyavleniya");
+  }
+
   const editing = Boolean(slug);
   const listing = slug ? demoListings.find((item) => item.slug === slug) ?? demoListings[0] : undefined;
   const tariff = getTariffs().find((item) => item.id === "listing-publication");
@@ -683,7 +717,7 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
             Заполните объявление, добавьте фото и выберите удобный способ связи.
           </p>
 
-          <form className="mt-6 grid gap-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <form action={adminMode ? publishWithoutPaymentAction : undefined} className="mt-6 grid gap-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)]">
               <Field label="Тип объявления">
                 <SelectInput name="kind" defaultValue={listing?.kind ?? "prodam"} options={listingKinds.map((kind) => ({ value: kind.slug, label: kind.title }))} />
@@ -693,16 +727,17 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
 
             <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
               <Field label="Название">
-                <TextInput defaultValue={listing?.title} placeholder="Например, Комод из массива дуба" />
+                <TextInput name="title" defaultValue={listing?.title} placeholder="Например, Комод из массива дуба" />
               </Field>
               <Field label="Цена">
-                <TextInput defaultValue={listing?.price} placeholder="Например, 12 000 ₽" />
+                <TextInput name="price" defaultValue={listing?.price} placeholder="Например, 12 000 ₽" />
               </Field>
             </div>
 
             <label className="block">
               <span className="text-sm font-bold text-slate-700">Описание</span>
               <textarea
+                name="description"
                 defaultValue={listing?.description}
                 className="mt-2 min-h-28 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
                 placeholder="Состояние, детали, условия передачи"
@@ -718,10 +753,10 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <Field label="Телефон">
-                  <TextInput defaultValue={listing?.phone} placeholder="+7..." validation="phone" />
+                  <TextInput name="phone" defaultValue={listing?.phone} placeholder="+7..." validation="phone" />
                 </Field>
                 <Field label="Telegram или WhatsApp">
-                  <TextInput defaultValue={listing?.messengerUrl} placeholder="@username или ссылка" validation="messenger" />
+                  <TextInput name="messengerUrl" defaultValue={listing?.messengerUrl} placeholder="@username или ссылка" validation="messenger" />
                 </Field>
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-[1fr_220px]">
@@ -749,10 +784,10 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
                 Сохранить черновик
               </Link>
               {adminMode ? (
-                <Link href="/cabinet/obyavleniya" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white">
+                <button type="submit" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white">
                   Опубликовать без оплаты
                   <ArrowRight className="h-5 w-5" />
-                </Link>
+                </button>
               ) : (
                 <Link href="/blizhniy/oplata/listing-publication" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white">
                   Перейти к оплате

@@ -36,23 +36,27 @@ function validationForField(label: string, type: string) {
   return undefined;
 }
 
-export function Field({ label, placeholder, type = "text" }: { label: string; placeholder?: string; type?: string }) {
+export function Field({ label, name, placeholder, type = "text" }: { label: string; name?: string; placeholder?: string; type?: string }) {
   const validation = validationForField(label, type);
   const inputClassName = "h-10 min-w-0 rounded-xl border border-slate-300 px-3 text-sm font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4 sm:text-base";
 
   return (
     <label className="grid min-w-0 gap-1.5 text-xs font-bold leading-4 text-slate-700 sm:gap-2 sm:text-sm">
       <span className="line-clamp-2">{label}</span>
-      {type === "file" ? <input className={inputClassName} type={type} placeholder={placeholder} /> : <ValidatedInput className={inputClassName} type={type} placeholder={placeholder} validation={validation} />}
+      {type === "file" ? (
+        <input name={name} className={inputClassName} type={type} placeholder={placeholder} />
+      ) : (
+        <ValidatedInput name={name} className={inputClassName} type={type} placeholder={placeholder} validation={validation} />
+      )}
     </label>
   );
 }
 
-export function TextAreaField({ label, placeholder }: { label: string; placeholder?: string }) {
+export function TextAreaField({ label, name, placeholder }: { label: string; name?: string; placeholder?: string }) {
   return (
     <label className="grid gap-1.5 text-xs font-bold text-slate-700 sm:gap-2 sm:text-sm">
       {label}
-      <textarea className="min-h-24 rounded-xl border border-slate-300 p-3 text-sm font-normal outline-none focus:border-[#0875d1] sm:min-h-32 sm:p-4 sm:text-base" placeholder={placeholder} />
+      <textarea name={name} className="min-h-24 rounded-xl border border-slate-300 p-3 text-sm font-normal outline-none focus:border-[#0875d1] sm:min-h-32 sm:p-4 sm:text-base" placeholder={placeholder} />
     </label>
   );
 }

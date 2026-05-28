@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
+import { createVacancy } from "@/lib/mock-store";
 
 type PageProps = {
   searchParams?: Promise<{ admin?: string }>;
@@ -9,6 +11,26 @@ type PageProps = {
 export default async function CreateVacancyPage({ searchParams }: PageProps) {
   const params = searchParams ? await searchParams : undefined;
   const adminMode = params?.admin === "1";
+  
+  async function publishVacancyWithoutPaymentAction(formData: FormData) {
+    "use server";
+
+    createVacancy({
+      organization: String(formData.get("organization") ?? "").trim() || "Организация",
+      title: String(formData.get("title") ?? "").trim() || "Новая вакансия",
+      profession: String(formData.get("profession") ?? "").trim() || "Специалист",
+      city: String(formData.get("city") ?? "").trim() || "Краснодар",
+      district: String(formData.get("district") ?? "").trim() || undefined,
+      address: String(formData.get("address") ?? "").trim() || undefined,
+      salary: String(formData.get("salary") ?? "").trim() || undefined,
+      phone: String(formData.get("phone") ?? "").trim() || undefined,
+      email: String(formData.get("email") ?? "").trim() || undefined,
+      schedule: String(formData.get("schedule") ?? "").trim() || undefined,
+      description: String(formData.get("description") ?? "").trim() || undefined,
+    });
+
+    redirect("/cabinet/vakansii");
+  }
 
   return (
     <>
@@ -22,33 +44,35 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
               : "После заполнения создается заказ на оплату тарифа размещения вакансии. После оплаты вакансия будет опубликована."
           }
         >
+          <form action={adminMode ? publishVacancyWithoutPaymentAction : undefined} className="grid gap-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Организация" placeholder="ООО РемДом" />
-            <Field label="Вакансия" placeholder="Сантехник" />
+            <Field name="organization" label="Организация" placeholder="ООО РемДом" />
+            <Field name="title" label="Вакансия" placeholder="Сантехник" />
             <Field label="Регион" placeholder="Краснодарский край" />
-            <Field label="Город" placeholder="Краснодар" />
-            <Field label="Район" placeholder="Центральный район" />
-            <Field label="Точный адрес организации" placeholder="ул. Красная, 118" />
-            <Field label="Зарплата / стоимость" placeholder="от 80 000 ₽" />
-            <Field label="Категория специалиста" placeholder="Сантехник" />
-            <Field label="График" placeholder="5/2" />
-            <Field label="Телефон" placeholder="+7..." />
-            <Field label="Email" type="email" placeholder="hr@example.ru" />
+            <Field name="city" label="Город" placeholder="Краснодар" />
+            <Field name="district" label="Район" placeholder="Центральный район" />
+            <Field name="address" label="Точный адрес организации" placeholder="ул. Красная, 118" />
+            <Field name="salary" label="Зарплата / стоимость" placeholder="от 80 000 ₽" />
+            <Field name="profession" label="Категория специалиста" placeholder="Сантехник" />
+            <Field name="schedule" label="График" placeholder="5/2" />
+            <Field name="phone" label="Телефон" placeholder="+7..." />
+            <Field name="email" label="Email" type="email" placeholder="hr@example.ru" />
             <Field label="Широта" placeholder="45.037" />
             <Field label="Долгота" placeholder="38.975" />
           </div>
-          <TextAreaField label="Описание вакансии" />
+          <TextAreaField name="description" label="Описание вакансии" />
           <TextAreaField label="Требования" />
           <TextAreaField label="Обязанности" />
           {adminMode ? (
-            <Link className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white" href="/cabinet/vakansii">
+            <button type="submit" className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white">
               Сохранить вакансию без оплаты
-            </Link>
+            </button>
           ) : (
             <Link className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white" href="/blizhniy/oplata/vacancy-publication">
               Создать заказ и оплатить
             </Link>
           )}
+          </form>
         </FormPanel>
       </main>
     </>

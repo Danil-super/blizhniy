@@ -23,6 +23,60 @@ type CreateFairApplicationInput = {
   comment?: string;
 };
 
+type CreateListingInput = {
+  title: string;
+  kind: Listing["kind"];
+  categorySlug: string;
+  subcategory: string;
+  city: string;
+  district?: string;
+  address?: string;
+  price?: string;
+  description?: string;
+  phone?: string;
+  messengerUrl?: string;
+};
+
+type CreateVacancyInput = {
+  organization: string;
+  title: string;
+  profession: string;
+  city: string;
+  district?: string;
+  address?: string;
+  salary?: string;
+  phone?: string;
+  messengerUrl?: string;
+  email?: string;
+  schedule?: string;
+  description?: string;
+};
+
+type CreateWorkRequestInput = {
+  author: string;
+  title: string;
+  profession: string;
+  city: string;
+  district?: string;
+  address?: string;
+  budget?: string;
+  phone?: string;
+  messengerUrl?: string;
+  description?: string;
+};
+
+type CreateSpecialistInput = {
+  name: string;
+  profession: string;
+  city: string;
+  district?: string;
+  address?: string;
+  price?: string;
+  phone?: string;
+  messengerUrl?: string;
+  skills?: string;
+};
+
 declare global {
   var __blizhniyMockStore: MockStore | undefined;
 }
@@ -37,6 +91,20 @@ function todayIsoDate() {
 
 function createFairApplicationId() {
   return `fair-${Date.now().toString(36)}`;
+}
+
+function createEntityId(prefix: string) {
+  return `${prefix}-${Date.now().toString(36)}`;
+}
+
+function safeSlug(value: string, fallback = "publication") {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9а-яё\s-]/gi, "")
+    .trim()
+    .replace(/\s+/g, "-");
+
+  return slug || fallback;
 }
 
 export function getMockStore() {
@@ -101,6 +169,105 @@ export function createFairApplication(input: CreateFairApplicationInput) {
 
   getMockStore().fairApplications.unshift(application);
   return application;
+}
+
+export function createListing(input: CreateListingInput) {
+  const listing: Listing = {
+    id: createEntityId("listing"),
+    slug: `${safeSlug(input.title, "obyavlenie")}-${Date.now().toString(36)}`,
+    kind: input.kind,
+    categorySlug: input.categorySlug,
+    subcategory: input.subcategory,
+    author: "Админ",
+    title: input.title,
+    description: input.description?.trim() || "Описание будет дополнено.",
+    city: input.city,
+    district: input.district,
+    address: input.address,
+    showExactAddress: false,
+    price: input.price?.trim() || "по договоренности",
+    imageTone: "blue",
+    phone: input.phone?.trim(),
+    messengerUrl: input.messengerUrl?.trim(),
+    status: "published",
+    paid: true,
+    publishedAt: todayIsoDate(),
+    expiresAt: todayIsoDate(),
+  };
+
+  getMockStore().listings.unshift(listing);
+  return listing;
+}
+
+export function createVacancy(input: CreateVacancyInput) {
+  const vacancy: JobVacancy = {
+    id: createEntityId("vacancy"),
+    organization: input.organization,
+    title: input.title,
+    profession: input.profession,
+    city: input.city,
+    district: input.district,
+    address: input.address,
+    showExactAddress: Boolean(input.address),
+    salary: input.salary?.trim() || "по договоренности",
+    logoText: input.organization.slice(0, 12) || "Компания",
+    logoTone: "blue",
+    phone: input.phone?.trim(),
+    messengerUrl: input.messengerUrl?.trim(),
+    email: input.email?.trim(),
+    schedule: input.schedule?.trim(),
+    description: input.description?.trim() || "Описание вакансии будет дополнено.",
+    requirements: "Уточняется",
+    responsibilities: "Уточняется",
+    status: "published",
+  };
+
+  getMockStore().vacancies.unshift(vacancy);
+  return vacancy;
+}
+
+export function createWorkRequest(input: CreateWorkRequestInput) {
+  const request: WorkRequest = {
+    id: createEntityId("request"),
+    author: input.author,
+    title: input.title,
+    description: input.description?.trim() || "Описание задачи будет дополнено.",
+    profession: input.profession,
+    city: input.city,
+    district: input.district,
+    address: input.address,
+    showExactAddress: false,
+    budget: input.budget?.trim() || "по договоренности",
+    phone: input.phone?.trim(),
+    messengerUrl: input.messengerUrl?.trim(),
+    status: "published",
+    createdAt: todayIsoDate(),
+    publishedAt: todayIsoDate(),
+  };
+
+  getMockStore().workRequests.unshift(request);
+  return request;
+}
+
+export function createSpecialist(input: CreateSpecialistInput) {
+  const specialist: SpecialistProfile = {
+    id: createEntityId("specialist"),
+    name: input.name,
+    profession: input.profession,
+    skills: input.skills?.trim() || "Навыки уточняются",
+    city: input.city,
+    district: input.district,
+    address: input.address,
+    showExactAddress: false,
+    price: input.price?.trim() || "по договоренности",
+    imageSeed: "alex",
+    phone: input.phone?.trim(),
+    messengerUrl: input.messengerUrl?.trim(),
+    status: "published",
+  };
+
+  getMockStore().specialists.unshift(specialist);
+  return specialist;
 }
 
 export function markPaymentTargetSucceeded(payment: Payment) {
