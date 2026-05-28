@@ -14,6 +14,7 @@ export function DropdownSelect({
   value,
   defaultValue,
   onValueChange,
+  placeholder = "Выберите",
   buttonClassName = "",
 }: {
   name?: string;
@@ -21,14 +22,14 @@ export function DropdownSelect({
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
+  placeholder?: string;
   buttonClassName?: string;
 }) {
-  const fallbackValue = options[0]?.value ?? "";
-  const [internalValue, setInternalValue] = useState(defaultValue ?? fallbackValue);
+  const [internalValue, setInternalValue] = useState(defaultValue ?? "");
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const selectedValue = value ?? internalValue;
-  const selectedOption = useMemo(() => options.find((option) => option.value === selectedValue) ?? options[0], [options, selectedValue]);
+  const selectedOption = useMemo(() => options.find((option) => option.value === selectedValue), [options, selectedValue]);
 
   useEffect(() => {
     function handleDocumentClick(event: MouseEvent) {
@@ -42,11 +43,11 @@ export function DropdownSelect({
   }, []);
 
   useEffect(() => {
-    if (value !== undefined || !options.length || options.some((option) => option.value === internalValue)) {
+    if (value !== undefined || !internalValue || !options.length || options.some((option) => option.value === internalValue)) {
       return;
     }
 
-    setInternalValue(options[0].value);
+    setInternalValue("");
   }, [internalValue, options, value]);
 
   function choose(nextValue: string) {
@@ -59,16 +60,16 @@ export function DropdownSelect({
   }
 
   return (
-    <div className="relative" ref={rootRef}>
+    <div className="relative min-w-0 max-w-full" ref={rootRef}>
       {name ? <input type="hidden" name={name} value={selectedOption?.value ?? ""} /> : null}
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={`flex h-12 w-full items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-4 text-left text-sm font-semibold text-slate-950 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:text-base ${buttonClassName}`}
+        className={`flex h-12 w-full min-w-0 max-w-full items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-4 text-left text-sm font-semibold text-slate-950 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:text-base ${buttonClassName}`}
         aria-expanded={open}
         aria-haspopup="listbox"
       >
-        <span className="min-w-0 truncate">{selectedOption?.label ?? "Выберите"}</span>
+        <span className={`min-w-0 truncate ${selectedOption ? "" : "text-slate-400"}`}>{selectedOption?.label ?? placeholder}</span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (

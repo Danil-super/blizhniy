@@ -7,6 +7,7 @@ type MockStore = {
   listings: Listing[];
   payments: Payment[];
   specialists: SpecialistProfile[];
+  currentUserSpecialistId?: string;
   vacancies: JobVacancy[];
   workRequests: WorkRequest[];
 };
@@ -35,6 +36,8 @@ type CreateListingInput = {
   description?: string;
   phone?: string;
   messengerUrl?: string;
+  lat?: number;
+  lng?: number;
 };
 
 type CreateVacancyInput = {
@@ -50,6 +53,8 @@ type CreateVacancyInput = {
   email?: string;
   schedule?: string;
   description?: string;
+  lat?: number;
+  lng?: number;
 };
 
 type CreateWorkRequestInput = {
@@ -63,6 +68,8 @@ type CreateWorkRequestInput = {
   phone?: string;
   messengerUrl?: string;
   description?: string;
+  lat?: number;
+  lng?: number;
 };
 
 type CreateSpecialistInput = {
@@ -73,8 +80,13 @@ type CreateSpecialistInput = {
   address?: string;
   price?: string;
   phone?: string;
+  email?: string;
   messengerUrl?: string;
   skills?: string;
+  description?: string;
+  images?: string[];
+  lat?: number;
+  lng?: number;
 };
 
 declare global {
@@ -145,6 +157,20 @@ export function listSpecialists() {
   return getMockStore().specialists;
 }
 
+export function getSpecialistById(id: string) {
+  return getMockStore().specialists.find((specialist) => specialist.id === id);
+}
+
+export function getCurrentUserSpecialist() {
+  const store = getMockStore();
+
+  if (!store.currentUserSpecialistId) {
+    return undefined;
+  }
+
+  return store.specialists.find((specialist) => specialist.id === store.currentUserSpecialistId);
+}
+
 export function listApplications() {
   return getMockStore().applications;
 }
@@ -184,6 +210,8 @@ export function createListing(input: CreateListingInput) {
     city: input.city,
     district: input.district,
     address: input.address,
+    lat: input.lat,
+    lng: input.lng,
     showExactAddress: false,
     price: input.price?.trim() || "по договоренности",
     imageTone: "blue",
@@ -208,6 +236,8 @@ export function createVacancy(input: CreateVacancyInput) {
     city: input.city,
     district: input.district,
     address: input.address,
+    lat: input.lat,
+    lng: input.lng,
     showExactAddress: Boolean(input.address),
     salary: input.salary?.trim() || "по договоренности",
     logoText: input.organization.slice(0, 12) || "Компания",
@@ -236,6 +266,8 @@ export function createWorkRequest(input: CreateWorkRequestInput) {
     city: input.city,
     district: input.district,
     address: input.address,
+    lat: input.lat,
+    lng: input.lng,
     showExactAddress: false,
     budget: input.budget?.trim() || "по договоренности",
     phone: input.phone?.trim(),
@@ -255,18 +287,66 @@ export function createSpecialist(input: CreateSpecialistInput) {
     name: input.name,
     profession: input.profession,
     skills: input.skills?.trim() || "Навыки уточняются",
+    description: input.description?.trim(),
     city: input.city,
     district: input.district,
     address: input.address,
+    lat: input.lat,
+    lng: input.lng,
     showExactAddress: false,
     price: input.price?.trim() || "по договоренности",
     imageSeed: "alex",
+    images: input.images,
     phone: input.phone?.trim(),
+    email: input.email?.trim(),
     messengerUrl: input.messengerUrl?.trim(),
     status: "published",
   };
 
   getMockStore().specialists.unshift(specialist);
+  return specialist;
+}
+
+export function updateSpecialist(id: string, input: CreateSpecialistInput) {
+  const store = getMockStore();
+  const specialist = store.specialists.find((item) => item.id === id);
+
+  if (!specialist) {
+    return createSpecialist(input);
+  }
+
+  Object.assign(specialist, {
+    name: input.name,
+    profession: input.profession,
+    skills: input.skills?.trim() || "Навыки уточняются",
+    description: input.description?.trim(),
+    city: input.city,
+    district: input.district,
+    address: input.address,
+    lat: input.lat,
+    lng: input.lng,
+    showExactAddress: false,
+    price: input.price?.trim() || "по договоренности",
+    images: input.images,
+    phone: input.phone?.trim(),
+    email: input.email?.trim(),
+    messengerUrl: input.messengerUrl?.trim(),
+    status: "published",
+  });
+
+  return specialist;
+}
+
+export function upsertCurrentUserSpecialist(input: CreateSpecialistInput) {
+  const store = getMockStore();
+  const currentSpecialist = getCurrentUserSpecialist();
+
+  if (currentSpecialist) {
+    return updateSpecialist(currentSpecialist.id, input);
+  }
+
+  const specialist = createSpecialist(input);
+  store.currentUserSpecialistId = specialist.id;
   return specialist;
 }
 

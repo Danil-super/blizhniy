@@ -95,6 +95,7 @@ export type SpecialistProfile = {
   name: string;
   profession: string;
   skills: string;
+  description?: string;
   city: string;
   district?: string;
   address?: string;
@@ -103,7 +104,9 @@ export type SpecialistProfile = {
   showExactAddress: boolean;
   price: string;
   imageSeed: string;
+  images?: string[];
   phone?: string;
+  email?: string;
   messengerUrl?: string;
   videoUrl?: string;
   status: PublicationStatus;

@@ -6,7 +6,8 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Grid3X3, MapPin, Search } from "lucide-react";
 import { categories, cities, listingKinds, listings, professions, region, specialists, vacancies, workRequests } from "@/lib/data";
 
-const cityOptions = [{ slug: region.slug, name: region.name }, ...cities];
+const sortedCities = [...cities].sort((left, right) => left.name.localeCompare(right.name, "ru"));
+const cityOptions = [{ slug: region.slug, name: region.name }, ...sortedCities];
 
 type SearchSuggestion = {
   label: string;
@@ -63,13 +64,27 @@ function matchesSuggestion(label: string, query: string) {
 
 export function HeaderControls() {
   const router = useRouter();
-  const [selectedCity, setSelectedCity] = useState(cities[0]?.slug ?? "krasnodar");
+  const [selectedCity, setSelectedCity] = useState(region.slug);
   const [cityMenuOpen, setCityMenuOpen] = useState(false);
+  const [cityQuery, setCityQuery] = useState("");
   const [searchSuggestionsOpen, setSearchSuggestionsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const cityMenuRef = useRef<HTMLDivElement>(null);
+  const citySearchInputRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
-  const selectedCityName = cityOptions.find((item) => item.slug === selectedCity)?.name ?? cities[0]?.name ?? region.name;
+  const selectedCityName = cityOptions.find((item) => item.slug === selectedCity)?.name ?? region.name;
+  const filteredCityOptions = useMemo(() => {
+    const normalizedQuery = cityQuery.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return sortedCities;
+    }
+
+    return sortedCities.filter((city) => {
+      const normalizedName = city.name.toLowerCase();
+      return normalizedName.startsWith(normalizedQuery) || normalizedName.includes(normalizedQuery);
+    });
+  }, [cityQuery]);
   const filteredSearchSuggestions = useMemo(() => {
     const trimmedQuery = query.trim();
 
@@ -79,6 +94,14 @@ export function HeaderControls() {
 
     return searchSuggestionSource.filter((suggestion) => matchesSuggestion(suggestion.label, trimmedQuery)).slice(0, 6);
   }, [query]);
+
+  useEffect(() => {
+    if (!cityMenuOpen) {
+      return;
+    }
+
+    citySearchInputRef.current?.focus();
+  }, [cityMenuOpen]);
 
   useEffect(() => {
     const savedCity = window.localStorage.getItem("blizhniy-city");
@@ -106,6 +129,7 @@ export function HeaderControls() {
   function handleRegionChange(citySlug: string) {
     setSelectedCity(citySlug);
     window.localStorage.setItem("blizhniy-city", citySlug);
+    setCityQuery("");
     setCityMenuOpen(false);
   }
 
@@ -179,7 +203,10 @@ export function HeaderControls() {
       <div className="relative order-3 col-span-2 md:col-span-1" ref={cityMenuRef}>
         <button
           type="button"
-          onClick={() => setCityMenuOpen((current) => !current)}
+          onClick={() => {
+            setCityQuery("");
+            setCityMenuOpen((current) => !current);
+          }}
           className="flex min-h-12 w-full items-center rounded-lg bg-white px-2 text-left text-sm text-slate-950 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-100 md:w-40 lg:w-44"
           aria-expanded={cityMenuOpen}
           aria-haspopup="listbox"
@@ -193,28 +220,57 @@ export function HeaderControls() {
         </button>
         {cityMenuOpen ? (
           <div
-            className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-xl border border-slate-200 bg-white py-2 shadow-xl shadow-slate-900/10"
+            className="absolute right-0 top-[calc(100%+8px)] z-50 w-full max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10 md:w-72"
             role="listbox"
           >
-            {cityOptions.map((city) => {
-              const active = city.slug === selectedCity;
+            <div className="mb-2 flex h-10 items-center rounded-lg border border-slate-200 bg-white px-3 text-slate-500 focus-within:border-[#0875d1]">
+              <Search className="h-4 w-4 shrink-0" />
+              <input
+                ref={citySearchInputRef}
+                value={cityQuery}
+                onChange={(event) => setCityQuery(event.target.value)}
+                className="min-w-0 flex-1 border-0 bg-transparent px-2 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+                placeholder="Введите город"
+                autoComplete="off"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => handleRegionChange(region.slug)}
+              className={`flex h-10 w-full items-center justify-between rounded-lg px-3 text-left text-sm font-semibold transition ${
+                selectedCity === region.slug ? "bg-blue-50 text-[#0875d1]" : "text-slate-700 hover:bg-slate-50 hover:text-[#0875d1]"
+              }`}
+              role="option"
+              aria-selected={selectedCity === region.slug}
+            >
+              <span>Во всех регионах</span>
+              {selectedCity === region.slug ? <span className="h-2 w-2 rounded-full bg-[#0875d1]" /> : null}
+            </button>
+            <div className="mt-1 max-h-64 overflow-y-auto">
+              {filteredCityOptions.length ? (
+                filteredCityOptions.map((city) => {
+                  const active = city.slug === selectedCity;
 
-              return (
-                <button
-                  key={city.slug}
-                  type="button"
-                  onClick={() => handleRegionChange(city.slug)}
-                  className={`flex h-10 w-full items-center justify-between px-4 text-left text-sm font-semibold transition ${
-                    active ? "bg-blue-50 text-[#0875d1]" : "text-slate-700 hover:bg-slate-50 hover:text-[#0875d1]"
-                  }`}
-                  role="option"
-                  aria-selected={active}
-                >
-                  <span>{city.name}</span>
-                  {active ? <span className="h-2 w-2 rounded-full bg-[#0875d1]" /> : null}
-                </button>
-              );
-            })}
+                  return (
+                    <button
+                      key={city.slug}
+                      type="button"
+                      onClick={() => handleRegionChange(city.slug)}
+                      className={`flex h-10 w-full items-center justify-between rounded-lg px-3 text-left text-sm font-semibold transition ${
+                        active ? "bg-blue-50 text-[#0875d1]" : "text-slate-700 hover:bg-slate-50 hover:text-[#0875d1]"
+                      }`}
+                      role="option"
+                      aria-selected={active}
+                    >
+                      <span>{city.name}</span>
+                      {active ? <span className="h-2 w-2 rounded-full bg-[#0875d1]" /> : null}
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="px-3 py-3 text-sm font-semibold text-slate-500">Город не найден</p>
+              )}
+            </div>
           </div>
         ) : null}
       </div>

@@ -9,34 +9,49 @@ type ValidatedInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onChange
   onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
 };
 
-const maxPhoneDigits = 11;
 const maxPhoneLength = 18;
-const phonePattern = "^(?=(?:\\D*\\d){10,11}\\D*$)\\+?[0-9 ()-]+$";
+const phonePattern = "^\\+7-\\([0-9]{3}\\)-[0-9]{3}-[0-9]{2}-[0-9]{2}$";
 const emailPattern = "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$";
 const messengerPattern = "^(@[A-Za-z0-9_]{5,32}|https?://[^\\s]+)$";
 const urlPattern = "^https?://[^\\s]+$";
 
 function sanitizePhone(value: string) {
-  let digitCount = 0;
-  let sanitized = value.trimStart().startsWith("+") ? "+" : "";
+  const digits = value.replace(/\D/g, "");
 
-  for (const char of value.replace(/\+/g, "")) {
-    if (/\d/.test(char)) {
-      if (digitCount >= maxPhoneDigits) {
-        continue;
-      }
-
-      digitCount += 1;
-      sanitized += char;
-      continue;
-    }
-
-    if (/[()\-\s]/.test(char) && sanitized.length < maxPhoneLength) {
-      sanitized += char;
-    }
+  if (!digits) {
+    return "";
   }
 
-  return sanitized.slice(0, maxPhoneLength);
+  const nationalDigits = digits.replace(/^(\d)?/, (firstDigit) => (firstDigit === "7" || firstDigit === "8" ? "" : firstDigit)).slice(0, 10);
+  const parts = [
+    nationalDigits.slice(0, 3),
+    nationalDigits.slice(3, 6),
+    nationalDigits.slice(6, 8),
+    nationalDigits.slice(8, 10),
+  ];
+  let formatted = "+7";
+
+  if (parts[0]) {
+    formatted += `-(${parts[0]}`;
+  }
+
+  if (parts[0].length === 3) {
+    formatted += ")";
+  }
+
+  if (parts[1]) {
+    formatted += `-${parts[1]}`;
+  }
+
+  if (parts[2]) {
+    formatted += `-${parts[2]}`;
+  }
+
+  if (parts[3]) {
+    formatted += `-${parts[3]}`;
+  }
+
+  return formatted.slice(0, maxPhoneLength);
 }
 
 function sanitizeNoSpaces(value: string) {
@@ -62,7 +77,7 @@ function getValidationProps(validation?: ValidationKind) {
       inputMode: "tel" as const,
       maxLength: maxPhoneLength,
       pattern: phonePattern,
-      title: "Введите телефон: 10-11 цифр, можно использовать +, пробелы, скобки и дефисы.",
+      title: "Введите телефон в формате +7-(999)-999-99-99.",
       type: "tel",
     };
   }

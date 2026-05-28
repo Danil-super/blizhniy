@@ -4,11 +4,11 @@ import { MapPin, MessageCircle, Phone } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LocationMap } from "@/components/LocationMap";
-import { specialists } from "@/lib/data";
+import { listSpecialists } from "@/lib/mock-store";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const specialist = specialists.find((item) => item.id === slug);
+  const specialist = listSpecialists().find((item) => item.id === slug);
 
   return {
     title: specialist ? `${specialist.name} — ${specialist.profession}` : "Специалист",
@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function SpecialistDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const specialist = specialists.find((item) => item.id === slug);
+  const specialist = listSpecialists().find((item) => item.id === slug);
 
   if (!specialist) {
     notFound();
@@ -34,7 +34,15 @@ export default async function SpecialistDetailPage({ params }: { params: Promise
         <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
           <StatusBadge status={specialist.status} />
           <div className="mt-4 grid gap-5 sm:mt-6 lg:grid-cols-[132px_1fr_300px] lg:gap-7">
-            <div className="flex h-28 w-28 items-center justify-center rounded-full bg-blue-50 text-4xl font-black text-[#0875d1] sm:h-36 sm:w-36 sm:text-5xl">{specialist.name.slice(0, 1)}</div>
+            {specialist.images?.[0] ? (
+              <div
+                className="h-28 w-28 rounded-full bg-blue-50 bg-contain bg-center bg-no-repeat ring-1 ring-blue-100 sm:h-36 sm:w-36"
+                style={{ backgroundImage: `url(${specialist.images[0]})` }}
+                aria-label={`Фото ${specialist.name}`}
+              />
+            ) : (
+              <div className="flex h-28 w-28 items-center justify-center rounded-full bg-blue-50 text-4xl font-black text-[#0875d1] sm:h-36 sm:w-36 sm:text-5xl">{specialist.name.slice(0, 1)}</div>
+            )}
             <section>
               <h1 className="text-3xl font-black leading-tight text-[#060b27] sm:text-4xl">{specialist.name}</h1>
               <p className="mt-1 text-lg font-bold text-[#0875d1] sm:text-xl">{specialist.profession}</p>
@@ -43,7 +51,7 @@ export default async function SpecialistDetailPage({ params }: { params: Promise
                 {[specialist.city, specialist.district].filter(Boolean).join(", ")}
               </p>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-700 sm:text-base sm:leading-7">
-                {specialist.skills}. Опытный исполнитель для частных заказов и регулярной работы. Анкета готова к расширению полями опыта, портфолио и загрузкой фото.
+                {specialist.description ?? `${specialist.skills}. Опытный исполнитель для частных заказов и регулярной работы.`}
               </p>
             </section>
             <aside>

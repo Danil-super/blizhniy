@@ -8,6 +8,10 @@ export type DemoPublication = {
   city: string;
   price?: string;
   description?: string;
+  images?: string[];
+  lat?: number;
+  lng?: number;
+  showExactAddress?: boolean;
   phone?: string;
   messengerUrl?: string;
   listingKind?: "prodam" | "kuplyu" | "menyayu" | "otdam-darom";

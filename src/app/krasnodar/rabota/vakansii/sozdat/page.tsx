@@ -4,10 +4,16 @@ import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
 import { createVacancy } from "@/lib/mock-store";
+import { YandexMapPicker } from "@/components/YandexMapPicker";
 
 type PageProps = {
   searchParams?: Promise<{ admin?: string }>;
 };
+
+function parseCoordinate(formData: FormData, name: string) {
+  const value = Number(String(formData.get(name) ?? "").replace(",", "."));
+  return Number.isFinite(value) ? value : undefined;
+}
 
 export default async function CreateVacancyPage({ searchParams }: PageProps) {
   const params = searchParams ? await searchParams : undefined;
@@ -28,6 +34,8 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
       email: String(formData.get("email") ?? "").trim() || undefined,
       schedule: String(formData.get("schedule") ?? "").trim() || undefined,
       description: String(formData.get("description") ?? "").trim() || undefined,
+      lat: parseCoordinate(formData, "lat"),
+      lng: parseCoordinate(formData, "lng"),
     });
 
     redirect("/cabinet/vakansii");
@@ -58,9 +66,8 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
             <Field name="schedule" label="График" placeholder="5/2" />
             <Field name="phone" label="Телефон" placeholder="+7..." />
             <Field name="email" label="Email" type="email" placeholder="hr@example.ru" />
-            <Field label="Широта" placeholder="45.037" />
-            <Field label="Долгота" placeholder="38.975" />
           </div>
+          <YandexMapPicker />
           <TextAreaField name="description" label="Описание вакансии" />
           <TextAreaField label="Требования" />
           <TextAreaField label="Обязанности" />

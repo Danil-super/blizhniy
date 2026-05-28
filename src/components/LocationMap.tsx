@@ -1,4 +1,7 @@
+"use client";
+
 import { MapPin, Navigation } from "lucide-react";
+import { YandexMapView } from "@/components/YandexMapPicker";
 
 export type MapLocation = {
   city: string;
@@ -18,13 +21,14 @@ function displayLocation(location: MapLocation) {
 }
 
 function routeUrl(location: MapLocation) {
-  const query = location.lat && location.lng ? `${location.lat},${location.lng}` : displayLocation(location);
+  const query = typeof location.lat === "number" && typeof location.lng === "number" ? `${location.lat},${location.lng}` : displayLocation(location);
 
   return `https://yandex.ru/maps/?rtext=~${encodeURIComponent(query)}&rtt=auto`;
 }
 
 export function LocationMap({ location, exactLabel = "Точный адрес скрыт" }: { location: MapLocation; exactLabel?: string }) {
   const label = displayLocation(location);
+  const hasPoint = typeof location.lat === "number" && typeof location.lng === "number";
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
@@ -37,26 +41,23 @@ export function LocationMap({ location, exactLabel = "Точный адрес с
           </p>
           {!location.showExactAddress ? <p className="mt-2 text-sm text-slate-500">{exactLabel}. Показана примерная зона.</p> : null}
         </div>
-        <a
-          href={routeUrl(location)}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#0875d1] px-4 font-bold text-[#0875d1] transition hover:bg-blue-50"
-        >
-          <Navigation className="h-5 w-5" />
-          Построить маршрут
-        </a>
+        {hasPoint ? (
+          <a
+            href={routeUrl(location)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#0875d1] px-4 font-bold text-[#0875d1] transition hover:bg-blue-50"
+          >
+            <Navigation className="h-5 w-5" />
+            Построить маршрут
+          </a>
+        ) : null}
       </div>
-      <div className="relative mt-5 h-64 overflow-hidden rounded-xl border border-slate-200 bg-[linear-gradient(90deg,#e8eef5_1px,transparent_1px),linear-gradient(#e8eef5_1px,transparent_1px)] bg-[length:32px_32px]">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-50/70 via-white/20 to-emerald-50/70" />
-        <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-full flex-col items-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0875d1] text-white shadow-lg shadow-blue-200">
-            <MapPin className="h-7 w-7" />
-          </span>
-          <span className="mt-2 max-w-56 rounded-lg bg-white px-3 py-2 text-center text-sm font-bold text-slate-700 shadow-card">{label}</span>
-        </div>
-        <div className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-3 py-2 text-xs font-semibold text-slate-500">Примерная зона на карте</div>
-      </div>
+      {hasPoint ? (
+        <YandexMapView lat={location.lat as number} lng={location.lng as number} label={label} />
+      ) : (
+        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-slate-600">Метка на карте не указана.</div>
+      )}
     </section>
   );
 }

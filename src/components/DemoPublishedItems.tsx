@@ -1,7 +1,10 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import Link from "next/link";
+import { CheckCircle2, ExternalLink, FilePenLine } from "lucide-react";
 import { demoPublicationLabels, demoPublicationsStorageKey, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
 
 function readStoredPublications() {
@@ -52,7 +55,10 @@ export function DemoPublishedItems({ type }: { type: DemoPublicationType }) {
       <div className="grid gap-2 sm:grid-cols-2">
         {visibleItems.map((item) => (
           <article key={item.id} className="rounded-lg border border-emerald-100 bg-white p-3 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              {(item.type === "listing" || item.type === "specialist") && item.images?.[0] ? (
+                <img src={item.images[0]} alt={item.title} className="h-16 w-16 shrink-0 rounded-lg object-cover" />
+              ) : null}
               <div className="min-w-0">
                 <h3 className="line-clamp-2 text-sm font-black text-[#060b27] sm:text-base">{item.title}</h3>
                 <p className="mt-1 text-xs font-semibold text-slate-500">{item.subtitle}</p>
@@ -65,6 +71,18 @@ export function DemoPublishedItems({ type }: { type: DemoPublicationType }) {
               <span>{item.city}</span>
               {item.price ? <span>{item.price}</span> : null}
             </div>
+            {item.type === "listing" ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link href={`/blizhniy/obyavlenie/${item.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Открыть
+                </Link>
+                <Link href={`/blizhniy/obyavlenie/${item.id}/redaktirovat`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-[#0875d1] transition hover:bg-blue-100">
+                  <FilePenLine className="h-3.5 w-3.5" />
+                  Редактировать
+                </Link>
+              </div>
+            ) : null}
           </article>
         ))}
       </div>

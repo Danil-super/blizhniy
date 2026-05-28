@@ -25,8 +25,11 @@ import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { categories } from "@/lib/data";
-import { createListing } from "@/lib/mock-store";
+import { createListing, listListings } from "@/lib/mock-store";
 import { getTariffs } from "@/lib/tariff-store";
+import type { Listing as StoreListing } from "@/lib/types";
+import { DemoListingEditClient } from "./DemoListingEditClient";
+import { DemoListingDetailClient } from "./DemoListingDetailClient";
 import { ListingCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingCard, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
 
@@ -251,6 +254,70 @@ export const demoListings: DemoListing[] = [
     imageTone: "violet",
   },
 ];
+
+function parseCoordinate(formData: FormData, name: string) {
+  const value = Number(String(formData.get(name) ?? "").replace(",", "."));
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function listingImageTone(tone: StoreListing["imageTone"]): DemoListing["imageTone"] {
+  if (tone === "emerald") {
+    return "green";
+  }
+
+  if (tone === "slate") {
+    return "blue";
+  }
+
+  return tone;
+}
+
+function listingCategoryName(listing: StoreListing) {
+  return categories.find((category) => category.slug === listing.categorySlug)?.name ?? listing.subcategory;
+}
+
+function toDemoListing(listing: StoreListing): DemoListing {
+  return {
+    slug: listing.slug,
+    title: listing.title,
+    kind: listing.kind,
+    categorySlug: listing.categorySlug,
+    categoryName: listingCategoryName(listing),
+    subcategorySlug: slugifySubcategory(listing.subcategory),
+    subcategoryName: listing.subcategory,
+    city: listing.city,
+    district: listing.district ?? listing.address ?? "",
+    address: listing.address,
+    lat: listing.lat,
+    lng: listing.lng,
+    showExactAddress: listing.showExactAddress,
+    price: listing.price ?? "по договоренности",
+    description: listing.description,
+    phone: listing.phone ?? "+78610009999",
+    messengerUrl: listing.messengerUrl,
+    status: listing.status,
+    paid: listing.paid,
+    createdAt: listing.publishedAt,
+    publishedAt: listing.publishedAt,
+    expiresAt: listing.expiresAt,
+    imageTone: listingImageTone(listing.imageTone),
+  };
+}
+
+export function findListingBySlug(slug?: string) {
+  if (!slug) {
+    return undefined;
+  }
+
+  const localListing = demoListings.find((item) => item.slug === slug);
+
+  if (localListing) {
+    return localListing;
+  }
+
+  const storeListing = listListings().find((item) => item.slug === slug || item.id === slug);
+  return storeListing ? toDemoListing(storeListing) : undefined;
+}
 
 export function slugifySubcategory(name: string) {
   const map: Record<string, string> = {
@@ -563,8 +630,17 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
 }
 
 export function ListingDetailPage({ slug }: { slug: string }) {
-  const listing = demoListings.find((item) => item.slug === slug) ?? demoListings[0];
+  const listing = findListingBySlug(slug);
   const tariff = getTariffs().find((item) => item.id === "listing-publication");
+
+  if (!listing) {
+    return (
+      <>
+        <SiteHeader />
+        <DemoListingDetailClient slug={slug} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -711,14 +787,25 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
       description: String(formData.get("description") ?? "").trim() || undefined,
       phone: String(formData.get("phone") ?? "").trim() || undefined,
       messengerUrl: String(formData.get("messengerUrl") ?? "").trim() || undefined,
+      lat: parseCoordinate(formData, "lat"),
+      lng: parseCoordinate(formData, "lng"),
     });
 
     redirect("/cabinet/obyavleniya");
   }
 
   const editing = Boolean(slug);
-  const listing = slug ? demoListings.find((item) => item.slug === slug) ?? demoListings[0] : undefined;
+  const listing = findListingBySlug(slug);
   const tariff = getTariffs().find((item) => item.id === "listing-publication");
+
+  if (slug && !listing) {
+    return (
+      <>
+        <SiteHeader />
+        <DemoListingEditClient slug={slug} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -758,7 +845,7 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
               />
             </label>
 
-            <ListingLocationFields defaultCity={listing?.city} />
+            <ListingLocationFields defaultCity={listing?.city} defaultLat={listing?.lat} defaultLng={listing?.lng} />
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-lg font-black text-[#060b27]">

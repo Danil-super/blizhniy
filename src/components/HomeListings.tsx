@@ -3,13 +3,6 @@ import { ArrowRightLeft, Gift, MapPin, ShoppingBag, Tags } from "lucide-react";
 import { DemoListingFeed } from "@/components/DemoListingFeed";
 import { demoListings } from "@/components/listings/ListingPages";
 
-const kindLabels = {
-  prodam: "Продам",
-  kuplyu: "Куплю",
-  menyayu: "Меняю",
-  "otdam-darom": "Даром",
-};
-
 const kindIcons = {
   prodam: ShoppingBag,
   kuplyu: Tags,
@@ -23,13 +16,6 @@ const imageToneClasses = {
   rose: "from-rose-100 via-white to-orange-100 text-rose-700",
   amber: "from-amber-100 via-white to-yellow-50 text-amber-700",
   violet: "from-violet-100 via-white to-blue-100 text-violet-700",
-};
-
-const badgeToneClasses = {
-  prodam: "bg-blue-600 text-white",
-  kuplyu: "bg-emerald-600 text-white",
-  menyayu: "bg-violet-600 text-white",
-  "otdam-darom": "bg-rose-600 text-white",
 };
 
 export function HomeListings() {
@@ -55,10 +41,6 @@ export function HomeListings() {
               className="group min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card"
             >
               <span className={`relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-gradient-to-br ${imageToneClasses[listing.imageTone]}`}>
-                <span className="absolute inset-x-4 top-4 flex justify-between gap-2">
-                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${badgeToneClasses[listing.kind]}`}>{kindLabels[listing.kind]}</span>
-                  <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-slate-600">{listing.subcategoryName}</span>
-                </span>
                 <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80 transition group-hover:scale-105">
                   <Icon className="h-8 w-8" />
                 </span>

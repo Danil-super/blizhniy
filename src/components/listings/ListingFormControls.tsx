@@ -1,8 +1,11 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
+import { YandexMapPicker } from "@/components/YandexMapPicker";
 import { categories, cities, fairApplications, listings, region, specialists, vacancies, workRequests } from "@/lib/data";
 
 type Suggestion = {
@@ -12,6 +15,7 @@ type Suggestion = {
 
 type PreviewPhoto = {
   id: string;
+  file: File;
   name: string;
   url: string;
 };
@@ -180,23 +184,26 @@ function AutocompleteInput({
   );
 }
 
-export function ListingLocationFields({ defaultCity }: { defaultCity?: string }) {
+export function ListingLocationFields({ defaultCity, defaultLat, defaultLng }: { defaultCity?: string; defaultLat?: number; defaultLng?: number }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <AutocompleteInput
-        label="Город и регион"
-        name="location"
-        defaultValue={formatCityValue(defaultCity)}
-        placeholder="Начните вводить город"
-        selectOnFocus
-        suggestions={citySuggestions}
-      />
-      <AutocompleteInput
-        label="Адрес или ориентир (необязательно)"
-        name="address"
-        placeholder="Улица, ТЦ, остановка или район"
-        suggestions={addressSuggestions}
-      />
+    <div className="grid gap-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <AutocompleteInput
+          label="Город и регион"
+          name="location"
+          defaultValue={formatCityValue(defaultCity)}
+          placeholder="Начните вводить город"
+          selectOnFocus
+          suggestions={citySuggestions}
+        />
+        <AutocompleteInput
+          label="Адрес или ориентир (необязательно)"
+          name="address"
+          placeholder="Улица, ТЦ, остановка или район"
+          suggestions={addressSuggestions}
+        />
+      </div>
+      <YandexMapPicker defaultLat={defaultLat} defaultLng={defaultLng} />
     </div>
   );
 }
@@ -270,7 +277,7 @@ export function ListingPhotoUploader() {
       .slice(0, availableSlots);
 
     if (!files.length) {
-      event.target.value = "";
+      syncFileInput(photos);
       return;
     }
 
@@ -280,19 +287,37 @@ export function ListingPhotoUploader() {
 
       return {
         id: `${file.name}-${file.size}-${url}`,
+        file,
         name: file.name,
         url,
       };
     });
 
-    setPhotos((current) => [...current, ...nextPhotos]);
-    event.target.value = "";
+    setPhotos((current) => {
+      const updated = [...current, ...nextPhotos];
+      syncFileInput(updated);
+      return updated;
+    });
   }
 
   function removePhoto(photo: PreviewPhoto) {
     URL.revokeObjectURL(photo.url);
     urlsRef.current = urlsRef.current.filter((url) => url !== photo.url);
-    setPhotos((current) => current.filter((item) => item.id !== photo.id));
+    setPhotos((current) => {
+      const updated = current.filter((item) => item.id !== photo.id);
+      syncFileInput(updated);
+      return updated;
+    });
+  }
+
+  function syncFileInput(nextPhotos: PreviewPhoto[]) {
+    if (!inputRef.current) {
+      return;
+    }
+
+    const dataTransfer = new DataTransfer();
+    nextPhotos.forEach((photo) => dataTransfer.items.add(photo.file));
+    inputRef.current.files = dataTransfer.files;
   }
 
   function openFileDialog() {
@@ -322,12 +347,7 @@ export function ListingPhotoUploader() {
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
           {photos.map((photo, index) => (
             <figure key={photo.id} className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white">
-              <div
-                className="aspect-square w-full bg-cover bg-center"
-                role="img"
-                aria-label={`Фото ${index + 1}: ${photo.name}`}
-                style={{ backgroundImage: `url(${photo.url})` }}
-              />
+              <img src={photo.url} alt={`Фото ${index + 1}: ${photo.name}`} className="aspect-square w-full bg-slate-50 object-contain p-1" />
               <figcaption className="sr-only">{photo.name}</figcaption>
               <button
                 type="button"

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { demoListings, ListingDetailPage } from "@/components/listings/ListingPages";
+import { findListingBySlug, ListingDetailPage } from "@/components/listings/ListingPages";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -7,7 +7,7 @@ type PageProps = {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const listing = demoListings.find((item) => item.slug === slug);
+  const listing = findListingBySlug(slug);
 
   return {
     title: listing?.title ?? "Объявление",

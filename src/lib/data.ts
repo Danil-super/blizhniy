@@ -20,14 +20,32 @@ export const region = {
 };
 
 export const cities: City[] = [
-  { slug: "krasnodar", name: "Краснодар", regionSlug: region.slug },
-  { slug: "sochi", name: "Сочи", regionSlug: region.slug },
+  { slug: "abinsk", name: "Абинск", regionSlug: region.slug },
   { slug: "anapa", name: "Анапа", regionSlug: region.slug },
-  { slug: "novorossiysk", name: "Новороссийск", regionSlug: region.slug },
+  { slug: "apsheronsk", name: "Апшеронск", regionSlug: region.slug },
   { slug: "armavir", name: "Армавир", regionSlug: region.slug },
+  { slug: "belorechensk", name: "Белореченск", regionSlug: region.slug },
   { slug: "gelendzhik", name: "Геленджик", regionSlug: region.slug },
+  { slug: "goryachiy-klyuch", name: "Горячий Ключ", regionSlug: region.slug },
+  { slug: "gulkevichi", name: "Гулькевичи", regionSlug: region.slug },
   { slug: "eysk", name: "Ейск", regionSlug: region.slug },
+  { slug: "korenovsk", name: "Кореновск", regionSlug: region.slug },
+  { slug: "krasnodar", name: "Краснодар", regionSlug: region.slug },
+  { slug: "kropotkin", name: "Кропоткин", regionSlug: region.slug },
+  { slug: "krymsk", name: "Крымск", regionSlug: region.slug },
+  { slug: "kurganinsk", name: "Курганинск", regionSlug: region.slug },
+  { slug: "labinsk", name: "Лабинск", regionSlug: region.slug },
+  { slug: "novokubansk", name: "Новокубанск", regionSlug: region.slug },
+  { slug: "novorossiysk", name: "Новороссийск", regionSlug: region.slug },
+  { slug: "primorsko-akhtarsk", name: "Приморско-Ахтарск", regionSlug: region.slug },
+  { slug: "slavyansk-na-kubani", name: "Славянск-на-Кубани", regionSlug: region.slug },
+  { slug: "sochi", name: "Сочи", regionSlug: region.slug },
+  { slug: "temryuk", name: "Темрюк", regionSlug: region.slug },
+  { slug: "timashevsk", name: "Тимашевск", regionSlug: region.slug },
+  { slug: "tikhoretsk", name: "Тихорецк", regionSlug: region.slug },
   { slug: "tuapse", name: "Туапсе", regionSlug: region.slug },
+  { slug: "ust-labinsk", name: "Усть-Лабинск", regionSlug: region.slug },
+  { slug: "khadyzhensk", name: "Хадыженск", regionSlug: region.slug },
 ];
 
 export const categories: Category[] = [

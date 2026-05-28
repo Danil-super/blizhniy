@@ -39,6 +39,10 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
+        source: "/blizhniy/obyavlenie/:slug/redaktirovat",
+        destination: "/krasnodar/obyavlenie/:slug/redaktirovat",
+      },
+      {
         source: "/blizhniy/obyavlenie/:path*",
         destination: "/obyavlenie/:path*",
       },

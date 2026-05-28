@@ -1,4 +1,5 @@
 import type React from "react";
+/* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import {
@@ -13,9 +14,11 @@ import {
   FileText,
   Gauge,
   LockKeyhole,
+  Mail,
+  MapPin,
   Megaphone,
   MessageSquare,
-  PackageCheck,
+  Phone,
   Plus,
   Settings2,
   ShieldCheck,
@@ -33,9 +36,10 @@ import { LogoutButton } from "@/components/auth/LogoutButton";
 import { OrganizationAddressForm } from "@/components/OrganizationAddressForm";
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
+import { LocationMap } from "@/components/LocationMap";
 import { categories, professions } from "@/lib/data";
 import { getPayment } from "@/lib/payment-provider";
-import { listApplications, listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies, listWorkRequests } from "@/lib/mock-store";
+import { getCurrentUserSpecialist, listApplications, listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies, listWorkRequests } from "@/lib/mock-store";
 import { getTariffById, getTariffs, resetTariffPatches, updateTariffPatch } from "@/lib/tariff-store";
 
 type StatusTone = "green" | "blue" | "amber" | "slate" | "red" | "violet";
@@ -164,7 +168,6 @@ function listingRows() {
     category: categories.find((category) => category.slug === listing.categorySlug)?.name ?? listing.subcategory,
     city: listing.city,
     district: listing.district ?? listing.address ?? "",
-    coords: [listing.lat, listing.lng].filter(Boolean).join(", "),
     status: listing.status,
     views: index === 0 ? 124 : index === 1 ? 18 : 0,
   }));
@@ -581,31 +584,119 @@ export function CabinetWorkRequestsPage() {
 }
 
 export function CabinetSpecialistPage() {
-  const profile = listSpecialists()[0];
+  const profile = getCurrentUserSpecialist();
+  const locationLabel = profile ? [profile.address, profile.city].filter(Boolean).join(", ") || "Метка на карте не указана" : "";
 
   return (
     <Shell title="Анкета специалиста" description="Профиль исполнителя с услугами, контактами, статусом проверки и будущей публикацией." eyebrow="Кабинет" nav={cabinetNav}>
-      <section className="grid gap-3 sm:gap-4 lg:grid-cols-[300px_1fr]">
-        <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-5">
-          <div className="grid grid-cols-[56px_1fr] gap-3 sm:block">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-2xl font-black text-[#0875d1] sm:h-20 sm:w-20 sm:rounded-full sm:text-3xl">{profile.name.slice(0, 1)}</div>
-            <div className="min-w-0">
-              <h2 className="text-lg font-black leading-tight text-[#060b27] sm:mt-4 sm:text-2xl">{profile.name}</h2>
-              <p className="mt-1 text-sm font-bold text-[#0875d1] sm:text-base">{profile.profession}</p>
-              <div className="mt-2 sm:mt-4">
-                <StatusBadge status={profile.status} />
+      {profile ? (
+      <section className="grid min-w-0 gap-4">
+        <article className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
+              {profile.images?.[0] ? (
+                <div
+                  className="h-28 w-full max-w-56 shrink-0 rounded-2xl bg-blue-50 bg-contain bg-center bg-no-repeat ring-1 ring-blue-100 sm:h-36 sm:w-36"
+                  style={{ backgroundImage: `url(${profile.images[0]})` }}
+                  aria-label={`Фото ${profile.name}`}
+                />
+              ) : (
+                <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-4xl font-black text-[#0875d1] sm:h-36 sm:w-36 sm:text-5xl">{profile.name.slice(0, 1)}</div>
+              )}
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={profile.status} />
+                  <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold text-[#0875d1]">Анкета специалиста</span>
+                </div>
+                <h2 className="mt-3 text-2xl font-black leading-tight text-[#060b27] sm:text-4xl">{profile.name}</h2>
+                <p className="mt-1 text-base font-bold text-[#0875d1] sm:text-xl">{profile.profession}</p>
+                <p className="mt-3 flex items-start gap-2 text-sm leading-6 text-slate-600">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#0875d1]" />
+                  <span className="min-w-0 max-w-full break-words">{locationLabel}</span>
+                </p>
               </div>
             </div>
+            <Link href={`/blizhniy/rabota/specialisty/anketa?from=${profile.id}`} className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl bg-[#0875d1] px-5 text-sm font-bold text-white sm:w-auto">
+              Редактировать анкету
+            </Link>
           </div>
-          <p className="mt-3 text-sm leading-6 text-slate-600 sm:leading-7">{profile.skills}</p>
+
+          <div className="mt-6 grid gap-3 md:grid-cols-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-bold uppercase text-slate-500">Стоимость работ</p>
+              <p className="mt-2 text-xl font-black text-[#060b27]">{profile.price}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-bold uppercase text-slate-500">Телефон</p>
+              {profile.phone ? (
+                <a href={`tel:${profile.phone}`} className="mt-2 inline-flex items-center gap-2 text-base font-black text-[#0aa337]">
+                  <Phone className="h-4 w-4" />
+                  {profile.phone}
+                </a>
+              ) : (
+                <p className="mt-2 text-base font-bold text-slate-400">Не указан</p>
+              )}
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-bold uppercase text-slate-500">Email</p>
+              {profile.email ? (
+                <a href={`mailto:${profile.email}`} className="mt-2 inline-flex max-w-full items-center gap-2 text-base font-black text-[#0875d1]">
+                  <Mail className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 truncate">{profile.email}</span>
+                </a>
+              ) : (
+                <p className="mt-2 text-base font-bold text-slate-400">Не указан</p>
+              )}
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-bold uppercase text-slate-500">Telegram / WhatsApp</p>
+              {profile.messengerUrl ? (
+                <a href={profile.messengerUrl} className="mt-2 block truncate text-base font-black text-[#0875d1]">
+                  {profile.messengerUrl}
+                </a>
+              ) : (
+                <p className="mt-2 text-base font-bold text-slate-400">Не указан</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="text-lg font-black text-[#060b27]">Навыки</h3>
+              <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">{profile.skills}</p>
+            </section>
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="text-lg font-black text-[#060b27]">О себе и опыт работы</h3>
+              <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">{profile.description ?? "Описание пока не заполнено."}</p>
+            </section>
+          </div>
+
+          {profile.images?.length ? (
+            <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="text-lg font-black text-[#060b27]">Фото специалиста и работ</h3>
+              <div className="photo-preview-grid mt-4">
+                {profile.images.map((image, index) => (
+                  <figure key={`${image.slice(0, 32)}-${index}`} className="aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                    <img src={image} alt={`Фото анкеты ${index + 1}`} className="h-full w-full object-contain p-1.5" />
+                  </figure>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </article>
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2">
-          <MetricCard icon={<PackageCheck className="h-5 w-5" />} label="Стоимость" value={profile.price} detail="Показывается в карточке специалиста." />
-          <MetricCard icon={<ShieldCheck className="h-5 w-5" />} label="Проверка" value="80%" detail="Контакты заполнены, фото можно добавить позже." />
-          <MetricCard icon={<MessageSquare className="h-5 w-5" />} label="Каналы связи" value="2" detail="Телефон и мессенджер в анкете." />
-          <MetricCard icon={<CreditCard className="h-5 w-5" />} label="Публикация" value="Активна" detail="Оплата для анкеты может быть добавлена тарифом." />
-        </div>
+        <LocationMap location={profile} exactLabel="Адрес берется из метки, которую специалист указал в анкете" />
       </section>
+      ) : (
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
+          <h2 className="text-xl font-black text-[#060b27]">Анкета еще не создана</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            У пользователя может быть только одна анкета специалиста. После сохранения она появится здесь, и ее можно будет редактировать из кабинета.
+          </p>
+          <Link href="/blizhniy/rabota/specialisty/anketa" className="mt-4 inline-flex h-11 items-center justify-center rounded-xl bg-[#0875d1] px-5 text-sm font-bold text-white">
+            Создать анкету
+          </Link>
+        </section>
+      )}
       <DemoPublishedItems type="specialist" />
     </Shell>
   );
@@ -862,7 +953,6 @@ export function AdminListingsPage() {
         { key: "category", label: "Категория" },
         { key: "city", label: "Город" },
         { key: "district", label: "Район/адрес" },
-        { key: "coords", label: "Координаты" },
         { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
       ]}
     />
@@ -871,7 +961,12 @@ export function AdminListingsPage() {
 
 export function AdminVacanciesPage() {
   const rows = listVacancies().map((vacancy) => ({
-    ...vacancy,
+    id: vacancy.id,
+    organization: vacancy.organization,
+    title: vacancy.title,
+    city: vacancy.city,
+    address: vacancy.address ?? vacancy.district ?? "",
+    status: vacancy.status,
     href: `/blizhniy/vakansiya/${vacancy.id}`,
     editHref: `/blizhniy/rabota/vakansii/${vacancy.id}/redaktirovat`,
   }));
@@ -887,7 +982,6 @@ export function AdminVacanciesPage() {
         { key: "title", label: "Вакансия" },
         { key: "city", label: "Город" },
         { key: "address", label: "Точный адрес" },
-        { key: "coords", label: "Координаты", render: (row) => [row.lat, row.lng].filter(Boolean).join(", ") },
         { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
       ]}
     />
@@ -896,7 +990,12 @@ export function AdminVacanciesPage() {
 
 export function AdminSpecialistsPage() {
   const rows = listSpecialists().map((specialist) => ({
-    ...specialist,
+    id: specialist.id,
+    name: specialist.name,
+    profession: specialist.profession,
+    city: specialist.city,
+    district: specialist.district,
+    status: specialist.status,
     href: `/blizhniy/specialist/${specialist.id}`,
     editHref: `/blizhniy/rabota/specialisty/anketa?from=${specialist.id}`,
   }));
@@ -912,7 +1011,6 @@ export function AdminSpecialistsPage() {
         { key: "profession", label: "Профессия" },
         { key: "city", label: "Город" },
         { key: "district", label: "Зона" },
-        { key: "coords", label: "Координаты", render: (row) => [row.lat, row.lng].filter(Boolean).join(", ") },
         { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
       ]}
     />

@@ -2,12 +2,18 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { SiteHeader } from "@/components/SiteHeader";
+import { YandexMapPicker } from "@/components/YandexMapPicker";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { createWorkRequest } from "@/lib/mock-store";
 
 type PageProps = {
   searchParams?: Promise<{ admin?: string }>;
 };
+
+function parseCoordinate(formData: FormData, name: string) {
+  const value = Number(String(formData.get(name) ?? "").replace(",", "."));
+  return Number.isFinite(value) ? value : undefined;
+}
 
 export default async function CreateWorkRequestPage({ searchParams }: PageProps) {
   const params = searchParams ? await searchParams : undefined;
@@ -26,6 +32,8 @@ export default async function CreateWorkRequestPage({ searchParams }: PageProps)
       phone: String(formData.get("phone") ?? "").trim() || undefined,
       messengerUrl: String(formData.get("messengerUrl") ?? "").trim() || undefined,
       description: String(formData.get("description") ?? "").trim() || undefined,
+      lat: parseCoordinate(formData, "lat"),
+      lng: parseCoordinate(formData, "lng"),
     });
 
     redirect("/cabinet/zakazy");
@@ -55,6 +63,7 @@ export default async function CreateWorkRequestPage({ searchParams }: PageProps)
           </div>
           <Field name="title" label="Заголовок заказа" placeholder="Нужен мастер для ремонта кухни" />
           <TextAreaField name="description" label="Описание задачи" placeholder="Что нужно сделать, сроки, условия выезда" />
+          <YandexMapPicker />
           <PhotoField label="Фото задачи или объекта" description="Добавьте фото помещения, вещи, поломки или примера результата. Это поможет исполнителю быстрее оценить заказ." />
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
             <p className="font-black text-[#060b27]">Оплата в конце сценария</p>
