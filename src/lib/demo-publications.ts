@@ -7,6 +7,12 @@ export type DemoPublication = {
   subtitle: string;
   city: string;
   price?: string;
+  description?: string;
+  phone?: string;
+  messengerUrl?: string;
+  listingKind?: "prodam" | "kuplyu" | "menyayu" | "otdam-darom";
+  categorySlug?: string;
+  subcategorySlug?: string;
   status: string;
   createdAt: string;
 };

@@ -1,0 +1,224 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRightLeft, Gift, MapPin, MessageCircle, Phone, ShoppingBag, Tags } from "lucide-react";
+import { demoPublicationsStorageKey, DemoPublication } from "@/lib/demo-publications";
+import { categories } from "@/lib/data";
+import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
+
+type DemoListingFeedProps = {
+  categorySlug?: string;
+  kind?: ListingKind | ListingKind[];
+  subcategorySlug?: string;
+  variant?: "grid" | "list";
+};
+
+const kindIcons = {
+  prodam: ShoppingBag,
+  kuplyu: Tags,
+  menyayu: ArrowRightLeft,
+  "otdam-darom": Gift,
+};
+
+const kindLabels = {
+  prodam: "Продам",
+  kuplyu: "Куплю",
+  menyayu: "Меняю",
+  "otdam-darom": "Даром",
+};
+
+const badgeToneClasses = {
+  prodam: "bg-blue-600 text-white",
+  kuplyu: "bg-emerald-600 text-white",
+  menyayu: "bg-violet-600 text-white",
+  "otdam-darom": "bg-rose-600 text-white",
+};
+
+function readStoredPublications() {
+  try {
+    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const parsed = stored ? (JSON.parse(stored) as unknown) : null;
+
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item): item is DemoPublication => Boolean(item && typeof item === "object" && "type" in item));
+    }
+  } catch {
+    return [];
+  }
+
+  return [];
+}
+
+function slugifySubcategory(name: string) {
+  const map: Record<string, string> = {
+    "Товары времен СССР": "tovary-vremen-sssr",
+    "Картины и живопись": "kartiny-i-zhivopis",
+    "Продам недвижимость": "prodam-nedvizhimost",
+    "Куплю недвижимость": "kuplyu-nedvizhimost",
+    Аренда: "arenda",
+    "Коммерческая недвижимость": "kommercheskaya-nedvizhimost",
+    "Продам авто": "prodam-avto",
+    "Куплю авто": "kuplyu-avto",
+    Мототехника: "mototehnika",
+    Запчасти: "zapchasti",
+    "Продам бизнес": "prodam-biznes",
+    "Куплю бизнес": "kuplyu-biznes",
+    Оборудование: "oborudovanie",
+    Партнерство: "partnerstvo",
+    "Организация похорон": "organizatsiya-pohoron",
+    Памятники: "pamyatniki",
+    "Уход за местом": "uhod-za-mestom",
+    Животные: "zhivotnye",
+    "Товары для животных": "tovary-dlya-zhivotnyh",
+    Парикмахеры: "parikmahery",
+    "Маникюр и педикюр": "manikyur-i-pedikyur",
+    "Медицинский персонал": "meditsinskiy-personal",
+    "Уход на дому": "uhod-na-domu",
+    Мебель: "mebel",
+    Вакансии: "vakansii",
+    "Анкеты специалистов": "ankety-spetsialistov",
+    "Ремонт квартир": "remont-kvartir",
+    Сантехника: "santehnika",
+    "Цветы и саженцы": "tsvety-i-sazhentsy",
+    "Выкройки и рукоделие": "vykroyki-i-rukodelie",
+    Клининг: "klining",
+  };
+
+  return map[name] ?? name.toLowerCase().replaceAll(" ", "-");
+}
+
+function resolveSubcategoryName(item: DemoPublication) {
+  const category = categories.find((entry) => entry.slug === item.categorySlug);
+  return category?.children.find((child) => slugifySubcategory(child) === item.subcategorySlug) ?? item.subcategorySlug ?? "Раздел";
+}
+
+function DemoGridCard({ item }: { item: DemoPublication }) {
+  const kind = item.listingKind ?? "prodam";
+  const Icon = kindIcons[kind];
+
+  return (
+    <article className="group min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-emerald-200">
+      <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32]">
+        <span className="absolute inset-x-4 top-4 flex justify-between gap-2">
+          <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${badgeToneClasses[kind]}`}>{kindLabels[kind]}</span>
+          <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-slate-600">Админ</span>
+        </span>
+        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80">
+          <Icon className="h-8 w-8" />
+        </span>
+      </span>
+      <span className="block p-3">
+        <span className="block truncate text-base font-black text-[#060b27]">{item.price ?? "по договоренности"}</span>
+        <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900">{item.title}</span>
+        <span className="mt-2 flex items-center gap-1 text-xs text-slate-500">
+          <MapPin className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{item.city}</span>
+        </span>
+      </span>
+    </article>
+  );
+}
+
+function DemoListCard({ item }: { item: DemoPublication }) {
+  const kind = item.listingKind ?? "prodam";
+  const Icon = kindIcons[kind];
+
+  return (
+    <article className="grid min-w-0 gap-2 rounded-xl border border-emerald-200 bg-white p-3 shadow-sm lg:grid-cols-[140px_1fr_auto] lg:gap-4 lg:p-4">
+      <div className="flex min-w-0 gap-3 lg:contents">
+        <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32] sm:h-28 sm:w-28 lg:h-auto lg:min-h-32 lg:w-auto">
+          <Icon className="h-8 w-8 sm:h-9 sm:w-9 lg:h-12 lg:w-12" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
+            <ListingKindBadge kind={kind} />
+            <StatusBadge status="published" />
+            <span className="inline-flex h-7 items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-bold text-[#0a8f32] sm:h-8 sm:px-3 sm:text-sm">
+              Через админку
+            </span>
+          </div>
+          <h3 className="mt-2 line-clamp-2 text-sm font-black leading-5 text-[#060b27] sm:text-base sm:leading-6 lg:text-2xl lg:leading-tight">{item.title}</h3>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:text-sm lg:mt-2 lg:leading-6">{item.description ?? "Описание будет дополнено."}</p>
+          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500 sm:text-sm lg:mt-3 lg:gap-2">
+            <MapPin className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+            {item.city}, {resolveSubcategoryName(item)}
+          </p>
+        </div>
+      </div>
+      <div className="grid min-w-0 gap-2 lg:flex lg:flex-col lg:items-end lg:justify-between lg:gap-4">
+        <div className="min-w-0 lg:text-right">
+          <p className="truncate text-base font-black text-[#060b27] sm:text-lg lg:text-2xl">{item.price ?? "по договоренности"}</p>
+          <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">только что</p>
+        </div>
+        <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:gap-2 lg:flex lg:flex-wrap lg:justify-end">
+          <a href={`tel:${item.phone ?? "+78610009999"}`} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0aa337] px-2 text-xs font-bold text-[#0a8f32] transition hover:bg-emerald-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
+            <Phone className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+            <span className="truncate">Позвонить</span>
+          </a>
+          {item.messengerUrl ? (
+            <a href={item.messengerUrl} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] px-2 text-xs font-bold text-[#0875d1] transition hover:bg-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
+              <MessageCircle className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+              <span className="truncate">Написать</span>
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+export function DemoListingFeed({ categorySlug, kind, subcategorySlug, variant = "list" }: DemoListingFeedProps) {
+  const [items, setItems] = useState<DemoPublication[]>([]);
+
+  useEffect(() => {
+    function syncItems() {
+      setItems(readStoredPublications());
+    }
+
+    syncItems();
+    window.addEventListener("storage", syncItems);
+    window.addEventListener("blizhniy-demo-publications-updated", syncItems);
+
+    return () => {
+      window.removeEventListener("storage", syncItems);
+      window.removeEventListener("blizhniy-demo-publications-updated", syncItems);
+    };
+  }, []);
+
+  const visibleItems = useMemo(
+    () =>
+      items.filter((item) => {
+        const visibleKinds = Array.isArray(kind) ? kind : kind ? [kind] : [];
+
+        return (
+          item.type === "listing" &&
+          (!visibleKinds.length || visibleKinds.includes(item.listingKind ?? "prodam")) &&
+          (!categorySlug || item.categorySlug === categorySlug) &&
+          (!subcategorySlug || item.subcategorySlug === subcategorySlug)
+        );
+      }),
+    [categorySlug, items, kind, subcategorySlug],
+  );
+
+  if (!visibleItems.length) {
+    return null;
+  }
+
+  if (variant === "grid") {
+    return (
+      <>
+        {visibleItems.map((item) => (
+          <DemoGridCard key={item.id} item={item} />
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <>
+      {visibleItems.map((item) => (
+        <DemoListCard key={item.id} item={item} />
+      ))}
+    </>
+  );
+}

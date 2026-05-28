@@ -32,6 +32,7 @@ function readStoredPublications() {
 function buildPublication(formData: FormData, type: DemoPublicationType): DemoPublication {
   const now = new Date().toISOString();
   const id = `demo-${type}-${Date.now().toString(36)}`;
+  const listingKind = readValue(formData, "kind", "prodam") as DemoPublication["listingKind"];
 
   if (type === "listing") {
     return {
@@ -41,6 +42,12 @@ function buildPublication(formData: FormData, type: DemoPublicationType): DemoPu
       subtitle: readValue(formData, "category", "Категория"),
       city: readValue(formData, "location", "Краснодар").split(",")[0]?.trim() || "Краснодар",
       price: readValue(formData, "price", "по договоренности"),
+      description: readValue(formData, "description", "Описание будет дополнено."),
+      phone: readValue(formData, "phone", "+78610009999"),
+      messengerUrl: readValue(formData, "messengerUrl"),
+      listingKind: ["prodam", "kuplyu", "menyayu", "otdam-darom"].includes(listingKind ?? "") ? listingKind : "prodam",
+      categorySlug: readValue(formData, "category", "mebel-i-interer"),
+      subcategorySlug: readValue(formData, "subcategory", "mebel"),
       status: "Опубликовано",
       createdAt: now,
     };

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { CategoryGrid } from "@/components/CategoryGrid";
+import { DemoListingFeed } from "@/components/DemoListingFeed";
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -358,16 +359,28 @@ function ListingFilters() {
   );
 }
 
-function ListingList({ listings }: { listings: DemoListing[] }) {
+function ListingList({
+  categorySlug,
+  kind,
+  listings,
+  subcategorySlug,
+}: {
+  categorySlug?: string;
+  kind?: ListingKind | ListingKind[];
+  listings: DemoListing[];
+  subcategorySlug?: string;
+}) {
   return (
     <div className="space-y-3 sm:space-y-4">
+      <DemoListingFeed categorySlug={categorySlug} kind={kind} subcategorySlug={subcategorySlug} />
       {listings.length ? (
         listings.map((listing) => <ListingCard key={listing.slug} listing={listing} />)
-      ) : (
+      ) : null}
+      {!listings.length ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
           В этой подборке пока нет объявлений. Попробуйте другой раздел или создайте новую публикацию.
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -443,7 +456,7 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
             </div>
             <ListingFilters />
             <div className="mt-5 sm:mt-6 lg:mt-7">
-              <ListingList listings={listings} />
+              <ListingList kind={kind} listings={listings} />
             </div>
           </section>
         </div>
@@ -492,7 +505,7 @@ export function ExchangeAndFreePage() {
             </div>
             <ListingFilters />
             <div className="mt-5 sm:mt-6 lg:mt-7">
-              <ListingList listings={listings} />
+              <ListingList kind={["menyayu", "otdam-darom"]} listings={listings} />
             </div>
           </section>
         </div>
@@ -540,7 +553,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
             ) : null}
             <ListingFilters />
             <div className="mt-7">
-              <ListingList listings={listings} />
+              <ListingList categorySlug={categorySlug} listings={listings} subcategorySlug={subcategorySlug} />
             </div>
           </section>
         </div>

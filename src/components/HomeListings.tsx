@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRightLeft, Gift, MapPin, ShoppingBag, Tags } from "lucide-react";
+import { DemoListingFeed } from "@/components/DemoListingFeed";
 import { demoListings } from "@/components/listings/ListingPages";
 
 const kindLabels = {
@@ -43,6 +44,7 @@ export function HomeListings() {
         </Link>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        <DemoListingFeed variant="grid" />
         {listings.map((listing) => {
           const Icon = kindIcons[listing.kind];
 
