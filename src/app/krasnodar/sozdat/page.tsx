@@ -9,6 +9,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function Page() {
-  return <PublicationChoicePage />;
+type PageProps = {
+  searchParams?: Promise<{ admin?: string }>;
+};
+
+export default async function Page({ searchParams }: PageProps) {
+  const params = searchParams ? await searchParams : undefined;
+  const adminMode = params?.admin === "1";
+
+  return <PublicationChoicePage adminMode={adminMode} />;
 }

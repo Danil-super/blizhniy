@@ -2,12 +2,26 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
 
-export default function CreateVacancyPage() {
+type PageProps = {
+  searchParams?: Promise<{ admin?: string }>;
+};
+
+export default async function CreateVacancyPage({ searchParams }: PageProps) {
+  const params = searchParams ? await searchParams : undefined;
+  const adminMode = params?.admin === "1";
+
   return (
     <>
       <SiteHeader />
       <main className="page-container py-10">
-        <FormPanel title="Разместить вакансию" description="После заполнения создается заказ на оплату тарифа размещения вакансии. После оплаты вакансия будет опубликована.">
+        <FormPanel
+          title="Разместить вакансию"
+          description={
+            adminMode
+              ? "Админ-режим для тестирования: вакансию можно сохранить без оплаты."
+              : "После заполнения создается заказ на оплату тарифа размещения вакансии. После оплаты вакансия будет опубликована."
+          }
+        >
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Организация" placeholder="ООО РемДом" />
             <Field label="Вакансия" placeholder="Сантехник" />
@@ -26,9 +40,15 @@ export default function CreateVacancyPage() {
           <TextAreaField label="Описание вакансии" />
           <TextAreaField label="Требования" />
           <TextAreaField label="Обязанности" />
-          <Link className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white" href="/blizhniy/oplata/vacancy-publication">
-            Создать заказ и оплатить
-          </Link>
+          {adminMode ? (
+            <Link className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white" href="/cabinet/vakansii">
+              Сохранить вакансию без оплаты
+            </Link>
+          ) : (
+            <Link className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white" href="/blizhniy/oplata/vacancy-publication">
+              Создать заказ и оплатить
+            </Link>
+          )}
         </FormPanel>
       </main>
     </>

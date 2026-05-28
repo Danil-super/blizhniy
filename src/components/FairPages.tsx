@@ -2,8 +2,9 @@ import Link from "next/link";
 import { CalendarDays, CheckCircle2, ImagePlus, MapPin, PlaySquare, Store, Video } from "lucide-react";
 import { FairApplicationForm } from "@/components/FairApplicationForm";
 import { LocationMap } from "@/components/LocationMap";
-import { fairCategories, tariffs } from "@/lib/data";
+import { fairCategories } from "@/lib/data";
 import { listFairApplications } from "@/lib/mock-store";
+import { getTariffs } from "@/lib/tariff-store";
 
 function nextFairDate(today = new Date()) {
   const year = today.getFullYear();
@@ -29,6 +30,7 @@ function formatFairDate(date: Date) {
 
 export function FairHomePage() {
   const fairDate = nextFairDate();
+  const tariffs = getTariffs();
   const fairTariff = tariffs.find((tariff) => tariff.action === "fair_participation");
   const publishedApplications = listFairApplications().filter((application) => application.status === "published");
 
@@ -143,7 +145,8 @@ export function FairHomePage() {
   );
 }
 
-export function FairApplicationFormPage() {
+export function FairApplicationFormPage({ adminMode = false }: { adminMode?: boolean }) {
+  const tariffs = getTariffs();
   const fairTariff = tariffs.find((tariff) => tariff.action === "fair_participation");
 
   return (
@@ -159,7 +162,7 @@ export function FairApplicationFormPage() {
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
           <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">Заявка на участие</p>
           <h1 className="mt-2 text-3xl font-black text-[#060b27] sm:mt-3 sm:text-4xl">Ярмарка мастеров</h1>
-          <FairApplicationForm />
+          <FairApplicationForm adminMode={adminMode} />
         </div>
         <aside className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
           <CheckCircle2 className="h-8 w-8 text-[#0aa337] sm:h-10 sm:w-10" />

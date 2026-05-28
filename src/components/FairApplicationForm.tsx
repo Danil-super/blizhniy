@@ -8,7 +8,7 @@ import { ValidatedInput } from "@/components/ValidatedInput";
 
 type SubmitState = "idle" | "loading" | "error";
 
-export function FairApplicationForm() {
+export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean }) {
   const router = useRouter();
   const [state, setState] = useState<SubmitState>("idle");
   const [message, setMessage] = useState("");
@@ -43,6 +43,7 @@ export function FairApplicationForm() {
           phone: data.get("phone"),
           email: data.get("email"),
           comment: data.get("comment"),
+          skipPayment: adminMode,
         }),
       });
 
@@ -50,6 +51,11 @@ export function FairApplicationForm() {
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Не удалось создать заявку");
+      }
+
+      if (adminMode) {
+        router.push("/cabinet/fair-applications");
+        return;
       }
 
       router.push(`/blizhniy/oplata/${payload.payment.id}`);
@@ -105,10 +111,10 @@ export function FairApplicationForm() {
       </label>
       <label className="flex gap-3 text-sm leading-6 text-slate-700">
         <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-[#0875d1]" required />
-        <span>Согласен с правилами ярмарки и понимаю, что участие оплачивается после подачи заявки.</span>
+        <span>{adminMode ? "Согласен с правилами ярмарки. Заявка будет создана в тестовом режиме без оплаты." : "Согласен с правилами ярмарки и понимаю, что участие оплачивается после подачи заявки."}</span>
       </label>
       <button type="submit" disabled={state === "loading"} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#0aa337] px-5 text-sm font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-12 sm:w-fit sm:px-7 sm:text-base">
-        {state === "loading" ? "Создаем заявку..." : "Создать заявку и перейти к оплате"}
+        {state === "loading" ? "Создаем заявку..." : adminMode ? "Создать заявку без оплаты" : "Создать заявку и перейти к оплате"}
       </button>
       {state === "error" ? <p className="text-sm font-semibold text-rose-600">{message}</p> : null}
     </form>

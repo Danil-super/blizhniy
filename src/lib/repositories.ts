@@ -8,12 +8,12 @@ import {
   professions,
   region,
   specialists,
-  tariffs,
   users,
   vacancies,
   workRequests,
 } from "@/lib/data";
 import { listApplications, listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies, listWorkRequests } from "@/lib/mock-store";
+import { getTariffs } from "@/lib/tariff-store";
 
 export type CatalogRepository = {
   getRegion: () => typeof region;
@@ -34,7 +34,7 @@ export type AccountRepository = {
   getUsers: () => typeof users;
   getApplications: () => typeof applications;
   getPayments: () => typeof payments;
-  getTariffs: () => typeof tariffs;
+  getTariffs: () => ReturnType<typeof getTariffs>;
 };
 
 export type AppRepository = CatalogRepository & PublicationRepository & AccountRepository;
@@ -52,7 +52,7 @@ export const mockRepository: AppRepository = {
   getUsers: () => users,
   getApplications: () => listApplications(),
   getPayments: () => listMockPayments(),
-  getTariffs: () => tariffs,
+  getTariffs: () => getTariffs(),
 };
 
 export function getRepository(): AppRepository {

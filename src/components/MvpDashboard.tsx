@@ -1,5 +1,6 @@
 import type React from "react";
 import Link from "next/link";
+import { revalidatePath } from "next/cache";
 import {
   ArrowRight,
   BadgeCheck,
@@ -31,9 +32,10 @@ import { LogoutButton } from "@/components/auth/LogoutButton";
 import { OrganizationAddressForm } from "@/components/OrganizationAddressForm";
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
-import { categories, professions, tariffs } from "@/lib/data";
+import { categories, professions } from "@/lib/data";
 import { getPayment } from "@/lib/payment-provider";
 import { listApplications, listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies, listWorkRequests } from "@/lib/mock-store";
+import { getTariffById, getTariffs, resetTariffPatches, updateTariffPatch } from "@/lib/tariff-store";
 
 type StatusTone = "green" | "blue" | "amber" | "slate" | "red" | "violet";
 
@@ -113,9 +115,50 @@ const adminNav = [
   { href: "/admin/fair-applications", label: "Ярмарка", icon: Store },
 ];
 
+async function updateTariffAction(formData: FormData) {
+  "use server";
+
+  const id = String(formData.get("id") ?? "");
+  const price = Number(formData.get("price"));
+  const durationRaw = String(formData.get("durationDays") ?? "").trim();
+  const active = formData.get("active") === "1";
+
+  if (!id || !getTariffById(id) || Number.isNaN(price) || price < 0) {
+    return;
+  }
+
+  let durationDays: number | null = null;
+
+  if (durationRaw !== "") {
+    const parsedDuration = Number(durationRaw);
+
+    if (Number.isNaN(parsedDuration) || parsedDuration < 0) {
+      return;
+    }
+
+    durationDays = parsedDuration;
+  }
+
+  updateTariffPatch(id, { price, durationDays, active });
+  revalidatePath("/admin/payments");
+  revalidatePath("/cabinet/oplata");
+  revalidatePath("/tarify");
+}
+
+async function resetTariffsAction() {
+  "use server";
+
+  resetTariffPatches();
+  revalidatePath("/admin/payments");
+  revalidatePath("/cabinet/oplata");
+  revalidatePath("/tarify");
+}
+
 function listingRows() {
   return listListings().map((listing, index) => ({
     id: listing.id,
+    href: `/blizhniy/obyavlenie/${listing.slug}`,
+    editHref: `/blizhniy/obyavlenie/${listing.slug}/redaktirovat`,
     title: listing.title,
     category: categories.find((category) => category.slug === listing.categorySlug)?.name ?? listing.subcategory,
     city: listing.city,
@@ -129,6 +172,8 @@ function listingRows() {
 function workRequestRows() {
   return listWorkRequests().map((request) => ({
     id: request.id,
+    href: `/blizhniy/rabota/zakazy/${request.id}`,
+    editHref: `/blizhniy/rabota/zakazy/sozdat?from=${request.id}`,
     title: request.title,
     profession: request.profession,
     city: request.city,
@@ -140,6 +185,8 @@ function workRequestRows() {
 function paymentRows() {
   return listMockPayments().map((payment) => ({
     id: payment.id,
+    href: `/blizhniy/oplata/${payment.id}`,
+    editHref: "/cabinet/oplata",
     subject: payment.targetTitle,
     amount: `${payment.amount} ₽`,
     method: payment.provider === "mock" ? "Тестовая оплата" : payment.provider,
@@ -191,12 +238,14 @@ function Shell({
   description,
   eyebrow,
   nav,
+  createHref = "/blizhniy/sozdat",
   children,
 }: {
   title: string;
   description: string;
   eyebrow: string;
   nav?: typeof cabinetNav;
+  createHref?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -210,7 +259,7 @@ function Shell({
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-lg sm:leading-7">{description}</p>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:gap-3">
-            <ActionLink href="/blizhniy/sozdat" tone="green">
+            <ActionLink href={createHref} tone="green">
               <Plus className="h-4 w-4" />
               Создать
             </ActionLink>
@@ -268,6 +317,12 @@ function MetricCard({ icon, label, value, detail }: { icon: React.ReactNode; lab
 
 function DataTable<T extends Record<string, unknown>>({ columns, rows }: { columns: TableColumn<T>[]; rows: T[] }) {
   function getActionHref(row: T) {
+    const directHref = String(row.href ?? "");
+
+    if (directHref) {
+      return directHref;
+    }
+
     const id = String(row.id ?? "");
 
     if (id.startsWith("OB-")) {
@@ -298,7 +353,29 @@ function DataTable<T extends Record<string, unknown>>({ columns, rows }: { colum
       return "/cabinet/fair-applications";
     }
 
-    return String(row.href ?? row.editHref ?? "/cabinet");
+    return String(row.editHref ?? "/cabinet");
+  }
+
+  function getEditHref(row: T) {
+    const editHref = String(row.editHref ?? "");
+
+    if (editHref) {
+      return editHref;
+    }
+
+    const actionHref = getActionHref(row);
+    return actionHref.includes("?") ? `${actionHref}&edit=1` : `${actionHref}?edit=1`;
+  }
+
+  function getStatusHref(row: T) {
+    const statusHref = String(row.statusHref ?? "");
+
+    if (statusHref) {
+      return statusHref;
+    }
+
+    const actionHref = getActionHref(row);
+    return actionHref.includes("?") ? `${actionHref}&status=1` : `${actionHref}?status=1`;
   }
 
   return (
@@ -324,13 +401,23 @@ function DataTable<T extends Record<string, unknown>>({ columns, rows }: { colum
                   </td>
                 ))}
                 <td className="px-4 py-3 sm:px-5 sm:py-4">
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-start gap-2">
                     <Link href={getActionHref(row)} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">
                       Открыть
                     </Link>
-                    <Link href={getActionHref(row)} className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-[#0875d1]">
-                      Изменить
-                    </Link>
+                    <details className="group relative">
+                      <summary className="inline-flex h-9 list-none cursor-pointer items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-[#0875d1] marker:content-none">
+                        Изменить
+                      </summary>
+                      <div className="mt-1 min-w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                        <Link href={getEditHref(row)} className="block rounded-md px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-[#0875d1]">
+                          Редактировать карточку
+                        </Link>
+                        <Link href={getStatusHref(row)} className="block rounded-md px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-[#0875d1]">
+                          Изменить статус
+                        </Link>
+                      </div>
+                    </details>
                   </div>
                 </td>
               </tr>
@@ -444,10 +531,16 @@ export function CabinetListingsPage() {
 }
 
 export function CabinetVacanciesPage() {
+  const rows = listVacancies().map((vacancy) => ({
+    ...vacancy,
+    href: `/blizhniy/vakansiya/${vacancy.id}`,
+    editHref: `/blizhniy/rabota/vakansii/${vacancy.id}/redaktirovat`,
+  }));
+
   return (
     <Shell title="Мои вакансии" description="Список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav}>
       <DataTable
-        rows={listVacancies() as unknown as Record<string, unknown>[]}
+        rows={rows as unknown as Record<string, unknown>[]}
         columns={[
           { key: "organization", label: "Компания" },
           { key: "title", label: "Вакансия" },
@@ -553,6 +646,7 @@ export function CabinetResponsesPage() {
 }
 
 export function CabinetPaymentsPage() {
+  const tariffs = getTariffs();
   const adTariff = tariffs.find((tariff) => tariff.action === "ad_marquee");
   const publicationTariffs = tariffs.filter((tariff) => tariff.action !== "ad_marquee");
 
@@ -631,7 +725,17 @@ export function CabinetFairApplicationsPage() {
 
 export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
   const payment = paymentId ? getPayment(paymentId) : undefined;
-  const tariff = tariffs.find((item) => item.id === payment?.tariffId || item.id === paymentId) ?? tariffs[0];
+  const tariffs = getTariffs();
+  const tariff =
+    tariffs.find((item) => item.id === payment?.tariffId || item.id === paymentId) ??
+    tariffs[0] ?? {
+      id: "listing-publication",
+      name: "Тестовая оплата",
+      action: "listing_publication" as const,
+      price: 0,
+      durationDays: null,
+      active: true,
+    };
   const returnHref =
     payment?.targetType === "fair_application"
       ? "/cabinet/fair-applications"
@@ -672,8 +776,10 @@ export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
 }
 
 export function AdminPage() {
+  const tariffs = getTariffs();
+
   return (
-    <Shell title="Админка" description="Панель модерации пользователей, контента, классификаторов, тарифов и платежей." eyebrow="Администрирование">
+    <Shell title="Админка" description="Панель модерации пользователей, контента, классификаторов, тарифов и платежей." eyebrow="Администрирование" createHref="/blizhniy/sozdat?admin=1">
       <AdminGuardedContent>
         <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard icon={<UsersRound className="h-5 w-5" />} label="Пользователи" value="3" detail="Роли user, organization, admin." />
@@ -716,11 +822,17 @@ export function AdminPage() {
 }
 
 export function AdminUsersPage() {
+  const rows = adminUsers.map((user) => ({
+    ...user,
+    href: "/admin/users",
+    editHref: `/admin/users?edit=${user.id}`,
+  }));
+
   return (
     <AdminTablePage
       title="Пользователи"
       description="Учетные записи, роли, телефоны и модерационные действия."
-      rows={adminUsers}
+      rows={rows}
       columns={[
         { key: "id", label: "ID" },
         { key: "name", label: "Имя" },
@@ -752,11 +864,17 @@ export function AdminListingsPage() {
 }
 
 export function AdminVacanciesPage() {
+  const rows = listVacancies().map((vacancy) => ({
+    ...vacancy,
+    href: `/blizhniy/vakansiya/${vacancy.id}`,
+    editHref: `/blizhniy/rabota/vakansii/${vacancy.id}/redaktirovat`,
+  }));
+
   return (
     <AdminTablePage
       title="Вакансии"
       description="Рабочие публикации компаний и заказчиков в административном виде."
-      rows={listVacancies() as unknown as Record<string, unknown>[]}
+      rows={rows as unknown as Record<string, unknown>[]}
       columns={[
         { key: "id", label: "ID" },
         { key: "organization", label: "Компания" },
@@ -771,11 +889,17 @@ export function AdminVacanciesPage() {
 }
 
 export function AdminSpecialistsPage() {
+  const rows = listSpecialists().map((specialist) => ({
+    ...specialist,
+    href: `/blizhniy/specialist/${specialist.id}`,
+    editHref: `/blizhniy/rabota/specialisty/anketa?from=${specialist.id}`,
+  }));
+
   return (
     <AdminTablePage
       title="Специалисты"
       description="Анкеты исполнителей, профессии, города и статусы публикации."
-      rows={listSpecialists() as unknown as Record<string, unknown>[]}
+      rows={rows as unknown as Record<string, unknown>[]}
       columns={[
         { key: "id", label: "ID" },
         { key: "name", label: "Имя" },
@@ -794,7 +918,14 @@ export function AdminCategoriesPage() {
     <AdminTablePage
       title="Категории"
       description="Рубрикатор объявлений с дочерними разделами для модерации каталога."
-      rows={categories.map((category) => ({ ...category, id: category.slug, childrenText: category.children.join(", "), status: "active" }))}
+      rows={categories.map((category) => ({
+        ...category,
+        id: category.slug,
+        href: `/blizhniy/${category.slug}`,
+        editHref: `/admin/categories?edit=${category.slug}`,
+        childrenText: category.children.join(", "),
+        status: "active",
+      }))}
       columns={[
         { key: "name", label: "Категория" },
         { key: "slug", label: "Slug" },
@@ -810,7 +941,13 @@ export function AdminClassifierPage() {
     <AdminTablePage
       title="Классификатор специалистов"
       description="Профессии специалистов, родительские группы и активность в каталоге."
-      rows={professions.map((profession) => ({ ...profession, id: profession.slug, status: profession.active ? "active" : "archive" }))}
+      rows={professions.map((profession) => ({
+        ...profession,
+        id: profession.slug,
+        href: `/blizhniy/rabota/specialisty/${profession.slug}`,
+        editHref: `/blizhniy/rabota/specialisty/klassifikator?edit=${profession.slug}`,
+        status: profession.active ? "active" : "archive",
+      }))}
       columns={[
         { key: "name", label: "Профессия" },
         { key: "parent", label: "Группа" },
@@ -822,11 +959,20 @@ export function AdminClassifierPage() {
 }
 
 export function AdminTariffsPage() {
+  const tariffs = getTariffs();
+
   return (
     <AdminTablePage
       title="Тарифы"
       description="Тарифная сетка действий: публикации, вакансии и платные отклики."
-      rows={tariffs.map((tariff) => ({ ...tariff, id: tariff.id, priceText: `${tariff.price} ₽`, status: tariff.active ? "active" : "archive" }))}
+      rows={tariffs.map((tariff) => ({
+        ...tariff,
+        id: tariff.id,
+        href: "/tarify",
+        editHref: "/admin/payments#tariff-prices",
+        priceText: `${tariff.price} ₽`,
+        status: tariff.active ? "active" : "archive",
+      }))}
       columns={[
         { key: "name", label: "Название" },
         { key: "action", label: "Действие" },
@@ -839,28 +985,102 @@ export function AdminTariffsPage() {
 }
 
 export function AdminPaymentsPage() {
+  const tariffs = getTariffs();
+  const rows = adminPaymentRows().map((payment) => ({
+    ...payment,
+    href: `/blizhniy/oplata/${payment.id}`,
+    editHref: "/admin/payments#tariff-prices",
+  }));
+
   return (
-    <AdminTablePage
+    <Shell
       title="Платежи"
       description="История платежей с суммами, пользователями и статусами."
-      rows={adminPaymentRows()}
-      columns={[
-        { key: "id", label: "ID" },
-        { key: "user", label: "Пользователь" },
-        { key: "subject", label: "Назначение" },
-        { key: "amount", label: "Сумма" },
-        { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-      ]}
-    />
+      eyebrow="Администрирование"
+      createHref="/blizhniy/sozdat?admin=1"
+    >
+      <AdminGuardedContent>
+        <section id="tariff-prices" className="mb-8 scroll-mt-24 rounded-xl border border-blue-100 bg-blue-50/50 p-3 sm:p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Редактирование цен во вкладке оплаты</h2>
+            <form action={resetTariffsAction}>
+              <button type="submit" className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:text-sm">
+                Сбросить цены
+              </button>
+            </form>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {tariffs.map((tariff) => (
+              <form key={tariff.id} action={updateTariffAction} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
+                <input type="hidden" name="id" value={tariff.id} />
+                <div>
+                  <p className="text-sm font-black text-[#060b27]">{tariff.name}</p>
+                  <p className="mt-1 text-xs text-slate-500">{tariff.id}</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1 text-xs font-bold text-slate-600">
+                    Цена, ₽
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      name="price"
+                      defaultValue={tariff.price}
+                      className="h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-xs font-bold text-slate-600">
+                    Дней размещения
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      name="durationDays"
+                      defaultValue={tariff.durationDays ?? ""}
+                      placeholder="разово"
+                      className="h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
+                    />
+                  </label>
+                </div>
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                  <input type="checkbox" name="active" value="1" defaultChecked={tariff.active} className="h-4 w-4 accent-[#0875d1]" />
+                  Тариф активен
+                </label>
+                <button type="submit" className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-xs font-bold text-white transition hover:bg-[#0664b3] sm:text-sm">
+                  Сохранить изменения
+                </button>
+              </form>
+            ))}
+          </div>
+        </section>
+
+        <DataTable
+          rows={rows}
+          columns={[
+            { key: "id", label: "ID" },
+            { key: "user", label: "Пользователь" },
+            { key: "subject", label: "Назначение" },
+            { key: "amount", label: "Сумма" },
+            { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
+          ]}
+        />
+      </AdminGuardedContent>
+    </Shell>
   );
 }
 
 export function AdminFairApplicationsPage() {
+  const rows = listFairApplications().map((application) => ({
+    ...application,
+    href: "/yarmarka-masterov",
+    editHref: `/admin/fair-applications?edit=${application.id}`,
+  }));
+
   return (
     <AdminTablePage
       title="Заявки на ярмарку"
       description="Административный список заявок участников Ярмарки мастеров."
-      rows={listFairApplications() as unknown as Record<string, unknown>[]}
+      rows={rows as unknown as Record<string, unknown>[]}
       columns={[
         { key: "id", label: "ID" },
         { key: "participantName", label: "Участник" },
@@ -885,7 +1105,7 @@ function AdminTablePage<T extends Record<string, unknown>>({
   columns: TableColumn<T>[];
 }) {
   return (
-    <Shell title={title} description={description} eyebrow="Администрирование">
+    <Shell title={title} description={description} eyebrow="Администрирование" createHref="/blizhniy/sozdat?admin=1">
       <AdminGuardedContent>
         <DataTable rows={rows} columns={columns} />
       </AdminGuardedContent>

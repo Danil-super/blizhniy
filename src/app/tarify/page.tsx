@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { CreditCard, ShieldCheck } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
-import { tariffs } from "@/lib/data";
+import { getTariffs } from "@/lib/tariff-store";
 
 function tariffDetail(durationDays: number | null) {
   return durationDays ? `${durationDays} дней размещения` : "Разовое действие";
 }
 
 export default function Page() {
+  const tariffs = getTariffs();
+
   return (
     <>
       <SiteHeader />

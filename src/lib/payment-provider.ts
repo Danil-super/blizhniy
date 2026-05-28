@@ -1,5 +1,5 @@
-import { tariffs } from "@/lib/data";
 import { listMockPayments, markPaymentTargetSucceeded } from "@/lib/mock-store";
+import { getActiveTariffById } from "@/lib/tariff-store";
 import type { Payment, Tariff } from "@/lib/types";
 
 type PaymentTargetType = Payment["targetType"];
@@ -65,7 +65,7 @@ export function getPayment(paymentId: string) {
 }
 
 export function createPayment(input: CreatePaymentInput) {
-  const tariff = tariffs.find((item) => item.id === input.tariffId && item.active);
+  const tariff = getActiveTariffById(input.tariffId);
 
   if (!tariff) {
     throw new Error("Tariff not found or inactive");

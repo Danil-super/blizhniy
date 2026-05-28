@@ -12,6 +12,7 @@ type CreateFairApplicationBody = {
   phone?: string;
   email?: string;
   comment?: string;
+  skipPayment?: boolean;
 };
 
 const requiredFields: Array<keyof CreateFairApplicationBody> = ["participantName", "city", "category", "description", "phone", "email"];
@@ -48,6 +49,12 @@ export async function POST(request: Request) {
     email: cleanText(body.email),
     comment: cleanText(body.comment) || undefined,
   });
+
+  if (body.skipPayment === true) {
+    application.paymentStatus = "succeeded";
+    application.status = "published";
+    return NextResponse.json({ application }, { status: 201 });
+  }
 
   const payment = createPayment({
     tariffId: "fair-participation",

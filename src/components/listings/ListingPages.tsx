@@ -21,7 +21,8 @@ import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ValidatedInput } from "@/components/ValidatedInput";
-import { categories, tariffs } from "@/lib/data";
+import { categories } from "@/lib/data";
+import { getTariffs } from "@/lib/tariff-store";
 import { ListingCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingCard, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
 
@@ -547,7 +548,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
 
 export function ListingDetailPage({ slug }: { slug: string }) {
   const listing = demoListings.find((item) => item.slug === slug) ?? demoListings[0];
-  const tariff = tariffs.find((item) => item.id === "listing-publication");
+  const tariff = getTariffs().find((item) => item.id === "listing-publication");
 
   return (
     <>
@@ -666,10 +667,10 @@ function SelectInput({ name, options, defaultValue }: { name?: string; options: 
   return <DropdownSelect name={name} defaultValue={defaultValue} options={options} />;
 }
 
-export function ListingFormPage({ slug }: { slug?: string }) {
+export function ListingFormPage({ slug, adminMode = false }: { slug?: string; adminMode?: boolean }) {
   const editing = Boolean(slug);
   const listing = slug ? demoListings.find((item) => item.slug === slug) ?? demoListings[0] : undefined;
-  const tariff = tariffs.find((item) => item.id === "listing-publication");
+  const tariff = getTariffs().find((item) => item.id === "listing-publication");
 
   return (
     <>
@@ -747,10 +748,17 @@ export function ListingFormPage({ slug }: { slug?: string }) {
               <Link href="/cabinet/obyavleniya" className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 px-6 font-bold text-slate-800">
                 Сохранить черновик
               </Link>
-              <Link href="/blizhniy/oplata/listing-publication" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white">
-                Перейти к оплате
-                <ArrowRight className="h-5 w-5" />
-              </Link>
+              {adminMode ? (
+                <Link href="/cabinet/obyavleniya" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white">
+                  Опубликовать без оплаты
+                  <ArrowRight className="h-5 w-5" />
+                </Link>
+              ) : (
+                <Link href="/blizhniy/oplata/listing-publication" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white">
+                  Перейти к оплате
+                  <ArrowRight className="h-5 w-5" />
+                </Link>
+              )}
             </div>
           </form>
 
@@ -760,7 +768,9 @@ export function ListingFormPage({ slug }: { slug?: string }) {
                 <ShieldCheck className="h-5 w-5 text-[#0aa337]" />
                 Публикация
               </div>
-              <p className="mt-2 text-sm leading-6 text-slate-600">После оплаты объявление будет опубликовано на {tariff?.durationDays ?? 30} дней.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                {adminMode ? "В админ-режиме публикация доступна без оплаты для тестирования сценария." : `После оплаты объявление будет опубликовано на ${tariff?.durationDays ?? 30} дней.`}
+              </p>
             </div>
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
               <div className="flex items-center gap-2 font-black text-[#060b27]">

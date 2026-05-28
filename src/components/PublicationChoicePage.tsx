@@ -35,19 +35,25 @@ const publicationTypes = [
   },
 ];
 
-export function PublicationChoicePage() {
+export function PublicationChoicePage({ adminMode = false }: { adminMode?: boolean }) {
+  const querySuffix = adminMode ? "?admin=1" : "";
+
   return (
     <>
       <SiteHeader />
       <main className="page-container py-8 sm:py-10">
         <h1 className="text-3xl font-black text-[#060b27] sm:text-5xl">Что разместить?</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-lg sm:leading-8">Выберите тип публикации. После заполнения формы сайт создаст черновик или заказ на оплату, если для публикации нужен тариф.</p>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-lg sm:leading-8">
+          {adminMode
+            ? "Выберите тип публикации. В админ-режиме формы можно сохранить без оплаты, чтобы протестировать сценарии."
+            : "Выберите тип публикации. После заполнения формы сайт создаст черновик или заказ на оплату, если для публикации нужен тариф."}
+        </p>
         <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {publicationTypes.map((type) => {
             const Icon = type.icon;
 
             return (
-              <Link key={type.href} href={type.href} className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-card">
+              <Link key={type.href} href={`${type.href}${querySuffix}`} className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-card">
                 <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1] transition group-hover:bg-[#0875d1] group-hover:text-white">
                   <Icon className="h-5 w-5" />
                 </span>

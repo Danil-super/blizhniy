@@ -1,6 +1,6 @@
 import { FakePaymentPage } from "@/components/MvpDashboard";
-import { tariffs } from "@/lib/data";
 import { createPayment, getPayment } from "@/lib/payment-provider";
+import { getActiveTariffById } from "@/lib/tariff-store";
 import { notFound, redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export default async function Page({ params }: { params: Promise<{ paymentId: st
     return <FakePaymentPage paymentId={payment.id} />;
   }
 
-  const tariff = tariffs.find((item) => item.id === paymentId && item.active);
+  const tariff = getActiveTariffById(paymentId);
 
   if (!tariff) {
     notFound();
