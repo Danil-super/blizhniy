@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
 import { createVacancy } from "@/lib/mock-store";
@@ -64,9 +65,7 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
           <TextAreaField label="Требования" />
           <TextAreaField label="Обязанности" />
           {adminMode ? (
-            <button type="submit" className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white">
-              Сохранить вакансию без оплаты
-            </button>
+            <AdminDemoPublishButton publicationType="vacancy" returnHref="/cabinet/vakansii" label="Сохранить вакансию без оплаты" />
           ) : (
             <Link className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white" href="/blizhniy/oplata/vacancy-publication">
               Создать заказ и оплатить

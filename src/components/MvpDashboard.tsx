@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { AdminAuthGate } from "@/components/auth/AdminAuthGate";
 import { AdMarqueeAdminPanel } from "@/components/AdMarqueeAdminPanel";
+import { DemoPublishedItems } from "@/components/DemoPublishedItems";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
 import { LogoutButton } from "@/components/auth/LogoutButton";
@@ -526,6 +527,7 @@ export function CabinetListingsPage() {
           { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
         ]}
       />
+      <DemoPublishedItems type="listing" />
     </Shell>
   );
 }
@@ -549,6 +551,7 @@ export function CabinetVacanciesPage() {
           { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
         ]}
       />
+      <DemoPublishedItems type="vacancy" />
     </Shell>
   );
 }
@@ -568,6 +571,7 @@ export function CabinetWorkRequestsPage() {
             { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
           ]}
         />
+        <DemoPublishedItems type="workRequest" />
         <Link href="/blizhniy/rabota/zakazy/sozdat" className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-[#0875d1] px-7 font-bold text-white">
           Разместить заказ
         </Link>
@@ -602,6 +606,7 @@ export function CabinetSpecialistPage() {
           <MetricCard icon={<CreditCard className="h-5 w-5" />} label="Публикация" value="Активна" detail="Оплата для анкеты может быть добавлена тарифом." />
         </div>
       </section>
+      <DemoPublishedItems type="specialist" />
     </Shell>
   );
 }
@@ -715,6 +720,7 @@ export function CabinetFairApplicationsPage() {
             { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
           ]}
         />
+        <DemoPublishedItems type="fairApplication" />
         <Link href="/yarmarka-masterov/zayavka" className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white">
           Подать новую заявку
         </Link>

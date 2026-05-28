@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { createWorkRequest } from "@/lib/mock-store";
@@ -63,9 +64,7 @@ export default async function CreateWorkRequestPage({ searchParams }: PageProps)
           </div>
           <div className="flex flex-wrap gap-3">
             {adminMode ? (
-              <button type="submit" className="inline-flex h-12 items-center justify-center rounded-xl bg-[#0875d1] px-7 font-bold text-white">
-                Сохранить заказ
-              </button>
+              <AdminDemoPublishButton publicationType="workRequest" returnHref="/cabinet/zakazy" label="Сохранить заказ" />
             ) : (
               <Link href="/cabinet/zakazy" className="inline-flex h-12 items-center justify-center rounded-xl bg-[#0875d1] px-7 font-bold text-white">
                 Сохранить заказ

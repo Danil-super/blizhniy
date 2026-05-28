@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
+import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { LocationMap } from "@/components/LocationMap";
@@ -784,10 +785,7 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
                 Сохранить черновик
               </Link>
               {adminMode ? (
-                <button type="submit" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white">
-                  Опубликовать без оплаты
-                  <ArrowRight className="h-5 w-5" />
-                </button>
+                <AdminDemoPublishButton publicationType="listing" returnHref="/cabinet/obyavleniya" label="Опубликовать без оплаты" />
               ) : (
                 <Link href="/blizhniy/oplata/listing-publication" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white">
                   Перейти к оплате

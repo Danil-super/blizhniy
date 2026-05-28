@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { fairCategories } from "@/lib/data";
 import { ValidatedInput } from "@/components/ValidatedInput";
+import { demoPublicationsStorageKey, DemoPublication } from "@/lib/demo-publications";
 
 type SubmitState = "idle" | "loading" | "error";
 
@@ -54,6 +55,19 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
       }
 
       if (adminMode) {
+        const publication: DemoPublication = {
+          id: `demo-fairApplication-${Date.now().toString(36)}`,
+          type: "fairApplication",
+          title: String(data.get("participantName") ?? "").trim() || "Новая заявка",
+          subtitle: String(data.get("category") ?? "").trim() || "Заявка на ярмарку",
+          city: String(data.get("city") ?? "").trim() || "Краснодар",
+          status: "Опубликовано",
+          createdAt: new Date().toISOString(),
+        };
+        const storedRaw = window.localStorage.getItem(demoPublicationsStorageKey);
+        const stored = storedRaw ? (JSON.parse(storedRaw) as DemoPublication[]) : [];
+        window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify([publication, ...stored].slice(0, 50)));
+        window.dispatchEvent(new Event("blizhniy-demo-publications-updated"));
         router.push("/cabinet/fair-applications");
         return;
       }

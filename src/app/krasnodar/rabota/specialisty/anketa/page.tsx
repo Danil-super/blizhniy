@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { createSpecialist } from "@/lib/mock-store";
@@ -54,9 +55,7 @@ export default async function SpecialistProfileFormPage({ searchParams }: PagePr
           <TextAreaField name="skills" label="Навыки" placeholder="Монтаж, ремонт, замена" />
           <TextAreaField label="О себе и опыт работы" />
           {adminMode ? (
-            <button type="submit" className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#0875d1] px-5 text-sm font-bold text-white sm:h-12 sm:w-fit sm:px-7 sm:text-base">
-              Сохранить анкету
-            </button>
+            <AdminDemoPublishButton publicationType="specialist" returnHref="/cabinet/specialist" label="Сохранить анкету" />
           ) : (
             <Link href="/cabinet/specialist" className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#0875d1] px-5 text-sm font-bold text-white sm:h-12 sm:w-fit sm:px-7 sm:text-base">
               Сохранить анкету
