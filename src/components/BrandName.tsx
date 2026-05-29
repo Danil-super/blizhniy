@@ -1,3 +1,3 @@
 export function BrandName() {
-  return <span className="italic">БЛИЖНИЙ</span>;
+  return <span className="inline-block pr-1 italic">БЛИЖНИЙ</span>;
 }

@@ -4,11 +4,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Camera, ChevronLeft, ChevronRight, FilePenLine, MapPin, MessageCircle, Phone } from "lucide-react";
+import { ArrowLeft, Camera, ChevronLeft, ChevronRight, MapPin, MessageCircle, Phone } from "lucide-react";
 import { LocationMap } from "@/components/LocationMap";
 import { DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
+import { BookingCalculator } from "./BookingCalculator";
+import { ListingViewTracker } from "./ListingViewTracker";
 
 function readStoredPublications() {
   try {
@@ -35,14 +37,14 @@ function DemoGallery({ images, title }: { images: string[]; title: string }) {
 
   if (!images.length) {
     return (
-      <div className="mt-6 flex aspect-[4/3] max-w-3xl items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400">
+      <div className="mt-5 flex aspect-[4/3] w-full max-w-3xl items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
         <Camera className="h-12 w-12 sm:h-16 sm:w-16" />
       </div>
     );
   }
 
   return (
-    <section className="mt-6 max-w-3xl">
+    <section className="mt-5 w-full max-w-3xl sm:mt-6">
       <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
         <img src={activeImage} alt={title} className="h-full w-full object-contain" />
         {images.length > 1 ? (
@@ -110,6 +112,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
 
   const listing = useMemo(() => items.find((item) => item.type === "listing" && item.id === slug), [items, slug]);
   const kind = (listing?.listingKind ?? "prodam") as ListingKind;
+  const hasMessenger = Boolean(listing?.messengerUrl);
 
   if (!listing) {
     return (
@@ -126,30 +129,31 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
   }
 
   return (
-    <main className="page-container py-10">
-      <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
-        <section>
+    <main className="page-container py-6 sm:py-8 lg:py-10">
+      <ListingViewTracker listingId={listing.id} />
+      <div className="grid min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:items-start">
+        <section className="min-w-0">
           <Link href={`/blizhniy/${kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             <ArrowLeft className="h-4 w-4" />
             Назад к разделу
           </Link>
-          <h1 className="[overflow-wrap:anywhere] mt-4 text-3xl font-black text-[#060b27] sm:text-5xl">{listing.title}</h1>
+          <h1 className="[overflow-wrap:anywhere] mt-3 text-2xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-4xl lg:text-5xl">{listing.title}</h1>
           <div className="mt-4 flex flex-wrap gap-2">
             <ListingKindBadge kind={kind} />
             <StatusBadge status="published" />
           </div>
           <DemoGallery images={listing.images ?? []} title={listing.title} />
-          <div className="mt-7 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-2xl font-black text-[#060b27]">Описание</h2>
-            <p className="mt-4 text-lg leading-8 text-slate-700">{listing.description ?? "Описание будет дополнено."}</p>
-            <dl className="mt-6 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-lg bg-slate-50 p-4">
+          <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
+            <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Описание</h2>
+            <p className="mt-3 [overflow-wrap:anywhere] text-base leading-7 text-slate-700 sm:mt-4 sm:text-lg sm:leading-8">{listing.description ?? "Описание будет дополнено."}</p>
+            <dl className="mt-5 grid min-w-0 gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4">
+              <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                 <dt className="text-sm font-bold text-slate-500">Категория</dt>
-                <dd className="mt-1 font-semibold text-slate-900">{resolveCategoryName(listing)}</dd>
+                <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{resolveCategoryName(listing)}</dd>
               </div>
-              <div className="rounded-lg bg-slate-50 p-4">
+              <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                 <dt className="text-sm font-bold text-slate-500">Размещено</dt>
-                <dd className="mt-1 font-semibold text-slate-900">только что</dd>
+                <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">только что</dd>
               </div>
             </dl>
           </div>
@@ -166,33 +170,27 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
           </div>
         </section>
 
-        <aside className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
+        <aside className="min-w-0 space-y-4">
+          {listing.booking ? <BookingCalculator booking={listing.booking} listingId={listing.id} listingTitle={listing.title} /> : null}
+          <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
             <p className="[overflow-wrap:anywhere] text-2xl font-black text-[#060b27] sm:text-3xl">{listing.price ?? "по договоренности"}</p>
-            <p className="mt-3 flex items-center gap-2 text-slate-600">
-              <MapPin className="h-5 w-5 text-[#0875d1]" />
-              {listing.city}
+            <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
+              <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
+              <span className="min-w-0 [overflow-wrap:anywhere]">{listing.city}</span>
             </p>
-            <div className="mt-5 grid gap-3">
-              <a href={`tel:${listing.phone ?? "+78610009999"}`} className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] font-bold text-white">
+            <div className={`mt-5 grid gap-2 sm:gap-3 ${hasMessenger ? "min-[420px]:grid-cols-2" : "grid-cols-1"}`}>
+              <a href={`tel:${listing.phone ?? "+78610009999"}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-2 text-sm font-bold text-white sm:h-12 sm:gap-2 sm:text-base">
                 <Phone className="h-5 w-5" />
-                Позвонить
+                <span className="truncate">Позвонить</span>
               </a>
               {listing.messengerUrl ? (
-                <a href={listing.messengerUrl} className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#0875d1] font-bold text-[#0875d1]">
+                <a href={listing.messengerUrl} className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-[#0875d1] px-2 text-sm font-bold text-[#0875d1] sm:h-12 sm:gap-2 sm:text-base">
                   <MessageCircle className="h-5 w-5" />
-                  Написать сообщение
+                  <span className="truncate">Написать сообщение</span>
                 </a>
               ) : null}
             </div>
           </div>
-          <Link
-            href={`/blizhniy/obyavlenie/${listing.id}/redaktirovat`}
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]"
-          >
-            <FilePenLine className="h-5 w-5" />
-            Редактировать
-          </Link>
         </aside>
       </div>
     </main>

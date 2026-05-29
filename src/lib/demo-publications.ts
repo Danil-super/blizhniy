@@ -1,3 +1,5 @@
+import type { BookingDetails, ListingKind } from "@/lib/types";
+
 export type DemoPublicationType = "listing" | "vacancy" | "workRequest" | "specialist" | "fairApplication";
 
 export type DemoPublication = {
@@ -14,9 +16,10 @@ export type DemoPublication = {
   showExactAddress?: boolean;
   phone?: string;
   messengerUrl?: string;
-  listingKind?: "prodam" | "kuplyu" | "menyayu" | "otdam-darom";
+  listingKind?: ListingKind;
   categorySlug?: string;
   subcategorySlug?: string;
+  booking?: BookingDetails;
   status: string;
   createdAt: string;
 };

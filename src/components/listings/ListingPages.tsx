@@ -7,19 +7,15 @@ import {
   Camera,
   ChevronRight,
   CreditCard,
-  FilePenLine,
-  Filter,
   Mail,
   MapPin,
   MessageCircle,
   Phone,
-  Search,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { CategoryGrid } from "@/components/CategoryGrid";
-import { DemoListingFeed } from "@/components/DemoListingFeed";
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -27,20 +23,24 @@ import { ValidatedInput } from "@/components/ValidatedInput";
 import { categories } from "@/lib/data";
 import { createListing, listListings } from "@/lib/mock-store";
 import { getTariffs } from "@/lib/tariff-store";
-import type { Listing as StoreListing } from "@/lib/types";
+import type { BookingDetails, Listing as StoreListing } from "@/lib/types";
+import { BookingCalculator } from "./BookingCalculator";
 import { DemoListingEditClient } from "./DemoListingEditClient";
 import { DemoListingDetailClient } from "./DemoListingDetailClient";
-import { ListingCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
-import { DemoListing, ListingCard, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
+import { ListingKindAndCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
+import { DemoListing, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
+import { ListingResultsPanel } from "./ListingResultsPanel";
+import { ListingViewTracker } from "./ListingViewTracker";
 
 const listingKinds: { slug: ListingKind; title: string; description: string }[] = [
   { slug: "prodam", title: "Продам", description: "Вещи, мебель, растения и полезные товары рядом с домом." },
   { slug: "kuplyu", title: "Куплю", description: "Запросы покупателей: что ищут жители Краснодара и края." },
+  { slug: "arenda", title: "Аренда", description: "Бронирование турбаз, гостиниц, домов и активного отдыха." },
   { slug: "menyayu", title: "Меняю", description: "Обмен товарами, коллекциями, вещами и материалами." },
   { slug: "otdam-darom", title: "Отдам даром", description: "Публикации без цены: забрать, передать, пристроить." },
 ];
 
-export const demoListings: DemoListing[] = [
+const baseDemoListings: DemoListing[] = [
   {
     slug: "komod-dub-krasnodar",
     title: "Комод из массива дуба",
@@ -64,6 +64,110 @@ export const demoListings: DemoListing[] = [
     publishedAt: "13 мая 2026",
     expiresAt: "12 июня 2026",
     imageTone: "amber",
+  },
+  {
+    slug: "smartfon-samsung-galaxy-krasnodar",
+    title: "Смартфон Samsung Galaxy в хорошем состоянии",
+    kind: "prodam",
+    categorySlug: "elektronika",
+    categoryName: "Электроника",
+    subcategorySlug: "smartfony",
+    subcategoryName: "Смартфоны",
+    city: "Краснодар",
+    district: "Центр",
+    lat: 45.037,
+    lng: 38.975,
+    showExactAddress: false,
+    price: "24 000 ₽",
+    description: "Смартфон без сколов, аккумулятор держит день, комплект с зарядкой и чехлом. Проверка при встрече.",
+    phone: "+78610002012",
+    messengerUrl: "https://t.me/blizhniy_support",
+    status: "published",
+    paid: true,
+    createdAt: "25 мая 2026",
+    publishedAt: "25 мая 2026",
+    expiresAt: "24 июня 2026",
+    imageTone: "blue",
+  },
+  {
+    slug: "turbaza-u-reki-goryachiy-klyuch",
+    title: "Турбаза у реки с баней и беседками",
+    kind: "arenda",
+    categorySlug: "otdyh",
+    categoryName: "Отдых",
+    subcategorySlug: "turbazy",
+    subcategoryName: "Турбазы",
+    city: "Горячий Ключ",
+    district: "район реки Псекупс",
+    lat: 44.628,
+    lng: 39.13,
+    showExactAddress: false,
+    price: "от 6 000 ₽/сутки",
+    booking: {
+      mode: "stay",
+      priceWeekday: 6000,
+      priceWeekend: 8500,
+      minNights: 1,
+      includedGuests: 4,
+      maxGuests: 10,
+      extraGuestPrice: 900,
+      availableFrom: "2026-06-01",
+      availableTo: "2026-08-31",
+      blockedDates: ["2026-06-08", "2026-06-09", "2026-06-15", "2026-06-16", "2026-06-22"],
+      checkInTime: "14:00",
+      checkOutTime: "12:00",
+      included: "Беседка, мангал, баня 2 часа, парковка, кухня.",
+      rules: "Бронь подтверждается после связи с владельцем. С животными по согласованию.",
+    },
+    description: "Домики у реки для семейного отдыха и небольших компаний. Можно выбрать даты, количество гостей и сразу увидеть предварительную стоимость.",
+    phone: "+78610002010",
+    messengerUrl: "https://t.me/blizhniy_support",
+    status: "published",
+    paid: true,
+    createdAt: "23 мая 2026",
+    publishedAt: "23 мая 2026",
+    expiresAt: "22 июня 2026",
+    imageTone: "green",
+  },
+  {
+    slug: "kvartira-posutochno-krasnodar-tsentr",
+    title: "Квартира посуточно в центре Краснодара",
+    kind: "arenda",
+    categorySlug: "nedvizhimost",
+    categoryName: "Недвижимость",
+    subcategorySlug: "kommercheskaya-nedvizhimost",
+    subcategoryName: "Коммерческая недвижимость",
+    city: "Краснодар",
+    district: "Центр",
+    lat: 45.036,
+    lng: 38.974,
+    showExactAddress: false,
+    price: "от 3 200 ₽/сутки",
+    booking: {
+      mode: "stay",
+      priceWeekday: 3200,
+      priceWeekend: 4200,
+      minNights: 1,
+      includedGuests: 2,
+      maxGuests: 4,
+      extraGuestPrice: 700,
+      availableFrom: "2026-06-01",
+      availableTo: "2026-09-30",
+      blockedDates: ["2026-06-12", "2026-06-13", "2026-06-21"],
+      checkInTime: "15:00",
+      checkOutTime: "12:00",
+      included: "Wi-Fi, постельное белье, полотенца, кухня, парковка во дворе.",
+      rules: "Без вечеринок. Бронь подтверждается после связи с владельцем.",
+    },
+    description: "Уютная квартира для поездки в Краснодар: можно выбрать даты, количество гостей и сразу увидеть предварительную стоимость проживания.",
+    phone: "+78610002011",
+    messengerUrl: "https://t.me/blizhniy_support",
+    status: "published",
+    paid: true,
+    createdAt: "24 мая 2026",
+    publishedAt: "24 мая 2026",
+    expiresAt: "23 июня 2026",
+    imageTone: "blue",
   },
   {
     slug: "kuplyu-vykroyki-sssr",
@@ -255,9 +359,202 @@ export const demoListings: DemoListing[] = [
   },
 ];
 
+export const demoListings: DemoListing[] = [...baseDemoListings, ...createCoverageListings(baseDemoListings)];
+
+function inferListingKind(categorySlug: string, subcategorySlug: string): ListingKind {
+  if (categorySlug === "otdyh" || subcategorySlug === "arenda" || subcategorySlug === "kommercheskaya-nedvizhimost") {
+    return "arenda";
+  }
+
+  if (subcategorySlug.startsWith("kuplyu")) {
+    return "kuplyu";
+  }
+
+  if (subcategorySlug === "partnerstvo") {
+    return "menyayu";
+  }
+
+  if (subcategorySlug === "uhod-za-mestom") {
+    return "otdam-darom";
+  }
+
+  return "prodam";
+}
+
+function coveragePrice(kind: ListingKind, categorySlug: string, index: number) {
+  if (kind === "kuplyu") {
+    return `до ${Math.round((12_000 + index * 1_700) / 100) * 100} ₽`;
+  }
+
+  if (kind === "arenda") {
+    return `от ${Math.round((2_500 + index * 450) / 100) * 100} ₽/сутки`;
+  }
+
+  if (kind === "menyayu") {
+    return "обмен";
+  }
+
+  if (kind === "otdam-darom") {
+    return "бесплатно";
+  }
+
+  if (categorySlug === "nedvizhimost") {
+    return `${Math.round((4_500_000 + index * 220_000) / 10_000) * 10_000} ₽`;
+  }
+
+  return `${Math.round((3_500 + index * 850) / 100) * 100} ₽`;
+}
+
+function coverageBooking(categorySlug: string, subcategorySlug: string, index: number): BookingDetails | undefined {
+  if (categorySlug !== "otdyh" && categorySlug !== "nedvizhimost") {
+    return undefined;
+  }
+
+  if (subcategorySlug === "pohody") {
+    return {
+      mode: "tour",
+      pricePerPerson: 2800 + index * 150,
+      maxGuests: 12,
+      tourDate: "2026-07-12",
+      tourTime: "09:30",
+      tourDuration: "1 день",
+      tourDifficulty: "Средняя",
+      tourMeetingPoint: "Краснодар, сбор у центрального входа",
+      included: "Инструктор, маршрут, перекус и групповая аптечка.",
+      rules: "Нужна удобная обувь, вода и подтверждение участия.",
+    };
+  }
+
+  return {
+    mode: "stay",
+    priceWeekday: 2500 + index * 300,
+    priceWeekend: 3500 + index * 350,
+    minNights: 1,
+    includedGuests: 2,
+    maxGuests: 6,
+    extraGuestPrice: 600,
+    availableFrom: "2026-06-01",
+    availableTo: "2026-09-30",
+    blockedDates: ["2026-06-18", "2026-06-19"],
+    checkInTime: "14:00",
+    checkOutTime: "12:00",
+    included: "Базовые удобства, парковка и связь с владельцем.",
+    rules: "Бронь подтверждается после согласования с владельцем.",
+  };
+}
+
+function createCoverageListings(existingListings: DemoListing[]): DemoListing[] {
+  const coveredSubcategories = new Set(existingListings.map((listing) => `${listing.categorySlug}/${listing.subcategorySlug}`));
+  const tones: DemoListing["imageTone"][] = ["blue", "green", "rose", "amber", "violet"];
+  let index = 0;
+
+  return categories.flatMap((category) => {
+    if (category.slug === "yarmarka-masterov" || !category.children.length) {
+      return [];
+    }
+
+    return category.children.flatMap((subcategory) => {
+      const subcategorySlug = slugifySubcategory(subcategory);
+      const key = `${category.slug}/${subcategorySlug}`;
+
+      if (coveredSubcategories.has(key)) {
+        return [];
+      }
+
+      index += 1;
+      const kind = inferListingKind(category.slug, subcategorySlug);
+      const city = index % 4 === 0 ? "Сочи" : index % 3 === 0 ? "Анапа" : "Краснодар";
+
+      return [
+        {
+          slug: `kontrol-${category.slug}-${subcategorySlug}`,
+          title: `Контрольное объявление: ${subcategory}`,
+          kind,
+          categorySlug: category.slug,
+          categoryName: category.name,
+          subcategorySlug,
+          subcategoryName: subcategory,
+          city,
+          district: "Центр",
+          lat: 45.037 + index * 0.002,
+          lng: 38.975 + index * 0.002,
+          showExactAddress: false,
+          price: coveragePrice(kind, category.slug, index),
+          booking: kind === "arenda" ? coverageBooking(category.slug, subcategorySlug, index) : undefined,
+          description: `Проверочное объявление для подкатегории "${subcategory}". Нужно для контроля отображения, маршрутов, карточек и формы создания объявлений.`,
+          phone: "+78610009999",
+          messengerUrl: "https://t.me/blizhniy_support",
+          status: "published",
+          paid: true,
+          createdAt: "29 мая 2026",
+          publishedAt: "29 мая 2026",
+          expiresAt: "28 июня 2026",
+          imageTone: tones[index % tones.length],
+        },
+      ];
+    });
+  });
+}
+
 function parseCoordinate(formData: FormData, name: string) {
   const value = Number(String(formData.get(name) ?? "").replace(",", "."));
   return Number.isFinite(value) ? value : undefined;
+}
+
+function parseNumber(formData: FormData, name: string) {
+  const value = Number(String(formData.get(name) ?? "").replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function parseDateList(formData: FormData, name: string) {
+  return String(formData.get(name) ?? "")
+    .split(/[\n,;]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isBookingCategory(categorySlug: string) {
+  return categorySlug === "otdyh" || categorySlug === "nedvizhimost";
+}
+
+function parseBookingDetails(formData: FormData, categorySlug: string): BookingDetails | undefined {
+  if (!isBookingCategory(categorySlug)) {
+    return undefined;
+  }
+
+  const mode: BookingDetails["mode"] = String(formData.get("bookingMode") ?? "stay") === "tour" ? "tour" : "stay";
+
+  if (mode === "tour") {
+    return {
+      mode,
+      pricePerPerson: parseNumber(formData, "bookingPricePerPerson"),
+      maxGuests: parseNumber(formData, "bookingMaxGuests"),
+      tourDate: String(formData.get("tourDate") ?? "").trim(),
+      tourTime: String(formData.get("tourTime") ?? "").trim(),
+      tourDuration: String(formData.get("tourDuration") ?? "").trim(),
+      tourDifficulty: String(formData.get("tourDifficulty") ?? "").trim(),
+      tourMeetingPoint: String(formData.get("tourMeetingPoint") ?? "").trim(),
+      included: String(formData.get("bookingIncluded") ?? "").trim(),
+      rules: String(formData.get("bookingRules") ?? "").trim(),
+    };
+  }
+
+  return {
+    mode,
+    priceWeekday: parseNumber(formData, "bookingPriceWeekday"),
+    priceWeekend: parseNumber(formData, "bookingPriceWeekend"),
+    minNights: parseNumber(formData, "bookingMinNights"),
+    includedGuests: parseNumber(formData, "bookingIncludedGuests"),
+    maxGuests: parseNumber(formData, "bookingMaxGuests"),
+    extraGuestPrice: parseNumber(formData, "bookingExtraGuestPrice"),
+    availableFrom: String(formData.get("bookingAvailableFrom") ?? "").trim(),
+    availableTo: String(formData.get("bookingAvailableTo") ?? "").trim(),
+    blockedDates: parseDateList(formData, "bookingBlockedDates"),
+    checkInTime: String(formData.get("bookingCheckIn") ?? "").trim(),
+    checkOutTime: String(formData.get("bookingCheckOut") ?? "").trim(),
+    included: String(formData.get("bookingIncluded") ?? "").trim(),
+    rules: String(formData.get("bookingRules") ?? "").trim(),
+  };
 }
 
 function listingImageTone(tone: StoreListing["imageTone"]): DemoListing["imageTone"] {
@@ -292,6 +589,7 @@ function toDemoListing(listing: StoreListing): DemoListing {
     lng: listing.lng,
     showExactAddress: listing.showExactAddress,
     price: listing.price ?? "по договоренности",
+    booking: listing.booking,
     description: listing.description,
     phone: listing.phone ?? "+78610009999",
     messengerUrl: listing.messengerUrl,
@@ -327,6 +625,11 @@ export function slugifySubcategory(name: string) {
     "Куплю недвижимость": "kuplyu-nedvizhimost",
     Аренда: "arenda",
     "Коммерческая недвижимость": "kommercheskaya-nedvizhimost",
+    Смартфоны: "smartfony",
+    Ноутбуки: "noutbuki",
+    Компьютеры: "kompyutery",
+    "Аудио и видео": "audio-i-video",
+    "Игровые приставки": "igrovye-pristavki",
     "Продам авто": "prodam-avto",
     "Куплю авто": "kuplyu-avto",
     Мототехника: "mototehnika",
@@ -345,6 +648,9 @@ export function slugifySubcategory(name: string) {
     "Медицинский персонал": "meditsinskiy-personal",
     "Уход на дому": "uhod-na-domu",
     Мебель: "mebel",
+    Турбазы: "turbazy",
+    Гостиницы: "gostinitsy",
+    Походы: "pohody",
     Вакансии: "vakansii",
     "Анкеты специалистов": "ankety-spetsialistov",
     "Ремонт квартир": "remont-kvartir",
@@ -363,8 +669,8 @@ function Breadcrumbs({ items }: { items: { label: string; href?: string }[] }) {
       <Link href="/blizhniy/prodam" className="hover:text-[#0875d1]">
         Краснодар
       </Link>
-      {items.map((item) => (
-        <span key={item.label} className="flex items-center gap-2">
+      {items.map((item, index) => (
+        <span key={`${item.href ?? item.label}-${index}`} className="flex items-center gap-2">
           <span>/</span>
           {item.href ? (
             <Link href={item.href} className="hover:text-[#0875d1]">
@@ -376,79 +682,6 @@ function Breadcrumbs({ items }: { items: { label: string; href?: string }[] }) {
         </span>
       ))}
     </nav>
-  );
-}
-
-function ListingFiltersFields() {
-  return (
-    <div className="mt-3 space-y-3 sm:mt-4 lg:mt-5 lg:space-y-4">
-      <label className="block">
-        <span className="text-xs font-bold text-slate-700 sm:text-sm">Поиск</span>
-        <span className="mt-1.5 flex h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm text-slate-500 sm:h-11">
-          <Search className="h-4 w-4" />
-          <input className="min-w-0 w-full bg-transparent outline-none" placeholder="Название или описание" />
-        </span>
-      </label>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-1 lg:gap-3">
-        <label className="block">
-          <span className="text-xs font-bold text-slate-700 sm:text-sm">Цена от</span>
-          <input className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#0875d1] sm:h-11" placeholder="0 ₽" />
-        </label>
-        <label className="block">
-          <span className="text-xs font-bold text-slate-700 sm:text-sm">Цена до</span>
-          <input className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#0875d1] sm:h-11" placeholder="50 000 ₽" />
-        </label>
-      </div>
-      <label className="flex items-center gap-2 rounded-lg bg-slate-50 p-2.5 text-xs font-semibold text-slate-700 sm:gap-3 sm:p-3 sm:text-sm">
-        <input type="checkbox" className="h-4 w-4 accent-[#0875d1]" />
-        Только с сообщениями
-      </label>
-    </div>
-  );
-}
-
-function ListingFilters() {
-  return (
-    <details className="group mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm sm:mt-5 lg:mt-6">
-      <summary className="flex h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-sm font-black text-[#060b27] marker:hidden [&::-webkit-details-marker]:hidden">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">
-            <Filter className="h-4 w-4" />
-          </span>
-          Фильтры
-        </span>
-        <ChevronRight className="h-4 w-4 shrink-0 text-slate-500 transition group-open:rotate-90" />
-      </summary>
-      <div className="border-t border-slate-100 px-3 pb-3">
-        <ListingFiltersFields />
-      </div>
-    </details>
-  );
-}
-
-function ListingList({
-  categorySlug,
-  kind,
-  listings,
-  subcategorySlug,
-}: {
-  categorySlug?: string;
-  kind?: ListingKind | ListingKind[];
-  listings: DemoListing[];
-  subcategorySlug?: string;
-}) {
-  return (
-    <div className="space-y-3 sm:space-y-4">
-      <DemoListingFeed categorySlug={categorySlug} kind={kind} subcategorySlug={subcategorySlug} />
-      {listings.length ? (
-        listings.map((listing) => <ListingCard key={listing.slug} listing={listing} />)
-      ) : null}
-      {!listings.length ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
-          В этой подборке пока нет объявлений. Попробуйте другой раздел или создайте новую публикацию.
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -521,10 +754,7 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
                 </Link>
               ) : null}
             </div>
-            <ListingFilters />
-            <div className="mt-5 sm:mt-6 lg:mt-7">
-              <ListingList kind={kind} listings={listings} />
-            </div>
+            <ListingResultsPanel kind={kind} listings={listings} />
           </section>
         </div>
       </main>
@@ -570,10 +800,7 @@ export function ExchangeAndFreePage() {
                   </Link>
                 ))}
             </div>
-            <ListingFilters />
-            <div className="mt-5 sm:mt-6 lg:mt-7">
-              <ListingList kind={["menyayu", "otdam-darom"]} listings={listings} />
-            </div>
+            <ListingResultsPanel kind={["menyayu", "otdam-darom"]} listings={listings} />
           </section>
         </div>
       </main>
@@ -591,7 +818,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
   return (
     <>
       <SiteHeader />
-      <main className="page-container py-10">
+      <main className="page-container py-6 sm:py-8 lg:py-10">
         <Breadcrumbs
           items={[
             { label: "Категории", href: "/blizhniy/kategorii" },
@@ -618,10 +845,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
                 ))}
               </div>
             ) : null}
-            <ListingFilters />
-            <div className="mt-7">
-              <ListingList categorySlug={categorySlug} listings={listings} subcategorySlug={subcategorySlug} />
-            </div>
+            <ListingResultsPanel categorySlug={categorySlug} listings={listings} subcategorySlug={subcategorySlug} />
           </section>
         </div>
       </main>
@@ -632,6 +856,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
 export function ListingDetailPage({ slug }: { slug: string }) {
   const listing = findListingBySlug(slug);
   const tariff = getTariffs().find((item) => item.id === "listing-publication");
+  const hasMessenger = Boolean(listing?.messengerUrl);
 
   if (!listing) {
     return (
@@ -645,6 +870,7 @@ export function ListingDetailPage({ slug }: { slug: string }) {
   return (
     <>
       <SiteHeader />
+      <ListingViewTracker listingId={listing.slug} />
       <main className="page-container py-10">
         <Breadcrumbs
           items={[
@@ -653,39 +879,39 @@ export function ListingDetailPage({ slug }: { slug: string }) {
             { label: listing.title },
           ]}
         />
-        <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
-          <section>
+        <div className="grid min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:items-start">
+          <section className="min-w-0">
             <Link href={`/blizhniy/${listing.kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
               <ArrowLeft className="h-4 w-4" />
               Назад к разделу
             </Link>
-            <h1 className="[overflow-wrap:anywhere] mt-4 text-3xl font-black text-[#060b27] sm:text-5xl">{listing.title}</h1>
+            <h1 className="[overflow-wrap:anywhere] mt-3 text-2xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-4xl lg:text-5xl">{listing.title}</h1>
             <div className="mt-4 flex flex-wrap gap-2">
               <ListingKindBadge kind={listing.kind} />
               <StatusBadge status={listing.status} />
             </div>
-            <div className="mt-6 flex min-h-56 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:min-h-80">
+            <div className="mt-5 flex aspect-[4/3] w-full max-w-3xl items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
               <Camera className="h-12 w-12 sm:h-16 sm:w-16" />
             </div>
-            <div className="mt-7 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-2xl font-black text-[#060b27]">Описание</h2>
-              <p className="mt-4 text-lg leading-8 text-slate-700">{listing.description}</p>
-              <dl className="mt-6 grid gap-4 sm:grid-cols-2">
-                <div className="rounded-lg bg-slate-50 p-4">
+            <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
+              <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Описание</h2>
+              <p className="mt-3 [overflow-wrap:anywhere] text-base leading-7 text-slate-700 sm:mt-4 sm:text-lg sm:leading-8">{listing.description}</p>
+              <dl className="mt-5 grid min-w-0 gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4">
+                <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                   <dt className="text-sm font-bold text-slate-500">Категория</dt>
-                  <dd className="mt-1 font-semibold text-slate-900">{listing.categoryName}</dd>
+                  <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{listing.categoryName}</dd>
                 </div>
-                <div className="rounded-lg bg-slate-50 p-4">
+                <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                   <dt className="text-sm font-bold text-slate-500">Подкатегория</dt>
-                  <dd className="mt-1 font-semibold text-slate-900">{listing.subcategoryName}</dd>
+                  <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{listing.subcategoryName}</dd>
                 </div>
-                <div className="rounded-lg bg-slate-50 p-4">
+                <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                   <dt className="text-sm font-bold text-slate-500">Размещено</dt>
-                  <dd className="mt-1 font-semibold text-slate-900">{listing.publishedAt}</dd>
+                  <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{listing.publishedAt}</dd>
                 </div>
-                <div className="rounded-lg bg-slate-50 p-4">
+                <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                   <dt className="text-sm font-bold text-slate-500">Активно до</dt>
-                  <dd className="mt-1 font-semibold text-slate-900">{listing.expiresAt}</dd>
+                  <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{listing.expiresAt}</dd>
                 </div>
               </dl>
             </div>
@@ -694,30 +920,31 @@ export function ListingDetailPage({ slug }: { slug: string }) {
             </div>
           </section>
 
-          <aside className="space-y-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
+          <aside className="min-w-0 space-y-4">
+            {listing.booking ? <BookingCalculator booking={listing.booking} listingId={listing.slug} listingTitle={listing.title} /> : null}
+            <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
               <p className="[overflow-wrap:anywhere] text-2xl font-black text-[#060b27] sm:text-3xl">{listing.price}</p>
-              <p className="mt-3 flex items-center gap-2 text-slate-600">
-                <MapPin className="h-5 w-5 text-[#0875d1]" />
-                {listing.city}, {listing.district}
+              <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
+                <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
+                <span className="min-w-0 [overflow-wrap:anywhere]">{listing.city}, {listing.district}</span>
               </p>
-              <div className="mt-5 grid gap-3">
-                <a href={`tel:${listing.phone}`} className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] font-bold text-white">
+              <div className={`mt-5 grid gap-2 sm:gap-3 ${hasMessenger ? "min-[420px]:grid-cols-2" : "grid-cols-1"}`}>
+                <a href={`tel:${listing.phone}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-2 text-sm font-bold text-white sm:h-12 sm:gap-2 sm:text-base">
                   <Phone className="h-5 w-5" />
-                  Позвонить
+                  <span className="truncate">Позвонить</span>
                 </a>
                 {listing.messengerUrl ? (
                   <a
                     href={listing.messengerUrl}
-                    className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#0875d1] font-bold text-[#0875d1]"
+                    className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-[#0875d1] px-2 text-sm font-bold text-[#0875d1] sm:h-12 sm:gap-2 sm:text-base"
                   >
                     <MessageCircle className="h-5 w-5" />
-                    Написать сообщение
+                    <span className="truncate">Написать сообщение</span>
                   </a>
                 ) : null}
               </div>
             </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+            <div className="min-w-0 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
               <div className="flex items-start gap-3">
                 <CreditCard className="mt-1 h-5 w-5 text-amber-700" />
                 <div>
@@ -728,13 +955,6 @@ export function ListingDetailPage({ slug }: { slug: string }) {
                 </div>
               </div>
             </div>
-            <Link
-              href={`/blizhniy/obyavlenie/${listing.slug}/redaktirovat`}
-              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]"
-            >
-              <FilePenLine className="h-5 w-5" />
-              Редактировать
-            </Link>
           </aside>
         </div>
       </main>
@@ -742,21 +962,36 @@ export function ListingDetailPage({ slug }: { slug: string }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ children, compact = false, label }: { label: string; children: ReactNode; compact?: boolean }) {
   return (
     <label className="block">
-      <span className="text-sm font-bold text-slate-700">{label}</span>
-      <span className="mt-2 block">{children}</span>
+      <span className={`${compact ? "text-xs sm:text-sm" : "text-sm"} font-bold text-slate-700`}>{label}</span>
+      <span className={`${compact ? "mt-1 sm:mt-2" : "mt-2"} block`}>{children}</span>
     </label>
   );
 }
 
-function TextInput(props: { name?: string; placeholder?: string; defaultValue?: string; type?: string; validation?: "phone" | "email" | "messenger" }) {
-  return <ValidatedInput {...props} className="h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />;
+function TextInput({
+  compact = false,
+  ...props
+}: {
+  name?: string;
+  placeholder?: string;
+  defaultValue?: string;
+  type?: string;
+  validation?: "phone" | "email" | "messenger";
+  compact?: boolean;
+}) {
+  return (
+    <ValidatedInput
+      {...props}
+      className={`${compact ? "h-10 px-3 text-sm sm:h-12 sm:px-4 sm:text-base" : "h-12 px-4"} w-full rounded-lg border border-slate-300 outline-none focus:border-[#0875d1]`}
+    />
+  );
 }
 
-function SelectInput({ name, options, defaultValue }: { name?: string; options: DropdownOption[]; defaultValue?: string }) {
-  return <DropdownSelect name={name} defaultValue={defaultValue} options={options} />;
+function SelectInput({ compact = false, name, options, defaultValue }: { name?: string; options: DropdownOption[]; defaultValue?: string; compact?: boolean }) {
+  return <DropdownSelect name={name} defaultValue={defaultValue} options={options} buttonClassName={compact ? "h-10 gap-1 px-2 text-xs sm:h-12 sm:gap-3 sm:px-4 sm:text-sm" : ""} />;
 }
 
 export function ListingFormPage({ slug, adminMode = false }: { slug?: string; adminMode?: boolean }) {
@@ -765,8 +1000,8 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
 
     const title = String(formData.get("title") ?? "").trim() || "Новое объявление";
     const kindValue = String(formData.get("kind") ?? "prodam");
-    const kind = listingKinds.some((item) => item.slug === kindValue) ? (kindValue as ListingKind) : "prodam";
     const categorySlug = String(formData.get("category") ?? "").trim() || "mebel-i-interer";
+    const kind = categorySlug === "otdyh" || (categorySlug === "nedvizhimost" && kindValue === "arenda") ? "arenda" : listingKinds.some((item) => item.slug === kindValue) ? (kindValue as ListingKind) : "prodam";
     const subcategorySlug = String(formData.get("subcategory") ?? "").trim();
     const category = categories.find((item) => item.slug === categorySlug);
     const subcategory =
@@ -783,7 +1018,8 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
       subcategory,
       city,
       address: String(formData.get("address") ?? "").trim() || undefined,
-      price: String(formData.get("price") ?? "").trim() || undefined,
+      price: String(formData.get("price") ?? "").trim() || (kind === "arenda" && isBookingCategory(categorySlug) ? "расчет по датам" : undefined),
+      booking: kind === "arenda" ? parseBookingDetails(formData, categorySlug) : undefined,
       description: String(formData.get("description") ?? "").trim() || undefined,
       phone: String(formData.get("phone") ?? "").trim() || undefined,
       messengerUrl: String(formData.get("messengerUrl") ?? "").trim() || undefined,
@@ -819,19 +1055,21 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
           </p>
 
           <form action={adminMode ? publishWithoutPaymentAction : undefined} className="mt-6 grid gap-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)]">
-              <Field label="Тип объявления">
-                <SelectInput name="kind" defaultValue={listing?.kind ?? "prodam"} options={listingKinds.map((kind) => ({ value: kind.slug, label: kind.title }))} />
-              </Field>
-              <ListingCategoryFields defaultCategorySlug={listing?.categorySlug ?? "mebel-i-interer"} defaultSubcategorySlug={listing?.subcategorySlug ?? "mebel"} />
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)]">
+              <ListingKindAndCategoryFields
+                booking={listing?.booking}
+                defaultCategorySlug={listing?.categorySlug ?? "mebel-i-interer"}
+                defaultKind={listing?.kind ?? "prodam"}
+                defaultSubcategorySlug={listing?.subcategorySlug ?? "mebel"}
+              />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-              <Field label="Название">
-                <TextInput name="title" defaultValue={listing?.title} placeholder="Например, Комод из массива дуба" />
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(96px,0.45fr)] gap-2 sm:gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+              <Field label="Название" compact>
+                <TextInput name="title" defaultValue={listing?.title} placeholder="Например, Комод из массива дуба" compact />
               </Field>
-              <Field label="Цена">
-                <TextInput name="price" defaultValue={listing?.price} placeholder="Например, 12 000 ₽" />
+              <Field label="Цена" compact>
+                <TextInput name="price" defaultValue={listing?.price} placeholder="Например, 12 000 ₽" compact />
               </Field>
             </div>
 
@@ -852,28 +1090,27 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
                 <Phone className="h-5 w-5 text-[#0aa337]" />
                 Контакты
               </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <Field label="Телефон">
-                  <TextInput name="phone" defaultValue={listing?.phone} placeholder="+7..." validation="phone" />
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-4">
+                <Field label="Телефон" compact>
+                  <TextInput name="phone" defaultValue={listing?.phone} placeholder="+7..." validation="phone" compact />
                 </Field>
-                <Field label="Telegram или WhatsApp">
-                  <TextInput name="messengerUrl" defaultValue={listing?.messengerUrl} placeholder="@username или ссылка" validation="messenger" />
-                </Field>
-              </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_220px]">
-                <Field label="Email для уведомлений">
-                  <TextInput placeholder="mail@example.ru" validation="email" />
-                </Field>
-                <Field label="Основной способ связи">
+                <Field label="Основной способ связи" compact>
                   <SelectInput
                     name="contactMethod"
                     defaultValue="phone"
+                    compact
                     options={[
                       { value: "phone", label: "Телефон" },
                       { value: "messenger", label: "Мессенджер" },
                       { value: "email", label: "Email" },
                     ]}
                   />
+                </Field>
+                <Field label="Email для уведомлений" compact>
+                  <TextInput placeholder="mail@example.ru" validation="email" compact />
+                </Field>
+                <Field label="Telegram или WhatsApp" compact>
+                  <TextInput name="messengerUrl" defaultValue={listing?.messengerUrl} placeholder="@username или ссылка" validation="messenger" compact />
                 </Field>
               </div>
             </div>

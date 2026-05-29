@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Grid3X3, MapPin, Search } from "lucide-react";
+import { ChevronDown, Grid3X3, Search } from "lucide-react";
+import { AnimatedLocationIcon } from "@/components/AnimatedLocationIcon";
 import { categories, cities, listingKinds, listings, professions, region, specialists, vacancies, workRequests } from "@/lib/data";
 
 const sortedCities = [...cities].sort((left, right) => left.name.localeCompare(right.name, "ru"));
@@ -212,7 +213,7 @@ export function HeaderControls() {
           aria-haspopup="listbox"
         >
           <span className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2 md:gap-3">
-            <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-500 sm:h-4 sm:w-4" />
+            <AnimatedLocationIcon className="-ml-0.5 h-6 w-6" />
             <span className="sr-only">Регион</span>
             <span className="font-semibold leading-5 md:whitespace-normal">{selectedCityName === region.name ? "Во всех регионах" : selectedCityName}</span>
           </span>

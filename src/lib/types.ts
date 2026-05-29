@@ -19,7 +19,30 @@ export type Category = {
   children: string[];
 };
 
-export type ListingKind = "prodam" | "kuplyu" | "menyayu" | "otdam-darom";
+export type ListingKind = "prodam" | "kuplyu" | "menyayu" | "otdam-darom" | "arenda";
+
+export type BookingDetails = {
+  mode: "stay" | "tour";
+  priceWeekday?: number;
+  priceWeekend?: number;
+  pricePerPerson?: number;
+  minNights?: number;
+  includedGuests?: number;
+  maxGuests?: number;
+  extraGuestPrice?: number;
+  availableFrom?: string;
+  availableTo?: string;
+  blockedDates?: string[];
+  checkInTime?: string;
+  checkOutTime?: string;
+  included?: string;
+  rules?: string;
+  tourDate?: string;
+  tourTime?: string;
+  tourDuration?: string;
+  tourDifficulty?: string;
+  tourMeetingPoint?: string;
+};
 
 export type Listing = {
   id: string;
@@ -37,6 +60,7 @@ export type Listing = {
   lng?: number;
   showExactAddress: boolean;
   price?: string;
+  booking?: BookingDetails;
   imageTone: "emerald" | "blue" | "amber" | "rose" | "slate";
   phone?: string;
   messengerUrl?: string;

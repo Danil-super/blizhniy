@@ -1,13 +1,15 @@
 import Link from "next/link";
-import { ArrowRightLeft, Gift, MapPin, ShoppingBag, Tags } from "lucide-react";
+import { ArrowRightLeft, CalendarDays, Gift, MapPin, ShoppingBag, Tags } from "lucide-react";
 import { DemoListingFeed } from "@/components/DemoListingFeed";
 import { demoListings } from "@/components/listings/ListingPages";
+import { ListingViewCounter } from "@/components/listings/ListingViewCounter";
 
 const kindIcons = {
   prodam: ShoppingBag,
   kuplyu: Tags,
   menyayu: ArrowRightLeft,
   "otdam-darom": Gift,
+  arenda: CalendarDays,
 };
 
 const imageToneClasses = {
@@ -51,9 +53,12 @@ export function HomeListings() {
                 <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 group-hover:text-[#0875d1]">
                   {listing.title}
                 </span>
-                <span className="mt-2 flex items-center gap-1 text-xs text-slate-500">
-                  <MapPin className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{listing.city}</span>
+                <span className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
+                  <span className="flex min-w-0 items-center gap-1">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{listing.city}</span>
+                  </span>
+                  <ListingViewCounter listingId={listing.slug} />
                 </span>
               </span>
             </Link>

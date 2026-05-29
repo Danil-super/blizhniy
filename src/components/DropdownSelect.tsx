@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { ChevronDown } from "lucide-react";
 
 export type DropdownOption = {
@@ -27,6 +28,7 @@ export function DropdownSelect({
 }) {
   const [internalValue, setInternalValue] = useState(defaultValue ?? "");
   const [open, setOpen] = useState(false);
+  const pointerSelectionRef = useRef<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const selectedValue = value ?? internalValue;
   const selectedOption = useMemo(() => options.find((option) => option.value === selectedValue), [options, selectedValue]);
@@ -51,12 +53,31 @@ export function DropdownSelect({
   }, [internalValue, options, value]);
 
   function choose(nextValue: string) {
+    setOpen(false);
+
     if (value === undefined) {
       setInternalValue(nextValue);
     }
 
     onValueChange?.(nextValue);
-    setOpen(false);
+  }
+
+  function chooseFromPointer(event: ReactPointerEvent<HTMLButtonElement>, nextValue: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    pointerSelectionRef.current = nextValue;
+    choose(nextValue);
+  }
+
+  function chooseFromClick(event: ReactMouseEvent<HTMLButtonElement>, nextValue: string) {
+    event.stopPropagation();
+
+    if (pointerSelectionRef.current === nextValue) {
+      pointerSelectionRef.current = null;
+      return;
+    }
+
+    choose(nextValue);
   }
 
   return (
@@ -81,7 +102,8 @@ export function DropdownSelect({
               <button
                 key={option.value}
                 type="button"
-                onClick={() => choose(option.value)}
+                onPointerDown={(event) => chooseFromPointer(event, option.value)}
+                onClick={(event) => chooseFromClick(event, option.value)}
                 className={`flex min-h-10 w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm font-semibold transition ${
                   active ? "bg-blue-50 text-[#0875d1]" : "text-slate-700 hover:bg-slate-50 hover:text-[#0875d1]"
                 }`}

@@ -14,7 +14,6 @@ import {
 import { specialists, vacancies, workRequests } from "@/lib/data";
 import type { JobVacancy, SpecialistProfile, WorkRequest } from "@/lib/types";
 
-const chips = ["Все", "Вакансии", "Специалисты", "Краснодар", "Сочи", "Сантехник", "Маникюр", "Юрист"];
 const demoPhone = "+78610009999";
 const supportMessengerUrl = "https://t.me/blizhniy_support";
 
@@ -291,24 +290,6 @@ export function WorkPage() {
           <UserRound className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
           Создать анкету специалиста
         </Link>
-      </section>
-
-      <section className="mt-5 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:mt-7 sm:p-4 lg:mt-9">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          {chips.map((chip, index) => (
-            <Link
-              href={index === 0 ? "/blizhniy/rabota" : `/blizhniy/poisk?q=${encodeURIComponent(chip)}`}
-              className={`inline-flex h-8 items-center justify-center rounded-full border px-3 text-xs font-semibold transition sm:h-9 sm:px-5 sm:text-sm ${
-                index === 0
-                  ? "border-[#0875d1] bg-[#0875d1] text-white"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
-              }`}
-              key={chip}
-            >
-              {chip}
-            </Link>
-          ))}
-        </div>
       </section>
 
       <div className="mt-5 grid gap-6 sm:mt-7 lg:gap-8 xl:grid-cols-2">

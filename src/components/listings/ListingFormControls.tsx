@@ -7,6 +7,7 @@ import { Camera, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
 import { categories, cities, fairApplications, listings, region, specialists, vacancies, workRequests } from "@/lib/data";
+import type { BookingDetails, ListingKind } from "@/lib/types";
 
 type Suggestion = {
   label: string;
@@ -18,6 +19,19 @@ type PreviewPhoto = {
   file: File;
   name: string;
   url: string;
+};
+
+const listingKindOptions: Array<{ value: ListingKind; label: string }> = [
+  { value: "prodam", label: "Продам" },
+  { value: "kuplyu", label: "Куплю" },
+  { value: "arenda", label: "Аренда" },
+  { value: "menyayu", label: "Меняю" },
+  { value: "otdam-darom", label: "Отдам даром" },
+];
+
+const rentalCategorySlugs = ["otdyh", "nedvizhimost"];
+const rentalSubcategoryNames: Record<string, string[] | undefined> = {
+  nedvizhimost: ["Коммерческая недвижимость"],
 };
 
 const citySuggestions: Suggestion[] = cities.map((city) => ({
@@ -80,6 +94,11 @@ function slugifySubcategoryValue(name: string) {
     "Куплю недвижимость": "kuplyu-nedvizhimost",
     Аренда: "arenda",
     "Коммерческая недвижимость": "kommercheskaya-nedvizhimost",
+    Смартфоны: "smartfony",
+    Ноутбуки: "noutbuki",
+    Компьютеры: "kompyutery",
+    "Аудио и видео": "audio-i-video",
+    "Игровые приставки": "igrovye-pristavki",
     "Продам авто": "prodam-avto",
     "Куплю авто": "kuplyu-avto",
     Мототехника: "mototehnika",
@@ -98,6 +117,9 @@ function slugifySubcategoryValue(name: string) {
     "Медицинский персонал": "meditsinskiy-personal",
     "Уход на дому": "uhod-na-domu",
     Мебель: "mebel",
+    Турбазы: "turbazy",
+    Гостиницы: "gostinitsy",
+    Походы: "pohody",
     Вакансии: "vakansii",
     "Анкеты специалистов": "ankety-spetsialistov",
     "Ремонт квартир": "remont-kvartir",
@@ -108,6 +130,20 @@ function slugifySubcategoryValue(name: string) {
   };
 
   return map[name] ?? name.toLowerCase().replaceAll(" ", "-");
+}
+
+function isRentalCategory(categorySlug: string) {
+  return rentalCategorySlugs.includes(categorySlug);
+}
+
+function getRentalSubcategories(categorySlug: string, subcategories: string[]) {
+  const allowedNames = rentalSubcategoryNames[categorySlug];
+
+  if (!allowedNames) {
+    return subcategories;
+  }
+
+  return subcategories.filter((subcategory) => allowedNames.includes(subcategory));
 }
 
 function filterSuggestions(suggestions: Suggestion[], value: string) {
@@ -227,7 +263,7 @@ export function ListingCategoryFields({
 
   return (
     <>
-      <label className="block">
+      <label className="block min-w-0">
         <span className="text-sm font-bold text-slate-700">Категория</span>
         <span className="mt-2 block">
           <DropdownSelect
@@ -238,7 +274,7 @@ export function ListingCategoryFields({
           />
         </span>
       </label>
-      <label className="block">
+      <label className="block min-w-0">
         <span className="text-sm font-bold text-slate-700">Подкатегория</span>
         <span className="mt-2 block">
           <DropdownSelect
@@ -253,6 +289,252 @@ export function ListingCategoryFields({
           />
         </span>
       </label>
+    </>
+  );
+}
+
+function BookingNumberInput({
+  defaultValue,
+  label,
+  name,
+  placeholder,
+}: {
+  defaultValue?: number;
+  label: string;
+  name: string;
+  placeholder: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-bold text-slate-700">{label}</span>
+      <input
+        name={name}
+        type="number"
+        min="0"
+        defaultValue={defaultValue}
+        className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
+        placeholder={placeholder}
+      />
+    </label>
+  );
+}
+
+function BookingTextInput({
+  defaultValue,
+  label,
+  name,
+  placeholder,
+  type = "text",
+}: {
+  defaultValue?: string;
+  label: string;
+  name: string;
+  placeholder: string;
+  type?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-bold text-slate-700">{label}</span>
+      <input
+        name={name}
+        type={type}
+        defaultValue={defaultValue}
+        className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
+        placeholder={placeholder}
+      />
+    </label>
+  );
+}
+
+function ListingBookingFields({ booking, mode }: { booking?: BookingDetails; mode: BookingDetails["mode"] }) {
+  const isTour = mode === "tour";
+
+  return (
+    <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-black text-[#060b27]">{isTour ? "Параметры похода" : "Параметры бронирования"}</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+            {isTour
+              ? "Укажите дату, время, длительность, стоимость и условия участия. Эти данные будут показаны в карточке объявления."
+              : "Укажите цены, доступные даты и занятые дни. В карточке объявления пользователь сможет выбрать даты и увидеть итоговую стоимость."}
+          </p>
+        </div>
+        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#0875d1]">Аренда</span>
+      </div>
+      <input type="hidden" name="bookingMode" value={mode} />
+
+      {isTour ? (
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <BookingNumberInput name="bookingPricePerPerson" label="Стоимость с человека, ₽" placeholder="3500" defaultValue={booking?.pricePerPerson} />
+          <BookingNumberInput name="bookingMaxGuests" label="Количество мест" placeholder="12" defaultValue={booking?.maxGuests} />
+          <BookingTextInput name="tourDate" label="Дата похода" type="date" placeholder="" defaultValue={booking?.tourDate} />
+          <BookingTextInput name="tourTime" label="Время старта" type="time" placeholder="" defaultValue={booking?.tourTime} />
+          <BookingTextInput name="tourDuration" label="Продолжительность" placeholder="6 часов / 2 дня" defaultValue={booking?.tourDuration} />
+          <BookingTextInput name="tourDifficulty" label="Сложность" placeholder="Легкий / средний / сложный" defaultValue={booking?.tourDifficulty} />
+          <div className="md:col-span-2">
+            <BookingTextInput name="tourMeetingPoint" label="Место сбора" placeholder="Краснодар, парковка у ТЦ..." defaultValue={booking?.tourMeetingPoint} />
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <BookingNumberInput name="bookingPriceWeekday" label="Цена за сутки в будни, ₽" placeholder="6000" defaultValue={booking?.priceWeekday} />
+          <BookingNumberInput name="bookingPriceWeekend" label="Цена за сутки в выходные, ₽" placeholder="8500" defaultValue={booking?.priceWeekend} />
+          <BookingNumberInput name="bookingMinNights" label="Минимум ночей" placeholder="1" defaultValue={booking?.minNights} />
+          <BookingNumberInput name="bookingIncludedGuests" label="Гостей включено в цену" placeholder="4" defaultValue={booking?.includedGuests} />
+          <BookingNumberInput name="bookingMaxGuests" label="Максимум гостей" placeholder="8" defaultValue={booking?.maxGuests} />
+          <BookingNumberInput name="bookingExtraGuestPrice" label="Доплата за гостя за сутки, ₽" placeholder="900" defaultValue={booking?.extraGuestPrice} />
+          <BookingTextInput name="bookingAvailableFrom" label="Можно арендовать с" type="date" placeholder="" defaultValue={booking?.availableFrom} />
+          <BookingTextInput name="bookingAvailableTo" label="Можно арендовать до" type="date" placeholder="" defaultValue={booking?.availableTo} />
+          <BookingTextInput name="bookingCheckIn" label="Заезд" type="time" placeholder="" defaultValue={booking?.checkInTime} />
+          <BookingTextInput name="bookingCheckOut" label="Выезд" type="time" placeholder="" defaultValue={booking?.checkOutTime} />
+          <label className="block md:col-span-2">
+            <span className="text-sm font-bold text-slate-700">Занятые даты</span>
+            <textarea
+              name="bookingBlockedDates"
+              defaultValue={booking?.blockedDates?.join(", ")}
+              className="mt-2 min-h-20 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
+              placeholder="2026-06-10, 2026-06-11, 2026-06-20"
+            />
+          </label>
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <label className="block">
+          <span className="text-sm font-bold text-slate-700">Что включено</span>
+          <textarea
+            name="bookingIncluded"
+            defaultValue={booking?.included}
+            className="mt-2 min-h-24 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
+            placeholder={isTour ? "Трансфер, инструктор, перекус, страховка" : "Мангал, баня, бассейн, парковка"}
+          />
+        </label>
+        <label className="block">
+          <span className="text-sm font-bold text-slate-700">Правила и ограничения</span>
+          <textarea
+            name="bookingRules"
+            defaultValue={booking?.rules}
+            className="mt-2 min-h-24 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
+            placeholder={isTour ? "Что взять с собой, возраст, отмена" : "Можно ли с детьми, животными, условия отмены"}
+          />
+        </label>
+      </div>
+    </section>
+  );
+}
+
+export function ListingKindAndCategoryFields({
+  defaultCategorySlug = "mebel-i-interer",
+  defaultKind = "prodam",
+  defaultSubcategorySlug,
+  booking,
+}: {
+  defaultCategorySlug?: string;
+  defaultKind?: ListingKind;
+  defaultSubcategorySlug?: string;
+  booking?: BookingDetails;
+}) {
+  const rentalCategories = categories.filter((category) => isRentalCategory(category.slug));
+  const fallbackCategory = categories.find((category) => category.slug === defaultCategorySlug) ?? categories[0];
+  const fallbackRentalCategory = rentalCategories[0] ?? fallbackCategory;
+  const initialCategory = defaultKind === "arenda" ? (isRentalCategory(fallbackCategory?.slug ?? "") ? fallbackCategory : fallbackRentalCategory) : fallbackCategory;
+  const [categorySlug, setCategorySlug] = useState(initialCategory?.slug ?? "");
+  const selectedCategory = categories.find((category) => category.slug === categorySlug) ?? fallbackCategory;
+  const [kind, setKind] = useState<ListingKind>(defaultCategorySlug === "otdyh" || defaultKind === "arenda" ? "arenda" : defaultKind);
+  const allSubcategories = selectedCategory?.children ?? [];
+  const subcategories = kind === "arenda" ? getRentalSubcategories(categorySlug, allSubcategories) : allSubcategories;
+  const fallbackSubcategory = subcategories[0] ? slugifySubcategoryValue(subcategories[0]) : "";
+  const initialSubcategory =
+    defaultSubcategorySlug && subcategories.some((child) => slugifySubcategoryValue(child) === defaultSubcategorySlug)
+      ? defaultSubcategorySlug
+      : fallbackSubcategory;
+  const [subcategorySlug, setSubcategorySlug] = useState(initialSubcategory);
+  const isRental = kind === "arenda" && isRentalCategory(categorySlug);
+  const selectedSubcategoryName = subcategories.find((child) => slugifySubcategoryValue(child) === subcategorySlug) ?? subcategories[0] ?? "";
+  const bookingMode: BookingDetails["mode"] = selectedSubcategoryName === "Походы" ? "tour" : "stay";
+  const categoryOptions = kind === "arenda" ? rentalCategories : categories;
+
+  function setCategoryWithFirstSubcategory(nextCategorySlug: string, nextKind = kind) {
+    const nextCategory = categories.find((category) => category.slug === nextCategorySlug);
+    const nextSubcategories = nextKind === "arenda" ? getRentalSubcategories(nextCategorySlug, nextCategory?.children ?? []) : nextCategory?.children ?? [];
+    const nextFirstSubcategory = nextSubcategories[0] ? slugifySubcategoryValue(nextSubcategories[0]) : "";
+
+    setCategorySlug(nextCategorySlug);
+    setSubcategorySlug(nextFirstSubcategory);
+  }
+
+  function handleKindChange(nextKind: string) {
+    const safeKind = listingKindOptions.some((option) => option.value === nextKind) ? (nextKind as ListingKind) : "prodam";
+
+    setKind(safeKind);
+
+    if (safeKind === "arenda") {
+      setCategoryWithFirstSubcategory(isRentalCategory(categorySlug) ? categorySlug : fallbackRentalCategory.slug, safeKind);
+      return;
+    }
+
+    if (isRentalCategory(categorySlug)) {
+      setCategoryWithFirstSubcategory("mebel-i-interer");
+    }
+  }
+
+  function handleCategoryChange(nextCategorySlug: string) {
+    const nextKind = kind === "arenda" || nextCategorySlug === "otdyh" ? "arenda" : kind;
+    setCategoryWithFirstSubcategory(nextCategorySlug, nextKind);
+
+    if (nextCategorySlug === "otdyh") {
+      setKind("arenda");
+    } else if (kind === "arenda") {
+      setKind(isRentalCategory(nextCategorySlug) ? "arenda" : "prodam");
+    }
+  }
+
+  return (
+    <>
+      <label className="block min-w-0">
+        <span className="text-xs font-bold text-slate-700 sm:text-sm">Тип объявления</span>
+        <span className="mt-1 block sm:mt-2">
+          <DropdownSelect name="kind" value={kind} onValueChange={handleKindChange} options={listingKindOptions} buttonClassName="h-10 gap-1 px-2 text-xs sm:h-12 sm:gap-3 sm:px-4 sm:text-sm" />
+        </span>
+      </label>
+
+      <label className="block">
+        <span className="text-xs font-bold text-slate-700 sm:text-sm">Категория</span>
+        <span className="mt-1 block sm:mt-2">
+          <DropdownSelect
+            name="category"
+            value={categorySlug}
+            onValueChange={handleCategoryChange}
+            buttonClassName="h-10 gap-1 px-2 text-xs sm:h-12 sm:gap-3 sm:px-4 sm:text-sm"
+            options={categoryOptions.map((category) => ({ value: category.slug, label: category.name }))}
+          />
+        </span>
+      </label>
+
+      <label className="block">
+        <span className="text-xs font-bold text-slate-700 sm:text-sm">Подкатегория</span>
+        <span className="mt-1 block sm:mt-2">
+          <DropdownSelect
+            key={categorySlug}
+            name="subcategory"
+            value={subcategorySlug}
+            onValueChange={setSubcategorySlug}
+            buttonClassName="h-10 gap-1 px-2 text-xs sm:h-12 sm:gap-3 sm:px-4 sm:text-sm"
+            options={
+              subcategories.length
+                ? subcategories.map((child) => ({ value: slugifySubcategoryValue(child), label: child }))
+                : [{ value: "", label: "Без подкатегории" }]
+            }
+          />
+        </span>
+      </label>
+
+      {isRental ? (
+        <div className="col-span-full">
+          <ListingBookingFields booking={booking} mode={bookingMode} />
+        </div>
+      ) : null}
     </>
   );
 }

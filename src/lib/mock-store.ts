@@ -33,6 +33,7 @@ type CreateListingInput = {
   district?: string;
   address?: string;
   price?: string;
+  booking?: Listing["booking"];
   description?: string;
   phone?: string;
   messengerUrl?: string;
@@ -214,6 +215,7 @@ export function createListing(input: CreateListingInput) {
     lng: input.lng,
     showExactAddress: false,
     price: input.price?.trim() || "по договоренности",
+    booking: input.booking,
     imageTone: "blue",
     phone: input.phone?.trim(),
     messengerUrl: input.messengerUrl?.trim(),

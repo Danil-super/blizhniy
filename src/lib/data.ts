@@ -51,6 +51,7 @@ export const cities: City[] = [
 export const categories: Category[] = [
   { slug: "nedvizhimost", name: "Недвижимость", children: ["Продам недвижимость", "Куплю недвижимость", "Аренда", "Коммерческая недвижимость"] },
   { slug: "transport", name: "Авто", children: ["Продам авто", "Куплю авто", "Мототехника", "Запчасти"] },
+  { slug: "elektronika", name: "Электроника", children: ["Смартфоны", "Ноутбуки", "Компьютеры", "Аудио и видео", "Игровые приставки"] },
   { slug: "antikvariat-i-kollektsii", name: "Антиквариат и коллекции", children: ["Товары времен СССР", "Картины и живопись"] },
   { slug: "zhivotnye", name: "Животные", children: ["Животные", "Товары для животных"] },
   { slug: "biznes", name: "Бизнес", children: ["Продам бизнес", "Куплю бизнес", "Оборудование", "Партнерство"] },
@@ -71,6 +72,7 @@ export const categories: Category[] = [
 export const listingKinds: Array<{ slug: ListingKind; name: string; description: string }> = [
   { slug: "prodam", name: "Продам", description: "Товары, вещи и услуги от жителей края" },
   { slug: "kuplyu", name: "Куплю", description: "Заявки покупателей и поиск нужных вещей" },
+  { slug: "arenda", name: "Аренда", description: "Бронирование жилья, турбаз, гостиниц и активного отдыха" },
   { slug: "menyayu", name: "Меняю", description: "Обмен товарами, материалами и услугами" },
   { slug: "otdam-darom", name: "Отдам даром", description: "Полезные вещи без оплаты" },
 ];

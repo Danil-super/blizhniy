@@ -99,7 +99,16 @@ const categoryTiles = [
     ],
   },
   { label: "Услуги", href: "/blizhniy/uslugi-dlya-doma", icon: Wrench, tone: "blue" },
-  { label: "Электроника", href: "/blizhniy/kategorii", icon: Smartphone, tone: "cyan" },
+  {
+    label: "Электроника",
+    href: "/blizhniy/elektronika",
+    icon: Smartphone,
+    tone: "cyan",
+    quickLinks: [
+      { label: "Смартфоны", href: "/blizhniy/elektronika/smartfony" },
+      { label: "Ноутбуки", href: "/blizhniy/elektronika/noutbuki" },
+    ],
+  },
   { label: "Для дома и дачи", href: "/blizhniy/mebel-i-interer", icon: Sofa, tone: "amber" },
   { label: "Запчасти", href: "/blizhniy/transport/zapchasti", icon: Cog, tone: "slate" },
   { label: "Товары для детей", href: "/blizhniy/tovary-i-veshchi", icon: Baby, tone: "rose" },
@@ -113,8 +122,8 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
   const outerClassName = variant === "scroll" ? "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "";
   const gridClassName =
     variant === "scroll"
-      ? "grid grid-flow-col grid-rows-2 auto-cols-[160px] gap-2 sm:grid-flow-row sm:grid-rows-none sm:grid-cols-3 sm:auto-cols-auto md:grid-cols-4 lg:grid-cols-7"
-      : "grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7";
+      ? "grid grid-flow-col grid-rows-2 auto-cols-[154px] gap-2 sm:grid-flow-row sm:grid-rows-none sm:grid-cols-[repeat(auto-fit,minmax(150px,1fr))] sm:auto-cols-auto lg:grid-cols-[repeat(auto-fit,minmax(160px,1fr))]"
+      : "grid grid-cols-[repeat(auto-fit,minmax(min(100%,150px),1fr))] gap-2 sm:gap-3 lg:grid-cols-[repeat(auto-fit,minmax(165px,1fr))]";
 
   return (
     <section className="page-container pb-6 pt-3 sm:pb-8">
@@ -125,21 +134,21 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
             const tone = categoryTones[category.tone as keyof typeof categoryTones];
 
             return (
-              <div key={`${category.label}-${category.href}`} className={`group relative flex min-h-36 flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:min-h-44 sm:p-4 lg:min-h-48 ${tone.card}`}>
+              <div key={`${category.label}-${category.href}`} className={`group relative flex min-h-36 min-w-0 flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:min-h-44 sm:p-4 lg:min-h-48 ${tone.card}`}>
                 <span className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${tone.accent}`} />
                 <span className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-70 blur-sm transition group-hover:scale-110 sm:h-32 sm:w-32 ${tone.glow}`} />
                 <div className="relative">
                   <span className={`flex h-14 w-14 items-center justify-center rounded-2xl ring-1 shadow-sm transition group-hover:scale-105 sm:h-16 sm:w-16 lg:h-[72px] lg:w-[72px] ${tone.icon}`}>
                     <Icon className="h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9" />
                   </span>
-                  <Link href={category.href} className="mt-4 line-clamp-2 block text-sm font-black leading-5 text-slate-950 [overflow-wrap:anywhere] group-hover:text-[#0875d1] sm:text-base sm:leading-6 lg:text-[17px]">
+                  <Link href={category.href} className="mt-3 line-clamp-3 block text-sm font-black leading-5 text-slate-950 [overflow-wrap:anywhere] group-hover:text-[#0875d1] sm:mt-4 sm:text-base sm:leading-6 lg:text-[17px]">
                     {category.label}
                   </Link>
                 </div>
                 {category.quickLinks ? (
                   <div className="relative mt-4 flex min-w-0 flex-wrap gap-1.5">
                     {category.quickLinks.slice(0, 3).map((link) => (
-                      <Link key={link.href} href={link.href} className="min-w-0 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-blue-50 hover:text-[#0875d1]">
+                      <Link key={link.href} href={link.href} className="min-w-0 rounded-full bg-white/90 px-2 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-blue-50 hover:text-[#0875d1] sm:px-2.5">
                         {link.label}
                       </Link>
                     ))}

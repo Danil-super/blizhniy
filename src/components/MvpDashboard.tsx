@@ -279,17 +279,17 @@ function Shell({
 
 function NavPills({ items }: { items: typeof cabinetNav }) {
   return (
-    <nav className="mt-5 flex gap-2 overflow-x-auto pb-1 sm:mt-7" aria-label="Разделы">
+    <nav className="mt-5 grid grid-cols-1 gap-2 sm:mt-7 sm:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]" aria-label="Разделы">
       {items.map((item) => {
         const Icon = item.icon;
         return (
           <Link
             href={item.href}
-            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-11 sm:px-4 sm:text-sm"
+            className="inline-flex h-10 min-w-0 items-center justify-start gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-11 sm:px-4 sm:text-sm"
             key={item.href}
           >
-            <Icon className="h-4 w-4" />
-            {item.label}
+            <Icon className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 truncate">{item.label}</span>
           </Link>
         );
       })}

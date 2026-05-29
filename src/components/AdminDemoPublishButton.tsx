@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { demoPublicationLabels, demoPublicationsStorageKey, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
+import type { BookingDetails, ListingKind } from "@/lib/types";
 
 type AdminDemoPublishButtonProps = {
   publicationType: DemoPublicationType;
@@ -18,6 +19,62 @@ function readValue(formData: FormData, name: string, fallback = "") {
 function readCoordinate(formData: FormData, name: string) {
   const value = Number(readValue(formData, name).replace(",", "."));
   return Number.isFinite(value) ? value : undefined;
+}
+
+function readNumber(formData: FormData, name: string) {
+  const value = Number(readValue(formData, name).replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function readDateList(formData: FormData, name: string) {
+  return readValue(formData, name)
+    .split(/[\n,;]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isBookingCategory(categorySlug: string) {
+  return categorySlug === "otdyh" || categorySlug === "nedvizhimost";
+}
+
+function readBookingDetails(formData: FormData, categorySlug: string): BookingDetails | undefined {
+  if (!isBookingCategory(categorySlug)) {
+    return undefined;
+  }
+
+  const mode = readValue(formData, "bookingMode", "stay") === "tour" ? "tour" : "stay";
+
+  if (mode === "tour") {
+    return {
+      mode,
+      pricePerPerson: readNumber(formData, "bookingPricePerPerson"),
+      maxGuests: readNumber(formData, "bookingMaxGuests"),
+      tourDate: readValue(formData, "tourDate"),
+      tourTime: readValue(formData, "tourTime"),
+      tourDuration: readValue(formData, "tourDuration"),
+      tourDifficulty: readValue(formData, "tourDifficulty"),
+      tourMeetingPoint: readValue(formData, "tourMeetingPoint"),
+      included: readValue(formData, "bookingIncluded"),
+      rules: readValue(formData, "bookingRules"),
+    };
+  }
+
+  return {
+    mode,
+    priceWeekday: readNumber(formData, "bookingPriceWeekday"),
+    priceWeekend: readNumber(formData, "bookingPriceWeekend"),
+    minNights: readNumber(formData, "bookingMinNights"),
+    includedGuests: readNumber(formData, "bookingIncludedGuests"),
+    maxGuests: readNumber(formData, "bookingMaxGuests"),
+    extraGuestPrice: readNumber(formData, "bookingExtraGuestPrice"),
+    availableFrom: readValue(formData, "bookingAvailableFrom"),
+    availableTo: readValue(formData, "bookingAvailableTo"),
+    blockedDates: readDateList(formData, "bookingBlockedDates"),
+    checkInTime: readValue(formData, "bookingCheckIn"),
+    checkOutTime: readValue(formData, "bookingCheckOut"),
+    included: readValue(formData, "bookingIncluded"),
+    rules: readValue(formData, "bookingRules"),
+  };
 }
 
 function readStoredPublications() {
@@ -95,11 +152,12 @@ async function readSelectedImages(formData: FormData) {
 async function buildPublication(formData: FormData, type: DemoPublicationType): Promise<DemoPublication> {
   const now = new Date().toISOString();
   const id = `demo-${type}-${Date.now().toString(36)}`;
-  const listingKind = readValue(formData, "kind", "prodam") as DemoPublication["listingKind"];
+  const listingKind = readValue(formData, "kind", "prodam") as ListingKind;
 
   if (type === "listing") {
     const categorySlug = readValue(formData, "category", "mebel-i-interer");
     const categoryName = categories.find((category) => category.slug === categorySlug)?.name ?? "Категория";
+    const safeListingKind = categorySlug === "otdyh" || (categorySlug === "nedvizhimost" && listingKind === "arenda") ? "arenda" : listingKind;
 
     return {
       id,
@@ -107,7 +165,7 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
       title: readValue(formData, "title", "Новое объявление"),
       subtitle: categoryName,
       city: readValue(formData, "location", "Краснодар").split(",")[0]?.trim() || "Краснодар",
-      price: readValue(formData, "price", "по договоренности"),
+      price: readValue(formData, "price", safeListingKind === "arenda" && isBookingCategory(categorySlug) ? "расчет по датам" : "по договоренности"),
       description: readValue(formData, "description", "Описание будет дополнено."),
       images: await readSelectedImages(formData),
       lat: readCoordinate(formData, "lat"),
@@ -115,9 +173,10 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
       showExactAddress: false,
       phone: readValue(formData, "phone", "+78610009999"),
       messengerUrl: readValue(formData, "messengerUrl"),
-      listingKind: ["prodam", "kuplyu", "menyayu", "otdam-darom"].includes(listingKind ?? "") ? listingKind : "prodam",
+      listingKind: ["prodam", "kuplyu", "menyayu", "otdam-darom", "arenda"].includes(safeListingKind) ? safeListingKind : "prodam",
       categorySlug,
       subcategorySlug: readValue(formData, "subcategory", "mebel"),
+      booking: safeListingKind === "arenda" ? readBookingDetails(formData, categorySlug) : undefined,
       status: "Опубликовано",
       createdAt: now,
     };
