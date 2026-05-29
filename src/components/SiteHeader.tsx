@@ -9,7 +9,7 @@ export function SiteHeader() {
   return (
     <header className="border-b border-slate-200/80 bg-white">
       <HeaderNav />
-      <div className="page-container flex flex-col gap-2 pb-3 pt-2 md:flex-row md:items-center md:gap-4">
+      <div className="page-container flex flex-col gap-2 pb-3 pt-0 md:flex-row md:items-center md:gap-4 md:pt-2">
         <div className="flex min-w-0 items-center justify-between gap-2 md:contents">
           <Link href="/" className="flex min-w-0 shrink items-center gap-1.5 sm:gap-2 lg:gap-3" aria-label="БЛИЖНИЙ, главная">
             <span className="flex h-7 w-7 shrink-0 items-center justify-center md:h-9 md:w-9" aria-hidden="true">

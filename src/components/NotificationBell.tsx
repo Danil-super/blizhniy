@@ -129,11 +129,19 @@ export function NotificationBell() {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="relative inline-flex h-9 w-6 items-center justify-center bg-transparent text-slate-950 transition hover:text-[#0875d1]"
+        className="relative inline-flex h-6 w-6 items-center justify-center overflow-visible bg-transparent text-slate-950 transition hover:text-[#0875d1]"
         aria-label="Уведомления"
         aria-expanded={open}
       >
-        <Image src={bellGif} alt="" width={24} height={24} unoptimized className="h-6 w-6 shrink-0 object-contain" aria-hidden="true" />
+        <Image
+          src={bellGif}
+          alt=""
+          width={34}
+          height={34}
+          unoptimized
+          className="absolute left-1/2 top-1/2 h-[34px] w-[34px] max-w-none -translate-x-1/2 -translate-y-1/2 object-contain"
+          aria-hidden="true"
+        />
         {unreadCount ? (
           <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">
             {unreadCount > 9 ? "9+" : unreadCount}
