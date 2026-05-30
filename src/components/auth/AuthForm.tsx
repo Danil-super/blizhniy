@@ -11,9 +11,12 @@ type AuthState = "idle" | "loading" | "success" | "error";
 export function AuthForm() {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("register");
+  const [recoveryMode, setRecoveryMode] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetPasswordConfirm, setResetPasswordConfirm] = useState("");
   const [fullName, setFullName] = useState("");
   const [acceptedAgreement, setAcceptedAgreement] = useState(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
@@ -21,15 +24,102 @@ export function AuthForm() {
   const [message, setMessage] = useState("Создайте аккаунт или войдите, чтобы открыть личный кабинет.");
 
   useEffect(() => {
+    let active = true;
     const supabase = getSupabaseBrowserClient();
+    const isRecoveryUrl = window.location.search.includes("type=recovery") || window.location.hash.includes("type=recovery");
+
+    if (isRecoveryUrl) {
+      setRecoveryMode(true);
+      setMessage("Введите новый пароль для аккаунта.");
+    }
 
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
+      if (active && data.session && !isRecoveryUrl) {
         setState("success");
         setMessage("Вы уже вошли. Можно перейти в кабинет.");
       }
     });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY" && active) {
+        setRecoveryMode(true);
+        setState("idle");
+        setMessage("Введите новый пароль для аккаунта.");
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, []);
+
+  function isValidEmail(value: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  }
+
+  async function handleForgotPassword() {
+    const recoveryEmail = email.trim().toLowerCase();
+
+    if (!isValidEmail(recoveryEmail)) {
+      setState("error");
+      setMessage("Введите корректный email, чтобы получить письмо для смены пароля.");
+      return;
+    }
+
+    setState("loading");
+    setMessage("Отправляем письмо для смены пароля...");
+
+    try {
+      const supabase = getSupabaseBrowserClient();
+      const { error } = await supabase.auth.resetPasswordForEmail(recoveryEmail, {
+        redirectTo: `${window.location.origin}/auth?type=recovery`,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setState("success");
+      setMessage("Письмо отправлено. Откройте ссылку из письма и задайте новый пароль.");
+    } catch (error) {
+      setState("error");
+      setMessage(error instanceof Error ? error.message : "Не удалось отправить письмо для смены пароля");
+    }
+  }
+
+  async function handleRecoverySubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setState("loading");
+    setMessage("Сохраняем новый пароль...");
+
+    try {
+      if (resetPassword.length < 6) {
+        throw new Error("Пароль должен быть не короче 6 символов");
+      }
+
+      if (resetPassword !== resetPasswordConfirm) {
+        throw new Error("Пароли не совпадают");
+      }
+
+      const supabase = getSupabaseBrowserClient();
+      const { error } = await supabase.auth.updateUser({ password: resetPassword });
+
+      if (error) {
+        throw error;
+      }
+
+      setState("success");
+      setMessage("Пароль обновлен. Открываю личный кабинет...");
+      router.push("/cabinet");
+      router.refresh();
+    } catch (error) {
+      setState("error");
+      setMessage(error instanceof Error ? error.message : "Не удалось обновить пароль");
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -83,6 +173,48 @@ export function AuthForm() {
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
+      {recoveryMode ? (
+        <>
+          <h2 className="text-2xl font-black text-[#060b27]">Новый пароль</h2>
+          <form className="mt-6" onSubmit={handleRecoverySubmit}>
+            <label className="block">
+              <span className="text-sm font-bold text-slate-600">Придумайте новый пароль</span>
+              <input
+                className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
+                value={resetPassword}
+                onChange={(event) => setResetPassword(event.target.value)}
+                placeholder="Минимум 6 символов"
+                type="password"
+                autoComplete="new-password"
+                minLength={6}
+                required
+              />
+            </label>
+            <label className="mt-4 block">
+              <span className="text-sm font-bold text-slate-600">Повторите пароль</span>
+              <input
+                className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
+                value={resetPasswordConfirm}
+                onChange={(event) => setResetPasswordConfirm(event.target.value)}
+                placeholder="Еще раз тот же пароль"
+                type="password"
+                autoComplete="new-password"
+                minLength={6}
+                required
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={state === "loading"}
+              className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#0875d1] font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {state === "loading" ? "Сохраняем..." : "Сохранить новый пароль"}
+            </button>
+          </form>
+          <p className={state === "error" ? "mt-4 text-sm font-semibold text-rose-600" : "mt-4 text-sm leading-6 text-slate-500"}>{message}</p>
+        </>
+      ) : (
+        <>
       <div className="grid grid-cols-2 rounded-lg bg-slate-100 p-1">
         <button
           type="button"
@@ -195,6 +327,11 @@ export function AuthForm() {
         >
           {state === "loading" ? "Подождите..." : mode === "register" ? "Зарегистрироваться" : "Войти"}
         </button>
+        {mode === "login" ? (
+          <button type="button" onClick={handleForgotPassword} disabled={state === "loading"} className="mt-3 inline-flex w-full items-center justify-center text-sm font-bold text-[#0875d1] transition hover:text-[#065fa8] disabled:text-slate-400">
+            Забыли пароль? Отправить письмо
+          </button>
+        ) : null}
       </form>
       <p className={state === "error" ? "mt-4 text-sm font-semibold text-rose-600" : "mt-4 text-sm leading-6 text-slate-500"}>{message}</p>
       {state === "success" ? (
@@ -202,6 +339,8 @@ export function AuthForm() {
           Перейти в кабинет
         </Link>
       ) : null}
+        </>
+      )}
     </section>
   );
 }

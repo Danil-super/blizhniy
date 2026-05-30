@@ -6,6 +6,7 @@ import { DropdownSelect } from "@/components/DropdownSelect";
 import { fairCategories } from "@/lib/data";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { demoPublicationsStorageKey, DemoPublication } from "@/lib/demo-publications";
+import { resolveClientUserIdentity } from "@/lib/client-user-profile";
 
 type SubmitState = "idle" | "loading" | "error";
 
@@ -55,9 +56,12 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
       }
 
       if (adminMode) {
+        const identity = await resolveClientUserIdentity();
         const publication: DemoPublication = {
           id: `demo-fairApplication-${Date.now().toString(36)}`,
           type: "fairApplication",
+          ownerKey: identity.ownerKey,
+          ownerName: identity.name,
           title: String(data.get("participantName") ?? "").trim() || "Новая заявка",
           subtitle: String(data.get("category") ?? "").trim() || "Заявка на ярмарку",
           city: String(data.get("city") ?? "").trim() || "Краснодар",

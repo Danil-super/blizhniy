@@ -69,20 +69,12 @@ const categoryTiles = [
     href: "/blizhniy/transport",
     icon: Car,
     tone: "blue",
-    quickLinks: [
-      { label: "Продам", href: "/blizhniy/transport/prodam-avto" },
-      { label: "Куплю", href: "/blizhniy/transport/kuplyu-avto" },
-    ],
   },
   {
     label: "Недвижимость",
     href: "/blizhniy/nedvizhimost",
     icon: Building2,
     tone: "green",
-    quickLinks: [
-      { label: "Продам", href: "/blizhniy/nedvizhimost/prodam-nedvizhimost" },
-      { label: "Куплю", href: "/blizhniy/nedvizhimost/kuplyu-nedvizhimost" },
-    ],
   },
   { label: "Работа", href: "/blizhniy/rabota", icon: BriefcaseBusiness, tone: "cyan" },
   { label: "Одежда, обувь, аксессуары", href: "/blizhniy/tovary-i-veshchi", icon: Shirt, tone: "rose" },
@@ -93,10 +85,6 @@ const categoryTiles = [
     href: "/blizhniy/biznes",
     icon: Store,
     tone: "violet",
-    quickLinks: [
-      { label: "Продам", href: "/blizhniy/biznes/prodam-biznes" },
-      { label: "Куплю", href: "/blizhniy/biznes/kuplyu-biznes" },
-    ],
   },
   { label: "Услуги", href: "/blizhniy/uslugi-dlya-doma", icon: Wrench, tone: "blue" },
   {
@@ -104,10 +92,6 @@ const categoryTiles = [
     href: "/blizhniy/elektronika",
     icon: Smartphone,
     tone: "cyan",
-    quickLinks: [
-      { label: "Смартфоны", href: "/blizhniy/elektronika/smartfony" },
-      { label: "Ноутбуки", href: "/blizhniy/elektronika/noutbuki" },
-    ],
   },
   { label: "Для дома и дачи", href: "/blizhniy/mebel-i-interer", icon: Sofa, tone: "amber" },
   { label: "Запчасти", href: "/blizhniy/transport/zapchasti", icon: Cog, tone: "slate" },
@@ -117,6 +101,8 @@ const categoryTiles = [
   { label: "Ритуальные услуги", href: "/blizhniy/ritualnye-uslugi", icon: Flower2, tone: "slate" },
   { label: "Меняю и отдам даром", href: "/blizhniy/obmen-i-darom", icon: Gift, tone: "green" },
 ];
+
+const orderedCategoryTiles = [...categoryTiles].sort((left, right) => left.label.length - right.label.length || left.label.localeCompare(right.label, "ru"));
 
 export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "grid" }) {
   const outerClassName = variant === "scroll" ? "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "";
@@ -129,31 +115,22 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
     <section className="page-container pb-6 pt-3 sm:pb-8">
       <div className={outerClassName}>
         <div className={gridClassName}>
-          {categoryTiles.map((category) => {
+          {orderedCategoryTiles.map((category) => {
             const Icon = category.icon;
             const tone = categoryTones[category.tone as keyof typeof categoryTones];
 
             return (
-              <div key={`${category.label}-${category.href}`} className={`group relative flex min-h-36 min-w-0 flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:min-h-44 sm:p-4 lg:min-h-48 ${tone.card}`}>
+              <div key={`${category.label}-${category.href}`} className={`group relative flex min-h-32 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:min-h-40 sm:p-4 lg:min-h-44 ${tone.card}`}>
                 <span className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${tone.accent}`} />
                 <span className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-70 blur-sm transition group-hover:scale-110 sm:h-32 sm:w-32 ${tone.glow}`} />
                 <div className="relative">
                   <span className={`flex h-14 w-14 items-center justify-center rounded-2xl ring-1 shadow-sm transition group-hover:scale-105 sm:h-16 sm:w-16 lg:h-[72px] lg:w-[72px] ${tone.icon}`}>
                     <Icon className="h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9" />
                   </span>
-                  <Link href={category.href} className="mt-3 line-clamp-3 block text-sm font-black leading-5 text-slate-950 [overflow-wrap:anywhere] group-hover:text-[#0875d1] sm:mt-4 sm:text-base sm:leading-6 lg:text-[17px]">
+                  <Link href={category.href} className="mt-3 line-clamp-4 block break-normal text-[13px] font-black leading-5 text-slate-950 hyphens-none group-hover:text-[#0875d1] sm:mt-4 sm:text-sm sm:leading-5 lg:text-[15px]">
                     {category.label}
                   </Link>
                 </div>
-                {category.quickLinks ? (
-                  <div className="relative mt-4 flex min-w-0 flex-wrap gap-1.5">
-                    {category.quickLinks.slice(0, 3).map((link) => (
-                      <Link key={link.href} href={link.href} className="min-w-0 rounded-full bg-white/90 px-2 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-blue-50 hover:text-[#0875d1] sm:px-2.5">
-                        {link.label}
-                      </Link>
-                    ))}
-                  </div>
-                ) : null}
               </div>
             );
           })}

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
+import lottie, { type AnimationItem } from "lottie-web";
 import { getDemoListingViews, getListingTotalViews, listingViewCountsUpdatedEvent } from "@/lib/listing-views";
-import viewGif from "../../../view.gif";
+import eyesAnimation from "../../../eyes.json";
 
 export function ListingViewCounter({ listingId }: { listingId: string }) {
   const [views, setViews] = useState(() => getDemoListingViews(listingId));
+  const iconRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     function syncViews() {
@@ -23,9 +24,35 @@ export function ListingViewCounter({ listingId }: { listingId: string }) {
     };
   }, [listingId]);
 
+  useEffect(() => {
+    if (!iconRef.current) {
+      return undefined;
+    }
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const animation: AnimationItem = lottie.loadAnimation({
+      animationData: eyesAnimation,
+      autoplay: !prefersReducedMotion,
+      container: iconRef.current,
+      loop: !prefersReducedMotion,
+      renderer: "svg",
+      rendererSettings: {
+        preserveAspectRatio: "xMidYMid meet",
+      },
+    });
+
+    if (prefersReducedMotion) {
+      animation.goToAndStop(0, true);
+    }
+
+    return () => {
+      animation.destroy();
+    };
+  }, []);
+
   return (
     <span className="inline-flex shrink-0 items-center gap-1 text-xs font-black italic leading-none text-slate-800 sm:text-sm" aria-label={`${views} просмотров`}>
-      <Image src={viewGif} alt="" width={24} height={24} unoptimized className="h-5 w-5 shrink-0 object-contain sm:h-6 sm:w-6" aria-hidden="true" />
+      <span ref={iconRef} className="block h-5 w-5 shrink-0 overflow-hidden leading-none sm:h-6 sm:w-6" aria-hidden="true" />
       <span>{views}</span>
     </span>
   );

@@ -217,20 +217,20 @@ const baseDemoListings: DemoListing[] = [
     imageTone: "green",
   },
   {
-    slug: "otdam-korm-dlya-koshek",
-    title: "Отдам корм и миски для кошки",
-    kind: "otdam-darom",
+    slug: "domashnie-pitomtsy-koshka-s-pridanym",
+    title: "Кошка с переноской и мисками",
+    kind: "prodam",
     categorySlug: "zhivotnye",
     categoryName: "Животные",
-    subcategorySlug: "tovary-dlya-zhivotnyh",
-    subcategoryName: "Товары для животных",
+    subcategorySlug: "domashnie-pitomtsy",
+    subcategoryName: "Домашние питомцы",
     city: "Краснодар",
     district: "Гидрострой",
     lat: 45.0,
     lng: 39.09,
     showExactAddress: false,
-    price: "Бесплатно",
-    description: "Остался сухой корм, две миски и переноска. Забрать можно вечером, бронь по телефону.",
+    price: "в добрые руки",
+    description: "Спокойная домашняя кошка, есть переноска, миски и запас корма. Передача после разговора с будущим владельцем.",
     phone: "+78610002004",
     status: "published",
     paid: true,
@@ -335,20 +335,20 @@ const baseDemoListings: DemoListing[] = [
     imageTone: "amber",
   },
   {
-    slug: "ritualnye-uslugi-pamyatniki",
-    title: "Памятники и уход за местом",
+    slug: "namogilnye-sooruzheniya-s-ustanovkoy",
+    title: "Памятник и ограда с установкой",
     kind: "prodam",
     categorySlug: "ritualnye-uslugi",
     categoryName: "Ритуальные услуги",
-    subcategorySlug: "pamyatniki",
-    subcategoryName: "Памятники",
+    subcategorySlug: "izgotovlenie-ustanovka-demontazh-namogilnyh-sooruzheniy",
+    subcategoryName: "Изготовление, установка и демонтаж намогильных сооружений",
     city: "Краснодар",
     district: "Прикубанский",
     lat: 45.08,
     lng: 39.01,
     showExactAddress: false,
     price: "по договоренности",
-    description: "Изготовление памятников, благоустройство и регулярный уход за местом.",
+    description: "Изготовление и установка памятников, оград, надгробий, гравировка и демонтаж старых сооружений.",
     phone: "+78610002009",
     status: "published",
     paid: true,
@@ -358,8 +358,6 @@ const baseDemoListings: DemoListing[] = [
     imageTone: "violet",
   },
 ];
-
-export const demoListings: DemoListing[] = [...baseDemoListings, ...createCoverageListings(baseDemoListings)];
 
 function inferListingKind(categorySlug: string, subcategorySlug: string): ListingKind {
   if (categorySlug === "otdyh" || subcategorySlug === "arenda" || subcategorySlug === "kommercheskaya-nedvizhimost") {
@@ -374,14 +372,135 @@ function inferListingKind(categorySlug: string, subcategorySlug: string): Listin
     return "menyayu";
   }
 
-  if (subcategorySlug === "uhod-za-mestom") {
-    return "otdam-darom";
-  }
-
   return "prodam";
 }
 
-function coveragePrice(kind: ListingKind, categorySlug: string, index: number) {
+const ritualServiceDescriptions: Record<string, string> = {
+  "Организация и проведение обряда прощания":
+    "Оформление и предоставление ритуального зала, музыкальное сопровождение, услуги церемониймейстера, прокат принадлежностей и организация поминальной церемонии.",
+  "Захоронение и сопутствующие работы": "Копка могилы, погребение, эксгумация и перезахоронение.",
+  Кремация: "Сжигание останков в крематории, временное хранение и выдача праха.",
+  "Продажа и изготовление похоронных принадлежностей":
+    "Гробы, венки, ленты, одежда для умершего и другие ритуальные атрибуты.",
+  "Изготовление, установка и демонтаж намогильных сооружений":
+    "Надгробия, памятники, ограды, гравировка, барельефы, установка и демонтаж.",
+  "Уход за местом захоронения": "Уборка, озеленение, ремонт и покраска надгробий и ограждений.",
+  "Транспортирование останков":
+    "Перевозка тела от морга до места захоронения или кремации, включая дальние перевозки в цинковом гробу с опайкой.",
+  "Предпохоронное содержание останков": "Хранение тела после установления причины смерти в останкохранилище.",
+  "Подготовка тела к погребению":
+    "Бальзамирование, санитарная и косметическая обработка, включая парикмахерские процедуры для приведения тела в надлежащий вид.",
+};
+
+const ritualServiceListingTitles: Record<string, string> = {
+  "Организация и проведение обряда прощания": "Организация церемонии прощания под ключ",
+  "Захоронение и сопутствующие работы": "Захоронение и сопутствующие работы на кладбище",
+  Кремация: "Сопровождение кремации и выдачи праха",
+  "Продажа и изготовление похоронных принадлежностей": "Гробы, венки и ритуальные принадлежности",
+  "Изготовление, установка и демонтаж намогильных сооружений": "Памятник и ограда с установкой",
+  "Уход за местом захоронения": "Уход за местом захоронения по заявке",
+  "Транспортирование останков": "Ритуальный транспорт по Краснодарскому краю",
+  "Предпохоронное содержание останков": "Предпохоронное содержание в останкохранилище",
+  "Подготовка тела к погребению": "Подготовка тела к погребению",
+};
+
+const ritualServiceListingPrices: Record<string, string> = {
+  "Организация и проведение обряда прощания": "от 18 000 ₽",
+  "Захоронение и сопутствующие работы": "от 12 000 ₽",
+  Кремация: "от 15 000 ₽",
+  "Продажа и изготовление похоронных принадлежностей": "от 3 500 ₽",
+  "Изготовление, установка и демонтаж намогильных сооружений": "по договоренности",
+  "Уход за местом захоронения": "от 2 000 ₽",
+  "Транспортирование останков": "от 4 000 ₽",
+  "Предпохоронное содержание останков": "от 1 800 ₽/сутки",
+  "Подготовка тела к погребению": "от 7 000 ₽",
+};
+
+const animalClassifiers: Record<string, string[]> = {
+  "Домашние питомцы": [
+    "Собаки и кошки: самые распространенные домашние питомцы.",
+    "Грызуны: хомяки, морские свинки, крысы, шиншиллы, дегу, песчанки.",
+    "Птицы: попугаи, канарейки, амадины и другие мелкие и крупные виды.",
+    "Рептилии: сухопутные и водные черепахи, гекконы, игуаны, питоны и полозы.",
+    "Мелкие хищники и необычные питомцы: хорьки, мини-пиги и другие животные для домашнего содержания.",
+    "Амфибии и беспозвоночные: лягушки, тритоны, крупные пауки, скорпионы, улитки ахатины.",
+    "Рыбы: аквариумные виды для домашнего содержания.",
+  ],
+  "Сельхоз животные": [
+    "Крупный рогатый скот: коровы, быки.",
+    "Мелкий рогатый скот: овцы, козы.",
+    "Свиньи, лошади, ослы.",
+    "Домашняя птица: куры, утки, гуси, индейки.",
+    "Кролики и нутрии.",
+  ],
+  "Экзотические животные": [
+    "Обезьяны и другие приматы.",
+    "Крупные хищники: львы, тигры, медведи, если содержание разрешено законом и подтверждено документами.",
+    "Различные виды копытных: олени, ламы, альпаки.",
+    "Экзотические птицы: страусы, павлины.",
+    "Дикие животные, которых иногда содержат как питомцев: лисы, волки, рыси и другие виды при наличии разрешающих документов.",
+  ],
+};
+
+const animalListingTitles: Record<string, string> = {
+  "Домашние питомцы": "Домашний питомец с принадлежностями",
+  "Сельхоз животные": "Сельхоз животные для хозяйства",
+  "Экзотические животные": "Экзотическое животное с документами",
+};
+
+const animalListingDescriptions: Record<string, string> = {
+  "Домашние питомцы": "Объявление для проверки раздела домашних питомцев: карточка, фильтры, открытие объявления и форма создания.",
+  "Сельхоз животные": "Объявление для проверки раздела сельхоз животных: карточка, фильтры, открытие объявления и форма создания.",
+  "Экзотические животные": "Объявление для проверки раздела экзотических животных. Для размещения требуются документы и соблюдение правил содержания.",
+};
+
+const animalListingPrices: Record<string, string> = {
+  "Домашние питомцы": "по договоренности",
+  "Сельхоз животные": "от 6 000 ₽",
+  "Экзотические животные": "по договоренности",
+};
+
+function getCategoryChildren(categorySlug: string, children: string[]) {
+  if (categorySlug !== "ritualnye-uslugi") {
+    return children;
+  }
+
+  return [...children].sort((left, right) => left.length - right.length || left.localeCompare(right, "ru"));
+}
+
+function coverageTitle(categorySlug: string, subcategory: string) {
+  if (categorySlug === "ritualnye-uslugi") {
+    return ritualServiceListingTitles[subcategory] ?? subcategory;
+  }
+
+  if (categorySlug === "zhivotnye") {
+    return animalListingTitles[subcategory] ?? subcategory;
+  }
+
+  return `Контрольное объявление: ${subcategory}`;
+}
+
+function coverageDescription(categorySlug: string, subcategory: string) {
+  if (categorySlug === "ritualnye-uslugi") {
+    return ritualServiceDescriptions[subcategory] ?? `Услуги по направлению "${subcategory}".`;
+  }
+
+  if (categorySlug === "zhivotnye") {
+    return animalListingDescriptions[subcategory] ?? `Объявление для проверки раздела "${subcategory}".`;
+  }
+
+  return `Проверочное объявление для подкатегории "${subcategory}". Нужно для контроля отображения, маршрутов, карточек и формы создания объявлений.`;
+}
+
+function coveragePrice(kind: ListingKind, categorySlug: string, index: number, subcategory?: string) {
+  if (categorySlug === "ritualnye-uslugi" && subcategory) {
+    return ritualServiceListingPrices[subcategory] ?? "по договоренности";
+  }
+
+  if (categorySlug === "zhivotnye" && subcategory) {
+    return animalListingPrices[subcategory] ?? "по договоренности";
+  }
+
   if (kind === "kuplyu") {
     return `до ${Math.round((12_000 + index * 1_700) / 100) * 100} ₽`;
   }
@@ -468,7 +587,7 @@ function createCoverageListings(existingListings: DemoListing[]): DemoListing[] 
       return [
         {
           slug: `kontrol-${category.slug}-${subcategorySlug}`,
-          title: `Контрольное объявление: ${subcategory}`,
+          title: coverageTitle(category.slug, subcategory),
           kind,
           categorySlug: category.slug,
           categoryName: category.name,
@@ -479,9 +598,9 @@ function createCoverageListings(existingListings: DemoListing[]): DemoListing[] 
           lat: 45.037 + index * 0.002,
           lng: 38.975 + index * 0.002,
           showExactAddress: false,
-          price: coveragePrice(kind, category.slug, index),
+          price: coveragePrice(kind, category.slug, index, subcategory),
           booking: kind === "arenda" ? coverageBooking(category.slug, subcategorySlug, index) : undefined,
-          description: `Проверочное объявление для подкатегории "${subcategory}". Нужно для контроля отображения, маршрутов, карточек и формы создания объявлений.`,
+          description: coverageDescription(category.slug, subcategory),
           phone: "+78610009999",
           messengerUrl: "https://t.me/blizhniy_support",
           status: "published",
@@ -495,6 +614,8 @@ function createCoverageListings(existingListings: DemoListing[]): DemoListing[] 
     });
   });
 }
+
+export const demoListings: DemoListing[] = [...baseDemoListings, ...createCoverageListings(baseDemoListings)];
 
 function parseCoordinate(formData: FormData, name: string) {
   const value = Number(String(formData.get(name) ?? "").replace(",", "."));
@@ -638,11 +759,19 @@ export function slugifySubcategory(name: string) {
     "Куплю бизнес": "kuplyu-biznes",
     Оборудование: "oborudovanie",
     Партнерство: "partnerstvo",
-    "Организация похорон": "organizatsiya-pohoron",
-    Памятники: "pamyatniki",
-    "Уход за местом": "uhod-za-mestom",
-    Животные: "zhivotnye",
-    "Товары для животных": "tovary-dlya-zhivotnyh",
+    "Организация и проведение обряда прощания": "organizatsiya-i-provedenie-obryada-proshchaniya",
+    "Захоронение и сопутствующие работы": "zahoronenie-i-soputstvuyushchie-raboty",
+    Кремация: "krematsiya",
+    "Продажа и изготовление похоронных принадлежностей": "prodazha-i-izgotovlenie-pohoronnyh-prinadlezhnostey",
+    "Изготовление, установка и демонтаж намогильных сооружений":
+      "izgotovlenie-ustanovka-demontazh-namogilnyh-sooruzheniy",
+    "Уход за местом захоронения": "uhod-za-mestom-zahoroneniya",
+    "Транспортирование останков": "transportirovanie-ostankov",
+    "Предпохоронное содержание останков": "predpohoronnoe-soderzhanie-ostankov",
+    "Подготовка тела к погребению": "podgotovka-tela-k-pogrebeniyu",
+    "Домашние питомцы": "domashnie-pitomtsy",
+    "Сельхоз животные": "selhoz-zhivotnye",
+    "Экзотические животные": "ekzoticheskie-zhivotnye",
     Парикмахеры: "parikmahery",
     "Маникюр и педикюр": "manikyur-i-pedikyur",
     "Медицинский персонал": "meditsinskiy-personal",
@@ -810,6 +939,7 @@ export function ExchangeAndFreePage() {
 
 export function CategoryListingsPage({ categorySlug, subcategorySlug }: { categorySlug: string; subcategorySlug?: string }) {
   const category = categories.find((item) => item.slug === categorySlug);
+  const categoryChildren = category ? getCategoryChildren(category.slug, category.children) : [];
   const subcategory = category?.children.find((item) => slugifySubcategory(item) === subcategorySlug);
   const listings = demoListings.filter(
     (listing) => listing.categorySlug === categorySlug && (!subcategorySlug || listing.subcategorySlug === subcategorySlug),
@@ -829,20 +959,56 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
         <div className="grid gap-7">
           <section>
             <h1 className="[overflow-wrap:anywhere] text-3xl font-black text-[#060b27] sm:text-5xl">{subcategory ?? category?.name ?? "Категория"}</h1>
-            <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-              Объявления Краснодара с ЧПУ-страницей категории, хлебными крошками, фильтрами и карточками.
-            </p>
             {category ? (
               <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-                {category.children.map((child) => (
-                  <Link
-                    key={child}
-                    href={`/blizhniy/${category.slug}/${slugifySubcategory(child)}`}
-                    className="[overflow-wrap:anywhere] rounded-xl border border-slate-200 bg-white p-3 font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-[#0875d1] sm:p-4"
-                  >
-                    {child}
-                  </Link>
-                ))}
+                {categoryChildren.map((child, index) => {
+                  const href = `/blizhniy/${category.slug}/${slugifySubcategory(child)}`;
+                  const ritualDescription = category.slug === "ritualnye-uslugi" ? ritualServiceDescriptions[child] : undefined;
+                  const animalClassifier = category.slug === "zhivotnye" ? animalClassifiers[child] : undefined;
+                  const shouldSpanTwoColumns =
+                    category.slug === "ritualnye-uslugi" && categoryChildren.length % 2 === 1 && index === categoryChildren.length - 1;
+                  const spanClassName = shouldSpanTwoColumns ? "sm:col-span-2 md:col-span-1" : "";
+
+                  if (ritualDescription || animalClassifier) {
+                    return (
+                      <details
+                        key={child}
+                        className={`group min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition open:border-blue-200 sm:p-4 ${spanClassName}`}
+                      >
+                        <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                          <span className="block break-words font-bold text-slate-800 [overflow-wrap:anywhere]">{child}</span>
+                          <ChevronRight className="mt-0.5 h-5 w-5 shrink-0 text-slate-400 transition group-open:rotate-90 group-open:text-[#0875d1]" />
+                        </summary>
+                        {ritualDescription ? (
+                          <p className="mt-3 break-words text-sm font-medium leading-6 text-slate-600 [overflow-wrap:anywhere]">{ritualDescription}</p>
+                        ) : null}
+                        {animalClassifier ? (
+                          <ul className="mt-3 grid gap-2 text-sm font-medium leading-6 text-slate-600">
+                            {animalClassifier.map((item) => (
+                              <li key={item} className="flex gap-2">
+                                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0875d1]" />
+                                <span className="break-words [overflow-wrap:anywhere]">{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        <Link href={href} className="mt-3 inline-flex text-sm font-black text-[#0875d1] transition hover:text-[#0664b3]">
+                          Открыть объявления
+                        </Link>
+                      </details>
+                    );
+                  }
+
+                  return (
+                    <Link
+                      key={child}
+                      href={href}
+                      className={`min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-200 hover:text-[#0875d1] sm:p-4 ${spanClassName}`}
+                    >
+                      <span className="block break-words font-bold text-slate-800 [overflow-wrap:anywhere]">{child}</span>
+                    </Link>
+                  );
+                })}
               </div>
             ) : null}
             <ListingResultsPanel categorySlug={categorySlug} listings={listings} subcategorySlug={subcategorySlug} />

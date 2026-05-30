@@ -5,6 +5,8 @@ export type DemoPublicationType = "listing" | "vacancy" | "workRequest" | "speci
 export type DemoPublication = {
   id: string;
   type: DemoPublicationType;
+  ownerKey?: string;
+  ownerName?: string;
   title: string;
   subtitle: string;
   city: string;

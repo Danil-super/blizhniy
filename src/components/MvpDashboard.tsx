@@ -1,5 +1,4 @@
 import type React from "react";
-/* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import {
@@ -14,11 +13,8 @@ import {
   FileText,
   Gauge,
   LockKeyhole,
-  Mail,
-  MapPin,
   Megaphone,
   MessageSquare,
-  Phone,
   Plus,
   Settings2,
   ShieldCheck,
@@ -29,17 +25,25 @@ import {
 } from "lucide-react";
 import { AdminAuthGate } from "@/components/auth/AdminAuthGate";
 import { AdMarqueeAdminPanel } from "@/components/AdMarqueeAdminPanel";
-import { DemoPublishedItems } from "@/components/DemoPublishedItems";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
 import { LogoutButton } from "@/components/auth/LogoutButton";
-import { OrganizationAddressForm } from "@/components/OrganizationAddressForm";
+import {
+  CabinetCapabilities,
+  CabinetContactsHint,
+  CabinetOrganizationClient,
+  CabinetOverviewClient,
+  CabinetPaymentsHistoryClient,
+  CabinetProfileBar,
+  CabinetPublicationsClient,
+  CabinetResponsesClient,
+  CabinetSpecialistClient,
+} from "@/components/cabinet/CabinetClient";
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
-import { LocationMap } from "@/components/LocationMap";
 import { categories, professions } from "@/lib/data";
 import { getPayment } from "@/lib/payment-provider";
-import { getCurrentUserSpecialist, listApplications, listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies, listWorkRequests } from "@/lib/mock-store";
+import { listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies } from "@/lib/mock-store";
 import { getTariffById, getTariffs, resetTariffPatches, updateTariffPatch } from "@/lib/tariff-store";
 
 type StatusTone = "green" | "blue" | "amber" | "slate" | "red" | "violet";
@@ -49,12 +53,6 @@ type TableColumn<T> = {
   label: string;
   render?: (row: T) => React.ReactNode;
 };
-
-const responses = [
-  { id: "OT-901", target: "Сантехник", from: "ООО РемДом", date: "24.05.2026", status: "sent" },
-  { id: "OT-902", target: "Мастер ремонта квартир", from: "ИП Чернов", date: "22.05.2026", status: "viewed" },
-  { id: "OT-903", target: "Клинер", from: "Clean Home", date: "21.05.2026", status: "paid" },
-];
 
 const adminUsers = [
   { id: "U-1001", name: "Анна Петрова", role: "user", phone: "+7 861 000-11-01", status: "active" },
@@ -173,19 +171,6 @@ function listingRows() {
   }));
 }
 
-function workRequestRows() {
-  return listWorkRequests().map((request) => ({
-    id: request.id,
-    href: `/blizhniy/rabota/zakazy/${request.id}`,
-    editHref: `/blizhniy/rabota/zakazy/sozdat?from=${request.id}`,
-    title: request.title,
-    profession: request.profession,
-    city: request.city,
-    budget: request.budget,
-    status: request.status,
-  }));
-}
-
 function paymentRows() {
   return listMockPayments().map((payment) => ({
     id: payment.id,
@@ -271,6 +256,7 @@ function Shell({
           </div>
         </div>
         {nav ? <NavPills items={nav} /> : null}
+        {nav === cabinetNav ? <CabinetProfileBar /> : null}
         <div className="mt-5 sm:mt-7">{children}</div>
       </main>
     </>
@@ -473,43 +459,12 @@ export function AuthPage() {
 }
 
 export function CabinetPage() {
-  const listingsCount = listingRows().length;
-  const vacanciesCount = listVacancies().length;
-  const workRequestsCount = workRequestRows().length;
-  const paymentsTotal = listMockPayments().reduce((sum, payment) => sum + payment.amount, 0);
-
   return (
     <Shell title="Личный кабинет" description="Панель пользователя для публикаций, откликов, анкеты специалиста и оплат." eyebrow="Кабинет" nav={cabinetNav}>
       <CabinetAuthGate>
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard icon={<FileText className="h-5 w-5" />} label="Объявления" value={String(listingsCount)} detail="Ваши публикации в каталоге." />
-          <MetricCard icon={<BriefcaseBusiness className="h-5 w-5" />} label="Вакансии" value={String(vacanciesCount)} detail="Публикации из раздела работы." />
-          <MetricCard icon={<ClipboardList className="h-5 w-5" />} label="Заказы" value={String(workRequestsCount)} detail="Задачи для исполнителей." />
-          <MetricCard icon={<CreditCard className="h-5 w-5" />} label="Оплаты" value={`${paymentsTotal} ₽`} detail="Сумма созданных тестовых платежей." />
-        </div>
-        <div className="mt-8 grid gap-8 xl:grid-cols-2">
-          <section>
-            <SectionTitle title="Последние объявления" actionHref="/cabinet/obyavleniya" actionLabel="Все объявления" />
-            <DataTable
-              rows={listingRows()}
-              columns={[
-                { key: "title", label: "Название" },
-                { key: "category", label: "Категория" },
-                { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-              ]}
-            />
-          </section>
-          <section>
-            <SectionTitle title="Последние оплаты" actionHref="/cabinet/oplata" actionLabel="История" />
-            <DataTable
-              rows={paymentRows()}
-              columns={[
-                { key: "id", label: "Платеж" },
-                { key: "subject", label: "Назначение" },
-                { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-              ]}
-            />
-          </section>
+        <CabinetOverviewClient />
+        <div className="mt-8">
+          <CabinetCapabilities />
         </div>
       </CabinetAuthGate>
     </Shell>
@@ -519,42 +474,19 @@ export function CabinetPage() {
 export function CabinetListingsPage() {
   return (
     <Shell title="Мои объявления" description="Статусы публикаций, просмотры и быстрые действия по объявлениям пользователя." eyebrow="Кабинет" nav={cabinetNav}>
-      <DataTable
-        rows={listingRows()}
-        columns={[
-          { key: "id", label: "ID" },
-          { key: "title", label: "Название" },
-          { key: "category", label: "Категория" },
-          { key: "city", label: "Город" },
-          { key: "views", label: "Просмотры" },
-          { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-        ]}
-      />
-      <DemoPublishedItems type="listing" />
+      <CabinetAuthGate>
+        <CabinetPublicationsClient type="listing" />
+      </CabinetAuthGate>
     </Shell>
   );
 }
 
 export function CabinetVacanciesPage() {
-  const rows = listVacancies().map((vacancy) => ({
-    ...vacancy,
-    href: `/blizhniy/vakansiya/${vacancy.id}`,
-    editHref: `/blizhniy/rabota/vakansii/${vacancy.id}/redaktirovat`,
-  }));
-
   return (
     <Shell title="Мои вакансии" description="Список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav}>
-      <DataTable
-        rows={rows as unknown as Record<string, unknown>[]}
-        columns={[
-          { key: "organization", label: "Компания" },
-          { key: "title", label: "Вакансия" },
-          { key: "city", label: "Город" },
-          { key: "salary", label: "Зарплата" },
-          { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-        ]}
-      />
-      <DemoPublishedItems type="vacancy" />
+      <CabinetAuthGate>
+        <CabinetPublicationsClient type="vacancy" />
+      </CabinetAuthGate>
     </Shell>
   );
 }
@@ -563,141 +495,18 @@ export function CabinetWorkRequestsPage() {
   return (
     <Shell title="Мои заказы исполнителям" description="Задачи, которые пользователь размещает для специалистов и исполнителей." eyebrow="Кабинет" nav={cabinetNav}>
       <CabinetAuthGate>
-        <DataTable
-          rows={workRequestRows()}
-          columns={[
-            { key: "id", label: "ID" },
-            { key: "title", label: "Заказ" },
-            { key: "profession", label: "Специалист" },
-            { key: "city", label: "Город" },
-            { key: "budget", label: "Бюджет" },
-            { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-          ]}
-        />
-        <DemoPublishedItems type="workRequest" />
-        <Link href="/blizhniy/rabota/zakazy/sozdat" className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-[#0875d1] px-7 font-bold text-white">
-          Разместить заказ
-        </Link>
+        <CabinetPublicationsClient type="workRequest" />
       </CabinetAuthGate>
     </Shell>
   );
 }
 
 export function CabinetSpecialistPage() {
-  const profile = getCurrentUserSpecialist();
-  const locationLabel = profile ? [profile.address, profile.city].filter(Boolean).join(", ") || "Метка на карте не указана" : "";
-
   return (
     <Shell title="Анкета специалиста" description="Профиль исполнителя с услугами, контактами, статусом проверки и будущей публикацией." eyebrow="Кабинет" nav={cabinetNav}>
-      {profile ? (
-      <section className="grid min-w-0 gap-4">
-        <article className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
-              {profile.images?.[0] ? (
-                <div
-                  className="h-28 w-full max-w-56 shrink-0 rounded-2xl bg-blue-50 bg-contain bg-center bg-no-repeat ring-1 ring-blue-100 sm:h-36 sm:w-36"
-                  style={{ backgroundImage: `url(${profile.images[0]})` }}
-                  aria-label={`Фото ${profile.name}`}
-                />
-              ) : (
-                <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-4xl font-black text-[#0875d1] sm:h-36 sm:w-36 sm:text-5xl">{profile.name.slice(0, 1)}</div>
-              )}
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge status={profile.status} />
-                  <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold text-[#0875d1]">Анкета специалиста</span>
-                </div>
-                <h2 className="mt-3 text-2xl font-black leading-tight text-[#060b27] sm:text-4xl">{profile.name}</h2>
-                <p className="mt-1 text-base font-bold text-[#0875d1] sm:text-xl">{profile.profession}</p>
-                <p className="mt-3 flex items-start gap-2 text-sm leading-6 text-slate-600">
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#0875d1]" />
-                  <span className="min-w-0 max-w-full break-words">{locationLabel}</span>
-                </p>
-              </div>
-            </div>
-            <Link href={`/blizhniy/rabota/specialisty/anketa?from=${profile.id}`} className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl bg-[#0875d1] px-5 text-sm font-bold text-white sm:w-auto">
-              Редактировать анкету
-            </Link>
-          </div>
-
-          <div className="mt-6 grid gap-3 md:grid-cols-4">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-bold uppercase text-slate-500">Стоимость работ</p>
-              <p className="mt-2 text-xl font-black text-[#060b27]">{profile.price}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-bold uppercase text-slate-500">Телефон</p>
-              {profile.phone ? (
-                <a href={`tel:${profile.phone}`} className="mt-2 inline-flex items-center gap-2 text-base font-black text-[#0aa337]">
-                  <Phone className="h-4 w-4" />
-                  {profile.phone}
-                </a>
-              ) : (
-                <p className="mt-2 text-base font-bold text-slate-400">Не указан</p>
-              )}
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-bold uppercase text-slate-500">Email</p>
-              {profile.email ? (
-                <a href={`mailto:${profile.email}`} className="mt-2 inline-flex max-w-full items-center gap-2 text-base font-black text-[#0875d1]">
-                  <Mail className="h-4 w-4 shrink-0" />
-                  <span className="min-w-0 truncate">{profile.email}</span>
-                </a>
-              ) : (
-                <p className="mt-2 text-base font-bold text-slate-400">Не указан</p>
-              )}
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-bold uppercase text-slate-500">Telegram / WhatsApp</p>
-              {profile.messengerUrl ? (
-                <a href={profile.messengerUrl} className="mt-2 block truncate text-base font-black text-[#0875d1]">
-                  {profile.messengerUrl}
-                </a>
-              ) : (
-                <p className="mt-2 text-base font-bold text-slate-400">Не указан</p>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <section className="rounded-xl border border-slate-200 bg-white p-4">
-              <h3 className="text-lg font-black text-[#060b27]">Навыки</h3>
-              <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">{profile.skills}</p>
-            </section>
-            <section className="rounded-xl border border-slate-200 bg-white p-4">
-              <h3 className="text-lg font-black text-[#060b27]">О себе и опыт работы</h3>
-              <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">{profile.description ?? "Описание пока не заполнено."}</p>
-            </section>
-          </div>
-
-          {profile.images?.length ? (
-            <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
-              <h3 className="text-lg font-black text-[#060b27]">Фото специалиста и работ</h3>
-              <div className="photo-preview-grid mt-4">
-                {profile.images.map((image, index) => (
-                  <figure key={`${image.slice(0, 32)}-${index}`} className="aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                    <img src={image} alt={`Фото анкеты ${index + 1}`} className="h-full w-full object-contain p-1.5" />
-                  </figure>
-                ))}
-              </div>
-            </section>
-          ) : null}
-        </article>
-        <LocationMap location={profile} exactLabel="Адрес берется из метки, которую специалист указал в анкете" />
-      </section>
-      ) : (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
-          <h2 className="text-xl font-black text-[#060b27]">Анкета еще не создана</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            У пользователя может быть только одна анкета специалиста. После сохранения она появится здесь, и ее можно будет редактировать из кабинета.
-          </p>
-          <Link href="/blizhniy/rabota/specialisty/anketa" className="mt-4 inline-flex h-11 items-center justify-center rounded-xl bg-[#0875d1] px-5 text-sm font-bold text-white">
-            Создать анкету
-          </Link>
-        </section>
-      )}
-      <DemoPublishedItems type="specialist" />
+      <CabinetAuthGate>
+        <CabinetSpecialistClient />
+      </CabinetAuthGate>
     </Shell>
   );
 }
@@ -705,38 +514,20 @@ export function CabinetSpecialistPage() {
 export function CabinetOrganizationPage() {
   return (
     <Shell title="Профиль организации" description="Профиль заказчика с публичным адресом и контактами для вакансий." eyebrow="Кабинет" nav={cabinetNav}>
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-        <h2 className="text-2xl font-black text-[#060b27]">ООО РемДом</h2>
-        <OrganizationAddressForm />
-        <p className="mt-5 rounded-lg bg-blue-50 p-4 text-sm leading-6 text-slate-700">
-          Для организаций и вакансий точный адрес можно показывать публично. Координаты вручную заполнять не нужно: адрес выбирается из подсказок и дальше может использоваться для внешних карт.
-        </p>
-      </section>
+      <CabinetAuthGate>
+        <CabinetOrganizationClient />
+        <CabinetContactsHint />
+      </CabinetAuthGate>
     </Shell>
   );
 }
 
 export function CabinetResponsesPage() {
-  const applicationRows = listApplications().map((application) => ({
-    id: application.id,
-    target: application.vacancyTitle,
-    from: application.specialistName,
-    date: "После оплаты",
-    status: application.status,
-  }));
-
   return (
     <Shell title="Мои отклики" description="Отклики на вакансии со статусами оплаты, отправки и просмотра работодателем." eyebrow="Кабинет" nav={cabinetNav}>
-      <DataTable
-        rows={[...applicationRows, ...responses]}
-        columns={[
-          { key: "id", label: "ID" },
-          { key: "target", label: "Вакансия" },
-          { key: "from", label: "Работодатель" },
-          { key: "date", label: "Дата" },
-          { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-        ]}
-      />
+      <CabinetAuthGate>
+        <CabinetResponsesClient />
+      </CabinetAuthGate>
     </Shell>
   );
 }
@@ -748,50 +539,43 @@ export function CabinetPaymentsPage() {
 
   return (
     <Shell title="Оплата и тарифы" description="Тарифы публикаций, история платежей и переход к оплате заказа." eyebrow="Кабинет" nav={cabinetNav}>
-      {adTariff ? (
-        <section className="mb-4 rounded-xl border border-blue-100 bg-blue-50/70 p-3 shadow-card sm:mb-6 sm:p-5">
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
-            <div>
-              <p className="text-xs font-black uppercase text-[#0875d1]">Реклама</p>
-              <h2 className="mt-1 text-lg font-black text-[#060b27] sm:text-2xl">{adTariff.name}</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-600">
-                Покупка места в бегущей строке на главной странице на {adTariff.durationDays} дней.
-              </p>
+      <CabinetAuthGate>
+        {adTariff ? (
+          <section className="mb-4 rounded-xl border border-blue-100 bg-blue-50/70 p-3 shadow-card sm:mb-6 sm:p-5">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+              <div>
+                <p className="text-xs font-black uppercase text-[#0875d1]">Реклама</p>
+                <h2 className="mt-1 text-lg font-black text-[#060b27] sm:text-2xl">{adTariff.name}</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Покупка места в бегущей строке на главной странице на {adTariff.durationDays} дней.
+                </p>
+              </div>
+              <div className="grid grid-cols-[1fr_auto] items-center gap-3 sm:block sm:text-right">
+                <p className="text-2xl font-black text-[#0875d1] sm:text-3xl">{adTariff.price} ₽</p>
+                <Link href={`/blizhniy/oplata/${adTariff.id}`} className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0aa337] px-4 text-sm font-bold text-white sm:mt-3 sm:w-full">
+                  Купить
+                </Link>
+              </div>
             </div>
-            <div className="grid grid-cols-[1fr_auto] items-center gap-3 sm:block sm:text-right">
-              <p className="text-2xl font-black text-[#0875d1] sm:text-3xl">{adTariff.price} ₽</p>
-              <Link href={`/blizhniy/oplata/${adTariff.id}`} className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0aa337] px-4 text-sm font-bold text-white sm:mt-3 sm:w-full">
-                Купить
+          </section>
+        ) : null}
+        <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
+          {publicationTariffs.map((tariff) => (
+            <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-5" key={tariff.id}>
+              <h2 className="line-clamp-2 text-sm font-black leading-5 text-[#060b27] sm:text-xl sm:leading-7">{tariff.name}</h2>
+              <p className="mt-2 text-2xl font-black text-[#0875d1] sm:mt-3 sm:text-3xl">{tariff.price} ₽</p>
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{tariff.durationDays ? `${tariff.durationDays} дней размещения` : "Разовое действие"}</p>
+              <Link href={`/blizhniy/oplata/${tariff.id}`} className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0aa337] text-sm font-bold text-white sm:mt-5 sm:h-11">
+                Оплатить
               </Link>
-            </div>
-          </div>
+            </article>
+          ))}
         </section>
-      ) : null}
-      <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
-        {publicationTariffs.map((tariff) => (
-          <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-5" key={tariff.id}>
-            <h2 className="line-clamp-2 text-sm font-black leading-5 text-[#060b27] sm:text-xl sm:leading-7">{tariff.name}</h2>
-            <p className="mt-2 text-2xl font-black text-[#0875d1] sm:mt-3 sm:text-3xl">{tariff.price} ₽</p>
-            <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{tariff.durationDays ? `${tariff.durationDays} дней размещения` : "Разовое действие"}</p>
-            <Link href={`/blizhniy/oplata/${tariff.id}`} className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0aa337] text-sm font-bold text-white sm:mt-5 sm:h-11">
-              Оплатить
-            </Link>
-          </article>
-        ))}
-      </section>
-      <section className="mt-8">
-        <SectionTitle title="История платежей" />
-        <DataTable
-          rows={paymentRows()}
-          columns={[
-            { key: "id", label: "Платеж" },
-            { key: "subject", label: "Назначение" },
-            { key: "amount", label: "Сумма" },
-            { key: "method", label: "Метод" },
-            { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-          ]}
-        />
-      </section>
+        <section className="mt-8">
+          <SectionTitle title="История платежей" />
+          <CabinetPaymentsHistoryClient />
+        </section>
+      </CabinetAuthGate>
     </Shell>
   );
 }
@@ -800,21 +584,7 @@ export function CabinetFairApplicationsPage() {
   return (
     <Shell title="Заявки на ярмарку" description="Заявки пользователя на участие в Ярмарке мастеров, статусы оплаты и публикации." eyebrow="Кабинет" nav={cabinetNav}>
       <CabinetAuthGate>
-        <DataTable
-          rows={listFairApplications() as unknown as Record<string, unknown>[]}
-          columns={[
-            { key: "id", label: "ID" },
-            { key: "participantName", label: "Участник" },
-            { key: "category", label: "Категория" },
-            { key: "city", label: "Город" },
-            { key: "paymentStatus", label: "Оплата", render: (row) => <StatusBadge status={String(row.paymentStatus)} /> },
-            { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-          ]}
-        />
-        <DemoPublishedItems type="fairApplication" />
-        <Link href="/yarmarka-masterov/zayavka" className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white">
-          Подать новую заявку
-        </Link>
+        <CabinetPublicationsClient type="fairApplication" />
       </CabinetAuthGate>
     </Shell>
   );

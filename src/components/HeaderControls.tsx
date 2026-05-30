@@ -153,17 +153,17 @@ export function HeaderControls() {
   }
 
   return (
-    <div className="grid w-full min-w-0 flex-1 grid-cols-[56px_minmax(0,1fr)] items-center gap-2 md:grid-cols-[56px_minmax(320px,1fr)_auto]">
+    <div className="grid w-full min-w-0 flex-1 grid-cols-[48px_minmax(0,1fr)] items-center gap-2 overflow-x-clip sm:grid-cols-[56px_minmax(0,1fr)] md:grid-cols-[56px_minmax(320px,1fr)_auto]">
       <Link
         href="/blizhniy/kategorii"
-        className="order-1 flex h-12 w-14 items-center justify-center rounded-2xl bg-[#00aaff] text-white transition hover:bg-[#0796dd]"
+        className="order-1 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#00aaff] text-white transition hover:bg-[#0796dd] sm:w-14"
         aria-label="Каталог"
       >
         <Grid3X3 className="h-5 w-5" />
       </Link>
 
       <div className="relative order-2 min-w-0" ref={searchRef}>
-        <form onSubmit={handleSearch} className="flex h-12 min-w-0 items-center rounded-2xl border-2 border-[#00aaff] bg-white text-slate-500">
+        <form onSubmit={handleSearch} className="flex h-12 min-w-0 items-center overflow-hidden rounded-2xl border-2 border-[#00aaff] bg-white text-slate-500">
           <Search className="ml-4 h-4 w-4 shrink-0" />
           <input
             className="min-w-0 flex-1 border-0 bg-transparent px-3 text-base text-slate-900 outline-none placeholder:text-slate-400"

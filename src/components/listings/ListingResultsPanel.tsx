@@ -195,10 +195,14 @@ export function ListingResultsPanel({ categorySlug, emptyText, kind, listings, s
             Показано: <strong className="text-[#060b27]">{formatCount(visibleTotal)}</strong>
           </span>
         </div>
-        <DemoListingFeed categorySlug={categorySlug} filters={appliedFilters} kind={kind} subcategorySlug={subcategorySlug} />
-        {visibleListings.map((listing) => (
-          <ListingCard key={listing.slug} listing={listing} />
-        ))}
+        {visibleTotal ? (
+          <div className="grid gap-3 sm:gap-4 2xl:grid-cols-2">
+            <DemoListingFeed categorySlug={categorySlug} filters={appliedFilters} kind={kind} subcategorySlug={subcategorySlug} />
+            {visibleListings.map((listing) => (
+              <ListingCard key={listing.slug} listing={listing} />
+            ))}
+          </div>
+        ) : null}
         {!visibleTotal ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
             {emptyText ?? "В этой подборке пока нет объявлений. Попробуйте другой раздел или создайте новую публикацию."}

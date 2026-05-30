@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { demoPublicationLabels, demoPublicationsStorageKey, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
+import { resolveClientUserIdentity } from "@/lib/client-user-profile";
 import type { BookingDetails, ListingKind } from "@/lib/types";
 
 type AdminDemoPublishButtonProps = {
@@ -257,10 +258,15 @@ export function AdminDemoPublishButton({ publicationType, returnHref, label }: A
       return;
     }
 
-    setSaving(true);
-    setError("");
+      setSaving(true);
+      setError("");
     try {
-      const publication = await buildPublication(new FormData(form), publicationType);
+      const identity = await resolveClientUserIdentity();
+      const publication = {
+        ...(await buildPublication(new FormData(form), publicationType)),
+        ownerKey: identity.ownerKey,
+        ownerName: identity.name,
+      };
       const stored = readStoredPublications();
       const nextPublications = [publication, ...stored].slice(0, 50);
 

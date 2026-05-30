@@ -32,7 +32,7 @@ export function HeaderNav() {
   }, []);
 
   return (
-    <nav className="page-container relative flex min-h-8 items-center justify-between gap-2 text-sm md:min-h-10 md:gap-4" aria-label="Основная навигация">
+    <nav className="page-container relative flex min-h-8 min-w-0 items-center justify-between gap-2 overflow-x-clip text-sm md:min-h-10 md:gap-4" aria-label="Основная навигация">
       <div className="relative md:hidden" ref={menuRef}>
         <button
           type="button"
@@ -66,7 +66,7 @@ export function HeaderNav() {
           </Link>
         ))}
       </div>
-      <div className="shrink-0">
+      <div className="min-w-0 shrink-0">
         <HeaderActions compact />
       </div>
     </nav>
