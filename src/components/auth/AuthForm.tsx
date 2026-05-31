@@ -47,6 +47,10 @@ function normalizeAuthEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
+function normalizePasswordInput(value: string) {
+  return value.replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-");
+}
+
 function getReadableAuthError(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   const lowerMessage = message.toLowerCase();
@@ -104,12 +108,15 @@ function PasswordField({
         <input
           className="h-12 w-full rounded-lg border border-slate-300 px-4 pr-12 outline-none focus:border-[#0875d1]"
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => onChange(normalizePasswordInput(event.target.value))}
           placeholder={placeholder}
           type={show ? "text" : "password"}
           autoComplete={autoComplete}
+          autoCapitalize="none"
+          autoCorrect="off"
           minLength={minLength}
           required={required}
+          spellCheck={false}
         />
         <button
           type="button"
@@ -141,6 +148,7 @@ export function AuthForm() {
   const [captchaToken, setCaptchaToken] = useState("");
   const [state, setState] = useState<AuthState>("idle");
   const [message, setMessage] = useState("Создайте аккаунт или войдите, чтобы открыть личный кабинет.");
+  const [showRecoveryRequest, setShowRecoveryRequest] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
@@ -280,6 +288,7 @@ export function AuthForm() {
 
     try {
       const authEmail = normalizeAuthEmail(email);
+      const authPassword = normalizePasswordInput(password).trim();
 
       if (!isValidEmail(authEmail)) {
         throw new Error("Введите корректный email.");
@@ -290,11 +299,13 @@ export function AuthForm() {
           throw new Error(nameError);
         }
 
-        if (passwordError) {
-          throw new Error(passwordError);
+        const normalizedPasswordError = getPasswordValidationError(authPassword);
+
+        if (normalizedPasswordError) {
+          throw new Error(normalizedPasswordError);
         }
 
-        if (password !== passwordConfirm) {
+        if (authPassword !== normalizePasswordInput(passwordConfirm).trim()) {
           throw new Error("Пароли не совпадают");
         }
 
@@ -310,14 +321,14 @@ export function AuthForm() {
         mode === "register"
           ? await supabase.auth.signUp({
               email: authEmail,
-              password,
+              password: authPassword,
               options: {
                 data: {
                   display_name: fullName.trim().replace(/\s+/g, " "),
                 },
               },
             })
-          : await supabase.auth.signInWithPassword({ email: authEmail, password });
+          : await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
 
       if (result.error) {
         throw result.error;
@@ -399,14 +410,20 @@ export function AuthForm() {
       <div className="grid grid-cols-2 rounded-lg bg-slate-100 p-1">
         <button
           type="button"
-          onClick={() => setMode("register")}
+          onClick={() => {
+            setMode("register");
+            setShowRecoveryRequest(false);
+          }}
           className={`h-10 rounded-md text-sm font-bold ${mode === "register" ? "bg-white text-[#0875d1] shadow-sm" : "text-slate-600"}`}
         >
           Регистрация
         </button>
         <button
           type="button"
-          onClick={() => setMode("login")}
+          onClick={() => {
+            setMode("login");
+            setShowRecoveryRequest(false);
+          }}
           className={`h-10 rounded-md text-sm font-bold ${mode === "login" ? "bg-white text-[#0875d1] shadow-sm" : "text-slate-600"}`}
         >
           Вход
@@ -444,7 +461,11 @@ export function AuthForm() {
             placeholder="you@example.ru"
             type="email"
             autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            inputMode="email"
             required
+            spellCheck={false}
           />
           {emailError ? <span className="mt-2 block text-xs font-semibold text-rose-600">{emailError}</span> : null}
         </label>
@@ -532,16 +553,24 @@ export function AuthForm() {
         </button>
         {mode === "login" ? (
           <div className="mt-5 grid gap-3">
-            <TurnstileWidget
-              resetKey={captchaResetKey}
-              siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
-              onVerify={setCaptchaToken}
-              onExpire={() => setCaptchaToken("")}
-              onError={() => setCaptchaToken("")}
-            />
-            <button type="button" onClick={handleForgotPassword} disabled={state === "loading" || !recoveryReady} className="inline-flex w-full items-center justify-center text-sm font-bold text-[#0875d1] transition hover:text-[#065fa8] disabled:text-slate-400">
-              Забыли пароль? Отправить письмо
-            </button>
+            {showRecoveryRequest ? (
+              <>
+                <TurnstileWidget
+                  resetKey={captchaResetKey}
+                  siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+                  onVerify={setCaptchaToken}
+                  onExpire={() => setCaptchaToken("")}
+                  onError={() => setCaptchaToken("")}
+                />
+                <button type="button" onClick={handleForgotPassword} disabled={state === "loading" || !recoveryReady} className="inline-flex w-full items-center justify-center text-sm font-bold text-[#0875d1] transition hover:text-[#065fa8] disabled:text-slate-400">
+                  Отправить письмо для смены пароля
+                </button>
+              </>
+            ) : (
+              <button type="button" onClick={() => setShowRecoveryRequest(true)} className="inline-flex w-full items-center justify-center text-sm font-bold text-[#0875d1] transition hover:text-[#065fa8]">
+                Забыли пароль?
+              </button>
+            )}
           </div>
         ) : null}
       </form>
