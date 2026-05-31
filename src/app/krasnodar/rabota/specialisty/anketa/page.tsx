@@ -3,13 +3,15 @@ import { Buffer } from "node:buffer";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { SiteHeader } from "@/components/SiteHeader";
+import { TurnstileSubmitButton } from "@/components/TurnstileSubmitButton";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { professions } from "@/lib/data";
 import { getCurrentUserSpecialist, getSpecialistById, updateSpecialist, upsertCurrentUserSpecialist } from "@/lib/mock-store";
+import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
 
 type PageProps = {
-  searchParams?: Promise<{ admin?: string; from?: string }>;
+  searchParams?: Promise<{ admin?: string; error?: string; from?: string }>;
 };
 
 function parseCoordinate(formData: FormData, name: string) {
@@ -51,6 +53,15 @@ export default async function SpecialistProfileFormPage({ searchParams }: PagePr
     "use server";
 
     const specialistId = String(formData.get("specialistId") ?? "").trim();
+
+    if (!specialistId) {
+      const captchaVerified = await verifyTurnstileFormData(formData);
+
+      if (!captchaVerified) {
+        redirect(`/blizhniy/rabota/specialisty/anketa?error=${encodeURIComponent(TURNSTILE_ERROR_MESSAGE)}`);
+      }
+    }
+
     const specialistInput = {
       name: String(formData.get("name") ?? "").trim() || "Новый специалист",
       profession: String(formData.get("profession") ?? "").trim() || "Специалист",
@@ -85,6 +96,7 @@ export default async function SpecialistProfileFormPage({ searchParams }: PagePr
           title={selectedSpecialist ? "Редактировать анкету специалиста" : "Анкета специалиста"}
           description="Создание и редактирование анкеты исполнителя. Анкета появляется в каталоге специалистов без оплаты, отклики на вакансии оплачиваются отдельно."
         >
+          {params?.error ? <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{params.error}</p> : null}
           <form action={publishSpecialistWithoutPaymentAction} className="responsive-form-panel grid gap-4">
           <div className="responsive-field-grid">
             {selectedSpecialist ? <input type="hidden" name="specialistId" value={selectedSpecialist.id} /> : null}
@@ -105,6 +117,8 @@ export default async function SpecialistProfileFormPage({ searchParams }: PagePr
           <TextAreaField name="description" label="О себе и опыт работы" placeholder="Расскажите об опыте, подходе к работе, гарантиях и условиях выезда" defaultValue={selectedSpecialist?.description} />
           {adminMode ? (
             <AdminDemoPublishButton publicationType="specialist" returnHref="/cabinet/specialist" label="Сохранить анкету" />
+          ) : !selectedSpecialist ? (
+            <TurnstileSubmitButton siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY} label="Сохранить анкету" />
           ) : (
             <button type="submit" className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#0875d1] px-5 text-sm font-bold text-white sm:h-12 sm:w-fit sm:px-7 sm:text-base">
               Сохранить анкету

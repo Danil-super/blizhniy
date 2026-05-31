@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRightLeft, CalendarDays, Gift, MapPin, MessageCircle, Phone, ShoppingBag, Tags } from "lucide-react";
+import { formatPublicationDateTime } from "@/lib/publication-time";
 
 export type ListingKind = "prodam" | "kuplyu" | "menyayu" | "otdam-darom" | "arenda";
 export type ListingStatus = "draft" | "pending_payment" | "paid" | "published" | "archived" | "expired" | "rejected";
@@ -20,6 +21,7 @@ export type DemoListing = {
   showExactAddress: boolean;
   price: string;
   booking?: import("@/lib/types").BookingDetails;
+  delivery?: import("@/lib/types").DeliveryOptions;
   description: string;
   phone: string;
   messengerUrl?: string;
@@ -120,7 +122,7 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
       <div className="grid min-w-0 gap-2 sm:col-span-2 sm:grid-cols-[minmax(0,auto)_minmax(240px,1fr)] sm:items-start sm:gap-3 xl:col-span-1 xl:flex xl:flex-col xl:items-end xl:justify-between xl:gap-4">
         <div className="min-w-0 sm:max-w-[220px] xl:max-w-none xl:text-right">
           <p className="truncate text-base font-black text-[#060b27] sm:text-lg lg:text-2xl">{listing.price}</p>
-          <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">{listing.publishedAt}</p>
+          <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">{formatPublicationDateTime(listing.publishedAt)}</p>
         </div>
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end">
           <a

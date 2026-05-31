@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createPayment } from "@/lib/payment-provider";
 import { createFairApplication, listFairApplications } from "@/lib/mock-store";
+import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileToken } from "@/lib/turnstile";
 
 type CreateFairApplicationBody = {
   participantName?: string;
@@ -12,6 +13,7 @@ type CreateFairApplicationBody = {
   phone?: string;
   email?: string;
   comment?: string;
+  captchaToken?: string;
   skipPayment?: boolean;
 };
 
@@ -19,6 +21,15 @@ const requiredFields: Array<keyof CreateFairApplicationBody> = ["participantName
 
 function cleanText(value?: string) {
   return value?.trim() ?? "";
+}
+
+function getRemoteIp(request: Request) {
+  return (
+    request.headers.get("cf-connecting-ip") ??
+    request.headers.get("x-real-ip") ??
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    undefined
+  );
 }
 
 export async function GET() {
@@ -36,6 +47,12 @@ export async function POST(request: Request) {
 
   if (missingField) {
     return NextResponse.json({ error: "Заполните обязательные поля заявки" }, { status: 400 });
+  }
+
+  const captchaVerified = await verifyTurnstileToken(cleanText(body.captchaToken), getRemoteIp(request));
+
+  if (!captchaVerified) {
+    return NextResponse.json({ error: TURNSTILE_ERROR_MESSAGE }, { status: 400 });
   }
 
   const application = createFairApplication({

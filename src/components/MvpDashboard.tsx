@@ -12,7 +12,6 @@ import {
   CreditCard,
   FileText,
   Gauge,
-  LockKeyhole,
   Megaphone,
   MessageSquare,
   Plus,
@@ -438,20 +437,10 @@ export function AuthPage() {
     <>
       <SiteHeader />
       <main className="min-h-screen bg-slate-50">
-        <div className="page-container grid min-h-screen gap-10 py-8 lg:grid-cols-[minmax(0,1fr)_460px] lg:items-center">
-          <section>
-            <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Аккаунт</p>
-            <h1 className="mt-3 max-w-3xl text-4xl font-black leading-tight text-[#060b27] sm:text-5xl">Вход и регистрация</h1>
-            <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-              Создайте аккаунт или войдите, чтобы размещать объявления, вакансии, анкеты специалистов и управлять публикациями.
-            </p>
-            <div className="mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:grid-cols-3 sm:gap-4">
-              <MetricCard icon={<LockKeyhole className="h-5 w-5" />} label="Вход" value="Email" detail="Авторизация по email и паролю." />
-              <MetricCard icon={<ShieldCheck className="h-5 w-5" />} label="Права" value="Роли" detail="Обычный пользователь или администратор." />
-              <MetricCard icon={<BadgeCheck className="h-5 w-5" />} label="Доступ" value="Кабинет" detail="Публикации, анкеты, отклики и оплаты." />
-            </div>
-          </section>
-          <AuthForm />
+        <div className="page-container flex min-h-screen items-start justify-center py-5 sm:items-center sm:py-10">
+          <div className="w-full max-w-[460px]">
+            <AuthForm />
+          </div>
         </div>
       </main>
     </>

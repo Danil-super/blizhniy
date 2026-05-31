@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DropdownSelect } from "@/components/DropdownSelect";
+import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { fairCategories } from "@/lib/data";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { demoPublicationsStorageKey, DemoPublication } from "@/lib/demo-publications";
@@ -14,6 +15,8 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
   const router = useRouter();
   const [state, setState] = useState<SubmitState>("idle");
   const [message, setMessage] = useState("");
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const [captchaToken, setCaptchaToken] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -45,6 +48,7 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
           phone: data.get("phone"),
           email: data.get("email"),
           comment: data.get("comment"),
+          captchaToken,
           skipPayment: adminMode,
         }),
       });
@@ -80,6 +84,8 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
     } catch (error) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "Не удалось отправить заявку");
+      setCaptchaToken("");
+      setCaptchaResetKey((value) => value + 1);
     }
   }
 
@@ -131,7 +137,14 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
         <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-[#0875d1]" required />
         <span>{adminMode ? "Согласен с правилами ярмарки. Заявка будет создана в тестовом режиме без оплаты." : "Согласен с правилами ярмарки и понимаю, что участие оплачивается после подачи заявки."}</span>
       </label>
-      <button type="submit" disabled={state === "loading"} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#0aa337] px-5 text-sm font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-12 sm:w-fit sm:px-7 sm:text-base">
+      <TurnstileWidget
+        resetKey={captchaResetKey}
+        siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+        onVerify={setCaptchaToken}
+        onExpire={() => setCaptchaToken("")}
+        onError={() => setCaptchaToken("")}
+      />
+      <button type="submit" disabled={state === "loading" || !captchaToken} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#0aa337] px-5 text-sm font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-12 sm:w-fit sm:px-7 sm:text-base">
         {state === "loading" ? "Создаем заявку..." : adminMode ? "Создать заявку без оплаты" : "Создать заявку и перейти к оплате"}
       </button>
       {state === "error" ? <p className="text-sm font-semibold text-rose-600">{message}</p> : null}

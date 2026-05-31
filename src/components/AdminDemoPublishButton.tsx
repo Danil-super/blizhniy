@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
+import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { demoPublicationLabels, demoPublicationsStorageKey, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { resolveClientUserIdentity } from "@/lib/client-user-profile";
+import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
 import type { BookingDetails, ListingKind } from "@/lib/types";
 
 type AdminDemoPublishButtonProps = {
@@ -243,9 +245,29 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
   };
 }
 
+function needsCaptcha(type: DemoPublicationType) {
+  return type === "listing" || type === "vacancy" || type === "specialist" || type === "fairApplication";
+}
+
+async function verifyCaptchaToken(token: string) {
+  const response = await fetch("/api/turnstile/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(payload?.error ?? TURNSTILE_ERROR_MESSAGE);
+  }
+}
+
 export function AdminDemoPublishButton({ publicationType, returnHref, label }: AdminDemoPublishButtonProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const captchaRequired = needsCaptcha(publicationType);
 
   async function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
     const form = event.currentTarget.form;
@@ -261,6 +283,10 @@ export function AdminDemoPublishButton({ publicationType, returnHref, label }: A
       setSaving(true);
       setError("");
     try {
+      if (captchaRequired) {
+        await verifyCaptchaToken(captchaToken);
+      }
+
       const identity = await resolveClientUserIdentity();
       const publication = {
         ...(await buildPublication(new FormData(form), publicationType)),
@@ -280,16 +306,27 @@ export function AdminDemoPublishButton({ publicationType, returnHref, label }: A
       window.location.href = returnHref;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось сохранить публикацию в демо-режиме.");
+      setCaptchaToken("");
+      setCaptchaResetKey((value) => value + 1);
       setSaving(false);
     }
   }
 
   return (
     <div className="grid gap-2">
+      {captchaRequired ? (
+        <TurnstileWidget
+          resetKey={captchaResetKey}
+          siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+          onVerify={setCaptchaToken}
+          onExpire={() => setCaptchaToken("")}
+          onError={() => setCaptchaToken("")}
+        />
+      ) : null}
       <button
         type="button"
         onClick={handleClick}
-        disabled={saving}
+        disabled={saving || (captchaRequired && !captchaToken)}
         className="inline-flex h-12 w-fit items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:bg-slate-300"
       >
         {saving ? "Сохраняем..." : label}

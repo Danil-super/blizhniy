@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { WorkPage } from "@/components/WorkPage";
 
@@ -15,6 +16,7 @@ export default function KrasnodarWorkPage() {
   return (
     <>
       <SiteHeader />
+      <HomeHero />
       <WorkPage />
     </>
   );

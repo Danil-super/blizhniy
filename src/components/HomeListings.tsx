@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { ArrowRightLeft, CalendarDays, Gift, MapPin, ShoppingBag, Tags } from "lucide-react";
+import { ArrowRightLeft, CalendarDays, Clock3, Gift, MapPin, ShoppingBag, Tags } from "lucide-react";
 import { DemoListingFeed } from "@/components/DemoListingFeed";
-import { demoListings } from "@/components/listings/ListingPages";
+import { demoListings, toDemoListing } from "@/components/listings/ListingPages";
 import { ListingViewCounter } from "@/components/listings/ListingViewCounter";
+import { listListings } from "@/lib/mock-store";
+import { formatPublicationDateTime, publicationTimestamp } from "@/lib/publication-time";
 
 const kindIcons = {
   prodam: ShoppingBag,
@@ -21,7 +23,11 @@ const imageToneClasses = {
 };
 
 export function HomeListings() {
-  const listings = demoListings.filter((listing) => listing.status === "published").slice(0, 8);
+  const allListings = [...listListings().map(toDemoListing), ...demoListings];
+  const uniqueListings = Array.from(new Map(allListings.map((listing) => [listing.slug, listing])).values());
+  const listings = uniqueListings
+    .filter((listing) => listing.status === "published")
+    .sort((left, right) => publicationTimestamp(right.publishedAt) - publicationTimestamp(left.publishedAt));
 
   return (
     <section className="page-container pb-10">
@@ -52,6 +58,10 @@ export function HomeListings() {
                 <span className="block truncate text-base font-black text-[#060b27]">{listing.price}</span>
                 <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 group-hover:text-[#0875d1]">
                   {listing.title}
+                </span>
+                <span className="mt-1 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
+                  <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{formatPublicationDateTime(listing.publishedAt)}</span>
                 </span>
                 <span className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
                   <span className="flex min-w-0 items-center gap-1">

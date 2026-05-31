@@ -3,10 +3,44 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
+import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
 
 type AuthMode = "login" | "register";
 type AuthState = "idle" | "loading" | "success" | "error";
+
+const namePattern = /^[A-Za-zА-Яа-яЁё\s"«»'`.,-]+$/u;
+
+function getNameValidationError(value: string) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+
+  if (!normalized) {
+    return "Укажите имя или название организации.";
+  }
+
+  if (normalized.length < 2) {
+    return "Имя или название должно быть не короче 2 символов.";
+  }
+
+  if (normalized.length > 80) {
+    return "Имя или название должно быть не длиннее 80 символов.";
+  }
+
+  if (!namePattern.test(normalized)) {
+    return "В имени можно использовать только буквы, пробелы, кавычки, точку, запятую и дефис.";
+  }
+
+  return "";
+}
+
+function getPasswordValidationError(value: string) {
+  if (value.length < 8) {
+    return "Пароль должен быть не короче 8 символов.";
+  }
+
+  return "";
+}
 
 export function AuthForm() {
   const router = useRouter();
@@ -20,6 +54,8 @@ export function AuthForm() {
   const [fullName, setFullName] = useState("");
   const [acceptedAgreement, setAcceptedAgreement] = useState(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const [captchaToken, setCaptchaToken] = useState("");
   const [state, setState] = useState<AuthState>("idle");
   const [message, setMessage] = useState("Создайте аккаунт или войдите, чтобы открыть личный кабинет.");
 
@@ -60,6 +96,31 @@ export function AuthForm() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
   }
 
+  const nameError = mode === "register" ? getNameValidationError(fullName) : "";
+  const emailError = email && !isValidEmail(email) ? "Введите корректный email." : "";
+  const passwordError = mode === "register" ? getPasswordValidationError(password) : "";
+  const passwordConfirmError = mode === "register" && passwordConfirm && password !== passwordConfirm ? "Пароли не совпадают." : "";
+  const resetPasswordError = recoveryMode ? getPasswordValidationError(resetPassword) : "";
+  const resetPasswordConfirmError = recoveryMode && resetPasswordConfirm && resetPassword !== resetPasswordConfirm ? "Пароли не совпадают." : "";
+
+  function resetCaptcha() {
+    setCaptchaToken("");
+    setCaptchaResetKey((value) => value + 1);
+  }
+
+  async function verifyCaptcha() {
+    const response = await fetch("/api/turnstile/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: captchaToken }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(payload?.error ?? TURNSTILE_ERROR_MESSAGE);
+    }
+  }
+
   async function handleForgotPassword() {
     const recoveryEmail = email.trim().toLowerCase();
 
@@ -73,6 +134,8 @@ export function AuthForm() {
     setMessage("Отправляем письмо для смены пароля...");
 
     try {
+      await verifyCaptcha();
+
       const supabase = getSupabaseBrowserClient();
       const { error } = await supabase.auth.resetPasswordForEmail(recoveryEmail, {
         redirectTo: `${window.location.origin}/auth?type=recovery`,
@@ -84,9 +147,11 @@ export function AuthForm() {
 
       setState("success");
       setMessage("Письмо отправлено. Откройте ссылку из письма и задайте новый пароль.");
+      resetCaptcha();
     } catch (error) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "Не удалось отправить письмо для смены пароля");
+      resetCaptcha();
     }
   }
 
@@ -97,7 +162,11 @@ export function AuthForm() {
 
     try {
       if (resetPassword.length < 6) {
-        throw new Error("Пароль должен быть не короче 6 символов");
+        throw new Error("Пароль должен быть не короче 8 символов");
+      }
+
+      if (resetPasswordError) {
+        throw new Error(resetPasswordError);
       }
 
       if (resetPassword !== resetPasswordConfirm) {
@@ -128,6 +197,18 @@ export function AuthForm() {
 
     try {
       if (mode === "register") {
+        if (nameError) {
+          throw new Error(nameError);
+        }
+
+        if (!isValidEmail(email)) {
+          throw new Error("Введите корректный email.");
+        }
+
+        if (passwordError) {
+          throw new Error(passwordError);
+        }
+
         if (password !== passwordConfirm) {
           throw new Error("Пароли не совпадают");
         }
@@ -135,6 +216,8 @@ export function AuthForm() {
         if (!acceptedAgreement || !acceptedPrivacy) {
           throw new Error("Для регистрации нужно принять пользовательское соглашение и политику конфиденциальности");
         }
+
+        await verifyCaptcha();
       }
 
       const supabase = getSupabaseBrowserClient();
@@ -145,7 +228,7 @@ export function AuthForm() {
               password,
               options: {
                 data: {
-                  display_name: fullName,
+                  display_name: fullName.trim().replace(/\s+/g, " "),
                 },
               },
             })
@@ -158,6 +241,7 @@ export function AuthForm() {
       if (mode === "register" && !result.data.session) {
         setState("success");
         setMessage("Аккаунт создан. Если в Supabase включено подтверждение email, откройте письмо и подтвердите вход.");
+        resetCaptcha();
         return;
       }
 
@@ -168,8 +252,17 @@ export function AuthForm() {
     } catch (error) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "Не удалось выполнить авторизацию");
+      if (mode === "register") {
+        resetCaptcha();
+      }
     }
   }
+
+  const registerReady =
+    mode !== "register" ||
+    (!nameError && isValidEmail(email) && !passwordError && passwordConfirm.length > 0 && !passwordConfirmError && acceptedAgreement && acceptedPrivacy && Boolean(captchaToken));
+  const recoveryReady = isValidEmail(email) && Boolean(captchaToken);
+  const recoveryPasswordReady = !resetPasswordError && resetPasswordConfirm.length > 0 && !resetPasswordConfirmError;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
@@ -183,12 +276,17 @@ export function AuthForm() {
                 className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
                 value={resetPassword}
                 onChange={(event) => setResetPassword(event.target.value)}
-                placeholder="Минимум 6 символов"
+                placeholder="Минимум 8 символов"
                 type="password"
                 autoComplete="new-password"
-                minLength={6}
+                minLength={8}
                 required
               />
+              {resetPassword ? (
+                <span className={resetPasswordError ? "mt-2 block text-xs font-semibold text-rose-600" : "mt-2 block text-xs font-semibold text-[#0a8f32]"}>
+                  {resetPasswordError || "Надежный пароль."}
+                </span>
+              ) : null}
             </label>
             <label className="mt-4 block">
               <span className="text-sm font-bold text-slate-600">Повторите пароль</span>
@@ -199,13 +297,14 @@ export function AuthForm() {
                 placeholder="Еще раз тот же пароль"
                 type="password"
                 autoComplete="new-password"
-                minLength={6}
+                minLength={8}
                 required
               />
+              {resetPasswordConfirmError ? <span className="mt-2 block text-xs font-semibold text-rose-600">{resetPasswordConfirmError}</span> : null}
             </label>
             <button
               type="submit"
-              disabled={state === "loading"}
+              disabled={state === "loading" || !recoveryPasswordReady}
               className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#0875d1] font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {state === "loading" ? "Сохраняем..." : "Сохранить новый пароль"}
@@ -240,10 +339,18 @@ export function AuthForm() {
             <input
               className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
               value={fullName}
-              onChange={(event) => setFullName(event.target.value)}
-              placeholder="Анна Иванова"
+              onChange={(event) => setFullName(event.target.value.replace(/[^A-Za-zА-Яа-яЁё\s"«»'`.,-]/gu, ""))}
+              placeholder="Анна Иванова или ООО «Кубань»"
               autoComplete="name"
+              maxLength={80}
+              pattern="[A-Za-zА-Яа-яЁё\s&quot;«»'`.,-]{2,80}"
+              required
             />
+            {fullName ? (
+              <span className={nameError ? "mt-2 block text-xs font-semibold text-rose-600" : "mt-2 block text-xs font-semibold text-[#0a8f32]"}>
+                {nameError || "Имя выглядит корректно."}
+              </span>
+            ) : null}
           </label>
         ) : null}
         <label className="mt-4 block">
@@ -257,6 +364,7 @@ export function AuthForm() {
             autoComplete="email"
             required
           />
+          {emailError ? <span className="mt-2 block text-xs font-semibold text-rose-600">{emailError}</span> : null}
         </label>
         <label className="mt-4 block">
           <span className="text-sm font-bold text-slate-600">{mode === "register" ? "Придумайте пароль" : "Пароль"}</span>
@@ -264,12 +372,17 @@ export function AuthForm() {
             className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            placeholder="Минимум 6 символов"
+            placeholder={mode === "register" ? "Минимум 8 символов" : "Пароль"}
             type="password"
             autoComplete={mode === "register" ? "new-password" : "current-password"}
-            minLength={6}
+            minLength={mode === "register" ? 8 : 6}
             required
           />
+          {mode === "register" && password ? (
+            <span className={passwordError ? "mt-2 block text-xs font-semibold text-rose-600" : "mt-2 block text-xs font-semibold text-[#0a8f32]"}>
+              {passwordError || "Надежный пароль."}
+            </span>
+          ) : null}
         </label>
         {mode === "register" ? (
           <>
@@ -282,9 +395,10 @@ export function AuthForm() {
                 placeholder="Еще раз тот же пароль"
                 type="password"
                 autoComplete="new-password"
-                minLength={6}
+                minLength={8}
                 required
               />
+              {passwordConfirmError ? <span className="mt-2 block text-xs font-semibold text-rose-600">{passwordConfirmError}</span> : null}
             </label>
             <div className="mt-5 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
               <label className="flex gap-3 text-sm leading-6 text-slate-700">
@@ -320,17 +434,37 @@ export function AuthForm() {
             </div>
           </>
         ) : null}
+        {mode === "register" ? (
+          <div className="mt-5">
+            <TurnstileWidget
+              resetKey={captchaResetKey}
+              siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+              onVerify={setCaptchaToken}
+              onExpire={() => setCaptchaToken("")}
+              onError={() => setCaptchaToken("")}
+            />
+          </div>
+        ) : null}
         <button
           type="submit"
-          disabled={state === "loading" || (mode === "register" && (!acceptedAgreement || !acceptedPrivacy))}
+          disabled={state === "loading" || !registerReady}
           className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#0875d1] font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           {state === "loading" ? "Подождите..." : mode === "register" ? "Зарегистрироваться" : "Войти"}
         </button>
         {mode === "login" ? (
-          <button type="button" onClick={handleForgotPassword} disabled={state === "loading"} className="mt-3 inline-flex w-full items-center justify-center text-sm font-bold text-[#0875d1] transition hover:text-[#065fa8] disabled:text-slate-400">
-            Забыли пароль? Отправить письмо
-          </button>
+          <div className="mt-5 grid gap-3">
+            <TurnstileWidget
+              resetKey={captchaResetKey}
+              siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+              onVerify={setCaptchaToken}
+              onExpire={() => setCaptchaToken("")}
+              onError={() => setCaptchaToken("")}
+            />
+            <button type="button" onClick={handleForgotPassword} disabled={state === "loading" || !recoveryReady} className="inline-flex w-full items-center justify-center text-sm font-bold text-[#0875d1] transition hover:text-[#065fa8] disabled:text-slate-400">
+              Забыли пароль? Отправить письмо
+            </button>
+          </div>
         ) : null}
       </form>
       <p className={state === "error" ? "mt-4 text-sm font-semibold text-rose-600" : "mt-4 text-sm leading-6 text-slate-500"}>{message}</p>

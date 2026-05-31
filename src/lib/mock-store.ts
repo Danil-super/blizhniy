@@ -34,6 +34,7 @@ type CreateListingInput = {
   address?: string;
   price?: string;
   booking?: Listing["booking"];
+  delivery?: Listing["delivery"];
   description?: string;
   phone?: string;
   messengerUrl?: string;
@@ -100,6 +101,10 @@ function cloneItems<T extends object>(items: T[]) {
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function nowIsoDateTime() {
+  return new Date().toISOString();
 }
 
 function createFairApplicationId() {
@@ -216,12 +221,13 @@ export function createListing(input: CreateListingInput) {
     showExactAddress: false,
     price: input.price?.trim() || "по договоренности",
     booking: input.booking,
+    delivery: input.delivery,
     imageTone: "blue",
     phone: input.phone?.trim(),
     messengerUrl: input.messengerUrl?.trim(),
     status: "published",
     paid: true,
-    publishedAt: todayIsoDate(),
+    publishedAt: nowIsoDateTime(),
     expiresAt: todayIsoDate(),
   };
 

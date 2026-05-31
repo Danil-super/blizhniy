@@ -8,6 +8,7 @@ import { ArrowRightLeft, CalendarDays, Gift, MapPin, MessageCircle, Phone, Shopp
 import { demoPublicationsStorageKey, DemoPublication } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { matchesDemoPublicationFilters, matchesListingScope, type ListingFilterCriteria } from "@/lib/listing-filters";
+import { formatPublicationDateTime, publicationTimestamp } from "@/lib/publication-time";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
 import { ListingViewCounter } from "@/components/listings/ListingViewCounter";
 
@@ -117,6 +118,7 @@ function DemoGridCard({ item }: { item: DemoPublication }) {
       <span className="block p-3">
         <span className="block truncate text-base font-black text-[#060b27]">{item.price ?? "по договоренности"}</span>
         <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">{item.title}</span>
+        <span className="mt-1 block truncate text-xs font-semibold text-slate-500">{formatPublicationDateTime(item.createdAt)}</span>
         <span className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
           <span className="flex min-w-0 items-center gap-1">
             <MapPin className="h-3.5 w-3.5 shrink-0" />
@@ -163,7 +165,7 @@ function DemoListCard({ item }: { item: DemoPublication }) {
       <div className="grid min-w-0 gap-2 sm:col-span-2 xl:col-span-1 xl:flex xl:flex-col xl:items-end xl:justify-between xl:gap-4">
         <div className="min-w-0 xl:text-right">
           <p className="truncate text-base font-black text-[#060b27] sm:text-lg lg:text-2xl">{item.price ?? "по договоренности"}</p>
-          <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">только что</p>
+          <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">{formatPublicationDateTime(item.createdAt)}</p>
         </div>
         <div className="relative z-20 grid min-w-0 grid-cols-2 gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end">
           <a href={`tel:${item.phone ?? "+78610009999"}`} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0aa337] px-2 text-xs font-bold text-[#0a8f32] transition hover:bg-emerald-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
@@ -202,9 +204,11 @@ export function DemoListingFeed({ categorySlug, filters, kind, subcategorySlug, 
 
   const visibleItems = useMemo(
     () =>
-      items.filter((item) => {
-        return matchesListingScope(item, { categorySlug, kind, subcategorySlug }) && (!filters || matchesDemoPublicationFilters(item, filters));
-      }),
+      items
+        .filter((item) => {
+          return matchesListingScope(item, { categorySlug, kind, subcategorySlug }) && (!filters || matchesDemoPublicationFilters(item, filters));
+        })
+        .sort((left, right) => publicationTimestamp(right.createdAt) - publicationTimestamp(left.createdAt)),
     [categorySlug, filters, items, kind, subcategorySlug],
   );
 

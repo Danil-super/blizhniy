@@ -10,12 +10,22 @@ export const metadata: Metadata = {
 };
 
 type PageProps = {
-  searchParams?: Promise<{ admin?: string }>;
+  searchParams?: Promise<{ admin?: string; category?: string; error?: string; kind?: string; subcategory?: string }>;
 };
 
 export default async function Page({ searchParams }: PageProps) {
   const params = searchParams ? await searchParams : undefined;
   const adminMode = params?.admin === "1";
 
-  return <ListingFormPage adminMode={adminMode} />;
+  return (
+    <ListingFormPage
+      adminMode={adminMode}
+      error={params?.error}
+      defaults={{
+        categorySlug: params?.category,
+        kind: params?.kind,
+        subcategorySlug: params?.subcategory,
+      }}
+    />
+  );
 }

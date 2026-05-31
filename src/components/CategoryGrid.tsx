@@ -76,10 +76,10 @@ const categoryTiles = [
     icon: Building2,
     tone: "green",
   },
-  { label: "Работа", href: "/blizhniy/rabota", icon: BriefcaseBusiness, tone: "cyan" },
+  { label: "Работа", href: "/blizhniy/rabota", icon: BriefcaseBusiness, tone: "cyan", ageRating: "14+" },
   { label: "Одежда, обувь, аксессуары", href: "/blizhniy/tovary-i-veshchi", icon: Shirt, tone: "rose" },
   { label: "Хобби и отдых", href: "/blizhniy/otdyh", icon: TentTree, tone: "green" },
-  { label: "Животные", href: "/blizhniy/zhivotnye", icon: PawPrint, tone: "amber" },
+  { label: "Животные", href: "/blizhniy/zhivotnye", icon: PawPrint, tone: "amber", ageRating: "7+" },
   {
     label: "Готовый бизнес и оборудование",
     href: "/blizhniy/biznes",
@@ -95,7 +95,7 @@ const categoryTiles = [
   },
   { label: "Для дома и дачи", href: "/blizhniy/mebel-i-interer", icon: Sofa, tone: "amber" },
   { label: "Запчасти", href: "/blizhniy/transport/zapchasti", icon: Cog, tone: "slate" },
-  { label: "Товары для детей", href: "/blizhniy/tovary-i-veshchi", icon: Baby, tone: "rose" },
+  { label: "Товары для детей", href: "/blizhniy/tovary-i-veshchi", icon: Baby, tone: "rose", ageRating: "7+" },
   { label: "Жилье для путешествия", href: "/blizhniy/nedvizhimost/arenda", icon: MapPinned, tone: "green" },
   { label: "Красота и здоровье", href: "/blizhniy/krasota-i-uhod", icon: HeartPulse, tone: "violet" },
   { label: "Ритуальные услуги", href: "/blizhniy/ritualnye-uslugi", icon: Flower2, tone: "slate" },
@@ -123,6 +123,11 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
               <div key={`${category.label}-${category.href}`} className={`group relative flex min-h-32 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:min-h-40 sm:p-4 lg:min-h-44 ${tone.card}`}>
                 <span className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${tone.accent}`} />
                 <span className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-70 blur-sm transition group-hover:scale-110 sm:h-32 sm:w-32 ${tone.glow}`} />
+                {category.ageRating ? (
+                  <span className="absolute right-2 top-2 z-10 inline-flex h-7 min-w-9 items-center justify-center rounded-full border border-white/80 bg-white/90 px-2 text-xs font-black text-slate-700 shadow-sm sm:right-3 sm:top-3">
+                    {category.ageRating}
+                  </span>
+                ) : null}
                 <div className="relative">
                   <span className={`flex h-14 w-14 items-center justify-center rounded-2xl ring-1 shadow-sm transition group-hover:scale-105 sm:h-16 sm:w-16 lg:h-[72px] lg:w-[72px] ${tone.icon}`}>
                     <Icon className="h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9" />

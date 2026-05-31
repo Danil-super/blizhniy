@@ -11,19 +11,25 @@ import {
   MapPin,
   MessageCircle,
   Phone,
+  PackageCheck,
   ShieldCheck,
   Sparkles,
+  Truck,
 } from "lucide-react";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
+import { HomeHero } from "@/components/HomeHero";
 import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
+import { TurnstileVerifiedLinkButton } from "@/components/TurnstileVerifiedLinkButton";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { categories } from "@/lib/data";
 import { createListing, listListings } from "@/lib/mock-store";
+import { formatPublicationDateTime } from "@/lib/publication-time";
 import { getTariffs } from "@/lib/tariff-store";
-import type { BookingDetails, Listing as StoreListing } from "@/lib/types";
+import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
+import type { BookingDetails, DeliveryOptions, DeliveryServiceId, Listing as StoreListing } from "@/lib/types";
 import { BookingCalculator } from "./BookingCalculator";
 import { DemoListingEditClient } from "./DemoListingEditClient";
 import { DemoListingDetailClient } from "./DemoListingDetailClient";
@@ -39,6 +45,22 @@ const listingKinds: { slug: ListingKind; title: string; description: string }[] 
   { slug: "menyayu", title: "Меняю", description: "Обмен товарами, коллекциями, вещами и материалами." },
   { slug: "otdam-darom", title: "Отдам даром", description: "Публикации без цены: забрать, передать, пристроить." },
 ];
+
+const deliveryServices: { id: DeliveryServiceId; label: string }[] = [
+  { id: "cdek", label: "СДЭК" },
+  { id: "boxberry", label: "Boxberry" },
+  { id: "russian-post", label: "Почта России" },
+  { id: "yandex-delivery", label: "Яндекс Доставка" },
+  { id: "other", label: "Другая служба" },
+];
+
+const deliveryPayerLabels: Record<DeliveryOptions["payer"], string> = {
+  buyer: "Покупатель",
+  seller: "Продавец",
+  split: "По договоренности",
+};
+
+const showDeliveryUi = false;
 
 const baseDemoListings: DemoListing[] = [
   {
@@ -375,6 +397,43 @@ function inferListingKind(categorySlug: string, subcategorySlug: string): Listin
   return "prodam";
 }
 
+type ListingFormDefaults = {
+  categorySlug?: string;
+  kind?: string;
+  subcategorySlug?: string;
+};
+
+function normalizeListingKind(value?: string): ListingKind | undefined {
+  return listingKinds.some((item) => item.slug === value) ? (value as ListingKind) : undefined;
+}
+
+function getListingFormDefaults(defaults?: ListingFormDefaults) {
+  const category = categories.find((item) => item.slug === defaults?.categorySlug) ?? categories.find((item) => item.slug === "mebel-i-interer") ?? categories[0];
+  const fallbackSubcategorySlug = category?.children[0] ? slugifySubcategory(category.children[0]) : "";
+  const subcategorySlug =
+    defaults?.subcategorySlug && category?.children.some((child) => slugifySubcategory(child) === defaults.subcategorySlug)
+      ? defaults.subcategorySlug
+      : fallbackSubcategorySlug;
+  const kind = normalizeListingKind(defaults?.kind) ?? inferListingKind(category?.slug ?? "mebel-i-interer", subcategorySlug);
+
+  return {
+    categorySlug: category?.slug ?? "mebel-i-interer",
+    kind,
+    subcategorySlug,
+  };
+}
+
+function getCreateListingHref(categorySlug: string, subcategoryName: string) {
+  const subcategorySlug = slugifySubcategory(subcategoryName);
+  const params = new URLSearchParams({
+    category: categorySlug,
+    kind: inferListingKind(categorySlug, subcategorySlug),
+    subcategory: subcategorySlug,
+  });
+
+  return `/blizhniy/sozdat/obyavlenie?${params.toString()}`;
+}
+
 const ritualServiceDescriptions: Record<string, string> = {
   "Организация и проведение обряда прощания":
     "Оформление и предоставление ритуального зала, музыкальное сопровождение, услуги церемониймейстера, прокат принадлежностей и организация поминальной церемонии.",
@@ -678,6 +737,31 @@ function parseBookingDetails(formData: FormData, categorySlug: string): BookingD
   };
 }
 
+function parseDeliveryOptions(formData: FormData, fallbackCity: string): DeliveryOptions | undefined {
+  if (String(formData.get("deliveryEnabled") ?? "") !== "1") {
+    return undefined;
+  }
+
+  const selectedServices = formData
+    .getAll("deliveryServices")
+    .map((item) => String(item))
+    .filter((item): item is DeliveryServiceId => deliveryServices.some((service) => service.id === item));
+  const payer = String(formData.get("deliveryPayer") ?? "buyer");
+
+  return {
+    enabled: true,
+    services: selectedServices.length ? selectedServices : ["other"],
+    payer: payer === "seller" || payer === "split" ? payer : "buyer",
+    originCity: String(formData.get("deliveryOriginCity") ?? "").trim() || fallbackCity,
+    packageWeightGram: parseNumber(formData, "deliveryWeightGram"),
+    packageLengthCm: parseNumber(formData, "deliveryLengthCm"),
+    packageWidthCm: parseNumber(formData, "deliveryWidthCm"),
+    packageHeightCm: parseNumber(formData, "deliveryHeightCm"),
+    handlingDays: parseNumber(formData, "deliveryHandlingDays"),
+    comment: String(formData.get("deliveryComment") ?? "").trim() || undefined,
+  };
+}
+
 function listingImageTone(tone: StoreListing["imageTone"]): DemoListing["imageTone"] {
   if (tone === "emerald") {
     return "green";
@@ -694,7 +778,7 @@ function listingCategoryName(listing: StoreListing) {
   return categories.find((category) => category.slug === listing.categorySlug)?.name ?? listing.subcategory;
 }
 
-function toDemoListing(listing: StoreListing): DemoListing {
+export function toDemoListing(listing: StoreListing): DemoListing {
   return {
     slug: listing.slug,
     title: listing.title,
@@ -711,6 +795,7 @@ function toDemoListing(listing: StoreListing): DemoListing {
     showExactAddress: listing.showExactAddress,
     price: listing.price ?? "по договоренности",
     booking: listing.booking,
+    delivery: listing.delivery,
     description: listing.description,
     phone: listing.phone ?? "+78610009999",
     messengerUrl: listing.messengerUrl,
@@ -819,6 +904,7 @@ export function CategoriesPage() {
     <>
       <SiteHeader />
       <main>
+        <HomeHero />
         <section className="page-container py-5 sm:py-7 lg:py-10">
           <Breadcrumbs items={[{ label: "Категории" }]} />
           <h1 className="text-2xl font-black text-[#060b27] sm:text-3xl lg:text-5xl">Категории объявлений</h1>
@@ -897,6 +983,7 @@ export function ExchangeAndFreePage() {
   return (
     <>
       <SiteHeader />
+      <HomeHero />
       <main className="page-container py-6 sm:py-8 lg:py-10">
         <Breadcrumbs items={[{ label: "Меняю и отдам даром" }]} />
         <div className="grid gap-7">
@@ -948,6 +1035,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
   return (
     <>
       <SiteHeader />
+      <HomeHero />
       <main className="page-container py-6 sm:py-8 lg:py-10">
         <Breadcrumbs
           items={[
@@ -992,9 +1080,22 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
                             ))}
                           </ul>
                         ) : null}
-                        <Link href={href} className="mt-3 inline-flex text-sm font-black text-[#0875d1] transition hover:text-[#0664b3]">
-                          Открыть объявления
-                        </Link>
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                          <Link
+                            href={href}
+                            className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-blue-100 px-2 text-xs font-black text-[#0875d1] transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0664b3] sm:px-3 sm:text-sm"
+                          >
+                            <span className="truncate">Объявления</span>
+                          </Link>
+                          <Link
+                            href={getCreateListingHref(category.slug, child)}
+                            className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-black text-white transition hover:bg-[#078a2e] sm:gap-2 sm:px-3 sm:text-sm"
+                            aria-label={`Разместить объявление: ${child}`}
+                          >
+                            <span className="truncate">Разместить</span>
+                            <ArrowRight className="h-4 w-4" />
+                          </Link>
+                        </div>
                       </details>
                     );
                   }
@@ -1016,6 +1117,63 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
         </div>
       </main>
     </>
+  );
+}
+
+function DeliveryInfoCard({ delivery }: { delivery?: DeliveryOptions }) {
+  if (!delivery?.enabled) {
+    return null;
+  }
+
+  const serviceNames = delivery.services.map((serviceId) => deliveryServices.find((service) => service.id === serviceId)?.label ?? serviceId);
+  const packageSize =
+    delivery.packageLengthCm || delivery.packageWidthCm || delivery.packageHeightCm
+      ? [delivery.packageLengthCm, delivery.packageWidthCm, delivery.packageHeightCm].map((value) => value ?? "-").join(" x ")
+      : undefined;
+
+  return (
+    <div className="min-w-0 rounded-xl border border-blue-100 bg-blue-50/60 p-4 shadow-sm sm:p-5">
+      <div className="flex items-start gap-3">
+        <PackageCheck className="mt-1 h-5 w-5 shrink-0 text-[#0875d1]" />
+        <div className="min-w-0">
+          <p className="font-black text-[#060b27]">Доставка</p>
+          <p className="mt-2 text-sm leading-6 text-slate-700">
+            Возможна отправка через: <span className="font-bold">{serviceNames.join(", ")}</span>.
+          </p>
+          <dl className="mt-3 grid gap-2 text-sm text-slate-700">
+            <div className="flex justify-between gap-3">
+              <dt className="text-slate-500">Оплата</dt>
+              <dd className="text-right font-bold">{deliveryPayerLabels[delivery.payer]}</dd>
+            </div>
+            {delivery.originCity ? (
+              <div className="flex justify-between gap-3">
+                <dt className="text-slate-500">Отправка из</dt>
+                <dd className="text-right font-bold">{delivery.originCity}</dd>
+              </div>
+            ) : null}
+            {delivery.packageWeightGram ? (
+              <div className="flex justify-between gap-3">
+                <dt className="text-slate-500">Вес</dt>
+                <dd className="text-right font-bold">{delivery.packageWeightGram} г</dd>
+              </div>
+            ) : null}
+            {packageSize ? (
+              <div className="flex justify-between gap-3">
+                <dt className="text-slate-500">Габариты</dt>
+                <dd className="text-right font-bold">{packageSize} см</dd>
+              </div>
+            ) : null}
+            {delivery.handlingDays ? (
+              <div className="flex justify-between gap-3">
+                <dt className="text-slate-500">Подготовка</dt>
+                <dd className="text-right font-bold">{delivery.handlingDays} дн.</dd>
+              </div>
+            ) : null}
+          </dl>
+          {delivery.comment ? <p className="mt-3 text-sm leading-6 text-slate-600">{delivery.comment}</p> : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1073,7 +1231,7 @@ export function ListingDetailPage({ slug }: { slug: string }) {
                 </div>
                 <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                   <dt className="text-sm font-bold text-slate-500">Размещено</dt>
-                  <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{listing.publishedAt}</dd>
+                  <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{formatPublicationDateTime(listing.publishedAt)}</dd>
                 </div>
                 <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                   <dt className="text-sm font-bold text-slate-500">Активно до</dt>
@@ -1110,6 +1268,7 @@ export function ListingDetailPage({ slug }: { slug: string }) {
                 ) : null}
               </div>
             </div>
+            {showDeliveryUi ? <DeliveryInfoCard delivery={listing.delivery} /> : null}
             <div className="min-w-0 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
               <div className="flex items-start gap-3">
                 <CreditCard className="mt-1 h-5 w-5 text-amber-700" />
@@ -1160,9 +1319,119 @@ function SelectInput({ compact = false, name, options, defaultValue }: { name?: 
   return <DropdownSelect name={name} defaultValue={defaultValue} options={options} buttonClassName={compact ? "h-10 gap-1 px-2 text-xs sm:h-12 sm:gap-3 sm:px-4 sm:text-sm" : ""} />;
 }
 
-export function ListingFormPage({ slug, adminMode = false }: { slug?: string; adminMode?: boolean }) {
+function NumberInput({ defaultValue, name, placeholder }: { defaultValue?: number; name: string; placeholder: string }) {
+  return (
+    <input
+      name={name}
+      defaultValue={defaultValue}
+      inputMode="numeric"
+      min={0}
+      placeholder={placeholder}
+      type="number"
+      className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#0875d1] sm:h-12 sm:px-4 sm:text-base"
+    />
+  );
+}
+
+function ListingDeliveryFields({ defaultCity, delivery }: { defaultCity?: string; delivery?: DeliveryOptions }) {
+  const enabled = Boolean(delivery?.enabled);
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-lg font-black text-[#060b27]">
+            <Truck className="h-5 w-5 text-[#0875d1]" />
+            Доставка
+          </div>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            Основа для будущей отправки через службы доставки: способ, город отправления, габариты и условия.
+          </p>
+        </div>
+        <label className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800">
+          <input type="checkbox" name="deliveryEnabled" value="1" defaultChecked={enabled} className="h-4 w-4 accent-[#0875d1]" />
+          Доставка возможна
+        </label>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <p className="text-sm font-black text-[#060b27]">Службы доставки</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {deliveryServices.map((service) => (
+              <label key={service.id} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-slate-50 px-3 text-sm font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  name="deliveryServices"
+                  value={service.id}
+                  defaultChecked={delivery?.services.includes(service.id) ?? service.id === "cdek"}
+                  className="h-4 w-4 accent-[#0875d1]"
+                />
+                {service.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Кто оплачивает" compact>
+            <SelectInput
+              name="deliveryPayer"
+              defaultValue={delivery?.payer ?? "buyer"}
+              compact
+              options={[
+                { value: "buyer", label: deliveryPayerLabels.buyer },
+                { value: "seller", label: deliveryPayerLabels.seller },
+                { value: "split", label: deliveryPayerLabels.split },
+              ]}
+            />
+          </Field>
+          <Field label="Город отправления" compact>
+            <TextInput name="deliveryOriginCity" defaultValue={delivery?.originCity ?? defaultCity} placeholder="Краснодар" compact />
+          </Field>
+          <Field label="Вес, г" compact>
+            <NumberInput name="deliveryWeightGram" defaultValue={delivery?.packageWeightGram} placeholder="1200" />
+          </Field>
+          <Field label="Подготовка, дней" compact>
+            <NumberInput name="deliveryHandlingDays" defaultValue={delivery?.handlingDays} placeholder="1" />
+          </Field>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <Field label="Длина, см" compact>
+          <NumberInput name="deliveryLengthCm" defaultValue={delivery?.packageLengthCm} placeholder="30" />
+        </Field>
+        <Field label="Ширина, см" compact>
+          <NumberInput name="deliveryWidthCm" defaultValue={delivery?.packageWidthCm} placeholder="20" />
+        </Field>
+        <Field label="Высота, см" compact>
+          <NumberInput name="deliveryHeightCm" defaultValue={delivery?.packageHeightCm} placeholder="15" />
+        </Field>
+      </div>
+
+      <label className="mt-4 block">
+        <span className="text-sm font-bold text-slate-700">Комментарий по доставке</span>
+        <textarea
+          name="deliveryComment"
+          defaultValue={delivery?.comment}
+          className="mt-2 min-h-20 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0875d1]"
+          placeholder="Например: отправлю после оплаты, нужна обрешетка, доступен самовывоз..."
+        />
+      </label>
+    </section>
+  );
+}
+
+export function ListingFormPage({ slug, adminMode = false, defaults, error }: { slug?: string; adminMode?: boolean; defaults?: ListingFormDefaults; error?: string }) {
   async function publishWithoutPaymentAction(formData: FormData) {
     "use server";
+
+    const captchaVerified = await verifyTurnstileFormData(formData);
+
+    if (!captchaVerified) {
+      redirect(`/blizhniy/sozdat/obyavlenie?admin=1&error=${encodeURIComponent(TURNSTILE_ERROR_MESSAGE)}`);
+    }
 
     const title = String(formData.get("title") ?? "").trim() || "Новое объявление";
     const kindValue = String(formData.get("kind") ?? "prodam");
@@ -1186,6 +1455,7 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
       address: String(formData.get("address") ?? "").trim() || undefined,
       price: String(formData.get("price") ?? "").trim() || (kind === "arenda" && isBookingCategory(categorySlug) ? "расчет по датам" : undefined),
       booking: kind === "arenda" ? parseBookingDetails(formData, categorySlug) : undefined,
+      delivery: parseDeliveryOptions(formData, city),
       description: String(formData.get("description") ?? "").trim() || undefined,
       phone: String(formData.get("phone") ?? "").trim() || undefined,
       messengerUrl: String(formData.get("messengerUrl") ?? "").trim() || undefined,
@@ -1199,6 +1469,7 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
   const editing = Boolean(slug);
   const listing = findListingBySlug(slug);
   const tariff = getTariffs().find((item) => item.id === "listing-publication");
+  const formDefaults = getListingFormDefaults(defaults);
 
   if (slug && !listing) {
     return (
@@ -1219,14 +1490,15 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
           <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
             Заполните объявление, добавьте фото и выберите удобный способ связи.
           </p>
+          {error ? <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p> : null}
 
           <form action={adminMode ? publishWithoutPaymentAction : undefined} className="mt-6 grid gap-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)]">
               <ListingKindAndCategoryFields
                 booking={listing?.booking}
-                defaultCategorySlug={listing?.categorySlug ?? "mebel-i-interer"}
-                defaultKind={listing?.kind ?? "prodam"}
-                defaultSubcategorySlug={listing?.subcategorySlug ?? "mebel"}
+                defaultCategorySlug={listing?.categorySlug ?? formDefaults.categorySlug}
+                defaultKind={listing?.kind ?? formDefaults.kind}
+                defaultSubcategorySlug={listing?.subcategorySlug ?? formDefaults.subcategorySlug}
               />
             </div>
 
@@ -1250,6 +1522,8 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
             </label>
 
             <ListingLocationFields defaultCity={listing?.city} defaultLat={listing?.lat} defaultLng={listing?.lng} />
+
+            {showDeliveryUi ? <ListingDeliveryFields delivery={listing?.delivery} defaultCity={listing?.city ?? "Краснодар"} /> : null}
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-lg font-black text-[#060b27]">
@@ -1290,10 +1564,14 @@ export function ListingFormPage({ slug, adminMode = false }: { slug?: string; ad
               {adminMode ? (
                 <AdminDemoPublishButton publicationType="listing" returnHref="/cabinet/obyavleniya" label="Опубликовать без оплаты" />
               ) : (
-                <Link href="/blizhniy/oplata/listing-publication" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white">
+                <TurnstileVerifiedLinkButton
+                  href="/blizhniy/oplata/listing-publication"
+                  siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
                   Перейти к оплате
                   <ArrowRight className="h-5 w-5" />
-                </Link>
+                </TurnstileVerifiedLinkButton>
               )}
             </div>
           </form>

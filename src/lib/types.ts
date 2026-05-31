@@ -44,6 +44,21 @@ export type BookingDetails = {
   tourMeetingPoint?: string;
 };
 
+export type DeliveryServiceId = "cdek" | "boxberry" | "russian-post" | "yandex-delivery" | "other";
+
+export type DeliveryOptions = {
+  enabled: boolean;
+  services: DeliveryServiceId[];
+  payer: "buyer" | "seller" | "split";
+  originCity?: string;
+  packageWeightGram?: number;
+  packageLengthCm?: number;
+  packageWidthCm?: number;
+  packageHeightCm?: number;
+  handlingDays?: number;
+  comment?: string;
+};
+
 export type Listing = {
   id: string;
   slug: string;
@@ -61,6 +76,7 @@ export type Listing = {
   showExactAddress: boolean;
   price?: string;
   booking?: BookingDetails;
+  delivery?: DeliveryOptions;
   imageTone: "emerald" | "blue" | "amber" | "rose" | "slate";
   phone?: string;
   messengerUrl?: string;

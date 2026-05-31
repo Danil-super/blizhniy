@@ -8,6 +8,7 @@ import { ArrowLeft, Camera, ChevronLeft, ChevronRight, MapPin, MessageCircle, Ph
 import { LocationMap } from "@/components/LocationMap";
 import { DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
+import { formatPublicationDateTime } from "@/lib/publication-time";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
 import { BookingCalculator } from "./BookingCalculator";
 import { ListingViewTracker } from "./ListingViewTracker";
@@ -153,7 +154,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
               </div>
               <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                 <dt className="text-sm font-bold text-slate-500">Размещено</dt>
-                <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">только что</dd>
+                <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{formatPublicationDateTime(listing.createdAt)}</dd>
               </div>
             </dl>
           </div>

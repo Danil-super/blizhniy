@@ -1,13 +1,14 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
 import { createVacancy } from "@/lib/mock-store";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
+import { TurnstileVerifiedLinkButton } from "@/components/TurnstileVerifiedLinkButton";
+import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
 
 type PageProps = {
-  searchParams?: Promise<{ admin?: string }>;
+  searchParams?: Promise<{ admin?: string; error?: string }>;
 };
 
 function parseCoordinate(formData: FormData, name: string) {
@@ -21,6 +22,12 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
   
   async function publishVacancyWithoutPaymentAction(formData: FormData) {
     "use server";
+
+    const captchaVerified = await verifyTurnstileFormData(formData);
+
+    if (!captchaVerified) {
+      redirect(`/blizhniy/rabota/vakansii/sozdat?admin=1&error=${encodeURIComponent(TURNSTILE_ERROR_MESSAGE)}`);
+    }
 
     createVacancy({
       organization: String(formData.get("organization") ?? "").trim() || "Организация",
@@ -53,6 +60,7 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
               : "После заполнения создается заказ на оплату тарифа размещения вакансии. После оплаты вакансия будет опубликована."
           }
         >
+          {params?.error ? <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{params.error}</p> : null}
           <form action={adminMode ? publishVacancyWithoutPaymentAction : undefined} className="grid gap-4">
           <div className="grid gap-4 md:grid-cols-2">
             <Field name="organization" label="Организация" placeholder="ООО РемДом" />
@@ -74,9 +82,13 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
           {adminMode ? (
             <AdminDemoPublishButton publicationType="vacancy" returnHref="/cabinet/vakansii" label="Сохранить вакансию без оплаты" />
           ) : (
-            <Link className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white" href="/blizhniy/oplata/vacancy-publication">
+            <TurnstileVerifiedLinkButton
+              href="/blizhniy/oplata/vacancy-publication"
+              siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+              className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
               Создать заказ и оплатить
-            </Link>
+            </TurnstileVerifiedLinkButton>
           )}
           </form>
         </FormPanel>
