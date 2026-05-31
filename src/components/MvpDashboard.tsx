@@ -215,7 +215,7 @@ function ActionLink({ href, children, tone = "blue" }: { href: string; children:
   };
 
   return (
-    <Link href={href} className={`inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-bold transition ${classes[tone]}`}>
+    <Link href={href} className={`inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg px-5 text-sm font-bold transition sm:w-auto ${classes[tone]}`}>
       {children}
     </Link>
   );
@@ -239,14 +239,14 @@ function Shell({
   return (
     <>
       <SiteHeader />
-      <main className="page-container py-6 sm:py-10">
+      <main className="page-container dashboard-shell py-6 sm:py-10">
         <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">{eyebrow}</p>
         <div className="mt-2 flex flex-col gap-4 sm:mt-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">{title}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-lg sm:leading-7">{description}</p>
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:gap-3">
+          <div className={nav ? "grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3" : "grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:gap-3"}>
             <ActionLink href={createHref} tone="green">
               <Plus className="h-4 w-4" />
               Создать
@@ -264,7 +264,7 @@ function Shell({
 
 function NavPills({ items }: { items: typeof cabinetNav }) {
   return (
-    <nav className="mt-5 grid grid-cols-1 gap-2 sm:mt-7 sm:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]" aria-label="Разделы">
+    <nav className="mt-5 grid grid-cols-2 gap-2 sm:mt-7 sm:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]" aria-label="Разделы">
       {items.map((item) => {
         const Icon = item.icon;
         return (
@@ -438,7 +438,7 @@ export function AuthPage() {
       <SiteHeader />
       <main className="min-h-screen bg-slate-50">
         <div className="page-container flex min-h-screen items-start justify-center py-5 sm:items-center sm:py-10">
-          <div className="w-full max-w-[460px]">
+          <div className="w-full max-w-[460px] min-w-0">
             <AuthForm />
           </div>
         </div>

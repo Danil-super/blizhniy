@@ -56,7 +56,7 @@ export function LogoutButton() {
       type="button"
       onClick={handleLogout}
       disabled={state === "loading"}
-      className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:border-red-200 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:border-red-200 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       title={state === "error" ? "Не удалось выйти. Попробуйте еще раз." : undefined}
     >
       <LogOut className="h-4 w-4" />

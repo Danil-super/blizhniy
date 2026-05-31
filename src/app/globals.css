@@ -59,7 +59,17 @@ canvas {
 
 .page-container {
   width: min(calc(100% - 24px), 1500px);
+  max-width: calc(100vw - 24px);
+  max-width: calc(100dvw - 24px);
   margin: 0 auto;
+}
+
+.dashboard-shell {
+  width: min(calc(100vw - 24px), 1500px);
+  width: min(calc(100dvw - 24px), 1500px);
+  max-width: calc(100vw - 24px);
+  max-width: calc(100dvw - 24px);
+  overflow-x: hidden;
 }
 
 .specialist-form-container {
@@ -189,6 +199,15 @@ canvas {
 @media (min-width: 640px) {
   .page-container {
     width: min(calc(100% - 32px), 1500px);
+    max-width: calc(100vw - 32px);
+    max-width: calc(100dvw - 32px);
+  }
+
+  .dashboard-shell {
+    width: min(calc(100vw - 32px), 1500px);
+    width: min(calc(100dvw - 32px), 1500px);
+    max-width: calc(100vw - 32px);
+    max-width: calc(100dvw - 32px);
   }
 
   .responsive-field-grid,
@@ -202,6 +221,14 @@ canvas {
 }
 
 @media (max-width: 639px) {
+  .page-container,
+  .dashboard-shell {
+    width: calc(100vw - 24px) !important;
+    width: calc(100dvw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    max-width: calc(100dvw - 24px) !important;
+  }
+
   .responsive-field-grid > *,
   .responsive-form-panel > .map-picker-panel,
   .responsive-form-panel > section,

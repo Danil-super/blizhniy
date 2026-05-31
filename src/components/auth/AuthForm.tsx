@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
@@ -42,6 +43,88 @@ function getPasswordValidationError(value: string) {
   return "";
 }
 
+function normalizeAuthEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function getReadableAuthError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes("invalid login credentials")) {
+    return "Неверный email или пароль. Проверьте раскладку, пробелы и попробуйте еще раз.";
+  }
+
+  if (lowerMessage.includes("email not confirmed")) {
+    return "Email еще не подтвержден. Откройте письмо от сервиса и подтвердите аккаунт.";
+  }
+
+  if (lowerMessage.includes("user already registered") || lowerMessage.includes("already registered")) {
+    return "Аккаунт с таким email уже есть. Перейдите на вкладку «Вход».";
+  }
+
+  if (lowerMessage.includes("supabase env is not configured")) {
+    return "Авторизация временно недоступна: не настроено подключение к Supabase.";
+  }
+
+  return message || "Не удалось выполнить авторизацию";
+}
+
+function PasswordField({
+  autoComplete,
+  className = "mt-2",
+  label,
+  minLength,
+  onChange,
+  placeholder,
+  required = true,
+  show,
+  toggleLabel = "Показать пароль",
+  value,
+  onToggle,
+}: {
+  autoComplete: string;
+  className?: string;
+  label: string;
+  minLength?: number;
+  onChange: (value: string) => void;
+  onToggle: () => void;
+  placeholder: string;
+  required?: boolean;
+  show: boolean;
+  toggleLabel?: string;
+  value: string;
+}) {
+  const Icon = show ? EyeOff : Eye;
+
+  return (
+    <label className={`${className} block`}>
+      <span className="text-sm font-bold text-slate-600">{label}</span>
+      <span className="relative mt-2 block">
+        <input
+          className="h-12 w-full rounded-lg border border-slate-300 px-4 pr-12 outline-none focus:border-[#0875d1]"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          type={show ? "text" : "password"}
+          autoComplete={autoComplete}
+          minLength={minLength}
+          required={required}
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-blue-50 hover:text-[#0875d1]"
+          aria-label={show ? "Скрыть пароль" : toggleLabel}
+          title={show ? "Скрыть пароль" : toggleLabel}
+        >
+          <Icon className="h-4 w-4" />
+        </button>
+      </span>
+    </label>
+  );
+}
+
 export function AuthForm() {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("register");
@@ -58,6 +141,10 @@ export function AuthForm() {
   const [captchaToken, setCaptchaToken] = useState("");
   const [state, setState] = useState<AuthState>("idle");
   const [message, setMessage] = useState("Создайте аккаунт или войдите, чтобы открыть личный кабинет.");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showResetPasswordConfirm, setShowResetPasswordConfirm] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -97,7 +184,7 @@ export function AuthForm() {
   }
 
   const nameError = mode === "register" ? getNameValidationError(fullName) : "";
-  const emailError = email && !isValidEmail(email) ? "Введите корректный email." : "";
+  const emailError = email && !isValidEmail(normalizeAuthEmail(email)) ? "Введите корректный email." : "";
   const passwordError = mode === "register" ? getPasswordValidationError(password) : "";
   const passwordConfirmError = mode === "register" && passwordConfirm && password !== passwordConfirm ? "Пароли не совпадают." : "";
   const resetPasswordError = recoveryMode ? getPasswordValidationError(resetPassword) : "";
@@ -122,7 +209,7 @@ export function AuthForm() {
   }
 
   async function handleForgotPassword() {
-    const recoveryEmail = email.trim().toLowerCase();
+    const recoveryEmail = normalizeAuthEmail(email);
 
     if (!isValidEmail(recoveryEmail)) {
       setState("error");
@@ -150,7 +237,7 @@ export function AuthForm() {
       resetCaptcha();
     } catch (error) {
       setState("error");
-      setMessage(error instanceof Error ? error.message : "Не удалось отправить письмо для смены пароля");
+      setMessage(getReadableAuthError(error));
       resetCaptcha();
     }
   }
@@ -161,10 +248,6 @@ export function AuthForm() {
     setMessage("Сохраняем новый пароль...");
 
     try {
-      if (resetPassword.length < 6) {
-        throw new Error("Пароль должен быть не короче 8 символов");
-      }
-
       if (resetPasswordError) {
         throw new Error(resetPasswordError);
       }
@@ -186,7 +269,7 @@ export function AuthForm() {
       router.refresh();
     } catch (error) {
       setState("error");
-      setMessage(error instanceof Error ? error.message : "Не удалось обновить пароль");
+      setMessage(getReadableAuthError(error));
     }
   }
 
@@ -196,13 +279,15 @@ export function AuthForm() {
     setMessage(mode === "register" ? "Регистрируем аккаунт..." : "Входим в аккаунт...");
 
     try {
+      const authEmail = normalizeAuthEmail(email);
+
+      if (!isValidEmail(authEmail)) {
+        throw new Error("Введите корректный email.");
+      }
+
       if (mode === "register") {
         if (nameError) {
           throw new Error(nameError);
-        }
-
-        if (!isValidEmail(email)) {
-          throw new Error("Введите корректный email.");
         }
 
         if (passwordError) {
@@ -224,7 +309,7 @@ export function AuthForm() {
       const result =
         mode === "register"
           ? await supabase.auth.signUp({
-              email,
+              email: authEmail,
               password,
               options: {
                 data: {
@@ -232,7 +317,7 @@ export function AuthForm() {
                 },
               },
             })
-          : await supabase.auth.signInWithPassword({ email, password });
+          : await supabase.auth.signInWithPassword({ email: authEmail, password });
 
       if (result.error) {
         throw result.error;
@@ -251,7 +336,7 @@ export function AuthForm() {
       router.refresh();
     } catch (error) {
       setState("error");
-      setMessage(error instanceof Error ? error.message : "Не удалось выполнить авторизацию");
+      setMessage(getReadableAuthError(error));
       if (mode === "register") {
         resetCaptcha();
       }
@@ -260,48 +345,45 @@ export function AuthForm() {
 
   const registerReady =
     mode !== "register" ||
-    (!nameError && isValidEmail(email) && !passwordError && passwordConfirm.length > 0 && !passwordConfirmError && acceptedAgreement && acceptedPrivacy && Boolean(captchaToken));
-  const recoveryReady = isValidEmail(email) && Boolean(captchaToken);
+    (!nameError && isValidEmail(normalizeAuthEmail(email)) && !passwordError && passwordConfirm.length > 0 && !passwordConfirmError && acceptedAgreement && acceptedPrivacy && Boolean(captchaToken));
+  const loginReady = isValidEmail(normalizeAuthEmail(email)) && password.length > 0;
+  const recoveryReady = isValidEmail(normalizeAuthEmail(email)) && Boolean(captchaToken);
   const recoveryPasswordReady = !resetPasswordError && resetPasswordConfirm.length > 0 && !resetPasswordConfirmError;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
+    <section className="min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
       {recoveryMode ? (
         <>
           <h2 className="text-2xl font-black text-[#060b27]">Новый пароль</h2>
           <form className="mt-6" onSubmit={handleRecoverySubmit}>
-            <label className="block">
-              <span className="text-sm font-bold text-slate-600">Придумайте новый пароль</span>
-              <input
-                className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
-                value={resetPassword}
-                onChange={(event) => setResetPassword(event.target.value)}
-                placeholder="Минимум 8 символов"
-                type="password"
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-              {resetPassword ? (
-                <span className={resetPasswordError ? "mt-2 block text-xs font-semibold text-rose-600" : "mt-2 block text-xs font-semibold text-[#0a8f32]"}>
-                  {resetPasswordError || "Надежный пароль."}
-                </span>
-              ) : null}
-            </label>
-            <label className="mt-4 block">
-              <span className="text-sm font-bold text-slate-600">Повторите пароль</span>
-              <input
-                className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
-                value={resetPasswordConfirm}
-                onChange={(event) => setResetPasswordConfirm(event.target.value)}
-                placeholder="Еще раз тот же пароль"
-                type="password"
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-              {resetPasswordConfirmError ? <span className="mt-2 block text-xs font-semibold text-rose-600">{resetPasswordConfirmError}</span> : null}
-            </label>
+            <PasswordField
+              autoComplete="new-password"
+              className="mt-0"
+              label="Придумайте новый пароль"
+              minLength={8}
+              onChange={setResetPassword}
+              onToggle={() => setShowResetPassword((value) => !value)}
+              placeholder="Минимум 8 символов"
+              show={showResetPassword}
+              value={resetPassword}
+            />
+            {resetPassword ? (
+              <span className={resetPasswordError ? "mt-2 block text-xs font-semibold text-rose-600" : "mt-2 block text-xs font-semibold text-[#0a8f32]"}>
+                {resetPasswordError || "Пароль подходит."}
+              </span>
+            ) : null}
+            <PasswordField
+              autoComplete="new-password"
+              className="mt-4"
+              label="Повторите пароль"
+              minLength={8}
+              onChange={setResetPasswordConfirm}
+              onToggle={() => setShowResetPasswordConfirm((value) => !value)}
+              placeholder="Еще раз тот же пароль"
+              show={showResetPasswordConfirm}
+              value={resetPasswordConfirm}
+            />
+            {resetPasswordConfirmError ? <span className="mt-2 block text-xs font-semibold text-rose-600">{resetPasswordConfirmError}</span> : null}
             <button
               type="submit"
               disabled={state === "loading" || !recoveryPasswordReady}
@@ -366,42 +448,38 @@ export function AuthForm() {
           />
           {emailError ? <span className="mt-2 block text-xs font-semibold text-rose-600">{emailError}</span> : null}
         </label>
-        <label className="mt-4 block">
-          <span className="text-sm font-bold text-slate-600">{mode === "register" ? "Придумайте пароль" : "Пароль"}</span>
-          <input
-            className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder={mode === "register" ? "Минимум 8 символов" : "Пароль"}
-            type="password"
-            autoComplete={mode === "register" ? "new-password" : "current-password"}
-            minLength={mode === "register" ? 8 : 6}
-            required
-          />
-          {mode === "register" && password ? (
-            <span className={passwordError ? "mt-2 block text-xs font-semibold text-rose-600" : "mt-2 block text-xs font-semibold text-[#0a8f32]"}>
-              {passwordError || "Надежный пароль."}
-            </span>
-          ) : null}
-        </label>
+        <PasswordField
+          autoComplete={mode === "register" ? "new-password" : "current-password"}
+          className="mt-4"
+          label={mode === "register" ? "Придумайте пароль" : "Пароль"}
+          minLength={mode === "register" ? 8 : undefined}
+          onChange={setPassword}
+          onToggle={() => setShowPassword((value) => !value)}
+          placeholder={mode === "register" ? "Минимум 8 символов" : "Пароль"}
+          show={showPassword}
+          value={password}
+        />
+        {mode === "register" && password ? (
+          <span className={passwordError ? "mt-2 block text-xs font-semibold text-rose-600" : "mt-2 block text-xs font-semibold text-[#0a8f32]"}>
+            {passwordError || "Пароль подходит."}
+          </span>
+        ) : null}
         {mode === "register" ? (
           <>
-            <label className="mt-4 block">
-              <span className="text-sm font-bold text-slate-600">Повторите пароль</span>
-              <input
-                className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
-                value={passwordConfirm}
-                onChange={(event) => setPasswordConfirm(event.target.value)}
-                placeholder="Еще раз тот же пароль"
-                type="password"
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-              {passwordConfirmError ? <span className="mt-2 block text-xs font-semibold text-rose-600">{passwordConfirmError}</span> : null}
-            </label>
+            <PasswordField
+              autoComplete="new-password"
+              className="mt-4"
+              label="Повторите пароль"
+              minLength={8}
+              onChange={setPasswordConfirm}
+              onToggle={() => setShowPasswordConfirm((value) => !value)}
+              placeholder="Еще раз тот же пароль"
+              show={showPasswordConfirm}
+              value={passwordConfirm}
+            />
+            {passwordConfirmError ? <span className="mt-2 block text-xs font-semibold text-rose-600">{passwordConfirmError}</span> : null}
             <div className="mt-5 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <label className="flex gap-3 text-sm leading-6 text-slate-700">
+              <label className="flex min-w-0 gap-3 text-sm leading-6 text-slate-700">
                 <input
                   type="checkbox"
                   checked={acceptedAgreement}
@@ -409,14 +487,14 @@ export function AuthForm() {
                   className="mt-1 h-4 w-4 shrink-0 accent-[#0875d1]"
                   required
                 />
-                <span>
+                <span className="min-w-0 [overflow-wrap:anywhere]">
                   Принимаю{" "}
                   <Link href="/legal/user-agreement" className="font-bold text-[#0875d1]">
                     пользовательское соглашение
                   </Link>
                 </span>
               </label>
-              <label className="flex gap-3 text-sm leading-6 text-slate-700">
+              <label className="flex min-w-0 gap-3 text-sm leading-6 text-slate-700">
                 <input
                   type="checkbox"
                   checked={acceptedPrivacy}
@@ -424,7 +502,7 @@ export function AuthForm() {
                   className="mt-1 h-4 w-4 shrink-0 accent-[#0875d1]"
                   required
                 />
-                <span>
+                <span className="min-w-0 [overflow-wrap:anywhere]">
                   Согласен с{" "}
                   <Link href="/legal/privacy" className="font-bold text-[#0875d1]">
                     политикой конфиденциальности
@@ -447,7 +525,7 @@ export function AuthForm() {
         ) : null}
         <button
           type="submit"
-          disabled={state === "loading" || !registerReady}
+          disabled={state === "loading" || (mode === "register" ? !registerReady : !loginReady)}
           className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#0875d1] font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           {state === "loading" ? "Подождите..." : mode === "register" ? "Зарегистрироваться" : "Войти"}
