@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ArrowRightLeft, CalendarDays, Clock3, Gift, MapPin, MessageCircle, Phone, ShoppingBag, Tags } from "lucide-react";
+import { ArrowRightLeft, CalendarDays, Clock3, Gift, MapPin, ShoppingBag, Tags } from "lucide-react";
+import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewCounter } from "./ListingViewCounter";
@@ -130,17 +131,17 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
         <div className={`grid min-w-0 gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end ${listing.messengerUrl ? "grid-cols-3" : "grid-cols-2"}`}>
           <a
             href={`tel:${listing.phone}`}
-            className="inline-flex h-8 min-w-0 overflow-hidden items-center justify-center gap-1.5 rounded-lg border border-[#0aa337] px-2 text-xs font-bold text-[#0a8f32] transition hover:bg-emerald-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
+            className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
           >
-            <Phone className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+            <ContactAssetIcon kind="phone" className="h-5 w-5 sm:h-6 sm:w-6" />
             <span className="truncate">Позвонить</span>
           </a>
           {listing.messengerUrl ? (
             <a
               href={listing.messengerUrl}
-              className="inline-flex h-8 min-w-0 overflow-hidden items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] px-2 text-xs font-bold text-[#0875d1] transition hover:bg-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
             >
-              <MessageCircle className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+              <ContactAssetIcon kind="message" className="h-5 w-5 sm:h-6 sm:w-6" />
               <span className="truncate sm:hidden">Чат</span>
               <span className="hidden truncate sm:inline">Написать</span>
             </a>

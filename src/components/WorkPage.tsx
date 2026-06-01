@@ -7,10 +7,9 @@ import {
   ChevronRight,
   CircleUserRound,
   MapPin,
-  MessageCircle,
-  Phone,
   UserRound,
 } from "lucide-react";
+import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { specialists, vacancies, workRequests } from "@/lib/data";
 import type { JobVacancy, SpecialistProfile, WorkRequest } from "@/lib/types";
 
@@ -64,13 +63,13 @@ function ContactButton({
   tone?: "blue" | "green" | "slate" | "violet";
 }) {
   const toneClass = {
-    blue: "border-[#0875d1] text-[#0875d1] hover:bg-blue-50",
-    green: "border-[#0aa337] text-[#0a8f32] hover:bg-emerald-50",
+    blue: "border-blue-200 bg-gradient-to-r from-blue-50 to-white text-[#0875d1] hover:border-[#0875d1] hover:from-white hover:to-blue-50",
+    green: "border-transparent bg-gradient-to-r from-[#0875d1] to-[#18a9ff] text-white hover:from-[#0664b3] hover:to-[#0875d1]",
     slate: "border-slate-300 text-slate-700 hover:bg-slate-50",
-    violet: "border-violet-400 text-violet-700 hover:bg-violet-50",
+    violet: "border-blue-200 bg-gradient-to-r from-blue-50 to-white text-[#0875d1] hover:border-[#0875d1] hover:from-white hover:to-blue-50",
   };
 
-  const className = `inline-flex h-8 min-w-0 flex-1 overflow-hidden items-center justify-center gap-0.5 rounded-lg border px-1 text-[11px] font-bold leading-tight transition sm:h-9 sm:gap-2 sm:px-3 sm:text-sm lg:min-w-28 lg:flex-none lg:px-4 ${toneClass[tone]}`;
+  const className = `inline-flex h-10 w-full min-w-0 box-border items-center justify-center gap-1.5 overflow-hidden rounded-lg border px-2 text-xs font-bold leading-tight shadow-sm shadow-blue-50 transition sm:gap-2 sm:px-3 sm:text-sm lg:px-4 ${toneClass[tone]}`;
 
   if (!href) {
     return (
@@ -147,13 +146,13 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
           </p>
         </div>
       </div>
-      <div className="relative z-20 grid grid-cols-2 gap-1.5 sm:gap-2 lg:grid-cols-3">
-          <Link href={`/blizhniy/vakansiya/${vacancy.id}`} className="col-span-2 inline-flex h-8 min-w-0 overflow-hidden items-center justify-center rounded-lg bg-[#0aa337] px-1.5 text-xs font-bold text-white transition hover:bg-[#078a2e] sm:h-9 sm:px-3 sm:text-sm lg:col-span-1 lg:px-4">
+      <div className="relative z-20 grid grid-cols-2 items-stretch gap-1.5 sm:gap-2 lg:grid-cols-3">
+          <Link href={`/blizhniy/vakansiya/${vacancy.id}`} className="col-span-2 inline-flex h-10 w-full min-w-0 items-center justify-center overflow-hidden rounded-lg border border-transparent bg-[#0aa337] px-2 text-xs font-bold leading-tight text-white shadow-sm shadow-blue-50 transition hover:bg-[#078a2e] sm:px-3 sm:text-sm lg:col-span-1 lg:px-4">
             <span className="sm:hidden">Отклик</span>
             <span className="hidden sm:inline">Откликнуться</span>
           </Link>
-          <ContactButton href={phoneHref} icon={<Phone className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />} label="Позвонить" tone="green" />
-          <ContactButton href={messageHref} icon={<MessageCircle className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />} label="Написать" tone="violet" />
+          <ContactButton href={phoneHref} icon={<ContactAssetIcon kind="phone" className="h-5 w-5 sm:h-6 sm:w-6" />} label="Позвонить" tone="green" />
+          <ContactButton href={messageHref} icon={<ContactAssetIcon kind="message" className="h-5 w-5 sm:h-6 sm:w-6" />} label="Написать" tone="violet" />
       </div>
     </article>
   );
@@ -186,8 +185,8 @@ function WorkRequestCard({ request }: { request: WorkRequest }) {
         </div>
       </div>
       <div className="relative z-20 grid grid-cols-2 gap-1.5 sm:gap-2">
-          <ContactButton href={phoneHref} icon={<Phone className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />} label="Позвонить" tone="green" />
-          <ContactButton href={messageHref} icon={<MessageCircle className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />} label="Написать" tone="violet" />
+          <ContactButton href={phoneHref} icon={<ContactAssetIcon kind="phone" className="h-5 w-5 sm:h-6 sm:w-6" />} label="Позвонить" tone="green" />
+          <ContactButton href={messageHref} icon={<ContactAssetIcon kind="message" className="h-5 w-5 sm:h-6 sm:w-6" />} label="Написать" tone="violet" />
       </div>
     </article>
   );
@@ -220,8 +219,8 @@ function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
         </div>
       </div>
       <div className="relative z-20 grid grid-cols-2 gap-1.5 sm:gap-2">
-          <ContactButton href={phoneHref} icon={<Phone className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />} label="Позвонить" />
-          <ContactButton href={messageHref} icon={<MessageCircle className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />} label="Написать" />
+          <ContactButton href={phoneHref} icon={<ContactAssetIcon kind="phone" className="h-5 w-5 sm:h-6 sm:w-6" />} label="Позвонить" />
+          <ContactButton href={messageHref} icon={<ContactAssetIcon kind="message" className="h-5 w-5 sm:h-6 sm:w-6" />} label="Написать" />
       </div>
     </article>
   );

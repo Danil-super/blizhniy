@@ -4,13 +4,13 @@ import type { ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  BadgePlus,
   Camera,
   ChevronRight,
+  ClipboardList,
   CreditCard,
-  List,
   Mail,
   MapPin,
-  MessageCircle,
   Phone,
   PackageCheck,
   ShieldCheck,
@@ -18,6 +18,7 @@ import {
   Truck,
 } from "lucide-react";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
+import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { HomeHero } from "@/components/HomeHero";
@@ -579,7 +580,14 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
   "sad-i-rasteniya": {
     "Цветы и саженцы": "Цветы, декоративные растения, плодовые саженцы и предложения для озеленения.",
     Рассада: "Рассада овощей, зелени, цветов и сезонные предложения для дачи и огорода.",
+    Овощи: "Помидоры, огурцы, кабачки, морковь, свекла, капуста и другие овощные культуры для огорода.",
+    Зелень: "Укроп, петрушка, базилик, шпинат и другая зелень для посадки, выращивания и продажи.",
+    Корнеплоды: "Репа, редька, морковь, свекла и другие корнеплоды для посадки и урожая.",
+    Бобовые: "Горох, фасоль и другие бобовые культуры для огорода и сезонной посадки.",
     "Садовый инвентарь": "Инструменты, техника, материалы и полезные товары для ухода за участком.",
+    "Удобрения и средства защиты растений": "Удобрения, подкормки, средства от вредителей и болезней растений для сада и огорода.",
+    "Системы полива": "Капельный, шланговый и другой полив, комплектующие и решения для ухода за растениями.",
+    Мульча: "Материалы для мульчирования, сохранения влаги и защиты почвы от сорняков.",
     "Плодовые деревья": "Саженцы яблонь, груш, слив, черешни и других плодовых деревьев для сада.",
     "Ягодные кустарники": "Малина, смородина, крыжовник, жимолость и другие ягодные кустарники для участка.",
     "Декоративные цветы и растения": "Розы, тюльпаны, пионы, хризантемы и другие растения для украшения сада.",
@@ -598,12 +606,16 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
   },
 };
 
-function getCategoryChildren(categorySlug: string, children: string[]) {
-  if (categorySlug !== "ritualnye-uslugi") {
-    return children;
-  }
+function subcategoryWordCount(name: string) {
+  return name.match(/[\p{L}\p{N}]+/gu)?.length ?? 0;
+}
 
-  return [...children].sort((left, right) => left.length - right.length || left.localeCompare(right, "ru"));
+function getCategoryChildren(children: string[]) {
+  return [...children].sort((left, right) => {
+    const wordCountDiff = subcategoryWordCount(left) - subcategoryWordCount(right);
+
+    return wordCountDiff || left.length - right.length || left.localeCompare(right, "ru");
+  });
 }
 
 function subcategoryDescription(categorySlug: string, subcategory: string) {
@@ -967,7 +979,14 @@ export function slugifySubcategory(name: string) {
     "Выкройки и рукоделие": "vykroyki-i-rukodelie",
     Клининг: "klining",
     Рассада: "rassada",
+    Овощи: "ovoshchi",
+    Зелень: "zelen",
+    Корнеплоды: "korneplody",
+    Бобовые: "bobovye",
     "Садовый инвентарь": "sadovyy-inventar",
+    "Удобрения и средства защиты растений": "udobreniya-i-sredstva-zashchity-rasteniy",
+    "Системы полива": "sistemy-poliva",
+    Мульча: "mulcha",
     "Плодовые деревья": "plodovye-derevya",
     "Ягодные кустарники": "yagodnye-kustarniki",
     "Декоративные цветы и растения": "dekorativnye-tsvety-i-rasteniya",
@@ -980,9 +999,9 @@ export function slugifySubcategory(name: string) {
   return map[name] ?? name.toLowerCase().replaceAll(" ", "-");
 }
 
-function Breadcrumbs({ items }: { items: { label: string; href?: string }[] }) {
+function Breadcrumbs({ items, compact = false }: { items: { label: string; href?: string }[]; compact?: boolean }) {
   return (
-    <nav className="mb-4 flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:text-sm" aria-label="Хлебные крошки">
+    <nav className={`${compact ? "mb-2" : "mb-4"} flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:text-sm`} aria-label="Хлебные крошки">
       <Link href="/blizhniy/prodam" className="hover:text-[#0875d1]">
         Краснодар
       </Link>
@@ -1129,7 +1148,7 @@ export function ExchangeAndFreePage() {
 
 export function CategoryListingsPage({ categorySlug, subcategorySlug }: { categorySlug: string; subcategorySlug?: string }) {
   const category = categories.find((item) => item.slug === categorySlug);
-  const categoryChildren = category ? getCategoryChildren(category.slug, category.children) : [];
+  const categoryChildren = category ? getCategoryChildren(category.children) : [];
   const subcategory = category?.children.find((item) => slugifySubcategory(item) === subcategorySlug);
   const listings = demoListings.filter(
     (listing) => listing.categorySlug === categorySlug && (!subcategorySlug || listing.subcategorySlug === subcategorySlug),
@@ -1139,19 +1158,22 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
     <>
       <SiteHeader />
       <HomeHero />
-      <main className="page-container py-6 sm:py-8 lg:py-10">
+      <main className="page-container py-1.5 sm:py-2.5 lg:py-3">
         <Breadcrumbs
+          compact
           items={[
             { label: "Категории", href: "/blizhniy/kategorii" },
             { label: category?.name ?? "Категория", href: category ? `/blizhniy/${category.slug}` : undefined },
             ...(subcategory ? [{ label: subcategory }] : []),
           ]}
         />
-        <div className="grid gap-7">
+        <div className="grid gap-3">
           <section>
-            <h1 className="[overflow-wrap:anywhere] text-3xl font-black text-[#060b27] sm:text-5xl">{subcategory ?? category?.name ?? "Категория"}</h1>
+            <h1 className="[overflow-wrap:anywhere] text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">
+              {subcategory ?? category?.name ?? "Категория"}
+            </h1>
             {category ? (
-              <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
                 {categoryChildren.map((child, index) => {
                   const href = `/blizhniy/${category.slug}/${slugifySubcategory(child)}`;
                   const description = subcategoryDescription(category.slug, child);
@@ -1163,15 +1185,15 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
                   return (
                     <details
                       key={child}
-                      className={`group min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition open:border-blue-200 sm:p-4 ${spanClassName}`}
+                      className={`group min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm transition open:border-blue-200 sm:p-3 ${spanClassName}`}
                     >
-                      <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
-                        <span className="block break-words font-bold text-slate-800 [overflow-wrap:anywhere]">{child}</span>
-                        <ChevronRight className="mt-0.5 h-5 w-5 shrink-0 text-slate-400 transition group-open:rotate-90 group-open:text-[#0875d1]" />
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+                        <span className="block break-words text-sm font-bold leading-5 text-slate-800 [overflow-wrap:anywhere] sm:text-[15px]">{child}</span>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-90 group-open:text-[#0875d1]" />
                       </summary>
-                      <p className="mt-3 break-words text-sm font-medium leading-6 text-slate-600 [overflow-wrap:anywhere]">{description}</p>
+                      <p className="mt-2 break-words text-xs font-medium leading-5 text-slate-600 [overflow-wrap:anywhere] sm:text-sm">{description}</p>
                       {animalClassifier ? (
-                        <ul className="mt-3 grid gap-2 text-sm font-medium leading-6 text-slate-600">
+                        <ul className="mt-2 grid gap-1.5 text-xs font-medium leading-5 text-slate-600 sm:text-sm">
                           {animalClassifier.map((item) => (
                             <li key={item} className="flex gap-2">
                               <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0875d1]" />
@@ -1180,22 +1202,22 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
                           ))}
                         </ul>
                       ) : null}
-                      <div className="mt-4 grid grid-cols-3 gap-2">
+                      <div className="mt-3 grid grid-cols-3 gap-2">
                         <Link
                           href={href}
-                          className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-blue-100 px-2 text-xs font-black text-[#0875d1] transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0664b3] sm:gap-2 sm:px-3 sm:text-sm"
+                          className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-blue-100 text-[#0875d1] transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0664b3]"
                           aria-label={`Открыть объявления: ${child}`}
+                          title="Объявления"
                         >
-                          <List className="h-4 w-4 shrink-0" />
-                          <span className="hidden min-w-0 truncate 2xl:inline">Объявления</span>
+                          <ClipboardList className="h-5 w-5 shrink-0" />
                         </Link>
                         <Link
                           href={getCreateListingHref(category.slug, child)}
-                          className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-black text-white transition hover:bg-[#078a2e] sm:gap-2 sm:px-3 sm:text-sm"
+                          className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg bg-[#0aa337] text-white transition hover:bg-[#078a2e]"
                           aria-label={`Разместить объявление: ${child}`}
+                          title="Разместить"
                         >
-                          <span className="hidden min-w-0 truncate 2xl:inline">Разместить</span>
-                          <ArrowRight className="h-4 w-4" />
+                          <BadgePlus className="h-5 w-5 shrink-0" />
                         </Link>
                         <SubcategoryShareButton href={href} title={child} />
                       </div>
@@ -1341,8 +1363,8 @@ export function ListingDetailPage({ slug }: { slug: string }) {
               </p>
               <div className="mt-5 grid gap-2 sm:gap-3">
                 <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  <a href={`tel:${listing.phone}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-2 text-sm font-bold text-white sm:h-12 sm:gap-2 sm:text-base">
-                    <Phone className="h-5 w-5" />
+                  <a href={`tel:${listing.phone}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-[#0875d1] to-[#18a9ff] px-3 text-sm font-bold text-white shadow-sm shadow-blue-100 transition hover:from-[#0664b3] hover:to-[#0875d1] sm:h-12 sm:text-base">
+                    <ContactAssetIcon kind="phone" />
                     <span className="truncate">Позвонить</span>
                   </a>
                   <ListingShareButton
@@ -1356,9 +1378,9 @@ export function ListingDetailPage({ slug }: { slug: string }) {
                 {listing.messengerUrl ? (
                   <a
                     href={listing.messengerUrl}
-                    className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-[#0875d1] px-3 text-sm font-bold text-[#0875d1] transition hover:bg-blue-50 sm:h-12 sm:gap-2 sm:text-base"
+                    className="inline-flex h-11 min-w-0 items-center justify-center gap-2.5 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-3 text-sm font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-12 sm:text-base"
                   >
-                    <MessageCircle className="h-5 w-5 shrink-0" />
+                    <ContactAssetIcon kind="message" />
                     <span className="min-w-0 truncate">Написать сообщение</span>
                   </a>
                 ) : null}

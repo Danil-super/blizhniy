@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { MapPin, MessageCircle, Phone } from "lucide-react";
+import { MapPin } from "lucide-react";
+import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import type { Listing } from "@/lib/types";
 import { listingKinds } from "@/lib/data";
 import { StatusBadge } from "./StatusBadge";
@@ -38,14 +39,14 @@ export function ListingCard({ listing }: { listing: Listing }) {
         <p className="[overflow-wrap:anywhere] text-lg font-black text-[#060b27] sm:text-xl">{listing.price ?? "Обмен"}</p>
         <div className="flex flex-wrap gap-2 sm:flex-col">
           {listing.phone ? (
-            <a className="inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-[#0aa337] px-3 text-sm font-semibold text-[#0a8f32] sm:flex-none sm:px-4" href={`tel:${listing.phone}`}>
-              <Phone className="h-4 w-4 shrink-0" />
+            <a className="inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-3 text-sm font-semibold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] sm:flex-none sm:px-4" href={`tel:${listing.phone}`}>
+              <ContactAssetIcon kind="phone" className="h-6 w-6" />
               Позвонить
             </a>
           ) : null}
           {listing.messengerUrl ? (
-            <a className="inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-[#0875d1] px-3 text-sm font-semibold text-[#0875d1] sm:flex-none sm:px-4" href={listing.messengerUrl}>
-              <MessageCircle className="h-4 w-4 shrink-0" />
+            <a className="inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-3 text-sm font-semibold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] sm:flex-none sm:px-4" href={listing.messengerUrl}>
+              <ContactAssetIcon kind="message" className="h-6 w-6" />
               Написать
             </a>
           ) : null}

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { MapPin, MessageCircle, Phone } from "lucide-react";
+import { MapPin } from "lucide-react";
+import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { SiteHeader } from "@/components/SiteHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LocationMap } from "@/components/LocationMap";
@@ -58,13 +59,13 @@ export default async function SpecialistDetailPage({ params }: { params: Promise
               <p className="text-2xl font-black sm:text-3xl">{specialist.price}</p>
               <div className="mt-4 grid gap-2 sm:mt-5">
                 {specialist.phone ? (
-                  <a className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0875d1] font-bold text-white" href={`tel:${specialist.phone}`}>
-                    <Phone className="h-5 w-5" />
+                  <a className="inline-flex h-11 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-[#0875d1] to-[#18a9ff] px-3 font-bold text-white shadow-sm shadow-blue-100 transition hover:from-[#0664b3] hover:to-[#0875d1]" href={`tel:${specialist.phone}`}>
+                    <ContactAssetIcon kind="phone" />
                     Позвонить
                   </a>
                 ) : null}
-                <a className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#0875d1] font-bold text-[#0875d1]" href={specialist.messengerUrl ?? "https://t.me/blizhniy_support"}>
-                    <MessageCircle className="h-5 w-5" />
+                <a className="inline-flex h-11 items-center justify-center gap-2.5 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-3 font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50" href={specialist.messengerUrl ?? "https://t.me/blizhniy_support"}>
+                    <ContactAssetIcon kind="message" />
                     Написать
                 </a>
               </div>

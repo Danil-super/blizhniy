@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { BriefcaseBusiness, MapPin, MessageCircle, Phone } from "lucide-react";
+import { BriefcaseBusiness, MapPin } from "lucide-react";
+import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { SiteHeader } from "@/components/SiteHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LocationMap } from "@/components/LocationMap";
@@ -67,14 +68,14 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
             <h2 className="mt-4 text-2xl font-black">Связаться</h2>
             <div className="mt-5 grid gap-3">
               {vacancy.phone ? (
-                <a className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0aa337] font-bold text-white" href={`tel:${vacancy.phone}`}>
-                  <Phone className="h-5 w-5" />
+                <a className="inline-flex h-11 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-[#0875d1] to-[#18a9ff] px-3 font-bold text-white shadow-sm shadow-blue-100 transition hover:from-[#0664b3] hover:to-[#0875d1]" href={`tel:${vacancy.phone}`}>
+                  <ContactAssetIcon kind="phone" />
                   Позвонить
                 </a>
               ) : null}
               {vacancy.messengerUrl || vacancy.email ? (
-                <a className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#0875d1] font-bold text-[#0875d1]" href={vacancy.messengerUrl ?? `mailto:${vacancy.email}`}>
-                  <MessageCircle className="h-5 w-5" />
+                <a className="inline-flex h-11 items-center justify-center gap-2.5 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-3 font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50" href={vacancy.messengerUrl ?? `mailto:${vacancy.email}`}>
+                  <ContactAssetIcon kind="message" />
                   Написать
                 </a>
               ) : null}

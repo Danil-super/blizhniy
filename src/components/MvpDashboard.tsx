@@ -265,17 +265,17 @@ function Shell({
 
 function NavPills({ items }: { items: typeof cabinetNav }) {
   return (
-    <nav className="mt-5 grid grid-cols-2 gap-2 sm:mt-7 sm:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]" aria-label="Разделы">
+    <nav className="mt-5 flex flex-wrap gap-2 sm:mt-7" aria-label="Разделы">
       {items.map((item) => {
         const Icon = item.icon;
         return (
           <Link
             href={item.href}
-            className="inline-flex h-10 min-w-0 items-center justify-start gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-11 sm:px-4 sm:text-sm"
+            className="inline-flex min-h-10 min-w-[9rem] max-w-full flex-1 items-center justify-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold leading-snug text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:min-h-11 sm:min-w-[9.5rem] sm:flex-none sm:px-4 sm:text-sm"
             key={item.href}
           >
             <Icon className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 truncate">{item.label}</span>
+            <span className="min-w-0 break-words">{item.label}</span>
           </Link>
         );
       })}
@@ -880,48 +880,88 @@ export function AdminPaymentsPage() {
               </button>
             </form>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {tariffs.map((tariff) => (
-              <form key={tariff.id} action={updateTariffAction} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
-                <input type="hidden" name="id" value={tariff.id} />
-                <div>
-                  <p className="text-sm font-black text-[#060b27]">{tariff.name}</p>
-                  <p className="mt-1 text-xs text-slate-500">{tariff.id}</p>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1 text-xs font-bold text-slate-600">
-                    Цена, ₽
-                    <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      name="price"
-                      defaultValue={tariff.price}
-                      className="h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
-                    />
-                  </label>
-                  <label className="grid gap-1 text-xs font-bold text-slate-600">
-                    Дней размещения
-                    <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      name="durationDays"
-                      defaultValue={tariff.durationDays ?? ""}
-                      placeholder="разово"
-                      className="h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
-                    />
-                  </label>
-                </div>
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
-                  <input type="checkbox" name="active" value="1" defaultChecked={tariff.active} className="h-4 w-4 accent-[#0875d1]" />
-                  Тариф активен
-                </label>
-                <button type="submit" className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-xs font-bold text-white transition hover:bg-[#0664b3] sm:text-sm">
-                  Сохранить изменения
-                </button>
-              </form>
-            ))}
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {tariffs.map((tariff) => {
+              const hasDuration = tariff.durationDays !== null;
+
+              if (!hasDuration) {
+                return (
+                  <form key={tariff.id} action={updateTariffAction} className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <input type="hidden" name="id" value={tariff.id} />
+                    <input type="hidden" name="durationDays" value="" />
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-black leading-5 text-[#060b27]">{tariff.name}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{tariff.id}</p>
+                      </div>
+                      <label className="flex h-8 shrink-0 items-center gap-2 text-xs font-bold text-slate-600">
+                        <input type="checkbox" name="active" value="1" defaultChecked={tariff.active} className="h-4 w-4 accent-[#0875d1]" />
+                        Активен
+                      </label>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                      <label className="grid gap-1 text-xs font-bold text-slate-600">
+                        Цена, ₽
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          name="price"
+                          defaultValue={tariff.price}
+                          className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
+                        />
+                      </label>
+                      <button type="submit" className="inline-flex h-9 items-center justify-center rounded-lg bg-[#0875d1] px-3 text-xs font-bold text-white transition hover:bg-[#0664b3] sm:min-w-24">
+                        Сохранить
+                      </button>
+                    </div>
+                  </form>
+                );
+              }
+
+              return (
+                <form key={tariff.id} action={updateTariffAction} className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <input type="hidden" name="id" value={tariff.id} />
+                  <div>
+                    <p className="text-sm font-black leading-5 text-[#060b27]">{tariff.name}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">{tariff.id}</p>
+                  </div>
+                  <div className={`grid gap-2 ${hasDuration ? "sm:grid-cols-2" : ""}`}>
+                    <label className="grid gap-1 text-xs font-bold text-slate-600">
+                      Цена, ₽
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        name="price"
+                        defaultValue={tariff.price}
+                        className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-xs font-bold text-slate-600">
+                      Дней размещения
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        name="durationDays"
+                        defaultValue={tariff.durationDays ?? ""}
+                        className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
+                      />
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                      <input type="checkbox" name="active" value="1" defaultChecked={tariff.active} className="h-4 w-4 accent-[#0875d1]" />
+                      Активен
+                    </label>
+                    <button type="submit" className="inline-flex h-9 items-center justify-center rounded-lg bg-[#0875d1] px-3 text-xs font-bold text-white transition hover:bg-[#0664b3]">
+                      Сохранить
+                    </button>
+                  </div>
+                </form>
+              );
+            })}
           </div>
         </section>
 

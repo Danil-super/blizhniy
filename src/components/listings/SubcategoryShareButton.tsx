@@ -71,11 +71,11 @@ export function SubcategoryShareButton({ href, title }: SubcategoryShareButtonPr
     <button
       type="button"
       onClick={handleShare}
-      className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-slate-200 bg-white px-2 text-xs font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:gap-2 sm:px-3 sm:text-sm"
+      className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1]"
       aria-label={`Поделиться ссылкой: ${title}`}
+      title={status === "copied" ? "Ссылка скопирована" : status === "error" ? "Не удалось скопировать" : "Поделиться"}
     >
-      <Share2 className="h-4 w-4 shrink-0" />
-      <span className="hidden min-w-0 truncate 2xl:inline">{status === "copied" ? "Скопировано" : status === "error" ? "Ошибка" : "Поделиться"}</span>
+      <Share2 className="h-5 w-5 shrink-0" />
     </button>
   );
 }
