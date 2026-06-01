@@ -121,7 +121,7 @@ const categoryTiles = [
   { label: "Сад и огород", href: "/blizhniy/sad-i-rasteniya", icon: Sprout, tone: "green" },
   { label: "Жилье для путешествия", href: "/blizhniy/nedvizhimost/arenda", icon: MapPinned, tone: "green" },
   { label: "Красота и здоровье", href: "/blizhniy/krasota-i-uhod", icon: HeartPulse, tone: "violet" },
-  { label: "Ритуальные услуги", href: "/blizhniy/ritualnye-uslugi", icon: MemorialIcon, tone: "slate", iconClassName: "h-10 w-10 sm:h-11 sm:w-11 lg:h-12 lg:w-12" },
+  { label: "Ритуальные услуги", href: "/blizhniy/ritualnye-uslugi", icon: MemorialIcon, tone: "slate", iconClassName: "h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10" },
   { label: "Меняю и отдам даром", href: "/blizhniy/obmen-i-darom", icon: Gift, tone: "green" },
   { label: "Разное", href: "/blizhniy/raznoe", icon: Ellipsis, tone: "slate" },
 ];
@@ -130,8 +130,8 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
   const outerClassName = variant === "scroll" ? "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "";
   const gridClassName =
     variant === "scroll"
-      ? "grid grid-flow-col grid-rows-2 auto-cols-[154px] gap-2 sm:grid-flow-row sm:grid-rows-none sm:grid-cols-[repeat(auto-fit,minmax(150px,1fr))] sm:auto-cols-auto lg:grid-cols-[repeat(auto-fit,minmax(160px,1fr))]"
-      : "grid grid-cols-[repeat(auto-fit,minmax(min(100%,150px),1fr))] gap-2 sm:gap-3 lg:grid-cols-[repeat(auto-fit,minmax(165px,1fr))]";
+      ? "grid grid-flow-col grid-rows-2 auto-cols-[132px] gap-2 sm:grid-flow-row sm:grid-rows-none sm:grid-cols-[repeat(auto-fit,minmax(132px,1fr))] sm:auto-cols-auto lg:grid-cols-[repeat(auto-fit,minmax(142px,1fr))]"
+      : "grid grid-cols-[repeat(auto-fit,minmax(min(100%,132px),1fr))] gap-2 lg:grid-cols-[repeat(auto-fit,minmax(142px,1fr))]";
 
   return (
     <section className="page-container pb-6 pt-3 sm:pb-8">
@@ -142,19 +142,19 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
             const tone = categoryTones[category.tone as keyof typeof categoryTones];
 
             return (
-              <div key={`${category.label}-${category.href}`} className={`group relative flex min-h-32 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:min-h-40 sm:p-4 lg:min-h-44 ${tone.card}`}>
-                <span className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${tone.accent}`} />
-                <span className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-70 blur-sm transition group-hover:scale-110 sm:h-32 sm:w-32 ${tone.glow}`} />
+              <div key={`${category.label}-${category.href}`} className={`group relative flex min-h-24 min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-gradient-to-br p-2.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:min-h-28 sm:p-3 lg:min-h-32 ${tone.card}`}>
+                <span className={`pointer-events-none absolute inset-x-0 top-0 h-0.5 ${tone.accent}`} />
+                <span className={`pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full opacity-70 blur-sm transition group-hover:scale-110 sm:h-24 sm:w-24 ${tone.glow}`} />
                 {category.ageRating ? (
-                  <span className="absolute right-2 top-2 z-10 inline-flex h-7 min-w-9 items-center justify-center rounded-full border border-white/80 bg-white/90 px-2 text-xs font-black text-slate-700 shadow-sm sm:right-3 sm:top-3">
+                  <span className="absolute right-2 top-2 z-10 inline-flex h-6 min-w-8 items-center justify-center rounded-full border border-white/80 bg-white/90 px-1.5 text-[11px] font-black text-slate-700 shadow-sm">
                     {category.ageRating}
                   </span>
                 ) : null}
                 <div className="relative">
-                  <span className={`flex h-14 w-14 items-center justify-center rounded-2xl ring-1 shadow-sm transition group-hover:scale-105 sm:h-16 sm:w-16 lg:h-[72px] lg:w-[72px] ${tone.icon}`}>
-                    <Icon className={category.iconClassName ?? "h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"} />
+                  <span className={`flex h-11 w-11 items-center justify-center rounded-xl ring-1 shadow-sm transition group-hover:scale-105 sm:h-12 sm:w-12 lg:h-14 lg:w-14 ${tone.icon}`}>
+                    <Icon className={category.iconClassName ?? "h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8"} />
                   </span>
-                  <Link href={category.href} className="mt-3 line-clamp-4 block break-normal text-[13px] font-black leading-5 text-slate-950 hyphens-none group-hover:text-[#0875d1] sm:mt-4 sm:text-sm sm:leading-5 lg:text-[15px]">
+                  <Link href={category.href} className="mt-2 line-clamp-3 block break-normal text-xs font-black leading-4 text-slate-950 hyphens-none group-hover:text-[#0875d1] sm:text-[13px] sm:leading-[18px] lg:text-sm lg:leading-5">
                     {category.label}
                   </Link>
                 </div>
