@@ -10,6 +10,7 @@ import { DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publicat
 import { categories } from "@/lib/data";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
+import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { BookingCalculator } from "./BookingCalculator";
 import { ListingViewTracker } from "./ListingViewTracker";
 
@@ -113,7 +114,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
 
   const listing = useMemo(() => items.find((item) => item.type === "listing" && item.id === slug), [items, slug]);
   const kind = (listing?.listingKind ?? "prodam") as ListingKind;
-  const hasMessenger = Boolean(listing?.messengerUrl);
+  const listingHref = `/blizhniy/obyavlenie/${slug}`;
 
   if (!listing) {
     return (
@@ -132,8 +133,8 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
   return (
     <main className="page-container py-6 sm:py-8 lg:py-10">
       <ListingViewTracker listingId={listing.id} />
-      <div className="grid min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:items-start">
-        <section className="min-w-0">
+      <div className="mx-auto grid max-w-[1180px] min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,768px)_minmax(320px,380px)] lg:items-start lg:justify-center">
+        <section className="min-w-0 lg:max-w-3xl">
           <Link href={`/blizhniy/${kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             <ArrowLeft className="h-4 w-4" />
             Назад к разделу
@@ -158,40 +159,47 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
               </div>
             </dl>
           </div>
-          <div className="mt-7">
-            <LocationMap
-              location={{
-                city: listing.city,
-                lat: listing.lat,
-                lng: listing.lng,
-                showExactAddress: Boolean(listing.showExactAddress),
-              }}
-              exactLabel="Точный адрес частного лица по умолчанию не показывается"
-            />
-          </div>
         </section>
 
         <aside className="min-w-0 space-y-4">
-          {listing.booking ? <BookingCalculator booking={listing.booking} listingId={listing.id} listingTitle={listing.title} /> : null}
           <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
             <p className="[overflow-wrap:anywhere] text-2xl font-black text-[#060b27] sm:text-3xl">{listing.price ?? "по договоренности"}</p>
             <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
               <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
               <span className="min-w-0 [overflow-wrap:anywhere]">{listing.city}</span>
             </p>
-            <div className={`mt-5 grid gap-2 sm:gap-3 ${hasMessenger ? "min-[420px]:grid-cols-2" : "grid-cols-1"}`}>
-              <a href={`tel:${listing.phone ?? "+78610009999"}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-2 text-sm font-bold text-white sm:h-12 sm:gap-2 sm:text-base">
-                <Phone className="h-5 w-5" />
-                <span className="truncate">Позвонить</span>
-              </a>
+            <div className="mt-5 grid gap-2 sm:gap-3">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                <a href={`tel:${listing.phone ?? "+78610009999"}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-2 text-sm font-bold text-white sm:h-12 sm:gap-2 sm:text-base">
+                  <Phone className="h-5 w-5" />
+                  <span className="truncate">Позвонить</span>
+                </a>
+                <ListingShareButton
+                  href={listingHref}
+                  title={listing.title}
+                  textBreakpoint="always"
+                  className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:h-12 sm:gap-2 sm:text-base"
+                  iconClassName="h-5 w-5 shrink-0"
+                />
+              </div>
               {listing.messengerUrl ? (
-                <a href={listing.messengerUrl} className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-[#0875d1] px-2 text-sm font-bold text-[#0875d1] sm:h-12 sm:gap-2 sm:text-base">
-                  <MessageCircle className="h-5 w-5" />
-                  <span className="truncate">Написать сообщение</span>
+                <a href={listing.messengerUrl} className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-[#0875d1] px-3 text-sm font-bold text-[#0875d1] transition hover:bg-blue-50 sm:h-12 sm:gap-2 sm:text-base">
+                  <MessageCircle className="h-5 w-5 shrink-0" />
+                  <span className="min-w-0 truncate">Написать сообщение</span>
                 </a>
               ) : null}
             </div>
           </div>
+          <LocationMap
+            location={{
+              city: listing.city,
+              lat: listing.lat,
+              lng: listing.lng,
+              showExactAddress: Boolean(listing.showExactAddress),
+            }}
+            exactLabel="Точный адрес частного лица по умолчанию не показывается"
+          />
+          {listing.booking ? <BookingCalculator booking={listing.booking} listingId={listing.id} listingTitle={listing.title} /> : null}
         </aside>
       </div>
     </main>

@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, ExternalLink, FilePenLine } from "lucide-react";
+import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { demoPublicationLabels, demoPublicationsStorageKey, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
 
 function readStoredPublications() {
@@ -81,6 +82,7 @@ export function DemoPublishedItems({ type }: { type: DemoPublicationType }) {
                   <FilePenLine className="h-3.5 w-3.5" />
                   Редактировать
                 </Link>
+                <ListingShareButton href={`/blizhniy/obyavlenie/${item.id}`} title={item.title} textBreakpoint="always" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]" />
               </div>
             ) : null}
           </article>

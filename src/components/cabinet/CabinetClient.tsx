@@ -7,6 +7,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, CreditCard, FileText, LockKeyhole, Mail, Move, Phone, Plus, Search, Settings2, Trash2, UserRound, X } from "lucide-react";
 import { demoPublicationLabels, demoPublicationsStorageKey, type DemoPublication, type DemoPublicationType } from "@/lib/demo-publications";
 import { useAuthState } from "@/components/auth/useAuthState";
+import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { cities } from "@/lib/data";
 import {
@@ -453,6 +454,9 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
             <Link href={getEditHref(item)} className="inline-flex h-10 items-center rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-[#0875d1]">
               Изменить
             </Link>
+            {item.type === "listing" ? (
+              <ListingShareButton href={getItemHref(item)} title={item.title} textBreakpoint="always" className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]" />
+            ) : null}
           </div>
         </article>
       ))}

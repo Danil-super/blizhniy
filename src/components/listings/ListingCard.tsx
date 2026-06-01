@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { ArrowRightLeft, CalendarDays, Gift, MapPin, MessageCircle, Phone, ShoppingBag, Tags } from "lucide-react";
+import { ArrowRightLeft, CalendarDays, Clock3, Gift, MapPin, MessageCircle, Phone, ShoppingBag, Tags } from "lucide-react";
 import { formatPublicationDateTime } from "@/lib/publication-time";
+import { ListingShareButton } from "./ListingShareButton";
+import { ListingViewCounter } from "./ListingViewCounter";
 
 export type ListingKind = "prodam" | "kuplyu" | "menyayu" | "otdam-darom" | "arenda";
 export type ListingStatus = "draft" | "pending_payment" | "paid" | "published" | "archived" | "expired" | "rejected";
@@ -91,12 +93,13 @@ export function StatusBadge({ status }: { status: ListingStatus }) {
 
 export function ListingCard({ listing }: { listing: DemoListing }) {
   const Icon = kindIcons[listing.kind];
+  const href = `/blizhniy/obyavlenie/${listing.slug}`;
 
   return (
     <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-4 sm:p-4 xl:grid-cols-[140px_minmax(0,1fr)_minmax(180px,auto)]">
       <div className="flex min-w-0 gap-3 sm:contents">
         <Link
-          href={`/blizhniy/obyavlenie/${listing.slug}`}
+          href={href}
           className={`flex h-24 w-24 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br sm:h-auto sm:min-h-28 sm:w-auto xl:min-h-32 ${imageTones[listing.imageTone]}`}
           aria-label={listing.title}
         >
@@ -108,7 +111,7 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
             <ListingKindBadge kind={listing.kind} />
             <StatusBadge status={listing.status} />
           </div>
-          <Link href={`/blizhniy/obyavlenie/${listing.slug}`} className="mt-2 line-clamp-2 text-sm font-black leading-5 text-[#060b27] hover:text-[#0875d1] sm:text-base sm:leading-6 lg:text-2xl lg:leading-tight">
+          <Link href={href} className="mt-2 line-clamp-2 text-sm font-black leading-5 text-[#060b27] hover:text-[#0875d1] sm:text-base sm:leading-6 lg:text-2xl lg:leading-tight">
             {listing.title}
           </Link>
           <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:text-sm lg:mt-2 lg:leading-6">{listing.description}</p>
@@ -124,7 +127,7 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
           <p className="truncate text-base font-black text-[#060b27] sm:text-lg lg:text-2xl">{listing.price}</p>
           <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">{formatPublicationDateTime(listing.publishedAt)}</p>
         </div>
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end">
+        <div className={`grid min-w-0 gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end ${listing.messengerUrl ? "grid-cols-3" : "grid-cols-2"}`}>
           <a
             href={`tel:${listing.phone}`}
             className="inline-flex h-8 min-w-0 overflow-hidden items-center justify-center gap-1.5 rounded-lg border border-[#0aa337] px-2 text-xs font-bold text-[#0a8f32] transition hover:bg-emerald-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
@@ -142,8 +145,50 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
               <span className="hidden truncate sm:inline">Написать</span>
             </a>
           ) : null}
+          <ListingShareButton href={href} title={listing.title} textBreakpoint="lg" />
         </div>
       </div>
+    </article>
+  );
+}
+
+export function ListingGridCard({ listing }: { listing: DemoListing }) {
+  const Icon = kindIcons[listing.kind];
+  const href = `/blizhniy/obyavlenie/${listing.slug}`;
+
+  return (
+    <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card">
+      <Link href={href} className="block min-w-0">
+        <span className={`relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-gradient-to-br ${imageTones[listing.imageTone]}`}>
+          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80 transition group-hover:scale-105">
+            <Icon className="h-8 w-8" />
+          </span>
+          <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />
+        </span>
+        <span className="block p-3">
+          <span className="block truncate text-base font-black text-[#060b27]">{listing.price}</span>
+          <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">
+            {listing.title}
+          </span>
+          <span className="mt-1 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
+            <Clock3 className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{formatPublicationDateTime(listing.publishedAt)}</span>
+          </span>
+          <span className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
+            <span className="flex min-w-0 items-center gap-1">
+              <MapPin className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{listing.city}</span>
+            </span>
+            <ListingViewCounter listingId={listing.slug} />
+          </span>
+        </span>
+      </Link>
+      <ListingShareButton
+        href={href}
+        title={listing.title}
+        textBreakpoint="never"
+        className="absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-white hover:text-[#0875d1]"
+      />
     </article>
   );
 }

@@ -10,6 +10,7 @@ import { categories } from "@/lib/data";
 import { matchesDemoPublicationFilters, matchesListingScope, type ListingFilterCriteria } from "@/lib/listing-filters";
 import { formatPublicationDateTime, publicationTimestamp } from "@/lib/publication-time";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
+import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { ListingViewCounter } from "@/components/listings/ListingViewCounter";
 
 type DemoListingFeedProps = {
@@ -102,32 +103,41 @@ function resolveSubcategoryName(item: DemoPublication) {
   return category?.children.find((child) => slugifySubcategory(child) === item.subcategorySlug) ?? item.subcategorySlug ?? "Раздел";
 }
 
-function DemoGridCard({ item }: { item: DemoPublication }) {
+export function DemoGridCard({ item }: { item: DemoPublication }) {
   const kind = item.listingKind ?? "prodam";
   const Icon = kindIcons[kind];
   const firstImage = item.images?.[0];
+  const href = `/blizhniy/obyavlenie/${item.id}`;
 
   return (
-    <Link href={`/blizhniy/obyavlenie/${item.id}`} className="group min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-emerald-200 transition hover:-translate-y-0.5 hover:shadow-card">
-      <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32]">
-        {firstImage ? <img src={firstImage} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-contain p-2 transition group-hover:scale-105" /> : null}
-        <span className={`flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80 ${firstImage ? "opacity-0" : ""}`}>
-          <Icon className="h-8 w-8" />
-        </span>
-      </span>
-      <span className="block p-3">
-        <span className="block truncate text-base font-black text-[#060b27]">{item.price ?? "по договоренности"}</span>
-        <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">{item.title}</span>
-        <span className="mt-1 block truncate text-xs font-semibold text-slate-500">{formatPublicationDateTime(item.createdAt)}</span>
-        <span className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
-          <span className="flex min-w-0 items-center gap-1">
-            <MapPin className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{item.city}</span>
+    <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-emerald-200 transition hover:-translate-y-0.5 hover:shadow-card">
+      <Link href={href} className="block min-w-0">
+        <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32]">
+          {firstImage ? <img src={firstImage} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-contain p-2 transition group-hover:scale-105" /> : null}
+          <span className={`flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80 ${firstImage ? "opacity-0" : ""}`}>
+            <Icon className="h-8 w-8" />
           </span>
-          <ListingViewCounter listingId={item.id} />
         </span>
-      </span>
-    </Link>
+        <span className="block p-3">
+          <span className="block truncate text-base font-black text-[#060b27]">{item.price ?? "по договоренности"}</span>
+          <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">{item.title}</span>
+          <span className="mt-1 block truncate text-xs font-semibold text-slate-500">{formatPublicationDateTime(item.createdAt)}</span>
+          <span className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
+            <span className="flex min-w-0 items-center gap-1">
+              <MapPin className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{item.city}</span>
+            </span>
+            <ListingViewCounter listingId={item.id} />
+          </span>
+        </span>
+      </Link>
+      <ListingShareButton
+        href={href}
+        title={item.title}
+        textBreakpoint="never"
+        className="absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-white hover:text-[#0875d1]"
+      />
+    </article>
   );
 }
 
@@ -135,13 +145,14 @@ function DemoListCard({ item }: { item: DemoPublication }) {
   const kind = item.listingKind ?? "prodam";
   const Icon = kindIcons[kind];
   const firstImage = item.images?.[0];
+  const href = `/blizhniy/obyavlenie/${item.id}`;
 
   return (
     <article className="group relative grid min-w-0 gap-3 rounded-xl border border-emerald-200 bg-white p-3 shadow-sm transition hover:border-blue-200 hover:shadow-card sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-4 sm:p-4 xl:grid-cols-[140px_minmax(0,1fr)_minmax(180px,auto)]">
-      <Link href={`/blizhniy/obyavlenie/${item.id}`} className="absolute inset-0 z-10 rounded-xl" aria-label={`Открыть объявление ${item.title}`} />
+      <Link href={href} className="absolute inset-0 z-10 rounded-xl" aria-label={`Открыть объявление ${item.title}`} />
       <div className="flex min-w-0 gap-3 sm:contents">
         <Link
-          href={`/blizhniy/obyavlenie/${item.id}`}
+          href={href}
           className="relative z-20 flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32] sm:h-auto sm:min-h-28 sm:w-auto xl:min-h-32"
         >
           {firstImage ? <img src={firstImage} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-contain p-2 transition group-hover:scale-105" /> : <Icon className="h-8 w-8 sm:h-9 sm:w-9 lg:h-12 lg:w-12" />}
@@ -167,7 +178,7 @@ function DemoListCard({ item }: { item: DemoPublication }) {
           <p className="truncate text-base font-black text-[#060b27] sm:text-lg lg:text-2xl">{item.price ?? "по договоренности"}</p>
           <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">{formatPublicationDateTime(item.createdAt)}</p>
         </div>
-        <div className="relative z-20 grid min-w-0 grid-cols-2 gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end">
+        <div className={`relative z-20 grid min-w-0 gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end ${item.messengerUrl ? "grid-cols-3" : "grid-cols-2"}`}>
           <a href={`tel:${item.phone ?? "+78610009999"}`} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0aa337] px-2 text-xs font-bold text-[#0a8f32] transition hover:bg-emerald-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
             <Phone className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
             <span className="truncate">Позвонить</span>
@@ -178,6 +189,7 @@ function DemoListCard({ item }: { item: DemoPublication }) {
               <span className="truncate">Написать</span>
             </a>
           ) : null}
+          <ListingShareButton href={href} title={item.title} stopPropagation textBreakpoint="lg" />
         </div>
       </div>
     </article>

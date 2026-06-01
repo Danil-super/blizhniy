@@ -12,7 +12,7 @@ import {
   matchesListingScope,
   type ListingFilterCriteria,
 } from "@/lib/listing-filters";
-import { DemoListing, ListingCard, ListingKind } from "./ListingCard";
+import { DemoListing, ListingGridCard, ListingKind } from "./ListingCard";
 
 type ListingResultsPanelProps = {
   categorySlug?: string;
@@ -196,10 +196,10 @@ export function ListingResultsPanel({ categorySlug, emptyText, kind, listings, s
           </span>
         </div>
         {visibleTotal ? (
-          <div className="grid gap-3 sm:gap-4 2xl:grid-cols-2">
-            <DemoListingFeed categorySlug={categorySlug} filters={appliedFilters} kind={kind} subcategorySlug={subcategorySlug} />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
+            <DemoListingFeed categorySlug={categorySlug} filters={appliedFilters} kind={kind} subcategorySlug={subcategorySlug} variant="grid" />
             {visibleListings.map((listing) => (
-              <ListingCard key={listing.slug} listing={listing} />
+              <ListingGridCard key={listing.slug} listing={listing} />
             ))}
           </div>
         ) : null}

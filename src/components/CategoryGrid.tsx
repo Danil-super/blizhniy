@@ -5,7 +5,6 @@ import {
   Building2,
   Car,
   Cog,
-  Flower2,
   Gift,
   HeartPulse,
   MapPinned,
@@ -17,6 +16,21 @@ import {
   TentTree,
   Wrench,
 } from "lucide-react";
+
+function MemorialIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M11 23V10.5C11 7.5 13.2 5 16 5s5 2.5 5 5.5V23" fill="currentColor" fillOpacity="0.12" />
+      <path d="M11 23V10.5C11 7.5 13.2 5 16 5s5 2.5 5 5.5V23" />
+      <path d="M8 23h16" />
+      <path d="M6 27h20" />
+      <path d="M4 30h24" />
+      <path d="M14 12.5h4" />
+      <path d="M13 17h6" />
+      <path d="M13.5 20.5h5" />
+    </svg>
+  );
+}
 
 const categoryTones = {
   blue: {
@@ -98,7 +112,7 @@ const categoryTiles = [
   { label: "Товары для детей", href: "/blizhniy/tovary-i-veshchi", icon: Baby, tone: "rose", ageRating: "7+" },
   { label: "Жилье для путешествия", href: "/blizhniy/nedvizhimost/arenda", icon: MapPinned, tone: "green" },
   { label: "Красота и здоровье", href: "/blizhniy/krasota-i-uhod", icon: HeartPulse, tone: "violet" },
-  { label: "Ритуальные услуги", href: "/blizhniy/ritualnye-uslugi", icon: Flower2, tone: "slate" },
+  { label: "Ритуальные услуги", href: "/blizhniy/ritualnye-uslugi", icon: MemorialIcon, tone: "slate", iconClassName: "h-10 w-10 sm:h-11 sm:w-11 lg:h-12 lg:w-12" },
   { label: "Меняю и отдам даром", href: "/blizhniy/obmen-i-darom", icon: Gift, tone: "green" },
 ];
 
@@ -130,7 +144,7 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
                 ) : null}
                 <div className="relative">
                   <span className={`flex h-14 w-14 items-center justify-center rounded-2xl ring-1 shadow-sm transition group-hover:scale-105 sm:h-16 sm:w-16 lg:h-[72px] lg:w-[72px] ${tone.icon}`}>
-                    <Icon className="h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9" />
+                    <Icon className={category.iconClassName ?? "h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9"} />
                   </span>
                   <Link href={category.href} className="mt-3 line-clamp-4 block break-normal text-[13px] font-black leading-5 text-slate-950 hyphens-none group-hover:text-[#0875d1] sm:mt-4 sm:text-sm sm:leading-5 lg:text-[15px]">
                     {category.label}

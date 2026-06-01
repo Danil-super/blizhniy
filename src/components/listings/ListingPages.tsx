@@ -7,6 +7,7 @@ import {
   Camera,
   ChevronRight,
   CreditCard,
+  List,
   Mail,
   MapPin,
   MessageCircle,
@@ -36,7 +37,9 @@ import { DemoListingDetailClient } from "./DemoListingDetailClient";
 import { ListingKindAndCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
 import { ListingResultsPanel } from "./ListingResultsPanel";
+import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewTracker } from "./ListingViewTracker";
+import { SubcategoryShareButton } from "./SubcategoryShareButton";
 
 const listingKinds: { slug: ListingKind; title: string; description: string }[] = [
   { slug: "prodam", title: "Продам", description: "Вещи, мебель, растения и полезные товары рядом с домом." },
@@ -1080,21 +1083,24 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
                             ))}
                           </ul>
                         ) : null}
-                        <div className="mt-4 grid grid-cols-2 gap-2">
+                        <div className="mt-4 grid grid-cols-3 gap-2">
                           <Link
                             href={href}
-                            className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-blue-100 px-2 text-xs font-black text-[#0875d1] transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0664b3] sm:px-3 sm:text-sm"
+                            className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-blue-100 px-2 text-xs font-black text-[#0875d1] transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0664b3] sm:gap-2 sm:px-3 sm:text-sm"
+                            aria-label={`Открыть объявления: ${child}`}
                           >
-                            <span className="truncate">Объявления</span>
+                            <List className="h-4 w-4 shrink-0" />
+                            <span className="hidden min-w-0 truncate 2xl:inline">Объявления</span>
                           </Link>
                           <Link
                             href={getCreateListingHref(category.slug, child)}
                             className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-black text-white transition hover:bg-[#078a2e] sm:gap-2 sm:px-3 sm:text-sm"
                             aria-label={`Разместить объявление: ${child}`}
                           >
-                            <span className="truncate">Разместить</span>
+                            <span className="hidden min-w-0 truncate 2xl:inline">Разместить</span>
                             <ArrowRight className="h-4 w-4" />
                           </Link>
+                          <SubcategoryShareButton href={href} title={child} />
                         </div>
                       </details>
                     );
@@ -1179,8 +1185,7 @@ function DeliveryInfoCard({ delivery }: { delivery?: DeliveryOptions }) {
 
 export function ListingDetailPage({ slug }: { slug: string }) {
   const listing = findListingBySlug(slug);
-  const tariff = getTariffs().find((item) => item.id === "listing-publication");
-  const hasMessenger = Boolean(listing?.messengerUrl);
+  const listingHref = `/blizhniy/obyavlenie/${slug}`;
 
   if (!listing) {
     return (
@@ -1203,8 +1208,8 @@ export function ListingDetailPage({ slug }: { slug: string }) {
             { label: listing.title },
           ]}
         />
-        <div className="grid min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:items-start">
-          <section className="min-w-0">
+        <div className="mx-auto grid max-w-[1180px] min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,768px)_minmax(320px,380px)] lg:items-start lg:justify-center">
+          <section className="min-w-0 lg:max-w-3xl">
             <Link href={`/blizhniy/${listing.kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
               <ArrowLeft className="h-4 w-4" />
               Назад к разделу
@@ -1214,7 +1219,7 @@ export function ListingDetailPage({ slug }: { slug: string }) {
               <ListingKindBadge kind={listing.kind} />
               <StatusBadge status={listing.status} />
             </div>
-            <div className="mt-5 flex aspect-[4/3] w-full max-w-3xl items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
+            <div className="mt-5 flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
               <Camera className="h-12 w-12 sm:h-16 sm:w-16" />
             </div>
             <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
@@ -1239,47 +1244,43 @@ export function ListingDetailPage({ slug }: { slug: string }) {
                 </div>
               </dl>
             </div>
-            <div className="mt-7">
-              <LocationMap location={listing} exactLabel="Точный адрес частного лица по умолчанию не показывается" />
-            </div>
           </section>
 
           <aside className="min-w-0 space-y-4">
-            {listing.booking ? <BookingCalculator booking={listing.booking} listingId={listing.slug} listingTitle={listing.title} /> : null}
             <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
               <p className="[overflow-wrap:anywhere] text-2xl font-black text-[#060b27] sm:text-3xl">{listing.price}</p>
               <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
                 <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
                 <span className="min-w-0 [overflow-wrap:anywhere]">{listing.city}, {listing.district}</span>
               </p>
-              <div className={`mt-5 grid gap-2 sm:gap-3 ${hasMessenger ? "min-[420px]:grid-cols-2" : "grid-cols-1"}`}>
-                <a href={`tel:${listing.phone}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-2 text-sm font-bold text-white sm:h-12 sm:gap-2 sm:text-base">
-                  <Phone className="h-5 w-5" />
-                  <span className="truncate">Позвонить</span>
-                </a>
+              <div className="mt-5 grid gap-2 sm:gap-3">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  <a href={`tel:${listing.phone}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-2 text-sm font-bold text-white sm:h-12 sm:gap-2 sm:text-base">
+                    <Phone className="h-5 w-5" />
+                    <span className="truncate">Позвонить</span>
+                  </a>
+                  <ListingShareButton
+                    href={listingHref}
+                    title={listing.title}
+                    textBreakpoint="always"
+                    className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:h-12 sm:gap-2 sm:text-base"
+                    iconClassName="h-5 w-5 shrink-0"
+                  />
+                </div>
                 {listing.messengerUrl ? (
                   <a
                     href={listing.messengerUrl}
-                    className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-[#0875d1] px-2 text-sm font-bold text-[#0875d1] sm:h-12 sm:gap-2 sm:text-base"
+                    className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-[#0875d1] px-3 text-sm font-bold text-[#0875d1] transition hover:bg-blue-50 sm:h-12 sm:gap-2 sm:text-base"
                   >
-                    <MessageCircle className="h-5 w-5" />
-                    <span className="truncate">Написать сообщение</span>
+                    <MessageCircle className="h-5 w-5 shrink-0" />
+                    <span className="min-w-0 truncate">Написать сообщение</span>
                   </a>
                 ) : null}
               </div>
             </div>
+            <LocationMap location={listing} exactLabel="Точный адрес частного лица по умолчанию не показывается" />
+            {listing.booking ? <BookingCalculator booking={listing.booking} listingId={listing.slug} listingTitle={listing.title} /> : null}
             {showDeliveryUi ? <DeliveryInfoCard delivery={listing.delivery} /> : null}
-            <div className="min-w-0 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
-              <div className="flex items-start gap-3">
-                <CreditCard className="mt-1 h-5 w-5 text-amber-700" />
-                <div>
-                  <p className="font-black text-amber-900">Оплата</p>
-                  <p className="mt-2 text-sm leading-6 text-amber-800">
-                    Тариф: {tariff?.name ?? "Размещение объявления"} за {tariff?.price ?? 199} ₽. После успешной оплаты объявление будет опубликовано.
-                  </p>
-                </div>
-              </div>
-            </div>
           </aside>
         </div>
       </main>

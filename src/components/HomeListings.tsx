@@ -1,26 +1,8 @@
 import Link from "next/link";
-import { ArrowRightLeft, CalendarDays, Clock3, Gift, MapPin, ShoppingBag, Tags } from "lucide-react";
-import { DemoListingFeed } from "@/components/DemoListingFeed";
+import { HomeListingsFeed } from "@/components/HomeListingsFeed";
 import { demoListings, toDemoListing } from "@/components/listings/ListingPages";
-import { ListingViewCounter } from "@/components/listings/ListingViewCounter";
 import { listListings } from "@/lib/mock-store";
-import { formatPublicationDateTime, publicationTimestamp } from "@/lib/publication-time";
-
-const kindIcons = {
-  prodam: ShoppingBag,
-  kuplyu: Tags,
-  menyayu: ArrowRightLeft,
-  "otdam-darom": Gift,
-  arenda: CalendarDays,
-};
-
-const imageToneClasses = {
-  blue: "from-blue-100 via-white to-cyan-100 text-[#0875d1]",
-  green: "from-emerald-100 via-white to-lime-100 text-[#0a8f32]",
-  rose: "from-rose-100 via-white to-orange-100 text-rose-700",
-  amber: "from-amber-100 via-white to-yellow-50 text-amber-700",
-  violet: "from-violet-100 via-white to-blue-100 text-violet-700",
-};
+import { publicationTimestamp } from "@/lib/publication-time";
 
 export function HomeListings() {
   const allListings = [...listListings().map(toDemoListing), ...demoListings];
@@ -38,42 +20,7 @@ export function HomeListings() {
         </Link>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-        <DemoListingFeed variant="grid" />
-        {listings.map((listing) => {
-          const Icon = kindIcons[listing.kind];
-
-          return (
-            <Link
-              key={listing.slug}
-              href={`/blizhniy/obyavlenie/${listing.slug}`}
-              className="group min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card"
-            >
-              <span className={`relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-gradient-to-br ${imageToneClasses[listing.imageTone]}`}>
-                <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80 transition group-hover:scale-105">
-                  <Icon className="h-8 w-8" />
-                </span>
-                <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />
-              </span>
-              <span className="block p-3">
-                <span className="block truncate text-base font-black text-[#060b27]">{listing.price}</span>
-                <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 group-hover:text-[#0875d1]">
-                  {listing.title}
-                </span>
-                <span className="mt-1 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
-                  <Clock3 className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{formatPublicationDateTime(listing.publishedAt)}</span>
-                </span>
-                <span className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
-                  <span className="flex min-w-0 items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{listing.city}</span>
-                  </span>
-                  <ListingViewCounter listingId={listing.slug} />
-                </span>
-              </span>
-            </Link>
-          );
-        })}
+        <HomeListingsFeed listings={listings} />
       </div>
     </section>
   );
