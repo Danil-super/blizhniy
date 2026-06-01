@@ -222,7 +222,7 @@ const baseDemoListings: DemoListing[] = [
     title: "Меняю саженцы лаванды на комнатные растения",
     kind: "menyayu",
     categorySlug: "sad-i-rasteniya",
-    categoryName: "Сад и растения",
+    categoryName: "Сад и огород",
     subcategorySlug: "tsvety-i-sazhentsy",
     subcategoryName: "Цветы и саженцы",
     city: "Краснодар",

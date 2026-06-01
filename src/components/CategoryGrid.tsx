@@ -5,6 +5,7 @@ import {
   Building2,
   Car,
   Cog,
+  Ellipsis,
   Gift,
   HeartPulse,
   MapPinned,
@@ -12,6 +13,7 @@ import {
   Shirt,
   Smartphone,
   Sofa,
+  Sprout,
   Store,
   TentTree,
   Wrench,
@@ -79,10 +81,11 @@ const categoryTones = {
 
 const categoryTiles = [
   {
-    label: "Авто",
-    href: "/blizhniy/transport",
-    icon: Car,
-    tone: "blue",
+    label: "Животные",
+    href: "/blizhniy/zhivotnye",
+    icon: PawPrint,
+    tone: "amber",
+    ageRating: "7+",
   },
   {
     label: "Недвижимость",
@@ -93,7 +96,12 @@ const categoryTiles = [
   { label: "Работа", href: "/blizhniy/rabota", icon: BriefcaseBusiness, tone: "cyan", ageRating: "14+" },
   { label: "Одежда, обувь, аксессуары", href: "/blizhniy/tovary-i-veshchi", icon: Shirt, tone: "rose" },
   { label: "Хобби и отдых", href: "/blizhniy/otdyh", icon: TentTree, tone: "green" },
-  { label: "Животные", href: "/blizhniy/zhivotnye", icon: PawPrint, tone: "amber", ageRating: "7+" },
+  {
+    label: "Авто",
+    href: "/blizhniy/transport",
+    icon: Car,
+    tone: "blue",
+  },
   {
     label: "Готовый бизнес и оборудование",
     href: "/blizhniy/biznes",
@@ -110,13 +118,13 @@ const categoryTiles = [
   { label: "Для дома и дачи", href: "/blizhniy/mebel-i-interer", icon: Sofa, tone: "amber" },
   { label: "Запчасти", href: "/blizhniy/transport/zapchasti", icon: Cog, tone: "slate" },
   { label: "Товары для детей", href: "/blizhniy/tovary-i-veshchi", icon: Baby, tone: "rose", ageRating: "7+" },
+  { label: "Сад и огород", href: "/blizhniy/sad-i-rasteniya", icon: Sprout, tone: "green" },
   { label: "Жилье для путешествия", href: "/blizhniy/nedvizhimost/arenda", icon: MapPinned, tone: "green" },
   { label: "Красота и здоровье", href: "/blizhniy/krasota-i-uhod", icon: HeartPulse, tone: "violet" },
   { label: "Ритуальные услуги", href: "/blizhniy/ritualnye-uslugi", icon: MemorialIcon, tone: "slate", iconClassName: "h-10 w-10 sm:h-11 sm:w-11 lg:h-12 lg:w-12" },
   { label: "Меняю и отдам даром", href: "/blizhniy/obmen-i-darom", icon: Gift, tone: "green" },
+  { label: "Разное", href: "/blizhniy/raznoe", icon: Ellipsis, tone: "slate" },
 ];
-
-const orderedCategoryTiles = [...categoryTiles].sort((left, right) => left.label.length - right.label.length || left.label.localeCompare(right.label, "ru"));
 
 export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "grid" }) {
   const outerClassName = variant === "scroll" ? "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "";
@@ -129,7 +137,7 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
     <section className="page-container pb-6 pt-3 sm:pb-8">
       <div className={outerClassName}>
         <div className={gridClassName}>
-          {orderedCategoryTiles.map((category) => {
+          {categoryTiles.map((category) => {
             const Icon = category.icon;
             const tone = categoryTones[category.tone as keyof typeof categoryTones];
 

@@ -50,10 +50,10 @@ export const cities: City[] = [
 
 export const categories: Category[] = [
   { slug: "nedvizhimost", name: "Недвижимость", children: ["Продам недвижимость", "Куплю недвижимость", "Аренда", "Коммерческая недвижимость"] },
-  { slug: "transport", name: "Авто", children: ["Продам авто", "Куплю авто", "Мототехника", "Запчасти"] },
+  { slug: "zhivotnye", name: "Животные", children: ["Домашние питомцы", "Сельхоз животные", "Экзотические животные"] },
   { slug: "elektronika", name: "Электроника", children: ["Смартфоны", "Ноутбуки", "Компьютеры", "Аудио и видео", "Игровые приставки"] },
   { slug: "antikvariat-i-kollektsii", name: "Антиквариат и коллекции", children: ["Товары времен СССР", "Картины и живопись"] },
-  { slug: "zhivotnye", name: "Животные", children: ["Домашние питомцы", "Сельхоз животные", "Экзотические животные"] },
+  { slug: "transport", name: "Авто", children: ["Продам авто", "Куплю авто", "Мототехника", "Запчасти"] },
   { slug: "biznes", name: "Бизнес", children: ["Продам бизнес", "Куплю бизнес", "Оборудование", "Партнерство"] },
   { slug: "krasota-i-uhod", name: "Красота и уход", children: ["Парикмахеры", "Маникюр и педикюр"] },
   { slug: "meditsina", name: "Медицина", children: ["Медицинский персонал", "Уход на дому"] },
@@ -61,8 +61,8 @@ export const categories: Category[] = [
   { slug: "otdyh", name: "Отдых", children: ["Турбазы", "Гостиницы", "Походы"] },
   { slug: "rabota", name: "Работа", children: ["Вакансии", "Анкеты специалистов"] },
   { slug: "remont-i-stroitelstvo", name: "Ремонт и строительство", children: ["Ремонт квартир", "Сантехника"] },
-  { slug: "sad-i-rasteniya", name: "Сад и растения", children: ["Цветы и саженцы"] },
   { slug: "tovary-i-veshchi", name: "Товары и вещи", children: ["Выкройки и рукоделие"] },
+  { slug: "sad-i-rasteniya", name: "Сад и огород", children: ["Цветы и саженцы", "Рассада", "Садовый инвентарь"] },
   { slug: "uslugi-dlya-doma", name: "Услуги для дома", children: ["Клининг"] },
   {
     slug: "ritualnye-uslugi",
@@ -81,6 +81,7 @@ export const categories: Category[] = [
   },
   { slug: "yarmarka-masterov", name: "Ярмарка мастеров", children: ["Мебель", "Посуда", "Макраме", "Одежда и текстиль", "Разное", "Саженцы и рассада"] },
   { slug: "znakomstva", name: "Знакомства", children: [] },
+  { slug: "raznoe", name: "Разное", children: ["Разное"] },
 ];
 
 export const listingKinds: Array<{ slug: ListingKind; name: string; description: string }> = [
