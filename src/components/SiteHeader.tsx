@@ -7,7 +7,7 @@ import { MobileBottomNav } from "@/components/MobileBottomNav";
 
 export function SiteHeader() {
   return (
-    <header className="border-b border-slate-200/80 bg-white">
+    <header className="relative z-[100] border-b border-slate-200/80 bg-white">
       <HeaderNav />
       <div className="page-container flex flex-col gap-2 pb-3 pt-0 md:flex-row md:items-center md:gap-4 md:pt-2">
         <div className="flex min-w-0 items-center justify-between gap-2 md:contents">

@@ -153,7 +153,7 @@ export function HeaderControls() {
   }
 
   return (
-    <div className="grid w-full min-w-0 flex-1 grid-cols-[48px_minmax(0,1fr)] items-center gap-2 overflow-x-clip sm:grid-cols-[56px_minmax(0,1fr)] md:grid-cols-[56px_minmax(320px,1fr)_auto]">
+    <div className="grid w-full min-w-0 flex-1 grid-cols-[48px_minmax(0,1fr)] items-center gap-2 overflow-visible sm:grid-cols-[56px_minmax(0,1fr)] md:grid-cols-[56px_minmax(320px,1fr)_auto]">
       <Link
         href="/blizhniy/kategorii"
         className="order-1 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#00aaff] text-white transition hover:bg-[#0796dd] sm:w-14"
@@ -208,20 +208,20 @@ export function HeaderControls() {
             setCityQuery("");
             setCityMenuOpen((current) => !current);
           }}
-          className="flex min-h-12 w-full items-center rounded-lg bg-white px-2 text-left text-sm text-slate-950 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-100 md:w-40 lg:w-44"
+          className="relative z-20 flex min-h-12 w-full items-center gap-2 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 px-3 text-left text-sm text-slate-950 shadow-sm transition hover:border-blue-200 hover:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 md:w-40 lg:w-44"
           aria-expanded={cityMenuOpen}
           aria-haspopup="listbox"
         >
-          <span className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2 md:gap-3">
-            <AnimatedLocationIcon className="-ml-0.5 h-6 w-6" />
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <AnimatedLocationIcon className="h-7 w-7" />
             <span className="sr-only">Регион</span>
-            <span className="font-semibold leading-5 md:whitespace-normal">{selectedCityName === region.name ? "Во всех регионах" : selectedCityName}</span>
+            <span className="min-w-0 font-semibold leading-5 md:whitespace-normal">{selectedCityName === region.name ? "Во всех регионах" : selectedCityName}</span>
           </span>
-          <ChevronDown className={`h-4 w-4 text-slate-500 transition ${cityMenuOpen ? "rotate-180" : ""}`} />
+          <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition ${cityMenuOpen ? "rotate-180" : ""}`} />
         </button>
         {cityMenuOpen ? (
           <div
-            className="absolute right-0 top-[calc(100%+8px)] z-50 w-full max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10 md:w-72"
+            className="absolute right-0 top-[calc(100%+8px)] z-[120] w-full max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10 md:w-72"
             role="listbox"
           >
             <div className="mb-2 flex h-10 items-center rounded-lg border border-slate-200 bg-white px-3 text-slate-500 focus-within:border-[#0875d1]">
