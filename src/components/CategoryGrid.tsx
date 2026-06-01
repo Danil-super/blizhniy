@@ -87,6 +87,9 @@ const categoryTiles = [
     tone: "amber",
     ageRating: "7+",
   },
+  { label: "Сад и огород", href: "/blizhniy/sad-i-rasteniya", icon: Sprout, tone: "green" },
+  { label: "Товары для детей", href: "/blizhniy/tovary-i-veshchi", icon: Baby, tone: "rose", ageRating: "7+" },
+  { label: "Ритуальные услуги", href: "/blizhniy/ritualnye-uslugi", icon: MemorialIcon, tone: "slate", iconClassName: "h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10" },
   {
     label: "Недвижимость",
     href: "/blizhniy/nedvizhimost",
@@ -117,11 +120,8 @@ const categoryTiles = [
   },
   { label: "Для дома и дачи", href: "/blizhniy/mebel-i-interer", icon: Sofa, tone: "amber" },
   { label: "Запчасти", href: "/blizhniy/transport/zapchasti", icon: Cog, tone: "slate" },
-  { label: "Товары для детей", href: "/blizhniy/tovary-i-veshchi", icon: Baby, tone: "rose", ageRating: "7+" },
-  { label: "Сад и огород", href: "/blizhniy/sad-i-rasteniya", icon: Sprout, tone: "green" },
   { label: "Жилье для путешествия", href: "/blizhniy/nedvizhimost/arenda", icon: MapPinned, tone: "green" },
   { label: "Красота и здоровье", href: "/blizhniy/krasota-i-uhod", icon: HeartPulse, tone: "violet" },
-  { label: "Ритуальные услуги", href: "/blizhniy/ritualnye-uslugi", icon: MemorialIcon, tone: "slate", iconClassName: "h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10" },
   { label: "Меняю и отдам даром", href: "/blizhniy/obmen-i-darom", icon: Gift, tone: "green" },
   { label: "Разное", href: "/blizhniy/raznoe", icon: Ellipsis, tone: "slate" },
 ];
