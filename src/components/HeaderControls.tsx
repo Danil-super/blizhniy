@@ -153,20 +153,20 @@ export function HeaderControls() {
   }
 
   return (
-    <div className="grid w-full min-w-0 flex-1 grid-cols-[48px_minmax(0,1fr)] items-center gap-2 overflow-visible sm:grid-cols-[56px_minmax(0,1fr)] md:grid-cols-[56px_minmax(320px,1fr)_auto]">
+    <div className="grid w-full min-w-0 flex-1 grid-cols-[40px_minmax(0,1fr)] items-center gap-1.5 overflow-visible sm:grid-cols-[48px_minmax(0,1fr)] sm:gap-2 md:grid-cols-[56px_minmax(320px,1fr)_auto]">
       <Link
         href="/blizhniy/kategorii"
-        className="order-1 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#00aaff] text-white transition hover:bg-[#0796dd] sm:w-14"
+        className="order-1 flex h-10 w-10 items-center justify-center rounded-xl bg-[#00aaff] text-white transition hover:bg-[#0796dd] sm:h-12 sm:w-12 sm:rounded-2xl md:w-14"
         aria-label="Каталог"
       >
-        <Grid3X3 className="h-5 w-5" />
+        <Grid3X3 className="h-4 w-4 sm:h-5 sm:w-5" />
       </Link>
 
       <div className="relative order-2 min-w-0" ref={searchRef}>
-        <form onSubmit={handleSearch} className="flex h-12 min-w-0 items-center overflow-hidden rounded-2xl border-2 border-[#00aaff] bg-white text-slate-500">
-          <Search className="ml-4 h-4 w-4 shrink-0" />
+        <form onSubmit={handleSearch} className="flex h-10 min-w-0 items-center overflow-hidden rounded-xl border-2 border-[#00aaff] bg-white text-slate-500 sm:h-12 sm:rounded-2xl">
+          <Search className="ml-3 h-4 w-4 shrink-0 sm:ml-4" />
           <input
-            className="min-w-0 flex-1 border-0 bg-transparent px-3 text-base text-slate-900 outline-none placeholder:text-slate-400"
+            className="min-w-0 flex-1 border-0 bg-transparent px-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 sm:px-3 sm:text-base"
             type="search"
             value={query}
             onChange={(event) => {
@@ -174,7 +174,7 @@ export function HeaderControls() {
               setSearchSuggestionsOpen(true);
             }}
             onFocus={() => setSearchSuggestionsOpen(true)}
-            placeholder="Поиск по объявлениям"
+            placeholder="Поиск"
             autoComplete="off"
           />
           <button type="submit" className="hidden h-full items-center rounded-r-[14px] bg-[#00aaff] px-5 text-sm font-bold text-white transition hover:bg-[#0796dd] sm:flex">
@@ -201,7 +201,7 @@ export function HeaderControls() {
         ) : null}
       </div>
 
-      <div className="relative order-3 col-span-2 md:col-span-1" ref={cityMenuRef}>
+      <div className="relative order-3 col-span-2 hidden md:col-span-1 md:block" ref={cityMenuRef}>
         <button
           type="button"
           onClick={() => {

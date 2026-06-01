@@ -9,7 +9,7 @@ export function LogoMark() {
       height={72}
       priority
       aria-hidden="true"
-      className="h-11 w-11 object-contain md:h-14 md:w-14"
+      className="h-9 w-9 object-contain sm:h-11 sm:w-11 md:h-14 md:w-14"
     />
   );
 }
