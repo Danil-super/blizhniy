@@ -38,6 +38,7 @@ import {
   CabinetResponsesClient,
   CabinetSpecialistClient,
 } from "@/components/cabinet/CabinetClient";
+import { CategoryOrderAdminPanel } from "@/components/CategoryOrderAdminPanel";
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
 import { categories, professions } from "@/lib/data";
@@ -112,7 +113,7 @@ const adminNav = [
   { href: "/admin/categories", label: "Категории", icon: Tags },
   { href: "/admin/specialist-classifier", label: "Классификатор", icon: Settings2 },
   { href: "/admin/tariffs", label: "Тарифы", icon: WalletCards },
-  { href: "/admin/payments", label: "Платежи", icon: Banknote },
+  { href: "/admin/payments", label: "Цены", icon: Banknote },
   { href: "/admin#ad-marquee", label: "Реклама", icon: Megaphone },
   { href: "/admin/fair-applications", label: "Ярмарка", icon: Store },
 ];
@@ -777,25 +778,32 @@ export function AdminSpecialistsPage() {
 }
 
 export function AdminCategoriesPage() {
+  const rows = categories.map((category) => ({
+    ...category,
+    id: category.slug,
+    href: `/blizhniy/${category.slug}`,
+    editHref: `/admin/categories?edit=${category.slug}`,
+    childrenText: category.children.join(", "),
+    status: "active",
+  }));
+
   return (
-    <AdminTablePage
-      title="Категории"
-      description="Рубрикатор объявлений с дочерними разделами для модерации каталога."
-      rows={categories.map((category) => ({
-        ...category,
-        id: category.slug,
-        href: `/blizhniy/${category.slug}`,
-        editHref: `/admin/categories?edit=${category.slug}`,
-        childrenText: category.children.join(", "),
-        status: "active",
-      }))}
-      columns={[
-        { key: "name", label: "Категория" },
-        { key: "slug", label: "Slug" },
-        { key: "childrenText", label: "Подразделы" },
-        { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-      ]}
-    />
+    <Shell title="Категории" description="Рубрикатор объявлений с дочерними разделами для модерации каталога." eyebrow="Администрирование" createHref="/blizhniy/sozdat?admin=1">
+      <AdminGuardedContent>
+        <CategoryOrderAdminPanel />
+        <div className="mt-6">
+          <DataTable
+            rows={rows}
+            columns={[
+              { key: "name", label: "Категория" },
+              { key: "slug", label: "Slug" },
+              { key: "childrenText", label: "Подразделы" },
+              { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
+            ]}
+          />
+        </div>
+      </AdminGuardedContent>
+    </Shell>
   );
 }
 
@@ -857,15 +865,15 @@ export function AdminPaymentsPage() {
 
   return (
     <Shell
-      title="Платежи"
-      description="История платежей с суммами, пользователями и статусами."
+      title="Цены"
+      description="Редактирование цен и история платежей с суммами, пользователями и статусами."
       eyebrow="Администрирование"
       createHref="/blizhniy/sozdat?admin=1"
     >
       <AdminGuardedContent>
         <section id="tariff-prices" className="mb-8 scroll-mt-24 rounded-xl border border-blue-100 bg-blue-50/50 p-3 sm:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Редактирование цен во вкладке оплаты</h2>
+            <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Редактирование цен</h2>
             <form action={resetTariffsAction}>
               <button type="submit" className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:text-sm">
                 Сбросить цены

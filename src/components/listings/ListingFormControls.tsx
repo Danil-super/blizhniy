@@ -135,6 +135,15 @@ function slugifySubcategoryValue(name: string) {
     "Цветы и саженцы": "tsvety-i-sazhentsy",
     "Выкройки и рукоделие": "vykroyki-i-rukodelie",
     Клининг: "klining",
+    Рассада: "rassada",
+    "Садовый инвентарь": "sadovyy-inventar",
+    "Плодовые деревья": "plodovye-derevya",
+    "Ягодные кустарники": "yagodnye-kustarniki",
+    "Декоративные цветы и растения": "dekorativnye-tsvety-i-rasteniya",
+    "Газоны, клумбы, альпийские горки, живые изгороди": "gazony-klumby-alpiyskie-gorki-zhivye-izgorodi",
+    "Элементы ландшафтного дизайна": "elementy-landshaftnogo-dizayna",
+    "Места для отдыха": "mesta-dlya-otdyha",
+    Разное: "raznoe",
   };
 
   return map[name] ?? name.toLowerCase().replaceAll(" ", "-");

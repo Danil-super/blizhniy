@@ -522,12 +522,103 @@ const animalListingPrices: Record<string, string> = {
   "Экзотические животные": "по договоренности",
 };
 
+const subcategoryDescriptions: Record<string, Record<string, string>> = {
+  nedvizhimost: {
+    "Продам недвижимость": "Квартиры, дома, участки и коммерческие объекты для продажи в Краснодаре и крае.",
+    "Куплю недвижимость": "Запросы покупателей на жилье, участки и помещения с нужным районом, бюджетом и условиями сделки.",
+    Аренда: "Жилье, комнаты, дома и помещения для краткосрочной или длительной аренды.",
+    "Коммерческая недвижимость": "Офисы, торговые площади, склады, помещения свободного назначения и объекты для бизнеса.",
+  },
+  elektronika: {
+    Смартфоны: "Телефоны, аксессуары, обмен и покупка смартфонов у жителей и организаций рядом.",
+    Ноутбуки: "Ноутбуки для работы, учебы, игр, комплектующие и предложения по ремонту или обмену.",
+    Компьютеры: "Системные блоки, мониторы, периферия, комплектующие и готовые рабочие места.",
+    "Аудио и видео": "Телевизоры, колонки, наушники, камеры, проекторы и домашняя мультимедиа.",
+    "Игровые приставки": "Консоли, игры, геймпады, аксессуары и предложения по обмену игровых устройств.",
+  },
+  "antikvariat-i-kollektsii": {
+    "Товары времен СССР": "Предметы быта, техника, значки, книги, посуда и коллекционные вещи советского периода.",
+    "Картины и живопись": "Картины, графика, авторские работы, декоративная живопись и предметы для коллекций.",
+  },
+  transport: {
+    "Продам авто": "Легковые автомобили, коммерческий транспорт и предложения от частных продавцов.",
+    "Куплю авто": "Заявки на покупку автомобиля с желаемыми параметрами, бюджетом и городом сделки.",
+    Мототехника: "Мотоциклы, скутеры, квадроциклы, экипировка и техника для активных поездок.",
+    Запчасти: "Запчасти, расходники, шины, диски, автоаксессуары и комплектующие для транспорта.",
+  },
+  biznes: {
+    "Продам бизнес": "Готовые проекты, торговые точки, сервисы и активы для передачи новому владельцу.",
+    "Куплю бизнес": "Запросы предпринимателей на покупку работающего дела, оборудования или доли.",
+    Оборудование: "Профессиональное, торговое, производственное и офисное оборудование для бизнеса.",
+    Партнерство: "Предложения совместных проектов, инвестиций, франшиз и делового сотрудничества.",
+  },
+  "krasota-i-uhod": {
+    Парикмахеры: "Услуги стрижки, окрашивания, укладки, ухода за волосами и выездные мастера.",
+    "Маникюр и педикюр": "Мастера ногтевого сервиса, уход, дизайн, коррекция и запись рядом с домом.",
+  },
+  meditsina: {
+    "Медицинский персонал": "Медицинские специалисты, частные услуги, консультации и помощь по уходу.",
+    "Уход на дому": "Сиделки, патронаж, помощь пожилым людям, сопровождение и бытовая поддержка.",
+  },
+  "mebel-i-interer": {
+    Мебель: "Мебель для дома, дачи и офиса: продажа, покупка, обмен, изготовление и реставрация.",
+  },
+  otdyh: {
+    Турбазы: "Турбазы, гостевые дома и места отдыха с возможностью бронирования и связи с владельцем.",
+    Гостиницы: "Гостиницы, номера, апартаменты и варианты размещения для поездок по краю.",
+    Походы: "Походы, экскурсии, маршруты выходного дня, инструкторы и групповые выезды.",
+  },
+  rabota: {
+    Вакансии: "Предложения работы от организаций и частных работодателей с контактами и условиями.",
+    "Анкеты специалистов": "Профили исполнителей и специалистов, которые готовы принять заказ или выйти на работу.",
+  },
+  "remont-i-stroitelstvo": {
+    "Ремонт квартир": "Мастера и бригады для ремонта квартир, домов, офисов и отдельных помещений.",
+    Сантехника: "Сантехнические работы, монтаж, ремонт, аварийные вызовы и обслуживание оборудования.",
+  },
+  "sad-i-rasteniya": {
+    "Цветы и саженцы": "Цветы, декоративные растения, плодовые саженцы и предложения для озеленения.",
+    Рассада: "Рассада овощей, зелени, цветов и сезонные предложения для дачи и огорода.",
+    "Садовый инвентарь": "Инструменты, техника, материалы и полезные товары для ухода за участком.",
+    "Плодовые деревья": "Саженцы яблонь, груш, слив, черешни и других плодовых деревьев для сада.",
+    "Ягодные кустарники": "Малина, смородина, крыжовник, жимолость и другие ягодные кустарники для участка.",
+    "Декоративные цветы и растения": "Розы, тюльпаны, пионы, хризантемы и другие растения для украшения сада.",
+    "Газоны, клумбы, альпийские горки, живые изгороди": "Растения, материалы и услуги для газонов, клумб, альпийских горок и живых изгородей.",
+    "Элементы ландшафтного дизайна": "Пруды, каменные дорожки, беседки, перголы и другие элементы благоустройства участка.",
+    "Места для отдыха": "Скамейки, шезлонги, мангалы и другие решения для зоны отдыха в саду или на даче.",
+  },
+  "tovary-i-veshchi": {
+    "Выкройки и рукоделие": "Материалы, выкройки, handmade-изделия, инструменты и товары для творчества.",
+  },
+  "uslugi-dlya-doma": {
+    Клининг: "Уборка квартир, домов, офисов, мойка окон, разовые и регулярные услуги по дому.",
+  },
+  raznoe: {
+    Разное: "Объявления, которые не подошли к другим разделам, но могут быть полезны жителям рядом.",
+  },
+};
+
 function getCategoryChildren(categorySlug: string, children: string[]) {
   if (categorySlug !== "ritualnye-uslugi") {
     return children;
   }
 
   return [...children].sort((left, right) => left.length - right.length || left.localeCompare(right, "ru"));
+}
+
+function subcategoryDescription(categorySlug: string, subcategory: string) {
+  if (categorySlug === "ritualnye-uslugi") {
+    return ritualServiceDescriptions[subcategory] ?? `Ритуальные услуги по направлению "${subcategory}" с возможностью связаться с исполнителем и разместить свое объявление.`;
+  }
+
+  if (categorySlug === "zhivotnye") {
+    return animalListingDescriptions[subcategory] ?? `Объявления, предложения и запросы по разделу "${subcategory}" с контактами владельцев и исполнителей.`;
+  }
+
+  return (
+    subcategoryDescriptions[categorySlug]?.[subcategory] ??
+    `Объявления, предложения и запросы по подкатегории "${subcategory}" в Краснодаре и крае.`
+  );
 }
 
 function coverageTitle(categorySlug: string, subcategory: string) {
@@ -875,6 +966,15 @@ export function slugifySubcategory(name: string) {
     "Цветы и саженцы": "tsvety-i-sazhentsy",
     "Выкройки и рукоделие": "vykroyki-i-rukodelie",
     Клининг: "klining",
+    Рассада: "rassada",
+    "Садовый инвентарь": "sadovyy-inventar",
+    "Плодовые деревья": "plodovye-derevya",
+    "Ягодные кустарники": "yagodnye-kustarniki",
+    "Декоративные цветы и растения": "dekorativnye-tsvety-i-rasteniya",
+    "Газоны, клумбы, альпийские горки, живые изгороди": "gazony-klumby-alpiyskie-gorki-zhivye-izgorodi",
+    "Элементы ландшафтного дизайна": "elementy-landshaftnogo-dizayna",
+    "Места для отдыха": "mesta-dlya-otdyha",
+    Разное: "raznoe",
   };
 
   return map[name] ?? name.toLowerCase().replaceAll(" ", "-");
@@ -1054,66 +1154,52 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
               <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
                 {categoryChildren.map((child, index) => {
                   const href = `/blizhniy/${category.slug}/${slugifySubcategory(child)}`;
-                  const ritualDescription = category.slug === "ritualnye-uslugi" ? ritualServiceDescriptions[child] : undefined;
+                  const description = subcategoryDescription(category.slug, child);
                   const animalClassifier = category.slug === "zhivotnye" ? animalClassifiers[child] : undefined;
                   const shouldSpanTwoColumns =
                     category.slug === "ritualnye-uslugi" && categoryChildren.length % 2 === 1 && index === categoryChildren.length - 1;
                   const spanClassName = shouldSpanTwoColumns ? "sm:col-span-2 md:col-span-1" : "";
 
-                  if (ritualDescription || animalClassifier) {
-                    return (
-                      <details
-                        key={child}
-                        className={`group min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition open:border-blue-200 sm:p-4 ${spanClassName}`}
-                      >
-                        <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
-                          <span className="block break-words font-bold text-slate-800 [overflow-wrap:anywhere]">{child}</span>
-                          <ChevronRight className="mt-0.5 h-5 w-5 shrink-0 text-slate-400 transition group-open:rotate-90 group-open:text-[#0875d1]" />
-                        </summary>
-                        {ritualDescription ? (
-                          <p className="mt-3 break-words text-sm font-medium leading-6 text-slate-600 [overflow-wrap:anywhere]">{ritualDescription}</p>
-                        ) : null}
-                        {animalClassifier ? (
-                          <ul className="mt-3 grid gap-2 text-sm font-medium leading-6 text-slate-600">
-                            {animalClassifier.map((item) => (
-                              <li key={item} className="flex gap-2">
-                                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0875d1]" />
-                                <span className="break-words [overflow-wrap:anywhere]">{item}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
-                        <div className="mt-4 grid grid-cols-3 gap-2">
-                          <Link
-                            href={href}
-                            className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-blue-100 px-2 text-xs font-black text-[#0875d1] transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0664b3] sm:gap-2 sm:px-3 sm:text-sm"
-                            aria-label={`Открыть объявления: ${child}`}
-                          >
-                            <List className="h-4 w-4 shrink-0" />
-                            <span className="hidden min-w-0 truncate 2xl:inline">Объявления</span>
-                          </Link>
-                          <Link
-                            href={getCreateListingHref(category.slug, child)}
-                            className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-black text-white transition hover:bg-[#078a2e] sm:gap-2 sm:px-3 sm:text-sm"
-                            aria-label={`Разместить объявление: ${child}`}
-                          >
-                            <span className="hidden min-w-0 truncate 2xl:inline">Разместить</span>
-                            <ArrowRight className="h-4 w-4" />
-                          </Link>
-                          <SubcategoryShareButton href={href} title={child} />
-                        </div>
-                      </details>
-                    );
-                  }
-
                   return (
-                    <Link
+                    <details
                       key={child}
-                      href={href}
-                      className={`min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-200 hover:text-[#0875d1] sm:p-4 ${spanClassName}`}
+                      className={`group min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition open:border-blue-200 sm:p-4 ${spanClassName}`}
                     >
-                      <span className="block break-words font-bold text-slate-800 [overflow-wrap:anywhere]">{child}</span>
-                    </Link>
+                      <summary className="flex cursor-pointer list-none items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                        <span className="block break-words font-bold text-slate-800 [overflow-wrap:anywhere]">{child}</span>
+                        <ChevronRight className="mt-0.5 h-5 w-5 shrink-0 text-slate-400 transition group-open:rotate-90 group-open:text-[#0875d1]" />
+                      </summary>
+                      <p className="mt-3 break-words text-sm font-medium leading-6 text-slate-600 [overflow-wrap:anywhere]">{description}</p>
+                      {animalClassifier ? (
+                        <ul className="mt-3 grid gap-2 text-sm font-medium leading-6 text-slate-600">
+                          {animalClassifier.map((item) => (
+                            <li key={item} className="flex gap-2">
+                              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0875d1]" />
+                              <span className="break-words [overflow-wrap:anywhere]">{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div className="mt-4 grid grid-cols-3 gap-2">
+                        <Link
+                          href={href}
+                          className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-blue-100 px-2 text-xs font-black text-[#0875d1] transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0664b3] sm:gap-2 sm:px-3 sm:text-sm"
+                          aria-label={`Открыть объявления: ${child}`}
+                        >
+                          <List className="h-4 w-4 shrink-0" />
+                          <span className="hidden min-w-0 truncate 2xl:inline">Объявления</span>
+                        </Link>
+                        <Link
+                          href={getCreateListingHref(category.slug, child)}
+                          className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-black text-white transition hover:bg-[#078a2e] sm:gap-2 sm:px-3 sm:text-sm"
+                          aria-label={`Разместить объявление: ${child}`}
+                        >
+                          <span className="hidden min-w-0 truncate 2xl:inline">Разместить</span>
+                          <ArrowRight className="h-4 w-4" />
+                        </Link>
+                        <SubcategoryShareButton href={href} title={child} />
+                      </div>
+                    </details>
                   );
                 })}
               </div>

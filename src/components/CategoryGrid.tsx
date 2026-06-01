@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import type { ComponentType } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Baby,
   BriefcaseBusiness,
@@ -18,6 +22,12 @@ import {
   TentTree,
   Wrench,
 } from "lucide-react";
+import {
+  categoryDisplayItems,
+  categoryDisplayOrderEventName,
+  orderCategoryDisplayItems,
+  readCategoryDisplayOrder,
+} from "@/lib/category-display-order";
 
 function MemorialIcon({ className }: { className?: string }) {
   return (
@@ -79,65 +89,69 @@ const categoryTones = {
   },
 };
 
-const categoryTiles = [
-  {
-    label: "Животные",
-    href: "/blizhniy/zhivotnye",
-    icon: PawPrint,
-    tone: "amber",
-    ageRating: "7+",
-  },
-  { label: "Сад и огород", href: "/blizhniy/sad-i-rasteniya", icon: Sprout, tone: "green" },
-  { label: "Товары для детей", href: "/blizhniy/tovary-i-veshchi", icon: Baby, tone: "rose", ageRating: "7+" },
-  { label: "Ритуальные услуги", href: "/blizhniy/ritualnye-uslugi", icon: MemorialIcon, tone: "slate", iconClassName: "h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10" },
-  {
-    label: "Недвижимость",
-    href: "/blizhniy/nedvizhimost",
-    icon: Building2,
-    tone: "green",
-  },
-  { label: "Работа", href: "/blizhniy/rabota", icon: BriefcaseBusiness, tone: "cyan", ageRating: "14+" },
-  { label: "Одежда, обувь, аксессуары", href: "/blizhniy/tovary-i-veshchi", icon: Shirt, tone: "rose" },
-  { label: "Хобби и отдых", href: "/blizhniy/otdyh", icon: TentTree, tone: "green" },
-  {
-    label: "Авто",
-    href: "/blizhniy/transport",
-    icon: Car,
-    tone: "blue",
-  },
-  {
-    label: "Готовый бизнес и оборудование",
-    href: "/blizhniy/biznes",
-    icon: Store,
-    tone: "violet",
-  },
-  { label: "Услуги", href: "/blizhniy/uslugi-dlya-doma", icon: Wrench, tone: "blue" },
-  {
-    label: "Электроника",
-    href: "/blizhniy/elektronika",
-    icon: Smartphone,
-    tone: "cyan",
-  },
-  { label: "Для дома и дачи", href: "/blizhniy/mebel-i-interer", icon: Sofa, tone: "amber" },
-  { label: "Запчасти", href: "/blizhniy/transport/zapchasti", icon: Cog, tone: "slate" },
-  { label: "Жилье для путешествия", href: "/blizhniy/nedvizhimost/arenda", icon: MapPinned, tone: "green" },
-  { label: "Красота и здоровье", href: "/blizhniy/krasota-i-uhod", icon: HeartPulse, tone: "violet" },
-  { label: "Меняю и отдам даром", href: "/blizhniy/obmen-i-darom", icon: Gift, tone: "green" },
-  { label: "Разное", href: "/blizhniy/raznoe", icon: Ellipsis, tone: "slate" },
-];
+type CategoryTile = {
+  id: string;
+  label: string;
+  href: string;
+  icon: ComponentType<{ className?: string }>;
+  tone: keyof typeof categoryTones;
+  ageRating?: string;
+  iconClassName?: string;
+};
+
+const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "href">> = {
+  "zhivotnye": { icon: PawPrint, tone: "amber", ageRating: "7+" },
+  "sad-i-ogorod": { icon: Sprout, tone: "green" },
+  "tovary-dlya-detey": { icon: Baby, tone: "rose", ageRating: "7+" },
+  "ritualnye-uslugi": { icon: MemorialIcon, tone: "slate", iconClassName: "h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10" },
+  "nedvizhimost": { icon: Building2, tone: "green" },
+  "rabota": { icon: BriefcaseBusiness, tone: "cyan", ageRating: "14+" },
+  "odezhda-obuv-aksessuary": { icon: Shirt, tone: "rose" },
+  "hobbi-i-otdyh": { icon: TentTree, tone: "green" },
+  "transport": { icon: Car, tone: "blue" },
+  "biznes": { icon: Store, tone: "violet" },
+  "uslugi": { icon: Wrench, tone: "blue" },
+  "elektronika": { icon: Smartphone, tone: "cyan" },
+  "dlya-doma-i-dachi": { icon: Sofa, tone: "amber" },
+  "zapchasti": { icon: Cog, tone: "slate" },
+  "zhile-dlya-puteshestviya": { icon: MapPinned, tone: "green" },
+  "krasota-i-zdorove": { icon: HeartPulse, tone: "violet" },
+  "obmen-i-darom": { icon: Gift, tone: "green" },
+  "raznoe": { icon: Ellipsis, tone: "slate" },
+};
+
+const categoryTiles: CategoryTile[] = categoryDisplayItems.map((item) => ({
+  ...item,
+  ...categoryTileVisuals[item.id],
+}));
 
 export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "grid" }) {
+  const [displayOrder, setDisplayOrder] = useState<string[] | null>(null);
   const outerClassName = variant === "scroll" ? "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "";
   const gridClassName =
     variant === "scroll"
       ? "grid grid-flow-col grid-rows-2 auto-cols-[132px] gap-2 sm:grid-flow-row sm:grid-rows-none sm:grid-cols-[repeat(auto-fit,minmax(132px,1fr))] sm:auto-cols-auto lg:grid-cols-[repeat(auto-fit,minmax(142px,1fr))]"
       : "grid grid-cols-[repeat(auto-fit,minmax(min(100%,132px),1fr))] gap-2 lg:grid-cols-[repeat(auto-fit,minmax(142px,1fr))]";
+  const orderedCategoryTiles = useMemo(() => orderCategoryDisplayItems(categoryTiles, displayOrder), [displayOrder]);
+
+  useEffect(() => {
+    const syncOrder = () => setDisplayOrder(readCategoryDisplayOrder());
+
+    syncOrder();
+    window.addEventListener("storage", syncOrder);
+    window.addEventListener(categoryDisplayOrderEventName, syncOrder);
+
+    return () => {
+      window.removeEventListener("storage", syncOrder);
+      window.removeEventListener(categoryDisplayOrderEventName, syncOrder);
+    };
+  }, []);
 
   return (
     <section className="page-container pb-6 pt-3 sm:pb-8">
       <div className={outerClassName}>
         <div className={gridClassName}>
-          {categoryTiles.map((category) => {
+          {orderedCategoryTiles.map((category) => {
             const Icon = category.icon;
             const tone = categoryTones[category.tone as keyof typeof categoryTones];
 
