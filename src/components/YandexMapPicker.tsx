@@ -113,10 +113,6 @@ function formatCoord(value: number) {
   return value.toFixed(6);
 }
 
-function formatCoords(lat: number, lng: number) {
-  return `${formatCoord(lat)}, ${formatCoord(lng)}`;
-}
-
 function normalizeSearchQuery(value: string) {
   const trimmed = value.trim();
 
@@ -129,6 +125,34 @@ function normalizeSearchQuery(value: string) {
   }
 
   return `Краснодар, ${trimmed}`;
+}
+
+function formatMapAddress(value: string) {
+  const usedParts = new Set<string>();
+  const noisyParts = new Set([
+    "россия",
+    "российская федерация",
+    "южный федеральный округ",
+    "краснодарский край",
+    "городской округ краснодар",
+    "муниципальное образование город краснодар",
+  ]);
+  const usefulParts = value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => {
+      const key = part.toLowerCase();
+
+      if (/^\d{5,6}$/.test(key) || noisyParts.has(key) || usedParts.has(key)) {
+        return false;
+      }
+
+      usedParts.add(key);
+      return true;
+    });
+
+  return usefulParts.slice(0, 4).join(", ");
 }
 
 function getPropertyString(geoObject: YandexGeoObject | undefined, key: string) {
@@ -175,7 +199,7 @@ function getGeoObjectAddress(geoObject?: YandexGeoObject) {
     readNestedString(metaDataProperty, ["GeocoderMetaData", "text"]) ||
     "";
 
-  return coordsPattern.test(address.trim()) ? "" : address.trim();
+  return coordsPattern.test(address.trim()) ? "" : formatMapAddress(address);
 }
 
 function getFirstGeoObject(result: YandexGeocodeResult) {
@@ -245,7 +269,7 @@ async function fallbackGeocodeAddress(query: string) {
   }
 
   return {
-    address: result.display_name?.trim() || query,
+    address: formatMapAddress(result.display_name?.trim() || "") || query,
     coords: [lat, lng],
   };
 }
@@ -265,7 +289,7 @@ async function fallbackReverseGeocode(coords: number[]) {
   }
 
   const result = (await response.json()) as { display_name?: string };
-  return result.display_name?.trim() || "";
+  return formatMapAddress(result.display_name?.trim() || "");
 }
 
 export function YandexMapPicker({ addressName = "address", defaultAddress, defaultLat, defaultLng, latName = "lat", lngName = "lng" }: YandexMapPickerProps) {
@@ -530,11 +554,11 @@ export function YandexMapPicker({ addressName = "address", defaultAddress, defau
       <input type="hidden" name={lngName} value={point ? formatCoord(point.lng) : ""} />
       <div id={mapId} ref={mapRef} className="map-picker-canvas mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white" />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
-        <span className="font-semibold">{point ? formatCoords(point.lat, point.lng) : status}</span>
+        <span className="min-w-0 font-semibold [overflow-wrap:anywhere]">{point ? (address ? `Метка: ${address}` : "Метка поставлена") : status}</span>
         {point ? (
           <a href={routeUrl(point.lat, point.lng)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-bold text-[#0875d1]">
             <Navigation className="h-4 w-4" />
-            Открыть в Яндекс.Картах
+            Открыть карту
           </a>
         ) : null}
       </div>

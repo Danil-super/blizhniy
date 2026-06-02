@@ -75,7 +75,7 @@ function ContactButton({
     return (
       <button className={`${className} cursor-not-allowed opacity-55`} disabled>
         {icon}
-        <span className="truncate">{label}</span>
+        <span className="min-w-0 break-words leading-tight [overflow-wrap:anywhere]">{label}</span>
       </button>
     );
   }
@@ -83,7 +83,7 @@ function ContactButton({
   return (
     <a href={href} className={className}>
       {icon}
-      <span className="truncate">{label}</span>
+      <span className="min-w-0 break-words leading-tight [overflow-wrap:anywhere]">{label}</span>
     </a>
   );
 }

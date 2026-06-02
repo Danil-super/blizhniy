@@ -193,7 +193,7 @@ export function HeaderControls() {
                 role="option"
                 aria-selected={false}
               >
-                <span className="min-w-0 truncate">{suggestion.label}</span>
+                <span className="min-w-0 break-words [overflow-wrap:anywhere]">{suggestion.label}</span>
                 <span className="shrink-0 text-xs text-slate-500">{suggestion.hint}</span>
               </button>
             ))}

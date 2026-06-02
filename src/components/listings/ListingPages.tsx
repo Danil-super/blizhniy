@@ -11,6 +11,7 @@ import {
   CreditCard,
   Mail,
   MapPin,
+  MessageCircle,
   Phone,
   PackageCheck,
   ShieldCheck,
@@ -18,7 +19,6 @@ import {
   Truck,
 } from "lucide-react";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
-import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { HomeHero } from "@/components/HomeHero";
@@ -1363,24 +1363,24 @@ export function ListingDetailPage({ slug }: { slug: string }) {
               </p>
               <div className="mt-5 grid gap-2 sm:gap-3">
                 <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  <a href={`tel:${listing.phone}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-[#0875d1] to-[#18a9ff] px-3 text-sm font-bold text-white shadow-sm shadow-blue-100 transition hover:from-[#0664b3] hover:to-[#0875d1] sm:h-12 sm:text-base">
-                    <ContactAssetIcon kind="phone" />
+                  <a href={`tel:${listing.phone}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-3 text-sm font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:text-base">
+                    <Phone className="h-5 w-5 shrink-0" />
                     <span className="truncate">Позвонить</span>
                   </a>
                   <ListingShareButton
                     href={listingHref}
                     title={listing.title}
                     textBreakpoint="always"
-                    className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:h-12 sm:gap-2 sm:text-base"
+                    className="inline-flex h-11 min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:h-12 sm:text-base"
                     iconClassName="h-5 w-5 shrink-0"
                   />
                 </div>
                 {listing.messengerUrl ? (
                   <a
                     href={listing.messengerUrl}
-                    className="inline-flex h-11 min-w-0 items-center justify-center gap-2.5 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-3 text-sm font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-12 sm:text-base"
+                    className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl border border-[#0875d1] bg-white px-3 text-sm font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:h-12 sm:text-base"
                   >
-                    <ContactAssetIcon kind="message" />
+                    <MessageCircle className="h-5 w-5 shrink-0" />
                     <span className="min-w-0 truncate">Написать сообщение</span>
                   </a>
                 ) : null}
@@ -1601,24 +1601,22 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
           </p>
           {error ? <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p> : null}
 
-          <form action={adminMode ? publishWithoutPaymentAction : undefined} className="mt-6 grid gap-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="grid grid-cols-3 gap-2 sm:gap-4 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)]">
+          <form action={adminMode ? publishWithoutPaymentAction : undefined} className="mt-6 grid min-w-0 max-w-full gap-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-2 sm:gap-4">
               <ListingKindAndCategoryFields
                 booking={listing?.booking}
                 defaultCategorySlug={listing?.categorySlug ?? formDefaults.categorySlug}
                 defaultKind={listing?.kind ?? formDefaults.kind}
                 defaultSubcategorySlug={listing?.subcategorySlug ?? formDefaults.subcategorySlug}
               />
+              <Field label="Цена" compact>
+                <TextInput name="price" defaultValue={listing?.price} placeholder="12 000 ₽" compact />
+              </Field>
             </div>
 
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(96px,0.45fr)] gap-2 sm:gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-              <Field label="Название" compact>
-                <TextInput name="title" defaultValue={listing?.title} placeholder="Например, Комод из массива дуба" compact />
-              </Field>
-              <Field label="Цена" compact>
-                <TextInput name="price" defaultValue={listing?.price} placeholder="Например, 12 000 ₽" compact />
-              </Field>
-            </div>
+            <Field label="Название" compact>
+              <TextInput name="title" defaultValue={listing?.title} placeholder="Например, Комод из массива дуба" compact />
+            </Field>
 
             <label className="block">
               <span className="text-sm font-bold text-slate-700">Описание</span>

@@ -6,7 +6,7 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
-import { categories, cities, fairApplications, listings, region, specialists, vacancies, workRequests } from "@/lib/data";
+import { categories, cities, region } from "@/lib/data";
 import type { BookingDetails, ListingKind } from "@/lib/types";
 
 type Suggestion = {
@@ -38,45 +38,6 @@ const citySuggestions: Suggestion[] = cities.map((city) => ({
   label: `${city.name}, ${region.name}`,
   hint: "город",
 }));
-
-const staticAddressSuggestions: Suggestion[] = [
-  { label: "Краснодар, ул. Красная", hint: "улица" },
-  { label: "Краснодар, ТЦ Галерея", hint: "ориентир" },
-  { label: "Краснодар, парк Галицкого", hint: "ориентир" },
-  { label: "Краснодар, Фестивальный микрорайон", hint: "район" },
-  { label: "Краснодар, Юбилейный микрорайон", hint: "район" },
-];
-
-const dynamicAddressSuggestions: Suggestion[] = [...listings, ...vacancies, ...workRequests, ...specialists, ...fairApplications].flatMap((item) => {
-  const suggestions: Suggestion[] = [];
-
-  if (item.address) {
-    suggestions.push({ label: `${item.city}, ${item.address}`, hint: "адрес" });
-  }
-
-  if (item.district) {
-    suggestions.push({ label: `${item.city}, ${item.district}`, hint: "район" });
-  }
-
-  return suggestions;
-});
-
-const addressSuggestions: Suggestion[] = uniqueSuggestions([...staticAddressSuggestions, ...dynamicAddressSuggestions]);
-
-function uniqueSuggestions(suggestions: Suggestion[]) {
-  const usedLabels = new Set<string>();
-
-  return suggestions.filter((suggestion) => {
-    const key = suggestion.label.toLowerCase();
-
-    if (usedLabels.has(key)) {
-      return false;
-    }
-
-    usedLabels.add(key);
-    return true;
-  });
-}
 
 function formatCityValue(city?: string) {
   if (!city) {
@@ -174,10 +135,13 @@ function filterSuggestions(suggestions: Suggestion[], value: string) {
   const query = value.trim().toLowerCase();
 
   if (!query) {
-    return suggestions.slice(0, 6);
+    return suggestions;
   }
 
-  return suggestions.filter((suggestion) => suggestion.label.toLowerCase().includes(query)).slice(0, 6);
+  return suggestions.filter((suggestion) => {
+    const label = suggestion.label.toLowerCase();
+    return label.startsWith(query) || label.includes(query);
+  });
 }
 
 function AutocompleteInput({
@@ -222,7 +186,7 @@ function AutocompleteInput({
         autoComplete="off"
       />
       {open && filtered.length ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl shadow-slate-900/10">
+        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 max-h-[14.75rem] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl shadow-slate-900/10">
           {filtered.map((suggestion) => (
             <button
               key={suggestion.label}
@@ -234,7 +198,7 @@ function AutocompleteInput({
                 setOpen(false);
               }}
             >
-              <span className="min-w-0 truncate font-semibold">{suggestion.label}</span>
+              <span className="min-w-0 break-words font-semibold [overflow-wrap:anywhere]">{suggestion.label}</span>
               {suggestion.hint ? <span className="shrink-0 text-xs text-slate-500">{suggestion.hint}</span> : null}
             </button>
           ))}
@@ -247,22 +211,14 @@ function AutocompleteInput({
 export function ListingLocationFields({ defaultCity, defaultLat, defaultLng }: { defaultCity?: string; defaultLat?: number; defaultLng?: number }) {
   return (
     <div className="grid gap-4">
-      <div className="grid gap-4 md:grid-cols-2">
-        <AutocompleteInput
-          label="Город и регион"
-          name="location"
-          defaultValue={formatCityValue(defaultCity)}
-          placeholder="Начните вводить город"
-          selectOnFocus
-          suggestions={citySuggestions}
-        />
-        <AutocompleteInput
-          label="Адрес или ориентир (необязательно)"
-          name="address"
-          placeholder="Улица, ТЦ, остановка или район"
-          suggestions={addressSuggestions}
-        />
-      </div>
+      <AutocompleteInput
+        label="Город и регион"
+        name="location"
+        defaultValue={formatCityValue(defaultCity)}
+        placeholder="Начните вводить город"
+        selectOnFocus
+        suggestions={citySuggestions}
+      />
       <YandexMapPicker defaultLat={defaultLat} defaultLng={defaultLng} />
     </div>
   );
@@ -519,24 +475,24 @@ export function ListingKindAndCategoryFields({
       <label className="block min-w-0">
         <span className="text-xs font-bold text-slate-700 sm:text-sm">Тип объявления</span>
         <span className="mt-1 block sm:mt-2">
-          <DropdownSelect name="kind" value={kind} onValueChange={handleKindChange} options={listingKindOptions} buttonClassName="h-10 gap-1 px-2 text-xs sm:h-12 sm:gap-3 sm:px-4 sm:text-sm" />
+          <DropdownSelect name="kind" value={kind} onValueChange={handleKindChange} options={listingKindOptions} buttonClassName="min-h-10 !h-auto gap-1 px-2 py-2 text-xs sm:min-h-12 sm:gap-3 sm:px-4 sm:text-sm" />
         </span>
       </label>
 
-      <label className="block">
+      <label className="block min-w-0">
         <span className="text-xs font-bold text-slate-700 sm:text-sm">Категория</span>
         <span className="mt-1 block sm:mt-2">
           <DropdownSelect
             name="category"
             value={categorySlug}
             onValueChange={handleCategoryChange}
-            buttonClassName="h-10 gap-1 px-2 text-xs sm:h-12 sm:gap-3 sm:px-4 sm:text-sm"
+            buttonClassName="min-h-10 !h-auto gap-1 px-2 py-2 text-xs sm:min-h-12 sm:gap-3 sm:px-4 sm:text-sm"
             options={categoryOptions.map((category) => ({ value: category.slug, label: category.name }))}
           />
         </span>
       </label>
 
-      <label className="block">
+      <label className="block min-w-0">
         <span className="text-xs font-bold text-slate-700 sm:text-sm">Подкатегория</span>
         <span className="mt-1 block sm:mt-2">
           <DropdownSelect
@@ -544,7 +500,7 @@ export function ListingKindAndCategoryFields({
             name="subcategory"
             value={subcategorySlug}
             onValueChange={setSubcategorySlug}
-            buttonClassName="h-10 gap-1 px-2 text-xs sm:h-12 sm:gap-3 sm:px-4 sm:text-sm"
+            buttonClassName="min-h-10 !h-auto gap-1 px-2 py-2 text-xs sm:min-h-12 sm:gap-3 sm:px-4 sm:text-sm"
             options={
               subcategories.length
                 ? subcategories.map((child) => ({ value: slugifySubcategoryValue(child), label: child }))

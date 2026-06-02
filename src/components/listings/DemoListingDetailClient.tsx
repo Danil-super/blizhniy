@@ -4,8 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Camera, ChevronLeft, ChevronRight, MapPin } from "lucide-react";
-import { ContactAssetIcon } from "@/components/ContactAssetIcon";
+import { ArrowLeft, Camera, ChevronLeft, ChevronRight, MapPin, MessageCircle, Phone } from "lucide-react";
 import { LocationMap } from "@/components/LocationMap";
 import { DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
@@ -171,21 +170,21 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
             </p>
             <div className="mt-5 grid gap-2 sm:gap-3">
               <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                <a href={`tel:${listing.phone ?? "+78610009999"}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-[#0875d1] to-[#18a9ff] px-3 text-sm font-bold text-white shadow-sm shadow-blue-100 transition hover:from-[#0664b3] hover:to-[#0875d1] sm:h-12 sm:text-base">
-                  <ContactAssetIcon kind="phone" />
+                <a href={`tel:${listing.phone ?? "+78610009999"}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-3 text-sm font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:text-base">
+                  <Phone className="h-5 w-5 shrink-0" />
                   <span className="truncate">Позвонить</span>
                 </a>
                 <ListingShareButton
                   href={listingHref}
                   title={listing.title}
                   textBreakpoint="always"
-                  className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:h-12 sm:gap-2 sm:text-base"
+                  className="inline-flex h-11 min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:h-12 sm:text-base"
                   iconClassName="h-5 w-5 shrink-0"
                 />
               </div>
               {listing.messengerUrl ? (
-                <a href={listing.messengerUrl} className="inline-flex h-11 min-w-0 items-center justify-center gap-2.5 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-3 text-sm font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-12 sm:text-base">
-                  <ContactAssetIcon kind="message" />
+                <a href={listing.messengerUrl} className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl border border-[#0875d1] bg-white px-3 text-sm font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:h-12 sm:text-base">
+                  <MessageCircle className="h-5 w-5 shrink-0" />
                   <span className="min-w-0 truncate">Написать сообщение</span>
                 </a>
               ) : null}

@@ -90,7 +90,9 @@ export function DropdownSelect({
         aria-expanded={open}
         aria-haspopup="listbox"
       >
-        <span className={`min-w-0 truncate ${selectedOption ? "" : "text-slate-400"}`}>{selectedOption?.label ?? placeholder}</span>
+        <span className={`min-w-0 whitespace-normal break-words leading-tight [overflow-wrap:anywhere] ${selectedOption ? "" : "text-slate-400"}`}>
+          {selectedOption?.label ?? placeholder}
+        </span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (

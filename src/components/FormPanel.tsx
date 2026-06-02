@@ -55,7 +55,7 @@ export function Field({
 
   return (
     <label className="grid min-w-0 max-w-full gap-1.5 text-xs font-bold leading-4 text-slate-700 sm:gap-2 sm:text-sm">
-      <span className="line-clamp-2">{label}</span>
+      <span className="break-words [overflow-wrap:anywhere]">{label}</span>
       {type === "file" ? (
         <input name={name} className={inputClassName} type={type} placeholder={placeholder} />
       ) : (

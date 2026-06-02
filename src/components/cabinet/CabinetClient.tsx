@@ -307,7 +307,7 @@ function CitySearchSelect({ value, onChange }: { value: string; onChange: (value
         aria-expanded={open}
         aria-haspopup="listbox"
       >
-        <span className={`min-w-0 truncate ${value ? "" : "text-slate-400"}`}>{value || "Выберите город"}</span>
+        <span className={`min-w-0 break-words [overflow-wrap:anywhere] ${value ? "" : "text-slate-400"}`}>{value || "Выберите город"}</span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition ${open ? "rotate-180" : ""}`} />
       </button>
       <input type="hidden" name="city" value={sortedCities.some((city) => city.name === value) ? value : ""} required />
@@ -340,7 +340,7 @@ function CitySearchSelect({ value, onChange }: { value: string; onChange: (value
                     role="option"
                     aria-selected={active}
                   >
-                    <span className="min-w-0 truncate">{city.name}</span>
+                    <span className="min-w-0 break-words [overflow-wrap:anywhere]">{city.name}</span>
                     {active ? <span className="h-2 w-2 shrink-0 rounded-full bg-[#0875d1]" /> : null}
                   </button>
                 );
