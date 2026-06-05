@@ -4,7 +4,7 @@
 
 import { ChangeEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { InputHTMLAttributes } from "react";
-import { Camera, Video, X } from "lucide-react";
+import { Camera, Crop, ImagePlus, RotateCcw, SlidersHorizontal, Video, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
 import { categories, cities, region } from "@/lib/data";
@@ -19,9 +19,18 @@ type Suggestion = {
 type PreviewMedia = {
   id: string;
   file: File;
+  sourceFile: File;
   kind: "image" | "video";
   name: string;
+  sourceUrl: string;
   url: string;
+  crop?: ImageCrop;
+};
+
+type ImageCrop = {
+  zoom: number;
+  positionX: number;
+  positionY: number;
 };
 
 const listingKindOptions: Array<{ value: ListingKind; label: string }> = [
@@ -132,6 +141,61 @@ function getRentalSubcategories(categorySlug: string, subcategories: string[]) {
   }
 
   return subcategories.filter((subcategory) => allowedNames.includes(subcategory));
+}
+
+function loadPreviewImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Не удалось открыть изображение"));
+    image.src = src;
+  });
+}
+
+function cropFileName(name: string) {
+  const base = name.replace(/\.[^.]+$/, "") || "photo";
+  return `${base}-preview.jpg`;
+}
+
+async function createCroppedImageFile(item: PreviewMedia, crop: ImageCrop) {
+  const image = await loadPreviewImage(item.sourceUrl);
+  const size = 1200;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("Не удалось подготовить изображение");
+  }
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, size, size);
+
+  const imageWidth = image.naturalWidth || image.width;
+  const imageHeight = image.naturalHeight || image.height;
+  const scale = Math.max(size / imageWidth, size / imageHeight) * crop.zoom;
+  const drawWidth = imageWidth * scale;
+  const drawHeight = imageHeight * scale;
+  const extraX = Math.max(0, drawWidth - size);
+  const extraY = Math.max(0, drawHeight - size);
+  const drawX = -extraX * (crop.positionX / 100);
+  const drawY = -extraY * (crop.positionY / 100);
+
+  context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((result) => {
+      if (result) {
+        resolve(result);
+      } else {
+        reject(new Error("Не удалось сохранить кадр"));
+      }
+    }, "image/jpeg", 0.88);
+  });
+
+  return new File([blob], cropFileName(item.name), { type: "image/jpeg" });
 }
 
 function filterSuggestions(suggestions: Suggestion[], value: string) {
@@ -617,10 +681,17 @@ export function ListingKindAndCategoryFields({
 
 export function ListingPhotoUploader() {
   const [media, setMedia] = useState<PreviewMedia[]>([]);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState("");
+  const [cropDraft, setCropDraft] = useState<ImageCrop>({ zoom: 1, positionX: 50, positionY: 50 });
+  const [cropError, setCropError] = useState("");
+  const [cropping, setCropping] = useState(false);
   const urlsRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const maxFiles = 20;
   const availableSlots = maxFiles - media.length;
+  const heroMedia = media[0];
+  const selectedMedia = media.find((item) => item.id === selectedId) ?? heroMedia;
 
   useEffect(() => {
     return () => {
@@ -642,13 +713,17 @@ export function ListingPhotoUploader() {
     const nextMedia = files.map((file) => {
       const url = URL.createObjectURL(file);
       urlsRef.current.push(url);
+      const kind = file.type.startsWith("video/") ? "video" : "image";
 
       return {
         id: `${file.name}-${file.size}-${url}`,
         file,
-        kind: file.type.startsWith("video/") ? "video" : "image",
+        sourceFile: file,
+        kind,
         name: file.name,
+        sourceUrl: url,
         url,
+        crop: kind === "image" ? { zoom: 1, positionX: 50, positionY: 50 } : undefined,
       } satisfies PreviewMedia;
     });
 
@@ -657,14 +732,27 @@ export function ListingPhotoUploader() {
       syncFileInput(updated);
       return updated;
     });
+    setSelectedId(nextMedia[0]?.id ?? selectedId);
+    setLibraryOpen(true);
+    event.currentTarget.value = "";
   }
 
   function removeMedia(item: PreviewMedia) {
-    URL.revokeObjectURL(item.url);
-    urlsRef.current = urlsRef.current.filter((url) => url !== item.url);
+    URL.revokeObjectURL(item.sourceUrl);
+
+    if (item.url !== item.sourceUrl) {
+      URL.revokeObjectURL(item.url);
+    }
+
+    urlsRef.current = urlsRef.current.filter((url) => url !== item.url && url !== item.sourceUrl);
     setMedia((current) => {
       const updated = current.filter((mediaItem) => mediaItem.id !== item.id);
       syncFileInput(updated);
+
+      if (selectedId === item.id) {
+        setSelectedId(updated[0]?.id ?? "");
+      }
+
       return updated;
     });
   }
@@ -685,62 +773,254 @@ export function ListingPhotoUploader() {
     }
   }
 
+  function openMediaLibrary() {
+    setLibraryOpen(true);
+    setSelectedId((current) => current || heroMedia?.id || "");
+    setCropError("");
+  }
+
+  async function applyCrop() {
+    if (!selectedMedia || selectedMedia.kind !== "image") {
+      return;
+    }
+
+    setCropping(true);
+    setCropError("");
+
+    try {
+      const croppedFile = await createCroppedImageFile(selectedMedia, cropDraft);
+      const croppedUrl = URL.createObjectURL(croppedFile);
+      urlsRef.current.push(croppedUrl);
+
+      setMedia((current) => {
+        const updated = current.map((item) => {
+          if (item.id !== selectedMedia.id) {
+            return item;
+          }
+
+          if (item.url !== item.sourceUrl) {
+            URL.revokeObjectURL(item.url);
+            urlsRef.current = urlsRef.current.filter((url) => url !== item.url);
+          }
+
+          return {
+            ...item,
+            file: croppedFile,
+            url: croppedUrl,
+            crop: cropDraft,
+          };
+        });
+        syncFileInput(updated);
+        return updated;
+      });
+    } catch {
+      setCropError("Не удалось применить кадр. Попробуйте другое изображение.");
+    } finally {
+      setCropping(false);
+    }
+  }
+
+  function resetCropDraft() {
+    setCropDraft({ zoom: 1, positionX: 50, positionY: 50 });
+  }
+
+  function selectMedia(item: PreviewMedia) {
+    setSelectedId(item.id);
+    setCropError("");
+    setCropDraft(item.crop ?? { zoom: 1, positionX: 50, positionY: 50 });
+  }
+
+  function makeCover(item: PreviewMedia) {
+    setMedia((current) => {
+      const target = current.find((mediaItem) => mediaItem.id === item.id);
+
+      if (!target) {
+        return current;
+      }
+
+      const updated = [target, ...current.filter((mediaItem) => mediaItem.id !== item.id)];
+      syncFileInput(updated);
+      return updated;
+    });
+  }
+
   return (
-    <section
-      className="cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 transition hover:border-blue-300 hover:bg-blue-50/40 sm:p-5"
-      onClick={openFileDialog}
-    >
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <input ref={inputRef} className="sr-only" type="file" accept="image/*,video/*" name="photos" multiple onChange={handleFiles} />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <Camera className="h-5 w-5 shrink-0 text-[#0875d1]" />
           <div>
             <h2 className="font-bold text-slate-800">Фото и видео объявления</h2>
-            <p className="mt-1 text-sm text-slate-500">До {maxFiles} файлов. Сейчас выбрано: {media.length}.</p>
+            <p className="mt-1 text-sm text-slate-500">{media.length ? `${media.length} из ${maxFiles}` : "Файлы не выбраны"}</p>
           </div>
         </div>
-        <span className="text-sm font-semibold text-[#0875d1]">{availableSlots > 0 ? "Нажмите в область, чтобы выбрать файлы" : "Лимит файлов заполнен"}</span>
+        <button type="button" onClick={openMediaLibrary} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0669bd]">
+          <ImagePlus className="h-4 w-4" />
+          Медиатека
+        </button>
       </div>
 
-      {media.length ? (
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
-          {media.map((item, index) => (
-            <figure key={item.id} className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white">
-              {item.kind === "video" ? (
-                <video src={item.url} className="aspect-square w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
-              ) : (
-                <img src={item.url} alt={`Фото ${index + 1}: ${item.name}`} className="aspect-square w-full bg-slate-50 object-contain p-1" />
-              )}
-              {item.kind === "video" ? (
-                <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
-                  <Video className="h-3 w-3" />
-                  Видео
-                </span>
-              ) : null}
-              <figcaption className="sr-only">{item.name}</figcaption>
-              <button
-                type="button"
-                data-photo-remove
-                onClick={(event) => {
-                  event.stopPropagation();
-                  removeMedia(item);
-                }}
-                className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow-sm transition hover:text-rose-600"
-                aria-label={`Удалить ${item.name}`}
-              >
-                <X className="h-4 w-4" />
+      <button type="button" onClick={openMediaLibrary} className="mt-4 grid w-full grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/40">
+        <span className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-blue-50 text-[#0875d1]">
+          {heroMedia ? (
+            heroMedia.kind === "video" ? (
+              <video src={heroMedia.url} className="h-full w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
+            ) : (
+              <img src={heroMedia.url} alt="" className="h-full w-full object-cover" />
+            )
+          ) : (
+            <ImagePlus className="h-6 w-6" />
+          )}
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-black text-[#060b27]">{heroMedia ? heroMedia.name : "Добавить медиа"}</span>
+          <span className="mt-1 block text-sm font-semibold text-slate-500">{media.length ? `${media.length} файлов` : "Фото и видео"}</span>
+        </span>
+        <span className="hidden rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 sm:inline-flex">Открыть</span>
+      </button>
+
+      {libraryOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 sm:items-center sm:p-4" role="dialog" aria-modal="true">
+          <div className="flex max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-xl bg-white shadow-2xl sm:max-h-[min(44rem,92vh)] sm:max-w-3xl sm:rounded-xl">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+              <div className="min-w-0">
+                <h2 className="text-base font-black text-[#060b27] sm:text-lg">Медиатека</h2>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500 sm:text-sm">{media.length} из {maxFiles}</p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button type="button" onClick={openFileDialog} disabled={availableSlots <= 0} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#0875d1] px-3 text-sm font-bold text-white transition hover:bg-[#0669bd] disabled:cursor-not-allowed disabled:opacity-50">
+                  <ImagePlus className="h-4 w-4" />
+                  Добавить
+                </button>
+                <button type="button" onClick={() => setLibraryOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:text-rose-600" aria-label="Закрыть">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {selectedMedia ? (
+              <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+                <div className="mx-auto max-w-xl">
+                  <div className="relative mx-auto aspect-square max-h-[44dvh] overflow-hidden rounded-xl bg-slate-950 sm:max-h-[22rem]">
+                    {selectedMedia.kind === "video" ? (
+                      <video src={selectedMedia.url} className="h-full w-full object-contain" controls playsInline preload="metadata" />
+                    ) : (
+                      <img
+                        src={selectedMedia.sourceUrl}
+                        alt={selectedMedia.name}
+                        className="h-full w-full object-cover"
+                        style={{
+                          objectPosition: `${cropDraft.positionX}% ${cropDraft.positionY}%`,
+                          transform: `scale(${cropDraft.zoom})`,
+                        }}
+                      />
+                    )}
+                    {selectedMedia.kind === "image" ? <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/40" /> : null}
+                  </div>
+
+                  <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-black text-[#060b27]">{selectedMedia.name}</h3>
+                      <p className="mt-0.5 text-xs font-semibold text-slate-500">{selectedMedia.kind === "video" ? "Видео" : "Фото"}</p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <button type="button" onClick={() => makeCover(selectedMedia)} disabled={heroMedia?.id === selectedMedia.id} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] disabled:opacity-50">
+                        Обложка
+                      </button>
+                      <button type="button" onClick={() => removeMedia(selectedMedia)} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 transition hover:text-rose-600">
+                        Удалить
+                      </button>
+                    </div>
+                  </div>
+
+                  {selectedMedia.kind === "image" ? (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <label className="block">
+                          <span className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                            <SlidersHorizontal className="h-3.5 w-3.5 text-[#0875d1]" />
+                            Зум
+                          </span>
+                          <input type="range" min="1" max="2.8" step="0.05" value={cropDraft.zoom} onChange={(event) => setCropDraft((current) => ({ ...current, zoom: Number(event.target.value) }))} className="mt-1.5 w-full accent-[#0875d1]" />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-bold text-slate-700">Гориз.</span>
+                          <input type="range" min="0" max="100" step="1" value={cropDraft.positionX} onChange={(event) => setCropDraft((current) => ({ ...current, positionX: Number(event.target.value) }))} className="mt-1.5 w-full accent-[#0875d1]" />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-bold text-slate-700">Верт.</span>
+                          <input type="range" min="0" max="100" step="1" value={cropDraft.positionY} onChange={(event) => setCropDraft((current) => ({ ...current, positionY: Number(event.target.value) }))} className="mt-1.5 w-full accent-[#0875d1]" />
+                        </label>
+                      </div>
+                      {cropError ? <p className="mt-2 rounded-lg bg-rose-50 p-2 text-xs font-semibold text-rose-700">{cropError}</p> : null}
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button type="button" onClick={applyCrop} disabled={cropping} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#0875d1] px-3 text-sm font-bold text-white transition hover:bg-[#0669bd] disabled:cursor-wait disabled:opacity-60">
+                          <Crop className="h-4 w-4" />
+                          {cropping ? "..." : "Применить"}
+                        </button>
+                        <button type="button" onClick={resetCropDraft} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
+                          <RotateCcw className="h-4 w-4" />
+                          Сброс
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-72 flex-1 items-center justify-center p-4">
+                <button type="button" onClick={openFileDialog} className="flex min-h-52 w-full max-w-md items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm font-bold text-slate-500 transition hover:border-blue-300 hover:bg-blue-50/40">
+                  <span className="inline-flex items-center gap-2">
+                    <Camera className="h-4 w-4" />
+                    Выбрать файлы
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {media.length ? (
+              <div className="border-t border-slate-200 px-3 py-2 sm:px-4">
+                <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {media.map((item, index) => {
+                    const selected = selectedMedia?.id === item.id;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => selectMedia(item)}
+                        className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-slate-100 text-left transition sm:h-20 sm:w-20 ${
+                          selected ? "border-[#0875d1] ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
+                        }`}
+                      >
+                        {item.kind === "video" ? (
+                          <video src={item.url} className="h-full w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
+                        ) : (
+                          <img src={item.url} alt={item.name} className="h-full w-full object-cover" />
+                        )}
+                        <span className="absolute left-1 top-1 rounded-full bg-white/95 px-1.5 py-0.5 text-[10px] font-black text-slate-700">{index + 1}</span>
+                        {index === 0 ? <span className="absolute bottom-1 left-1 rounded-full bg-[#0875d1] px-1.5 py-0.5 text-[10px] font-black text-white">Обл.</span> : null}
+                        {item.kind === "video" ? (
+                          <span className="absolute right-1 top-1 rounded-full bg-slate-950/70 p-1 text-white">
+                            <Video className="h-3 w-3" />
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="border-t border-slate-200 p-3 sm:p-4">
+              <button type="button" onClick={() => setLibraryOpen(false)} className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0669bd]">
+                Готово
               </button>
-            </figure>
-          ))}
+            </div>
+          </div>
         </div>
-      ) : (
-        <div className="mt-4 flex min-h-28 w-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-sm font-semibold text-slate-500">
-          <span className="inline-flex items-center gap-2">
-            <Camera className="h-4 w-4" />
-            Нажмите, чтобы добавить фото или видео
-          </span>
-        </div>
-      )}
+      ) : null}
     </section>
   );
 }

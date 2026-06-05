@@ -428,45 +428,51 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
   }
 
   return (
-    <section className="grid h-full gap-3">
+    <section className="grid h-full auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {items.map((item) => (
-        <article key={item.id} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-card md:grid-cols-[96px_minmax(0,1fr)_auto] md:items-center">
-          <div className="relative flex h-24 w-full items-center justify-center overflow-hidden rounded-xl bg-blue-50 text-[#0875d1] md:w-24">
-            {item.images?.[0] ? <img src={item.images[0]} alt={item.title} className="h-full w-full object-cover" /> : null}
-            {!item.images?.[0] && item.videos?.[0] ? <video src={item.videos[0]} className="h-full w-full bg-slate-950 object-cover" muted playsInline preload="metadata" /> : null}
+        <article key={item.id} className="group flex aspect-square min-h-[18.5rem] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg">
+          <div className="relative min-h-0 flex-[1.05] overflow-hidden bg-blue-50 text-[#0875d1]">
+            {item.images?.[0] ? <img src={item.images[0]} alt={item.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
+            {!item.images?.[0] && item.videos?.[0] ? <video src={item.videos[0]} className="h-full w-full bg-slate-950 object-cover transition duration-300 group-hover:scale-[1.03]" muted playsInline preload="metadata" /> : null}
+            {!item.images?.[0] && !item.videos?.[0] ? (
+              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-50 via-white to-cyan-50">
+                <FileText className="h-12 w-12" />
+              </div>
+            ) : null}
+            <div className="absolute left-3 top-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-1.5">
+              <StatusPill>{item.status}</StatusPill>
+              <span className="inline-flex h-7 items-center rounded-full bg-white/95 px-2.5 text-xs font-bold text-slate-600 shadow-sm">{demoPublicationLabels[item.type]}</span>
+            </div>
             {!item.images?.[0] && item.videos?.[0] ? (
-              <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-1.5 py-1 text-[10px] font-bold text-white">
+              <span className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
                 <Video className="h-3 w-3" />
                 Видео
               </span>
             ) : null}
-            {!item.images?.[0] && !item.videos?.[0] ? <FileText className="h-8 w-8" /> : null}
           </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusPill>{item.status}</StatusPill>
-              <span className="text-xs font-bold text-slate-500">{demoPublicationLabels[item.type]}</span>
+          <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-4">
+            <div className="min-w-0">
+              <h2 className="line-clamp-2 text-lg font-black leading-tight text-[#060b27]">{item.title}</h2>
+              <p className="mt-1 line-clamp-1 text-sm font-semibold text-slate-500">{item.subtitle}</p>
+              <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 text-sm font-bold text-slate-600">
+                <span className="truncate">{item.city}</span>
+                {item.price ? <span className="truncate text-[#060b27]">{item.price}</span> : null}
+              </div>
+              <p className="mt-1 text-xs font-semibold text-slate-400">{formatDate(item.createdAt)}</p>
             </div>
-            <h2 className="mt-2 text-xl font-black leading-tight text-[#060b27]">{item.title}</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-600">{item.subtitle}</p>
-            <div className="mt-2 flex flex-wrap gap-3 text-sm font-semibold text-slate-500">
-              <span>{item.city}</span>
-              {item.price ? <span>{item.price}</span> : null}
-              <span>{formatDate(item.createdAt)}</span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2 md:justify-end">
-            {item.type !== "specialist" ? (
-              <Link href={getItemHref(item)} className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800">
-                Открыть
+            <div className={`mt-auto grid gap-2 pt-3 ${item.type === "listing" ? "grid-cols-3" : item.type !== "specialist" ? "grid-cols-2" : "grid-cols-1"}`}>
+              {item.type !== "specialist" ? (
+                <Link href={getItemHref(item)} className="inline-flex h-10 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
+                  Открыть
+                </Link>
+              ) : null}
+              <Link href={getEditHref(item)} className="inline-flex h-10 min-w-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-2 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
+                Изменить
               </Link>
-            ) : null}
-            <Link href={getEditHref(item)} className="inline-flex h-10 items-center rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-[#0875d1]">
-              Изменить
-            </Link>
-            {item.type === "listing" ? (
-              <ListingShareButton href={getItemHref(item)} title={item.title} textBreakpoint="always" className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]" />
-            ) : null}
+              {item.type === "listing" ? (
+                <ListingShareButton href={getItemHref(item)} title={item.title} textBreakpoint="never" className="inline-flex h-10 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]" />
+              ) : null}
+            </div>
           </div>
         </article>
       ))}
