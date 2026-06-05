@@ -126,10 +126,9 @@ canvas {
   gap: clamp(0.55rem, 1.05cqw, 0.95rem);
 }
 
-.vacancy-main-grid,
-.vacancy-contact-grid {
+.vacancy-fields-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: clamp(0.5rem, 1cqw, 0.9rem);
   min-width: 0;
 }
@@ -140,8 +139,7 @@ canvas {
   line-height: 1.05rem;
 }
 
-.vacancy-main-grid input:not([type="radio"]),
-.vacancy-contact-grid input:not([type="radio"]),
+.vacancy-fields-grid input:not([type="radio"]),
 .vacancy-location-fields input:not([type="radio"]) {
   height: clamp(2.45rem, 3.2cqw, 2.75rem);
   border-radius: 0.7rem;
@@ -174,7 +172,7 @@ canvas {
 }
 
 .vacancy-location-fields .listing-location-options {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: clamp(0.35rem, 0.75cqw, 0.55rem);
 }
 
@@ -191,6 +189,113 @@ canvas {
 }
 
 .vacancy-location-fields .listing-location-option input {
+  height: 0.9rem;
+  width: 0.9rem;
+}
+
+.listing-create-form {
+  container-type: inline-size;
+}
+
+.listing-create-primary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(0.55rem, 1cqw, 0.9rem);
+  min-width: 0;
+}
+
+.listing-kind-field {
+  order: 1;
+}
+
+.listing-category-field {
+  order: 2;
+}
+
+.listing-subcategory-field {
+  order: 3;
+}
+
+.listing-price-field {
+  order: 4;
+}
+
+.listing-title-field {
+  order: 5;
+  grid-column: 1 / -1;
+}
+
+.listing-booking-fields {
+  order: 6;
+}
+
+.listing-create-form label {
+  min-width: 0;
+}
+
+.listing-create-form label > span:first-child,
+.listing-create-location-fields .listing-location-label {
+  font-size: clamp(0.72rem, 0.85cqw, 0.82rem);
+  line-height: 1.05rem;
+}
+
+.listing-create-form input:not([type="radio"]),
+.listing-create-form textarea {
+  border-radius: 0.65rem;
+  font-size: clamp(0.8rem, 0.95cqw, 0.95rem);
+}
+
+.listing-create-form input:not([type="radio"]) {
+  height: clamp(2.45rem, 3cqw, 2.75rem);
+  padding-left: clamp(0.65rem, 0.95cqw, 0.95rem);
+  padding-right: clamp(0.65rem, 0.95cqw, 0.95rem);
+}
+
+.listing-create-form textarea {
+  min-height: clamp(5rem, 9cqw, 7rem);
+  padding: clamp(0.65rem, 1cqw, 0.95rem);
+  line-height: 1.45rem;
+}
+
+.listing-create-primary-grid button,
+.listing-create-primary-grid input,
+.listing-create-location-fields input:not([type="radio"]),
+.listing-create-location-fields .listing-location-option {
+  min-height: clamp(2.45rem, 3cqw, 2.75rem);
+  height: clamp(2.45rem, 3cqw, 2.75rem);
+}
+
+.listing-create-primary-grid button {
+  border-radius: 0.65rem;
+  padding-left: clamp(0.65rem, 0.95cqw, 0.95rem);
+  padding-right: clamp(0.65rem, 0.95cqw, 0.95rem);
+  font-size: clamp(0.78rem, 0.9cqw, 0.9rem);
+}
+
+.listing-create-location-fields {
+  gap: clamp(0.55rem, 1cqw, 0.85rem);
+}
+
+.listing-create-location-fields .listing-location-row {
+  gap: clamp(0.55rem, 1cqw, 0.9rem);
+}
+
+.listing-create-location-fields .listing-location-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(0.4rem, 0.8cqw, 0.55rem);
+}
+
+.listing-create-location-fields .listing-location-option {
+  overflow: hidden;
+  border-radius: 0.65rem;
+  padding-left: clamp(0.6rem, 0.9cqw, 0.85rem);
+  padding-right: clamp(0.6rem, 0.9cqw, 0.85rem);
+  font-size: clamp(0.7rem, 0.82cqw, 0.82rem);
+  line-height: 1rem;
+  white-space: nowrap;
+}
+
+.listing-create-location-fields .listing-location-option input {
   height: 0.9rem;
   width: 0.9rem;
 }
@@ -235,23 +340,45 @@ canvas {
 }
 
 @container (min-width: 30rem) {
-  .vacancy-main-grid,
-  .vacancy-contact-grid {
+  .vacancy-location-fields .listing-location-options {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .vacancy-location-fields .listing-location-options {
+  .listing-create-location-fields .listing-location-options {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @container (min-width: 38rem) {
-  .vacancy-contact-grid {
-    grid-template-columns: minmax(8rem, 0.75fr) minmax(10rem, 1fr) minmax(12rem, 1fr);
+  .vacancy-fields-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .vacancy-location-fields .listing-location-row {
     grid-template-columns: minmax(17rem, 1.35fr) minmax(17rem, 1fr);
+    align-items: start;
+  }
+
+  .listing-create-primary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .listing-subcategory-field {
+    order: 3;
+  }
+
+  .listing-title-field {
+    order: 4;
+    grid-column: 1 / 3;
+  }
+
+  .listing-price-field {
+    order: 5;
+    grid-column: 3;
+  }
+
+  .listing-create-location-fields .listing-location-row {
+    grid-template-columns: minmax(17rem, 1.25fr) minmax(17rem, 1fr);
     align-items: start;
   }
 }
@@ -263,12 +390,28 @@ canvas {
 }
 
 @container (min-width: 82rem) {
-  .vacancy-main-grid {
-    grid-template-columns: repeat(4, minmax(12rem, 1fr));
+  .vacancy-fields-grid {
+    grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr) minmax(12rem, 1fr);
   }
 
-  .vacancy-contact-grid {
-    grid-template-columns: minmax(8rem, 0.7fr) minmax(10rem, 0.95fr) minmax(12rem, 0.95fr);
+  .vacancy-organization-field {
+    grid-column: 1;
+  }
+
+  .vacancy-title-field {
+    grid-column: 2;
+  }
+
+  .vacancy-schedule-field {
+    grid-column: 1;
+  }
+
+  .vacancy-phone-field {
+    grid-column: 2;
+  }
+
+  .vacancy-email-field {
+    grid-column: 3;
   }
 
   .vacancy-location-fields .listing-location-row {

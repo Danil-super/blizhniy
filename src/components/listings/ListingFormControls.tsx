@@ -568,14 +568,14 @@ export function ListingKindAndCategoryFields({
 
   return (
     <>
-      <label className="block min-w-0">
+      <label className="listing-kind-field block min-w-0">
         <span className="text-xs font-bold text-slate-700 sm:text-sm">Тип объявления</span>
         <span className="mt-1 block sm:mt-2">
           <DropdownSelect name="kind" value={kind} onValueChange={handleKindChange} options={listingKindOptions} buttonClassName="min-h-10 !h-auto gap-1 px-2 py-2 text-xs sm:min-h-12 sm:gap-3 sm:px-4 sm:text-sm" />
         </span>
       </label>
 
-      <label className="block min-w-0">
+      <label className="listing-category-field block min-w-0">
         <span className="text-xs font-bold text-slate-700 sm:text-sm">Категория</span>
         <span className="mt-1 block sm:mt-2">
           <DropdownSelect
@@ -588,7 +588,7 @@ export function ListingKindAndCategoryFields({
         </span>
       </label>
 
-      <label className="block min-w-0">
+      <label className="listing-subcategory-field block min-w-0">
         <span className="text-xs font-bold text-slate-700 sm:text-sm">Подкатегория</span>
         <span className="mt-1 block sm:mt-2">
           <DropdownSelect
@@ -607,7 +607,7 @@ export function ListingKindAndCategoryFields({
       </label>
 
       {isRental ? (
-        <div className="col-span-full">
+        <div className="listing-booking-fields col-span-full">
           <ListingBookingFields booking={booking} mode={bookingMode} />
         </div>
       ) : null}

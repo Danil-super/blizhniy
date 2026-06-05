@@ -68,16 +68,25 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
         >
           {params?.error ? <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{params.error}</p> : null}
           <form action={adminMode ? publishVacancyWithoutPaymentAction : undefined} className="vacancy-create-form responsive-form-panel grid gap-3 sm:gap-3.5">
-            <div className="vacancy-main-grid">
-              <Field name="organization" label="Организация" placeholder="ООО РемДом" />
-              <Field name="title" label="Вакансия" placeholder="Сантехник" />
-              <Field name="salary" label="Зарплата / стоимость" placeholder="от 80 000 ₽" />
-              <Field name="profession" label="Категория специалиста" placeholder="Сантехник" />
-            </div>
-            <div className="vacancy-contact-grid">
-              <Field name="schedule" label="График" placeholder="5/2" />
-              <Field name="phone" label="Телефон" placeholder="+7..." />
-              <Field name="email" label="Email" type="email" placeholder="hr@example.ru" />
+            <div className="vacancy-fields-grid">
+              <div className="vacancy-organization-field">
+                <Field name="organization" label="Организация" placeholder="ООО РемДом" />
+              </div>
+              <div className="vacancy-title-field">
+                <Field name="title" label="Вакансия" placeholder="Сантехник" />
+              </div>
+              <div className="vacancy-salary-field">
+                <Field name="salary" label="Зарплата / стоимость" placeholder="от 80 000 ₽" />
+              </div>
+              <div className="vacancy-schedule-field">
+                <Field name="schedule" label="График" placeholder="5/2" />
+              </div>
+              <div className="vacancy-phone-field">
+                <Field name="phone" label="Телефон" placeholder="+7..." />
+              </div>
+              <div className="vacancy-email-field">
+                <Field name="email" label="Email" type="email" placeholder="hr@example.ru" />
+              </div>
             </div>
             <ListingLocationFields className="vacancy-location-fields" addressLegend="Адрес вакансии" defaultCity="Краснодар" inlineControls />
             <TextAreaField name="description" label="Описание вакансии" />

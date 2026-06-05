@@ -581,9 +581,9 @@ export function YandexMapPicker({
       <input type="hidden" name={mapPointSelectedName} value={point ? "1" : ""} />
       <div id={mapId} ref={mapRef} className="map-picker-canvas mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white" />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
-        <span className="min-w-0 font-semibold [overflow-wrap:anywhere]">{point ? (address ? `Метка: ${address}` : "Метка поставлена") : status}</span>
+        {!point ? <span className="min-w-0 font-semibold [overflow-wrap:anywhere]">{status}</span> : null}
         {point ? (
-          <a href={routeUrl(point.lat, point.lng)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-bold text-[#0875d1]">
+          <a href={routeUrl(point.lat, point.lng)} target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 font-bold text-[#0875d1]">
             <Navigation className="h-4 w-4" />
             Открыть карту
           </a>

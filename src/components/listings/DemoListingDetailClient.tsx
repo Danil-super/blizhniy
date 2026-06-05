@@ -11,6 +11,7 @@ import { categories } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
+import { ListingSellerCard } from "@/components/listings/ListingSellerCard";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { BookingCalculator } from "./BookingCalculator";
 import { ListingViewTracker } from "./ListingViewTracker";
@@ -36,6 +37,54 @@ function resolveCategoryName(item: DemoPublication) {
 
 function hasListingMapPoint(item: DemoPublication) {
   return item.hasMapPoint === true && hasMapCoordinates(item.lat, item.lng);
+}
+
+function listingSellerName(item: DemoPublication) {
+  if (item.ownerName?.trim()) {
+    return item.ownerName;
+  }
+
+  if (item.listingKind === "arenda") {
+    return "Владелец объекта";
+  }
+
+  if (item.listingKind === "kuplyu") {
+    return "Покупатель";
+  }
+
+  return "Частный продавец";
+}
+
+function listingSellerKey(item: DemoPublication) {
+  return item.ownerKey?.trim() || item.ownerName?.trim() || listingSellerName(item);
+}
+
+function dateSortValue(value: string) {
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+}
+
+function formatSellerDate(value: string) {
+  const time = Date.parse(value);
+
+  if (Number.isFinite(time)) {
+    return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(new Date(time));
+  }
+
+  return value;
+}
+
+function listingSellerStats(listing: DemoPublication, items: DemoPublication[]) {
+  const sellerKey = listingSellerKey(listing);
+  const sellerListings = items.filter((item) => item.type === "listing" && listingSellerKey(item) === sellerKey);
+  const firstListing = sellerListings
+    .filter((item) => Number.isFinite(dateSortValue(item.createdAt)))
+    .sort((a, b) => dateSortValue(a.createdAt) - dateSortValue(b.createdAt))[0];
+
+  return {
+    listingCount: sellerListings.length || 1,
+    registeredSince: formatSellerDate(firstListing?.createdAt ?? listing.createdAt),
+  };
 }
 
 type GalleryMedia = {
@@ -139,6 +188,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
   const kind = (listing?.listingKind ?? "prodam") as ListingKind;
   const listingHref = `/blizhniy/obyavlenie/${slug}`;
   const hasMapPoint = listing ? hasListingMapPoint(listing) : false;
+  const sellerStats = listing ? listingSellerStats(listing, items) : undefined;
   const galleryMedia: GalleryMedia[] = listing
     ? [
         ...(listing.images ?? []).map((src) => ({ kind: "image" as const, src })),
@@ -222,6 +272,13 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
               ) : null}
             </div>
           </div>
+          <ListingSellerCard
+            sellerName={listingSellerName(listing)}
+            registeredSince={sellerStats?.registeredSince}
+            listingCount={sellerStats?.listingCount}
+            hasContacts={Boolean(listing.phone || listing.messengerUrl)}
+            listingTitle={listing.title}
+          />
           {hasMapPoint ? (
             <LocationMap
               location={{

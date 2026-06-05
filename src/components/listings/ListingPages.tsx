@@ -39,6 +39,7 @@ import { DemoListingDetailClient } from "./DemoListingDetailClient";
 import { ListingKindAndCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
 import { ListingResultsPanel } from "./ListingResultsPanel";
+import { ListingSellerCard } from "./ListingSellerCard";
 import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewTracker } from "./ListingViewTracker";
 import { SubcategoryShareButton } from "./SubcategoryShareButton";
@@ -802,6 +803,106 @@ function listingPlaceLabel(listing: DemoListing) {
   return hasListingMapPoint(listing) ? [listing.city, listing.district].filter(Boolean).join(", ") : listing.city;
 }
 
+const sellerNamesByPhone: Record<string, string> = {
+  "+78610002001": "Простова Наталья",
+  "+78610002002": "Кузнецова Марина",
+  "+78610002003": "Павлова Елена",
+  "+78610002004": "Иванова Светлана",
+  "+78610002005": "Орлова Анна",
+  "+78610002006": "Сергеев Дмитрий",
+  "+78610002007": "Мельников Андрей",
+  "+78610002008": "Соколова Ирина",
+  "+78610002009": "Романов Павел",
+  "+78610002010": "Федоров Алексей",
+  "+78610002011": "Васильева Ольга",
+  "+78610002012": "Николаев Игорь",
+  "+78610009999": "Команда Ближний",
+};
+
+function listingSellerName(listing: DemoListing) {
+  if (listing.author?.trim()) {
+    return listing.author;
+  }
+
+  if (sellerNamesByPhone[listing.phone]) {
+    return sellerNamesByPhone[listing.phone];
+  }
+
+  if (listing.kind === "arenda") {
+    return "Владелец объекта";
+  }
+
+  if (listing.kind === "kuplyu") {
+    return "Покупатель";
+  }
+
+  return "Частный продавец";
+}
+
+function listingSellerKey(listing: DemoListing) {
+  return listing.author?.trim() || listing.phone || listingSellerName(listing);
+}
+
+const russianMonths: Record<string, number> = {
+  января: 0,
+  февраля: 1,
+  марта: 2,
+  апреля: 3,
+  мая: 4,
+  июня: 5,
+  июля: 6,
+  августа: 7,
+  сентября: 8,
+  октября: 9,
+  ноября: 10,
+  декабря: 11,
+};
+
+function dateSortValue(value: string) {
+  const isoTime = Date.parse(value);
+
+  if (Number.isFinite(isoTime)) {
+    return isoTime;
+  }
+
+  const match = value.match(/^(\d{1,2})\s+([а-я]+)\s+(\d{4})$/i);
+
+  if (match) {
+    const [, day, month, year] = match;
+    const monthIndex = russianMonths[month.toLowerCase()];
+
+    if (monthIndex !== undefined) {
+      return new Date(Number(year), monthIndex, Number(day)).getTime();
+    }
+  }
+
+  return Number.POSITIVE_INFINITY;
+}
+
+function formatSellerDate(value: string) {
+  const isoTime = Date.parse(value);
+
+  if (Number.isFinite(isoTime) && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(new Date(isoTime));
+  }
+
+  return value;
+}
+
+function listingSellerStats(listing: DemoListing) {
+  const sellerKey = listingSellerKey(listing);
+  const allListings = [...demoListings, ...listListings().map(toDemoListing)];
+  const sellerListings = allListings.filter((item) => listingSellerKey(item) === sellerKey);
+  const firstListing = sellerListings
+    .filter((item) => Number.isFinite(dateSortValue(item.createdAt)))
+    .sort((a, b) => dateSortValue(a.createdAt) - dateSortValue(b.createdAt))[0];
+
+  return {
+    listingCount: sellerListings.length || 1,
+    registeredSince: formatSellerDate(firstListing?.createdAt ?? listing.createdAt),
+  };
+}
+
 function parseNumber(formData: FormData, name: string) {
   const value = Number(String(formData.get(name) ?? "").replace(/\s/g, "").replace(",", "."));
   return Number.isFinite(value) && value > 0 ? value : undefined;
@@ -903,6 +1004,7 @@ export function toDemoListing(listing: StoreListing): DemoListing {
   return {
     viewId: listing.id,
     slug: listing.slug,
+    author: listing.author,
     title: listing.title,
     kind: listing.kind,
     categorySlug: listing.categorySlug,
@@ -1323,6 +1425,7 @@ export function ListingDetailPage({ slug }: { slug: string }) {
 
   const hasMapPoint = hasListingMapPoint(listing);
   const viewId = listing.viewId ?? listing.slug;
+  const sellerStats = listingSellerStats(listing);
 
   return (
     <>
@@ -1408,6 +1511,13 @@ export function ListingDetailPage({ slug }: { slug: string }) {
                 ) : null}
               </div>
             </div>
+            <ListingSellerCard
+              sellerName={listingSellerName(listing)}
+              registeredSince={sellerStats.registeredSince}
+              listingCount={sellerStats.listingCount}
+              hasContacts={Boolean(listing.phone || listing.messengerUrl)}
+              listingTitle={listing.title}
+            />
             {hasMapPoint ? <LocationMap location={listing} exactLabel="Точный адрес частного лица по умолчанию не показывается" /> : null}
             {listing.booking ? <BookingCalculator booking={listing.booking} listingId={listing.slug} listingTitle={listing.title} /> : null}
             {showDeliveryUi ? <DeliveryInfoCard delivery={listing.delivery} /> : null}
@@ -1418,9 +1528,9 @@ export function ListingDetailPage({ slug }: { slug: string }) {
   );
 }
 
-function Field({ children, compact = false, label }: { label: string; children: ReactNode; compact?: boolean }) {
+function Field({ children, className = "", compact = false, label }: { label: string; children: ReactNode; className?: string; compact?: boolean }) {
   return (
-    <label className="block">
+    <label className={`block ${className}`}>
       <span className={`${compact ? "text-xs sm:text-sm" : "text-sm"} font-bold text-slate-700`}>{label}</span>
       <span className={`${compact ? "mt-1 sm:mt-2" : "mt-2"} block`}>{children}</span>
     </label>
@@ -1625,22 +1735,21 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
           </p>
           {error ? <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p> : null}
 
-          <form action={adminMode ? publishWithoutPaymentAction : undefined} className="mt-6 grid min-w-0 max-w-full gap-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-2 sm:gap-4">
+          <form action={adminMode ? publishWithoutPaymentAction : undefined} className="listing-create-form mt-6 grid min-w-0 max-w-full gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="listing-create-primary-grid">
               <ListingKindAndCategoryFields
                 booking={listing?.booking}
                 defaultCategorySlug={listing?.categorySlug ?? formDefaults.categorySlug}
                 defaultKind={listing?.kind ?? formDefaults.kind}
                 defaultSubcategorySlug={listing?.subcategorySlug ?? formDefaults.subcategorySlug}
               />
-              <Field label="Цена" compact>
+              <Field className="listing-title-field" label="Название" compact>
+                <TextInput name="title" defaultValue={listing?.title} placeholder="Например, Комод из массива дуба" compact />
+              </Field>
+              <Field className="listing-price-field" label="Цена" compact>
                 <TextInput name="price" defaultValue={listing?.price} placeholder="12 000 ₽" compact />
               </Field>
             </div>
-
-            <Field label="Название" compact>
-              <TextInput name="title" defaultValue={listing?.title} placeholder="Например, Комод из массива дуба" compact />
-            </Field>
 
             <label className="block">
               <span className="text-sm font-bold text-slate-700">Описание</span>
@@ -1652,7 +1761,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
               />
             </label>
 
-            <ListingLocationFields defaultAddress={listing?.address} defaultCity={listing?.city} defaultLat={listing?.lat} defaultLng={listing?.lng} />
+            <ListingLocationFields className="listing-create-location-fields" defaultAddress={listing?.address} defaultCity={listing?.city} defaultLat={listing?.lat} defaultLng={listing?.lng} inlineControls />
 
             {showDeliveryUi ? <ListingDeliveryFields delivery={listing?.delivery} defaultCity={listing?.city ?? "Краснодар"} /> : null}
 
