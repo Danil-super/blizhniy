@@ -2,6 +2,7 @@
 
 import { MapPin, Navigation } from "lucide-react";
 import { YandexMapView } from "@/components/YandexMapPicker";
+import { hasMapCoordinates } from "@/lib/map-location";
 
 export type MapLocation = {
   city: string;
@@ -9,6 +10,7 @@ export type MapLocation = {
   address?: string;
   lat?: number;
   lng?: number;
+  hasMapPoint?: boolean;
   showExactAddress: boolean;
 };
 
@@ -21,14 +23,14 @@ function displayLocation(location: MapLocation) {
 }
 
 function routeUrl(location: MapLocation) {
-  const query = typeof location.lat === "number" && typeof location.lng === "number" ? `${location.lat},${location.lng}` : displayLocation(location);
+  const query = hasMapCoordinates(location.lat, location.lng) ? `${location.lat},${location.lng}` : displayLocation(location);
 
   return `https://yandex.ru/maps/?rtext=~${encodeURIComponent(query)}&rtt=auto`;
 }
 
 export function LocationMap({ location, exactLabel = "Точный адрес скрыт" }: { location: MapLocation; exactLabel?: string }) {
   const label = displayLocation(location);
-  const hasPoint = typeof location.lat === "number" && typeof location.lng === "number";
+  const hasPoint = (location.hasMapPoint ?? true) && hasMapCoordinates(location.lat, location.lng);
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">

@@ -73,6 +73,7 @@ export type Listing = {
   address?: string;
   lat?: number;
   lng?: number;
+  hasMapPoint?: boolean;
   showExactAddress: boolean;
   price?: string;
   booking?: BookingDetails;
@@ -96,6 +97,7 @@ export type JobVacancy = {
   address?: string;
   lat?: number;
   lng?: number;
+  hasMapPoint?: boolean;
   showExactAddress: boolean;
   salary: string;
   logoText: string;
@@ -108,6 +110,8 @@ export type JobVacancy = {
   requirements?: string;
   responsibilities?: string;
   status: PublicationStatus;
+  createdAt?: string;
+  publishedAt?: string;
 };
 
 export type WorkRequest = {
@@ -141,6 +145,7 @@ export type SpecialistProfile = {
   address?: string;
   lat?: number;
   lng?: number;
+  hasMapPoint?: boolean;
   showExactAddress: boolean;
   price: string;
   imageSeed: string;
@@ -150,6 +155,8 @@ export type SpecialistProfile = {
   messengerUrl?: string;
   videoUrl?: string;
   status: PublicationStatus;
+  createdAt?: string;
+  publishedAt?: string;
 };
 
 export type Profession = {

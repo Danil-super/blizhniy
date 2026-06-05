@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRightLeft, CalendarDays, Gift, MapPin, ShoppingBag, Tags } from "lucide-react";
+import { ArrowRightLeft, CalendarDays, Gift, MapPin, ShoppingBag, Tags, Video } from "lucide-react";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { demoPublicationsStorageKey, DemoPublication } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
@@ -108,6 +108,7 @@ export function DemoGridCard({ item }: { item: DemoPublication }) {
   const kind = item.listingKind ?? "prodam";
   const Icon = kindIcons[kind];
   const firstImage = item.images?.[0];
+  const firstVideo = item.videos?.[0];
   const href = `/blizhniy/obyavlenie/${item.id}`;
 
   return (
@@ -115,7 +116,14 @@ export function DemoGridCard({ item }: { item: DemoPublication }) {
       <Link href={href} className="block min-w-0">
         <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32]">
           {firstImage ? <img src={firstImage} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-contain p-2 transition group-hover:scale-105" /> : null}
-          <span className={`flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80 ${firstImage ? "opacity-0" : ""}`}>
+          {!firstImage && firstVideo ? <video src={firstVideo} className="absolute inset-0 h-full w-full bg-slate-950 object-cover transition group-hover:scale-105" muted playsInline preload="metadata" /> : null}
+          {!firstImage && firstVideo ? (
+            <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
+              <Video className="h-3 w-3" />
+              Видео
+            </span>
+          ) : null}
+          <span className={`flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80 ${firstImage || firstVideo ? "opacity-0" : ""}`}>
             <Icon className="h-8 w-8" />
           </span>
         </span>
@@ -146,6 +154,7 @@ function DemoListCard({ item }: { item: DemoPublication }) {
   const kind = item.listingKind ?? "prodam";
   const Icon = kindIcons[kind];
   const firstImage = item.images?.[0];
+  const firstVideo = item.videos?.[0];
   const href = `/blizhniy/obyavlenie/${item.id}`;
 
   return (
@@ -156,7 +165,15 @@ function DemoListCard({ item }: { item: DemoPublication }) {
           href={href}
           className="relative z-20 flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32] sm:h-auto sm:min-h-28 sm:w-auto xl:min-h-32"
         >
-          {firstImage ? <img src={firstImage} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-contain p-2 transition group-hover:scale-105" /> : <Icon className="h-8 w-8 sm:h-9 sm:w-9 lg:h-12 lg:w-12" />}
+          {firstImage ? <img src={firstImage} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-contain p-2 transition group-hover:scale-105" /> : null}
+          {!firstImage && firstVideo ? <video src={firstVideo} className="absolute inset-0 h-full w-full bg-slate-950 object-cover transition group-hover:scale-105" muted playsInline preload="metadata" /> : null}
+          {!firstImage && firstVideo ? (
+            <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
+              <Video className="h-3 w-3" />
+              Видео
+            </span>
+          ) : null}
+          {!firstImage && !firstVideo ? <Icon className="h-8 w-8 sm:h-9 sm:w-9 lg:h-12 lg:w-12" /> : null}
         </Link>
         <div className="min-w-0 flex-1 sm:flex sm:flex-col sm:justify-center xl:block">
           <div className="flex flex-wrap gap-1.5 sm:gap-2">

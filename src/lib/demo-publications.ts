@@ -13,8 +13,11 @@ export type DemoPublication = {
   price?: string;
   description?: string;
   images?: string[];
+  videos?: string[];
   lat?: number;
   lng?: number;
+  address?: string;
+  hasMapPoint?: boolean;
   showExactAddress?: boolean;
   phone?: string;
   messengerUrl?: string;

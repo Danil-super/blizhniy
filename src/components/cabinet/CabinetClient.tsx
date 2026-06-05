@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, CreditCard, FileText, LockKeyhole, Mail, Move, Phone, Plus, Search, Settings2, Trash2, UserRound, X } from "lucide-react";
+import { Bell, BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, CreditCard, FileText, LockKeyhole, Mail, Move, Phone, Plus, Search, Settings2, Trash2, UserRound, Video, X } from "lucide-react";
 import { demoPublicationLabels, demoPublicationsStorageKey, type DemoPublication, type DemoPublicationType } from "@/lib/demo-publications";
 import { useAuthState } from "@/components/auth/useAuthState";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
@@ -431,8 +431,16 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
     <section className="grid h-full gap-3">
       {items.map((item) => (
         <article key={item.id} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-card md:grid-cols-[96px_minmax(0,1fr)_auto] md:items-center">
-          <div className="flex h-24 w-full items-center justify-center overflow-hidden rounded-xl bg-blue-50 text-[#0875d1] md:w-24">
-            {item.images?.[0] ? <img src={item.images[0]} alt={item.title} className="h-full w-full object-cover" /> : <FileText className="h-8 w-8" />}
+          <div className="relative flex h-24 w-full items-center justify-center overflow-hidden rounded-xl bg-blue-50 text-[#0875d1] md:w-24">
+            {item.images?.[0] ? <img src={item.images[0]} alt={item.title} className="h-full w-full object-cover" /> : null}
+            {!item.images?.[0] && item.videos?.[0] ? <video src={item.videos[0]} className="h-full w-full bg-slate-950 object-cover" muted playsInline preload="metadata" /> : null}
+            {!item.images?.[0] && item.videos?.[0] ? (
+              <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-1.5 py-1 text-[10px] font-bold text-white">
+                <Video className="h-3 w-3" />
+                Видео
+              </span>
+            ) : null}
+            {!item.images?.[0] && !item.videos?.[0] ? <FileText className="h-8 w-8" /> : null}
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -448,9 +456,11 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
             </div>
           </div>
           <div className="flex flex-wrap gap-2 md:justify-end">
-            <Link href={getItemHref(item)} className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800">
-              Открыть
-            </Link>
+            {item.type !== "specialist" ? (
+              <Link href={getItemHref(item)} className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800">
+                Открыть
+              </Link>
+            ) : null}
             <Link href={getEditHref(item)} className="inline-flex h-10 items-center rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-[#0875d1]">
               Изменить
             </Link>
@@ -1220,11 +1230,11 @@ export function CabinetOrganizationClient() {
   );
 }
 
-export function CabinetSpecialistClient() {
+export function CabinetSpecialistClient({ initialSpecialist }: { initialSpecialist?: DemoPublication }) {
   const { items, loading } = useUserCabinetData();
-  const specialist = items.find((item) => item.type === "specialist");
+  const specialist = items.find((item) => item.type === "specialist") ?? initialSpecialist;
 
-  if (loading) {
+  if (loading && !initialSpecialist) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем анкету...</div>;
   }
 

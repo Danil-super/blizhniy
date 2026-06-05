@@ -117,6 +117,84 @@ canvas {
   gap: 0.75rem;
 }
 
+.specialist-primary-field-grid {
+  align-items: start;
+}
+
+.vacancy-create-form {
+  container-type: inline-size;
+  gap: clamp(0.55rem, 1.05cqw, 0.95rem);
+}
+
+.vacancy-main-grid,
+.vacancy-contact-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(0.5rem, 1cqw, 0.9rem);
+  min-width: 0;
+}
+
+.vacancy-create-form label {
+  gap: clamp(0.35rem, 0.65cqw, 0.5rem);
+  font-size: clamp(0.7rem, 0.9cqw, 0.82rem);
+  line-height: 1.05rem;
+}
+
+.vacancy-main-grid input:not([type="radio"]),
+.vacancy-contact-grid input:not([type="radio"]),
+.vacancy-location-fields input:not([type="radio"]) {
+  height: clamp(2.45rem, 3.2cqw, 2.75rem);
+  border-radius: 0.7rem;
+  padding-left: clamp(0.65rem, 1.05cqw, 0.95rem);
+  padding-right: clamp(0.65rem, 1.05cqw, 0.95rem);
+  font-size: clamp(0.78rem, 1cqw, 0.94rem);
+  line-height: 1.2rem;
+}
+
+.vacancy-create-form textarea {
+  min-height: clamp(5.5rem, 12cqw, 7rem);
+  border-radius: 0.7rem;
+  padding: clamp(0.65rem, 1.05cqw, 0.95rem);
+  font-size: clamp(0.78rem, 1cqw, 0.94rem);
+  line-height: 1.45rem;
+}
+
+.vacancy-location-fields {
+  gap: clamp(0.5rem, 0.9cqw, 0.8rem);
+}
+
+.vacancy-location-fields .listing-location-row {
+  gap: clamp(0.5rem, 1cqw, 0.85rem);
+}
+
+.vacancy-location-fields .listing-location-label {
+  display: block;
+  font-size: clamp(0.7rem, 0.9cqw, 0.82rem);
+  line-height: 1.05rem;
+}
+
+.vacancy-location-fields .listing-location-options {
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(0.35rem, 0.75cqw, 0.55rem);
+}
+
+.vacancy-location-fields .listing-location-option {
+  height: clamp(2.45rem, 3.2cqw, 2.75rem);
+  gap: clamp(0.4rem, 0.75cqw, 0.65rem);
+  overflow: hidden;
+  border-radius: 0.7rem;
+  padding-left: clamp(0.6rem, 1cqw, 0.9rem);
+  padding-right: clamp(0.6rem, 1cqw, 0.9rem);
+  font-size: clamp(0.68rem, 0.86cqw, 0.82rem);
+  line-height: 1rem;
+  white-space: nowrap;
+}
+
+.vacancy-location-fields .listing-location-option input {
+  height: 0.9rem;
+  width: 0.9rem;
+}
+
 .map-picker-panel {
   container-type: inline-size;
   min-width: 0;
@@ -156,9 +234,45 @@ canvas {
   }
 }
 
+@container (min-width: 30rem) {
+  .vacancy-main-grid,
+  .vacancy-contact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vacancy-location-fields .listing-location-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 38rem) {
+  .vacancy-contact-grid {
+    grid-template-columns: minmax(8rem, 0.75fr) minmax(10rem, 1fr) minmax(12rem, 1fr);
+  }
+
+  .vacancy-location-fields .listing-location-row {
+    grid-template-columns: minmax(17rem, 1.35fr) minmax(17rem, 1fr);
+    align-items: start;
+  }
+}
+
 @container (min-width: 72rem) {
   .responsive-field-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 82rem) {
+  .vacancy-main-grid {
+    grid-template-columns: repeat(4, minmax(12rem, 1fr));
+  }
+
+  .vacancy-contact-grid {
+    grid-template-columns: minmax(8rem, 0.7fr) minmax(10rem, 0.95fr) minmax(12rem, 0.95fr);
+  }
+
+  .vacancy-location-fields .listing-location-row {
+    grid-template-columns: minmax(24rem, 1.3fr) minmax(25rem, 1fr);
   }
 }
 
@@ -258,6 +372,56 @@ canvas {
   .responsive-form-panel > section,
   .responsive-form-panel > label {
     max-width: min(100%, 20rem);
+  }
+
+  .specialist-primary-field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .specialist-primary-field-grid > * {
+    max-width: 100%;
+  }
+
+  .specialist-primary-name {
+    order: 1;
+  }
+
+  .specialist-primary-profession {
+    order: 2;
+  }
+
+  .specialist-primary-phone {
+    order: 3;
+  }
+
+  .specialist-primary-price {
+    order: 4;
+  }
+
+  .specialist-primary-email {
+    order: 5;
+  }
+
+  .specialist-primary-messenger {
+    order: 6;
+  }
+
+  .specialist-primary-field-grid label {
+    gap: 0.35rem;
+    font-size: 0.625rem;
+    line-height: 0.8rem;
+  }
+
+  .specialist-primary-field-grid input,
+  .specialist-primary-field-grid button {
+    min-height: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.75rem;
+    padding-left: 0.45rem;
+    padding-right: 0.45rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
   }
 
   .responsive-form-panel input,

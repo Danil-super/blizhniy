@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
 
 type AuthMode = "login" | "register";
@@ -134,6 +134,7 @@ function PasswordField({
 
 export function AuthForm() {
   const router = useRouter();
+  const supabaseConfigured = isSupabaseBrowserConfigured();
   const [mode, setMode] = useState<AuthMode>("register");
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [email, setEmail] = useState("");
@@ -156,6 +157,15 @@ export function AuthForm() {
 
   useEffect(() => {
     let active = true;
+
+    if (!supabaseConfigured) {
+      setState("error");
+      setMessage("Авторизация временно недоступна: не настроено подключение к Supabase.");
+      return () => {
+        active = false;
+      };
+    }
+
     const supabase = getSupabaseBrowserClient();
     const isRecoveryUrl = window.location.search.includes("type=recovery") || window.location.hash.includes("type=recovery");
 
@@ -185,7 +195,7 @@ export function AuthForm() {
       active = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [supabaseConfigured]);
 
   function isValidEmail(value: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -356,10 +366,10 @@ export function AuthForm() {
 
   const registerReady =
     mode !== "register" ||
-    (!nameError && isValidEmail(normalizeAuthEmail(email)) && !passwordError && passwordConfirm.length > 0 && !passwordConfirmError && acceptedAgreement && acceptedPrivacy && Boolean(captchaToken));
-  const loginReady = isValidEmail(normalizeAuthEmail(email)) && password.length > 0;
-  const recoveryReady = isValidEmail(normalizeAuthEmail(email)) && Boolean(captchaToken);
-  const recoveryPasswordReady = !resetPasswordError && resetPasswordConfirm.length > 0 && !resetPasswordConfirmError;
+    (supabaseConfigured && !nameError && isValidEmail(normalizeAuthEmail(email)) && !passwordError && passwordConfirm.length > 0 && !passwordConfirmError && acceptedAgreement && acceptedPrivacy && Boolean(captchaToken));
+  const loginReady = supabaseConfigured && isValidEmail(normalizeAuthEmail(email)) && password.length > 0;
+  const recoveryReady = supabaseConfigured && isValidEmail(normalizeAuthEmail(email)) && Boolean(captchaToken);
+  const recoveryPasswordReady = supabaseConfigured && !resetPasswordError && resetPasswordConfirm.length > 0 && !resetPasswordConfirmError;
 
   return (
     <section className="min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
@@ -537,10 +547,7 @@ export function AuthForm() {
           <div className="mt-5">
             <TurnstileWidget
               resetKey={captchaResetKey}
-              siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
               onVerify={setCaptchaToken}
-              onExpire={() => setCaptchaToken("")}
-              onError={() => setCaptchaToken("")}
             />
           </div>
         ) : null}
@@ -557,10 +564,7 @@ export function AuthForm() {
               <>
                 <TurnstileWidget
                   resetKey={captchaResetKey}
-                  siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
                   onVerify={setCaptchaToken}
-                  onExpire={() => setCaptchaToken("")}
-                  onError={() => setCaptchaToken("")}
                 />
                 <button type="button" onClick={handleForgotPassword} disabled={state === "loading" || !recoveryReady} className="inline-flex w-full items-center justify-center text-sm font-bold text-[#0875d1] transition hover:text-[#065fa8] disabled:text-slate-400">
                   Отправить письмо для смены пароля

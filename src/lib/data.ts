@@ -253,6 +253,7 @@ export const vacancies: JobVacancy[] = [
     requirements: "Опыт от 1 года, аккуратность, свой базовый инструмент.",
     responsibilities: "Монтаж, диагностика, ремонт, общение с заказчиками.",
     status: "published",
+    publishedAt: "2026-05-20T10:15:00+03:00",
   },
   {
     id: "master-manikyura-liliya-124",
@@ -275,6 +276,7 @@ export const vacancies: JobVacancy[] = [
     requirements: "Портфолио, санитарная книжка, аккуратность.",
     responsibilities: "Маникюр, педикюр, дизайн, запись клиентов.",
     status: "published",
+    publishedAt: "2026-05-21T12:30:00+03:00",
   },
   {
     id: "kliner-clean-home-125",
@@ -296,6 +298,7 @@ export const vacancies: JobVacancy[] = [
     requirements: "Ответственность и пунктуальность.",
     responsibilities: "Поддерживающая и генеральная уборка.",
     status: "published",
+    publishedAt: "2026-05-22T09:45:00+03:00",
   },
 ];
 
@@ -373,6 +376,7 @@ export const specialists: SpecialistProfile[] = [
     phone: "+78610001001",
     messengerUrl: "https://t.me/blizhniy_support",
     status: "published",
+    createdAt: "2026-05-20T11:20:00+03:00",
   },
   {
     id: "manikyur-marina-124",
@@ -389,6 +393,7 @@ export const specialists: SpecialistProfile[] = [
     phone: "+78610001002",
     messengerUrl: "https://wa.me/78610001002",
     status: "published",
+    createdAt: "2026-05-21T14:05:00+03:00",
   },
   {
     id: "repetitor-irina-125",
@@ -405,6 +410,7 @@ export const specialists: SpecialistProfile[] = [
     phone: "+78610001003",
     videoUrl: "https://meet.google.com/",
     status: "published",
+    createdAt: "2026-05-22T16:40:00+03:00",
   },
 ];
 

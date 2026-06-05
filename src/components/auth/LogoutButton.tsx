@@ -13,19 +13,25 @@ export function LogoutButton() {
   const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
-    const supabase = getSupabaseBrowserClient();
+    let subscription: { unsubscribe: () => void } | null = null;
 
-    supabase.auth.getSession().then(({ data }) => {
-      setSignedIn(Boolean(data.session));
-    });
+    try {
+      const supabase = getSupabaseBrowserClient();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSignedIn(Boolean(session));
-    });
+      supabase.auth.getSession().then(({ data }) => {
+        setSignedIn(Boolean(data.session));
+      });
 
-    return () => subscription.unsubscribe();
+      const authState = supabase.auth.onAuthStateChange((_event, session) => {
+        setSignedIn(Boolean(session));
+      });
+
+      subscription = authState.data.subscription;
+    } catch {
+      setSignedIn(false);
+    }
+
+    return () => subscription?.unsubscribe();
   }, []);
 
   async function handleLogout() {

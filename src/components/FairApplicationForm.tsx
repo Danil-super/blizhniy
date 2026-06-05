@@ -139,10 +139,7 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
       </label>
       <TurnstileWidget
         resetKey={captchaResetKey}
-        siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
         onVerify={setCaptchaToken}
-        onExpire={() => setCaptchaToken("")}
-        onError={() => setCaptchaToken("")}
       />
       <button type="submit" disabled={state === "loading" || !captchaToken} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#0aa337] px-5 text-sm font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-12 sm:w-fit sm:px-7 sm:text-base">
         {state === "loading" ? "Создаем заявку..." : adminMode ? "Создать заявку без оплаты" : "Создать заявку и перейти к оплате"}

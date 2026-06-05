@@ -158,7 +158,7 @@ export function FairApplicationFormPage({ adminMode = false }: { adminMode?: boo
         <span className="mx-2">/</span>
         <span>Заявка</span>
       </nav>
-      <section className="grid gap-5 sm:gap-8 lg:grid-cols-[1fr_360px]">
+      <section className="mb-16 grid gap-5 sm:mb-20 sm:gap-8 lg:grid-cols-[1fr_360px]">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
           <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">Заявка на участие</p>
           <h1 className="mt-2 text-3xl font-black text-[#060b27] sm:mt-3 sm:text-4xl">Ярмарка мастеров</h1>

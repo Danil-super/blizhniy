@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { WorkPage } from "@/components/WorkPage";
+import { listSpecialists } from "@/lib/mock-store";
 
 export const metadata: Metadata = {
   title: "Работа в Краснодаре",
@@ -12,12 +13,14 @@ export const metadata: Metadata = {
   },
 };
 
+export const dynamic = "force-dynamic";
+
 export default function KrasnodarWorkPage() {
   return (
     <>
       <SiteHeader />
       <HomeHero />
-      <WorkPage />
+      <WorkPage specialists={listSpecialists()} />
     </>
   );
 }

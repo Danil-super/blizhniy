@@ -4,10 +4,11 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Camera, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, Camera, Save, Trash2, Video } from "lucide-react";
 import { DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
-import { categories, region } from "@/lib/data";
+import { categories } from "@/lib/data";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
+import { ListingLocationFields } from "@/components/listings/ListingFormControls";
 
 const listingKinds: { value: ListingKind; label: string }[] = [
   { value: "prodam", label: "Продам" },
@@ -16,6 +17,8 @@ const listingKinds: { value: ListingKind; label: string }[] = [
   { value: "menyayu", label: "Меняю" },
   { value: "otdam-darom", label: "Отдам даром" },
 ];
+
+const maxMediaFiles = 20;
 
 function readStoredPublications() {
   try {
@@ -30,6 +33,16 @@ function readStoredPublications() {
   }
 
   return [];
+}
+
+function limitMediaFiles(images: string[] = [], videos: string[] = []) {
+  const nextImages = images.slice(0, maxMediaFiles);
+  const nextVideos = videos.slice(0, Math.max(0, maxMediaFiles - nextImages.length));
+
+  return {
+    images: nextImages,
+    videos: nextVideos,
+  };
 }
 
 function slugifySubcategory(name: string) {
@@ -86,10 +99,30 @@ function slugifySubcategory(name: string) {
   return map[name] ?? name.toLowerCase().replaceAll(" ", "-");
 }
 
+function readCoordinate(formData: FormData, name: string) {
+  const rawValue = String(formData.get(name) ?? "").trim();
+
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const value = Number(rawValue.replace(",", "."));
+  return Number.isFinite(value) ? value : undefined;
+}
+
 function readImageFile(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("Не удалось прочитать фото"));
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsDataURL(file);
+  });
+}
+
+function readMediaFile(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
     reader.onload = () => resolve(String(reader.result));
     reader.readAsDataURL(file);
   });
@@ -133,9 +166,11 @@ async function readCompressedImage(file: File) {
 export function DemoListingEditClient({ slug }: { slug: string }) {
   const [items, setItems] = useState<DemoPublication[]>([]);
   const [images, setImages] = useState<string[]>([]);
+  const [videos, setVideos] = useState<string[]>([]);
   const [categorySlug, setCategorySlug] = useState("mebel-i-interer");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const mediaCount = images.length + videos.length;
 
   const listing = useMemo(() => items.find((item) => item.type === "listing" && item.id === slug), [items, slug]);
   const selectedCategory = categories.find((category) => category.slug === categorySlug) ?? categories[0];
@@ -145,16 +180,18 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
   useEffect(() => {
     const storedItems = readStoredPublications();
     const storedListing = storedItems.find((item) => item.type === "listing" && item.id === slug);
+    const storedMedia = limitMediaFiles(storedListing?.images, storedListing?.videos);
 
     setItems(storedItems);
-    setImages(storedListing?.images ?? []);
+    setImages(storedMedia.images);
+    setVideos(storedMedia.videos);
     setCategorySlug(storedListing?.categorySlug ?? "mebel-i-interer");
   }, [slug]);
 
-  async function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
+  async function handleMediaChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? [])
-      .filter((file) => file.type.startsWith("image/"))
-      .slice(0, Math.max(0, 12 - images.length));
+      .filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"))
+      .slice(0, Math.max(0, maxMediaFiles - mediaCount));
 
     event.target.value = "";
 
@@ -162,12 +199,24 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
       return;
     }
 
-    const nextImages = await Promise.allSettled(files.map((file) => readCompressedImage(file)));
-    setImages((current) => [...current, ...nextImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))].slice(0, 12));
+    const nextMedia = await Promise.allSettled(
+      files.map(async (file) => ({
+        kind: file.type.startsWith("video/") ? "video" : "image",
+        value: file.type.startsWith("video/") ? await readMediaFile(file) : await readCompressedImage(file),
+      })),
+    );
+    const fulfilled = nextMedia.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+
+    setImages((current) => [...current, ...fulfilled.filter((item) => item.kind === "image").map((item) => item.value)].slice(0, maxMediaFiles));
+    setVideos((current) => [...current, ...fulfilled.filter((item) => item.kind === "video").map((item) => item.value)].slice(0, maxMediaFiles));
   }
 
   function removeImage(index: number) {
     setImages((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function removeVideo(index: number) {
+    setVideos((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -185,11 +234,16 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
     const nextSubcategorySlug = String(formData.get("subcategory") ?? listing.subcategorySlug ?? "");
     const location = String(formData.get("location") ?? listing.city).trim();
     const city = location.split(",")[0]?.trim() || "Краснодар";
+    const hasMapPoint = String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1";
     const updated: DemoPublication = {
       ...listing,
       title: String(formData.get("title") ?? listing.title).trim() || listing.title,
       subtitle: String(formData.get("subtitle") ?? listing.subtitle).trim() || listing.subtitle,
       city,
+      address: hasMapPoint ? String(formData.get("address") ?? "").trim() || undefined : undefined,
+      lat: hasMapPoint ? readCoordinate(formData, "lat") : undefined,
+      lng: hasMapPoint ? readCoordinate(formData, "lng") : undefined,
+      hasMapPoint,
       price: String(formData.get("price") ?? listing.price ?? "").trim() || "по договоренности",
       description: String(formData.get("description") ?? listing.description ?? "").trim() || "Описание будет дополнено.",
       phone: String(formData.get("phone") ?? listing.phone ?? "").trim() || "+78610009999",
@@ -198,6 +252,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
       categorySlug: nextCategorySlug,
       subcategorySlug: nextSubcategorySlug,
       images,
+      videos,
     };
     const nextItems = items.map((item) => (item.id === slug ? updated : item));
 
@@ -305,11 +360,14 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
           />
         </label>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <label className="block">
-            <span className="text-sm font-bold text-slate-700">Город и регион</span>
-            <input name="location" defaultValue={`${listing.city}, ${region.name}`} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
-          </label>
+        <ListingLocationFields
+          defaultAddress={listing.address}
+          defaultCity={listing.city}
+          defaultLat={listing.hasMapPoint ? listing.lat : undefined}
+          defaultLng={listing.hasMapPoint ? listing.lng : undefined}
+        />
+
+        <div className="grid gap-4 md:grid-cols-2">
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Телефон</span>
             <input name="phone" defaultValue={listing.phone} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
@@ -325,17 +383,17 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
             <div className="flex items-center gap-3">
               <Camera className="h-5 w-5 text-[#0875d1]" />
               <div>
-                <h2 className="font-bold text-slate-800">Фото объявления</h2>
-                <p className="mt-1 text-sm text-slate-500">До 12 изображений. Сейчас сохранено: {images.length}.</p>
+                <h2 className="font-bold text-slate-800">Фото и видео объявления</h2>
+                <p className="mt-1 text-sm text-slate-500">До {maxMediaFiles} файлов. Сейчас сохранено: {mediaCount}.</p>
               </div>
             </div>
             <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-bold text-[#0875d1] transition hover:bg-blue-50">
-              Добавить фото
-              <input type="file" accept="image/*" multiple className="sr-only" onChange={handleImageChange} />
+              Добавить файлы
+              <input type="file" accept="image/*,video/*" multiple className="sr-only" onChange={handleMediaChange} />
             </label>
           </div>
 
-          {images.length ? (
+          {mediaCount ? (
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
               {images.map((image, index) => (
                 <figure key={`${image.slice(0, 40)}-${index}`} className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -350,10 +408,27 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
                   </button>
                 </figure>
               ))}
+              {videos.map((video, index) => (
+                <figure key={`${video.slice(0, 40)}-${index}`} className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white">
+                  <video src={video} className="aspect-square w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
+                  <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
+                    <Video className="h-3 w-3" />
+                    Видео
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeVideo(index)}
+                    className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow-sm transition hover:text-rose-600"
+                    aria-label={`Удалить видео ${index + 1}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </figure>
+              ))}
             </div>
           ) : (
             <div className="mt-4 flex min-h-28 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-sm font-semibold text-slate-500">
-              Фото пока не добавлены
+              Медиафайлы пока не добавлены
             </div>
           )}
         </section>

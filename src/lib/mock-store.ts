@@ -40,6 +40,7 @@ type CreateListingInput = {
   messengerUrl?: string;
   lat?: number;
   lng?: number;
+  hasMapPoint?: boolean;
 };
 
 type CreateVacancyInput = {
@@ -57,6 +58,7 @@ type CreateVacancyInput = {
   description?: string;
   lat?: number;
   lng?: number;
+  hasMapPoint?: boolean;
 };
 
 type CreateWorkRequestInput = {
@@ -89,6 +91,7 @@ type CreateSpecialistInput = {
   images?: string[];
   lat?: number;
   lng?: number;
+  hasMapPoint?: boolean;
 };
 
 declare global {
@@ -218,6 +221,7 @@ export function createListing(input: CreateListingInput) {
     address: input.address,
     lat: input.lat,
     lng: input.lng,
+    hasMapPoint: Boolean(input.hasMapPoint),
     showExactAddress: false,
     price: input.price?.trim() || "по договоренности",
     booking: input.booking,
@@ -236,6 +240,7 @@ export function createListing(input: CreateListingInput) {
 }
 
 export function createVacancy(input: CreateVacancyInput) {
+  const publishedAt = nowIsoDateTime();
   const vacancy: JobVacancy = {
     id: createEntityId("vacancy"),
     organization: input.organization,
@@ -246,7 +251,8 @@ export function createVacancy(input: CreateVacancyInput) {
     address: input.address,
     lat: input.lat,
     lng: input.lng,
-    showExactAddress: Boolean(input.address),
+    hasMapPoint: Boolean(input.hasMapPoint),
+    showExactAddress: Boolean(input.hasMapPoint && input.address),
     salary: input.salary?.trim() || "по договоренности",
     logoText: input.organization.slice(0, 12) || "Компания",
     logoTone: "blue",
@@ -258,6 +264,8 @@ export function createVacancy(input: CreateVacancyInput) {
     requirements: "Уточняется",
     responsibilities: "Уточняется",
     status: "published",
+    createdAt: publishedAt,
+    publishedAt,
   };
 
   getMockStore().vacancies.unshift(vacancy);
@@ -290,6 +298,7 @@ export function createWorkRequest(input: CreateWorkRequestInput) {
 }
 
 export function createSpecialist(input: CreateSpecialistInput) {
+  const publishedAt = nowIsoDateTime();
   const specialist: SpecialistProfile = {
     id: createEntityId("specialist"),
     name: input.name,
@@ -301,6 +310,7 @@ export function createSpecialist(input: CreateSpecialistInput) {
     address: input.address,
     lat: input.lat,
     lng: input.lng,
+    hasMapPoint: input.hasMapPoint,
     showExactAddress: false,
     price: input.price?.trim() || "по договоренности",
     imageSeed: "alex",
@@ -309,6 +319,8 @@ export function createSpecialist(input: CreateSpecialistInput) {
     email: input.email?.trim(),
     messengerUrl: input.messengerUrl?.trim(),
     status: "published",
+    createdAt: publishedAt,
+    publishedAt,
   };
 
   getMockStore().specialists.unshift(specialist);
@@ -333,6 +345,7 @@ export function updateSpecialist(id: string, input: CreateSpecialistInput) {
     address: input.address,
     lat: input.lat,
     lng: input.lng,
+    hasMapPoint: input.hasMapPoint,
     showExactAddress: false,
     price: input.price?.trim() || "по договоренности",
     images: input.images,

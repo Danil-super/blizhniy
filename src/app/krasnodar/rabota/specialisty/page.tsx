@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
-import { specialists } from "@/lib/data";
+import { listSpecialists } from "@/lib/mock-store";
 
 export const metadata: Metadata = {
   title: "Специалисты в Краснодаре",
@@ -11,7 +11,11 @@ export const metadata: Metadata = {
   },
 };
 
+export const dynamic = "force-dynamic";
+
 export default function SpecialistsPage() {
+  const specialists = listSpecialists();
+
   return (
     <>
       <SiteHeader />

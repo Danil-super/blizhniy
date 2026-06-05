@@ -20,8 +20,18 @@ function readValue(formData: FormData, name: string, fallback = "") {
 }
 
 function readCoordinate(formData: FormData, name: string) {
-  const value = Number(readValue(formData, name).replace(",", "."));
+  const rawValue = readValue(formData, name);
+
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const value = Number(rawValue.replace(",", "."));
   return Number.isFinite(value) ? value : undefined;
+}
+
+function hasSelectedMapPoint(formData: FormData) {
+  return readValue(formData, "locationMode") === "exact" && readValue(formData, "mapPointSelected") === "1";
 }
 
 function readNumber(formData: FormData, name: string) {
@@ -116,6 +126,18 @@ function readImageFile(file: File) {
   });
 }
 
+function readMediaFile(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
+    reader.onload = () => {
+      resolve(String(reader.result));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 async function readCompressedImage(file: File) {
   const dataUrl = await readImageFile(file);
 
@@ -146,10 +168,29 @@ async function readSelectedImages(formData: FormData) {
   const files = formData
     .getAll("photos")
     .filter((file): file is File => file instanceof File && file.size > 0 && file.type.startsWith("image/"))
-    .slice(0, 12);
+    .slice(0, 20);
 
   const images = await Promise.allSettled(files.map((file) => readCompressedImage(file)));
   return images.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+}
+
+async function readSelectedListingMedia(formData: FormData) {
+  const files = formData
+    .getAll("photos")
+    .filter((file): file is File => file instanceof File && file.size > 0 && (file.type.startsWith("image/") || file.type.startsWith("video/")))
+    .slice(0, 20);
+  const media = await Promise.allSettled(
+    files.map(async (file) => ({
+      kind: file.type.startsWith("video/") ? "video" : "image",
+      value: file.type.startsWith("video/") ? await readMediaFile(file) : await readCompressedImage(file),
+    })),
+  );
+  const fulfilled = media.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+
+  return {
+    images: fulfilled.filter((item) => item.kind === "image").map((item) => item.value),
+    videos: fulfilled.filter((item) => item.kind === "video").map((item) => item.value),
+  };
 }
 
 async function buildPublication(formData: FormData, type: DemoPublicationType): Promise<DemoPublication> {
@@ -161,6 +202,7 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
     const categorySlug = readValue(formData, "category", "mebel-i-interer");
     const categoryName = categories.find((category) => category.slug === categorySlug)?.name ?? "Категория";
     const safeListingKind = categorySlug === "otdyh" || (categorySlug === "nedvizhimost" && listingKind === "arenda") ? "arenda" : listingKind;
+    const media = await readSelectedListingMedia(formData);
 
     return {
       id,
@@ -170,9 +212,12 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
       city: readValue(formData, "location", "Краснодар").split(",")[0]?.trim() || "Краснодар",
       price: readValue(formData, "price", safeListingKind === "arenda" && isBookingCategory(categorySlug) ? "расчет по датам" : "по договоренности"),
       description: readValue(formData, "description", "Описание будет дополнено."),
-      images: await readSelectedImages(formData),
-      lat: readCoordinate(formData, "lat"),
-      lng: readCoordinate(formData, "lng"),
+      images: media.images,
+      videos: media.videos,
+      lat: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lat") : undefined,
+      lng: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lng") : undefined,
+      address: hasSelectedMapPoint(formData) ? readValue(formData, "address") : undefined,
+      hasMapPoint: hasSelectedMapPoint(formData),
       showExactAddress: false,
       phone: readValue(formData, "phone", "+78610009999"),
       messengerUrl: readValue(formData, "messengerUrl"),
@@ -186,16 +231,20 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
   }
 
   if (type === "vacancy") {
+    const hasMapPoint = hasSelectedMapPoint(formData);
+
     return {
       id,
       type,
       title: readValue(formData, "title", "Новая вакансия"),
       subtitle: readValue(formData, "organization", "Организация"),
-      city: readValue(formData, "city", "Краснодар"),
+      city: readValue(formData, "location", "Краснодар").split(",")[0]?.trim() || "Краснодар",
       price: readValue(formData, "salary", "по договоренности"),
-      lat: readCoordinate(formData, "lat"),
-      lng: readCoordinate(formData, "lng"),
-      showExactAddress: Boolean(readValue(formData, "address")),
+      lat: hasMapPoint ? readCoordinate(formData, "lat") : undefined,
+      lng: hasMapPoint ? readCoordinate(formData, "lng") : undefined,
+      address: hasMapPoint ? readValue(formData, "address") : undefined,
+      hasMapPoint,
+      showExactAddress: Boolean(hasMapPoint && readValue(formData, "address")),
       status: "Опубликовано",
       createdAt: now,
     };
@@ -218,16 +267,20 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
   }
 
   if (type === "specialist") {
+    const hasMapPoint = hasSelectedMapPoint(formData);
+
     return {
       id,
       type,
       title: readValue(formData, "name", "Новый специалист"),
       subtitle: readValue(formData, "profession", "Специалист"),
-      city: readValue(formData, "city", "Краснодар"),
+      city: readValue(formData, "city", "Краснодар").split(",")[0]?.trim() || "Краснодар",
       price: readValue(formData, "price", "по договоренности"),
       images: await readSelectedImages(formData),
-      lat: readCoordinate(formData, "lat"),
-      lng: readCoordinate(formData, "lng"),
+      lat: hasMapPoint ? readCoordinate(formData, "lat") : undefined,
+      lng: hasMapPoint ? readCoordinate(formData, "lng") : undefined,
+      address: hasMapPoint ? readValue(formData, "address") : undefined,
+      hasMapPoint,
       showExactAddress: false,
       status: "Опубликовано",
       createdAt: now,
@@ -299,7 +352,7 @@ export function AdminDemoPublishButton({ publicationType, returnHref, label }: A
       try {
         window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextPublications));
       } catch {
-        window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify([{ ...publication, images: [] }, ...stored].slice(0, 50)));
+        window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify([{ ...publication, images: [], videos: [] }, ...stored].slice(0, 50)));
       }
 
       window.dispatchEvent(new Event("blizhniy-demo-publications-updated"));
@@ -317,10 +370,7 @@ export function AdminDemoPublishButton({ publicationType, returnHref, label }: A
       {captchaRequired ? (
         <TurnstileWidget
           resetKey={captchaResetKey}
-          siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
           onVerify={setCaptchaToken}
-          onExpire={() => setCaptchaToken("")}
-          onError={() => setCaptchaToken("")}
         />
       ) : null}
       <button

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRightLeft, CalendarDays, Clock3, Gift, MapPin, ShoppingBag, Tags } from "lucide-react";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
+import { hasMapCoordinates } from "@/lib/map-location";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewCounter } from "./ListingViewCounter";
@@ -9,6 +10,7 @@ export type ListingKind = "prodam" | "kuplyu" | "menyayu" | "otdam-darom" | "are
 export type ListingStatus = "draft" | "pending_payment" | "paid" | "published" | "archived" | "expired" | "rejected";
 
 export type DemoListing = {
+  viewId?: string;
   slug: string;
   title: string;
   kind: ListingKind;
@@ -21,6 +23,7 @@ export type DemoListing = {
   address?: string;
   lat?: number;
   lng?: number;
+  hasMapPoint?: boolean;
   showExactAddress: boolean;
   price: string;
   booking?: import("@/lib/types").BookingDetails;
@@ -35,6 +38,14 @@ export type DemoListing = {
   expiresAt: string;
   imageTone: "blue" | "green" | "rose" | "amber" | "violet";
 };
+
+function hasListingMapPoint(listing: DemoListing) {
+  return (listing.hasMapPoint ?? true) && hasMapCoordinates(listing.lat, listing.lng);
+}
+
+function listingPlaceLabel(listing: DemoListing) {
+  return hasListingMapPoint(listing) ? [listing.city, listing.district].filter(Boolean).join(", ") : listing.city;
+}
 
 const kindLabels: Record<ListingKind, string> = {
   prodam: "Продам",
@@ -118,7 +129,7 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
           <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:text-sm lg:mt-2 lg:leading-6">{listing.description}</p>
           <p className="mt-1.5 flex min-w-0 items-start gap-1.5 text-xs text-slate-500 sm:text-sm lg:mt-3 lg:gap-2">
             <MapPin className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
-            <span className="min-w-0 truncate">{listing.city}, {listing.district}</span>
+            <span className="min-w-0 truncate">{listingPlaceLabel(listing)}</span>
           </p>
         </div>
       </div>
@@ -156,6 +167,7 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
 export function ListingGridCard({ listing }: { listing: DemoListing }) {
   const Icon = kindIcons[listing.kind];
   const href = `/blizhniy/obyavlenie/${listing.slug}`;
+  const viewId = listing.viewId ?? listing.slug;
 
   return (
     <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card">
@@ -180,7 +192,7 @@ export function ListingGridCard({ listing }: { listing: DemoListing }) {
               <MapPin className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">{listing.city}</span>
             </span>
-            <ListingViewCounter listingId={listing.slug} />
+            <ListingViewCounter listingId={viewId} />
           </span>
         </span>
       </Link>

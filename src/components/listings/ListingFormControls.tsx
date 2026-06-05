@@ -2,11 +2,13 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, X } from "lucide-react";
+import { ChangeEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import type { InputHTMLAttributes } from "react";
+import { Camera, Video, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
 import { categories, cities, region } from "@/lib/data";
+import { hasMapCoordinates } from "@/lib/map-location";
 import type { BookingDetails, ListingKind } from "@/lib/types";
 
 type Suggestion = {
@@ -14,9 +16,10 @@ type Suggestion = {
   hint?: string;
 };
 
-type PreviewPhoto = {
+type PreviewMedia = {
   id: string;
   file: File;
+  kind: "image" | "video";
   name: string;
   url: string;
 };
@@ -151,6 +154,7 @@ function AutocompleteInput({
   placeholder,
   selectOnFocus = false,
   suggestions,
+  inputProps = {},
 }: {
   label: string;
   name: string;
@@ -158,6 +162,7 @@ function AutocompleteInput({
   placeholder: string;
   selectOnFocus?: boolean;
   suggestions: Suggestion[];
+  inputProps?: InputHTMLAttributes<HTMLInputElement>;
 }) {
   const [value, setValue] = useState(defaultValue ?? "");
   const [open, setOpen] = useState(false);
@@ -184,6 +189,7 @@ function AutocompleteInput({
         onBlur={() => window.setTimeout(() => setOpen(false), 120)}
         placeholder={placeholder}
         autoComplete="off"
+        {...inputProps}
       />
       {open && filtered.length ? (
         <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 max-h-[14.75rem] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl shadow-slate-900/10">
@@ -208,18 +214,108 @@ function AutocompleteInput({
   );
 }
 
-export function ListingLocationFields({ defaultCity, defaultLat, defaultLng }: { defaultCity?: string; defaultLat?: number; defaultLng?: number }) {
+export function ListingLocationFields({
+  addressLegend = "Адрес объявления",
+  className = "",
+  cityFieldName = "location",
+  cityLabel = "Город и регион",
+  defaultAddress,
+  defaultCity,
+  defaultLat,
+  defaultLng,
+  inlineControls = false,
+}: {
+  addressLegend?: string;
+  className?: string;
+  cityFieldName?: string;
+  cityLabel?: string;
+  defaultAddress?: string;
+  defaultCity?: string;
+  defaultLat?: number;
+  defaultLng?: number;
+  inlineControls?: boolean;
+}) {
+  const hasInitialPoint = hasMapCoordinates(defaultLat, defaultLng);
+  const addressGroupId = useId();
+  const [mode, setMode] = useState<"city" | "exact">(hasInitialPoint ? "exact" : "city");
+  const [pointSelected, setPointSelected] = useState(hasInitialPoint);
+  const optionClassName = (active: boolean) =>
+    `listing-location-option flex min-w-0 cursor-pointer items-center gap-3 rounded-lg border bg-white text-sm font-bold transition ${inlineControls ? "h-11 px-3" : "p-3"} ${active ? "border-[#0875d1] text-[#0875d1] ring-2 ring-blue-100" : "border-slate-200 text-slate-700 hover:border-blue-200"}`;
+  const addressOptions = (
+    <div className="listing-location-options grid gap-2 sm:grid-cols-2">
+      <label className={optionClassName(mode === "city")}>
+        <input
+          type="radio"
+          name="locationMode"
+          value="city"
+          checked={mode === "city"}
+          onChange={() => {
+            setMode("city");
+            setPointSelected(false);
+          }}
+          className="h-4 w-4 shrink-0 accent-[#0875d1]"
+        />
+        Только город
+      </label>
+      <label className={optionClassName(mode === "exact")}>
+        <input
+          type="radio"
+          name="locationMode"
+          value="exact"
+          checked={mode === "exact"}
+          onChange={() => setMode("exact")}
+          className="h-4 w-4 shrink-0 accent-[#0875d1]"
+        />
+        Точный адрес
+      </label>
+    </div>
+  );
+
   return (
-    <div className="grid gap-4">
-      <AutocompleteInput
-        label="Город и регион"
-        name="location"
-        defaultValue={formatCityValue(defaultCity)}
-        placeholder="Начните вводить город"
-        selectOnFocus
-        suggestions={citySuggestions}
-      />
-      <YandexMapPicker defaultLat={defaultLat} defaultLng={defaultLng} />
+    <div className={`listing-location-fields grid gap-4 ${inlineControls ? "listing-location-fields--inline" : ""} ${className}`}>
+      <div className={inlineControls ? "listing-location-row grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.8fr)] lg:items-start" : "listing-location-row grid gap-4"}>
+        <AutocompleteInput
+          label={cityLabel}
+          name={cityFieldName}
+          defaultValue={formatCityValue(defaultCity)}
+          placeholder="Начните вводить город"
+          selectOnFocus
+          suggestions={citySuggestions}
+          inputProps={{
+            maxLength: 80,
+            required: true,
+            title: "Выберите город из списка или укажите город и регион.",
+          }}
+        />
+        {inlineControls ? (
+          <div className="listing-location-address-group" role="group" aria-labelledby={addressGroupId}>
+            <span id={addressGroupId} className="listing-location-label text-sm font-bold text-slate-700">
+              {addressLegend}
+            </span>
+            <div className="mt-2">{addressOptions}</div>
+          </div>
+        ) : (
+          <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+            <legend className="px-1 text-sm font-bold text-slate-700">{addressLegend}</legend>
+            <div className="mt-2">{addressOptions}</div>
+          </fieldset>
+        )}
+      </div>
+      {mode === "exact" ? (
+        <>
+          <YandexMapPicker defaultAddress={defaultAddress} defaultLat={defaultLat} defaultLng={defaultLng} onPointSelectedChange={setPointSelected} />
+          <input
+            className="pointer-events-none absolute h-px w-px -translate-x-[200vw] opacity-0"
+            tabIndex={-1}
+            aria-hidden="true"
+            value={pointSelected ? "1" : ""}
+            onChange={() => undefined}
+            readOnly
+            required
+          />
+          {!pointSelected ? <p className="text-sm font-semibold text-amber-700">Введите точный адрес в поиске карты или поставьте точку кликом по карте.</p> : null}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -520,11 +616,11 @@ export function ListingKindAndCategoryFields({
 }
 
 export function ListingPhotoUploader() {
-  const [photos, setPhotos] = useState<PreviewPhoto[]>([]);
+  const [media, setMedia] = useState<PreviewMedia[]>([]);
   const urlsRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
-  const maxPhotos = 20;
-  const availableSlots = maxPhotos - photos.length;
+  const maxFiles = 20;
+  const availableSlots = maxFiles - media.length;
 
   useEffect(() => {
     return () => {
@@ -535,50 +631,51 @@ export function ListingPhotoUploader() {
 
   function handleFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? [])
-      .filter((file) => file.type.startsWith("image/"))
+      .filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"))
       .slice(0, availableSlots);
 
     if (!files.length) {
-      syncFileInput(photos);
+      syncFileInput(media);
       return;
     }
 
-    const nextPhotos = files.map((file) => {
+    const nextMedia = files.map((file) => {
       const url = URL.createObjectURL(file);
       urlsRef.current.push(url);
 
       return {
         id: `${file.name}-${file.size}-${url}`,
         file,
+        kind: file.type.startsWith("video/") ? "video" : "image",
         name: file.name,
         url,
-      };
+      } satisfies PreviewMedia;
     });
 
-    setPhotos((current) => {
-      const updated = [...current, ...nextPhotos];
+    setMedia((current) => {
+      const updated = [...current, ...nextMedia];
       syncFileInput(updated);
       return updated;
     });
   }
 
-  function removePhoto(photo: PreviewPhoto) {
-    URL.revokeObjectURL(photo.url);
-    urlsRef.current = urlsRef.current.filter((url) => url !== photo.url);
-    setPhotos((current) => {
-      const updated = current.filter((item) => item.id !== photo.id);
+  function removeMedia(item: PreviewMedia) {
+    URL.revokeObjectURL(item.url);
+    urlsRef.current = urlsRef.current.filter((url) => url !== item.url);
+    setMedia((current) => {
+      const updated = current.filter((mediaItem) => mediaItem.id !== item.id);
       syncFileInput(updated);
       return updated;
     });
   }
 
-  function syncFileInput(nextPhotos: PreviewPhoto[]) {
+  function syncFileInput(nextMedia: PreviewMedia[]) {
     if (!inputRef.current) {
       return;
     }
 
     const dataTransfer = new DataTransfer();
-    nextPhotos.forEach((photo) => dataTransfer.items.add(photo.file));
+    nextMedia.forEach((item) => dataTransfer.items.add(item.file));
     inputRef.current.files = dataTransfer.files;
   }
 
@@ -593,33 +690,43 @@ export function ListingPhotoUploader() {
       className="cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 transition hover:border-blue-300 hover:bg-blue-50/40 sm:p-5"
       onClick={openFileDialog}
     >
-      <input ref={inputRef} className="sr-only" type="file" accept="image/*" name="photos" multiple onChange={handleFiles} />
+      <input ref={inputRef} className="sr-only" type="file" accept="image/*,video/*" name="photos" multiple onChange={handleFiles} />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <Camera className="h-5 w-5 shrink-0 text-[#0875d1]" />
           <div>
-            <h2 className="font-bold text-slate-800">Фото объявления</h2>
-            <p className="mt-1 text-sm text-slate-500">До {maxPhotos} изображений. Сейчас выбрано: {photos.length}.</p>
+            <h2 className="font-bold text-slate-800">Фото и видео объявления</h2>
+            <p className="mt-1 text-sm text-slate-500">До {maxFiles} файлов. Сейчас выбрано: {media.length}.</p>
           </div>
         </div>
-        <span className="text-sm font-semibold text-[#0875d1]">{availableSlots > 0 ? "Нажмите в область, чтобы выбрать фото" : "Лимит фото заполнен"}</span>
+        <span className="text-sm font-semibold text-[#0875d1]">{availableSlots > 0 ? "Нажмите в область, чтобы выбрать файлы" : "Лимит файлов заполнен"}</span>
       </div>
 
-      {photos.length ? (
+      {media.length ? (
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
-          {photos.map((photo, index) => (
-            <figure key={photo.id} className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white">
-              <img src={photo.url} alt={`Фото ${index + 1}: ${photo.name}`} className="aspect-square w-full bg-slate-50 object-contain p-1" />
-              <figcaption className="sr-only">{photo.name}</figcaption>
+          {media.map((item, index) => (
+            <figure key={item.id} className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white">
+              {item.kind === "video" ? (
+                <video src={item.url} className="aspect-square w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
+              ) : (
+                <img src={item.url} alt={`Фото ${index + 1}: ${item.name}`} className="aspect-square w-full bg-slate-50 object-contain p-1" />
+              )}
+              {item.kind === "video" ? (
+                <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
+                  <Video className="h-3 w-3" />
+                  Видео
+                </span>
+              ) : null}
+              <figcaption className="sr-only">{item.name}</figcaption>
               <button
                 type="button"
                 data-photo-remove
                 onClick={(event) => {
                   event.stopPropagation();
-                  removePhoto(photo);
+                  removeMedia(item);
                 }}
                 className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow-sm transition hover:text-rose-600"
-                aria-label={`Удалить ${photo.name}`}
+                aria-label={`Удалить ${item.name}`}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -630,7 +737,7 @@ export function ListingPhotoUploader() {
         <div className="mt-4 flex min-h-28 w-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-sm font-semibold text-slate-500">
           <span className="inline-flex items-center gap-2">
             <Camera className="h-4 w-4" />
-            Нажмите, чтобы добавить фотографии
+            Нажмите, чтобы добавить фото или видео
           </span>
         </div>
       )}

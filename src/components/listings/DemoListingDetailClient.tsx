@@ -4,10 +4,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Camera, ChevronLeft, ChevronRight, MapPin, MessageCircle, Phone } from "lucide-react";
+import { ArrowLeft, Camera, ChevronLeft, ChevronRight, MapPin, MessageCircle, Phone, Video } from "lucide-react";
 import { LocationMap } from "@/components/LocationMap";
 import { DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
+import { hasMapCoordinates } from "@/lib/map-location";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
@@ -33,11 +34,20 @@ function resolveCategoryName(item: DemoPublication) {
   return categories.find((category) => category.slug === item.categorySlug)?.name ?? "Категория";
 }
 
-function DemoGallery({ images, title }: { images: string[]; title: string }) {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const activeImage = images[activeIndex];
+function hasListingMapPoint(item: DemoPublication) {
+  return item.hasMapPoint === true && hasMapCoordinates(item.lat, item.lng);
+}
 
-  if (!images.length) {
+type GalleryMedia = {
+  kind: "image" | "video";
+  src: string;
+};
+
+function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeMedia = media[activeIndex];
+
+  if (!media.length) {
     return (
       <div className="mt-5 flex aspect-[4/3] w-full max-w-3xl items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
         <Camera className="h-12 w-12 sm:h-16 sm:w-16" />
@@ -48,44 +58,57 @@ function DemoGallery({ images, title }: { images: string[]; title: string }) {
   return (
     <section className="mt-5 w-full max-w-3xl sm:mt-6">
       <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-        <img src={activeImage} alt={title} className="h-full w-full object-contain" />
-        {images.length > 1 ? (
+        {activeMedia?.kind === "video" ? (
+          <video src={activeMedia.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
+        ) : (
+          <img src={activeMedia?.src} alt={title} className="h-full w-full object-contain" />
+        )}
+        {media.length > 1 ? (
           <>
             <button
               type="button"
-              onClick={() => setActiveIndex((index) => (index === 0 ? images.length - 1 : index - 1))}
+              onClick={() => setActiveIndex((index) => (index === 0 ? media.length - 1 : index - 1))}
               className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-card transition hover:bg-white"
-              aria-label="Предыдущее фото"
+              aria-label="Предыдущий файл"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
             <button
               type="button"
-              onClick={() => setActiveIndex((index) => (index === images.length - 1 ? 0 : index + 1))}
+              onClick={() => setActiveIndex((index) => (index === media.length - 1 ? 0 : index + 1))}
               className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-card transition hover:bg-white"
-              aria-label="Следующее фото"
+              aria-label="Следующий файл"
             >
               <ChevronRight className="h-5 w-5" />
             </button>
             <span className="absolute bottom-3 right-3 rounded-full bg-slate-950/70 px-3 py-1 text-xs font-bold text-white">
-              {activeIndex + 1} / {images.length}
+              {activeIndex + 1} / {media.length}
             </span>
           </>
         ) : null}
       </div>
-      {images.length > 1 ? (
+      {media.length > 1 ? (
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {images.map((image, index) => (
+          {media.map((item, index) => (
             <button
               type="button"
-              key={`${image.slice(0, 40)}-${index}`}
+              key={`${item.src.slice(0, 40)}-${index}`}
               onClick={() => setActiveIndex(index)}
-              className={`h-16 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-slate-100 transition sm:h-20 sm:w-24 ${
+              className={`relative h-16 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-slate-100 transition sm:h-20 sm:w-24 ${
                 index === activeIndex ? "border-[#0875d1]" : "border-transparent hover:border-blue-200"
               }`}
-              aria-label={`Показать фото ${index + 1}`}
+              aria-label={`Показать файл ${index + 1}`}
             >
-              <img src={image} alt="" className="h-full w-full object-contain" />
+              {item.kind === "video" ? (
+                <>
+                  <video src={item.src} className="h-full w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
+                  <span className="absolute inset-0 flex items-center justify-center bg-slate-950/25 text-white">
+                    <Video className="h-5 w-5" />
+                  </span>
+                </>
+              ) : (
+                <img src={item.src} alt="" className="h-full w-full object-contain" />
+              )}
             </button>
           ))}
         </div>
@@ -115,6 +138,13 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
   const listing = useMemo(() => items.find((item) => item.type === "listing" && item.id === slug), [items, slug]);
   const kind = (listing?.listingKind ?? "prodam") as ListingKind;
   const listingHref = `/blizhniy/obyavlenie/${slug}`;
+  const hasMapPoint = listing ? hasListingMapPoint(listing) : false;
+  const galleryMedia: GalleryMedia[] = listing
+    ? [
+        ...(listing.images ?? []).map((src) => ({ kind: "image" as const, src })),
+        ...(listing.videos ?? []).map((src) => ({ kind: "video" as const, src })),
+      ]
+    : [];
 
   if (!listing) {
     return (
@@ -144,7 +174,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
             <ListingKindBadge kind={kind} />
             <StatusBadge status="published" />
           </div>
-          <DemoGallery images={listing.images ?? []} title={listing.title} />
+          <DemoGallery media={galleryMedia} title={listing.title} />
           <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
             <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Описание</h2>
             <p className="mt-3 [overflow-wrap:anywhere] text-base leading-7 text-slate-700 sm:mt-4 sm:text-lg sm:leading-8">{listing.description ?? "Описание будет дополнено."}</p>
@@ -164,10 +194,12 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
         <aside className="min-w-0 space-y-4">
           <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
             <p className="[overflow-wrap:anywhere] text-2xl font-black text-[#060b27] sm:text-3xl">{listing.price ?? "по договоренности"}</p>
-            <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
-              <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
-              <span className="min-w-0 [overflow-wrap:anywhere]">{listing.city}</span>
-            </p>
+            {!hasMapPoint ? (
+              <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
+                <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
+                <span className="min-w-0 [overflow-wrap:anywhere]">{listing.city}</span>
+              </p>
+            ) : null}
             <div className="mt-5 grid gap-2 sm:gap-3">
               <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <a href={`tel:${listing.phone ?? "+78610009999"}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-3 text-sm font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:text-base">
@@ -190,15 +222,18 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
               ) : null}
             </div>
           </div>
-          <LocationMap
-            location={{
-              city: listing.city,
-              lat: listing.lat,
-              lng: listing.lng,
-              showExactAddress: Boolean(listing.showExactAddress),
-            }}
-            exactLabel="Точный адрес частного лица по умолчанию не показывается"
-          />
+          {hasMapPoint ? (
+            <LocationMap
+              location={{
+                city: listing.city,
+                address: listing.address,
+                lat: listing.lat,
+                lng: listing.lng,
+                showExactAddress: Boolean(listing.address),
+              }}
+              exactLabel="Точный адрес частного лица по умолчанию не показывается"
+            />
+          ) : null}
           {listing.booking ? <BookingCalculator booking={listing.booking} listingId={listing.id} listingTitle={listing.title} /> : null}
         </aside>
       </div>

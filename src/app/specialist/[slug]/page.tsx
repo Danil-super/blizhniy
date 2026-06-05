@@ -5,6 +5,8 @@ import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { SiteHeader } from "@/components/SiteHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LocationMap } from "@/components/LocationMap";
+import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
+import { hasMapCoordinates } from "@/lib/map-location";
 import { listSpecialists } from "@/lib/mock-store";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -28,9 +30,12 @@ export default async function SpecialistDetailPage({ params }: { params: Promise
     notFound();
   }
 
+  const hasMapPoint = (specialist.hasMapPoint ?? true) && hasMapCoordinates(specialist.lat, specialist.lng);
+
   return (
     <>
       <SiteHeader />
+      <ListingViewTracker listingId={`work-specialist-${specialist.id}`} />
       <main className="page-container py-5 sm:py-10">
         <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
           <StatusBadge status={specialist.status} />
@@ -71,9 +76,11 @@ export default async function SpecialistDetailPage({ params }: { params: Promise
               </div>
             </aside>
           </div>
-          <div className="mt-8">
-            <LocationMap location={specialist} exactLabel="Точный адрес специалиста по умолчанию не показывается" />
-          </div>
+          {hasMapPoint ? (
+            <div className="mt-8">
+              <LocationMap location={specialist} exactLabel="Точный адрес специалиста по умолчанию не показывается" />
+            </div>
+          ) : null}
         </article>
       </main>
     </>

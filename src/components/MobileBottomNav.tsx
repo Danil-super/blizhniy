@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { BriefcaseBusiness, Home, LogIn, PlusCircle, Store, UserRound } from "lucide-react";
 import { useAuthState } from "@/components/auth/useAuthState";
 
 export function MobileBottomNav() {
+  const pathname = usePathname();
   const { state } = useAuthState();
   const signedIn = state === "signed-in" || state === "admin";
   const authHref = signedIn ? "/cabinet" : "/auth";
@@ -20,15 +22,26 @@ export function MobileBottomNav() {
   ];
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur md:hidden" aria-label="Мобильная навигация">
-      <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+    <nav className="pointer-events-none fixed inset-x-0 bottom-[max(10px,env(safe-area-inset-bottom))] z-50 px-2 md:hidden" aria-label="Мобильная навигация">
+      <div className="pointer-events-auto mx-auto grid w-full max-w-[23rem] grid-cols-5 gap-1 rounded-[1.75rem] border border-white/70 bg-white/72 p-1.5 shadow-[0_18px_55px_rgba(15,23,42,0.18),0_1px_0_rgba(255,255,255,0.9)_inset] ring-1 ring-slate-900/5 backdrop-blur-2xl">
         {items.map((item) => {
           const Icon = item.icon;
+          const active = pathname === item.href || (item.href !== "/blizhniy" && pathname?.startsWith(item.href));
 
           return (
-            <Link key={item.href} href={item.href} className={item.primary ? "flex min-w-0 flex-col items-center gap-1 rounded-xl bg-[#0aa337] px-1 py-2 text-[10px] font-bold leading-none text-white" : "flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-bold leading-none text-slate-700"}>
-              <Icon className="h-5 w-5 shrink-0" />
-              <span className="max-w-full whitespace-nowrap">{item.label}</span>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={
+                item.primary
+                  ? "flex min-w-0 -translate-y-1 flex-col items-center justify-center gap-1 rounded-2xl bg-gradient-to-b from-[#16b344] to-[#079230] px-1 py-2 text-[10px] font-black leading-none text-white shadow-[0_14px_28px_rgba(10,163,55,0.28)] ring-1 ring-white/35 transition active:translate-y-0"
+                  : `flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-[10px] font-black leading-none transition ${
+                      active ? "bg-slate-950/7 text-[#0875d1] shadow-sm ring-1 ring-white/65" : "text-slate-700 hover:bg-white/55 hover:text-[#0875d1]"
+                    }`
+              }
+            >
+              <Icon className={item.primary ? "h-6 w-6 shrink-0 drop-shadow-sm" : "h-5 w-5 shrink-0"} />
+              <span className="max-w-full truncate whitespace-nowrap">{item.label}</span>
             </Link>
           );
         })}

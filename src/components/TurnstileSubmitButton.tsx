@@ -7,15 +7,14 @@ type TurnstileSubmitButtonProps = {
   className?: string;
   disabled?: boolean;
   label: string;
-  siteKey?: string;
 };
 
-export function TurnstileSubmitButton({ className, disabled = false, label, siteKey }: TurnstileSubmitButtonProps) {
+export function TurnstileSubmitButton({ className, disabled = false, label }: TurnstileSubmitButtonProps) {
   const [captchaToken, setCaptchaToken] = useState("");
 
   return (
     <div className="grid gap-3">
-      <TurnstileWidget siteKey={siteKey} onVerify={setCaptchaToken} onExpire={() => setCaptchaToken("")} onError={() => setCaptchaToken("")} />
+      <TurnstileWidget onVerify={setCaptchaToken} />
       <button
         type="submit"
         disabled={disabled || !captchaToken}

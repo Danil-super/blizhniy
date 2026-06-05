@@ -11,7 +11,13 @@ type PageProps = {
 };
 
 function parseCoordinate(formData: FormData, name: string) {
-  const value = Number(String(formData.get(name) ?? "").replace(",", "."));
+  const rawValue = String(formData.get(name) ?? "").trim();
+
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const value = Number(rawValue.replace(",", "."));
   return Number.isFinite(value) ? value : undefined;
 }
 

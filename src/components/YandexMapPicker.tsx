@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { MapPin, Navigation, Search, X } from "lucide-react";
 
 type YandexMapPickerProps = {
@@ -10,6 +10,8 @@ type YandexMapPickerProps = {
   addressName?: string;
   latName?: string;
   lngName?: string;
+  mapPointSelectedName?: string;
+  onPointSelectedChange?: (selected: boolean) => void;
 };
 
 type YandexMapViewProps = {
@@ -107,6 +109,17 @@ function loadYandexMaps() {
 
 function routeUrl(lat: number, lng: number) {
   return `https://yandex.ru/maps/?pt=${lng},${lat}&z=16&l=map`;
+}
+
+function mapWidgetUrl(lat: number, lng: number) {
+  const params = new URLSearchParams({
+    l: "map",
+    ll: `${lng},${lat}`,
+    pt: `${lng},${lat},pm2rdm`,
+    z: "16",
+  });
+
+  return `https://yandex.ru/map-widget/v1/?${params.toString()}`;
 }
 
 function formatCoord(value: number) {
@@ -292,7 +305,16 @@ async function fallbackReverseGeocode(coords: number[]) {
   return formatMapAddress(result.display_name?.trim() || "");
 }
 
-export function YandexMapPicker({ addressName = "address", defaultAddress, defaultLat, defaultLng, latName = "lat", lngName = "lng" }: YandexMapPickerProps) {
+export function YandexMapPicker({
+  addressName = "address",
+  defaultAddress,
+  defaultLat,
+  defaultLng,
+  latName = "lat",
+  lngName = "lng",
+  mapPointSelectedName = "mapPointSelected",
+  onPointSelectedChange,
+}: YandexMapPickerProps) {
   const mapId = useId();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<YandexMap | null>(null);
@@ -306,6 +328,10 @@ export function YandexMapPicker({ addressName = "address", defaultAddress, defau
   const center = point ?? krasnodarCenter;
   const initialPointRef = useRef(point);
   const initialCenterRef = useRef(center);
+
+  useEffect(() => {
+    onPointSelectedChange?.(Boolean(point));
+  }, [onPointSelectedChange, point]);
 
   useEffect(() => {
     let cancelled = false;
@@ -552,6 +578,7 @@ export function YandexMapPicker({ addressName = "address", defaultAddress, defau
       <input type="hidden" name={addressName} value={address} />
       <input type="hidden" name={latName} value={point ? formatCoord(point.lat) : ""} />
       <input type="hidden" name={lngName} value={point ? formatCoord(point.lng) : ""} />
+      <input type="hidden" name={mapPointSelectedName} value={point ? "1" : ""} />
       <div id={mapId} ref={mapRef} className="map-picker-canvas mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white" />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
         <span className="min-w-0 font-semibold [overflow-wrap:anywhere]">{point ? (address ? `Метка: ${address}` : "Метка поставлена") : status}</span>
@@ -567,44 +594,23 @@ export function YandexMapPicker({ addressName = "address", defaultAddress, defau
 }
 
 export function YandexMapView({ lat, lng, label }: YandexMapViewProps) {
-  const mapRef = useRef<HTMLDivElement>(null);
   const [loaded, setLoaded] = useState(false);
-  const center = useMemo(() => [lat, lng], [lat, lng]);
-
-  useEffect(() => {
-    let cancelled = false;
-    let map: YandexMap | null = null;
-
-    loadYandexMaps()
-      .then(() => {
-        window.ymaps?.ready(() => {
-          if (cancelled || !mapRef.current || !window.ymaps) {
-            return;
-          }
-
-          map = new window.ymaps.Map(mapRef.current, {
-            center,
-            controls: ["zoomControl"],
-            zoom: 15,
-          });
-          map.geoObjects.add(new window.ymaps.Placemark(center, { hintContent: label }, { preset: "islands#blueHomeIcon" }));
-          setLoaded(true);
-        });
-      })
-      .catch(() => setLoaded(false));
-
-    return () => {
-      cancelled = true;
-      map?.destroy();
-    };
-  }, [center, label]);
+  const [failed, setFailed] = useState(false);
 
   return (
     <div className="relative mt-5 h-64 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-      <div ref={mapRef} className="h-full w-full" />
+      <iframe
+        className="h-full w-full"
+        src={mapWidgetUrl(lat, lng)}
+        title={`Карта: ${label}`}
+        loading="lazy"
+        referrerPolicy="no-referrer-when-downgrade"
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+      />
       {!loaded ? (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-50 text-sm font-semibold text-slate-500">
-          Загружаем Яндекс.Карту...
+          {failed ? "Карту не удалось загрузить" : "Загружаем Яндекс.Карту..."}
         </div>
       ) : null}
       <a href={routeUrl(lat, lng)} target="_blank" rel="noreferrer" className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-lg bg-white/95 px-3 py-2 text-xs font-bold text-[#0875d1] shadow-card">

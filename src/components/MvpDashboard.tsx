@@ -41,9 +41,11 @@ import {
 import { CategoryOrderAdminPanel } from "@/components/CategoryOrderAdminPanel";
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
+import type { DemoPublication } from "@/lib/demo-publications";
 import { categories, professions } from "@/lib/data";
 import { getPayment } from "@/lib/payment-provider";
-import { listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies } from "@/lib/mock-store";
+import { getCurrentUserSpecialist, listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies } from "@/lib/mock-store";
+import type { SpecialistProfile } from "@/lib/types";
 import { getTariffById, getTariffs, resetTariffPatches, updateTariffPatch } from "@/lib/tariff-store";
 
 type StatusTone = "green" | "blue" | "amber" | "slate" | "red" | "violet";
@@ -91,6 +93,28 @@ const statusTones: Record<string, StatusTone> = {
   succeeded: "green",
   viewed: "violet",
 };
+
+function specialistToDemoPublication(specialist: SpecialistProfile): DemoPublication {
+  return {
+    id: specialist.id,
+    type: "specialist",
+    title: specialist.name,
+    subtitle: specialist.profession,
+    city: specialist.city,
+    price: specialist.price,
+    description: specialist.description,
+    images: specialist.images,
+    lat: specialist.lat,
+    lng: specialist.lng,
+    address: specialist.address,
+    hasMapPoint: specialist.hasMapPoint,
+    showExactAddress: specialist.showExactAddress,
+    phone: specialist.phone,
+    messengerUrl: specialist.messengerUrl,
+    status: "Опубликовано",
+    createdAt: new Date().toISOString(),
+  };
+}
 
 const cabinetNav = [
   { href: "/cabinet", label: "Обзор", icon: Gauge },
@@ -265,13 +289,13 @@ function Shell({
 
 function NavPills({ items }: { items: typeof cabinetNav }) {
   return (
-    <nav className="mt-5 flex flex-wrap gap-2 sm:mt-7" aria-label="Разделы">
+    <nav className="mt-5 grid grid-flow-col grid-rows-2 gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:mt-7 sm:flex sm:flex-wrap sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden" aria-label="Разделы">
       {items.map((item) => {
         const Icon = item.icon;
         return (
           <Link
             href={item.href}
-            className="inline-flex min-h-10 min-w-[9rem] max-w-full flex-1 items-center justify-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold leading-snug text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:min-h-11 sm:min-w-[9.5rem] sm:flex-none sm:px-4 sm:text-sm"
+            className="inline-flex min-h-10 w-[9.25rem] max-w-full items-center justify-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold leading-snug text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:min-h-11 sm:w-auto sm:min-w-[9.5rem] sm:flex-none sm:px-4 sm:text-sm"
             key={item.href}
           >
             <Icon className="h-4 w-4 shrink-0" />
@@ -492,10 +516,12 @@ export function CabinetWorkRequestsPage() {
 }
 
 export function CabinetSpecialistPage() {
+  const specialist = getCurrentUserSpecialist();
+
   return (
     <Shell title="Анкета специалиста" description="Профиль исполнителя с услугами, контактами, статусом проверки и будущей публикацией." eyebrow="Кабинет" nav={cabinetNav}>
       <CabinetAuthGate>
-        <CabinetSpecialistClient />
+        <CabinetSpecialistClient initialSpecialist={specialist ? specialistToDemoPublication(specialist) : undefined} />
       </CabinetAuthGate>
     </Shell>
   );

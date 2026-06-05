@@ -27,6 +27,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { TurnstileVerifiedLinkButton } from "@/components/TurnstileVerifiedLinkButton";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { categories } from "@/lib/data";
+import { hasMapCoordinates } from "@/lib/map-location";
 import { createListing, listListings } from "@/lib/mock-store";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { getTariffs } from "@/lib/tariff-store";
@@ -783,8 +784,22 @@ function createCoverageListings(existingListings: DemoListing[]): DemoListing[] 
 export const demoListings: DemoListing[] = [...baseDemoListings, ...createCoverageListings(baseDemoListings)];
 
 function parseCoordinate(formData: FormData, name: string) {
-  const value = Number(String(formData.get(name) ?? "").replace(",", "."));
+  const rawValue = String(formData.get(name) ?? "").trim();
+
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const value = Number(rawValue.replace(",", "."));
   return Number.isFinite(value) ? value : undefined;
+}
+
+function hasListingMapPoint(listing: DemoListing) {
+  return (listing.hasMapPoint ?? true) && hasMapCoordinates(listing.lat, listing.lng);
+}
+
+function listingPlaceLabel(listing: DemoListing) {
+  return hasListingMapPoint(listing) ? [listing.city, listing.district].filter(Boolean).join(", ") : listing.city;
 }
 
 function parseNumber(formData: FormData, name: string) {
@@ -886,6 +901,7 @@ function listingCategoryName(listing: StoreListing) {
 
 export function toDemoListing(listing: StoreListing): DemoListing {
   return {
+    viewId: listing.id,
     slug: listing.slug,
     title: listing.title,
     kind: listing.kind,
@@ -898,7 +914,8 @@ export function toDemoListing(listing: StoreListing): DemoListing {
     address: listing.address,
     lat: listing.lat,
     lng: listing.lng,
-    showExactAddress: listing.showExactAddress,
+    hasMapPoint: Boolean(listing.hasMapPoint),
+    showExactAddress: Boolean(listing.hasMapPoint && listing.address) || listing.showExactAddress,
     price: listing.price ?? "по договоренности",
     booking: listing.booking,
     delivery: listing.delivery,
@@ -1027,9 +1044,9 @@ export function CategoriesPage() {
       <SiteHeader />
       <main>
         <HomeHero />
-        <section className="page-container py-5 sm:py-7 lg:py-10">
+        <section className="page-container py-2 sm:py-3 lg:py-4">
           <Breadcrumbs items={[{ label: "Категории" }]} />
-          <h1 className="text-2xl font-black text-[#060b27] sm:text-3xl lg:text-5xl">Категории объявлений</h1>
+          <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Категории объявлений</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">
             Первый уровень каталога и подкатегории отображаются плитками. Структура готова для расширения по городам и регионам.
           </p>
@@ -1106,7 +1123,7 @@ export function ExchangeAndFreePage() {
     <>
       <SiteHeader />
       <HomeHero />
-      <main className="page-container py-6 sm:py-8 lg:py-10">
+      <main className="page-container py-2 sm:py-3 lg:py-4">
         <Breadcrumbs items={[{ label: "Меняю и отдам даром" }]} />
         <div className="grid gap-7">
           <section>
@@ -1158,7 +1175,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
     <>
       <SiteHeader />
       <HomeHero />
-      <main className="page-container py-1.5 sm:py-2.5 lg:py-3">
+      <main className="page-container py-2 sm:py-3 lg:py-4">
         <Breadcrumbs
           compact
           items={[
@@ -1304,10 +1321,13 @@ export function ListingDetailPage({ slug }: { slug: string }) {
     );
   }
 
+  const hasMapPoint = hasListingMapPoint(listing);
+  const viewId = listing.viewId ?? listing.slug;
+
   return (
     <>
       <SiteHeader />
-      <ListingViewTracker listingId={listing.slug} />
+      <ListingViewTracker listingId={viewId} />
       <main className="page-container py-10">
         <Breadcrumbs
           items={[
@@ -1357,10 +1377,12 @@ export function ListingDetailPage({ slug }: { slug: string }) {
           <aside className="min-w-0 space-y-4">
             <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
               <p className="[overflow-wrap:anywhere] text-2xl font-black text-[#060b27] sm:text-3xl">{listing.price}</p>
-              <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
-                <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
-                <span className="min-w-0 [overflow-wrap:anywhere]">{listing.city}, {listing.district}</span>
-              </p>
+              {!hasMapPoint ? (
+                <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
+                  <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{listingPlaceLabel(listing)}</span>
+                </p>
+              ) : null}
               <div className="mt-5 grid gap-2 sm:gap-3">
                 <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <a href={`tel:${listing.phone}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-3 text-sm font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:text-base">
@@ -1386,7 +1408,7 @@ export function ListingDetailPage({ slug }: { slug: string }) {
                 ) : null}
               </div>
             </div>
-            <LocationMap location={listing} exactLabel="Точный адрес частного лица по умолчанию не показывается" />
+            {hasMapPoint ? <LocationMap location={listing} exactLabel="Точный адрес частного лица по умолчанию не показывается" /> : null}
             {listing.booking ? <BookingCalculator booking={listing.booking} listingId={listing.slug} listingTitle={listing.title} /> : null}
             {showDeliveryUi ? <DeliveryInfoCard delivery={listing.delivery} /> : null}
           </aside>
@@ -1554,6 +1576,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
       "Без подкатегории";
     const location = String(formData.get("location") ?? "").trim();
     const city = location.split(",")[0]?.trim() || "Краснодар";
+    const hasMapPoint = String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1";
 
     createListing({
       title,
@@ -1561,15 +1584,16 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
       categorySlug,
       subcategory,
       city,
-      address: String(formData.get("address") ?? "").trim() || undefined,
+      address: hasMapPoint ? String(formData.get("address") ?? "").trim() || undefined : undefined,
       price: String(formData.get("price") ?? "").trim() || (kind === "arenda" && isBookingCategory(categorySlug) ? "расчет по датам" : undefined),
       booking: kind === "arenda" ? parseBookingDetails(formData, categorySlug) : undefined,
       delivery: parseDeliveryOptions(formData, city),
       description: String(formData.get("description") ?? "").trim() || undefined,
       phone: String(formData.get("phone") ?? "").trim() || undefined,
       messengerUrl: String(formData.get("messengerUrl") ?? "").trim() || undefined,
-      lat: parseCoordinate(formData, "lat"),
-      lng: parseCoordinate(formData, "lng"),
+      lat: hasMapPoint ? parseCoordinate(formData, "lat") : undefined,
+      lng: hasMapPoint ? parseCoordinate(formData, "lng") : undefined,
+      hasMapPoint,
     });
 
     redirect("/cabinet/obyavleniya");
@@ -1628,7 +1652,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
               />
             </label>
 
-            <ListingLocationFields defaultCity={listing?.city} defaultLat={listing?.lat} defaultLng={listing?.lng} />
+            <ListingLocationFields defaultAddress={listing?.address} defaultCity={listing?.city} defaultLat={listing?.lat} defaultLng={listing?.lng} />
 
             {showDeliveryUi ? <ListingDeliveryFields delivery={listing?.delivery} defaultCity={listing?.city ?? "Краснодар"} /> : null}
 
@@ -1673,7 +1697,6 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
               ) : (
                 <TurnstileVerifiedLinkButton
                   href="/blizhniy/oplata/listing-publication"
-                  siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   Перейти к оплате
@@ -1683,7 +1706,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
             </div>
           </form>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-3">
+          <div className="mb-16 mt-6 grid gap-3 sm:mb-20 md:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2 font-black text-[#060b27]">
                 <ShieldCheck className="h-5 w-5 text-[#0aa337]" />

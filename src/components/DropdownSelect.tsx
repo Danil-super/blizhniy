@@ -17,6 +17,7 @@ export function DropdownSelect({
   onValueChange,
   placeholder = "Выберите",
   buttonClassName = "",
+  required = false,
 }: {
   name?: string;
   options: DropdownOption[];
@@ -25,6 +26,7 @@ export function DropdownSelect({
   onValueChange?: (value: string) => void;
   placeholder?: string;
   buttonClassName?: string;
+  required?: boolean;
 }) {
   const [internalValue, setInternalValue] = useState(defaultValue ?? "");
   const [open, setOpen] = useState(false);
@@ -83,6 +85,17 @@ export function DropdownSelect({
   return (
     <div className="relative min-w-0 max-w-full" ref={rootRef}>
       {name ? <input type="hidden" name={name} value={selectedOption?.value ?? ""} /> : null}
+      {required && name ? (
+        <input
+          className="pointer-events-none absolute h-px w-px opacity-0"
+          tabIndex={-1}
+          aria-hidden="true"
+          required
+          value={selectedOption?.value ?? ""}
+          onChange={() => undefined}
+          readOnly
+        />
+      ) : null}
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}

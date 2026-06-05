@@ -8,10 +8,9 @@ type TurnstileVerifiedLinkButtonProps = {
   children: ReactNode;
   className: string;
   href: string;
-  siteKey?: string;
 };
 
-export function TurnstileVerifiedLinkButton({ children, className, href, siteKey }: TurnstileVerifiedLinkButtonProps) {
+export function TurnstileVerifiedLinkButton({ children, className, href }: TurnstileVerifiedLinkButtonProps) {
   const [captchaToken, setCaptchaToken] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -52,10 +51,7 @@ export function TurnstileVerifiedLinkButton({ children, className, href, siteKey
     <div className="grid gap-2">
       <TurnstileWidget
         resetKey={resetKey}
-        siteKey={siteKey}
         onVerify={setCaptchaToken}
-        onExpire={() => setCaptchaToken("")}
-        onError={() => setCaptchaToken("")}
       />
       <button type="button" disabled={loading || !captchaToken} onClick={handleClick} className={className}>
         {loading ? "Проверяем..." : children}

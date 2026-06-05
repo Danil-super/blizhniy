@@ -6,6 +6,7 @@ import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { SiteHeader } from "@/components/SiteHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LocationMap } from "@/components/LocationMap";
+import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { vacancies } from "@/lib/data";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -32,6 +33,7 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
   return (
     <>
       <SiteHeader />
+      <ListingViewTracker listingId={`work-vacancy-${vacancy.id}`} />
       <main className="page-container py-10">
         <article className="grid gap-8 lg:grid-cols-[1fr_360px]">
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">

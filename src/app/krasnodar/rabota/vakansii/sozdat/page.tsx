@@ -3,8 +3,8 @@ import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
 import { createVacancy } from "@/lib/mock-store";
-import { YandexMapPicker } from "@/components/YandexMapPicker";
 import { TurnstileVerifiedLinkButton } from "@/components/TurnstileVerifiedLinkButton";
+import { ListingLocationFields } from "@/components/listings/ListingFormControls";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
 
 type PageProps = {
@@ -12,14 +12,20 @@ type PageProps = {
 };
 
 function parseCoordinate(formData: FormData, name: string) {
-  const value = Number(String(formData.get(name) ?? "").replace(",", "."));
+  const rawValue = String(formData.get(name) ?? "").trim();
+
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const value = Number(rawValue.replace(",", "."));
   return Number.isFinite(value) ? value : undefined;
 }
 
 export default async function CreateVacancyPage({ searchParams }: PageProps) {
   const params = searchParams ? await searchParams : undefined;
   const adminMode = params?.admin === "1";
-  
+
   async function publishVacancyWithoutPaymentAction(formData: FormData) {
     "use server";
 
@@ -33,16 +39,16 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
       organization: String(formData.get("organization") ?? "").trim() || "Организация",
       title: String(formData.get("title") ?? "").trim() || "Новая вакансия",
       profession: String(formData.get("profession") ?? "").trim() || "Специалист",
-      city: String(formData.get("city") ?? "").trim() || "Краснодар",
-      district: String(formData.get("district") ?? "").trim() || undefined,
-      address: String(formData.get("address") ?? "").trim() || undefined,
+      city: String(formData.get("location") ?? "").trim().split(",")[0]?.trim() || "Краснодар",
+      address: String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1" ? String(formData.get("address") ?? "").trim() || undefined : undefined,
       salary: String(formData.get("salary") ?? "").trim() || undefined,
       phone: String(formData.get("phone") ?? "").trim() || undefined,
       email: String(formData.get("email") ?? "").trim() || undefined,
       schedule: String(formData.get("schedule") ?? "").trim() || undefined,
       description: String(formData.get("description") ?? "").trim() || undefined,
-      lat: parseCoordinate(formData, "lat"),
-      lng: parseCoordinate(formData, "lng"),
+      lat: String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1" ? parseCoordinate(formData, "lat") : undefined,
+      lng: String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1" ? parseCoordinate(formData, "lng") : undefined,
+      hasMapPoint: String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1",
     });
 
     redirect("/cabinet/vakansii");
@@ -51,7 +57,7 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
   return (
     <>
       <SiteHeader />
-      <main className="page-container py-10">
+      <main className="page-container py-4 sm:py-6 lg:py-8">
         <FormPanel
           title="Разместить вакансию"
           description={
@@ -61,35 +67,32 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
           }
         >
           {params?.error ? <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{params.error}</p> : null}
-          <form action={adminMode ? publishVacancyWithoutPaymentAction : undefined} className="grid gap-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field name="organization" label="Организация" placeholder="ООО РемДом" />
-            <Field name="title" label="Вакансия" placeholder="Сантехник" />
-            <Field label="Регион" placeholder="Краснодарский край" />
-            <Field name="city" label="Город" placeholder="Краснодар" />
-            <Field name="district" label="Район" placeholder="Центральный район" />
-            <Field name="address" label="Точный адрес организации" placeholder="ул. Красная, 118" />
-            <Field name="salary" label="Зарплата / стоимость" placeholder="от 80 000 ₽" />
-            <Field name="profession" label="Категория специалиста" placeholder="Сантехник" />
-            <Field name="schedule" label="График" placeholder="5/2" />
-            <Field name="phone" label="Телефон" placeholder="+7..." />
-            <Field name="email" label="Email" type="email" placeholder="hr@example.ru" />
-          </div>
-          <YandexMapPicker />
-          <TextAreaField name="description" label="Описание вакансии" />
-          <TextAreaField label="Требования" />
-          <TextAreaField label="Обязанности" />
-          {adminMode ? (
-            <AdminDemoPublishButton publicationType="vacancy" returnHref="/cabinet/vakansii" label="Сохранить вакансию без оплаты" />
-          ) : (
-            <TurnstileVerifiedLinkButton
-              href="/blizhniy/oplata/vacancy-publication"
-              siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY}
-              className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              Создать заказ и оплатить
-            </TurnstileVerifiedLinkButton>
-          )}
+          <form action={adminMode ? publishVacancyWithoutPaymentAction : undefined} className="vacancy-create-form responsive-form-panel grid gap-3 sm:gap-3.5">
+            <div className="vacancy-main-grid">
+              <Field name="organization" label="Организация" placeholder="ООО РемДом" />
+              <Field name="title" label="Вакансия" placeholder="Сантехник" />
+              <Field name="salary" label="Зарплата / стоимость" placeholder="от 80 000 ₽" />
+              <Field name="profession" label="Категория специалиста" placeholder="Сантехник" />
+            </div>
+            <div className="vacancy-contact-grid">
+              <Field name="schedule" label="График" placeholder="5/2" />
+              <Field name="phone" label="Телефон" placeholder="+7..." />
+              <Field name="email" label="Email" type="email" placeholder="hr@example.ru" />
+            </div>
+            <ListingLocationFields className="vacancy-location-fields" addressLegend="Адрес вакансии" defaultCity="Краснодар" inlineControls />
+            <TextAreaField name="description" label="Описание вакансии" />
+            <TextAreaField label="Требования" />
+            <TextAreaField label="Обязанности" />
+            {adminMode ? (
+              <AdminDemoPublishButton publicationType="vacancy" returnHref="/cabinet/vakansii" label="Сохранить вакансию без оплаты" />
+            ) : (
+              <TurnstileVerifiedLinkButton
+                href="/blizhniy/oplata/vacancy-publication"
+                className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                Создать заказ и оплатить
+              </TurnstileVerifiedLinkButton>
+            )}
           </form>
         </FormPanel>
       </main>
