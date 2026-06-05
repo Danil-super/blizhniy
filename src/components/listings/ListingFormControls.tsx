@@ -881,8 +881,8 @@ export function ListingPhotoUploader() {
       </button>
 
       {libraryOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 sm:items-center sm:p-4" role="dialog" aria-modal="true">
-          <div className="flex max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-xl bg-white shadow-2xl sm:max-h-[min(44rem,92vh)] sm:max-w-3xl sm:rounded-xl">
+        <div className="fixed inset-0 z-[200] flex items-stretch justify-center bg-white sm:items-center sm:bg-slate-950/60 sm:p-4" role="dialog" aria-modal="true">
+          <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[min(42rem,92vh)] sm:max-w-3xl sm:rounded-xl">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
               <div className="min-w-0">
                 <h2 className="text-base font-black text-[#060b27] sm:text-lg">Медиатека</h2>
@@ -893,6 +893,9 @@ export function ListingPhotoUploader() {
                   <ImagePlus className="h-4 w-4" />
                   Добавить
                 </button>
+                <button type="button" onClick={() => setLibraryOpen(false)} className="inline-flex h-9 items-center rounded-lg bg-slate-950 px-3 text-sm font-bold text-white transition hover:bg-slate-800">
+                  Готово
+                </button>
                 <button type="button" onClick={() => setLibraryOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:text-rose-600" aria-label="Закрыть">
                   <X className="h-4 w-4" />
                 </button>
@@ -902,7 +905,7 @@ export function ListingPhotoUploader() {
             {selectedMedia ? (
               <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
                 <div className="mx-auto max-w-xl">
-                  <div className="relative mx-auto aspect-square max-h-[44dvh] overflow-hidden rounded-xl bg-slate-950 sm:max-h-[22rem]">
+                  <div className="relative mx-auto aspect-square max-h-[38dvh] overflow-hidden rounded-xl bg-slate-950 sm:max-h-[22rem]">
                     {selectedMedia.kind === "video" ? (
                       <video src={selectedMedia.url} className="h-full w-full object-contain" controls playsInline preload="metadata" />
                     ) : (
@@ -936,21 +939,27 @@ export function ListingPhotoUploader() {
 
                   {selectedMedia.kind === "image" ? (
                     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="grid gap-2">
                         <label className="block">
-                          <span className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                            <SlidersHorizontal className="h-3.5 w-3.5 text-[#0875d1]" />
-                            Зум
+                          <span className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
+                            <span className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                              <SlidersHorizontal className="h-3.5 w-3.5 text-[#0875d1]" />
+                              Зум
+                            </span>
+                            <input type="range" min="1" max="2.8" step="0.05" value={cropDraft.zoom} onChange={(event) => setCropDraft((current) => ({ ...current, zoom: Number(event.target.value) }))} className="w-full accent-[#0875d1]" />
                           </span>
-                          <input type="range" min="1" max="2.8" step="0.05" value={cropDraft.zoom} onChange={(event) => setCropDraft((current) => ({ ...current, zoom: Number(event.target.value) }))} className="mt-1.5 w-full accent-[#0875d1]" />
                         </label>
                         <label className="block">
-                          <span className="text-xs font-bold text-slate-700">Гориз.</span>
-                          <input type="range" min="0" max="100" step="1" value={cropDraft.positionX} onChange={(event) => setCropDraft((current) => ({ ...current, positionX: Number(event.target.value) }))} className="mt-1.5 w-full accent-[#0875d1]" />
+                          <span className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
+                            <span className="text-xs font-bold text-slate-700">Гориз.</span>
+                            <input type="range" min="0" max="100" step="1" value={cropDraft.positionX} onChange={(event) => setCropDraft((current) => ({ ...current, positionX: Number(event.target.value) }))} className="w-full accent-[#0875d1]" />
+                          </span>
                         </label>
                         <label className="block">
-                          <span className="text-xs font-bold text-slate-700">Верт.</span>
-                          <input type="range" min="0" max="100" step="1" value={cropDraft.positionY} onChange={(event) => setCropDraft((current) => ({ ...current, positionY: Number(event.target.value) }))} className="mt-1.5 w-full accent-[#0875d1]" />
+                          <span className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
+                            <span className="text-xs font-bold text-slate-700">Верт.</span>
+                            <input type="range" min="0" max="100" step="1" value={cropDraft.positionY} onChange={(event) => setCropDraft((current) => ({ ...current, positionY: Number(event.target.value) }))} className="w-full accent-[#0875d1]" />
+                          </span>
                         </label>
                       </div>
                       {cropError ? <p className="mt-2 rounded-lg bg-rose-50 p-2 text-xs font-semibold text-rose-700">{cropError}</p> : null}
@@ -1013,11 +1022,6 @@ export function ListingPhotoUploader() {
               </div>
             ) : null}
 
-            <div className="border-t border-slate-200 p-3 sm:p-4">
-              <button type="button" onClick={() => setLibraryOpen(false)} className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0669bd]">
-                Готово
-              </button>
-            </div>
           </div>
         </div>
       ) : null}
