@@ -12,7 +12,7 @@ export function FormPanel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mb-16 min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:mb-20 sm:p-6">
+    <section className="mb-16 min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-card sm:mb-20 sm:p-6">
       <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-4xl">{title}</h1>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">{description}</p>
       <div className="mt-5 grid gap-3 sm:mt-8 sm:gap-4">{children}</div>

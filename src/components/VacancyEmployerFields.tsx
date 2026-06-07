@@ -43,18 +43,18 @@ function EmployerTypeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`grid min-h-[5.25rem] min-w-0 rounded-xl border p-3 text-left transition ${
+      className={`grid min-h-[4.35rem] min-w-0 rounded-xl border p-2.5 text-left transition sm:min-h-[5.25rem] sm:p-3 ${
         active ? "border-[#0875d1] bg-blue-50 text-[#060b27] ring-2 ring-blue-100" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200"
       }`}
       aria-pressed={active}
     >
       <span className="flex min-w-0 items-center gap-2">
-        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${active ? "bg-[#0875d1] text-white" : "bg-slate-50 text-[#0875d1]"}`}>
+        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-8 sm:w-8 ${active ? "bg-[#0875d1] text-white" : "bg-slate-50 text-[#0875d1]"}`}>
           <Icon className="h-4 w-4" />
         </span>
         <span className="min-w-0 text-sm font-black">{option.label}</span>
       </span>
-      <span className="mt-2 text-xs font-semibold leading-5 text-slate-500">{option.description}</span>
+      <span className="mt-1.5 text-xs font-semibold leading-4 text-slate-500 sm:mt-2 sm:leading-5">{option.description}</span>
     </button>
   );
 }
@@ -94,11 +94,11 @@ export function VacancyEmployerFields({ children }: { children: ReactNode }) {
   return (
     <>
       {step === 1 ? (
-        <section className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+        <section className="vacancy-employer-step grid gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:gap-3 sm:p-4">
           <div>
             <p className="text-xs font-black uppercase text-[#0875d1]">Шаг 1 из 2</p>
-            <h2 className="mt-1 text-xl font-black text-[#060b27] sm:text-2xl">Кто размещает вакансию?</h2>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+            <h2 className="mt-1 text-lg font-black leading-tight text-[#060b27] sm:text-2xl">Кто размещает вакансию?</h2>
+            <p className="mt-1 max-w-3xl text-sm leading-5 text-slate-600 sm:leading-6">
               Сначала выберите тип работодателя. Потом откроются только нужные поля: ИНН для организации и ИП, паспортные данные для частного лица.
             </p>
           </div>
@@ -115,7 +115,7 @@ export function VacancyEmployerFields({ children }: { children: ReactNode }) {
               type="button"
               disabled={!canContinue}
               onClick={() => setStep(2)}
-              className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto"
+              className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-11 sm:w-auto"
             >
               Продолжить
             </button>
@@ -128,7 +128,7 @@ export function VacancyEmployerFields({ children }: { children: ReactNode }) {
           <SelectedEmployerSummary employerType={employerType} onChange={() => setStep(1)} />
           <input type="hidden" name="employerType" value={employerType} />
 
-          <section className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+          <section className="vacancy-employer-step grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:p-4">
             <div>
               <p className="text-xs font-black uppercase text-[#0875d1]">Шаг 2 из 2</p>
               <h2 className="mt-1 text-base font-black text-[#060b27] sm:text-lg">Данные работодателя</h2>

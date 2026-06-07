@@ -504,10 +504,10 @@ canvas {
 @media (max-width: 639px) {
   .page-container,
   .dashboard-shell {
-    width: calc(100vw - 24px) !important;
-    width: calc(100dvw - 24px) !important;
-    max-width: calc(100vw - 24px) !important;
-    max-width: calc(100dvw - 24px) !important;
+    width: calc(100vw - 16px) !important;
+    width: calc(100dvw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    max-width: calc(100dvw - 16px) !important;
   }
 
   .responsive-field-grid > *,
@@ -515,6 +515,11 @@ canvas {
   .responsive-form-panel > section,
   .responsive-form-panel > label {
     max-width: min(100%, 20rem);
+  }
+
+  .vacancy-create-form > *,
+  .vacancy-create-form .vacancy-employer-step {
+    max-width: 100% !important;
   }
 
   .specialist-primary-field-grid {
