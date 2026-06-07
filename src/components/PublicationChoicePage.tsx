@@ -9,7 +9,7 @@ const publicationTypes = [
     title: "Объявление",
     description: "Продать, купить, обменять или отдать вещь.",
     restriction: {
-      image: "/policy/no-tattoo.svg",
+      image: "/policy/no-tattoo.png",
       title: "Тату запрещены",
       text: "Объявления о нанесении татуировок и тату-услугах не размещаем.",
     },
