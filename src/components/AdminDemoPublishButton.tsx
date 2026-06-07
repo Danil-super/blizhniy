@@ -13,6 +13,10 @@ type AdminDemoPublishButtonProps = {
   publicationType: DemoPublicationType;
   returnHref: string;
   label: string;
+  status?: string;
+  validateForm?: boolean;
+  requireCaptcha?: boolean;
+  buttonClassName?: string;
 };
 
 function readValue(formData: FormData, name: string, fallback = "") {
@@ -315,12 +319,20 @@ async function verifyCaptchaToken(token: string) {
   }
 }
 
-export function AdminDemoPublishButton({ publicationType, returnHref, label }: AdminDemoPublishButtonProps) {
+export function AdminDemoPublishButton({
+  buttonClassName,
+  label,
+  publicationType,
+  requireCaptcha,
+  returnHref,
+  status = "Опубликовано",
+  validateForm = true,
+}: AdminDemoPublishButtonProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
-  const captchaRequired = needsCaptcha(publicationType);
+  const captchaRequired = requireCaptcha ?? needsCaptcha(publicationType);
 
   async function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
     const form = event.currentTarget.form;
@@ -329,7 +341,7 @@ export function AdminDemoPublishButton({ publicationType, returnHref, label }: A
       return;
     }
 
-    if (!form.reportValidity()) {
+    if (validateForm && !form.reportValidity()) {
       return;
     }
 
@@ -345,6 +357,7 @@ export function AdminDemoPublishButton({ publicationType, returnHref, label }: A
         ...(await buildPublication(new FormData(form), publicationType)),
         ownerKey: identity.ownerKey,
         ownerName: identity.name,
+        status,
       };
       const stored = readStoredPublications();
       const nextPublications = [publication, ...stored].slice(0, 50);
@@ -377,7 +390,10 @@ export function AdminDemoPublishButton({ publicationType, returnHref, label }: A
         type="button"
         onClick={handleClick}
         disabled={saving || (captchaRequired && !captchaToken)}
-        className="inline-flex h-12 w-fit items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:bg-slate-300"
+        className={
+          buttonClassName ??
+          "inline-flex h-12 w-fit items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:bg-slate-300"
+        }
       >
         {saving ? "Сохраняем..." : label}
         <ArrowRight className="h-5 w-5" />

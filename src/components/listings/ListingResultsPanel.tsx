@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ChevronRight, Filter, Search } from "lucide-react";
 import { DemoListingFeed } from "@/components/DemoListingFeed";
-import { demoPublicationsStorageKey, type DemoPublication } from "@/lib/demo-publications";
+import { demoPublicationsStorageKey, isDemoPublicationPubliclyVisible, type DemoPublication } from "@/lib/demo-publications";
 import {
   emptyListingFilters,
   listingFiltersEqual,
@@ -77,7 +77,7 @@ export function ListingResultsPanel({ categorySlug, emptyText, kind, listings, s
   }, []);
 
   const scopedStoredItems = useMemo(
-    () => storedItems.filter((item) => matchesListingScope(item, { categorySlug, kind, subcategorySlug })),
+    () => storedItems.filter((item) => isDemoPublicationPubliclyVisible(item) && matchesListingScope(item, { categorySlug, kind, subcategorySlug })),
     [categorySlug, kind, storedItems, subcategorySlug],
   );
 

@@ -163,7 +163,11 @@ export function HeaderControls() {
       </Link>
 
       <div className="relative order-2 min-w-0" ref={searchRef}>
-        <form onSubmit={handleSearch} className="flex h-10 min-w-0 items-center overflow-hidden rounded-xl border-2 border-[#00aaff] bg-white text-slate-500 sm:h-12 sm:rounded-2xl">
+        <form
+          onSubmit={handleSearch}
+          suppressHydrationWarning
+          className="flex h-10 min-w-0 items-center overflow-hidden rounded-xl border-2 border-[#00aaff] bg-white text-slate-500 sm:h-12 sm:rounded-2xl"
+        >
           <Search className="ml-3 h-4 w-4 shrink-0 sm:ml-4" />
           <input
             className="min-w-0 flex-1 border-0 bg-transparent px-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 sm:px-3 sm:text-base"
@@ -176,6 +180,7 @@ export function HeaderControls() {
             onFocus={() => setSearchSuggestionsOpen(true)}
             placeholder="Поиск"
             autoComplete="off"
+            suppressHydrationWarning
           />
           <button type="submit" className="hidden h-full items-center rounded-r-[14px] bg-[#00aaff] px-5 text-sm font-bold text-white transition hover:bg-[#0796dd] sm:flex">
             Найти

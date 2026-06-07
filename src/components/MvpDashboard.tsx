@@ -264,7 +264,7 @@ function Shell({
   return (
     <>
       <SiteHeader />
-      <main className="page-container dashboard-shell py-6 sm:py-10">
+      <main className={`page-container dashboard-shell pt-6 sm:pt-10 ${nav === cabinetNav ? "pb-16 sm:pb-20" : "pb-6 sm:pb-10"}`}>
         <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">{eyebrow}</p>
         <div className="mt-2 flex flex-col gap-4 sm:mt-3 lg:flex-row lg:items-end lg:justify-between">
           <div>

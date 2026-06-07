@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { DemoGridCard } from "@/components/DemoListingFeed";
 import { DemoListing, ListingGridCard } from "@/components/listings/ListingCard";
-import { demoPublicationsStorageKey, type DemoPublication } from "@/lib/demo-publications";
+import { demoPublicationsStorageKey, isDemoPublicationPubliclyVisible, type DemoPublication } from "@/lib/demo-publications";
 import { publicationTimestamp } from "@/lib/publication-time";
 
 type HomeListingsFeedProps = {
@@ -30,7 +30,9 @@ function readStoredListings() {
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {
-      return parsed.filter((item): item is DemoPublication => Boolean(item && typeof item === "object" && "type" in item && item.type === "listing"));
+      return parsed
+        .filter((item): item is DemoPublication => Boolean(item && typeof item === "object" && "type" in item && item.type === "listing"))
+        .filter(isDemoPublicationPubliclyVisible);
     }
   } catch {
     return [];

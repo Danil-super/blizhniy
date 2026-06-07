@@ -440,7 +440,7 @@ export function AuthForm() {
         </button>
       </div>
 
-      <h2 className="mt-6 text-2xl font-black text-[#060b27]">{mode === "register" ? "Создать аккаунт" : "Войти в кабинет"}</h2>
+      <h2 className="mt-6 text-2xl font-black text-[#060b27]">{mode === "register" ? "Регистрируемся здесь" : "Войти в кабинет"}</h2>
       <form className="mt-6" onSubmit={handleSubmit}>
         {mode === "register" ? (
           <label className="block">

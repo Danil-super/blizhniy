@@ -4,12 +4,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Camera, ChevronLeft, ChevronRight, MapPin, MessageCircle, Phone, Video } from "lucide-react";
+import { ArrowLeft, Camera, CheckCircle2, ChevronLeft, ChevronRight, MapPin, MessageCircle, Phone, Video } from "lucide-react";
 import { LocationMap } from "@/components/LocationMap";
-import { DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
+import { DemoPublication, demoPublicationsStorageKey, isDemoPublicationSold } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { formatPublicationDateTime } from "@/lib/publication-time";
+import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
 import { ListingSellerCard } from "@/components/listings/ListingSellerCard";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
@@ -40,23 +41,11 @@ function hasListingMapPoint(item: DemoPublication) {
 }
 
 function listingSellerName(item: DemoPublication) {
-  if (item.ownerName?.trim()) {
-    return item.ownerName;
-  }
-
-  if (item.listingKind === "arenda") {
-    return "Владелец объекта";
-  }
-
-  if (item.listingKind === "kuplyu") {
-    return "Покупатель";
-  }
-
-  return "Частный продавец";
+  return sellerDisplayName(item);
 }
 
 function listingSellerKey(item: DemoPublication) {
-  return item.ownerKey?.trim() || item.ownerName?.trim() || listingSellerName(item);
+  return sellerProfileKey(item);
 }
 
 function dateSortValue(value: string) {
@@ -83,9 +72,16 @@ function listingSellerStats(listing: DemoPublication, items: DemoPublication[]) 
 
   return {
     listingCount: sellerListings.length || 1,
+    soldCount: sellerListings.filter(isDemoPublicationSold).length,
     registeredSince: formatSellerDate(firstListing?.createdAt ?? listing.createdAt),
   };
 }
+
+const soldReasonLabels: Record<NonNullable<DemoPublication["soldReason"]>, string> = {
+  elsewhere: "продано в другом месте",
+  not_actual: "объявление больше не актуально",
+  platform: "продано через БЛИЖНИЙ",
+};
 
 type GalleryMedia = {
   kind: "image" | "video";
@@ -188,6 +184,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
   const kind = (listing?.listingKind ?? "prodam") as ListingKind;
   const listingHref = `/blizhniy/obyavlenie/${slug}`;
   const hasMapPoint = listing ? hasListingMapPoint(listing) : false;
+  const sold = listing ? isDemoPublicationSold(listing) : false;
   const sellerStats = listing ? listingSellerStats(listing, items) : undefined;
   const galleryMedia: GalleryMedia[] = listing
     ? [
@@ -222,7 +219,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
           <h1 className="[overflow-wrap:anywhere] mt-3 text-2xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-4xl lg:text-5xl">{listing.title}</h1>
           <div className="mt-4 flex flex-wrap gap-2">
             <ListingKindBadge kind={kind} />
-            <StatusBadge status="published" />
+            <StatusBadge status={sold ? "sold" : "published"} />
           </div>
           <DemoGallery media={galleryMedia} title={listing.title} />
           <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
@@ -244,40 +241,63 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
         <aside className="min-w-0 space-y-4">
           <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
             <p className="[overflow-wrap:anywhere] text-2xl font-black text-[#060b27] sm:text-3xl">{listing.price ?? "по договоренности"}</p>
+            {sold ? (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-slate-600 ring-1 ring-slate-200">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-black text-slate-900">Объявление продано</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                      Контакты продавца скрыты, чтобы ему не звонили по неактуальному товару.
+                      {listing.soldReason ? ` Причина: ${soldReasonLabels[listing.soldReason]}.` : ""}
+                    </p>
+                  </div>
+                </div>
+                <Link href={`/blizhniy/${kind}`} className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-3 text-sm font-bold text-white">
+                  Смотреть похожие объявления
+                </Link>
+              </div>
+            ) : null}
             {!hasMapPoint ? (
               <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
                 <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
                 <span className="min-w-0 [overflow-wrap:anywhere]">{listing.city}</span>
               </p>
             ) : null}
-            <div className="mt-5 grid gap-2 sm:gap-3">
-              <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                <a href={`tel:${listing.phone ?? "+78610009999"}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-3 text-sm font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:text-base">
-                  <Phone className="h-5 w-5 shrink-0" />
-                  <span className="truncate">Позвонить</span>
-                </a>
-                <ListingShareButton
-                  href={listingHref}
-                  title={listing.title}
-                  textBreakpoint="always"
-                  className="inline-flex h-11 min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:h-12 sm:text-base"
-                  iconClassName="h-5 w-5 shrink-0"
-                />
+            {!sold ? (
+              <div className="mt-5 grid gap-2 sm:gap-3">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  <a href={`tel:${listing.phone ?? "+78610009999"}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-3 text-sm font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:text-base">
+                    <Phone className="h-5 w-5 shrink-0" />
+                    <span className="truncate">Позвонить</span>
+                  </a>
+                  <ListingShareButton
+                    href={listingHref}
+                    title={listing.title}
+                    textBreakpoint="always"
+                    className="inline-flex h-11 min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:h-12 sm:text-base"
+                    iconClassName="h-5 w-5 shrink-0"
+                  />
+                </div>
+                {listing.messengerUrl ? (
+                  <a href={listing.messengerUrl} className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl border border-[#0875d1] bg-white px-3 text-sm font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:h-12 sm:text-base">
+                    <MessageCircle className="h-5 w-5 shrink-0" />
+                    <span className="min-w-0 truncate">Написать сообщение</span>
+                  </a>
+                ) : null}
               </div>
-              {listing.messengerUrl ? (
-                <a href={listing.messengerUrl} className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl border border-[#0875d1] bg-white px-3 text-sm font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:h-12 sm:text-base">
-                  <MessageCircle className="h-5 w-5 shrink-0" />
-                  <span className="min-w-0 truncate">Написать сообщение</span>
-                </a>
-              ) : null}
-            </div>
+            ) : null}
           </div>
           <ListingSellerCard
             sellerName={listingSellerName(listing)}
             registeredSince={sellerStats?.registeredSince}
             listingCount={sellerStats?.listingCount}
-            hasContacts={Boolean(listing.phone || listing.messengerUrl)}
+            soldCount={sellerStats?.soldCount}
+            hasContacts={!sold && Boolean(listing.phone || listing.messengerUrl)}
             listingTitle={listing.title}
+            profileHref={sellerProfileHref(listing)}
           />
           {hasMapPoint ? (
             <LocationMap

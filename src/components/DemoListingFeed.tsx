@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRightLeft, CalendarDays, Gift, MapPin, ShoppingBag, Tags, Video } from "lucide-react";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
-import { demoPublicationsStorageKey, DemoPublication } from "@/lib/demo-publications";
+import { demoPublicationsStorageKey, DemoPublication, isDemoPublicationPubliclyVisible } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { matchesDemoPublicationFilters, matchesListingScope, type ListingFilterCriteria } from "@/lib/listing-filters";
 import { formatPublicationDateTime, publicationTimestamp } from "@/lib/publication-time";
@@ -236,7 +236,7 @@ export function DemoListingFeed({ categorySlug, filters, kind, subcategorySlug, 
     () =>
       items
         .filter((item) => {
-          return matchesListingScope(item, { categorySlug, kind, subcategorySlug }) && (!filters || matchesDemoPublicationFilters(item, filters));
+          return isDemoPublicationPubliclyVisible(item) && matchesListingScope(item, { categorySlug, kind, subcategorySlug }) && (!filters || matchesDemoPublicationFilters(item, filters));
         })
         .sort((left, right) => publicationTimestamp(right.createdAt) - publicationTimestamp(left.createdAt)),
     [categorySlug, filters, items, kind, subcategorySlug],

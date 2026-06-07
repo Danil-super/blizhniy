@@ -26,10 +26,14 @@ export type DemoPublication = {
   subcategorySlug?: string;
   booking?: BookingDetails;
   status: string;
+  soldReason?: "platform" | "elsewhere" | "not_actual";
+  soldAt?: string;
   createdAt: string;
 };
 
 export const demoPublicationsStorageKey = "blizhniy-demo-publications";
+export const demoPublicationsUpdatedEvent = "blizhniy-demo-publications-updated";
+export const soldPublicationStatus = "Продано";
 
 export const demoPublicationLabels: Record<DemoPublicationType, string> = {
   fairApplication: "Заявка на ярмарку",
@@ -38,3 +42,13 @@ export const demoPublicationLabels: Record<DemoPublicationType, string> = {
   vacancy: "Вакансия",
   workRequest: "Заказ",
 };
+
+export function isDemoPublicationSold(item: Pick<DemoPublication, "status">) {
+  return item.status.trim().toLowerCase() === soldPublicationStatus.toLowerCase() || item.status.trim().toLowerCase() === "sold";
+}
+
+export function isDemoPublicationPubliclyVisible(item: DemoPublication) {
+  const status = item.status.trim().toLowerCase();
+
+  return !isDemoPublicationSold(item) && (status === "опубликовано" || status === "published");
+}

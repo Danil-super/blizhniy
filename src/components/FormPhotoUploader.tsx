@@ -4,12 +4,14 @@
 
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { Camera, X } from "lucide-react";
+import { SquareImageCropper } from "@/components/SquareImageCropper";
 
 type PreviewPhoto = {
   id: string;
   file?: File;
   name: string;
   persisted?: boolean;
+  sourceUrl: string;
   url: string;
 };
 
@@ -25,6 +27,13 @@ function syncFileInput(input: HTMLInputElement | null, photos: PreviewPhoto[]) {
     }
   });
   input.files = transfer.files;
+}
+
+async function dataUrlToImageFile(dataUrl: string, name: string) {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  const base = name.replace(/\.[^.]+$/, "") || "photo";
+  return new File([blob], `${base}-preview.jpg`, { type: "image/jpeg" });
 }
 
 export function FormPhotoUploader({
@@ -43,12 +52,15 @@ export function FormPhotoUploader({
       id: `persisted-${index}-${url.slice(0, 24)}`,
       name: `Фото ${index + 1}`,
       persisted: true,
+      sourceUrl: url,
       url,
     }))
   );
+  const [cropEditorId, setCropEditorId] = useState("");
   const urlsRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const maxPhotos = 12;
+  const cropEditorPhoto = photos.find((photo) => photo.id === cropEditorId);
 
   useEffect(() => {
     return () => {
@@ -76,6 +88,7 @@ export function FormPhotoUploader({
         id: `${file.name}-${file.size}-${url}`,
         file,
         name: file.name,
+        sourceUrl: url,
         url,
       };
     });
@@ -85,6 +98,7 @@ export function FormPhotoUploader({
       window.requestAnimationFrame(() => syncFileInput(inputRef.current, next));
       return next;
     });
+    setCropEditorId(nextPhotos[0]?.id ?? "");
   }
 
   function removePhoto(id: string) {
@@ -100,6 +114,27 @@ export function FormPhotoUploader({
       window.requestAnimationFrame(() => syncFileInput(inputRef.current, next));
       return next;
     });
+  }
+
+  async function applySquareCrop(photo: PreviewPhoto, dataUrl: string) {
+    const file = await dataUrlToImageFile(dataUrl, photo.name);
+
+    setPhotos((current) => {
+      const next = current.map((item) =>
+        item.id === photo.id
+          ? {
+              ...item,
+              file,
+              persisted: false,
+              url: dataUrl,
+            }
+          : item
+      );
+
+      window.requestAnimationFrame(() => syncFileInput(inputRef.current, next));
+      return next;
+    });
+    setCropEditorId("");
   }
 
   return (
@@ -134,9 +169,25 @@ export function FormPhotoUploader({
               >
                 <X className="h-4 w-4" />
               </button>
+              <button
+                type="button"
+                onClick={() => setCropEditorId(photo.id)}
+                className="absolute bottom-2 left-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+              >
+                Кадр
+              </button>
             </figure>
           ))}
         </div>
+      ) : null}
+      {cropEditorPhoto ? (
+        <SquareImageCropper
+          alt={cropEditorPhoto.name}
+          onApply={(dataUrl) => applySquareCrop(cropEditorPhoto, dataUrl)}
+          onCancel={() => setCropEditorId("")}
+          src={cropEditorPhoto.sourceUrl}
+          title="Кадр для карточки"
+        />
       ) : null}
     </section>
   );

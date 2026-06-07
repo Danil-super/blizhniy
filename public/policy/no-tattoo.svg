@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-labelledby="title desc">
+  <title id="title">Tattoo ads are not allowed</title>
+  <desc id="desc">A tattooed arm crossed by a red prohibition sign</desc>
+  <rect width="240" height="240" rx="40" fill="#fff7ed"/>
+  <circle cx="120" cy="120" r="86" fill="#ffffff"/>
+  <path d="M86 46c-14 17-21 38-18 64l6 58c2 23 20 40 43 42 26 2 48-18 48-44v-56c0-18-9-35-24-45l-23-15c-11-7-23-8-32-4Z" fill="#ffd8ad"/>
+  <path d="M139 67c12 9 20 24 20 40v58c0 20-16 36-36 36h-2c21-12 31-30 31-54v-38c0-17-7-31-20-42h7Z" fill="#1f2937"/>
+  <path d="M74 72c10-7 26-10 44-6" fill="none" stroke="#111827" stroke-width="8" stroke-linecap="round"/>
+  <path d="M75 122c-10-19-9-38 5-57-1 20 6 36 21 48" fill="#111827"/>
+  <path d="m116 88 6 13 14 2-10 10 3 14-13-7-13 7 3-14-10-10 14-2 6-13Z" fill="#111827"/>
+  <path d="M105 139c7-10 22-10 29 0" fill="none" stroke="#111827" stroke-width="8" stroke-linecap="round"/>
+  <path d="M98 156c12 14 32 14 44 0" fill="none" stroke="#111827" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="120" cy="120" r="91" fill="none" stroke="#ef0000" stroke-width="22"/>
+  <path d="M54 186 186 54" fill="none" stroke="#ef0000" stroke-width="25" stroke-linecap="round"/>
+</svg>

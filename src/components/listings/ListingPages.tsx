@@ -30,6 +30,7 @@ import { categories } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { createListing, listListings } from "@/lib/mock-store";
 import { formatPublicationDateTime } from "@/lib/publication-time";
+import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
 import { getTariffs } from "@/lib/tariff-store";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
 import type { BookingDetails, DeliveryOptions, DeliveryServiceId, Listing as StoreListing } from "@/lib/types";
@@ -803,44 +804,12 @@ function listingPlaceLabel(listing: DemoListing) {
   return hasListingMapPoint(listing) ? [listing.city, listing.district].filter(Boolean).join(", ") : listing.city;
 }
 
-const sellerNamesByPhone: Record<string, string> = {
-  "+78610002001": "Простова Наталья",
-  "+78610002002": "Кузнецова Марина",
-  "+78610002003": "Павлова Елена",
-  "+78610002004": "Иванова Светлана",
-  "+78610002005": "Орлова Анна",
-  "+78610002006": "Сергеев Дмитрий",
-  "+78610002007": "Мельников Андрей",
-  "+78610002008": "Соколова Ирина",
-  "+78610002009": "Романов Павел",
-  "+78610002010": "Федоров Алексей",
-  "+78610002011": "Васильева Ольга",
-  "+78610002012": "Николаев Игорь",
-  "+78610009999": "Команда Ближний",
-};
-
 function listingSellerName(listing: DemoListing) {
-  if (listing.author?.trim()) {
-    return listing.author;
-  }
-
-  if (sellerNamesByPhone[listing.phone]) {
-    return sellerNamesByPhone[listing.phone];
-  }
-
-  if (listing.kind === "arenda") {
-    return "Владелец объекта";
-  }
-
-  if (listing.kind === "kuplyu") {
-    return "Покупатель";
-  }
-
-  return "Частный продавец";
+  return sellerDisplayName(listing);
 }
 
 function listingSellerKey(listing: DemoListing) {
-  return listing.author?.trim() || listing.phone || listingSellerName(listing);
+  return sellerProfileKey(listing);
 }
 
 const russianMonths: Record<string, number> = {
@@ -899,6 +868,7 @@ function listingSellerStats(listing: DemoListing) {
 
   return {
     listingCount: sellerListings.length || 1,
+    soldCount: sellerListings.filter((item) => item.status === "sold").length,
     registeredSince: formatSellerDate(firstListing?.createdAt ?? listing.createdAt),
   };
 }
@@ -1515,8 +1485,10 @@ export function ListingDetailPage({ slug }: { slug: string }) {
               sellerName={listingSellerName(listing)}
               registeredSince={sellerStats.registeredSince}
               listingCount={sellerStats.listingCount}
+              soldCount={sellerStats.soldCount}
               hasContacts={Boolean(listing.phone || listing.messengerUrl)}
               listingTitle={listing.title}
+              profileHref={sellerProfileHref(listing)}
             />
             {hasMapPoint ? <LocationMap location={listing} exactLabel="Точный адрес частного лица по умолчанию не показывается" /> : null}
             {listing.booking ? <BookingCalculator booking={listing.booking} listingId={listing.slug} listingTitle={listing.title} /> : null}
@@ -1798,9 +1770,15 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
             <ListingPhotoUploader />
 
             <div className="flex flex-wrap gap-3">
-              <Link href="/cabinet/obyavleniya" className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 px-6 font-bold text-slate-800">
-                Сохранить черновик
-              </Link>
+              <AdminDemoPublishButton
+                publicationType="listing"
+                returnHref="/cabinet/obyavleniya"
+                label="Сохранить черновик"
+                status="Черновик"
+                requireCaptcha={false}
+                validateForm={false}
+                buttonClassName="inline-flex h-12 w-fit items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-6 font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 disabled:cursor-wait disabled:bg-slate-100"
+              />
               {adminMode ? (
                 <AdminDemoPublishButton publicationType="listing" returnHref="/cabinet/obyavleniya" label="Опубликовать без оплаты" />
               ) : (

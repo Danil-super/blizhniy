@@ -4,8 +4,16 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, CreditCard, FileText, LockKeyhole, Mail, Move, Phone, Plus, Search, Settings2, Trash2, UserRound, Video, X } from "lucide-react";
-import { demoPublicationLabels, demoPublicationsStorageKey, type DemoPublication, type DemoPublicationType } from "@/lib/demo-publications";
+import { Bell, BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, CreditCard, FileText, LockKeyhole, Mail, MapPin, Move, Phone, Plus, Search, Settings2, Trash2, UserRound, Video, X } from "lucide-react";
+import {
+  demoPublicationLabels,
+  demoPublicationsStorageKey,
+  demoPublicationsUpdatedEvent,
+  isDemoPublicationSold,
+  soldPublicationStatus,
+  type DemoPublication,
+  type DemoPublicationType,
+} from "@/lib/demo-publications";
 import { useAuthState } from "@/components/auth/useAuthState";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { ValidatedInput } from "@/components/ValidatedInput";
@@ -103,6 +111,11 @@ function readStoredPublications() {
   return [];
 }
 
+function writeStoredPublications(items: DemoPublication[]) {
+  window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(items));
+  window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+}
+
 function useUserCabinetData(): UserCabinetState {
   const [state, setState] = useState<UserCabinetState>({ identity: null, profile: null, items: [], loading: true });
 
@@ -122,13 +135,13 @@ function useUserCabinetData(): UserCabinetState {
 
     sync();
     window.addEventListener("storage", sync);
-    window.addEventListener("blizhniy-demo-publications-updated", sync);
+    window.addEventListener(demoPublicationsUpdatedEvent, sync);
     window.addEventListener("blizhniy-profile-updated", sync);
 
     return () => {
       active = false;
       window.removeEventListener("storage", sync);
-      window.removeEventListener("blizhniy-demo-publications-updated", sync);
+      window.removeEventListener(demoPublicationsUpdatedEvent, sync);
       window.removeEventListener("blizhniy-profile-updated", sync);
     };
   }, []);
@@ -395,6 +408,52 @@ function getEditHref(item: DemoPublication) {
   return "/yarmarka-masterov/zayavka";
 }
 
+type SoldReason = NonNullable<DemoPublication["soldReason"]>;
+
+const soldReasonLabels: Record<SoldReason, string> = {
+  elsewhere: "Продано в другом месте",
+  not_actual: "Больше не актуально",
+  platform: "Продано через БЛИЖНИЙ",
+};
+
+function canMarkListingSold(item: DemoPublication) {
+  return item.type === "listing" && !isDemoPublicationSold(item) && item.status.trim().toLowerCase() !== "черновик";
+}
+
+function markListingSold(itemId: string, reason: SoldReason) {
+  const nextItems = readStoredPublications().map((item) =>
+    item.id === itemId && item.type === "listing"
+      ? {
+          ...item,
+          soldAt: new Date().toISOString(),
+          soldReason: reason,
+          status: soldPublicationStatus,
+        }
+      : item,
+  );
+
+  writeStoredPublications(nextItems);
+}
+
+function restoreSoldListing(itemId: string) {
+  const nextItems = readStoredPublications().map((item) => {
+    if (item.id !== itemId || item.type !== "listing") {
+      return item;
+    }
+
+    const restoredItem = { ...item };
+    delete restoredItem.soldAt;
+    delete restoredItem.soldReason;
+
+    return {
+      ...restoredItem,
+      status: "Опубликовано",
+    };
+  });
+
+  writeStoredPublications(nextItems);
+}
+
 function EmptyState({ mode }: { mode: CabinetListMode }) {
   const copy = emptyCopy[mode];
 
@@ -419,63 +478,120 @@ function EmptyState({ mode }: { mode: CabinetListMode }) {
 }
 
 function StatusPill({ children }: { children: string }) {
-  return <span className="inline-flex h-7 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-[#0a8f32]">{children}</span>;
+  const tone = isDemoPublicationSold({ status: children })
+    ? "border-slate-300 bg-slate-100 text-slate-700"
+    : children.trim().toLowerCase() === "черновик"
+      ? "border-amber-200 bg-amber-50 text-amber-700"
+      : "border-emerald-200 bg-emerald-50 text-[#0a8f32]";
+
+  return <span className={`inline-flex h-7 items-center rounded-full border px-3 text-xs font-bold ${tone}`}>{children}</span>;
 }
 
 function PublicationList({ items, mode }: { items: DemoPublication[]; mode: DemoPublicationType }) {
+  const [sellingItemId, setSellingItemId] = useState<string | null>(null);
+
   if (!items.length) {
     return <EmptyState mode={mode} />;
   }
 
   return (
-    <section className="grid h-full auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      {items.map((item) => (
-        <article key={item.id} className="group flex aspect-square min-h-[18.5rem] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg">
-          <div className="relative min-h-0 flex-[1.05] overflow-hidden bg-blue-50 text-[#0875d1]">
-            {item.images?.[0] ? <img src={item.images[0]} alt={item.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
-            {!item.images?.[0] && item.videos?.[0] ? <video src={item.videos[0]} className="h-full w-full bg-slate-950 object-cover transition duration-300 group-hover:scale-[1.03]" muted playsInline preload="metadata" /> : null}
+    <section className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
+      {items.map((item) => {
+        const sold = item.type === "listing" && isDemoPublicationSold(item);
+        const confirmSold = sellingItemId === item.id;
+
+        return (
+        <article key={item.id} className={`group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-card ${sold ? "ring-slate-300" : "ring-slate-200"}`}>
+          <Link href={getItemHref(item)} className="block min-w-0" aria-label={`Открыть ${item.title}`}>
+          <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-blue-50 text-[#0875d1]">
+            {item.images?.[0] ? <img src={item.images[0]} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
+            {!item.images?.[0] && item.videos?.[0] ? <video src={item.videos[0]} className="absolute inset-0 h-full w-full bg-slate-950 object-cover transition duration-300 group-hover:scale-[1.03]" muted playsInline preload="metadata" /> : null}
             {!item.images?.[0] && !item.videos?.[0] ? (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-50 via-white to-cyan-50">
+              <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80 transition group-hover:scale-105">
                 <FileText className="h-12 w-12" />
-              </div>
+              </span>
             ) : null}
-            <div className="absolute left-3 top-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-1.5">
+            {sold ? <span className="absolute inset-0 bg-white/50" /> : null}
+            <span className="absolute left-2 top-2 flex max-w-[calc(100%-3.5rem)] flex-wrap gap-1">
               <StatusPill>{item.status}</StatusPill>
-              <span className="inline-flex h-7 items-center rounded-full bg-white/95 px-2.5 text-xs font-bold text-slate-600 shadow-sm">{demoPublicationLabels[item.type]}</span>
-            </div>
+              <span className="inline-flex h-6 items-center rounded-full bg-white/95 px-2 text-[11px] font-bold text-slate-600 shadow-sm sm:h-7 sm:text-xs">{demoPublicationLabels[item.type]}</span>
+            </span>
             {!item.images?.[0] && item.videos?.[0] ? (
-              <span className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
+              <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
                 <Video className="h-3 w-3" />
                 Видео
               </span>
             ) : null}
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-4">
-            <div className="min-w-0">
-              <h2 className="line-clamp-2 text-lg font-black leading-tight text-[#060b27]">{item.title}</h2>
-              <p className="mt-1 line-clamp-1 text-sm font-semibold text-slate-500">{item.subtitle}</p>
-              <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 text-sm font-bold text-slate-600">
-                <span className="truncate">{item.city}</span>
-                {item.price ? <span className="truncate text-[#060b27]">{item.price}</span> : null}
+          </span>
+          <span className="block p-3">
+            <span className="block truncate text-base font-black text-[#060b27]">{item.price ?? item.subtitle}</span>
+            <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">{item.title}</span>
+            <span className="mt-1 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
+              <Clock3 className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{sold && item.soldAt ? `Продано ${formatDate(item.soldAt)}` : formatDate(item.createdAt)}</span>
+            </span>
+            <span className="mt-2 flex min-w-0 items-center gap-1 text-xs text-slate-500">
+              <MapPin className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{item.city}</span>
+            </span>
+          </span>
+          </Link>
+          {item.type === "listing" ? (
+            <ListingShareButton href={getItemHref(item)} title={item.title} textBreakpoint="never" className="absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-white hover:text-[#0875d1]" />
+          ) : null}
+          {confirmSold ? (
+            <div className="relative z-20 mx-3 mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2">
+              <p className="text-xs font-bold text-amber-900">Почему снимаем объявление?</p>
+              <div className="mt-2 grid gap-1.5">
+                {(Object.keys(soldReasonLabels) as SoldReason[]).map((reason) => (
+                  <button
+                    key={reason}
+                    type="button"
+                    onClick={() => {
+                      markListingSold(item.id, reason);
+                      setSellingItemId(null);
+                    }}
+                    className="inline-flex min-h-8 items-center justify-center rounded-md bg-white px-2 py-1 text-xs font-bold text-slate-800 ring-1 ring-amber-200 transition hover:text-[#0875d1]"
+                  >
+                    {soldReasonLabels[reason]}
+                  </button>
+                ))}
               </div>
-              <p className="mt-1 text-xs font-semibold text-slate-400">{formatDate(item.createdAt)}</p>
+              <button type="button" onClick={() => setSellingItemId(null)} className="mt-2 h-8 w-full rounded-md text-xs font-bold text-slate-500 transition hover:bg-white">
+                Отмена
+              </button>
             </div>
-            <div className={`mt-auto grid gap-2 pt-3 ${item.type === "listing" ? "grid-cols-3" : item.type !== "specialist" ? "grid-cols-2" : "grid-cols-1"}`}>
-              {item.type !== "specialist" ? (
-                <Link href={getItemHref(item)} className="inline-flex h-10 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
-                  Открыть
-                </Link>
-              ) : null}
-              <Link href={getEditHref(item)} className="inline-flex h-10 min-w-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-2 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
-                Изменить
+          ) : null}
+          <div className={`grid gap-2 px-3 pb-3 ${item.type === "listing" ? "grid-cols-2" : item.type !== "specialist" ? "grid-cols-2" : "grid-cols-1"}`}>
+            {item.type !== "specialist" ? (
+              <Link href={getItemHref(item)} className="relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
+                Открыть
               </Link>
-              {item.type === "listing" ? (
-                <ListingShareButton href={getItemHref(item)} title={item.title} textBreakpoint="never" className="inline-flex h-10 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]" />
-              ) : null}
-            </div>
+            ) : null}
+            <Link href={getEditHref(item)} className="relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-2 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
+              Изменить
+            </Link>
+            {canMarkListingSold(item) ? (
+              <button
+                type="button"
+                onClick={() => setSellingItemId((current) => (current === item.id ? null : item.id))}
+                className="relative z-20 col-span-2 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-sm font-bold text-[#0a8f32] transition hover:border-[#0a8f32] hover:bg-white"
+              >
+                Продано / снять
+              </button>
+            ) : sold ? (
+              <button
+                type="button"
+                onClick={() => restoreSoldListing(item.id)}
+                className="relative z-20 col-span-2 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]"
+              >
+                Вернуть в публикацию
+              </button>
+            ) : null}
           </div>
         </article>
-      ))}
+        );
+      })}
     </section>
   );
 }
@@ -1157,17 +1273,8 @@ export function CabinetOverviewClient() {
         <MiniMetric icon={<ClipboardList className="h-5 w-5" />} label="Заказы" value={String(orders.length)} detail="Задачи для исполнителей." />
         <MiniMetric icon={<CreditCard className="h-5 w-5" />} label="Оплаты" value={`${paymentsTotal} ₽`} detail="Сумма платежей аккаунта." />
       </div>
-      <div className="mt-8 grid items-stretch gap-8 xl:grid-cols-2">
-        <section className="grid min-h-0 grid-rows-[auto_1fr]">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-black text-[#060b27]">Последние объявления</h2>
-            <Link href="/cabinet/obyavleniya" className="text-sm font-bold text-[#0875d1]">
-              Все объявления
-            </Link>
-          </div>
-          <PublicationList items={listings.slice(0, 3)} mode="listing" />
-        </section>
-        <section className="grid min-h-0 grid-rows-[auto_1fr]">
+      <div className="mt-8 grid min-w-0 items-stretch gap-8">
+        <section className="grid min-h-0 min-w-0 grid-rows-[auto_1fr]">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-2xl font-black text-[#060b27]">Последние оплаты</h2>
             <Link href="/cabinet/oplata" className="text-sm font-bold text-[#0875d1]">

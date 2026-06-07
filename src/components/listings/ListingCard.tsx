@@ -7,7 +7,7 @@ import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewCounter } from "./ListingViewCounter";
 
 export type ListingKind = "prodam" | "kuplyu" | "menyayu" | "otdam-darom" | "arenda";
-export type ListingStatus = "draft" | "pending_payment" | "paid" | "published" | "archived" | "expired" | "rejected";
+export type ListingStatus = "draft" | "pending_payment" | "paid" | "published" | "sold" | "archived" | "expired" | "rejected";
 
 export type DemoListing = {
   viewId?: string;
@@ -89,6 +89,7 @@ export function StatusBadge({ status }: { status: ListingStatus }) {
     pending_payment: "Ожидает оплату",
     paid: "Оплачено",
     published: "Опубликовано",
+    sold: "Продано",
     archived: "Архив",
     expired: "Истек срок",
     rejected: "Отклонено",
@@ -97,6 +98,8 @@ export function StatusBadge({ status }: { status: ListingStatus }) {
   const tone =
     status === "published"
       ? "border-emerald-200 bg-emerald-50 text-[#0a8f32]"
+      : status === "sold"
+        ? "border-slate-300 bg-slate-100 text-slate-700"
       : status === "pending_payment"
         ? "border-amber-200 bg-amber-50 text-amber-700"
         : "border-slate-200 bg-slate-50 text-slate-600";

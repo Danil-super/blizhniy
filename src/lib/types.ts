@@ -3,6 +3,7 @@ export type PublicationStatus =
   | "pending_payment"
   | "paid"
   | "published"
+  | "sold"
   | "archived"
   | "expired"
   | "rejected";

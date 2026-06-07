@@ -92,16 +92,27 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
             <TextAreaField name="description" label="Описание вакансии" />
             <TextAreaField label="Требования" />
             <TextAreaField label="Обязанности" />
-            {adminMode ? (
-              <AdminDemoPublishButton publicationType="vacancy" returnHref="/cabinet/vakansii" label="Сохранить вакансию без оплаты" />
-            ) : (
-              <TurnstileVerifiedLinkButton
-                href="/blizhniy/oplata/vacancy-publication"
-                className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300"
-              >
-                Создать заказ и оплатить
-              </TurnstileVerifiedLinkButton>
-            )}
+            <div className="flex flex-wrap gap-3">
+              <AdminDemoPublishButton
+                publicationType="vacancy"
+                returnHref="/cabinet/vakansii"
+                label="Сохранить черновик"
+                status="Черновик"
+                requireCaptcha={false}
+                validateForm={false}
+                buttonClassName="inline-flex h-12 w-fit items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-6 font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 disabled:cursor-wait disabled:bg-slate-100"
+              />
+              {adminMode ? (
+                <AdminDemoPublishButton publicationType="vacancy" returnHref="/cabinet/vakansii" label="Сохранить вакансию без оплаты" />
+              ) : (
+                <TurnstileVerifiedLinkButton
+                  href="/blizhniy/oplata/vacancy-publication"
+                  className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  Создать заказ и оплатить
+                </TurnstileVerifiedLinkButton>
+              )}
+            </div>
           </form>
         </FormPanel>
       </main>

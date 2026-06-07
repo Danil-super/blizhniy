@@ -39,6 +39,11 @@ const nextConfig: NextConfig = {
         destination: "/blizhniy/oplata/:path*",
         permanent: false,
       },
+      {
+        source: "/prodavets/:path*",
+        destination: "/blizhniy/prodavets/:path*",
+        permanent: false,
+      },
     ];
   },
   async rewrites() {
@@ -62,6 +67,10 @@ const nextConfig: NextConfig = {
       {
         source: "/blizhniy/oplata/:path*",
         destination: "/oplata/:path*",
+      },
+      {
+        source: "/blizhniy/prodavets/:path*",
+        destination: "/prodavets/:path*",
       },
       {
         source: "/blizhniy/poisk",

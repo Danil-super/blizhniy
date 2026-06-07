@@ -5,6 +5,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Camera, Save, Trash2, Video } from "lucide-react";
+import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
@@ -168,6 +169,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
   const [images, setImages] = useState<string[]>([]);
   const [videos, setVideos] = useState<string[]>([]);
   const [categorySlug, setCategorySlug] = useState("mebel-i-interer");
+  const [cropEditorIndex, setCropEditorIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const mediaCount = images.length + videos.length;
@@ -206,13 +208,23 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
       })),
     );
     const fulfilled = nextMedia.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+    const nextImages = fulfilled.filter((item) => item.kind === "image").map((item) => item.value);
 
-    setImages((current) => [...current, ...fulfilled.filter((item) => item.kind === "image").map((item) => item.value)].slice(0, maxMediaFiles));
+    setImages((current) => {
+      const next = [...current, ...nextImages].slice(0, maxMediaFiles);
+      setCropEditorIndex(nextImages.length ? current.length : null);
+      return next;
+    });
     setVideos((current) => [...current, ...fulfilled.filter((item) => item.kind === "video").map((item) => item.value)].slice(0, maxMediaFiles));
   }
 
   function removeImage(index: number) {
     setImages((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function applySquareCrop(index: number, dataUrl: string) {
+    setImages((current) => current.map((image, imageIndex) => (imageIndex === index ? dataUrl : image)));
+    setCropEditorIndex(null);
   }
 
   function removeVideo(index: number) {
@@ -397,7 +409,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
               {images.map((image, index) => (
                 <figure key={`${image.slice(0, 40)}-${index}`} className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white">
-                  <img src={image} alt={`Фото ${index + 1}`} className="aspect-square w-full bg-slate-50 object-contain p-1" />
+                  <img src={image} alt={`Фото ${index + 1}`} className="aspect-square w-full bg-slate-50 object-cover" />
                   <button
                     type="button"
                     onClick={() => removeImage(index)}
@@ -405,6 +417,13 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
                     aria-label={`Удалить фото ${index + 1}`}
                   >
                     <Trash2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCropEditorIndex(index)}
+                    className="absolute bottom-2 left-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+                  >
+                    Кадр
                   </button>
                 </figure>
               ))}
@@ -445,6 +464,15 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
           </Link>
         </div>
       </form>
+      {cropEditorIndex !== null && images[cropEditorIndex] ? (
+        <SquareImageCropper
+          alt={`Фото ${cropEditorIndex + 1}`}
+          onApply={(dataUrl) => applySquareCrop(cropEditorIndex, dataUrl)}
+          onCancel={() => setCropEditorIndex(null)}
+          src={images[cropEditorIndex]}
+          title="Кадр для карточки"
+        />
+      ) : null}
     </main>
   );
 }

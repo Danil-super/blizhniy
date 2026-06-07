@@ -4,8 +4,9 @@
 
 import { ChangeEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { InputHTMLAttributes } from "react";
-import { Camera, Crop, ImagePlus, RotateCcw, SlidersHorizontal, Video, X } from "lucide-react";
+import { Camera, ImagePlus, Video, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
+import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
 import { categories, cities, region } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
@@ -24,13 +25,6 @@ type PreviewMedia = {
   name: string;
   sourceUrl: string;
   url: string;
-  crop?: ImageCrop;
-};
-
-type ImageCrop = {
-  zoom: number;
-  positionX: number;
-  positionY: number;
 };
 
 const listingKindOptions: Array<{ value: ListingKind; label: string }> = [
@@ -143,59 +137,15 @@ function getRentalSubcategories(categorySlug: string, subcategories: string[]) {
   return subcategories.filter((subcategory) => allowedNames.includes(subcategory));
 }
 
-function loadPreviewImage(src: string) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Не удалось открыть изображение"));
-    image.src = src;
-  });
-}
-
 function cropFileName(name: string) {
   const base = name.replace(/\.[^.]+$/, "") || "photo";
   return `${base}-preview.jpg`;
 }
 
-async function createCroppedImageFile(item: PreviewMedia, crop: ImageCrop) {
-  const image = await loadPreviewImage(item.sourceUrl);
-  const size = 1200;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-
-  const context = canvas.getContext("2d");
-
-  if (!context) {
-    throw new Error("Не удалось подготовить изображение");
-  }
-
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, size, size);
-
-  const imageWidth = image.naturalWidth || image.width;
-  const imageHeight = image.naturalHeight || image.height;
-  const scale = Math.max(size / imageWidth, size / imageHeight) * crop.zoom;
-  const drawWidth = imageWidth * scale;
-  const drawHeight = imageHeight * scale;
-  const extraX = Math.max(0, drawWidth - size);
-  const extraY = Math.max(0, drawHeight - size);
-  const drawX = -extraX * (crop.positionX / 100);
-  const drawY = -extraY * (crop.positionY / 100);
-
-  context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
-
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((result) => {
-      if (result) {
-        resolve(result);
-      } else {
-        reject(new Error("Не удалось сохранить кадр"));
-      }
-    }, "image/jpeg", 0.88);
-  });
-
-  return new File([blob], cropFileName(item.name), { type: "image/jpeg" });
+async function dataUrlToImageFile(dataUrl: string, name: string) {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  return new File([blob], cropFileName(name), { type: "image/jpeg" });
 }
 
 function filterSuggestions(suggestions: Suggestion[], value: string) {
@@ -683,15 +633,14 @@ export function ListingPhotoUploader() {
   const [media, setMedia] = useState<PreviewMedia[]>([]);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("");
-  const [cropDraft, setCropDraft] = useState<ImageCrop>({ zoom: 1, positionX: 50, positionY: 50 });
-  const [cropError, setCropError] = useState("");
-  const [cropping, setCropping] = useState(false);
+  const [cropEditorId, setCropEditorId] = useState("");
   const urlsRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const maxFiles = 20;
   const availableSlots = maxFiles - media.length;
   const heroMedia = media[0];
   const selectedMedia = media.find((item) => item.id === selectedId) ?? heroMedia;
+  const cropEditorMedia = media.find((item) => item.id === cropEditorId && item.kind === "image");
 
   useEffect(() => {
     return () => {
@@ -723,9 +672,9 @@ export function ListingPhotoUploader() {
         name: file.name,
         sourceUrl: url,
         url,
-        crop: kind === "image" ? { zoom: 1, positionX: 50, positionY: 50 } : undefined,
       } satisfies PreviewMedia;
     });
+    const firstImage = nextMedia.find((item) => item.kind === "image");
 
     setMedia((current) => {
       const updated = [...current, ...nextMedia];
@@ -734,6 +683,7 @@ export function ListingPhotoUploader() {
     });
     setSelectedId(nextMedia[0]?.id ?? selectedId);
     setLibraryOpen(true);
+    setCropEditorId(firstImage?.id ?? "");
     event.currentTarget.value = "";
   }
 
@@ -776,58 +726,10 @@ export function ListingPhotoUploader() {
   function openMediaLibrary() {
     setLibraryOpen(true);
     setSelectedId((current) => current || heroMedia?.id || "");
-    setCropError("");
-  }
-
-  async function applyCrop() {
-    if (!selectedMedia || selectedMedia.kind !== "image") {
-      return;
-    }
-
-    setCropping(true);
-    setCropError("");
-
-    try {
-      const croppedFile = await createCroppedImageFile(selectedMedia, cropDraft);
-      const croppedUrl = URL.createObjectURL(croppedFile);
-      urlsRef.current.push(croppedUrl);
-
-      setMedia((current) => {
-        const updated = current.map((item) => {
-          if (item.id !== selectedMedia.id) {
-            return item;
-          }
-
-          if (item.url !== item.sourceUrl) {
-            URL.revokeObjectURL(item.url);
-            urlsRef.current = urlsRef.current.filter((url) => url !== item.url);
-          }
-
-          return {
-            ...item,
-            file: croppedFile,
-            url: croppedUrl,
-            crop: cropDraft,
-          };
-        });
-        syncFileInput(updated);
-        return updated;
-      });
-    } catch {
-      setCropError("Не удалось применить кадр. Попробуйте другое изображение.");
-    } finally {
-      setCropping(false);
-    }
-  }
-
-  function resetCropDraft() {
-    setCropDraft({ zoom: 1, positionX: 50, positionY: 50 });
   }
 
   function selectMedia(item: PreviewMedia) {
     setSelectedId(item.id);
-    setCropError("");
-    setCropDraft(item.crop ?? { zoom: 1, positionX: 50, positionY: 50 });
   }
 
   function makeCover(item: PreviewMedia) {
@@ -842,6 +744,35 @@ export function ListingPhotoUploader() {
       syncFileInput(updated);
       return updated;
     });
+  }
+
+  async function applySquareCrop(item: PreviewMedia, dataUrl: string) {
+    const croppedFile = await dataUrlToImageFile(dataUrl, item.name);
+    const croppedUrl = URL.createObjectURL(croppedFile);
+    urlsRef.current.push(croppedUrl);
+
+    setMedia((current) => {
+      const updated = current.map((mediaItem) => {
+        if (mediaItem.id !== item.id) {
+          return mediaItem;
+        }
+
+        if (mediaItem.url !== mediaItem.sourceUrl) {
+          URL.revokeObjectURL(mediaItem.url);
+          urlsRef.current = urlsRef.current.filter((url) => url !== mediaItem.url);
+        }
+
+        return {
+          ...mediaItem,
+          file: croppedFile,
+          url: croppedUrl,
+        };
+      });
+
+      syncFileInput(updated);
+      return updated;
+    });
+    setCropEditorId("");
   }
 
   return (
@@ -909,17 +840,9 @@ export function ListingPhotoUploader() {
                     {selectedMedia.kind === "video" ? (
                       <video src={selectedMedia.url} className="h-full w-full object-contain" controls playsInline preload="metadata" />
                     ) : (
-                      <img
-                        src={selectedMedia.sourceUrl}
-                        alt={selectedMedia.name}
-                        className="h-full w-full object-cover"
-                        style={{
-                          objectPosition: `${cropDraft.positionX}% ${cropDraft.positionY}%`,
-                          transform: `scale(${cropDraft.zoom})`,
-                        }}
-                      />
+                      <img src={selectedMedia.url} alt={selectedMedia.name} className="h-full w-full object-cover" />
                     )}
-                    {selectedMedia.kind === "image" ? <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/40" /> : null}
+                    {selectedMedia.kind === "image" ? <div className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-inset ring-white/70" /> : null}
                   </div>
 
                   <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
@@ -928,6 +851,11 @@ export function ListingPhotoUploader() {
                       <p className="mt-0.5 text-xs font-semibold text-slate-500">{selectedMedia.kind === "video" ? "Видео" : "Фото"}</p>
                     </div>
                     <div className="flex shrink-0 gap-2">
+                      {selectedMedia.kind === "image" ? (
+                        <button type="button" onClick={() => setCropEditorId(selectedMedia.id)} className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
+                          Кадр
+                        </button>
+                      ) : null}
                       <button type="button" onClick={() => makeCover(selectedMedia)} disabled={heroMedia?.id === selectedMedia.id} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] disabled:opacity-50">
                         Обложка
                       </button>
@@ -937,44 +865,7 @@ export function ListingPhotoUploader() {
                     </div>
                   </div>
 
-                  {selectedMedia.kind === "image" ? (
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="grid gap-2">
-                        <label className="block">
-                          <span className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
-                            <span className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                              <SlidersHorizontal className="h-3.5 w-3.5 text-[#0875d1]" />
-                              Зум
-                            </span>
-                            <input type="range" min="1" max="2.8" step="0.05" value={cropDraft.zoom} onChange={(event) => setCropDraft((current) => ({ ...current, zoom: Number(event.target.value) }))} className="w-full accent-[#0875d1]" />
-                          </span>
-                        </label>
-                        <label className="block">
-                          <span className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
-                            <span className="text-xs font-bold text-slate-700">Гориз.</span>
-                            <input type="range" min="0" max="100" step="1" value={cropDraft.positionX} onChange={(event) => setCropDraft((current) => ({ ...current, positionX: Number(event.target.value) }))} className="w-full accent-[#0875d1]" />
-                          </span>
-                        </label>
-                        <label className="block">
-                          <span className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
-                            <span className="text-xs font-bold text-slate-700">Верт.</span>
-                            <input type="range" min="0" max="100" step="1" value={cropDraft.positionY} onChange={(event) => setCropDraft((current) => ({ ...current, positionY: Number(event.target.value) }))} className="w-full accent-[#0875d1]" />
-                          </span>
-                        </label>
-                      </div>
-                      {cropError ? <p className="mt-2 rounded-lg bg-rose-50 p-2 text-xs font-semibold text-rose-700">{cropError}</p> : null}
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <button type="button" onClick={applyCrop} disabled={cropping} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#0875d1] px-3 text-sm font-bold text-white transition hover:bg-[#0669bd] disabled:cursor-wait disabled:opacity-60">
-                          <Crop className="h-4 w-4" />
-                          {cropping ? "..." : "Применить"}
-                        </button>
-                        <button type="button" onClick={resetCropDraft} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
-                          <RotateCcw className="h-4 w-4" />
-                          Сброс
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
+                  {selectedMedia.kind === "image" ? <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold leading-6 text-slate-600">Для карточек используется квадратный кадр. Нажмите “Кадр”, чтобы перетащить фото и настроить масштаб.</p> : null}
                 </div>
               </div>
             ) : (
@@ -1024,6 +915,15 @@ export function ListingPhotoUploader() {
 
           </div>
         </div>
+      ) : null}
+      {cropEditorMedia ? (
+        <SquareImageCropper
+          alt={cropEditorMedia.name}
+          onApply={(dataUrl) => applySquareCrop(cropEditorMedia, dataUrl)}
+          onCancel={() => setCropEditorId("")}
+          src={cropEditorMedia.sourceUrl}
+          title="Кадр для карточки"
+        />
       ) : null}
     </section>
   );
