@@ -41,6 +41,12 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
             <p className="mt-5 text-slate-500">{vacancy.organization}</p>
             <h1 className="mt-2 text-5xl font-black text-[#060b27]">{vacancy.title}</h1>
             <p className="mt-4 text-2xl font-black">{vacancy.salary}</p>
+            {vacancy.schedule || vacancy.workFormat ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {vacancy.schedule ? <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-[#0875d1]">{vacancy.schedule}</span> : null}
+                {vacancy.workFormat ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700">{vacancy.workFormat}</span> : null}
+              </div>
+            ) : null}
             <p className="mt-4 flex items-center gap-2 text-slate-600">
               <MapPin className="h-5 w-5" />
               {vacancy.showExactAddress && vacancy.address ? `${vacancy.city}, ${vacancy.address}` : [vacancy.city, vacancy.district].filter(Boolean).join(", ")}
@@ -58,6 +64,12 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
                 <h2 className="text-2xl font-black text-[#060b27]">Обязанности</h2>
                 <p className="mt-2">{vacancy.responsibilities}</p>
               </section>
+              {vacancy.conditions ? (
+                <section>
+                  <h2 className="text-2xl font-black text-[#060b27]">Условия</h2>
+                  <p className="mt-2">{vacancy.conditions}</p>
+                </section>
+              ) : null}
             </div>
             <div className="mt-7">
               <LocationMap location={vacancy} exactLabel="Для вакансий организаций можно показывать точный адрес" />

@@ -99,7 +99,7 @@ export function VacancyEmployerFields({ children }: { children: ReactNode }) {
             <p className="text-xs font-black uppercase text-[#0875d1]">Шаг 1 из 2</p>
             <h2 className="mt-1 text-lg font-black leading-tight text-[#060b27] sm:text-2xl">Кто размещает вакансию?</h2>
             <p className="mt-1 max-w-3xl text-sm leading-5 text-slate-600 sm:leading-6">
-              Сначала выберите тип работодателя. Потом откроются только нужные поля: ИНН для организации и ИП, паспортные данные для частного лица.
+              Сначала выберите тип работодателя. Потом откроются только нужные поля для проверки и связи.
             </p>
           </div>
 
@@ -134,36 +134,48 @@ export function VacancyEmployerFields({ children }: { children: ReactNode }) {
               <h2 className="mt-1 text-base font-black text-[#060b27] sm:text-lg">Данные работодателя</h2>
               <p className="mt-1 text-xs leading-5 text-slate-600 sm:text-sm sm:leading-6">
                 {isPrivatePerson
-                  ? "Паспортные данные нужны только для проверки частного работодателя и не показываются в публичной карточке."
+                  ? "Для частного работодателя достаточно имени, телефона и мессенджера. Документы здесь не запрашиваем."
                   : "ИНН заполняют только организации и ИП. В публичной карточке будет показана информация о работодателе и контакты."}
               </p>
             </div>
 
             {isPrivatePerson ? (
               <div className="vacancy-fields-grid">
-                <Field name="privateLastName" label="Фамилия" placeholder="Иванов" required />
-                <Field name="privateFirstName" label="Имя" placeholder="Иван" required />
-                <Field name="privateMiddleName" label="Отчество" placeholder="Иванович" />
-                <Field name="passportSeries" label="Серия паспорта" placeholder="1234" inputMode="numeric" pattern="\\d{4}" maxLength={4} required />
-                <Field name="passportNumber" label="Номер паспорта" placeholder="567890" inputMode="numeric" pattern="\\d{6}" maxLength={6} required />
-                <Field name="passportIssuedAt" label="Дата выдачи" type="date" required />
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <Field name="passportIssuedBy" label="Кем выдан" placeholder="ГУ МВД России по Краснодарскому краю" required />
-                </div>
+                <Field name="organization" label="Имя" placeholder="Иван" minLength={2} maxLength={60} pattern="[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё\\s.'’\\-]{1,59}" title="Введите имя буквами, без цифр и лишних символов." required />
+                <Field name="phone" label="Телефон" placeholder="+7..." required />
+                <Field name="messengerUrl" label="WhatsApp / Telegram" placeholder="@username или ссылка" required />
               </div>
             ) : (
               <div className="vacancy-fields-grid">
-                <Field name="inn" label={employerType === "ip" ? "ИНН ИП" : "ИНН организации"} placeholder={employerType === "ip" ? "12 цифр" : "10 цифр"} inputMode="numeric" pattern={employerType === "ip" ? "\\d{12}" : "\\d{10}"} required />
-                <Field name="legalName" label={employerType === "ip" ? "ФИО ИП" : "Юридическое название"} placeholder={employerType === "ip" ? "ИП Иванов Иван Иванович" : "ООО РемДом"} required />
-                <Field name="contactPerson" label="Контактное лицо" placeholder="Наталья, HR" required />
+                <Field
+                  name="organization"
+                  label={employerType === "ip" ? "ФИО ИП" : "Название организации"}
+                  placeholder={employerType === "ip" ? "Иванов Иван Иванович" : "ООО РемДом"}
+                  minLength={2}
+                  maxLength={120}
+                  required
+                />
+                <Field name="inn" label="ИНН" placeholder={employerType === "ip" ? "12 цифр" : "10 цифр"} inputMode="numeric" pattern={employerType === "ip" ? "\\d{12}" : "\\d{10}"} maxLength={employerType === "ip" ? 12 : 10} required />
+                <Field
+                  name={employerType === "ip" ? "ogrnip" : "ogrn"}
+                  label={employerType === "ip" ? "ОГРНИП при наличии" : "ОГРН при наличии"}
+                  placeholder={employerType === "ip" ? "15 цифр" : "13 цифр"}
+                  inputMode="numeric"
+                  pattern={employerType === "ip" ? "\\d{15}" : "\\d{13}"}
+                  maxLength={employerType === "ip" ? 15 : 13}
+                />
+                <Field name="contactPerson" label="Контактное лицо" placeholder="Наталья, HR" minLength={2} maxLength={80} required />
+                <Field name="phone" label="Телефон" placeholder="+7..." required />
+                {employerType === "ip" ? (
+                  <Field name="emailOrMessenger" label="Email / мессенджер" placeholder="hr@example.ru, @username или ссылка" required />
+                ) : (
+                  <Field name="email" label="Email" type="email" placeholder="hr@example.ru" required />
+                )}
+                {employerType === "ip" ? null : (
+                  <Field name="website" label="Сайт / соцсеть" placeholder="https://... или @username" />
+                )}
               </div>
             )}
-
-            <div className="vacancy-fields-grid">
-              <Field name="website" label="Сайт / страница" placeholder="https://..." />
-              <Field name="messengerUrl" label="WhatsApp / Telegram" placeholder="https://t.me/..." />
-              <Field name="contactRole" label="Кто отвечает" placeholder="Директор, HR, владелец" />
-            </div>
           </section>
 
           <div className="grid gap-3 sm:gap-3.5">{children}</div>

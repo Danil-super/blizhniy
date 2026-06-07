@@ -47,6 +47,8 @@ type CreateVacancyInput = {
   organization: string;
   employerType?: string;
   inn?: string;
+  ogrn?: string;
+  ogrnip?: string;
   contactPerson?: string;
   website?: string;
   title: string;
@@ -59,9 +61,12 @@ type CreateVacancyInput = {
   messengerUrl?: string;
   email?: string;
   schedule?: string;
+  workFormat?: string;
   description?: string;
   requirements?: string;
   responsibilities?: string;
+  conditions?: string;
+  placementRightConfirmed?: boolean;
   lat?: number;
   lng?: number;
   hasMapPoint?: boolean;
@@ -252,6 +257,8 @@ export function createVacancy(input: CreateVacancyInput) {
     employerType: input.employerType,
     organization: input.organization,
     inn: input.inn,
+    ogrn: input.ogrn,
+    ogrnip: input.ogrnip,
     contactPerson: input.contactPerson,
     website: input.website,
     title: input.title,
@@ -270,9 +277,12 @@ export function createVacancy(input: CreateVacancyInput) {
     messengerUrl: input.messengerUrl?.trim(),
     email: input.email?.trim(),
     schedule: input.schedule?.trim(),
+    workFormat: input.workFormat?.trim(),
     description: input.description?.trim() || "Описание вакансии будет дополнено.",
     requirements: input.requirements?.trim() || "Уточняется",
     responsibilities: input.responsibilities?.trim() || "Уточняется",
+    conditions: input.conditions?.trim(),
+    placementRightConfirmed: Boolean(input.placementRightConfirmed),
     status: "published",
     createdAt: publishedAt,
     publishedAt,

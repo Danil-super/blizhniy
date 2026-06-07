@@ -93,6 +93,8 @@ export type JobVacancy = {
   employerType?: "organization" | "ip" | "person" | string;
   organization: string;
   inn?: string;
+  ogrn?: string;
+  ogrnip?: string;
   contactPerson?: string;
   website?: string;
   title: string;
@@ -112,9 +114,12 @@ export type JobVacancy = {
   messengerUrl?: string;
   email?: string;
   schedule?: string;
+  workFormat?: string;
   description?: string;
   requirements?: string;
   responsibilities?: string;
+  conditions?: string;
+  placementRightConfirmed?: boolean;
   status: PublicationStatus;
   createdAt?: string;
   publishedAt?: string;

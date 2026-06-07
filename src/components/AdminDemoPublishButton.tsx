@@ -23,6 +23,16 @@ function readValue(formData: FormData, name: string, fallback = "") {
   return String(formData.get(name) ?? "").trim() || fallback;
 }
 
+function readEmailOrMessenger(formData: FormData) {
+  const value = readValue(formData, "emailOrMessenger");
+  const isEmail = value.includes("@") && !value.startsWith("@") && !value.startsWith("http");
+
+  return {
+    email: isEmail ? value : readValue(formData, "email"),
+    messengerUrl: value && !isEmail ? value : readValue(formData, "messengerUrl"),
+  };
+}
+
 function readCoordinate(formData: FormData, name: string) {
   const rawValue = readValue(formData, name);
 
@@ -238,8 +248,11 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
     const hasMapPoint = hasSelectedMapPoint(formData);
     const images = await readSelectedImages(formData);
     const employerType = readValue(formData, "employerType", "organization");
+    const contact = readEmailOrMessenger(formData);
     const descriptionParts = [
       readValue(formData, "description"),
+      readValue(formData, "workFormat") ? `Формат работы: ${readValue(formData, "workFormat")}` : "",
+      readValue(formData, "schedule") ? `График: ${readValue(formData, "schedule")}` : "",
       readValue(formData, "requirements") ? `Требования: ${readValue(formData, "requirements")}` : "",
       readValue(formData, "responsibilities") ? `Обязанности: ${readValue(formData, "responsibilities")}` : "",
       readValue(formData, "conditions") ? `Условия: ${readValue(formData, "conditions")}` : "",
@@ -260,9 +273,20 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
       hasMapPoint,
       showExactAddress: Boolean(hasMapPoint && readValue(formData, "address")),
       phone: readValue(formData, "phone"),
-      messengerUrl: readValue(formData, "messengerUrl"),
-      email: readValue(formData, "email"),
+      messengerUrl: contact.messengerUrl,
+      email: contact.email,
       employerType,
+      inn: readValue(formData, "inn"),
+      ogrn: readValue(formData, "ogrn"),
+      ogrnip: readValue(formData, "ogrnip"),
+      contactPerson: readValue(formData, "contactPerson"),
+      website: readValue(formData, "website"),
+      workFormat: readValue(formData, "workFormat"),
+      schedule: readValue(formData, "schedule"),
+      requirements: readValue(formData, "requirements"),
+      responsibilities: readValue(formData, "responsibilities"),
+      conditions: readValue(formData, "conditions"),
+      placementRightConfirmed: readValue(formData, "placementRightConfirmed") === "1",
       status: "Опубликовано",
       createdAt: now,
     };

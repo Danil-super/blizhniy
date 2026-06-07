@@ -27,6 +27,14 @@ function validationForField(label: string, type: string) {
     return "phone";
   }
 
+  if (normalizedLabel.includes("email") && normalizedLabel.includes("мессенджер")) {
+    return "emailOrMessenger";
+  }
+
+  if (normalizedLabel.includes("соцсеть") || normalizedLabel.includes("сайт")) {
+    return "urlOrHandle";
+  }
+
   if (normalizedLabel.includes("telegram") || normalizedLabel.includes("whatsapp")) {
     return "messenger";
   }

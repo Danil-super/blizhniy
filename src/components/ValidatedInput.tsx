@@ -2,7 +2,7 @@
 
 import { ChangeEvent, FormEvent, InputHTMLAttributes, useEffect, useState } from "react";
 
-type ValidationKind = "phone" | "email" | "messenger" | "url";
+type ValidationKind = "phone" | "email" | "messenger" | "emailOrMessenger" | "urlOrHandle" | "url";
 
 type ValidatedInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
   validation?: ValidationKind;
@@ -13,6 +13,8 @@ const maxPhoneLength = 18;
 const phonePattern = "^\\+7-\\([0-9]{3}\\)-[0-9]{3}-[0-9]{2}-[0-9]{2}$";
 const emailPattern = "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$";
 const messengerPattern = "^(@[A-Za-z0-9_]{5,32}|https?://[^\\s]+)$";
+const emailOrMessengerPattern = `(${emailPattern.slice(1, -1)}|@[A-Za-z0-9_]{5,32}|https?://[^\\s]+)`;
+const urlOrHandlePattern = "^(@[A-Za-z0-9_.-]{2,64}|https?://[^\\s]+)$";
 const urlPattern = "^https?://[^\\s]+$";
 
 function sanitizePhone(value: string) {
@@ -63,7 +65,7 @@ function sanitizeByValidation(value: string, validation?: ValidationKind) {
     return sanitizePhone(value);
   }
 
-  if (validation === "email" || validation === "messenger" || validation === "url") {
+  if (validation === "email" || validation === "messenger" || validation === "emailOrMessenger" || validation === "urlOrHandle" || validation === "url") {
     return sanitizeNoSpaces(value);
   }
 
@@ -98,6 +100,26 @@ function getValidationProps(validation?: ValidationKind) {
       inputMode: "url" as const,
       pattern: messengerPattern,
       title: "Введите @username или ссылку на Telegram/WhatsApp.",
+      type: "text",
+    };
+  }
+
+  if (validation === "emailOrMessenger") {
+    return {
+      autoComplete: "url",
+      inputMode: "text" as const,
+      pattern: emailOrMessengerPattern,
+      title: "Введите email, @username или ссылку на мессенджер.",
+      type: "text",
+    };
+  }
+
+  if (validation === "urlOrHandle") {
+    return {
+      autoComplete: "url",
+      inputMode: "url" as const,
+      pattern: urlOrHandlePattern,
+      title: "Введите ссылку, начинающуюся с http:// или https://, или @username.",
       type: "text",
     };
   }

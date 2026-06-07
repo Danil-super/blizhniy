@@ -23,6 +23,17 @@ export type DemoPublication = {
   messengerUrl?: string;
   email?: string;
   employerType?: string;
+  inn?: string;
+  ogrn?: string;
+  ogrnip?: string;
+  contactPerson?: string;
+  website?: string;
+  workFormat?: string;
+  schedule?: string;
+  requirements?: string;
+  responsibilities?: string;
+  conditions?: string;
+  placementRightConfirmed?: boolean;
   listingKind?: ListingKind;
   categorySlug?: string;
   subcategorySlug?: string;

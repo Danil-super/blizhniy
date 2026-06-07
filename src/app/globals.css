@@ -133,6 +133,10 @@ canvas {
   min-width: 0;
 }
 
+.vacancy-fields-grid > * {
+  min-width: 0;
+}
+
 .vacancy-create-form label {
   gap: clamp(0.35rem, 0.65cqw, 0.5rem);
   font-size: clamp(0.7rem, 0.9cqw, 0.82rem);
@@ -141,6 +145,8 @@ canvas {
 
 .vacancy-fields-grid input:not([type="radio"]),
 .vacancy-location-fields input:not([type="radio"]) {
+  min-width: 0;
+  max-width: 100%;
   height: clamp(2.45rem, 3.2cqw, 2.75rem);
   border-radius: 0.7rem;
   padding-left: clamp(0.65rem, 1.05cqw, 0.95rem);
@@ -165,10 +171,11 @@ canvas {
   gap: clamp(0.5rem, 1cqw, 0.85rem);
 }
 
+.vacancy-location-fields .listing-location-row > .relative > span,
 .vacancy-location-fields .listing-location-label {
   display: block;
   font-size: clamp(0.7rem, 0.9cqw, 0.82rem);
-  line-height: 1.05rem;
+  line-height: 1.25rem;
 }
 
 .vacancy-location-fields .listing-location-options {
@@ -392,26 +399,6 @@ canvas {
 @container (min-width: 82rem) {
   .vacancy-fields-grid {
     grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr) minmax(12rem, 1fr);
-  }
-
-  .vacancy-organization-field {
-    grid-column: 1;
-  }
-
-  .vacancy-title-field {
-    grid-column: 2;
-  }
-
-  .vacancy-schedule-field {
-    grid-column: 1;
-  }
-
-  .vacancy-phone-field {
-    grid-column: 2;
-  }
-
-  .vacancy-email-field {
-    grid-column: 3;
   }
 
   .vacancy-location-fields .listing-location-row {

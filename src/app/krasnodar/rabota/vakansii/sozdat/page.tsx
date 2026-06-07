@@ -3,6 +3,7 @@ import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { VacancyEmployerFields } from "@/components/VacancyEmployerFields";
+import { VacancyFormValidator } from "@/components/VacancyFormValidator";
 import { createVacancy } from "@/lib/mock-store";
 import { TurnstileVerifiedLinkButton } from "@/components/TurnstileVerifiedLinkButton";
 import { ListingLocationFields } from "@/components/listings/ListingFormControls";
@@ -21,6 +22,20 @@ function parseCoordinate(formData: FormData, name: string) {
 
   const value = Number(rawValue.replace(",", "."));
   return Number.isFinite(value) ? value : undefined;
+}
+
+function readContactValue(formData: FormData, name: string) {
+  return String(formData.get(name) ?? "").trim();
+}
+
+function readIpEmail(formData: FormData) {
+  const value = readContactValue(formData, "emailOrMessenger");
+  return value.includes("@") && !value.startsWith("@") && !value.startsWith("http") ? value : undefined;
+}
+
+function readIpMessenger(formData: FormData) {
+  const value = readContactValue(formData, "emailOrMessenger");
+  return value && !readIpEmail(formData) ? value : String(formData.get("messengerUrl") ?? "").trim() || undefined;
 }
 
 export default async function CreateVacancyPage({ searchParams }: PageProps) {
@@ -44,16 +59,21 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
       address: String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1" ? String(formData.get("address") ?? "").trim() || undefined : undefined,
       salary: String(formData.get("salary") ?? "").trim() || undefined,
       phone: String(formData.get("phone") ?? "").trim() || undefined,
-      messengerUrl: String(formData.get("messengerUrl") ?? "").trim() || undefined,
-      email: String(formData.get("email") ?? "").trim() || undefined,
+      messengerUrl: readIpMessenger(formData),
+      email: readIpEmail(formData) ?? (String(formData.get("email") ?? "").trim() || undefined),
       schedule: String(formData.get("schedule") ?? "").trim() || undefined,
+      workFormat: String(formData.get("workFormat") ?? "").trim() || undefined,
       description: String(formData.get("description") ?? "").trim() || undefined,
       requirements: String(formData.get("requirements") ?? "").trim() || undefined,
       responsibilities: String(formData.get("responsibilities") ?? "").trim() || undefined,
+      conditions: String(formData.get("conditions") ?? "").trim() || undefined,
       employerType: String(formData.get("employerType") ?? "").trim() || undefined,
       inn: String(formData.get("inn") ?? "").trim() || undefined,
+      ogrn: String(formData.get("ogrn") ?? "").trim() || undefined,
+      ogrnip: String(formData.get("ogrnip") ?? "").trim() || undefined,
       contactPerson: String(formData.get("contactPerson") ?? "").trim() || undefined,
       website: String(formData.get("website") ?? "").trim() || undefined,
+      placementRightConfirmed: String(formData.get("placementRightConfirmed") ?? "") === "1",
       lat: String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1" ? parseCoordinate(formData, "lat") : undefined,
       lng: String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1" ? parseCoordinate(formData, "lng") : undefined,
       hasMapPoint: String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1",
@@ -76,36 +96,35 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
         >
           {params?.error ? <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{params.error}</p> : null}
           <form action={adminMode ? publishVacancyWithoutPaymentAction : undefined} className="vacancy-create-form responsive-form-panel grid gap-3 sm:gap-3.5">
+            <VacancyFormValidator />
             <VacancyEmployerFields>
               <div className="vacancy-fields-grid">
-                <div className="vacancy-organization-field">
-                  <Field name="organization" label="Название работодателя" placeholder="ООО РемДом или Иван Иванов" required />
-                </div>
                 <div className="vacancy-title-field">
-                  <Field name="title" label="Вакансия" placeholder="Сантехник" required />
+                  <Field name="title" label="Название" placeholder="Сантехник" minLength={3} maxLength={90} required />
                 </div>
-                <div className="vacancy-salary-field">
-                  <Field name="salary" label="Зарплата / стоимость" placeholder="от 80 000 ₽" required />
+                <div>
+                  <Field name="profession" label="Категория / профессия" placeholder="Сантехник" minLength={2} maxLength={80} required />
                 </div>
                 <div className="vacancy-schedule-field">
-                  <Field name="schedule" label="График" placeholder="5/2" />
+                  <Field name="schedule" label="График" placeholder="5/2" maxLength={60} />
                 </div>
-                <div className="vacancy-phone-field">
-                  <Field name="phone" label="Телефон" placeholder="+7..." required />
+                <div>
+                  <Field name="workFormat" label="Формат работы" placeholder="На месте, удаленно, разъездная" minLength={2} maxLength={80} required />
                 </div>
-                <div className="vacancy-email-field">
-                  <Field name="email" label="Email" type="email" placeholder="hr@example.ru" />
+                <div className="vacancy-salary-field">
+                  <Field name="salary" label="Оплата" placeholder="от 80 000 ₽" minLength={2} maxLength={80} required />
                 </div>
-                <Field name="employmentType" label="Занятость" placeholder="Полная, частичная, подработка" />
-                <Field name="experience" label="Опыт" placeholder="Без опыта / от 1 года" />
-                <Field name="paymentPeriod" label="Выплаты" placeholder="Еженедельно, 2 раза в месяц" />
               </div>
               <PhotoField label="Фото работодателя или рабочего места" description="Обязательное фото: логотип, фасад, рабочее место или реальное фото работодателя. Так соискатели понимают, кто размещает вакансию." required />
-              <ListingLocationFields className="vacancy-location-fields" addressLegend="Адрес вакансии" defaultCity="Краснодар" inlineControls />
-              <TextAreaField name="description" label="Описание вакансии" placeholder="Коротко расскажите о работе, формате, условиях и команде." required />
-              <TextAreaField name="requirements" label="Требования" placeholder="Опыт, документы, навыки, график готовности." />
-              <TextAreaField name="responsibilities" label="Обязанности" placeholder="Что нужно делать каждый день." />
-              <TextAreaField name="conditions" label="Условия" placeholder="Оформление, выплаты, питание, инструмент, обучение, проживание." />
+              <ListingLocationFields className="vacancy-location-fields" addressLegend="Адрес вакансии" cityLabel="Город / район" defaultCity="Краснодар" inlineControls />
+              <TextAreaField name="description" label="Описание задачи или вакансии" placeholder="Коротко расскажите, кого ищете, где работать и что важно знать соискателю." minLength={30} maxLength={1800} required />
+              <TextAreaField name="responsibilities" label="Обязанности" placeholder="Что нужно делать каждый день." minLength={20} maxLength={1400} required />
+              <TextAreaField name="requirements" label="Требования" placeholder="Опыт, документы, навыки, график готовности." minLength={10} maxLength={1400} required />
+              <TextAreaField name="conditions" label="Условия" placeholder="Оформление, выплаты, питание, инструмент, обучение, проживание." minLength={10} maxLength={1400} required />
+              <label className="flex min-w-0 items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold leading-5 text-slate-700">
+                <input name="placementRightConfirmed" value="1" type="checkbox" required className="mt-0.5 h-4 w-4 shrink-0 accent-[#0875d1]" />
+                <span>Подтверждаю, что имею право размещать эту вакансию и указывать контакты работодателя.</span>
+              </label>
               <div className="flex flex-wrap gap-3">
                 <AdminDemoPublishButton
                   publicationType="vacancy"
