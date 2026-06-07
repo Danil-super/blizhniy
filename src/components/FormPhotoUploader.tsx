@@ -41,11 +41,13 @@ export function FormPhotoUploader({
   description,
   label,
   name = "photos",
+  required = false,
 }: {
   defaultPhotos?: string[];
   description: string;
   label: string;
   name?: string;
+  required?: boolean;
 }) {
   const [photos, setPhotos] = useState<PreviewPhoto[]>(
     defaultPhotos.map((url, index) => ({
@@ -140,13 +142,16 @@ export function FormPhotoUploader({
   return (
     <section className="min-w-0 max-w-full overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 sm:p-4">
       <label className="block cursor-pointer rounded-lg border border-dashed border-transparent p-2 transition hover:border-blue-200 hover:bg-white/70 sm:p-3">
-        <input ref={inputRef} className="sr-only" name={name} type="file" accept="image/*" multiple onChange={handleFiles} />
+        <input ref={inputRef} className="sr-only" name={name} type="file" accept="image/*" multiple required={required && !photos.length} onChange={handleFiles} />
         <span className="flex items-start gap-3">
           <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-[#0875d1] ring-1 ring-blue-100">
             <Camera className="h-5 w-5" />
           </span>
           <span className="min-w-0 [overflow-wrap:anywhere]">
-            <span className="block text-sm font-bold text-slate-700">{label}</span>
+            <span className="block text-sm font-bold text-slate-700">
+              {label}
+              {required ? <span className="text-rose-600"> *</span> : null}
+            </span>
             <span className="mt-1 block text-xs leading-5 text-slate-500 sm:text-sm sm:leading-6">{description}</span>
           </span>
         </span>

@@ -90,7 +90,11 @@ export type Listing = {
 
 export type JobVacancy = {
   id: string;
+  employerType?: "organization" | "ip" | "person" | string;
   organization: string;
+  inn?: string;
+  contactPerson?: string;
+  website?: string;
   title: string;
   profession: string;
   city: string;
@@ -103,6 +107,7 @@ export type JobVacancy = {
   salary: string;
   logoText: string;
   logoTone: "blue" | "violet" | "teal";
+  images?: string[];
   phone?: string;
   messengerUrl?: string;
   email?: string;

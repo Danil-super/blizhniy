@@ -45,6 +45,10 @@ type CreateListingInput = {
 
 type CreateVacancyInput = {
   organization: string;
+  employerType?: string;
+  inn?: string;
+  contactPerson?: string;
+  website?: string;
   title: string;
   profession: string;
   city: string;
@@ -56,6 +60,8 @@ type CreateVacancyInput = {
   email?: string;
   schedule?: string;
   description?: string;
+  requirements?: string;
+  responsibilities?: string;
   lat?: number;
   lng?: number;
   hasMapPoint?: boolean;
@@ -243,7 +249,11 @@ export function createVacancy(input: CreateVacancyInput) {
   const publishedAt = nowIsoDateTime();
   const vacancy: JobVacancy = {
     id: createEntityId("vacancy"),
+    employerType: input.employerType,
     organization: input.organization,
+    inn: input.inn,
+    contactPerson: input.contactPerson,
+    website: input.website,
     title: input.title,
     profession: input.profession,
     city: input.city,
@@ -261,8 +271,8 @@ export function createVacancy(input: CreateVacancyInput) {
     email: input.email?.trim(),
     schedule: input.schedule?.trim(),
     description: input.description?.trim() || "Описание вакансии будет дополнено.",
-    requirements: "Уточняется",
-    responsibilities: "Уточняется",
+    requirements: input.requirements?.trim() || "Уточняется",
+    responsibilities: input.responsibilities?.trim() || "Уточняется",
     status: "published",
     createdAt: publishedAt,
     publishedAt,

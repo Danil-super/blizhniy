@@ -236,6 +236,14 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
 
   if (type === "vacancy") {
     const hasMapPoint = hasSelectedMapPoint(formData);
+    const images = await readSelectedImages(formData);
+    const employerType = readValue(formData, "employerType", "organization");
+    const descriptionParts = [
+      readValue(formData, "description"),
+      readValue(formData, "requirements") ? `Требования: ${readValue(formData, "requirements")}` : "",
+      readValue(formData, "responsibilities") ? `Обязанности: ${readValue(formData, "responsibilities")}` : "",
+      readValue(formData, "conditions") ? `Условия: ${readValue(formData, "conditions")}` : "",
+    ].filter(Boolean);
 
     return {
       id,
@@ -244,11 +252,17 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
       subtitle: readValue(formData, "organization", "Организация"),
       city: readValue(formData, "location", "Краснодар").split(",")[0]?.trim() || "Краснодар",
       price: readValue(formData, "salary", "по договоренности"),
+      description: descriptionParts.join("\n\n") || "Описание вакансии будет дополнено.",
+      images,
       lat: hasMapPoint ? readCoordinate(formData, "lat") : undefined,
       lng: hasMapPoint ? readCoordinate(formData, "lng") : undefined,
       address: hasMapPoint ? readValue(formData, "address") : undefined,
       hasMapPoint,
       showExactAddress: Boolean(hasMapPoint && readValue(formData, "address")),
+      phone: readValue(formData, "phone"),
+      messengerUrl: readValue(formData, "messengerUrl"),
+      email: readValue(formData, "email"),
+      employerType,
       status: "Опубликовано",
       createdAt: now,
     };

@@ -420,6 +420,10 @@ function canMarkListingSold(item: DemoPublication) {
   return item.type === "listing" && !isDemoPublicationSold(item) && item.status.trim().toLowerCase() !== "черновик";
 }
 
+function isDraftPublication(item: DemoPublication) {
+  return item.status.trim().toLowerCase() === "черновик";
+}
+
 function markListingSold(itemId: string, reason: SoldReason) {
   const nextItems = readStoredPublications().map((item) =>
     item.id === itemId && item.type === "listing"
@@ -433,6 +437,10 @@ function markListingSold(itemId: string, reason: SoldReason) {
   );
 
   writeStoredPublications(nextItems);
+}
+
+function deleteDraftPublication(itemId: string) {
+  writeStoredPublications(readStoredPublications().filter((item) => item.id !== itemId || !isDraftPublication(item)));
 }
 
 function restoreSoldListing(itemId: string) {
@@ -488,6 +496,7 @@ function StatusPill({ children }: { children: string }) {
 }
 
 function PublicationList({ items, mode }: { items: DemoPublication[]; mode: DemoPublicationType }) {
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [sellingItemId, setSellingItemId] = useState<string | null>(null);
 
   if (!items.length) {
@@ -497,6 +506,8 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
   return (
     <section className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
       {items.map((item) => {
+        const draft = isDraftPublication(item);
+        const confirmDelete = deletingItemId === item.id;
         const sold = item.type === "listing" && isDemoPublicationSold(item);
         const confirmSold = sellingItemId === item.id;
 
@@ -562,6 +573,27 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               </button>
             </div>
           ) : null}
+          {confirmDelete ? (
+            <div className="relative z-20 mx-3 mb-3 rounded-lg border border-rose-200 bg-rose-50 p-2">
+              <p className="text-xs font-bold text-rose-900">Удалить черновик?</p>
+              <p className="mt-1 text-xs leading-5 text-rose-700">Черновик исчезнет из кабинета. Опубликованные объявления это действие не затрагивает.</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteDraftPublication(item.id);
+                    setDeletingItemId(null);
+                  }}
+                  className="inline-flex h-8 items-center justify-center rounded-md bg-rose-600 px-2 text-xs font-bold text-white transition hover:bg-rose-700"
+                >
+                  Удалить
+                </button>
+                <button type="button" onClick={() => setDeletingItemId(null)} className="h-8 rounded-md bg-white text-xs font-bold text-slate-600 ring-1 ring-rose-200 transition hover:text-[#0875d1]">
+                  Отмена
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div className={`grid gap-2 px-3 pb-3 ${item.type === "listing" ? "grid-cols-2" : item.type !== "specialist" ? "grid-cols-2" : "grid-cols-1"}`}>
             {item.type !== "specialist" ? (
               <Link href={getItemHref(item)} className="relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
@@ -571,10 +603,26 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
             <Link href={getEditHref(item)} className="relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-2 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
               Изменить
             </Link>
+            {draft ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSellingItemId(null);
+                  setDeletingItemId((current) => (current === item.id ? null : item.id));
+                }}
+                className="relative z-20 col-span-2 inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2 text-sm font-bold text-rose-700 transition hover:border-rose-400 hover:bg-white"
+              >
+                <Trash2 className="h-4 w-4 shrink-0" />
+                Удалить черновик
+              </button>
+            ) : null}
             {canMarkListingSold(item) ? (
               <button
                 type="button"
-                onClick={() => setSellingItemId((current) => (current === item.id ? null : item.id))}
+                onClick={() => {
+                  setDeletingItemId(null);
+                  setSellingItemId((current) => (current === item.id ? null : item.id));
+                }}
                 className="relative z-20 col-span-2 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-sm font-bold text-[#0a8f32] transition hover:border-[#0a8f32] hover:bg-white"
               >
                 Продано / снять

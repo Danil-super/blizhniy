@@ -21,6 +21,8 @@ export type DemoPublication = {
   showExactAddress?: boolean;
   phone?: string;
   messengerUrl?: string;
+  email?: string;
+  employerType?: string;
   listingKind?: ListingKind;
   categorySlug?: string;
   subcategorySlug?: string;

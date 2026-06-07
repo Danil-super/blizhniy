@@ -93,6 +93,6 @@ export function TextAreaField({
   );
 }
 
-export function PhotoField({ defaultPhotos, label, description }: { defaultPhotos?: string[]; label: string; description: string }) {
-  return <FormPhotoUploader label={label} description={description} defaultPhotos={defaultPhotos} />;
+export function PhotoField({ defaultPhotos, label, description, required = false }: { defaultPhotos?: string[]; label: string; description: string; required?: boolean }) {
+  return <FormPhotoUploader label={label} description={description} defaultPhotos={defaultPhotos} required={required} />;
 }
