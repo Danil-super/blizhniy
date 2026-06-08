@@ -247,6 +247,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
 
     if (!listing) {
       return;
@@ -257,7 +258,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
 
     try {
       const identity = await resolveAuthenticatedClientUserIdentity();
-      const formData = new FormData(event.currentTarget);
+      const formData = new FormData(form);
       const nextCategorySlug = String(formData.get("category") ?? listing.categorySlug ?? "mebel-i-interer");
       const nextSubcategorySlug = String(formData.get("subcategory") ?? listing.subcategorySlug ?? "");
       const location = String(formData.get("location") ?? listing.city).trim();

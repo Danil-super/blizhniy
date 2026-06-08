@@ -65,6 +65,7 @@ export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequest
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
 
     if (!request) {
       return;
@@ -77,7 +78,7 @@ export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequest
 
     try {
       const identity = await resolveAuthenticatedClientUserIdentity();
-      const formData = new FormData(event.currentTarget);
+      const formData = new FormData(form);
       const updatedRequest: DemoPublication = {
         ...request,
         ownerKey: identity.ownerKey,

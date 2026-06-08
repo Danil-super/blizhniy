@@ -41,6 +41,7 @@ export function SpecialistEditClient({ specialistId }: { specialistId: string })
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
 
     if (!specialist) {
       return;
@@ -48,7 +49,7 @@ export function SpecialistEditClient({ specialistId }: { specialistId: string })
 
     try {
       const identity = await resolveAuthenticatedClientUserIdentity();
-      const formData = new FormData(event.currentTarget);
+      const formData = new FormData(form);
       const nextStatus = readValue(formData, "status", specialist.status);
       const updatedSpecialist: DemoPublication = {
         ...specialist,
