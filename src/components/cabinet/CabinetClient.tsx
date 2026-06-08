@@ -11,6 +11,7 @@ import {
   demoPublicationsUpdatedEvent,
   isDemoPublicationSold,
   soldPublicationStatus,
+  unpublishedVacancyStatus,
   type DemoPublication,
   type DemoPublicationType,
 } from "@/lib/demo-publications";
@@ -433,12 +434,49 @@ const soldReasonLabels: Record<SoldReason, string> = {
   platform: "Продано через БЛИЖНИЙ",
 };
 
+type VacancyFilter = "all" | "published" | "draft" | "unpublished";
+
+const vacancyFilterLabels: Record<VacancyFilter, string> = {
+  all: "Все",
+  draft: "Черновики",
+  published: "Опубликованные",
+  unpublished: "Снятые",
+};
+
+function normalizePublicationStatus(status: string) {
+  return status.trim().toLowerCase();
+}
+
 function canMarkListingSold(item: DemoPublication) {
-  return item.type === "listing" && !isDemoPublicationSold(item) && item.status.trim().toLowerCase() !== "черновик";
+  return item.type === "listing" && !isDemoPublicationSold(item) && normalizePublicationStatus(item.status) !== "черновик";
 }
 
 function isDraftPublication(item: DemoPublication) {
-  return item.status.trim().toLowerCase() === "черновик";
+  return normalizePublicationStatus(item.status) === "черновик";
+}
+
+function isPublishedPublication(item: DemoPublication) {
+  const status = normalizePublicationStatus(item.status);
+
+  return status === "опубликовано" || status === "published";
+}
+
+function isUnpublishedVacancy(item: DemoPublication) {
+  const status = normalizePublicationStatus(item.status);
+
+  return item.type === "vacancy" && (status === normalizePublicationStatus(unpublishedVacancyStatus) || status === "archived");
+}
+
+function canUnpublishVacancy(item: DemoPublication) {
+  return item.type === "vacancy" && isPublishedPublication(item);
+}
+
+function canRestoreVacancy(item: DemoPublication) {
+  return item.type === "vacancy" && isUnpublishedVacancy(item);
+}
+
+function canDeletePublication(item: DemoPublication) {
+  return isDraftPublication(item) || isUnpublishedVacancy(item);
 }
 
 function markListingSold(itemId: string, reason: SoldReason) {
@@ -456,8 +494,34 @@ function markListingSold(itemId: string, reason: SoldReason) {
   writeStoredPublications(nextItems);
 }
 
-function deleteDraftPublication(itemId: string) {
-  writeStoredPublications(readStoredPublications().filter((item) => item.id !== itemId || !isDraftPublication(item)));
+function unpublishVacancy(itemId: string) {
+  const nextItems = readStoredPublications().map((item) =>
+    item.id === itemId && item.type === "vacancy"
+      ? {
+          ...item,
+          status: unpublishedVacancyStatus,
+        }
+      : item,
+  );
+
+  writeStoredPublications(nextItems);
+}
+
+function restoreVacancy(itemId: string) {
+  const nextItems = readStoredPublications().map((item) =>
+    item.id === itemId && item.type === "vacancy"
+      ? {
+          ...item,
+          status: "Опубликовано",
+        }
+      : item,
+  );
+
+  writeStoredPublications(nextItems);
+}
+
+function deletePublication(itemId: string) {
+  writeStoredPublications(readStoredPublications().filter((item) => item.id !== itemId || !canDeletePublication(item)));
 }
 
 function restoreSoldListing(itemId: string) {
@@ -503,10 +567,12 @@ function EmptyState({ mode }: { mode: CabinetListMode }) {
 }
 
 function StatusPill({ children }: { children: string }) {
-  const status = children.trim().toLowerCase();
+  const status = normalizePublicationStatus(children);
   const tone = isDemoPublicationSold({ status: children })
     ? "border-slate-300 bg-slate-100 text-slate-700"
-    : status === "черновик" || status.includes("оплат")
+    : status === normalizePublicationStatus(unpublishedVacancyStatus) || status === "archived"
+      ? "border-slate-300 bg-slate-50 text-slate-600"
+      : status === "черновик" || status.includes("оплат")
       ? "border-amber-200 bg-amber-50 text-amber-700"
       : "border-emerald-200 bg-emerald-50 text-[#0a8f32]";
 
@@ -542,26 +608,84 @@ function ResponseStatusPill({ status }: { status: string }) {
 function PublicationList({ items, mode }: { items: DemoPublication[]; mode: DemoPublicationType }) {
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [sellingItemId, setSellingItemId] = useState<string | null>(null);
+  const [unpublishingItemId, setUnpublishingItemId] = useState<string | null>(null);
+  const [vacancyFilter, setVacancyFilter] = useState<VacancyFilter>("all");
+  const vacancyCounts = useMemo(
+    () => ({
+      all: items.length,
+      draft: items.filter(isDraftPublication).length,
+      published: items.filter((item) => item.type === "vacancy" && isPublishedPublication(item)).length,
+      unpublished: items.filter(isUnpublishedVacancy).length,
+    }),
+    [items],
+  );
+  const visibleItems = useMemo(() => {
+    if (mode !== "vacancy" || vacancyFilter === "all") {
+      return items;
+    }
+
+    if (vacancyFilter === "draft") {
+      return items.filter(isDraftPublication);
+    }
+
+    if (vacancyFilter === "published") {
+      return items.filter((item) => item.type === "vacancy" && isPublishedPublication(item));
+    }
+
+    return items.filter(isUnpublishedVacancy);
+  }, [items, mode, vacancyFilter]);
 
   if (!items.length) {
     return <EmptyState mode={mode} />;
   }
 
   return (
-    <section className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
-      {items.map((item) => {
+    <section className="grid min-w-0 gap-3">
+      {mode === "vacancy" ? (
+        <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div>
+              <h2 className="text-lg font-black text-[#060b27]">Выбор вакансии</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">У работодателя может быть несколько вакансий: управляйте каждой отдельно по статусу.</p>
+            </div>
+            <Link href="/blizhniy/rabota/vakansii/sozdat" className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white sm:w-auto">
+              Разместить еще
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            {(Object.keys(vacancyFilterLabels) as VacancyFilter[]).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setVacancyFilter(filter)}
+                className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-bold transition ${
+                  vacancyFilter === filter ? "border-blue-200 bg-blue-50 text-[#0875d1]" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
+                }`}
+              >
+                <span>{vacancyFilterLabels[filter]}</span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{vacancyCounts[filter]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {visibleItems.length ? (
+        <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
+      {visibleItems.map((item) => {
         const draft = isDraftPublication(item);
         const confirmDelete = deletingItemId === item.id;
         const sold = item.type === "listing" && isDemoPublicationSold(item);
         const confirmSold = sellingItemId === item.id;
+        const confirmUnpublish = unpublishingItemId === item.id;
+        const unpublishedVacancy = isUnpublishedVacancy(item);
         const showOpenAction = true;
         const showEditAction = item.type !== "fairApplication";
-        const hasFullWidthAction = draft || canMarkListingSold(item) || sold;
+        const hasFullWidthAction = canDeletePublication(item) || canMarkListingSold(item) || sold || canUnpublishVacancy(item) || canRestoreVacancy(item);
         const actionGridClassName = showEditAction || hasFullWidthAction ? "grid-cols-2" : "grid-cols-1";
         const fullWidthActionClassName = hasFullWidthAction ? "col-span-2" : "";
 
         return (
-        <article key={item.id} className={`group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-card ${sold ? "ring-slate-300" : "ring-slate-200"}`}>
+        <article key={item.id} className={`group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-card ${sold || unpublishedVacancy ? "ring-slate-300" : "ring-slate-200"}`}>
           <Link href={getItemHref(item)} className="block min-w-0" aria-label={`Открыть ${item.title}`}>
           <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-blue-50 text-[#0875d1]">
             {item.images?.[0] ? <img src={item.images[0]} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
@@ -571,7 +695,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                 <FileText className="h-12 w-12" />
               </span>
             ) : null}
-            {sold ? <span className="absolute inset-0 bg-white/50" /> : null}
+            {sold || unpublishedVacancy ? <span className="absolute inset-0 bg-white/50" /> : null}
             <span className="absolute left-2 top-2 flex max-w-[calc(100%-3.5rem)] flex-wrap gap-1">
               <StatusPill>{item.status}</StatusPill>
               <span className="inline-flex h-6 items-center rounded-full bg-white/95 px-2 text-[11px] font-bold text-slate-600 shadow-sm sm:h-7 sm:text-xs">{demoPublicationLabels[item.type]}</span>
@@ -622,15 +746,38 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               </button>
             </div>
           ) : null}
-          {confirmDelete ? (
-            <div className="relative z-20 mx-3 mb-3 rounded-lg border border-rose-200 bg-rose-50 p-2">
-              <p className="text-xs font-bold text-rose-900">Удалить черновик?</p>
-              <p className="mt-1 text-xs leading-5 text-rose-700">Черновик исчезнет из кабинета. Опубликованные объявления это действие не затрагивает.</p>
+          {confirmUnpublish ? (
+            <div className="relative z-20 mx-3 mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2">
+              <p className="text-xs font-bold text-amber-900">Снять вакансию с публикации?</p>
+              <p className="mt-1 text-xs leading-5 text-amber-800">Она пропадет из активных, но останется в кабинете. После этого ее можно удалить.</p>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => {
-                    deleteDraftPublication(item.id);
+                    unpublishVacancy(item.id);
+                    setUnpublishingItemId(null);
+                  }}
+                  className="inline-flex h-8 items-center justify-center rounded-md bg-amber-600 px-2 text-xs font-bold text-white transition hover:bg-amber-700"
+                >
+                  Снять
+                </button>
+                <button type="button" onClick={() => setUnpublishingItemId(null)} className="h-8 rounded-md bg-white text-xs font-bold text-slate-600 ring-1 ring-amber-200 transition hover:text-[#0875d1]">
+                  Отмена
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {confirmDelete ? (
+            <div className="relative z-20 mx-3 mb-3 rounded-lg border border-rose-200 bg-rose-50 p-2">
+              <p className="text-xs font-bold text-rose-900">{item.type === "vacancy" ? "Удалить вакансию?" : "Удалить черновик?"}</p>
+              <p className="mt-1 text-xs leading-5 text-rose-700">
+                {item.type === "vacancy" ? "Удалять можно только черновик или вакансию, уже снятую с публикации." : "Черновик исчезнет из кабинета. Опубликованные объявления это действие не затрагивает."}
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    deletePublication(item.id);
                     setDeletingItemId(null);
                   }}
                   className="inline-flex h-8 items-center justify-center rounded-md bg-rose-600 px-2 text-xs font-bold text-white transition hover:bg-rose-700"
@@ -659,12 +806,13 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                 type="button"
                 onClick={() => {
                   setSellingItemId(null);
+                  setUnpublishingItemId(null);
                   setDeletingItemId((current) => (current === item.id ? null : item.id));
                 }}
                 className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2 text-sm font-bold text-rose-700 transition hover:border-rose-400 hover:bg-white ${fullWidthActionClassName}`}
               >
                 <Trash2 className="h-4 w-4 shrink-0" />
-                Удалить черновик
+                {item.type === "vacancy" ? "Удалить вакансию" : "Удалить черновик"}
               </button>
             ) : null}
             {canMarkListingSold(item) ? (
@@ -672,6 +820,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                 type="button"
                 onClick={() => {
                   setDeletingItemId(null);
+                  setUnpublishingItemId(null);
                   setSellingItemId((current) => (current === item.id ? null : item.id));
                 }}
                 className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-sm font-bold text-[#0a8f32] transition hover:border-[#0a8f32] hover:bg-white ${fullWidthActionClassName}`}
@@ -686,11 +835,52 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               >
                 Вернуть в публикацию
               </button>
+            ) : canUnpublishVacancy(item) ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setDeletingItemId(null);
+                  setSellingItemId(null);
+                  setUnpublishingItemId((current) => (current === item.id ? null : item.id));
+                }}
+                className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-2 text-sm font-bold text-amber-700 transition hover:border-amber-400 hover:bg-white ${fullWidthActionClassName}`}
+              >
+                Снять с публикации
+              </button>
+            ) : canRestoreVacancy(item) ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => restoreVacancy(item.id)}
+                  className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-sm font-bold text-[#0a8f32] transition hover:border-[#0a8f32] hover:bg-white ${fullWidthActionClassName}`}
+                >
+                  Вернуть в публикацию
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSellingItemId(null);
+                    setUnpublishingItemId(null);
+                    setDeletingItemId((current) => (current === item.id ? null : item.id));
+                  }}
+                  className={`relative z-20 col-span-2 inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2 text-sm font-bold text-rose-700 transition hover:border-rose-400 hover:bg-white`}
+                >
+                  <Trash2 className="h-4 w-4 shrink-0" />
+                  Удалить вакансию
+                </button>
+              </>
             ) : null}
           </div>
         </article>
         );
       })}
+        </div>
+      ) : (
+        <section className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center shadow-card">
+          <h2 className="text-lg font-black text-[#060b27]">В этом статусе вакансий нет</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Переключите фильтр или разместите новую вакансию.</p>
+        </section>
+      )}
     </section>
   );
 }

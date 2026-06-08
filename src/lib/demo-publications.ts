@@ -47,6 +47,7 @@ export type DemoPublication = {
 export const demoPublicationsStorageKey = "blizhniy-demo-publications";
 export const demoPublicationsUpdatedEvent = "blizhniy-demo-publications-updated";
 export const soldPublicationStatus = "Продано";
+export const unpublishedVacancyStatus = "Снята с публикации";
 
 export const demoPublicationLabels: Record<DemoPublicationType, string> = {
   fairApplication: "Заявка на ярмарку",

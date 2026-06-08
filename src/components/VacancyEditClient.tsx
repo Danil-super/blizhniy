@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
-import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, type DemoPublication } from "@/lib/demo-publications";
+import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, unpublishedVacancyStatus, type DemoPublication } from "@/lib/demo-publications";
 import type { JobVacancy } from "@/lib/types";
 
 type VacancyEditClientProps = {
@@ -108,7 +108,9 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void saveVacancy(event.currentTarget, "Опубликовано");
+    const nextStatus = vacancy?.status === unpublishedVacancyStatus ? unpublishedVacancyStatus : "Опубликовано";
+
+    void saveVacancy(event.currentTarget, nextStatus);
   }
 
   function handleSaveDraft() {
