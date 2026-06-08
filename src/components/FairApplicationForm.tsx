@@ -6,10 +6,28 @@ import { DropdownSelect } from "@/components/DropdownSelect";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { fairCategories } from "@/lib/data";
 import { ValidatedInput } from "@/components/ValidatedInput";
-import { demoPublicationsStorageKey, DemoPublication } from "@/lib/demo-publications";
-import { resolveClientUserIdentity } from "@/lib/client-user-profile";
+import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, type DemoPublication } from "@/lib/demo-publications";
+import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 
 type SubmitState = "idle" | "loading" | "error";
+
+function readStoredPublications() {
+  try {
+    const storedRaw = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = storedRaw ? (JSON.parse(storedRaw) as unknown) : [];
+
+    return Array.isArray(stored) ? stored.filter((item): item is DemoPublication => Boolean(item && typeof item === "object" && "id" in item)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeFairApplicationPublication(publication: DemoPublication) {
+  const stored = readStoredPublications().filter((item) => item.id !== publication.id);
+
+  window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify([publication, ...stored].slice(0, 50)));
+  window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+}
 
 export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean }) {
   const router = useRouter();
@@ -32,9 +50,13 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
     setMessage("");
 
     try {
+      const identity = await resolveAuthenticatedClientUserIdentity();
       const response = await fetch("/api/fair-applications", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${identity.accessToken}`,
+        },
         body: JSON.stringify({
           participantName: data.get("participantName"),
           city: data.get("city"),
@@ -59,25 +81,31 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
         throw new Error(payload.error ?? "Не удалось создать заявку");
       }
 
+      const applicationId = typeof payload.application?.id === "string" ? payload.application.id : `demo-fairApplication-${Date.now().toString(36)}`;
+      const publication: DemoPublication = {
+        id: applicationId,
+        type: "fairApplication",
+        ownerKey: identity.ownerKey,
+        ownerName: identity.name,
+        title: String(data.get("participantName") ?? "").trim() || "Новая заявка",
+        subtitle: String(data.get("category") ?? "").trim() || "Заявка на ярмарку",
+        city: String(data.get("city") ?? "").trim() || "Краснодар",
+        description: String(data.get("description") ?? "").trim(),
+        phone: String(data.get("phone") ?? "").trim(),
+        email: String(data.get("email") ?? "").trim(),
+        status: adminMode ? "Опубликовано" : "Ждет оплаты",
+        createdAt: new Date().toISOString(),
+      };
+
+      writeFairApplicationPublication(publication);
+
       if (adminMode) {
-        const identity = await resolveClientUserIdentity();
-        const publication: DemoPublication = {
-          id: `demo-fairApplication-${Date.now().toString(36)}`,
-          type: "fairApplication",
-          ownerKey: identity.ownerKey,
-          ownerName: identity.name,
-          title: String(data.get("participantName") ?? "").trim() || "Новая заявка",
-          subtitle: String(data.get("category") ?? "").trim() || "Заявка на ярмарку",
-          city: String(data.get("city") ?? "").trim() || "Краснодар",
-          status: "Опубликовано",
-          createdAt: new Date().toISOString(),
-        };
-        const storedRaw = window.localStorage.getItem(demoPublicationsStorageKey);
-        const stored = storedRaw ? (JSON.parse(storedRaw) as DemoPublication[]) : [];
-        window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify([publication, ...stored].slice(0, 50)));
-        window.dispatchEvent(new Event("blizhniy-demo-publications-updated"));
         router.push("/cabinet/fair-applications");
         return;
+      }
+
+      if (typeof payload.payment?.id !== "string") {
+        throw new Error("Не удалось создать платеж по заявке.");
       }
 
       router.push(`/blizhniy/oplata/${payload.payment.id}`);

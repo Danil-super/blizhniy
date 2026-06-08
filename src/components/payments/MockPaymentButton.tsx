@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
+import { BackLink } from "@/components/BackLink";
 
 type PaymentState = "idle" | "loading" | "success" | "error";
 
@@ -69,9 +69,9 @@ export function MockPaymentButton({ paymentId, tariffId, returnHref }: MockPayme
       </button>
       <p className={state === "error" ? "text-sm font-semibold text-rose-600" : "text-sm leading-6 text-slate-600"}>{message}</p>
       {state === "success" ? (
-        <Link href={returnHref} className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-emerald-200 bg-white font-bold text-[#0aa337]">
+        <BackLink fallbackHref={returnHref} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-white font-bold text-[#0aa337]">
           Вернуться в историю
-        </Link>
+        </BackLink>
       ) : null}
     </div>
   );

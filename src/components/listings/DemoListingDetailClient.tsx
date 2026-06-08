@@ -4,7 +4,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Camera, CheckCircle2, ChevronLeft, ChevronRight, MapPin, MessageCircle, Phone, Video } from "lucide-react";
+import { Camera, CheckCircle2, ChevronLeft, ChevronRight, MapPin, MessageCircle, Phone, Video } from "lucide-react";
+import { BackLink } from "@/components/BackLink";
 import { LocationMap } from "@/components/LocationMap";
 import { DemoPublication, demoPublicationsStorageKey, isDemoPublicationSold } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
@@ -199,9 +200,9 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
           <h1 className="text-2xl font-black text-[#060b27]">Объявление не найдено</h1>
           <p className="mt-2 text-slate-600">Созданные в демо объявления доступны в том же браузере, где они были опубликованы.</p>
-          <Link href="/blizhniy" className="mt-5 inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 font-bold text-white">
+          <BackLink fallbackHref="/blizhniy" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
             Вернуться в ленту
-          </Link>
+          </BackLink>
         </div>
       </main>
     );
@@ -212,10 +213,9 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
       <ListingViewTracker listingId={listing.id} />
       <div className="mx-auto grid max-w-[1180px] min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,768px)_minmax(320px,380px)] lg:items-start lg:justify-center">
         <section className="min-w-0 lg:max-w-3xl">
-          <Link href={`/blizhniy/${kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
-            <ArrowLeft className="h-4 w-4" />
+          <BackLink fallbackHref={`/blizhniy/${kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             Назад к разделу
-          </Link>
+          </BackLink>
           <h1 className="[overflow-wrap:anywhere] mt-3 text-2xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-4xl lg:text-5xl">{listing.title}</h1>
           <div className="mt-4 flex flex-wrap gap-2">
             <ListingKindBadge kind={kind} />

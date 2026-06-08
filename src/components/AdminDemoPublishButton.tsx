@@ -5,7 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { demoPublicationLabels, demoPublicationsStorageKey, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
-import { resolveClientUserIdentity } from "@/lib/client-user-profile";
+import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
 import type { BookingDetails, ListingKind } from "@/lib/types";
 
@@ -21,6 +21,10 @@ type AdminDemoPublishButtonProps = {
 
 function readValue(formData: FormData, name: string, fallback = "") {
   return String(formData.get(name) ?? "").trim() || fallback;
+}
+
+function readRawValue(formData: FormData, name: string) {
+  return String(formData.get(name) ?? "").trim();
 }
 
 function readEmailOrMessenger(formData: FormData) {
@@ -117,6 +121,10 @@ function readStoredPublications() {
   }
 
   return [];
+}
+
+function isDraftStatus(status: string) {
+  return status.trim().toLowerCase() === "черновик";
 }
 
 function loadImage(src: string) {
@@ -247,25 +255,17 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
   if (type === "vacancy") {
     const hasMapPoint = hasSelectedMapPoint(formData);
     const images = await readSelectedImages(formData);
-    const employerType = readValue(formData, "employerType", "organization");
+    const employerType = readRawValue(formData, "employerType");
     const contact = readEmailOrMessenger(formData);
-    const descriptionParts = [
-      readValue(formData, "description"),
-      readValue(formData, "workFormat") ? `Формат работы: ${readValue(formData, "workFormat")}` : "",
-      readValue(formData, "schedule") ? `График: ${readValue(formData, "schedule")}` : "",
-      readValue(formData, "requirements") ? `Требования: ${readValue(formData, "requirements")}` : "",
-      readValue(formData, "responsibilities") ? `Обязанности: ${readValue(formData, "responsibilities")}` : "",
-      readValue(formData, "conditions") ? `Условия: ${readValue(formData, "conditions")}` : "",
-    ].filter(Boolean);
 
     return {
       id,
       type,
-      title: readValue(formData, "title", "Новая вакансия"),
-      subtitle: readValue(formData, "organization", "Организация"),
-      city: readValue(formData, "location", "Краснодар").split(",")[0]?.trim() || "Краснодар",
-      price: readValue(formData, "salary", "по договоренности"),
-      description: descriptionParts.join("\n\n") || "Описание вакансии будет дополнено.",
+      title: readRawValue(formData, "title"),
+      subtitle: readRawValue(formData, "organization"),
+      city: readRawValue(formData, "location").split(",")[0]?.trim() || "",
+      price: readRawValue(formData, "salary"),
+      description: readRawValue(formData, "description"),
       images,
       lat: hasMapPoint ? readCoordinate(formData, "lat") : undefined,
       lng: hasMapPoint ? readCoordinate(formData, "lng") : undefined,
@@ -300,8 +300,12 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
       subtitle: readValue(formData, "profession", "Специалист"),
       city: readValue(formData, "city", "Краснодар"),
       price: readValue(formData, "budget", "по договоренности"),
+      description: readValue(formData, "description", "Описание заказа будет дополнено."),
+      images: await readSelectedImages(formData),
       lat: readCoordinate(formData, "lat"),
       lng: readCoordinate(formData, "lng"),
+      phone: readValue(formData, "phone"),
+      messengerUrl: readValue(formData, "messengerUrl"),
       showExactAddress: false,
       status: "Опубликовано",
       createdAt: now,
@@ -319,6 +323,10 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
       city: readValue(formData, "city", "Краснодар").split(",")[0]?.trim() || "Краснодар",
       price: readValue(formData, "price", "по договоренности"),
       images: await readSelectedImages(formData),
+      description: readValue(formData, "description"),
+      phone: readValue(formData, "phone"),
+      email: readValue(formData, "email"),
+      messengerUrl: readValue(formData, "messengerUrl"),
       lat: hasMapPoint ? readCoordinate(formData, "lat") : undefined,
       lng: hasMapPoint ? readCoordinate(formData, "lng") : undefined,
       address: hasMapPoint ? readValue(formData, "address") : undefined,
@@ -390,7 +398,7 @@ export function AdminDemoPublishButton({
         await verifyCaptchaToken(captchaToken);
       }
 
-      const identity = await resolveClientUserIdentity();
+      const identity = await resolveAuthenticatedClientUserIdentity();
       const publication = {
         ...(await buildPublication(new FormData(form), publicationType)),
         ownerKey: identity.ownerKey,
@@ -398,7 +406,21 @@ export function AdminDemoPublishButton({
         status,
       };
       const stored = readStoredPublications();
-      const nextPublications = [publication, ...stored].slice(0, 50);
+      let nextStored = stored;
+
+      if (publicationType === "specialist") {
+        const draftCount = stored.filter((item) => item.type === "specialist" && isDraftStatus(item.status)).length;
+
+        if (isDraftStatus(status) && draftCount >= 10) {
+          throw new Error("Можно создать максимум 10 черновиков анкет.");
+        }
+
+        if (!isDraftStatus(status)) {
+          nextStored = stored.map((item) => (item.type === "specialist" && !isDraftStatus(item.status) ? { ...item, status: "Черновик" } : item));
+        }
+      }
+
+      const nextPublications = [publication, ...nextStored].slice(0, 50);
 
       try {
         window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextPublications));

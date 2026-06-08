@@ -26,13 +26,15 @@ import { AdminAuthGate } from "@/components/auth/AdminAuthGate";
 import { AdMarqueeAdminPanel } from "@/components/AdMarqueeAdminPanel";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
-import { LogoutButton } from "@/components/auth/LogoutButton";
+import { CabinetShellActions } from "@/components/cabinet/CabinetShellActions";
 import {
   CabinetCapabilities,
   CabinetContactsHint,
   CabinetOrganizationClient,
   CabinetOverviewClient,
   CabinetPaymentsHistoryClient,
+  type CabinetResponseItem,
+  type CabinetPaymentHistoryItem,
   CabinetProfileBar,
   CabinetPublicationsClient,
   CabinetResponsesClient,
@@ -44,7 +46,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import type { DemoPublication } from "@/lib/demo-publications";
 import { categories, professions } from "@/lib/data";
 import { getPayment } from "@/lib/payment-provider";
-import { getCurrentUserSpecialist, listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies } from "@/lib/mock-store";
+import { getCurrentUserSpecialist, listApplications, listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies } from "@/lib/mock-store";
 import type { SpecialistProfile } from "@/lib/types";
 import { getTariffById, getTariffs, resetTariffPatches, updateTariffPatch } from "@/lib/tariff-store";
 
@@ -207,6 +209,18 @@ function paymentRows() {
   }));
 }
 
+function responseRows(): CabinetResponseItem[] {
+  return listApplications().map((application) => ({
+    href: "/blizhniy/rabota/vakansii",
+    id: application.id,
+    paymentHref: `/blizhniy/oplata/${application.paymentId}`,
+    paymentId: application.paymentId,
+    specialistName: application.specialistName,
+    status: application.status,
+    vacancyTitle: application.vacancyTitle,
+  }));
+}
+
 function adminPaymentRows() {
   return paymentRows().map((payment, index) => ({
     ...payment,
@@ -251,14 +265,18 @@ function Shell({
   description,
   eyebrow,
   nav,
+  activeHref,
   createHref = "/blizhniy/sozdat",
+  createLabel = "Создать",
   children,
 }: {
   title: string;
   description: string;
   eyebrow: string;
   nav?: typeof cabinetNav;
-  createHref?: string;
+  activeHref?: string;
+  createHref?: string | null;
+  createLabel?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -267,19 +285,22 @@ function Shell({
       <main className={`page-container dashboard-shell pt-6 sm:pt-10 ${nav === cabinetNav ? "pb-16 sm:pb-20" : "pb-6 sm:pb-10"}`}>
         <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">{eyebrow}</p>
         <div className="mt-2 flex flex-col gap-4 sm:mt-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">{title}</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-lg sm:leading-7">{description}</p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 [overflow-wrap:anywhere] sm:mt-3 sm:text-lg sm:leading-7">{description}</p>
           </div>
           <div className={nav ? "grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3" : "grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:gap-3"}>
-            <ActionLink href={createHref} tone="green">
-              <Plus className="h-4 w-4" />
-              Создать
-            </ActionLink>
-            {nav ? <LogoutButton /> : null}
+            {nav ? (
+              <CabinetShellActions createHref={createHref} createLabel={createLabel} />
+            ) : createHref ? (
+              <ActionLink href={createHref} tone="green">
+                <Plus className="h-4 w-4" />
+                {createLabel}
+              </ActionLink>
+            ) : null}
           </div>
         </div>
-        {nav ? <NavPills items={nav} /> : null}
+        {nav ? <NavPills items={nav} activeHref={activeHref} /> : null}
         {nav === cabinetNav ? <CabinetProfileBar /> : null}
         <div className="mt-5 sm:mt-7">{children}</div>
       </main>
@@ -287,15 +308,19 @@ function Shell({
   );
 }
 
-function NavPills({ items }: { items: typeof cabinetNav }) {
+function NavPills({ items, activeHref }: { items: typeof cabinetNav; activeHref?: string }) {
   return (
     <nav className="mt-5 grid grid-flow-col grid-rows-2 gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:mt-7 sm:flex sm:flex-wrap sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden" aria-label="Разделы">
       {items.map((item) => {
         const Icon = item.icon;
+        const active = item.href === activeHref;
         return (
           <Link
             href={item.href}
-            className="inline-flex min-h-10 w-[9.25rem] max-w-full items-center justify-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold leading-snug text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:min-h-11 sm:w-auto sm:min-w-[9.5rem] sm:flex-none sm:px-4 sm:text-sm"
+            className={`inline-flex min-h-10 w-[9.25rem] max-w-full items-center justify-start gap-2 rounded-lg border px-3 py-2 text-xs font-bold leading-snug transition sm:min-h-11 sm:w-auto sm:min-w-[9.5rem] sm:flex-none sm:px-4 sm:text-sm ${
+              active ? "border-blue-200 bg-blue-50 text-[#0875d1] ring-1 ring-blue-100" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
+            }`}
+            aria-current={active ? "page" : undefined}
             key={item.href}
           >
             <Icon className="h-4 w-4 shrink-0" />
@@ -318,7 +343,7 @@ function AdminGuardedContent({ children }: { children: React.ReactNode }) {
 
 function MetricCard({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) {
   return (
-    <article className="flex aspect-square min-h-0 flex-col justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:aspect-auto sm:min-h-0 sm:p-5">
+    <article className="flex min-h-32 flex-col justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:min-h-0 sm:p-5">
       <div className="flex items-start justify-between gap-2 sm:gap-4">
         <p className="text-xs font-bold leading-4 text-slate-500 sm:text-sm">{label}</p>
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1] sm:h-10 sm:w-10">{icon}</span>
@@ -473,10 +498,13 @@ export function AuthPage() {
 }
 
 export function CabinetPage() {
+  const payments = listMockPayments();
+  const paymentsTotal = payments.reduce((total, payment) => total + payment.amount, 0);
+
   return (
-    <Shell title="Личный кабинет" description="Панель пользователя для публикаций, откликов, анкеты специалиста и оплат." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Личный кабинет" description="Панель пользователя для публикаций, откликов, анкеты специалиста и оплат." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet">
       <CabinetAuthGate>
-        <CabinetOverviewClient />
+        <CabinetOverviewClient paymentsCount={payments.length} paymentsTotal={paymentsTotal} />
         <div className="mt-8">
           <CabinetCapabilities />
         </div>
@@ -487,7 +515,7 @@ export function CabinetPage() {
 
 export function CabinetListingsPage() {
   return (
-    <Shell title="Мои объявления" description="Статусы публикаций, просмотры и быстрые действия по объявлениям пользователя." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Мои объявления" description="Статусы публикаций, просмотры и быстрые действия по объявлениям пользователя." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/obyavleniya" createHref="/blizhniy/sozdat/obyavlenie" createLabel="Создать объявление">
       <CabinetAuthGate>
         <CabinetPublicationsClient type="listing" />
       </CabinetAuthGate>
@@ -497,7 +525,7 @@ export function CabinetListingsPage() {
 
 export function CabinetVacanciesPage() {
   return (
-    <Shell title="Мои вакансии" description="Список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Мои вакансии" description="Список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/vakansii" createHref="/blizhniy/rabota/vakansii/sozdat" createLabel="Разместить вакансию">
       <CabinetAuthGate>
         <CabinetPublicationsClient type="vacancy" />
       </CabinetAuthGate>
@@ -507,7 +535,7 @@ export function CabinetVacanciesPage() {
 
 export function CabinetWorkRequestsPage() {
   return (
-    <Shell title="Мои заказы исполнителям" description="Задачи, которые пользователь размещает для специалистов и исполнителей." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Мои заказы исполнителям" description="Задачи, которые пользователь размещает для специалистов и исполнителей." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/zakazy" createHref="/blizhniy/rabota/zakazy/sozdat" createLabel="Разместить заказ">
       <CabinetAuthGate>
         <CabinetPublicationsClient type="workRequest" />
       </CabinetAuthGate>
@@ -519,7 +547,7 @@ export function CabinetSpecialistPage() {
   const specialist = getCurrentUserSpecialist();
 
   return (
-    <Shell title="Анкета специалиста" description="Профиль исполнителя с услугами, контактами, статусом проверки и будущей публикацией." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Анкета специалиста" description="Профиль исполнителя с услугами, контактами, статусом проверки и будущей публикацией." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/specialist" createHref="/blizhniy/rabota/specialisty/anketa" createLabel="Создать анкету">
       <CabinetAuthGate>
         <CabinetSpecialistClient initialSpecialist={specialist ? specialistToDemoPublication(specialist) : undefined} />
       </CabinetAuthGate>
@@ -529,7 +557,7 @@ export function CabinetSpecialistPage() {
 
 export function CabinetOrganizationPage() {
   return (
-    <Shell title="Профиль организации" description="Профиль заказчика с публичным адресом и контактами для вакансий." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Профиль организации" description="Профиль заказчика с публичным адресом и контактами для вакансий." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/organization" createHref={null}>
       <CabinetAuthGate>
         <CabinetOrganizationClient />
         <CabinetContactsHint />
@@ -539,10 +567,12 @@ export function CabinetOrganizationPage() {
 }
 
 export function CabinetResponsesPage() {
+  const responses = responseRows();
+
   return (
-    <Shell title="Мои отклики" description="Отклики на вакансии со статусами оплаты, отправки и просмотра работодателем." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Мои отклики" description="Отклики на вакансии со статусами оплаты, отправки и просмотра работодателем." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/otkliki" createHref="/blizhniy/rabota/vakansii" createLabel="Найти вакансию">
       <CabinetAuthGate>
-        <CabinetResponsesClient />
+        <CabinetResponsesClient responses={responses} />
       </CabinetAuthGate>
     </Shell>
   );
@@ -552,9 +582,10 @@ export function CabinetPaymentsPage() {
   const tariffs = getTariffs();
   const adTariff = tariffs.find((tariff) => tariff.action === "ad_marquee");
   const publicationTariffs = tariffs.filter((tariff) => tariff.action !== "ad_marquee");
+  const payments = paymentRows() as CabinetPaymentHistoryItem[];
 
   return (
-    <Shell title="Оплата и тарифы" description="Тарифы публикаций, история платежей и переход к оплате заказа." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Оплата и тарифы" description="Тарифы публикаций, история платежей и переход к оплате заказа." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/oplata" createHref={null}>
       <CabinetAuthGate>
         {adTariff ? (
           <section className="mb-4 rounded-xl border border-blue-100 bg-blue-50/70 p-3 shadow-card sm:mb-6 sm:p-5">
@@ -589,7 +620,7 @@ export function CabinetPaymentsPage() {
         </section>
         <section className="mt-8">
           <SectionTitle title="История платежей" />
-          <CabinetPaymentsHistoryClient />
+          <CabinetPaymentsHistoryClient payments={payments} />
         </section>
       </CabinetAuthGate>
     </Shell>
@@ -598,7 +629,7 @@ export function CabinetPaymentsPage() {
 
 export function CabinetFairApplicationsPage() {
   return (
-    <Shell title="Заявки на ярмарку" description="Заявки пользователя на участие в Ярмарке мастеров, статусы оплаты и публикации." eyebrow="Кабинет" nav={cabinetNav}>
+    <Shell title="Заявки на ярмарку" description="Заявки пользователя на участие в Ярмарке мастеров, статусы оплаты и публикации." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/fair-applications" createHref="/yarmarka-masterov/zayavka" createLabel="Подать заявку">
       <CabinetAuthGate>
         <CabinetPublicationsClient type="fairApplication" />
       </CabinetAuthGate>
@@ -629,12 +660,12 @@ export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
           : "/cabinet/oplata";
 
   return (
-    <Shell title="Оплата заказа" description="Проверьте заказ, выберите способ оплаты и подтвердите платеж." eyebrow="Оплата">
+    <Shell title="Оплата заказа" description="Проверьте заказ, выберите способ оплаты и подтвердите платеж." eyebrow="Оплата" createHref={null}>
       <section className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-5">
           <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">{payment?.targetTitle ?? `Заказ ${paymentId ?? tariff.id}`}</h2>
           {payment ? <p className="mt-2 text-sm font-semibold text-slate-500">Платеж {payment.id}</p> : null}
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-6 sm:grid-cols-3 sm:gap-4">
+          <div className="mt-4 grid gap-3 sm:mt-6 sm:grid-cols-3 sm:gap-4">
             <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тариф" value={tariff.name} detail="Заказ сформирован." />
             <MetricCard icon={<Banknote className="h-5 w-5" />} label="Сумма" value={`${payment?.amount ?? tariff.price} ₽`} detail="Фиксированная стоимость." />
             <MetricCard icon={<CheckCircle2 className="h-5 w-5" />} label="Статус" value={payment?.status === "succeeded" ? "Оплачено" : "Ожидает оплаты"} detail="После оплаты публикация обновит статус." />
@@ -662,7 +693,7 @@ export function AdminPage() {
   const tariffs = getTariffs();
 
   return (
-    <Shell title="Админка" description="Панель модерации пользователей, контента, классификаторов, тарифов и платежей." eyebrow="Администрирование" createHref="/blizhniy/sozdat?admin=1">
+    <Shell title="Админка" description="Панель модерации пользователей, контента, классификаторов, тарифов и платежей." eyebrow="Администрирование" createHref={null}>
       <AdminGuardedContent>
         <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard icon={<UsersRound className="h-5 w-5" />} label="Пользователи" value="3" detail="Роли user, organization, admin." />

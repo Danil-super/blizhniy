@@ -46,6 +46,23 @@ type AvatarImageSize = {
   width: number;
   height: number;
 };
+export type CabinetPaymentHistoryItem = {
+  amount: string;
+  href: string;
+  id: string;
+  method: string;
+  status: string;
+  subject: string;
+};
+export type CabinetResponseItem = {
+  href: string;
+  id: string;
+  paymentHref: string;
+  paymentId: string;
+  specialistName: string;
+  status: string;
+  vacancyTitle: string;
+};
 
 const sortedCities = [...cities].sort((left, right) => left.name.localeCompare(right.name, "ru"));
 
@@ -59,7 +76,7 @@ const emptyCopy: Record<CabinetListMode, { title: string; text: string; href?: s
   listing: {
     title: "Объявлений пока нет",
     text: "Создайте первое объявление, чтобы оно появилось в ленте и в этом разделе кабинета.",
-    href: "/blizhniy/sozdat",
+    href: "/blizhniy/sozdat/obyavlenie",
     action: "Создать объявление",
   },
   organization: {
@@ -374,18 +391,18 @@ function getItemHref(item: DemoPublication) {
   }
 
   if (item.type === "vacancy") {
-    return "/cabinet/vakansii";
+    return `/blizhniy/vakansiya/${item.id}`;
   }
 
   if (item.type === "workRequest") {
-    return "/cabinet/zakazy";
+    return `/blizhniy/rabota/zakazy/${item.id}`;
   }
 
   if (item.type === "specialist") {
-    return "/cabinet/specialist";
+    return `/blizhniy/specialist/${item.id}`;
   }
 
-  return "/cabinet/fair-applications";
+  return "/yarmarka-masterov";
 }
 
 function getEditHref(item: DemoPublication) {
@@ -394,15 +411,15 @@ function getEditHref(item: DemoPublication) {
   }
 
   if (item.type === "specialist") {
-    return "/blizhniy/rabota/specialisty/anketa";
+    return `/blizhniy/rabota/specialisty/anketa?from=${item.id}`;
   }
 
   if (item.type === "vacancy") {
-    return "/blizhniy/rabota/vakansii/sozdat";
+    return `/blizhniy/rabota/vakansii/${item.id}/redaktirovat`;
   }
 
   if (item.type === "workRequest") {
-    return "/blizhniy/rabota/zakazy/sozdat";
+    return `/blizhniy/rabota/zakazy/${item.id}/redaktirovat`;
   }
 
   return "/yarmarka-masterov/zayavka";
@@ -486,13 +503,40 @@ function EmptyState({ mode }: { mode: CabinetListMode }) {
 }
 
 function StatusPill({ children }: { children: string }) {
+  const status = children.trim().toLowerCase();
   const tone = isDemoPublicationSold({ status: children })
     ? "border-slate-300 bg-slate-100 text-slate-700"
-    : children.trim().toLowerCase() === "черновик"
+    : status === "черновик" || status.includes("оплат")
       ? "border-amber-200 bg-amber-50 text-amber-700"
       : "border-emerald-200 bg-emerald-50 text-[#0a8f32]";
 
   return <span className={`inline-flex h-7 items-center rounded-full border px-3 text-xs font-bold ${tone}`}>{children}</span>;
+}
+
+function PaymentStatusPill({ status }: { status: string }) {
+  const normalizedStatus = status.trim().toLowerCase();
+  const tone =
+    normalizedStatus === "succeeded"
+      ? "border-emerald-200 bg-emerald-50 text-[#0a8f32]"
+      : normalizedStatus === "failed"
+        ? "border-rose-200 bg-rose-50 text-rose-700"
+        : "border-amber-200 bg-amber-50 text-amber-700";
+  const label = normalizedStatus === "succeeded" ? "Оплачено" : normalizedStatus === "failed" ? "Ошибка" : "Ожидает оплаты";
+
+  return <span className={`inline-flex h-7 items-center rounded-full border px-3 text-xs font-bold ${tone}`}>{label}</span>;
+}
+
+function ResponseStatusPill({ status }: { status: string }) {
+  const normalizedStatus = status.trim().toLowerCase();
+  const tone =
+    normalizedStatus === "sent"
+      ? "border-emerald-200 bg-emerald-50 text-[#0a8f32]"
+      : normalizedStatus === "paid"
+        ? "border-blue-200 bg-blue-50 text-[#0875d1]"
+        : "border-amber-200 bg-amber-50 text-amber-700";
+  const label = normalizedStatus === "sent" ? "Отправлен" : normalizedStatus === "paid" ? "Оплачен" : "Ждет оплаты";
+
+  return <span className={`inline-flex h-7 items-center rounded-full border px-3 text-xs font-bold ${tone}`}>{label}</span>;
 }
 
 function PublicationList({ items, mode }: { items: DemoPublication[]; mode: DemoPublicationType }) {
@@ -510,6 +554,11 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         const confirmDelete = deletingItemId === item.id;
         const sold = item.type === "listing" && isDemoPublicationSold(item);
         const confirmSold = sellingItemId === item.id;
+        const showOpenAction = true;
+        const showEditAction = item.type !== "fairApplication";
+        const hasFullWidthAction = draft || canMarkListingSold(item) || sold;
+        const actionGridClassName = showEditAction || hasFullWidthAction ? "grid-cols-2" : "grid-cols-1";
+        const fullWidthActionClassName = hasFullWidthAction ? "col-span-2" : "";
 
         return (
         <article key={item.id} className={`group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-card ${sold ? "ring-slate-300" : "ring-slate-200"}`}>
@@ -594,15 +643,17 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               </div>
             </div>
           ) : null}
-          <div className={`grid gap-2 px-3 pb-3 ${item.type === "listing" ? "grid-cols-2" : item.type !== "specialist" ? "grid-cols-2" : "grid-cols-1"}`}>
-            {item.type !== "specialist" ? (
+          <div className={`grid gap-2 px-3 pb-3 ${actionGridClassName}`}>
+            {showOpenAction ? (
               <Link href={getItemHref(item)} className="relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
                 Открыть
               </Link>
             ) : null}
-            <Link href={getEditHref(item)} className="relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-2 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
-              Изменить
-            </Link>
+            {showEditAction ? (
+              <Link href={getEditHref(item)} className="relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-2 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
+                Изменить
+              </Link>
+            ) : null}
             {draft ? (
               <button
                 type="button"
@@ -610,7 +661,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                   setSellingItemId(null);
                   setDeletingItemId((current) => (current === item.id ? null : item.id));
                 }}
-                className="relative z-20 col-span-2 inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2 text-sm font-bold text-rose-700 transition hover:border-rose-400 hover:bg-white"
+                className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2 text-sm font-bold text-rose-700 transition hover:border-rose-400 hover:bg-white ${fullWidthActionClassName}`}
               >
                 <Trash2 className="h-4 w-4 shrink-0" />
                 Удалить черновик
@@ -623,7 +674,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                   setDeletingItemId(null);
                   setSellingItemId((current) => (current === item.id ? null : item.id));
                 }}
-                className="relative z-20 col-span-2 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-sm font-bold text-[#0a8f32] transition hover:border-[#0a8f32] hover:bg-white"
+                className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-sm font-bold text-[#0a8f32] transition hover:border-[#0a8f32] hover:bg-white ${fullWidthActionClassName}`}
               >
                 Продано / снять
               </button>
@@ -631,7 +682,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               <button
                 type="button"
                 onClick={() => restoreSoldListing(item.id)}
-                className="relative z-20 col-span-2 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]"
+                className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] ${fullWidthActionClassName}`}
               >
                 Вернуть в публикацию
               </button>
@@ -1302,12 +1353,11 @@ export function CabinetProfileBar() {
   );
 }
 
-export function CabinetOverviewClient() {
+export function CabinetOverviewClient({ paymentsCount = 0, paymentsTotal = 0 }: { paymentsCount?: number; paymentsTotal?: number }) {
   const { profile, items, loading } = useUserCabinetData();
   const listings = items.filter((item) => item.type === "listing");
   const vacancies = items.filter((item) => item.type === "vacancy");
   const orders = items.filter((item) => item.type === "workRequest");
-  const paymentsTotal = 0;
 
   if (loading || !profile) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем кабинет...</div>;
@@ -1319,7 +1369,7 @@ export function CabinetOverviewClient() {
         <MiniMetric icon={<FileText className="h-5 w-5" />} label="Объявления" value={String(listings.length)} detail="Ваши публикации в каталоге." />
         <MiniMetric icon={<BriefcaseBusiness className="h-5 w-5" />} label="Вакансии" value={String(vacancies.length)} detail="Вакансии вашей организации." />
         <MiniMetric icon={<ClipboardList className="h-5 w-5" />} label="Заказы" value={String(orders.length)} detail="Задачи для исполнителей." />
-        <MiniMetric icon={<CreditCard className="h-5 w-5" />} label="Оплаты" value={`${paymentsTotal} ₽`} detail="Сумма платежей аккаунта." />
+        <MiniMetric icon={<CreditCard className="h-5 w-5" />} label="Оплаты" value={`${paymentsTotal} ₽`} detail={`${paymentsCount} платежей в истории.`} />
       </div>
       <div className="mt-8 grid min-w-0 items-stretch gap-8">
         <section className="grid min-h-0 min-w-0 grid-rows-[auto_1fr]">
@@ -1329,7 +1379,14 @@ export function CabinetOverviewClient() {
               История
             </Link>
           </div>
-          <EmptyState mode="payment" />
+          {paymentsCount ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
+              <p className="text-sm leading-6 text-slate-600">Всего платежей: <span className="font-black text-[#060b27]">{paymentsCount}</span></p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">Сумма оплат и заказов: <span className="font-black text-[#060b27]">{paymentsTotal} ₽</span></p>
+            </div>
+          ) : (
+            <EmptyState mode="payment" />
+          )}
         </section>
       </div>
     </>
@@ -1347,31 +1404,133 @@ export function CabinetPublicationsClient({ type }: { type: DemoPublicationType 
   return <PublicationList items={visibleItems} mode={type} />;
 }
 
-export function CabinetResponsesClient() {
-  return <EmptyState mode="response" />;
+export function CabinetResponsesClient({ responses = [] }: { responses?: CabinetResponseItem[] }) {
+  if (!responses.length) {
+    return <EmptyState mode="response" />;
+  }
+
+  return (
+    <section className="grid gap-3">
+      {responses.map((response) => (
+        <article key={response.id} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:grid-cols-[1fr_auto] sm:items-center sm:p-5">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <ResponseStatusPill status={response.status} />
+              <span className="text-xs font-bold text-slate-500">Платеж {response.paymentId}</span>
+            </div>
+            <h3 className="mt-2 truncate text-lg font-black text-[#060b27]">{response.vacancyTitle}</h3>
+            <p className="mt-1 text-sm leading-6 text-slate-600">Отклик от: <span className="font-bold text-slate-800">{response.specialistName}</span></p>
+          </div>
+          <div className="grid gap-2 sm:justify-items-end">
+            <Link href={response.href} className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]">
+              Открыть вакансию
+            </Link>
+            <Link href={response.paymentHref} className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0664b3]">
+              {response.status === "sent" ? "Открыть оплату" : "Оплатить отклик"}
+            </Link>
+          </div>
+        </article>
+      ))}
+    </section>
+  );
 }
 
-export function CabinetPaymentsHistoryClient() {
-  return <EmptyState mode="payment" />;
+export function CabinetPaymentsHistoryClient({ payments = [] }: { payments?: CabinetPaymentHistoryItem[] }) {
+  if (!payments.length) {
+    return <EmptyState mode="payment" />;
+  }
+
+  return (
+    <section className="grid gap-3">
+      {payments.map((payment) => (
+        <article key={payment.id} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:grid-cols-[1fr_auto] sm:items-center sm:p-5">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <PaymentStatusPill status={payment.status} />
+              <span className="text-xs font-bold text-slate-500">{payment.method}</span>
+            </div>
+            <h3 className="mt-2 truncate text-lg font-black text-[#060b27]">{payment.subject}</h3>
+            <p className="mt-1 text-xs font-semibold text-slate-500">Платеж {payment.id}</p>
+          </div>
+          <div className="grid gap-2 sm:justify-items-end">
+            <p className="text-2xl font-black text-[#0875d1]">{payment.amount}</p>
+            <Link href={payment.href} className="inline-flex h-10 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
+              Открыть
+            </Link>
+          </div>
+        </article>
+      ))}
+    </section>
+  );
 }
 
 export function CabinetOrganizationClient() {
-  const { profile, loading } = useUserCabinetData();
+  const { identity, profile, loading } = useUserCabinetData();
+  const [form, setForm] = useState<CabinetProfile | null>(profile);
+  const [message, setMessage] = useState("");
 
-  if (loading || !profile) {
+  useEffect(() => {
+    setForm(profile);
+  }, [profile]);
+
+  if (loading || !identity || !profile || !form) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем профиль...</div>;
+  }
+
+  const completedFields = [form.organizationName, form.organizationInn, form.organizationAddress, form.organizationDescription].filter((value) => value.trim()).length;
+  const completionLabel = completedFields >= 3 ? "Заполнен" : completedFields > 0 ? "Нужно дополнить" : "Не заполнен";
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!identity || !form) {
+      return;
+    }
+
+    const organizationName = form.organizationName.trim();
+    const organizationInn = form.organizationInn.replace(/\D/g, "");
+    const organizationOgrn = form.organizationOgrn.replace(/\D/g, "");
+
+    if (!organizationName) {
+      setMessage("Укажите название организации или ИП.");
+      return;
+    }
+
+    if (organizationInn && organizationInn.length !== 10 && organizationInn.length !== 12) {
+      setMessage("ИНН должен содержать 10 цифр для организации или 12 цифр для ИП.");
+      return;
+    }
+
+    if (organizationOgrn && organizationOgrn.length !== 13 && organizationOgrn.length !== 15) {
+      setMessage("ОГРН должен содержать 13 цифр, ОГРНИП — 15 цифр.");
+      return;
+    }
+
+    const nextProfile: CabinetProfile = {
+      ...form,
+      organizationName: organizationName.slice(0, 120),
+      organizationInn,
+      organizationOgrn,
+      organizationAddress: form.organizationAddress.trim().slice(0, 160),
+      organizationWebsite: form.organizationWebsite.trim().slice(0, 120),
+      organizationDescription: form.organizationDescription.trim().slice(0, 500),
+    };
+
+    writeCabinetProfile(identity.ownerKey, nextProfile);
+    setForm(nextProfile);
+    setMessage("Профиль организации сохранен.");
   }
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black text-[#060b27]">{profile.name}</h2>
+          <h2 className="text-2xl font-black text-[#060b27]">{form.organizationName || "Профиль организации"}</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Если вы размещаете вакансии от организации, заполните контакты в настройках аккаунта. Эти данные будут использоваться как основа для карточек вакансий.
+            Заполните данные работодателя один раз, чтобы при размещении вакансий было понятно, от чьего имени публикуется предложение.
           </p>
         </div>
-        <StatusPill>Профиль аккаунта</StatusPill>
+        <StatusPill>{completionLabel}</StatusPill>
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -1387,23 +1546,108 @@ export function CabinetOrganizationClient() {
           <p className="mt-2 break-words font-black text-[#060b27]">{profile.email || "Не указан"}</p>
         </div>
       </div>
+      <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+            Название организации или ИП
+            <input
+              className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
+              value={form.organizationName}
+              onChange={(event) => setForm({ ...form, organizationName: event.target.value.slice(0, 120) })}
+              placeholder="ООО РемДом"
+              minLength={2}
+              maxLength={120}
+              required
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+            Сайт или профиль
+            <input
+              className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
+              value={form.organizationWebsite}
+              onChange={(event) => setForm({ ...form, organizationWebsite: event.target.value.slice(0, 120) })}
+              placeholder="https://example.ru"
+              maxLength={120}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+            ИНН
+            <input
+              className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
+              value={form.organizationInn}
+              onChange={(event) => setForm({ ...form, organizationInn: event.target.value.replace(/\D/g, "").slice(0, 12) })}
+              placeholder="10 или 12 цифр"
+              inputMode="numeric"
+              maxLength={12}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+            ОГРН / ОГРНИП
+            <input
+              className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
+              value={form.organizationOgrn}
+              onChange={(event) => setForm({ ...form, organizationOgrn: event.target.value.replace(/\D/g, "").slice(0, 15) })}
+              placeholder="13 или 15 цифр"
+              inputMode="numeric"
+              maxLength={15}
+            />
+          </label>
+        </div>
+        <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+          Адрес
+          <input
+            className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
+            value={form.organizationAddress}
+            onChange={(event) => setForm({ ...form, organizationAddress: event.target.value.slice(0, 160) })}
+            placeholder="Краснодар, ул. Красная, 1"
+            maxLength={160}
+          />
+        </label>
+        <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+          Краткое описание
+          <textarea
+            className="min-h-28 resize-y rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-[#0875d1]"
+            value={form.organizationDescription}
+            onChange={(event) => setForm({ ...form, organizationDescription: event.target.value.slice(0, 500) })}
+            placeholder="Чем занимается компания, кого обычно нанимаете, важные условия для соискателей."
+            maxLength={500}
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3]">
+            Сохранить профиль организации
+          </button>
+          {message ? <p className="text-sm font-semibold text-slate-600">{message}</p> : null}
+        </div>
+      </form>
     </section>
   );
 }
 
 export function CabinetSpecialistClient({ initialSpecialist }: { initialSpecialist?: DemoPublication }) {
   const { items, loading } = useUserCabinetData();
-  const specialist = items.find((item) => item.type === "specialist") ?? initialSpecialist;
+  const storedSpecialists = items.filter((item) => item.type === "specialist");
+  const specialists = initialSpecialist && !storedSpecialists.some((item) => item.id === initialSpecialist.id) ? [...storedSpecialists, initialSpecialist] : storedSpecialists;
+  const sortedSpecialists = [...specialists].sort((left, right) => {
+    const leftDraft = isDraftPublication(left);
+    const rightDraft = isDraftPublication(right);
+
+    if (leftDraft !== rightDraft) {
+      return leftDraft ? 1 : -1;
+    }
+
+    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+  });
 
   if (loading && !initialSpecialist) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем анкету...</div>;
   }
 
-  if (!specialist) {
+  if (!sortedSpecialists.length) {
     return <EmptyState mode="specialist" />;
   }
 
-  return <PublicationList items={[specialist]} mode="specialist" />;
+  return <PublicationList items={sortedSpecialists} mode="specialist" />;
 }
 
 export function CabinetCapabilities() {

@@ -234,7 +234,7 @@ export function WorkPage({ specialists = fallbackSpecialists }: { specialists?: 
 
       <section className="mt-4 grid gap-3 sm:mt-5 lg:grid-cols-[minmax(0,34rem)_minmax(0,34rem)] lg:items-start lg:justify-between">
         <SegmentTabs activeItem={demandTab} items={["Новые вакансии", "Заказчики"]} onChange={setDemandTab} />
-        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+        <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
           <Link
             href="/blizhniy/rabota/vakansii/sozdat"
             className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-3 text-center text-xs font-bold leading-tight text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:px-4 sm:text-sm lg:gap-2"

@@ -4,7 +4,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Clock3, FileText, MapPin, PackageCheck, ShieldCheck } from "lucide-react";
+import { Clock3, FileText, MapPin, PackageCheck, ShieldCheck } from "lucide-react";
+import { BackLink } from "@/components/BackLink";
 import {
   demoPublicationsStorageKey,
   isDemoPublicationSold,
@@ -159,10 +160,9 @@ export function SellerProfileClient({ initialListings, sellerKey }: SellerProfil
 
   return (
     <main className="page-container py-6 sm:py-8 lg:py-10">
-      <Link href="/blizhniy" className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
-        <ArrowLeft className="h-4 w-4" />
+      <BackLink fallbackHref="/blizhniy" className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
         Назад к объявлениям
-      </Link>
+      </BackLink>
 
       <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
         <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

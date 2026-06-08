@@ -1,25 +1,22 @@
-import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
-import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
+import { VacancyEditClient } from "@/components/VacancyEditClient";
+import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
+import { vacancies } from "@/lib/data";
 
-export default function EditVacancyPage() {
+type PageProps = {
+  params: Promise<{ slug: string }>;
+};
+
+export default async function EditVacancyPage({ params }: PageProps) {
+  const { slug } = await params;
+  const initialVacancy = vacancies.find((vacancy) => vacancy.id === slug);
+
   return (
     <>
       <SiteHeader />
-      <main className="page-container py-10">
-        <FormPanel title="Редактировать вакансию" description="Владелец вакансии может обновить описание, контакты и архивировать публикацию.">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Организация" placeholder="ООО РемДом" />
-            <Field label="Вакансия" placeholder="Сантехник" />
-            <Field label="Город" placeholder="Краснодар" />
-            <Field label="Статус" placeholder="Опубликовано" />
-          </div>
-          <TextAreaField label="Описание" />
-          <Link href="/cabinet/vakansii" className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0875d1] px-7 font-bold text-white">
-            Сохранить изменения
-          </Link>
-        </FormPanel>
-      </main>
+      <PublicationAuthGate title="Войдите, чтобы редактировать вакансию">
+        <VacancyEditClient vacancyId={slug} initialVacancy={initialVacancy} />
+      </PublicationAuthGate>
     </>
   );
 }

@@ -11,6 +11,13 @@ import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
 type AuthMode = "login" | "register";
 type AuthState = "idle" | "loading" | "success" | "error";
 
+type AuthFormProps = {
+  initialMessage?: string;
+  returnHref?: string;
+  successLinkLabel?: string;
+  successMessage?: string;
+};
+
 const namePattern = /^[A-Za-zА-Яа-яЁё\s"«»'`.,-]+$/u;
 
 function getNameValidationError(value: string) {
@@ -132,7 +139,12 @@ function PasswordField({
   );
 }
 
-export function AuthForm() {
+export function AuthForm({
+  initialMessage = "Создайте аккаунт или войдите, чтобы открыть личный кабинет.",
+  returnHref = "/cabinet",
+  successLinkLabel = "Перейти в кабинет",
+  successMessage = "Готово, открываю личный кабинет...",
+}: AuthFormProps = {}) {
   const router = useRouter();
   const supabaseConfigured = isSupabaseBrowserConfigured();
   const [mode, setMode] = useState<AuthMode>("register");
@@ -148,7 +160,7 @@ export function AuthForm() {
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
   const [captchaToken, setCaptchaToken] = useState("");
   const [state, setState] = useState<AuthState>("idle");
-  const [message, setMessage] = useState("Создайте аккаунт или войдите, чтобы открыть личный кабинет.");
+  const [message, setMessage] = useState(initialMessage);
   const [showRecoveryRequest, setShowRecoveryRequest] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
@@ -282,8 +294,8 @@ export function AuthForm() {
       }
 
       setState("success");
-      setMessage("Пароль обновлен. Открываю личный кабинет...");
-      router.push("/cabinet");
+      setMessage(successMessage);
+      router.push(returnHref);
       router.refresh();
     } catch (error) {
       setState("error");
@@ -352,8 +364,8 @@ export function AuthForm() {
       }
 
       setState("success");
-      setMessage("Готово, открываю личный кабинет...");
-      router.push("/cabinet");
+      setMessage(successMessage);
+      router.push(returnHref);
       router.refresh();
     } catch (error) {
       setState("error");
@@ -510,7 +522,7 @@ export function AuthForm() {
             />
             {passwordConfirmError ? <span className="mt-2 block text-xs font-semibold text-rose-600">{passwordConfirmError}</span> : null}
             <div className="mt-5 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <label className="flex min-w-0 gap-3 text-sm leading-6 text-slate-700">
+              <label className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3 text-sm leading-6 text-slate-700">
                 <input
                   type="checkbox"
                   checked={acceptedAgreement}
@@ -520,12 +532,12 @@ export function AuthForm() {
                 />
                 <span className="min-w-0 [overflow-wrap:anywhere]">
                   Принимаю{" "}
-                  <Link href="/legal/user-agreement" className="font-bold text-[#0875d1]">
+                  <Link href="/legal/user-agreement" className="font-bold text-[#0875d1] [overflow-wrap:anywhere]">
                     пользовательское соглашение
                   </Link>
                 </span>
               </label>
-              <label className="flex min-w-0 gap-3 text-sm leading-6 text-slate-700">
+              <label className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3 text-sm leading-6 text-slate-700">
                 <input
                   type="checkbox"
                   checked={acceptedPrivacy}
@@ -535,7 +547,7 @@ export function AuthForm() {
                 />
                 <span className="min-w-0 [overflow-wrap:anywhere]">
                   Согласен с{" "}
-                  <Link href="/legal/privacy" className="font-bold text-[#0875d1]">
+                  <Link href="/legal/privacy" className="font-bold text-[#0875d1] [overflow-wrap:anywhere]">
                     политикой конфиденциальности
                   </Link>
                 </span>
@@ -580,8 +592,8 @@ export function AuthForm() {
       </form>
       <p className={state === "error" ? "mt-4 text-sm font-semibold text-rose-600" : "mt-4 text-sm leading-6 text-slate-500"}>{message}</p>
       {state === "success" ? (
-        <Link href="/cabinet" className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-lg border border-blue-200 bg-white font-bold text-[#0875d1]">
-          Перейти в кабинет
+        <Link href={returnHref} className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-lg border border-blue-200 bg-white font-bold text-[#0875d1]">
+          {successLinkLabel}
         </Link>
       ) : null}
         </>

@@ -1,11 +1,12 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { BriefcaseBusiness, MapPin } from "lucide-react";
+import { BackLink } from "@/components/BackLink";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { SiteHeader } from "@/components/SiteHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LocationMap } from "@/components/LocationMap";
+import { VacancyDetailClient } from "@/components/VacancyDetailClient";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { vacancies } from "@/lib/data";
 
@@ -27,7 +28,12 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
   const vacancy = vacancies.find((item) => item.id === slug);
 
   if (!vacancy) {
-    notFound();
+    return (
+      <>
+        <SiteHeader />
+        <VacancyDetailClient vacancyId={slug} />
+      </>
+    );
   }
 
   return (
@@ -35,6 +41,9 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
       <SiteHeader />
       <ListingViewTracker listingId={`work-vacancy-${vacancy.id}`} />
       <main className="page-container py-10">
+        <BackLink fallbackHref="/blizhniy/rabota/vakansii" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+          Назад
+        </BackLink>
         <article className="grid gap-8 lg:grid-cols-[1fr_360px]">
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
             <StatusBadge status={vacancy.status} />

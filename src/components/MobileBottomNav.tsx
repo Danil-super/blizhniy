@@ -22,8 +22,8 @@ export function MobileBottomNav() {
   ];
 
   return (
-    <nav className="pointer-events-none fixed inset-x-0 bottom-[max(10px,env(safe-area-inset-bottom))] z-50 px-2 md:hidden" aria-label="Мобильная навигация">
-      <div className="pointer-events-auto mx-auto grid w-full max-w-[23rem] grid-cols-5 gap-1 rounded-[1.75rem] border border-white/70 bg-white/72 p-1.5 shadow-[0_18px_55px_rgba(15,23,42,0.18),0_1px_0_rgba(255,255,255,0.9)_inset] ring-1 ring-slate-900/5 backdrop-blur-2xl">
+    <nav className="mobile-bottom-nav pointer-events-none md:hidden" aria-label="Мобильная навигация">
+      <div className="pointer-events-auto grid w-full grid-cols-5 gap-1 rounded-[1.75rem] border border-white/70 bg-white/72 p-1.5 shadow-[0_18px_55px_rgba(15,23,42,0.18),0_1px_0_rgba(255,255,255,0.9)_inset] ring-1 ring-slate-900/5 backdrop-blur-2xl">
         {items.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href || (item.href !== "/blizhniy" && pathname?.startsWith(item.href));

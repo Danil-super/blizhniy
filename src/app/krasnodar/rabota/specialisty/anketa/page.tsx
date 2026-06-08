@@ -3,8 +3,9 @@ import { Buffer } from "node:buffer";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { SiteHeader } from "@/components/SiteHeader";
-import { TurnstileSubmitButton } from "@/components/TurnstileSubmitButton";
+import { SpecialistEditClient } from "@/components/SpecialistEditClient";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
+import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { ListingLocationFields } from "@/components/listings/ListingFormControls";
 import { professions } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
@@ -159,6 +160,7 @@ async function readPhotoDataUrls(formData: FormData) {
 export default async function SpecialistProfileFormPage({ searchParams }: PageProps) {
   const params = searchParams ? await searchParams : undefined;
   const adminMode = params?.admin === "1";
+  const isDemoSpecialistEdit = params?.from?.startsWith("demo-specialist");
   const selectedSpecialist = params?.from ? getSpecialistById(params.from) : getCurrentUserSpecialist();
   const professionOptions = professions
     .filter((profession) => profession.active)
@@ -211,78 +213,87 @@ export default async function SpecialistProfileFormPage({ searchParams }: PagePr
   return (
     <>
       <SiteHeader />
-      <main className="page-container specialist-form-container py-5 sm:py-10">
-        <FormPanel
-          title={selectedSpecialist ? "Редактировать анкету специалиста" : "Анкета специалиста"}
-          description="Создание и редактирование анкеты исполнителя. Анкета появляется в каталоге специалистов без оплаты, отклики на вакансии оплачиваются отдельно."
-        >
-          {params?.error ? <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{params.error}</p> : null}
-          <form action={publishSpecialistWithoutPaymentAction} className="responsive-form-panel grid gap-4">
-          <div className="responsive-field-grid specialist-primary-field-grid">
-            {selectedSpecialist ? <input type="hidden" name="specialistId" value={selectedSpecialist.id} /> : null}
-            <div className="specialist-primary-name">
-              <Field
-                name="name"
-                label="Имя / название профиля"
-                placeholder="Александр"
-                defaultValue={selectedSpecialist?.name}
-                minLength={2}
-                maxLength={15}
-                pattern={specialistNamePattern.source}
-                required
-                title="От 2 до 15 символов: буквы, цифры, пробел, точка или дефис."
-              />
+      <PublicationAuthGate title={selectedSpecialist || isDemoSpecialistEdit ? "Войдите, чтобы редактировать анкету" : "Войдите, чтобы создать анкету"}>
+        {isDemoSpecialistEdit && params?.from ? (
+          <SpecialistEditClient specialistId={params.from} />
+        ) : (
+        <main className="page-container specialist-form-container py-5 sm:py-10">
+          <FormPanel
+            title={selectedSpecialist ? "Редактировать анкету специалиста" : "Анкета специалиста"}
+            description="Создание и редактирование анкеты исполнителя. Анкета появляется в каталоге специалистов без оплаты, отклики на вакансии оплачиваются отдельно."
+          >
+            {params?.error ? <p className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{params.error}</p> : null}
+            <form action={publishSpecialistWithoutPaymentAction} className="responsive-form-panel grid gap-4">
+            <div className="responsive-field-grid specialist-primary-field-grid">
+              {selectedSpecialist ? <input type="hidden" name="specialistId" value={selectedSpecialist.id} /> : null}
+              <div className="specialist-primary-name">
+                <Field
+                  name="name"
+                  label="Имя / название профиля"
+                  placeholder="Александр"
+                  defaultValue={selectedSpecialist?.name}
+                  minLength={2}
+                  maxLength={15}
+                  pattern={specialistNamePattern.source}
+                  required
+                  title="От 2 до 15 символов: буквы, цифры, пробел, точка или дефис."
+                />
+              </div>
+              <label className="specialist-primary-profession grid min-w-0 gap-1.5 text-xs font-bold leading-4 text-slate-700 sm:gap-2 sm:text-sm">
+                <span className="line-clamp-2">Профессия из классификатора</span>
+                <DropdownSelect name="profession" defaultValue={selectedSpecialist?.profession} placeholder="Выбрать" options={professionOptions} required />
+              </label>
+              <div className="specialist-primary-price">
+                <Field
+                  name="price"
+                  label="Стоимость работ"
+                  placeholder="от 1 500 ₽"
+                  defaultValue={selectedSpecialist?.price}
+                  maxLength={12}
+                  pattern={pricePattern.source}
+                  required
+                  title="До 12 символов, например: от 1500 ₽."
+                />
+              </div>
+              <div className="specialist-primary-phone">
+                <Field name="phone" label="Телефон" placeholder="+7-(999)-999-99-99" defaultValue={selectedSpecialist?.phone} required />
+              </div>
+              <div className="specialist-primary-email">
+                <Field name="email" label="Email" type="email" placeholder="name@example.ru" defaultValue={selectedSpecialist?.email} maxLength={64} required />
+              </div>
+              <div className="specialist-primary-messenger">
+                <Field name="messengerUrl" label="Telegram / WhatsApp" placeholder="@username или ссылка" defaultValue={selectedSpecialist?.messengerUrl} maxLength={64} required />
+              </div>
             </div>
-            <label className="specialist-primary-profession grid min-w-0 gap-1.5 text-xs font-bold leading-4 text-slate-700 sm:gap-2 sm:text-sm">
-              <span className="line-clamp-2">Профессия из классификатора</span>
-              <DropdownSelect name="profession" defaultValue={selectedSpecialist?.profession} placeholder="Выбрать" options={professionOptions} required />
-            </label>
-            <div className="specialist-primary-price">
-              <Field
-                name="price"
-                label="Стоимость работ"
-                placeholder="от 1 500 ₽"
-                defaultValue={selectedSpecialist?.price}
-                maxLength={12}
-                pattern={pricePattern.source}
-                required
-                title="До 12 символов, например: от 1500 ₽."
-              />
-            </div>
-            <div className="specialist-primary-phone">
-              <Field name="phone" label="Телефон" placeholder="+7-(999)-999-99-99" defaultValue={selectedSpecialist?.phone} required />
-            </div>
-            <div className="specialist-primary-email">
-              <Field name="email" label="Email" type="email" placeholder="name@example.ru" defaultValue={selectedSpecialist?.email} maxLength={64} required />
-            </div>
-            <div className="specialist-primary-messenger">
-              <Field name="messengerUrl" label="Telegram / WhatsApp" placeholder="@username или ссылка" defaultValue={selectedSpecialist?.messengerUrl} maxLength={64} required />
-            </div>
-          </div>
-          <ListingLocationFields
-            addressLegend="Адрес специалиста"
-            cityFieldName="city"
-            defaultAddress={selectedSpecialist?.address}
-            defaultCity={selectedSpecialist?.city}
-            defaultLat={(selectedSpecialist?.hasMapPoint ?? true) && hasMapCoordinates(selectedSpecialist?.lat, selectedSpecialist?.lng) ? selectedSpecialist?.lat : undefined}
-            defaultLng={(selectedSpecialist?.hasMapPoint ?? true) && hasMapCoordinates(selectedSpecialist?.lat, selectedSpecialist?.lng) ? selectedSpecialist?.lng : undefined}
-            inlineControls
-          />
-          <PhotoField defaultPhotos={selectedSpecialist?.images} label="Фото специалиста и работ" description="Добавьте портфолио, фото выполненных работ или рабочей зоны. В демо файлы выбираются локально, без загрузки на сервер." />
-          <TextAreaField name="skills" label="Навыки" placeholder="Монтаж, ремонт, замена" defaultValue={selectedSpecialist?.skills} minLength={3} maxLength={120} required />
-          <TextAreaField name="description" label="О себе и опыт работы" placeholder="Расскажите об опыте, подходе к работе, гарантиях и условиях выезда" defaultValue={selectedSpecialist?.description} maxLength={500} />
-          {adminMode ? (
-            <AdminDemoPublishButton publicationType="specialist" returnHref="/cabinet/specialist" label="Сохранить анкету" />
-          ) : !selectedSpecialist ? (
-            <TurnstileSubmitButton label="Сохранить анкету" />
-          ) : (
-            <button type="submit" className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#0875d1] px-5 text-sm font-bold text-white sm:h-12 sm:w-fit sm:px-7 sm:text-base">
-              Сохранить анкету
-            </button>
-          )}
-          </form>
-        </FormPanel>
-      </main>
+            <ListingLocationFields
+              addressLegend="Адрес специалиста"
+              cityFieldName="city"
+              defaultAddress={selectedSpecialist?.address}
+              defaultCity={selectedSpecialist?.city}
+              defaultLat={(selectedSpecialist?.hasMapPoint ?? true) && hasMapCoordinates(selectedSpecialist?.lat, selectedSpecialist?.lng) ? selectedSpecialist?.lat : undefined}
+              defaultLng={(selectedSpecialist?.hasMapPoint ?? true) && hasMapCoordinates(selectedSpecialist?.lat, selectedSpecialist?.lng) ? selectedSpecialist?.lng : undefined}
+              inlineControls
+            />
+            <PhotoField defaultPhotos={selectedSpecialist?.images} label="Фото специалиста и работ" description="Добавьте портфолио, фото выполненных работ или рабочей зоны. В демо файлы выбираются локально, без загрузки на сервер." />
+            <TextAreaField name="skills" label="Навыки" placeholder="Монтаж, ремонт, замена" defaultValue={selectedSpecialist?.skills} minLength={3} maxLength={120} required />
+            <TextAreaField name="description" label="О себе и опыт работы" placeholder="Расскажите об опыте, подходе к работе, гарантиях и условиях выезда" defaultValue={selectedSpecialist?.description} maxLength={500} />
+            {adminMode ? (
+              <AdminDemoPublishButton publicationType="specialist" returnHref="/cabinet/specialist" label="Сохранить анкету" />
+            ) : !selectedSpecialist ? (
+                <div className="flex flex-wrap gap-3">
+                  <AdminDemoPublishButton publicationType="specialist" returnHref="/cabinet/specialist" label="Сохранить черновик" status="Черновик" requireCaptcha={false} validateForm={false} />
+                  <AdminDemoPublishButton publicationType="specialist" returnHref="/cabinet/specialist" label="Сохранить анкету" />
+                </div>
+            ) : (
+              <button type="submit" className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#0875d1] px-5 text-sm font-bold text-white sm:h-12 sm:w-fit sm:px-7 sm:text-base">
+                Сохранить анкету
+              </button>
+            )}
+            </form>
+          </FormPanel>
+        </main>
+        )}
+      </PublicationAuthGate>
     </>
   );
 }

@@ -3,9 +3,10 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Camera, Save, Trash2, Video } from "lucide-react";
+import { Camera, Save, Trash2, Video } from "lucide-react";
+import { BackLink } from "@/components/BackLink";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
+import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
@@ -244,7 +245,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
     setVideos((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!listing) {
@@ -254,39 +255,41 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
     setSaving(true);
     setMessage("");
 
-    const formData = new FormData(event.currentTarget);
-    const nextCategorySlug = String(formData.get("category") ?? listing.categorySlug ?? "mebel-i-interer");
-    const nextSubcategorySlug = String(formData.get("subcategory") ?? listing.subcategorySlug ?? "");
-    const location = String(formData.get("location") ?? listing.city).trim();
-    const city = location.split(",")[0]?.trim() || "Краснодар";
-    const hasMapPoint = String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1";
-    const updated: DemoPublication = {
-      ...listing,
-      title: String(formData.get("title") ?? listing.title).trim() || listing.title,
-      subtitle: String(formData.get("subtitle") ?? listing.subtitle).trim() || listing.subtitle,
-      city,
-      address: hasMapPoint ? String(formData.get("address") ?? "").trim() || undefined : undefined,
-      lat: hasMapPoint ? readCoordinate(formData, "lat") : undefined,
-      lng: hasMapPoint ? readCoordinate(formData, "lng") : undefined,
-      hasMapPoint,
-      price: String(formData.get("price") ?? listing.price ?? "").trim() || "по договоренности",
-      description: String(formData.get("description") ?? listing.description ?? "").trim() || "Описание будет дополнено.",
-      phone: String(formData.get("phone") ?? listing.phone ?? "").trim() || "+78610009999",
-      messengerUrl: String(formData.get("messengerUrl") ?? listing.messengerUrl ?? "").trim(),
-      listingKind: listingKinds.some((item) => item.value === formData.get("kind")) ? (formData.get("kind") as ListingKind) : kind,
-      categorySlug: nextCategorySlug,
-      subcategorySlug: nextSubcategorySlug,
-      images,
-      videos,
-    };
-    const nextItems = items.map((item) => (item.id === slug ? updated : item));
-
     try {
+      const identity = await resolveAuthenticatedClientUserIdentity();
+      const formData = new FormData(event.currentTarget);
+      const nextCategorySlug = String(formData.get("category") ?? listing.categorySlug ?? "mebel-i-interer");
+      const nextSubcategorySlug = String(formData.get("subcategory") ?? listing.subcategorySlug ?? "");
+      const location = String(formData.get("location") ?? listing.city).trim();
+      const city = location.split(",")[0]?.trim() || "Краснодар";
+      const hasMapPoint = String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1";
+      const updated: DemoPublication = {
+        ...listing,
+        ownerKey: identity.ownerKey,
+        ownerName: identity.name,
+        title: String(formData.get("title") ?? listing.title).trim() || listing.title,
+        subtitle: String(formData.get("subtitle") ?? listing.subtitle).trim() || listing.subtitle,
+        city,
+        address: hasMapPoint ? String(formData.get("address") ?? "").trim() || undefined : undefined,
+        lat: hasMapPoint ? readCoordinate(formData, "lat") : undefined,
+        lng: hasMapPoint ? readCoordinate(formData, "lng") : undefined,
+        hasMapPoint,
+        price: String(formData.get("price") ?? listing.price ?? "").trim() || "по договоренности",
+        description: String(formData.get("description") ?? listing.description ?? "").trim() || "Описание будет дополнено.",
+        phone: String(formData.get("phone") ?? listing.phone ?? "").trim() || "+78610009999",
+        messengerUrl: String(formData.get("messengerUrl") ?? listing.messengerUrl ?? "").trim(),
+        listingKind: listingKinds.some((item) => item.value === formData.get("kind")) ? (formData.get("kind") as ListingKind) : kind,
+        categorySlug: nextCategorySlug,
+        subcategorySlug: nextSubcategorySlug,
+        images,
+        videos,
+      };
+      const nextItems = items.map((item) => (item.id === slug ? updated : item));
       window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
       window.dispatchEvent(new Event("blizhniy-demo-publications-updated"));
       window.location.href = `/blizhniy/obyavlenie/${slug}`;
-    } catch {
-      setMessage("Не удалось сохранить изменения: в браузере закончилось место для фото. Удалите часть изображений и попробуйте снова.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось сохранить изменения: в браузере закончилось место для фото. Удалите часть изображений и попробуйте снова.");
       setSaving(false);
     }
   }
@@ -297,9 +300,9 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
           <h1 className="text-2xl font-black text-[#060b27]">Объявление не найдено</h1>
           <p className="mt-2 text-slate-600">Демо-объявления хранятся в браузере, где они были опубликованы.</p>
-          <Link href="/cabinet/obyavleniya" className="mt-5 inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 font-bold text-white">
+          <BackLink fallbackHref="/cabinet/obyavleniya" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
             Вернуться в кабинет
-          </Link>
+          </BackLink>
         </section>
       </main>
     );
@@ -307,10 +310,9 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
 
   return (
     <main className="page-container py-10">
-      <Link href={`/blizhniy/obyavlenie/${slug}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
-        <ArrowLeft className="h-4 w-4" />
-        К объявлению
-      </Link>
+      <BackLink fallbackHref="/cabinet/obyavleniya" className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+        Назад
+      </BackLink>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <ListingKindBadge kind={kind} />
         <StatusBadge status="published" />
@@ -472,9 +474,9 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
             <Save className="h-5 w-5" />
             {saving ? "Сохраняем..." : "Сохранить изменения"}
           </button>
-          <Link href={`/blizhniy/obyavlenie/${slug}`} className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 px-6 font-bold text-slate-800">
+          <BackLink fallbackHref="/cabinet/obyavleniya" className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 px-6 font-bold text-slate-800">
             Отмена
-          </Link>
+          </BackLink>
         </div>
       </form>
       {cropEditorIndex !== null && images[cropEditorIndex] ? (

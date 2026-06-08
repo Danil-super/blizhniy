@@ -1,37 +1,52 @@
-import type { Metadata } from "next";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import { ClipboardList, MapPin } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { LocationMap } from "@/components/LocationMap";
-import { SiteHeader } from "@/components/SiteHeader";
-import { StatusBadge } from "@/components/StatusBadge";
-import { WorkRequestDetailClient } from "@/components/WorkRequestDetailClient";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
-import { workRequests } from "@/lib/data";
+import { demoPublicationsStorageKey, type DemoPublication } from "@/lib/demo-publications";
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const { slug } = await params;
-  const request = workRequests.find((item) => item.id === slug);
+function readStoredPublications() {
+  try {
+    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
-  return {
-    title: request ? `${request.title} — заказ` : "Заказ",
-    description: request?.description ?? "Карточка заказа на платформе БЛИЖНИЙ.",
-    alternates: {
-      canonical: `/blizhniy/rabota/zakazy/${slug}`,
-    },
-  };
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item): item is DemoPublication => Boolean(item && typeof item === "object" && "id" in item));
+    }
+  } catch {
+    return [];
+  }
+
+  return [];
 }
 
-export default async function WorkRequestDetailPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const request = workRequests.find((item) => item.id === slug);
+function DemoStatusBadge({ status }: { status: string }) {
+  const draft = status.trim().toLowerCase() === "черновик";
+  return <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${draft ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{status}</span>;
+}
+
+export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
+  const [items, setItems] = useState<DemoPublication[]>([]);
+  const request = useMemo(() => items.find((item) => item.type === "workRequest" && item.id === requestId), [items, requestId]);
+
+  useEffect(() => {
+    setItems(readStoredPublications());
+  }, []);
 
   if (!request) {
     return (
-      <>
-        <SiteHeader />
-        <WorkRequestDetailClient requestId={slug} />
-      </>
+      <main className="page-container py-10">
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
+          <h1 className="text-2xl font-black text-[#060b27]">Заказ не найден</h1>
+          <p className="mt-2 text-slate-600">Демо-заказы хранятся в браузере, где они были созданы.</p>
+          <BackLink fallbackHref="/cabinet/zakazy" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
+            Вернуться к заказам
+          </BackLink>
+        </section>
+      </main>
     );
   }
 
@@ -39,31 +54,29 @@ export default async function WorkRequestDetailPage({ params }: { params: Promis
 
   return (
     <>
-      <SiteHeader />
       <ListingViewTracker listingId={`work-request-${request.id}`} />
       <main className="page-container py-5 sm:py-10">
-        <BackLink fallbackHref="/blizhniy/rabota" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+        <BackLink fallbackHref="/cabinet/zakazy" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
         </BackLink>
         <article className="grid gap-4 lg:grid-cols-[1fr_320px]">
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
-            <StatusBadge status={request.status} />
-            <p className="mt-4 text-sm text-slate-500 sm:text-base">{request.author}</p>
+            <DemoStatusBadge status={request.status} />
+            <p className="mt-4 text-sm text-slate-500 sm:text-base">{request.subtitle}</p>
             <h1 className="mt-2 text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">{request.title}</h1>
-            <p className="mt-3 text-xl font-black text-[#060b27] sm:text-2xl">{request.budget}</p>
+            <p className="mt-3 text-xl font-black text-[#060b27] sm:text-2xl">{request.price ?? "по договоренности"}</p>
             <p className="mt-3 flex items-center gap-2 text-sm text-slate-600 sm:text-base">
               <MapPin className="h-4 w-4 sm:h-5 sm:w-5" />
-              {[request.city, request.showExactAddress ? request.address : request.district].filter(Boolean).join(", ")}
+              {request.city}
             </p>
             <section className="mt-6 text-sm leading-6 text-slate-700 sm:text-base sm:leading-7">
               <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Описание</h2>
-              <p className="mt-2">{request.description}</p>
+              <p className="mt-2 whitespace-pre-line">{request.description ?? "Описание заказа будет дополнено."}</p>
             </section>
             <div className="mt-6">
-              <LocationMap location={request} exactLabel="Точный адрес заказа показывается только если заказчик разрешил" />
+              <LocationMap location={{ ...request, showExactAddress: Boolean(request.showExactAddress) }} exactLabel="Точный адрес заказа показывается только если заказчик разрешил" />
             </div>
           </section>
-
           <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-[#0aa337] sm:h-20 sm:w-20">
               <ClipboardList className="h-8 w-8 sm:h-10 sm:w-10" />

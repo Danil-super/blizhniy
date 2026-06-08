@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import {
-  ArrowLeft,
   ArrowRight,
   BadgePlus,
   Camera,
@@ -19,6 +18,7 @@ import {
   Truck,
 } from "lucide-react";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
+import { BackLink } from "@/components/BackLink";
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { HomeHero } from "@/components/HomeHero";
@@ -26,6 +26,7 @@ import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
 import { TurnstileVerifiedLinkButton } from "@/components/TurnstileVerifiedLinkButton";
 import { ValidatedInput } from "@/components/ValidatedInput";
+import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { categories } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { createListing, listListings } from "@/lib/mock-store";
@@ -1223,7 +1224,10 @@ export function CategoriesPage() {
         <HomeHero />
         <section className="page-container py-2 sm:py-3 lg:py-4">
           <Breadcrumbs items={[{ label: "Категории" }]} />
-          <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Категории объявлений</h1>
+          <BackLink fallbackHref="/blizhniy" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+            Назад
+          </BackLink>
+          <h1 className="mt-3 text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Категории объявлений</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">
             Первый уровень каталога и подкатегории отображаются плитками. Структура готова для расширения по городам и регионам.
           </p>
@@ -1246,6 +1250,9 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
       <SiteHeader />
       <main className="page-container py-6 sm:py-8 lg:py-10">
         <Breadcrumbs items={[{ label: current.title }]} />
+        <BackLink fallbackHref="/blizhniy" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+          Назад
+        </BackLink>
         <div className="grid gap-7">
           <section>
             <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
@@ -1302,6 +1309,9 @@ export function ExchangeAndFreePage() {
       <HomeHero />
       <main className="page-container py-2 sm:py-3 lg:py-4">
         <Breadcrumbs items={[{ label: "Меняю и отдам даром" }]} />
+        <BackLink fallbackHref="/blizhniy" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+          Назад
+        </BackLink>
         <div className="grid gap-7">
           <section>
             <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
@@ -1349,6 +1359,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
   );
   const isKidsGoodsCategory = category?.slug === "tovary-dlya-detey";
   const categoryDescription = category ? categoryDescriptions[category.slug] : undefined;
+  const backFallbackHref = subcategory && category ? `/blizhniy/${category.slug}` : "/blizhniy/kategorii";
 
   return (
     <>
@@ -1363,6 +1374,9 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
             ...(subcategory ? [{ label: subcategory }] : []),
           ]}
         />
+        <BackLink fallbackHref={backFallbackHref} className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+          Назад
+        </BackLink>
         <div className="grid gap-3">
           <section>
             <h1 className="[overflow-wrap:anywhere] text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">
@@ -1551,10 +1565,9 @@ export function ListingDetailPage({ slug }: { slug: string }) {
         />
         <div className="mx-auto grid max-w-[1180px] min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,768px)_minmax(320px,380px)] lg:items-start lg:justify-center">
           <section className="min-w-0 lg:max-w-3xl">
-            <Link href={`/blizhniy/${listing.kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
-              <ArrowLeft className="h-4 w-4" />
+            <BackLink fallbackHref={`/blizhniy/${listing.kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
               Назад к разделу
-            </Link>
+            </BackLink>
             <h1 className="[overflow-wrap:anywhere] mt-3 text-2xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-4xl lg:text-5xl">{listing.title}</h1>
             <div className="mt-4 flex flex-wrap gap-2">
               <ListingKindBadge kind={listing.kind} />
@@ -1830,7 +1843,9 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
     return (
       <>
         <SiteHeader />
-        <DemoListingEditClient slug={slug} />
+        <PublicationAuthGate title="Войдите, чтобы редактировать объявление">
+          <DemoListingEditClient slug={slug} />
+        </PublicationAuthGate>
       </>
     );
   }
@@ -1838,10 +1853,14 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
   return (
     <>
       <SiteHeader />
-      <main className="page-container py-10">
-        <Breadcrumbs items={[{ label: editing ? "Редактирование объявления" : "Создание объявления" }]} />
-        <section>
-          <h1 className="text-3xl font-black text-[#060b27] sm:text-5xl">{editing ? "Редактировать объявление" : "Создать объявление"}</h1>
+      <PublicationAuthGate title={editing ? "Войдите, чтобы редактировать объявление" : "Войдите, чтобы создать объявление"}>
+        <main className="page-container py-10">
+          <Breadcrumbs items={[{ label: editing ? "Редактирование объявления" : "Создание объявления" }]} />
+          <BackLink fallbackHref="/cabinet/obyavleniya" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+            Назад
+          </BackLink>
+          <section>
+          <h1 className="mt-3 text-3xl font-black text-[#060b27] sm:text-5xl">{editing ? "Редактировать объявление" : "Создать объявление"}</h1>
           <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
             Заполните объявление, добавьте фото и выберите удобный способ связи.
           </p>
@@ -1958,8 +1977,9 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
               <p className="mt-2 text-sm leading-6 text-slate-600">Статус оплаты и публикации придет на указанный email.</p>
             </div>
           </div>
-        </section>
-      </main>
+          </section>
+        </main>
+      </PublicationAuthGate>
     </>
   );
 }
