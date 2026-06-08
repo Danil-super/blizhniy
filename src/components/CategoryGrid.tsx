@@ -113,7 +113,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   "uslugi": { icon: Wrench, tone: "blue" },
   "elektronika": { icon: Smartphone, tone: "cyan" },
   "dlya-doma-i-dachi": { icon: Sofa, tone: "amber" },
-  "zapchasti": { icon: Cog, tone: "slate" },
+  "instrumenty": { icon: Cog, tone: "slate" },
   "zhile-dlya-puteshestviya": { icon: MapPinned, tone: "green" },
   "krasota-i-zdorove": { icon: HeartPulse, tone: "violet" },
   "obmen-i-darom": { icon: Gift, tone: "green" },

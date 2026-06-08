@@ -74,10 +74,10 @@ const baseDemoListings: DemoListing[] = [
     slug: "komod-dub-krasnodar",
     title: "Комод из массива дуба",
     kind: "prodam",
-    categorySlug: "mebel-i-interer",
-    categoryName: "Мебель и интерьер",
-    subcategorySlug: "mebel",
-    subcategoryName: "Мебель",
+    categorySlug: "dlya-doma-i-dachi",
+    categoryName: "Для дома и дачи",
+    subcategorySlug: "mebel-dlya-doma-i-dachi",
+    subcategoryName: "Мебель для дома и дачи",
     city: "Краснодар",
     district: "Фестивальный",
     lat: 45.056,
@@ -508,6 +508,65 @@ const animalClassifiers: Record<string, string[]> = {
   ],
 };
 
+const subcategoryBulletPoints: Record<string, Record<string, string[]>> = {
+  "tovary-dlya-detey": {
+    Игрушки: [
+      "куклы;",
+      "фигурки животных и домашних питомцев;",
+      "игрушки-предметы быта (мебель, посуда, бытовая техника);",
+      "транспортные средства (машинки, самолеты, поезда, кораблики);",
+      "театральные куклы и кукольные театры.",
+    ],
+    "Технические игрушки": [
+      "строительные материалы и конструкторы (наборы деталей для сооружений и построек);",
+      "игрушки, имитирующие бытовую технику (телефоны, пылесосы, стиральные машины);",
+      "различные виды транспорта (легковые и грузовые автомобили, поезда, корабли, самолеты);",
+      "игрушки-приборы (бинокли, фотоаппараты, подзорные трубы);",
+      "роботы и робототехнические наборы.",
+    ],
+    "Дидактические игрушки": [
+      "наборы для нанизывания (шнуровки, панели с кнопками);",
+      "вкладыши и сортеры (комплекты с рамками и фигурами);",
+      "головоломки (лабиринты, разрезные картинки, «Куб карбон»);",
+      "конструкторы и сборные комплекты (матрешки, пирамидки);",
+      "музыкальные игрушки (игровые панели с клавишами, металлофоны, ксилофоны);",
+    ],
+    "Спортивные (спортивно-моторные) игрушки": [
+      "игрушки для развития мышц рук и пальцев (матрешки, пирамиды, чашечки);",
+      "игрушки для укрепления мышц предплечья и плеча, развития координации (мячи, обручи, серсо, бильбоке);",
+      "игрушки для развития навыков бега, прыжков, укрепления мышц ног и туловища (каталки, велосипеды, самокаты, скакалки, коньки);",
+      "игрушки для развития меткости (ружья, пистолеты);",
+      "игрушки для коллективных игр (настольный баскетбол, хоккей, пинг-понг).",
+    ],
+  },
+  "odezhda-obuv-aksessuary": {
+    Одежда: [
+      "Верхняя одежда: куртки, пальто, плащи, ветровки, пуховики.",
+      "Повседневная одежда: брюки, джинсы, рубашки, футболки, свитеры, кардиганы, худи, толстовки.",
+      "Платья и сарафаны: для разных случаев — от повседневных до вечерних.",
+      "Домашняя и спортивная одежда: халаты, пижамы, спортивные костюмы, трикотажные изделия.",
+      "Нижнее белье и корсетные изделия: бюстгальтеры, трусы, корректирующее белье, корсеты.",
+      "Одежда для детей, беременных, людей с большими размерами.",
+    ],
+    Обувь: [
+      "Повседневная и деловая: туфли, лоферы, оксфорды, мокасины.",
+      "Спортивная и активная: кроссовки, кеды, беговые модели, треккинговая обувь.",
+      "Сезонная: сапоги, ботинки, дутики, валенки, летняя обувь (сандалии, босоножки, сланцы).",
+      "Модная и трендовая: мюли, эспадрильи, казаки, челси, слипоны.",
+    ],
+    Аксессуары: [
+      "Головные уборы: шапки, кепки, панамы, шляпы, береты.",
+      "Сумки и рюкзаки: клатчи, шоперы, портфели, спортивные сумки.",
+      "Ремни и пояса: классические, повседневные, с регулируемой длиной.",
+      "Очки: солнцезащитные, имиджевые, для вождения.",
+      "Перчатки и варежки: для разных сезонов.",
+      "Шарфы, платки, снуды: для дополнения образа и защиты от холода.",
+      "Бижутерия и украшения: браслеты, серьги, кольца, цепочки.",
+      "Мелкие аксессуары: брелоки, кошельки, визитницы, ключницы.",
+    ],
+  },
+};
+
 const animalListingTitles: Record<string, string> = {
   "Домашние питомцы": "Домашний питомец с принадлежностями",
   "Сельхоз животные": "Сельхоз животные для хозяйства",
@@ -532,6 +591,7 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
     "Куплю недвижимость": "Запросы покупателей на жилье, участки и помещения с нужным районом, бюджетом и условиями сделки.",
     Аренда: "Жилье, комнаты, дома и помещения для краткосрочной или длительной аренды.",
     "Коммерческая недвижимость": "Офисы, торговые площади, склады, помещения свободного назначения и объекты для бизнеса.",
+    "Жилье для путешествия": "Дома, квартиры, комнаты, гостевые объекты и варианты размещения для поездок и отдыха.",
   },
   elektronika: {
     Смартфоны: "Телефоны, аксессуары, обмен и покупка смартфонов у жителей и организаций рядом.",
@@ -548,7 +608,6 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
     "Продам авто": "Легковые автомобили, коммерческий транспорт и предложения от частных продавцов.",
     "Куплю авто": "Заявки на покупку автомобиля с желаемыми параметрами, бюджетом и городом сделки.",
     Мототехника: "Мотоциклы, скутеры, квадроциклы, экипировка и техника для активных поездок.",
-    Запчасти: "Запчасти, расходники, шины, диски, автоаксессуары и комплектующие для транспорта.",
   },
   biznes: {
     "Продам бизнес": "Готовые проекты, торговые точки, сервисы и активы для передачи новому владельцу.",
@@ -566,6 +625,19 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
   },
   "mebel-i-interer": {
     Мебель: "Мебель для дома, дачи и офиса: продажа, покупка, обмен, изготовление и реставрация.",
+  },
+  "dlya-doma-i-dachi": {
+    "Мебель для дома и дачи":
+      "Для интерьера дачного дома подойдут простые, прочные и неприхотливые модели. На даче мебель должна быть модульной и трансформируемой, чтобы экономить место. Для улицы используют садовую мебель: комплекты из стола и стульев, диваны, кресла, шезлонги, качели. Материалы — пластик, металл, дерево, ротанговое волокно.",
+    Освещение:
+      "Для дома можно использовать люстры, торшеры, настольные и напольные светильники, бра, ночники. Для улицы подойдут прожекторы, гирлянды, фонари на солнечных батареях.",
+    Декор:
+      "Украсить интерьер и участок помогут вазы, кашпо, зеркала, плетёные корзины, ковры, подушки, покрывала, скатерти. Для сада можно использовать садовые фигуры, фонтаны, арки, ограждения, кормушки для птиц.",
+    "Садовый инвентарь":
+      "В эту категорию входят лопаты, грабли, секаторы, культиваторы, тачки, наборы инструментов. Для ухода за растениями пригодятся лейки, опрыскиватели, системы полива, шланги.",
+    "Товары для бани и сауны": "К этой категории относятся печи, банный текстиль, экстракты и аксессуары для бани.",
+    "Биотуалеты и умывальники":
+      "Для дачи подойдут портативные биотуалеты с индикатором заполнения, а также дачные умывальники с раковиной и сливом.",
   },
   otdyh: {
     Турбазы: "Турбазы, гостевые дома и места отдыха с возможностью бронирования и связи с владельцем.",
@@ -598,6 +670,22 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
     "Элементы ландшафтного дизайна": "Пруды, каменные дорожки, беседки, перголы и другие элементы благоустройства участка.",
     "Места для отдыха": "Скамейки, шезлонги, мангалы и другие решения для зоны отдыха в саду или на даче.",
   },
+  "tovary-dlya-detey": {
+    Игрушки:
+      "Это модели неодушевленных и одушевленных объектов, которые используются в сюжетных и ролевых играх. Они помогают детям познавать окружающий мир, развивать мышление, память, речь и эмоции. К ним относятся:",
+    "Технические игрушки":
+      "Знакомят детей с миром техники, внешним видом технических предметов (машины, механизмы, транспортные средства), а также с характерными для них действиями. К этой категории относятся:",
+    "Дидактические игрушки":
+      "Предназначены для умственного и сенсорного развития, обучения детей. В их конструкции или содержании заложены обучающие задачи. К дидактическим игрушкам относятся:",
+    "Спортивные (спортивно-моторные) игрушки":
+      "Способствуют физическому развитию детей, укреплению мышц, ловкости, координации движений. Среди них:",
+  },
+  "odezhda-obuv-aksessuary": {
+    Одежда:
+      "Раздел «Одежда, обувь и аксессуары» включает широкий ассортимент товаров для создания образа, комфорта и стиля. В него входят предметы гардероба, обувь для разных сезонов и случаев, а также аксессуары, дополняющие образ. К одежде относятся:",
+    Обувь: "В этот раздел входит обувь для женщин, мужчин и детей, например:",
+    Аксессуары: "К аксессуарам относятся:",
+  },
   "tovary-i-veshchi": {
     "Выкройки и рукоделие": "Материалы, выкройки, handmade-изделия, инструменты и товары для творчества.",
   },
@@ -607,6 +695,11 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
   raznoe: {
     Разное: "Объявления, которые не подошли к другим разделам, но могут быть полезны жителям рядом.",
   },
+};
+
+const categoryDescriptions: Record<string, string> = {
+  "dlya-doma-i-dachi":
+    "Раздел для дома и дачи включает товары для обустройства интерьера, садового участка, а также инструменты и аксессуары для ухода за растениями и территорией.",
 };
 
 function subcategoryWordCount(name: string) {
@@ -1026,6 +1119,7 @@ export function slugifySubcategory(name: string) {
     "Куплю недвижимость": "kuplyu-nedvizhimost",
     Аренда: "arenda",
     "Коммерческая недвижимость": "kommercheskaya-nedvizhimost",
+    "Жилье для путешествия": "zhile-dlya-puteshestviya",
     Смартфоны: "smartfony",
     Ноутбуки: "noutbuki",
     Компьютеры: "kompyutery",
@@ -1034,7 +1128,6 @@ export function slugifySubcategory(name: string) {
     "Продам авто": "prodam-avto",
     "Куплю авто": "kuplyu-avto",
     Мототехника: "mototehnika",
-    Запчасти: "zapchasti",
     "Продам бизнес": "prodam-biznes",
     "Куплю бизнес": "kuplyu-biznes",
     Оборудование: "oborudovanie",
@@ -1043,6 +1136,13 @@ export function slugifySubcategory(name: string) {
     "Захоронение и сопутствующие работы": "zahoronenie-i-soputstvuyushchie-raboty",
     Кремация: "krematsiya",
     "Продажа и изготовление похоронных принадлежностей": "prodazha-i-izgotovlenie-pohoronnyh-prinadlezhnostey",
+    Игрушки: "igrushki",
+    "Технические игрушки": "tehnicheskie-igrushki",
+    "Дидактические игрушки": "didakticheskie-igrushki",
+    "Спортивные (спортивно-моторные) игрушки": "sportivnye-sportivno-motornye-igrushki",
+    Одежда: "odezhda",
+    Обувь: "obuv",
+    Аксессуары: "aksessuary",
     "Изготовление, установка и демонтаж намогильных сооружений":
       "izgotovlenie-ustanovka-demontazh-namogilnyh-sooruzheniy",
     "Уход за местом захоронения": "uhod-za-mestom-zahoroneniya",
@@ -1057,6 +1157,11 @@ export function slugifySubcategory(name: string) {
     "Медицинский персонал": "meditsinskiy-personal",
     "Уход на дому": "uhod-na-domu",
     Мебель: "mebel",
+    "Мебель для дома и дачи": "mebel-dlya-doma-i-dachi",
+    Освещение: "osveshchenie",
+    Декор: "dekor",
+    "Товары для бани и сауны": "tovary-dlya-bani-i-sauny",
+    "Биотуалеты и умывальники": "biotualety-i-umyvalniki",
     Турбазы: "turbazy",
     Гостиницы: "gostinitsy",
     Походы: "pohody",
@@ -1242,6 +1347,8 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
   const listings = demoListings.filter(
     (listing) => listing.categorySlug === categorySlug && (!subcategorySlug || listing.subcategorySlug === subcategorySlug),
   );
+  const isKidsGoodsCategory = category?.slug === "tovary-dlya-detey";
+  const categoryDescription = category ? categoryDescriptions[category.slug] : undefined;
 
   return (
     <>
@@ -1261,26 +1368,59 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
             <h1 className="[overflow-wrap:anywhere] text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">
               {subcategory ?? category?.name ?? "Категория"}
             </h1>
+            {categoryDescription && !subcategory ? (
+              <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">
+                {categoryDescription}
+              </p>
+            ) : null}
             {category ? (
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+              <div
+                className={
+                  isKidsGoodsCategory
+                    ? "mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2 lg:grid-cols-4"
+                    : "mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5"
+                }
+              >
                 {categoryChildren.map((child, index) => {
                   const href = `/blizhniy/${category.slug}/${slugifySubcategory(child)}`;
                   const description = subcategoryDescription(category.slug, child);
                   const animalClassifier = category.slug === "zhivotnye" ? animalClassifiers[child] : undefined;
+                  const bulletPoints = subcategoryBulletPoints[category.slug]?.[child];
                   const shouldSpanTwoColumns =
                     category.slug === "ritualnye-uslugi" && categoryChildren.length % 2 === 1 && index === categoryChildren.length - 1;
-                  const spanClassName = shouldSpanTwoColumns ? "sm:col-span-2 md:col-span-1" : "";
+                  const shouldSpanKidsColumns = category.slug === "tovary-dlya-detey" && child === "Спортивные (спортивно-моторные) игрушки";
+                  const spanClassName = [
+                    shouldSpanTwoColumns ? "sm:col-span-2 md:col-span-1" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
 
                   return (
                     <details
                       key={child}
-                      className={`group min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm transition open:border-blue-200 sm:p-3 ${spanClassName}`}
+                      className={`group min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition open:border-blue-200 ${isKidsGoodsCategory ? "p-2 sm:p-2.5 lg:p-3" : "p-2.5 sm:p-3"} ${spanClassName}`}
                     >
-                      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
-                        <span className="block break-words text-sm font-bold leading-5 text-slate-800 [overflow-wrap:anywhere] sm:text-[15px]">{child}</span>
+                      <summary className={`flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden ${isKidsGoodsCategory ? "min-h-9" : ""}`}>
+                        <span
+                          className={`block break-words font-bold text-slate-800 [overflow-wrap:anywhere] ${
+                            isKidsGoodsCategory ? "text-[13px] leading-4 sm:text-sm sm:leading-5 lg:text-[15px] lg:leading-5" : "text-sm leading-5 sm:text-[15px]"
+                          } ${shouldSpanKidsColumns ? "lg:text-[12.5px] lg:leading-4 xl:text-[13.5px] xl:leading-5 2xl:text-sm 2xl:leading-5 2xl:whitespace-nowrap" : ""}`}
+                        >
+                          {child}
+                        </span>
                         <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-90 group-open:text-[#0875d1]" />
                       </summary>
                       <p className="mt-2 break-words text-xs font-medium leading-5 text-slate-600 [overflow-wrap:anywhere] sm:text-sm">{description}</p>
+                      {bulletPoints ? (
+                        <ul className="mt-2 grid gap-1.5 text-xs font-medium leading-5 text-slate-600 sm:text-sm">
+                          {bulletPoints.map((item) => (
+                            <li key={item} className="flex gap-2">
+                              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0875d1]" />
+                              <span className="break-words [overflow-wrap:anywhere]">{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                       {animalClassifier ? (
                         <ul className="mt-2 grid gap-1.5 text-xs font-medium leading-5 text-slate-600 sm:text-sm">
                           {animalClassifier.map((item) => (
