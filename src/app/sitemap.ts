@@ -1,9 +1,10 @@
 import type { MetadataRoute } from "next";
 import { categories, listingKinds, professions, specialists, vacancies, workRequests } from "@/lib/data";
 import { demoListings, slugifySubcategory } from "@/components/listings/ListingPages";
+import { getPublicSiteUrl } from "@/lib/site-url";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://blizhniy.vercel.app";
+  const base = getPublicSiteUrl();
   const categoryPaths = categories.flatMap((category) => [
     `/blizhniy/${category.slug}`,
     ...category.children.map((child) => `/blizhniy/${category.slug}/${slugifySubcategory(child)}`),

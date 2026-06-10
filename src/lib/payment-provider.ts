@@ -1,4 +1,5 @@
 import { listMockPayments, markPaymentTargetSucceeded } from "@/lib/mock-store";
+import { getPublicSiteUrl } from "@/lib/site-url";
 import { getActiveTariffById } from "@/lib/tariff-store";
 import type { Payment, Tariff } from "@/lib/types";
 
@@ -113,7 +114,7 @@ async function fetchYooKassaPayment(providerPaymentId: string) {
 }
 
 function getPublicBaseUrl() {
-  return process.env.NEXT_PUBLIC_SITE_URL?.trim() || process.env.SITE_URL?.trim() || "http://localhost:3000";
+  return getPublicSiteUrl();
 }
 
 function yookassaStatusToPaymentStatus(status: YooKassaPaymentStatus): Payment["status"] {

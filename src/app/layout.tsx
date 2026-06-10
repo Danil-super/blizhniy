@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { SiteFooter } from "@/components/SiteFooter";
+import { getPublicSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://blizhniy.vercel.app"),
+  metadataBase: new URL(getPublicSiteUrl()),
   title: {
     default: "БЛИЖНИЙ — объявления, работа и специалисты Краснодарского края",
     template: "%s | БЛИЖНИЙ",
