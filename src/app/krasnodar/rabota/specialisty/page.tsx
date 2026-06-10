@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default function SpecialistsPage() {
-  const specialists = listSpecialists();
+  const specialists = listSpecialists().filter((specialist) => specialist.status === "published");
 
   return (
     <>

@@ -2,10 +2,36 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  poweredByHeader: false,
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",
     },
+  },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+          {
+            key: "X-Frame-Options",
+            value: "SAMEORIGIN",
+          },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+        ],
+      },
+    ];
   },
   async redirects() {
     return [
@@ -32,11 +58,6 @@ const nextConfig: NextConfig = {
       {
         source: "/specialist/:path*",
         destination: "/blizhniy/specialist/:path*",
-        permanent: false,
-      },
-      {
-        source: "/oplata/:path*",
-        destination: "/blizhniy/oplata/:path*",
         permanent: false,
       },
       {

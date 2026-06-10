@@ -9,8 +9,9 @@ import lockGif from "../../lock.gif";
 
 export function HeaderActions({ compact = false }: { compact?: boolean }) {
   const { state } = useAuthState();
-  const authHref = state === "signed-in" || state === "admin" ? "/cabinet" : "/auth";
-  const authLabel = state === "signed-in" || state === "admin" ? "Кабинет" : "Вход";
+  const signedIn = state === "signed-in" || state === "admin";
+  const authHref = signedIn || state === "loading" ? "/cabinet" : "/auth";
+  const authLabel = signedIn || state === "loading" ? "Кабинет" : "Вход";
   const iconClassName = "h-6 w-6";
 
   return (

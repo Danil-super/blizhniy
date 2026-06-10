@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { SiteHeader } from "@/components/SiteHeader";
-import { demoListings, toDemoListing } from "@/components/listings/ListingPages";
+import { listDemoListings, toDemoListing } from "@/components/listings/ListingPages";
 import { SellerProfileClient, type SellerProfileListing } from "@/components/listings/SellerProfileClient";
 import { listListings } from "@/lib/mock-store";
 import { isSameSeller, sellerDisplayName } from "@/lib/seller-profile";
@@ -18,7 +18,7 @@ function decodeSellerKey(value: string) {
 }
 
 function getSellerListings(sellerKey: string): SellerProfileListing[] {
-  return [...demoListings, ...listListings().map(toDemoListing)]
+  return [...listDemoListings(), ...listListings().map(toDemoListing)]
     .filter((listing) => isSameSeller(listing, sellerKey))
     .map((listing) => ({
       categoryName: listing.categoryName,

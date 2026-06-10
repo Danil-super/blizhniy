@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
-import { demoPublicationLabels, demoPublicationsStorageKey, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
+import { demoPublicationLabels, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationHistory, withPublicationStatusHistory, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
+import { confirmClientPayment, createClientPayment } from "@/lib/client-payment-flow";
+import type { Payment } from "@/lib/types";
 import { categories } from "@/lib/data";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
@@ -17,7 +19,10 @@ type AdminDemoPublishButtonProps = {
   validateForm?: boolean;
   requireCaptcha?: boolean;
   buttonClassName?: string;
+  paymentTariffId?: string;
 };
+
+type PaymentTargetType = Payment["targetType"];
 
 function readValue(formData: FormData, name: string, fallback = "") {
   return String(formData.get(name) ?? "").trim() || fallback;
@@ -64,6 +69,42 @@ function readDateList(formData: FormData, name: string) {
     .filter(Boolean);
 }
 
+function todayInputValue() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeFutureDate(value: string) {
+  const date = value.trim();
+
+  if (!date) {
+    return "";
+  }
+
+  return date < todayInputValue() ? todayInputValue() : date;
+}
+
+function normalizeEndDate(value: string, startDate: string) {
+  const date = value.trim();
+
+  if (!date) {
+    return "";
+  }
+
+  const minDate = startDate || todayInputValue();
+  return date < minDate ? minDate : date;
+}
+
+function readFutureDateList(formData: FormData, name: string) {
+  const today = todayInputValue();
+
+  return readDateList(formData, name).filter((date) => date >= today);
+}
+
 function isBookingCategory(categorySlug: string) {
   return categorySlug === "otdyh" || categorySlug === "nedvizhimost";
 }
@@ -80,7 +121,7 @@ function readBookingDetails(formData: FormData, categorySlug: string): BookingDe
       mode,
       pricePerPerson: readNumber(formData, "bookingPricePerPerson"),
       maxGuests: readNumber(formData, "bookingMaxGuests"),
-      tourDate: readValue(formData, "tourDate"),
+      tourDate: normalizeFutureDate(readValue(formData, "tourDate")),
       tourTime: readValue(formData, "tourTime"),
       tourDuration: readValue(formData, "tourDuration"),
       tourDifficulty: readValue(formData, "tourDifficulty"),
@@ -90,6 +131,8 @@ function readBookingDetails(formData: FormData, categorySlug: string): BookingDe
     };
   }
 
+  const availableFrom = normalizeFutureDate(readValue(formData, "bookingAvailableFrom"));
+
   return {
     mode,
     priceWeekday: readNumber(formData, "bookingPriceWeekday"),
@@ -98,9 +141,9 @@ function readBookingDetails(formData: FormData, categorySlug: string): BookingDe
     includedGuests: readNumber(formData, "bookingIncludedGuests"),
     maxGuests: readNumber(formData, "bookingMaxGuests"),
     extraGuestPrice: readNumber(formData, "bookingExtraGuestPrice"),
-    availableFrom: readValue(formData, "bookingAvailableFrom"),
-    availableTo: readValue(formData, "bookingAvailableTo"),
-    blockedDates: readDateList(formData, "bookingBlockedDates"),
+    availableFrom,
+    availableTo: normalizeEndDate(readValue(formData, "bookingAvailableTo"), availableFrom),
+    blockedDates: readFutureDateList(formData, "bookingBlockedDates"),
     checkInTime: readValue(formData, "bookingCheckIn"),
     checkOutTime: readValue(formData, "bookingCheckOut"),
     included: readValue(formData, "bookingIncluded"),
@@ -125,6 +168,27 @@ function readStoredPublications() {
 
 function isDraftStatus(status: string) {
   return status.trim().toLowerCase() === "черновик";
+}
+
+function isPublishedStatus(status: string) {
+  const normalized = status.trim().toLowerCase();
+  return normalized === "опубликовано" || normalized === "published";
+}
+
+function getPaymentTargetType(type: DemoPublicationType): PaymentTargetType | undefined {
+  if (type === "listing" || type === "vacancy") {
+    return type;
+  }
+
+  if (type === "specialist") {
+    return "specialist";
+  }
+
+  if (type === "fairApplication") {
+    return "fair_application";
+  }
+
+  return undefined;
 }
 
 function loadImage(src: string) {
@@ -373,6 +437,7 @@ export function AdminDemoPublishButton({
   returnHref,
   status = "Опубликовано",
   validateForm = true,
+  paymentTariffId,
 }: AdminDemoPublishButtonProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -399,24 +464,57 @@ export function AdminDemoPublishButton({
       }
 
       const identity = await resolveAuthenticatedClientUserIdentity();
-      const publication = {
+      const requiresPayment = Boolean(paymentTariffId && !isDraftStatus(status));
+      const publicationStatus = requiresPayment ? "Ждет оплаты" : status;
+      const publication = withPublicationHistory({
         ...(await buildPublication(new FormData(form), publicationType)),
         ownerKey: identity.ownerKey,
         ownerName: identity.name,
-        status,
-      };
+        status: publicationStatus,
+      });
+      let paymentId = "";
+      let confirmationUrl = "";
+
+      if (requiresPayment) {
+        const tariffId = paymentTariffId;
+        const targetType = getPaymentTargetType(publicationType);
+
+        if (!tariffId) {
+          throw new Error("Для оплаты публикации не выбран тариф.");
+        }
+
+        if (!targetType) {
+          throw new Error("Для этого типа публикации еще не настроен тариф оплаты.");
+        }
+
+        const payment = await createClientPayment({
+          tariffId,
+          targetId: publication.id,
+          targetType,
+          targetTitle: publication.title,
+        });
+        paymentId = payment.id;
+        confirmationUrl = payment.confirmationUrl ?? "";
+      }
+
       const stored = readStoredPublications();
       let nextStored = stored;
 
       if (publicationType === "specialist") {
         const draftCount = stored.filter((item) => item.type === "specialist" && isDraftStatus(item.status)).length;
 
-        if (isDraftStatus(status) && draftCount >= 10) {
+        if (isDraftStatus(publicationStatus) && draftCount >= 10) {
           throw new Error("Можно создать максимум 10 черновиков анкет.");
         }
 
-        if (!isDraftStatus(status)) {
-          nextStored = stored.map((item) => (item.type === "specialist" && !isDraftStatus(item.status) ? { ...item, status: "Черновик" } : item));
+        if (isPublishedStatus(publicationStatus)) {
+          nextStored = stored.map((item) =>
+            item.type === "specialist" && !isDraftStatus(item.status)
+              ? withPublicationStatusHistory(item, "Черновик", {
+                  description: "Анкета переведена в черновик, потому что опубликована новая анкета специалиста.",
+                })
+              : item,
+          );
         }
       }
 
@@ -428,7 +526,17 @@ export function AdminDemoPublishButton({
         window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify([{ ...publication, images: [], videos: [] }, ...stored].slice(0, 50)));
       }
 
-      window.dispatchEvent(new Event("blizhniy-demo-publications-updated"));
+      window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+
+      if (confirmationUrl) {
+        window.location.href = confirmationUrl;
+        return;
+      }
+
+      if (paymentId) {
+        await confirmClientPayment(paymentId);
+      }
+
       window.location.href = returnHref;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось сохранить публикацию в демо-режиме.");
@@ -455,7 +563,7 @@ export function AdminDemoPublishButton({
           "inline-flex h-12 w-fit items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:bg-slate-300"
         }
       >
-        {saving ? "Сохраняем..." : label}
+        {saving ? (paymentTariffId && !isDraftStatus(status) ? "Создаем и оплачиваем..." : "Сохраняем...") : label}
         <ArrowRight className="h-5 w-5" />
       </button>
       {error ? <p className="text-sm font-semibold text-rose-600">{error}</p> : null}

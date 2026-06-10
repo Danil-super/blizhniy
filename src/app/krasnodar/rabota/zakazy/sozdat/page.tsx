@@ -5,6 +5,7 @@ import { YandexMapPicker } from "@/components/YandexMapPicker";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { createWorkRequest } from "@/lib/mock-store";
+import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
 
 type PageProps = {
   searchParams?: Promise<{ admin?: string }>;
@@ -23,7 +24,7 @@ function parseCoordinate(formData: FormData, name: string) {
 
 export default async function CreateWorkRequestPage({ searchParams }: PageProps) {
   const params = searchParams ? await searchParams : undefined;
-  const adminMode = params?.admin === "1";
+  const adminMode = params?.admin === "1" && isDemoAdminBypassEnabled();
 
   async function publishWorkRequestWithoutPaymentAction(formData: FormData) {
     "use server";

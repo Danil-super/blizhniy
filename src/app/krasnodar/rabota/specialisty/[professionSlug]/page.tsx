@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function ProfessionSpecialistsPage({ params }: { params: Promise<{ professionSlug: string }> }) {
   const { professionSlug } = await params;
   const profession = professions.find((item) => item.slug === professionSlug);
-  const specialists = listSpecialists().filter((specialist) => (profession ? specialist.profession === profession.name : true));
+  const specialists = listSpecialists().filter((specialist) => specialist.status === "published" && (profession ? specialist.profession === profession.name : true));
 
   return (
     <>

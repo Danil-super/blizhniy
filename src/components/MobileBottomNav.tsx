@@ -9,9 +9,10 @@ export function MobileBottomNav() {
   const pathname = usePathname();
   const { state } = useAuthState();
   const signedIn = state === "signed-in" || state === "admin";
-  const authHref = signedIn ? "/cabinet" : "/auth";
-  const authLabel = signedIn ? "Профиль" : "Вход";
-  const AuthIcon = signedIn ? UserRound : LogIn;
+  const checkingAuth = state === "loading";
+  const authHref = signedIn || checkingAuth ? "/cabinet" : "/auth";
+  const authLabel = signedIn || checkingAuth ? "Профиль" : "Вход";
+  const AuthIcon = signedIn || checkingAuth ? UserRound : LogIn;
 
   const items = [
     { href: "/blizhniy", label: "Главная", icon: Home },

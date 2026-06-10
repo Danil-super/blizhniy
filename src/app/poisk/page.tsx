@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { ArrowRight, BriefcaseBusiness, Search, UserRound } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
-import { demoListings } from "@/components/listings/ListingPages";
-import { categories, cities, fairApplications, professions, region, specialists, vacancies, workRequests } from "@/lib/data";
+import { listPublicDemoListings } from "@/components/listings/ListingPages";
+import { categories, cities, professions, region } from "@/lib/data";
+import { listFairApplications, listSpecialists, listVacancies, listWorkRequests } from "@/lib/mock-store";
 
 type SearchResult = {
   title: string;
@@ -10,6 +11,8 @@ type SearchResult = {
   href: string;
   type: "Объявление" | "Вакансия" | "Заказ" | "Специалист" | "Категория" | "Профессия" | "Ярмарка";
 };
+
+export const dynamic = "force-dynamic";
 
 function normalize(value: string) {
   return value.toLowerCase().trim();
@@ -27,7 +30,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const cityName = selectedCity?.name;
   const matchesCity = (value?: string) => !cityName || value === cityName;
 
-  const listingResults: SearchResult[] = demoListings
+  const listingResults: SearchResult[] = listPublicDemoListings()
     .filter((listing) =>
       matchesCity(listing.city) &&
       (query
@@ -41,9 +44,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       type: "Объявление",
     }));
 
-  const vacancyResults: SearchResult[] = vacancies
+  const vacancyResults: SearchResult[] = listVacancies()
     .filter(
       (vacancy) =>
+        vacancy.status === "published" &&
         matchesCity(vacancy.city) &&
         (query ? includesQuery([vacancy.title, vacancy.organization, vacancy.profession, vacancy.city, vacancy.description], query) : true),
     )
@@ -54,9 +58,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       type: "Вакансия",
     }));
 
-  const specialistResults: SearchResult[] = specialists
+  const specialistResults: SearchResult[] = listSpecialists()
     .filter(
       (specialist) =>
+        specialist.status === "published" &&
         matchesCity(specialist.city) && (query ? includesQuery([specialist.name, specialist.profession, specialist.skills, specialist.city], query) : true),
     )
     .map((specialist) => ({
@@ -66,9 +71,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       type: "Специалист",
     }));
 
-  const workRequestResults: SearchResult[] = workRequests
+  const workRequestResults: SearchResult[] = listWorkRequests()
     .filter(
       (request) =>
+        request.status === "published" &&
         matchesCity(request.city) && (query ? includesQuery([request.title, request.description, request.author, request.profession, request.city], query) : true),
     )
     .map((request) => ({
@@ -78,9 +84,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       type: "Заказ",
     }));
 
-  const fairResults: SearchResult[] = fairApplications
+  const fairResults: SearchResult[] = listFairApplications()
     .filter(
       (application) =>
+        application.status === "published" &&
         matchesCity(application.city) &&
         (query ? includesQuery([application.participantName, application.category, application.description, application.city], query) : true),
     )

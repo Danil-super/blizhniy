@@ -9,9 +9,12 @@ import {
   demoPublicationLabels,
   demoPublicationsStorageKey,
   demoPublicationsUpdatedEvent,
+  appendPublicationHistory,
+  getPublicationHistory,
   isDemoPublicationSold,
   soldPublicationStatus,
   unpublishedVacancyStatus,
+  withPublicationStatusHistory,
   type DemoPublication,
   type DemoPublicationType,
 } from "@/lib/demo-publications";
@@ -19,6 +22,9 @@ import { useAuthState } from "@/components/auth/useAuthState";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { cities } from "@/lib/data";
+import { confirmClientPayment, createAndConfirmClientPayment } from "@/lib/client-payment-flow";
+import { addCurrentUserNotification } from "@/lib/site-notifications";
+import type { Payment } from "@/lib/types";
 import {
   type CabinetProfile,
   createDefaultCabinetProfile,
@@ -85,8 +91,8 @@ const emptyCopy: Record<CabinetListMode, { title: string; text: string; href?: s
     text: "Добавьте название, контакты и адрес компании, если планируете размещать вакансии от организации.",
   },
   payment: {
-    title: "Оплат пока нет",
-    text: "История платежей появится после публикации объявления, вакансии, отклика или заявки на ярмарку.",
+    title: "Платежей пока нет",
+    text: "История появится после создания заказа на публикацию, отклик или участие в ярмарке.",
   },
   response: {
     title: "Откликов пока нет",
@@ -172,7 +178,27 @@ function formatDate(value?: string) {
     return "Сегодня";
   }
 
-  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "long", year: "numeric" }).format(new Date(value));
+  const date = new Date(value);
+
+  if (!Number.isFinite(date.getTime())) {
+    return "Сегодня";
+  }
+
+  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "long", year: "numeric" }).format(date);
+}
+
+function formatDateTime(value?: string) {
+  if (!value) {
+    return "Сегодня";
+  }
+
+  const date = new Date(value);
+
+  if (!Number.isFinite(date.getTime())) {
+    return "Сегодня";
+  }
+
+  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
 function toRussianPhoneE164(value: string) {
@@ -406,6 +432,26 @@ function getItemHref(item: DemoPublication) {
   return "/yarmarka-masterov";
 }
 
+function getCabinetHrefByType(type: DemoPublicationType) {
+  if (type === "listing") {
+    return "/cabinet/obyavleniya";
+  }
+
+  if (type === "vacancy") {
+    return "/cabinet/vakansii";
+  }
+
+  if (type === "workRequest") {
+    return "/cabinet/zakazy";
+  }
+
+  if (type === "specialist") {
+    return "/cabinet/specialist";
+  }
+
+  return "/cabinet/fair-applications";
+}
+
 function getEditHref(item: DemoPublication) {
   if (item.type === "listing") {
     return `/blizhniy/obyavlenie/${item.id}/redaktirovat`;
@@ -455,10 +501,36 @@ function isDraftPublication(item: DemoPublication) {
   return normalizePublicationStatus(item.status) === "черновик";
 }
 
+function isPendingPaymentPublication(item: DemoPublication) {
+  const status = normalizePublicationStatus(item.status);
+
+  return status === "ждет оплаты" || status === "ожидает оплату" || status === "pending_payment";
+}
+
 function isPublishedPublication(item: DemoPublication) {
   const status = normalizePublicationStatus(item.status);
 
   return status === "опубликовано" || status === "published";
+}
+
+function getPublicationPaymentConfig(item: DemoPublication): { tariffId: string; targetType: Payment["targetType"] } | undefined {
+  if (item.type === "listing") {
+    return { tariffId: "listing-publication", targetType: "listing" };
+  }
+
+  if (item.type === "vacancy") {
+    return { tariffId: "vacancy-publication", targetType: "vacancy" };
+  }
+
+  if (item.type === "specialist") {
+    return { tariffId: "specialist-publication", targetType: "specialist" };
+  }
+
+  return undefined;
+}
+
+function canPayPublication(item: DemoPublication) {
+  return Boolean(getPublicationPaymentConfig(item) && (isDraftPublication(item) || isPendingPaymentPublication(item)));
 }
 
 function isUnpublishedVacancy(item: DemoPublication) {
@@ -467,64 +539,185 @@ function isUnpublishedVacancy(item: DemoPublication) {
   return item.type === "vacancy" && (status === normalizePublicationStatus(unpublishedVacancyStatus) || status === "archived");
 }
 
-function canUnpublishVacancy(item: DemoPublication) {
-  return item.type === "vacancy" && isPublishedPublication(item);
+function isInactivePaidPublication(item: DemoPublication) {
+  const status = normalizePublicationStatus(item.status);
+
+  return Boolean(getPublicationPaymentConfig(item) && (status === normalizePublicationStatus(unpublishedVacancyStatus) || status === "archived"));
 }
 
-function canRestoreVacancy(item: DemoPublication) {
-  return item.type === "vacancy" && isUnpublishedVacancy(item);
+function canDeactivatePaidPublication(item: DemoPublication) {
+  return Boolean(getPublicationPaymentConfig(item) && isPublishedPublication(item));
+}
+
+function canRestorePaidPublication(item: DemoPublication) {
+  return isInactivePaidPublication(item);
 }
 
 function canDeletePublication(item: DemoPublication) {
-  return isDraftPublication(item) || isUnpublishedVacancy(item);
+  return item.type === "listing" || isDraftPublication(item) || isUnpublishedVacancy(item);
+}
+
+function deletePublicationTitle(item: DemoPublication) {
+  if (item.type === "listing") {
+    return "Удалить объявление?";
+  }
+
+  if (item.type === "vacancy") {
+    return "Удалить вакансию?";
+  }
+
+  return "Удалить черновик?";
+}
+
+function deletePublicationDescription(item: DemoPublication) {
+  if (item.type === "listing") {
+    return "Карточка исчезнет из личного кабинета и публичной ленты объявлений.";
+  }
+
+  if (item.type === "vacancy") {
+    return "Удалять можно только черновик или вакансию, уже снятую с публикации.";
+  }
+
+  return "Черновик исчезнет из кабинета. Опубликованные публикации это действие не затрагивает.";
+}
+
+function deletePublicationButtonLabel(item: DemoPublication) {
+  if (item.type === "listing") {
+    return "Удалить объявление";
+  }
+
+  if (item.type === "vacancy") {
+    return "Удалить вакансию";
+  }
+
+  return "Удалить черновик";
 }
 
 function markListingSold(itemId: string, reason: SoldReason) {
-  const nextItems = readStoredPublications().map((item) =>
-    item.id === itemId && item.type === "listing"
-      ? {
-          ...item,
-          soldAt: new Date().toISOString(),
-          soldReason: reason,
-          status: soldPublicationStatus,
-        }
-      : item,
-  );
+  const currentItem = readStoredPublications().find((item) => item.id === itemId);
+  const nextItems = readStoredPublications().map((item) => {
+    if (item.id !== itemId || item.type !== "listing") {
+      return item;
+    }
+
+    const soldAt = new Date().toISOString();
+
+    return appendPublicationHistory(
+      {
+        ...item,
+        soldAt,
+        soldReason: reason,
+        status: soldPublicationStatus,
+      },
+      "sold",
+      {
+        at: soldAt,
+        status: soldPublicationStatus,
+        description: soldReasonLabels[reason],
+      },
+    );
+  });
 
   writeStoredPublications(nextItems);
+  if (currentItem) {
+    void addCurrentUserNotification({
+      category: "publication",
+      title: "Объявление снято",
+      message: `${currentItem.title}: ${soldReasonLabels[reason]}`,
+      tone: "success",
+      actionHref: "/cabinet/obyavleniya",
+      actionLabel: "Мои объявления",
+      dedupeKey: `publication:${itemId}:sold`,
+    });
+  }
 }
 
-function unpublishVacancy(itemId: string) {
-  const nextItems = readStoredPublications().map((item) =>
-    item.id === itemId && item.type === "vacancy"
-      ? {
-          ...item,
-          status: unpublishedVacancyStatus,
-        }
-      : item,
-  );
+function unpublishPaidPublication(itemId: string) {
+  const currentItem = readStoredPublications().find((item) => item.id === itemId);
+  const nextItems = readStoredPublications().map((item) => {
+    if (item.id !== itemId || !getPublicationPaymentConfig(item)) {
+      return item;
+    }
+
+    return appendPublicationHistory(
+      {
+        ...item,
+        status: unpublishedVacancyStatus,
+      },
+      "unpublished",
+      {
+        status: unpublishedVacancyStatus,
+        description: "Размещение временно скрыто из публичной выдачи пользователем.",
+      },
+    );
+  });
 
   writeStoredPublications(nextItems);
+  if (currentItem) {
+    void addCurrentUserNotification({
+      category: "publication",
+      title: "Размещение скрыто",
+      message: `${currentItem.title}: публикация снята из публичной выдачи. Вернуть можно без повторной оплаты.`,
+      tone: "warning",
+      actionHref: getCabinetHrefByType(currentItem.type),
+      actionLabel: "Открыть раздел",
+      dedupeKey: `publication:${itemId}:unpublished`,
+    });
+  }
 }
 
-function restoreVacancy(itemId: string) {
-  const nextItems = readStoredPublications().map((item) =>
-    item.id === itemId && item.type === "vacancy"
-      ? {
-          ...item,
-          status: "Опубликовано",
-        }
-      : item,
-  );
+function restorePaidPublication(itemId: string) {
+  const currentItem = readStoredPublications().find((item) => item.id === itemId);
+  const nextItems = readStoredPublications().map((item) => {
+    if (item.id !== itemId || !getPublicationPaymentConfig(item)) {
+      return item;
+    }
+
+    return appendPublicationHistory(
+      {
+        ...item,
+        status: "Опубликовано",
+      },
+      "restored",
+      {
+        status: "Опубликовано",
+        description: "Размещение снова доступно в публичной выдаче без повторной оплаты.",
+      },
+    );
+  });
 
   writeStoredPublications(nextItems);
+  if (currentItem) {
+    void addCurrentUserNotification({
+      category: "publication",
+      title: "Размещение снова опубликовано",
+      message: `${currentItem.title}: публикация снова видна пользователям, повторная оплата не нужна.`,
+      tone: "success",
+      actionHref: getItemHref(currentItem),
+      actionLabel: "Посмотреть",
+      dedupeKey: `publication:${itemId}:restored`,
+    });
+  }
 }
 
 function deletePublication(itemId: string) {
+  const currentItem = readStoredPublications().find((item) => item.id === itemId);
   writeStoredPublications(readStoredPublications().filter((item) => item.id !== itemId || !canDeletePublication(item)));
+  if (currentItem && canDeletePublication(currentItem)) {
+    void addCurrentUserNotification({
+      category: "publication",
+      title: "Публикация удалена",
+      message: `${currentItem.title}: запись удалена из личного кабинета.`,
+      tone: "danger",
+      actionHref: getCabinetHrefByType(currentItem.type),
+      actionLabel: "Открыть раздел",
+      dedupeKey: `publication:${itemId}:deleted`,
+    });
+  }
 }
 
 function restoreSoldListing(itemId: string) {
+  const currentItem = readStoredPublications().find((item) => item.id === itemId);
   const nextItems = readStoredPublications().map((item) => {
     if (item.id !== itemId || item.type !== "listing") {
       return item;
@@ -535,12 +728,59 @@ function restoreSoldListing(itemId: string) {
     delete restoredItem.soldReason;
 
     return {
-      ...restoredItem,
-      status: "Опубликовано",
+      ...appendPublicationHistory(
+        {
+          ...restoredItem,
+          status: "Опубликовано",
+        },
+        "restored",
+        {
+          status: "Опубликовано",
+          description: "Объявление снова доступно покупателям.",
+        },
+      ),
     };
   });
 
   writeStoredPublications(nextItems);
+  if (currentItem) {
+    void addCurrentUserNotification({
+      category: "publication",
+      title: "Объявление снова опубликовано",
+      message: `${currentItem.title}: объявление вернулось в публичную выдачу.`,
+      tone: "success",
+      actionHref: getItemHref(currentItem),
+      actionLabel: "Посмотреть",
+      dedupeKey: `publication:${itemId}:sold-restored`,
+    });
+  }
+}
+
+async function createPublicationPayment(item: DemoPublication) {
+  const paymentConfig = getPublicationPaymentConfig(item);
+
+  if (!paymentConfig) {
+    throw new Error("Для этой публикации не настроен тариф оплаты.");
+  }
+
+  if (!isPendingPaymentPublication(item)) {
+    const nextItems = readStoredPublications().map((storedItem) =>
+      storedItem.id === item.id
+        ? withPublicationStatusHistory(storedItem, "Ждет оплаты", {
+            description: "Черновик отправлен на оплату перед публикацией.",
+          })
+        : storedItem,
+    );
+
+    writeStoredPublications(nextItems);
+  }
+
+  await createAndConfirmClientPayment({
+    tariffId: paymentConfig.tariffId,
+    targetId: item.id,
+    targetType: paymentConfig.targetType,
+    targetTitle: item.title,
+  });
 }
 
 function EmptyState({ mode }: { mode: CabinetListMode }) {
@@ -605,10 +845,152 @@ function ResponseStatusPill({ status }: { status: string }) {
   return <span className={`inline-flex h-7 items-center rounded-full border px-3 text-xs font-bold ${tone}`}>{label}</span>;
 }
 
+function PublicationHistoryTimeline({ item }: { item: DemoPublication }) {
+  const history = getPublicationHistory(item);
+  const latestEvent = history[0];
+
+  if (!latestEvent) {
+    return null;
+  }
+
+  return (
+    <details className="relative z-20 mx-3 mb-3 rounded-lg border border-slate-200 bg-slate-50">
+      <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-bold text-slate-700 marker:hidden [&::-webkit-details-marker]:hidden">
+        <span>История</span>
+        <span className="min-w-0 truncate text-slate-500">{latestEvent.title}</span>
+      </summary>
+      <ol className="grid gap-2 border-t border-slate-200 px-3 py-2">
+        {history.slice(0, 5).map((event) => (
+          <li key={event.id} className="grid gap-0.5 border-l-2 border-blue-100 pl-2">
+            <span className="text-xs font-black text-[#060b27]">{event.title}</span>
+            <span className="text-[11px] font-semibold text-slate-500">{formatDateTime(event.at)}</span>
+            {event.description ? <span className="text-xs leading-5 text-slate-600">{event.description}</span> : null}
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
+function isInactivePublicationStatus(status: string) {
+  const normalizedStatus = normalizePublicationStatus(status);
+
+  return (
+    normalizedStatus === "archived" ||
+    normalizedStatus === "archive" ||
+    normalizedStatus === "expired" ||
+    normalizedStatus === "rejected" ||
+    normalizedStatus === normalizePublicationStatus(unpublishedVacancyStatus) ||
+    normalizedStatus === normalizePublicationStatus(soldPublicationStatus) ||
+    normalizedStatus === "sold"
+  );
+}
+
+function getInactivePublicationSummary(item: DemoPublication) {
+  const status = normalizePublicationStatus(item.status);
+
+  if (isDemoPublicationSold(item)) {
+    return {
+      title: "Продано / завершено",
+      description: item.soldReason ? soldReasonLabels[item.soldReason] : "Размещение завершено как неактуальное.",
+    };
+  }
+
+  if (status === normalizePublicationStatus(unpublishedVacancyStatus) || status === "archived" || status === "archive") {
+    return {
+      title: "Снято с публикации",
+      description: `${demoPublicationLabels[item.type]} больше не показывается в публичной выдаче.`,
+    };
+  }
+
+  if (status === "expired") {
+    return {
+      title: "Истек срок размещения",
+      description: `${demoPublicationLabels[item.type]} больше не активно после окончания срока.`,
+    };
+  }
+
+  if (status === "rejected") {
+    return {
+      title: "Отклонено",
+      description: `${demoPublicationLabels[item.type]} снято из активных размещений после модерации.`,
+    };
+  }
+
+  return null;
+}
+
+function getInactivePublicationEvent(item: DemoPublication) {
+  const summary = getInactivePublicationSummary(item);
+
+  if (!summary) {
+    return null;
+  }
+
+  const event = getPublicationHistory(item).find(
+    (historyEvent) =>
+      historyEvent.type === "sold" ||
+      historyEvent.type === "unpublished" ||
+      (historyEvent.type === "status_changed" && isInactivePublicationStatus(historyEvent.status ?? "")),
+  );
+
+  return {
+    at: event?.at ?? item.soldAt ?? item.createdAt,
+    description: event?.description ?? summary.description,
+    item,
+    title: summary.title,
+  };
+}
+
+function PublicationHistoryOverview({ items }: { items: DemoPublication[] }) {
+  const events = items
+    .map(getInactivePublicationEvent)
+    .filter((event): event is NonNullable<ReturnType<typeof getInactivePublicationEvent>> => Boolean(event))
+    .sort((left, right) => new Date(right.at).getTime() - new Date(left.at).getTime())
+    .slice(0, 80);
+
+  if (!events.length) {
+    return (
+      <section className="flex h-full min-h-[13.5rem] flex-col justify-center rounded-xl border border-dashed border-slate-300 bg-white p-4 text-center shadow-card sm:min-h-56 sm:p-5">
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#0875d1]">
+          <Clock3 className="h-5 w-5" />
+        </div>
+        <h2 className="mt-3 text-lg font-black text-[#060b27] sm:text-xl">Завершенных размещений пока нет</h2>
+        <p className="mx-auto mt-1.5 max-w-2xl text-sm leading-6 text-slate-600">Здесь появятся публикации, которые были активны, а затем проданы, сняты, отклонены или завершили срок размещения.</p>
+      </section>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
+      <div className="max-h-[29rem] overflow-y-auto pr-1">
+      <ol className="grid gap-3">
+        {events.map(({ at, description, item, title }) => (
+          <li key={item.id} className="grid min-h-[5rem] gap-1 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-sm font-black text-[#060b27]">{title}</span>
+              <span className="text-xs font-semibold text-slate-500">{formatDateTime(at)}</span>
+            </div>
+            <p className="flex min-w-0 flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+              <span className="min-w-0 truncate">{demoPublicationLabels[item.type]} · {item.title}</span>
+              <StatusPill>{item.status}</StatusPill>
+            </p>
+            {description ? <p className="text-xs leading-5 text-slate-600">{description}</p> : null}
+          </li>
+        ))}
+      </ol>
+      </div>
+      {events.length > 5 ? <p className="mt-3 text-xs font-semibold text-slate-500">Показаны последние завершенные размещения. Прокрутите список, чтобы посмотреть прошлые.</p> : null}
+    </div>
+  );
+}
+
 function PublicationList({ items, mode }: { items: DemoPublication[]; mode: DemoPublicationType }) {
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [sellingItemId, setSellingItemId] = useState<string | null>(null);
   const [unpublishingItemId, setUnpublishingItemId] = useState<string | null>(null);
+  const [payingItemId, setPayingItemId] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState("");
   const [vacancyFilter, setVacancyFilter] = useState<VacancyFilter>("all");
   const vacancyCounts = useMemo(
     () => ({
@@ -672,20 +1054,20 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
       {visibleItems.length ? (
         <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
       {visibleItems.map((item) => {
-        const draft = isDraftPublication(item);
         const confirmDelete = deletingItemId === item.id;
         const sold = item.type === "listing" && isDemoPublicationSold(item);
         const confirmSold = sellingItemId === item.id;
         const confirmUnpublish = unpublishingItemId === item.id;
-        const unpublishedVacancy = isUnpublishedVacancy(item);
+        const inactivePaidPublication = isInactivePaidPublication(item);
         const showOpenAction = true;
         const showEditAction = item.type !== "fairApplication";
-        const hasFullWidthAction = canDeletePublication(item) || canMarkListingSold(item) || sold || canUnpublishVacancy(item) || canRestoreVacancy(item);
+        const payable = canPayPublication(item);
+        const hasFullWidthAction = payable || canDeletePublication(item) || canMarkListingSold(item) || sold || canDeactivatePaidPublication(item) || canRestorePaidPublication(item);
         const actionGridClassName = showEditAction || hasFullWidthAction ? "grid-cols-2" : "grid-cols-1";
         const fullWidthActionClassName = hasFullWidthAction ? "col-span-2" : "";
 
         return (
-        <article key={item.id} className={`group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-card ${sold || unpublishedVacancy ? "ring-slate-300" : "ring-slate-200"}`}>
+        <article key={item.id} className={`group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-card ${sold || inactivePaidPublication ? "ring-slate-300" : "ring-slate-200"}`}>
           <Link href={getItemHref(item)} className="block min-w-0" aria-label={`Открыть ${item.title}`}>
           <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-blue-50 text-[#0875d1]">
             {item.images?.[0] ? <img src={item.images[0]} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
@@ -695,7 +1077,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                 <FileText className="h-12 w-12" />
               </span>
             ) : null}
-            {sold || unpublishedVacancy ? <span className="absolute inset-0 bg-white/50" /> : null}
+            {sold || inactivePaidPublication ? <span className="absolute inset-0 bg-white/50" /> : null}
             <span className="absolute left-2 top-2 flex max-w-[calc(100%-3.5rem)] flex-wrap gap-1">
               <StatusPill>{item.status}</StatusPill>
               <span className="inline-flex h-6 items-center rounded-full bg-white/95 px-2 text-[11px] font-bold text-slate-600 shadow-sm sm:h-7 sm:text-xs">{demoPublicationLabels[item.type]}</span>
@@ -723,6 +1105,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
           {item.type === "listing" ? (
             <ListingShareButton href={getItemHref(item)} title={item.title} textBreakpoint="never" className="absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-white hover:text-[#0875d1]" />
           ) : null}
+          <PublicationHistoryTimeline item={item} />
           {confirmSold ? (
             <div className="relative z-20 mx-3 mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2">
               <p className="text-xs font-bold text-amber-900">Почему снимаем объявление?</p>
@@ -748,13 +1131,13 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
           ) : null}
           {confirmUnpublish ? (
             <div className="relative z-20 mx-3 mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2">
-              <p className="text-xs font-bold text-amber-900">Снять вакансию с публикации?</p>
-              <p className="mt-1 text-xs leading-5 text-amber-800">Она пропадет из активных, но останется в кабинете. После этого ее можно удалить.</p>
+              <p className="text-xs font-bold text-amber-900">Снять размещение с публикации?</p>
+              <p className="mt-1 text-xs leading-5 text-amber-800">Оно пропадет из публичной выдачи, но останется в кабинете. Вернуть можно без повторной оплаты.</p>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => {
-                    unpublishVacancy(item.id);
+                    unpublishPaidPublication(item.id);
                     setUnpublishingItemId(null);
                   }}
                   className="inline-flex h-8 items-center justify-center rounded-md bg-amber-600 px-2 text-xs font-bold text-white transition hover:bg-amber-700"
@@ -769,10 +1152,8 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
           ) : null}
           {confirmDelete ? (
             <div className="relative z-20 mx-3 mb-3 rounded-lg border border-rose-200 bg-rose-50 p-2">
-              <p className="text-xs font-bold text-rose-900">{item.type === "vacancy" ? "Удалить вакансию?" : "Удалить черновик?"}</p>
-              <p className="mt-1 text-xs leading-5 text-rose-700">
-                {item.type === "vacancy" ? "Удалять можно только черновик или вакансию, уже снятую с публикации." : "Черновик исчезнет из кабинета. Опубликованные объявления это действие не затрагивает."}
-              </p>
+              <p className="text-xs font-bold text-rose-900">{deletePublicationTitle(item)}</p>
+              <p className="mt-1 text-xs leading-5 text-rose-700">{deletePublicationDescription(item)}</p>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -790,6 +1171,9 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               </div>
             </div>
           ) : null}
+          {paymentError && payingItemId === item.id ? (
+            <p className="relative z-20 mx-3 mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{paymentError}</p>
+          ) : null}
           <div className={`grid gap-2 px-3 pb-3 ${actionGridClassName}`}>
             {showOpenAction ? (
               <Link href={getItemHref(item)} className="relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
@@ -801,7 +1185,28 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                 Изменить
               </Link>
             ) : null}
-            {draft ? (
+            {payable ? (
+              <button
+                type="button"
+                disabled={payingItemId === item.id}
+                onClick={() => {
+                  setDeletingItemId(null);
+                  setSellingItemId(null);
+                  setUnpublishingItemId(null);
+                  setPaymentError("");
+                  setPayingItemId(item.id);
+                  void createPublicationPayment(item)
+                    .catch((error) => {
+                      setPaymentError(error instanceof Error ? error.message : "Не удалось провести оплату.");
+                    })
+                    .finally(() => setPayingItemId(null));
+                }}
+                className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-sm font-bold text-[#0a8f32] transition hover:border-[#0a8f32] hover:bg-white disabled:cursor-wait disabled:bg-slate-100 disabled:text-slate-500 ${fullWidthActionClassName}`}
+              >
+                {payingItemId === item.id ? "Оплачиваем..." : isDraftPublication(item) ? "Оплатить и опубликовать" : "Оплатить публикацию"}
+              </button>
+            ) : null}
+            {canDeletePublication(item) ? (
               <button
                 type="button"
                 onClick={() => {
@@ -812,7 +1217,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                 className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2 text-sm font-bold text-rose-700 transition hover:border-rose-400 hover:bg-white ${fullWidthActionClassName}`}
               >
                 <Trash2 className="h-4 w-4 shrink-0" />
-                {item.type === "vacancy" ? "Удалить вакансию" : "Удалить черновик"}
+                {deletePublicationButtonLabel(item)}
               </button>
             ) : null}
             {canMarkListingSold(item) ? (
@@ -835,7 +1240,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               >
                 Вернуть в публикацию
               </button>
-            ) : canUnpublishVacancy(item) ? (
+            ) : canDeactivatePaidPublication(item) ? (
               <button
                 type="button"
                 onClick={() => {
@@ -847,11 +1252,11 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               >
                 Снять с публикации
               </button>
-            ) : canRestoreVacancy(item) ? (
+            ) : canRestorePaidPublication(item) ? (
               <>
                 <button
                   type="button"
-                  onClick={() => restoreVacancy(item.id)}
+                  onClick={() => restorePaidPublication(item.id)}
                   className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-sm font-bold text-[#0a8f32] transition hover:border-[#0a8f32] hover:bg-white ${fullWidthActionClassName}`}
                 >
                   Вернуть в публикацию
@@ -1206,6 +1611,15 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
 
       writeCabinetProfile(identity.ownerKey, nextProfile);
       setForm(nextProfile);
+      void addCurrentUserNotification({
+        category: "system",
+        title: "Настройки уведомлений сохранены",
+        message: "Категории событий и каналы доставки обновлены для вашего кабинета.",
+        tone: "success",
+        actionHref: "/cabinet",
+        actionLabel: "Открыть кабинет",
+        dedupeKey: "profile:notification-settings",
+      });
       setMessage("Настройки сохранены.");
       window.setTimeout(onClose, 450);
     } catch (error) {
@@ -1411,23 +1825,47 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
             </button>
           </div>
         </section>
-        <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
-          {[
-            ["notifyBookings", "Брони и заказы"],
-            ["notifyMessages", "Сообщения"],
-            ["notifyPayments", "Оплаты"],
-          ].map(([key, label]) => (
-            <label key={key} className="flex items-center gap-3 text-sm font-bold text-slate-700">
-              <input
-                type="checkbox"
-                checked={Boolean(form[key as keyof CabinetProfile])}
-                onChange={(event) => setForm({ ...form, [key]: event.target.checked })}
-                className="h-4 w-4 accent-[#0875d1]"
-              />
-              {label}
-            </label>
-          ))}
-        </div>
+        <section className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div>
+            <h3 className="font-black text-[#060b27]">Уведомления</h3>
+            <p className="mt-1 text-sm leading-6 text-slate-600">Выберите события, которые будут попадать в колокольчик и будущие email/push-каналы.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              ["notifyBookings", "Брони и заказы"],
+              ["notifyMessages", "Сообщения"],
+              ["notifyPayments", "Оплаты"],
+              ["notifyPublicationStatus", "Статусы публикаций"],
+              ["notifySystem", "Системные события"],
+            ].map(([key, label]) => (
+              <label key={key} className="flex items-center gap-3 text-sm font-bold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form[key as keyof CabinetProfile])}
+                  onChange={(event) => setForm({ ...form, [key]: event.target.checked })}
+                  className="h-4 w-4 accent-[#0875d1]"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <div className="grid gap-3 border-t border-slate-200 pt-3 sm:grid-cols-2">
+            {[
+              ["emailNotifications", "Email-уведомления"],
+              ["pushNotifications", "Push после отдельного разрешения"],
+            ].map(([key, label]) => (
+              <label key={key} className="flex items-center gap-3 text-sm font-bold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form[key as keyof CabinetProfile])}
+                  onChange={(event) => setForm({ ...form, [key]: event.target.checked })}
+                  className="h-4 w-4 accent-[#0875d1]"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </section>
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" disabled={saving} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white disabled:bg-slate-300">
             {saving ? "Сохраняем..." : "Сохранить настройки"}
@@ -1559,12 +1997,12 @@ export function CabinetOverviewClient({ paymentsCount = 0, paymentsTotal = 0 }: 
         <MiniMetric icon={<FileText className="h-5 w-5" />} label="Объявления" value={String(listings.length)} detail="Ваши публикации в каталоге." />
         <MiniMetric icon={<BriefcaseBusiness className="h-5 w-5" />} label="Вакансии" value={String(vacancies.length)} detail="Вакансии вашей организации." />
         <MiniMetric icon={<ClipboardList className="h-5 w-5" />} label="Заказы" value={String(orders.length)} detail="Задачи для исполнителей." />
-        <MiniMetric icon={<CreditCard className="h-5 w-5" />} label="Оплаты" value={`${paymentsTotal} ₽`} detail={`${paymentsCount} платежей в истории.`} />
+        <MiniMetric icon={<CreditCard className="h-5 w-5" />} label="Платежи" value={`${paymentsTotal} ₽`} detail={`${paymentsCount} платежей в истории.`} />
       </div>
       <div className="mt-8 grid min-w-0 items-stretch gap-8">
         <section className="grid min-h-0 min-w-0 grid-rows-[auto_1fr]">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-black text-[#060b27]">Последние оплаты</h2>
+            <h2 className="text-2xl font-black text-[#060b27]">Последние платежи</h2>
             <Link href="/cabinet/oplata" className="text-sm font-bold text-[#0875d1]">
               История
             </Link>
@@ -1577,6 +2015,15 @@ export function CabinetOverviewClient({ paymentsCount = 0, paymentsTotal = 0 }: 
           ) : (
             <EmptyState mode="payment" />
           )}
+        </section>
+        <section className="grid min-h-0 min-w-0 grid-rows-[auto_1fr]">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-2xl font-black text-[#060b27]">История завершенных размещений</h2>
+            <Link href="/cabinet/obyavleniya" className="text-sm font-bold text-[#0875d1]">
+              Управлять
+            </Link>
+          </div>
+          <PublicationHistoryOverview items={items} />
         </section>
       </div>
     </>
@@ -1595,6 +2042,9 @@ export function CabinetPublicationsClient({ type }: { type: DemoPublicationType 
 }
 
 export function CabinetResponsesClient({ responses = [] }: { responses?: CabinetResponseItem[] }) {
+  const [payingResponseId, setPayingResponseId] = useState("");
+  const [responseError, setResponseError] = useState("");
+
   if (!responses.length) {
     return <EmptyState mode="response" />;
   }
@@ -1610,14 +2060,29 @@ export function CabinetResponsesClient({ responses = [] }: { responses?: Cabinet
             </div>
             <h3 className="mt-2 truncate text-lg font-black text-[#060b27]">{response.vacancyTitle}</h3>
             <p className="mt-1 text-sm leading-6 text-slate-600">Отклик от: <span className="font-bold text-slate-800">{response.specialistName}</span></p>
+            {responseError && payingResponseId === response.id ? <p className="mt-2 text-xs font-bold text-rose-600">{responseError}</p> : null}
           </div>
           <div className="grid gap-2 sm:justify-items-end">
             <Link href={response.href} className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]">
               Открыть вакансию
             </Link>
-            <Link href={response.paymentHref} className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0664b3]">
-              {response.status === "sent" ? "Открыть оплату" : "Оплатить отклик"}
-            </Link>
+            <button
+              type="button"
+              disabled={response.status === "sent" || payingResponseId === response.id}
+              onClick={() => {
+                setResponseError("");
+                setPayingResponseId(response.id);
+                void confirmClientPayment(response.paymentId)
+                  .then(() => window.location.reload())
+                  .catch((error) => {
+                    setResponseError(error instanceof Error ? error.message : "Не удалось оплатить отклик.");
+                    setPayingResponseId("");
+                  });
+              }}
+              className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {payingResponseId === response.id ? "Оплачиваем..." : response.status === "sent" ? "Отклик отправлен" : "Оплатить отклик"}
+            </button>
           </div>
         </article>
       ))}
@@ -1626,6 +2091,9 @@ export function CabinetResponsesClient({ responses = [] }: { responses?: Cabinet
 }
 
 export function CabinetPaymentsHistoryClient({ payments = [] }: { payments?: CabinetPaymentHistoryItem[] }) {
+  const [payingPaymentId, setPayingPaymentId] = useState("");
+  const [paymentError, setPaymentError] = useState("");
+
   if (!payments.length) {
     return <EmptyState mode="payment" />;
   }
@@ -1641,12 +2109,27 @@ export function CabinetPaymentsHistoryClient({ payments = [] }: { payments?: Cab
             </div>
             <h3 className="mt-2 truncate text-lg font-black text-[#060b27]">{payment.subject}</h3>
             <p className="mt-1 text-xs font-semibold text-slate-500">Платеж {payment.id}</p>
+            {paymentError && payingPaymentId === payment.id ? <p className="mt-2 text-xs font-bold text-rose-600">{paymentError}</p> : null}
           </div>
           <div className="grid gap-2 sm:justify-items-end">
             <p className="text-2xl font-black text-[#0875d1]">{payment.amount}</p>
-            <Link href={payment.href} className="inline-flex h-10 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
-              Открыть
-            </Link>
+            <button
+              type="button"
+              disabled={payment.status === "succeeded" || payingPaymentId === payment.id}
+              onClick={() => {
+                setPaymentError("");
+                setPayingPaymentId(payment.id);
+                void confirmClientPayment(payment.id)
+                  .then(() => window.location.reload())
+                  .catch((error) => {
+                    setPaymentError(error instanceof Error ? error.message : "Не удалось провести оплату.");
+                    setPayingPaymentId("");
+                  });
+              }}
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
+            >
+              {payingPaymentId === payment.id ? "Оплачиваем..." : payment.status === "succeeded" ? "Оплачено" : "Оплатить"}
+            </button>
           </div>
         </article>
       ))}

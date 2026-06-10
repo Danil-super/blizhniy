@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
-import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, unpublishedVacancyStatus, type DemoPublication } from "@/lib/demo-publications";
+import { appendPublicationHistory, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, unpublishedVacancyStatus, withPublicationHistory, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 import type { JobVacancy } from "@/lib/types";
 
 type VacancyEditClientProps = {
@@ -57,6 +57,11 @@ function readRawValue(formData: FormData, name: string) {
   return String(formData.get(name) ?? "").trim();
 }
 
+function isPendingPaymentStatus(status?: string) {
+  const normalized = status?.trim().toLowerCase();
+  return normalized === "ждет оплаты" || normalized === "ожидает оплату" || normalized === "pending_payment";
+}
+
 export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClientProps) {
   const [storedItems, setStoredItems] = useState<DemoPublication[]>([]);
   const [message, setMessage] = useState("");
@@ -97,7 +102,14 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
     };
 
     try {
-      const nextItems = canPersist ? storedItems.map((item) => (item.id === vacancy.id ? updatedVacancy : item)) : [updatedVacancy, ...storedItems].slice(0, 50);
+      const updatedWithHistory =
+        vacancy.status.trim().toLowerCase() === status.trim().toLowerCase()
+          ? appendPublicationHistory(updatedVacancy, "updated", {
+              status: updatedVacancy.status,
+              description: "Вакансия отредактирована владельцем.",
+            })
+          : withPublicationStatusHistory({ ...updatedVacancy, status: vacancy.status }, status);
+      const nextItems = canPersist ? storedItems.map((item) => (item.id === vacancy.id ? updatedWithHistory : item)) : [withPublicationHistory(updatedVacancy), ...storedItems].slice(0, 50);
       window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
       window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
       window.location.href = "/cabinet/vakansii";
@@ -108,7 +120,7 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextStatus = vacancy?.status === unpublishedVacancyStatus ? unpublishedVacancyStatus : "Опубликовано";
+    const nextStatus = isPendingPaymentStatus(vacancy?.status) ? vacancy?.status ?? "Ждет оплаты" : vacancy?.status === unpublishedVacancyStatus ? unpublishedVacancyStatus : "Опубликовано";
 
     void saveVacancy(event.currentTarget, nextStatus);
   }

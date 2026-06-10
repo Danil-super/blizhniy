@@ -6,7 +6,8 @@ import { DropdownSelect } from "@/components/DropdownSelect";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { fairCategories } from "@/lib/data";
 import { ValidatedInput } from "@/components/ValidatedInput";
-import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, type DemoPublication } from "@/lib/demo-publications";
+import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationHistory, type DemoPublication } from "@/lib/demo-publications";
+import { confirmClientPayment } from "@/lib/client-payment-flow";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 
 type SubmitState = "idle" | "loading" | "error";
@@ -82,7 +83,7 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
       }
 
       const applicationId = typeof payload.application?.id === "string" ? payload.application.id : `demo-fairApplication-${Date.now().toString(36)}`;
-      const publication: DemoPublication = {
+      const publication: DemoPublication = withPublicationHistory({
         id: applicationId,
         type: "fairApplication",
         ownerKey: identity.ownerKey,
@@ -95,7 +96,7 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
         email: String(data.get("email") ?? "").trim(),
         status: adminMode ? "Опубликовано" : "Ждет оплаты",
         createdAt: new Date().toISOString(),
-      };
+      });
 
       writeFairApplicationPublication(publication);
 
@@ -108,7 +109,13 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
         throw new Error("Не удалось создать платеж по заявке.");
       }
 
-      router.push(`/blizhniy/oplata/${payload.payment.id}`);
+      if (typeof payload.payment.confirmationUrl === "string" && payload.payment.confirmationUrl) {
+        window.location.href = payload.payment.confirmationUrl;
+        return;
+      }
+
+      await confirmClientPayment(payload.payment.id);
+      router.push("/cabinet/fair-applications");
     } catch (error) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "Не удалось отправить заявку");
@@ -170,7 +177,7 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
         onVerify={setCaptchaToken}
       />
       <button type="submit" disabled={state === "loading" || !captchaToken} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#0aa337] px-5 text-sm font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-12 sm:w-fit sm:px-7 sm:text-base">
-        {state === "loading" ? "Создаем заявку..." : adminMode ? "Создать заявку без оплаты" : "Создать заявку и перейти к оплате"}
+        {state === "loading" ? (adminMode ? "Создаем заявку..." : "Создаем и оплачиваем...") : adminMode ? "Создать заявку без оплаты" : "Создать заявку и оплатить"}
       </button>
       {state === "error" ? <p className="text-sm font-semibold text-rose-600">{message}</p> : null}
     </form>

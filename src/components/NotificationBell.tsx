@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import Image from "next/image";
 import { Check, X } from "lucide-react";
 import bellGif from "../../bell.gif";
+import { useAuthState } from "@/components/auth/useAuthState";
 import {
   BookingNotification,
   BookingRequest,
@@ -11,6 +13,20 @@ import {
   bookingNotificationsStorageKey,
   bookingRequestsStorageKey,
 } from "@/lib/booking-notifications";
+import {
+  clearSiteNotifications,
+  markSiteNotificationsRead,
+  readSiteNotifications,
+  siteNotificationsEventName,
+  type SiteNotification,
+} from "@/lib/site-notifications";
+import {
+  createDefaultCabinetProfile,
+  readCabinetProfile,
+  resolveClientUserIdentity,
+  type CabinetProfile,
+  type ClientUserIdentity,
+} from "@/lib/client-user-profile";
 
 function readJsonArray<T>(key: string): T[] {
   try {
@@ -36,24 +52,83 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
-export function NotificationBell() {
-  const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<BookingNotification[]>([]);
-  const [requests, setRequests] = useState<BookingRequest[]>([]);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const unreadCount = notifications.filter((notification) => !notification.read).length;
-  const sortedNotifications = useMemo(
-    () => [...notifications].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
-    [notifications],
-  );
-
-  function sync() {
-    setNotifications(readJsonArray<BookingNotification>(bookingNotificationsStorageKey));
-    setRequests(readJsonArray<BookingRequest>(bookingRequestsStorageKey));
+function notificationCategoryLabel(notification: SiteNotification) {
+  if (notification.category === "payment") {
+    return "Оплата";
   }
 
+  if (notification.category === "publication") {
+    return "Публикация";
+  }
+
+  if (notification.category === "booking") {
+    return "Бронь";
+  }
+
+  if (notification.category === "message") {
+    return "Сообщение";
+  }
+
+  if (notification.category === "security") {
+    return "Безопасность";
+  }
+
+  return "Система";
+}
+
+function notificationToneClassName(notification: SiteNotification) {
+  if (notification.tone === "success") {
+    return "border-emerald-100 bg-emerald-50/70";
+  }
+
+  if (notification.tone === "warning") {
+    return "border-amber-100 bg-amber-50/70";
+  }
+
+  if (notification.tone === "danger") {
+    return "border-rose-100 bg-rose-50/70";
+  }
+
+  return notification.read ? "border-slate-100 bg-white" : "border-blue-100 bg-blue-50/70";
+}
+
+export function NotificationBell() {
+  const { state: authState } = useAuthState();
+  const [open, setOpen] = useState(false);
+  const [siteNotifications, setSiteNotifications] = useState<SiteNotification[]>([]);
+  const [bookingNotifications, setBookingNotifications] = useState<BookingNotification[]>([]);
+  const [requests, setRequests] = useState<BookingRequest[]>([]);
+  const [identity, setIdentity] = useState<ClientUserIdentity | null>(null);
+  const [profile, setProfile] = useState<CabinetProfile | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const signedOut = authState === "signed-out";
+  const unreadCount = siteNotifications.filter((notification) => !notification.read).length + bookingNotifications.filter((notification) => !notification.read).length;
+  const sortedSiteNotifications = useMemo(
+    () => [...siteNotifications].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
+    [siteNotifications],
+  );
+  const sortedBookingNotifications = useMemo(
+    () => [...bookingNotifications].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
+    [bookingNotifications],
+  );
+
+  const syncStoredNotifications = useCallback(() => {
+    async function sync() {
+      const nextIdentity = await resolveClientUserIdentity();
+      const nextProfile = readCabinetProfile(nextIdentity.ownerKey, createDefaultCabinetProfile(nextIdentity));
+
+      setIdentity(nextIdentity);
+      setProfile(nextProfile);
+      setSiteNotifications(readSiteNotifications(nextIdentity.ownerKey));
+      setRequests(readJsonArray<BookingRequest>(bookingRequestsStorageKey));
+      setBookingNotifications(nextProfile.notifyBookings ? readJsonArray<BookingNotification>(bookingNotificationsStorageKey) : []);
+    }
+
+    void sync();
+  }, []);
+
   useEffect(() => {
-    sync();
+    syncStoredNotifications();
 
     function handleDocumentClick(event: MouseEvent) {
       if (!rootRef.current?.contains(event.target as Node)) {
@@ -61,33 +136,45 @@ export function NotificationBell() {
       }
     }
 
-    window.addEventListener("storage", sync);
-    window.addEventListener(bookingNotificationsEventName, sync);
+    window.addEventListener("storage", syncStoredNotifications);
+    window.addEventListener(bookingNotificationsEventName, syncStoredNotifications);
+    window.addEventListener(siteNotificationsEventName, syncStoredNotifications);
+    window.addEventListener("blizhniy-profile-updated", syncStoredNotifications);
     document.addEventListener("mousedown", handleDocumentClick);
 
     return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener(bookingNotificationsEventName, sync);
+      window.removeEventListener("storage", syncStoredNotifications);
+      window.removeEventListener(bookingNotificationsEventName, syncStoredNotifications);
+      window.removeEventListener(siteNotificationsEventName, syncStoredNotifications);
+      window.removeEventListener("blizhniy-profile-updated", syncStoredNotifications);
       document.removeEventListener("mousedown", handleDocumentClick);
     };
-  }, []);
+  }, [syncStoredNotifications]);
 
   function emitUpdate() {
     window.dispatchEvent(new Event(bookingNotificationsEventName));
   }
 
   function markAllRead() {
-    const next = notifications.map((notification) => ({ ...notification, read: true }));
+    if (identity) {
+      markSiteNotificationsRead(identity.ownerKey);
+    }
+
+    const next = bookingNotifications.map((notification) => ({ ...notification, read: true }));
     writeJsonArray(bookingNotificationsStorageKey, next);
-    setNotifications(next);
+    setBookingNotifications(next);
     emitUpdate();
+    syncStoredNotifications();
   }
 
   function clearNotifications() {
+    if (identity) {
+      clearSiteNotifications(identity.ownerKey);
+    }
+
     writeJsonArray(bookingNotificationsStorageKey, []);
-    writeJsonArray(bookingRequestsStorageKey, []);
-    setNotifications([]);
-    setRequests([]);
+    setSiteNotifications([]);
+    setBookingNotifications([]);
     emitUpdate();
   }
 
@@ -100,7 +187,7 @@ export function NotificationBell() {
     }
 
     const nextRequests = requests.map((item) => (item.id === requestId ? { ...item, status } : item));
-    const nextNotifications = notifications.map((notification) =>
+    const nextNotifications = bookingNotifications.map((notification) =>
       notification.requestId === requestId && notification.recipient === "owner"
         ? { ...notification, actionable: false, read: true }
         : notification,
@@ -120,7 +207,7 @@ export function NotificationBell() {
 
     writeJsonArray(bookingRequestsStorageKey, nextRequests);
     writeJsonArray(bookingNotificationsStorageKey, [guestNotification, ...nextNotifications].slice(0, 80));
-    sync();
+    syncStoredNotifications();
     emitUpdate();
   }
 
@@ -154,7 +241,9 @@ export function NotificationBell() {
           <div className="grid gap-3 border-b border-slate-100 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
             <div>
               <p className="font-black text-[#060b27]">Уведомления</p>
-              <p className="text-xs font-semibold text-slate-500">Брони и ответы по заявкам</p>
+              <p className="text-xs font-semibold text-slate-500">
+                {signedOut ? "Войдите, чтобы получать личные события" : "Оплаты, публикации, брони и системные события"}
+              </p>
             </div>
             <div className="flex flex-wrap gap-2 sm:justify-end">
               {unreadCount ? (
@@ -162,7 +251,7 @@ export function NotificationBell() {
                   Прочитать
                 </button>
               ) : null}
-              {notifications.length ? (
+              {siteNotifications.length || bookingNotifications.length ? (
                 <button type="button" onClick={clearNotifications} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:text-rose-700">
                   Очистить
                 </button>
@@ -171,8 +260,51 @@ export function NotificationBell() {
           </div>
 
           <div className="max-h-96 overflow-y-auto">
-            {sortedNotifications.length ? (
-              sortedNotifications.map((notification) => {
+            {signedOut ? (
+              <div className="border-b border-slate-100 bg-blue-50/60 px-4 py-4">
+                <p className="font-black text-[#060b27]">Уведомления доступны после входа</p>
+                <p className="mt-1 text-sm leading-5 text-slate-600">Личные события по оплатам, публикациям и заявкам привязываются к аккаунту. Гость видит только локальные уведомления текущего браузера.</p>
+                <Link href="/auth" className="mt-3 inline-flex h-9 items-center justify-center rounded-lg bg-[#0875d1] px-3 text-xs font-bold text-white">
+                  Войти или зарегистрироваться
+                </Link>
+              </div>
+            ) : null}
+            {profile ? (
+              <div className="border-b border-slate-100 px-4 py-2 text-[11px] font-semibold text-slate-500">
+                Каналы: {profile.emailNotifications ? "email включен" : "email выключен"}, {profile.pushNotifications ? "push включен" : "push выключен"}
+              </div>
+            ) : null}
+            {sortedSiteNotifications.length ? (
+              sortedSiteNotifications.map((notification) => (
+                <article key={notification.id} className={`border-b px-4 py-3 ${notificationToneClassName(notification)}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-black text-[#060b27]">{notification.title}</p>
+                        <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                          {notificationCategoryLabel(notification)}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm leading-5 text-slate-600">{notification.message}</p>
+                    </div>
+                    <span className="shrink-0 text-[11px] font-bold text-slate-400">{formatDateTime(notification.createdAt)}</span>
+                  </div>
+                  {notification.actionHref ? (
+                    notification.actionHref.startsWith("http") ? (
+                      <a href={notification.actionHref} className="mt-3 inline-flex h-8 items-center justify-center rounded-lg bg-white px-3 text-xs font-bold text-[#0875d1] ring-1 ring-blue-100 transition hover:ring-blue-200">
+                        {notification.actionLabel ?? "Открыть"}
+                      </a>
+                    ) : (
+                      <Link href={notification.actionHref} className="mt-3 inline-flex h-8 items-center justify-center rounded-lg bg-white px-3 text-xs font-bold text-[#0875d1] ring-1 ring-blue-100 transition hover:ring-blue-200">
+                        {notification.actionLabel ?? "Открыть"}
+                      </Link>
+                    )
+                  ) : null}
+                </article>
+              ))
+            ) : null}
+            {sortedBookingNotifications.length ? (
+              sortedBookingNotifications.map((notification) => {
                 const request = notification.requestId ? requests.find((item) => item.id === notification.requestId) : undefined;
                 const actionable = notification.actionable && request?.status === "pending";
 
@@ -206,12 +338,13 @@ export function NotificationBell() {
                   </article>
                 );
               })
-            ) : (
+            ) : null}
+            {!sortedSiteNotifications.length && !sortedBookingNotifications.length ? (
               <div className="px-4 py-8 text-center">
                 <p className="font-bold text-slate-700">Уведомлений нет</p>
-                <p className="mt-1 text-sm text-slate-500">Новые брони, ответы владельца и системные сообщения появятся здесь.</p>
+                <p className="mt-1 text-sm text-slate-500">Новые оплаты, статусы публикаций, брони и системные сообщения появятся здесь.</p>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       ) : null}

@@ -1,5 +1,5 @@
-import Link from "next/link";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { BriefcaseBusiness, MapPin } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
@@ -8,11 +8,13 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { LocationMap } from "@/components/LocationMap";
 import { VacancyDetailClient } from "@/components/VacancyDetailClient";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
-import { vacancies } from "@/lib/data";
+import { listVacancies } from "@/lib/mock-store";
+
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const vacancy = vacancies.find((item) => item.id === slug);
+  const vacancy = listVacancies().find((item) => item.id === slug);
 
   return {
     title: vacancy ? `${vacancy.title} — вакансия` : "Вакансия",
@@ -25,7 +27,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function VacancyDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const vacancy = vacancies.find((item) => item.id === slug);
+  const vacancy = listVacancies().find((item) => item.id === slug);
 
   if (!vacancy) {
     return (
@@ -34,6 +36,10 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
         <VacancyDetailClient vacancyId={slug} />
       </>
     );
+  }
+
+  if (vacancy.status !== "published") {
+    notFound();
   }
 
   return (
@@ -102,9 +108,6 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
                   Написать
                 </a>
               ) : null}
-              <Link href="/blizhniy/oplata/job-response" className="inline-flex h-11 items-center justify-center rounded-xl border border-[#0875d1] font-bold text-[#0875d1]">
-                Откликнуться
-              </Link>
             </div>
           </aside>
         </article>

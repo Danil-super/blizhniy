@@ -10,69 +10,85 @@ type UserRoleRow = {
   role: string;
 };
 
-export function useAuthState() {
-  const [state, setState] = useState<AuthState>("loading");
+type AuthStateListener = (nextState: AuthState) => void;
 
-  useEffect(() => {
-    let active = true;
+let cachedState: AuthState = "loading";
+let initialized = false;
+let requestId = 0;
+const listeners = new Set<AuthStateListener>();
 
-    function setSafeState(nextState: AuthState) {
-      if (active) {
-        setState(nextState);
-      }
+function publishState(nextState: AuthState) {
+  cachedState = nextState;
+  listeners.forEach((listener) => listener(nextState));
+}
+
+async function resolveUserState(user: User | null | undefined, currentRequestId: number) {
+  if (!user) {
+    if (currentRequestId === requestId) {
+      publishState("signed-out");
+    }
+    return;
+  }
+
+  try {
+    const supabase = getSupabaseBrowserClient();
+    const { data: roles, error } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+
+    if (error) {
+      throw error;
     }
 
-    async function resolveUserState(user: User | null | undefined) {
-      if (!user) {
-        setSafeState("signed-out");
-        return;
-      }
+    if (currentRequestId === requestId) {
+      publishState((roles as UserRoleRow[] | null)?.some((item) => item.role === "admin") ? "admin" : "signed-in");
+    }
+  } catch {
+    if (currentRequestId === requestId) {
+      publishState("signed-in");
+    }
+  }
+}
 
-      try {
-        const supabase = getSupabaseBrowserClient();
-        const { data: roles, error } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+function ensureAuthStateInitialized() {
+  if (initialized) {
+    return;
+  }
 
+  initialized = true;
+
+  try {
+    const supabase = getSupabaseBrowserClient();
+
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
         if (error) {
           throw error;
         }
 
-        setSafeState((roles as UserRoleRow[] | null)?.some((item) => item.role === "admin") ? "admin" : "signed-in");
-      } catch {
-        setSafeState("signed-in");
-      }
-    }
+        const currentRequestId = ++requestId;
+        return resolveUserState(data.session?.user, currentRequestId);
+      })
+      .catch(() => publishState("signed-out"));
 
-    try {
-      const supabase = getSupabaseBrowserClient();
+    supabase.auth.onAuthStateChange((_event, session) => {
+      const currentRequestId = ++requestId;
+      window.setTimeout(() => resolveUserState(session?.user, currentRequestId), 0);
+    });
+  } catch {
+    publishState("signed-out");
+  }
+}
 
-      supabase.auth
-        .getSession()
-        .then(({ data, error }) => {
-          if (error) {
-            throw error;
-          }
+export function useAuthState() {
+  const [state, setState] = useState<AuthState>(cachedState);
 
-          return resolveUserState(data.session?.user);
-        })
-        .catch(() => setSafeState("signed-out"));
-
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange((_event, session) => {
-        setSafeState("loading");
-        window.setTimeout(() => resolveUserState(session?.user), 0);
-      });
-
-      return () => {
-        active = false;
-        subscription.unsubscribe();
-      };
-    } catch {
-      setSafeState("signed-out");
-    }
+  useEffect(() => {
+    ensureAuthStateInitialized();
+    listeners.add(setState);
+    setState(cachedState);
 
     return () => {
-      active = false;
+      listeners.delete(setState);
     };
   }, []);
 

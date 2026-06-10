@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { ClipboardList, MapPin } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
@@ -7,11 +8,11 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { WorkRequestDetailClient } from "@/components/WorkRequestDetailClient";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
-import { workRequests } from "@/lib/data";
+import { listWorkRequests } from "@/lib/mock-store";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const request = workRequests.find((item) => item.id === slug);
+  const request = listWorkRequests().find((item) => item.id === slug);
 
   return {
     title: request ? `${request.title} — заказ` : "Заказ",
@@ -24,7 +25,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function WorkRequestDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const request = workRequests.find((item) => item.id === slug);
+  const request = listWorkRequests().find((item) => item.id === slug);
 
   if (!request) {
     return (
@@ -33,6 +34,10 @@ export default async function WorkRequestDetailPage({ params }: { params: Promis
         <WorkRequestDetailClient requestId={slug} />
       </>
     );
+  }
+
+  if (request.status !== "published") {
+    notFound();
   }
 
   const messageHref = request.messengerUrl ?? `https://wa.me/${(request.phone ?? "+78610009999").replace(/\D/g, "")}`;

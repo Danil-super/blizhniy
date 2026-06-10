@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
-import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, type DemoPublication } from "@/lib/demo-publications";
+import { appendPublicationHistory, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 
 function readStoredPublications() {
   try {
@@ -23,6 +23,11 @@ function readStoredPublications() {
 
 function isDraftStatus(status: string) {
   return status.trim().toLowerCase() === "черновик";
+}
+
+function isPendingPaymentStatus(status?: string) {
+  const normalized = status?.trim().toLowerCase();
+  return normalized === "ждет оплаты" || normalized === "ожидает оплату" || normalized === "pending_payment";
 }
 
 function readValue(formData: FormData, name: string, fallback = "") {
@@ -50,7 +55,7 @@ export function SpecialistEditClient({ specialistId }: { specialistId: string })
     try {
       const identity = await resolveAuthenticatedClientUserIdentity();
       const formData = new FormData(form);
-      const nextStatus = readValue(formData, "status", specialist.status);
+      const nextStatus = isPendingPaymentStatus(specialist.status) ? specialist.status : readValue(formData, "status", specialist.status);
       const updatedSpecialist: DemoPublication = {
         ...specialist,
         ownerKey: identity.ownerKey,
@@ -67,11 +72,18 @@ export function SpecialistEditClient({ specialistId }: { specialistId: string })
       };
       const nextItems = storedItems.map((item) => {
         if (item.id === specialist.id) {
-          return updatedSpecialist;
+          return specialist.status.trim().toLowerCase() === nextStatus.trim().toLowerCase()
+            ? appendPublicationHistory(updatedSpecialist, "updated", {
+                status: updatedSpecialist.status,
+                description: "Анкета специалиста отредактирована владельцем.",
+              })
+            : withPublicationStatusHistory({ ...updatedSpecialist, status: specialist.status }, nextStatus);
         }
 
         if (item.type === "specialist" && !isDraftStatus(nextStatus) && !isDraftStatus(item.status)) {
-          return { ...item, status: "Черновик" };
+          return withPublicationStatusHistory(item, "Черновик", {
+            description: "Анкета переведена в черновик, потому что опубликована другая анкета специалиста.",
+          });
         }
 
         return item;

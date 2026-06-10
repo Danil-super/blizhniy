@@ -23,6 +23,10 @@ export type CabinetProfile = {
   notifyBookings: boolean;
   notifyMessages: boolean;
   notifyPayments: boolean;
+  notifyPublicationStatus: boolean;
+  notifySystem: boolean;
+  emailNotifications: boolean;
+  pushNotifications: boolean;
   organizationName: string;
   organizationInn: string;
   organizationOgrn: string;
@@ -95,6 +99,10 @@ export function createDefaultCabinetProfile(identity: ClientUserIdentity): Cabin
     notifyBookings: true,
     notifyMessages: true,
     notifyPayments: true,
+    notifyPublicationStatus: true,
+    notifySystem: true,
+    emailNotifications: true,
+    pushNotifications: false,
     organizationName: "",
     organizationInn: "",
     organizationOgrn: "",
@@ -126,6 +134,10 @@ export function readCabinetProfile(ownerKey: string, fallback: CabinetProfile): 
         notifyBookings: Boolean(parsed.notifyBookings ?? fallback.notifyBookings),
         notifyMessages: Boolean(parsed.notifyMessages ?? fallback.notifyMessages),
         notifyPayments: Boolean(parsed.notifyPayments ?? fallback.notifyPayments),
+        notifyPublicationStatus: Boolean(parsed.notifyPublicationStatus ?? fallback.notifyPublicationStatus),
+        notifySystem: Boolean(parsed.notifySystem ?? fallback.notifySystem),
+        emailNotifications: Boolean(parsed.emailNotifications ?? fallback.emailNotifications),
+        pushNotifications: Boolean(parsed.pushNotifications ?? fallback.pushNotifications),
         organizationName: String(parsed.organizationName ?? fallback.organizationName),
         organizationInn: String(parsed.organizationInn ?? fallback.organizationInn),
         organizationOgrn: String(parsed.organizationOgrn ?? fallback.organizationOgrn),

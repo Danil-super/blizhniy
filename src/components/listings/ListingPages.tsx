@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   ArrowRight,
@@ -24,12 +24,11 @@ import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { HomeHero } from "@/components/HomeHero";
 import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
-import { TurnstileVerifiedLinkButton } from "@/components/TurnstileVerifiedLinkButton";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { categories } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
-import { createListing, listListings } from "@/lib/mock-store";
+import { createListing, getListingStatusOverride, listListings } from "@/lib/mock-store";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
 import { getTariffs } from "@/lib/tariff-store";
@@ -879,6 +878,17 @@ function createCoverageListings(existingListings: DemoListing[]): DemoListing[] 
 
 export const demoListings: DemoListing[] = [...baseDemoListings, ...createCoverageListings(baseDemoListings)];
 
+export function listDemoListings() {
+  return demoListings.map((listing) => ({
+    ...listing,
+    status: getListingStatusOverride(listing.slug) ?? listing.status,
+  }));
+}
+
+export function listPublicDemoListings() {
+  return listDemoListings().filter((listing) => listing.status === "published");
+}
+
 function parseCoordinate(formData: FormData, name: string) {
   const rawValue = String(formData.get(name) ?? "").trim();
 
@@ -954,7 +964,7 @@ function formatSellerDate(value: string) {
 
 function listingSellerStats(listing: DemoListing) {
   const sellerKey = listingSellerKey(listing);
-  const allListings = [...demoListings, ...listListings().map(toDemoListing)];
+  const allListings = [...listDemoListings(), ...listListings().map(toDemoListing)];
   const sellerListings = allListings.filter((item) => listingSellerKey(item) === sellerKey);
   const firstListing = sellerListings
     .filter((item) => Number.isFinite(dateSortValue(item.createdAt)))
@@ -979,6 +989,42 @@ function parseDateList(formData: FormData, name: string) {
     .filter(Boolean);
 }
 
+function todayInputValue() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeFutureDate(value: string) {
+  const date = value.trim();
+
+  if (!date) {
+    return "";
+  }
+
+  return date < todayInputValue() ? todayInputValue() : date;
+}
+
+function normalizeEndDate(value: string, startDate: string) {
+  const date = value.trim();
+
+  if (!date) {
+    return "";
+  }
+
+  const minDate = startDate || todayInputValue();
+  return date < minDate ? minDate : date;
+}
+
+function parseFutureDateList(formData: FormData, name: string) {
+  const today = todayInputValue();
+
+  return parseDateList(formData, name).filter((date) => date >= today);
+}
+
 function isBookingCategory(categorySlug: string) {
   return categorySlug === "otdyh" || categorySlug === "nedvizhimost";
 }
@@ -995,7 +1041,7 @@ function parseBookingDetails(formData: FormData, categorySlug: string): BookingD
       mode,
       pricePerPerson: parseNumber(formData, "bookingPricePerPerson"),
       maxGuests: parseNumber(formData, "bookingMaxGuests"),
-      tourDate: String(formData.get("tourDate") ?? "").trim(),
+      tourDate: normalizeFutureDate(String(formData.get("tourDate") ?? "")),
       tourTime: String(formData.get("tourTime") ?? "").trim(),
       tourDuration: String(formData.get("tourDuration") ?? "").trim(),
       tourDifficulty: String(formData.get("tourDifficulty") ?? "").trim(),
@@ -1005,6 +1051,8 @@ function parseBookingDetails(formData: FormData, categorySlug: string): BookingD
     };
   }
 
+  const availableFrom = normalizeFutureDate(String(formData.get("bookingAvailableFrom") ?? ""));
+
   return {
     mode,
     priceWeekday: parseNumber(formData, "bookingPriceWeekday"),
@@ -1013,9 +1061,9 @@ function parseBookingDetails(formData: FormData, categorySlug: string): BookingD
     includedGuests: parseNumber(formData, "bookingIncludedGuests"),
     maxGuests: parseNumber(formData, "bookingMaxGuests"),
     extraGuestPrice: parseNumber(formData, "bookingExtraGuestPrice"),
-    availableFrom: String(formData.get("bookingAvailableFrom") ?? "").trim(),
-    availableTo: String(formData.get("bookingAvailableTo") ?? "").trim(),
-    blockedDates: parseDateList(formData, "bookingBlockedDates"),
+    availableFrom,
+    availableTo: normalizeEndDate(String(formData.get("bookingAvailableTo") ?? ""), availableFrom),
+    blockedDates: parseFutureDateList(formData, "bookingBlockedDates"),
     checkInTime: String(formData.get("bookingCheckIn") ?? "").trim(),
     checkOutTime: String(formData.get("bookingCheckOut") ?? "").trim(),
     included: String(formData.get("bookingIncluded") ?? "").trim(),
@@ -1102,7 +1150,7 @@ export function findListingBySlug(slug?: string) {
     return undefined;
   }
 
-  const localListing = demoListings.find((item) => item.slug === slug);
+  const localListing = listDemoListings().find((item) => item.slug === slug);
 
   if (localListing) {
     return localListing;
@@ -1240,7 +1288,7 @@ export function CategoriesPage() {
 
 export function ListingKindPage({ kind }: { kind: ListingKind }) {
   const current = listingKinds.find((item) => item.slug === kind) ?? listingKinds[0];
-  const listings = demoListings.filter((listing) => listing.kind === kind);
+  const listings = listPublicDemoListings().filter((listing) => listing.kind === kind);
   const primaryKinds = listingKinds.filter((item) => item.slug === "prodam" || item.slug === "kuplyu");
   const exchangeKinds = listingKinds.filter((item) => item.slug === "menyayu" || item.slug === "otdam-darom");
   const visibleKinds = kind === "prodam" || kind === "kuplyu" ? primaryKinds : exchangeKinds;
@@ -1301,7 +1349,7 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
 }
 
 export function ExchangeAndFreePage() {
-  const listings = demoListings.filter((listing) => listing.kind === "menyayu" || listing.kind === "otdam-darom");
+  const listings = listPublicDemoListings().filter((listing) => listing.kind === "menyayu" || listing.kind === "otdam-darom");
 
   return (
     <>
@@ -1354,7 +1402,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
   const category = categories.find((item) => item.slug === categorySlug);
   const categoryChildren = category ? getCategoryChildren(category.children) : [];
   const subcategory = category?.children.find((item) => slugifySubcategory(item) === subcategorySlug);
-  const listings = demoListings.filter(
+  const listings = listPublicDemoListings().filter(
     (listing) => listing.categorySlug === categorySlug && (!subcategorySlug || listing.subcategorySlug === subcategorySlug),
   );
   const isKidsGoodsCategory = category?.slug === "tovary-dlya-detey";
@@ -1545,6 +1593,10 @@ export function ListingDetailPage({ slug }: { slug: string }) {
         <DemoListingDetailClient slug={slug} />
       </>
     );
+  }
+
+  if (listing.status !== "published") {
+    notFound();
   }
 
   const hasMapPoint = hasListingMapPoint(listing);
@@ -1941,13 +1993,13 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
               {adminMode ? (
                 <AdminDemoPublishButton publicationType="listing" returnHref="/cabinet/obyavleniya" label="Опубликовать без оплаты" />
               ) : (
-                <TurnstileVerifiedLinkButton
-                  href="/blizhniy/oplata/listing-publication"
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  Перейти к оплате
-                  <ArrowRight className="h-5 w-5" />
-                </TurnstileVerifiedLinkButton>
+                <AdminDemoPublishButton
+                  publicationType="listing"
+                  returnHref="/cabinet/obyavleniya"
+                  label="Создать и оплатить"
+                  paymentTariffId="listing-publication"
+                  buttonClassName="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:bg-slate-300"
+                />
               )}
             </div>
           </form>

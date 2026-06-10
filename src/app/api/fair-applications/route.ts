@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { createPayment } from "@/lib/payment-provider";
 import { createFairApplication, listFairApplications } from "@/lib/mock-store";
+import { isAdminRequest, isAuthenticatedRequest } from "@/lib/server-auth";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileToken } from "@/lib/turnstile";
 
 type CreateFairApplicationBody = {
@@ -33,27 +33,8 @@ function getRemoteIp(request: Request) {
   );
 }
 
-async function isAuthenticatedRequest(request: Request) {
-  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!token || !supabaseUrl || !supabaseAnonKey) {
-    return false;
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: false,
-    },
-  });
-  const { data, error } = await supabase.auth.getUser(token);
-
-  return Boolean(data.user && !error);
-}
-
 export async function GET() {
-  return NextResponse.json({ applications: listFairApplications() });
+  return NextResponse.json({ applications: listFairApplications().filter((application) => application.status === "published") });
 }
 
 export async function POST(request: Request) {
@@ -92,12 +73,16 @@ export async function POST(request: Request) {
   });
 
   if (body.skipPayment === true) {
+    if (!(await isAdminRequest(request))) {
+      return NextResponse.json({ error: "Создать заявку без оплаты может только администратор" }, { status: 403 });
+    }
+
     application.paymentStatus = "succeeded";
     application.status = "published";
     return NextResponse.json({ application }, { status: 201 });
   }
 
-  const payment = createPayment({
+  const payment = await createPayment({
     tariffId: "fair-participation",
     targetId: application.id,
     targetType: "fair_application",

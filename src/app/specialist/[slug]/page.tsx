@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { MapPin } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
@@ -34,6 +35,10 @@ export default async function SpecialistDetailPage({ params }: { params: Promise
         <SpecialistDetailClient specialistId={slug} />
       </>
     );
+  }
+
+  if (specialist.status !== "published") {
+    notFound();
   }
 
   const hasMapPoint = (specialist.hasMapPoint ?? true) && hasMapCoordinates(specialist.lat, specialist.lng);

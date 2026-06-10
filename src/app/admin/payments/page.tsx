@@ -1,7 +1,7 @@
-import { AdminPaymentsPage } from "@/components/MvpDashboard";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default function Page() {
-  return <AdminPaymentsPage />;
+  redirect("/admin/tariffs");
 }

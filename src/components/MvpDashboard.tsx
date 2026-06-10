@@ -12,10 +12,8 @@ import {
   CreditCard,
   FileText,
   Gauge,
-  Megaphone,
   MessageSquare,
   Plus,
-  Settings2,
   ShieldCheck,
   Store,
   Tags,
@@ -24,6 +22,7 @@ import {
 } from "lucide-react";
 import { AdminAuthGate } from "@/components/auth/AdminAuthGate";
 import { AdMarqueeAdminPanel } from "@/components/AdMarqueeAdminPanel";
+import { AdminPublicationStatusForm } from "@/components/AdminPublicationStatusForm";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
 import { CabinetShellActions } from "@/components/cabinet/CabinetShellActions";
@@ -43,11 +42,27 @@ import {
 import { CategoryOrderAdminPanel } from "@/components/CategoryOrderAdminPanel";
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
+import { listDemoListings, toDemoListing } from "@/components/listings/ListingPages";
 import type { DemoPublication } from "@/lib/demo-publications";
-import { categories, professions } from "@/lib/data";
+import { categories } from "@/lib/data";
 import { getPayment } from "@/lib/payment-provider";
-import { getCurrentUserSpecialist, listApplications, listFairApplications, listListings, listMockPayments, listSpecialists, listVacancies } from "@/lib/mock-store";
-import type { SpecialistProfile } from "@/lib/types";
+import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
+import {
+  getCurrentUserSpecialist,
+  listApplications,
+  listFairApplications,
+  listListings,
+  listMockPayments,
+  listSpecialists,
+  listVacancies,
+  listWorkRequests,
+  updateFairApplicationStatus,
+  updateListingStatus,
+  updateSpecialistStatus,
+  updateVacancyStatus,
+  updateWorkRequestStatus,
+} from "@/lib/mock-store";
+import type { PublicationStatus, SpecialistProfile } from "@/lib/types";
 import { getTariffById, getTariffs, resetTariffPatches, updateTariffPatch } from "@/lib/tariff-store";
 
 type StatusTone = "green" | "blue" | "amber" | "slate" | "red" | "violet";
@@ -67,14 +82,18 @@ const adminUsers = [
 const statusLabels: Record<string, string> = {
   active: "Активен",
   archive: "Архив",
+  archived: "Архив",
   blocked: "Заблокирован",
   created: "Создан",
   draft: "Черновик",
+  expired: "Истек срок",
   failed: "Ошибка",
   paid: "Оплачен",
   pending_payment: "Ждет оплату",
   pending: "Ожидает",
   published: "Опубликовано",
+  rejected: "Отклонено",
+  sold: "Продано",
   sent: "Отправлен",
   succeeded: "Успешно",
   viewed: "Просмотрен",
@@ -83,18 +102,32 @@ const statusLabels: Record<string, string> = {
 const statusTones: Record<string, StatusTone> = {
   active: "green",
   archive: "slate",
+  archived: "slate",
   blocked: "red",
   created: "amber",
   draft: "slate",
+  expired: "amber",
   failed: "red",
   paid: "green",
   pending: "amber",
   pending_payment: "amber",
   published: "blue",
+  rejected: "red",
+  sold: "slate",
   sent: "blue",
   succeeded: "green",
   viewed: "violet",
 };
+
+const moderationStatusOptions: Array<{ label: string; value: PublicationStatus }> = [
+  { label: "Опубликовано", value: "published" },
+  { label: "Черновик", value: "draft" },
+  { label: "Ждет оплату", value: "pending_payment" },
+  { label: "Архив", value: "archived" },
+  { label: "Отклонено", value: "rejected" },
+  { label: "Истек срок", value: "expired" },
+  { label: "Продано", value: "sold" },
+];
 
 function specialistToDemoPublication(specialist: SpecialistProfile): DemoPublication {
   return {
@@ -127,7 +160,7 @@ const cabinetNav = [
   { href: "/cabinet/specialist", label: "Анкета", icon: CircleUserRound },
   { href: "/cabinet/otkliki", label: "Отклики", icon: MessageSquare },
   { href: "/cabinet/fair-applications", label: "Ярмарка", icon: Store },
-  { href: "/cabinet/oplata", label: "Оплата", icon: CreditCard },
+  { href: "/cabinet/oplata", label: "Платежи", icon: CreditCard },
 ];
 
 const adminNav = [
@@ -135,12 +168,10 @@ const adminNav = [
   { href: "/admin/users", label: "Пользователи", icon: UsersRound },
   { href: "/admin/obyavleniya", label: "Объявления", icon: FileText },
   { href: "/admin/vakansii", label: "Вакансии", icon: BriefcaseBusiness },
+  { href: "/admin/zakazy", label: "Заказы", icon: ClipboardList },
   { href: "/admin/specialisty", label: "Специалисты", icon: CircleUserRound },
   { href: "/admin/categories", label: "Категории", icon: Tags },
-  { href: "/admin/specialist-classifier", label: "Классификатор", icon: Settings2 },
   { href: "/admin/tariffs", label: "Тарифы", icon: WalletCards },
-  { href: "/admin/payments", label: "Цены", icon: Banknote },
-  { href: "/admin#ad-marquee", label: "Реклама", icon: Megaphone },
   { href: "/admin/fair-applications", label: "Ярмарка", icon: Store },
 ];
 
@@ -148,11 +179,12 @@ async function updateTariffAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
   const price = Number(formData.get("price"));
   const durationRaw = String(formData.get("durationDays") ?? "").trim();
   const active = formData.get("active") === "1";
 
-  if (!id || !getTariffById(id) || Number.isNaN(price) || price < 0) {
+  if (!id || !name || !getTariffById(id) || Number.isNaN(price) || price < 0) {
     return;
   }
 
@@ -168,9 +200,10 @@ async function updateTariffAction(formData: FormData) {
     durationDays = parsedDuration;
   }
 
-  updateTariffPatch(id, { price, durationDays, active });
-  revalidatePath("/admin/payments");
+  updateTariffPatch(id, { name, price, durationDays, active });
+  revalidatePath("/admin/tariffs");
   revalidatePath("/cabinet/oplata");
+  revalidatePath("/oplata/[paymentId]", "page");
   revalidatePath("/tarify");
 }
 
@@ -178,18 +211,84 @@ async function resetTariffsAction() {
   "use server";
 
   resetTariffPatches();
-  revalidatePath("/admin/payments");
+  revalidatePath("/admin/tariffs");
   revalidatePath("/cabinet/oplata");
+  revalidatePath("/oplata/[paymentId]", "page");
   revalidatePath("/tarify");
 }
 
+async function updatePublicationStatusAction(formData: FormData) {
+  "use server";
+
+  const entityType = String(formData.get("entityType") ?? "");
+  const id = String(formData.get("id") ?? "");
+  const status = String(formData.get("status") ?? "") as PublicationStatus;
+
+  if (!id || !moderationStatusOptions.some((option) => option.value === status)) {
+    return;
+  }
+
+  if (entityType === "listing") {
+    updateListingStatus(id, status);
+    revalidatePath("/admin/obyavleniya");
+    revalidatePath("/krasnodar");
+    revalidatePath("/krasnodar/[categorySlug]", "page");
+    revalidatePath("/krasnodar/[categorySlug]/[subcategorySlug]", "page");
+    revalidatePath("/obyavlenie/[slug]", "page");
+    revalidatePath("/poisk");
+    return;
+  }
+
+  if (entityType === "vacancy") {
+    updateVacancyStatus(id, status);
+    revalidatePath("/admin/vakansii");
+    revalidatePath("/krasnodar/rabota");
+    revalidatePath("/krasnodar/rabota/vakansii");
+    revalidatePath("/vakansiya/[slug]", "page");
+    revalidatePath("/poisk");
+    return;
+  }
+
+  if (entityType === "specialist") {
+    updateSpecialistStatus(id, status);
+    revalidatePath("/admin/specialisty");
+    revalidatePath("/krasnodar/rabota");
+    revalidatePath("/krasnodar/rabota/specialisty");
+    revalidatePath("/krasnodar/rabota/specialisty/[professionSlug]", "page");
+    revalidatePath("/specialist/[slug]", "page");
+    revalidatePath("/poisk");
+    return;
+  }
+
+  if (entityType === "workRequest") {
+    updateWorkRequestStatus(id, status);
+    revalidatePath("/admin/zakazy");
+    revalidatePath("/krasnodar/rabota");
+    revalidatePath("/krasnodar/rabota/zakazy/[slug]", "page");
+    revalidatePath("/poisk");
+    return;
+  }
+
+  if (entityType === "fairApplication") {
+    updateFairApplicationStatus(id, status);
+    revalidatePath("/admin/fair-applications");
+    revalidatePath("/yarmarka-masterov");
+    revalidatePath("/poisk");
+  }
+}
+
 function listingRows() {
-  return listListings().map((listing, index) => ({
-    id: listing.id,
+  const allListings = [...listDemoListings(), ...listListings().map(toDemoListing)];
+  const uniqueListings = Array.from(new Map(allListings.map((listing) => [listing.slug, listing])).values());
+
+  return uniqueListings.map((listing, index) => ({
+    id: listing.viewId ?? listing.slug,
+    statusTargetId: listing.slug,
+    statusEntityType: "listing",
     href: `/blizhniy/obyavlenie/${listing.slug}`,
     editHref: `/blizhniy/obyavlenie/${listing.slug}/redaktirovat`,
     title: listing.title,
-    category: categories.find((category) => category.slug === listing.categorySlug)?.name ?? listing.subcategory,
+    category: listing.categoryName,
     city: listing.city,
     district: listing.district ?? listing.address ?? "",
     status: listing.status,
@@ -200,7 +299,7 @@ function listingRows() {
 function paymentRows() {
   return listMockPayments().map((payment) => ({
     id: payment.id,
-    href: `/blizhniy/oplata/${payment.id}`,
+    href: `/oplata/${payment.id}`,
     editHref: "/cabinet/oplata",
     subject: payment.targetTitle,
     amount: `${payment.amount} ₽`,
@@ -213,7 +312,7 @@ function responseRows(): CabinetResponseItem[] {
   return listApplications().map((application) => ({
     href: "/blizhniy/rabota/vakansii",
     id: application.id,
-    paymentHref: `/blizhniy/oplata/${application.paymentId}`,
+    paymentHref: `/oplata/${application.paymentId}`,
     paymentId: application.paymentId,
     specialistName: application.specialistName,
     status: application.status,
@@ -343,13 +442,15 @@ function AdminGuardedContent({ children }: { children: React.ReactNode }) {
 
 function MetricCard({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) {
   return (
-    <article className="flex min-h-32 flex-col justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:min-h-0 sm:p-5">
-      <div className="flex items-start justify-between gap-2 sm:gap-4">
-        <p className="text-xs font-bold leading-4 text-slate-500 sm:text-sm">{label}</p>
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1] sm:h-10 sm:w-10">{icon}</span>
+    <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-3.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-bold leading-4 text-slate-500">{label}</p>
+          <p className="mt-1.5 line-clamp-1 text-2xl font-black leading-tight text-[#060b27]">{value}</p>
+          <p className="mt-1 line-clamp-1 text-xs leading-4 text-slate-600">{detail}</p>
+        </div>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">{icon}</span>
       </div>
-      <p className="mt-2 line-clamp-2 text-xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-3xl">{value}</p>
-      <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{detail}</p>
     </article>
   );
 }
@@ -418,8 +519,8 @@ function DataTable<T extends Record<string, unknown>>({ columns, rows }: { colum
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
-      <div className="overflow-x-auto">
+    <div className="rounded-xl border border-slate-200 bg-white shadow-card">
+      <div className="overflow-x-auto overflow-y-visible">
         <table className="w-full min-w-[640px] border-collapse text-left">
           <thead className="bg-slate-50 text-sm text-slate-500">
             <tr>
@@ -448,13 +549,23 @@ function DataTable<T extends Record<string, unknown>>({ columns, rows }: { colum
                       <summary className="inline-flex h-9 list-none cursor-pointer items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-[#0875d1] marker:content-none">
                         Изменить
                       </summary>
-                      <div className="mt-1 min-w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                      <div className="absolute right-0 top-[calc(100%+0.25rem)] z-[200] min-w-56 rounded-lg border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/10">
                         <Link href={getEditHref(row)} className="block rounded-md px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-[#0875d1]">
                           Редактировать карточку
                         </Link>
-                        <Link href={getStatusHref(row)} className="block rounded-md px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-[#0875d1]">
-                          Изменить статус
-                        </Link>
+                        {String(row.statusEntityType ?? "") ? (
+                          <AdminPublicationStatusForm
+                            entityType={String(row.statusEntityType)}
+                            id={String(row.statusTargetId ?? row.id ?? "")}
+                            status={String(row.status ?? "published")}
+                            options={moderationStatusOptions}
+                            updateStatusAction={updatePublicationStatusAction}
+                          />
+                        ) : (
+                          <Link href={getStatusHref(row)} className="block rounded-md px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-[#0875d1]">
+                            Изменить статус
+                          </Link>
+                        )}
                       </div>
                     </details>
                   </div>
@@ -579,45 +690,46 @@ export function CabinetResponsesPage() {
 }
 
 export function CabinetPaymentsPage() {
-  const tariffs = getTariffs();
-  const adTariff = tariffs.find((tariff) => tariff.action === "ad_marquee");
-  const publicationTariffs = tariffs.filter((tariff) => tariff.action !== "ad_marquee");
   const payments = paymentRows() as CabinetPaymentHistoryItem[];
+  const pendingPayments = payments.filter((payment) => payment.status !== "succeeded");
 
   return (
-    <Shell title="Оплата и тарифы" description="Тарифы публикаций, история платежей и переход к оплате заказа." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/oplata" createHref={null}>
+    <Shell title="Платежи" description="Сформированные заказы, ожидающие оплаты, и история платежей." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/oplata" createHref={null}>
       <CabinetAuthGate>
-        {adTariff ? (
-          <section className="mb-4 rounded-xl border border-blue-100 bg-blue-50/70 p-3 shadow-card sm:mb-6 sm:p-5">
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
-              <div>
-                <p className="text-xs font-black uppercase text-[#0875d1]">Реклама</p>
-                <h2 className="mt-1 text-lg font-black text-[#060b27] sm:text-2xl">{adTariff.name}</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Покупка места в бегущей строке на главной странице на {adTariff.durationDays} дней.
-                </p>
-              </div>
-              <div className="grid grid-cols-[1fr_auto] items-center gap-3 sm:block sm:text-right">
-                <p className="text-2xl font-black text-[#0875d1] sm:text-3xl">{adTariff.price} ₽</p>
-                <Link href={`/blizhniy/oplata/${adTariff.id}`} className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0aa337] px-4 text-sm font-bold text-white sm:mt-3 sm:w-full">
-                  Купить
-                </Link>
-              </div>
+        <section className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 shadow-card sm:p-5">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div>
+              <p className="text-xs font-black uppercase text-[#0875d1]">Оплата по заказу</p>
+              <h2 className="mt-1 text-lg font-black text-[#060b27] sm:text-2xl">Платеж появляется после создания публикации</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                Сначала создайте объявление, вакансию, анкету, отклик или заявку на ярмарку. После этого здесь появится понятный счет с названием и суммой.
+              </p>
             </div>
-          </section>
-        ) : null}
-        <section className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
-          {publicationTariffs.map((tariff) => (
-            <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-5" key={tariff.id}>
-              <h2 className="line-clamp-2 text-sm font-black leading-5 text-[#060b27] sm:text-xl sm:leading-7">{tariff.name}</h2>
-              <p className="mt-2 text-2xl font-black text-[#0875d1] sm:mt-3 sm:text-3xl">{tariff.price} ₽</p>
-              <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{tariff.durationDays ? `${tariff.durationDays} дней размещения` : "Разовое действие"}</p>
-              <Link href={`/blizhniy/oplata/${tariff.id}`} className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0aa337] text-sm font-bold text-white sm:mt-5 sm:h-11">
-                Оплатить
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <Link href="/blizhniy/sozdat/obyavlenie" className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white">
+                Создать объявление
               </Link>
-            </article>
-          ))}
+              <Link href="/blizhniy/rabota/vakansii/sozdat" className="inline-flex h-10 items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-bold text-[#0875d1]">
+                Разместить вакансию
+              </Link>
+            </div>
+          </div>
         </section>
+
+        <section className="mt-6">
+          <SectionTitle title="Ожидают оплаты" />
+          {pendingPayments.length ? (
+            <CabinetPaymentsHistoryClient payments={pendingPayments} />
+          ) : (
+            <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
+              <div>
+                <p className="text-sm font-black text-[#060b27]">Нет неоплаченных заказов</p>
+                <p className="mt-1 text-sm leading-6 text-slate-600">Когда публикация или отклик будут ждать оплату, они появятся в этом блоке.</p>
+              </div>
+            </article>
+          )}
+        </section>
+
         <section className="mt-8">
           <SectionTitle title="История платежей" />
           <CabinetPaymentsHistoryClient payments={payments} />
@@ -691,43 +803,29 @@ export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
 
 export function AdminPage() {
   const tariffs = getTariffs();
+  const activeTariffs = tariffs.filter((tariff) => tariff.active).length;
+  const publicationsCount = listListings().length + listVacancies().length + listSpecialists().length;
+  const paymentsCount = adminPaymentRows().length;
 
   return (
-    <Shell title="Админка" description="Панель модерации пользователей, контента, классификаторов, тарифов и платежей." eyebrow="Администрирование" createHref={null}>
+    <Shell title="Админка" description="Рабочий обзор: реклама, быстрый переход к разделам и ключевые показатели." eyebrow="Администрирование" createHref={null}>
       <AdminGuardedContent>
         <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard icon={<UsersRound className="h-5 w-5" />} label="Пользователи" value="3" detail="Роли user, organization, admin." />
-          <MetricCard icon={<ClipboardList className="h-5 w-5" />} label="Публикации" value="9" detail="Объявления, вакансии, анкеты." />
-          <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тарифы" value={String(tariffs.length)} detail="Все тарифы активны." />
-          <MetricCard icon={<Banknote className="h-5 w-5" />} label="Платежи" value="3" detail="Есть успешный, ожидающий и ошибка." />
+          <MetricCard icon={<ClipboardList className="h-5 w-5" />} label="Публикации" value={String(publicationsCount)} detail="Объявления, вакансии, анкеты." />
+          <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тарифы" value={`${activeTariffs}/${tariffs.length}`} detail="Активные тарифы из общей сетки." />
+          <MetricCard icon={<Banknote className="h-5 w-5" />} label="Платежи" value={String(paymentsCount)} detail="История на вкладке тарифов." />
         </div>
-        <div id="ad-marquee" className="mt-4 scroll-mt-24 sm:mt-6">
+        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <AdMarqueeAdminPanel />
-        </div>
-        <div className="mt-6 grid gap-6 xl:grid-cols-2">
-          <section>
-            <SectionTitle title="Очередь модерации" actionHref="/admin/obyavleniya" actionLabel="Все объявления" />
-            <DataTable
-              rows={listingRows()}
-              columns={[
-                { key: "id", label: "ID" },
-                { key: "title", label: "Публикация" },
-                { key: "category", label: "Категория" },
-                { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-              ]}
-            />
-          </section>
-          <section>
-            <SectionTitle title="Последние платежи" actionHref="/admin/payments" actionLabel="Все платежи" />
-            <DataTable
-              rows={adminPaymentRows()}
-              columns={[
-                { key: "id", label: "ID" },
-                { key: "user", label: "Пользователь" },
-                { key: "amount", label: "Сумма" },
-                { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-              ]}
-            />
+          <section className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+            <h2 className="text-lg font-black text-[#060b27]">Разделы управления</h2>
+            <div className="mt-3 grid gap-2">
+              <ActionLink href="/admin/obyavleniya" tone="plain">Объявления</ActionLink>
+              <ActionLink href="/admin/vakansii" tone="plain">Вакансии</ActionLink>
+              <ActionLink href="/admin/specialisty" tone="plain">Специалисты</ActionLink>
+              <ActionLink href="/admin/tariffs" tone="plain">Тарифы и платежи</ActionLink>
+            </div>
           </section>
         </div>
       </AdminGuardedContent>
@@ -779,6 +877,8 @@ export function AdminListingsPage() {
 export function AdminVacanciesPage() {
   const rows = listVacancies().map((vacancy) => ({
     id: vacancy.id,
+    statusTargetId: vacancy.id,
+    statusEntityType: "vacancy",
     organization: vacancy.organization,
     title: vacancy.title,
     city: vacancy.city,
@@ -805,9 +905,44 @@ export function AdminVacanciesPage() {
   );
 }
 
+export function AdminWorkRequestsPage() {
+  const rows = listWorkRequests().map((request) => ({
+    id: request.id,
+    statusTargetId: request.id,
+    statusEntityType: "workRequest",
+    author: request.author,
+    title: request.title,
+    profession: request.profession,
+    city: request.city,
+    budget: request.budget,
+    status: request.status,
+    href: `/blizhniy/rabota/zakazy/${request.id}`,
+    editHref: `/blizhniy/rabota/zakazy/${request.id}/redaktirovat`,
+  }));
+
+  return (
+    <AdminTablePage
+      title="Заказы"
+      description="Заявки заказчиков для специалистов и исполнителей с управлением видимостью."
+      rows={rows as unknown as Record<string, unknown>[]}
+      columns={[
+        { key: "id", label: "ID" },
+        { key: "author", label: "Заказчик" },
+        { key: "title", label: "Задача" },
+        { key: "profession", label: "Профессия" },
+        { key: "city", label: "Город" },
+        { key: "budget", label: "Бюджет" },
+        { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
+      ]}
+    />
+  );
+}
+
 export function AdminSpecialistsPage() {
   const rows = listSpecialists().map((specialist) => ({
     id: specialist.id,
+    statusTargetId: specialist.id,
+    statusEntityType: "specialist",
     name: specialist.name,
     profession: specialist.profession,
     city: specialist.city,
@@ -843,9 +978,10 @@ export function AdminCategoriesPage() {
     childrenText: category.children.join(", "),
     status: "active",
   }));
+  const createHref = isDemoAdminBypassEnabled() ? "/blizhniy/sozdat?admin=1" : "/blizhniy/sozdat";
 
   return (
-    <Shell title="Категории" description="Рубрикатор объявлений с дочерними разделами для модерации каталога." eyebrow="Администрирование" createHref="/blizhniy/sozdat?admin=1">
+    <Shell title="Категории" description="Рубрикатор объявлений с дочерними разделами для модерации каталога." eyebrow="Администрирование" createHref={createHref}>
       <AdminGuardedContent>
         <CategoryOrderAdminPanel />
         <div className="mt-6">
@@ -864,174 +1000,123 @@ export function AdminCategoriesPage() {
   );
 }
 
-export function AdminClassifierPage() {
+function TariffEditorSection({ tariffs, title = "Редактирование тарифов", intro }: { tariffs: ReturnType<typeof getTariffs>; title?: string; intro?: string }) {
   return (
-    <AdminTablePage
-      title="Классификатор специалистов"
-      description="Профессии специалистов, родительские группы и активность в каталоге."
-      rows={professions.map((profession) => ({
-        ...profession,
-        id: profession.slug,
-        href: `/blizhniy/rabota/specialisty/${profession.slug}`,
-        editHref: `/blizhniy/rabota/specialisty/klassifikator?edit=${profession.slug}`,
-        status: profession.active ? "active" : "archive",
-      }))}
-      columns={[
-        { key: "name", label: "Профессия" },
-        { key: "parent", label: "Группа" },
-        { key: "slug", label: "Slug" },
-        { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-      ]}
-    />
+    <section id="tariff-prices" className="scroll-mt-24 rounded-lg border border-blue-100 bg-blue-50/50 p-3 sm:p-4">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-lg font-black text-[#060b27] sm:text-xl">{title}</h2>
+          {intro ? <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600 sm:text-sm">{intro}</p> : null}
+        </div>
+        <form action={resetTariffsAction} className="shrink-0">
+          <button
+            type="submit"
+            className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:w-auto"
+          >
+            Сбросить тарифы
+          </button>
+        </form>
+      </div>
+      <div className="grid gap-2 xl:grid-cols-2">
+        {tariffs.map((tariff) => (
+          <form id={`tariff-${tariff.id}`} key={tariff.id} action={updateTariffAction} className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+            <input type="hidden" name="id" value={tariff.id} />
+            <div className="grid gap-2 sm:grid-cols-[minmax(14rem,1fr)_auto] sm:items-end">
+              <div className="min-w-0">
+                <label className="grid gap-1 text-xs font-bold text-slate-600">
+                  Название
+                  <input
+                    type="text"
+                    name="name"
+                    defaultValue={tariff.name}
+                    className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-bold text-[#060b27] outline-none focus:border-[#0875d1]"
+                  />
+                </label>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                <StatusBadge status={tariff.active ? "active" : "archive"} />
+                <Link href="/tarify" className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]">
+                  Проверить
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)_auto_auto] sm:items-end">
+              <label className="grid gap-1 text-xs font-bold text-slate-600">
+                Цена, ₽
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  name="price"
+                  defaultValue={tariff.price}
+                  className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
+                />
+              </label>
+              <label className="grid gap-1 text-xs font-bold text-slate-600">
+                Дней размещения
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  name="durationDays"
+                  placeholder="Разовое действие"
+                  defaultValue={tariff.durationDays ?? ""}
+                  className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
+                />
+              </label>
+              <label className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700">
+                <input type="checkbox" name="active" value="1" defaultChecked={tariff.active} className="h-4 w-4 accent-[#0875d1]" />
+                Активен
+              </label>
+              <button type="submit" className="inline-flex h-9 items-center justify-center rounded-lg bg-[#0875d1] px-3 text-xs font-bold text-white transition hover:bg-[#0664b3]">
+                Сохранить
+              </button>
+            </div>
+          </form>
+        ))}
+      </div>
+    </section>
   );
 }
 
 export function AdminTariffsPage() {
   const tariffs = getTariffs();
-
-  return (
-    <AdminTablePage
-      title="Тарифы"
-      description="Тарифная сетка действий: публикации, вакансии и платные отклики."
-      rows={tariffs.map((tariff) => ({
-        ...tariff,
-        id: tariff.id,
-        href: "/tarify",
-        editHref: "/admin/payments#tariff-prices",
-        priceText: `${tariff.price} ₽`,
-        status: tariff.active ? "active" : "archive",
-      }))}
-      columns={[
-        { key: "name", label: "Название" },
-        { key: "action", label: "Действие" },
-        { key: "priceText", label: "Цена" },
-        { key: "durationDays", label: "Дней" },
-        { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-      ]}
-    />
-  );
-}
-
-export function AdminPaymentsPage() {
-  const tariffs = getTariffs();
+  const activeTariffs = tariffs.filter((tariff) => tariff.active);
+  const archivedTariffs = tariffs.length - activeTariffs.length;
+  const minPrice = tariffs.reduce((min, tariff) => Math.min(min, tariff.price), Number.POSITIVE_INFINITY);
   const rows = adminPaymentRows().map((payment) => ({
     ...payment,
-    href: `/blizhniy/oplata/${payment.id}`,
-    editHref: "/admin/payments#tariff-prices",
+    href: `/oplata/${payment.id}`,
+    editHref: "/admin/tariffs#payments",
+    statusHref: "/admin/tariffs#payments",
   }));
 
   return (
-    <Shell
-      title="Цены"
-      description="Редактирование цен и история платежей с суммами, пользователями и статусами."
-      eyebrow="Администрирование"
-      createHref="/blizhniy/sozdat?admin=1"
-    >
+    <Shell title="Тарифы" description="Тарифная сетка действий: публикации, вакансии, реклама, отклики и ярмарка." eyebrow="Администрирование" createHref={null}>
       <AdminGuardedContent>
-        <section id="tariff-prices" className="mb-8 scroll-mt-24 rounded-xl border border-blue-100 bg-blue-50/50 p-3 sm:p-5">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Редактирование цен</h2>
-            <form action={resetTariffsAction}>
-              <button type="submit" className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:text-sm">
-                Сбросить цены
-              </button>
-            </form>
-          </div>
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {tariffs.map((tariff) => {
-              const hasDuration = tariff.durationDays !== null;
-
-              if (!hasDuration) {
-                return (
-                  <form key={tariff.id} action={updateTariffAction} className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                    <input type="hidden" name="id" value={tariff.id} />
-                    <input type="hidden" name="durationDays" value="" />
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-black leading-5 text-[#060b27]">{tariff.name}</p>
-                        <p className="mt-0.5 text-xs text-slate-500">{tariff.id}</p>
-                      </div>
-                      <label className="flex h-8 shrink-0 items-center gap-2 text-xs font-bold text-slate-600">
-                        <input type="checkbox" name="active" value="1" defaultChecked={tariff.active} className="h-4 w-4 accent-[#0875d1]" />
-                        Активен
-                      </label>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                      <label className="grid gap-1 text-xs font-bold text-slate-600">
-                        Цена, ₽
-                        <input
-                          type="number"
-                          min={0}
-                          step={1}
-                          name="price"
-                          defaultValue={tariff.price}
-                          className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
-                        />
-                      </label>
-                      <button type="submit" className="inline-flex h-9 items-center justify-center rounded-lg bg-[#0875d1] px-3 text-xs font-bold text-white transition hover:bg-[#0664b3] sm:min-w-24">
-                        Сохранить
-                      </button>
-                    </div>
-                  </form>
-                );
-              }
-
-              return (
-                <form key={tariff.id} action={updateTariffAction} className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                  <input type="hidden" name="id" value={tariff.id} />
-                  <div>
-                    <p className="text-sm font-black leading-5 text-[#060b27]">{tariff.name}</p>
-                    <p className="mt-0.5 text-xs text-slate-500">{tariff.id}</p>
-                  </div>
-                  <div className={`grid gap-2 ${hasDuration ? "sm:grid-cols-2" : ""}`}>
-                    <label className="grid gap-1 text-xs font-bold text-slate-600">
-                      Цена, ₽
-                      <input
-                        type="number"
-                        min={0}
-                        step={1}
-                        name="price"
-                        defaultValue={tariff.price}
-                        className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
-                      />
-                    </label>
-                    <label className="grid gap-1 text-xs font-bold text-slate-600">
-                      Дней размещения
-                      <input
-                        type="number"
-                        min={0}
-                        step={1}
-                        name="durationDays"
-                        defaultValue={tariff.durationDays ?? ""}
-                        className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
-                      />
-                    </label>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
-                      <input type="checkbox" name="active" value="1" defaultChecked={tariff.active} className="h-4 w-4 accent-[#0875d1]" />
-                      Активен
-                    </label>
-                    <button type="submit" className="inline-flex h-9 items-center justify-center rounded-lg bg-[#0875d1] px-3 text-xs font-bold text-white transition hover:bg-[#0664b3]">
-                      Сохранить
-                    </button>
-                  </div>
-                </form>
-              );
-            })}
-          </div>
-        </section>
-
-        <DataTable
-          rows={rows}
-          columns={[
-            { key: "id", label: "ID" },
-            { key: "user", label: "Пользователь" },
-            { key: "subject", label: "Назначение" },
-            { key: "amount", label: "Сумма" },
-            { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-          ]}
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
+          <MetricCard icon={<CheckCircle2 className="h-5 w-5" />} label="Активные" value={String(activeTariffs.length)} detail="Доступны пользователям для оплаты." />
+          <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Всего тарифов" value={String(tariffs.length)} detail={`${archivedTariffs} в архиве.`} />
+          <MetricCard icon={<Banknote className="h-5 w-5" />} label="Минимальная цена" value={`${Number.isFinite(minPrice) ? minPrice : 0} ₽`} detail="Среди текущих тарифов." />
+        </div>
+        <TariffEditorSection
+          tariffs={tariffs}
+          intro="Изменения применяются к публичным тарифам, оплате и кабинету."
         />
+        <section id="payments" className="mt-8 scroll-mt-24">
+          <SectionTitle title="История платежей" />
+          <DataTable
+            rows={rows}
+            columns={[
+              { key: "id", label: "ID" },
+              { key: "user", label: "Пользователь" },
+              { key: "subject", label: "Назначение" },
+              { key: "amount", label: "Сумма" },
+              { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
+            ]}
+          />
+        </section>
       </AdminGuardedContent>
     </Shell>
   );
@@ -1040,6 +1125,8 @@ export function AdminPaymentsPage() {
 export function AdminFairApplicationsPage() {
   const rows = listFairApplications().map((application) => ({
     ...application,
+    statusTargetId: application.id,
+    statusEntityType: "fairApplication",
     href: "/yarmarka-masterov",
     editHref: `/admin/fair-applications?edit=${application.id}`,
   }));
@@ -1072,8 +1159,10 @@ function AdminTablePage<T extends Record<string, unknown>>({
   rows: T[];
   columns: TableColumn<T>[];
 }) {
+  const createHref = isDemoAdminBypassEnabled() ? "/blizhniy/sozdat?admin=1" : "/blizhniy/sozdat";
+
   return (
-    <Shell title={title} description={description} eyebrow="Администрирование" createHref="/blizhniy/sozdat?admin=1">
+    <Shell title={title} description={description} eyebrow="Администрирование" createHref={createHref}>
       <AdminGuardedContent>
         <DataTable rows={rows} columns={columns} />
       </AdminGuardedContent>

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
-import { vacancies } from "@/lib/data";
+import { listVacancies } from "@/lib/mock-store";
 
 export const metadata: Metadata = {
   title: "Вакансии в Краснодаре",
@@ -11,7 +11,11 @@ export const metadata: Metadata = {
   },
 };
 
+export const dynamic = "force-dynamic";
+
 export default function VacanciesPage() {
+  const vacancies = listVacancies().filter((vacancy) => vacancy.status === "published");
+
   return (
     <>
       <SiteHeader />

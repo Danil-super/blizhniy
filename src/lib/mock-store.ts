@@ -1,10 +1,11 @@
 import { applications, fairApplications, listings, payments, specialists, vacancies, workRequests } from "@/lib/data";
-import type { Application, FairApplication, JobVacancy, Listing, Payment, SpecialistProfile, WorkRequest } from "@/lib/types";
+import type { Application, FairApplication, JobVacancy, Listing, Payment, PublicationStatus, SpecialistProfile, WorkRequest } from "@/lib/types";
 
 type MockStore = {
   applications: Application[];
   fairApplications: FairApplication[];
   listings: Listing[];
+  listingStatusOverrides: Record<string, PublicationStatus>;
   payments: Payment[];
   specialists: SpecialistProfile[];
   currentUserSpecialistId?: string;
@@ -144,11 +145,14 @@ export function getMockStore() {
     applications: cloneItems(applications),
     fairApplications: cloneItems(fairApplications),
     listings: cloneItems(listings),
+    listingStatusOverrides: {},
     payments: cloneItems(payments),
     specialists: cloneItems(specialists),
     vacancies: cloneItems(vacancies),
     workRequests: cloneItems(workRequests),
   };
+
+  globalThis.__blizhniyMockStore.listingStatusOverrides ??= {};
 
   return globalThis.__blizhniyMockStore;
 }
@@ -163,6 +167,10 @@ export function listFairApplications() {
 
 export function listListings() {
   return getMockStore().listings;
+}
+
+export function getListingStatusOverride(listingIdOrSlug: string) {
+  return getMockStore().listingStatusOverrides[listingIdOrSlug];
 }
 
 export function listVacancies() {
@@ -193,6 +201,51 @@ export function getCurrentUserSpecialist() {
 
 export function listApplications() {
   return getMockStore().applications;
+}
+
+export function updateListingStatus(listingIdOrSlug: string, status: PublicationStatus) {
+  const store = getMockStore();
+  const listing = store.listings.find((item) => item.id === listingIdOrSlug || item.slug === listingIdOrSlug);
+
+  if (listing) {
+    listing.status = status;
+    listing.paid = status === "published" ? true : listing.paid;
+    return;
+  }
+
+  store.listingStatusOverrides[listingIdOrSlug] = status;
+}
+
+export function updateVacancyStatus(vacancyId: string, status: PublicationStatus) {
+  const vacancy = getMockStore().vacancies.find((item) => item.id === vacancyId);
+
+  if (vacancy) {
+    vacancy.status = status;
+  }
+}
+
+export function updateSpecialistStatus(specialistId: string, status: PublicationStatus) {
+  const specialist = getMockStore().specialists.find((item) => item.id === specialistId);
+
+  if (specialist) {
+    specialist.status = status;
+  }
+}
+
+export function updateWorkRequestStatus(requestId: string, status: PublicationStatus) {
+  const request = getMockStore().workRequests.find((item) => item.id === requestId);
+
+  if (request) {
+    request.status = status;
+  }
+}
+
+export function updateFairApplicationStatus(applicationId: string, status: PublicationStatus) {
+  const application = getMockStore().fairApplications.find((item) => item.id === applicationId);
+
+  if (application) {
+    application.status = status;
+  }
 }
 
 export function createFairApplication(input: CreateFairApplicationInput) {
@@ -412,6 +465,16 @@ export function markPaymentTargetSucceeded(payment: Payment) {
 
     if (vacancy) {
       vacancy.status = "published";
+    }
+
+    return "published";
+  }
+
+  if (payment.targetType === "specialist") {
+    const specialist = getMockStore().specialists.find((item) => item.id === payment.targetId);
+
+    if (specialist) {
+      specialist.status = "published";
     }
 
     return "published";

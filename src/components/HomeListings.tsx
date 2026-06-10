@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { HomeListingsFeed } from "@/components/HomeListingsFeed";
-import { demoListings, toDemoListing } from "@/components/listings/ListingPages";
+import { listDemoListings, toDemoListing } from "@/components/listings/ListingPages";
 import { listListings } from "@/lib/mock-store";
 import { publicationTimestamp } from "@/lib/publication-time";
 
 export function HomeListings() {
-  const allListings = [...listListings().map(toDemoListing), ...demoListings];
+  const allListings = [...listListings().map(toDemoListing), ...listDemoListings()];
   const uniqueListings = Array.from(new Map(allListings.map((listing) => [listing.slug, listing])).values());
   const listings = uniqueListings
     .filter((listing) => listing.status === "published")

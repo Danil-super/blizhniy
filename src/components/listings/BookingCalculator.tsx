@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, UsersRound } from "lucide-react";
 import {
   BookingNotification,
@@ -51,10 +51,24 @@ function dateKey(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function todayKey() {
+  return dateKey(new Date());
+}
+
+function maxDateKey(...values: Array<string | undefined>) {
+  const sortedValues = values.filter(Boolean).sort();
+  return sortedValues[sortedValues.length - 1] ?? todayKey();
+}
+
 function addDays(date: Date, days: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
+}
+
+function addDaysKey(value: string, days: number) {
+  const date = toDate(value);
+  return date ? dateKey(addDays(date, days)) : "";
 }
 
 function nightsBetween(start?: string, end?: string) {
@@ -91,24 +105,99 @@ function monthDays(baseDate: Date) {
   return cells;
 }
 
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function resolveStayStartLimit(booking: BookingDetails) {
+  return maxDateKey(todayKey(), booking.availableFrom);
+}
+
+function resolveStayEndLimit(booking: BookingDetails) {
+  return booking.availableTo ? addDaysKey(booking.availableTo, 1) : undefined;
+}
+
+function dateIsBookedByRequest(date: Date, requests: BookingRequest[], listingId: string) {
+  const key = dateKey(date);
+
+  return requests.some((request) => {
+    if (request.listingId !== listingId || (request.status !== "pending" && request.status !== "accepted")) {
+      return false;
+    }
+
+    if (request.endDate) {
+      return nightsBetween(request.startDate, request.endDate).some((night) => dateKey(night) === key);
+    }
+
+    return request.startDate === key;
+  });
+}
+
+function readBookingRequests() {
+  return readJsonArray<BookingRequest>(bookingRequestsStorageKey);
+}
+
+function resolveFirstAvailableStayStart(booking: BookingDetails, requests: BookingRequest[], listingId: string) {
+  const blockedDates = new Set(booking.blockedDates ?? []);
+  const startLimit = resolveStayStartLimit(booking);
+  const endLimit = booking.availableTo;
+  const startDate = toDate(startLimit);
+
+  if (!startDate) {
+    return todayKey();
+  }
+
+  for (let offset = 0; offset < 370; offset += 1) {
+    const candidate = addDays(startDate, offset);
+    const key = dateKey(candidate);
+
+    if (endLimit && key > endLimit) {
+      return "";
+    }
+
+    if (!blockedDates.has(key) && !dateIsBookedByRequest(candidate, requests, listingId)) {
+      return key;
+    }
+  }
+
+  return "";
+}
+
+function resolveInitialStayEnd(startDate: string, booking?: BookingDetails) {
+  if (!booking || !startDate) {
+    return "";
+  }
+
+  return addDaysKey(startDate, Math.max(booking.minNights ?? 1, 1));
+}
+
 function BookingCalendar({
   booking,
   endDate,
+  listingId,
   onDateClick,
+  requests,
   selectedDates,
   startDate,
 }: {
   booking: BookingDetails;
   endDate: string;
+  listingId: string;
   onDateClick: (date: string) => void;
+  requests: BookingRequest[];
   selectedDates: Set<string>;
   startDate: string;
 }) {
   const blockedDates = new Set(booking.blockedDates ?? []);
-  const availableFrom = toDate(booking.availableFrom);
-  const availableTo = toDate(booking.availableTo);
+  const startLimit = resolveStayStartLimit(booking);
+  const endLimit = resolveStayEndLimit(booking);
+  const availableFrom = toDate(startLimit);
+  const availableTo = toDate(endLimit);
   const [visibleMonth, setVisibleMonth] = useState(availableFrom ?? new Date());
   const cells = monthDays(visibleMonth);
+  const previousMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1);
+  const selectingEndDate = Boolean(startDate && !endDate);
+  const canGoPrevious = monthKey(previousMonth) >= monthKey(availableFrom ?? new Date());
 
   function shiftMonth(delta: number) {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
@@ -117,7 +206,7 @@ function BookingCalendar({
   return (
     <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
       <div className="flex items-center justify-between gap-3">
-        <button type="button" onClick={() => shiftMonth(-1)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-blue-200 hover:text-[#0875d1]" aria-label="Предыдущий месяц">
+        <button type="button" onClick={() => shiftMonth(-1)} disabled={!canGoPrevious} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-blue-200 hover:text-[#0875d1] disabled:cursor-not-allowed disabled:border-slate-100 disabled:text-slate-300" aria-label="Предыдущий месяц">
           <ChevronLeft className="h-4 w-4" />
         </button>
         <p className="min-w-0 text-center text-sm font-black text-[#060b27] sm:text-base">
@@ -139,10 +228,13 @@ function BookingCalendar({
           }
 
           const key = dateKey(date);
-          const blocked = blockedDates.has(key);
+          const requested = dateIsBookedByRequest(date, requests, listingId);
+          const blocked = blockedDates.has(key) || requested;
           const selected = selectedDates.has(key);
           const edge = key === startDate || key === endDate;
-          const outOfRange = Boolean((availableFrom && date < availableFrom) || (availableTo && date > availableTo));
+          const afterEndLimit = Boolean(availableTo && date > availableTo);
+          const startAfterLastNight = Boolean(!selectingEndDate && booking.availableTo && key > booking.availableTo);
+          const outOfRange = Boolean((availableFrom && date < availableFrom) || afterEndLimit || startAfterLastNight);
           const disabled = blocked || outOfRange;
 
           return (
@@ -164,7 +256,7 @@ function BookingCalendar({
                         ? "bg-amber-50 text-amber-700 hover:ring-2 hover:ring-amber-200"
                         : "bg-emerald-50 text-[#0a8f32] hover:ring-2 hover:ring-emerald-200"
               }`}
-              title={blocked ? "Забронировано" : selected ? "Выбрано" : outOfRange ? "Недоступно" : "Доступно"}
+              title={requested ? "Есть активная заявка" : blocked ? "Забронировано" : selected ? "Выбрано" : outOfRange ? "Недоступно" : "Доступно"}
             >
               {date.getDate()}
             </button>
@@ -174,7 +266,7 @@ function BookingCalendar({
       <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] font-bold sm:gap-2 sm:text-xs">
         <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[#0a8f32]">доступно</span>
         <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">выходной тариф</span>
-        <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">занято</span>
+        <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">занято / заявка</span>
         <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[#0875d1]">выбрано</span>
       </div>
     </div>
@@ -182,13 +274,75 @@ function BookingCalendar({
 }
 
 export function BookingCalculator({ booking, listingId = "listing", listingTitle = "Объявление" }: { booking?: BookingDetails; listingId?: string; listingTitle?: string }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const [startDate, setStartDate] = useState(booking?.availableFrom ?? today);
-  const [endDate, setEndDate] = useState(booking?.availableFrom ? dateKey(addDays(toDate(booking.availableFrom) ?? new Date(), Math.max(booking.minNights ?? 1, 1))) : "");
+  const initialStartDate = booking?.mode === "stay" ? resolveFirstAvailableStayStart(booking, [], listingId) : "";
+  const [startDate, setStartDate] = useState(initialStartDate);
+  const [endDate, setEndDate] = useState(resolveInitialStayEnd(initialStartDate, booking));
   const [guests, setGuests] = useState(1);
   const [bookingMessage, setBookingMessage] = useState("");
+  const [bookingError, setBookingError] = useState("");
+  const [requests, setRequests] = useState<BookingRequest[]>([]);
+
+  useEffect(() => {
+    function syncRequests() {
+      setRequests(readBookingRequests());
+    }
+
+    syncRequests();
+    window.addEventListener("storage", syncRequests);
+    window.addEventListener(bookingNotificationsEventName, syncRequests);
+
+    return () => {
+      window.removeEventListener("storage", syncRequests);
+      window.removeEventListener(bookingNotificationsEventName, syncRequests);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!booking || booking.mode !== "stay") {
+      return;
+    }
+
+    const firstAvailableStart = resolveFirstAvailableStayStart(booking, requests, listingId);
+
+    if (!startDate || startDate < resolveStayStartLimit(booking) || dateIsBookedByRequest(toDate(startDate) ?? new Date(), requests, listingId)) {
+      setStartDate(firstAvailableStart);
+      setEndDate(resolveInitialStayEnd(firstAvailableStart, booking));
+      return;
+    }
+
+    if (!endDate && firstAvailableStart) {
+      setEndDate(resolveInitialStayEnd(startDate, booking));
+    }
+  }, [booking, endDate, listingId, requests, startDate]);
 
   function createBookingRequest(payload: { endDate?: string; guests: number; startDate?: string; total: number }) {
+    setBookingError("");
+    setBookingMessage("");
+
+    if (!payload.startDate) {
+      setBookingError("Выберите дату бронирования.");
+      return false;
+    }
+
+    if (payload.startDate < todayKey()) {
+      setBookingError("Нельзя забронировать прошедшую дату.");
+      return false;
+    }
+
+    const activeRequests = readBookingRequests();
+    const duplicateRequest = activeRequests.some(
+      (request) =>
+        request.listingId === listingId &&
+        request.startDate === payload.startDate &&
+        request.endDate === payload.endDate &&
+        (request.status === "pending" || request.status === "accepted"),
+    );
+
+    if (duplicateRequest) {
+      setBookingError("На эти даты уже есть активная заявка.");
+      return false;
+    }
+
     const now = new Date().toISOString();
     const requestId = `booking-${Date.now().toString(36)}`;
     const request: BookingRequest = {
@@ -207,7 +361,7 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
       requestId,
       recipient: "owner",
       title: "Новая заявка на бронь",
-      message: `Пользователь хочет забронировать "${listingTitle}". Проверьте даты, гостей и сумму.`,
+      message: `Пользователь хочет забронировать "${listingTitle}"${payload.endDate ? ` с ${formatShortDate(payload.startDate)} до ${formatShortDate(payload.endDate)}` : ` на ${formatShortDate(payload.startDate)}`}. Гостей: ${payload.guests}, сумма: ${formatCurrency(payload.total)}.`,
       createdAt: now,
       read: false,
       actionable: true,
@@ -217,7 +371,7 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
       requestId,
       recipient: "guest",
       title: "Заявка отправлена",
-      message: `Заявка на бронь "${listingTitle}" отправлена владельцу. Ответ придет сюда же.`,
+      message: `Заявка на бронь "${listingTitle}" отправлена владельцу. Даты: ${formatShortDate(payload.startDate)}${payload.endDate ? ` - ${formatShortDate(payload.endDate)}` : ""}. Ответ придет сюда же.`,
       createdAt: now,
       read: false,
     };
@@ -227,13 +381,21 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
     window.localStorage.setItem(bookingRequestsStorageKey, JSON.stringify([request, ...requests].slice(0, 50)));
     window.localStorage.setItem(bookingNotificationsStorageKey, JSON.stringify([ownerNotification, guestNotification, ...notifications].slice(0, 80)));
     window.dispatchEvent(new Event(bookingNotificationsEventName));
+    return true;
   }
 
   function handleCalendarDateClick(nextDate: string) {
     const start = toDate(startDate);
     const next = toDate(nextDate);
 
-    if (!start || endDate || !next || next <= start) {
+    setBookingError("");
+    setBookingMessage("");
+
+    if (!next) {
+      return;
+    }
+
+    if (!start || endDate || next <= start) {
       setStartDate(nextDate);
       setEndDate("");
       return;
@@ -249,9 +411,14 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
 
     const nights = nightsBetween(startDate, endDate);
     const blockedDates = new Set(booking.blockedDates ?? []);
+    const unavailableDates = new Set(
+      requests
+        .filter((request) => request.listingId === listingId && (request.status === "pending" || request.status === "accepted"))
+        .flatMap((request) => (request.endDate ? nightsBetween(request.startDate, request.endDate).map(dateKey) : request.startDate ? [request.startDate] : [])),
+    );
     const errors: string[] = [];
-    const availableFrom = toDate(booking.availableFrom);
-    const availableTo = toDate(booking.availableTo);
+    const availableFrom = toDate(resolveStayStartLimit(booking));
+    const availableTo = toDate(resolveStayEndLimit(booking));
     const start = toDate(startDate);
     const end = toDate(endDate);
 
@@ -271,12 +438,20 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
       errors.push("Дата заезда раньше доступного периода.");
     }
 
-    if (availableTo && end && end > addDays(availableTo, 1)) {
+    if (startDate && startDate < todayKey()) {
+      errors.push("Дата заезда уже прошла.");
+    }
+
+    if (availableTo && end && end > availableTo) {
       errors.push("Дата выезда позже доступного периода.");
     }
 
-    if (nights.some((date) => blockedDates.has(dateKey(date)))) {
-      errors.push("В выбранном периоде есть забронированные дни.");
+    if (booking.availableTo && startDate && startDate > booking.availableTo) {
+      errors.push("Дата заезда позже последнего доступного дня.");
+    }
+
+    if (nights.some((date) => blockedDates.has(dateKey(date)) || unavailableDates.has(dateKey(date)))) {
+      errors.push("В выбранном периоде есть занятые дни или активная заявка.");
     }
 
     const baseTotal = nights.reduce((sum, date) => sum + (isWeekend(date) ? booking.priceWeekend ?? booking.priceWeekday ?? 0 : booking.priceWeekday ?? booking.priceWeekend ?? 0), 0);
@@ -286,7 +461,7 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
     const total = baseTotal + extraGuestCost;
 
     return { baseTotal, nights, selectedDates: new Set(nights.map(dateKey)), extraGuestCost, extraGuests, total, errors };
-  }, [booking, endDate, guests, startDate]);
+  }, [booking, endDate, guests, listingId, requests, startDate]);
 
   if (!booking) {
     return null;
@@ -296,6 +471,9 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
     const price = booking.pricePerPerson ?? 0;
     const total = price * guests;
     const tooManyGuests = booking.maxGuests && guests > booking.maxGuests;
+    const tourDate = booking.tourDate ?? "";
+    const tourInPast = Boolean(tourDate && tourDate < todayKey());
+    const tourAlreadyRequested = requests.some((request) => request.listingId === listingId && request.startDate === tourDate && (request.status === "pending" || request.status === "accepted"));
 
     return (
       <section className="min-w-0 rounded-xl border border-blue-200 bg-blue-50/60 p-3 shadow-card sm:p-5">
@@ -327,16 +505,21 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
         </label>
         <p className="mt-4 text-3xl font-black text-[#060b27]">{price ? formatCurrency(total) : "Стоимость уточняется"}</p>
         {tooManyGuests ? <p className="mt-2 text-sm font-bold text-rose-600">Свободных мест: {booking.maxGuests}</p> : null}
+        {tourInPast ? <p className="mt-2 text-sm font-bold text-rose-600">Дата похода уже прошла.</p> : null}
+        {tourAlreadyRequested ? <p className="mt-2 text-sm font-bold text-amber-700">На этот поход уже есть активная заявка.</p> : null}
         <button
           type="button"
+          disabled={Boolean(tooManyGuests || tourInPast || tourAlreadyRequested || !tourDate)}
           onClick={() => {
-            createBookingRequest({ guests, total, startDate: booking.tourDate });
-            setBookingMessage("Заявка отправлена владельцу. Ответ появится в уведомлениях.");
+            if (createBookingRequest({ guests, total, startDate: booking.tourDate })) {
+              setBookingMessage("Заявка отправлена владельцу. Ответ появится в уведомлениях.");
+            }
           }}
-          className="mt-4 inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#0aa337] font-bold text-white"
+          className="mt-4 inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#0aa337] font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           Забронировать
         </button>
+        {bookingError ? <p className="mt-3 rounded-lg bg-rose-50 p-3 text-sm font-bold leading-6 text-rose-700">{bookingError}</p> : null}
         {bookingMessage ? <p className="mt-3 rounded-lg bg-white p-3 text-sm font-semibold leading-6 text-[#0a8f32]">{bookingMessage}</p> : null}
       </section>
     );
@@ -349,7 +532,7 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
         <span className="min-w-0">Рассчитать бронирование</span>
       </h2>
       <div className="mt-4 grid gap-4">
-        <BookingCalendar booking={booking} endDate={endDate} onDateClick={handleCalendarDateClick} selectedDates={result.selectedDates} startDate={startDate} />
+        <BookingCalendar booking={booking} endDate={endDate} listingId={listingId} onDateClick={handleCalendarDateClick} requests={requests} selectedDates={result.selectedDates} startDate={startDate} />
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block min-w-0">
             <span className="text-sm font-bold text-slate-700">Заезд</span>
@@ -428,13 +611,15 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
         type="button"
         disabled={Boolean(result.errors.length) || !result.total}
         onClick={() => {
-          createBookingRequest({ endDate, guests, startDate, total: result.total });
-          setBookingMessage("Заявка отправлена владельцу. Ответ появится в уведомлениях.");
+          if (createBookingRequest({ endDate, guests, startDate, total: result.total })) {
+            setBookingMessage("Заявка отправлена владельцу. Ответ появится в уведомлениях.");
+          }
         }}
         className="mt-4 inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#0aa337] font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
       >
         Забронировать
       </button>
+      {bookingError ? <p className="mt-3 rounded-lg bg-rose-50 p-3 text-sm font-bold leading-6 text-rose-700">{bookingError}</p> : null}
       {bookingMessage ? <p className="mt-3 rounded-lg bg-white p-3 text-sm font-semibold leading-6 text-[#0a8f32]">{bookingMessage}</p> : null}
       {booking.included ? <p className="mt-4 whitespace-pre-line text-sm leading-6 text-slate-700"><b>Включено:</b> {booking.included}</p> : null}
       {booking.rules ? <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700"><b>Правила:</b> {booking.rules}</p> : null}

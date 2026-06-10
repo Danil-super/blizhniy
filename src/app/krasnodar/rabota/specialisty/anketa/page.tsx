@@ -10,6 +10,7 @@ import { ListingLocationFields } from "@/components/listings/ListingFormControls
 import { professions } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { getCurrentUserSpecialist, getSpecialistById, updateSpecialist, upsertCurrentUserSpecialist } from "@/lib/mock-store";
+import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
 
 type PageProps = {
@@ -159,7 +160,7 @@ async function readPhotoDataUrls(formData: FormData) {
 
 export default async function SpecialistProfileFormPage({ searchParams }: PageProps) {
   const params = searchParams ? await searchParams : undefined;
-  const adminMode = params?.admin === "1";
+  const adminMode = params?.admin === "1" && isDemoAdminBypassEnabled();
   const isDemoSpecialistEdit = params?.from?.startsWith("demo-specialist");
   const selectedSpecialist = params?.from ? getSpecialistById(params.from) : getCurrentUserSpecialist();
   const professionOptions = professions
@@ -282,7 +283,12 @@ export default async function SpecialistProfileFormPage({ searchParams }: PagePr
             ) : !selectedSpecialist ? (
                 <div className="flex flex-wrap gap-3">
                   <AdminDemoPublishButton publicationType="specialist" returnHref="/cabinet/specialist" label="Сохранить черновик" status="Черновик" requireCaptcha={false} validateForm={false} />
-                  <AdminDemoPublishButton publicationType="specialist" returnHref="/cabinet/specialist" label="Сохранить анкету" />
+                  <AdminDemoPublishButton
+                    publicationType="specialist"
+                    returnHref="/cabinet/specialist"
+                    label="Создать и оплатить"
+                    paymentTariffId="specialist-publication"
+                  />
                 </div>
             ) : (
               <button type="submit" className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-[#0875d1] px-5 text-sm font-bold text-white sm:h-12 sm:w-fit sm:px-7 sm:text-base">

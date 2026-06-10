@@ -2,6 +2,7 @@ import { tariffs as baseTariffs } from "@/lib/data";
 import type { Tariff } from "@/lib/types";
 
 type TariffPatch = {
+  name?: string;
   price?: number;
   durationDays?: number | null;
   active?: boolean;
@@ -28,6 +29,7 @@ export function getTariffs() {
 
     return {
       ...tariff,
+      ...(typeof patch.name === "string" ? { name: patch.name } : {}),
       ...(typeof patch.price === "number" ? { price: patch.price } : {}),
       ...(patch.durationDays !== undefined ? { durationDays: patch.durationDays } : {}),
       ...(patch.active !== undefined ? { active: patch.active } : {}),

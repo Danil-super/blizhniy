@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
-import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, type DemoPublication } from "@/lib/demo-publications";
+import { appendPublicationHistory, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 import type { WorkRequest } from "@/lib/types";
 
 type WorkRequestEditClientProps = {
@@ -92,7 +92,16 @@ export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequest
         messengerUrl: readValue(formData, "messengerUrl", request.messengerUrl ?? ""),
         status: readValue(formData, "status", request.status),
       };
-      const nextItems = storedItems.map((item) => (item.id === request.id ? updatedRequest : item));
+      const nextItems = storedItems.map((item) =>
+        item.id === request.id
+          ? request.status.trim().toLowerCase() === updatedRequest.status.trim().toLowerCase()
+            ? appendPublicationHistory(updatedRequest, "updated", {
+                status: updatedRequest.status,
+                description: "Заказ отредактирован владельцем.",
+              })
+            : withPublicationStatusHistory({ ...updatedRequest, status: request.status }, updatedRequest.status)
+          : item,
+      );
       window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
       window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
       window.location.href = "/cabinet/zakazy";

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { WorkPage } from "@/components/WorkPage";
-import { listSpecialists } from "@/lib/mock-store";
+import { listSpecialists, listVacancies, listWorkRequests } from "@/lib/mock-store";
 
 export const metadata: Metadata = {
   title: "Работа в Краснодаре",
@@ -20,7 +20,7 @@ export default function KrasnodarWorkPage() {
     <>
       <SiteHeader />
       <HomeHero />
-      <WorkPage specialists={listSpecialists()} />
+      <WorkPage specialists={listSpecialists()} vacancies={listVacancies()} workRequests={listWorkRequests()} />
     </>
   );
 }

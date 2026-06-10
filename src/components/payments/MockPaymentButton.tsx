@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { BackLink } from "@/components/BackLink";
+import { confirmClientPayment, createClientPayment } from "@/lib/client-payment-flow";
 
 type PaymentState = "idle" | "loading" | "success" | "error";
 
@@ -23,31 +24,17 @@ export function MockPaymentButton({ paymentId, tariffId, returnHref }: MockPayme
       let payableId = paymentId;
 
       if (!payableId) {
-        const createResponse = await fetch("/api/payments", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tariffId }),
-        });
+        const payment = await createClientPayment({ tariffId });
 
-        if (!createResponse.ok) {
-          throw new Error("Не удалось создать платеж");
+        if (payment.confirmationUrl) {
+          window.location.href = payment.confirmationUrl;
+          return;
         }
 
-        const createPayload = await createResponse.json();
-        payableId = createPayload.payment?.id;
-
-        if (!payableId) {
-          throw new Error("API не вернул payment id");
-        }
+        payableId = payment.id;
       }
 
-      const confirmResponse = await fetch(`/api/payments/${payableId}/confirm`, { method: "POST" });
-
-      if (!confirmResponse.ok) {
-        throw new Error("Не удалось подтвердить платеж");
-      }
-
-      const confirmPayload = await confirmResponse.json();
+      const confirmPayload = await confirmClientPayment(payableId);
 
       setState("success");
       setMessage(confirmPayload.nextStatus === "sent" ? "Оплата прошла. Отклик отправлен работодателю." : "Оплата прошла. Заявка опубликована.");

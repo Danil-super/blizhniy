@@ -7,7 +7,7 @@ import { Camera, Save, Trash2, Video } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
-import { DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
+import { appendPublicationHistory, DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
 import { ListingLocationFields } from "@/components/listings/ListingFormControls";
@@ -285,7 +285,14 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
         images,
         videos,
       };
-      const nextItems = items.map((item) => (item.id === slug ? updated : item));
+      const nextItems = items.map((item) =>
+        item.id === slug
+          ? appendPublicationHistory(updated, "updated", {
+              status: updated.status,
+              description: "Объявление отредактировано владельцем.",
+            })
+          : item,
+      );
       window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
       window.dispatchEvent(new Event("blizhniy-demo-publications-updated"));
       window.location.href = `/blizhniy/obyavlenie/${slug}`;

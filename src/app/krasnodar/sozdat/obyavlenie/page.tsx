@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ListingFormPage } from "@/components/listings/ListingPages";
+import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
 
 export const metadata: Metadata = {
   title: "Создать объявление в Краснодаре",
@@ -15,7 +16,7 @@ type PageProps = {
 
 export default async function Page({ searchParams }: PageProps) {
   const params = searchParams ? await searchParams : undefined;
-  const adminMode = params?.admin === "1";
+  const adminMode = params?.admin === "1" && isDemoAdminBypassEnabled();
 
   return (
     <ListingFormPage

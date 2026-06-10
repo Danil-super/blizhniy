@@ -180,7 +180,7 @@ export type Profession = {
 export type Tariff = {
   id: string;
   name: string;
-  action: "listing_publication" | "vacancy_publication" | "job_response" | "fair_participation" | "ad_marquee";
+  action: "listing_publication" | "vacancy_publication" | "specialist_publication" | "job_response" | "fair_participation" | "ad_marquee";
   price: number;
   durationDays: number | null;
   active: boolean;
@@ -188,13 +188,15 @@ export type Tariff = {
 
 export type Payment = {
   id: string;
-  targetType: "listing" | "vacancy" | "application" | "fair_application" | "ad_marquee";
+  targetType: "listing" | "vacancy" | "specialist" | "application" | "fair_application" | "ad_marquee";
   targetId?: string;
   targetTitle: string;
   tariffId: string;
   amount: number;
   status: "created" | "pending" | "succeeded" | "failed";
-  provider: "mock";
+  provider: "mock" | "yookassa";
+  providerPaymentId?: string;
+  confirmationUrl?: string;
   createdAt: string;
   paidAt?: string;
 };

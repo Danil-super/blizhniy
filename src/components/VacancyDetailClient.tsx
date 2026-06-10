@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { BriefcaseBusiness, MapPin } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
@@ -128,9 +127,6 @@ export function VacancyDetailClient({ vacancyId }: { vacancyId: string }) {
                   Написать
                 </a>
               ) : null}
-              <Link href="/blizhniy/oplata/job-response" className="inline-flex h-11 items-center justify-center rounded-xl border border-[#0875d1] font-bold text-[#0875d1]">
-                Откликнуться
-              </Link>
             </div>
           </aside>
         </article>

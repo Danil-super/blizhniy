@@ -13,7 +13,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { ListingViewCounter } from "@/components/listings/ListingViewCounter";
-import { specialists as fallbackSpecialists, vacancies, workRequests } from "@/lib/data";
+import { specialists as fallbackSpecialists, vacancies as fallbackVacancies, workRequests as fallbackWorkRequests } from "@/lib/data";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import type { JobVacancy, SpecialistProfile, WorkRequest } from "@/lib/types";
 
@@ -213,11 +213,19 @@ function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
   );
 }
 
-export function WorkPage({ specialists = fallbackSpecialists }: { specialists?: SpecialistProfile[] }) {
+export function WorkPage({
+  specialists = fallbackSpecialists,
+  vacancies = fallbackVacancies,
+  workRequests = fallbackWorkRequests,
+}: {
+  specialists?: SpecialistProfile[];
+  vacancies?: JobVacancy[];
+  workRequests?: WorkRequest[];
+}) {
   const [demandTab, setDemandTab] = useState("Новые вакансии");
-  const visibleVacancies = vacancies.slice(0, previewLimit);
-  const visibleWorkRequests = workRequests.slice(0, previewLimit);
-  const visibleSpecialists = specialists.slice(0, previewLimit);
+  const visibleVacancies = vacancies.filter((vacancy) => vacancy.status === "published").slice(0, previewLimit);
+  const visibleWorkRequests = workRequests.filter((request) => request.status === "published").slice(0, previewLimit);
+  const visibleSpecialists = specialists.filter((specialist) => specialist.status === "published").slice(0, previewLimit);
   const showingWorkRequests = demandTab === "Заказчики";
 
   return (

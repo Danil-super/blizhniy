@@ -1,5 +1,5 @@
-import { AdminClassifierPage } from "@/components/MvpDashboard";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <AdminClassifierPage />;
+  redirect("/admin/specialisty");
 }
