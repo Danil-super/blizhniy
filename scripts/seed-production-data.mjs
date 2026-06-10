@@ -124,6 +124,18 @@ const specialists = [
   { name: "Марина", professionSlug: "master-manikyura", city: "sochi", district: "Центральный район", latitude: 43.585, longitude: 39.723, skills: ["Маникюр", "Педикюр", "Дизайн"], description: "Маникюр и педикюр в Сочи, аккуратная работа и стерильные инструменты.", price_from: 1200, contact_phone: "+78610001002", messenger_url: "https://wa.me/78610001002", created_at: "2026-05-21T14:05:00+03:00" },
 ];
 
+const workRequests = [
+  { title: "Нужен мастер для ремонта дачной кухни", description: "Частный заказ: заменить столешницу, подключить мойку и собрать небольшой шкаф.", professionSlug: "master-remonta-kvartir", city: "krasnodar", district: "Прикубанский округ", address: "пос. Российский", latitude: 45.111, longitude: 39.05, show_exact_address: false, budget: 25000, contact_phone: "+78610003001", messenger_url: "https://wa.me/78610003001", published_at: "2026-05-23T10:00:00+03:00" },
+  { title: "Пошив штор для гостевого дома", description: "Нужен исполнитель с выездом и замером, 8 окон, ткань обсуждается отдельно.", professionSlug: "shveya", city: "anapa", district: "Высокий берег", latitude: 44.9, longitude: 37.32, show_exact_address: false, budget: 18000, contact_phone: "+78610003002", published_at: "2026-05-24T10:00:00+03:00" },
+  { title: "Разовая заявка сантехника", description: "Проверить давление воды и заменить смесители в двух номерах.", professionSlug: "santehnik", city: "gelendzhik", district: "Толстый мыс", address: "ул. Приморская, 12", latitude: 44.56, longitude: 38.08, show_exact_address: true, budget: 10000, contact_phone: "+78610003003", messenger_url: "https://t.me/blizhniy_support", published_at: "2026-05-25T10:00:00+03:00" },
+];
+
+const fairApplications = [
+  { participant_name: "Мастерская Кубань Дуб", city: "krasnodar", fair_category: "Мебель", description: "Столы, полки и небольшая мебель из массива. Принимаем индивидуальные заказы после ярмарки.", video_url: "https://rutube.ru/", contact_phone: "+78610004001", email: "oak@example.test", comment: "Нужен стол 2x2 метра и доступ к розетке.", district: "Центральный округ", address: "ул. Красная, 5", latitude: 45.035, longitude: 38.976, show_exact_address: true, status: "published", payment_status: "succeeded", published_at: "2026-05-12T10:00:00+03:00" },
+  { participant_name: "Теплые узлы", city: "sochi", fair_category: "Макраме", description: "Панно, кашпо и декор ручной работы. Покажем коллекцию для веранд и гостевых домов.", video_url: "https://vkvideo.ru/", contact_phone: "+78610004002", email: "macrame@example.test", district: "Центральный район", latitude: 43.585, longitude: 39.723, show_exact_address: false, status: "published", payment_status: "succeeded", published_at: "2026-05-16T10:00:00+03:00" },
+  { participant_name: "Рассада у моря", city: "anapa", fair_category: "Саженцы и рассада", description: "Саженцы инжира, лаванды, гортензии и сезонная рассада для частных участков.", contact_phone: "+78610004003", email: "sad@example.test", comment: "Нужна тень для растений.", district: "12-й микрорайон", latitude: 44.894, longitude: 37.316, show_exact_address: false, status: "pending_payment", payment_status: "pending" },
+];
+
 const listingTypeByKind = {
   prodam: "sell",
   kuplyu: "buy",
@@ -355,7 +367,75 @@ for (const table of ["work_requests", "fair_applications"]) {
   optionalTables[table] = await tableExists(table);
 }
 
-const finalTables = ["regions", "cities", "categories", "specialist_categories", "tariffs", "profiles", "listings", "vacancies", "specialist_profiles", "payments"];
+let insertedWorkRequests = 0;
+if (optionalTables.work_requests) {
+  for (const item of workRequests) {
+    if (await existsByTitle("work_requests", item.title)) continue;
+    await rest("work_requests", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        author_id: authorId,
+        request_type: "private_request",
+        title: item.title,
+        description: item.description,
+        specialist_category_id: professionBySlug[item.professionSlug]?.id ?? null,
+        region_id: regionRow.id,
+        city_id: cityBySlug[item.city].id,
+        district: item.district,
+        address: item.address ?? null,
+        latitude: item.latitude,
+        longitude: item.longitude,
+        show_exact_address: item.show_exact_address,
+        budget: item.budget,
+        contact_phone: item.contact_phone,
+        messenger_url: item.messenger_url ?? null,
+        status: "published",
+        published_at: item.published_at,
+      }),
+    });
+    insertedWorkRequests += 1;
+  }
+}
+
+async function fairApplicationExists(participantName) {
+  const rows = await selectAll("fair_applications", `select=id&participant_name=eq.${encodeURIComponent(participantName)}&limit=1`);
+  return rows.length > 0;
+}
+
+let insertedFairApplications = 0;
+if (optionalTables.fair_applications) {
+  for (const item of fairApplications) {
+    if (await fairApplicationExists(item.participant_name)) continue;
+    await rest("fair_applications", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        user_id: authorId,
+        participant_name: item.participant_name,
+        region_id: regionRow.id,
+        city_id: cityBySlug[item.city].id,
+        fair_category: item.fair_category,
+        description: item.description,
+        video_url: item.video_url ?? null,
+        contact_phone: item.contact_phone,
+        email: item.email,
+        comment: item.comment ?? null,
+        district: item.district ?? null,
+        address: item.address ?? null,
+        latitude: item.latitude,
+        longitude: item.longitude,
+        show_exact_address: item.show_exact_address,
+        status: item.status,
+        payment_status: item.payment_status,
+        published_at: item.published_at ?? null,
+      }),
+    });
+    insertedFairApplications += 1;
+  }
+}
+
+const finalTables = ["regions", "cities", "categories", "specialist_categories", "tariffs", "profiles", "listings", "vacancies", "work_requests", "specialist_profiles", "fair_applications", "payments"];
 const counts = {};
 for (const table of finalTables) {
   try {
@@ -366,4 +446,4 @@ for (const table of finalTables) {
   }
 }
 
-console.log(JSON.stringify({ insertedListings, insertedVacancies, upsertedSpecialists: specialistRows.length, optionalTables, counts }, null, 2));
+console.log(JSON.stringify({ insertedListings, insertedVacancies, insertedWorkRequests, insertedFairApplications, upsertedSpecialists: specialistRows.length, optionalTables, counts }, null, 2));
