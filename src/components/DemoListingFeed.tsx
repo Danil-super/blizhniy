@@ -127,9 +127,10 @@ export function DemoGridCard({ item }: { item: DemoPublication }) {
   return (
     <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-emerald-200 transition hover:-translate-y-0.5 hover:shadow-card">
       <Link href={href} className="block min-w-0">
-        <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32]">
-          {firstImage ? <img src={firstImage} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-contain p-2 transition group-hover:scale-105" /> : null}
-          {!firstImage && firstVideo ? <video src={firstVideo} className="absolute inset-0 h-full w-full bg-slate-950 object-cover transition group-hover:scale-105" muted playsInline preload="metadata" /> : null}
+        <span className="relative isolate flex aspect-[4/3] items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32]">
+          {firstImage ? <img src={firstImage} alt={item.title} className="absolute inset-0 h-full w-full bg-slate-100 object-cover object-center transition duration-300 group-hover:scale-[1.035]" /> : null}
+          {!firstImage && firstVideo ? <video src={firstVideo} className="absolute inset-0 h-full w-full bg-slate-950 object-cover object-center transition duration-300 group-hover:scale-[1.035]" muted playsInline preload="metadata" /> : null}
+          {firstImage || firstVideo ? <span className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-slate-950/18 to-transparent" /> : null}
           {!firstImage && firstVideo ? (
             <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
               <Video className="h-3 w-3" />
@@ -176,10 +177,11 @@ function DemoListCard({ item }: { item: DemoPublication }) {
       <div className="flex min-w-0 gap-3 sm:contents">
         <Link
           href={href}
-          className="relative z-20 flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32] sm:h-auto sm:min-h-28 sm:w-auto xl:min-h-32"
+          className="relative z-20 isolate flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32] sm:h-auto sm:min-h-28 sm:w-auto xl:min-h-32"
         >
-          {firstImage ? <img src={firstImage} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-contain p-2 transition group-hover:scale-105" /> : null}
-          {!firstImage && firstVideo ? <video src={firstVideo} className="absolute inset-0 h-full w-full bg-slate-950 object-cover transition group-hover:scale-105" muted playsInline preload="metadata" /> : null}
+          {firstImage ? <img src={firstImage} alt={item.title} className="absolute inset-0 h-full w-full bg-slate-100 object-cover object-center transition duration-300 group-hover:scale-[1.035]" /> : null}
+          {!firstImage && firstVideo ? <video src={firstVideo} className="absolute inset-0 h-full w-full bg-slate-950 object-cover object-center transition duration-300 group-hover:scale-[1.035]" muted playsInline preload="metadata" /> : null}
+          {firstImage || firstVideo ? <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-slate-950/16 to-transparent" /> : null}
           {!firstImage && firstVideo ? (
             <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
               <Video className="h-3 w-3" />
