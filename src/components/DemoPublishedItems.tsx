@@ -82,15 +82,15 @@ export function DemoPublishedItems({ type }: { type: DemoPublicationType }) {
             </div>
             {item.type === "listing" ? (
               <div className="mt-3 flex flex-wrap gap-2">
-                <Link href={`/blizhniy/obyavlenie/${item.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]">
+                <Link href={`/obyavlenie/${item.id}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]">
                   <ExternalLink className="h-3.5 w-3.5" />
                   Открыть
                 </Link>
-                <Link href={`/blizhniy/obyavlenie/${item.id}/redaktirovat`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-[#0875d1] transition hover:bg-blue-100">
+                <Link href={`/krasnodar/obyavlenie/${item.id}/redaktirovat`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-[#0875d1] transition hover:bg-blue-100">
                   <FilePenLine className="h-3.5 w-3.5" />
                   Редактировать
                 </Link>
-                <ListingShareButton href={`/blizhniy/obyavlenie/${item.id}`} title={item.title} textBreakpoint="always" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]" />
+                <ListingShareButton href={`/obyavlenie/${item.id}`} title={item.title} textBreakpoint="always" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]" />
               </div>
             ) : null}
           </article>

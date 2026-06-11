@@ -295,7 +295,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
       );
       window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
       window.dispatchEvent(new Event("blizhniy-demo-publications-updated"));
-      window.location.href = `/blizhniy/obyavlenie/${slug}`;
+      window.location.href = `/obyavlenie/${slug}`;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось сохранить изменения: в браузере закончилось место для фото. Удалите часть изображений и попробуйте снова.");
       setSaving(false);

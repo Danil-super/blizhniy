@@ -5,7 +5,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 
 const publicationTypes = [
   {
-    href: "/blizhniy/sozdat/obyavlenie",
+    href: "/krasnodar/sozdat/obyavlenie",
     title: "Объявление",
     description: "Продать, купить, обменять или отдать вещь.",
     restriction: {
@@ -16,21 +16,21 @@ const publicationTypes = [
     icon: FileText,
   },
   {
-    href: "/blizhniy/rabota/vakansii/sozdat",
+    href: "/krasnodar/rabota/vakansii/sozdat",
     title: "Вакансию",
     description: "Найти сотрудника или исполнителя для компании, ИП или частного лица.",
     restriction: undefined,
     icon: BriefcaseBusiness,
   },
   {
-    href: "/blizhniy/rabota/zakazy/sozdat",
+    href: "/krasnodar/rabota/zakazy/sozdat",
     title: "Заказ исполнителю",
     description: "Описать задачу для специалистов рядом.",
     restriction: undefined,
     icon: ClipboardList,
   },
   {
-    href: "/blizhniy/rabota/specialisty/anketa",
+    href: "/krasnodar/rabota/specialisty/anketa",
     title: "Анкету специалиста",
     description: "Добавить профиль исполнителя в каталог работы.",
     restriction: undefined,

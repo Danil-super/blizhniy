@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: `${category?.name ?? "Категория"} в Краснодаре`,
     description: `Объявления категории ${category?.name ?? categorySlug} в Краснодаре на БЛИЖНИЙ.`,
     alternates: {
-      canonical: `/blizhniy/${categorySlug}`,
+      canonical: `/krasnodar/${categorySlug}`,
     },
   };
 }

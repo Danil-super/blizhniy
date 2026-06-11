@@ -139,23 +139,23 @@ export function HeaderControls() {
     const trimmedQuery = query.trim();
 
     if (!trimmedQuery) {
-      router.push("/blizhniy/kategorii");
+      router.push("/krasnodar/kategorii");
       return;
     }
 
-    router.push(`/blizhniy/poisk?q=${encodeURIComponent(trimmedQuery)}&city=${encodeURIComponent(selectedCity)}`);
+    router.push(`/poisk?q=${encodeURIComponent(trimmedQuery)}&city=${encodeURIComponent(selectedCity)}`);
   }
 
   function submitSuggestion(suggestion: SearchSuggestion) {
     setQuery(suggestion.label);
     setSearchSuggestionsOpen(false);
-    router.push(`/blizhniy/poisk?q=${encodeURIComponent(suggestion.label)}&city=${encodeURIComponent(selectedCity)}`);
+    router.push(`/poisk?q=${encodeURIComponent(suggestion.label)}&city=${encodeURIComponent(selectedCity)}`);
   }
 
   return (
     <div className="grid w-full min-w-0 flex-1 grid-cols-[40px_minmax(0,1fr)] items-center gap-1.5 overflow-visible sm:grid-cols-[48px_minmax(0,1fr)] sm:gap-2 md:grid-cols-[56px_minmax(320px,1fr)_auto]">
       <Link
-        href="/blizhniy/kategorii"
+        href="/krasnodar/kategorii"
         className="order-1 flex h-10 w-10 items-center justify-center rounded-xl bg-[#00aaff] text-white transition hover:bg-[#0796dd] sm:h-12 sm:w-12 sm:rounded-2xl md:w-14"
         aria-label="Каталог"
       >

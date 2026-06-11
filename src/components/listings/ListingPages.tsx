@@ -438,7 +438,7 @@ function getCreateListingHref(categorySlug: string, subcategoryName: string) {
     subcategory: subcategorySlug,
   });
 
-  return `/blizhniy/sozdat/obyavlenie?${params.toString()}`;
+  return `/krasnodar/sozdat/obyavlenie?${params.toString()}`;
 }
 
 const ritualServiceDescriptions: Record<string, string> = {
@@ -1245,7 +1245,7 @@ export function slugifySubcategory(name: string) {
 function Breadcrumbs({ items, compact = false }: { items: { label: string; href?: string }[]; compact?: boolean }) {
   return (
     <nav className={`${compact ? "mb-2" : "mb-4"} flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:text-sm`} aria-label="Хлебные крошки">
-      <Link href="/blizhniy/prodam" className="hover:text-[#0875d1]">
+      <Link href="/krasnodar/prodam" className="hover:text-[#0875d1]">
         Краснодар
       </Link>
       {items.map((item, index) => (
@@ -1272,7 +1272,7 @@ export function CategoriesPage() {
         <HomeHero />
         <section className="page-container py-2 sm:py-3 lg:py-4">
           <Breadcrumbs items={[{ label: "Категории" }]} />
-          <BackLink fallbackHref="/blizhniy" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+          <BackLink fallbackHref="/krasnodar" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             Назад
           </BackLink>
           <h1 className="mt-3 text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Категории объявлений</h1>
@@ -1298,7 +1298,7 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
       <SiteHeader />
       <main className="page-container py-6 sm:py-8 lg:py-10">
         <Breadcrumbs items={[{ label: current.title }]} />
-        <BackLink fallbackHref="/blizhniy" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+        <BackLink fallbackHref="/krasnodar" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
         </BackLink>
         <div className="grid gap-7">
@@ -1310,7 +1310,7 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">{current.description}</p>
               </div>
               <Link
-                href="/blizhniy/sozdat/obyavlenie"
+                href="/krasnodar/sozdat/obyavlenie"
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5 lg:h-12 lg:px-6 lg:text-base"
               >
                 Разместить
@@ -1321,7 +1321,7 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
               {visibleKinds.map((item) => (
                 <Link
                   key={item.slug}
-                  href={`/blizhniy/${item.slug}`}
+                  href={`/krasnodar/${item.slug}`}
                   className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-bold transition sm:h-9 sm:text-sm lg:h-10 lg:px-4 ${
                     item.slug === kind
                       ? "border-[#0875d1] bg-[#0875d1] text-white"
@@ -1333,7 +1333,7 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
               ))}
               {kind === "prodam" || kind === "kuplyu" ? (
                 <Link
-                  href="/blizhniy/obmen-i-darom"
+                  href="/krasnodar/obmen-i-darom"
                   className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
                 >
                   Меняю и отдам даром
@@ -1357,7 +1357,7 @@ export function ExchangeAndFreePage() {
       <HomeHero />
       <main className="page-container py-2 sm:py-3 lg:py-4">
         <Breadcrumbs items={[{ label: "Меняю и отдам даром" }]} />
-        <BackLink fallbackHref="/blizhniy" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+        <BackLink fallbackHref="/krasnodar" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
         </BackLink>
         <div className="grid gap-7">
@@ -1370,7 +1370,7 @@ export function ExchangeAndFreePage() {
                 </p>
               </div>
               <Link
-                href="/blizhniy/sozdat/obyavlenie"
+                href="/krasnodar/sozdat/obyavlenie"
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5 lg:h-12 lg:px-6 lg:text-base"
               >
                 Разместить
@@ -1383,7 +1383,7 @@ export function ExchangeAndFreePage() {
                 .map((item) => (
                   <Link
                     key={item.slug}
-                    href={`/blizhniy/${item.slug}`}
+                    href={`/krasnodar/${item.slug}`}
                     className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
                   >
                     {item.title}
@@ -1407,7 +1407,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
   );
   const isKidsGoodsCategory = category?.slug === "tovary-dlya-detey";
   const categoryDescription = category ? categoryDescriptions[category.slug] : undefined;
-  const backFallbackHref = subcategory && category ? `/blizhniy/${category.slug}` : "/blizhniy/kategorii";
+  const backFallbackHref = subcategory && category ? `/krasnodar/${category.slug}` : "/krasnodar/kategorii";
 
   return (
     <>
@@ -1417,8 +1417,8 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
         <Breadcrumbs
           compact
           items={[
-            { label: "Категории", href: "/blizhniy/kategorii" },
-            { label: category?.name ?? "Категория", href: category ? `/blizhniy/${category.slug}` : undefined },
+            { label: "Категории", href: "/krasnodar/kategorii" },
+            { label: category?.name ?? "Категория", href: category ? `/krasnodar/${category.slug}` : undefined },
             ...(subcategory ? [{ label: subcategory }] : []),
           ]}
         />
@@ -1444,7 +1444,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
                 }
               >
                 {categoryChildren.map((child, index) => {
-                  const href = `/blizhniy/${category.slug}/${slugifySubcategory(child)}`;
+                  const href = `/krasnodar/${category.slug}/${slugifySubcategory(child)}`;
                   const description = subcategoryDescription(category.slug, child);
                   const animalClassifier = category.slug === "zhivotnye" ? animalClassifiers[child] : undefined;
                   const bulletPoints = subcategoryBulletPoints[category.slug]?.[child];
@@ -1584,7 +1584,7 @@ function DeliveryInfoCard({ delivery }: { delivery?: DeliveryOptions }) {
 
 export function ListingDetailPage({ slug }: { slug: string }) {
   const listing = findListingBySlug(slug);
-  const listingHref = `/blizhniy/obyavlenie/${slug}`;
+  const listingHref = `/obyavlenie/${slug}`;
 
   if (!listing) {
     return (
@@ -1610,14 +1610,14 @@ export function ListingDetailPage({ slug }: { slug: string }) {
       <main className="page-container py-10">
         <Breadcrumbs
           items={[
-            { label: listing.categoryName, href: `/blizhniy/${listing.categorySlug}` },
-            { label: listing.subcategoryName, href: `/blizhniy/${listing.categorySlug}/${listing.subcategorySlug}` },
+            { label: listing.categoryName, href: `/krasnodar/${listing.categorySlug}` },
+            { label: listing.subcategoryName, href: `/krasnodar/${listing.categorySlug}/${listing.subcategorySlug}` },
             { label: listing.title },
           ]}
         />
         <div className="mx-auto grid max-w-[1180px] min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,768px)_minmax(320px,380px)] lg:items-start lg:justify-center">
           <section className="min-w-0 lg:max-w-3xl">
-            <BackLink fallbackHref={`/blizhniy/${listing.kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+            <BackLink fallbackHref={`/krasnodar/${listing.kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
               Назад к разделу
             </BackLink>
             <h1 className="[overflow-wrap:anywhere] mt-3 text-2xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-4xl lg:text-5xl">{listing.title}</h1>
@@ -1848,7 +1848,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
     const captchaVerified = await verifyTurnstileFormData(formData);
 
     if (!captchaVerified) {
-      redirect(`/blizhniy/sozdat/obyavlenie?admin=1&error=${encodeURIComponent(TURNSTILE_ERROR_MESSAGE)}`);
+      redirect(`/krasnodar/sozdat/obyavlenie?admin=1&error=${encodeURIComponent(TURNSTILE_ERROR_MESSAGE)}`);
     }
 
     const title = String(formData.get("title") ?? "").trim() || "Новое объявление";
@@ -2044,7 +2044,7 @@ export function CategoryNotFoundHint() {
         Категория готова к наполнению
       </div>
       <p className="mt-3 text-slate-600">Для неизвестного slug можно подключить CMS или админ-панель категорий без изменения URL-архитектуры.</p>
-      <Link href="/blizhniy/kategorii" className="mt-5 inline-flex items-center gap-2 font-bold text-[#0875d1]">
+      <Link href="/krasnodar/kategorii" className="mt-5 inline-flex items-center gap-2 font-bold text-[#0875d1]">
         Все категории
         <ChevronRight className="h-5 w-5" />
       </Link>

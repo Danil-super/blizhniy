@@ -37,7 +37,7 @@ export function FairHomePage() {
   return (
     <main className="page-container py-6 sm:py-10">
       <nav className="mb-5 text-sm text-slate-500" aria-label="Хлебные крошки">
-        <Link href="/blizhniy" className="hover:text-[#0875d1]">
+        <Link href="/krasnodar" className="hover:text-[#0875d1]">
           Краснодар
         </Link>
         <span className="mx-2">/</span>

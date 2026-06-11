@@ -40,7 +40,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     .map((listing) => ({
       title: listing.title,
       description: `${listing.categoryName}, ${listing.city}. ${listing.description}`,
-      href: `/blizhniy/obyavlenie/${listing.slug}`,
+      href: `/obyavlenie/${listing.slug}`,
       type: "Объявление",
     }));
 
@@ -54,7 +54,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     .map((vacancy) => ({
       title: vacancy.title,
       description: `${vacancy.organization}, ${vacancy.city}. ${vacancy.salary}`,
-      href: `/blizhniy/vakansiya/${vacancy.id}`,
+      href: `/vakansiya/${vacancy.id}`,
       type: "Вакансия",
     }));
 
@@ -67,7 +67,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     .map((specialist) => ({
       title: `${specialist.name} - ${specialist.profession}`,
       description: `${specialist.city}. ${specialist.skills}. ${specialist.price}`,
-      href: `/blizhniy/specialist/${specialist.id}`,
+      href: `/specialist/${specialist.id}`,
       type: "Специалист",
     }));
 
@@ -80,7 +80,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     .map((request) => ({
       title: request.title,
       description: `${request.author}, ${request.city}. ${request.budget}`,
-      href: `/blizhniy/rabota/zakazy/${request.id}`,
+      href: `/krasnodar/rabota/zakazy/${request.id}`,
       type: "Заказ",
     }));
 
@@ -103,7 +103,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     .map((category) => ({
       title: category.name,
       description: category.children.join(", "),
-      href: category.slug === "rabota" ? "/blizhniy/rabota" : category.slug === "yarmarka-masterov" ? "/yarmarka-masterov" : `/blizhniy/${category.slug}`,
+      href: category.slug === "rabota" ? "/krasnodar/rabota" : category.slug === "yarmarka-masterov" ? "/yarmarka-masterov" : `/krasnodar/${category.slug}`,
       type: "Категория",
     }));
 
@@ -112,7 +112,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     .map((profession) => ({
       title: profession.name,
       description: profession.parent,
-      href: `/blizhniy/rabota/specialisty/${profession.slug}`,
+      href: `/krasnodar/rabota/specialisty/${profession.slug}`,
       type: "Профессия",
     }));
 

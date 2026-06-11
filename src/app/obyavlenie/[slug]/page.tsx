@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: listing?.title ?? "Объявление",
     description: listing?.description ?? "Карточка объявления на БЛИЖНИЙ.",
     alternates: {
-      canonical: `/blizhniy/obyavlenie/${slug}`,
+      canonical: `/obyavlenie/${slug}`,
     },
   };
 }

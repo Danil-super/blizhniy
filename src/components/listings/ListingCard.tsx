@@ -109,7 +109,7 @@ export function StatusBadge({ status }: { status: ListingStatus }) {
 
 export function ListingCard({ listing }: { listing: DemoListing }) {
   const Icon = kindIcons[listing.kind];
-  const href = `/blizhniy/obyavlenie/${listing.slug}`;
+  const href = `/obyavlenie/${listing.slug}`;
 
   return (
     <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-4 sm:p-4 xl:grid-cols-[140px_minmax(0,1fr)_minmax(180px,auto)]">
@@ -170,7 +170,7 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
 
 export function ListingGridCard({ listing }: { listing: DemoListing }) {
   const Icon = kindIcons[listing.kind];
-  const href = `/blizhniy/obyavlenie/${listing.slug}`;
+  const href = `/obyavlenie/${listing.slug}`;
   const viewId = listing.viewId ?? listing.slug;
 
   return (

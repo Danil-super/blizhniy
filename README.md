@@ -6,8 +6,8 @@ MVP региональной платформы объявлений, вакан
 
 - Next.js + TypeScript + Tailwind CSS.
 - Главная страница с категориями и стартовой географией.
-- Страница `/blizhniy/rabota` по макету: вакансии слева, специалисты справа, CTA, чипы, классификатор, короткие подборки.
-- Страницы полных списков `/blizhniy/rabota/vakansii` и `/blizhniy/rabota/specialisty`.
+- Страница `/krasnodar/rabota` по макету: вакансии слева, специалисты справа, CTA, чипы, классификатор, короткие подборки.
+- Страницы полных списков `/krasnodar/rabota/vakansii` и `/krasnodar/rabota/specialisty`.
 - Новые категории каталога: «Отдых», «Знакомства», «Ярмарка мастеров».
 - MVP-раздел `/yarmarka-masterov`: дата ближайшей ярмарки, категории мастеров, заявки/участники, заглушка онлайн-трансляции.
 - Форма `/yarmarka-masterov/zayavka` с полями участника, категории, описания, фото, ссылки на видео, контактов и согласия с правилами.
@@ -27,16 +27,16 @@ npm run dev
 После запуска:
 
 - главная: `http://localhost:3000`
-- работа: `http://localhost:3000/blizhniy/rabota`
-- объявления: `http://localhost:3000/blizhniy/prodam`
-- категории: `http://localhost:3000/blizhniy/kategorii`
+- работа: `http://localhost:3000/krasnodar/rabota`
+- объявления: `http://localhost:3000/krasnodar/prodam`
+- категории: `http://localhost:3000/krasnodar/kategorii`
 - ярмарка мастеров: `http://localhost:3000/yarmarka-masterov`
 - заявка на ярмарку: `http://localhost:3000/yarmarka-masterov/zayavka`
 - кабинет: `http://localhost:3000/cabinet`
 - заявки на ярмарку в кабинете: `http://localhost:3000/cabinet/fair-applications`
 - админка: `http://localhost:3000/admin`
 - заявки на ярмарку в админке: `http://localhost:3000/admin/fair-applications`
-- mock-оплата: `http://localhost:3000/blizhniy/oplata/listing-publication`
+- mock-оплата: `http://localhost:3000/oplata/listing-publication`
 
 ## Новые SQL-изменения
 
@@ -70,7 +70,7 @@ npm install -g pm2
 ```bash
 sudo mkdir -p /var/www/blizhniy
 sudo chown -R "$USER":"$USER" /var/www/blizhniy
-git clone git@github.com:USER/REPO.git /var/www/blizhniy
+git clone git@github.com:Danil-super/blizhniy.git /var/www/blizhniy
 cd /var/www/blizhniy
 npm ci
 npm run build

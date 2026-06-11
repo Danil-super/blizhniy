@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "Меняю в Краснодаре",
   description: "Объявления об обмене товарами в Краснодаре на БЛИЖНИЙ.",
   alternates: {
-    canonical: "/blizhniy/menyayu",
+    canonical: "/krasnodar/menyayu",
   },
 };
 

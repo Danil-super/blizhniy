@@ -49,7 +49,7 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
     const captchaVerified = await verifyTurnstileFormData(formData);
 
     if (!captchaVerified) {
-      redirect(`/blizhniy/rabota/vakansii/sozdat?admin=1&error=${encodeURIComponent(TURNSTILE_ERROR_MESSAGE)}`);
+      redirect(`/krasnodar/rabota/vakansii/sozdat?admin=1&error=${encodeURIComponent(TURNSTILE_ERROR_MESSAGE)}`);
     }
 
     createVacancy({

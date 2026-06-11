@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "Меняю и отдам даром в Краснодаре",
   description: "Отдельный раздел обмена и бесплатных объявлений Краснодарского края на БЛИЖНИЙ.",
   alternates: {
-    canonical: "/blizhniy/obmen-i-darom",
+    canonical: "/krasnodar/obmen-i-darom",
   },
 };
 

@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: "Разместить публикацию в Краснодаре",
   description: "Выбор типа публикации на платформе БЛИЖНИЙ.",
   alternates: {
-    canonical: "/blizhniy/sozdat",
+    canonical: "/krasnodar/sozdat",
   },
 };
 

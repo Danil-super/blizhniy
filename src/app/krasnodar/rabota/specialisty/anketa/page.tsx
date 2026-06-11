@@ -44,7 +44,7 @@ function normalizeText(formData: FormData, name: string) {
 }
 
 function validationError(message: string) {
-  redirect(`/blizhniy/rabota/specialisty/anketa?error=${encodeURIComponent(message)}`);
+  redirect(`/krasnodar/rabota/specialisty/anketa?error=${encodeURIComponent(message)}`);
 }
 
 function parseCoordinate(formData: FormData, name: string) {
@@ -179,7 +179,7 @@ export default async function SpecialistProfileFormPage({ searchParams }: PagePr
       const captchaVerified = await verifyTurnstileFormData(formData);
 
       if (!captchaVerified) {
-        redirect(`/blizhniy/rabota/specialisty/anketa?error=${encodeURIComponent(TURNSTILE_ERROR_MESSAGE)}`);
+        redirect(`/krasnodar/rabota/specialisty/anketa?error=${encodeURIComponent(TURNSTILE_ERROR_MESSAGE)}`);
       }
     }
 

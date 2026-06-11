@@ -6,30 +6,30 @@ import { getPublicSiteUrl } from "@/lib/site-url";
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = getPublicSiteUrl();
   const categoryPaths = categories.flatMap((category) => [
-    `/blizhniy/${category.slug}`,
-    ...category.children.map((child) => `/blizhniy/${category.slug}/${slugifySubcategory(child)}`),
+    `/krasnodar/${category.slug}`,
+    ...category.children.map((child) => `/krasnodar/${category.slug}/${slugifySubcategory(child)}`),
   ]);
-  const listingKindPaths = listingKinds.map((kind) => `/blizhniy/${kind.slug}`);
-  const listingPaths = demoListings.map((listing) => `/blizhniy/obyavlenie/${listing.slug}`);
-  const vacancyPaths = vacancies.map((vacancy) => `/blizhniy/vakansiya/${vacancy.id}`);
-  const workRequestPaths = workRequests.map((request) => `/blizhniy/rabota/zakazy/${request.id}`);
-  const specialistPaths = specialists.map((specialist) => `/blizhniy/specialist/${specialist.id}`);
-  const professionPaths = professions.map((profession) => `/blizhniy/rabota/specialisty/${profession.slug}`);
+  const listingKindPaths = listingKinds.map((kind) => `/krasnodar/${kind.slug}`);
+  const listingPaths = demoListings.map((listing) => `/obyavlenie/${listing.slug}`);
+  const vacancyPaths = vacancies.map((vacancy) => `/vakansiya/${vacancy.id}`);
+  const workRequestPaths = workRequests.map((request) => `/krasnodar/rabota/zakazy/${request.id}`);
+  const specialistPaths = specialists.map((specialist) => `/specialist/${specialist.id}`);
+  const professionPaths = professions.map((profession) => `/krasnodar/rabota/specialisty/${profession.slug}`);
 
   return [
     "",
-    "/blizhniy",
-    "/blizhniy/kategorii",
-    "/blizhniy/sozdat",
-    "/blizhniy/sozdat/obyavlenie",
-    "/blizhniy/obmen-i-darom",
-    "/blizhniy/rabota",
-    "/blizhniy/rabota/zakazy/sozdat",
-    "/blizhniy/rabota/vakansii",
-    "/blizhniy/rabota/vakansii/sozdat",
-    "/blizhniy/rabota/specialisty",
-    "/blizhniy/rabota/specialisty/anketa",
-    "/blizhniy/rabota/specialisty/klassifikator",
+    "/krasnodar",
+    "/krasnodar/kategorii",
+    "/krasnodar/sozdat",
+    "/krasnodar/sozdat/obyavlenie",
+    "/krasnodar/obmen-i-darom",
+    "/krasnodar/rabota",
+    "/krasnodar/rabota/zakazy/sozdat",
+    "/krasnodar/rabota/vakansii",
+    "/krasnodar/rabota/vakansii/sozdat",
+    "/krasnodar/rabota/specialisty",
+    "/krasnodar/rabota/specialisty/anketa",
+    "/krasnodar/rabota/specialisty/klassifikator",
     "/kak-rabotaet",
     "/tarify",
     "/o-proekte",

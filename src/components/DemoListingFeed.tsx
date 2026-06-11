@@ -122,7 +122,7 @@ export function DemoGridCard({ item }: { item: DemoPublication }) {
   const Icon = kindIcons[kind];
   const firstImage = item.images?.[0];
   const firstVideo = item.videos?.[0];
-  const href = `/blizhniy/obyavlenie/${item.id}`;
+  const href = `/obyavlenie/${item.id}`;
 
   return (
     <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-emerald-200 transition hover:-translate-y-0.5 hover:shadow-card">
@@ -168,7 +168,7 @@ function DemoListCard({ item }: { item: DemoPublication }) {
   const Icon = kindIcons[kind];
   const firstImage = item.images?.[0];
   const firstVideo = item.videos?.[0];
-  const href = `/blizhniy/obyavlenie/${item.id}`;
+  const href = `/obyavlenie/${item.id}`;
 
   return (
     <article className="group relative grid min-w-0 gap-3 rounded-xl border border-emerald-200 bg-white p-3 shadow-sm transition hover:border-blue-200 hover:shadow-card sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-4 sm:p-4 xl:grid-cols-[140px_minmax(0,1fr)_minmax(180px,auto)]">

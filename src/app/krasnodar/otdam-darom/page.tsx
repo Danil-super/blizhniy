@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "Отдам даром в Краснодаре",
   description: "Бесплатные объявления Краснодарского края на БЛИЖНИЙ.",
   alternates: {
-    canonical: "/blizhniy/otdam-darom",
+    canonical: "/krasnodar/otdam-darom",
   },
 };
 

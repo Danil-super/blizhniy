@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: specialist ? `${specialist.name} — ${specialist.profession}` : "Специалист",
     description: specialist ? `${specialist.skills}. ${specialist.city}.` : "Карточка специалиста на платформе БЛИЖНИЙ.",
     alternates: {
-      canonical: `/blizhniy/specialist/${slug}`,
+      canonical: `/specialist/${slug}`,
     },
   };
 }
@@ -48,7 +48,7 @@ export default async function SpecialistDetailPage({ params }: { params: Promise
       <SiteHeader />
       <ListingViewTracker listingId={`work-specialist-${specialist.id}`} />
       <main className="page-container py-5 sm:py-10">
-        <BackLink fallbackHref="/blizhniy/rabota/specialisty" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+        <BackLink fallbackHref="/krasnodar/rabota/specialisty" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
         </BackLink>
         <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">

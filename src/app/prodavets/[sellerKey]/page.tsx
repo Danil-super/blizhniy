@@ -24,7 +24,7 @@ function getSellerListings(sellerKey: string): SellerProfileListing[] {
       categoryName: listing.categoryName,
       city: listing.city,
       createdAt: listing.publishedAt,
-      href: `/blizhniy/obyavlenie/${listing.slug}`,
+      href: `/obyavlenie/${listing.slug}`,
       id: listing.viewId ?? listing.slug,
       price: listing.price,
       sellerName: sellerDisplayName(listing),
@@ -43,7 +43,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: `${sellerName} - профиль продавца`,
     description: `Объявления продавца ${sellerName} на БЛИЖНИЙ.`,
     alternates: {
-      canonical: `/blizhniy/prodavets/${encodeURIComponent(decodedKey)}`,
+      canonical: `/prodavets/${encodeURIComponent(decodedKey)}`,
     },
   };
 }

@@ -59,7 +59,7 @@ export function sellerProfileKey(item: SellerListingLike) {
 }
 
 export function sellerProfileHref(item: SellerListingLike) {
-  return `/blizhniy/prodavets/${encodeURIComponent(sellerProfileKey(item))}`;
+  return `/prodavets/${encodeURIComponent(sellerProfileKey(item))}`;
 }
 
 export function isSameSeller(left: SellerListingLike, rightKey: string) {

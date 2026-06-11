@@ -19,7 +19,7 @@ export default async function ProfessionSpecialistsPage({ params }: { params: Pr
         <div className="mt-6 grid gap-4">
           {specialists.length ? (
             specialists.map((specialist) => (
-              <Link key={specialist.id} href={`/blizhniy/specialist/${specialist.id}`} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <Link key={specialist.id} href={`/specialist/${specialist.id}`} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 className="text-xl font-black">{specialist.name}</h2>
                 <p className="font-semibold text-[#0875d1]">{specialist.profession}</p>
                 <p className="text-slate-600">{specialist.city} · {specialist.price}</p>

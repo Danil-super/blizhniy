@@ -96,7 +96,7 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
 
   return (
     <Link
-      href={`/blizhniy/vakansiya/${vacancy.id}`}
+      href={`/vakansiya/${vacancy.id}`}
       className="group block min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card"
       aria-label={`Открыть вакансию ${vacancy.title}`}
     >
@@ -134,7 +134,7 @@ function WorkRequestCard({ request }: { request: WorkRequest }) {
 
   return (
     <Link
-      href={`/blizhniy/rabota/zakazy/${request.id}`}
+      href={`/krasnodar/rabota/zakazy/${request.id}`}
       className="group block min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card"
       aria-label={`Открыть заказ ${request.title}`}
     >
@@ -175,7 +175,7 @@ function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
 
   return (
     <Link
-      href={`/blizhniy/specialist/${specialist.id}`}
+      href={`/specialist/${specialist.id}`}
       className="group block min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card"
       aria-label={`Открыть анкету ${specialist.name}`}
     >
@@ -231,7 +231,7 @@ export function WorkPage({
   return (
     <main className="page-container py-2 sm:py-3 lg:py-4">
       <nav className="mb-2 text-xs text-slate-500 sm:text-sm" aria-label="Хлебные крошки">
-        <Link href="/blizhniy" className="hover:text-[#0875d1]">
+        <Link href="/krasnodar" className="hover:text-[#0875d1]">
           Краснодар
         </Link>
         <span className="mx-2">/</span>
@@ -244,14 +244,14 @@ export function WorkPage({
         <SegmentTabs activeItem={demandTab} items={["Новые вакансии", "Заказчики"]} onChange={setDemandTab} />
         <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
           <Link
-            href="/blizhniy/rabota/vakansii/sozdat"
+            href="/krasnodar/rabota/vakansii/sozdat"
             className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-3 text-center text-xs font-bold leading-tight text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:px-4 sm:text-sm lg:gap-2"
           >
             <BriefcaseBusiness className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
             <span className="min-w-0 [overflow-wrap:anywhere]">Разместить вакансию</span>
           </Link>
           <Link
-            href="/blizhniy/rabota/specialisty/anketa"
+            href="/krasnodar/rabota/specialisty/anketa"
             className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-[#0aa337] bg-white px-3 text-center text-xs font-bold leading-tight text-[#0a8f32] transition hover:bg-emerald-50 sm:h-12 sm:px-4 sm:text-sm lg:gap-2"
           >
             <UserRound className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
@@ -270,7 +270,7 @@ export function WorkPage({
                 </span>
                 {showingWorkRequests ? "Заказчики" : "Вакансии"}
               </h2>
-              <Link href={showingWorkRequests ? "/blizhniy/rabota/zakazy/sozdat" : "/blizhniy/rabota/vakansii"} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
+              <Link href={showingWorkRequests ? "/krasnodar/rabota/zakazy/sozdat" : "/krasnodar/rabota/vakansii"} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
                 {showingWorkRequests ? "Разместить" : "Смотреть все"}
                 <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
               </Link>
@@ -292,7 +292,7 @@ export function WorkPage({
                 </span>
                 Специалисты
               </h2>
-              <Link href="/blizhniy/rabota/specialisty" className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
+              <Link href="/krasnodar/rabota/specialisty" className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
                 Смотреть все
                 <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
               </Link>

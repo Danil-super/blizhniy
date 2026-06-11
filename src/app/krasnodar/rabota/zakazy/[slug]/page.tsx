@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: request ? `${request.title} — заказ` : "Заказ",
     description: request?.description ?? "Карточка заказа на платформе БЛИЖНИЙ.",
     alternates: {
-      canonical: `/blizhniy/rabota/zakazy/${slug}`,
+      canonical: `/krasnodar/rabota/zakazy/${slug}`,
     },
   };
 }
@@ -47,7 +47,7 @@ export default async function WorkRequestDetailPage({ params }: { params: Promis
       <SiteHeader />
       <ListingViewTracker listingId={`work-request-${request.id}`} />
       <main className="page-container py-5 sm:py-10">
-        <BackLink fallbackHref="/blizhniy/rabota" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+        <BackLink fallbackHref="/krasnodar/rabota" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
         </BackLink>
         <article className="grid gap-4 lg:grid-cols-[1fr_320px]">

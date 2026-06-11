@@ -83,7 +83,7 @@ const emptyCopy: Record<CabinetListMode, { title: string; text: string; href?: s
   listing: {
     title: "Объявлений пока нет",
     text: "Создайте первое объявление, чтобы оно появилось в ленте и в этом разделе кабинета.",
-    href: "/blizhniy/sozdat/obyavlenie",
+    href: "/krasnodar/sozdat/obyavlenie",
     action: "Создать объявление",
   },
   organization: {
@@ -97,25 +97,25 @@ const emptyCopy: Record<CabinetListMode, { title: string; text: string; href?: s
   response: {
     title: "Откликов пока нет",
     text: "Когда вы оплатите и отправите отклик на вакансию, он появится здесь со статусом просмотра.",
-    href: "/blizhniy/rabota/vakansii",
+    href: "/krasnodar/rabota/vakansii",
     action: "Смотреть вакансии",
   },
   specialist: {
     title: "Анкета специалиста еще не создана",
     text: "У пользователя может быть только одна анкета. После сохранения ее можно редактировать из кабинета.",
-    href: "/blizhniy/rabota/specialisty/anketa",
+    href: "/krasnodar/rabota/specialisty/anketa",
     action: "Создать анкету",
   },
   vacancy: {
     title: "Вакансий пока нет",
     text: "Разместите вакансию, чтобы получать отклики специалистов и управлять публикацией.",
-    href: "/blizhniy/rabota/vakansii/sozdat",
+    href: "/krasnodar/rabota/vakansii/sozdat",
     action: "Разместить вакансию",
   },
   workRequest: {
     title: "Заказов исполнителям пока нет",
     text: "Опишите задачу для специалиста, и она появится в этом разделе.",
-    href: "/blizhniy/rabota/zakazy/sozdat",
+    href: "/krasnodar/rabota/zakazy/sozdat",
     action: "Разместить заказ",
   },
 };
@@ -414,19 +414,19 @@ function CitySearchSelect({ value, onChange }: { value: string; onChange: (value
 
 function getItemHref(item: DemoPublication) {
   if (item.type === "listing") {
-    return `/blizhniy/obyavlenie/${item.id}`;
+    return `/obyavlenie/${item.id}`;
   }
 
   if (item.type === "vacancy") {
-    return `/blizhniy/vakansiya/${item.id}`;
+    return `/vakansiya/${item.id}`;
   }
 
   if (item.type === "workRequest") {
-    return `/blizhniy/rabota/zakazy/${item.id}`;
+    return `/krasnodar/rabota/zakazy/${item.id}`;
   }
 
   if (item.type === "specialist") {
-    return `/blizhniy/specialist/${item.id}`;
+    return `/specialist/${item.id}`;
   }
 
   return "/yarmarka-masterov";
@@ -454,19 +454,19 @@ function getCabinetHrefByType(type: DemoPublicationType) {
 
 function getEditHref(item: DemoPublication) {
   if (item.type === "listing") {
-    return `/blizhniy/obyavlenie/${item.id}/redaktirovat`;
+    return `/krasnodar/obyavlenie/${item.id}/redaktirovat`;
   }
 
   if (item.type === "specialist") {
-    return `/blizhniy/rabota/specialisty/anketa?from=${item.id}`;
+    return `/krasnodar/rabota/specialisty/anketa?from=${item.id}`;
   }
 
   if (item.type === "vacancy") {
-    return `/blizhniy/rabota/vakansii/${item.id}/redaktirovat`;
+    return `/krasnodar/rabota/vakansii/${item.id}/redaktirovat`;
   }
 
   if (item.type === "workRequest") {
-    return `/blizhniy/rabota/zakazy/${item.id}/redaktirovat`;
+    return `/krasnodar/rabota/zakazy/${item.id}/redaktirovat`;
   }
 
   return "/yarmarka-masterov/zayavka";
@@ -1030,7 +1030,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               <h2 className="text-lg font-black text-[#060b27]">Выбор вакансии</h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">У работодателя может быть несколько вакансий: управляйте каждой отдельно по статусу.</p>
             </div>
-            <Link href="/blizhniy/rabota/vakansii/sozdat" className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white sm:w-auto">
+            <Link href="/krasnodar/rabota/vakansii/sozdat" className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white sm:w-auto">
               Разместить еще
             </Link>
           </div>

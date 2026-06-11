@@ -43,7 +43,7 @@ export default function Page() {
               Проект не ограничивается одним краем: архитектура предполагает расширение на другие регионы, а региональные витрины позволят отдельно показывать объявления, специалистов, вакансии и заказы по каждому региону.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <Link href="/blizhniy" className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white">
+              <Link href="/krasnodar" className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white">
                 Открыть платформу
               </Link>
               <Link href="/kak-rabotaet" className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800">

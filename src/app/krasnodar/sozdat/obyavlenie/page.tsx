@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: "Создать объявление в Краснодаре",
   description: "Форма создания объявления с переходом к оплате публикации.",
   alternates: {
-    canonical: "/blizhniy/sozdat/obyavlenie",
+    canonical: "/krasnodar/sozdat/obyavlenie",
   },
 };
 

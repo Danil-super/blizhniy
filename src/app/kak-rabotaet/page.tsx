@@ -70,7 +70,7 @@ export default function Page() {
                 Сейчас проект готовится к демонстрации: тестовая оплата и демо-данные показывают пользовательский путь без подключения реального эквайринга.
               </p>
             </div>
-            <Link href="/blizhniy/sozdat" className="inline-flex h-11 shrink-0 items-center justify-center rounded-lg bg-[#0aa337] px-5 text-sm font-bold text-white">
+            <Link href="/krasnodar/sozdat" className="inline-flex h-11 shrink-0 items-center justify-center rounded-lg bg-[#0aa337] px-5 text-sm font-bold text-white">
               Разместить
             </Link>
           </div>

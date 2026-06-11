@@ -21,7 +21,7 @@ export function HeaderActions({ compact = false }: { compact?: boolean }) {
         <Image src={lockGif} alt="" width={24} height={24} unoptimized className={`${iconClassName} shrink-0 object-contain`} aria-hidden="true" />
         <span className="whitespace-nowrap">{authLabel}</span>
       </Link>
-      <Link href="/blizhniy/sozdat" className={`min-w-0 items-center gap-1 transition hover:text-[#0875d1] ${compact ? "hidden h-9 rounded-lg px-0.5 sm:inline-flex sm:px-1" : "inline-flex"}`}>
+      <Link href="/krasnodar/sozdat" className={`min-w-0 items-center gap-1 transition hover:text-[#0875d1] ${compact ? "hidden h-9 rounded-lg px-0.5 sm:inline-flex sm:px-1" : "inline-flex"}`}>
         <AnimatedCreateIcon className={iconClassName} />
         <span className="whitespace-nowrap">Разместить</span>
       </Link>

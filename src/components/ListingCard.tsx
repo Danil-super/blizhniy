@@ -26,7 +26,7 @@ export function ListingCard({ listing }: { listing: Listing }) {
           <StatusBadge status={listing.status} />
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{listing.subcategory}</span>
         </div>
-        <Link href={`/blizhniy/obyavlenie/${listing.slug}`} className="[overflow-wrap:anywhere] text-lg font-black text-[#060b27] hover:text-[#0875d1] sm:text-xl">
+        <Link href={`/obyavlenie/${listing.slug}`} className="[overflow-wrap:anywhere] text-lg font-black text-[#060b27] hover:text-[#0875d1] sm:text-xl">
           {listing.title}
         </Link>
         <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{listing.description}</p>

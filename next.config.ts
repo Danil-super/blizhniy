@@ -36,82 +36,59 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
-        source: "/krasnodar",
-        destination: "/blizhniy",
-        permanent: false,
-      },
-      {
-        source: "/krasnodar/:path*",
-        destination: "/blizhniy/:path*",
-        permanent: false,
-      },
-      {
-        source: "/obyavlenie/:path*",
-        destination: "/blizhniy/obyavlenie/:path*",
-        permanent: false,
-      },
-      {
-        source: "/vakansiya/:path*",
-        destination: "/blizhniy/vakansiya/:path*",
-        permanent: false,
-      },
-      {
-        source: "/specialist/:path*",
-        destination: "/blizhniy/specialist/:path*",
-        permanent: false,
-      },
-      {
-        source: "/prodavets/:path*",
-        destination: "/blizhniy/prodavets/:path*",
-        permanent: false,
-      },
-    ];
-  },
-  async rewrites() {
-    return [
-      {
         source: "/blizhniy/obyavlenie/:slug/redaktirovat",
         destination: "/krasnodar/obyavlenie/:slug/redaktirovat",
+        permanent: false,
       },
       {
         source: "/blizhniy/obyavlenie/:path*",
         destination: "/obyavlenie/:path*",
+        permanent: false,
       },
       {
         source: "/blizhniy/vakansiya/:path*",
         destination: "/vakansiya/:path*",
+        permanent: false,
       },
       {
         source: "/blizhniy/specialist/:path*",
         destination: "/specialist/:path*",
+        permanent: false,
       },
       {
         source: "/blizhniy/oplata/:path*",
         destination: "/oplata/:path*",
+        permanent: false,
       },
       {
         source: "/blizhniy/prodavets/:path*",
         destination: "/prodavets/:path*",
+        permanent: false,
       },
       {
         source: "/blizhniy/poisk",
         destination: "/poisk",
+        permanent: false,
       },
       {
         source: "/blizhniy/yarmarka-masterov",
         destination: "/yarmarka-masterov",
+        permanent: false,
       },
       {
         source: "/blizhniy/yarmarka-masterov/zayavka",
         destination: "/yarmarka-masterov/zayavka",
+        permanent: false,
       },
       {
         source: "/blizhniy",
         destination: "/krasnodar",
+        permanent: false,
       },
       {
         source: "/blizhniy/:path*",
         destination: "/krasnodar/:path*",
+        permanent: false,
       },
     ];
   },

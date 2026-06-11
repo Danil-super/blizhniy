@@ -20,7 +20,7 @@ export default function SpecialistClassifierPage() {
               <h2 className="text-xl font-black">{group}</h2>
               <div className="mt-3 grid gap-2">
                 {items.map((item) => (
-                  <Link key={item.slug} href={`/blizhniy/rabota/specialisty/${item.slug}`} className="text-[#0875d1]">
+                  <Link key={item.slug} href={`/krasnodar/rabota/specialisty/${item.slug}`} className="text-[#0875d1]">
                     {item.name}
                   </Link>
                 ))}
