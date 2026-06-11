@@ -191,15 +191,6 @@ function getPaymentTargetType(type: DemoPublicationType): PaymentTargetType | un
   return undefined;
 }
 
-function loadImage(src: string) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Не удалось подготовить фото"));
-    image.src = src;
-  });
-}
-
 function readImageFile(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -224,30 +215,8 @@ function readMediaFile(file: File) {
   });
 }
 
-async function readCompressedImage(file: File) {
-  const dataUrl = await readImageFile(file);
-
-  if (!file.type.startsWith("image/") || file.type === "image/svg+xml") {
-    return dataUrl;
-  }
-
-  const image = await loadImage(dataUrl);
-  const maxSide = 1440;
-  const ratio = Math.min(1, maxSide / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
-  const width = Math.max(1, Math.round((image.naturalWidth || image.width) * ratio));
-  const height = Math.max(1, Math.round((image.naturalHeight || image.height) * ratio));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  const context = canvas.getContext("2d");
-
-  if (!context) {
-    return dataUrl;
-  }
-
-  context.drawImage(image, 0, 0, width, height);
-  return canvas.toDataURL("image/jpeg", 0.82);
+async function readOriginalImage(file: File) {
+  return readImageFile(file);
 }
 
 async function readSelectedImages(formData: FormData) {
@@ -256,7 +225,7 @@ async function readSelectedImages(formData: FormData) {
     .filter((file): file is File => file instanceof File && file.size > 0 && file.type.startsWith("image/"))
     .slice(0, 20);
 
-  const images = await Promise.allSettled(files.map((file) => readCompressedImage(file)));
+  const images = await Promise.allSettled(files.map((file) => readOriginalImage(file)));
   return images.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
 }
 
@@ -268,7 +237,7 @@ async function readSelectedListingMedia(formData: FormData) {
   const media = await Promise.allSettled(
     files.map(async (file) => ({
       kind: file.type.startsWith("video/") ? "video" : "image",
-      value: file.type.startsWith("video/") ? await readMediaFile(file) : await readCompressedImage(file),
+      value: file.type.startsWith("video/") ? await readMediaFile(file) : await readOriginalImage(file),
     })),
   );
   const fulfilled = media.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));

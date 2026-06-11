@@ -143,39 +143,8 @@ function readMediaFile(file: File) {
   });
 }
 
-function loadImage(src: string) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Не удалось подготовить фото"));
-    image.src = src;
-  });
-}
-
-async function readCompressedImage(file: File) {
-  const dataUrl = await readImageFile(file);
-
-  if (file.type === "image/svg+xml") {
-    return dataUrl;
-  }
-
-  const image = await loadImage(dataUrl);
-  const maxSide = 1440;
-  const ratio = Math.min(1, maxSide / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
-  const width = Math.max(1, Math.round((image.naturalWidth || image.width) * ratio));
-  const height = Math.max(1, Math.round((image.naturalHeight || image.height) * ratio));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  const context = canvas.getContext("2d");
-
-  if (!context) {
-    return dataUrl;
-  }
-
-  context.drawImage(image, 0, 0, width, height);
-  return canvas.toDataURL("image/jpeg", 0.82);
+async function readOriginalImage(file: File) {
+  return readImageFile(file);
 }
 
 export function DemoListingEditClient({ slug }: { slug: string }) {
@@ -218,7 +187,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
     const nextMedia = await Promise.allSettled(
       files.map(async (file) => ({
         kind: file.type.startsWith("video/") ? "video" : "image",
-        value: file.type.startsWith("video/") ? await readMediaFile(file) : await readCompressedImage(file),
+        value: file.type.startsWith("video/") ? await readMediaFile(file) : await readOriginalImage(file),
       })),
     );
     const fulfilled = nextMedia.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));

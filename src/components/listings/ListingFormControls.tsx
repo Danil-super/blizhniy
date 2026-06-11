@@ -151,13 +151,13 @@ function getRentalSubcategories(categorySlug: string, subcategories: string[]) {
 
 function cropFileName(name: string) {
   const base = name.replace(/\.[^.]+$/, "") || "photo";
-  return `${base}-preview.jpg`;
+  return `${base}-crop.png`;
 }
 
 async function dataUrlToImageFile(dataUrl: string, name: string) {
   const response = await fetch(dataUrl);
   const blob = await response.blob();
-  return new File([blob], cropFileName(name), { type: "image/jpeg" });
+  return new File([blob], cropFileName(name), { type: blob.type || "image/png" });
 }
 
 function filterSuggestions(suggestions: Suggestion[], value: string) {

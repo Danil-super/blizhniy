@@ -59,12 +59,13 @@ function getCropTransform(draft: CropDraft, imageSize: ImageSize, stageSize: num
   };
 }
 
-async function cropSquareImage(src: string, draft: CropDraft, imageSize: ImageSize, stageSize: number, outputSize: number) {
+async function cropSquareImage(src: string, draft: CropDraft, imageSize: ImageSize, stageSize: number, minimumOutputSize: number) {
   const image = await loadImage(src);
   const transform = getCropTransform(draft, imageSize, stageSize);
   const sourceX = (transform.width / 2 - stageSize / 2 - transform.offsetX) / transform.scale;
   const sourceY = (transform.height / 2 - stageSize / 2 - transform.offsetY) / transform.scale;
   const sourceSize = stageSize / transform.scale;
+  const outputSize = Math.max(minimumOutputSize, Math.round(sourceSize));
   const canvas = document.createElement("canvas");
   canvas.width = outputSize;
   canvas.height = outputSize;
@@ -77,11 +78,13 @@ async function cropSquareImage(src: string, draft: CropDraft, imageSize: ImageSi
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, outputSize, outputSize);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
   context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, outputSize, outputSize);
-  return canvas.toDataURL("image/jpeg", 0.88);
+  return canvas.toDataURL("image/png");
 }
 
-export function SquareImageCropper({ alt, description = "Перетащите фото внутри квадрата и настройте масштаб.", onApply, onCancel, outputSize = 1200, src, title = "Выберите кадр" }: SquareImageCropperProps) {
+export function SquareImageCropper({ alt, description = "Перетащите фото внутри квадрата и настройте масштаб.", onApply, onCancel, outputSize = 2400, src, title = "Выберите кадр" }: SquareImageCropperProps) {
   const [draft, setDraft] = useState<CropDraft>({ offsetX: 0, offsetY: 0, zoom: 1 });
   const [imageSize, setImageSize] = useState<ImageSize | null>(null);
   const [stageSize, setStageSize] = useState(320);

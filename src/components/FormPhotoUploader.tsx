@@ -33,7 +33,7 @@ async function dataUrlToImageFile(dataUrl: string, name: string) {
   const response = await fetch(dataUrl);
   const blob = await response.blob();
   const base = name.replace(/\.[^.]+$/, "") || "photo";
-  return new File([blob], `${base}-preview.jpg`, { type: "image/jpeg" });
+  return new File([blob], `${base}-crop.png`, { type: blob.type || "image/png" });
 }
 
 export function FormPhotoUploader({
