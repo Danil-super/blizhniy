@@ -10,6 +10,7 @@ import menuGif from "../../menu.gif";
 
 const publicLinks = [
   ["Как работает", "/kak-rabotaet"],
+  ["Ярмарка мастеров", "/yarmarka-masterov"],
   ["Для бизнеса", "/cabinet/organization"],
   ["Помощь", "/legal/user-agreement"],
 ];
