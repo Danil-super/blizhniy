@@ -3,7 +3,7 @@ import { CalendarDays, CheckCircle2, ImagePlus, MapPin, PlaySquare, Store, Video
 import { FairApplicationForm } from "@/components/FairApplicationForm";
 import { LocationMap } from "@/components/LocationMap";
 import { fairCategories } from "@/lib/data";
-import { listFairApplications } from "@/lib/mock-store";
+import { listStoredFairApplications } from "@/lib/fair-application-store";
 import { getTariffs } from "@/lib/tariff-store";
 
 function nextFairDate(today = new Date()) {
@@ -28,11 +28,11 @@ function formatFairDate(date: Date) {
   }).format(date);
 }
 
-export function FairHomePage() {
+export async function FairHomePage() {
   const fairDate = nextFairDate();
   const tariffs = getTariffs();
   const fairTariff = tariffs.find((tariff) => tariff.action === "fair_participation");
-  const publishedApplications = listFairApplications().filter((application) => application.status === "published");
+  const publishedApplications = await listStoredFairApplications("published");
 
   return (
     <main className="page-container py-6 sm:py-10">

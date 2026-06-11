@@ -14,6 +14,7 @@ import {
   isDemoPublicationSold,
   soldPublicationStatus,
   unpublishedVacancyStatus,
+  withPublicationHistory,
   withPublicationStatusHistory,
   type DemoPublication,
   type DemoPublicationType,
@@ -24,7 +25,7 @@ import { ValidatedInput } from "@/components/ValidatedInput";
 import { cities } from "@/lib/data";
 import { confirmClientPayment, createAndConfirmClientPayment } from "@/lib/client-payment-flow";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
-import type { Payment } from "@/lib/types";
+import type { FairApplication, Payment } from "@/lib/types";
 import {
   type CabinetProfile,
   createDefaultCabinetProfile,
@@ -43,6 +44,12 @@ type UserCabinetState = {
 };
 
 type CabinetListMode = DemoPublicationType | "payment" | "response" | "organization";
+type CabinetServerFairApplicationsPayload = {
+  applications?: FairApplication[];
+};
+type CabinetServerPaymentsPayload = {
+  payments?: Payment[];
+};
 type AvatarCropDraft = {
   src: string;
   zoom: number;
@@ -140,6 +147,111 @@ function writeStoredPublications(items: DemoPublication[]) {
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
 }
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const supabase = getSupabaseBrowserClient();
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function fairApplicationStatusLabel(status: FairApplication["status"]) {
+  if (status === "published") {
+    return "Опубликовано";
+  }
+
+  if (status === "pending_payment") {
+    return "Ждет оплаты";
+  }
+
+  if (status === "draft") {
+    return "Черновик";
+  }
+
+  if (status === "archived") {
+    return "Архив";
+  }
+
+  if (status === "rejected") {
+    return "Отклонено";
+  }
+
+  if (status === "expired") {
+    return "Истек срок";
+  }
+
+  return status;
+}
+
+function fairApplicationToDemoPublication(application: FairApplication, ownerKey: string): DemoPublication {
+  return withPublicationHistory({
+    id: application.id,
+    type: "fairApplication",
+    ownerKey,
+    title: application.participantName,
+    subtitle: application.category,
+    city: application.city,
+    description: application.description,
+    images: application.productPhotos,
+    videos: application.videoUrl ? [application.videoUrl] : undefined,
+    lat: application.lat,
+    lng: application.lng,
+    address: application.address ?? application.district,
+    showExactAddress: application.showExactAddress,
+    phone: application.phone,
+    email: application.email,
+    status: fairApplicationStatusLabel(application.status),
+    createdAt: application.createdAt,
+  });
+}
+
+async function fetchCabinetFairApplications(identity: ClientUserIdentity) {
+  if (!identity.accessToken) {
+    return [];
+  }
+
+  try {
+    const response = await fetch("/api/cabinet/fair-applications", {
+      headers: await getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = (await response.json().catch(() => null)) as CabinetServerFairApplicationsPayload | null;
+
+    return (payload?.applications ?? []).map((application) => fairApplicationToDemoPublication(application, identity.ownerKey));
+  } catch {
+    return [];
+  }
+}
+
+function paymentToHistoryItem(payment: Payment): CabinetPaymentHistoryItem {
+  return {
+    id: payment.id,
+    href: `/oplata/${payment.id}`,
+    subject: payment.targetTitle,
+    amount: `${payment.amount} ₽`,
+    method: payment.provider === "mock" ? "Тестовая оплата" : payment.provider,
+    status: payment.status,
+  };
+}
+
+async function fetchCabinetPayments() {
+  const response = await fetch("/api/cabinet/payments", {
+    headers: await getAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const payload = (await response.json().catch(() => null)) as CabinetServerPaymentsPayload | null;
+
+  return (payload?.payments ?? []).map(paymentToHistoryItem);
+}
+
 function useUserCabinetData(): UserCabinetState {
   const [state, setState] = useState<UserCabinetState>({ identity: null, profile: null, items: [], loading: true });
 
@@ -150,7 +262,9 @@ function useUserCabinetData(): UserCabinetState {
       const identity = await resolveClientUserIdentity();
       const fallback = createDefaultCabinetProfile(identity);
       const profile = readCabinetProfile(identity.ownerKey, fallback);
-      const items = readStoredPublications().filter((item) => item.ownerKey === identity.ownerKey);
+      const localItems = readStoredPublications().filter((item) => item.ownerKey === identity.ownerKey);
+      const serverItems = await fetchCabinetFairApplications(identity);
+      const items = Array.from(new Map([...serverItems, ...localItems].map((item) => [item.id, item])).values());
 
       if (active) {
         setState({ identity, profile, items, loading: false });
@@ -2134,6 +2248,82 @@ export function CabinetPaymentsHistoryClient({ payments = [] }: { payments?: Cab
         </article>
       ))}
     </section>
+  );
+}
+
+export function CabinetPaymentsClient({ initialPayments = [] }: { initialPayments?: CabinetPaymentHistoryItem[] }) {
+  const [payments, setPayments] = useState(initialPayments);
+  const [loading, setLoading] = useState(true);
+  const pendingPayments = useMemo(() => payments.filter((payment) => payment.status !== "succeeded"), [payments]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function sync() {
+      const serverPayments = await fetchCabinetPayments();
+      const mergedPayments = Array.from(new Map([...serverPayments, ...initialPayments].map((payment) => [payment.id, payment])).values());
+
+      if (active) {
+        setPayments(mergedPayments);
+        setLoading(false);
+      }
+    }
+
+    sync().catch(() => {
+      if (active) {
+        setPayments(initialPayments);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [initialPayments]);
+
+  return (
+    <>
+      <section className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 shadow-card sm:p-5">
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+          <div>
+            <p className="text-xs font-black uppercase text-[#0875d1]">Оплата по заказу</p>
+            <h2 className="mt-1 text-lg font-black text-[#060b27] sm:text-2xl">Платеж появляется после создания публикации</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              Сначала создайте объявление, вакансию, анкету, отклик или заявку на ярмарку. После этого здесь появится понятный счет с названием и суммой.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Link href="/krasnodar/sozdat/obyavlenie" className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white">
+              Создать объявление
+            </Link>
+            <Link href="/krasnodar/rabota/vakansii/sozdat" className="inline-flex h-10 items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-bold text-[#0875d1]">
+              Разместить вакансию
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {loading ? <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 text-sm font-semibold text-slate-600 shadow-card">Загружаем платежи...</div> : null}
+
+      <section className="mt-6">
+        <h2 className="mb-4 text-2xl font-black text-[#060b27]">Ожидают оплаты</h2>
+        {pendingPayments.length ? (
+          <CabinetPaymentsHistoryClient payments={pendingPayments} />
+        ) : (
+          <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
+            <div>
+              <p className="text-sm font-black text-[#060b27]">Нет неоплаченных заказов</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">Когда публикация или отклик будут ждать оплату, они появятся в этом блоке.</p>
+            </div>
+          </article>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="mb-4 text-2xl font-black text-[#060b27]">История платежей</h2>
+        <CabinetPaymentsHistoryClient payments={payments} />
+      </section>
+    </>
   );
 }
 

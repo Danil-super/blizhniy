@@ -1,7 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
+import { buildSupabaseRestUrl, getSupabaseRestConfig } from "@/lib/supabase-rest";
 
 type UserRoleRow = {
   role: string;
+};
+
+type SupabaseAuthUser = {
+  email?: string;
+  id: string;
 };
 
 function getSupabaseServerConfig() {
@@ -28,23 +33,25 @@ export async function getAuthenticatedRequestUser(request: Request) {
     return null;
   }
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: false,
+  const response = await fetch(buildSupabaseRestUrl("/auth/v1/user"), {
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${token}`,
     },
-    global: {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    },
+    cache: "no-store",
   });
-  const { data, error } = await supabase.auth.getUser(token);
 
-  if (error || !data.user) {
+  if (!response.ok) {
     return null;
   }
 
-  return { supabase, user: data.user };
+  const user = (await response.json().catch(() => null)) as SupabaseAuthUser | null;
+
+  if (!user?.id) {
+    return null;
+  }
+
+  return { user };
 }
 
 export async function isAuthenticatedRequest(request: Request) {
@@ -58,13 +65,27 @@ export async function isAdminRequest(request: Request) {
     return false;
   }
 
-  const { data, error } = await auth.supabase.from("user_roles").select("role").eq("user_id", auth.user.id);
+  const { key } = getSupabaseRestConfig();
 
-  if (error) {
+  if (!key) {
     return false;
   }
 
-  return (data as UserRoleRow[] | null)?.some((item) => item.role === "admin") ?? false;
+  const response = await fetch(buildSupabaseRestUrl(`/rest/v1/user_roles?select=role&user_id=eq.${encodeURIComponent(auth.user.id)}`), {
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    return false;
+  }
+
+  const data = (await response.json().catch(() => null)) as UserRoleRow[] | null;
+
+  return data?.some((item) => item.role === "admin") ?? false;
 }
 
 export function isDemoAdminBypassEnabled() {

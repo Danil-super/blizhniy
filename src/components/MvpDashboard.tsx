@@ -31,7 +31,7 @@ import {
   CabinetContactsHint,
   CabinetOrganizationClient,
   CabinetOverviewClient,
-  CabinetPaymentsHistoryClient,
+  CabinetPaymentsClient,
   type CabinetResponseItem,
   type CabinetPaymentHistoryItem,
   CabinetProfileBar,
@@ -45,12 +45,12 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { listDemoListings, toDemoListing } from "@/components/listings/ListingPages";
 import type { DemoPublication } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
+import { listStoredFairApplications, updateStoredFairApplicationStatus } from "@/lib/fair-application-store";
 import { getPayment } from "@/lib/payment-provider";
 import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
 import {
   getCurrentUserSpecialist,
   listApplications,
-  listFairApplications,
   listListings,
   listMockPayments,
   listSpecialists,
@@ -270,7 +270,12 @@ async function updatePublicationStatusAction(formData: FormData) {
   }
 
   if (entityType === "fairApplication") {
-    updateFairApplicationStatus(id, status);
+    const stored = await updateStoredFairApplicationStatus(id, status);
+
+    if (!stored) {
+      updateFairApplicationStatus(id, status);
+    }
+
     revalidatePath("/admin/fair-applications");
     revalidatePath("/yarmarka-masterov");
     revalidatePath("/poisk");
@@ -691,49 +696,11 @@ export function CabinetResponsesPage() {
 
 export function CabinetPaymentsPage() {
   const payments = paymentRows() as CabinetPaymentHistoryItem[];
-  const pendingPayments = payments.filter((payment) => payment.status !== "succeeded");
 
   return (
     <Shell title="Платежи" description="Сформированные заказы, ожидающие оплаты, и история платежей." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/oplata" createHref={null}>
       <CabinetAuthGate>
-        <section className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 shadow-card sm:p-5">
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
-            <div>
-              <p className="text-xs font-black uppercase text-[#0875d1]">Оплата по заказу</p>
-              <h2 className="mt-1 text-lg font-black text-[#060b27] sm:text-2xl">Платеж появляется после создания публикации</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-600">
-                Сначала создайте объявление, вакансию, анкету, отклик или заявку на ярмарку. После этого здесь появится понятный счет с названием и суммой.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2 sm:justify-end">
-              <Link href="/krasnodar/sozdat/obyavlenie" className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white">
-                Создать объявление
-              </Link>
-              <Link href="/krasnodar/rabota/vakansii/sozdat" className="inline-flex h-10 items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-bold text-[#0875d1]">
-                Разместить вакансию
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-6">
-          <SectionTitle title="Ожидают оплаты" />
-          {pendingPayments.length ? (
-            <CabinetPaymentsHistoryClient payments={pendingPayments} />
-          ) : (
-            <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
-              <div>
-                <p className="text-sm font-black text-[#060b27]">Нет неоплаченных заказов</p>
-                <p className="mt-1 text-sm leading-6 text-slate-600">Когда публикация или отклик будут ждать оплату, они появятся в этом блоке.</p>
-              </div>
-            </article>
-          )}
-        </section>
-
-        <section className="mt-8">
-          <SectionTitle title="История платежей" />
-          <CabinetPaymentsHistoryClient payments={payments} />
-        </section>
+        <CabinetPaymentsClient initialPayments={payments} />
       </CabinetAuthGate>
     </Shell>
   );
@@ -1122,8 +1089,9 @@ export function AdminTariffsPage() {
   );
 }
 
-export function AdminFairApplicationsPage() {
-  const rows = listFairApplications().map((application) => ({
+export async function AdminFairApplicationsPage() {
+  const applications = await listStoredFairApplications();
+  const rows = applications.map((application) => ({
     ...application,
     statusTargetId: application.id,
     statusEntityType: "fairApplication",

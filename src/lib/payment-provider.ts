@@ -1,4 +1,12 @@
 import { listMockPayments, markPaymentTargetSucceeded } from "@/lib/mock-store";
+import {
+  canStorePayment,
+  createStoredPayment,
+  findStoredPaymentByProvider,
+  getStoredPayment,
+  markStoredPaymentTargetSucceeded,
+  updateStoredPayment,
+} from "@/lib/payment-store";
 import { getPublicSiteUrl } from "@/lib/site-url";
 import { getActiveTariffById } from "@/lib/tariff-store";
 import type { Payment, Tariff } from "@/lib/types";
@@ -30,6 +38,7 @@ export type CreatePaymentInput = {
   targetId?: string;
   targetType?: PaymentTargetType;
   targetTitle?: string;
+  userId?: string;
 };
 
 export type PaymentResult = {
@@ -70,6 +79,10 @@ function resolveTargetTitle(tariff: Tariff, targetTitle?: string) {
 }
 
 function createPaymentId() {
+  return crypto.randomUUID();
+}
+
+function createMockPaymentId() {
   return `pay-mock-${Date.now().toString(36)}`;
 }
 
@@ -153,11 +166,12 @@ function createPendingPaymentResult(payment: Payment): PaymentResult {
   };
 }
 
-function applySucceededPayment(payment: Payment): PaymentResult {
+async function applySucceededPayment(payment: Payment): Promise<PaymentResult> {
   payment.status = "succeeded";
   payment.paidAt = payment.paidAt ?? todayIsoDate();
 
-  const nextStatus = markPaymentTargetSucceeded(payment);
+  await updateStoredPayment(payment);
+  const nextStatus = canStorePayment(payment) ? await markStoredPaymentTargetSucceeded(payment) : markPaymentTargetSucceeded(payment);
 
   return {
     payment,
@@ -178,7 +192,7 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
   }
 
   const auth = Buffer.from(`${shopId}:${secretKey}`).toString("base64");
-  const localPaymentId = `pay-yookassa-${Date.now().toString(36)}`;
+  const localPaymentId = canStorePayment(input) ? createPaymentId() : `pay-yookassa-${Date.now().toString(36)}`;
   const returnUrl = `${getPublicBaseUrl()}/oplata/${localPaymentId}`;
   const response = await fetch("https://api.yookassa.ru/v3/payments", {
     method: "POST",
@@ -227,10 +241,29 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
     ...(payload.status === "succeeded" || payload.status === "waiting_for_capture" ? { paidAt: todayIsoDate() } : {}),
   };
 
-  listMockPayments().unshift(payment);
+  if (canStorePayment(input)) {
+    await createStoredPayment({
+      amount: payment.amount,
+      id: payment.id,
+      provider: payment.provider,
+      providerPaymentId: payment.providerPaymentId,
+      status: payment.status,
+      targetId: payment.targetId,
+      targetTitle: payment.targetTitle,
+      targetType: payment.targetType,
+      tariff,
+      userId: input.userId,
+    });
+  } else {
+    listMockPayments().unshift(payment);
+  }
 
   if (payment.status === "succeeded") {
-    markPaymentTargetSucceeded(payment);
+    if (canStorePayment(input)) {
+      await markStoredPaymentTargetSucceeded(payment);
+    } else {
+      markPaymentTargetSucceeded(payment);
+    }
   }
 
   return payment;
@@ -250,7 +283,7 @@ export async function createPayment(input: CreatePaymentInput) {
   }
 
   const payment: Payment = {
-    id: createPaymentId(),
+    id: canStorePayment(input) ? createPaymentId() : createMockPaymentId(),
     targetType: input.targetType ?? resolveTargetType(tariff),
     targetId: input.targetId,
     targetTitle: resolveTargetTitle(tariff, input.targetTitle),
@@ -261,12 +294,27 @@ export async function createPayment(input: CreatePaymentInput) {
     createdAt: todayIsoDate(),
   };
 
-  listMockPayments().unshift(payment);
+  if (canStorePayment(input)) {
+    await createStoredPayment({
+      amount: payment.amount,
+      id: payment.id,
+      provider: payment.provider,
+      status: payment.status,
+      targetId: payment.targetId,
+      targetTitle: payment.targetTitle,
+      targetType: payment.targetType,
+      tariff,
+      userId: input.userId,
+    });
+  } else {
+    listMockPayments().unshift(payment);
+  }
+
   return payment;
 }
 
 export async function confirmPayment(paymentId: string): Promise<PaymentResult> {
-  const payment = getPayment(paymentId);
+  const payment = (await getStoredPayment(paymentId)) ?? getPayment(paymentId);
 
   if (!payment) {
     throw new Error("Payment not found");
@@ -281,6 +329,7 @@ export async function confirmPayment(paymentId: string): Promise<PaymentResult> 
     applyYooKassaPaymentState(payment, yookassaPayment);
 
     if (payment.status !== "succeeded") {
+      await updateStoredPayment(payment);
       return createPendingPaymentResult(payment);
     }
   }
@@ -288,8 +337,13 @@ export async function confirmPayment(paymentId: string): Promise<PaymentResult> 
   return applySucceededPayment(payment);
 }
 
-function findPaymentByYooKassaObject(yookassaPayment: YooKassaPaymentResponse) {
+async function findPaymentByYooKassaObject(yookassaPayment: YooKassaPaymentResponse) {
   const localPaymentId = yookassaPayment.metadata?.localPaymentId;
+  const storedPayment = await findStoredPaymentByProvider(yookassaPayment.id, localPaymentId);
+
+  if (storedPayment) {
+    return storedPayment;
+  }
 
   return listMockPayments().find((payment) => payment.id === localPaymentId || payment.providerPaymentId === yookassaPayment.id);
 }
@@ -301,13 +355,14 @@ export async function processYooKassaNotification(payload: YooKassaNotificationP
     return { processed: false, reason: "unsupported_notification" as const };
   }
 
-  const payment = findPaymentByYooKassaObject(yookassaPayment);
+  const payment = await findPaymentByYooKassaObject(yookassaPayment);
 
   if (!payment) {
     return { processed: false, reason: "payment_not_found" as const };
   }
 
   applyYooKassaPaymentState(payment, yookassaPayment);
+  await updateStoredPayment(payment);
 
   if (payment.status !== "succeeded") {
     return { processed: true, result: createPendingPaymentResult(payment) };

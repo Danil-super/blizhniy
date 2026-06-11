@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createPayment } from "@/lib/payment-provider";
+import { createStoredFairApplication, listStoredFairApplications, markStoredFairApplicationPaid } from "@/lib/fair-application-store";
 import { createFairApplication, listFairApplications } from "@/lib/mock-store";
-import { isAdminRequest, isAuthenticatedRequest } from "@/lib/server-auth";
+import { getAuthenticatedRequestUser, isAdminRequest } from "@/lib/server-auth";
+import { isSupabaseRestConfigured } from "@/lib/supabase-rest";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileToken } from "@/lib/turnstile";
 
 type CreateFairApplicationBody = {
@@ -34,11 +36,17 @@ function getRemoteIp(request: Request) {
 }
 
 export async function GET() {
-  return NextResponse.json({ applications: listFairApplications().filter((application) => application.status === "published") });
+  const applications = isSupabaseRestConfigured()
+    ? await listStoredFairApplications("published")
+    : listFairApplications().filter((application) => application.status === "published");
+
+  return NextResponse.json({ applications });
 }
 
 export async function POST(request: Request) {
-  if (!(await isAuthenticatedRequest(request))) {
+  const auth = await getAuthenticatedRequestUser(request);
+
+  if (!auth) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы подать заявку" }, { status: 401 });
   }
 
@@ -60,7 +68,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: TURNSTILE_ERROR_MESSAGE }, { status: 400 });
   }
 
-  const application = createFairApplication({
+  const applicationInput = {
     participantName: cleanText(body.participantName),
     city: cleanText(body.city),
     category: cleanText(body.category),
@@ -70,7 +78,10 @@ export async function POST(request: Request) {
     phone: cleanText(body.phone),
     email: cleanText(body.email),
     comment: cleanText(body.comment) || undefined,
-  });
+  };
+  const application = isSupabaseRestConfigured()
+    ? await createStoredFairApplication({ ...applicationInput, userId: auth.user.id })
+    : createFairApplication(applicationInput);
 
   if (body.skipPayment === true) {
     if (!(await isAdminRequest(request))) {
@@ -79,6 +90,11 @@ export async function POST(request: Request) {
 
     application.paymentStatus = "succeeded";
     application.status = "published";
+
+    if (isSupabaseRestConfigured()) {
+      await markStoredFairApplicationPaid(application.id);
+    }
+
     return NextResponse.json({ application }, { status: 201 });
   }
 
@@ -87,6 +103,7 @@ export async function POST(request: Request) {
     targetId: application.id,
     targetType: "fair_application",
     targetTitle: `Заявка на ярмарку: ${application.participantName}`,
+    userId: auth.user.id,
   });
 
   return NextResponse.json({ application, payment }, { status: 201 });

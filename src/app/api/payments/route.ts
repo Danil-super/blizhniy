@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createPayment, listPayments } from "@/lib/payment-provider";
-import { isAdminRequest, isAuthenticatedRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
+import { getAuthenticatedRequestUser, isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
 import type { Payment } from "@/lib/types";
 
 type CreatePaymentBody = {
@@ -27,7 +27,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Auth is not configured" }, { status: 503 });
   }
 
-  if (!(await isAuthenticatedRequest(request))) {
+  const auth = await getAuthenticatedRequestUser(request);
+
+  if (!auth) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы создать платеж" }, { status: 401 });
   }
 
@@ -43,6 +45,7 @@ export async function POST(request: Request) {
       targetId: body.targetId,
       targetType: body.targetType,
       targetTitle: body.targetTitle,
+      userId: auth.user.id,
     });
 
     return NextResponse.json({ payment }, { status: 201 });
