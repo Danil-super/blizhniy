@@ -1,10 +1,9 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
-
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, ExternalLink, FilePenLine, Video } from "lucide-react";
+import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { demoPublicationLabels, demoPublicationsStorageKey, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
 
@@ -59,8 +58,8 @@ export function DemoPublishedItems({ type }: { type: DemoPublicationType }) {
             <div className="flex items-start gap-3">
               {(item.type === "listing" || item.type === "specialist") && (item.images?.[0] || item.videos?.[0]) ? (
                 <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                  {item.images?.[0] ? <img src={item.images[0]} alt={item.title} className="h-full w-full object-cover" /> : null}
-                  {!item.images?.[0] && item.videos?.[0] ? <video src={item.videos[0]} className="h-full w-full bg-slate-950 object-cover" muted playsInline preload="metadata" /> : null}
+                  {item.images?.[0] ? <StoredMediaImage src={item.images[0]} alt={item.title} className="h-full w-full object-cover" /> : null}
+                  {!item.images?.[0] && item.videos?.[0] ? <StoredMediaVideo src={item.videos[0]} className="h-full w-full bg-slate-950 object-cover" muted playsInline preload="metadata" /> : null}
                   {!item.images?.[0] && item.videos?.[0] ? (
                     <span className="absolute inset-0 flex items-center justify-center bg-slate-950/20 text-white">
                       <Video className="h-5 w-5" />

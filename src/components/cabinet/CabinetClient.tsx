@@ -21,6 +21,7 @@ import {
 } from "@/lib/demo-publications";
 import { useAuthState } from "@/components/auth/useAuthState";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
+import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { cities } from "@/lib/data";
 import { confirmClientPayment, createAndConfirmClientPayment } from "@/lib/client-payment-flow";
@@ -707,6 +708,14 @@ function deletePublicationButtonLabel(item: DemoPublication) {
   return "Удалить черновик";
 }
 
+function publicationPlaceLabel(item: DemoPublication) {
+  if (item.type === "listing" && item.hasMapPoint && item.address) {
+    return item.address;
+  }
+
+  return item.city;
+}
+
 function markListingSold(itemId: string, reason: SoldReason) {
   const currentItem = readStoredPublications().find((item) => item.id === itemId);
   const nextItems = readStoredPublications().map((item) => {
@@ -1184,8 +1193,8 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         <article key={item.id} className={`group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-card ${sold || inactivePaidPublication ? "ring-slate-300" : "ring-slate-200"}`}>
           <Link href={getItemHref(item)} className="block min-w-0" aria-label={`Открыть ${item.title}`}>
           <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-blue-50 text-[#0875d1]">
-            {item.images?.[0] ? <img src={item.images[0]} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
-            {!item.images?.[0] && item.videos?.[0] ? <video src={item.videos[0]} className="absolute inset-0 h-full w-full bg-slate-950 object-cover transition duration-300 group-hover:scale-[1.03]" muted playsInline preload="metadata" /> : null}
+            {item.images?.[0] ? <StoredMediaImage src={item.images[0]} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
+            {!item.images?.[0] && item.videos?.[0] ? <StoredMediaVideo src={item.videos[0]} className="absolute inset-0 h-full w-full bg-slate-950 object-cover transition duration-300 group-hover:scale-[1.03]" muted playsInline preload="metadata" /> : null}
             {!item.images?.[0] && !item.videos?.[0] ? (
               <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80 transition group-hover:scale-105">
                 <FileText className="h-12 w-12" />
@@ -1212,7 +1221,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
             </span>
             <span className="mt-2 flex min-w-0 items-center gap-1 text-xs text-slate-500">
               <MapPin className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{item.city}</span>
+              <span className="line-clamp-2 min-w-0 leading-4 [overflow-wrap:anywhere]" title={publicationPlaceLabel(item)}>{publicationPlaceLabel(item)}</span>
             </span>
           </span>
           </Link>

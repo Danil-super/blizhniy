@@ -1,13 +1,12 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
-
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Camera, CheckCircle2, ChevronLeft, ChevronRight, MapPin, MessageCircle, Phone, Video } from "lucide-react";
+import { Camera, CheckCircle2, ChevronLeft, ChevronRight, Mail, MapPin, MessageCircle, Phone, Video } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { LocationMap } from "@/components/LocationMap";
-import { DemoPublication, demoPublicationsStorageKey, isDemoPublicationSold } from "@/lib/demo-publications";
+import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
+import { DemoPublication, demoPublicationsStorageKey, isDemoPublicationPubliclyVisible, isDemoPublicationSold } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { formatPublicationDateTime } from "@/lib/publication-time";
@@ -105,9 +104,9 @@ function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string })
     <section className="mt-5 w-full max-w-3xl sm:mt-6">
       <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
         {activeMedia?.kind === "video" ? (
-          <video src={activeMedia.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
+          <StoredMediaVideo src={activeMedia.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
         ) : (
-          <img src={activeMedia?.src} alt={title} className="h-full w-full object-contain" />
+          <StoredMediaImage src={activeMedia?.src} alt={title} className="h-full w-full object-contain" />
         )}
         {media.length > 1 ? (
           <>
@@ -147,13 +146,13 @@ function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string })
             >
               {item.kind === "video" ? (
                 <>
-                  <video src={item.src} className="h-full w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
+                  <StoredMediaVideo src={item.src} className="h-full w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
                   <span className="absolute inset-0 flex items-center justify-center bg-slate-950/25 text-white">
                     <Video className="h-5 w-5" />
                   </span>
                 </>
               ) : (
-                <img src={item.src} alt="" className="h-full w-full object-contain" />
+                <StoredMediaImage src={item.src} alt="" className="h-full w-full object-contain" />
               )}
             </button>
           ))}
@@ -181,12 +180,15 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
     };
   }, []);
 
-  const listing = useMemo(() => items.find((item) => item.type === "listing" && item.id === slug), [items, slug]);
+  const listing = useMemo(() => items.find((item) => item.type === "listing" && item.id === slug && isDemoPublicationPubliclyVisible(item)), [items, slug]);
   const kind = (listing?.listingKind ?? "prodam") as ListingKind;
   const listingHref = `/obyavlenie/${slug}`;
   const hasMapPoint = listing ? hasListingMapPoint(listing) : false;
   const sold = listing ? isDemoPublicationSold(listing) : false;
   const sellerStats = listing ? listingSellerStats(listing, items) : undefined;
+  const contactCount = [listing?.phone, listing?.messengerUrl, listing?.email].filter(Boolean).length;
+  const actionCount = contactCount + 1;
+  const actionGridClass = actionCount >= 4 ? "grid-cols-[repeat(4,minmax(104px,1fr))]" : actionCount === 3 ? "grid-cols-3" : actionCount === 2 ? "grid-cols-2" : "grid-cols-1";
   const galleryMedia: GalleryMedia[] = listing
     ? [
         ...(listing.images ?? []).map((src) => ({ kind: "image" as const, src })),
@@ -216,15 +218,15 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
           <BackLink fallbackHref={`/krasnodar/${kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             Назад к разделу
           </BackLink>
-          <h1 className="[overflow-wrap:anywhere] mt-3 text-2xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-4xl lg:text-5xl">{listing.title}</h1>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <h1 className="[overflow-wrap:anywhere] mt-3 text-xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-3xl lg:text-4xl">{listing.title}</h1>
+          <div className="mt-3 flex flex-wrap gap-2">
             <ListingKindBadge kind={kind} />
             <StatusBadge status={sold ? "sold" : "published"} />
           </div>
           <DemoGallery media={galleryMedia} title={listing.title} />
           <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
-            <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Описание</h2>
-            <p className="mt-3 [overflow-wrap:anywhere] text-base leading-7 text-slate-700 sm:mt-4 sm:text-lg sm:leading-8">{listing.description ?? "Описание будет дополнено."}</p>
+            <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Описание</h2>
+            <p className="mt-2 [overflow-wrap:anywhere] text-sm leading-6 text-slate-700 sm:mt-3 sm:text-base sm:leading-7">{listing.description ?? "Описание будет дополнено."}</p>
             <dl className="mt-5 grid min-w-0 gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4">
               <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                 <dt className="text-sm font-bold text-slate-500">Категория</dt>
@@ -239,8 +241,8 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
         </section>
 
         <aside className="min-w-0 space-y-4">
-          <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
-            <p className="[overflow-wrap:anywhere] text-2xl font-black text-[#060b27] sm:text-3xl">{listing.price ?? "по договоренности"}</p>
+          <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
+            <p className="[overflow-wrap:anywhere] text-xl font-black text-[#060b27] sm:text-2xl">{listing.price ?? "по договоренности"}</p>
             {sold ? (
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-start gap-3">
@@ -267,26 +269,34 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
               </p>
             ) : null}
             {!sold ? (
-              <div className="mt-5 grid gap-2 sm:gap-3">
-                <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  <a href={`tel:${listing.phone ?? "+78610009999"}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-3 text-sm font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:text-base">
-                    <Phone className="h-5 w-5 shrink-0" />
-                    <span className="truncate">Позвонить</span>
-                  </a>
+              <div className="mt-4 grid gap-2">
+                <div className={`grid min-w-0 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${actionGridClass}`}>
+                  {listing.phone ? (
+                    <a href={`tel:${listing.phone}`} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:text-sm">
+                      <Phone className="h-4 w-4 shrink-0" />
+                      <span className="truncate">Позвонить</span>
+                    </a>
+                  ) : null}
+                  {listing.email ? (
+                    <a href={`mailto:${listing.email}`} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] bg-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:text-sm">
+                      <Mail className="h-4 w-4 shrink-0" />
+                      <span className="truncate">Email</span>
+                    </a>
+                  ) : null}
+                  {listing.messengerUrl ? (
+                    <a href={listing.messengerUrl} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] bg-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:text-sm">
+                      <MessageCircle className="h-4 w-4 shrink-0" />
+                      <span className="min-w-0 truncate">Сообщение</span>
+                    </a>
+                  ) : null}
                   <ListingShareButton
                     href={listingHref}
                     title={listing.title}
                     textBreakpoint="always"
-                    className="inline-flex h-11 min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:h-12 sm:text-base"
-                    iconClassName="h-5 w-5 shrink-0"
+                    className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:text-sm"
+                    iconClassName="h-4 w-4 shrink-0"
                   />
                 </div>
-                {listing.messengerUrl ? (
-                  <a href={listing.messengerUrl} className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl border border-[#0875d1] bg-white px-3 text-sm font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:h-12 sm:text-base">
-                    <MessageCircle className="h-5 w-5 shrink-0" />
-                    <span className="min-w-0 truncate">Написать сообщение</span>
-                  </a>
-                ) : null}
               </div>
             ) : null}
           </div>
@@ -295,7 +305,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
             registeredSince={sellerStats?.registeredSince}
             listingCount={sellerStats?.listingCount}
             soldCount={sellerStats?.soldCount}
-            hasContacts={!sold && Boolean(listing.phone || listing.messengerUrl)}
+            hasContacts={!sold && Boolean(listing.phone || listing.email || listing.messengerUrl)}
             listingTitle={listing.title}
             profileHref={sellerProfileHref(listing)}
           />

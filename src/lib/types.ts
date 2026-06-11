@@ -81,6 +81,7 @@ export type Listing = {
   delivery?: DeliveryOptions;
   imageTone: "emerald" | "blue" | "amber" | "rose" | "slate";
   phone?: string;
+  email?: string;
   messengerUrl?: string;
   status: PublicationStatus;
   paid: boolean;

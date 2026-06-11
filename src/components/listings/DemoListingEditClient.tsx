@@ -1,14 +1,16 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
-
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { Camera, Save, Trash2, Video } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
+import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
+import { storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
 import { appendPublicationHistory, DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
-import { categories } from "@/lib/data";
+import { categories, cities } from "@/lib/data";
+import { extractListingPriceDigits, maxListingPriceDigits, normalizeListingPrice } from "@/lib/listing-price";
+import { filterListingMediaFiles, listingMediaLimitText } from "@/lib/media-limits";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
 import { ListingLocationFields } from "@/components/listings/ListingFormControls";
 
@@ -125,26 +127,19 @@ function readCoordinate(formData: FormData, name: string) {
   return Number.isFinite(value) ? value : undefined;
 }
 
-function readImageFile(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Не удалось прочитать фото"));
-    reader.onload = () => resolve(String(reader.result));
-    reader.readAsDataURL(file);
-  });
-}
+function inferCityFromFormData(formData: FormData, fallback = "Краснодар") {
+  const location = String(formData.get("location") ?? "").trim();
+  const address = String(formData.get("address") ?? "").trim();
 
-function readMediaFile(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
-    reader.onload = () => resolve(String(reader.result));
-    reader.readAsDataURL(file);
-  });
+  return location.split(",")[0]?.trim() || cities.find((city) => address.toLowerCase().includes(city.name.toLowerCase()))?.name || fallback;
 }
 
 async function readOriginalImage(file: File) {
-  return readImageFile(file);
+  return storeMediaFile(file);
+}
+
+async function readOriginalMedia(file: File) {
+  return storeMediaFile(file);
 }
 
 export function DemoListingEditClient({ slug }: { slug: string }) {
@@ -155,6 +150,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
   const [cropEditorIndex, setCropEditorIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [mediaMessage, setMediaMessage] = useState("");
   const mediaCount = images.length + videos.length;
 
   const listing = useMemo(() => items.find((item) => item.type === "listing" && item.id === slug), [items, slug]);
@@ -174,11 +170,13 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
   }, [slug]);
 
   async function handleMediaChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? [])
-      .filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"))
-      .slice(0, Math.max(0, maxMediaFiles - mediaCount));
+    const availableSlots = Math.max(0, maxMediaFiles - mediaCount);
+    const selectedFiles = Array.from(event.target.files ?? []).slice(0, availableSlots);
+    const { accepted, rejectedMessages } = filterListingMediaFiles(selectedFiles);
+    const files = accepted.slice(0, availableSlots);
 
     event.target.value = "";
+    setMediaMessage(rejectedMessages[0] ?? "");
 
     if (!files.length) {
       return;
@@ -187,7 +185,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
     const nextMedia = await Promise.allSettled(
       files.map(async (file) => ({
         kind: file.type.startsWith("video/") ? "video" : "image",
-        value: file.type.startsWith("video/") ? await readMediaFile(file) : await readOriginalImage(file),
+        value: file.type.startsWith("video/") ? await readOriginalMedia(file) : await readOriginalImage(file),
       })),
     );
     const fulfilled = nextMedia.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
@@ -205,8 +203,9 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
     setImages((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
-  function applySquareCrop(index: number, dataUrl: string) {
-    setImages((current) => current.map((image, imageIndex) => (imageIndex === index ? dataUrl : image)));
+  async function applySquareCrop(index: number, dataUrl: string) {
+    const storedImage = await storeMediaDataUrl(dataUrl, `listing-crop-${index + 1}.png`);
+    setImages((current) => current.map((image, imageIndex) => (imageIndex === index ? storedImage : image)));
     setCropEditorIndex(null);
   }
 
@@ -230,9 +229,16 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
       const formData = new FormData(form);
       const nextCategorySlug = String(formData.get("category") ?? listing.categorySlug ?? "mebel-i-interer");
       const nextSubcategorySlug = String(formData.get("subcategory") ?? listing.subcategorySlug ?? "");
-      const location = String(formData.get("location") ?? listing.city).trim();
-      const city = location.split(",")[0]?.trim() || "Краснодар";
       const hasMapPoint = String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1";
+      const city = inferCityFromFormData(formData, listing.city || "Краснодар");
+      const phone = String(formData.get("phone") ?? "").trim();
+      const email = String(formData.get("email") ?? "").trim();
+      const messengerUrl = String(formData.get("messengerUrl") ?? "").trim();
+
+      if (!phone && !email && !messengerUrl) {
+        throw new Error("Укажите хотя бы один контакт объявления: телефон, email или Telegram/WhatsApp.");
+      }
+
       const updated: DemoPublication = {
         ...listing,
         ownerKey: identity.ownerKey,
@@ -244,10 +250,11 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
         lat: hasMapPoint ? readCoordinate(formData, "lat") : undefined,
         lng: hasMapPoint ? readCoordinate(formData, "lng") : undefined,
         hasMapPoint,
-        price: String(formData.get("price") ?? listing.price ?? "").trim() || "по договоренности",
+        price: normalizeListingPrice(String(formData.get("price") ?? ""), "по договоренности"),
         description: String(formData.get("description") ?? listing.description ?? "").trim() || "Описание будет дополнено.",
-        phone: String(formData.get("phone") ?? listing.phone ?? "").trim() || "+78610009999",
-        messengerUrl: String(formData.get("messengerUrl") ?? listing.messengerUrl ?? "").trim(),
+        phone,
+        email,
+        messengerUrl,
         listingKind: listingKinds.some((item) => item.value === formData.get("kind")) ? (formData.get("kind") as ListingKind) : kind,
         categorySlug: nextCategorySlug,
         subcategorySlug: nextSubcategorySlug,
@@ -264,7 +271,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
       );
       window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
       window.dispatchEvent(new Event("blizhniy-demo-publications-updated"));
-      window.location.href = `/obyavlenie/${slug}`;
+      window.location.href = "/cabinet/obyavleniya";
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось сохранить изменения: в браузере закончилось место для фото. Удалите часть изображений и попробуйте снова.");
       setSaving(false);
@@ -346,7 +353,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Цена</span>
-            <input name="price" defaultValue={listing.price} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
+            <input name="price" defaultValue={extractListingPriceDigits(listing.price)} inputMode="numeric" maxLength={maxListingPriceDigits} pattern="[0-9]*" placeholder="12000" className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
           </label>
         </div>
 
@@ -377,6 +384,10 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
             <input name="phone" defaultValue={listing.phone} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
           </label>
           <label className="block">
+            <span className="text-sm font-bold text-slate-700">Email</span>
+            <input name="email" type="email" defaultValue={listing.email} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
+          </label>
+          <label className="block">
             <span className="text-sm font-bold text-slate-700">Telegram или WhatsApp</span>
             <input name="messengerUrl" defaultValue={listing.messengerUrl} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
           </label>
@@ -388,7 +399,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
               <Camera className="h-5 w-5 text-[#0875d1]" />
               <div>
                 <h2 className="font-bold text-slate-800">Фото и видео объявления</h2>
-                <p className="mt-1 text-sm text-slate-500">До {maxMediaFiles} файлов. Сейчас сохранено: {mediaCount}.</p>
+                <p className="mt-1 text-sm text-slate-500">До {maxMediaFiles} файлов. Сейчас сохранено: {mediaCount}. {listingMediaLimitText()}</p>
               </div>
             </div>
             <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-bold text-[#0875d1] transition hover:bg-blue-50">
@@ -396,12 +407,13 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
               <input type="file" accept="image/*,video/*" multiple className="sr-only" onChange={handleMediaChange} />
             </label>
           </div>
+          {mediaMessage ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{mediaMessage}</p> : null}
 
           {mediaCount ? (
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
               {images.map((image, index) => (
                 <figure key={`${image.slice(0, 40)}-${index}`} className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white">
-                  <img src={image} alt={`Фото ${index + 1}`} className="aspect-square w-full bg-slate-50 object-cover" />
+                  <StoredMediaImage src={image} alt={`Фото ${index + 1}`} className="aspect-square w-full bg-slate-50 object-cover" />
                   <button
                     type="button"
                     onClick={() => removeImage(index)}
@@ -421,7 +433,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
               ))}
               {videos.map((video, index) => (
                 <figure key={`${video.slice(0, 40)}-${index}`} className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white">
-                  <video src={video} className="aspect-square w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
+                  <StoredMediaVideo src={video} className="aspect-square w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
                   <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
                     <Video className="h-3 w-3" />
                     Видео

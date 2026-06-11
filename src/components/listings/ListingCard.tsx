@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { ArrowRightLeft, CalendarDays, Clock3, Gift, MapPin, ShoppingBag, Tags } from "lucide-react";
+import { ArrowRightLeft, CalendarDays, Gift, Mail, MapPin, ShoppingBag, Tags } from "lucide-react";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { hasMapCoordinates } from "@/lib/map-location";
-import { formatPublicationDateTime } from "@/lib/publication-time";
 import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewCounter } from "./ListingViewCounter";
 
@@ -30,7 +29,8 @@ export type DemoListing = {
   booking?: import("@/lib/types").BookingDetails;
   delivery?: import("@/lib/types").DeliveryOptions;
   description: string;
-  phone: string;
+  phone?: string;
+  email?: string;
   messengerUrl?: string;
   status: ListingStatus;
   paid: boolean;
@@ -45,7 +45,11 @@ function hasListingMapPoint(listing: DemoListing) {
 }
 
 function listingPlaceLabel(listing: DemoListing) {
-  return hasListingMapPoint(listing) ? [listing.city, listing.district].filter(Boolean).join(", ") : listing.city;
+  if (hasListingMapPoint(listing)) {
+    return listing.address || [listing.city, listing.district].filter(Boolean).join(", ");
+  }
+
+  return listing.city;
 }
 
 const kindLabels: Record<ListingKind, string> = {
@@ -133,7 +137,7 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
           <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:text-sm lg:mt-2 lg:leading-6">{listing.description}</p>
           <p className="mt-1.5 flex min-w-0 items-start gap-1.5 text-xs text-slate-500 sm:text-sm lg:mt-3 lg:gap-2">
             <MapPin className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
-            <span className="min-w-0 truncate">{listingPlaceLabel(listing)}</span>
+            <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]" title={listingPlaceLabel(listing)}>{listingPlaceLabel(listing)}</span>
           </p>
         </div>
       </div>
@@ -141,16 +145,17 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
       <div className="grid min-w-0 gap-2 sm:col-span-2 sm:grid-cols-[minmax(0,auto)_minmax(240px,1fr)] sm:items-start sm:gap-3 xl:col-span-1 xl:flex xl:flex-col xl:items-end xl:justify-between xl:gap-4">
         <div className="min-w-0 sm:max-w-[220px] xl:max-w-none xl:text-right">
           <p className="truncate text-base font-black text-[#060b27] sm:text-lg lg:text-2xl">{listing.price}</p>
-          <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">{formatPublicationDateTime(listing.publishedAt)}</p>
         </div>
-        <div className={`grid min-w-0 gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end ${listing.messengerUrl ? "grid-cols-3" : "grid-cols-2"}`}>
-          <a
-            href={`tel:${listing.phone}`}
-            className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
-          >
-            <ContactAssetIcon kind="phone" className="h-5 w-5 sm:h-6 sm:w-6" />
-            <span className="truncate">Позвонить</span>
-          </a>
+        <div className={`grid min-w-0 gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end ${listing.messengerUrl || listing.email ? "grid-cols-3" : "grid-cols-2"}`}>
+          {listing.phone ? (
+            <a
+              href={`tel:${listing.phone}`}
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
+            >
+              <ContactAssetIcon kind="phone" className="h-5 w-5 sm:h-6 sm:w-6" />
+              <span className="truncate">Позвонить</span>
+            </a>
+          ) : null}
           {listing.messengerUrl ? (
             <a
               href={listing.messengerUrl}
@@ -159,6 +164,15 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
               <ContactAssetIcon kind="message" className="h-5 w-5 sm:h-6 sm:w-6" />
               <span className="truncate sm:hidden">Чат</span>
               <span className="hidden truncate sm:inline">Написать</span>
+            </a>
+          ) : null}
+          {!listing.messengerUrl && listing.email ? (
+            <a
+              href={`mailto:${listing.email}`}
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
+            >
+              <Mail className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
+              <span className="truncate">Email</span>
             </a>
           ) : null}
           <ListingShareButton href={href} title={listing.title} textBreakpoint="lg" />
@@ -176,25 +190,21 @@ export function ListingGridCard({ listing }: { listing: DemoListing }) {
   return (
     <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card">
       <Link href={href} className="block min-w-0">
-        <span className={`relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-gradient-to-br ${imageTones[listing.imageTone]}`}>
+        <span className={`relative flex aspect-[1.18/1] items-center justify-center overflow-hidden bg-gradient-to-br ${imageTones[listing.imageTone]}`}>
           <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80 transition group-hover:scale-105">
             <Icon className="h-8 w-8" />
           </span>
           <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />
         </span>
-        <span className="block p-3">
-          <span className="block truncate text-base font-black text-[#060b27]">{listing.price}</span>
-          <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">
+        <span className="block p-2">
+          <span className="line-clamp-2 min-h-8 text-[13px] font-black leading-4 text-slate-900 transition group-hover:text-[#0875d1]">
             {listing.title}
           </span>
-          <span className="mt-1 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
-            <Clock3 className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{formatPublicationDateTime(listing.publishedAt)}</span>
-          </span>
-          <span className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
-            <span className="flex min-w-0 items-center gap-1">
-              <MapPin className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{listing.city}</span>
+          <span className="mt-0.5 block truncate text-base font-black leading-5 text-[#060b27]">{listing.price}</span>
+          <span className="mt-1 flex items-end justify-between gap-1.5 text-[11px] text-slate-500">
+            <span className="flex min-w-0 items-start gap-1">
+              <MapPin className="h-3 w-3 shrink-0" />
+              <span className="line-clamp-2 min-w-0 leading-[14px] [overflow-wrap:anywhere]" title={listingPlaceLabel(listing)}>{listingPlaceLabel(listing)}</span>
             </span>
             <ListingViewCounter listingId={viewId} />
           </span>

@@ -1,15 +1,14 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
-
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRightLeft, CalendarDays, Gift, MapPin, ShoppingBag, Tags, Video } from "lucide-react";
+import { ArrowRightLeft, CalendarDays, Gift, Mail, MapPin, ShoppingBag, Tags, Video } from "lucide-react";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
+import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 import { demoPublicationsStorageKey, DemoPublication, isDemoPublicationPubliclyVisible } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { matchesDemoPublicationFilters, matchesListingScope, type ListingFilterCriteria } from "@/lib/listing-filters";
-import { formatPublicationDateTime, publicationTimestamp } from "@/lib/publication-time";
+import { publicationTimestamp } from "@/lib/publication-time";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { ListingViewCounter } from "@/components/listings/ListingViewCounter";
@@ -117,6 +116,20 @@ function resolveSubcategoryName(item: DemoPublication) {
   return category?.children.find((child) => slugifySubcategory(child) === item.subcategorySlug) ?? item.subcategorySlug ?? "Раздел";
 }
 
+function listingPlaceLabel(item: DemoPublication) {
+  if (item.type === "listing" && item.hasMapPoint && item.address) {
+    return item.address;
+  }
+
+  return item.city;
+}
+
+function ListingCardImage({ alt, className = "", src }: { alt: string; className?: string; src: string }) {
+  return (
+    <StoredMediaImage src={src} alt={alt} className={`absolute inset-0 h-full w-full bg-slate-100 object-cover object-center ${className}`} />
+  );
+}
+
 export function DemoGridCard({ item }: { item: DemoPublication }) {
   const kind = item.listingKind ?? "prodam";
   const Icon = kindIcons[kind];
@@ -127,10 +140,10 @@ export function DemoGridCard({ item }: { item: DemoPublication }) {
   return (
     <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-emerald-200 transition hover:-translate-y-0.5 hover:shadow-card">
       <Link href={href} className="block min-w-0">
-        <span className="relative isolate flex aspect-[4/3] items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32]">
-          {firstImage ? <img src={firstImage} alt={item.title} className="absolute inset-0 h-full w-full bg-slate-100 object-cover object-center transition duration-300 group-hover:scale-[1.035]" /> : null}
-          {!firstImage && firstVideo ? <video src={firstVideo} className="absolute inset-0 h-full w-full bg-slate-950 object-cover object-center transition duration-300 group-hover:scale-[1.035]" muted playsInline preload="metadata" /> : null}
-          {firstImage || firstVideo ? <span className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-slate-950/18 to-transparent" /> : null}
+        <span className="relative isolate flex aspect-[1.18/1] items-center justify-center overflow-hidden bg-slate-100 text-[#0a8f32]">
+          {firstImage ? <ListingCardImage src={firstImage} alt={item.title} /> : null}
+          {!firstImage && firstVideo ? <StoredMediaVideo src={firstVideo} className="absolute inset-0 h-full w-full bg-slate-950 object-cover object-center" muted playsInline preload="metadata" /> : null}
+          {firstImage || firstVideo ? <span className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-slate-900/5" /> : null}
           {!firstImage && firstVideo ? (
             <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
               <Video className="h-3 w-3" />
@@ -141,14 +154,13 @@ export function DemoGridCard({ item }: { item: DemoPublication }) {
             <Icon className="h-8 w-8" />
           </span>
         </span>
-        <span className="block p-3">
-          <span className="block truncate text-base font-black text-[#060b27]">{item.price ?? "по договоренности"}</span>
-          <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">{item.title}</span>
-          <span className="mt-1 block truncate text-xs font-semibold text-slate-500">{formatPublicationDateTime(item.createdAt)}</span>
-          <span className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
-            <span className="flex min-w-0 items-center gap-1">
-              <MapPin className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{item.city}</span>
+        <span className="block p-2">
+          <span className="line-clamp-2 min-h-8 text-[13px] font-black leading-4 text-slate-900 transition group-hover:text-[#0875d1]">{item.title}</span>
+          <span className="mt-0.5 block truncate text-base font-black leading-5 text-[#060b27]">{item.price ?? "по договоренности"}</span>
+          <span className="mt-1 flex items-end justify-between gap-1.5 text-[11px] text-slate-500">
+            <span className="flex min-w-0 items-start gap-1">
+              <MapPin className="h-3 w-3 shrink-0" />
+              <span className="line-clamp-2 min-w-0 leading-[14px] [overflow-wrap:anywhere]" title={listingPlaceLabel(item)}>{listingPlaceLabel(item)}</span>
             </span>
             <ListingViewCounter listingId={item.id} />
           </span>
@@ -179,9 +191,9 @@ function DemoListCard({ item }: { item: DemoPublication }) {
           href={href}
           className="relative z-20 isolate flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-emerald-100 via-white to-blue-100 text-[#0a8f32] sm:h-auto sm:min-h-28 sm:w-auto xl:min-h-32"
         >
-          {firstImage ? <img src={firstImage} alt={item.title} className="absolute inset-0 h-full w-full bg-slate-100 object-cover object-center transition duration-300 group-hover:scale-[1.035]" /> : null}
-          {!firstImage && firstVideo ? <video src={firstVideo} className="absolute inset-0 h-full w-full bg-slate-950 object-cover object-center transition duration-300 group-hover:scale-[1.035]" muted playsInline preload="metadata" /> : null}
-          {firstImage || firstVideo ? <span className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-slate-950/16 to-transparent" /> : null}
+          {firstImage ? <ListingCardImage src={firstImage} alt={item.title} /> : null}
+          {!firstImage && firstVideo ? <StoredMediaVideo src={firstVideo} className="absolute inset-0 h-full w-full bg-slate-950 object-cover object-center" muted playsInline preload="metadata" /> : null}
+          {firstImage || firstVideo ? <span className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-slate-900/5" /> : null}
           {!firstImage && firstVideo ? (
             <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">
               <Video className="h-3 w-3" />
@@ -202,24 +214,31 @@ function DemoListCard({ item }: { item: DemoPublication }) {
           <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:text-sm lg:mt-2 lg:leading-6">{item.description ?? "Описание будет дополнено."}</p>
           <p className="mt-1.5 flex min-w-0 items-start gap-1.5 text-xs text-slate-500 sm:text-sm lg:mt-3 lg:gap-2">
             <MapPin className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
-            <span className="min-w-0 truncate">{item.city}, {resolveSubcategoryName(item)}</span>
+            <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]" title={`${listingPlaceLabel(item)}, ${resolveSubcategoryName(item)}`}>{listingPlaceLabel(item)}, {resolveSubcategoryName(item)}</span>
           </p>
         </div>
       </div>
       <div className="grid min-w-0 gap-2 sm:col-span-2 xl:col-span-1 xl:flex xl:flex-col xl:items-end xl:justify-between xl:gap-4">
         <div className="min-w-0 xl:text-right">
           <p className="truncate text-base font-black text-[#060b27] sm:text-lg lg:text-2xl">{item.price ?? "по договоренности"}</p>
-          <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">{formatPublicationDateTime(item.createdAt)}</p>
         </div>
-        <div className={`relative z-20 grid min-w-0 gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end ${item.messengerUrl ? "grid-cols-3" : "grid-cols-2"}`}>
-          <a href={`tel:${item.phone ?? "+78610009999"}`} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
-            <ContactAssetIcon kind="phone" className="h-5 w-5 sm:h-6 sm:w-6" />
-            <span className="truncate">Позвонить</span>
-          </a>
+        <div className={`relative z-20 grid min-w-0 gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end ${item.messengerUrl || item.email ? "grid-cols-3" : "grid-cols-2"}`}>
+          {item.phone ? (
+            <a href={`tel:${item.phone}`} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
+              <ContactAssetIcon kind="phone" className="h-5 w-5 sm:h-6 sm:w-6" />
+              <span className="truncate">Позвонить</span>
+            </a>
+          ) : null}
           {item.messengerUrl ? (
             <a href={item.messengerUrl} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
               <ContactAssetIcon kind="message" className="h-5 w-5 sm:h-6 sm:w-6" />
               <span className="truncate">Написать</span>
+            </a>
+          ) : null}
+          {!item.messengerUrl && item.email ? (
+            <a href={`mailto:${item.email}`} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
+              <Mail className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
+              <span className="truncate">Email</span>
             </a>
           ) : null}
           <ListingShareButton href={href} title={item.title} stopPropagation textBreakpoint="lg" />

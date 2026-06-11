@@ -3,10 +3,13 @@
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
-import { demoPublicationLabels, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationHistory, withPublicationStatusHistory, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
+import { addPublicationDaysIsoDate, demoPublicationLabels, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationHistory, withPublicationStatusHistory, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
 import { confirmClientPayment, createClientPayment } from "@/lib/client-payment-flow";
+import { isStoredMediaReference, storeMediaFile } from "@/lib/client-media-store";
+import { normalizeListingPrice } from "@/lib/listing-price";
+import { filterFormPhotoFiles, filterListingMediaFiles } from "@/lib/media-limits";
 import type { Payment } from "@/lib/types";
-import { categories } from "@/lib/data";
+import { categories, cities } from "@/lib/data";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
 import type { BookingDetails, ListingKind } from "@/lib/types";
@@ -55,6 +58,13 @@ function readCoordinate(formData: FormData, name: string) {
 
 function hasSelectedMapPoint(formData: FormData) {
   return readValue(formData, "locationMode") === "exact" && readValue(formData, "mapPointSelected") === "1";
+}
+
+function inferCityFromFormData(formData: FormData, fallback = "Краснодар") {
+  const location = readRawValue(formData, "location");
+  const address = readRawValue(formData, "address");
+
+  return location.split(",")[0]?.trim() || cities.find((city) => address.toLowerCase().includes(city.name.toLowerCase()))?.name || fallback;
 }
 
 function readNumber(formData: FormData, name: string) {
@@ -191,53 +201,46 @@ function getPaymentTargetType(type: DemoPublicationType): PaymentTargetType | un
   return undefined;
 }
 
-function readImageFile(file: File) {
+async function readOriginalImage(file: File) {
+  return storeMediaFile(file);
+}
+
+async function readOriginalMedia(file: File) {
+  return storeMediaFile(file);
+}
+
+function readImageDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
 
     reader.onerror = () => reject(new Error("Не удалось прочитать фото"));
-    reader.onload = () => {
-      resolve(String(reader.result));
-    };
+    reader.onload = () => resolve(String(reader.result));
     reader.readAsDataURL(file);
   });
-}
-
-function readMediaFile(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
-    reader.onload = () => {
-      resolve(String(reader.result));
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-async function readOriginalImage(file: File) {
-  return readImageFile(file);
 }
 
 async function readSelectedImages(formData: FormData) {
-  const files = formData
+  const selectedFiles = formData
     .getAll("photos")
     .filter((file): file is File => file instanceof File && file.size > 0 && file.type.startsWith("image/"))
     .slice(0, 20);
+  const { accepted: files } = filterFormPhotoFiles(selectedFiles);
 
-  const images = await Promise.allSettled(files.map((file) => readOriginalImage(file)));
+  const images = await Promise.allSettled(files.map((file) => readImageDataUrl(file)));
   return images.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
 }
 
 async function readSelectedListingMedia(formData: FormData) {
-  const files = formData
+  const selectedFiles = formData
     .getAll("photos")
     .filter((file): file is File => file instanceof File && file.size > 0 && (file.type.startsWith("image/") || file.type.startsWith("video/")))
     .slice(0, 20);
+  const { accepted: files } = filterListingMediaFiles(selectedFiles);
+
   const media = await Promise.allSettled(
     files.map(async (file) => ({
       kind: file.type.startsWith("video/") ? "video" : "image",
-      value: file.type.startsWith("video/") ? await readMediaFile(file) : await readOriginalImage(file),
+      value: file.type.startsWith("video/") ? await readOriginalMedia(file) : await readOriginalImage(file),
     })),
   );
   const fulfilled = media.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
@@ -246,6 +249,24 @@ async function readSelectedListingMedia(formData: FormData) {
     images: fulfilled.filter((item) => item.kind === "image").map((item) => item.value),
     videos: fulfilled.filter((item) => item.kind === "video").map((item) => item.value),
   };
+}
+
+function hasInlineStoredMedia(value: string) {
+  return value.startsWith("data:");
+}
+
+function compactPublicationsForLocalStorage(items: DemoPublication[]) {
+  return items.map((item) => {
+    if (item.type !== "listing") {
+      return item;
+    }
+
+    return {
+      ...item,
+      images: item.images?.filter((image) => isStoredMediaReference(image) || !hasInlineStoredMedia(image)),
+      videos: item.videos?.filter((video) => isStoredMediaReference(video) || !hasInlineStoredMedia(video)),
+    };
+  });
 }
 
 async function buildPublication(formData: FormData, type: DemoPublicationType): Promise<DemoPublication> {
@@ -257,6 +278,14 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
     const categorySlug = readValue(formData, "category", "mebel-i-interer");
     const categoryName = categories.find((category) => category.slug === categorySlug)?.name ?? "Категория";
     const safeListingKind = categorySlug === "otdyh" || (categorySlug === "nedvizhimost" && listingKind === "arenda") ? "arenda" : listingKind;
+    const phone = readRawValue(formData, "phone");
+    const email = readRawValue(formData, "email");
+    const messengerUrl = readRawValue(formData, "messengerUrl");
+
+    if (!phone && !email && !messengerUrl) {
+      throw new Error("Укажите хотя бы один контакт объявления: телефон, email или Telegram/WhatsApp.");
+    }
+
     const media = await readSelectedListingMedia(formData);
 
     return {
@@ -264,8 +293,8 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
       type,
       title: readValue(formData, "title", "Новое объявление"),
       subtitle: categoryName,
-      city: readValue(formData, "location", "Краснодар").split(",")[0]?.trim() || "Краснодар",
-      price: readValue(formData, "price", safeListingKind === "arenda" && isBookingCategory(categorySlug) ? "расчет по датам" : "по договоренности"),
+      city: inferCityFromFormData(formData),
+      price: normalizeListingPrice(readRawValue(formData, "price"), safeListingKind === "arenda" && isBookingCategory(categorySlug) ? "расчет по датам" : "по договоренности"),
       description: readValue(formData, "description", "Описание будет дополнено."),
       images: media.images,
       videos: media.videos,
@@ -274,13 +303,15 @@ async function buildPublication(formData: FormData, type: DemoPublicationType): 
       address: hasSelectedMapPoint(formData) ? readValue(formData, "address") : undefined,
       hasMapPoint: hasSelectedMapPoint(formData),
       showExactAddress: false,
-      phone: readValue(formData, "phone", "+78610009999"),
-      messengerUrl: readValue(formData, "messengerUrl"),
+      phone,
+      email,
+      messengerUrl,
       listingKind: ["prodam", "kuplyu", "menyayu", "otdam-darom", "arenda"].includes(safeListingKind) ? safeListingKind : "prodam",
       categorySlug,
       subcategorySlug: readValue(formData, "subcategory", "mebel"),
       booking: safeListingKind === "arenda" ? readBookingDetails(formData, categorySlug) : undefined,
       status: "Опубликовано",
+      expiresAt: addPublicationDaysIsoDate(30),
       createdAt: now,
     };
   }
@@ -487,12 +518,13 @@ export function AdminDemoPublishButton({
         }
       }
 
-      const nextPublications = [publication, ...nextStored].slice(0, 50);
+      const nextPublications = compactPublicationsForLocalStorage([publication, ...nextStored].slice(0, 50));
 
       try {
         window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextPublications));
       } catch {
-        window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify([{ ...publication, images: [], videos: [] }, ...stored].slice(0, 50)));
+        const compactStored = compactPublicationsForLocalStorage([{ ...publication, images: [], videos: [] }, ...stored].slice(0, 50));
+        window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(compactStored));
       }
 
       window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));

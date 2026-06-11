@@ -5,6 +5,7 @@
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { Camera, X } from "lucide-react";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
+import { filterFormPhotoFiles, formPhotoLimitText } from "@/lib/media-limits";
 
 type PreviewPhoto = {
   id: string;
@@ -59,6 +60,7 @@ export function FormPhotoUploader({
     }))
   );
   const [cropEditorId, setCropEditorId] = useState("");
+  const [message, setMessage] = useState("");
   const urlsRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const maxPhotos = 12;
@@ -73,12 +75,15 @@ export function FormPhotoUploader({
 
   function handleFiles(event: ChangeEvent<HTMLInputElement>) {
     const availableSlots = maxPhotos - photos.length;
-    const files = Array.from(event.target.files ?? [])
-      .filter((file) => file.type.startsWith("image/"))
-      .slice(0, availableSlots);
+    const selectedFiles = Array.from(event.target.files ?? []).slice(0, availableSlots);
+    const { accepted, rejectedMessages } = filterFormPhotoFiles(selectedFiles);
+    const files = accepted.slice(0, availableSlots);
+
+    setMessage(rejectedMessages[0] ?? "");
 
     if (!files.length) {
       syncFileInput(inputRef.current, photos);
+      event.currentTarget.value = "";
       return;
     }
 
@@ -101,6 +106,7 @@ export function FormPhotoUploader({
       return next;
     });
     setCropEditorId(nextPhotos[0]?.id ?? "");
+    event.currentTarget.value = "";
   }
 
   function removePhoto(id: string) {
@@ -152,10 +158,11 @@ export function FormPhotoUploader({
               {label}
               {required ? <span className="text-rose-600"> *</span> : null}
             </span>
-            <span className="mt-1 block text-xs leading-5 text-slate-500 sm:text-sm sm:leading-6">{description}</span>
+            <span className="mt-1 block text-xs leading-5 text-slate-500 sm:text-sm sm:leading-6">{description} {formPhotoLimitText()}</span>
           </span>
         </span>
       </label>
+      {message ? <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{message}</p> : null}
       {photos
         .filter((photo) => photo.persisted)
         .map((photo) => (

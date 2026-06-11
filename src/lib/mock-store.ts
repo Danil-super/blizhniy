@@ -1,4 +1,5 @@
 import { applications, fairApplications, listings, payments, specialists, vacancies, workRequests } from "@/lib/data";
+import { normalizeListingPrice } from "@/lib/listing-price";
 import type { Application, FairApplication, JobVacancy, Listing, Payment, PublicationStatus, SpecialistProfile, WorkRequest } from "@/lib/types";
 
 type MockStore = {
@@ -38,6 +39,7 @@ type CreateListingInput = {
   delivery?: Listing["delivery"];
   description?: string;
   phone?: string;
+  email?: string;
   messengerUrl?: string;
   lat?: number;
   lng?: number;
@@ -118,8 +120,23 @@ function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function addDaysIsoDate(days: number) {
+  const date = new Date();
+
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function nowIsoDateTime() {
   return new Date().toISOString();
+}
+
+function isExpiredIsoDate(value?: string) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  return value < todayIsoDate();
 }
 
 function createFairApplicationId() {
@@ -166,7 +183,16 @@ export function listFairApplications() {
 }
 
 export function listListings() {
-  return getMockStore().listings;
+  const store = getMockStore();
+
+  store.listings.forEach((listing) => {
+    if (listing.status === "published" && isExpiredIsoDate(listing.expiresAt)) {
+      listing.status = "expired";
+      listing.paid = false;
+    }
+  });
+
+  return store.listings;
 }
 
 export function getListingStatusOverride(listingIdOrSlug: string) {
@@ -287,16 +313,17 @@ export function createListing(input: CreateListingInput) {
     lng: input.lng,
     hasMapPoint: Boolean(input.hasMapPoint),
     showExactAddress: false,
-    price: input.price?.trim() || "по договоренности",
+    price: normalizeListingPrice(input.price, "по договоренности"),
     booking: input.booking,
     delivery: input.delivery,
     imageTone: "blue",
     phone: input.phone?.trim(),
+    email: input.email?.trim(),
     messengerUrl: input.messengerUrl?.trim(),
     status: "published",
     paid: true,
     publishedAt: nowIsoDateTime(),
-    expiresAt: todayIsoDate(),
+    expiresAt: addDaysIsoDate(30),
   };
 
   getMockStore().listings.unshift(listing);

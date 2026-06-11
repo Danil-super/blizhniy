@@ -2,20 +2,16 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ChangeEvent, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { InputHTMLAttributes } from "react";
+import { ChangeEvent, useEffect, useId, useRef, useState } from "react";
 import { Camera, ImagePlus, Video, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
+import { categoryDisplayItems } from "@/lib/category-display-order";
 import { categories, cities, region } from "@/lib/data";
+import { filterListingMediaFiles, listingMediaLimitText } from "@/lib/media-limits";
 import { hasMapCoordinates } from "@/lib/map-location";
 import type { BookingDetails, ListingKind } from "@/lib/types";
-
-type Suggestion = {
-  label: string;
-  hint?: string;
-};
 
 type PreviewMedia = {
   id: string;
@@ -37,17 +33,17 @@ const listingKindOptions: Array<{ value: ListingKind; label: string }> = [
 
 const rentalCategorySlugs = ["otdyh", "nedvizhimost"];
 const rentalSubcategoryNames: Record<string, string[] | undefined> = {
-  nedvizhimost: ["Коммерческая недвижимость"],
+  nedvizhimost: ["Аренда", "Коммерческая недвижимость", "Жилье для путешествия"],
 };
 
-const citySuggestions: Suggestion[] = cities.map((city) => ({
+const cityOptions = cities.map((city) => ({
+  value: `${city.name}, ${region.name}`,
   label: `${city.name}, ${region.name}`,
-  hint: "город",
 }));
 
 function formatCityValue(city?: string) {
-  if (!city) {
-    return `${cities[0]?.name ?? "Краснодар"}, ${region.name}`;
+  if (!city?.trim()) {
+    return "";
   }
 
   return city.includes(region.name) ? city : `${city}, ${region.name}`;
@@ -135,6 +131,18 @@ function slugifySubcategoryValue(name: string) {
   return map[name] ?? name.toLowerCase().replaceAll(" ", "-");
 }
 
+function subcategoryWordCount(name: string) {
+  return name.match(/[\p{L}\p{N}]+/gu)?.length ?? 0;
+}
+
+function orderSubcategoriesLikeCatalog(subcategories: string[]) {
+  return [...subcategories].sort((left, right) => {
+    const wordCountDiff = subcategoryWordCount(left) - subcategoryWordCount(right);
+
+    return wordCountDiff || left.length - right.length || left.localeCompare(right, "ru");
+  });
+}
+
 function isRentalCategory(categorySlug: string) {
   return rentalCategorySlugs.includes(categorySlug);
 }
@@ -149,6 +157,99 @@ function getRentalSubcategories(categorySlug: string, subcategories: string[]) {
   return subcategories.filter((subcategory) => allowedNames.includes(subcategory));
 }
 
+function inferListingKindFromCatalog(categorySlug: string, subcategorySlug: string): ListingKind {
+  if (
+    categorySlug === "otdyh" ||
+    subcategorySlug === "arenda" ||
+    subcategorySlug === "kommercheskaya-nedvizhimost" ||
+    subcategorySlug === "zhile-dlya-puteshestviya"
+  ) {
+    return "arenda";
+  }
+
+  if (subcategorySlug.startsWith("kuplyu")) {
+    return "kuplyu";
+  }
+
+  if (subcategorySlug === "partnerstvo") {
+    return "menyayu";
+  }
+
+  return "prodam";
+}
+
+type ListingCategoryOption = {
+  categorySlug: string;
+  label: string;
+  preferredKind?: ListingKind;
+  subcategorySlug?: string;
+  value: string;
+};
+
+function parseCatalogHref(href: string) {
+  const parts = href.split("?")[0]?.split("/").filter(Boolean) ?? [];
+
+  if (parts[0] !== "krasnodar") {
+    return undefined;
+  }
+
+  return {
+    categorySlug: parts[1] ?? "",
+    subcategorySlug: parts[2],
+  };
+}
+
+const listingCategoryOptions = categoryDisplayItems.flatMap<ListingCategoryOption>((item) => {
+  const route = parseCatalogHref(item.href);
+
+  if (!route) {
+    return [];
+  }
+
+  if (route.categorySlug === "obmen-i-darom") {
+    return [
+      {
+        categorySlug: "tovary-i-veshchi",
+        label: item.label,
+        preferredKind: "menyayu",
+        value: item.id,
+      },
+    ];
+  }
+
+  const category = categories.find((entry) => entry.slug === route.categorySlug);
+
+  if (!category) {
+    return [];
+  }
+
+  return [
+    {
+      categorySlug: category.slug,
+      label: item.label,
+      preferredKind: route.subcategorySlug ? inferListingKindFromCatalog(category.slug, route.subcategorySlug) : undefined,
+      subcategorySlug: route.subcategorySlug,
+      value: item.id,
+    },
+  ];
+});
+
+function getCategoryOptionByCategorySlug(categorySlug: string) {
+  return listingCategoryOptions.find((option) => option.categorySlug === categorySlug && !option.subcategorySlug) ?? listingCategoryOptions.find((option) => option.categorySlug === categorySlug);
+}
+
+function getCategoryOptionForDefaults(categorySlug: string, subcategorySlug?: string) {
+  if (subcategorySlug) {
+    const exactOption = listingCategoryOptions.find((option) => option.categorySlug === categorySlug && option.subcategorySlug === subcategorySlug);
+
+    if (exactOption) {
+      return exactOption;
+    }
+  }
+
+  return getCategoryOptionByCategorySlug(categorySlug);
+}
+
 function cropFileName(name: string) {
   const base = name.replace(/\.[^.]+$/, "") || "photo";
   return `${base}-crop.png`;
@@ -158,86 +259,6 @@ async function dataUrlToImageFile(dataUrl: string, name: string) {
   const response = await fetch(dataUrl);
   const blob = await response.blob();
   return new File([blob], cropFileName(name), { type: blob.type || "image/png" });
-}
-
-function filterSuggestions(suggestions: Suggestion[], value: string) {
-  const query = value.trim().toLowerCase();
-
-  if (!query) {
-    return suggestions;
-  }
-
-  return suggestions.filter((suggestion) => {
-    const label = suggestion.label.toLowerCase();
-    return label.startsWith(query) || label.includes(query);
-  });
-}
-
-function AutocompleteInput({
-  label,
-  name,
-  defaultValue,
-  placeholder,
-  selectOnFocus = false,
-  suggestions,
-  inputProps = {},
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  placeholder: string;
-  selectOnFocus?: boolean;
-  suggestions: Suggestion[];
-  inputProps?: InputHTMLAttributes<HTMLInputElement>;
-}) {
-  const [value, setValue] = useState(defaultValue ?? "");
-  const [open, setOpen] = useState(false);
-  const filtered = useMemo(() => filterSuggestions(suggestions, value), [suggestions, value]);
-
-  return (
-    <div className="relative">
-      <span className="text-sm font-bold text-slate-700">{label}</span>
-      <input
-        name={name}
-        className="mt-2 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#0875d1] sm:h-12 sm:px-4 sm:text-base"
-        value={value}
-        onChange={(event) => {
-          setValue(event.target.value);
-          setOpen(true);
-        }}
-        onFocus={(event) => {
-          setOpen(true);
-
-          if (selectOnFocus) {
-            event.currentTarget.select();
-          }
-        }}
-        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-        placeholder={placeholder}
-        autoComplete="off"
-        {...inputProps}
-      />
-      {open && filtered.length ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 max-h-[14.75rem] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl shadow-slate-900/10">
-          {filtered.map((suggestion) => (
-            <button
-              key={suggestion.label}
-              type="button"
-              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition hover:bg-blue-50 hover:text-[#0875d1]"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                setValue(suggestion.label);
-                setOpen(false);
-              }}
-            >
-              <span className="min-w-0 break-words font-semibold [overflow-wrap:anywhere]">{suggestion.label}</span>
-              {suggestion.hint ? <span className="shrink-0 text-xs text-slate-500">{suggestion.hint}</span> : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 export function ListingLocationFields({
@@ -264,6 +285,7 @@ export function ListingLocationFields({
   const hasInitialPoint = hasMapCoordinates(defaultLat, defaultLng);
   const addressGroupId = useId();
   const [mode, setMode] = useState<"city" | "exact">(hasInitialPoint ? "exact" : "city");
+  const [cityValue, setCityValue] = useState(formatCityValue(defaultCity));
   const [pointSelected, setPointSelected] = useState(hasInitialPoint);
   const optionClassName = (active: boolean) =>
     `listing-location-option flex min-w-0 cursor-pointer items-center gap-3 rounded-lg border bg-white text-sm font-bold transition ${inlineControls ? "h-11 px-3" : "p-3"} ${active ? "border-[#0875d1] text-[#0875d1] ring-2 ring-blue-100" : "border-slate-200 text-slate-700 hover:border-blue-200"}`;
@@ -299,34 +321,34 @@ export function ListingLocationFields({
 
   return (
     <div className={`listing-location-fields grid gap-4 ${inlineControls ? "listing-location-fields--inline" : ""} ${className}`}>
-      <div className={inlineControls ? "listing-location-row grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.8fr)] lg:items-start" : "listing-location-row grid gap-4"}>
-        <AutocompleteInput
-          label={cityLabel}
-          name={cityFieldName}
-          defaultValue={formatCityValue(defaultCity)}
-          placeholder="Начните вводить город"
-          selectOnFocus
-          suggestions={citySuggestions}
-          inputProps={{
-            maxLength: 80,
-            required: true,
-            title: "Выберите город из списка или укажите город и регион.",
-          }}
-        />
-        {inlineControls ? (
-          <div className="listing-location-address-group" role="group" aria-labelledby={addressGroupId}>
-            <span id={addressGroupId} className="listing-location-label text-sm font-bold text-slate-700">
-              {addressLegend}
-            </span>
-            <div className="mt-2">{addressOptions}</div>
-          </div>
-        ) : (
-          <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
-            <legend className="px-1 text-sm font-bold text-slate-700">{addressLegend}</legend>
-            <div className="mt-2">{addressOptions}</div>
-          </fieldset>
-        )}
-      </div>
+      {inlineControls ? (
+        <div className="listing-location-address-group" role="group" aria-labelledby={addressGroupId}>
+          <span id={addressGroupId} className="listing-location-label text-sm font-bold text-slate-700">
+            {addressLegend}
+          </span>
+          <div className="mt-2">{addressOptions}</div>
+        </div>
+      ) : (
+        <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+          <legend className="px-1 text-sm font-bold text-slate-700">{addressLegend}</legend>
+          <div className="mt-2">{addressOptions}</div>
+        </fieldset>
+      )}
+      {mode === "city" ? (
+        <label className="block min-w-0">
+          <span className="text-sm font-bold text-slate-700">{cityLabel}</span>
+          <span className="mt-2 block">
+            <DropdownSelect
+              name={cityFieldName}
+              value={cityValue}
+              onValueChange={setCityValue}
+              options={cityOptions}
+              placeholder="Выбрать"
+              required
+            />
+          </span>
+        </label>
+      ) : null}
       {mode === "exact" ? (
         <>
           <YandexMapPicker defaultAddress={defaultAddress} defaultLat={defaultLat} defaultLng={defaultLng} onPointSelectedChange={setPointSelected} />
@@ -347,7 +369,7 @@ export function ListingLocationFields({
 }
 
 export function ListingCategoryFields({
-  defaultCategorySlug = "mebel-i-interer",
+  defaultCategorySlug = "dlya-doma-i-dachi",
   defaultSubcategorySlug,
 }: {
   defaultCategorySlug?: string;
@@ -356,23 +378,28 @@ export function ListingCategoryFields({
   const fallbackCategory = categories.find((category) => category.slug === defaultCategorySlug) ?? categories[0];
   const [categorySlug, setCategorySlug] = useState(fallbackCategory?.slug ?? "");
   const selectedCategory = categories.find((category) => category.slug === categorySlug) ?? fallbackCategory;
-  const subcategories = selectedCategory?.children ?? [];
+  const subcategories = orderSubcategoriesLikeCatalog(selectedCategory?.children ?? []);
   const fallbackSubcategory = subcategories[0] ? slugifySubcategoryValue(subcategories[0]) : "";
   const selectedSubcategory =
     defaultSubcategorySlug && subcategories.some((child) => slugifySubcategoryValue(child) === defaultSubcategorySlug)
       ? defaultSubcategorySlug
       : fallbackSubcategory;
+  const selectedCategoryOption = getCategoryOptionByCategorySlug(categorySlug);
 
   return (
     <>
       <label className="block min-w-0">
         <span className="text-sm font-bold text-slate-700">Категория</span>
         <span className="mt-2 block">
+          <input type="hidden" name="category" value={categorySlug} />
           <DropdownSelect
-            name="category"
-            value={categorySlug}
-            onValueChange={setCategorySlug}
-            options={categories.map((category) => ({ value: category.slug, label: category.name }))}
+            value={selectedCategoryOption?.value ?? categorySlug}
+            onValueChange={(nextValue) => {
+              const nextOption = listingCategoryOptions.find((option) => option.value === nextValue);
+
+              setCategorySlug(nextOption?.categorySlug ?? nextValue);
+            }}
+            options={listingCategoryOptions.map((option) => ({ value: option.value, label: option.label }))}
           />
         </span>
       </label>
@@ -540,7 +567,7 @@ function ListingBookingFields({ booking, mode }: { booking?: BookingDetails; mod
 }
 
 export function ListingKindAndCategoryFields({
-  defaultCategorySlug = "mebel-i-interer",
+  defaultCategorySlug = "dlya-doma-i-dachi",
   defaultKind = "prodam",
   defaultSubcategorySlug,
   booking,
@@ -554,29 +581,38 @@ export function ListingKindAndCategoryFields({
   const fallbackCategory = categories.find((category) => category.slug === defaultCategorySlug) ?? categories[0];
   const fallbackRentalCategory = rentalCategories[0] ?? fallbackCategory;
   const initialCategory = defaultKind === "arenda" ? (isRentalCategory(fallbackCategory?.slug ?? "") ? fallbackCategory : fallbackRentalCategory) : fallbackCategory;
+  const initialCategoryOption = getCategoryOptionForDefaults(initialCategory?.slug ?? "", defaultSubcategorySlug);
   const [categorySlug, setCategorySlug] = useState(initialCategory?.slug ?? "");
+  const [categoryOptionValue, setCategoryOptionValue] = useState(initialCategoryOption?.value ?? initialCategory?.slug ?? "");
   const selectedCategory = categories.find((category) => category.slug === categorySlug) ?? fallbackCategory;
-  const [kind, setKind] = useState<ListingKind>(defaultCategorySlug === "otdyh" || defaultKind === "arenda" ? "arenda" : defaultKind);
-  const allSubcategories = selectedCategory?.children ?? [];
+  const [kind, setKind] = useState<ListingKind>(defaultCategorySlug === "otdyh" || initialCategoryOption?.preferredKind === "arenda" || defaultKind === "arenda" ? "arenda" : defaultKind);
+  const allSubcategories = orderSubcategoriesLikeCatalog(selectedCategory?.children ?? []);
   const subcategories = kind === "arenda" ? getRentalSubcategories(categorySlug, allSubcategories) : allSubcategories;
   const fallbackSubcategory = subcategories[0] ? slugifySubcategoryValue(subcategories[0]) : "";
   const initialSubcategory =
     defaultSubcategorySlug && subcategories.some((child) => slugifySubcategoryValue(child) === defaultSubcategorySlug)
       ? defaultSubcategorySlug
+      : initialCategoryOption?.subcategorySlug && subcategories.some((child) => slugifySubcategoryValue(child) === initialCategoryOption.subcategorySlug)
+        ? initialCategoryOption.subcategorySlug
       : fallbackSubcategory;
   const [subcategorySlug, setSubcategorySlug] = useState(initialSubcategory);
   const isRental = kind === "arenda" && isRentalCategory(categorySlug);
   const selectedSubcategoryName = subcategories.find((child) => slugifySubcategoryValue(child) === subcategorySlug) ?? subcategories[0] ?? "";
   const bookingMode: BookingDetails["mode"] = selectedSubcategoryName === "Походы" ? "tour" : "stay";
-  const categoryOptions = kind === "arenda" ? rentalCategories : categories;
 
-  function setCategoryWithFirstSubcategory(nextCategorySlug: string, nextKind = kind) {
-    const nextCategory = categories.find((category) => category.slug === nextCategorySlug);
-    const nextSubcategories = nextKind === "arenda" ? getRentalSubcategories(nextCategorySlug, nextCategory?.children ?? []) : nextCategory?.children ?? [];
-    const nextFirstSubcategory = nextSubcategories[0] ? slugifySubcategoryValue(nextSubcategories[0]) : "";
+  function setCategoryWithSubcategory(nextOption: ListingCategoryOption, nextKind = kind) {
+    const nextCategory = categories.find((category) => category.slug === nextOption.categorySlug);
+    const orderedSubcategories = orderSubcategoriesLikeCatalog(nextCategory?.children ?? []);
+    const nextSubcategories = nextKind === "arenda" ? getRentalSubcategories(nextOption.categorySlug, orderedSubcategories) : orderedSubcategories;
+    const nextSubcategory = nextOption.subcategorySlug && nextSubcategories.some((child) => slugifySubcategoryValue(child) === nextOption.subcategorySlug)
+      ? nextOption.subcategorySlug
+      : nextSubcategories[0]
+        ? slugifySubcategoryValue(nextSubcategories[0])
+        : "";
 
-    setCategorySlug(nextCategorySlug);
-    setSubcategorySlug(nextFirstSubcategory);
+    setCategoryOptionValue(nextOption.value);
+    setCategorySlug(nextOption.categorySlug);
+    setSubcategorySlug(nextSubcategory);
   }
 
   function handleKindChange(nextKind: string) {
@@ -585,24 +621,39 @@ export function ListingKindAndCategoryFields({
     setKind(safeKind);
 
     if (safeKind === "arenda") {
-      setCategoryWithFirstSubcategory(isRentalCategory(categorySlug) ? categorySlug : fallbackRentalCategory.slug, safeKind);
+      const rentalCategorySlug = isRentalCategory(categorySlug) ? categorySlug : fallbackRentalCategory.slug;
+      const rentalOption = getCategoryOptionByCategorySlug(rentalCategorySlug);
+
+      if (rentalOption) {
+        setCategoryWithSubcategory(rentalOption, safeKind);
+      }
       return;
     }
 
-    if (isRentalCategory(categorySlug)) {
-      setCategoryWithFirstSubcategory("mebel-i-interer");
+    const currentOption = listingCategoryOptions.find((option) => option.value === categoryOptionValue);
+
+    if (currentOption?.preferredKind === "arenda") {
+      const baseOption = getCategoryOptionByCategorySlug(categorySlug);
+
+      if (baseOption) {
+        setCategoryWithSubcategory(baseOption, safeKind);
+      }
     }
   }
 
-  function handleCategoryChange(nextCategorySlug: string) {
-    const nextKind = kind === "arenda" || nextCategorySlug === "otdyh" ? "arenda" : kind;
-    setCategoryWithFirstSubcategory(nextCategorySlug, nextKind);
+  function handleCategoryChange(nextOptionValue: string) {
+    const nextOption = listingCategoryOptions.find((option) => option.value === nextOptionValue);
 
-    if (nextCategorySlug === "otdyh") {
-      setKind("arenda");
-    } else if (kind === "arenda") {
-      setKind(isRentalCategory(nextCategorySlug) ? "arenda" : "prodam");
+    if (!nextOption) {
+      return;
     }
+
+    const nextKind =
+      nextOption.preferredKind ??
+      (nextOption.categorySlug === "otdyh" ? "arenda" : kind === "arenda" && !isRentalCategory(nextOption.categorySlug) ? "prodam" : kind);
+
+    setKind(nextKind);
+    setCategoryWithSubcategory(nextOption, nextKind);
   }
 
   return (
@@ -617,12 +668,12 @@ export function ListingKindAndCategoryFields({
       <label className="listing-category-field block min-w-0">
         <span className="text-xs font-bold text-slate-700 sm:text-sm">Категория</span>
         <span className="mt-1 block sm:mt-2">
+          <input type="hidden" name="category" value={categorySlug} />
           <DropdownSelect
-            name="category"
-            value={categorySlug}
+            value={categoryOptionValue}
             onValueChange={handleCategoryChange}
             buttonClassName="min-h-10 !h-auto gap-1 px-2 py-2 text-xs sm:min-h-12 sm:gap-3 sm:px-4 sm:text-sm"
-            options={categoryOptions.map((category) => ({ value: category.slug, label: category.name }))}
+            options={listingCategoryOptions.map((option) => ({ value: option.value, label: option.label }))}
           />
         </span>
       </label>
@@ -659,6 +710,7 @@ export function ListingPhotoUploader() {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [cropEditorId, setCropEditorId] = useState("");
+  const [mediaMessage, setMediaMessage] = useState("");
   const urlsRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const maxFiles = 20;
@@ -675,12 +727,16 @@ export function ListingPhotoUploader() {
   }, []);
 
   function handleFiles(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? [])
-      .filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"))
-      .slice(0, availableSlots);
+    const selectedFiles = Array.from(event.target.files ?? []).slice(0, availableSlots);
+    const currentTotalSize = media.reduce((sum, item) => sum + item.file.size, 0);
+    const { accepted, rejectedMessages } = filterListingMediaFiles(selectedFiles, currentTotalSize);
+    const files = accepted.slice(0, availableSlots);
+
+    setMediaMessage(rejectedMessages[0] ?? "");
 
     if (!files.length) {
       syncFileInput(media);
+      event.currentTarget.value = "";
       return;
     }
 
@@ -808,7 +864,7 @@ export function ListingPhotoUploader() {
           <Camera className="h-5 w-5 shrink-0 text-[#0875d1]" />
           <div>
             <h2 className="font-bold text-slate-800">Фото и видео объявления</h2>
-            <p className="mt-1 text-sm text-slate-500">{media.length ? `${media.length} из ${maxFiles}` : "Файлы не выбраны"}</p>
+            <p className="mt-1 text-sm text-slate-500">{media.length ? `${media.length} из ${maxFiles}` : "Файлы не выбраны"}. {listingMediaLimitText()}</p>
           </div>
         </div>
         <button type="button" onClick={openMediaLibrary} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0669bd]">
@@ -842,7 +898,7 @@ export function ListingPhotoUploader() {
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
               <div className="min-w-0">
                 <h2 className="text-base font-black text-[#060b27] sm:text-lg">Медиатека</h2>
-                <p className="mt-0.5 text-xs font-semibold text-slate-500 sm:text-sm">{media.length} из {maxFiles}</p>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500 sm:text-sm">{media.length} из {maxFiles}. {listingMediaLimitText()}</p>
               </div>
               <div className="flex shrink-0 gap-2">
                 <button type="button" onClick={openFileDialog} disabled={availableSlots <= 0} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#0875d1] px-3 text-sm font-bold text-white transition hover:bg-[#0669bd] disabled:cursor-not-allowed disabled:opacity-50">
@@ -903,6 +959,8 @@ export function ListingPhotoUploader() {
                 </button>
               </div>
             )}
+
+            {mediaMessage ? <p className="border-t border-rose-100 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700">{mediaMessage}</p> : null}
 
             {media.length ? (
               <div className="border-t border-slate-200 px-3 py-2 sm:px-4">

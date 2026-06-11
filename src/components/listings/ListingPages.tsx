@@ -26,9 +26,10 @@ import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
-import { categories } from "@/lib/data";
+import { categories, cities } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { createListing, getListingStatusOverride, listListings } from "@/lib/mock-store";
+import { extractListingPriceDigits, maxListingPriceDigits, normalizeListingPrice } from "@/lib/listing-price";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
 import { getTariffs } from "@/lib/tariff-store";
@@ -389,7 +390,12 @@ const baseDemoListings: DemoListing[] = [
 ];
 
 function inferListingKind(categorySlug: string, subcategorySlug: string): ListingKind {
-  if (categorySlug === "otdyh" || subcategorySlug === "arenda" || subcategorySlug === "kommercheskaya-nedvizhimost") {
+  if (
+    categorySlug === "otdyh" ||
+    subcategorySlug === "arenda" ||
+    subcategorySlug === "kommercheskaya-nedvizhimost" ||
+    subcategorySlug === "zhile-dlya-puteshestviya"
+  ) {
     return "arenda";
   }
 
@@ -415,16 +421,17 @@ function normalizeListingKind(value?: string): ListingKind | undefined {
 }
 
 function getListingFormDefaults(defaults?: ListingFormDefaults) {
-  const category = categories.find((item) => item.slug === defaults?.categorySlug) ?? categories.find((item) => item.slug === "mebel-i-interer") ?? categories[0];
-  const fallbackSubcategorySlug = category?.children[0] ? slugifySubcategory(category.children[0]) : "";
+  const category = categories.find((item) => item.slug === defaults?.categorySlug) ?? categories.find((item) => item.slug === "dlya-doma-i-dachi") ?? categories[0];
+  const categoryChildren = category ? getCategoryChildren(category.children) : [];
+  const fallbackSubcategorySlug = categoryChildren[0] ? slugifySubcategory(categoryChildren[0]) : "";
   const subcategorySlug =
-    defaults?.subcategorySlug && category?.children.some((child) => slugifySubcategory(child) === defaults.subcategorySlug)
+    defaults?.subcategorySlug && categoryChildren.some((child) => slugifySubcategory(child) === defaults.subcategorySlug)
       ? defaults.subcategorySlug
       : fallbackSubcategorySlug;
-  const kind = normalizeListingKind(defaults?.kind) ?? inferListingKind(category?.slug ?? "mebel-i-interer", subcategorySlug);
+  const kind = normalizeListingKind(defaults?.kind) ?? inferListingKind(category?.slug ?? "dlya-doma-i-dachi", subcategorySlug);
 
   return {
-    categorySlug: category?.slug ?? "mebel-i-interer",
+    categorySlug: category?.slug ?? "dlya-doma-i-dachi",
     kind,
     subcategorySlug,
   };
@@ -886,7 +893,7 @@ export function listDemoListings() {
 }
 
 export function listPublicDemoListings() {
-  return listDemoListings().filter((listing) => listing.status === "published");
+  return [...listDemoListings(), ...listListings().map(toDemoListing)].filter((listing) => listing.status === "published");
 }
 
 function parseCoordinate(formData: FormData, name: string) {
@@ -900,12 +907,23 @@ function parseCoordinate(formData: FormData, name: string) {
   return Number.isFinite(value) ? value : undefined;
 }
 
+function inferCityFromFormData(formData: FormData, fallback = "Краснодар") {
+  const location = String(formData.get("location") ?? "").trim();
+  const address = String(formData.get("address") ?? "").trim();
+
+  return location.split(",")[0]?.trim() || cities.find((city) => address.toLowerCase().includes(city.name.toLowerCase()))?.name || fallback;
+}
+
 function hasListingMapPoint(listing: DemoListing) {
   return (listing.hasMapPoint ?? true) && hasMapCoordinates(listing.lat, listing.lng);
 }
 
 function listingPlaceLabel(listing: DemoListing) {
-  return hasListingMapPoint(listing) ? [listing.city, listing.district].filter(Boolean).join(", ") : listing.city;
+  if (hasListingMapPoint(listing)) {
+    return listing.address || [listing.city, listing.district].filter(Boolean).join(", ");
+  }
+
+  return listing.city;
 }
 
 function listingSellerName(listing: DemoListing) {
@@ -1134,7 +1152,8 @@ export function toDemoListing(listing: StoreListing): DemoListing {
     booking: listing.booking,
     delivery: listing.delivery,
     description: listing.description,
-    phone: listing.phone ?? "+78610009999",
+    phone: listing.phone,
+    email: listing.email,
     messengerUrl: listing.messengerUrl,
     status: listing.status,
     paid: listing.paid,
@@ -1310,7 +1329,7 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">{current.description}</p>
               </div>
               <Link
-                href="/krasnodar/sozdat/obyavlenie"
+                href={`/krasnodar/sozdat/obyavlenie?kind=${kind}`}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5 lg:h-12 lg:px-6 lg:text-base"
               >
                 Разместить
@@ -1370,7 +1389,7 @@ export function ExchangeAndFreePage() {
                 </p>
               </div>
               <Link
-                href="/krasnodar/sozdat/obyavlenie"
+                href="/krasnodar/sozdat/obyavlenie?kind=menyayu"
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5 lg:h-12 lg:px-6 lg:text-base"
               >
                 Разместить
@@ -1602,6 +1621,9 @@ export function ListingDetailPage({ slug }: { slug: string }) {
   const hasMapPoint = hasListingMapPoint(listing);
   const viewId = listing.viewId ?? listing.slug;
   const sellerStats = listingSellerStats(listing);
+  const contactCount = [listing.phone, listing.email, listing.messengerUrl].filter(Boolean).length;
+  const actionCount = contactCount + 1;
+  const actionGridClass = actionCount >= 4 ? "grid-cols-[repeat(4,minmax(104px,1fr))]" : actionCount === 3 ? "grid-cols-3" : actionCount === 2 ? "grid-cols-2" : "grid-cols-1";
 
   return (
     <>
@@ -1620,8 +1642,8 @@ export function ListingDetailPage({ slug }: { slug: string }) {
             <BackLink fallbackHref={`/krasnodar/${listing.kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
               Назад к разделу
             </BackLink>
-            <h1 className="[overflow-wrap:anywhere] mt-3 text-2xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-4xl lg:text-5xl">{listing.title}</h1>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <h1 className="[overflow-wrap:anywhere] mt-3 text-xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-3xl lg:text-4xl">{listing.title}</h1>
+            <div className="mt-3 flex flex-wrap gap-2">
               <ListingKindBadge kind={listing.kind} />
               <StatusBadge status={listing.status} />
             </div>
@@ -1629,8 +1651,8 @@ export function ListingDetailPage({ slug }: { slug: string }) {
               <Camera className="h-12 w-12 sm:h-16 sm:w-16" />
             </div>
             <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
-              <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Описание</h2>
-              <p className="mt-3 [overflow-wrap:anywhere] text-base leading-7 text-slate-700 sm:mt-4 sm:text-lg sm:leading-8">{listing.description}</p>
+              <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Описание</h2>
+              <p className="mt-2 [overflow-wrap:anywhere] text-sm leading-6 text-slate-700 sm:mt-3 sm:text-base sm:leading-7">{listing.description}</p>
               <dl className="mt-5 grid min-w-0 gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4">
                 <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                   <dt className="text-sm font-bold text-slate-500">Категория</dt>
@@ -1653,37 +1675,45 @@ export function ListingDetailPage({ slug }: { slug: string }) {
           </section>
 
           <aside className="min-w-0 space-y-4">
-            <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
-              <p className="[overflow-wrap:anywhere] text-2xl font-black text-[#060b27] sm:text-3xl">{listing.price}</p>
+            <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
+              <p className="[overflow-wrap:anywhere] text-xl font-black text-[#060b27] sm:text-2xl">{listing.price}</p>
               {!hasMapPoint ? (
                 <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
                   <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
                   <span className="min-w-0 [overflow-wrap:anywhere]">{listingPlaceLabel(listing)}</span>
                 </p>
               ) : null}
-              <div className="mt-5 grid gap-2 sm:gap-3">
-                <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  <a href={`tel:${listing.phone}`} className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-3 text-sm font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:text-base">
-                    <Phone className="h-5 w-5 shrink-0" />
-                    <span className="truncate">Позвонить</span>
-                  </a>
+              <div className="mt-4 grid gap-2">
+                <div className={`grid min-w-0 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${actionGridClass}`}>
+                  {listing.phone ? (
+                    <a href={`tel:${listing.phone}`} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:text-sm">
+                      <Phone className="h-4 w-4 shrink-0" />
+                      <span className="truncate">Позвонить</span>
+                    </a>
+                  ) : null}
+                  {listing.email ? (
+                    <a href={`mailto:${listing.email}`} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] bg-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:text-sm">
+                      <Mail className="h-4 w-4 shrink-0" />
+                      <span className="truncate">Email</span>
+                    </a>
+                  ) : null}
+                  {listing.messengerUrl ? (
+                    <a
+                      href={listing.messengerUrl}
+                      className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] bg-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:text-sm"
+                    >
+                      <MessageCircle className="h-4 w-4 shrink-0" />
+                      <span className="min-w-0 truncate">Сообщение</span>
+                    </a>
+                  ) : null}
                   <ListingShareButton
                     href={listingHref}
                     title={listing.title}
                     textBreakpoint="always"
-                    className="inline-flex h-11 min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:h-12 sm:text-base"
-                    iconClassName="h-5 w-5 shrink-0"
+                    className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:text-sm"
+                    iconClassName="h-4 w-4 shrink-0"
                   />
                 </div>
-                {listing.messengerUrl ? (
-                  <a
-                    href={listing.messengerUrl}
-                    className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl border border-[#0875d1] bg-white px-3 text-sm font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:h-12 sm:text-base"
-                  >
-                    <MessageCircle className="h-5 w-5 shrink-0" />
-                    <span className="min-w-0 truncate">Написать сообщение</span>
-                  </a>
-                ) : null}
               </div>
             </div>
             <ListingSellerCard
@@ -1691,7 +1721,7 @@ export function ListingDetailPage({ slug }: { slug: string }) {
               registeredSince={sellerStats.registeredSince}
               listingCount={sellerStats.listingCount}
               soldCount={sellerStats.soldCount}
-              hasContacts={Boolean(listing.phone || listing.messengerUrl)}
+              hasContacts={Boolean(listing.phone || listing.email || listing.messengerUrl)}
               listingTitle={listing.title}
               profileHref={sellerProfileHref(listing)}
             />
@@ -1728,6 +1758,20 @@ function TextInput({
   return (
     <ValidatedInput
       {...props}
+      className={`${compact ? "h-10 px-3 text-sm sm:h-12 sm:px-4 sm:text-base" : "h-12 px-4"} w-full rounded-lg border border-slate-300 outline-none focus:border-[#0875d1]`}
+    />
+  );
+}
+
+function PriceInput({ compact = false, defaultValue }: { compact?: boolean; defaultValue?: string }) {
+  return (
+    <input
+      name="price"
+      defaultValue={extractListingPriceDigits(defaultValue)}
+      inputMode="numeric"
+      maxLength={maxListingPriceDigits}
+      pattern="[0-9]*"
+      placeholder="12000"
       className={`${compact ? "h-10 px-3 text-sm sm:h-12 sm:px-4 sm:text-base" : "h-12 px-4"} w-full rounded-lg border border-slate-300 outline-none focus:border-[#0875d1]`}
     />
   );
@@ -1853,7 +1897,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
 
     const title = String(formData.get("title") ?? "").trim() || "Новое объявление";
     const kindValue = String(formData.get("kind") ?? "prodam");
-    const categorySlug = String(formData.get("category") ?? "").trim() || "mebel-i-interer";
+    const categorySlug = String(formData.get("category") ?? "").trim() || "dlya-doma-i-dachi";
     const kind = categorySlug === "otdyh" || (categorySlug === "nedvizhimost" && kindValue === "arenda") ? "arenda" : listingKinds.some((item) => item.slug === kindValue) ? (kindValue as ListingKind) : "prodam";
     const subcategorySlug = String(formData.get("subcategory") ?? "").trim();
     const category = categories.find((item) => item.slug === categorySlug);
@@ -1861,9 +1905,15 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
       category?.children.find((child) => slugifySubcategory(child) === subcategorySlug) ??
       category?.children[0] ??
       "Без подкатегории";
-    const location = String(formData.get("location") ?? "").trim();
-    const city = location.split(",")[0]?.trim() || "Краснодар";
     const hasMapPoint = String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1";
+    const city = inferCityFromFormData(formData);
+    const phone = String(formData.get("phone") ?? "").trim();
+    const email = String(formData.get("email") ?? "").trim();
+    const messengerUrl = String(formData.get("messengerUrl") ?? "").trim();
+
+    if (!phone && !email && !messengerUrl) {
+      redirect(`/krasnodar/sozdat/obyavlenie?admin=1&error=${encodeURIComponent("Укажите хотя бы один контакт объявления: телефон, email или Telegram/WhatsApp.")}`);
+    }
 
     createListing({
       title,
@@ -1872,12 +1922,13 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
       subcategory,
       city,
       address: hasMapPoint ? String(formData.get("address") ?? "").trim() || undefined : undefined,
-      price: String(formData.get("price") ?? "").trim() || (kind === "arenda" && isBookingCategory(categorySlug) ? "расчет по датам" : undefined),
+      price: normalizeListingPrice(String(formData.get("price") ?? ""), kind === "arenda" && isBookingCategory(categorySlug) ? "расчет по датам" : "по договоренности"),
       booking: kind === "arenda" ? parseBookingDetails(formData, categorySlug) : undefined,
       delivery: parseDeliveryOptions(formData, city),
       description: String(formData.get("description") ?? "").trim() || undefined,
-      phone: String(formData.get("phone") ?? "").trim() || undefined,
-      messengerUrl: String(formData.get("messengerUrl") ?? "").trim() || undefined,
+      phone: phone || undefined,
+      email: email || undefined,
+      messengerUrl: messengerUrl || undefined,
       lat: hasMapPoint ? parseCoordinate(formData, "lat") : undefined,
       lng: hasMapPoint ? parseCoordinate(formData, "lng") : undefined,
       hasMapPoint,
@@ -1930,7 +1981,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
                 <TextInput name="title" defaultValue={listing?.title} placeholder="Например, Комод из массива дуба" compact />
               </Field>
               <Field className="listing-price-field" label="Цена" compact>
-                <TextInput name="price" defaultValue={listing?.price} placeholder="12 000 ₽" compact />
+                <PriceInput defaultValue={listing?.price} compact />
               </Field>
             </div>
 
@@ -1970,7 +2021,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
                   />
                 </Field>
                 <Field label="Email для уведомлений" compact>
-                  <TextInput placeholder="mail@example.ru" validation="email" compact />
+                  <TextInput name="email" placeholder="mail@example.ru" validation="email" compact />
                 </Field>
                 <Field label="Telegram или WhatsApp" compact>
                   <TextInput name="messengerUrl" defaultValue={listing?.messengerUrl} placeholder="@username или ссылка" validation="messenger" compact />

@@ -52,6 +52,7 @@ export type DemoPublication = {
   status: string;
   soldReason?: "platform" | "elsewhere" | "not_actual";
   soldAt?: string;
+  expiresAt?: string;
   createdAt: string;
   history?: DemoPublicationHistoryEvent[];
 };
@@ -93,6 +94,21 @@ function createHistoryEventId(type: DemoPublicationHistoryType, at: string) {
 
 function normalizeStatus(status?: string) {
   return status?.trim().toLowerCase() ?? "";
+}
+
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function addPublicationDaysIsoDate(days: number) {
+  const date = new Date();
+
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+export function isDemoPublicationExpired(item: Pick<DemoPublication, "expiresAt" | "type">) {
+  return item.type === "listing" && Boolean(item.expiresAt && item.expiresAt < todayIsoDate());
 }
 
 function isUnpublishedStatus(status: string) {
@@ -227,5 +243,5 @@ export function isDemoPublicationSold(item: Pick<DemoPublication, "status">) {
 export function isDemoPublicationPubliclyVisible(item: DemoPublication) {
   const status = item.status.trim().toLowerCase();
 
-  return !isDemoPublicationSold(item) && (status === "опубликовано" || status === "published");
+  return !isDemoPublicationSold(item) && !isDemoPublicationExpired(item) && (status === "опубликовано" || status === "published");
 }
