@@ -70,7 +70,7 @@ npm install -g pm2
 ```bash
 sudo mkdir -p /var/www/blizhniy
 sudo chown -R "$USER":"$USER" /var/www/blizhniy
-git clone git@github.com:Danil-super/blizhniy.git /var/www/blizhniy
+git clone https://github.com/Danil-super/blizhniy.git /var/www/blizhniy
 cd /var/www/blizhniy
 npm ci
 npm run build
