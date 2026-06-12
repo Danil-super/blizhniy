@@ -4,7 +4,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
   title: "Реквизиты",
-  description: "Реквизиты ООО «БЛИЖНИЙ» для пользователей и партнеров платформы.",
+  description: "Реквизиты ООО «БЛИЖНИЙ» для пользователей, партнеров и платежных сервисов платформы.",
 };
 
 const requisites = [
@@ -44,10 +44,14 @@ export default function Page() {
 
           <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-6">
             <h2 className="text-xl font-black text-[#060b27]">Контакты для связи</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              По вопросам работы платформы, размещения материалов, оплаты и взаимодействия с сервисом можно связаться
+              с администрацией по указанным контактам.
+            </p>
             <div className="mt-4 grid gap-3 text-sm font-semibold text-slate-700">
-              <a href="mailto:prostova@yandex.ru" className="inline-flex items-center gap-2 transition hover:text-[#0875d1]">
+              <a href="mailto:prostova04@yandex.ru" className="inline-flex items-center gap-2 transition hover:text-[#0875d1]">
                 <Mail className="h-4 w-4 text-[#0875d1]" />
-                prostova@yandex.ru
+                prostova04@yandex.ru
               </a>
               <a href="tel:+79883828621" className="inline-flex items-center gap-2 transition hover:text-[#0875d1]">
                 <Phone className="h-4 w-4 text-[#0875d1]" />
