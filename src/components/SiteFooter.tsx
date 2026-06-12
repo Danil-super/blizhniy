@@ -6,6 +6,7 @@ const footerLinks = [
   { href: "/o-proekte", label: "О проекте" },
   { href: "/kak-rabotaet", label: "Как работает" },
   { href: "/tarify", label: "Тарифы" },
+  { href: "/rekvizity", label: "Реквизиты" },
   { href: "/legal/user-agreement", label: "Пользовательское соглашение" },
   { href: "/legal/privacy", label: "Политика конфиденциальности" },
 ];
@@ -21,9 +22,9 @@ export function SiteFooter() {
           <p className="mt-3 max-w-md text-sm leading-6 text-slate-600">
             <BrandName /> — платформа объявлений, работы, специалистов и услуг рядом. Первый регион запуска — Краснодарский край.
           </p>
-          <a href="mailto:demo@blizhniy.local" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+          <a href="mailto:prostova04@yandex.ru" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             <Mail className="h-4 w-4" />
-            demo@blizhniy.local
+            prostova04@yandex.ru
           </a>
         </div>
         <nav className="grid gap-2 text-sm font-semibold text-slate-700 sm:grid-cols-2 lg:grid-cols-3" aria-label="Нижняя навигация">
