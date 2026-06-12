@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { processYooKassaNotification } from "@/lib/payment-provider";
 
+export const dynamic = "force-dynamic";
+
 function isValidWebhookRequest(request: Request) {
   const secret = process.env.YOOKASSA_WEBHOOK_SECRET?.trim();
 
@@ -14,6 +16,14 @@ function isValidWebhookRequest(request: Request) {
   const querySecret = url.searchParams.get("secret")?.trim();
 
   return headerSecret === secret || bearerSecret === secret || querySecret === secret;
+}
+
+export function GET() {
+  return NextResponse.json({
+    ok: true,
+    endpoint: "yookassa-webhook",
+    configured: Boolean(process.env.YOOKASSA_WEBHOOK_SECRET?.trim()),
+  });
 }
 
 export async function POST(request: Request) {
@@ -31,7 +41,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Invalid YooKassa notification payload" }, { status: 400 });
   }
 
-  const result = await processYooKassaNotification(payload);
+  try {
+    const result = await processYooKassaNotification(payload);
 
-  return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({ ok: true, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "YooKassa webhook processing failed";
+
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }
