@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { HomeListingsFeed } from "@/components/HomeListingsFeed";
 import { listDemoListings, toDemoListing } from "@/components/listings/ListingPages";
+import { listStoredListings } from "@/lib/listing-store";
 import { listListings } from "@/lib/mock-store";
 import { publicationTimestamp } from "@/lib/publication-time";
 
-export function HomeListings() {
-  const allListings = [...listListings().map(toDemoListing), ...listDemoListings()];
+export async function HomeListings() {
+  const storedListings = await listStoredListings();
+  const allListings = [...storedListings.map(toDemoListing), ...listListings().map(toDemoListing), ...listDemoListings()];
   const uniqueListings = Array.from(new Map(allListings.map((listing) => [listing.slug, listing])).values());
   const listings = uniqueListings
     .filter((listing) => listing.status === "published")
