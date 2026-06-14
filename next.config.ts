@@ -36,6 +36,36 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: "/krasnodar",
+        destination: "/",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/prodam",
+        destination: "/obyavleniya/prodam",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/kuplyu",
+        destination: "/obyavleniya/kuplyu",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/menyayu",
+        destination: "/obyavleniya/menyayu",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/otdam-darom",
+        destination: "/obyavleniya/otdam-darom",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/obmen-i-darom",
+        destination: "/obyavleniya/obmen-i-darom",
+        permanent: false,
+      },
+      {
         source: "/blizhniy/obyavlenie/:slug/redaktirovat",
         destination: "/krasnodar/obyavlenie/:slug/redaktirovat",
         permanent: false,
@@ -82,12 +112,12 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/blizhniy",
-        destination: "/krasnodar",
+        destination: "/",
         permanent: false,
       },
       {
         source: "/blizhniy/:path*",
-        destination: "/krasnodar/:path*",
+        destination: "/:path*",
         permanent: false,
       },
     ];
