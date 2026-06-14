@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRightLeft, Gift, PlusCircle, Search, ShoppingBag, Tags } from "lucide-react";
+import { Gift, PlusCircle, Search, ShoppingBag, Tags, ArrowRightLeft } from "lucide-react";
 
 const listingEntries = [
   {
@@ -44,13 +44,22 @@ export function ListingEntryNav() {
               Выберите тип объявления: продать, купить, обменять или отдать бесплатно.
             </p>
           </div>
-          <Link
-            href="/krasnodar/sozdat/obyavlenie"
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5"
-          >
-            <PlusCircle className="h-4 w-4" />
-            Разместить
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/katalog"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-[#0875d1] sm:h-11 sm:px-5"
+            >
+              <Search className="h-4 w-4" />
+              Все категории
+            </Link>
+            <Link
+              href="/krasnodar/sozdat/obyavlenie"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5"
+            >
+              <PlusCircle className="h-4 w-4" />
+              Разместить
+            </Link>
+          </div>
         </div>
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -71,17 +80,6 @@ export function ListingEntryNav() {
               </Link>
             );
           })}
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-2 text-sm font-bold">
-          <Link href="/obyavleniya/obmen-i-darom" className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-slate-700 transition hover:border-blue-200 hover:bg-white hover:text-[#0875d1]">
-            <ArrowRightLeft className="h-4 w-4" />
-            Меняю и отдам даром
-          </Link>
-          <Link href="/katalog" className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-slate-700 transition hover:border-blue-200 hover:bg-white hover:text-[#0875d1]">
-            <Search className="h-4 w-4" />
-            Все категории
-          </Link>
         </div>
       </div>
     </section>
