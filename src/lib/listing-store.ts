@@ -54,7 +54,6 @@ export type CreateStoredListingInput = {
   status?: PublicationStatus;
   subcategory?: string;
   title: string;
-  userId: string;
 };
 
 const listingKindByDbType: Record<ListingTypeRow, ListingKind> = {
@@ -214,7 +213,6 @@ export async function createStoredListing(input: CreateStoredListingInput) {
       show_exact_address: Boolean(input.address && input.lat && input.lng),
       status,
       title: input.title,
-      user_id: input.userId,
     },
   });
 
