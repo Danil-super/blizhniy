@@ -4,6 +4,7 @@ import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/sup
 import type { ListingKind, Payment } from "@/lib/types";
 
 type CreateStoredListingInput = {
+  accessToken?: string;
   address?: string;
   categorySlug?: string;
   city?: string;
@@ -29,7 +30,11 @@ type CreateStoredListingResponse = {
   payment?: Pick<Payment, "confirmationUrl" | "id" | "provider" | "status">;
 };
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
+async function getAuthHeaders(accessToken?: string): Promise<Record<string, string>> {
+  if (accessToken) {
+    return { Authorization: `Bearer ${accessToken}` };
+  }
+
   if (!isSupabaseBrowserConfigured()) {
     return {};
   }
@@ -42,10 +47,11 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 export async function createStoredListingPublication(input: CreateStoredListingInput) {
+  const { accessToken, ...payloadBody } = input;
   const response = await fetch("/api/listings", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
-    body: JSON.stringify(input),
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders(accessToken)) },
+    body: JSON.stringify(payloadBody),
   });
   const payload = (await response.json().catch(() => null)) as (CreateStoredListingResponse & { error?: string }) | null;
 
