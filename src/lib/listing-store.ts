@@ -41,6 +41,7 @@ type CityIdRow = { id: string; name: string; slug: string };
 
 export type CreateStoredListingInput = {
   address?: string;
+  authorId: string;
   categorySlug: string;
   city: string;
   description?: string;
@@ -198,6 +199,7 @@ export async function createStoredListing(input: CreateStoredListingInput) {
     prefer: "return=representation",
     body: {
       address: input.address ?? null,
+      author_id: input.authorId,
       category_id: categoryId ?? null,
       city_id: cityId ?? null,
       contact_phone: input.phone ?? null,
