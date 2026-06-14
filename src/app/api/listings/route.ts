@@ -70,6 +70,7 @@ export async function POST(request: Request) {
   try {
     const listing = await createStoredListing({
       address: cleanString(body.address) || undefined,
+      authorId: auth.user.id,
       categorySlug: cleanString(body.categorySlug) || "dlya-doma-i-dachi",
       city: cleanString(body.city) || "Краснодар",
       description: cleanString(body.description) || undefined,
