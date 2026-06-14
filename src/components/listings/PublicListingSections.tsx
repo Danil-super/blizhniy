@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
-import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import { listDemoListings, toDemoListing } from "@/components/listings/ListingPages";
@@ -13,10 +12,12 @@ import { publicationTimestamp } from "@/lib/publication-time";
 const listingKinds: { slug: ListingKind; title: string; description: string }[] = [
   { slug: "prodam", title: "Продам", description: "Вещи, мебель, растения и полезные товары рядом с домом." },
   { slug: "kuplyu", title: "Куплю", description: "Запросы покупателей: что ищут жители Краснодара и края." },
-  { slug: "arenda", title: "Аренда", description: "Бронирование турбаз, гостиниц, домов и активного отдыха." },
   { slug: "menyayu", title: "Меняю", description: "Обмен товарами, коллекциями, вещами и материалами." },
   { slug: "otdam-darom", title: "Отдам даром", description: "Публикации без цены: забрать, передать, пристроить." },
+  { slug: "arenda", title: "Аренда", description: "Бронирование турбаз, гостиниц, домов и активного отдыха." },
 ];
+
+const mainListingKinds = listingKinds.filter((item) => item.slug === "prodam" || item.slug === "kuplyu" || item.slug === "menyayu" || item.slug === "otdam-darom");
 
 function listingKindHref(kind: ListingKind) {
   return `/obyavleniya/${kind}`;
@@ -61,12 +62,29 @@ function Breadcrumbs({ items }: { items: { label: string; href?: string }[] }) {
   );
 }
 
+function ListingKindTabs({ activeKind }: { activeKind: ListingKind }) {
+  return (
+    <div className="mt-4 flex flex-wrap gap-2 sm:mt-5 lg:mt-6">
+      {mainListingKinds.map((item) => (
+        <Link
+          key={item.slug}
+          href={listingKindHref(item.slug)}
+          className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-bold transition sm:h-9 sm:text-sm lg:h-10 lg:px-4 ${
+            item.slug === activeKind
+              ? "border-[#0875d1] bg-[#0875d1] text-white"
+              : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
+          }`}
+        >
+          {item.title}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 export async function PublicListingKindPage({ kind }: { kind: ListingKind }) {
   const current = listingKinds.find((item) => item.slug === kind) ?? listingKinds[0];
   const listings = (await listPublicListings()).filter((listing) => listing.kind === kind);
-  const primaryKinds = listingKinds.filter((item) => item.slug === "prodam" || item.slug === "kuplyu");
-  const exchangeKinds = listingKinds.filter((item) => item.slug === "menyayu" || item.slug === "otdam-darom");
-  const visibleKinds = kind === "prodam" || kind === "kuplyu" ? primaryKinds : exchangeKinds;
 
   return (
     <>
@@ -92,29 +110,7 @@ export async function PublicListingKindPage({ kind }: { kind: ListingKind }) {
                 <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
               </Link>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2 sm:mt-5 lg:mt-6">
-              {visibleKinds.map((item) => (
-                <Link
-                  key={item.slug}
-                  href={listingKindHref(item.slug)}
-                  className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-bold transition sm:h-9 sm:text-sm lg:h-10 lg:px-4 ${
-                    item.slug === kind
-                      ? "border-[#0875d1] bg-[#0875d1] text-white"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
-                  }`}
-                >
-                  {item.title}
-                </Link>
-              ))}
-              {kind === "prodam" || kind === "kuplyu" ? (
-                <Link
-                  href="/obyavleniya/obmen-i-darom"
-                  className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
-                >
-                  Меняю и отдам даром
-                </Link>
-              ) : null}
-            </div>
+            <ListingKindTabs activeKind={kind} />
             <ListingResultsPanel kind={kind} listings={listings} />
           </section>
         </div>
@@ -129,8 +125,7 @@ export async function PublicExchangeAndFreePage() {
   return (
     <>
       <SiteHeader />
-      <HomeHero />
-      <main className="page-container py-2 sm:py-3 lg:py-4">
+      <main className="page-container py-6 sm:py-8 lg:py-10">
         <Breadcrumbs items={[{ label: "Меняю и отдам даром" }]} />
         <BackLink fallbackHref="/obyavleniya" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
@@ -141,7 +136,7 @@ export async function PublicExchangeAndFreePage() {
               <div>
                 <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Меняю и отдам даром</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">
-                  Отдельный раздел для обмена и бесплатных объявлений рядом с домом.
+                  Раздел обмена и бесплатных объявлений рядом с домом.
                 </p>
               </div>
               <Link
@@ -153,17 +148,18 @@ export async function PublicExchangeAndFreePage() {
               </Link>
             </div>
             <div className="mt-4 flex flex-wrap gap-2 sm:mt-5 lg:mt-6">
-              {listingKinds
-                .filter((item) => item.slug === "menyayu" || item.slug === "otdam-darom")
-                .map((item) => (
-                  <Link
-                    key={item.slug}
-                    href={listingKindHref(item.slug)}
-                    className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
-                  >
-                    {item.title}
-                  </Link>
-                ))}
+              <Link
+                href="/obyavleniya/menyayu"
+                className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
+              >
+                Меняю
+              </Link>
+              <Link
+                href="/obyavleniya/otdam-darom"
+                className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
+              >
+                Отдам даром
+              </Link>
             </div>
             <ListingResultsPanel kind={["menyayu", "otdam-darom"]} listings={listings} />
           </section>
