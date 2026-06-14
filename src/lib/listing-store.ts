@@ -1,3 +1,4 @@
+import { region } from "@/lib/data";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { Listing, ListingKind, PublicationStatus } from "@/lib/types";
 
@@ -37,7 +38,8 @@ type ListingRow = {
 };
 
 type CategoryIdRow = { id: string; name: string; slug: string };
-type CityIdRow = { id: string; name: string; slug: string };
+type CityIdRow = { id: string; name: string; region_id?: string | null; slug: string };
+type RegionIdRow = { id: string; name: string; slug: string };
 
 export type CreateStoredListingInput = {
   address?: string;
@@ -176,10 +178,22 @@ async function findCategoryId(categorySlug: string, subcategory?: string) {
   return exactSlugRows[0]?.id;
 }
 
-async function findCityId(city: string) {
+async function findCity(city: string) {
   const cityName = city.split(",")[0]?.trim() || "Краснодар";
   const rows = await supabaseRest<CityIdRow[]>(
-    `/rest/v1/cities?select=id,name,slug&name=eq.${encodeURIComponent(cityName)}&limit=1`,
+    `/rest/v1/cities?select=id,name,slug,region_id&name=eq.${encodeURIComponent(cityName)}&limit=1`,
+  );
+
+  return rows[0];
+}
+
+async function findRegionId(cityRow?: CityIdRow) {
+  if (cityRow?.region_id) {
+    return cityRow.region_id;
+  }
+
+  const rows = await supabaseRest<RegionIdRow[]>(
+    `/rest/v1/regions?select=id,name,slug&slug=eq.${encodeURIComponent(region.slug)}&limit=1`,
   );
 
   return rows[0]?.id;
@@ -191,7 +205,8 @@ export async function createStoredListing(input: CreateStoredListingInput) {
   }
 
   const categoryId = await findCategoryId(input.categorySlug, input.subcategory);
-  const cityId = await findCityId(input.city);
+  const cityRow = await findCity(input.city);
+  const regionId = await findRegionId(cityRow);
 
   const status = input.status ?? "pending_payment";
   const rows = await supabaseRest<ListingRow[]>("/rest/v1/listings?select=*,categories(slug,name,parent_id),cities(slug,name),profiles(display_name,email)", {
@@ -201,7 +216,7 @@ export async function createStoredListing(input: CreateStoredListingInput) {
       address: input.address ?? null,
       author_id: input.authorId,
       category_id: categoryId ?? null,
-      city_id: cityId ?? null,
+      city_id: cityRow?.id ?? null,
       contact_phone: input.phone ?? null,
       description: input.description || "Описание будет дополнено.",
       district: input.district ?? null,
@@ -212,6 +227,7 @@ export async function createStoredListing(input: CreateStoredListingInput) {
       messenger_url: input.messengerUrl ?? null,
       price: priceToNumber(input.price),
       published_at: status === "published" ? new Date().toISOString() : null,
+      region_id: regionId ?? null,
       show_exact_address: Boolean(input.address && input.lat && input.lng),
       status,
       title: input.title,
