@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createStoredListing } from "@/lib/listing-store";
 import { createPayment } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
+import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
 import type { ListingKind, Payment } from "@/lib/types";
 
 type CreateListingBody = {
@@ -37,6 +38,13 @@ function cleanKind(value: unknown): ListingKind {
 export async function POST(request: Request) {
   if (!isSupabaseServerConfigured()) {
     return NextResponse.json({ error: "Supabase auth is not configured" }, { status: 503 });
+  }
+
+  if (!isSupabaseServiceRoleConfigured()) {
+    return NextResponse.json(
+      { error: "Для создания объявления на сервере нужно добавить SUPABASE_SERVICE_ROLE_KEY в переменные окружения Vercel." },
+      { status: 503 },
+    );
   }
 
   const auth = await getAuthenticatedRequestUser(request);
