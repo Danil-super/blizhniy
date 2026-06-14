@@ -53,7 +53,7 @@ export function ListingEntryNav() {
               Все категории
             </Link>
             <Link
-              href="/krasnodar/sozdat/obyavlenie"
+              href="/razmestit/obyavlenie"
               className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5"
             >
               <PlusCircle className="h-4 w-4" />
