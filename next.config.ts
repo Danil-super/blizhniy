@@ -81,6 +81,11 @@ const nextConfig: NextConfig = {
         permanent: false,
       },
       {
+        source: "/krasnodar/obyavlenie/:path*",
+        destination: "/obyavlenie/:path*",
+        permanent: false,
+      },
+      {
         source: "/krasnodar/zhivotnye/:path*",
         destination: "/katalog/zhivotnye/:path*",
         permanent: false,
@@ -158,11 +163,6 @@ const nextConfig: NextConfig = {
       {
         source: "/krasnodar/raznoe/:path*",
         destination: "/katalog/raznoe/:path*",
-        permanent: false,
-      },
-      {
-        source: "/blizhniy/obyavlenie/:slug/redaktirovat",
-        destination: "/krasnodar/obyavlenie/:slug/redaktirovat",
         permanent: false,
       },
       {
