@@ -22,6 +22,10 @@ export function isSupabaseRestConfigured(useServiceRole = true) {
   return Boolean(key && supabaseUrl);
 }
 
+export function isSupabaseServiceRoleConfigured() {
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
+}
+
 export function buildSupabaseRestUrl(path: string) {
   const { supabaseUrl } = getSupabaseRestConfig();
 
@@ -91,5 +95,5 @@ export async function supabaseRest<T>(path: string, options: SupabaseRestOptions
 }
 
 export function isUuid(value?: string) {
-  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value));
 }
