@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ExchangeAndFreePage } from "@/components/listings/ListingPages";
+import { PublicExchangeAndFreePage } from "@/components/listings/PublicListingSections";
 
 export const dynamic = "force-dynamic";
 
@@ -12,5 +12,5 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <ExchangeAndFreePage />;
+  return <PublicExchangeAndFreePage />;
 }

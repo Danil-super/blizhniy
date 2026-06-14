@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ListingKindPage } from "@/components/listings/ListingPages";
+import { PublicListingKindPage } from "@/components/listings/PublicListingSections";
 
 export const dynamic = "force-dynamic";
 
@@ -12,5 +12,5 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <ListingKindPage kind="menyayu" />;
+  return <PublicListingKindPage kind="menyayu" />;
 }
