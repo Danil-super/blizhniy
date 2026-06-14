@@ -75,7 +75,6 @@ export async function POST(request: Request) {
       status: body.tariffId ? "pending_payment" : "published",
       subcategory: cleanString(body.subcategory) || undefined,
       title,
-      userId: auth.user.id,
     });
 
     if (!listing?.id) {
