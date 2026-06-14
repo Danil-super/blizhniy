@@ -3,28 +3,28 @@ import { ArrowRightLeft, Gift, PlusCircle, Search, ShoppingBag, Tags } from "luc
 
 const listingEntries = [
   {
-    href: "/krasnodar/prodam",
+    href: "/obyavleniya/prodam",
     title: "Продам",
     description: "Разместить или найти товары рядом",
     icon: ShoppingBag,
     tone: "from-blue-50 via-white to-white text-[#0875d1] hover:border-blue-200",
   },
   {
-    href: "/krasnodar/kuplyu",
+    href: "/obyavleniya/kuplyu",
     title: "Куплю",
     description: "Посмотреть, что ищут покупатели",
     icon: Tags,
     tone: "from-violet-50 via-white to-white text-violet-700 hover:border-violet-200",
   },
   {
-    href: "/krasnodar/menyayu",
+    href: "/obyavleniya/menyayu",
     title: "Меняю",
     description: "Обмен вещами и материалами",
     icon: ArrowRightLeft,
     tone: "from-emerald-50 via-white to-white text-[#0a8f32] hover:border-emerald-200",
   },
   {
-    href: "/krasnodar/otdam-darom",
+    href: "/obyavleniya/otdam-darom",
     title: "Отдам даром",
     description: "Бесплатные объявления рядом",
     icon: Gift,
@@ -74,11 +74,11 @@ export function ListingEntryNav() {
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2 text-sm font-bold">
-          <Link href="/krasnodar/obmen-i-darom" className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-slate-700 transition hover:border-blue-200 hover:bg-white hover:text-[#0875d1]">
+          <Link href="/obyavleniya/obmen-i-darom" className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-slate-700 transition hover:border-blue-200 hover:bg-white hover:text-[#0875d1]">
             <ArrowRightLeft className="h-4 w-4" />
             Меняю и отдам даром
           </Link>
-          <Link href="/krasnodar/kategorii" className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-slate-700 transition hover:border-blue-200 hover:bg-white hover:text-[#0875d1]">
+          <Link href="/katalog" className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-slate-700 transition hover:border-blue-200 hover:bg-white hover:text-[#0875d1]">
             <Search className="h-4 w-4" />
             Все категории
           </Link>
