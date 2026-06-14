@@ -62,7 +62,8 @@ jobs:
             cd "$APP_DIR"
             git remote set-url origin https://github.com/Danil-super/blizhniy.git
             git fetch origin main
-            git pull --ff-only origin main
+            git merge --ff-only origin/main
+            git rev-parse --short HEAD
             npm ci
             npm run build
             pm2 startOrReload ecosystem.config.cjs
