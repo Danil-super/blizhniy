@@ -41,6 +41,11 @@ const nextConfig: NextConfig = {
         permanent: false,
       },
       {
+        source: "/krasnodar/kategorii",
+        destination: "/katalog",
+        permanent: false,
+      },
+      {
         source: "/krasnodar/prodam",
         destination: "/obyavleniya/prodam",
         permanent: false,
