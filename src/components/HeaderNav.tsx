@@ -9,7 +9,7 @@ import { useAuthState } from "@/components/auth/useAuthState";
 import menuGif from "../../menu.gif";
 
 const publicLinks = [
-  ["Объявления", "/krasnodar/prodam"],
+  ["Объявления", "/obyavleniya"],
   ["Как работает", "/kak-rabotaet"],
   ["Ярмарка мастеров", "/yarmarka-masterov"],
   ["Для бизнеса", "/cabinet/organization"],
