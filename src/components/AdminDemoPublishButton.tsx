@@ -114,7 +114,7 @@ async function buildFallbackPublication(formData: FormData, type: DemoPublicatio
   });
 }
 
-async function createSupabaseListing(formData: FormData, tariffId: string) {
+async function createSupabaseListing(formData: FormData, tariffId: string, accessToken: string) {
   const categorySlug = readValue(formData, "category", "dlya-doma-i-dachi");
   const rawKind = readValue(formData, "kind", "prodam") as ListingKind;
   const kind = categorySlug === "otdyh" || (categorySlug === "nedvizhimost" && rawKind === "arenda") ? "arenda" : rawKind;
@@ -127,6 +127,7 @@ async function createSupabaseListing(formData: FormData, tariffId: string) {
   }
 
   const result = await createStoredListingPublication({
+    accessToken,
     address: hasSelectedMapPoint(formData) ? readValue(formData, "address") : undefined,
     categorySlug,
     city: inferCityFromFormData(formData),
@@ -193,7 +194,13 @@ export function AdminDemoPublishButton({
       const requiresPayment = Boolean(paymentTariffId && !isDraftStatus(status));
 
       if (publicationType === "listing" && requiresPayment && paymentTariffId) {
-        await createSupabaseListing(formData, paymentTariffId);
+        const identity = await resolveAuthenticatedClientUserIdentity();
+
+        if (!identity.accessToken) {
+          throw new Error("Сессия входа устарела. Выйдите и войдите снова, затем повторите публикацию.");
+        }
+
+        await createSupabaseListing(formData, paymentTariffId, identity.accessToken);
         return;
       }
 
