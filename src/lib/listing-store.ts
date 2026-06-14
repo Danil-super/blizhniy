@@ -1,4 +1,4 @@
-import { isSupabaseRestConfigured, supabaseRest } from "@/lib/supabase-rest";
+import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { Listing, ListingKind, PublicationStatus } from "@/lib/types";
 
 type ListingTypeRow = "sell" | "buy" | "exchange" | "free";
@@ -36,11 +36,40 @@ type ListingRow = {
   } | null;
 };
 
+type CategoryIdRow = { id: string; name: string; slug: string };
+type CityIdRow = { id: string; name: string; slug: string };
+
+export type CreateStoredListingInput = {
+  address?: string;
+  categorySlug: string;
+  city: string;
+  description?: string;
+  district?: string;
+  kind: ListingKind;
+  lat?: number;
+  lng?: number;
+  messengerUrl?: string;
+  phone?: string;
+  price?: string;
+  status?: PublicationStatus;
+  subcategory?: string;
+  title: string;
+  userId: string;
+};
+
 const listingKindByDbType: Record<ListingTypeRow, ListingKind> = {
   buy: "kuplyu",
   exchange: "menyayu",
   free: "otdam-darom",
   sell: "prodam",
+};
+
+const dbTypeByListingKind: Record<ListingKind, ListingTypeRow> = {
+  arenda: "sell",
+  kuplyu: "buy",
+  menyayu: "exchange",
+  "otdam-darom": "free",
+  prodam: "sell",
 };
 
 const fallbackCategoryByKind: Record<ListingKind, string> = {
@@ -58,6 +87,13 @@ function toNumber(value: ListingRow["latitude"]) {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function priceToNumber(value?: string) {
+  const digits = (value ?? "").replace(/[^0-9]/g, "");
+  const amount = digits ? Number(digits) : 0;
+
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
 function formatPrice(value: ListingRow["price"]) {
@@ -120,6 +156,90 @@ function mapListing(row: ListingRow): Listing {
     publishedAt,
     expiresAt: isoDate(row.expires_at) || addDaysIsoDate(publishedAt, 30),
   };
+}
+
+async function findCategoryId(categorySlug: string, subcategory?: string) {
+  const exactSlugRows = await supabaseRest<CategoryIdRow[]>(
+    `/rest/v1/categories?select=id,name,slug&slug=eq.${encodeURIComponent(categorySlug)}&limit=1`,
+  );
+
+  if (subcategory) {
+    const subcategoryRows = await supabaseRest<CategoryIdRow[]>(
+      `/rest/v1/categories?select=id,name,slug&name=eq.${encodeURIComponent(subcategory)}&limit=1`,
+    );
+
+    if (subcategoryRows[0]?.id) {
+      return subcategoryRows[0].id;
+    }
+  }
+
+  return exactSlugRows[0]?.id;
+}
+
+async function findCityId(city: string) {
+  const cityName = city.split(",")[0]?.trim() || "Краснодар";
+  const rows = await supabaseRest<CityIdRow[]>(
+    `/rest/v1/cities?select=id,name,slug&name=eq.${encodeURIComponent(cityName)}&limit=1`,
+  );
+
+  return rows[0]?.id;
+}
+
+export async function createStoredListing(input: CreateStoredListingInput) {
+  if (!isSupabaseRestConfigured()) {
+    return undefined;
+  }
+
+  const categoryId = await findCategoryId(input.categorySlug, input.subcategory);
+  const cityId = await findCityId(input.city);
+
+  const status = input.status ?? "pending_payment";
+  const rows = await supabaseRest<ListingRow[]>("/rest/v1/listings?select=*,categories(slug,name,parent_id),cities(slug,name),profiles(display_name,email)", {
+    method: "POST",
+    prefer: "return=representation",
+    body: {
+      address: input.address ?? null,
+      category_id: categoryId ?? null,
+      city_id: cityId ?? null,
+      contact_phone: input.phone ?? null,
+      description: input.description || "Описание будет дополнено.",
+      district: input.district ?? null,
+      is_paid: status === "published",
+      latitude: input.lat ?? null,
+      listing_type: dbTypeByListingKind[input.kind] ?? "sell",
+      longitude: input.lng ?? null,
+      messenger_url: input.messengerUrl ?? null,
+      price: priceToNumber(input.price),
+      published_at: status === "published" ? new Date().toISOString() : null,
+      show_exact_address: Boolean(input.address && input.lat && input.lng),
+      status,
+      title: input.title,
+      user_id: input.userId,
+    },
+  });
+
+  return rows[0] ? mapListing(rows[0]) : undefined;
+}
+
+export async function markStoredListingPaid(listingId: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
+    return false;
+  }
+
+  const now = new Date().toISOString();
+
+  await supabaseRest(`/rest/v1/listings?id=eq.${encodeURIComponent(listingId)}`, {
+    method: "PATCH",
+    prefer: "return=minimal",
+    body: {
+      expires_at: addDaysIsoDate(now, 30),
+      is_paid: true,
+      published_at: now,
+      status: "published",
+    },
+  });
+
+  return true;
 }
 
 export async function listStoredListings(limit = 24) {
