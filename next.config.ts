@@ -56,6 +56,11 @@ const nextConfig: NextConfig = {
         permanent: false,
       },
       {
+        source: "/krasnodar/sozdat",
+        destination: "/razmestit",
+        permanent: false,
+      },
+      {
         source: "/krasnodar/prodam",
         destination: "/obyavleniya/prodam",
         permanent: false,
@@ -86,6 +91,56 @@ const nextConfig: NextConfig = {
         permanent: false,
       },
       {
+        source: "/krasnodar/rabota",
+        destination: "/rabota",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/rabota/vakansii",
+        destination: "/rabota/vakansii",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/rabota/vakansii/sozdat",
+        destination: "/rabota/vakansii/sozdat",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/rabota/vakansii/:slug/redaktirovat",
+        destination: "/rabota/vakansii/:slug/edit",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/rabota/specialisty",
+        destination: "/rabota/specialisty",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/rabota/specialisty/anketa",
+        destination: "/rabota/specialisty/anketa",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/rabota/specialisty/:path*",
+        destination: "/rabota/specialisty/:path*",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/rabota/zakazy/:slug/redaktirovat",
+        destination: "/rabota/zakazy/:slug/edit",
+        permanent: false,
+      },
+      {
+        source: "/krasnodar/rabota/zakazy/:path*",
+        destination: "/rabota/zakazy/:path*",
+        permanent: false,
+      },
+      {
+        source: "/rabota/orders/:path*",
+        destination: "/rabota/zakazy/:path*",
+        permanent: false,
+      },
+      {
         source: "/krasnodar/zhivotnye/:path*",
         destination: "/katalog/zhivotnye/:path*",
         permanent: false,
@@ -108,11 +163,6 @@ const nextConfig: NextConfig = {
       {
         source: "/krasnodar/nedvizhimost/:path*",
         destination: "/katalog/nedvizhimost/:path*",
-        permanent: false,
-      },
-      {
-        source: "/krasnodar/rabota/:path*",
-        destination: "/katalog/rabota/:path*",
         permanent: false,
       },
       {

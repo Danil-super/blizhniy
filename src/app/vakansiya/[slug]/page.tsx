@@ -47,7 +47,7 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
       <SiteHeader />
       <ListingViewTracker listingId={`work-vacancy-${vacancy.id}`} />
       <main className="page-container py-10">
-        <BackLink fallbackHref="/krasnodar/rabota/vakansii" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+        <BackLink fallbackHref="/rabota/vakansii" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
         </BackLink>
         <article className="grid gap-8 lg:grid-cols-[1fr_360px]">

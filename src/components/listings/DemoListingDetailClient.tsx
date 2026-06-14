@@ -202,7 +202,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
           <h1 className="text-2xl font-black text-[#060b27]">Объявление не найдено</h1>
           <p className="mt-2 text-slate-600">Созданные в демо объявления доступны в том же браузере, где они были опубликованы.</p>
-          <BackLink fallbackHref="/krasnodar" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
+          <BackLink fallbackHref="/" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
             Вернуться в ленту
           </BackLink>
         </div>
@@ -215,7 +215,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
       <ListingViewTracker listingId={listing.id} />
       <div className="mx-auto grid max-w-[1180px] min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,768px)_minmax(320px,380px)] lg:items-start lg:justify-center">
         <section className="min-w-0 lg:max-w-3xl">
-          <BackLink fallbackHref={`/krasnodar/${kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+          <BackLink fallbackHref={`/katalog/${kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             Назад к разделу
           </BackLink>
           <h1 className="[overflow-wrap:anywhere] mt-3 text-xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-3xl lg:text-4xl">{listing.title}</h1>
@@ -257,7 +257,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
                     </p>
                   </div>
                 </div>
-                <Link href={`/krasnodar/${kind}`} className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-3 text-sm font-bold text-white">
+                <Link href={`/katalog/${kind}`} className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-3 text-sm font-bold text-white">
                   Смотреть похожие объявления
                 </Link>
               </div>

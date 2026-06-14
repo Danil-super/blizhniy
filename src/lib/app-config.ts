@@ -1,5 +1,5 @@
 export const appConfig = {
-  publicBasePath: "/krasnodar",
+  publicBasePath: "/",
   defaultRegionSlug: "krasnodarskiy-kray",
   defaultCitySlug: "krasnodar",
   publicationDays: 30,

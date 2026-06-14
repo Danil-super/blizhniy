@@ -1,28 +1,5 @@
-import type { Metadata } from "next";
-import { CategoryGrid } from "@/components/CategoryGrid";
-import { HomeHero } from "@/components/HomeHero";
-import { HomeListings } from "@/components/HomeListings";
-import { ListingEntryNav } from "@/components/ListingEntryNav";
-import { SiteHeader } from "@/components/SiteHeader";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Краснодар",
-  description: "Региональная витрина объявлений, работы и специалистов Краснодара на платформе БЛИЖНИЙ.",
-  alternates: {
-    canonical: "/krasnodar",
-  },
-};
-
-export default function KrasnodarPage() {
-  return (
-    <>
-      <SiteHeader />
-      <main>
-        <HomeHero />
-        <ListingEntryNav />
-        <CategoryGrid />
-        <HomeListings />
-      </main>
-    </>
-  );
+export default function Page() {
+  redirect("/");
 }

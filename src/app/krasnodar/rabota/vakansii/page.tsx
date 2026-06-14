@@ -1,1 +1,5 @@
-export { default } from "@/app/rabota/vakansii/page";
+import { redirect } from "next/navigation";
+
+export default function Page() {
+  redirect("/rabota/vakansii");
+}

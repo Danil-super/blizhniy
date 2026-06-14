@@ -10,19 +10,19 @@ function tariffDetail(durationDays: number | null) {
 
 function tariffCta(tariff: Tariff) {
   if (tariff.action === "listing_publication") {
-    return { href: "/krasnodar/sozdat/obyavlenie", label: "Создать объявление" };
+    return { href: "/razmestit/obyavlenie", label: "Создать объявление" };
   }
 
   if (tariff.action === "vacancy_publication") {
-    return { href: "/krasnodar/rabota/vakansii/sozdat", label: "Разместить вакансию" };
+    return { href: "/rabota/vakansii/sozdat", label: "Разместить вакансию" };
   }
 
   if (tariff.action === "specialist_publication") {
-    return { href: "/krasnodar/rabota/specialisty/anketa", label: "Создать анкету" };
+    return { href: "/rabota/specialisty/anketa", label: "Создать анкету" };
   }
 
   if (tariff.action === "job_response") {
-    return { href: "/krasnodar/rabota/vakansii", label: "Найти вакансию" };
+    return { href: "/rabota/vakansii", label: "Найти вакансию" };
   }
 
   if (tariff.action === "fair_participation") {

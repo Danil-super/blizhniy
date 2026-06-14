@@ -91,7 +91,7 @@ const emptyCopy: Record<CabinetListMode, { title: string; text: string; href?: s
   listing: {
     title: "Объявлений пока нет",
     text: "Создайте первое объявление, чтобы оно появилось в ленте и в этом разделе кабинета.",
-    href: "/krasnodar/sozdat/obyavlenie",
+    href: "/razmestit/obyavlenie",
     action: "Создать объявление",
   },
   organization: {
@@ -105,25 +105,25 @@ const emptyCopy: Record<CabinetListMode, { title: string; text: string; href?: s
   response: {
     title: "Откликов пока нет",
     text: "Когда вы оплатите и отправите отклик на вакансию, он появится здесь со статусом просмотра.",
-    href: "/krasnodar/rabota/vakansii",
+    href: "/rabota/vakansii",
     action: "Смотреть вакансии",
   },
   specialist: {
     title: "Анкета специалиста еще не создана",
     text: "У пользователя может быть только одна анкета. После сохранения ее можно редактировать из кабинета.",
-    href: "/krasnodar/rabota/specialisty/anketa",
+    href: "/rabota/specialisty/anketa",
     action: "Создать анкету",
   },
   vacancy: {
     title: "Вакансий пока нет",
     text: "Разместите вакансию, чтобы получать отклики специалистов и управлять публикацией.",
-    href: "/krasnodar/rabota/vakansii/sozdat",
+    href: "/rabota/vakansii/sozdat",
     action: "Разместить вакансию",
   },
   workRequest: {
     title: "Заказов исполнителям пока нет",
     text: "Опишите задачу для специалиста, и она появится в этом разделе.",
-    href: "/krasnodar/rabota/zakazy/sozdat",
+    href: "/cabinet/zakazy",
     action: "Разместить заказ",
   },
 };
@@ -537,7 +537,7 @@ function getItemHref(item: DemoPublication) {
   }
 
   if (item.type === "workRequest") {
-    return `/krasnodar/rabota/zakazy/${item.id}`;
+    return `/rabota/zakazy/${item.id}`;
   }
 
   if (item.type === "specialist") {
@@ -569,19 +569,19 @@ function getCabinetHrefByType(type: DemoPublicationType) {
 
 function getEditHref(item: DemoPublication) {
   if (item.type === "listing") {
-    return `/krasnodar/obyavlenie/${item.id}/redaktirovat`;
+    return `/obyavlenie/${item.id}/edit`;
   }
 
   if (item.type === "specialist") {
-    return `/krasnodar/rabota/specialisty/anketa?from=${item.id}`;
+    return `/rabota/specialisty/anketa?from=${item.id}`;
   }
 
   if (item.type === "vacancy") {
-    return `/krasnodar/rabota/vakansii/${item.id}/redaktirovat`;
+    return `/rabota/vakansii/${item.id}/edit`;
   }
 
   if (item.type === "workRequest") {
-    return `/krasnodar/rabota/zakazy/${item.id}/redaktirovat`;
+    return `/rabota/zakazy/${item.id}/edit`;
   }
 
   return "/yarmarka-masterov/zayavka";
@@ -1153,7 +1153,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               <h2 className="text-lg font-black text-[#060b27]">Выбор вакансии</h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">У работодателя может быть несколько вакансий: управляйте каждой отдельно по статусу.</p>
             </div>
-            <Link href="/krasnodar/rabota/vakansii/sozdat" className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white sm:w-auto">
+            <Link href="/rabota/vakansii/sozdat" className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white sm:w-auto">
               Разместить еще
             </Link>
           </div>
@@ -2302,10 +2302,10 @@ export function CabinetPaymentsClient({ initialPayments = [] }: { initialPayment
             </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
-            <Link href="/krasnodar/sozdat/obyavlenie" className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white">
+            <Link href="/razmestit/obyavlenie" className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white">
               Создать объявление
             </Link>
-            <Link href="/krasnodar/rabota/vakansii/sozdat" className="inline-flex h-10 items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-bold text-[#0875d1]">
+            <Link href="/rabota/vakansii/sozdat" className="inline-flex h-10 items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-bold text-[#0875d1]">
               Разместить вакансию
             </Link>
           </div>

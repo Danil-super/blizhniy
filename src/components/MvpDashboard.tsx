@@ -231,9 +231,9 @@ async function updatePublicationStatusAction(formData: FormData) {
   if (entityType === "listing") {
     updateListingStatus(id, status);
     revalidatePath("/admin/obyavleniya");
-    revalidatePath("/krasnodar");
-    revalidatePath("/krasnodar/[categorySlug]", "page");
-    revalidatePath("/krasnodar/[categorySlug]/[subcategorySlug]", "page");
+    revalidatePath("/");
+    revalidatePath("/katalog/[categorySlug]", "page");
+    revalidatePath("/katalog/[categorySlug]/[subcategorySlug]", "page");
     revalidatePath("/obyavlenie/[slug]", "page");
     revalidatePath("/poisk");
     return;
@@ -242,8 +242,8 @@ async function updatePublicationStatusAction(formData: FormData) {
   if (entityType === "vacancy") {
     updateVacancyStatus(id, status);
     revalidatePath("/admin/vakansii");
-    revalidatePath("/krasnodar/rabota");
-    revalidatePath("/krasnodar/rabota/vakansii");
+    revalidatePath("/rabota");
+    revalidatePath("/rabota/vakansii");
     revalidatePath("/vakansiya/[slug]", "page");
     revalidatePath("/poisk");
     return;
@@ -252,9 +252,9 @@ async function updatePublicationStatusAction(formData: FormData) {
   if (entityType === "specialist") {
     updateSpecialistStatus(id, status);
     revalidatePath("/admin/specialisty");
-    revalidatePath("/krasnodar/rabota");
-    revalidatePath("/krasnodar/rabota/specialisty");
-    revalidatePath("/krasnodar/rabota/specialisty/[professionSlug]", "page");
+    revalidatePath("/rabota");
+    revalidatePath("/rabota/specialisty");
+    revalidatePath("/rabota/specialisty/[professionSlug]", "page");
     revalidatePath("/specialist/[slug]", "page");
     revalidatePath("/poisk");
     return;
@@ -263,8 +263,8 @@ async function updatePublicationStatusAction(formData: FormData) {
   if (entityType === "workRequest") {
     updateWorkRequestStatus(id, status);
     revalidatePath("/admin/zakazy");
-    revalidatePath("/krasnodar/rabota");
-    revalidatePath("/krasnodar/rabota/zakazy/[slug]", "page");
+    revalidatePath("/rabota");
+    revalidatePath("/rabota/zakazy/[slug]", "page");
     revalidatePath("/poisk");
     return;
   }
@@ -291,7 +291,7 @@ function listingRows() {
     statusTargetId: listing.slug,
     statusEntityType: "listing",
     href: `/obyavlenie/${listing.slug}`,
-    editHref: `/krasnodar/obyavlenie/${listing.slug}/redaktirovat`,
+    editHref: `/obyavlenie/${listing.slug}/edit`,
     title: listing.title,
     category: listing.categoryName,
     city: listing.city,
@@ -315,7 +315,7 @@ function paymentRows() {
 
 function responseRows(): CabinetResponseItem[] {
   return listApplications().map((application) => ({
-    href: "/krasnodar/rabota/vakansii",
+    href: "/rabota/vakansii",
     id: application.id,
     paymentHref: `/oplata/${application.paymentId}`,
     paymentId: application.paymentId,
@@ -370,7 +370,7 @@ function Shell({
   eyebrow,
   nav,
   activeHref,
-  createHref = "/krasnodar/sozdat",
+  createHref = "/razmestit",
   createLabel = "Создать",
   children,
 }: {
@@ -631,7 +631,7 @@ export function CabinetPage() {
 
 export function CabinetListingsPage() {
   return (
-    <Shell title="Мои объявления" description="Статусы публикаций, просмотры и быстрые действия по объявлениям пользователя." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/obyavleniya" createHref="/krasnodar/sozdat/obyavlenie" createLabel="Создать объявление">
+    <Shell title="Мои объявления" description="Статусы публикаций, просмотры и быстрые действия по объявлениям пользователя." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/obyavleniya" createHref="/razmestit/obyavlenie" createLabel="Создать объявление">
       <CabinetAuthGate>
         <CabinetPublicationsClient type="listing" />
       </CabinetAuthGate>
@@ -641,7 +641,7 @@ export function CabinetListingsPage() {
 
 export function CabinetVacanciesPage() {
   return (
-    <Shell title="Мои вакансии" description="Список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/vakansii" createHref="/krasnodar/rabota/vakansii/sozdat" createLabel="Разместить вакансию">
+    <Shell title="Мои вакансии" description="Список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/vakansii" createHref="/rabota/vakansii/sozdat" createLabel="Разместить вакансию">
       <CabinetAuthGate>
         <CabinetPublicationsClient type="vacancy" />
       </CabinetAuthGate>
@@ -651,7 +651,7 @@ export function CabinetVacanciesPage() {
 
 export function CabinetWorkRequestsPage() {
   return (
-    <Shell title="Мои заказы исполнителям" description="Задачи, которые пользователь размещает для специалистов и исполнителей." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/zakazy" createHref="/krasnodar/rabota/zakazy/sozdat" createLabel="Разместить заказ">
+    <Shell title="Мои заказы исполнителям" description="Задачи, которые пользователь размещает для специалистов и исполнителей." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/zakazy" createHref="/cabinet/zakazy" createLabel="Разместить заказ">
       <CabinetAuthGate>
         <CabinetPublicationsClient type="workRequest" />
       </CabinetAuthGate>
@@ -663,7 +663,7 @@ export function CabinetSpecialistPage() {
   const specialist = getCurrentUserSpecialist();
 
   return (
-    <Shell title="Анкета специалиста" description="Профиль исполнителя с услугами, контактами, статусом проверки и будущей публикацией." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/specialist" createHref="/krasnodar/rabota/specialisty/anketa" createLabel="Создать анкету">
+    <Shell title="Анкета специалиста" description="Профиль исполнителя с услугами, контактами, статусом проверки и будущей публикацией." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/specialist" createHref="/rabota/specialisty/anketa" createLabel="Создать анкету">
       <CabinetAuthGate>
         <CabinetSpecialistClient initialSpecialist={specialist ? specialistToDemoPublication(specialist) : undefined} />
       </CabinetAuthGate>
@@ -686,7 +686,7 @@ export function CabinetResponsesPage() {
   const responses = responseRows();
 
   return (
-    <Shell title="Мои отклики" description="Отклики на вакансии со статусами оплаты, отправки и просмотра работодателем." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/otkliki" createHref="/krasnodar/rabota/vakansii" createLabel="Найти вакансию">
+    <Shell title="Мои отклики" description="Отклики на вакансии со статусами оплаты, отправки и просмотра работодателем." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/otkliki" createHref="/rabota/vakansii" createLabel="Найти вакансию">
       <CabinetAuthGate>
         <CabinetResponsesClient responses={responses} />
       </CabinetAuthGate>
@@ -852,7 +852,7 @@ export function AdminVacanciesPage() {
     address: vacancy.address ?? vacancy.district ?? "",
     status: vacancy.status,
     href: `/vakansiya/${vacancy.id}`,
-    editHref: `/krasnodar/rabota/vakansii/${vacancy.id}/redaktirovat`,
+    editHref: `/rabota/vakansii/${vacancy.id}/edit`,
   }));
 
   return (
@@ -883,8 +883,8 @@ export function AdminWorkRequestsPage() {
     city: request.city,
     budget: request.budget,
     status: request.status,
-    href: `/krasnodar/rabota/zakazy/${request.id}`,
-    editHref: `/krasnodar/rabota/zakazy/${request.id}/redaktirovat`,
+    href: `/rabota/zakazy/${request.id}`,
+    editHref: `/rabota/zakazy/${request.id}/edit`,
   }));
 
   return (
@@ -916,7 +916,7 @@ export function AdminSpecialistsPage() {
     district: specialist.district,
     status: specialist.status,
     href: `/specialist/${specialist.id}`,
-    editHref: `/krasnodar/rabota/specialisty/anketa?from=${specialist.id}`,
+    editHref: `/rabota/specialisty/anketa?from=${specialist.id}`,
   }));
 
   return (
@@ -940,12 +940,12 @@ export function AdminCategoriesPage() {
   const rows = categories.map((category) => ({
     ...category,
     id: category.slug,
-    href: `/krasnodar/${category.slug}`,
+    href: `/katalog/${category.slug}`,
     editHref: `/admin/categories?edit=${category.slug}`,
     childrenText: category.children.join(", "),
     status: "active",
   }));
-  const createHref = isDemoAdminBypassEnabled() ? "/krasnodar/sozdat?admin=1" : "/krasnodar/sozdat";
+  const createHref = isDemoAdminBypassEnabled() ? "/razmestit?admin=1" : "/razmestit";
 
   return (
     <Shell title="Категории" description="Рубрикатор объявлений с дочерними разделами для модерации каталога." eyebrow="Администрирование" createHref={createHref}>
@@ -1127,7 +1127,7 @@ function AdminTablePage<T extends Record<string, unknown>>({
   rows: T[];
   columns: TableColumn<T>[];
 }) {
-  const createHref = isDemoAdminBypassEnabled() ? "/krasnodar/sozdat?admin=1" : "/krasnodar/sozdat";
+  const createHref = isDemoAdminBypassEnabled() ? "/razmestit?admin=1" : "/razmestit";
 
   return (
     <Shell title={title} description={description} eyebrow="Администрирование" createHref={createHref}>

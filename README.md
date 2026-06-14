@@ -6,8 +6,8 @@ MVP региональной платформы объявлений, вакан
 
 - Next.js + TypeScript + Tailwind CSS.
 - Главная страница с категориями и стартовой географией.
-- Страница `/krasnodar/rabota` по макету: вакансии слева, специалисты справа, CTA, чипы, классификатор, короткие подборки.
-- Страницы полных списков `/krasnodar/rabota/vakansii` и `/krasnodar/rabota/specialisty`.
+- Страница `/rabota` по макету: вакансии слева, специалисты справа, CTA, чипы, классификатор, короткие подборки.
+- Страницы полных списков `/rabota/vakansii` и `/rabota/specialisty`.
 - Новые категории каталога: «Отдых», «Знакомства», «Ярмарка мастеров».
 - MVP-раздел `/yarmarka-masterov`: дата ближайшей ярмарки, категории мастеров, заявки/участники, заглушка онлайн-трансляции.
 - Форма `/yarmarka-masterov/zayavka` с полями участника, категории, описания, фото, ссылки на видео, контактов и согласия с правилами.
@@ -27,9 +27,9 @@ npm run dev
 После запуска:
 
 - главная: `http://localhost:3000`
-- работа: `http://localhost:3000/krasnodar/rabota`
-- объявления: `http://localhost:3000/krasnodar/prodam`
-- категории: `http://localhost:3000/krasnodar/kategorii`
+- работа: `http://localhost:3000/rabota`
+- объявления: `http://localhost:3000/obyavleniya/prodam`
+- категории: `http://localhost:3000/katalog`
 - ярмарка мастеров: `http://localhost:3000/yarmarka-masterov`
 - заявка на ярмарку: `http://localhost:3000/yarmarka-masterov/zayavka`
 - кабинет: `http://localhost:3000/cabinet`

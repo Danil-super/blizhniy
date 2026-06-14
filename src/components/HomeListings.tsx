@@ -17,7 +17,7 @@ export async function HomeListings() {
     <section className="page-container pb-10">
       <div className="mb-3 flex items-center justify-between gap-4">
         <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Свежие объявления</h2>
-        <Link href="/krasnodar/prodam" className="text-sm font-bold text-[#0875d1] hover:text-[#0664b3]">
+        <Link href="/obyavleniya/prodam" className="text-sm font-bold text-[#0875d1] hover:text-[#0664b3]">
           Смотреть все
         </Link>
       </div>

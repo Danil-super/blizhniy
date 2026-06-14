@@ -80,7 +80,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     .map((request) => ({
       title: request.title,
       description: `${request.author}, ${request.city}. ${request.budget}`,
-      href: `/krasnodar/rabota/zakazy/${request.id}`,
+      href: `/rabota/zakazy/${request.id}`,
       type: "Заказ",
     }));
 
@@ -103,7 +103,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     .map((category) => ({
       title: category.name,
       description: category.children.join(", "),
-      href: category.slug === "rabota" ? "/krasnodar/rabota" : category.slug === "yarmarka-masterov" ? "/yarmarka-masterov" : `/krasnodar/${category.slug}`,
+      href: category.slug === "rabota" ? "/rabota" : category.slug === "yarmarka-masterov" ? "/yarmarka-masterov" : `/katalog/${category.slug}`,
       type: "Категория",
     }));
 
@@ -112,7 +112,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     .map((profession) => ({
       title: profession.name,
       description: profession.parent,
-      href: `/krasnodar/rabota/specialisty/${profession.slug}`,
+      href: `/rabota/specialisty/${profession.slug}`,
       type: "Профессия",
     }));
 

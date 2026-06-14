@@ -1,22 +1,11 @@
-import { SiteHeader } from "@/components/SiteHeader";
-import { WorkRequestEditClient } from "@/components/WorkRequestEditClient";
-import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
-import { workRequests } from "@/lib/data";
+import { redirect } from "next/navigation";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
 };
 
-export default async function EditWorkRequestPage({ params }: PageProps) {
+export default async function Page({ params }: PageProps) {
   const { slug } = await params;
-  const initialRequest = workRequests.find((request) => request.id === slug);
 
-  return (
-    <>
-      <SiteHeader />
-      <PublicationAuthGate title="Войдите, чтобы редактировать заказ">
-        <WorkRequestEditClient requestId={slug} initialRequest={initialRequest} />
-      </PublicationAuthGate>
-    </>
-  );
+  redirect(`/rabota/zakazy/${slug}/edit`);
 }

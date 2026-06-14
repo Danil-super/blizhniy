@@ -85,7 +85,7 @@ export function DemoPublishedItems({ type }: { type: DemoPublicationType }) {
                   <ExternalLink className="h-3.5 w-3.5" />
                   Открыть
                 </Link>
-                <Link href={`/krasnodar/obyavlenie/${item.id}/redaktirovat`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-[#0875d1] transition hover:bg-blue-100">
+                <Link href={`/obyavlenie/${item.id}/edit`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-[#0875d1] transition hover:bg-blue-100">
                   <FilePenLine className="h-3.5 w-3.5" />
                   Редактировать
                 </Link>

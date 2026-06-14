@@ -189,7 +189,7 @@ type ListingCategoryOption = {
 function parseCatalogHref(href: string) {
   const parts = href.split("?")[0]?.split("/").filter(Boolean) ?? [];
 
-  if (parts[0] !== "krasnodar") {
+  if (parts[0] !== "katalog") {
     return undefined;
   }
 
