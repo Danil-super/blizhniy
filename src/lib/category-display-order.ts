@@ -13,7 +13,7 @@ export const categoryDisplayItems: CategoryDisplayItem[] = [
   { id: "tovary-dlya-detey", label: "Товары для детей", href: "/katalog/tovary-dlya-detey" },
   { id: "ritualnye-uslugi", label: "Ритуальные услуги", href: "/katalog/ritualnye-uslugi" },
   { id: "nedvizhimost", label: "Недвижимость", href: "/katalog/nedvizhimost" },
-  { id: "rabota", label: "Работа", href: "/katalog/rabota" },
+  { id: "rabota", label: "Работа", href: "/rabota" },
   { id: "odezhda-obuv-aksessuary", label: "Одежда, обувь, аксессуары", href: "/katalog/odezhda-obuv-aksessuary" },
   { id: "hobbi-i-otdyh", label: "Хобби и отдых", href: "/katalog/otdyh" },
   { id: "transport", label: "Авто", href: "/katalog/transport" },
