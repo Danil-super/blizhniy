@@ -43,7 +43,7 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
 
 function WorkRequestCard({ request }: { request: WorkRequest }) {
   return (
-    <Link href={`/rabota/zakazy/${request.id}`} className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
+    <Link href="/cabinet/zakazy" className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
       <p className="truncate text-xs font-semibold text-slate-500">{request.author}</p>
       <h3 className="mt-1 line-clamp-2 min-h-10 text-sm font-black leading-5 text-[#060b27] transition group-hover:text-[#0875d1]">{request.title}</h3>
       <p className="mt-2 text-base font-black text-[#060b27]">{request.budget}</p>
@@ -122,7 +122,7 @@ export function CanonicalWorkPage({
               </span>
               {showingWorkRequests ? "Заказчики" : "Вакансии"}
             </h2>
-            <Link href={showingWorkRequests ? "/rabota/zakazy/sozdat" : "/rabota/vakansii"} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
+            <Link href={showingWorkRequests ? "/cabinet/zakazy" : "/rabota/vakansii"} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
               {showingWorkRequests ? "Разместить" : "Смотреть все"}
               <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
             </Link>
