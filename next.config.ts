@@ -46,6 +46,11 @@ const nextConfig: NextConfig = {
         permanent: false,
       },
       {
+        source: "/krasnodar/sozdat/obyavlenie",
+        destination: "/razmestit/obyavlenie",
+        permanent: false,
+      },
+      {
         source: "/krasnodar/prodam",
         destination: "/obyavleniya/prodam",
         permanent: false,
