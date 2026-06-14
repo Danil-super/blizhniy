@@ -18,6 +18,10 @@ const listingKinds: { slug: ListingKind; title: string; description: string }[] 
   { slug: "otdam-darom", title: "Отдам даром", description: "Публикации без цены: забрать, передать, пристроить." },
 ];
 
+function listingKindHref(kind: ListingKind) {
+  return `/obyavleniya/${kind}`;
+}
+
 function uniqueListings(listings: DemoListing[]) {
   return Array.from(new Map(listings.map((listing) => [listing.slug, listing])).values());
 }
@@ -38,8 +42,8 @@ async function listPublicListings(limit = 200) {
 function Breadcrumbs({ items }: { items: { label: string; href?: string }[] }) {
   return (
     <nav className="mb-4 flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:text-sm" aria-label="Хлебные крошки">
-      <Link href="/krasnodar/prodam" className="hover:text-[#0875d1]">
-        Краснодар
+      <Link href="/obyavleniya" className="hover:text-[#0875d1]">
+        Объявления
       </Link>
       {items.map((item, index) => (
         <span key={`${item.href ?? item.label}-${index}`} className="flex items-center gap-2">
@@ -69,7 +73,7 @@ export async function PublicListingKindPage({ kind }: { kind: ListingKind }) {
       <SiteHeader />
       <main className="page-container py-6 sm:py-8 lg:py-10">
         <Breadcrumbs items={[{ label: current.title }]} />
-        <BackLink fallbackHref="/krasnodar" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+        <BackLink fallbackHref="/obyavleniya" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
         </BackLink>
         <div className="grid gap-7">
@@ -77,7 +81,7 @@ export async function PublicListingKindPage({ kind }: { kind: ListingKind }) {
             <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
               <div>
                 <ListingKindBadge kind={kind} />
-                <h1 className="mt-3 text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:mt-4 lg:text-4xl">{current.title} в Краснодаре</h1>
+                <h1 className="mt-3 text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:mt-4 lg:text-4xl">{current.title}</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">{current.description}</p>
               </div>
               <Link
@@ -92,7 +96,7 @@ export async function PublicListingKindPage({ kind }: { kind: ListingKind }) {
               {visibleKinds.map((item) => (
                 <Link
                   key={item.slug}
-                  href={`/krasnodar/${item.slug}`}
+                  href={listingKindHref(item.slug)}
                   className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-bold transition sm:h-9 sm:text-sm lg:h-10 lg:px-4 ${
                     item.slug === kind
                       ? "border-[#0875d1] bg-[#0875d1] text-white"
@@ -104,7 +108,7 @@ export async function PublicListingKindPage({ kind }: { kind: ListingKind }) {
               ))}
               {kind === "prodam" || kind === "kuplyu" ? (
                 <Link
-                  href="/krasnodar/obmen-i-darom"
+                  href="/obyavleniya/obmen-i-darom"
                   className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
                 >
                   Меняю и отдам даром
@@ -128,7 +132,7 @@ export async function PublicExchangeAndFreePage() {
       <HomeHero />
       <main className="page-container py-2 sm:py-3 lg:py-4">
         <Breadcrumbs items={[{ label: "Меняю и отдам даром" }]} />
-        <BackLink fallbackHref="/krasnodar" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+        <BackLink fallbackHref="/obyavleniya" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
         </BackLink>
         <div className="grid gap-7">
@@ -154,7 +158,7 @@ export async function PublicExchangeAndFreePage() {
                 .map((item) => (
                   <Link
                     key={item.slug}
-                    href={`/krasnodar/${item.slug}`}
+                    href={listingKindHref(item.slug)}
                     className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
                   >
                     {item.title}
