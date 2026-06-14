@@ -1,4 +1,5 @@
 import { markStoredFairApplicationPaid } from "@/lib/fair-application-store";
+import { markStoredListingPaid } from "@/lib/listing-store";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import { getTariffs } from "@/lib/tariff-store";
 import type { Payment, Tariff } from "@/lib/types";
@@ -197,6 +198,11 @@ export async function updateStoredPayment(payment: Payment) {
 }
 
 export async function markStoredPaymentTargetSucceeded(payment: Payment) {
+  if (payment.targetType === "listing" && payment.targetId && isUuid(payment.targetId)) {
+    await markStoredListingPaid(payment.targetId);
+    return "published" as const;
+  }
+
   if (payment.targetType === "fair_application" && payment.targetId && isUuid(payment.targetId)) {
     await markStoredFairApplicationPaid(payment.targetId);
     return "published" as const;
