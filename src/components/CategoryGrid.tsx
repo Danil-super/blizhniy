@@ -9,7 +9,6 @@ import {
   Building2,
   Car,
   Cog,
-  CookingPot,
   Ellipsis,
   Gift,
   HeartPulse,
@@ -21,6 +20,7 @@ import {
   Sprout,
   Store,
   TentTree,
+  Utensils,
   Wrench,
 } from "lucide-react";
 import {
@@ -115,7 +115,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   "elektronika": { icon: Smartphone, tone: "cyan" },
   "dlya-doma-i-dachi": { icon: Sofa, tone: "amber" },
   "instrumenty": { icon: Cog, tone: "slate" },
-  "posuda": { icon: CookingPot, tone: "amber" },
+  "posuda": { icon: Utensils, tone: "amber" },
   "zhile-dlya-puteshestviya": { icon: MapPinned, tone: "green" },
   "krasota-i-zdorove": { icon: HeartPulse, tone: "violet" },
   "obmen-i-darom": { icon: Gift, tone: "green" },
