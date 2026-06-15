@@ -189,6 +189,7 @@ export type Tariff = {
 
 export type Payment = {
   id: string;
+  userId?: string;
   targetType: "listing" | "vacancy" | "specialist" | "application" | "fair_application" | "ad_marquee";
   targetId?: string;
   targetTitle: string;
