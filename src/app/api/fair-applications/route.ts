@@ -21,9 +21,32 @@ type CreateFairApplicationBody = {
 };
 
 const requiredFields: Array<keyof CreateFairApplicationBody> = ["participantName", "city", "category", "description", "phone", "email"];
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const urlPattern = /^https?:\/\/[^\s]+$/;
 
 function cleanText(value?: string) {
   return value?.trim() ?? "";
+}
+
+function hasValidPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  return digits.length === 10 || (digits.length === 11 && (digits.startsWith("7") || digits.startsWith("8")));
+}
+
+function hasValidEmail(value: string) {
+  return emailPattern.test(value);
+}
+
+function hasValidOptionalUrl(value: string) {
+  return !value || urlPattern.test(value);
+}
+
+function cleanPhotos(value?: string[]) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((item) => item.trim()).filter((item) => item && item.length <= 500).slice(0, 10);
 }
 
 function getRemoteIp(request: Request) {
@@ -62,6 +85,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Заполните обязательные поля заявки" }, { status: 400 });
   }
 
+  const participantName = cleanText(body.participantName);
+  const city = cleanText(body.city);
+  const category = cleanText(body.category);
+  const description = cleanText(body.description);
+  const phone = cleanText(body.phone);
+  const email = cleanText(body.email);
+  const videoUrl = cleanText(body.videoUrl);
+  const photos = cleanPhotos(body.productPhotos);
+
+  if (participantName.length < 2 || participantName.length > 120) {
+    return NextResponse.json({ error: "Имя участника должно быть от 2 до 120 символов" }, { status: 400 });
+  }
+
+  if (description.length < 20 || description.length > 3000) {
+    return NextResponse.json({ error: "Описание должно быть от 20 до 3000 символов" }, { status: 400 });
+  }
+
+  if (!hasValidPhone(phone)) {
+    return NextResponse.json({ error: "Введите корректный телефон" }, { status: 400 });
+  }
+
+  if (!hasValidEmail(email)) {
+    return NextResponse.json({ error: "Введите корректный email" }, { status: 400 });
+  }
+
+  if (!hasValidOptionalUrl(videoUrl)) {
+    return NextResponse.json({ error: "Ссылка на видео должна начинаться с http:// или https://" }, { status: 400 });
+  }
+
+  if (body.skipPayment === true && !(await isAdminRequest(request))) {
+    return NextResponse.json({ error: "Создать заявку без оплаты может только администратор" }, { status: 403 });
+  }
+
   const captchaVerified = await verifyTurnstileToken(cleanText(body.captchaToken), getRemoteIp(request));
 
   if (!captchaVerified) {
@@ -69,14 +125,14 @@ export async function POST(request: Request) {
   }
 
   const applicationInput = {
-    participantName: cleanText(body.participantName),
-    city: cleanText(body.city),
-    category: cleanText(body.category),
-    description: cleanText(body.description),
-    productPhotos: body.productPhotos?.map((item) => item.trim()).filter(Boolean) ?? [],
-    videoUrl: cleanText(body.videoUrl) || undefined,
-    phone: cleanText(body.phone),
-    email: cleanText(body.email),
+    participantName,
+    city,
+    category,
+    description,
+    productPhotos: photos,
+    videoUrl: videoUrl || undefined,
+    phone,
+    email,
     comment: cleanText(body.comment) || undefined,
   };
   const application = isSupabaseRestConfigured()
@@ -84,10 +140,6 @@ export async function POST(request: Request) {
     : createFairApplication(applicationInput);
 
   if (body.skipPayment === true) {
-    if (!(await isAdminRequest(request))) {
-      return NextResponse.json({ error: "Создать заявку без оплаты может только администратор" }, { status: 403 });
-    }
-
     application.paymentStatus = "succeeded";
     application.status = "published";
 
