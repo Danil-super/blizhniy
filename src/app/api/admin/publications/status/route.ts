@@ -131,7 +131,7 @@ export async function POST(request: Request) {
     let updated = false;
 
     if (entityType === "fairApplication") {
-      updated = await updateStoredFairApplicationStatus(id, status);
+      updated = await updateStoredFairApplicationStatus(id, status, { adminContext: true });
     }
 
     if (!updated) {
