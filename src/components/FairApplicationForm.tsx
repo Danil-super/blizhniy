@@ -12,6 +12,11 @@ import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profil
 
 type SubmitState = "idle" | "loading" | "error";
 
+type MediaUploadResponse = {
+  error?: string;
+  files?: Array<{ path?: string }>;
+};
+
 function readStoredPublications() {
   try {
     const storedRaw = window.localStorage.getItem(demoPublicationsStorageKey);
@@ -28,6 +33,35 @@ function writeFairApplicationPublication(publication: DemoPublication) {
 
   window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify([publication, ...stored].slice(0, 50)));
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+}
+
+function readPhotoFiles(data: FormData) {
+  return data.getAll("productPhotos").filter((item): item is File => item instanceof File && item.size > 0 && item.type.startsWith("image/"));
+}
+
+async function uploadFairPhotos(data: FormData, accessToken: string) {
+  const photos = readPhotoFiles(data);
+
+  if (!photos.length) {
+    return [];
+  }
+
+  const uploadData = new FormData();
+  uploadData.set("folder", "fair-applications");
+  photos.slice(0, 10).forEach((photo) => uploadData.append("files", photo));
+
+  const response = await fetch("/api/uploads/media", {
+    body: uploadData,
+    headers: { Authorization: `Bearer ${accessToken}` },
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as MediaUploadResponse | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "Не удалось загрузить фото товаров");
+  }
+
+  return payload?.files?.map((file) => file.path).filter((path): path is string => Boolean(path)) ?? [];
 }
 
 export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean }) {
@@ -52,6 +86,12 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
 
     try {
       const identity = await resolveAuthenticatedClientUserIdentity();
+
+      if (!identity.accessToken) {
+        throw new Error("Сессия входа устарела. Выйдите и войдите снова, затем повторите отправку заявки.");
+      }
+
+      const productPhotos = await uploadFairPhotos(data, identity.accessToken);
       const response = await fetch("/api/fair-applications", {
         method: "POST",
         headers: {
@@ -63,10 +103,7 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
           city: data.get("city"),
           category: data.get("category"),
           description: data.get("description"),
-          productPhotos: String(data.get("productPhotos") ?? "")
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean),
+          productPhotos,
           videoUrl: data.get("videoUrl"),
           phone: data.get("phone"),
           email: data.get("email"),
@@ -147,7 +184,8 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
       <div className="grid gap-4 md:grid-cols-2">
         <label className="grid gap-2 text-sm font-bold text-slate-600">
           Фото товаров
-          <input name="productPhotos" className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="Стол, кашпо, макраме" />
+          <input name="productPhotos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-bold file:text-[#0875d1] focus:border-[#0875d1]" />
+          <span className="text-xs font-semibold text-slate-500">До 10 изображений, каждый файл до 10 МБ.</span>
         </label>
         <label className="grid gap-2 text-sm font-bold text-slate-600">
           Ссылка на видео
