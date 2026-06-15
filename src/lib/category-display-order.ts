@@ -22,6 +22,7 @@ export const categoryDisplayItems: CategoryDisplayItem[] = [
   { id: "elektronika", label: "Электроника", href: "/katalog/elektronika" },
   { id: "dlya-doma-i-dachi", label: "Для дома и дачи", href: "/katalog/dlya-doma-i-dachi" },
   { id: "instrumenty", label: "Инструменты", href: "/katalog/instrumenty" },
+  { id: "posuda", label: "Посуда", href: "/katalog/posuda" },
   { id: "zhile-dlya-puteshestviya", label: "Жилье для путешествия", href: "/katalog/nedvizhimost/zhile-dlya-puteshestviya" },
   { id: "krasota-i-zdorove", label: "Красота и здоровье", href: "/katalog/krasota-i-uhod" },
   { id: "obmen-i-darom", label: "Меняю и отдам даром", href: "/obyavleniya/obmen-i-darom" },
