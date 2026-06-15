@@ -378,5 +378,5 @@ export async function processYooKassaNotification(payload: YooKassaNotificationP
     return { processed: true, result: createPendingPaymentResult(payment) };
   }
 
-  return { processed: true, result: applySucceededPayment(payment) };
+  return { processed: true, result: await applySucceededPayment(payment) };
 }
