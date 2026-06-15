@@ -128,8 +128,11 @@ create policy "Owners can manage fair application images" on fair_application_im
 create policy "Admins can manage fair application images" on fair_application_images for all using (public.is_admin()) with check (public.is_admin());
 
 create policy "Users can read own payments" on payments for select using (user_id = (select auth.uid()) or public.is_admin());
-create policy "Users can create own payments" on payments for insert with check (user_id = (select auth.uid()));
-create policy "Admins can manage payments" on payments for all using (public.is_admin()) with check (public.is_admin());
+create policy "Users can create own payments" on payments for insert with check (user_id = (select auth.uid()) or public.is_admin());
+create policy "Admins can update payments" on payments for update using (public.is_admin()) with check (public.is_admin());
+create policy "Admins can delete payments" on payments for delete using (public.is_admin());
 
 create policy "Users can read own notifications" on notifications for select using (user_id = (select auth.uid()) or public.is_admin());
-create policy "Admins can manage notifications" on notifications for all using (public.is_admin()) with check (public.is_admin());
+create policy "Admins can insert notifications" on notifications for insert with check (public.is_admin());
+create policy "Admins can update notifications" on notifications for update using (public.is_admin()) with check (public.is_admin());
+create policy "Admins can delete notifications" on notifications for delete using (public.is_admin());
