@@ -238,356 +238,45 @@ canvas {
   order: 4;
 }
 
-.listing-title-field {
-  order: 5;
-  grid-column: 1 / -1;
-}
-
-.listing-booking-fields {
-  order: 6;
-}
-
-.listing-create-form label {
-  min-width: 0;
-}
-
-.listing-create-form label > span:first-child,
-.listing-create-location-fields .listing-location-label {
-  font-size: clamp(0.72rem, 0.85cqw, 0.82rem);
-  line-height: 1.05rem;
-}
-
-.listing-create-form input:not([type="radio"]),
-.listing-create-form textarea {
-  border-radius: 0.65rem;
-  font-size: clamp(0.8rem, 0.95cqw, 0.95rem);
-}
-
-.listing-create-form input:not([type="radio"]) {
-  height: clamp(2.45rem, 3cqw, 2.75rem);
-  padding-left: clamp(0.65rem, 0.95cqw, 0.95rem);
-  padding-right: clamp(0.65rem, 0.95cqw, 0.95rem);
-}
-
-.listing-create-form textarea {
-  min-height: clamp(5rem, 9cqw, 7rem);
-  padding: clamp(0.65rem, 1cqw, 0.95rem);
-  line-height: 1.45rem;
-}
-
-.listing-create-primary-grid button,
-.listing-create-primary-grid input,
-.listing-create-location-fields input:not([type="radio"]),
-.listing-create-location-fields .listing-location-option {
-  min-height: clamp(2.45rem, 3cqw, 2.75rem);
-  height: clamp(2.45rem, 3cqw, 2.75rem);
-}
-
-.listing-create-primary-grid button {
-  border-radius: 0.65rem;
-  padding-left: clamp(0.65rem, 0.95cqw, 0.95rem);
-  padding-right: clamp(0.65rem, 0.95cqw, 0.95rem);
-  font-size: clamp(0.78rem, 0.9cqw, 0.9rem);
-}
-
-.listing-create-location-fields {
-  gap: clamp(0.55rem, 1cqw, 0.85rem);
-}
-
-.listing-create-location-fields .listing-location-row {
-  gap: clamp(0.55rem, 1cqw, 0.9rem);
-}
-
-.listing-create-location-fields .listing-location-options {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: clamp(0.4rem, 0.8cqw, 0.55rem);
-}
-
-.listing-create-location-fields .listing-location-option {
-  overflow: hidden;
-  border-radius: 0.65rem;
-  padding-left: clamp(0.6rem, 0.9cqw, 0.85rem);
-  padding-right: clamp(0.6rem, 0.9cqw, 0.85rem);
-  font-size: clamp(0.7rem, 0.82cqw, 0.82rem);
-  line-height: 1rem;
-  white-space: nowrap;
-}
-
-.listing-create-location-fields .listing-location-option input {
-  height: 0.9rem;
-  width: 0.9rem;
-}
-
-.map-picker-panel {
-  container-type: inline-size;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
+/* Unified subcategory action buttons across all category pages. */
+a[aria-label^="Открыть объявления:"],
+a[aria-label^="Разместить объявление:"],
+button[aria-label^="Поделиться ссылкой:"] {
+  height: auto !important;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.45rem !important;
+  text-align: center;
+  white-space: normal;
+  word-break: normal;
   overflow-wrap: anywhere;
+  font-size: clamp(0.68rem, 2.8vw, 0.86rem);
+  font-weight: 800;
+  line-height: 1.12rem;
 }
 
-.map-picker-search {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.5rem;
-  min-width: 0;
+a[aria-label^="Открыть объявления:"] svg,
+a[aria-label^="Разместить объявление:"] svg,
+button[aria-label^="Поделиться ссылкой:"] svg {
+  display: none;
 }
 
-.map-picker-search-button {
-  width: 100%;
+a[aria-label^="Открыть объявления:"]::after {
+  content: "Объявления";
 }
 
-.map-picker-canvas {
-  height: clamp(16rem, 68vw, 20rem);
-  min-width: 0;
-  max-width: 100%;
+a[aria-label^="Разместить объявление:"]::after {
+  content: "Разместить";
 }
 
-.photo-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(5.75rem, 7rem));
-  gap: 0.5rem;
-  justify-content: start;
-  min-width: 0;
-}
-
-@container (min-width: 38rem) {
-  .responsive-field-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@container (min-width: 30rem) {
-  .vacancy-location-fields .listing-location-options {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .listing-create-location-fields .listing-location-options {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@container (min-width: 38rem) {
-  .vacancy-fields-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .vacancy-location-fields .listing-location-row {
-    grid-template-columns: minmax(17rem, 1.35fr) minmax(17rem, 1fr);
-    align-items: start;
-  }
-
-  .listing-create-primary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .listing-subcategory-field {
-    order: 3;
-  }
-
-  .listing-title-field {
-    order: 4;
-    grid-column: 1 / 3;
-  }
-
-  .listing-price-field {
-    order: 5;
-    grid-column: 3;
-  }
-
-  .listing-create-location-fields .listing-location-row {
-    grid-template-columns: minmax(17rem, 1.25fr) minmax(17rem, 1fr);
-    align-items: start;
-  }
-}
-
-@container (min-width: 72rem) {
-  .responsive-field-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@container (min-width: 82rem) {
-  .vacancy-fields-grid {
-    grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr) minmax(12rem, 1fr);
-  }
-
-  .vacancy-location-fields .listing-location-row {
-    grid-template-columns: minmax(24rem, 1.3fr) minmax(25rem, 1fr);
-  }
-}
-
-@container (min-width: 34rem) {
-  .map-picker-search {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .map-picker-search-button {
-    width: auto;
-  }
-
-  .map-picker-canvas {
-    height: clamp(18rem, 42cqw, 26rem);
-  }
-}
-
-.site-footer-inner {
-  padding-bottom: calc(var(--mobile-nav-clearance) + 96px);
-}
-
-@keyframes marquee {
-  from {
-    transform: translateX(0);
-  }
-
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-.marquee-track {
-  animation: marquee 28s linear infinite;
-}
-
-.marquee-track:hover {
-  animation-play-state: paused;
-}
-
-@keyframes share-copy-popover {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, calc(-100% + 6px));
-  }
-
-  4%,
-  82% {
-    opacity: 1;
-    transform: translate(-50%, -100%);
-  }
-
-  100% {
-    opacity: 0;
-    transform: translate(-50%, calc(-100% - 4px));
-  }
-}
-
-.share-copy-popover {
-  animation: share-copy-popover 1800ms ease-in-out both;
+button[aria-label^="Поделиться ссылкой:"]::after {
+  content: "Поделиться";
 }
 
 @media (min-width: 640px) {
-  .page-container {
-    width: min(calc(100% - 32px), 1500px);
-    max-width: calc(100vw - 32px);
-    max-width: calc(100dvw - 32px);
-  }
-
-  .dashboard-shell {
-    width: min(calc(100vw - 32px), 1500px);
-    width: min(calc(100dvw - 32px), 1500px);
-    max-width: calc(100vw - 32px);
-    max-width: calc(100dvw - 32px);
-  }
-
-  .responsive-field-grid,
-  .specialist-metrics-grid {
-    gap: 1rem;
-  }
-
-  .photo-preview-grid {
-    gap: 0.75rem;
-  }
-}
-
-@media (max-width: 639px) {
-  .page-container,
-  .dashboard-shell {
-    width: calc(100vw - 16px) !important;
-    width: calc(100dvw - 16px) !important;
-    max-width: calc(100vw - 16px) !important;
-    max-width: calc(100dvw - 16px) !important;
-  }
-
-  .responsive-field-grid > *,
-  .responsive-form-panel > .map-picker-panel,
-  .responsive-form-panel > section,
-  .responsive-form-panel > label {
-    max-width: min(100%, 20rem);
-  }
-
-  .vacancy-create-form > *,
-  .vacancy-create-form .vacancy-employer-step {
-    max-width: 100% !important;
-  }
-
-  .specialist-primary-field-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem;
-  }
-
-  .specialist-primary-field-grid > * {
-    max-width: 100%;
-  }
-
-  .specialist-primary-name {
-    order: 1;
-  }
-
-  .specialist-primary-profession {
-    order: 2;
-  }
-
-  .specialist-primary-phone {
-    order: 3;
-  }
-
-  .specialist-primary-price {
-    order: 4;
-  }
-
-  .specialist-primary-email {
-    order: 5;
-  }
-
-  .specialist-primary-messenger {
-    order: 6;
-  }
-
-  .specialist-primary-field-grid label {
-    gap: 0.35rem;
-    font-size: 0.625rem;
-    line-height: 0.8rem;
-  }
-
-  .specialist-primary-field-grid input,
-  .specialist-primary-field-grid button {
-    min-height: 2.5rem;
-    height: 2.5rem;
-    border-radius: 0.75rem;
-    padding-left: 0.45rem;
-    padding-right: 0.45rem;
-    font-size: 0.75rem;
-    line-height: 1rem;
-  }
-
-  .responsive-form-panel input,
-  .responsive-form-panel textarea,
-  .responsive-form-panel .map-picker-canvas,
-  .responsive-form-panel .map-picker-search-button {
-    max-width: 100%;
-  }
-}
-
-@media (min-width: 768px) {
-  body {
-    padding-bottom: 0;
-  }
-
-  .app-shell main {
-    padding-bottom: revert;
-  }
-
-  .site-footer-inner {
-    padding-bottom: 2rem;
+  a[aria-label^="Открыть объявления:"],
+  a[aria-label^="Разместить объявление:"],
+  button[aria-label^="Поделиться ссылкой:"] {
+    font-size: 0.82rem;
+    line-height: 1.1rem;
   }
 }
