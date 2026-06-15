@@ -1,15 +1,44 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { ArrowRight, MapPin, MessageCircle, ShieldCheck } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
+import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
+import type { DemoListing } from "@/components/listings/ListingCard";
 import { instrumentSubcategories } from "@/lib/instrument-subcategories";
 
 type PageProps = {
   params: Promise<{ subcategorySlug: string }>;
 };
+
+function instrumentListing(subcategory: (typeof instrumentSubcategories)[number], index: number): DemoListing {
+  return {
+    slug: `instrumenty-${subcategory.slug}`,
+    title: subcategory.demoListing.title,
+    kind: "prodam",
+    categorySlug: "instrumenty",
+    categoryName: "Инструменты",
+    subcategorySlug: subcategory.slug,
+    subcategoryName: subcategory.name,
+    city: "Краснодар",
+    district: ["Фестивальный", "Центр", "Юбилейный", "Черёмушки", "Гидрострой", "Прикубанский"][index] ?? "Краснодар",
+    lat: 45.037 + index * 0.006,
+    lng: 38.975 + index * 0.004,
+    showExactAddress: false,
+    price: subcategory.demoListing.price,
+    description: subcategory.demoListing.description,
+    phone: `+78610003${String(index + 1).padStart(3, "0")}`,
+    messengerUrl: "https://t.me/blizhniy_support",
+    status: "published",
+    paid: true,
+    createdAt: "15 июня 2026",
+    publishedAt: "15 июня 2026",
+    expiresAt: "15 июля 2026",
+    imageTone: index % 2 === 0 ? "blue" : "amber",
+  };
+}
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { subcategorySlug } = await params;
@@ -17,7 +46,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   return {
     title: subcategory ? `${subcategory.name} — Инструменты` : "Инструменты",
-    description: subcategory ? `${subcategory.description} Тестовое объявление в подкатегории ${subcategory.name}.` : "Объявления раздела Инструменты.",
+    description: subcategory ? `${subcategory.description} Объявления в подкатегории ${subcategory.name}.` : "Объявления раздела Инструменты.",
     alternates: {
       canonical: `/katalog/instrumenty/${subcategorySlug}`,
     },
@@ -26,13 +55,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function InstrumentSubcategoryPage({ params }: PageProps) {
   const { subcategorySlug } = await params;
-  const subcategory = instrumentSubcategories.find((item) => item.slug === subcategorySlug);
+  const subcategoryIndex = instrumentSubcategories.findIndex((item) => item.slug === subcategorySlug);
+  const subcategory = instrumentSubcategories[subcategoryIndex];
 
   if (!subcategory) {
     notFound();
   }
 
-  const listing = subcategory.demoListing;
+  const listings = [instrumentListing(subcategory, subcategoryIndex)];
 
   return (
     <>
@@ -69,49 +99,7 @@ export default async function InstrumentSubcategoryPage({ params }: PageProps) {
             </Link>
           </div>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex min-h-44 items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50 p-6">
-                <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-white text-4xl shadow-sm ring-1 ring-slate-100">🛠️</div>
-              </div>
-              <div className="p-4 sm:p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#0875d1]">Тестовое объявление</span>
-                    <h2 className="mt-3 text-xl font-black leading-tight text-[#060b27] sm:text-2xl">{listing.title}</h2>
-                  </div>
-                  <p className="rounded-xl bg-emerald-50 px-3 py-2 text-lg font-black text-[#0a8f32]">{listing.price}</p>
-                </div>
-                <p className="mt-3 text-sm font-medium leading-6 text-slate-600 sm:text-base">{listing.description}</p>
-                <div className="mt-4 flex flex-wrap gap-2 text-sm font-bold text-slate-600">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-3 py-1">
-                    <MapPin className="h-4 w-4 text-[#0875d1]" />
-                    Краснодар
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-3 py-1">
-                    <ShieldCheck className="h-4 w-4 text-[#0a8f32]" />
-                    Опубликовано
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-3 py-1">
-                    <MessageCircle className="h-4 w-4 text-[#0875d1]" />
-                    Связь в объявлении
-                  </span>
-                </div>
-              </div>
-            </article>
-
-            <aside className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 shadow-sm">
-              <h2 className="text-lg font-black text-[#060b27]">Что входит в подкатегорию</h2>
-              <ul className="mt-3 grid gap-2 text-sm font-semibold leading-6 text-slate-700">
-                {subcategory.items.map((item) => (
-                  <li key={item} className="flex gap-2">
-                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0875d1]" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </aside>
-          </div>
+          <ListingResultsPanel categorySlug="instrumenty" listings={listings} subcategorySlug={subcategory.slug} />
         </section>
       </main>
     </>
