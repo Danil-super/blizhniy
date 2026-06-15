@@ -4,10 +4,16 @@ import { listDemoListings, toDemoListing } from "@/components/listings/ListingPa
 import { listStoredListings } from "@/lib/listing-store";
 import { listListings } from "@/lib/mock-store";
 import { publicationTimestamp } from "@/lib/publication-time";
+import { isSupabaseRestConfigured } from "@/lib/supabase-rest";
+
+function shouldShowDemoListings() {
+  return !isSupabaseRestConfigured() || process.env.ENABLE_DEMO_CONTENT === "true";
+}
 
 export async function HomeListings() {
   const storedListings = await listStoredListings();
-  const allListings = [...storedListings.map(toDemoListing), ...listListings().map(toDemoListing), ...listDemoListings()];
+  const demoListings = shouldShowDemoListings() ? [...listListings().map(toDemoListing), ...listDemoListings()] : [];
+  const allListings = [...storedListings.map(toDemoListing), ...demoListings];
   const uniqueListings = Array.from(new Map(allListings.map((listing) => [listing.slug, listing])).values());
   const listings = uniqueListings
     .filter((listing) => listing.status === "published")
