@@ -6,7 +6,7 @@ import { AdminAuthGate } from "@/components/auth/AdminAuthGate";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import type { Payment, Tariff } from "@/lib/types";
 
-type Payload = { payments: Payment[]; tariffs: Tariff[]; error?: string };
+type Payload = { payments?: Payment[]; tariffs?: Tariff[]; error?: string };
 
 async function token() {
   const supabase = getSupabaseBrowserClient();
@@ -32,6 +32,10 @@ function Badge({ value }: { value: string }) {
   return <span className={`inline-flex min-h-7 items-center rounded-full border px-3 text-xs font-bold ${className}`}>{value}</span>;
 }
 
+function tariffFormKey(tariff: Tariff) {
+  return `${tariff.id}:${tariff.name}:${tariff.price}:${tariff.durationDays ?? "once"}:${tariff.active}`;
+}
+
 export function AdminTariffsClient({ initialPayments, initialTariffs }: { initialPayments: Payment[]; initialTariffs: Tariff[] }) {
   const [tariffs, setTariffs] = useState(initialTariffs);
   const [payments, setPayments] = useState(initialPayments);
@@ -44,8 +48,8 @@ export function AdminTariffsClient({ initialPayments, initialTariffs }: { initia
       const response = await fetch("/api/admin/tariffs", { headers: { Authorization: `Bearer ${authToken}` } });
       const payload = (await response.json()) as Payload;
       if (!response.ok) throw new Error(payload.error ?? "Не удалось загрузить данные");
-      setTariffs(payload.tariffs);
-      setPayments(payload.payments);
+      setTariffs(payload.tariffs ?? []);
+      setPayments(payload.payments ?? []);
       setMessage("Данные загружены из базы.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка загрузки");
@@ -80,7 +84,7 @@ export function AdminTariffsClient({ initialPayments, initialTariffs }: { initia
       });
       const payload = (await response.json()) as Payload;
       if (!response.ok) throw new Error(payload.error ?? "Не удалось сохранить тариф");
-      setTariffs(payload.tariffs);
+      setTariffs(payload.tariffs ?? tariffs);
       setMessage("Тариф сохранен.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка сохранения");
@@ -101,7 +105,7 @@ export function AdminTariffsClient({ initialPayments, initialTariffs }: { initia
       });
       const payload = (await response.json()) as Payload;
       if (!response.ok) throw new Error(payload.error ?? "Не удалось сбросить тарифы");
-      setTariffs(payload.tariffs);
+      setTariffs(payload.tariffs ?? tariffs);
       setMessage("Тарифы сброшены.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка сброса");
@@ -128,7 +132,7 @@ export function AdminTariffsClient({ initialPayments, initialTariffs }: { initia
         <p className="mt-3 text-sm font-semibold text-slate-600">{message}</p>
         <div className="mt-4 grid gap-2 xl:grid-cols-2">
           {tariffs.map((tariff) => (
-            <form key={tariff.id} onSubmit={save} className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+            <form key={tariffFormKey(tariff)} onSubmit={save} className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
               <input type="hidden" name="id" value={tariff.id} />
               <input name="name" defaultValue={tariff.name} className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-bold" />
               <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
