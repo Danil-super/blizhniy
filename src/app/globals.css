@@ -238,6 +238,28 @@ canvas {
   order: 4;
 }
 
+.map-picker-canvas {
+  display: block;
+  height: clamp(16rem, 34vw, 24rem);
+  min-height: 16rem;
+  width: 100%;
+}
+
+.map-picker-canvas > ymaps,
+.map-picker-canvas > ymaps > ymaps,
+.map-picker-canvas canvas {
+  height: 100% !important;
+  min-height: 100% !important;
+  width: 100% !important;
+}
+
+@media (max-width: 640px) {
+  .map-picker-canvas {
+    height: 18rem;
+    min-height: 18rem;
+  }
+}
+
 /* Compact adaptive subcategory action buttons across all category cards. */
 details.group {
   container-type: inline-size;
