@@ -77,6 +77,7 @@ export type Listing = {
   hasMapPoint?: boolean;
   showExactAddress: boolean;
   price?: string;
+  images?: string[];
   booking?: BookingDetails;
   delivery?: DeliveryOptions;
   imageTone: "emerald" | "blue" | "amber" | "rose" | "slate";
