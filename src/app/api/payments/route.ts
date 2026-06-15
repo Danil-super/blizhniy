@@ -19,7 +19,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
 
-  return NextResponse.json({ payments: listPayments() });
+  const payments = await listPayments();
+
+  return NextResponse.json({ payments });
 }
 
 export async function POST(request: Request) {
