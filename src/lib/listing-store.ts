@@ -288,7 +288,7 @@ export async function createStoredListing(input: CreateStoredListingInput) {
 
   await insertListingImages(listing.id, input.mediaPaths);
 
-  return getStoredListingById(listing.id) ?? mapListing(listing);
+  return (await getStoredListingById(listing.id)) ?? mapListing(listing);
 }
 
 export async function markStoredListingPaid(listingId: string) {
