@@ -49,11 +49,14 @@ create policy "Public can read active specialist categories" on specialist_categ
 create policy "Public can read active tariffs" on tariffs for select using (active = true);
 
 create policy "Users can read own profile" on profiles for select using (id = (select auth.uid()) or public.is_admin());
-create policy "Users can update own profile" on profiles for update using (id = (select auth.uid())) with check (id = (select auth.uid()));
-create policy "Admins can manage profiles" on profiles for all using (public.is_admin()) with check (public.is_admin());
+create policy "Users can update own profile" on profiles for update using (id = (select auth.uid()) or public.is_admin()) with check (id = (select auth.uid()) or public.is_admin());
+create policy "Admins can insert profiles" on profiles for insert with check (public.is_admin());
+create policy "Admins can delete profiles" on profiles for delete using (public.is_admin());
 
 create policy "Users can read own roles" on user_roles for select using (user_id = (select auth.uid()) or public.is_admin());
-create policy "Admins can manage roles" on user_roles for all using (public.is_admin()) with check (public.is_admin());
+create policy "Admins can insert roles" on user_roles for insert with check (public.is_admin());
+create policy "Admins can update roles" on user_roles for update using (public.is_admin()) with check (public.is_admin());
+create policy "Admins can delete roles" on user_roles for delete using (public.is_admin());
 
 create policy "Public can read published listings" on listings for select using (status = 'published');
 create policy "Users can manage own listings" on listings for all using (author_id = (select auth.uid())) with check (author_id = (select auth.uid()));
