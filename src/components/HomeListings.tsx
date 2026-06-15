@@ -12,8 +12,9 @@ function shouldShowDemoListings() {
 
 export async function HomeListings() {
   const storedListings = await listStoredListings();
+  const storedCards = storedListings.map((listing) => ({ ...toDemoListing(listing), images: listing.images }));
   const demoListings = shouldShowDemoListings() ? [...listListings().map(toDemoListing), ...listDemoListings()] : [];
-  const allListings = [...storedListings.map(toDemoListing), ...demoListings];
+  const allListings = [...storedCards, ...demoListings];
   const uniqueListings = Array.from(new Map(allListings.map((listing) => [listing.slug, listing])).values());
   const listings = uniqueListings
     .filter((listing) => listing.status === "published")
