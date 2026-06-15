@@ -7,12 +7,13 @@ create type publication_status as enum (
   'published',
   'archived',
   'expired',
-  'rejected'
+  'rejected',
+  'sold'
 );
 
 create type listing_type as enum ('sell', 'buy', 'exchange', 'free');
 create type payment_status as enum ('created', 'pending', 'succeeded', 'failed', 'refunded');
-create type tariff_action as enum ('listing_publication', 'vacancy_publication', 'job_response', 'fair_participation');
+create type tariff_action as enum ('listing_publication', 'vacancy_publication', 'job_response', 'fair_participation', 'specialist_publication', 'ad_marquee');
 create type app_role as enum ('user', 'specialist', 'organization', 'admin');
 
 create table profiles (
@@ -289,7 +290,9 @@ insert into tariffs (name, action, price, duration_days) values
   ('Размещение объявления', 'listing_publication', 199, 30),
   ('Размещение вакансии', 'vacancy_publication', 499, 30),
   ('Отклик на вакансию', 'job_response', 99, null),
-  ('Участие в ярмарке мастеров', 'fair_participation', 1000, null);
+  ('Участие в ярмарке мастеров', 'fair_participation', 1000, null),
+  ('Размещение анкеты специалиста', 'specialist_publication', 299, 30),
+  ('Бегущая строка / промо-объявление', 'ad_marquee', 399, 7);
 
 create or replace function public.handle_new_user()
 returns trigger
