@@ -1,4 +1,4 @@
-import { AdminTariffsPage } from "@/components/MvpDashboard";
+import { AdminTariffsPage } from "@/components/admin/AdminTariffsPage";
 
 export const dynamic = "force-dynamic";
 
