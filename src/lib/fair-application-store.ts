@@ -48,6 +48,10 @@ export type CreateStoredFairApplicationInput = {
   videoUrl?: string;
 };
 
+type UpdateFairApplicationStatusOptions = {
+  adminContext?: boolean;
+};
+
 function toNumber(value: FairApplicationRow["latitude"]) {
   if (value === null || value === undefined || value === "") {
     return undefined;
@@ -211,8 +215,8 @@ export async function createStoredFairApplication(input: CreateStoredFairApplica
   return mapFairApplication(application, citiesById, input.productPhotos);
 }
 
-export async function updateStoredFairApplicationStatus(applicationId: string, status: PublicationStatus) {
-  if (!isSupabaseRestConfigured()) {
+export async function updateStoredFairApplicationStatus(applicationId: string, status: PublicationStatus, options: UpdateFairApplicationStatusOptions = {}) {
+  if (!isSupabaseRestConfigured() || !options.adminContext) {
     return false;
   }
 
