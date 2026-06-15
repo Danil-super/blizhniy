@@ -12,6 +12,7 @@ type CreateStoredListingInput = {
   kind?: ListingKind;
   lat?: number;
   lng?: number;
+  mediaPaths?: string[];
   messengerUrl?: string;
   phone?: string;
   price?: string;
