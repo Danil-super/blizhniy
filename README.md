@@ -147,7 +147,7 @@ pm2 save
 VPS_HOST=IP_АДРЕС_СЕРВЕРА
 VPS_PORT=22
 VPS_USER=deploy
-VPS_SSH_KEY=приватный_SSH_ключ_для_доступА_к_VPS
+VPS_SSH_KEY=приватный_SSH_ключ_для_доступа_к_VPS
 APP_DIR=/var/www/blizhniy
 ```
 
