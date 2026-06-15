@@ -44,7 +44,7 @@ type StoredPaymentInput = {
 };
 
 export function canStorePayment(input: { targetId?: string }) {
-  return isSupabaseRestConfigured() && isUuid(input.targetId);
+  return isSupabaseRestConfigured() && Boolean(input.targetId);
 }
 
 function tariffIdFromAction(action: Tariff["action"]) {
