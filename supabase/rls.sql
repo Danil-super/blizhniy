@@ -83,13 +83,15 @@ create policy "Users can insert own work requests" on work_requests for insert w
 create policy "Users can update own work requests" on work_requests for update using (author_id = (select auth.uid()) or public.is_admin()) with check (author_id = (select auth.uid()) or public.is_admin());
 create policy "Users can delete own work requests" on work_requests for delete using (author_id = (select auth.uid()) or public.is_admin());
 
-create policy "Public can read published specialists" on specialist_profiles for select using (status = 'published');
-create policy "Users can manage own specialist profile" on specialist_profiles for all using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
-create policy "Admins can manage specialist profiles" on specialist_profiles for all using (public.is_admin()) with check (public.is_admin());
+create policy "Public can read published specialists" on specialist_profiles for select using (status = 'published' or user_id = (select auth.uid()) or public.is_admin());
+create policy "Users can insert own specialist profile" on specialist_profiles for insert with check (user_id = (select auth.uid()) or public.is_admin());
+create policy "Users can update own specialist profile" on specialist_profiles for update using (user_id = (select auth.uid()) or public.is_admin()) with check (user_id = (select auth.uid()) or public.is_admin());
+create policy "Users can delete own specialist profile" on specialist_profiles for delete using (user_id = (select auth.uid()) or public.is_admin());
 
-create policy "Public can read published organizations" on organization_profiles for select using (status = 'published');
-create policy "Users can manage own organization profile" on organization_profiles for all using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
-create policy "Admins can manage organization profiles" on organization_profiles for all using (public.is_admin()) with check (public.is_admin());
+create policy "Public can read published organizations" on organization_profiles for select using (status = 'published' or user_id = (select auth.uid()) or public.is_admin());
+create policy "Users can insert own organization profile" on organization_profiles for insert with check (user_id = (select auth.uid()) or public.is_admin());
+create policy "Users can update own organization profile" on organization_profiles for update using (user_id = (select auth.uid()) or public.is_admin()) with check (user_id = (select auth.uid()) or public.is_admin());
+create policy "Users can delete own organization profile" on organization_profiles for delete using (user_id = (select auth.uid()) or public.is_admin());
 
 create policy "Users can read own applications" on applications for select using (
   exists (select 1 from specialist_profiles where specialist_profiles.id = applications.specialist_profile_id and specialist_profiles.user_id = (select auth.uid()))
