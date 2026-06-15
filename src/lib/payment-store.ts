@@ -145,6 +145,17 @@ export async function getStoredPayment(paymentId: string) {
   return rows[0] ? mapStoredPayment(rows[0]) : undefined;
 }
 
+export async function listStoredPayments() {
+  if (!isSupabaseRestConfigured()) {
+    return [];
+  }
+
+  const rows = await supabaseRest<PaymentRow[]>("/rest/v1/payments?select=*&order=created_at.desc");
+  const payments = await Promise.all(rows.map((row) => mapStoredPayment(row)));
+
+  return payments;
+}
+
 export async function listStoredPaymentsForUser(userId: string) {
   if (!isSupabaseRestConfigured()) {
     return [];
