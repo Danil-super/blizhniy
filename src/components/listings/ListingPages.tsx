@@ -24,6 +24,7 @@ import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { HomeHero } from "@/components/HomeHero";
 import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
+import { StoredMediaImage } from "@/components/StoredMedia";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { categories, cities } from "@/lib/data";
@@ -1149,6 +1150,7 @@ export function toDemoListing(listing: StoreListing): DemoListing {
     hasMapPoint: Boolean(listing.hasMapPoint),
     showExactAddress: Boolean(listing.hasMapPoint && listing.address) || listing.showExactAddress,
     price: listing.price ?? "по договоренности",
+    images: listing.images,
     booking: listing.booking,
     delivery: listing.delivery,
     description: listing.description,
@@ -1601,9 +1603,9 @@ function DeliveryInfoCard({ delivery }: { delivery?: DeliveryOptions }) {
   );
 }
 
-export function ListingDetailPage({ slug }: { slug: string }) {
-  const listing = findListingBySlug(slug);
-  const listingHref = `/obyavlenie/${slug}`;
+export function ListingDetailPage({ slug, listingOverride }: { slug: string; listingOverride?: DemoListing }) {
+  const listing = listingOverride ?? findListingBySlug(slug);
+  const listingHref = `/obyavlenie/${listing?.slug ?? slug}`;
 
   if (!listing) {
     return (
@@ -1624,6 +1626,7 @@ export function ListingDetailPage({ slug }: { slug: string }) {
   const contactCount = [listing.phone, listing.email, listing.messengerUrl].filter(Boolean).length;
   const actionCount = contactCount + 1;
   const actionGridClass = actionCount >= 4 ? "grid-cols-[repeat(4,minmax(104px,1fr))]" : actionCount === 3 ? "grid-cols-3" : actionCount === 2 ? "grid-cols-2" : "grid-cols-1";
+  const galleryImages = listing.images ?? [];
 
   return (
     <>
@@ -1647,9 +1650,42 @@ export function ListingDetailPage({ slug }: { slug: string }) {
               <ListingKindBadge kind={listing.kind} />
               <StatusBadge status={listing.status} />
             </div>
-            <div className="mt-5 flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
-              <Camera className="h-12 w-12 sm:h-16 sm:w-16" />
-            </div>
+            {galleryImages.length ? (
+              <div className="mt-5 grid gap-3 sm:mt-6">
+                <a
+                  href={galleryImages[0]}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block aspect-[4/3] w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100"
+                >
+                  <StoredMediaImage src={galleryImages[0]} alt={listing.title} className="h-full w-full object-cover" loading="eager" />
+                </a>
+                {galleryImages.length > 1 ? (
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                    {galleryImages.slice(1, 7).map((image, index) => (
+                      <a
+                        key={`${image}-${index}`}
+                        href={image}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-100"
+                      >
+                        <StoredMediaImage
+                          src={image}
+                          alt={`${listing.title}, фото ${index + 2}`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-5 flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
+                <Camera className="h-12 w-12 sm:h-16 sm:w-16" />
+              </div>
+            )}
             <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
               <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Описание</h2>
               <p className="mt-2 [overflow-wrap:anywhere] text-sm leading-6 text-slate-700 sm:mt-3 sm:text-base sm:leading-7">{listing.description}</p>

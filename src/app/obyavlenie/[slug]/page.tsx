@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { findListingBySlug, ListingDetailPage } from "@/components/listings/ListingPages";
+import { findListingBySlug, ListingDetailPage, toDemoListing } from "@/components/listings/ListingPages";
+import { getStoredListingById } from "@/lib/listing-store";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -7,7 +8,8 @@ type PageProps = {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const listing = findListingBySlug(slug);
+  const storedListing = await getStoredListingById(slug);
+  const listing = storedListing ? toDemoListing(storedListing) : findListingBySlug(slug);
 
   return {
     title: listing?.title ?? "Объявление",
@@ -20,6 +22,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
+  const storedListing = await getStoredListingById(slug);
 
-  return <ListingDetailPage slug={slug} />;
+  return <ListingDetailPage slug={slug} listingOverride={storedListing ? toDemoListing(storedListing) : undefined} />;
 }
