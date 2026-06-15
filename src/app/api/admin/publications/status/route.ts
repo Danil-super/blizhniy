@@ -74,7 +74,7 @@ async function updateStoredPublicationStatus(entityType: EntityType, id: string,
 
   const body: Record<string, unknown> = { status };
 
-  if (["fairApplication", "listing", "specialist", "vacancy", "workRequest"].includes(entityType)) {
+  if (["fairApplication", "listing", "vacancy", "workRequest"].includes(entityType)) {
     body.published_at = status === "published" ? new Date().toISOString() : null;
   }
 
