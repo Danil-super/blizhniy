@@ -1,6 +1,9 @@
 "use client";
 
 import type { FormEvent } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import type { PublicationStatus } from "@/lib/types";
 
 type StatusOption = {
@@ -13,22 +16,70 @@ type AdminPublicationStatusFormProps = {
   id: string;
   status: string;
   options: StatusOption[];
-  updateStatusAction: (formData: FormData) => void | Promise<void>;
+  updateStatusAction?: (formData: FormData) => void | Promise<void>;
 };
 
-export function AdminPublicationStatusForm({ entityType, id, status, options, updateStatusAction }: AdminPublicationStatusFormProps) {
-  function closeMenu(event: FormEvent<HTMLFormElement>) {
-    const details = event.currentTarget.closest("details");
+export function AdminPublicationStatusForm({ entityType, id, status, options }: AdminPublicationStatusFormProps) {
+  const router = useRouter();
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
-    if (details) {
-      details.open = false;
+  async function getAccessToken() {
+    if (!isSupabaseBrowserConfigured()) {
+      return "";
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { data } = await supabase.auth.getSession();
+
+    return data.session?.access_token ?? "";
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSaving(true);
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const token = await getAccessToken();
+
+    try {
+      const response = await fetch("/api/admin/publications/status", {
+        body: JSON.stringify({
+          entityType,
+          id,
+          status: String(formData.get("status") ?? ""),
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        method: "POST",
+      });
+
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Не удалось обновить статус");
+      }
+
+      const details = form.closest("details");
+
+      if (details) {
+        details.open = false;
+      }
+
+      router.refresh();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Не удалось обновить статус");
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
-    <form action={updateStatusAction} onSubmit={closeMenu} className="grid gap-2 rounded-md border-t border-slate-100 px-3 py-2">
-      <input type="hidden" name="entityType" value={entityType} />
-      <input type="hidden" name="id" value={id} />
+    <form onSubmit={submit} className="grid gap-2 rounded-md border-t border-slate-100 px-3 py-2">
       <label className="grid gap-1 text-xs font-semibold text-slate-600">
         Статус
         <select name="status" defaultValue={status} className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none focus:border-[#0875d1]">
@@ -39,8 +90,9 @@ export function AdminPublicationStatusForm({ entityType, id, status, options, up
           ))}
         </select>
       </label>
-      <button type="submit" className="inline-flex h-8 items-center justify-center rounded-md bg-[#0875d1] px-3 text-xs font-bold text-white transition hover:bg-[#0664b3]">
-        Сохранить статус
+      {error ? <p className="rounded-md bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">{error}</p> : null}
+      <button type="submit" disabled={saving} className="inline-flex h-8 items-center justify-center rounded-md bg-[#0875d1] px-3 text-xs font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-not-allowed disabled:opacity-60">
+        {saving ? "Сохраняю..." : "Сохранить статус"}
       </button>
     </form>
   );
