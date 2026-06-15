@@ -1,10 +1,12 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ArrowRight, BadgePlus, ChevronRight, ClipboardList, MapPin, ShieldCheck } from "lucide-react";
+import { ArrowRight, BadgePlus, ChevronRight, ClipboardList } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
+import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import { SubcategoryShareButton } from "@/components/listings/SubcategoryShareButton";
+import type { DemoListing } from "@/components/listings/ListingCard";
 import { posudaSubcategories } from "@/lib/posuda-subcategories";
 
 export const metadata: Metadata = {
@@ -14,6 +16,35 @@ export const metadata: Metadata = {
     canonical: "/katalog/posuda",
   },
 };
+
+function posudaListing(subcategory: (typeof posudaSubcategories)[number], index: number): DemoListing {
+  return {
+    slug: `posuda-${subcategory.slug}`,
+    title: subcategory.demoListing.title,
+    kind: "prodam",
+    categorySlug: "posuda",
+    categoryName: "Посуда",
+    subcategorySlug: subcategory.slug,
+    subcategoryName: subcategory.name,
+    city: "Краснодар",
+    district: ["Центр", "Фестивальный", "Юбилейный", "Черёмушки", "Гидрострой", "Прикубанский"][index] ?? "Краснодар",
+    lat: 45.037 + index * 0.006,
+    lng: 38.975 + index * 0.004,
+    showExactAddress: false,
+    price: subcategory.demoListing.price,
+    description: subcategory.demoListing.description,
+    phone: `+78610004${String(index + 1).padStart(3, "0")}`,
+    messengerUrl: "https://t.me/blizhniy_support",
+    status: "published",
+    paid: true,
+    createdAt: "15 июня 2026",
+    publishedAt: "15 июня 2026",
+    expiresAt: "15 июля 2026",
+    imageTone: index % 2 === 0 ? "amber" : "rose",
+  };
+}
+
+const demoListings = posudaSubcategories.map(posudaListing);
 
 export default function PosudaCategoryPage() {
   return (
@@ -93,38 +124,7 @@ export default function PosudaCategoryPage() {
             })}
           </div>
 
-          <section className="mt-7">
-            <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Тестовые объявления</h2>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {posudaSubcategories.map((subcategory) => (
-                <Link
-                  key={subcategory.slug}
-                  href={`/katalog/posuda/${subcategory.slug}`}
-                  className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-card"
-                >
-                  <div className="flex min-h-24 items-center justify-center bg-gradient-to-br from-amber-50 via-white to-blue-50 p-4 text-4xl">🍽️</div>
-                  <div className="p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#0875d1]">{subcategory.name}</span>
-                      <span className="rounded-lg bg-emerald-50 px-2 py-1 text-sm font-black text-[#0a8f32]">{subcategory.demoListing.price}</span>
-                    </div>
-                    <h3 className="mt-3 text-base font-black leading-5 text-[#060b27] group-hover:text-[#0875d1]">{subcategory.demoListing.title}</h3>
-                    <p className="mt-2 line-clamp-2 text-sm font-medium leading-6 text-slate-600">{subcategory.demoListing.description}</p>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-1">
-                        <MapPin className="h-3.5 w-3.5 text-[#0875d1]" />
-                        Краснодар
-                      </span>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-1">
-                        <ShieldCheck className="h-3.5 w-3.5 text-[#0a8f32]" />
-                        Опубликовано
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
+          <ListingResultsPanel categorySlug="posuda" listings={demoListings} />
         </section>
       </main>
     </>
