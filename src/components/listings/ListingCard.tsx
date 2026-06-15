@@ -26,6 +26,7 @@ export type DemoListing = {
   hasMapPoint?: boolean;
   showExactAddress: boolean;
   price: string;
+  images?: string[];
   booking?: import("@/lib/types").BookingDetails;
   delivery?: import("@/lib/types").DeliveryOptions;
   description: string;
@@ -76,6 +77,21 @@ const imageTones = {
   violet: "from-violet-100 via-white to-blue-100 text-violet-700",
 };
 
+function ListingImage({ className, iconClassName, listing }: { className: string; iconClassName: string; listing: DemoListing }) {
+  const Icon = kindIcons[listing.kind];
+  const image = listing.images?.[0];
+
+  if (image) {
+    return <img src={image} alt={listing.title} className={`${className} bg-slate-100 object-cover`} loading="lazy" />;
+  }
+
+  return (
+    <span className={`${className} flex items-center justify-center bg-gradient-to-br ${imageTones[listing.imageTone]}`}>
+      <Icon className={iconClassName} />
+    </span>
+  );
+}
+
 export function ListingKindBadge({ kind }: { kind: ListingKind }) {
   const Icon = kindIcons[kind];
 
@@ -112,7 +128,6 @@ export function StatusBadge({ status }: { status: ListingStatus }) {
 }
 
 export function ListingCard({ listing }: { listing: DemoListing }) {
-  const Icon = kindIcons[listing.kind];
   const href = `/obyavlenie/${listing.slug}`;
 
   return (
@@ -120,10 +135,10 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
       <div className="flex min-w-0 gap-3 sm:contents">
         <Link
           href={href}
-          className={`flex h-24 w-24 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br sm:h-auto sm:min-h-28 sm:w-auto xl:min-h-32 ${imageTones[listing.imageTone]}`}
+          className="block h-24 w-24 shrink-0 overflow-hidden rounded-lg sm:h-auto sm:min-h-28 sm:w-auto xl:min-h-32"
           aria-label={listing.title}
         >
-          <Icon className="h-8 w-8 sm:h-9 sm:w-9 lg:h-12 lg:w-12" />
+          <ListingImage listing={listing} className="h-full w-full rounded-lg" iconClassName="h-8 w-8 sm:h-9 sm:w-9 lg:h-12 lg:w-12" />
         </Link>
 
         <div className="min-w-0 flex-1 sm:flex sm:flex-col sm:justify-center xl:block">
@@ -183,18 +198,15 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
 }
 
 export function ListingGridCard({ listing }: { listing: DemoListing }) {
-  const Icon = kindIcons[listing.kind];
   const href = `/obyavlenie/${listing.slug}`;
   const viewId = listing.viewId ?? listing.slug;
 
   return (
     <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card">
       <Link href={href} className="block min-w-0">
-        <span className={`relative flex aspect-[1.18/1] items-center justify-center overflow-hidden bg-gradient-to-br ${imageTones[listing.imageTone]}`}>
-          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80 transition group-hover:scale-105">
-            <Icon className="h-8 w-8" />
-          </span>
-          <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />
+        <span className="relative block aspect-[1.18/1] overflow-hidden bg-slate-100">
+          <ListingImage listing={listing} className="h-full w-full" iconClassName="h-8 w-8" />
+          {listing.images?.[0] ? <span className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-slate-950/30 to-transparent" /> : <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />}
         </span>
         <span className="block p-2">
           <span className="line-clamp-2 min-h-8 text-[13px] font-black leading-4 text-slate-900 transition group-hover:text-[#0875d1]">
