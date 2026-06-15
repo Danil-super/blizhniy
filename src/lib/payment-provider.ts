@@ -4,10 +4,12 @@ import {
   createStoredPayment,
   findStoredPaymentByProvider,
   getStoredPayment,
+  listStoredPayments,
   markStoredPaymentTargetSucceeded,
   updateStoredPayment,
 } from "@/lib/payment-store";
 import { getPublicSiteUrl } from "@/lib/site-url";
+import { isSupabaseRestConfigured } from "@/lib/supabase-rest";
 import { getActiveTariffById } from "@/lib/tariff-store";
 import type { Payment, Tariff } from "@/lib/types";
 
@@ -95,7 +97,11 @@ export function getPaymentProviderName() {
   return provider === "yookassa" ? "yookassa" : ("mock" as const);
 }
 
-export function listPayments() {
+export async function listPayments() {
+  if (isSupabaseRestConfigured()) {
+    return listStoredPayments();
+  }
+
   return listMockPayments();
 }
 
