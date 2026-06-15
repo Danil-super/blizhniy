@@ -58,9 +58,10 @@ create policy "Admins can insert roles" on user_roles for insert with check (pub
 create policy "Admins can update roles" on user_roles for update using (public.is_admin()) with check (public.is_admin());
 create policy "Admins can delete roles" on user_roles for delete using (public.is_admin());
 
-create policy "Public can read published listings" on listings for select using (status = 'published');
-create policy "Users can manage own listings" on listings for all using (author_id = (select auth.uid())) with check (author_id = (select auth.uid()));
-create policy "Admins can manage listings" on listings for all using (public.is_admin()) with check (public.is_admin());
+create policy "Public can read published listings" on listings for select using (status = 'published' or author_id = (select auth.uid()) or public.is_admin());
+create policy "Users can insert own listings" on listings for insert with check (author_id = (select auth.uid()) or public.is_admin());
+create policy "Users can update own listings" on listings for update using (author_id = (select auth.uid()) or public.is_admin()) with check (author_id = (select auth.uid()) or public.is_admin());
+create policy "Users can delete own listings" on listings for delete using (author_id = (select auth.uid()) or public.is_admin());
 
 create policy "Public can read listing images" on listing_images for select using (
   exists (select 1 from listings where listings.id = listing_images.listing_id and listings.status = 'published')
@@ -72,13 +73,15 @@ create policy "Owners can manage listing images" on listing_images for all using
 );
 create policy "Admins can manage listing images" on listing_images for all using (public.is_admin()) with check (public.is_admin());
 
-create policy "Public can read published vacancies" on vacancies for select using (status = 'published');
-create policy "Users can manage own vacancies" on vacancies for all using (author_id = (select auth.uid())) with check (author_id = (select auth.uid()));
-create policy "Admins can manage vacancies" on vacancies for all using (public.is_admin()) with check (public.is_admin());
+create policy "Public can read published vacancies" on vacancies for select using (status = 'published' or author_id = (select auth.uid()) or public.is_admin());
+create policy "Users can insert own vacancies" on vacancies for insert with check (author_id = (select auth.uid()) or public.is_admin());
+create policy "Users can update own vacancies" on vacancies for update using (author_id = (select auth.uid()) or public.is_admin()) with check (author_id = (select auth.uid()) or public.is_admin());
+create policy "Users can delete own vacancies" on vacancies for delete using (author_id = (select auth.uid()) or public.is_admin());
 
-create policy "Public can read published work requests" on work_requests for select using (status = 'published');
-create policy "Users can manage own work requests" on work_requests for all using (author_id = (select auth.uid())) with check (author_id = (select auth.uid()));
-create policy "Admins can manage work requests" on work_requests for all using (public.is_admin()) with check (public.is_admin());
+create policy "Public can read published work requests" on work_requests for select using (status = 'published' or author_id = (select auth.uid()) or public.is_admin());
+create policy "Users can insert own work requests" on work_requests for insert with check (author_id = (select auth.uid()) or public.is_admin());
+create policy "Users can update own work requests" on work_requests for update using (author_id = (select auth.uid()) or public.is_admin()) with check (author_id = (select auth.uid()) or public.is_admin());
+create policy "Users can delete own work requests" on work_requests for delete using (author_id = (select auth.uid()) or public.is_admin());
 
 create policy "Public can read published specialists" on specialist_profiles for select using (status = 'published');
 create policy "Users can manage own specialist profile" on specialist_profiles for all using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
