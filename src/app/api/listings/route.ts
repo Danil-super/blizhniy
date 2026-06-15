@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createStoredListing } from "@/lib/listing-store";
 import { createPayment } from "@/lib/payment-provider";
-import { getStoredPayment } from "@/lib/payment-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
 import type { ListingKind, Payment } from "@/lib/types";
@@ -101,19 +100,6 @@ export async function POST(request: Request) {
         targetType: "listing",
         userId: auth.user.id,
       });
-
-      if (payment.provider === "yookassa") {
-        const storedPayment = await getStoredPayment(payment.id);
-
-        if (!storedPayment?.id) {
-          return NextResponse.json(
-            {
-              error: `Платеж ЮKassa создан, но не сохранился в таблице payments. paymentId=${payment.id}; providerPaymentId=${payment.providerPaymentId ?? "empty"}; targetId=${listing.id}`,
-            },
-            { status: 500 },
-          );
-        }
-      }
     }
 
     return NextResponse.json({ listing, payment }, { status: 201 });
