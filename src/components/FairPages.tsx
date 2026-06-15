@@ -4,6 +4,7 @@ import { FairApplicationForm } from "@/components/FairApplicationForm";
 import { LocationMap } from "@/components/LocationMap";
 import { fairCategories } from "@/lib/data";
 import { listStoredFairApplications } from "@/lib/fair-application-store";
+import { publicMediaUrl } from "@/lib/storage-upload";
 import { getTariffs } from "@/lib/tariff-store";
 
 function nextFairDate(today = new Date()) {
@@ -26,6 +27,14 @@ function formatFairDate(date: Date) {
     month: "long",
     year: "numeric",
   }).format(date);
+}
+
+function fairPhotoUrl(photo: string) {
+  if (photo.startsWith("http://") || photo.startsWith("https://") || photo.startsWith("blob:")) {
+    return photo;
+  }
+
+  return photo.includes("/") ? publicMediaUrl(photo) : "";
 }
 
 export async function FairHomePage() {
@@ -119,13 +128,32 @@ export async function FairHomePage() {
                 <span className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-[#0a8f32]">опубликовано</span>
               </div>
               <p className="mt-3 text-sm leading-6 text-slate-600 sm:mt-4 sm:text-base sm:leading-7">{application.description}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {application.productPhotos.map((photo) => (
-                  <span key={photo} className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
-                    <ImagePlus className="h-4 w-4" />
-                    {photo}
-                  </span>
-                ))}
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {application.productPhotos.map((photo) => {
+                  const imageUrl = fairPhotoUrl(photo);
+
+                  return imageUrl ? (
+                    <a
+                      key={photo}
+                      href={imageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block aspect-square overflow-hidden rounded-lg bg-slate-100 ring-1 ring-slate-200"
+                    >
+                      <img
+                        src={imageUrl}
+                        alt={application.participantName}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    </a>
+                  ) : (
+                    <span key={photo} className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
+                      <ImagePlus className="h-4 w-4" />
+                      {photo}
+                    </span>
+                  );
+                })}
                 {application.videoUrl ? (
                   <a href={application.videoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm font-bold text-[#0875d1]">
                     <PlaySquare className="h-4 w-4" />
