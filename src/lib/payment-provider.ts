@@ -192,8 +192,14 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
   }
 
   const auth = Buffer.from(`${shopId}:${secretKey}`).toString("base64");
-  const localPaymentId = canStorePayment(input) ? createPaymentId() : `pay-yookassa-${Date.now().toString(36)}`;
+  const targetType = input.targetType ?? resolveTargetType(tariff);
+  const localPaymentId = createPaymentId();
   const returnUrl = `${getPublicBaseUrl()}/oplata/${localPaymentId}`;
+
+  if (targetType === "listing" && !canStorePayment(input)) {
+    throw new Error("YooKassa listing payments require a stored listing UUID before payment creation");
+  }
+
   const response = await fetch("https://api.yookassa.ru/v3/payments", {
     method: "POST",
     headers: {
@@ -215,7 +221,7 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
       metadata: {
         localPaymentId,
         targetId: input.targetId,
-        targetType: input.targetType ?? resolveTargetType(tariff),
+        targetType,
         tariffId: tariff.id,
       },
     }),
@@ -228,7 +234,7 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
 
   const payment: Payment = {
     id: localPaymentId,
-    targetType: input.targetType ?? resolveTargetType(tariff),
+    targetType,
     targetId: input.targetId,
     targetTitle: resolveTargetTitle(tariff, input.targetTitle),
     tariffId: tariff.id,
@@ -242,7 +248,7 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
   };
 
   if (canStorePayment(input)) {
-    await createStoredPayment({
+    const storedPayment = await createStoredPayment({
       amount: payment.amount,
       id: payment.id,
       provider: payment.provider,
@@ -254,6 +260,10 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
       tariff,
       userId: input.userId,
     });
+
+    if (!storedPayment) {
+      throw new Error("YooKassa payment was created, but local payment persistence failed");
+    }
   } else {
     listMockPayments().unshift(payment);
   }
