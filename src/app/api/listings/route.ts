@@ -14,6 +14,7 @@ type CreateListingBody = {
   kind?: ListingKind;
   lat?: number;
   lng?: number;
+  mediaPaths?: string[];
   messengerUrl?: string;
   phone?: string;
   price?: string;
@@ -35,6 +36,14 @@ function cleanNumber(value: unknown) {
 
 function cleanKind(value: unknown): ListingKind {
   return value === "kuplyu" || value === "menyayu" || value === "otdam-darom" || value === "arenda" ? value : "prodam";
+}
+
+function cleanMediaPaths(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((item) => cleanString(item)).filter((item) => item && item.length <= 500).slice(0, 10);
 }
 
 function hasValidPhone(value: string) {
@@ -110,6 +119,7 @@ export async function POST(request: Request) {
       kind: cleanKind(body.kind),
       lat: cleanNumber(body.lat),
       lng: cleanNumber(body.lng),
+      mediaPaths: cleanMediaPaths(body.mediaPaths),
       messengerUrl: messengerUrl || undefined,
       phone: phone || undefined,
       price: cleanString(body.price) || undefined,
