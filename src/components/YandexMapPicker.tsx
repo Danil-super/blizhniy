@@ -20,106 +20,102 @@ type YandexMapViewProps = {
   label: string;
 };
 
-type YandexReady = {
-  ready: (callback: () => void) => void;
-  Map: new (element: HTMLElement, options: Record<string, unknown>) => YandexMap;
-  Placemark: new (coords: number[], properties?: Record<string, unknown>, options?: Record<string, unknown>) => YandexPlacemark;
-  geocode: (request: string | number[], options?: Record<string, unknown>) => Promise<YandexGeocodeResult>;
+type LeafletLatLng = {
+  lat: number;
+  lng: number;
 };
 
-type YandexMap = {
-  events: { add: (eventName: string, callback: (event: { get: (key: string) => number[] }) => void) => void };
-  geoObjects: { add: (placemark: YandexPlacemark) => void; remove: (placemark: YandexPlacemark) => void };
-  setCenter: (coords: number[], zoom?: number) => void;
-  destroy: () => void;
+type LeafletMap = {
+  invalidateSize: () => void;
+  on: (eventName: "click", callback: (event: { latlng: LeafletLatLng }) => void) => void;
+  remove: () => void;
+  setView: (coords: [number, number], zoom?: number) => void;
 };
 
-type YandexPlacemark = {
-  geometry: { setCoordinates: (coords: number[]) => void };
+type LeafletMarker = {
+  addTo: (map: LeafletMap) => LeafletMarker;
+  setLatLng: (coords: [number, number]) => LeafletMarker;
 };
 
-type YandexGeoObject = {
-  geometry: { getCoordinates: () => number[] };
-  getAddressLine?: () => string;
-  properties?: { get: (key: string) => unknown };
+type LeafletTileLayer = {
+  addTo: (map: LeafletMap) => LeafletTileLayer;
 };
 
-type YandexGeocodeResult = {
-  geoObjects: {
-    get: (index: number) => YandexGeoObject | undefined;
-  };
+type LeafletGlobal = {
+  map: (element: HTMLElement, options: { center: [number, number]; scrollWheelZoom?: boolean; zoom: number; zoomControl?: boolean }) => LeafletMap;
+  marker: (coords: [number, number]) => LeafletMarker;
+  tileLayer: (url: string, options: { attribution: string; maxZoom: number }) => LeafletTileLayer;
 };
 
 declare global {
   interface Window {
-    ymaps?: YandexReady;
-    __blizhniyYandexMapsPromise?: Promise<void>;
+    L?: LeafletGlobal;
+    __blizhniyLeafletPromise?: Promise<void>;
   }
 }
 
 const krasnodarCenter = { lat: 45.035, lng: 38.976 };
 const resolvingAddressLabel = "Определяем адрес...";
-const krasnodarBounds = [
-  [43.3, 36.5],
-  [47.0, 41.5],
-];
 const nominatimViewbox = "36.5,47.0,41.5,43.3";
 const coordsPattern = /^-?\d+(?:[.,]\d+)?\s*,\s*-?\d+(?:[.,]\d+)?$/;
+const leafletCssUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+const leafletScriptUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
 
-function yandexMapsSrc() {
-  const apiKey = process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY;
-  const params = new URLSearchParams({ lang: "ru_RU", load: "package.full" });
-
-  if (apiKey) {
-    params.set("apikey", apiKey);
-  }
-
-  return `https://api-maps.yandex.ru/2.1/?${params.toString()}`;
-}
-
-function loadYandexMaps() {
+function loadLeaflet() {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("Карта доступна только в браузере"));
   }
 
-  if (window.ymaps) {
+  if (window.L) {
     return Promise.resolve();
   }
 
-  window.__blizhniyYandexMapsPromise ??= new Promise<void>((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>('script[data-blizhniy-yandex-maps="1"]');
+  window.__blizhniyLeafletPromise ??= new Promise<void>((resolve, reject) => {
+    const existingCss = document.querySelector<HTMLLinkElement>('link[data-blizhniy-leaflet-css="1"]');
 
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Не удалось загрузить Яндекс.Карты")), { once: true });
+    if (!existingCss) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = leafletCssUrl;
+      link.dataset.blizhniyLeafletCss = "1";
+      document.head.appendChild(link);
+    }
+
+    const existingScript = document.querySelector<HTMLScriptElement>('script[data-blizhniy-leaflet="1"]');
+
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(), { once: true });
+      existingScript.addEventListener("error", () => reject(new Error("Не удалось загрузить карту OpenStreetMap")), { once: true });
       return;
     }
 
     const script = document.createElement("script");
-    script.src = yandexMapsSrc();
+    script.src = leafletScriptUrl;
     script.async = true;
-    script.dataset.blizhniyYandexMaps = "1";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Не удалось загрузить Яндекс.Карты"));
+    script.dataset.blizhniyLeaflet = "1";
+    script.onload = () => {
+      if (window.L) {
+        resolve();
+        return;
+      }
+
+      reject(new Error("Библиотека карты не загрузилась"));
+    };
+    script.onerror = () => reject(new Error("Не удалось загрузить карту OpenStreetMap"));
     document.head.appendChild(script);
   });
 
-  return window.__blizhniyYandexMapsPromise;
+  return window.__blizhniyLeafletPromise;
 }
 
 function routeUrl(lat: number, lng: number) {
-  return `https://yandex.ru/maps/?pt=${lng},${lat}&z=16&l=map`;
+  return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`;
 }
 
 function mapWidgetUrl(lat: number, lng: number) {
-  const params = new URLSearchParams({
-    l: "map",
-    ll: `${lng},${lat}`,
-    pt: `${lng},${lat},pm2rdm`,
-    z: "16",
-  });
+  const bbox = [lng - 0.01, lat - 0.006, lng + 0.01, lat + 0.006].map((value) => value.toFixed(6)).join("%2C");
 
-  return `https://yandex.ru/map-widget/v1/?${params.toString()}`;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
 }
 
 function formatCoord(value: number) {
@@ -129,7 +125,7 @@ function formatCoord(value: number) {
 function normalizeSearchQuery(value: string) {
   const trimmed = value.trim();
 
-  if (!trimmed || /^-?\d+(?:[.,]\d+)?\s*,\s*-?\d+(?:[.,]\d+)?$/.test(trimmed)) {
+  if (!trimmed || coordsPattern.test(trimmed)) {
     return trimmed;
   }
 
@@ -168,96 +164,28 @@ function formatMapAddress(value: string) {
   return usefulParts.slice(0, 4).join(", ");
 }
 
-function getPropertyString(geoObject: YandexGeoObject | undefined, key: string) {
-  const value = geoObject?.properties?.get(key);
-  return typeof value === "string" ? value : "";
-}
-
-function metadataToRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object") {
+function parseCoords(value: string) {
+  if (!coordsPattern.test(value.trim())) {
     return undefined;
   }
 
-  const maybeGetAll = value as { getAll?: () => unknown };
+  const [latRaw, lngRaw] = value.split(",").map((part) => part.trim().replace(",", "."));
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
 
-  if (typeof maybeGetAll.getAll === "function") {
-    const all = maybeGetAll.getAll();
-    return all && typeof all === "object" ? (all as Record<string, unknown>) : undefined;
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function readNestedString(value: unknown, path: string[]) {
-  let current = value;
-
-  for (const key of path) {
-    if (!current || typeof current !== "object" || !(key in current)) {
-      return "";
-    }
-
-    current = (current as Record<string, unknown>)[key];
-  }
-
-  return typeof current === "string" ? current : "";
-}
-
-function getGeoObjectAddress(geoObject?: YandexGeoObject) {
-  const metaDataProperty = metadataToRecord(geoObject?.properties?.get("metaDataProperty"));
-  const address =
-    geoObject?.getAddressLine?.() ||
-    getPropertyString(geoObject, "text") ||
-    getPropertyString(geoObject, "name") ||
-    readNestedString(metaDataProperty, ["GeocoderMetaData", "Address", "formatted"]) ||
-    readNestedString(metaDataProperty, ["GeocoderMetaData", "text"]) ||
-    "";
-
-  return coordsPattern.test(address.trim()) ? "" : formatMapAddress(address);
-}
-
-function getFirstGeoObject(result: YandexGeocodeResult) {
-  return result.geoObjects.get(0);
-}
-
-function ymapsGeocode(request: string | number[], options: Record<string, unknown>) {
-  if (!window.ymaps?.geocode) {
-    return Promise.reject(new Error("Геокодер Яндекс.Карт не загрузился"));
-  }
-
-  return new Promise<YandexGeocodeResult>((resolve, reject) => {
-    window.ymaps?.geocode(request, options).then(resolve, reject);
-  });
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : undefined;
 }
 
 async function geocodeAddress(query: string) {
-  const baseOptions = {
-    boundedBy: krasnodarBounds,
-    provider: "yandex#map",
-    results: 1,
-    strictBounds: false,
-  };
+  const coords = parseCoords(query);
 
-  const result = await ymapsGeocode(query, baseOptions);
-  const geoObject = getFirstGeoObject(result);
-
-  if (geoObject) {
-    return geoObject;
+  if (coords) {
+    return {
+      address: `${formatCoord(coords.lat)}, ${formatCoord(coords.lng)}`,
+      coords: [coords.lat, coords.lng] as [number, number],
+    };
   }
 
-  return undefined;
-}
-
-async function reverseGeocode(coords: number[]) {
-  const result = await ymapsGeocode(coords, {
-    kind: "house",
-    provider: "yandex#map",
-    results: 1,
-  });
-
-  return getFirstGeoObject(result);
-}
-
-async function fallbackGeocodeAddress(query: string) {
   const params = new URLSearchParams({
     "accept-language": "ru",
     addressdetails: "1",
@@ -283,11 +211,11 @@ async function fallbackGeocodeAddress(query: string) {
 
   return {
     address: formatMapAddress(result.display_name?.trim() || "") || query,
-    coords: [lat, lng],
+    coords: [lat, lng] as [number, number],
   };
 }
 
-async function fallbackReverseGeocode(coords: number[]) {
+async function reverseGeocode(coords: [number, number]) {
   const params = new URLSearchParams({
     "accept-language": "ru",
     addressdetails: "1",
@@ -305,6 +233,11 @@ async function fallbackReverseGeocode(coords: number[]) {
   return formatMapAddress(result.display_name?.trim() || "");
 }
 
+function invalidateMapSize(map: LeafletMap | null) {
+  window.setTimeout(() => map?.invalidateSize(), 80);
+  window.setTimeout(() => map?.invalidateSize(), 320);
+}
+
 export function YandexMapPicker({
   addressName = "address",
   defaultAddress,
@@ -317,13 +250,13 @@ export function YandexMapPicker({
 }: YandexMapPickerProps) {
   const mapId = useId();
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<YandexMap | null>(null);
-  const placemarkRef = useRef<YandexPlacemark | null>(null);
+  const mapInstanceRef = useRef<LeafletMap | null>(null);
+  const placemarkRef = useRef<LeafletMarker | null>(null);
   const latestSearchRef = useRef(0);
   const [point, setPoint] = useState(typeof defaultLat === "number" && typeof defaultLng === "number" ? { lat: defaultLat, lng: defaultLng } : null);
   const [address, setAddress] = useState(defaultAddress ?? "");
   const [query, setQuery] = useState(defaultAddress ?? "");
-  const [status, setStatus] = useState("Загрузка карты...");
+  const [status, setStatus] = useState("Загрузка карты OpenStreetMap...");
   const [searching, setSearching] = useState(false);
   const center = point ?? krasnodarCenter;
   const initialPointRef = useRef(point);
@@ -336,103 +269,96 @@ export function YandexMapPicker({
   useEffect(() => {
     let cancelled = false;
 
-    loadYandexMaps()
+    loadLeaflet()
       .then(() => {
-        window.ymaps?.ready(() => {
-          if (cancelled || !mapRef.current || mapInstanceRef.current || !window.ymaps) {
+        if (cancelled || !mapRef.current || mapInstanceRef.current || !window.L) {
+          return;
+        }
+
+        const initialPoint = initialPointRef.current;
+        const initialCenter = initialCenterRef.current;
+        const map = window.L.map(mapRef.current, {
+          center: [initialCenter.lat, initialCenter.lng],
+          scrollWheelZoom: true,
+          zoom: initialPoint ? 15 : 11,
+          zoomControl: true,
+        });
+
+        window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "© OpenStreetMap contributors",
+          maxZoom: 19,
+        }).addTo(map);
+
+        mapInstanceRef.current = map;
+        invalidateMapSize(map);
+        setStatus("Кликните по карте, чтобы поставить метку");
+
+        if (initialPoint) {
+          placemarkRef.current = window.L.marker([initialPoint.lat, initialPoint.lng]).addTo(map);
+        }
+
+        map.on("click", (event) => {
+          const coords: [number, number] = [event.latlng.lat, event.latlng.lng];
+          const nextPoint = { lat: coords[0], lng: coords[1] };
+
+          setPoint(nextPoint);
+          setAddress("");
+          setQuery(resolvingAddressLabel);
+          setStatus("Определяем адрес по метке...");
+
+          if (!window.L) {
             return;
           }
 
-          const initialPoint = initialPointRef.current;
-          const initialCenter = initialCenterRef.current;
-          const map = new window.ymaps.Map(mapRef.current, {
-            center: [initialCenter.lat, initialCenter.lng],
-            controls: ["zoomControl"],
-            zoom: initialPoint ? 15 : 11,
-          });
-
-          mapInstanceRef.current = map;
-          setStatus("Кликните по карте, чтобы поставить метку");
-
-          if (initialPoint) {
-            const placemark = new window.ymaps.Placemark([initialPoint.lat, initialPoint.lng]);
-            placemarkRef.current = placemark;
-            map.geoObjects.add(placemark);
+          if (!placemarkRef.current) {
+            placemarkRef.current = window.L.marker(coords).addTo(map);
+          } else {
+            placemarkRef.current.setLatLng(coords);
           }
 
-          map.events.add("click", (event) => {
-            const coords = event.get("coords");
-            const nextPoint = { lat: coords[0], lng: coords[1] };
+          const searchId = latestSearchRef.current + 1;
+          latestSearchRef.current = searchId;
 
-            setPoint(nextPoint);
-            setAddress("");
-            setQuery(resolvingAddressLabel);
-            setStatus("Определяем адрес по метке...");
+          reverseGeocode(coords)
+            .then((nextAddress) => {
+              if (searchId !== latestSearchRef.current) {
+                return;
+              }
 
-            if (!window.ymaps) {
-              return;
-            }
+              if (nextAddress) {
+                setAddress(nextAddress);
+                setQuery(nextAddress);
+                setStatus("Адрес определен");
+                return;
+              }
 
-            if (!placemarkRef.current) {
-              const placemark = new window.ymaps.Placemark(coords);
-              placemarkRef.current = placemark;
-              map.geoObjects.add(placemark);
-            } else {
-              placemarkRef.current.geometry.setCoordinates(coords);
-            }
-
-            const searchId = latestSearchRef.current + 1;
-            latestSearchRef.current = searchId;
-
-            reverseGeocode(coords)
-              .then(async (result) => {
-                if (searchId !== latestSearchRef.current) {
-                  return;
-                }
-
-                const nextAddress = getGeoObjectAddress(result) || (await fallbackReverseGeocode(coords));
-
-                if (nextAddress) {
-                  setAddress(nextAddress);
-                  setQuery(nextAddress);
-                  setStatus("Адрес определен");
-                  return;
-                }
-
+              setQuery("");
+              setStatus("Метка выбрана, но адрес определить не удалось");
+            })
+            .catch(() => {
+              if (searchId === latestSearchRef.current) {
                 setQuery("");
-                setStatus("Метка выбрана, но Яндекс не вернул адрес для этой точки");
-              })
-              .catch(async () => {
-                if (searchId !== latestSearchRef.current) {
-                  return;
-                }
-
-                const fallbackAddress = await fallbackReverseGeocode(coords);
-
-                if (fallbackAddress && searchId === latestSearchRef.current) {
-                  setAddress(fallbackAddress);
-                  setQuery(fallbackAddress);
-                  setStatus("Адрес определен");
-                  return;
-                }
-
-                if (searchId === latestSearchRef.current) {
-                  setQuery("");
-                  setStatus("Метка выбрана, но адрес определить не удалось");
-                }
-              });
-          });
+                setStatus("Метка выбрана, но адрес определить не удалось");
+              }
+            });
         });
       })
       .catch(() => {
         if (!cancelled) {
-          setStatus("Карту не удалось загрузить. Проверьте ключ Яндекс.Карт или сеть.");
+          setStatus("Карту OpenStreetMap не удалось загрузить. Проверьте сеть или блокировку CDN.");
         }
       });
 
+    function onResize() {
+      invalidateMapSize(mapInstanceRef.current);
+    }
+
+    window.addEventListener("resize", onResize);
+
     return () => {
       cancelled = true;
-      mapInstanceRef.current?.destroy();
+      window.removeEventListener("resize", onResize);
+      mapInstanceRef.current?.remove();
       mapInstanceRef.current = null;
       placemarkRef.current = null;
     };
@@ -444,16 +370,14 @@ export function YandexMapPicker({
     setQuery("");
     setStatus("Кликните по карте, чтобы поставить метку");
 
-    if (mapInstanceRef.current && placemarkRef.current) {
-      mapInstanceRef.current.geoObjects.remove(placemarkRef.current);
-      placemarkRef.current = null;
-    }
+    mapInstanceRef.current?.setView([krasnodarCenter.lat, krasnodarCenter.lng], 11);
+    placemarkRef.current = null;
   }
 
   const searchAddress = useCallback(async (nextQuery = query, source: "auto" | "manual" = "manual") => {
     const trimmedQuery = nextQuery.trim();
 
-    if (!trimmedQuery || trimmedQuery === resolvingAddressLabel || !window.ymaps) {
+    if (!trimmedQuery || trimmedQuery === resolvingAddressLabel) {
       return;
     }
 
@@ -464,58 +388,31 @@ export function YandexMapPicker({
     setStatus("Ищем адрес...");
 
     try {
-      let geoObject: YandexGeoObject | undefined;
-      let fallbackResult: Awaited<ReturnType<typeof fallbackGeocodeAddress>> | undefined;
-
-      try {
-        geoObject = await geocodeAddress(geocodeQuery);
-      } catch {
-        fallbackResult = await fallbackGeocodeAddress(geocodeQuery);
-      }
+      const result = await geocodeAddress(geocodeQuery);
 
       if (searchId !== latestSearchRef.current) {
         return;
       }
 
-      if (!geoObject) {
-        fallbackResult ??= await fallbackGeocodeAddress(geocodeQuery);
-      }
-
-      if (!geoObject && geocodeQuery !== trimmedQuery) {
-        try {
-          geoObject = await geocodeAddress(trimmedQuery);
-        } catch {
-          fallbackResult ??= await fallbackGeocodeAddress(trimmedQuery);
-        }
-
-        if (!geoObject) {
-          fallbackResult ??= await fallbackGeocodeAddress(trimmedQuery);
-        }
-      }
-
-      const coords = geoObject?.geometry.getCoordinates() ?? fallbackResult?.coords;
-
-      if (!coords) {
+      if (!result) {
         setStatus("Адрес не найден. Попробуйте уточнить запрос.");
         return;
       }
 
-      const nextPoint = { lat: coords[0], lng: coords[1] };
-      const nextAddress = getGeoObjectAddress(geoObject) || fallbackResult?.address || geocodeQuery;
+      const nextPoint = { lat: result.coords[0], lng: result.coords[1] };
 
       setPoint(nextPoint);
-      setAddress(nextAddress);
-      setQuery(nextAddress);
+      setAddress(result.address);
+      setQuery(result.address);
       setStatus("Адрес найден");
-      mapInstanceRef.current?.setCenter(coords, 16);
+      mapInstanceRef.current?.setView(result.coords, 16);
+      invalidateMapSize(mapInstanceRef.current);
 
-      if (window.ymaps) {
+      if (window.L) {
         if (!placemarkRef.current) {
-          const placemark = new window.ymaps.Placemark(coords);
-          placemarkRef.current = placemark;
-          mapInstanceRef.current?.geoObjects.add(placemark);
+          placemarkRef.current = window.L.marker(result.coords).addTo(mapInstanceRef.current as LeafletMap);
         } else {
-          placemarkRef.current.geometry.setCoordinates(coords);
+          placemarkRef.current.setLatLng(result.coords);
         }
       }
     } catch {
@@ -532,7 +429,7 @@ export function YandexMapPicker({
   useEffect(() => {
     const trimmedQuery = query.trim();
 
-    if (!trimmedQuery || trimmedQuery === resolvingAddressLabel || trimmedQuery.length < 5 || trimmedQuery === address.trim() || !window.ymaps) {
+    if (!trimmedQuery || trimmedQuery === resolvingAddressLabel || trimmedQuery.length < 5 || trimmedQuery === address.trim()) {
       return;
     }
 
@@ -610,12 +507,12 @@ export function YandexMapView({ lat, lng, label }: YandexMapViewProps) {
       />
       {!loaded ? (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-50 text-sm font-semibold text-slate-500">
-          {failed ? "Карту не удалось загрузить" : "Загружаем Яндекс.Карту..."}
+          {failed ? "Карту не удалось загрузить" : "Загружаем OpenStreetMap..."}
         </div>
       ) : null}
       <a href={routeUrl(lat, lng)} target="_blank" rel="noreferrer" className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-lg bg-white/95 px-3 py-2 text-xs font-bold text-[#0875d1] shadow-card">
         <MapPin className="h-4 w-4" />
-        Открыть в Яндекс.Картах
+        Открыть карту
       </a>
     </div>
   );
