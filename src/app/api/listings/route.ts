@@ -22,6 +22,8 @@ type CreateListingBody = {
   title?: string;
 };
 
+const messengerPattern = /^(@[A-Za-z0-9_]{5,32}|https?:\/\/[^\s]+)$/;
+
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -33,6 +35,19 @@ function cleanNumber(value: unknown) {
 
 function cleanKind(value: unknown): ListingKind {
   return value === "kuplyu" || value === "menyayu" || value === "otdam-darom" || value === "arenda" ? value : "prodam";
+}
+
+function hasValidPhone(value: string) {
+  if (!value) {
+    return false;
+  }
+
+  const digits = value.replace(/\D/g, "");
+  return digits.length === 10 || (digits.length === 11 && (digits.startsWith("7") || digits.startsWith("8")));
+}
+
+function hasValidMessenger(value: string) {
+  return Boolean(value && messengerPattern.test(value));
 }
 
 export async function POST(request: Request) {
@@ -59,12 +74,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const title = cleanString(body.title) || "Новое объявление";
+  const title = cleanString(body.title);
+  const description = cleanString(body.description);
   const phone = cleanString(body.phone);
   const messengerUrl = cleanString(body.messengerUrl);
 
+  if (title.length < 3 || title.length > 120) {
+    return NextResponse.json({ error: "Название объявления должно быть от 3 до 120 символов" }, { status: 400 });
+  }
+
+  if (description.length > 3000) {
+    return NextResponse.json({ error: "Описание объявления слишком длинное" }, { status: 400 });
+  }
+
   if (!phone && !messengerUrl) {
     return NextResponse.json({ error: "Укажите телефон или мессенджер для связи" }, { status: 400 });
+  }
+
+  if (phone && !hasValidPhone(phone)) {
+    return NextResponse.json({ error: "Введите корректный телефон" }, { status: 400 });
+  }
+
+  if (messengerUrl && !hasValidMessenger(messengerUrl)) {
+    return NextResponse.json({ error: "Введите @username или ссылку на мессенджер" }, { status: 400 });
   }
 
   try {
@@ -73,7 +105,7 @@ export async function POST(request: Request) {
       authorId: auth.user.id,
       categorySlug: cleanString(body.categorySlug) || "dlya-doma-i-dachi",
       city: cleanString(body.city) || "Краснодар",
-      description: cleanString(body.description) || undefined,
+      description: description || undefined,
       district: cleanString(body.district) || undefined,
       kind: cleanKind(body.kind),
       lat: cleanNumber(body.lat),
