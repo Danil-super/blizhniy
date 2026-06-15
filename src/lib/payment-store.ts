@@ -83,6 +83,7 @@ async function targetTitleForPayment(row: PaymentRow) {
 export async function mapStoredPayment(row: PaymentRow): Promise<Payment> {
   return {
     id: row.id,
+    userId: row.user_id ?? undefined,
     targetType: row.target_type,
     targetId: row.target_id,
     targetTitle: await targetTitleForPayment(row),
