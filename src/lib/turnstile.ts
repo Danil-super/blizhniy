@@ -8,6 +8,12 @@ const maximumTokenAgeMs = 2 * 60 * 60 * 1000;
 const rateLimitWindowMs = 60 * 1000;
 const maximumChecksPerWindow = 40;
 const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
+const turnstileSiteverifyUrl = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+
+type TurnstileSiteverifyResponse = {
+  success: boolean;
+  "error-codes"?: string[];
+};
 
 function isRateLimited(remoteIp?: string) {
   if (!remoteIp) {
@@ -26,6 +32,40 @@ function isRateLimited(remoteIp?: string) {
   return bucket.count > maximumChecksPerWindow;
 }
 
+function isQuietDevelopmentToken(token: string) {
+  const [prefix, issuedAtRaw, nonce] = token.split(":");
+  const issuedAt = Number(issuedAtRaw);
+
+  if (prefix !== tokenPrefix || !Number.isFinite(issuedAt) || !nonce || nonce.length < 12) {
+    return false;
+  }
+
+  const age = Date.now() - issuedAt;
+  return age >= minimumTokenAgeMs && age <= maximumTokenAgeMs;
+}
+
+async function verifyCloudflareTurnstileToken(token: string, secret: string, remoteIp?: string) {
+  const body = new URLSearchParams({
+    secret,
+    response: token,
+  });
+
+  if (remoteIp) {
+    body.set("remoteip", remoteIp);
+  }
+
+  const response = await fetch(turnstileSiteverifyUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+  const payload = (await response.json().catch(() => null)) as TurnstileSiteverifyResponse | null;
+
+  return Boolean(response.ok && payload?.success);
+}
+
 export async function verifyTurnstileToken(token: string, remoteIp?: string): Promise<boolean> {
   const cleanToken = token.trim();
 
@@ -37,19 +77,13 @@ export async function verifyTurnstileToken(token: string, remoteIp?: string): Pr
     return false;
   }
 
-  const [prefix, issuedAtRaw, nonce] = cleanToken.split(":");
-  const issuedAt = Number(issuedAtRaw);
+  const secret = process.env.TURNSTILE_SECRET_KEY?.trim();
 
-  if (prefix !== tokenPrefix || !Number.isFinite(issuedAt) || !nonce || nonce.length < 12) {
-    return false;
+  if (secret) {
+    return verifyCloudflareTurnstileToken(cleanToken, secret, remoteIp);
   }
 
-  const age = Date.now() - issuedAt;
-  if (age < minimumTokenAgeMs || age > maximumTokenAgeMs) {
-    return false;
-  }
-
-  return true;
+  return isQuietDevelopmentToken(cleanToken);
 }
 
 export async function verifyTurnstileFormData(formData: FormData, remoteIp?: string) {
