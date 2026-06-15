@@ -22,6 +22,11 @@ type AdminDemoPublishButtonProps = {
   paymentTariffId?: string;
 };
 
+type MediaUploadResponse = {
+  files?: Array<{ path?: string }>;
+  error?: string;
+};
+
 function readValue(formData: FormData, name: string, fallback = "") {
   return String(formData.get(name) ?? "").trim() || fallback;
 }
@@ -88,6 +93,35 @@ function readStoredPublications() {
   return [];
 }
 
+function readImageFiles(formData: FormData) {
+  return formData.getAll("photos").filter((item): item is File => item instanceof File && item.size > 0 && item.type.startsWith("image/"));
+}
+
+async function uploadPublicationMedia(formData: FormData, folder: "fair-applications" | "listings", accessToken: string) {
+  const files = readImageFiles(formData);
+
+  if (!files.length) {
+    return [];
+  }
+
+  const uploadFormData = new FormData();
+  uploadFormData.set("folder", folder);
+  files.slice(0, 10).forEach((file) => uploadFormData.append("files", file));
+
+  const response = await fetch("/api/uploads/media", {
+    body: uploadFormData,
+    headers: { Authorization: `Bearer ${accessToken}` },
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as MediaUploadResponse | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "Не удалось загрузить фото.");
+  }
+
+  return payload?.files?.map((file) => file.path).filter((path): path is string => Boolean(path)) ?? [];
+}
+
 async function buildFallbackPublication(formData: FormData, type: DemoPublicationType, status: string): Promise<DemoPublication> {
   const now = new Date().toISOString();
   const id = `demo-${type}-${Date.now().toString(36)}`;
@@ -125,6 +159,7 @@ async function createSupabaseListing(formData: FormData, tariffId: string, acces
     throw new Error("Укажите хотя бы один контакт объявления: телефон, email или Telegram/WhatsApp.");
   }
 
+  const mediaPaths = await uploadPublicationMedia(formData, "listings", accessToken);
   const result = await createStoredListingPublication({
     accessToken,
     address: hasSelectedMapPoint(formData) ? readValue(formData, "address") : undefined,
@@ -134,6 +169,7 @@ async function createSupabaseListing(formData: FormData, tariffId: string, acces
     kind,
     lat: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lat") : undefined,
     lng: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lng") : undefined,
+    mediaPaths,
     messengerUrl: messengerUrl || undefined,
     phone: phone || undefined,
     price: normalizeListingPrice(readRawValue(formData, "price"), "по договоренности"),
