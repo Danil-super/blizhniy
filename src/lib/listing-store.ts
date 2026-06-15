@@ -51,6 +51,7 @@ export type CreateStoredListingInput = {
   kind: ListingKind;
   lat?: number;
   lng?: number;
+  mediaPaths?: string[];
   messengerUrl?: string;
   phone?: string;
   price?: string;
@@ -199,6 +200,32 @@ async function findRegionId(cityRow?: CityIdRow) {
   return rows[0]?.id;
 }
 
+function cleanMediaPaths(paths?: string[]) {
+  if (!Array.isArray(paths)) {
+    return [];
+  }
+
+  return paths.map((path) => path.trim()).filter((path) => path && path.length <= 500).slice(0, 10);
+}
+
+async function insertListingImages(listingId: string, mediaPaths?: string[]) {
+  const paths = cleanMediaPaths(mediaPaths);
+
+  if (!paths.length) {
+    return;
+  }
+
+  await supabaseRest("/rest/v1/listing_images", {
+    method: "POST",
+    prefer: "return=minimal",
+    body: paths.map((path, index) => ({
+      listing_id: listingId,
+      storage_path: path,
+      sort_order: index,
+    })),
+  });
+}
+
 export async function createStoredListing(input: CreateStoredListingInput) {
   if (!isSupabaseRestConfigured()) {
     return undefined;
@@ -234,7 +261,15 @@ export async function createStoredListing(input: CreateStoredListingInput) {
     },
   });
 
-  return rows[0] ? mapListing(rows[0]) : undefined;
+  const listing = rows[0];
+
+  if (!listing) {
+    return undefined;
+  }
+
+  await insertListingImages(listing.id, input.mediaPaths);
+
+  return mapListing(listing);
 }
 
 export async function markStoredListingPaid(listingId: string) {
