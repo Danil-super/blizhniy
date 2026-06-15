@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
-import { confirmClientPayment } from "@/lib/client-payment-flow";
 import { createStoredListingPublication } from "@/lib/client-listing-flow";
 import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationHistory, type DemoPublication, type DemoPublicationType } from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
@@ -143,16 +142,11 @@ async function createSupabaseListing(formData: FormData, tariffId: string, acces
     title: readValue(formData, "title", "Новое объявление"),
   });
 
-  if (result.payment?.confirmationUrl) {
-    window.location.href = result.payment.confirmationUrl;
-    return;
+  if (!result.payment?.confirmationUrl) {
+    throw new Error("Платеж создан, но ЮKassa не вернула ссылку на оплату. Проверьте YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и PAYMENT_PROVIDER=yookassa в Vercel.");
   }
 
-  if (result.payment?.id) {
-    await confirmClientPayment(result.payment.id);
-  }
-
-  window.location.href = result.listing?.slug ? `/obyavlenie/${result.listing.slug}` : "/cabinet/obyavleniya";
+  window.location.href = result.payment.confirmationUrl;
 }
 
 export function AdminDemoPublishButton({
