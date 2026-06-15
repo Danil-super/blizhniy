@@ -10,7 +10,7 @@ import {
 } from "@/lib/payment-store";
 import { getPublicSiteUrl } from "@/lib/site-url";
 import { isSupabaseRestConfigured } from "@/lib/supabase-rest";
-import { getActiveTariffById } from "@/lib/tariff-store";
+import { getActiveStoredTariffById } from "@/lib/tariff-store";
 import type { Payment, Tariff } from "@/lib/types";
 
 type PaymentTargetType = Payment["targetType"];
@@ -286,7 +286,7 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
 }
 
 export async function createPayment(input: CreatePaymentInput) {
-  const tariff = getActiveTariffById(input.tariffId);
+  const tariff = await getActiveStoredTariffById(input.tariffId);
 
   if (!tariff) {
     throw new Error("Tariff not found or inactive");
