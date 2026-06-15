@@ -88,15 +88,10 @@ create policy "Users can insert own organization profile" on organization_profil
 create policy "Users can update own organization profile" on organization_profiles for update using (user_id = (select auth.uid()) or public.is_admin()) with check (user_id = (select auth.uid()) or public.is_admin());
 create policy "Users can delete own organization profile" on organization_profiles for delete using (user_id = (select auth.uid()) or public.is_admin());
 
-create policy "Users can read own applications" on applications for select using (
-  exists (select 1 from specialist_profiles where specialist_profiles.id = applications.specialist_profile_id and specialist_profiles.user_id = (select auth.uid()))
-  or exists (select 1 from vacancies where vacancies.id = applications.vacancy_id and vacancies.author_id = (select auth.uid()))
-  or public.is_admin()
-);
-create policy "Specialists can create own applications" on applications for insert with check (
-  exists (select 1 from specialist_profiles where specialist_profiles.id = applications.specialist_profile_id and specialist_profiles.user_id = (select auth.uid()))
-);
-create policy "Admins can manage applications" on applications for all using (public.is_admin()) with check (public.is_admin());
+create policy "Users can read own applications" on applications for select using (exists (select 1 from specialist_profiles where specialist_profiles.id = applications.specialist_profile_id and specialist_profiles.user_id = (select auth.uid())) or exists (select 1 from vacancies where vacancies.id = applications.vacancy_id and vacancies.author_id = (select auth.uid())) or public.is_admin());
+create policy "Specialists can create own applications" on applications for insert with check (exists (select 1 from specialist_profiles where specialist_profiles.id = applications.specialist_profile_id and specialist_profiles.user_id = (select auth.uid())) or public.is_admin());
+create policy "Admins can update applications" on applications for update using (public.is_admin()) with check (public.is_admin());
+create policy "Admins can delete applications" on applications for delete using (public.is_admin());
 
 create policy "Public can read published fair applications" on fair_applications for select using (status = 'published' or user_id = (select auth.uid()) or public.is_admin());
 create policy "Users can insert own fair applications" on fair_applications for insert with check (user_id = (select auth.uid()) or public.is_admin());
