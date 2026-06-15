@@ -98,34 +98,15 @@ create policy "Specialists can create own applications" on applications for inse
 );
 create policy "Admins can manage applications" on applications for all using (public.is_admin()) with check (public.is_admin());
 
-create policy "Public can read published fair applications" on fair_applications for select using (status = 'published');
-create policy "Users can manage own fair applications" on fair_applications for all using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
-create policy "Admins can manage fair applications" on fair_applications for all using (public.is_admin()) with check (public.is_admin());
+create policy "Public can read published fair applications" on fair_applications for select using (status = 'published' or user_id = (select auth.uid()) or public.is_admin());
+create policy "Users can insert own fair applications" on fair_applications for insert with check (user_id = (select auth.uid()) or public.is_admin());
+create policy "Users can update own fair applications" on fair_applications for update using (user_id = (select auth.uid()) or public.is_admin()) with check (user_id = (select auth.uid()) or public.is_admin());
+create policy "Users can delete own fair applications" on fair_applications for delete using (user_id = (select auth.uid()) or public.is_admin());
 
-create policy "Public can read fair application images" on fair_application_images for select using (
-  exists (
-    select 1
-    from fair_applications
-    where fair_applications.id = fair_application_images.fair_application_id
-      and fair_applications.status = 'published'
-  )
-);
-create policy "Owners can manage fair application images" on fair_application_images for all using (
-  exists (
-    select 1
-    from fair_applications
-    where fair_applications.id = fair_application_images.fair_application_id
-      and fair_applications.user_id = (select auth.uid())
-  )
-) with check (
-  exists (
-    select 1
-    from fair_applications
-    where fair_applications.id = fair_application_images.fair_application_id
-      and fair_applications.user_id = (select auth.uid())
-  )
-);
-create policy "Admins can manage fair application images" on fair_application_images for all using (public.is_admin()) with check (public.is_admin());
+create policy "Public can read fair application images" on fair_application_images for select using (exists (select 1 from fair_applications where fair_applications.id = fair_application_images.fair_application_id and (fair_applications.status = 'published' or fair_applications.user_id = (select auth.uid()) or public.is_admin())));
+create policy "Owners can insert fair application images" on fair_application_images for insert with check (exists (select 1 from fair_applications where fair_applications.id = fair_application_images.fair_application_id and (fair_applications.user_id = (select auth.uid()) or public.is_admin())));
+create policy "Owners can update fair application images" on fair_application_images for update using (exists (select 1 from fair_applications where fair_applications.id = fair_application_images.fair_application_id and (fair_applications.user_id = (select auth.uid()) or public.is_admin()))) with check (exists (select 1 from fair_applications where fair_applications.id = fair_application_images.fair_application_id and (fair_applications.user_id = (select auth.uid()) or public.is_admin())));
+create policy "Owners can delete fair application images" on fair_application_images for delete using (exists (select 1 from fair_applications where fair_applications.id = fair_application_images.fair_application_id and (fair_applications.user_id = (select auth.uid()) or public.is_admin())));
 
 create policy "Users can read own payments" on payments for select using (user_id = (select auth.uid()) or public.is_admin());
 create policy "Users can create own payments" on payments for insert with check (user_id = (select auth.uid()) or public.is_admin());
