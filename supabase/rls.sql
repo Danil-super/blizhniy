@@ -63,15 +63,10 @@ create policy "Users can insert own listings" on listings for insert with check 
 create policy "Users can update own listings" on listings for update using (author_id = (select auth.uid()) or public.is_admin()) with check (author_id = (select auth.uid()) or public.is_admin());
 create policy "Users can delete own listings" on listings for delete using (author_id = (select auth.uid()) or public.is_admin());
 
-create policy "Public can read listing images" on listing_images for select using (
-  exists (select 1 from listings where listings.id = listing_images.listing_id and listings.status = 'published')
-);
-create policy "Owners can manage listing images" on listing_images for all using (
-  exists (select 1 from listings where listings.id = listing_images.listing_id and listings.author_id = (select auth.uid()))
-) with check (
-  exists (select 1 from listings where listings.id = listing_images.listing_id and listings.author_id = (select auth.uid()))
-);
-create policy "Admins can manage listing images" on listing_images for all using (public.is_admin()) with check (public.is_admin());
+create policy "Public can read listing images" on listing_images for select using (exists (select 1 from listings where listings.id = listing_images.listing_id and (listings.status = 'published' or listings.author_id = (select auth.uid()) or public.is_admin())));
+create policy "Owners can insert listing images" on listing_images for insert with check (exists (select 1 from listings where listings.id = listing_images.listing_id and (listings.author_id = (select auth.uid()) or public.is_admin())));
+create policy "Owners can update listing images" on listing_images for update using (exists (select 1 from listings where listings.id = listing_images.listing_id and (listings.author_id = (select auth.uid()) or public.is_admin()))) with check (exists (select 1 from listings where listings.id = listing_images.listing_id and (listings.author_id = (select auth.uid()) or public.is_admin())));
+create policy "Owners can delete listing images" on listing_images for delete using (exists (select 1 from listings where listings.id = listing_images.listing_id and (listings.author_id = (select auth.uid()) or public.is_admin())));
 
 create policy "Public can read published vacancies" on vacancies for select using (status = 'published' or author_id = (select auth.uid()) or public.is_admin());
 create policy "Users can insert own vacancies" on vacancies for insert with check (author_id = (select auth.uid()) or public.is_admin());
