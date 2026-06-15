@@ -238,6 +238,27 @@ canvas {
   order: 4;
 }
 
+.map-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.map-picker-search > input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.map-picker-search-button {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  white-space: nowrap;
+}
+
 .map-picker-canvas {
   display: block;
   height: clamp(16rem, 34vw, 24rem);
