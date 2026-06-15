@@ -1,8 +1,14 @@
 import { region } from "@/lib/data";
+import { publicMediaUrl } from "@/lib/storage-upload";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { Listing, ListingKind, PublicationStatus } from "@/lib/types";
 
 type ListingTypeRow = "sell" | "buy" | "exchange" | "free";
+
+type ListingImageRow = {
+  sort_order?: number | null;
+  storage_path: string;
+};
 
 type ListingRow = {
   id: string;
@@ -22,6 +28,7 @@ type ListingRow = {
   created_at: string;
   published_at?: string | null;
   expires_at?: string | null;
+  listing_images?: ListingImageRow[] | null;
   categories?: {
     name: string;
     parent_id?: string | null;
@@ -83,6 +90,9 @@ const fallbackCategoryByKind: Record<ListingKind, string> = {
   prodam: "tovary-i-veshchi",
 };
 
+const listingSelect =
+  "id,listing_type,title,description,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name,email)";
+
 function toNumber(value: ListingRow["latitude"]) {
   if (value === null || value === undefined || value === "") {
     return undefined;
@@ -128,6 +138,14 @@ function addDaysIsoDate(value: string, days: number) {
   return date.toISOString();
 }
 
+function mediaUrls(row: ListingRow) {
+  return [...(row.listing_images ?? [])]
+    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
+    .map((image) => image.storage_path)
+    .filter(Boolean)
+    .map(publicMediaUrl);
+}
+
 function mapListing(row: ListingRow): Listing {
   const kind = listingKindByDbType[row.listing_type] ?? "prodam";
   const categorySlug = row.categories?.slug ?? fallbackCategoryByKind[kind];
@@ -150,6 +168,7 @@ function mapListing(row: ListingRow): Listing {
     hasMapPoint: Boolean(row.latitude && row.longitude),
     showExactAddress: row.show_exact_address,
     price: formatPrice(row.price),
+    images: mediaUrls(row),
     imageTone: "blue",
     phone: row.contact_phone ?? undefined,
     email: row.profiles?.email ?? undefined,
@@ -236,7 +255,7 @@ export async function createStoredListing(input: CreateStoredListingInput) {
   const regionId = await findRegionId(cityRow);
 
   const status = input.status ?? "pending_payment";
-  const rows = await supabaseRest<ListingRow[]>("/rest/v1/listings?select=*,categories(slug,name,parent_id),cities(slug,name),profiles(display_name,email)", {
+  const rows = await supabaseRest<ListingRow[]>(`/rest/v1/listings?select=${listingSelect}`, {
     method: "POST",
     prefer: "return=representation",
     body: {
@@ -269,7 +288,7 @@ export async function createStoredListing(input: CreateStoredListingInput) {
 
   await insertListingImages(listing.id, input.mediaPaths);
 
-  return mapListing(listing);
+  return getStoredListingById(listing.id) ?? mapListing(listing);
 }
 
 export async function markStoredListingPaid(listingId: string) {
@@ -293,6 +312,24 @@ export async function markStoredListingPaid(listingId: string) {
   return true;
 }
 
+export async function getStoredListingById(listingId: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
+    return undefined;
+  }
+
+  try {
+    const rows = await supabaseRest<ListingRow[]>(
+      `/rest/v1/listings?select=${listingSelect}&id=eq.${encodeURIComponent(listingId)}&limit=1`,
+      { useServiceRole: false },
+    );
+
+    return rows[0] ? mapListing(rows[0]) : undefined;
+  } catch (error) {
+    console.error("Failed to load listing from Supabase", error);
+    return undefined;
+  }
+}
+
 export async function listStoredListings(limit = 24) {
   if (!isSupabaseRestConfigured()) {
     return [];
@@ -300,7 +337,7 @@ export async function listStoredListings(limit = 24) {
 
   try {
     const rows = await supabaseRest<ListingRow[]>(
-      `/rest/v1/listings?select=id,listing_type,title,description,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,created_at,published_at,expires_at,categories(slug,name,parent_id),cities(slug,name),profiles(display_name,email)&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`,
+      `/rest/v1/listings?select=${listingSelect}&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`,
       { useServiceRole: false },
     );
 
