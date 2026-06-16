@@ -16,6 +16,7 @@ type CreateStoredListingInput = {
   messengerUrl?: string;
   phone?: string;
   price?: string;
+  status?: "draft" | "pending_payment";
   subcategory?: string;
   tariffId?: string;
   title?: string;
