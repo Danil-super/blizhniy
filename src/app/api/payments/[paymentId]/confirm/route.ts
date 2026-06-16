@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPayment, confirmPayment } from "@/lib/payment-provider";
-import { findStoredPaymentByProvider, getStoredPayment } from "@/lib/payment-store";
+import { findStoredPaymentByProvider, getLatestPendingStoredPaymentForUser, getStoredPayment } from "@/lib/payment-store";
 import { getAuthenticatedRequestUser, isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
 
 export async function POST(request: Request, { params }: { params: Promise<{ paymentId: string }> }) {
@@ -16,7 +16,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
         return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы подтвердить платеж" }, { status: 401 });
       }
 
-      const payment = (await getStoredPayment(paymentId)) ?? (await findStoredPaymentByProvider(paymentId)) ?? getPayment(paymentId);
+      const payment =
+        (await getStoredPayment(paymentId)) ??
+        (await findStoredPaymentByProvider(paymentId)) ??
+        getPayment(paymentId) ??
+        (await getLatestPendingStoredPaymentForUser(auth.user.id));
       const isAdmin = await isAdminRequest(request);
 
       if (payment?.userId && payment.userId !== auth.user.id && !isAdmin) {
