@@ -170,6 +170,19 @@ export async function listStoredPaymentsForUser(userId: string) {
   return payments;
 }
 
+export async function getLatestPendingStoredPaymentForUser(userId: string) {
+  if (!isSupabaseRestConfigured()) {
+    return undefined;
+  }
+
+  const createdAfter = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const rows = await supabaseRest<PaymentRow[]>(
+    `/rest/v1/payments?select=*&user_id=eq.${encodeURIComponent(userId)}&provider=eq.yookassa&status=in.(created,pending)&created_at=gte.${encodeURIComponent(createdAfter)}&order=created_at.desc&limit=1`,
+  );
+
+  return rows[0] ? mapStoredPayment(rows[0]) : undefined;
+}
+
 export async function findStoredPaymentByProvider(providerPaymentId: string, localPaymentId?: string) {
   if (!isSupabaseRestConfigured()) {
     return undefined;
