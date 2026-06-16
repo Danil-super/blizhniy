@@ -50,7 +50,8 @@ async function getAuthHeaders(accessToken?: string): Promise<Record<string, stri
 
 export async function createStoredListingPublication(input: CreateStoredListingInput) {
   const { accessToken, ...payloadBody } = input;
-  const response = await fetch("/api/listings", {
+  const endpoint = payloadBody.status === "draft" ? "/api/listings/draft" : "/api/listings";
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await getAuthHeaders(accessToken)) },
     body: JSON.stringify(payloadBody),
