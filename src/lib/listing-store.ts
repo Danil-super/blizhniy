@@ -298,9 +298,9 @@ export async function markStoredListingPaid(listingId: string) {
 
   const now = new Date().toISOString();
 
-  await supabaseRest(`/rest/v1/listings?id=eq.${encodeURIComponent(listingId)}`, {
+  const rows = await supabaseRest<Array<Pick<ListingRow, "id">>>(`/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}`, {
     method: "PATCH",
-    prefer: "return=minimal",
+    prefer: "return=representation",
     body: {
       expires_at: addDaysIsoDate(now, 30),
       is_paid: true,
@@ -309,7 +309,7 @@ export async function markStoredListingPaid(listingId: string) {
     },
   });
 
-  return true;
+  return Boolean(rows[0]?.id);
 }
 
 export async function getStoredListingById(listingId: string) {
@@ -370,14 +370,17 @@ export async function archiveStoredListingForUser(listingId: string, userId: str
     return false;
   }
 
-  await supabaseRest(`/rest/v1/listings?id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}`, {
-    method: "PATCH",
-    prefer: "return=minimal",
-    body: {
-      published_at: null,
-      status: "archived",
+  const rows = await supabaseRest<Array<Pick<ListingRow, "id">>>(
+    `/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}`,
+    {
+      method: "PATCH",
+      prefer: "return=representation",
+      body: {
+        published_at: null,
+        status: "archived",
+      },
     },
-  });
+  );
 
-  return true;
+  return Boolean(rows[0]?.id);
 }

@@ -224,7 +224,12 @@ export async function updateStoredPayment(payment: Payment) {
 
 export async function markStoredPaymentTargetSucceeded(payment: Payment) {
   if (payment.targetType === "listing" && payment.targetId && isUuid(payment.targetId)) {
-    await markStoredListingPaid(payment.targetId);
+    const updated = await markStoredListingPaid(payment.targetId);
+
+    if (!updated) {
+      throw new Error("Не удалось опубликовать объявление после оплаты");
+    }
+
     return "published" as const;
   }
 

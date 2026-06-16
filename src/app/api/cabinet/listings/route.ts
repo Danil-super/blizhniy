@@ -36,7 +36,11 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "listing id is required" }, { status: 400 });
   }
 
-  await archiveStoredListingForUser(listingId, auth.user.id);
+  const archived = await archiveStoredListingForUser(listingId, auth.user.id);
+
+  if (!archived) {
+    return NextResponse.json({ error: "Объявление не найдено или уже удалено" }, { status: 404 });
+  }
 
   return NextResponse.json({ ok: true });
 }

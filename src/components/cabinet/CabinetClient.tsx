@@ -692,6 +692,10 @@ function normalizePublicationStatus(status: string) {
   return status.trim().toLowerCase();
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value);
+}
+
 function canMarkListingSold(item: DemoPublication) {
   return item.type === "listing" && isPublishedPublication(item) && !isDemoPublicationSold(item);
 }
@@ -916,7 +920,7 @@ async function deletePublication(item: DemoPublication) {
     return;
   }
 
-  if (item.type === "listing") {
+  if (item.type === "listing" && isUuid(item.id)) {
     const response = await fetch("/api/cabinet/listings", {
       method: "DELETE",
       headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
@@ -1263,18 +1267,8 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         const showOpenAction = item.type === "listing" ? isPublishedPublication(item) || sold : true;
         const showEditAction = item.type !== "fairApplication" && !sold;
         const payable = canPayPublication(item);
-        const actionCount = [
-          showOpenAction,
-          showEditAction,
-          payable,
-          canDeletePublication(item),
-          canMarkListingSold(item),
-          sold,
-          canDeactivatePaidPublication(item),
-          canRestorePaidPublication(item),
-        ].filter(Boolean).length;
-        const actionGridClassName = actionCount > 1 ? "grid-cols-2" : "grid-cols-1";
-        const actionBaseClassName = "relative z-20 inline-flex h-10 min-w-0 items-center justify-center gap-2 rounded-lg border bg-white px-3 text-sm font-bold transition disabled:cursor-wait disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400";
+        const actionGridClassName = "grid-cols-1";
+        const actionBaseClassName = "relative z-20 inline-flex min-h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border bg-white px-3 py-2 text-center text-sm font-bold leading-5 transition disabled:cursor-wait disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400";
         const actionNeutralClassName = `${actionBaseClassName} border-blue-200 text-[#0875d1] hover:border-[#0875d1] hover:bg-blue-50`;
         const actionSuccessClassName = `${actionBaseClassName} border-emerald-200 text-[#0a8f32] hover:border-[#0a8f32] hover:bg-emerald-50`;
         const actionWarningClassName = `${actionBaseClassName} border-amber-200 text-amber-700 hover:border-amber-400 hover:bg-amber-50`;
@@ -1523,13 +1517,13 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
 
 function MiniMetric({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) {
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-bold text-slate-500">{label}</p>
-        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">{icon}</span>
+    <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-bold uppercase text-slate-500">{label}</p>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">{icon}</span>
       </div>
-      <p className="mt-4 text-3xl font-black text-[#060b27]">{value}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{detail}</p>
+      <p className="mt-2 text-2xl font-black leading-none text-[#060b27]">{value}</p>
+      <p className="mt-1 text-xs leading-5 text-slate-600">{detail}</p>
     </article>
   );
 }
