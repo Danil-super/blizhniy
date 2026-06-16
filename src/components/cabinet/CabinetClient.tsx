@@ -679,7 +679,16 @@ const soldReasonLabels: Record<SoldReason, string> = {
   platform: "Продано через БЛИЖНИЙ",
 };
 
+type ListingFilter = "all" | "draft" | "pending" | "published" | "inactive";
 type VacancyFilter = "all" | "published" | "draft" | "unpublished";
+
+const listingFilterLabels: Record<ListingFilter, string> = {
+  all: "Все",
+  draft: "Черновики",
+  inactive: "Снятые",
+  pending: "Ждут оплаты",
+  published: "Опубликованные",
+};
 
 const vacancyFilterLabels: Record<VacancyFilter, string> = {
   all: "Все",
@@ -740,6 +749,10 @@ function isUnpublishedVacancy(item: DemoPublication) {
   const status = normalizePublicationStatus(item.status);
 
   return item.type === "vacancy" && (status === normalizePublicationStatus(unpublishedVacancyStatus) || status === "archived");
+}
+
+function isInactiveListing(item: DemoPublication) {
+  return item.type === "listing" && (isDemoPublicationSold(item) || isInactivePublicationStatus(item.status));
 }
 
 function isInactivePaidPublication(item: DemoPublication) {
@@ -1196,31 +1209,64 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
   const [paymentError, setPaymentError] = useState("");
   const [actionError, setActionError] = useState("");
   const [actionErrorItemId, setActionErrorItemId] = useState<string | null>(null);
+  const [hiddenItemIds, setHiddenItemIds] = useState<Set<string>>(() => new Set());
+  const [listingFilter, setListingFilter] = useState<ListingFilter>("all");
   const [vacancyFilter, setVacancyFilter] = useState<VacancyFilter>("all");
+  const visibleSourceItems = useMemo(() => items.filter((item) => !hiddenItemIds.has(item.id)), [hiddenItemIds, items]);
+  const listingCounts = useMemo(
+    () => ({
+      all: visibleSourceItems.length,
+      draft: visibleSourceItems.filter(isDraftPublication).length,
+      inactive: visibleSourceItems.filter(isInactiveListing).length,
+      pending: visibleSourceItems.filter(isPendingPaymentPublication).length,
+      published: visibleSourceItems.filter((item) => item.type === "listing" && isPublishedPublication(item)).length,
+    }),
+    [visibleSourceItems],
+  );
   const vacancyCounts = useMemo(
     () => ({
-      all: items.length,
-      draft: items.filter(isDraftPublication).length,
-      published: items.filter((item) => item.type === "vacancy" && isPublishedPublication(item)).length,
-      unpublished: items.filter(isUnpublishedVacancy).length,
+      all: visibleSourceItems.length,
+      draft: visibleSourceItems.filter(isDraftPublication).length,
+      published: visibleSourceItems.filter((item) => item.type === "vacancy" && isPublishedPublication(item)).length,
+      unpublished: visibleSourceItems.filter(isUnpublishedVacancy).length,
     }),
-    [items],
+    [visibleSourceItems],
   );
   const visibleItems = useMemo(() => {
+    if (mode === "listing") {
+      if (listingFilter === "all") {
+        return visibleSourceItems;
+      }
+
+      if (listingFilter === "draft") {
+        return visibleSourceItems.filter(isDraftPublication);
+      }
+
+      if (listingFilter === "pending") {
+        return visibleSourceItems.filter(isPendingPaymentPublication);
+      }
+
+      if (listingFilter === "published") {
+        return visibleSourceItems.filter((item) => item.type === "listing" && isPublishedPublication(item));
+      }
+
+      return visibleSourceItems.filter(isInactiveListing);
+    }
+
     if (mode !== "vacancy" || vacancyFilter === "all") {
-      return items;
+      return visibleSourceItems;
     }
 
     if (vacancyFilter === "draft") {
-      return items.filter(isDraftPublication);
+      return visibleSourceItems.filter(isDraftPublication);
     }
 
     if (vacancyFilter === "published") {
-      return items.filter((item) => item.type === "vacancy" && isPublishedPublication(item));
+      return visibleSourceItems.filter((item) => item.type === "vacancy" && isPublishedPublication(item));
     }
 
-    return items.filter(isUnpublishedVacancy);
-  }, [items, mode, vacancyFilter]);
+    return visibleSourceItems.filter(isUnpublishedVacancy);
+  }, [listingFilter, mode, vacancyFilter, visibleSourceItems]);
 
   if (!items.length) {
     return <EmptyState mode={mode} />;
@@ -1228,6 +1274,23 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
 
   return (
     <section className="grid min-w-0 gap-3">
+      {mode === "listing" ? (
+        <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm sm:flex sm:flex-wrap">
+          {(Object.keys(listingFilterLabels) as ListingFilter[]).map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setListingFilter(filter)}
+              className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition sm:px-3 sm:text-sm ${
+                listingFilter === filter ? "border-blue-200 bg-blue-50 text-[#0875d1]" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
+              }`}
+            >
+              <span>{listingFilterLabels[filter]}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">{listingCounts[filter]}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       {mode === "vacancy" ? (
         <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
@@ -1370,7 +1433,14 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                     setActionErrorItemId(null);
                     setActingItemId(item.id);
                     void deletePublication(item)
-                      .then(() => setDeletingItemId(null))
+                      .then(() => {
+                        setHiddenItemIds((current) => {
+                          const next = new Set(current);
+                          next.add(item.id);
+                          return next;
+                        });
+                        setDeletingItemId(null);
+                      })
                       .catch((error) => {
                         setActionError(error instanceof Error ? error.message : "Не удалось удалить публикацию.");
                         setActionErrorItemId(item.id);
@@ -1507,8 +1577,8 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         </div>
       ) : (
         <section className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center shadow-card">
-          <h2 className="text-lg font-black text-[#060b27]">В этом статусе вакансий нет</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">Переключите фильтр или разместите новую вакансию.</p>
+          <h2 className="text-lg font-black text-[#060b27]">В этом фильтре пока пусто</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Переключите фильтр или создайте новую публикацию.</p>
         </section>
       )}
     </section>
