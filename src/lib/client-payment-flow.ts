@@ -3,7 +3,7 @@
 import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
-import type { Payment } from "@/lib/types";
+import type { ListingKind, Payment } from "@/lib/types";
 
 type ConfirmPaymentPayload = {
   nextStatus?: string;
@@ -30,7 +30,23 @@ type CreatedPaymentPayload = {
   status?: Payment["status"];
 };
 
+type CreatedListingPaymentPayload = {
+  listing?: {
+    id?: string;
+    slug?: string;
+    status?: string;
+    title?: string;
+  };
+  payment?: CreatedPaymentPayload;
+  error?: string;
+};
+
 const pendingPaymentStorageKey = "blizhniy:pendingPaymentId";
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+
+function isUuid(value?: string) {
+  return Boolean(value && uuidPattern.test(value));
+}
 
 function readPendingPaymentId() {
   try {
@@ -75,8 +91,35 @@ function readStoredPublications() {
   return [];
 }
 
+function writeStoredPublications(items: DemoPublication[]) {
+  window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(items));
+  window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+}
+
 function isDraftStatus(status: string) {
   return status.trim().toLowerCase() === "черновик";
+}
+
+function normalizeListingKind(value?: ListingKind): ListingKind {
+  return value === "kuplyu" || value === "menyayu" || value === "otdam-darom" || value === "arenda" ? value : "prodam";
+}
+
+function apiListingPayloadFromDraft(item: DemoPublication, tariffId: string) {
+  return {
+    address: item.hasMapPoint ? item.address : undefined,
+    categorySlug: item.categorySlug || "dlya-doma-i-dachi",
+    city: item.city || "Краснодар",
+    description: item.description || "Описание будет дополнено.",
+    kind: normalizeListingKind(item.listingKind),
+    lat: item.hasMapPoint ? item.lat : undefined,
+    lng: item.hasMapPoint ? item.lng : undefined,
+    messengerUrl: item.messengerUrl || undefined,
+    phone: item.phone || undefined,
+    price: item.price || undefined,
+    subcategory: item.subcategorySlug || undefined,
+    tariffId,
+    title: item.title || "Новое объявление",
+  };
 }
 
 export function syncPaidPublication(confirmPayload: ConfirmPaymentPayload) {
@@ -103,8 +146,7 @@ export function syncPaidPublication(confirmPayload: ConfirmPaymentPayload) {
     return item;
   });
 
-  window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
-  window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+  writeStoredPublications(nextItems);
 }
 
 async function requestPaymentConfirmation(paymentId: string) {
@@ -212,8 +254,51 @@ export async function createClientPayment(input: CreatePaymentInput): Promise<Cr
   return payload.payment;
 }
 
+async function createListingPaymentFromLocalDraft(input: CreatePaymentInput) {
+  const draft = readStoredPublications().find((item) => item.type === "listing" && item.id === input.targetId);
+
+  if (!draft) {
+    throw new Error("Черновик объявления не найден. Откройте черновик и попробуйте сохранить его заново.");
+  }
+
+  const response = await fetch("/api/listings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    body: JSON.stringify(apiListingPayloadFromDraft(draft, input.tariffId)),
+  });
+  const payload = (await response.json().catch(() => null)) as CreatedListingPaymentPayload | null;
+
+  if (!response.ok || !payload?.listing?.id || !payload.payment?.id) {
+    throw new Error(payload?.error ?? "Не удалось создать оплату для черновика.");
+  }
+
+  const nextItems = readStoredPublications().map((item) =>
+    item.id === draft.id
+      ? withPublicationStatusHistory(
+          {
+            ...item,
+            id: payload.listing?.id ?? item.id,
+            status: "Ждет оплаты",
+          },
+          "Ждет оплаты",
+          {
+            description: "Черновик перенесен в базу и отправлен на оплату перед публикацией.",
+          },
+        )
+      : item,
+  );
+
+  writeStoredPublications(nextItems);
+  rememberPendingPaymentId(payload.payment.id);
+
+  return payload.payment;
+}
+
 export async function createAndConfirmClientPayment(input: CreatePaymentInput) {
-  const payment = await createClientPayment(input);
+  const payment =
+    input.targetType === "listing" && input.targetId && !isUuid(input.targetId)
+      ? await createListingPaymentFromLocalDraft(input)
+      : await createClientPayment(input);
 
   if (payment.confirmationUrl) {
     rememberPendingPaymentId(payment.id);
