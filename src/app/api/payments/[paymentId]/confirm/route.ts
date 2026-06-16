@@ -7,7 +7,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
   const { paymentId } = await params;
 
   try {
-    let resolvedPaymentId = paymentId;
+    let payment = (await getStoredPayment(paymentId)) ?? (await findStoredPaymentByProvider(paymentId)) ?? getPayment(paymentId);
+    let resolvedPaymentId = payment?.id ?? paymentId;
 
     if (isSupabaseServerConfigured()) {
       const auth = await getAuthenticatedRequestUser(request);
@@ -16,11 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
         return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы подтвердить платеж" }, { status: 401 });
       }
 
-      const payment =
-        (await getStoredPayment(paymentId)) ??
-        (await findStoredPaymentByProvider(paymentId)) ??
-        getPayment(paymentId) ??
-        (await getLatestPendingStoredPaymentForUser(auth.user.id));
+      payment ??= await getLatestPendingStoredPaymentForUser(auth.user.id);
       const isAdmin = await isAdminRequest(request);
 
       if (payment?.userId && payment.userId !== auth.user.id && !isAdmin) {
