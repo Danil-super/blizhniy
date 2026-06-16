@@ -29,7 +29,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
       }
     }
 
-    const result = await confirmPayment(resolvedPaymentId);
+    const result = await confirmPayment(payment ?? resolvedPaymentId);
 
     return NextResponse.json(result);
   } catch (error) {

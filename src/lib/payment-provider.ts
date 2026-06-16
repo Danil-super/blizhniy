@@ -329,8 +329,12 @@ export async function createPayment(input: CreatePaymentInput) {
   return payment;
 }
 
-export async function confirmPayment(paymentId: string): Promise<PaymentResult> {
-  const payment = (await getStoredPayment(paymentId)) ?? getPayment(paymentId);
+async function resolvePaymentForConfirmation(paymentId: string) {
+  return (await getStoredPayment(paymentId)) ?? (await findStoredPaymentByProvider(paymentId)) ?? getPayment(paymentId);
+}
+
+export async function confirmPayment(paymentOrId: Payment | string): Promise<PaymentResult> {
+  const payment = typeof paymentOrId === "string" ? await resolvePaymentForConfirmation(paymentOrId) : paymentOrId;
 
   if (!payment) {
     throw new Error("Payment not found");
