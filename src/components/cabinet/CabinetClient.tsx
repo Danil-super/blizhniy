@@ -911,20 +911,34 @@ function restorePaidPublication(itemId: string) {
   }
 }
 
-function deletePublication(itemId: string) {
-  const currentItem = readStoredPublications().find((item) => item.id === itemId);
-  writeStoredPublications(readStoredPublications().filter((item) => item.id !== itemId || !canDeletePublication(item)));
-  if (currentItem && canDeletePublication(currentItem)) {
-    void addCurrentUserNotification({
-      category: "publication",
-      title: "Публикация удалена",
-      message: `${currentItem.title}: запись удалена из личного кабинета.`,
-      tone: "danger",
-      actionHref: getCabinetHrefByType(currentItem.type),
-      actionLabel: "Открыть раздел",
-      dedupeKey: `publication:${itemId}:deleted`,
-    });
+async function deletePublication(item: DemoPublication) {
+  if (!canDeletePublication(item)) {
+    return;
   }
+
+  if (item.type === "listing") {
+    const response = await fetch("/api/cabinet/listings", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+      body: JSON.stringify({ id: item.id }),
+    });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+
+    if (!response.ok) {
+      throw new Error(payload?.error ?? "Не удалось удалить объявление.");
+    }
+  }
+
+  writeStoredPublications(readStoredPublications().filter((storedItem) => storedItem.id !== item.id));
+  void addCurrentUserNotification({
+    category: "publication",
+    title: "Публикация удалена",
+    message: `${item.title}: запись удалена из личного кабинета.`,
+    tone: "danger",
+    actionHref: getCabinetHrefByType(item.type),
+    actionLabel: "Открыть раздел",
+    dedupeKey: `publication:${item.id}:deleted`,
+  });
 }
 
 function restoreSoldListing(itemId: string) {
@@ -1056,33 +1070,6 @@ function ResponseStatusPill({ status }: { status: string }) {
   return <span className={`inline-flex h-7 items-center rounded-full border px-3 text-xs font-bold ${tone}`}>{label}</span>;
 }
 
-function PublicationHistoryTimeline({ item }: { item: DemoPublication }) {
-  const history = getPublicationHistory(item);
-  const latestEvent = history[0];
-
-  if (!latestEvent) {
-    return null;
-  }
-
-  return (
-    <details className="relative z-20 mx-3 mb-3 rounded-lg border border-slate-200 bg-slate-50">
-      <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-bold text-slate-700 marker:hidden [&::-webkit-details-marker]:hidden">
-        <span>История</span>
-        <span className="min-w-0 truncate text-slate-500">{latestEvent.title}</span>
-      </summary>
-      <ol className="grid gap-2 border-t border-slate-200 px-3 py-2">
-        {history.slice(0, 5).map((event) => (
-          <li key={event.id} className="grid gap-0.5 border-l-2 border-blue-100 pl-2">
-            <span className="text-xs font-black text-[#060b27]">{event.title}</span>
-            <span className="text-[11px] font-semibold text-slate-500">{formatDateTime(event.at)}</span>
-            {event.description ? <span className="text-xs leading-5 text-slate-600">{event.description}</span> : null}
-          </li>
-        ))}
-      </ol>
-    </details>
-  );
-}
-
 function isInactivePublicationStatus(status: string) {
   const normalizedStatus = normalizePublicationStatus(status);
 
@@ -1201,7 +1188,10 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
   const [sellingItemId, setSellingItemId] = useState<string | null>(null);
   const [unpublishingItemId, setUnpublishingItemId] = useState<string | null>(null);
   const [payingItemId, setPayingItemId] = useState<string | null>(null);
+  const [actingItemId, setActingItemId] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [actionErrorItemId, setActionErrorItemId] = useState<string | null>(null);
   const [vacancyFilter, setVacancyFilter] = useState<VacancyFilter>("all");
   const vacancyCounts = useMemo(
     () => ({
@@ -1273,9 +1263,22 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         const showOpenAction = item.type === "listing" ? isPublishedPublication(item) || sold : true;
         const showEditAction = item.type !== "fairApplication" && !sold;
         const payable = canPayPublication(item);
-        const hasFullWidthAction = payable || canDeletePublication(item) || canMarkListingSold(item) || sold || canDeactivatePaidPublication(item) || canRestorePaidPublication(item);
-        const actionGridClassName = showEditAction || hasFullWidthAction ? "grid-cols-2" : "grid-cols-1";
-        const fullWidthActionClassName = hasFullWidthAction ? "col-span-2" : "";
+        const actionCount = [
+          showOpenAction,
+          showEditAction,
+          payable,
+          canDeletePublication(item),
+          canMarkListingSold(item),
+          sold,
+          canDeactivatePaidPublication(item),
+          canRestorePaidPublication(item),
+        ].filter(Boolean).length;
+        const actionGridClassName = actionCount > 1 ? "grid-cols-2" : "grid-cols-1";
+        const actionBaseClassName = "relative z-20 inline-flex h-10 min-w-0 items-center justify-center gap-2 rounded-lg border bg-white px-3 text-sm font-bold transition disabled:cursor-wait disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400";
+        const actionNeutralClassName = `${actionBaseClassName} border-blue-200 text-[#0875d1] hover:border-[#0875d1] hover:bg-blue-50`;
+        const actionSuccessClassName = `${actionBaseClassName} border-emerald-200 text-[#0a8f32] hover:border-[#0a8f32] hover:bg-emerald-50`;
+        const actionWarningClassName = `${actionBaseClassName} border-amber-200 text-amber-700 hover:border-amber-400 hover:bg-amber-50`;
+        const actionDangerClassName = `${actionBaseClassName} border-rose-200 text-rose-700 hover:border-rose-400 hover:bg-rose-50`;
 
         return (
         <article key={item.id} className={`group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-card ${sold || inactivePaidPublication ? "ring-slate-300" : "ring-slate-200"}`}>
@@ -1316,7 +1319,6 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
           {item.type === "listing" ? (
             <ListingShareButton href={getItemHref(item)} title={item.title} textBreakpoint="never" className="absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-white hover:text-[#0875d1]" />
           ) : null}
-          <PublicationHistoryTimeline item={item} />
           {confirmSold ? (
             <div className="relative z-20 mx-3 mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2">
               <p className="text-xs font-bold text-amber-900">Почему снимаем объявление?</p>
@@ -1325,17 +1327,17 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                   <button
                     key={reason}
                     type="button"
-                    onClick={() => {
-                      markListingSold(item.id, reason);
-                      setSellingItemId(null);
-                    }}
-                    className="inline-flex min-h-8 items-center justify-center rounded-md bg-white px-2 py-1 text-xs font-bold text-slate-800 ring-1 ring-amber-200 transition hover:text-[#0875d1]"
+                  onClick={() => {
+                    markListingSold(item.id, reason);
+                    setSellingItemId(null);
+                  }}
+                    className="inline-flex min-h-8 items-center justify-center rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs font-bold text-amber-800 transition hover:border-amber-400 hover:bg-amber-50"
                   >
                     {soldReasonLabels[reason]}
                   </button>
                 ))}
               </div>
-              <button type="button" onClick={() => setSellingItemId(null)} className="mt-2 h-8 w-full rounded-md text-xs font-bold text-slate-500 transition hover:bg-white">
+              <button type="button" onClick={() => setSellingItemId(null)} className="mt-2 h-8 w-full rounded-lg border border-amber-200 bg-white text-xs font-bold text-slate-600 transition hover:text-[#0875d1]">
                 Отмена
               </button>
             </div>
@@ -1351,11 +1353,11 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                     unpublishPaidPublication(item.id);
                     setUnpublishingItemId(null);
                   }}
-                  className="inline-flex h-8 items-center justify-center rounded-md bg-amber-600 px-2 text-xs font-bold text-white transition hover:bg-amber-700"
+                  className="inline-flex h-8 items-center justify-center rounded-lg border border-amber-200 bg-white px-2 text-xs font-bold text-amber-700 transition hover:border-amber-400 hover:bg-amber-50"
                 >
                   Снять
                 </button>
-                <button type="button" onClick={() => setUnpublishingItemId(null)} className="h-8 rounded-md bg-white text-xs font-bold text-slate-600 ring-1 ring-amber-200 transition hover:text-[#0875d1]">
+                <button type="button" onClick={() => setUnpublishingItemId(null)} className="h-8 rounded-lg border border-amber-200 bg-white text-xs font-bold text-slate-600 transition hover:text-[#0875d1]">
                   Отмена
                 </button>
               </div>
@@ -1368,15 +1370,24 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <button
                   type="button"
+                  disabled={actingItemId === item.id}
                   onClick={() => {
-                    deletePublication(item.id);
-                    setDeletingItemId(null);
+                    setActionError("");
+                    setActionErrorItemId(null);
+                    setActingItemId(item.id);
+                    void deletePublication(item)
+                      .then(() => setDeletingItemId(null))
+                      .catch((error) => {
+                        setActionError(error instanceof Error ? error.message : "Не удалось удалить публикацию.");
+                        setActionErrorItemId(item.id);
+                      })
+                      .finally(() => setActingItemId(null));
                   }}
-                  className="inline-flex h-8 items-center justify-center rounded-md bg-rose-600 px-2 text-xs font-bold text-white transition hover:bg-rose-700"
+                  className="inline-flex h-8 items-center justify-center rounded-lg border border-rose-200 bg-white px-2 text-xs font-bold text-rose-700 transition hover:border-rose-400 hover:bg-rose-50 disabled:cursor-wait disabled:bg-slate-50 disabled:text-slate-400"
                 >
-                  Удалить
+                  {actingItemId === item.id ? "Удаляем..." : "Удалить"}
                 </button>
-                <button type="button" onClick={() => setDeletingItemId(null)} className="h-8 rounded-md bg-white text-xs font-bold text-slate-600 ring-1 ring-rose-200 transition hover:text-[#0875d1]">
+                <button type="button" onClick={() => setDeletingItemId(null)} className="h-8 rounded-lg border border-rose-200 bg-white text-xs font-bold text-slate-600 transition hover:text-[#0875d1]">
                   Отмена
                 </button>
               </div>
@@ -1385,14 +1396,17 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
           {paymentError && payingItemId === item.id ? (
             <p className="relative z-20 mx-3 mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{paymentError}</p>
           ) : null}
+          {actionError && actionErrorItemId === item.id ? (
+            <p className="relative z-20 mx-3 mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{actionError}</p>
+          ) : null}
           <div className={`grid gap-2 px-3 pb-3 ${actionGridClassName}`}>
             {showOpenAction ? (
-              <Link href={getItemHref(item)} className="relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
+              <Link href={getItemHref(item)} className={actionNeutralClassName}>
                 Открыть
               </Link>
             ) : null}
             {showEditAction ? (
-              <Link href={getEditHref(item)} className="relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-2 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
+              <Link href={getEditHref(item)} className={actionNeutralClassName}>
                 Изменить
               </Link>
             ) : null}
@@ -1405,6 +1419,8 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                   setSellingItemId(null);
                   setUnpublishingItemId(null);
                   setPaymentError("");
+                  setActionError("");
+                  setActionErrorItemId(null);
                   setPayingItemId(item.id);
                   void createPublicationPayment(item)
                     .catch((error) => {
@@ -1412,7 +1428,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                     })
                     .finally(() => setPayingItemId(null));
                 }}
-                className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-sm font-bold text-[#0a8f32] transition hover:border-[#0a8f32] hover:bg-white disabled:cursor-wait disabled:bg-slate-100 disabled:text-slate-500 ${fullWidthActionClassName}`}
+                className={actionSuccessClassName}
               >
                 {payingItemId === item.id ? "Оплачиваем..." : isDraftPublication(item) ? "Оплатить и опубликовать" : "Оплатить публикацию"}
               </button>
@@ -1423,9 +1439,11 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                 onClick={() => {
                   setSellingItemId(null);
                   setUnpublishingItemId(null);
+                  setActionError("");
+                  setActionErrorItemId(null);
                   setDeletingItemId((current) => (current === item.id ? null : item.id));
                 }}
-                className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2 text-sm font-bold text-rose-700 transition hover:border-rose-400 hover:bg-white ${fullWidthActionClassName}`}
+                className={actionDangerClassName}
               >
                 <Trash2 className="h-4 w-4 shrink-0" />
                 {deletePublicationButtonLabel(item)}
@@ -1437,9 +1455,11 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                 onClick={() => {
                   setDeletingItemId(null);
                   setUnpublishingItemId(null);
+                  setActionError("");
+                  setActionErrorItemId(null);
                   setSellingItemId((current) => (current === item.id ? null : item.id));
                 }}
-                className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-sm font-bold text-[#0a8f32] transition hover:border-[#0a8f32] hover:bg-white ${fullWidthActionClassName}`}
+                className={actionSuccessClassName}
               >
                 Продано / снять
               </button>
@@ -1447,7 +1467,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               <button
                 type="button"
                 onClick={() => restoreSoldListing(item.id)}
-                className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] ${fullWidthActionClassName}`}
+                className={actionNeutralClassName}
               >
                 Вернуть в публикацию
               </button>
@@ -1459,7 +1479,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                   setSellingItemId(null);
                   setUnpublishingItemId((current) => (current === item.id ? null : item.id));
                 }}
-                className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-2 text-sm font-bold text-amber-700 transition hover:border-amber-400 hover:bg-white ${fullWidthActionClassName}`}
+                className={actionWarningClassName}
               >
                 Снять с публикации
               </button>
@@ -1468,7 +1488,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                 <button
                   type="button"
                   onClick={() => restorePaidPublication(item.id)}
-                  className={`relative z-20 inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-sm font-bold text-[#0a8f32] transition hover:border-[#0a8f32] hover:bg-white ${fullWidthActionClassName}`}
+                  className={actionSuccessClassName}
                 >
                   Вернуть в публикацию
                 </button>
@@ -1479,7 +1499,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                     setUnpublishingItemId(null);
                     setDeletingItemId((current) => (current === item.id ? null : item.id));
                   }}
-                  className={`relative z-20 col-span-2 inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2 text-sm font-bold text-rose-700 transition hover:border-rose-400 hover:bg-white`}
+                  className={actionDangerClassName}
                 >
                   <Trash2 className="h-4 w-4 shrink-0" />
                   Удалить вакансию

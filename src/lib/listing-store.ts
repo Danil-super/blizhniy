@@ -355,7 +355,7 @@ export async function listStoredListingsForUser(userId: string) {
 
   try {
     const rows = await supabaseRest<ListingRow[]>(
-      `/rest/v1/listings?select=${listingSelect}&author_id=eq.${encodeURIComponent(userId)}&order=created_at.desc`,
+      `/rest/v1/listings?select=${listingSelect}&author_id=eq.${encodeURIComponent(userId)}&status=neq.archived&order=created_at.desc`,
     );
 
     return rows.map(mapListing);
@@ -363,4 +363,21 @@ export async function listStoredListingsForUser(userId: string) {
     console.error("Failed to load user listings from Supabase", error);
     return [];
   }
+}
+
+export async function archiveStoredListingForUser(listingId: string, userId: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
+    return false;
+  }
+
+  await supabaseRest(`/rest/v1/listings?id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    prefer: "return=minimal",
+    body: {
+      published_at: null,
+      status: "archived",
+    },
+  });
+
+  return true;
 }

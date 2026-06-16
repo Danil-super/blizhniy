@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listStoredListingsForUser } from "@/lib/listing-store";
+import { archiveStoredListingForUser, listStoredListingsForUser } from "@/lib/listing-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 
 export async function GET(request: Request) {
@@ -16,4 +16,27 @@ export async function GET(request: Request) {
   const listings = await listStoredListingsForUser(auth.user.id);
 
   return NextResponse.json({ listings });
+}
+
+export async function DELETE(request: Request) {
+  if (!isSupabaseServerConfigured()) {
+    return NextResponse.json({ error: "Auth is not configured" }, { status: 503 });
+  }
+
+  const auth = await getAuthenticatedRequestUser(request);
+
+  if (!auth) {
+    return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы удалить объявление" }, { status: 401 });
+  }
+
+  const payload = (await request.json().catch(() => null)) as { id?: string } | null;
+  const listingId = payload?.id?.trim();
+
+  if (!listingId) {
+    return NextResponse.json({ error: "listing id is required" }, { status: 400 });
+  }
+
+  await archiveStoredListingForUser(listingId, auth.user.id);
+
+  return NextResponse.json({ ok: true });
 }
