@@ -10,24 +10,51 @@ type PaymentReturnClientProps = {
   paymentId: string;
 };
 
+function cabinetHrefForPayment(targetType?: string) {
+  if (targetType === "listing") {
+    return "/cabinet/obyavleniya";
+  }
+
+  if (targetType === "fair_application") {
+    return "/cabinet/fair-applications";
+  }
+
+  if (targetType === "vacancy") {
+    return "/cabinet/vakansii";
+  }
+
+  if (targetType === "specialist") {
+    return "/cabinet/specialist";
+  }
+
+  if (targetType === "application") {
+    return "/cabinet/otkliki";
+  }
+
+  return "/cabinet";
+}
+
 export function PaymentReturnClient({ paymentId }: PaymentReturnClientProps) {
   const router = useRouter();
   const [error, setError] = useState("");
+  const [returnHref, setReturnHref] = useState("/cabinet");
   const [confirmed, setConfirmed] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     void confirmClientPayment(paymentId)
-      .then(() => {
+      .then((payload) => {
         if (!active) {
           return;
         }
 
+        const nextHref = cabinetHrefForPayment(payload.payment?.targetType);
+        setReturnHref(nextHref);
         setConfirmed(true);
         window.setTimeout(() => {
           if (active) {
-            router.replace("/cabinet/oplata");
+            router.replace(nextHref);
           }
         }, 600);
       })
@@ -51,14 +78,14 @@ export function PaymentReturnClient({ paymentId }: PaymentReturnClientProps) {
         <h1 className="mt-4 text-2xl font-black text-[#060b27]">{confirmed ? "Платеж подтвержден" : "Проверяем платеж"}</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">
           {confirmed
-            ? "Статус заказа обновлен. Сейчас откроем историю платежей."
+            ? "Статус заказа обновлен. Сейчас откроем нужный раздел кабинета."
             : "Пожалуйста, подождите: обновляем статус заказа и связанной публикации."}
         </p>
         {error ? (
           <>
             <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>
-            <Link href="/cabinet/oplata" className="mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white">
-              Открыть платежи
+            <Link href={returnHref} className="mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white">
+              Открыть кабинет
             </Link>
           </>
         ) : null}

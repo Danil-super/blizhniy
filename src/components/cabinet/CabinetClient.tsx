@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, CreditCard, FileText, LockKeyhole, Mail, MapPin, Move, Phone, Plus, Search, Settings2, Trash2, UserRound, Video, X } from "lucide-react";
+import { Bell, BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, FileText, LockKeyhole, Mail, MapPin, Move, Phone, Plus, Search, Settings2, Trash2, UserRound, Video, X } from "lucide-react";
 import {
   demoPublicationLabels,
   demoPublicationsStorageKey,
@@ -26,7 +26,7 @@ import { ValidatedInput } from "@/components/ValidatedInput";
 import { cities } from "@/lib/data";
 import { confirmClientPayment, createAndConfirmClientPayment } from "@/lib/client-payment-flow";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
-import type { FairApplication, Payment } from "@/lib/types";
+import type { FairApplication, Listing, Payment } from "@/lib/types";
 import {
   type CabinetProfile,
   createDefaultCabinetProfile,
@@ -47,6 +47,9 @@ type UserCabinetState = {
 type CabinetListMode = DemoPublicationType | "payment" | "response" | "organization";
 type CabinetServerFairApplicationsPayload = {
   applications?: FairApplication[];
+};
+type CabinetServerListingsPayload = {
+  listings?: Listing[];
 };
 type CabinetServerPaymentsPayload = {
   payments?: Payment[];
@@ -206,6 +209,65 @@ function fairApplicationToDemoPublication(application: FairApplication, ownerKey
   });
 }
 
+function listingStatusLabel(status: Listing["status"]) {
+  if (status === "published" || status === "paid") {
+    return "Опубликовано";
+  }
+
+  if (status === "pending_payment") {
+    return "Ждет оплаты";
+  }
+
+  if (status === "draft") {
+    return "Черновик";
+  }
+
+  if (status === "sold") {
+    return soldPublicationStatus;
+  }
+
+  if (status === "archived") {
+    return unpublishedVacancyStatus;
+  }
+
+  if (status === "expired") {
+    return "Истек срок";
+  }
+
+  if (status === "rejected") {
+    return "Отклонено";
+  }
+
+  return status;
+}
+
+function listingToDemoPublication(listing: Listing, ownerKey: string): DemoPublication {
+  return withPublicationHistory({
+    id: listing.id,
+    type: "listing",
+    ownerKey,
+    title: listing.title,
+    subtitle: listing.subcategory,
+    city: listing.city,
+    price: listing.price,
+    description: listing.description,
+    images: listing.images,
+    lat: listing.lat,
+    lng: listing.lng,
+    address: listing.address ?? listing.district,
+    hasMapPoint: listing.hasMapPoint,
+    showExactAddress: listing.showExactAddress,
+    phone: listing.phone,
+    messengerUrl: listing.messengerUrl,
+    email: listing.email,
+    listingKind: listing.kind,
+    categorySlug: listing.categorySlug,
+    status: listingStatusLabel(listing.status),
+    expiresAt: listing.expiresAt,
+    createdAt: listing.publishedAt,
+  });
+}
+
 async function fetchCabinetFairApplications(identity: ClientUserIdentity) {
   if (!identity.accessToken) {
     return [];
@@ -223,6 +285,28 @@ async function fetchCabinetFairApplications(identity: ClientUserIdentity) {
     const payload = (await response.json().catch(() => null)) as CabinetServerFairApplicationsPayload | null;
 
     return (payload?.applications ?? []).map((application) => fairApplicationToDemoPublication(application, identity.ownerKey));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCabinetListings(identity: ClientUserIdentity) {
+  if (!identity.accessToken) {
+    return [];
+  }
+
+  try {
+    const response = await fetch("/api/cabinet/listings", {
+      headers: await getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = (await response.json().catch(() => null)) as CabinetServerListingsPayload | null;
+
+    return (payload?.listings ?? []).map((listing) => listingToDemoPublication(listing, identity.ownerKey));
   } catch {
     return [];
   }
@@ -264,8 +348,8 @@ function useUserCabinetData(): UserCabinetState {
       const fallback = createDefaultCabinetProfile(identity);
       const profile = readCabinetProfile(identity.ownerKey, fallback);
       const localItems = readStoredPublications().filter((item) => item.ownerKey === identity.ownerKey);
-      const serverItems = await fetchCabinetFairApplications(identity);
-      const items = Array.from(new Map([...serverItems, ...localItems].map((item) => [item.id, item])).values());
+      const [serverFairApplications, serverListings] = await Promise.all([fetchCabinetFairApplications(identity), fetchCabinetListings(identity)]);
+      const items = Array.from(new Map([...localItems, ...serverFairApplications, ...serverListings].map((item) => [item.id, item])).values());
 
       if (active) {
         setState({ identity, profile, items, loading: false });
@@ -609,7 +693,7 @@ function normalizePublicationStatus(status: string) {
 }
 
 function canMarkListingSold(item: DemoPublication) {
-  return item.type === "listing" && !isDemoPublicationSold(item) && normalizePublicationStatus(item.status) !== "черновик";
+  return item.type === "listing" && isPublishedPublication(item) && !isDemoPublicationSold(item);
 }
 
 function isDraftPublication(item: DemoPublication) {
@@ -669,7 +753,11 @@ function canRestorePaidPublication(item: DemoPublication) {
 }
 
 function canDeletePublication(item: DemoPublication) {
-  return item.type === "listing" || isDraftPublication(item) || isUnpublishedVacancy(item);
+  if (item.type === "listing") {
+    return isDraftPublication(item) || isPendingPaymentPublication(item);
+  }
+
+  return isDraftPublication(item) || isUnpublishedVacancy(item);
 }
 
 function deletePublicationTitle(item: DemoPublication) {
@@ -1182,8 +1270,8 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         const confirmSold = sellingItemId === item.id;
         const confirmUnpublish = unpublishingItemId === item.id;
         const inactivePaidPublication = isInactivePaidPublication(item);
-        const showOpenAction = true;
-        const showEditAction = item.type !== "fairApplication";
+        const showOpenAction = item.type === "listing" ? isPublishedPublication(item) || sold : true;
+        const showEditAction = item.type !== "fairApplication" && !sold;
         const payable = canPayPublication(item);
         const hasFullWidthAction = payable || canDeletePublication(item) || canMarkListingSold(item) || sold || canDeactivatePaidPublication(item) || canRestorePaidPublication(item);
         const actionGridClassName = showEditAction || hasFullWidthAction ? "grid-cols-2" : "grid-cols-1";
@@ -2104,7 +2192,7 @@ export function CabinetProfileBar() {
   );
 }
 
-export function CabinetOverviewClient({ paymentsCount = 0, paymentsTotal = 0 }: { paymentsCount?: number; paymentsTotal?: number }) {
+export function CabinetOverviewClient() {
   const { profile, items, loading } = useUserCabinetData();
   const listings = items.filter((item) => item.type === "listing");
   const vacancies = items.filter((item) => item.type === "vacancy");
@@ -2116,29 +2204,12 @@ export function CabinetOverviewClient({ paymentsCount = 0, paymentsTotal = 0 }: 
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
         <MiniMetric icon={<FileText className="h-5 w-5" />} label="Объявления" value={String(listings.length)} detail="Ваши публикации в каталоге." />
         <MiniMetric icon={<BriefcaseBusiness className="h-5 w-5" />} label="Вакансии" value={String(vacancies.length)} detail="Вакансии вашей организации." />
         <MiniMetric icon={<ClipboardList className="h-5 w-5" />} label="Заказы" value={String(orders.length)} detail="Задачи для исполнителей." />
-        <MiniMetric icon={<CreditCard className="h-5 w-5" />} label="Платежи" value={`${paymentsTotal} ₽`} detail={`${paymentsCount} платежей в истории.`} />
       </div>
       <div className="mt-8 grid min-w-0 items-stretch gap-8">
-        <section className="grid min-h-0 min-w-0 grid-rows-[auto_1fr]">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-black text-[#060b27]">Последние платежи</h2>
-            <Link href="/cabinet/oplata" className="text-sm font-bold text-[#0875d1]">
-              История
-            </Link>
-          </div>
-          {paymentsCount ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
-              <p className="text-sm leading-6 text-slate-600">Всего платежей: <span className="font-black text-[#060b27]">{paymentsCount}</span></p>
-              <p className="mt-1 text-sm leading-6 text-slate-600">Сумма оплат и заказов: <span className="font-black text-[#060b27]">{paymentsTotal} ₽</span></p>
-            </div>
-          ) : (
-            <EmptyState mode="payment" />
-          )}
-        </section>
         <section className="grid min-h-0 min-w-0 grid-rows-[auto_1fr]">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-2xl font-black text-[#060b27]">История завершенных размещений</h2>

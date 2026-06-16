@@ -347,3 +347,20 @@ export async function listStoredListings(limit = 24) {
     return [];
   }
 }
+
+export async function listStoredListingsForUser(userId: string) {
+  if (!isSupabaseRestConfigured()) {
+    return [];
+  }
+
+  try {
+    const rows = await supabaseRest<ListingRow[]>(
+      `/rest/v1/listings?select=${listingSelect}&author_id=eq.${encodeURIComponent(userId)}&order=created_at.desc`,
+    );
+
+    return rows.map(mapListing);
+  } catch (error) {
+    console.error("Failed to load user listings from Supabase", error);
+    return [];
+  }
+}

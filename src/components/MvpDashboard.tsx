@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   CircleUserRound,
   ClipboardList,
-  CreditCard,
   FileText,
   Gauge,
   MessageSquare,
@@ -160,7 +159,6 @@ const cabinetNav = [
   { href: "/cabinet/specialist", label: "Анкета", icon: CircleUserRound },
   { href: "/cabinet/otkliki", label: "Отклики", icon: MessageSquare },
   { href: "/cabinet/fair-applications", label: "Ярмарка", icon: Store },
-  { href: "/cabinet/oplata", label: "Платежи", icon: CreditCard },
 ];
 
 const adminNav = [
@@ -614,13 +612,10 @@ export function AuthPage() {
 }
 
 export function CabinetPage() {
-  const payments = listMockPayments();
-  const paymentsTotal = payments.reduce((total, payment) => total + payment.amount, 0);
-
   return (
-    <Shell title="Личный кабинет" description="Панель пользователя для публикаций, откликов, анкеты специалиста и оплат." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet">
+    <Shell title="Личный кабинет" description="Панель пользователя для публикаций, откликов и рабочих разделов." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet">
       <CabinetAuthGate>
-        <CabinetOverviewClient paymentsCount={payments.length} paymentsTotal={paymentsTotal} />
+        <CabinetOverviewClient />
         <div className="mt-8">
           <CabinetCapabilities />
         </div>
