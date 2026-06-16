@@ -30,6 +30,36 @@ type CreatedPaymentPayload = {
   status?: Payment["status"];
 };
 
+const pendingPaymentStorageKey = "blizhniy:pendingPaymentId";
+
+function readPendingPaymentId() {
+  try {
+    return window.localStorage.getItem(pendingPaymentStorageKey)?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberPendingPaymentId(paymentId: string) {
+  try {
+    window.localStorage.setItem(pendingPaymentStorageKey, paymentId);
+  } catch {
+    // localStorage can be unavailable in private modes; payment flow still has the URL id fallback.
+  }
+}
+
+function clearPendingPaymentId(paymentId?: string) {
+  try {
+    const storedPaymentId = readPendingPaymentId();
+
+    if (!paymentId || !storedPaymentId || storedPaymentId === paymentId) {
+      window.localStorage.removeItem(pendingPaymentStorageKey);
+    }
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
 function readStoredPublications() {
   try {
     const stored = window.localStorage.getItem(demoPublicationsStorageKey);
@@ -77,17 +107,38 @@ export function syncPaidPublication(confirmPayload: ConfirmPaymentPayload) {
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
 }
 
-export async function confirmClientPayment(paymentId: string) {
+async function requestPaymentConfirmation(paymentId: string) {
   const response = await fetch(`/api/payments/${paymentId}/confirm`, {
     method: "POST",
     headers: await getAuthHeaders(),
   });
   const payload = (await response.json().catch(() => null)) as (ConfirmPaymentPayload & { error?: string }) | null;
 
+  return { payload, response };
+}
+
+function shouldRetryWithRememberedPayment(payload: (ConfirmPaymentPayload & { error?: string }) | null, responseOk: boolean) {
+  return !responseOk && /payment not found/i.test(payload?.error ?? "");
+}
+
+export async function confirmClientPayment(paymentId: string) {
+  let confirmedPaymentId = paymentId;
+  let { payload, response } = await requestPaymentConfirmation(paymentId);
+
+  if (shouldRetryWithRememberedPayment(payload, response.ok)) {
+    const rememberedPaymentId = readPendingPaymentId();
+
+    if (rememberedPaymentId && rememberedPaymentId !== paymentId) {
+      confirmedPaymentId = rememberedPaymentId;
+      ({ payload, response } = await requestPaymentConfirmation(rememberedPaymentId));
+    }
+  }
+
   if (!response.ok || !payload) {
     throw new Error(payload?.error ?? "Не удалось подтвердить платеж.");
   }
 
+  clearPendingPaymentId(payload.payment?.id ?? confirmedPaymentId);
   syncPaidPublication(payload);
   if (payload.payment?.status === "succeeded") {
     void addCurrentUserNotification({
@@ -99,7 +150,7 @@ export async function confirmClientPayment(paymentId: string) {
       tone: "success",
       actionHref: "/cabinet/oplata",
       actionLabel: "История оплат",
-      dedupeKey: `payment:${paymentId}:succeeded`,
+      dedupeKey: `payment:${payload.payment.id ?? confirmedPaymentId}:succeeded`,
     });
   } else {
     void addCurrentUserNotification({
@@ -111,7 +162,7 @@ export async function confirmClientPayment(paymentId: string) {
       tone: "warning",
       actionHref: "/cabinet/oplata",
       actionLabel: "Проверить оплату",
-      dedupeKey: `payment:${paymentId}:pending`,
+      dedupeKey: `payment:${payload.payment?.id ?? confirmedPaymentId}:pending`,
     });
   }
 
@@ -142,6 +193,10 @@ export async function createClientPayment(input: CreatePaymentInput): Promise<Cr
     throw new Error(payload?.error ?? "Не удалось создать платеж.");
   }
 
+  if (payload.payment.confirmationUrl) {
+    rememberPendingPaymentId(payload.payment.id);
+  }
+
   void addCurrentUserNotification({
     category: "payment",
     title: payload.payment.confirmationUrl ? "Платеж создан" : "Демо-платеж готов",
@@ -161,6 +216,7 @@ export async function createAndConfirmClientPayment(input: CreatePaymentInput) {
   const payment = await createClientPayment(input);
 
   if (payment.confirmationUrl) {
+    rememberPendingPaymentId(payment.id);
     window.location.href = payment.confirmationUrl;
     return { confirmation: null, paymentId: payment.id };
   }
