@@ -1,6 +1,17 @@
 import { NextResponse } from "next/server";
 import { archiveStoredListingForUser, listStoredListingsForUser } from "@/lib/listing-store";
+import { confirmPayment } from "@/lib/payment-provider";
+import { listStoredPaymentsForUser } from "@/lib/payment-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
+
+async function syncPendingListingPayments(userId: string) {
+  const payments = await listStoredPaymentsForUser(userId);
+  const pendingListingPayments = payments.filter(
+    (payment) => payment.targetType === "listing" && payment.provider === "yookassa" && (payment.status === "created" || payment.status === "pending"),
+  );
+
+  await Promise.allSettled(pendingListingPayments.map((payment) => confirmPayment(payment)));
+}
 
 export async function GET(request: Request) {
   if (!isSupabaseServerConfigured()) {
@@ -13,6 +24,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы открыть объявления" }, { status: 401 });
   }
 
+  await syncPendingListingPayments(auth.user.id);
   const listings = await listStoredListingsForUser(auth.user.id);
 
   return NextResponse.json({ listings });
