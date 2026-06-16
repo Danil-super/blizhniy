@@ -27,6 +27,16 @@ type MediaUploadResponse = {
   error?: string;
 };
 
+const pendingPaymentStorageKey = "blizhniy:pendingPaymentId";
+
+function rememberPendingPaymentId(paymentId: string) {
+  try {
+    window.localStorage.setItem(pendingPaymentStorageKey, paymentId);
+  } catch {
+    // Storage can be unavailable; the return URL still contains the payment id.
+  }
+}
+
 function readValue(formData: FormData, name: string, fallback = "") {
   return String(formData.get(name) ?? "").trim() || fallback;
 }
@@ -147,21 +157,22 @@ async function buildFallbackPublication(formData: FormData, type: DemoPublicatio
   });
 }
 
-async function createSupabaseListing(formData: FormData, tariffId: string, accessToken: string) {
+async function createSupabaseListing(formData: FormData, options: { accessToken: string; status?: "draft"; tariffId?: string }) {
   const categorySlug = readValue(formData, "category", "dlya-doma-i-dachi");
   const rawKind = readValue(formData, "kind", "prodam") as ListingKind;
   const kind = categorySlug === "otdyh" || (categorySlug === "nedvizhimost" && rawKind === "arenda") ? "arenda" : rawKind;
   const phone = readRawValue(formData, "phone");
   const messengerUrl = readRawValue(formData, "messengerUrl");
   const email = readRawValue(formData, "email");
+  const isDraft = options.status === "draft";
 
-  if (!phone && !messengerUrl && !email) {
+  if (!isDraft && !phone && !messengerUrl && !email) {
     throw new Error("Укажите хотя бы один контакт объявления: телефон, email или Telegram/WhatsApp.");
   }
 
-  const mediaPaths = await uploadPublicationMedia(formData, "listings", accessToken);
+  const mediaPaths = await uploadPublicationMedia(formData, "listings", options.accessToken);
   const result = await createStoredListingPublication({
-    accessToken,
+    accessToken: options.accessToken,
     address: hasSelectedMapPoint(formData) ? readValue(formData, "address") : undefined,
     categorySlug,
     city: inferCityFromFormData(formData),
@@ -173,16 +184,13 @@ async function createSupabaseListing(formData: FormData, tariffId: string, acces
     messengerUrl: messengerUrl || undefined,
     phone: phone || undefined,
     price: normalizeListingPrice(readRawValue(formData, "price"), "по договоренности"),
+    status: options.status,
     subcategory: readValue(formData, "subcategory"),
-    tariffId,
-    title: readValue(formData, "title", "Новое объявление"),
+    tariffId: options.tariffId,
+    title: readValue(formData, "title", isDraft ? "Черновик объявления" : "Новое объявление"),
   });
 
-  if (!result.payment?.confirmationUrl) {
-    throw new Error("Платеж создан, но ЮKassa не вернула ссылку на оплату. Проверьте YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и PAYMENT_PROVIDER=yookassa в Vercel.");
-  }
-
-  window.location.href = result.payment.confirmationUrl;
+  return result;
 }
 
 export function AdminDemoPublishButton({
@@ -223,15 +231,40 @@ export function AdminDemoPublishButton({
       const formData = new FormData(form);
       const requiresPayment = Boolean(paymentTariffId && !isDraftStatus(status));
 
-      if (publicationType === "listing" && requiresPayment && paymentTariffId) {
+      if (publicationType === "listing") {
         const identity = await resolveAuthenticatedClientUserIdentity();
 
-        if (!identity.accessToken) {
-          throw new Error("Сессия входа устарела. Выйдите и войдите снова, затем повторите публикацию.");
+        if (identity.accessToken && isDraftStatus(status)) {
+          const result = await createSupabaseListing(formData, { accessToken: identity.accessToken, status: "draft" });
+          const publication = {
+            ...(await buildFallbackPublication(formData, publicationType, status)),
+            id: result.listing?.id ?? `demo-${publicationType}-${Date.now().toString(36)}`,
+            ownerKey: identity.ownerKey,
+            ownerName: identity.name,
+          };
+          const stored = readStoredPublications();
+
+          window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify([publication, ...stored].slice(0, 50)));
+          window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+          window.location.href = returnHref;
+          return;
         }
 
-        await createSupabaseListing(formData, paymentTariffId, identity.accessToken);
-        return;
+        if (requiresPayment && paymentTariffId) {
+          if (!identity.accessToken) {
+            throw new Error("Сессия входа устарела. Выйдите и войдите снова, затем повторите публикацию.");
+          }
+
+          const result = await createSupabaseListing(formData, { accessToken: identity.accessToken, tariffId: paymentTariffId });
+
+          if (!result.payment?.confirmationUrl || !result.payment.id) {
+            throw new Error("Платеж создан, но ЮKassa не вернула ссылку на оплату. Проверьте YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и PAYMENT_PROVIDER=yookassa на сервере.");
+          }
+
+          rememberPendingPaymentId(result.payment.id);
+          window.location.href = result.payment.confirmationUrl;
+          return;
+        }
       }
 
       const identity = await resolveAuthenticatedClientUserIdentity();
