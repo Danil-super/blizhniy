@@ -107,24 +107,28 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "listing id is required" }, { status: 400 });
   }
 
-  if (action === "sold") {
-    const updated = await markStoredListingSoldForUser(listingId, auth.user.id);
+  try {
+    if (action === "sold") {
+      const updated = await markStoredListingSoldForUser(listingId, auth.user.id);
 
-    if (!updated) {
-      return NextResponse.json({ error: "Объявление не найдено или уже снято с публикации" }, { status: 404 });
+      if (!updated) {
+        return NextResponse.json({ error: "Объявление не найдено или уже снято с публикации" }, { status: 404 });
+      }
+
+      return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
-  }
+    if (action === "restore") {
+      const updated = await restoreStoredListingForUser(listingId, auth.user.id);
 
-  if (action === "restore") {
-    const updated = await restoreStoredListingForUser(listingId, auth.user.id);
+      if (!updated) {
+        return NextResponse.json({ error: "Объявление не найдено или его нужно оплатить перед публикацией" }, { status: 404 });
+      }
 
-    if (!updated) {
-      return NextResponse.json({ error: "Объявление не найдено или его нужно оплатить перед публикацией" }, { status: 404 });
+      return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
     }
-
-    return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось изменить объявление." }, { status: 500 });
   }
 
   return NextResponse.json({ error: "Unsupported listing action" }, { status: 400 });

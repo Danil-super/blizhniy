@@ -604,18 +604,39 @@ export async function restoreStoredListingForUser(listingId: string, userId: str
   }
 
   const now = new Date().toISOString();
-  const rows = await supabaseRest<Array<Pick<ListingRow, "id">>>(
-    `/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&is_paid=eq.true&status=eq.sold`,
-    {
-      method: "PATCH",
-      prefer: "return=representation",
-      body: {
-        expires_at: addDaysIsoDate(now, 30),
-        published_at: now,
-        status: "published",
+  const restoreBody = {
+    expires_at: addDaysIsoDate(now, 30),
+    is_paid: true,
+    published_at: now,
+    status: "published",
+  };
+
+  async function patchRestorableListing(statusFilter: string) {
+    return supabaseRest<Array<Pick<ListingRow, "id">>>(
+      `/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&is_paid=eq.true&${statusFilter}`,
+      {
+        method: "PATCH",
+        prefer: "return=representation",
+        body: restoreBody,
       },
-    },
-  );
+    );
+  }
+
+  let rows: Array<Pick<ListingRow, "id">> = [];
+
+  try {
+    rows = await patchRestorableListing("status=eq.sold");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+
+    if (!message.includes("publication_status") || !message.includes("sold")) {
+      throw error;
+    }
+  }
+
+  if (!rows[0]?.id) {
+    rows = await patchRestorableListing("status=in.(archived,expired)");
+  }
 
   return Boolean(rows[0]?.id);
 }

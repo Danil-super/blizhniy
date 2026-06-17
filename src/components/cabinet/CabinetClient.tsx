@@ -1092,29 +1092,39 @@ async function restoreSoldListing(currentItem: DemoPublication) {
     await requestServerListingAction(currentItem.id, "restore");
   }
 
-  const nextItems = readStoredPublications().map((item) => {
-    if (item.id !== currentItem.id || item.type !== "listing") {
-      return item;
-    }
-
+  const storedItems = readStoredPublications();
+  let updatedLocalItem = false;
+  const restoredAt = new Date().toISOString();
+  const restoreLocalItem = (item: DemoPublication) => {
     const restoredItem = { ...item };
     delete restoredItem.soldAt;
     delete restoredItem.soldReason;
 
-    return {
-      ...appendPublicationHistory(
-        {
-          ...restoredItem,
-          status: "Опубликовано",
-        },
-        "restored",
-        {
-          status: "Опубликовано",
-          description: "Объявление снова доступно покупателям.",
-        },
-      ),
-    };
+    return appendPublicationHistory(
+      {
+        ...restoredItem,
+        status: "Опубликовано",
+      },
+      "restored",
+      {
+        at: restoredAt,
+        status: "Опубликовано",
+        description: "Объявление снова доступно покупателям.",
+      },
+    );
+  };
+  const nextItems = storedItems.map((item) => {
+    if (item.id !== currentItem.id || item.type !== "listing") {
+      return item;
+    }
+
+    updatedLocalItem = true;
+    return restoreLocalItem(item);
   });
+
+  if (!updatedLocalItem) {
+    nextItems.unshift(restoreLocalItem(currentItem));
+  }
 
   writeStoredPublications(nextItems);
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
