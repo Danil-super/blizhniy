@@ -346,6 +346,64 @@ function paymentToHistoryItem(payment: Payment): CabinetPaymentHistoryItem {
   };
 }
 
+function normalizeDuplicateText(value?: string) {
+  return value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
+}
+
+function publicationStatusRank(item: DemoPublication) {
+  if (item.type === "listing" && isPublishedPublication(item)) {
+    return 4;
+  }
+
+  if (item.type === "listing" && isPendingPaymentPublication(item)) {
+    return 3;
+  }
+
+  if (item.type === "listing" && isDraftPublication(item)) {
+    return 2;
+  }
+
+  return 1;
+}
+
+function listingDuplicateKey(item: DemoPublication) {
+  if (item.type !== "listing" || !(isDraftPublication(item) || isPendingPaymentPublication(item) || isPublishedPublication(item))) {
+    return "";
+  }
+
+  return [normalizeDuplicateText(item.title), normalizeDuplicateText(item.price), normalizeDuplicateText(item.city)].join("|");
+}
+
+function newerPublication(left: DemoPublication, right: DemoPublication) {
+  const rankDelta = publicationStatusRank(right) - publicationStatusRank(left);
+
+  if (rankDelta !== 0) {
+    return rankDelta > 0 ? right : left;
+  }
+
+  return new Date(right.createdAt).getTime() >= new Date(left.createdAt).getTime() ? right : left;
+}
+
+function dedupeListingPublications(items: DemoPublication[]) {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const byDuplicateKey = new Map<string, DemoPublication>();
+  const passthrough: DemoPublication[] = [];
+
+  for (const item of byId.values()) {
+    const duplicateKey = listingDuplicateKey(item);
+
+    if (!duplicateKey) {
+      passthrough.push(item);
+      continue;
+    }
+
+    const current = byDuplicateKey.get(duplicateKey);
+    byDuplicateKey.set(duplicateKey, current ? newerPublication(current, item) : item);
+  }
+
+  return [...passthrough, ...byDuplicateKey.values()].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+}
+
 async function fetchCabinetPayments() {
   const response = await fetch("/api/cabinet/payments", {
     headers: await getAuthHeaders(),
@@ -381,7 +439,7 @@ function useUserCabinetData(): UserCabinetState {
           !serverItemIds.has(item.id) &&
           !(identity.accessToken && item.type === "listing" && isUuid(item.id)),
       );
-      const items = Array.from(new Map([...localItems, ...visibleServerItems].map((item) => [item.id, item])).values());
+      const items = dedupeListingPublications(Array.from(new Map([...localItems, ...visibleServerItems].map((item) => [item.id, item])).values()));
 
       if (active) {
         setState({ identity, profile, items, loading: false });

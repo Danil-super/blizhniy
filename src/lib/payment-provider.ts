@@ -136,8 +136,8 @@ function getPublicBaseUrl() {
   return getPublicSiteUrl();
 }
 
-function yookassaStatusToPaymentStatus(status: YooKassaPaymentStatus): Payment["status"] {
-  if (status === "succeeded" || status === "waiting_for_capture") {
+function yookassaStatusToPaymentStatus(status: YooKassaPaymentStatus, paid?: boolean): Payment["status"] {
+  if (paid || status === "succeeded" || status === "waiting_for_capture") {
     return "succeeded";
   }
 
@@ -151,7 +151,7 @@ function yookassaStatusToPaymentStatus(status: YooKassaPaymentStatus): Payment["
 function applyYooKassaPaymentState(payment: Payment, yookassaPayment: YooKassaPaymentResponse) {
   payment.provider = "yookassa";
   payment.providerPaymentId = yookassaPayment.id;
-  payment.status = yookassaStatusToPaymentStatus(yookassaPayment.status);
+  payment.status = yookassaStatusToPaymentStatus(yookassaPayment.status, yookassaPayment.paid);
   payment.confirmationUrl = yookassaPayment.confirmation?.confirmation_url ?? payment.confirmationUrl;
 
   if (payment.status === "succeeded") {
@@ -245,7 +245,7 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
     targetTitle: resolveTargetTitle(tariff, input.targetTitle),
     tariffId: tariff.id,
     amount: tariff.price,
-    status: yookassaStatusToPaymentStatus(payload.status),
+    status: yookassaStatusToPaymentStatus(payload.status, payload.paid),
     provider: "yookassa",
     providerPaymentId: payload.id,
     confirmationUrl: payload.confirmation?.confirmation_url,

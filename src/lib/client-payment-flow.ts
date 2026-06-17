@@ -4,7 +4,7 @@ import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicati
 import { getStoredMediaFile } from "@/lib/client-media-store";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
-import type { ListingKind, Payment } from "@/lib/types";
+import type { Listing, ListingKind, Payment } from "@/lib/types";
 
 type ConfirmPaymentPayload = {
   nextStatus?: string;
@@ -49,9 +49,13 @@ type MediaUploadResponse = {
   error?: string;
 };
 
+type CabinetListingsPayload = {
+  listings?: Listing[];
+};
+
 const pendingPaymentStorageKey = "blizhniy:pendingPaymentId";
 const confirmationRetryDelayMs = 1500;
-const confirmationRetryAttempts = 6;
+const confirmationRetryAttempts = 20;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 
 function isUuid(value?: string) {
@@ -114,6 +118,14 @@ function normalizeListingKind(value?: ListingKind): ListingKind {
   return value === "kuplyu" || value === "menyayu" || value === "otdam-darom" || value === "arenda" ? value : "prodam";
 }
 
+function normalizeDuplicateText(value?: string) {
+  return value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
+}
+
+function listingDraftDuplicateKey(item: Pick<DemoPublication, "city" | "price" | "title">) {
+  return [normalizeDuplicateText(item.title), normalizeDuplicateText(item.price), normalizeDuplicateText(item.city)].join("|");
+}
+
 function apiListingPayloadFromDraft(item: DemoPublication, tariffId: string, mediaPaths: string[] = []) {
   return {
     address: item.hasMapPoint ? item.address : undefined,
@@ -171,6 +183,38 @@ async function uploadDraftListingImages(item: DemoPublication) {
   }
 
   return uploadedPaths;
+}
+
+async function findMatchingServerListing(draft: DemoPublication) {
+  try {
+    const response = await fetch("/api/cabinet/listings", {
+      cache: "no-store",
+      headers: await getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const payload = (await response.json().catch(() => null)) as CabinetListingsPayload | null;
+    const draftKey = listingDraftDuplicateKey(draft);
+    const matches = (payload?.listings ?? []).filter((listing) => {
+      const status = listing.status;
+
+      return (
+        (status === "draft" || status === "pending_payment") &&
+        listingDraftDuplicateKey({
+          city: listing.city,
+          price: listing.price,
+          title: listing.title,
+        }) === draftKey
+      );
+    });
+
+    return matches.sort((left, right) => new Date(right.publishedAt).getTime() - new Date(left.publishedAt).getTime())[0];
+  } catch {
+    return undefined;
+  }
 }
 
 export function syncPaidPublication(confirmPayload: ConfirmPaymentPayload) {
@@ -323,6 +367,34 @@ async function createListingPaymentFromLocalDraft(input: CreatePaymentInput) {
 
   if (!draft) {
     throw new Error("Черновик объявления не найден. Откройте черновик и попробуйте сохранить его заново.");
+  }
+
+  const matchingServerListing = await findMatchingServerListing(draft);
+
+  if (matchingServerListing?.id) {
+    const payment = await createClientPayment({
+      ...input,
+      targetId: matchingServerListing.id,
+      targetTitle: matchingServerListing.title || draft.title,
+    });
+    const serverDraftCopy = withPublicationStatusHistory(
+      {
+        ...draft,
+        id: matchingServerListing.id,
+        images: matchingServerListing.images?.length ? matchingServerListing.images : draft.images,
+        status: "Ждет оплаты",
+      },
+      "Ждет оплаты",
+      {
+        description: "Черновик связан с уже созданным объявлением и отправлен на оплату.",
+      },
+    );
+    const nextItems = [serverDraftCopy, ...readStoredPublications().filter((item) => item.id !== draft.id && item.id !== matchingServerListing.id)].slice(0, 50);
+
+    writeStoredPublications(nextItems);
+    rememberPendingPaymentId(payment.id);
+
+    return payment;
   }
 
   const mediaPaths = await uploadDraftListingImages(draft);
