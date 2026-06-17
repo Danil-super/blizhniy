@@ -36,7 +36,7 @@ export async function GET(request: Request) {
   await syncPendingListingPayments(auth.user.id);
   const listings = await listStoredListingsForUser(auth.user.id);
 
-  return NextResponse.json({ listings });
+  return NextResponse.json({ listings }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function DELETE(request: Request) {
@@ -63,7 +63,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Объявление не найдено или уже удалено" }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function PATCH(request: Request) {
@@ -92,7 +92,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Объявление не найдено или уже снято с публикации" }, { status: 404 });
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   }
 
   if (action === "restore") {
@@ -102,7 +102,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Объявление не найдено или его нужно оплатить перед публикацией" }, { status: 404 });
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   }
 
   return NextResponse.json({ error: "Unsupported listing action" }, { status: 400 });

@@ -310,7 +310,12 @@ export async function markStoredListingPaid(listingId: string) {
     return true;
   }
 
-  if (existingListing.status === "archived" || existingListing.status === "sold" || existingListing.status === "expired") {
+  if (
+    existingListing.status === "archived" ||
+    existingListing.status === "sold" ||
+    existingListing.status === "expired" ||
+    existingListing.status === "rejected"
+  ) {
     return true;
   }
 
@@ -344,6 +349,18 @@ export async function getStoredListingById(listingId: string) {
     console.error("Failed to load listing from Supabase", error);
     return undefined;
   }
+}
+
+export async function getStoredListingForUser(listingId: string, userId: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
+    return undefined;
+  }
+
+  const rows = await supabaseRest<ListingRow[]>(
+    `/rest/v1/listings?select=${listingSelect}&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&limit=1`,
+  );
+
+  return rows[0] ? mapListing(rows[0]) : undefined;
 }
 
 export async function listStoredListings(limit = 24) {

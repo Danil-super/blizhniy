@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { getStoredListingForUser } from "@/lib/listing-store";
 import { createPayment, listPayments } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
+import { isUuid } from "@/lib/supabase-rest";
 import type { Payment } from "@/lib/types";
 
 type CreatePaymentBody = {
@@ -42,11 +44,35 @@ export async function POST(request: Request) {
   }
 
   try {
+    let targetTitle = body.targetTitle;
+
+    if (body.targetType === "listing") {
+      if (!body.targetId || !isUuid(body.targetId)) {
+        return NextResponse.json({ error: "Сначала сохраните объявление, затем оплатите публикацию" }, { status: 400 });
+      }
+
+      const listing = await getStoredListingForUser(body.targetId, auth.user.id);
+
+      if (!listing) {
+        return NextResponse.json({ error: "Объявление не найдено или уже удалено" }, { status: 404 });
+      }
+
+      if (listing.status === "published") {
+        return NextResponse.json({ error: "Объявление уже опубликовано" }, { status: 400 });
+      }
+
+      if (listing.status === "archived" || listing.status === "sold" || listing.status === "expired" || listing.status === "rejected") {
+        return NextResponse.json({ error: "Это объявление снято с публикации. Создайте новое или восстановите доступное объявление." }, { status: 400 });
+      }
+
+      targetTitle = listing.title;
+    }
+
     const payment = await createPayment({
       tariffId: body.tariffId,
       targetId: body.targetId,
       targetType: body.targetType,
-      targetTitle: body.targetTitle,
+      targetTitle,
       userId: auth.user.id,
     });
 

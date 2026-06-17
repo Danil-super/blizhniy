@@ -15,7 +15,6 @@ import {
   soldPublicationStatus,
   unpublishedVacancyStatus,
   withPublicationHistory,
-  withPublicationStatusHistory,
   type DemoPublication,
   type DemoPublicationType,
 } from "@/lib/demo-publications";
@@ -81,6 +80,8 @@ export type CabinetResponseItem = {
   status: string;
   vacancyTitle: string;
 };
+
+const deletedPublicationIdsStorageKey = "blizhniy-deleted-publication-ids";
 
 const sortedCities = [...cities].sort((left, right) => left.name.localeCompare(right.name, "ru"));
 
@@ -149,6 +150,27 @@ function readStoredPublications() {
 function writeStoredPublications(items: DemoPublication[]) {
   window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(items));
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+}
+
+function readDeletedPublicationIds() {
+  try {
+    const stored = window.localStorage.getItem(deletedPublicationIdsStorageKey);
+    const parsed = stored ? (JSON.parse(stored) as unknown) : null;
+
+    if (Array.isArray(parsed)) {
+      return new Set(parsed.filter((item): item is string => typeof item === "string" && item.length > 0));
+    }
+  } catch {
+    return new Set<string>();
+  }
+
+  return new Set<string>();
+}
+
+function rememberDeletedPublicationId(itemId: string) {
+  const nextIds = readDeletedPublicationIds();
+  nextIds.add(itemId);
+  window.localStorage.setItem(deletedPublicationIdsStorageKey, JSON.stringify([...nextIds].slice(-300)));
 }
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -297,6 +319,7 @@ async function fetchCabinetListings(identity: ClientUserIdentity) {
 
   try {
     const response = await fetch("/api/cabinet/listings", {
+      cache: "no-store",
       headers: await getAuthHeaders(),
     });
 
@@ -347,9 +370,18 @@ function useUserCabinetData(): UserCabinetState {
       const identity = await resolveClientUserIdentity();
       const fallback = createDefaultCabinetProfile(identity);
       const profile = readCabinetProfile(identity.ownerKey, fallback);
-      const localItems = readStoredPublications().filter((item) => item.ownerKey === identity.ownerKey);
       const [serverFairApplications, serverListings] = await Promise.all([fetchCabinetFairApplications(identity), fetchCabinetListings(identity)]);
-      const items = Array.from(new Map([...localItems, ...serverFairApplications, ...serverListings].map((item) => [item.id, item])).values());
+      const deletedIds = readDeletedPublicationIds();
+      const visibleServerItems = [...serverFairApplications, ...serverListings].filter((item) => !deletedIds.has(item.id));
+      const serverItemIds = new Set(visibleServerItems.map((item) => item.id));
+      const localItems = readStoredPublications().filter(
+        (item) =>
+          item.ownerKey === identity.ownerKey &&
+          !deletedIds.has(item.id) &&
+          !serverItemIds.has(item.id) &&
+          !(identity.accessToken && item.type === "listing" && isUuid(item.id)),
+      );
+      const items = Array.from(new Map([...localItems, ...visibleServerItems].map((item) => [item.id, item])).values());
 
       if (active) {
         setState({ identity, profile, items, loading: false });
@@ -1019,18 +1051,6 @@ async function createPublicationPayment(item: DemoPublication) {
     throw new Error("Для этой публикации не настроен тариф оплаты.");
   }
 
-  if (!isPendingPaymentPublication(item)) {
-    const nextItems = readStoredPublications().map((storedItem) =>
-      storedItem.id === item.id
-        ? withPublicationStatusHistory(storedItem, "Ждет оплаты", {
-            description: "Черновик отправлен на оплату перед публикацией.",
-          })
-        : storedItem,
-    );
-
-    writeStoredPublications(nextItems);
-  }
-
   await createAndConfirmClientPayment({
     tariffId: paymentConfig.tariffId,
     targetId: item.id,
@@ -1221,6 +1241,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
   const [payingItemId, setPayingItemId] = useState<string | null>(null);
   const [actingItemId, setActingItemId] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState("");
+  const [paymentErrorItemId, setPaymentErrorItemId] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
   const [actionErrorItemId, setActionErrorItemId] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState("");
@@ -1290,6 +1311,10 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
       setActionSuccess((current) => (current === message ? "" : current));
       setActionSuccessItemId((current) => (current === itemId ? null : current));
     }, 2600);
+  };
+  const clearPaymentError = () => {
+    setPaymentError("");
+    setPaymentErrorItemId(null);
   };
 
   if (!items.length) {
@@ -1477,8 +1502,8 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                           next.add(item.id);
                           return next;
                         });
+                        rememberDeletedPublicationId(item.id);
                         setDeletingItemId(null);
-                        showActionSuccess(item.id, "Объявление удалено.");
                       })
                       .catch((error) => {
                         setActionError(error instanceof Error ? error.message : "Не удалось удалить публикацию.");
@@ -1496,7 +1521,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               </div>
             </div>
           ) : null}
-          {paymentError && payingItemId === item.id ? (
+          {paymentError && paymentErrorItemId === item.id ? (
             <p className="relative z-20 mx-3 mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{paymentError}</p>
           ) : null}
           {actionError && actionErrorItemId === item.id ? (
@@ -1527,13 +1552,19 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                   setDeletingItemId(null);
                   setSellingItemId(null);
                   setUnpublishingItemId(null);
-                  setPaymentError("");
+                  clearPaymentError();
                   setActionError("");
                   setActionErrorItemId(null);
+                  setActionSuccess("");
+                  setActionSuccessItemId(null);
                   setPayingItemId(item.id);
                   void createPublicationPayment(item)
+                    .then(() => {
+                      showActionSuccess(item.id, "Платеж создан. Открываем оплату.");
+                    })
                     .catch((error) => {
                       setPaymentError(error instanceof Error ? error.message : "Не удалось провести оплату.");
+                      setPaymentErrorItemId(item.id);
                     })
                     .finally(() => setPayingItemId(null));
                 }}
@@ -1553,6 +1584,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                   setActionErrorItemId(null);
                   setActionSuccess("");
                   setActionSuccessItemId(null);
+                  clearPaymentError();
                   setDeletingItemId((current) => (current === item.id ? null : item.id));
                 }}
                 className={actionDangerClassName}
