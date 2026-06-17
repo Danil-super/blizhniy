@@ -433,13 +433,18 @@ function useUserCabinetData(): UserCabinetState {
       const visibleServerItems = [...serverFairApplications, ...serverListings].filter((item) => !deletedIds.has(item.id));
       const serverItemIds = new Set(visibleServerItems.map((item) => item.id));
       const localItems = readStoredPublications().filter(
-        (item) =>
-          item.ownerKey === identity.ownerKey &&
-          !deletedIds.has(item.id) &&
-          !serverItemIds.has(item.id) &&
-          !(identity.accessToken && item.type === "listing" && isUuid(item.id)),
+        (item) => {
+          const inactiveServerListingOverlay = identity.accessToken && item.type === "listing" && isUuid(item.id) && isInactiveListing(item);
+
+          return (
+            item.ownerKey === identity.ownerKey &&
+            !deletedIds.has(item.id) &&
+            (!serverItemIds.has(item.id) || inactiveServerListingOverlay) &&
+            !(identity.accessToken && item.type === "listing" && isUuid(item.id) && !inactiveServerListingOverlay)
+          );
+        },
       );
-      const items = dedupeListingPublications(Array.from(new Map([...localItems, ...visibleServerItems].map((item) => [item.id, item])).values()));
+      const items = dedupeListingPublications(Array.from(new Map([...visibleServerItems, ...localItems].map((item) => [item.id, item])).values()));
 
       if (active) {
         setState({ identity, profile, items, loading: false });
@@ -792,7 +797,7 @@ function normalizePublicationStatus(status: string) {
 }
 
 function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function canMarkListingSold(item: DemoPublication) {
@@ -916,12 +921,15 @@ async function markListingSold(currentItem: DemoPublication, reason: SoldReason)
     await requestServerListingAction(currentItem.id, "sold");
   }
 
-  const nextItems = readStoredPublications().map((item) => {
+  const storedItems = readStoredPublications();
+  const soldAt = new Date().toISOString();
+  let updatedLocalItem = false;
+  const nextItems = storedItems.map((item) => {
     if (item.id !== currentItem.id || item.type !== "listing") {
       return item;
     }
 
-    const soldAt = new Date().toISOString();
+    updatedLocalItem = true;
 
     return appendPublicationHistory(
       {
@@ -938,6 +946,25 @@ async function markListingSold(currentItem: DemoPublication, reason: SoldReason)
       },
     );
   });
+
+  if (!updatedLocalItem) {
+    nextItems.unshift(
+      appendPublicationHistory(
+        {
+          ...currentItem,
+          soldAt,
+          soldReason: reason,
+          status: soldPublicationStatus,
+        },
+        "sold",
+        {
+          at: soldAt,
+          status: soldPublicationStatus,
+          description: soldReasonLabels[reason],
+        },
+      ),
+    );
+  }
 
   writeStoredPublications(nextItems);
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));

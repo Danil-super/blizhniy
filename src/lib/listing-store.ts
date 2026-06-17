@@ -557,17 +557,34 @@ export async function markStoredListingSoldForUser(listingId: string, userId: st
     return false;
   }
 
-  const rows = await supabaseRest<Array<Pick<ListingRow, "id">>>(
-    `/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&status=eq.published`,
-    {
-      method: "PATCH",
-      prefer: "return=representation",
-      body: {
-        published_at: null,
-        status: "sold",
+  async function patchListingStatus(status: "expired" | "sold") {
+    return supabaseRest<Array<Pick<ListingRow, "id">>>(
+      `/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&status=eq.published`,
+      {
+        method: "PATCH",
+        prefer: "return=representation",
+        body: {
+          ...(status === "expired" ? { expires_at: new Date().toISOString() } : {}),
+          published_at: null,
+          status,
+        },
       },
-    },
-  );
+    );
+  }
+
+  let rows: Array<Pick<ListingRow, "id">>;
+
+  try {
+    rows = await patchListingStatus("sold");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+
+    if (!message.includes("publication_status") || !message.includes("sold")) {
+      throw error;
+    }
+
+    rows = await patchListingStatus("expired");
+  }
 
   return Boolean(rows[0]?.id);
 }
