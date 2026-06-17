@@ -33,15 +33,31 @@ export async function getAuthenticatedRequestUser(request: Request) {
     return null;
   }
 
-  const response = await fetch(buildSupabaseRestUrl("/auth/v1/user"), {
-    headers: {
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${token}`,
-    },
-    cache: "no-store",
-  });
+  let response: Response | undefined;
 
-  if (!response.ok) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      response = await fetch(buildSupabaseRestUrl("/auth/v1/user"), {
+        headers: {
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+      });
+
+      if (response.status < 500 || attempt === 3) {
+        break;
+      }
+    } catch (error) {
+      if (attempt === 3) {
+        throw error;
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, attempt * 300));
+  }
+
+  if (!response?.ok) {
     return null;
   }
 

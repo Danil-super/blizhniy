@@ -8,7 +8,7 @@ type PageProps = {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const storedListing = await getStoredListingById(slug);
+  const storedListing = await getStoredListingById(slug, { publicOnly: true });
   const listing = storedListing ? toDemoListing(storedListing) : findListingBySlug(slug);
 
   return {
@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
-  const storedListing = await getStoredListingById(slug);
+  const storedListing = await getStoredListingById(slug, { publicOnly: true });
 
   return <ListingDetailPage slug={slug} listingOverride={storedListing ? toDemoListing(storedListing) : undefined} />;
 }

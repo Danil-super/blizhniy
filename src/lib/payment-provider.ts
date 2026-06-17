@@ -115,6 +115,37 @@ export function getPayment(paymentId: string) {
   return listMockPayments().find((payment) => payment.id === paymentId);
 }
 
+async function fetchYooKassaJson<T>(url: string, init: RequestInit) {
+  let response: Response | undefined;
+  let payload: T | null = null;
+  let fetchError: unknown;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      response = await fetch(url, init);
+      payload = (await response.json().catch(() => null)) as T | null;
+
+      if (response.status < 500 || attempt === 3) {
+        break;
+      }
+    } catch (error) {
+      fetchError = error;
+
+      if (attempt === 3) {
+        throw error;
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+  }
+
+  if (!response) {
+    throw fetchError instanceof Error ? fetchError : new Error("YooKassa request failed");
+  }
+
+  return { payload, response };
+}
+
 async function fetchYooKassaPayment(providerPaymentId: string) {
   const shopId = process.env.YOOKASSA_SHOP_ID?.trim();
   const secretKey = process.env.YOOKASSA_SECRET_KEY?.trim();
@@ -124,12 +155,11 @@ async function fetchYooKassaPayment(providerPaymentId: string) {
   }
 
   const auth = Buffer.from(`${shopId}:${secretKey}`).toString("base64");
-  const response = await fetch(`https://api.yookassa.ru/v3/payments/${providerPaymentId}`, {
+  const { payload, response } = await fetchYooKassaJson<YooKassaPaymentResponse & { description?: string }>(`https://api.yookassa.ru/v3/payments/${providerPaymentId}`, {
     headers: {
       Authorization: `Basic ${auth}`,
     },
   });
-  const payload = (await response.json().catch(() => null)) as (YooKassaPaymentResponse & { description?: string }) | null;
 
   if (!response.ok || !payload?.id) {
     throw new Error(payload?.description ?? "YooKassa payment status check failed");
@@ -249,7 +279,7 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
     }
   }
 
-  const response = await fetch("https://api.yookassa.ru/v3/payments", {
+  const { payload, response } = await fetchYooKassaJson<YooKassaPaymentResponse & { description?: string }>("https://api.yookassa.ru/v3/payments", {
     method: "POST",
     headers: {
       Authorization: `Basic ${auth}`,
@@ -275,7 +305,6 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
       },
     }),
   });
-  const payload = (await response.json().catch(() => null)) as (YooKassaPaymentResponse & { description?: string }) | null;
 
   if (!response.ok || !payload?.id) {
     throw new Error(payload?.description ?? "YooKassa payment creation failed");

@@ -449,15 +449,15 @@ export async function markStoredListingPaid(listingId: string) {
   return Boolean(rows[0]?.id);
 }
 
-export async function getStoredListingById(listingId: string) {
+export async function getStoredListingById(listingId: string, options: { publicOnly?: boolean } = {}) {
   if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
     return undefined;
   }
 
   try {
+    const statusFilter = options.publicOnly ? "&status=eq.published" : "";
     const rows = await supabaseRest<ListingRow[]>(
-      `/rest/v1/listings?select=${listingSelect}&id=eq.${encodeURIComponent(listingId)}&limit=1`,
-      { useServiceRole: false },
+      `/rest/v1/listings?select=${listingSelect}&id=eq.${encodeURIComponent(listingId)}${statusFilter}&limit=1`,
     );
 
     return rows[0] ? mapListing(rows[0]) : undefined;
@@ -487,7 +487,6 @@ export async function listStoredListings(limit = 24) {
   try {
     const rows = await supabaseRest<ListingRow[]>(
       `/rest/v1/listings?select=${listingSelect}&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`,
-      { useServiceRole: false },
     );
 
     return rows.map(mapListing);
