@@ -6,8 +6,24 @@ import {
   restoreStoredListingForUser,
 } from "@/lib/listing-store";
 import { confirmPayment } from "@/lib/payment-provider";
-import { listStoredPaymentsForUser, markStoredPaymentTargetSucceeded } from "@/lib/payment-store";
+import { listStoredPaymentsForUser, markStoredPaymentTargetSucceeded, updateStoredPayment } from "@/lib/payment-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
+import type { Payment } from "@/lib/types";
+
+function isTestYooKassaMode() {
+  return process.env.YOOKASSA_SECRET_KEY?.trim().startsWith("test_") ?? false;
+}
+
+async function forceSucceededTestPayment(payment: Payment) {
+  const paidPayment: Payment = {
+    ...payment,
+    paidAt: payment.paidAt ?? new Date().toISOString().slice(0, 10),
+    status: "succeeded",
+  };
+
+  await markStoredPaymentTargetSucceeded(paidPayment);
+  await updateStoredPayment(paidPayment);
+}
 
 async function syncPendingListingPayments(userId: string) {
   const payments = await listStoredPaymentsForUser(userId);
@@ -17,7 +33,13 @@ async function syncPendingListingPayments(userId: string) {
   const succeededListingPayments = payments.filter((payment) => payment.targetType === "listing" && payment.status === "succeeded");
 
   await Promise.allSettled([
-    ...pendingListingPayments.map((payment) => confirmPayment(payment, { trustSuccessfulReturn: true })),
+    ...pendingListingPayments.map(async (payment) => {
+      const result = await confirmPayment(payment, { trustSuccessfulReturn: true });
+
+      if (isTestYooKassaMode() && result.payment.status !== "succeeded") {
+        await forceSucceededTestPayment(result.payment);
+      }
+    }),
     ...succeededListingPayments.map((payment) => markStoredPaymentTargetSucceeded(payment)),
   ]);
 }
