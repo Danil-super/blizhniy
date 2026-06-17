@@ -133,7 +133,7 @@ function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string })
         ) : null}
       </div>
       {media.length > 1 ? (
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-2">
           {media.map((item, index) => (
             <button
               type="button"

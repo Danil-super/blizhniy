@@ -393,7 +393,6 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
         ownerKey: identity.ownerKey,
         ownerName: identity.name,
         title: String(formData.get("title") ?? listing.title).trim() || listing.title,
-        subtitle: String(formData.get("subtitle") ?? listing.subtitle).trim() || listing.subtitle,
         city,
         address: hasMapPoint ? String(formData.get("address") ?? "").trim() || undefined : undefined,
         lat: hasMapPoint ? readCoordinate(formData, "lat") : undefined,
@@ -512,11 +511,6 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
             <input name="price" defaultValue={extractListingPriceDigits(listing.price)} inputMode="numeric" maxLength={maxListingPriceDigits} pattern="[0-9]*" placeholder="12000" className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
           </label>
         </div>
-
-        <label className="block">
-          <span className="text-sm font-bold text-slate-700">Короткое описание для кабинета</span>
-          <input name="subtitle" defaultValue={listing.subtitle} maxLength={120} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
-        </label>
 
         <label className="block">
           <span className="text-sm font-bold text-slate-700">Описание</span>
