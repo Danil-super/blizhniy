@@ -5,10 +5,12 @@ import { getAuthenticatedRequestUser, isAdminRequest, isSupabaseServerConfigured
 
 export async function POST(request: Request, { params }: { params: Promise<{ paymentId: string }> }) {
   const { paymentId } = await params;
+  const body = (await request.json().catch(() => null)) as { trustSuccessfulReturn?: boolean } | null;
 
   try {
     let payment = (await getStoredPayment(paymentId)) ?? (await findStoredPaymentByProvider(paymentId)) ?? getPayment(paymentId);
     let resolvedPaymentId = payment?.id ?? paymentId;
+    let canTrustSuccessfulReturn = false;
 
     if (isSupabaseServerConfigured()) {
       const auth = await getAuthenticatedRequestUser(request);
@@ -24,6 +26,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
         if (payment?.userId && payment.userId !== auth.user.id && !isAdmin) {
           return NextResponse.json({ error: "Платеж принадлежит другому пользователю" }, { status: 403 });
         }
+
+        canTrustSuccessfulReturn = Boolean(payment?.userId && (payment.userId === auth.user.id || isAdmin));
       }
 
       if (payment?.id) {
@@ -31,7 +35,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
       }
     }
 
-    const result = await confirmPayment(payment ?? resolvedPaymentId);
+    const result = await confirmPayment(payment ?? resolvedPaymentId, {
+      trustSuccessfulReturn: Boolean(body?.trustSuccessfulReturn && canTrustSuccessfulReturn),
+    });
 
     return NextResponse.json(result);
   } catch (error) {

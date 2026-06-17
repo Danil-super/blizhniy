@@ -19,6 +19,7 @@ type ConfirmPaymentPayload = {
 };
 
 type CreatePaymentInput = {
+  listingDraft?: DemoPublication;
   tariffId: string;
   targetId?: string;
   targetType?: Payment["targetType"];
@@ -265,8 +266,9 @@ export function syncPaidPublication(confirmPayload: ConfirmPaymentPayload) {
 
 async function requestPaymentConfirmation(paymentId: string) {
   const response = await fetch(`/api/payments/${paymentId}/confirm`, {
+    body: JSON.stringify({ trustSuccessfulReturn: true }),
     method: "POST",
-    headers: await getAuthHeaders(),
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
   });
   const payload = (await response.json().catch(() => null)) as (ConfirmPaymentPayload & { error?: string }) | null;
 
@@ -352,10 +354,16 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 export async function createClientPayment(input: CreatePaymentInput): Promise<CreatedPaymentPayload> {
+  const paymentInput = {
+    tariffId: input.tariffId,
+    targetId: input.targetId,
+    targetTitle: input.targetTitle,
+    targetType: input.targetType,
+  };
   const response = await fetch("/api/payments", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
-    body: JSON.stringify(input),
+    body: JSON.stringify(paymentInput),
   });
   const payload = (await response.json().catch(() => null)) as { error?: string; payment?: CreatedPaymentPayload } | null;
 
@@ -383,7 +391,7 @@ export async function createClientPayment(input: CreatePaymentInput): Promise<Cr
 }
 
 async function createListingPaymentFromLocalDraft(input: CreatePaymentInput) {
-  const draft = readStoredPublications().find((item) => item.type === "listing" && item.id === input.targetId);
+  const draft = input.listingDraft ?? readStoredPublications().find((item) => item.type === "listing" && item.id === input.targetId);
 
   if (!draft) {
     throw new Error("Черновик объявления не найден. Откройте черновик и попробуйте сохранить его заново.");
@@ -452,7 +460,9 @@ async function createListingPaymentFromLocalDraft(input: CreatePaymentInput) {
 
 export async function createAndConfirmClientPayment(input: CreatePaymentInput) {
   const payment =
-    input.targetType === "listing" && input.targetId && !isUuid(input.targetId)
+    input.targetType === "listing" && input.listingDraft
+      ? await createListingPaymentFromLocalDraft(input)
+      : input.targetType === "listing" && input.targetId && !isUuid(input.targetId)
       ? await createListingPaymentFromLocalDraft(input)
       : await createClientPayment(input);
 

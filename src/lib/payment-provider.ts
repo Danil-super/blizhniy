@@ -23,6 +23,7 @@ type YooKassaPaymentResponse = {
   id: string;
   paid?: boolean;
   status: YooKassaPaymentStatus;
+  test?: boolean;
   metadata?: {
     localPaymentId?: string;
     tariffId?: string;
@@ -51,6 +52,10 @@ export type PaymentResult = {
     subject: string;
     body: string;
   };
+};
+
+type ConfirmPaymentOptions = {
+  trustSuccessfulReturn?: boolean;
 };
 
 function resolveTargetType(tariff: Tariff): PaymentTargetType {
@@ -171,6 +176,15 @@ function createPendingPaymentResult(payment: Payment): PaymentResult {
       body: `${payment.targetTitle}: ЮKassa еще не подтвердила успешную оплату.`,
     },
   };
+}
+
+function canTrustYooKassaReturn(payment: Payment, yookassaPayment: YooKassaPaymentResponse, options?: ConfirmPaymentOptions) {
+  return Boolean(
+    options?.trustSuccessfulReturn &&
+      payment.provider === "yookassa" &&
+      yookassaPayment.test === true &&
+      (payment.status === "created" || payment.status === "pending"),
+  );
 }
 
 async function applySucceededPayment(payment: Payment): Promise<PaymentResult> {
@@ -359,7 +373,7 @@ async function resolvePaymentForConfirmation(paymentId: string) {
   return (await getStoredPayment(paymentId)) ?? (await findStoredPaymentByProvider(paymentId)) ?? getPayment(paymentId);
 }
 
-export async function confirmPayment(paymentOrId: Payment | string): Promise<PaymentResult> {
+export async function confirmPayment(paymentOrId: Payment | string, options?: ConfirmPaymentOptions): Promise<PaymentResult> {
   const payment = typeof paymentOrId === "string" ? await resolvePaymentForConfirmation(paymentOrId) : paymentOrId;
 
   if (!payment) {
@@ -375,6 +389,13 @@ export async function confirmPayment(paymentOrId: Payment | string): Promise<Pay
     applyYooKassaPaymentState(payment, yookassaPayment);
 
     if (payment.status !== "succeeded") {
+      if (canTrustYooKassaReturn(payment, yookassaPayment, options)) {
+        payment.status = "succeeded";
+        payment.paidAt = payment.paidAt ?? todayIsoDate();
+
+        return applySucceededPayment(payment);
+      }
+
       await updateStoredPayment(payment);
       return createPendingPaymentResult(payment);
     }

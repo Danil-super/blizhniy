@@ -17,7 +17,7 @@ async function syncPendingListingPayments(userId: string) {
   const succeededListingPayments = payments.filter((payment) => payment.targetType === "listing" && payment.status === "succeeded");
 
   await Promise.allSettled([
-    ...pendingListingPayments.map((payment) => confirmPayment(payment)),
+    ...pendingListingPayments.map((payment) => confirmPayment(payment, { trustSuccessfulReturn: true })),
     ...succeededListingPayments.map((payment) => markStoredPaymentTargetSucceeded(payment)),
   ]);
 }
