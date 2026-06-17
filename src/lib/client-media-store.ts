@@ -110,3 +110,17 @@ export async function resolveStoredMediaUrl(source: string) {
   objectUrlCache.set(source, objectUrl);
   return objectUrl;
 }
+
+export async function getStoredMediaFile(source: string) {
+  if (!isStoredMediaReference(source)) {
+    return undefined;
+  }
+
+  const record = await runMediaTransaction<StoredMediaRecord | undefined>("readonly", (store) => store.get(source));
+
+  if (!record?.blob) {
+    return undefined;
+  }
+
+  return new File([record.blob], record.name || "listing-photo.jpg", { type: record.type || record.blob.type || "image/jpeg" });
+}

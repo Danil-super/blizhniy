@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStoredListingForUser } from "@/lib/listing-store";
+import { getStoredListingForUser, markStoredListingPendingPaymentForUser } from "@/lib/listing-store";
 import { createPayment, listPayments } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isUuid } from "@/lib/supabase-rest";
@@ -63,6 +63,14 @@ export async function POST(request: Request) {
 
       if (listing.status === "archived" || listing.status === "sold" || listing.status === "expired" || listing.status === "rejected") {
         return NextResponse.json({ error: "Это объявление снято с публикации. Создайте новое или восстановите доступное объявление." }, { status: 400 });
+      }
+
+      if (listing.status === "draft") {
+        const updated = await markStoredListingPendingPaymentForUser(body.targetId, auth.user.id);
+
+        if (!updated) {
+          return NextResponse.json({ error: "Не удалось подготовить объявление к оплате. Обновите страницу и попробуйте снова." }, { status: 409 });
+        }
       }
 
       targetTitle = listing.title;

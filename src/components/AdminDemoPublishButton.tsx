@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { createStoredListingPublication } from "@/lib/client-listing-flow";
+import { storeMediaFile } from "@/lib/client-media-store";
 import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationHistory, type DemoPublication, type DemoPublicationType } from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { categories, cities } from "@/lib/data";
@@ -132,6 +133,13 @@ async function uploadPublicationMedia(formData: FormData, folder: "fair-applicat
   return payload?.files?.map((file) => file.path).filter((path): path is string => Boolean(path)) ?? [];
 }
 
+async function readLocalImageReferences(formData: FormData) {
+  const files = readImageFiles(formData).slice(0, 10);
+  const storedImages = await Promise.allSettled(files.map((file) => storeMediaFile(file)));
+
+  return storedImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+}
+
 async function buildFallbackPublication(formData: FormData, type: DemoPublicationType, status: string): Promise<DemoPublication> {
   const now = new Date().toISOString();
   const id = `demo-${type}-${Date.now().toString(36)}`;
@@ -152,6 +160,7 @@ async function buildFallbackPublication(formData: FormData, type: DemoPublicatio
     listingKind: readValue(formData, "kind", "prodam") as ListingKind,
     categorySlug,
     subcategorySlug: readValue(formData, "subcategory"),
+    images: await readLocalImageReferences(formData),
     status,
     createdAt: now,
   });
@@ -236,9 +245,11 @@ export function AdminDemoPublishButton({
 
         if (identity.accessToken && isDraftStatus(status)) {
           const result = await createSupabaseListing(formData, { accessToken: identity.accessToken, status: "draft" });
+          const fallbackPublication = await buildFallbackPublication(formData, publicationType, status);
           const publication = {
-            ...(await buildFallbackPublication(formData, publicationType, status)),
+            ...fallbackPublication,
             id: result.listing?.id ?? `demo-${publicationType}-${Date.now().toString(36)}`,
+            images: result.listing?.images ?? fallbackPublication.images,
             ownerKey: identity.ownerKey,
             ownerName: identity.name,
           };

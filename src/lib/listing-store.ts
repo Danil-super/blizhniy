@@ -418,6 +418,25 @@ export async function archiveStoredListingForUser(listingId: string, userId: str
   return Boolean(rows[0]?.id);
 }
 
+export async function markStoredListingPendingPaymentForUser(listingId: string, userId: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
+    return false;
+  }
+
+  const rows = await supabaseRest<Array<Pick<ListingRow, "id">>>(
+    `/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&status=eq.draft`,
+    {
+      method: "PATCH",
+      prefer: "return=representation",
+      body: {
+        status: "pending_payment",
+      },
+    },
+  );
+
+  return Boolean(rows[0]?.id);
+}
+
 export async function markStoredListingSoldForUser(listingId: string, userId: string) {
   if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
     return false;

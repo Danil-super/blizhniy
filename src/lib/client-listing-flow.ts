@@ -1,7 +1,7 @@
 "use client";
 
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
-import type { ListingKind, Payment } from "@/lib/types";
+import type { Listing, ListingKind, Payment } from "@/lib/types";
 
 type CreateStoredListingInput = {
   accessToken?: string;
@@ -23,7 +23,7 @@ type CreateStoredListingInput = {
 };
 
 type CreateStoredListingResponse = {
-  listing?: {
+  listing?: Partial<Listing> & {
     id?: string;
     slug?: string;
     status?: string;

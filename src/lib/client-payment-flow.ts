@@ -1,6 +1,7 @@
 "use client";
 
 import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
+import { getStoredMediaFile } from "@/lib/client-media-store";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import type { ListingKind, Payment } from "@/lib/types";
@@ -34,11 +35,17 @@ type CreatedPaymentPayload = {
 type CreatedListingPaymentPayload = {
   listing?: {
     id?: string;
+    images?: string[];
     slug?: string;
     status?: string;
     title?: string;
   };
   payment?: CreatedPaymentPayload;
+  error?: string;
+};
+
+type MediaUploadResponse = {
+  files?: Array<{ path?: string }>;
   error?: string;
 };
 
@@ -107,7 +114,7 @@ function normalizeListingKind(value?: ListingKind): ListingKind {
   return value === "kuplyu" || value === "menyayu" || value === "otdam-darom" || value === "arenda" ? value : "prodam";
 }
 
-function apiListingPayloadFromDraft(item: DemoPublication, tariffId: string) {
+function apiListingPayloadFromDraft(item: DemoPublication, tariffId: string, mediaPaths: string[] = []) {
   return {
     address: item.hasMapPoint ? item.address : undefined,
     categorySlug: item.categorySlug || "dlya-doma-i-dachi",
@@ -116,6 +123,7 @@ function apiListingPayloadFromDraft(item: DemoPublication, tariffId: string) {
     kind: normalizeListingKind(item.listingKind),
     lat: item.hasMapPoint ? item.lat : undefined,
     lng: item.hasMapPoint ? item.lng : undefined,
+    mediaPaths,
     messengerUrl: item.messengerUrl || undefined,
     phone: item.phone || undefined,
     price: item.price || undefined,
@@ -123,6 +131,46 @@ function apiListingPayloadFromDraft(item: DemoPublication, tariffId: string) {
     tariffId,
     title: item.title || "Новое объявление",
   };
+}
+
+async function uploadDraftListingImages(item: DemoPublication) {
+  const imageFiles = (
+    await Promise.all(
+      (item.images ?? []).slice(0, 10).map(async (source) => {
+        const file = await getStoredMediaFile(source);
+
+        return file?.type.startsWith("image/") ? file : undefined;
+      }),
+    )
+  ).filter((file): file is File => Boolean(file));
+
+  if (!imageFiles.length) {
+    return [];
+  }
+
+  const uploadedPaths: string[] = [];
+
+  for (let index = 0; index < imageFiles.length; index += 10) {
+    const uploadFormData = new FormData();
+
+    uploadFormData.set("folder", "listings");
+    imageFiles.slice(index, index + 10).forEach((file) => uploadFormData.append("files", file));
+
+    const response = await fetch("/api/uploads/media", {
+      body: uploadFormData,
+      headers: await getAuthHeaders(),
+      method: "POST",
+    });
+    const payload = (await response.json().catch(() => null)) as MediaUploadResponse | null;
+
+    if (!response.ok) {
+      throw new Error(payload?.error ?? "Не удалось загрузить фото объявления.");
+    }
+
+    uploadedPaths.push(...(payload?.files ?? []).map((file) => file.path).filter((path): path is string => Boolean(path)));
+  }
+
+  return uploadedPaths;
 }
 
 export function syncPaidPublication(confirmPayload: ConfirmPaymentPayload) {
@@ -277,10 +325,11 @@ async function createListingPaymentFromLocalDraft(input: CreatePaymentInput) {
     throw new Error("Черновик объявления не найден. Откройте черновик и попробуйте сохранить его заново.");
   }
 
+  const mediaPaths = await uploadDraftListingImages(draft);
   const response = await fetch("/api/listings", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
-    body: JSON.stringify(apiListingPayloadFromDraft(draft, input.tariffId)),
+    body: JSON.stringify(apiListingPayloadFromDraft(draft, input.tariffId, mediaPaths)),
   });
   const payload = (await response.json().catch(() => null)) as CreatedListingPaymentPayload | null;
 
@@ -288,21 +337,20 @@ async function createListingPaymentFromLocalDraft(input: CreatePaymentInput) {
     throw new Error(payload?.error ?? "Не удалось создать оплату для черновика.");
   }
 
-  const nextItems = readStoredPublications().map((item) =>
-    item.id === draft.id
-      ? withPublicationStatusHistory(
-          {
-            ...item,
-            id: payload.listing?.id ?? item.id,
-            status: "Ждет оплаты",
-          },
-          "Ждет оплаты",
-          {
-            description: "Черновик перенесен в базу и отправлен на оплату перед публикацией.",
-          },
-        )
-      : item,
+  const serverListingId = payload.listing.id;
+  const serverDraftCopy = withPublicationStatusHistory(
+    {
+      ...draft,
+      id: serverListingId,
+      images: payload.listing.images?.length ? payload.listing.images : draft.images,
+      status: "Ждет оплаты",
+    },
+    "Ждет оплаты",
+    {
+      description: "Черновик перенесен в базу и отправлен на оплату перед публикацией.",
+    },
   );
+  const nextItems = [serverDraftCopy, ...readStoredPublications().filter((item) => item.id !== draft.id && item.id !== serverListingId)].slice(0, 50);
 
   writeStoredPublications(nextItems);
   rememberPendingPaymentId(payload.payment.id);

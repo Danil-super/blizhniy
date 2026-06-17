@@ -11,6 +11,8 @@ import { appendPublicationHistory, DemoPublication, demoPublicationsStorageKey }
 import { categories, cities } from "@/lib/data";
 import { extractListingPriceDigits, maxListingPriceDigits, normalizeListingPrice } from "@/lib/listing-price";
 import { filterListingMediaFiles, listingMediaLimitText } from "@/lib/media-limits";
+import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
+import type { Listing } from "@/lib/types";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
 import { ListingLocationFields } from "@/components/listings/ListingFormControls";
 
@@ -37,6 +39,97 @@ function readStoredPublications() {
   }
 
   return [];
+}
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  if (!isSupabaseBrowserConfigured()) {
+    return {};
+  }
+
+  const supabase = getSupabaseBrowserClient();
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function listingStatusLabel(status: Listing["status"]) {
+  if (status === "published" || status === "paid") {
+    return "Опубликовано";
+  }
+
+  if (status === "pending_payment") {
+    return "Ждет оплаты";
+  }
+
+  if (status === "draft") {
+    return "Черновик";
+  }
+
+  if (status === "sold") {
+    return "Продано";
+  }
+
+  if (status === "archived") {
+    return "Снята с публикации";
+  }
+
+  if (status === "expired") {
+    return "Истек срок";
+  }
+
+  if (status === "rejected") {
+    return "Отклонено";
+  }
+
+  return status;
+}
+
+function serverListingToPublication(listing: Listing): DemoPublication {
+  return {
+    id: listing.id,
+    type: "listing",
+    title: listing.title,
+    subtitle: listing.subcategory || listing.categorySlug,
+    city: listing.city,
+    price: listing.price,
+    description: listing.description,
+    images: listing.images,
+    lat: listing.lat,
+    lng: listing.lng,
+    address: listing.address ?? listing.district,
+    hasMapPoint: listing.hasMapPoint,
+    showExactAddress: listing.showExactAddress,
+    phone: listing.phone,
+    email: listing.email,
+    messengerUrl: listing.messengerUrl,
+    listingKind: listing.kind,
+    categorySlug: listing.categorySlug,
+    status: listingStatusLabel(listing.status),
+    subcategorySlug: listing.subcategory,
+    expiresAt: listing.expiresAt,
+    createdAt: listing.publishedAt,
+  };
+}
+
+async function fetchServerListing(slug: string) {
+  try {
+    const response = await fetch("/api/cabinet/listings", {
+      cache: "no-store",
+      headers: await getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const payload = (await response.json().catch(() => null)) as { listings?: Listing[] } | null;
+    const listing = payload?.listings?.find((item) => item.id === slug);
+
+    return listing ? serverListingToPublication(listing) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function limitMediaFiles(images: string[] = [], videos: string[] = []) {
@@ -159,14 +252,41 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
   const kind = (listing?.listingKind ?? "prodam") as ListingKind;
 
   useEffect(() => {
-    const storedItems = readStoredPublications();
-    const storedListing = storedItems.find((item) => item.type === "listing" && item.id === slug);
-    const storedMedia = limitMediaFiles(storedListing?.images, storedListing?.videos);
+    let active = true;
 
-    setItems(storedItems);
-    setImages(storedMedia.images);
-    setVideos(storedMedia.videos);
-    setCategorySlug(storedListing?.categorySlug ?? "mebel-i-interer");
+    async function loadListing() {
+      const storedItems = readStoredPublications();
+      const storedListing = storedItems.find((item) => item.type === "listing" && item.id === slug);
+      const serverListing = await fetchServerListing(slug);
+      const mergedListing =
+        storedListing && serverListing
+          ? {
+              ...serverListing,
+              ...storedListing,
+              images: storedListing.images?.length ? storedListing.images : serverListing.images,
+              videos: storedListing.videos?.length ? storedListing.videos : serverListing.videos,
+            }
+          : storedListing ?? serverListing;
+      const nextItems = mergedListing
+        ? [mergedListing, ...storedItems.filter((item) => item.id !== mergedListing.id)]
+        : storedItems;
+      const storedMedia = limitMediaFiles(mergedListing?.images, mergedListing?.videos);
+
+      if (!active) {
+        return;
+      }
+
+      setItems(nextItems);
+      setImages(storedMedia.images);
+      setVideos(storedMedia.videos);
+      setCategorySlug(mergedListing?.categorySlug ?? "mebel-i-interer");
+    }
+
+    void loadListing();
+
+    return () => {
+      active = false;
+    };
   }, [slug]);
 
   async function handleMediaChange(event: ChangeEvent<HTMLInputElement>) {
