@@ -42,7 +42,7 @@ function cleanMediaPaths(value: unknown) {
     return [];
   }
 
-  return value.map((item) => cleanString(item)).filter((item) => item && item.length <= 500).slice(0, 10);
+  return value.map((item) => cleanString(item)).filter((item) => item && item.length <= 500).slice(0, 20);
 }
 
 function hasValidPhone(value: string) {

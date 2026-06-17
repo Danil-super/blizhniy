@@ -228,7 +228,17 @@ function cleanMediaPaths(paths?: string[]) {
     return [];
   }
 
-  return paths.map((path) => path.trim()).filter((path) => path && path.length <= 500).slice(0, 10);
+  return paths.map((path) => path.trim()).filter((path) => path && path.length <= 500).slice(0, 20);
+}
+
+function listingWithMediaFallback(listing: Listing, mediaPaths?: string[]) {
+  const images = cleanMediaPaths(mediaPaths).map(publicMediaUrl);
+
+  if (!images.length || listing.images?.length) {
+    return listing;
+  }
+
+  return { ...listing, images };
 }
 
 async function insertListingImages(listingId: string, mediaPaths?: string[]) {
@@ -252,15 +262,14 @@ async function insertListingImages(listingId: string, mediaPaths?: string[]) {
 async function replaceListingImages(listingId: string, mediaPaths?: string[]) {
   const paths = cleanMediaPaths(mediaPaths);
 
-  if (!paths.length) {
-    return;
-  }
-
   await supabaseRest(`/rest/v1/listing_images?listing_id=eq.${encodeURIComponent(listingId)}`, {
     method: "DELETE",
     prefer: "return=minimal",
   });
-  await insertListingImages(listingId, paths);
+
+  if (paths.length) {
+    await insertListingImages(listingId, paths);
+  }
 }
 
 export async function createStoredListing(input: CreateStoredListingInput) {
@@ -306,7 +315,7 @@ export async function createStoredListing(input: CreateStoredListingInput) {
 
   await insertListingImages(listing.id, input.mediaPaths);
 
-  return (await getStoredListingById(listing.id)) ?? mapListing(listing);
+  return listingWithMediaFallback((await getStoredListingById(listing.id)) ?? mapListing(listing), input.mediaPaths);
 }
 
 function listingMatchesReusableInput(listing: Listing, input: CreateStoredListingInput) {
@@ -373,8 +382,8 @@ export async function updateStoredListingForUser(listingId: string, userId: stri
   const cityRow = await findCity(input.city);
   const regionId = await findRegionId(cityRow);
   const status = input.status ?? "pending_payment";
-  const rows = await supabaseRest<Array<Pick<ListingRow, "id">>>(
-    `/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&status=in.(draft,pending_payment)`,
+  const rows = await supabaseRest<ListingRow[]>(
+    `/rest/v1/listings?select=${listingSelect}&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&status=in.(draft,pending_payment)`,
     {
       method: "PATCH",
       prefer: "return=representation",
@@ -404,7 +413,7 @@ export async function updateStoredListingForUser(listingId: string, userId: stri
 
   await replaceListingImages(listingId, input.mediaPaths);
 
-  return getStoredListingById(listingId);
+  return listingWithMediaFallback((await getStoredListingById(listingId)) ?? mapListing(rows[0]), input.mediaPaths);
 }
 
 export async function markStoredListingPaid(listingId: string) {

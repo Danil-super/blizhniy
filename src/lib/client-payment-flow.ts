@@ -170,7 +170,7 @@ function apiListingPayloadFromDraft(item: DemoPublication, tariffId: string, med
 async function uploadDraftListingImages(item: DemoPublication) {
   const imageFiles = (
     await Promise.all(
-      (item.images ?? []).slice(0, 10).map(async (source) => {
+      (item.images ?? []).slice(0, 20).map(async (source) => {
         const file = await getStoredMediaFile(source);
 
         return file?.type.startsWith("image/") ? file : undefined;

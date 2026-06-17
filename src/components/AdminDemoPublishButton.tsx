@@ -142,32 +142,38 @@ function readImageFiles(formData: FormData) {
 }
 
 async function uploadPublicationMedia(formData: FormData, folder: "fair-applications" | "listings", accessToken: string) {
-  const files = readImageFiles(formData);
+  const files = readImageFiles(formData).slice(0, 20);
 
   if (!files.length) {
     return [];
   }
 
-  const uploadFormData = new FormData();
-  uploadFormData.set("folder", folder);
-  files.slice(0, 10).forEach((file) => uploadFormData.append("files", file));
+  const uploadedPaths: string[] = [];
 
-  const response = await fetch("/api/uploads/media", {
-    body: uploadFormData,
-    headers: { Authorization: `Bearer ${accessToken}` },
-    method: "POST",
-  });
-  const payload = (await response.json().catch(() => null)) as MediaUploadResponse | null;
+  for (let index = 0; index < files.length; index += 10) {
+    const uploadFormData = new FormData();
+    uploadFormData.set("folder", folder);
+    files.slice(index, index + 10).forEach((file) => uploadFormData.append("files", file));
 
-  if (!response.ok) {
-    throw new Error(payload?.error ?? "Не удалось загрузить фото.");
+    const response = await fetch("/api/uploads/media", {
+      body: uploadFormData,
+      headers: { Authorization: `Bearer ${accessToken}` },
+      method: "POST",
+    });
+    const payload = (await response.json().catch(() => null)) as MediaUploadResponse | null;
+
+    if (!response.ok) {
+      throw new Error(payload?.error ?? "Не удалось загрузить фото.");
+    }
+
+    uploadedPaths.push(...(payload?.files?.map((file) => file.path).filter((path): path is string => Boolean(path)) ?? []));
   }
 
-  return payload?.files?.map((file) => file.path).filter((path): path is string => Boolean(path)) ?? [];
+  return uploadedPaths;
 }
 
 async function readLocalImageReferences(formData: FormData) {
-  const files = readImageFiles(formData).slice(0, 10);
+  const files = readImageFiles(formData).slice(0, 20);
   const storedImages = await Promise.allSettled(files.map((file) => storeMediaFile(file)));
 
   return storedImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
@@ -282,7 +288,7 @@ export function AdminDemoPublishButton({
           const publication = {
             ...fallbackPublication,
             id: result.listing?.id ?? `demo-${publicationType}-${Date.now().toString(36)}`,
-            images: result.listing?.images ?? fallbackPublication.images,
+            images: result.listing?.images?.length ? result.listing.images : fallbackPublication.images,
             ownerKey: identity.ownerKey,
             ownerName: identity.name,
           };
