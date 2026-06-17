@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { ChangeEvent, useEffect, useId, useRef, useState } from "react";
-import { Camera, ImagePlus, Video, X } from "lucide-react";
+import { Camera, ImagePlus, Trash2, Video, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
@@ -755,16 +755,12 @@ export function ListingPhotoUploader() {
         url,
       } satisfies PreviewMedia;
     });
-    const firstImage = nextMedia.find((item) => item.kind === "image");
-
     setMedia((current) => {
       const updated = [...current, ...nextMedia];
       syncFileInput(updated);
       return updated;
     });
     setSelectedId(nextMedia[0]?.id ?? selectedId);
-    setLibraryOpen(true);
-    setCropEditorId(firstImage?.id ?? "");
     event.currentTarget.value = "";
   }
 
@@ -867,13 +863,13 @@ export function ListingPhotoUploader() {
             <p className="mt-1 text-sm text-slate-500">{media.length ? `${media.length} из ${maxFiles}` : "Файлы не выбраны"}. {listingMediaLimitText()}</p>
           </div>
         </div>
-        <button type="button" onClick={openMediaLibrary} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0669bd]">
+        <button type="button" onClick={openFileDialog} disabled={availableSlots <= 0} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0669bd] disabled:cursor-not-allowed disabled:opacity-50">
           <ImagePlus className="h-4 w-4" />
-          Медиатека
+          Добавить файлы
         </button>
       </div>
 
-      <button type="button" onClick={openMediaLibrary} className="mt-4 grid w-full grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/40">
+      <button type="button" onClick={media.length ? openMediaLibrary : openFileDialog} className="mt-4 grid w-full grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/40">
         <span className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-blue-50 text-[#0875d1]">
           {heroMedia ? (
             heroMedia.kind === "video" ? (
@@ -891,6 +887,65 @@ export function ListingPhotoUploader() {
         </span>
         <span className="hidden rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 sm:inline-flex">Открыть</span>
       </button>
+
+      {mediaMessage ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{mediaMessage}</p> : null}
+
+      {media.length ? (
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+          {media.map((item, index) => (
+            <figure key={item.id} className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <button
+                type="button"
+                onClick={() => {
+                  selectMedia(item);
+                  setLibraryOpen(true);
+                }}
+                className="block w-full text-left"
+                aria-label={`Открыть файл ${index + 1}`}
+              >
+                {item.kind === "video" ? (
+                  <video src={item.url} className="aspect-square w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
+                ) : (
+                  <img src={item.url} alt={item.name || `Фото ${index + 1}`} className="aspect-square w-full bg-slate-50 object-cover" />
+                )}
+              </button>
+              {index === 0 ? (
+                <span className="absolute bottom-2 left-2 rounded-lg bg-[#0875d1] px-2.5 py-1.5 text-xs font-black text-white shadow-sm">Обложка</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => makeCover(item)}
+                  className="absolute bottom-2 left-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+                >
+                  Обложка
+                </button>
+              )}
+              {item.kind === "image" ? (
+                <button
+                  type="button"
+                  onClick={() => setCropEditorId(item.id)}
+                  className="absolute bottom-2 right-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+                >
+                  Кадр
+                </button>
+              ) : (
+                <span className="absolute right-2 bottom-2 inline-flex items-center gap-1 rounded-lg bg-slate-950/70 px-2.5 py-1.5 text-xs font-bold text-white">
+                  <Video className="h-3 w-3" />
+                  Видео
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => removeMedia(item)}
+                className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow-sm transition hover:text-rose-600"
+                aria-label={`Удалить файл ${index + 1}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </figure>
+          ))}
+        </div>
+      ) : null}
 
       {libraryOpen ? (
         <div className="fixed inset-0 z-[200] flex items-stretch justify-center bg-white sm:items-center sm:bg-slate-950/60 sm:p-4" role="dialog" aria-modal="true">

@@ -5,6 +5,7 @@ import { Camera, Save, Trash2, Video } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
+import { ValidatedInput } from "@/components/ValidatedInput";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
 import { appendPublicationHistory, DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
@@ -323,6 +324,18 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
     setImages((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
+  function makeImageCover(index: number) {
+    setImages((current) => {
+      const target = current[index];
+
+      if (!target) {
+        return current;
+      }
+
+      return [target, ...current.filter((_, itemIndex) => itemIndex !== index)];
+    });
+  }
+
   async function applySquareCrop(index: number, dataUrl: string) {
     const storedImage = await storeMediaDataUrl(dataUrl, `listing-crop-${index + 1}.png`);
     setImages((current) => current.map((image, imageIndex) => (imageIndex === index ? storedImage : image)));
@@ -333,11 +346,27 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
     setVideos((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
+  function makeVideoFirst(index: number) {
+    setVideos((current) => {
+      const target = current[index];
+
+      if (!target) {
+        return current;
+      }
+
+      return [target, ...current.filter((_, itemIndex) => itemIndex !== index)];
+    });
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
 
     if (!listing) {
+      return;
+    }
+
+    if (!form.reportValidity()) {
       return;
     }
 
@@ -469,7 +498,14 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Название</span>
-            <input name="title" defaultValue={listing.title} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
+            <input
+              name="title"
+              defaultValue={listing.title}
+              minLength={3}
+              maxLength={120}
+              required
+              className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
+            />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Цена</span>
@@ -479,7 +515,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
 
         <label className="block">
           <span className="text-sm font-bold text-slate-700">Короткое описание для кабинета</span>
-          <input name="subtitle" defaultValue={listing.subtitle} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
+          <input name="subtitle" defaultValue={listing.subtitle} maxLength={120} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
         </label>
 
         <label className="block">
@@ -487,6 +523,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
           <textarea
             name="description"
             defaultValue={listing.description}
+            maxLength={3000}
             className="mt-2 min-h-32 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
           />
         </label>
@@ -501,15 +538,15 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Телефон</span>
-            <input name="phone" defaultValue={listing.phone} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
+            <ValidatedInput name="phone" defaultValue={listing.phone} validation="phone" className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Email</span>
-            <input name="email" type="email" defaultValue={listing.email} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
+            <ValidatedInput name="email" type="email" defaultValue={listing.email} validation="email" className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Telegram или WhatsApp</span>
-            <input name="messengerUrl" defaultValue={listing.messengerUrl} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
+            <ValidatedInput name="messengerUrl" defaultValue={listing.messengerUrl} validation="messenger" className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
           </label>
         </div>
 
@@ -542,13 +579,26 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setCropEditorIndex(index)}
-                    className="absolute bottom-2 left-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
-                  >
-                    Кадр
-                  </button>
+                  <div className="absolute inset-x-2 bottom-2 flex gap-2">
+                    {index === 0 ? (
+                      <span className="rounded-lg bg-[#0875d1] px-2.5 py-1.5 text-xs font-black text-white shadow-sm">Обложка</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => makeImageCover(index)}
+                        className="rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+                      >
+                        Обложка
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setCropEditorIndex(index)}
+                      className="rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+                    >
+                      Кадр
+                    </button>
+                  </div>
                 </figure>
               ))}
               {videos.map((video, index) => (
@@ -558,6 +608,19 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
                     <Video className="h-3 w-3" />
                     Видео
                   </span>
+                  {!images.length ? (
+                    index === 0 ? (
+                      <span className="absolute left-2 top-2 rounded-lg bg-[#0875d1] px-2.5 py-1.5 text-xs font-black text-white shadow-sm">Обложка</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => makeVideoFirst(index)}
+                        className="absolute left-2 top-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+                      >
+                        Обложка
+                      </button>
+                    )
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => removeVideo(index)}
