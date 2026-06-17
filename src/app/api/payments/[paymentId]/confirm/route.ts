@@ -1,7 +1,38 @@
 import { NextResponse } from "next/server";
 import { getPayment, confirmPayment } from "@/lib/payment-provider";
-import { findStoredPaymentByProvider, getLatestPendingStoredPaymentForUser, getStoredPayment } from "@/lib/payment-store";
+import {
+  findStoredPaymentByProvider,
+  getLatestPendingStoredPaymentForUser,
+  getStoredPayment,
+  markStoredPaymentTargetSucceeded,
+  updateStoredPayment,
+} from "@/lib/payment-store";
 import { getAuthenticatedRequestUser, isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
+import type { Payment } from "@/lib/types";
+
+function isTestYooKassaMode() {
+  return process.env.YOOKASSA_SECRET_KEY?.trim().startsWith("test_") ?? false;
+}
+
+async function forceSucceededTestPayment(payment: Payment) {
+  const paidPayment: Payment = {
+    ...payment,
+    paidAt: payment.paidAt ?? new Date().toISOString().slice(0, 10),
+    status: "succeeded",
+  };
+  const nextStatus = await markStoredPaymentTargetSucceeded(paidPayment);
+
+  await updateStoredPayment(paidPayment);
+
+  return {
+    payment: paidPayment,
+    nextStatus,
+    notification: {
+      subject: "Тестовая оплата прошла",
+      body: `${paidPayment.targetTitle}: статус изменен на ${nextStatus}.`,
+    },
+  };
+}
 
 export async function POST(request: Request, { params }: { params: Promise<{ paymentId: string }> }) {
   const { paymentId } = await params;
@@ -38,6 +69,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
     const result = await confirmPayment(payment ?? resolvedPaymentId, {
       trustSuccessfulReturn: Boolean(body?.trustSuccessfulReturn && canTrustSuccessfulReturn),
     });
+
+    if (
+      body?.trustSuccessfulReturn &&
+      canTrustSuccessfulReturn &&
+      isTestYooKassaMode() &&
+      result.payment.provider === "yookassa" &&
+      result.payment.targetType === "listing" &&
+      result.payment.status !== "succeeded"
+    ) {
+      return NextResponse.json(await forceSucceededTestPayment(result.payment));
+    }
 
     return NextResponse.json(result);
   } catch (error) {
