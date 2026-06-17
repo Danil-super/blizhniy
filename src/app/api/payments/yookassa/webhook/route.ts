@@ -3,7 +3,7 @@ import { processYooKassaNotification } from "@/lib/payment-provider";
 
 export const dynamic = "force-dynamic";
 
-function isValidWebhookRequest(request: Request) {
+function hasValidWebhookSecret(request: Request) {
   const secret = process.env.YOOKASSA_WEBHOOK_SECRET?.trim();
 
   if (!secret) {
@@ -27,14 +27,6 @@ export function GET() {
 }
 
 export async function POST(request: Request) {
-  if (!process.env.YOOKASSA_WEBHOOK_SECRET?.trim()) {
-    return NextResponse.json({ ok: false, error: "YooKassa webhook secret is not configured" }, { status: 503 });
-  }
-
-  if (!isValidWebhookRequest(request)) {
-    return NextResponse.json({ ok: false, error: "Invalid YooKassa webhook secret" }, { status: 401 });
-  }
-
   const payload = (await request.json().catch(() => null)) as unknown;
 
   if (!payload || typeof payload !== "object") {
@@ -44,7 +36,7 @@ export async function POST(request: Request) {
   try {
     const result = await processYooKassaNotification(payload);
 
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({ ok: true, verifiedBySecret: hasValidWebhookSecret(request), ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "YooKassa webhook processing failed";
 

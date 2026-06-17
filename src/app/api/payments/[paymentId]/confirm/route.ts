@@ -13,15 +13,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
     if (isSupabaseServerConfigured()) {
       const auth = await getAuthenticatedRequestUser(request);
 
-      if (!auth) {
+      if (!auth && !payment) {
         return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы подтвердить платеж" }, { status: 401 });
       }
 
-      payment ??= await getLatestPendingStoredPaymentForUser(auth.user.id);
-      const isAdmin = await isAdminRequest(request);
+      if (auth) {
+        payment ??= await getLatestPendingStoredPaymentForUser(auth.user.id);
+        const isAdmin = await isAdminRequest(request);
 
-      if (payment?.userId && payment.userId !== auth.user.id && !isAdmin) {
-        return NextResponse.json({ error: "Платеж принадлежит другому пользователю" }, { status: 403 });
+        if (payment?.userId && payment.userId !== auth.user.id && !isAdmin) {
+          return NextResponse.json({ error: "Платеж принадлежит другому пользователю" }, { status: 403 });
+        }
       }
 
       if (payment?.id) {

@@ -381,7 +381,9 @@ export async function processYooKassaNotification(payload: YooKassaNotificationP
     return { processed: false, reason: "payment_not_found" as const };
   }
 
-  applyYooKassaPaymentState(payment, yookassaPayment);
+  const verifiedYooKassaPayment = await fetchYooKassaPayment(yookassaPayment.id);
+
+  applyYooKassaPaymentState(payment, verifiedYooKassaPayment);
   await updateStoredPayment(payment);
 
   if (payment.status !== "succeeded") {
