@@ -97,7 +97,7 @@ function ListingImage({ className, iconClassName, listing }: { className: string
   const image = listing.images?.[0];
 
   if (image) {
-    return <StoredMediaImage src={image} alt={listing.title} className={`${className} bg-slate-100 object-cover`} optimizeWidth={520} optimizeHeight={440} />;
+    return <StoredMediaImage src={image} alt={listing.title} className={`${className} bg-slate-100 object-cover`} />;
   }
 
   return (
