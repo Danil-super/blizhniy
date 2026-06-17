@@ -8,7 +8,7 @@ import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 import { demoPublicationsStorageKey, DemoPublication, isDemoPublicationPubliclyVisible } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { matchesDemoPublicationFilters, matchesListingScope, type ListingFilterCriteria } from "@/lib/listing-filters";
-import { publicationTimestamp } from "@/lib/publication-time";
+import { formatPublicationDateTime, publicationTimestamp } from "@/lib/publication-time";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { ListingViewCounter } from "@/components/listings/ListingViewCounter";
@@ -21,7 +21,7 @@ type DemoListingFeedProps = {
   variant?: "grid" | "list";
 };
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function isLocalOnlyPublication(item: DemoPublication) {
   return !uuidPattern.test(item.id);
@@ -130,6 +130,10 @@ function listingPlaceLabel(item: DemoPublication) {
   return item.city;
 }
 
+function formatListingDate(value?: string) {
+  return formatPublicationDateTime(value).split(",")[0] ?? "";
+}
+
 function ListingCardImage({ alt, className = "", src }: { alt: string; className?: string; src: string }) {
   return (
     <StoredMediaImage src={src} alt={alt} className={`absolute inset-0 h-full w-full bg-slate-100 object-cover object-center ${className}`} />
@@ -163,6 +167,12 @@ export function DemoGridCard({ item }: { item: DemoPublication }) {
         <span className="block p-2">
           <span className="line-clamp-2 min-h-8 text-[13px] font-black leading-4 text-slate-900 transition group-hover:text-[#0875d1]">{item.title}</span>
           <span className="mt-0.5 block truncate text-base font-black leading-5 text-[#060b27]">{item.price ?? "по договоренности"}</span>
+          {formatListingDate(item.createdAt) ? (
+            <span className="mt-1 flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500">
+              <CalendarDays className="h-3 w-3 shrink-0" />
+              <span className="truncate">{formatListingDate(item.createdAt)}</span>
+            </span>
+          ) : null}
           <span className="mt-1 flex items-end justify-between gap-1.5 text-[11px] text-slate-500">
             <span className="flex min-w-0 items-start gap-1">
               <MapPin className="h-3 w-3 shrink-0" />

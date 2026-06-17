@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRightLeft, CalendarDays, Gift, Mail, MapPin, ShoppingBag, Tags } from "lucide-react";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
+import { StoredMediaImage } from "@/components/StoredMedia";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewCounter } from "./ListingViewCounter";
@@ -53,6 +54,20 @@ function listingPlaceLabel(listing: DemoListing) {
   return listing.city;
 }
 
+function formatListingDate(value?: string) {
+  const date = value ? new Date(value) : null;
+
+  if (!date || Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
 const kindLabels: Record<ListingKind, string> = {
   prodam: "Продам",
   kuplyu: "Куплю",
@@ -82,7 +97,7 @@ function ListingImage({ className, iconClassName, listing }: { className: string
   const image = listing.images?.[0];
 
   if (image) {
-    return <img src={image} alt={listing.title} className={`${className} bg-slate-100 object-cover`} loading="lazy" />;
+    return <StoredMediaImage src={image} alt={listing.title} className={`${className} bg-slate-100 object-cover`} optimizeWidth={520} optimizeHeight={440} />;
   }
 
   return (
@@ -213,6 +228,12 @@ export function ListingGridCard({ listing }: { listing: DemoListing }) {
             {listing.title}
           </span>
           <span className="mt-0.5 block truncate text-base font-black leading-5 text-[#060b27]">{listing.price}</span>
+          {formatListingDate(listing.publishedAt || listing.createdAt) ? (
+            <span className="mt-1 flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500">
+              <CalendarDays className="h-3 w-3 shrink-0" />
+              <span className="truncate">{formatListingDate(listing.publishedAt || listing.createdAt)}</span>
+            </span>
+          ) : null}
           <span className="mt-1 flex items-end justify-between gap-1.5 text-[11px] text-slate-500">
             <span className="flex min-w-0 items-start gap-1">
               <MapPin className="h-3 w-3 shrink-0" />
