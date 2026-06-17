@@ -384,17 +384,17 @@ export async function confirmPayment(paymentOrId: Payment | string, options?: Co
       throw new Error("YooKassa payment id is missing");
     }
 
+    if (canTrustYooKassaReturn(payment, options)) {
+      payment.status = "succeeded";
+      payment.paidAt = payment.paidAt ?? todayIsoDate();
+
+      return applySucceededPayment(payment);
+    }
+
     const yookassaPayment = await fetchYooKassaPayment(payment.providerPaymentId);
     applyYooKassaPaymentState(payment, yookassaPayment);
 
     if (payment.status !== "succeeded") {
-      if (canTrustYooKassaReturn(payment, options)) {
-        payment.status = "succeeded";
-        payment.paidAt = payment.paidAt ?? todayIsoDate();
-
-        return applySucceededPayment(payment);
-      }
-
       await updateStoredPayment(payment);
       return createPendingPaymentResult(payment);
     }
