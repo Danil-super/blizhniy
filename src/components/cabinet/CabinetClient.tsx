@@ -1110,7 +1110,7 @@ async function createPublicationPayment(item: DemoPublication) {
   }
 
   await createAndConfirmClientPayment({
-    listingDraft: item.type === "listing" && isDraftPublication(item) ? item : undefined,
+    listingDraft: item.type === "listing" && (isDraftPublication(item) || isPendingPaymentPublication(item)) ? item : undefined,
     tariffId: paymentConfig.tariffId,
     targetId: item.id,
     targetType: paymentConfig.targetType,

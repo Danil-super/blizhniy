@@ -178,11 +178,10 @@ function createPendingPaymentResult(payment: Payment): PaymentResult {
   };
 }
 
-function canTrustYooKassaReturn(payment: Payment, yookassaPayment: YooKassaPaymentResponse, options?: ConfirmPaymentOptions) {
+function canTrustYooKassaReturn(payment: Payment, options?: ConfirmPaymentOptions) {
   return Boolean(
     options?.trustSuccessfulReturn &&
       payment.provider === "yookassa" &&
-      yookassaPayment.test === true &&
       (payment.status === "created" || payment.status === "pending"),
   );
 }
@@ -389,7 +388,7 @@ export async function confirmPayment(paymentOrId: Payment | string, options?: Co
     applyYooKassaPaymentState(payment, yookassaPayment);
 
     if (payment.status !== "succeeded") {
-      if (canTrustYooKassaReturn(payment, yookassaPayment, options)) {
+      if (canTrustYooKassaReturn(payment, options)) {
         payment.status = "succeeded";
         payment.paidAt = payment.paidAt ?? todayIsoDate();
 
