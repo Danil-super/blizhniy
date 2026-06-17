@@ -22,6 +22,12 @@ type ListingResultsPanelProps = {
   subcategorySlug?: string;
 };
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+
+function isLocalOnlyPublication(item: DemoPublication) {
+  return !uuidPattern.test(item.id);
+}
+
 function readStoredPublications() {
   try {
     const stored = window.localStorage.getItem(demoPublicationsStorageKey);
@@ -77,7 +83,10 @@ export function ListingResultsPanel({ categorySlug, emptyText, kind, listings, s
   }, []);
 
   const scopedStoredItems = useMemo(
-    () => storedItems.filter((item) => isDemoPublicationPubliclyVisible(item) && matchesListingScope(item, { categorySlug, kind, subcategorySlug })),
+    () =>
+      storedItems.filter(
+        (item) => isLocalOnlyPublication(item) && isDemoPublicationPubliclyVisible(item) && matchesListingScope(item, { categorySlug, kind, subcategorySlug }),
+      ),
     [categorySlug, kind, storedItems, subcategorySlug],
   );
 

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { createStoredListing } from "@/lib/listing-store";
+import { createStoredListing, findReusableStoredDraftListing, updateStoredListingForUser } from "@/lib/listing-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
+import type { CreateStoredListingInput } from "@/lib/listing-store";
 import type { ListingKind } from "@/lib/types";
 
 type CreateDraftListingBody = {
@@ -96,7 +97,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const listing = await createStoredListing({
+    const listingInput: CreateStoredListingInput = {
       address: cleanString(body.address) || undefined,
       authorId: auth.user.id,
       categorySlug: cleanString(body.categorySlug) || "dlya-doma-i-dachi",
@@ -113,7 +114,11 @@ export async function POST(request: Request) {
       status: "draft",
       subcategory: cleanString(body.subcategory) || undefined,
       title,
-    });
+    };
+    const reusableListing = await findReusableStoredDraftListing(listingInput);
+    const listing = reusableListing
+      ? await updateStoredListingForUser(reusableListing.id, auth.user.id, listingInput)
+      : await createStoredListing(listingInput);
 
     if (!listing?.id) {
       return NextResponse.json({ error: "Не удалось сохранить черновик" }, { status: 500 });

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { createStoredListing } from "@/lib/listing-store";
+import { createStoredListing, findReusableStoredListingForPayment, updateStoredListingForUser } from "@/lib/listing-store";
 import { createPayment } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
+import type { CreateStoredListingInput } from "@/lib/listing-store";
 import type { ListingKind, Payment } from "@/lib/types";
 
 type CreateListingBody = {
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const listing = await createStoredListing({
+    const listingInput: CreateStoredListingInput = {
       address: cleanString(body.address) || undefined,
       authorId: auth.user.id,
       categorySlug: cleanString(body.categorySlug) || "dlya-doma-i-dachi",
@@ -126,7 +127,12 @@ export async function POST(request: Request) {
       status: body.tariffId ? "pending_payment" : "published",
       subcategory: cleanString(body.subcategory) || undefined,
       title,
-    });
+    };
+    const reusableListing = body.tariffId ? await findReusableStoredListingForPayment(listingInput) : undefined;
+
+    const listing = reusableListing
+      ? await updateStoredListingForUser(reusableListing.id, auth.user.id, listingInput)
+      : await createStoredListing(listingInput);
 
     if (!listing?.id) {
       return NextResponse.json({ error: "Не удалось создать объявление в Supabase" }, { status: 500 });

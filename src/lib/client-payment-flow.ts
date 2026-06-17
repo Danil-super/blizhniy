@@ -126,6 +126,27 @@ function listingDraftDuplicateKey(item: Pick<DemoPublication, "city" | "price" |
   return [normalizeDuplicateText(item.title), normalizeDuplicateText(item.price), normalizeDuplicateText(item.city)].join("|");
 }
 
+function listingDraftMatchesServerListing(draft: DemoPublication, listing: Listing) {
+  const draftDescription = normalizeDuplicateText(draft.description || "Описание будет дополнено.");
+  const listingDescription = normalizeDuplicateText(listing.description || "Описание будет дополнено.");
+  const draftPhone = normalizeDuplicateText(draft.phone);
+  const listingPhone = normalizeDuplicateText(listing.phone);
+  const draftMessenger = normalizeDuplicateText(draft.messengerUrl);
+  const listingMessenger = normalizeDuplicateText(listing.messengerUrl);
+
+  return (
+    listingDraftDuplicateKey({
+      city: listing.city,
+      price: listing.price,
+      title: listing.title,
+    }) === listingDraftDuplicateKey(draft) &&
+    listing.kind === normalizeListingKind(draft.listingKind) &&
+    listingDescription === draftDescription &&
+    (!draftPhone || !listingPhone || draftPhone === listingPhone) &&
+    (!draftMessenger || !listingMessenger || draftMessenger === listingMessenger)
+  );
+}
+
 function apiListingPayloadFromDraft(item: DemoPublication, tariffId: string, mediaPaths: string[] = []) {
   return {
     address: item.hasMapPoint ? item.address : undefined,
@@ -197,18 +218,10 @@ async function findMatchingServerListing(draft: DemoPublication) {
     }
 
     const payload = (await response.json().catch(() => null)) as CabinetListingsPayload | null;
-    const draftKey = listingDraftDuplicateKey(draft);
     const matches = (payload?.listings ?? []).filter((listing) => {
       const status = listing.status;
 
-      return (
-        (status === "draft" || status === "pending_payment") &&
-        listingDraftDuplicateKey({
-          city: listing.city,
-          price: listing.price,
-          title: listing.title,
-        }) === draftKey
-      );
+      return (status === "draft" || status === "pending_payment") && listingDraftMatchesServerListing(draft, listing);
     });
 
     return matches.sort((left, right) => new Date(right.publishedAt).getTime() - new Date(left.publishedAt).getTime())[0];
@@ -225,6 +238,12 @@ export function syncPaidPublication(confirmPayload: ConfirmPaymentPayload) {
   }
 
   const items = readStoredPublications();
+
+  if (confirmPayload.payment?.targetType === "listing" && isUuid(targetId)) {
+    writeStoredPublications(items.filter((item) => item.id !== targetId));
+    return;
+  }
+
   const nextItems = items.map((item) => {
     if (item.id === targetId) {
       return withPublicationStatusHistory(item, "Опубликовано", {
@@ -288,9 +307,9 @@ export async function confirmClientPayment(paymentId: string) {
     throw new Error(payload?.error ?? "Не удалось подтвердить платеж.");
   }
 
-  clearPendingPaymentId(payload.payment?.id ?? confirmedPaymentId);
-  syncPaidPublication(payload);
   if (payload.payment?.status === "succeeded") {
+    clearPendingPaymentId(payload.payment.id ?? confirmedPaymentId);
+    syncPaidPublication(payload);
     void addCurrentUserNotification({
       category: "payment",
       title: "Оплата прошла",
@@ -303,6 +322,7 @@ export async function confirmClientPayment(paymentId: string) {
       dedupeKey: `payment:${payload.payment.id ?? confirmedPaymentId}:succeeded`,
     });
   } else {
+    rememberPendingPaymentId(payload.payment?.id ?? confirmedPaymentId);
     void addCurrentUserNotification({
       category: "payment",
       title: "Платеж ожидает подтверждения",

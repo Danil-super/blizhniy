@@ -72,6 +72,39 @@ function isDraftStatus(status: string) {
   return status.trim().toLowerCase() === "черновик";
 }
 
+function normalizeDuplicateText(value?: string) {
+  return value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
+}
+
+function listingDraftDuplicateKey(item: Pick<DemoPublication, "city" | "description" | "listingKind" | "price" | "title">) {
+  return [
+    normalizeDuplicateText(item.title),
+    normalizeDuplicateText(item.price),
+    normalizeDuplicateText(item.city),
+    normalizeDuplicateText(item.description),
+    normalizeDuplicateText(item.listingKind),
+  ].join("|");
+}
+
+function storedPublicationsWithReplacement(publication: DemoPublication, stored: DemoPublication[]) {
+  if (publication.type !== "listing") {
+    return [publication, ...stored.filter((item) => item.id !== publication.id)].slice(0, 50);
+  }
+
+  const publicationKey = listingDraftDuplicateKey(publication);
+
+  return [
+    publication,
+    ...stored.filter((item) => {
+      if (item.id === publication.id) {
+        return false;
+      }
+
+      return item.type !== "listing" || listingDraftDuplicateKey(item) !== publicationKey;
+    }),
+  ].slice(0, 50);
+}
+
 function needsCaptcha(type: DemoPublicationType) {
   return type === "listing" || type === "vacancy" || type === "specialist" || type === "fairApplication";
 }
@@ -255,7 +288,7 @@ export function AdminDemoPublishButton({
           };
           const stored = readStoredPublications();
 
-          window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify([publication, ...stored].slice(0, 50)));
+          window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(storedPublicationsWithReplacement(publication, stored)));
           window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
           window.location.href = returnHref;
           return;
@@ -286,7 +319,7 @@ export function AdminDemoPublishButton({
       };
       const stored = readStoredPublications();
 
-      window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify([publication, ...stored].slice(0, 50)));
+      window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(storedPublicationsWithReplacement(publication, stored)));
       window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
       window.location.href = returnHref;
     } catch (reason) {

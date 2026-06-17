@@ -2,6 +2,7 @@ import { listMockPayments, markPaymentTargetSucceeded } from "@/lib/mock-store";
 import {
   canStorePayment,
   createStoredPayment,
+  findActiveStoredPaymentForTarget,
   findStoredPaymentByProvider,
   getStoredPayment,
   listStoredPayments,
@@ -176,8 +177,8 @@ async function applySucceededPayment(payment: Payment): Promise<PaymentResult> {
   payment.status = "succeeded";
   payment.paidAt = payment.paidAt ?? todayIsoDate();
 
-  const nextStatus = canStorePayment(payment) ? await markStoredPaymentTargetSucceeded(payment) : markPaymentTargetSucceeded(payment);
   await updateStoredPayment(payment);
+  const nextStatus = canStorePayment(payment) ? await markStoredPaymentTargetSucceeded(payment) : markPaymentTargetSucceeded(payment);
 
   return {
     payment,
@@ -204,6 +205,35 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
 
   if (targetType === "listing" && !canStorePayment(input)) {
     throw new Error("YooKassa listing payments require a stored listing UUID before payment creation");
+  }
+
+  const activePayment = canStorePayment(input)
+    ? await findActiveStoredPaymentForTarget({
+        targetId: input.targetId,
+        targetType,
+        userId: input.userId,
+      })
+    : undefined;
+
+  if (activePayment?.provider === "yookassa" && activePayment.providerPaymentId) {
+    try {
+      const yookassaPayment = await fetchYooKassaPayment(activePayment.providerPaymentId);
+
+      applyYooKassaPaymentState(activePayment, yookassaPayment);
+
+      if (activePayment.status === "succeeded") {
+        await applySucceededPayment(activePayment);
+        return activePayment;
+      } else {
+        await updateStoredPayment(activePayment);
+      }
+
+      if (activePayment.confirmationUrl) {
+        return activePayment;
+      }
+    } catch (error) {
+      console.error("Failed to sync active YooKassa payment before creating a new one", error);
+    }
   }
 
   const response = await fetch("https://api.yookassa.ru/v3/payments", {
@@ -250,7 +280,7 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
     providerPaymentId: payload.id,
     confirmationUrl: payload.confirmation?.confirmation_url,
     createdAt: todayIsoDate(),
-    ...(payload.status === "succeeded" || payload.status === "waiting_for_capture" ? { paidAt: todayIsoDate() } : {}),
+    ...(yookassaStatusToPaymentStatus(payload.status, payload.paid) === "succeeded" ? { paidAt: todayIsoDate() } : {}),
   };
 
   if (canStorePayment(input)) {
@@ -275,11 +305,7 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
   }
 
   if (payment.status === "succeeded") {
-    if (canStorePayment(input)) {
-      await markStoredPaymentTargetSucceeded(payment);
-    } else {
-      markPaymentTargetSucceeded(payment);
-    }
+    await applySucceededPayment(payment);
   }
 
   return payment;
@@ -384,9 +410,9 @@ export async function processYooKassaNotification(payload: YooKassaNotificationP
   const verifiedYooKassaPayment = await fetchYooKassaPayment(yookassaPayment.id);
 
   applyYooKassaPaymentState(payment, verifiedYooKassaPayment);
-  await updateStoredPayment(payment);
 
   if (payment.status !== "succeeded") {
+    await updateStoredPayment(payment);
     return { processed: true, result: createPendingPaymentResult(payment) };
   }
 

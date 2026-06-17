@@ -21,6 +21,12 @@ type DemoListingFeedProps = {
   variant?: "grid" | "list";
 };
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+
+function isLocalOnlyPublication(item: DemoPublication) {
+  return !uuidPattern.test(item.id);
+}
+
 const kindIcons = {
   prodam: ShoppingBag,
   kuplyu: Tags,
@@ -270,7 +276,12 @@ export function DemoListingFeed({ categorySlug, filters, kind, subcategorySlug, 
     () =>
       items
         .filter((item) => {
-          return isDemoPublicationPubliclyVisible(item) && matchesListingScope(item, { categorySlug, kind, subcategorySlug }) && (!filters || matchesDemoPublicationFilters(item, filters));
+          return (
+            isLocalOnlyPublication(item) &&
+            isDemoPublicationPubliclyVisible(item) &&
+            matchesListingScope(item, { categorySlug, kind, subcategorySlug }) &&
+            (!filters || matchesDemoPublicationFilters(item, filters))
+          );
         })
         .sort((left, right) => publicationTimestamp(right.createdAt) - publicationTimestamp(left.createdAt)),
     [categorySlug, filters, items, kind, subcategorySlug],

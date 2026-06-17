@@ -51,6 +51,12 @@ export function PaymentReturnClient({ paymentId }: PaymentReturnClientProps) {
 
         const nextHref = cabinetHrefForPayment(payload.payment?.targetType);
         setReturnHref(nextHref);
+
+        if (payload.payment?.status !== "succeeded") {
+          setError("Платеж еще ожидает подтверждения от ЮKassa. Объявление обновится автоматически после финального статуса.");
+          return;
+        }
+
         setConfirmed(true);
         window.setTimeout(() => {
           if (active) {

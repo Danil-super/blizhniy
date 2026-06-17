@@ -67,6 +67,10 @@ export type CreateStoredListingInput = {
   title: string;
 };
 
+function normalizeLookupText(value?: string) {
+  return value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
+}
+
 const listingKindByDbType: Record<ListingTypeRow, ListingKind> = {
   buy: "kuplyu",
   exchange: "menyayu",
@@ -245,6 +249,20 @@ async function insertListingImages(listingId: string, mediaPaths?: string[]) {
   });
 }
 
+async function replaceListingImages(listingId: string, mediaPaths?: string[]) {
+  const paths = cleanMediaPaths(mediaPaths);
+
+  if (!paths.length) {
+    return;
+  }
+
+  await supabaseRest(`/rest/v1/listing_images?listing_id=eq.${encodeURIComponent(listingId)}`, {
+    method: "DELETE",
+    prefer: "return=minimal",
+  });
+  await insertListingImages(listingId, paths);
+}
+
 export async function createStoredListing(input: CreateStoredListingInput) {
   if (!isSupabaseRestConfigured()) {
     return undefined;
@@ -289,6 +307,104 @@ export async function createStoredListing(input: CreateStoredListingInput) {
   await insertListingImages(listing.id, input.mediaPaths);
 
   return (await getStoredListingById(listing.id)) ?? mapListing(listing);
+}
+
+function listingMatchesReusableInput(listing: Listing, input: CreateStoredListingInput) {
+  const inputDescription = normalizeLookupText(input.description || "Описание будет дополнено.");
+  const listingDescription = normalizeLookupText(listing.description || "Описание будет дополнено.");
+  const inputPhone = normalizeLookupText(input.phone);
+  const listingPhone = normalizeLookupText(listing.phone);
+  const inputMessenger = normalizeLookupText(input.messengerUrl);
+  const listingMessenger = normalizeLookupText(listing.messengerUrl);
+
+  return (
+    listing.kind === input.kind &&
+    normalizeLookupText(listing.city) === normalizeLookupText(input.city) &&
+    priceToNumber(listing.price) === priceToNumber(input.price) &&
+    listingDescription === inputDescription &&
+    (!inputPhone || !listingPhone || listingPhone === inputPhone) &&
+    (!inputMessenger || !listingMessenger || listingMessenger === inputMessenger)
+  );
+}
+
+export async function findReusableStoredListingForPayment(input: CreateStoredListingInput) {
+  if (!isSupabaseRestConfigured()) {
+    return undefined;
+  }
+
+  const title = input.title.trim();
+
+  if (title.length < 3) {
+    return undefined;
+  }
+
+  const rows = await supabaseRest<ListingRow[]>(
+    `/rest/v1/listings?select=${listingSelect}&author_id=eq.${encodeURIComponent(input.authorId)}&title=eq.${encodeURIComponent(title)}&status=in.(draft,pending_payment)&order=created_at.desc&limit=20`,
+  );
+  const listings = rows.map(mapListing);
+
+  return listings.find((listing) => listingMatchesReusableInput(listing, input));
+}
+
+export async function findReusableStoredDraftListing(input: CreateStoredListingInput) {
+  if (!isSupabaseRestConfigured()) {
+    return undefined;
+  }
+
+  const title = input.title.trim();
+
+  if (title.length < 3) {
+    return undefined;
+  }
+
+  const rows = await supabaseRest<ListingRow[]>(
+    `/rest/v1/listings?select=${listingSelect}&author_id=eq.${encodeURIComponent(input.authorId)}&title=eq.${encodeURIComponent(title)}&status=eq.draft&order=created_at.desc&limit=20`,
+  );
+
+  return rows.map(mapListing).find((listing) => listingMatchesReusableInput(listing, input));
+}
+
+export async function updateStoredListingForUser(listingId: string, userId: string, input: CreateStoredListingInput) {
+  if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
+    return undefined;
+  }
+
+  const categoryId = await findCategoryId(input.categorySlug, input.subcategory);
+  const cityRow = await findCity(input.city);
+  const regionId = await findRegionId(cityRow);
+  const status = input.status ?? "pending_payment";
+  const rows = await supabaseRest<Array<Pick<ListingRow, "id">>>(
+    `/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&status=in.(draft,pending_payment)`,
+    {
+      method: "PATCH",
+      prefer: "return=representation",
+      body: {
+        address: input.address ?? null,
+        category_id: categoryId ?? null,
+        city_id: cityRow?.id ?? null,
+        contact_phone: input.phone ?? null,
+        description: input.description || "Описание будет дополнено.",
+        district: input.district ?? null,
+        latitude: input.lat ?? null,
+        listing_type: dbTypeByListingKind[input.kind] ?? "sell",
+        longitude: input.lng ?? null,
+        messenger_url: input.messengerUrl ?? null,
+        price: priceToNumber(input.price),
+        region_id: regionId ?? null,
+        show_exact_address: Boolean(input.address && input.lat && input.lng),
+        status,
+        title: input.title,
+      },
+    },
+  );
+
+  if (!rows[0]?.id) {
+    return undefined;
+  }
+
+  await replaceListingImages(listingId, input.mediaPaths);
+
+  return getStoredListingById(listingId);
 }
 
 export async function markStoredListingPaid(listingId: string) {

@@ -183,6 +183,23 @@ export async function getLatestPendingStoredPaymentForUser(userId: string) {
   return rows[0] ? mapStoredPayment(rows[0]) : undefined;
 }
 
+export async function findActiveStoredPaymentForTarget(input: {
+  targetId?: string;
+  targetType: Payment["targetType"];
+  userId?: string;
+}) {
+  if (!isSupabaseRestConfigured() || !input.targetId || !isUuid(input.targetId)) {
+    return undefined;
+  }
+
+  const userFilter = input.userId ? `&user_id=eq.${encodeURIComponent(input.userId)}` : "";
+  const rows = await supabaseRest<PaymentRow[]>(
+    `/rest/v1/payments?select=*&target_type=eq.${encodeURIComponent(input.targetType)}&target_id=eq.${encodeURIComponent(input.targetId)}${userFilter}&status=in.(created,pending)&order=created_at.desc&limit=1`,
+  );
+
+  return rows[0] ? mapStoredPayment(rows[0]) : undefined;
+}
+
 export async function findStoredPaymentByProvider(providerPaymentId: string, localPaymentId?: string) {
   if (!isSupabaseRestConfigured()) {
     return undefined;
