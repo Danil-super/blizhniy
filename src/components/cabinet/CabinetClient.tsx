@@ -404,6 +404,18 @@ function dedupeListingPublications(items: DemoPublication[]) {
   return [...passthrough, ...byDuplicateKey.values()].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
 
+function mergeLocalListingMedia(serverItem: DemoPublication, localItem?: DemoPublication) {
+  if (serverItem.type !== "listing" || localItem?.type !== "listing") {
+    return serverItem;
+  }
+
+  return {
+    ...serverItem,
+    images: serverItem.images?.length ? serverItem.images : localItem.images,
+    videos: serverItem.videos?.length ? serverItem.videos : localItem.videos,
+  };
+}
+
 async function fetchCabinetPayments() {
   const response = await fetch("/api/cabinet/payments", {
     headers: await getAuthHeaders(),
@@ -430,15 +442,17 @@ function useUserCabinetData(): UserCabinetState {
       const profile = readCabinetProfile(identity.ownerKey, fallback);
       const [serverFairApplications, serverListings] = await Promise.all([fetchCabinetFairApplications(identity), fetchCabinetListings(identity)]);
       const deletedIds = readDeletedPublicationIds();
-      const visibleServerItems = [...serverFairApplications, ...serverListings].filter((item) => !deletedIds.has(item.id));
+      const storedOwnerItems = readStoredPublications().filter((item) => item.ownerKey === identity.ownerKey && !deletedIds.has(item.id));
+      const localItemById = new Map(storedOwnerItems.map((item) => [item.id, item]));
+      const visibleServerItems = [...serverFairApplications, ...serverListings]
+        .filter((item) => !deletedIds.has(item.id))
+        .map((item) => mergeLocalListingMedia(item, localItemById.get(item.id)));
       const serverItemIds = new Set(visibleServerItems.map((item) => item.id));
-      const localItems = readStoredPublications().filter(
+      const localItems = storedOwnerItems.filter(
         (item) => {
           const inactiveServerListingOverlay = identity.accessToken && item.type === "listing" && isUuid(item.id) && isInactiveListing(item);
 
           return (
-            item.ownerKey === identity.ownerKey &&
-            !deletedIds.has(item.id) &&
             (!serverItemIds.has(item.id) || inactiveServerListingOverlay) &&
             !(identity.accessToken && item.type === "listing" && isUuid(item.id) && !inactiveServerListingOverlay)
           );

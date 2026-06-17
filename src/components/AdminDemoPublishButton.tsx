@@ -137,8 +137,15 @@ function readStoredPublications() {
   return [];
 }
 
+function readMediaFiles(formData: FormData) {
+  return formData
+    .getAll("photos")
+    .filter((item): item is File => item instanceof File && item.size > 0 && (item.type.startsWith("image/") || item.type.startsWith("video/")))
+    .slice(0, 20);
+}
+
 function readImageFiles(formData: FormData) {
-  return formData.getAll("photos").filter((item): item is File => item instanceof File && item.size > 0 && item.type.startsWith("image/"));
+  return readMediaFiles(formData).filter((file) => file.type.startsWith("image/"));
 }
 
 async function uploadPublicationMedia(formData: FormData, folder: "fair-applications" | "listings", accessToken: string) {
@@ -173,10 +180,25 @@ async function uploadPublicationMedia(formData: FormData, folder: "fair-applicat
 }
 
 async function readLocalImageReferences(formData: FormData) {
-  const files = readImageFiles(formData).slice(0, 20);
+  const files = readImageFiles(formData);
   const storedImages = await Promise.allSettled(files.map((file) => storeMediaFile(file)));
 
   return storedImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+}
+
+async function readLocalMediaReferences(formData: FormData) {
+  const storedMedia = await Promise.allSettled(
+    readMediaFiles(formData).map(async (file) => ({
+      kind: file.type.startsWith("video/") ? "video" : "image",
+      source: await storeMediaFile(file),
+    })),
+  );
+  const fulfilledMedia = storedMedia.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+
+  return {
+    images: fulfilledMedia.filter((item) => item.kind === "image").map((item) => item.source),
+    videos: fulfilledMedia.filter((item) => item.kind === "video").map((item) => item.source),
+  };
 }
 
 async function buildFallbackPublication(formData: FormData, type: DemoPublicationType, status: string): Promise<DemoPublication> {
@@ -184,6 +206,7 @@ async function buildFallbackPublication(formData: FormData, type: DemoPublicatio
   const id = `demo-${type}-${Date.now().toString(36)}`;
   const categorySlug = readValue(formData, "category", "dlya-doma-i-dachi");
   const categoryName = categories.find((category) => category.slug === categorySlug)?.name ?? "Категория";
+  const media = type === "listing" ? await readLocalMediaReferences(formData) : { images: await readLocalImageReferences(formData), videos: [] };
 
   return withPublicationHistory({
     id,
@@ -199,7 +222,8 @@ async function buildFallbackPublication(formData: FormData, type: DemoPublicatio
     listingKind: readValue(formData, "kind", "prodam") as ListingKind,
     categorySlug,
     subcategorySlug: readValue(formData, "subcategory"),
-    images: await readLocalImageReferences(formData),
+    images: media.images,
+    videos: media.videos,
     status,
     createdAt: now,
   });
