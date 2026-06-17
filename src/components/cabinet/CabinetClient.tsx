@@ -771,7 +771,7 @@ function canRestorePaidPublication(item: DemoPublication) {
 
 function canDeletePublication(item: DemoPublication) {
   if (item.type === "listing") {
-    return isDraftPublication(item) || isPendingPaymentPublication(item);
+    return true;
   }
 
   return isDraftPublication(item) || isUnpublishedVacancy(item);
@@ -821,10 +821,13 @@ function publicationPlaceLabel(item: DemoPublication) {
   return item.city;
 }
 
-function markListingSold(itemId: string, reason: SoldReason) {
-  const currentItem = readStoredPublications().find((item) => item.id === itemId);
+async function markListingSold(currentItem: DemoPublication, reason: SoldReason) {
+  if (isUuid(currentItem.id)) {
+    await requestServerListingAction(currentItem.id, "sold");
+  }
+
   const nextItems = readStoredPublications().map((item) => {
-    if (item.id !== itemId || item.type !== "listing") {
+    if (item.id !== currentItem.id || item.type !== "listing") {
       return item;
     }
 
@@ -847,17 +850,16 @@ function markListingSold(itemId: string, reason: SoldReason) {
   });
 
   writeStoredPublications(nextItems);
-  if (currentItem) {
-    void addCurrentUserNotification({
-      category: "publication",
-      title: "Объявление снято",
-      message: `${currentItem.title}: ${soldReasonLabels[reason]}`,
-      tone: "success",
-      actionHref: "/cabinet/obyavleniya",
-      actionLabel: "Мои объявления",
-      dedupeKey: `publication:${itemId}:sold`,
-    });
-  }
+  window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+  void addCurrentUserNotification({
+    category: "publication",
+    title: "Объявление снято",
+    message: `${currentItem.title}: ${soldReasonLabels[reason]}`,
+    tone: "success",
+    actionHref: "/cabinet/obyavleniya",
+    actionLabel: "Мои объявления",
+    dedupeKey: `publication:${currentItem.id}:sold`,
+  });
 }
 
 function unpublishPaidPublication(itemId: string) {
@@ -928,11 +930,20 @@ function restorePaidPublication(itemId: string) {
   }
 }
 
-async function deletePublication(item: DemoPublication) {
-  if (!canDeletePublication(item)) {
-    return;
-  }
+async function requestServerListingAction(itemId: string, action: "restore" | "sold") {
+  const response = await fetch("/api/cabinet/listings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    body: JSON.stringify({ action, id: itemId }),
+  });
+  const payload = (await response.json().catch(() => null)) as { error?: string } | null;
 
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "Не удалось изменить объявление.");
+  }
+}
+
+async function deletePublication(item: DemoPublication) {
   if (item.type === "listing" && isUuid(item.id)) {
     const response = await fetch("/api/cabinet/listings", {
       method: "DELETE",
@@ -947,6 +958,7 @@ async function deletePublication(item: DemoPublication) {
   }
 
   writeStoredPublications(readStoredPublications().filter((storedItem) => storedItem.id !== item.id));
+  window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
   void addCurrentUserNotification({
     category: "publication",
     title: "Публикация удалена",
@@ -958,10 +970,13 @@ async function deletePublication(item: DemoPublication) {
   });
 }
 
-function restoreSoldListing(itemId: string) {
-  const currentItem = readStoredPublications().find((item) => item.id === itemId);
+async function restoreSoldListing(currentItem: DemoPublication) {
+  if (isUuid(currentItem.id)) {
+    await requestServerListingAction(currentItem.id, "restore");
+  }
+
   const nextItems = readStoredPublications().map((item) => {
-    if (item.id !== itemId || item.type !== "listing") {
+    if (item.id !== currentItem.id || item.type !== "listing") {
       return item;
     }
 
@@ -985,17 +1000,16 @@ function restoreSoldListing(itemId: string) {
   });
 
   writeStoredPublications(nextItems);
-  if (currentItem) {
-    void addCurrentUserNotification({
-      category: "publication",
-      title: "Объявление снова опубликовано",
-      message: `${currentItem.title}: объявление вернулось в публичную выдачу.`,
-      tone: "success",
-      actionHref: getItemHref(currentItem),
-      actionLabel: "Посмотреть",
-      dedupeKey: `publication:${itemId}:sold-restored`,
-    });
-  }
+  window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+  void addCurrentUserNotification({
+    category: "publication",
+    title: "Объявление снова опубликовано",
+    message: `${currentItem.title}: объявление вернулось в публичную выдачу.`,
+    tone: "success",
+    actionHref: getItemHref(currentItem),
+    actionLabel: "Посмотреть",
+    dedupeKey: `publication:${currentItem.id}:sold-restored`,
+  });
 }
 
 async function createPublicationPayment(item: DemoPublication) {
@@ -1209,6 +1223,8 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
   const [paymentError, setPaymentError] = useState("");
   const [actionError, setActionError] = useState("");
   const [actionErrorItemId, setActionErrorItemId] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState("");
+  const [actionSuccessItemId, setActionSuccessItemId] = useState<string | null>(null);
   const [hiddenItemIds, setHiddenItemIds] = useState<Set<string>>(() => new Set());
   const [listingFilter, setListingFilter] = useState<ListingFilter>("all");
   const [vacancyFilter, setVacancyFilter] = useState<VacancyFilter>("all");
@@ -1267,6 +1283,14 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
 
     return visibleSourceItems.filter(isUnpublishedVacancy);
   }, [listingFilter, mode, vacancyFilter, visibleSourceItems]);
+  const showActionSuccess = (itemId: string, message: string) => {
+    setActionSuccess(message);
+    setActionSuccessItemId(itemId);
+    window.setTimeout(() => {
+      setActionSuccess((current) => (current === message ? "" : current));
+      setActionSuccessItemId((current) => (current === itemId ? null : current));
+    }, 2600);
+  };
 
   if (!items.length) {
     return <EmptyState mode={mode} />;
@@ -1327,7 +1351,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         const confirmSold = sellingItemId === item.id;
         const confirmUnpublish = unpublishingItemId === item.id;
         const inactivePaidPublication = isInactivePaidPublication(item);
-        const showOpenAction = item.type === "listing" ? isPublishedPublication(item) || sold : true;
+        const showOpenAction = item.type === "listing" ? isPublishedPublication(item) : true;
         const showEditAction = item.type !== "fairApplication" && !sold;
         const payable = canPayPublication(item);
         const actionGridClassName = "grid-cols-1";
@@ -1384,13 +1408,27 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                   <button
                     key={reason}
                     type="button"
-                  onClick={() => {
-                    markListingSold(item.id, reason);
-                    setSellingItemId(null);
-                  }}
-                    className="inline-flex min-h-8 items-center justify-center rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs font-bold text-amber-800 transition hover:border-amber-400 hover:bg-amber-50"
+                    disabled={actingItemId === item.id}
+                    onClick={() => {
+                      setActionError("");
+                      setActionErrorItemId(null);
+                      setActionSuccess("");
+                      setActionSuccessItemId(null);
+                      setActingItemId(item.id);
+                      void markListingSold(item, reason)
+                        .then(() => {
+                          setSellingItemId(null);
+                          showActionSuccess(item.id, "Объявление снято с публикации.");
+                        })
+                        .catch((error) => {
+                          setActionError(error instanceof Error ? error.message : "Не удалось снять объявление.");
+                          setActionErrorItemId(item.id);
+                        })
+                        .finally(() => setActingItemId(null));
+                    }}
+                    className="inline-flex min-h-8 items-center justify-center rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs font-bold text-amber-800 transition hover:border-amber-400 hover:bg-amber-50 disabled:cursor-wait disabled:bg-slate-50 disabled:text-slate-400"
                   >
-                    {soldReasonLabels[reason]}
+                    {actingItemId === item.id ? "Снимаем..." : soldReasonLabels[reason]}
                   </button>
                 ))}
               </div>
@@ -1440,6 +1478,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                           return next;
                         });
                         setDeletingItemId(null);
+                        showActionSuccess(item.id, "Объявление удалено.");
                       })
                       .catch((error) => {
                         setActionError(error instanceof Error ? error.message : "Не удалось удалить публикацию.");
@@ -1462,6 +1501,12 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
           ) : null}
           {actionError && actionErrorItemId === item.id ? (
             <p className="relative z-20 mx-3 mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{actionError}</p>
+          ) : null}
+          {actionSuccess && actionSuccessItemId === item.id ? (
+            <p className="relative z-20 mx-3 mb-3 inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-[#0a8f32]">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              {actionSuccess}
+            </p>
           ) : null}
           <div className={`grid gap-2 px-3 pb-3 ${actionGridClassName}`}>
             {showOpenAction ? (
@@ -1500,40 +1545,60 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
             {canDeletePublication(item) ? (
               <button
                 type="button"
+                disabled={actingItemId === item.id}
                 onClick={() => {
                   setSellingItemId(null);
                   setUnpublishingItemId(null);
                   setActionError("");
                   setActionErrorItemId(null);
+                  setActionSuccess("");
+                  setActionSuccessItemId(null);
                   setDeletingItemId((current) => (current === item.id ? null : item.id));
                 }}
                 className={actionDangerClassName}
               >
                 <Trash2 className="h-4 w-4 shrink-0" />
-                {deletePublicationButtonLabel(item)}
+                {actingItemId === item.id ? "Выполняем..." : deletePublicationButtonLabel(item)}
               </button>
             ) : null}
             {canMarkListingSold(item) ? (
               <button
                 type="button"
+                disabled={actingItemId === item.id}
                 onClick={() => {
                   setDeletingItemId(null);
                   setUnpublishingItemId(null);
                   setActionError("");
                   setActionErrorItemId(null);
+                  setActionSuccess("");
+                  setActionSuccessItemId(null);
                   setSellingItemId((current) => (current === item.id ? null : item.id));
                 }}
                 className={actionSuccessClassName}
               >
-                Продано / снять
+                {actingItemId === item.id ? "Выполняем..." : "Продано / снять"}
               </button>
             ) : sold ? (
               <button
                 type="button"
-                onClick={() => restoreSoldListing(item.id)}
+                disabled={actingItemId === item.id}
+                onClick={() => {
+                  setActionError("");
+                  setActionErrorItemId(null);
+                  setActionSuccess("");
+                  setActionSuccessItemId(null);
+                  setActingItemId(item.id);
+                  void restoreSoldListing(item)
+                    .then(() => showActionSuccess(item.id, "Объявление снова опубликовано."))
+                    .catch((error) => {
+                      setActionError(error instanceof Error ? error.message : "Не удалось вернуть объявление.");
+                      setActionErrorItemId(item.id);
+                    })
+                    .finally(() => setActingItemId(null));
+                }}
                 className={actionNeutralClassName}
               >
-                Вернуть в публикацию
+                {actingItemId === item.id ? "Возвращаем..." : "Вернуть в публикацию"}
               </button>
             ) : canDeactivatePaidPublication(item) ? (
               <button

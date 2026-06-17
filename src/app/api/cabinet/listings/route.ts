@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { archiveStoredListingForUser, listStoredListingsForUser } from "@/lib/listing-store";
+import {
+  archiveStoredListingForUser,
+  listStoredListingsForUser,
+  markStoredListingSoldForUser,
+  restoreStoredListingForUser,
+} from "@/lib/listing-store";
 import { confirmPayment } from "@/lib/payment-provider";
 import { listStoredPaymentsForUser, markStoredPaymentTargetSucceeded } from "@/lib/payment-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
@@ -59,4 +64,46 @@ export async function DELETE(request: Request) {
   }
 
   return NextResponse.json({ ok: true });
+}
+
+export async function PATCH(request: Request) {
+  if (!isSupabaseServerConfigured()) {
+    return NextResponse.json({ error: "Auth is not configured" }, { status: 503 });
+  }
+
+  const auth = await getAuthenticatedRequestUser(request);
+
+  if (!auth) {
+    return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы изменить объявление" }, { status: 401 });
+  }
+
+  const payload = (await request.json().catch(() => null)) as { action?: string; id?: string } | null;
+  const listingId = payload?.id?.trim();
+  const action = payload?.action?.trim();
+
+  if (!listingId) {
+    return NextResponse.json({ error: "listing id is required" }, { status: 400 });
+  }
+
+  if (action === "sold") {
+    const updated = await markStoredListingSoldForUser(listingId, auth.user.id);
+
+    if (!updated) {
+      return NextResponse.json({ error: "Объявление не найдено или уже снято с публикации" }, { status: 404 });
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "restore") {
+    const updated = await restoreStoredListingForUser(listingId, auth.user.id);
+
+    if (!updated) {
+      return NextResponse.json({ error: "Объявление не найдено или его нужно оплатить перед публикацией" }, { status: 404 });
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
+  return NextResponse.json({ error: "Unsupported listing action" }, { status: 400 });
 }
