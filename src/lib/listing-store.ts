@@ -297,6 +297,22 @@ export async function markStoredListingPaid(listingId: string) {
   }
 
   const now = new Date().toISOString();
+  const existingRows = await supabaseRest<Array<Pick<ListingRow, "id" | "is_paid" | "status">>>(
+    `/rest/v1/listings?select=id,is_paid,status&id=eq.${encodeURIComponent(listingId)}&limit=1`,
+  );
+  const existingListing = existingRows[0];
+
+  if (!existingListing) {
+    return false;
+  }
+
+  if (existingListing.status === "published" && existingListing.is_paid) {
+    return true;
+  }
+
+  if (existingListing.status === "archived" || existingListing.status === "sold" || existingListing.status === "expired") {
+    return true;
+  }
 
   const rows = await supabaseRest<Array<Pick<ListingRow, "id">>>(`/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}`, {
     method: "PATCH",

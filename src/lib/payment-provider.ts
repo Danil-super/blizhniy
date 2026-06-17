@@ -176,8 +176,8 @@ async function applySucceededPayment(payment: Payment): Promise<PaymentResult> {
   payment.status = "succeeded";
   payment.paidAt = payment.paidAt ?? todayIsoDate();
 
-  await updateStoredPayment(payment);
   const nextStatus = canStorePayment(payment) ? await markStoredPaymentTargetSucceeded(payment) : markPaymentTargetSucceeded(payment);
+  await updateStoredPayment(payment);
 
   return {
     payment,

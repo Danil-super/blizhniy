@@ -9,6 +9,7 @@ type ConfirmPaymentPayload = {
   nextStatus?: string;
   payment?: {
     id?: string;
+    provider?: Payment["provider"];
     status?: Payment["status"];
     targetId?: string;
     targetTitle?: string;
@@ -42,6 +43,8 @@ type CreatedListingPaymentPayload = {
 };
 
 const pendingPaymentStorageKey = "blizhniy:pendingPaymentId";
+const confirmationRetryDelayMs = 1500;
+const confirmationRetryAttempts = 6;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 
 function isUuid(value?: string) {
@@ -163,6 +166,14 @@ function shouldRetryWithRememberedPayment(payload: (ConfirmPaymentPayload & { er
   return !responseOk && /payment not found/i.test(payload?.error ?? "");
 }
 
+function shouldRetryPendingConfirmation(payload: (ConfirmPaymentPayload & { error?: string }) | null, responseOk: boolean) {
+  return responseOk && payload?.payment?.status !== "succeeded";
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function confirmClientPayment(paymentId: string) {
   let confirmedPaymentId = paymentId;
   let { payload, response } = await requestPaymentConfirmation(paymentId);
@@ -174,6 +185,11 @@ export async function confirmClientPayment(paymentId: string) {
       confirmedPaymentId = rememberedPaymentId;
       ({ payload, response } = await requestPaymentConfirmation(rememberedPaymentId));
     }
+  }
+
+  for (let attempt = 1; attempt < confirmationRetryAttempts && shouldRetryPendingConfirmation(payload, response.ok); attempt += 1) {
+    await wait(confirmationRetryDelayMs);
+    ({ payload, response } = await requestPaymentConfirmation(confirmedPaymentId));
   }
 
   if (!response.ok || !payload) {

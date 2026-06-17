@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { archiveStoredListingForUser, listStoredListingsForUser } from "@/lib/listing-store";
 import { confirmPayment } from "@/lib/payment-provider";
-import { listStoredPaymentsForUser } from "@/lib/payment-store";
+import { listStoredPaymentsForUser, markStoredPaymentTargetSucceeded } from "@/lib/payment-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 
 async function syncPendingListingPayments(userId: string) {
@@ -9,8 +9,12 @@ async function syncPendingListingPayments(userId: string) {
   const pendingListingPayments = payments.filter(
     (payment) => payment.targetType === "listing" && payment.provider === "yookassa" && (payment.status === "created" || payment.status === "pending"),
   );
+  const succeededListingPayments = payments.filter((payment) => payment.targetType === "listing" && payment.status === "succeeded");
 
-  await Promise.allSettled(pendingListingPayments.map((payment) => confirmPayment(payment)));
+  await Promise.allSettled([
+    ...pendingListingPayments.map((payment) => confirmPayment(payment)),
+    ...succeededListingPayments.map((payment) => markStoredPaymentTargetSucceeded(payment)),
+  ]);
 }
 
 export async function GET(request: Request) {
