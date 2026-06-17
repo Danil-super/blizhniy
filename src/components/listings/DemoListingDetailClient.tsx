@@ -106,7 +106,7 @@ function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string })
         {activeMedia?.kind === "video" ? (
           <StoredMediaVideo src={activeMedia.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
         ) : (
-          <StoredMediaImage src={activeMedia?.src} alt={title} className="h-full w-full object-contain" />
+          <StoredMediaImage src={activeMedia?.src} alt={title} className="h-full w-full object-cover object-center" />
         )}
         {media.length > 1 ? (
           <>
@@ -152,7 +152,7 @@ function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string })
                   </span>
                 </>
               ) : (
-                <StoredMediaImage src={item.src} alt="" className="h-full w-full object-contain" />
+                <StoredMediaImage src={item.src} alt="" className="h-full w-full object-cover object-center" />
               )}
             </button>
           ))}

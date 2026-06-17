@@ -926,6 +926,27 @@ function listingPlaceLabel(listing: DemoListing) {
   return listing.city;
 }
 
+function formatListingDateOnly(value?: string) {
+  const normalized = value?.trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  const parsed = new Date(normalized);
+
+  if (!Number.isNaN(parsed.getTime())) {
+    return new Intl.DateTimeFormat("ru-RU", {
+      day: "numeric",
+      month: "long",
+      timeZone: "Europe/Moscow",
+      year: "numeric",
+    }).format(parsed);
+  }
+
+  return formatPublicationDateTime(normalized).replace(/,\s*\d{2}:\d{2}$/, "").replace(/\s+в\s+\d{2}:\d{2}$/, "");
+}
+
 function listingSellerName(listing: DemoListing) {
   return sellerDisplayName(listing);
 }
@@ -1668,7 +1689,7 @@ export function ListingDetailPage({ slug, listingOverride }: { slug: string; lis
                 </div>
                 <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                   <dt className="text-sm font-bold text-slate-500">Активно до</dt>
-                  <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{listing.expiresAt}</dd>
+                  <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{formatListingDateOnly(listing.expiresAt)}</dd>
                 </div>
               </dl>
             </div>

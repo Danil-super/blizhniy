@@ -35,7 +35,7 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
         {activeMedia.kind === "video" ? (
           <StoredMediaVideo src={activeMedia.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
         ) : (
-          <StoredMediaImage src={activeMedia.src} alt={title} className="h-full w-full object-contain" loading="eager" />
+          <StoredMediaImage src={activeMedia.src} alt={title} className="h-full w-full object-cover object-center" loading="eager" />
         )}
 
         {media.length > 1 ? (
