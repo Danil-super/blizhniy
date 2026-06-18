@@ -8,6 +8,7 @@ import { VacancyFormValidator } from "@/components/VacancyFormValidator";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { createVacancy } from "@/lib/mock-store";
 import { ListingLocationFields } from "@/components/listings/ListingFormControls";
+import { normalizeListingPrice } from "@/lib/listing-price";
 import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
 
@@ -40,6 +41,24 @@ function readIpMessenger(formData: FormData) {
   return value && !readIpEmail(formData) ? value : String(formData.get("messengerUrl") ?? "").trim() || undefined;
 }
 
+function normalizeEmployerType(value: string) {
+  return value === "private" ? "person" : value;
+}
+
+async function readPhotoDataUrls(formData: FormData) {
+  const files = formData
+    .getAll("photos")
+    .filter((file): file is File => file instanceof File && file.size > 0 && file.type.startsWith("image/"))
+    .slice(0, 12);
+
+  return Promise.all(
+    files.map(async (file) => {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      return `data:${file.type || "image/jpeg"};base64,${buffer.toString("base64")}`;
+    }),
+  );
+}
+
 export default async function CreateVacancyPage({ searchParams }: PageProps) {
   const params = searchParams ? await searchParams : undefined;
   const adminMode = params?.admin === "1" && isDemoAdminBypassEnabled();
@@ -56,10 +75,11 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
     createVacancy({
       organization: String(formData.get("organization") ?? "").trim(),
       title: String(formData.get("title") ?? "").trim(),
-      profession: String(formData.get("profession") ?? "").trim(),
+      profession: String(formData.get("profession") ?? "").trim() || String(formData.get("title") ?? "").trim(),
       city: String(formData.get("location") ?? "").trim().split(",")[0]?.trim() || "",
       address: String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1" ? String(formData.get("address") ?? "").trim() || undefined : undefined,
-      salary: String(formData.get("salary") ?? "").trim() || undefined,
+      salary: normalizeListingPrice(String(formData.get("salary") ?? "")),
+      images: await readPhotoDataUrls(formData),
       phone: String(formData.get("phone") ?? "").trim() || undefined,
       messengerUrl: readIpMessenger(formData),
       email: readIpEmail(formData) ?? (String(formData.get("email") ?? "").trim() || undefined),
@@ -69,7 +89,7 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
       requirements: String(formData.get("requirements") ?? "").trim() || undefined,
       responsibilities: String(formData.get("responsibilities") ?? "").trim() || undefined,
       conditions: String(formData.get("conditions") ?? "").trim() || undefined,
-      employerType: String(formData.get("employerType") ?? "").trim() || undefined,
+      employerType: normalizeEmployerType(String(formData.get("employerType") ?? "").trim()) || undefined,
       inn: String(formData.get("inn") ?? "").trim() || undefined,
       ogrn: String(formData.get("ogrn") ?? "").trim() || undefined,
       ogrnip: String(formData.get("ogrnip") ?? "").trim() || undefined,
@@ -105,9 +125,6 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
                   <div className="vacancy-title-field">
                     <Field name="title" label="Название" placeholder="Сантехник" minLength={3} maxLength={90} required />
                   </div>
-                  <div>
-                    <Field name="profession" label="Категория / профессия" placeholder="Сантехник" minLength={2} maxLength={80} required />
-                  </div>
                   <div className="vacancy-schedule-field">
                     <Field name="schedule" label="График" placeholder="5/2" maxLength={60} />
                   </div>
@@ -115,10 +132,10 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
                     <Field name="workFormat" label="Формат работы" placeholder="На месте, удаленно, разъездная" minLength={2} maxLength={80} required />
                   </div>
                   <div className="vacancy-salary-field">
-                    <Field name="salary" label="Оплата" placeholder="от 80 000 ₽" minLength={2} maxLength={80} required />
+                    <Field name="salary" label="Оплата" placeholder="80 000 ₽" minLength={2} maxLength={80} required />
                   </div>
                 </div>
-                <PhotoField label="Фото работодателя или рабочего места" description="Обязательное фото: логотип, фасад, рабочее место или реальное фото работодателя. Так соискатели понимают, кто размещает вакансию." required />
+                <PhotoField label="Фото работодателя или рабочего места" description="Добавьте логотип, фасад, рабочее место или реальные фото работодателя. Первое фото будет обложкой вакансии." required autoOpenCropper={false} maxPhotos={12} />
                 <ListingLocationFields className="vacancy-location-fields" addressLegend="Адрес вакансии" cityLabel="Город / район" defaultCity="Краснодар" inlineControls />
                 <TextAreaField name="description" label="Описание задачи или вакансии" placeholder="Коротко расскажите, кого ищете, где работать и что важно знать соискателю." minLength={30} maxLength={1800} required />
                 <TextAreaField name="responsibilities" label="Обязанности" placeholder="Что нужно делать каждый день." minLength={20} maxLength={1400} required />

@@ -7,14 +7,16 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LocationMap } from "@/components/LocationMap";
 import { VacancyDetailClient } from "@/components/VacancyDetailClient";
+import { VacancyMediaGallery } from "@/components/VacancyMediaGallery";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { listVacancies } from "@/lib/mock-store";
+import { getStoredVacancyById } from "@/lib/vacancy-store";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const vacancy = listVacancies().find((item) => item.id === slug);
+  const vacancy = (await getStoredVacancyById(slug, { publicOnly: true })) ?? listVacancies().find((item) => item.id === slug);
 
   return {
     title: vacancy ? `${vacancy.title} — вакансия` : "Вакансия",
@@ -27,7 +29,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function VacancyDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const vacancy = listVacancies().find((item) => item.id === slug);
+  const vacancy = (await getStoredVacancyById(slug, { publicOnly: true })) ?? listVacancies().find((item) => item.id === slug);
 
   if (!vacancy) {
     return (
@@ -66,6 +68,7 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
               <MapPin className="h-5 w-5" />
               {vacancy.showExactAddress && vacancy.address ? `${vacancy.city}, ${vacancy.address}` : [vacancy.city, vacancy.district].filter(Boolean).join(", ")}
             </p>
+            <VacancyMediaGallery images={vacancy.images} title={vacancy.title} />
             <div className="mt-8 grid gap-6 leading-7 text-slate-700">
               <section>
                 <h2 className="text-2xl font-black text-[#060b27]">Описание</h2>

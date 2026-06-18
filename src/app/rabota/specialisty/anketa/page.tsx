@@ -241,7 +241,7 @@ export default async function SpecialistProfileFormPage({ searchParams }: PagePr
                   title="От 2 до 15 символов: буквы, цифры, пробел, точка или дефис."
                 />
               </div>
-              <label className="specialist-primary-profession grid min-w-0 gap-1.5 text-xs font-bold leading-4 text-slate-700 sm:gap-2 sm:text-sm">
+              <label className="specialist-primary-profession form-field grid min-w-0 gap-1.5 text-xs font-bold leading-4 text-slate-700 sm:gap-2 sm:text-sm" data-field-size="lg">
                 <span className="line-clamp-2">Профессия из классификатора</span>
                 <DropdownSelect name="profession" defaultValue={selectedSpecialist?.profession} placeholder="Выбрать" options={professionOptions} required />
               </label>

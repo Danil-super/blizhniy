@@ -122,6 +122,123 @@ canvas {
   max-width: 100%;
 }
 
+.adaptive-field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(0.55rem, 1cqw, 0.9rem);
+  min-width: 0;
+  width: 100%;
+}
+
+.form-field {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.responsive-field-grid > *,
+.vacancy-fields-grid > *,
+.adaptive-field-grid > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+@container (min-width: 42rem) {
+  .responsive-field-grid,
+  .vacancy-fields-grid,
+  .adaptive-field-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .responsive-field-grid > *,
+  .vacancy-fields-grid > *,
+  .adaptive-field-grid > * {
+    grid-column: span 6;
+  }
+
+  .responsive-field-grid > .form-field[data-field-size="xs"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="xs"]),
+  .vacancy-fields-grid > .form-field[data-field-size="xs"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="xs"]),
+  .adaptive-field-grid > .form-field[data-field-size="xs"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="xs"]) {
+    grid-column: span 3;
+  }
+
+  .responsive-field-grid > .form-field[data-field-size="sm"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="sm"]),
+  .vacancy-fields-grid > .form-field[data-field-size="sm"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="sm"]),
+  .adaptive-field-grid > .form-field[data-field-size="sm"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="sm"]) {
+    grid-column: span 4;
+  }
+
+  .responsive-field-grid > .form-field[data-field-size="md"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="md"]),
+  .vacancy-fields-grid > .form-field[data-field-size="md"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="md"]),
+  .adaptive-field-grid > .form-field[data-field-size="md"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="md"]) {
+    grid-column: span 5;
+  }
+
+  .responsive-field-grid > .form-field[data-field-size="lg"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="lg"]),
+  .vacancy-fields-grid > .form-field[data-field-size="lg"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="lg"]),
+  .adaptive-field-grid > .form-field[data-field-size="lg"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="lg"]) {
+    grid-column: span 7;
+  }
+
+  .responsive-field-grid > .form-field[data-field-size="full"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="full"]),
+  .vacancy-fields-grid > .form-field[data-field-size="full"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="full"]),
+  .adaptive-field-grid > .form-field[data-field-size="full"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="full"]) {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (min-width: 64rem) {
+  .responsive-field-grid > .form-field[data-field-size="xs"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="xs"]),
+  .vacancy-fields-grid > .form-field[data-field-size="xs"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="xs"]),
+  .adaptive-field-grid > .form-field[data-field-size="xs"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="xs"]) {
+    grid-column: span 2;
+  }
+
+  .responsive-field-grid > .form-field[data-field-size="sm"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="sm"]),
+  .vacancy-fields-grid > .form-field[data-field-size="sm"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="sm"]),
+  .adaptive-field-grid > .form-field[data-field-size="sm"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="sm"]) {
+    grid-column: span 3;
+  }
+
+  .responsive-field-grid > .form-field[data-field-size="md"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="md"]),
+  .vacancy-fields-grid > .form-field[data-field-size="md"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="md"]),
+  .adaptive-field-grid > .form-field[data-field-size="md"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="md"]) {
+    grid-column: span 4;
+  }
+
+  .responsive-field-grid > .form-field[data-field-size="lg"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="lg"]),
+  .vacancy-fields-grid > .form-field[data-field-size="lg"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="lg"]),
+  .adaptive-field-grid > .form-field[data-field-size="lg"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="lg"]) {
+    grid-column: span 6;
+  }
+}
+
 .specialist-metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
@@ -135,17 +252,21 @@ canvas {
 .vacancy-create-form {
   container-type: inline-size;
   gap: clamp(0.55rem, 1.05cqw, 0.95rem);
+  width: 100%;
+  max-width: none;
 }
 
 .vacancy-fields-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: clamp(0.5rem, 1cqw, 0.9rem);
   min-width: 0;
 }
 
-.vacancy-fields-grid > * {
-  min-width: 0;
+@container (min-width: 42rem) {
+  .vacancy-fields-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
 }
 
 .vacancy-create-form label {
@@ -216,9 +337,6 @@ canvas {
 }
 
 .listing-create-primary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: clamp(0.55rem, 1cqw, 0.9rem);
   min-width: 0;
 }
 

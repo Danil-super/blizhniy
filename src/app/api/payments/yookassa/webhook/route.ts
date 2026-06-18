@@ -18,6 +18,10 @@ function hasValidWebhookSecret(request: Request) {
   return headerSecret === secret || bearerSecret === secret || querySecret === secret;
 }
 
+function requiresWebhookSecret() {
+  return process.env.NODE_ENV === "production" || Boolean(process.env.YOOKASSA_WEBHOOK_SECRET?.trim());
+}
+
 export function GET() {
   return NextResponse.json({
     ok: true,
@@ -27,6 +31,10 @@ export function GET() {
 }
 
 export async function POST(request: Request) {
+  if (requiresWebhookSecret() && !hasValidWebhookSecret(request)) {
+    return NextResponse.json({ ok: false, error: "Invalid webhook secret" }, { status: 403 });
+  }
+
   const payload = (await request.json().catch(() => null)) as unknown;
 
   if (!payload || typeof payload !== "object") {

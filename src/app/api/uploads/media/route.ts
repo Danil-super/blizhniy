@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { canUploadMediaToStorage, type UploadFolder, uploadMediaFile } from "@/lib/storage-upload";
 
-const allowedFolders = new Set<UploadFolder>(["fair-applications", "listings"]);
+const allowedFolders = new Set<UploadFolder>(["fair-applications", "listings", "vacancies"]);
 const maxFilesPerRequest = 10;
 
 type UploadResponse = {

@@ -5,7 +5,7 @@ export const mediaBucketName = "blizhniy-media";
 const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const maxFileSizeBytes = 10 * 1024 * 1024;
 
-export type UploadFolder = "fair-applications" | "listings";
+export type UploadFolder = "fair-applications" | "listings" | "vacancies";
 
 export type UploadedMedia = {
   mimeType: string;

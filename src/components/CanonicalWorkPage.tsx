@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { BriefcaseBusiness, ChevronRight, ClipboardList, MapPin, UserRound } from "lucide-react";
+import { VacancyCardMedia } from "@/components/VacancyMedia";
 import { specialists as fallbackSpecialists, vacancies as fallbackVacancies, workRequests as fallbackWorkRequests } from "@/lib/data";
 import type { JobVacancy, SpecialistProfile, WorkRequest } from "@/lib/types";
 
@@ -29,14 +30,22 @@ function SegmentTabs({ activeItem, onChange }: { activeItem: string; onChange: (
 
 function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
   return (
-    <Link href={`/vakansiya/${vacancy.id}`} className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
-      <p className="truncate text-xs font-semibold text-slate-500">{vacancy.organization}</p>
-      <h3 className="mt-1 line-clamp-2 min-h-10 text-sm font-black leading-5 text-[#060b27] transition group-hover:text-[#0875d1]">{vacancy.title}</h3>
-      <p className="mt-2 text-base font-black text-[#060b27]">{vacancy.salary}</p>
-      <p className="mt-2 flex items-center gap-1 text-xs text-slate-500">
-        <MapPin className="h-3.5 w-3.5" />
-        {vacancy.city}
-      </p>
+    <Link href={`/vakansiya/${vacancy.id}`} className="group block min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
+      <VacancyCardMedia images={vacancy.images} title={vacancy.title}>
+        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 px-1 text-center text-xs font-black leading-4 shadow-sm ring-1 ring-white/80 transition group-hover:scale-105">
+          {vacancy.logoText}
+        </span>
+        <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />
+      </VacancyCardMedia>
+      <span className="block p-4">
+        <span className="block truncate text-xs font-semibold text-slate-500">{vacancy.organization}</span>
+        <span className="mt-1 block line-clamp-2 min-h-10 text-sm font-black leading-5 text-[#060b27] transition group-hover:text-[#0875d1]">{vacancy.title}</span>
+        <span className="mt-2 block text-base font-black text-[#060b27]">{vacancy.salary}</span>
+        <span className="mt-2 flex items-center gap-1 text-xs text-slate-500">
+          <MapPin className="h-3.5 w-3.5" />
+          {vacancy.city}
+        </span>
+      </span>
     </Link>
   );
 }

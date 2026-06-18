@@ -13,6 +13,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { ListingViewCounter } from "@/components/listings/ListingViewCounter";
+import { VacancyGridCard } from "@/components/VacancyGridCard";
 import { specialists as fallbackSpecialists, vacancies as fallbackVacancies, workRequests as fallbackWorkRequests } from "@/lib/data";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import type { JobVacancy, SpecialistProfile, WorkRequest } from "@/lib/types";
@@ -46,20 +47,6 @@ function SegmentTabs({
   );
 }
 
-function LogoBadge({ vacancy }: { vacancy: JobVacancy }) {
-  const tones = {
-    blue: "text-[#0875d1]",
-    violet: "text-violet-600",
-    teal: "text-cyan-600",
-  };
-
-  return (
-    <span className={`flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 px-1 text-center text-xs font-black leading-4 shadow-sm ring-1 ring-white/80 transition group-hover:scale-105 ${tones[vacancy.logoTone]}`}>
-      {vacancy.logoText}
-    </span>
-  );
-}
-
 function Avatar({ specialist }: { specialist: SpecialistProfile }) {
   const palettes: Record<string, string> = {
     alex: "from-blue-200 via-slate-100 to-emerald-200 text-blue-900",
@@ -79,55 +66,11 @@ function Avatar({ specialist }: { specialist: SpecialistProfile }) {
   );
 }
 
-const vacancyImageTones = {
-  blue: "from-blue-100 via-white to-cyan-100",
-  violet: "from-violet-100 via-white to-blue-100",
-  teal: "from-cyan-100 via-white to-emerald-100",
-};
-
 const specialistImageTones: Record<string, string> = {
   alex: "from-blue-100 via-white to-emerald-100",
   marina: "from-rose-100 via-white to-violet-100",
   irina: "from-amber-100 via-white to-blue-100",
 };
-
-function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
-  const publishedLabel = formatPublicationDateTime(vacancy.publishedAt ?? vacancy.createdAt, "10:00");
-
-  return (
-    <Link
-      href={`/vakansiya/${vacancy.id}`}
-      className="group block min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card"
-      aria-label={`Открыть вакансию ${vacancy.title}`}
-    >
-      <span className={`relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-gradient-to-br ${vacancyImageTones[vacancy.logoTone]}`}>
-        <LogoBadge vacancy={vacancy} />
-        <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />
-      </span>
-      <span className="block p-3">
-        <span className="block truncate text-[11px] text-slate-500 sm:text-xs">{vacancy.organization}</span>
-        <span className="mt-1 block truncate text-base font-black text-[#060b27]">{vacancy.salary}</span>
-        <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">
-          {vacancy.title}
-        </span>
-        {vacancy.description ? <span className="mt-1 hidden text-xs leading-5 text-slate-600 sm:line-clamp-2">{vacancy.description}</span> : null}
-        {publishedLabel ? (
-          <span className="mt-1 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
-            <Clock3 className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{publishedLabel}</span>
-          </span>
-        ) : null}
-        <span className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
-          <span className="flex min-w-0 items-center gap-1">
-            <MapPin className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{vacancy.city}</span>
-          </span>
-          <ListingViewCounter listingId={`work-vacancy-${vacancy.id}`} />
-        </span>
-      </span>
-    </Link>
-  );
-}
 
 function WorkRequestCard({ request }: { request: WorkRequest }) {
   const publishedLabel = formatPublicationDateTime(request.publishedAt ?? request.createdAt, "10:00");
@@ -279,7 +222,7 @@ export function WorkPage({
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-4 xl:grid-cols-2">
             {showingWorkRequests
               ? visibleWorkRequests.map((request) => <WorkRequestCard key={request.id} request={request} />)
-              : visibleVacancies.map((vacancy) => <VacancyCard key={vacancy.id} vacancy={vacancy} />)}
+              : visibleVacancies.map((vacancy) => <VacancyGridCard key={vacancy.id} vacancy={vacancy} />)}
           </div>
         </section>
 

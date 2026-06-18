@@ -8,6 +8,7 @@ alter table specialist_categories enable row level security;
 alter table listings enable row level security;
 alter table listing_images enable row level security;
 alter table vacancies enable row level security;
+alter table vacancy_images enable row level security;
 alter table work_requests enable row level security;
 alter table specialist_profiles enable row level security;
 alter table applications enable row level security;
@@ -72,6 +73,11 @@ create policy "Public can read published vacancies" on vacancies for select usin
 create policy "Users can insert own vacancies" on vacancies for insert with check (author_id = (select auth.uid()) or public.is_admin());
 create policy "Users can update own vacancies" on vacancies for update using (author_id = (select auth.uid()) or public.is_admin()) with check (author_id = (select auth.uid()) or public.is_admin());
 create policy "Users can delete own vacancies" on vacancies for delete using (author_id = (select auth.uid()) or public.is_admin());
+
+create policy "Public can read vacancy images" on vacancy_images for select using (exists (select 1 from vacancies where vacancies.id = vacancy_images.vacancy_id and (vacancies.status = 'published' or vacancies.author_id = (select auth.uid()) or public.is_admin())));
+create policy "Owners can insert vacancy images" on vacancy_images for insert with check (exists (select 1 from vacancies where vacancies.id = vacancy_images.vacancy_id and (vacancies.author_id = (select auth.uid()) or public.is_admin())));
+create policy "Owners can update vacancy images" on vacancy_images for update using (exists (select 1 from vacancies where vacancies.id = vacancy_images.vacancy_id and (vacancies.author_id = (select auth.uid()) or public.is_admin()))) with check (exists (select 1 from vacancies where vacancies.id = vacancy_images.vacancy_id and (vacancies.author_id = (select auth.uid()) or public.is_admin())));
+create policy "Owners can delete vacancy images" on vacancy_images for delete using (exists (select 1 from vacancies where vacancies.id = vacancy_images.vacancy_id and (vacancies.author_id = (select auth.uid()) or public.is_admin())));
 
 create policy "Public can read published work requests" on work_requests for select using (status = 'published' or author_id = (select auth.uid()) or public.is_admin());
 create policy "Users can insert own work requests" on work_requests for insert with check (author_id = (select auth.uid()) or public.is_admin());

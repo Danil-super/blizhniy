@@ -18,7 +18,7 @@ export function formatListingPrice(value: number | string) {
     return "";
   }
 
-  return `${currencyFormatter.format(amount)} ₽`;
+  return `${currencyFormatter.format(amount).replace(/[\u00a0\u202f]/g, " ")} ₽`;
 }
 
 export function normalizeListingPrice(value?: string, fallback = "по договоренности") {

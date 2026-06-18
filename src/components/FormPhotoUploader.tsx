@@ -1,10 +1,9 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
-
 import { ChangeEvent, useEffect, useRef, useState } from "react";
-import { Camera, X } from "lucide-react";
+import { Camera, Images, Plus, X } from "lucide-react";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
+import { StoredMediaImage } from "@/components/StoredMedia";
 import { filterFormPhotoFiles, formPhotoLimitText } from "@/lib/media-limits";
 
 type PreviewPhoto = {
@@ -38,20 +37,25 @@ async function dataUrlToImageFile(dataUrl: string, name: string) {
 }
 
 export function FormPhotoUploader({
+  autoOpenCropper = true,
   defaultPhotos = [],
   description,
   label,
+  maxPhotos = 12,
   name = "photos",
   required = false,
 }: {
+  autoOpenCropper?: boolean;
   defaultPhotos?: string[];
   description: string;
   label: string;
+  maxPhotos?: number;
   name?: string;
   required?: boolean;
 }) {
+  const normalizedMaxPhotos = Math.max(1, maxPhotos);
   const [photos, setPhotos] = useState<PreviewPhoto[]>(
-    defaultPhotos.map((url, index) => ({
+    defaultPhotos.slice(0, normalizedMaxPhotos).map((url, index) => ({
       id: `persisted-${index}-${url.slice(0, 24)}`,
       name: `Фото ${index + 1}`,
       persisted: true,
@@ -63,7 +67,6 @@ export function FormPhotoUploader({
   const [message, setMessage] = useState("");
   const urlsRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
-  const maxPhotos = 12;
   const cropEditorPhoto = photos.find((photo) => photo.id === cropEditorId);
 
   useEffect(() => {
@@ -74,12 +77,12 @@ export function FormPhotoUploader({
   }, []);
 
   function handleFiles(event: ChangeEvent<HTMLInputElement>) {
-    const availableSlots = maxPhotos - photos.length;
+    const availableSlots = normalizedMaxPhotos - photos.length;
     const selectedFiles = Array.from(event.target.files ?? []).slice(0, availableSlots);
     const { accepted, rejectedMessages } = filterFormPhotoFiles(selectedFiles);
     const files = accepted.slice(0, availableSlots);
 
-    setMessage(rejectedMessages[0] ?? "");
+    setMessage(rejectedMessages[0] ?? (availableSlots <= 0 ? `Можно добавить не больше ${normalizedMaxPhotos} фото.` : ""));
 
     if (!files.length) {
       syncFileInput(inputRef.current, photos);
@@ -101,11 +104,13 @@ export function FormPhotoUploader({
     });
 
     setPhotos((current) => {
-      const next = [...current, ...nextPhotos].slice(0, maxPhotos);
+      const next = [...current, ...nextPhotos].slice(0, normalizedMaxPhotos);
       window.requestAnimationFrame(() => syncFileInput(inputRef.current, next));
       return next;
     });
-    setCropEditorId(nextPhotos[0]?.id ?? "");
+    if (autoOpenCropper) {
+      setCropEditorId(nextPhotos[0]?.id ?? "");
+    }
     event.currentTarget.value = "";
   }
 
@@ -146,52 +151,77 @@ export function FormPhotoUploader({
   }
 
   return (
-    <section className="min-w-0 max-w-full overflow-hidden rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 sm:p-4">
-      <label className="block cursor-pointer rounded-lg border border-dashed border-transparent p-2 transition hover:border-blue-200 hover:bg-white/70 sm:p-3">
-        <input ref={inputRef} className="sr-only" name={name} type="file" accept="image/*" multiple required={required && !photos.length} onChange={handleFiles} />
-        <span className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-[#0875d1] ring-1 ring-blue-100">
-            <Camera className="h-5 w-5" />
-          </span>
-          <span className="min-w-0 [overflow-wrap:anywhere]">
-            <span className="block text-sm font-bold text-slate-700">
-              {label}
-              {required ? <span className="text-rose-600"> *</span> : null}
+    <section className="min-w-0 max-w-full overflow-hidden rounded-xl border border-blue-100 bg-white p-3 shadow-sm sm:p-4">
+      <div className={`grid min-w-0 gap-3 ${photos.length ? "lg:grid-cols-[minmax(18rem,1fr)_minmax(18rem,26rem)] lg:items-start" : ""}`}>
+        <label className="group flex min-w-0 cursor-pointer flex-col justify-between rounded-xl border border-dashed border-blue-200 bg-blue-50/60 p-3 transition hover:border-[#0875d1] hover:bg-blue-50 sm:min-h-32 sm:p-4">
+          <input ref={inputRef} className="sr-only" name={name} type="file" accept="image/*" multiple={normalizedMaxPhotos > 1} required={required && !photos.length} onChange={handleFiles} />
+          <span className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-[#0875d1] ring-1 ring-blue-100 transition group-hover:ring-[#0875d1]">
+              <Camera className="h-5 w-5" />
             </span>
-            <span className="mt-1 block text-xs leading-5 text-slate-500 sm:text-sm sm:leading-6">{description} {formPhotoLimitText()}</span>
+            <span className="min-w-0 [overflow-wrap:anywhere]">
+              <span className="block text-sm font-bold text-slate-700">
+                {label}
+                {required ? <span className="text-rose-600"> *</span> : null}
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-slate-500 sm:text-sm sm:leading-6">
+                {description} {formPhotoLimitText()}
+              </span>
+            </span>
           </span>
-        </span>
-      </label>
+          <span className="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
+            <span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white px-2.5 text-[#0875d1] ring-1 ring-blue-100">
+              <Plus className="h-3.5 w-3.5" />
+              Добавить файлы
+            </span>
+            <span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white px-2.5 ring-1 ring-slate-200">
+              <Images className="h-3.5 w-3.5 text-slate-400" />
+              {photos.length}/{normalizedMaxPhotos}
+            </span>
+          </span>
+        </label>
+        {photos.length ? (
+          <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2 sm:p-2.5">
+            <div className="mb-2 flex min-w-0 items-center justify-between gap-2 px-1">
+              <span className="text-xs font-black uppercase tracking-normal text-slate-500">Превью</span>
+              <span className="text-xs font-bold text-slate-500">Первое фото - обложка</span>
+            </div>
+            <div className="grid max-h-[17.5rem] min-w-0 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-2">
+              {photos.map((photo, index) => (
+                <figure key={photo.id} className="group relative aspect-square min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <StoredMediaImage src={photo.url} alt={photo.name} className="h-full w-full object-cover" />
+                  {index === 0 ? (
+                    <span className="absolute left-1.5 top-1.5 rounded-md bg-white/95 px-2 py-1 text-[0.68rem] font-black text-[#0875d1] shadow-sm">
+                      Обложка
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(photo.id)}
+                    className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow-sm transition hover:text-rose-600"
+                    aria-label={`Убрать ${photo.name}`}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCropEditorId(photo.id)}
+                    className="absolute bottom-1.5 left-1.5 rounded-lg bg-white/95 px-2 py-1 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3] sm:bottom-2 sm:left-2 sm:px-2.5 sm:py-1.5"
+                  >
+                    Кадр
+                  </button>
+                </figure>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
       {message ? <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{message}</p> : null}
       {photos
         .filter((photo) => photo.persisted)
         .map((photo) => (
           <input key={`hidden-${photo.id}`} type="hidden" name="existingPhotos" value={photo.url} />
         ))}
-      {photos.length ? (
-        <div className="photo-preview-grid mt-4">
-          {photos.map((photo) => (
-            <figure key={photo.id} className="group relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-white">
-              <img src={photo.url} alt={photo.name} className="h-full w-full object-contain p-1.5" />
-              <button
-                type="button"
-                onClick={() => removePhoto(photo.id)}
-                className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow-sm transition hover:text-rose-600"
-                aria-label={`Убрать ${photo.name}`}
-              >
-                <X className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setCropEditorId(photo.id)}
-                className="absolute bottom-2 left-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
-              >
-                Кадр
-              </button>
-            </figure>
-          ))}
-        </div>
-      ) : null}
       {cropEditorPhoto ? (
         <SquareImageCropper
           alt={cropEditorPhoto.name}

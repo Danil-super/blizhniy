@@ -118,9 +118,15 @@ create table listing_images (
 create table vacancies (
   id uuid primary key default gen_random_uuid(),
   author_id uuid not null references profiles(id),
+  employer_type text not null default 'organization' check (employer_type in ('organization', 'ip', 'person')),
   organization_name text not null,
   logo_path text,
   title text not null,
+  inn text,
+  ogrn text,
+  ogrnip text,
+  contact_person text,
+  website text,
   specialist_category_id uuid references specialist_categories(id),
   region_id uuid not null references regions(id),
   city_id uuid not null references cities(id),
@@ -132,15 +138,26 @@ create table vacancies (
   description text not null,
   requirements text,
   responsibilities text,
+  conditions text,
   salary numeric(12, 2),
   schedule text,
+  work_format text,
   contact_phone text,
+  messenger_url text,
   email text,
+  placement_right_confirmed boolean not null default false,
   status publication_status not null default 'draft',
   is_paid boolean not null default false,
   created_at timestamptz not null default now(),
   published_at timestamptz,
   expires_at timestamptz
+);
+
+create table vacancy_images (
+  id uuid primary key default gen_random_uuid(),
+  vacancy_id uuid not null references vacancies(id) on delete cascade,
+  storage_path text not null,
+  sort_order integer not null default 0
 );
 
 create table work_requests (

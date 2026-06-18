@@ -14,6 +14,14 @@ function isTestYooKassaMode() {
   return process.env.YOOKASSA_SECRET_KEY?.trim().startsWith("test_") ?? false;
 }
 
+function canTrustSuccessfulReturnInThisEnvironment() {
+  if (!isTestYooKassaMode()) {
+    return false;
+  }
+
+  return process.env.NODE_ENV !== "production" || process.env.YOOKASSA_TRUST_SUCCESSFUL_RETURN === "true";
+}
+
 async function forceSucceededTestPayment(payment: Payment) {
   const paidPayment: Payment = {
     ...payment,
@@ -67,15 +75,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
     }
 
     const result = await confirmPayment(payment ?? resolvedPaymentId, {
-      trustSuccessfulReturn: Boolean(body?.trustSuccessfulReturn && canTrustSuccessfulReturn),
+      trustSuccessfulReturn: Boolean(body?.trustSuccessfulReturn && canTrustSuccessfulReturn && canTrustSuccessfulReturnInThisEnvironment()),
     });
 
     if (
       body?.trustSuccessfulReturn &&
       canTrustSuccessfulReturn &&
-      isTestYooKassaMode() &&
+      canTrustSuccessfulReturnInThisEnvironment() &&
       result.payment.provider === "yookassa" &&
-      result.payment.targetType === "listing" &&
+      (result.payment.targetType === "listing" || result.payment.targetType === "vacancy") &&
       result.payment.status !== "succeeded"
     ) {
       return NextResponse.json(await forceSucceededTestPayment(result.payment));

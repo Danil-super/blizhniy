@@ -1,14 +1,17 @@
 import Link from "next/link";
-import { ArrowRight, BriefcaseBusiness, Search, UserRound } from "lucide-react";
+import { ArrowRight, Search, UserRound } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { VacancyThumbnail } from "@/components/VacancyMedia";
 import { listPublicDemoListings } from "@/components/listings/ListingPages";
 import { categories, cities, professions, region } from "@/lib/data";
-import { listFairApplications, listSpecialists, listVacancies, listWorkRequests } from "@/lib/mock-store";
+import { listFairApplications, listSpecialists, listWorkRequests } from "@/lib/mock-store";
+import { listStoredVacancies, listVacanciesWithStored } from "@/lib/vacancy-store";
 
 type SearchResult = {
   title: string;
   description: string;
   href: string;
+  images?: string[];
   type: "Объявление" | "Вакансия" | "Заказ" | "Специалист" | "Категория" | "Профессия" | "Ярмарка";
 };
 
@@ -29,6 +32,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const selectedCity = cities.find((city) => city.slug === params.city);
   const cityName = selectedCity?.name;
   const matchesCity = (value?: string) => !cityName || value === cityName;
+  const storedVacancies = await listStoredVacancies(100);
+  const vacancies = listVacanciesWithStored(storedVacancies);
 
   const listingResults: SearchResult[] = listPublicDemoListings()
     .filter((listing) =>
@@ -44,7 +49,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       type: "Объявление",
     }));
 
-  const vacancyResults: SearchResult[] = listVacancies()
+  const vacancyResults: SearchResult[] = vacancies
     .filter(
       (vacancy) =>
         vacancy.status === "published" &&
@@ -55,6 +60,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       title: vacancy.title,
       description: `${vacancy.organization}, ${vacancy.city}. ${vacancy.salary}`,
       href: `/vakansiya/${vacancy.id}`,
+      images: vacancy.images,
       type: "Вакансия",
     }));
 
@@ -139,15 +145,17 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
                 href={result.href}
                 className="group grid gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-card sm:grid-cols-[48px_1fr_auto] sm:items-center"
               >
-                <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">
-                  {result.type === "Вакансия" ? (
-                    <BriefcaseBusiness className="h-5 w-5" />
-                  ) : result.type === "Специалист" ? (
-                    <UserRound className="h-5 w-5" />
-                  ) : (
-                    <Search className="h-5 w-5" />
-                  )}
-                </span>
+                {result.type === "Вакансия" ? (
+                  <VacancyThumbnail images={result.images} title={result.title} />
+                ) : (
+                  <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">
+                    {result.type === "Специалист" ? (
+                      <UserRound className="h-5 w-5" />
+                    ) : (
+                      <Search className="h-5 w-5" />
+                    )}
+                  </span>
+                )}
                 <span>
                   <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{result.type}</span>
                   <span className="mt-1 block text-xl font-black text-[#060b27]">{result.title}</span>

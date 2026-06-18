@@ -7,6 +7,19 @@ import { Field } from "@/components/FormPanel";
 
 type EmployerType = "organization" | "ip" | "person";
 
+export type VacancyEmployerDefaults = {
+  contactPerson?: string;
+  email?: string;
+  employerType?: EmployerType | string;
+  inn?: string;
+  messengerUrl?: string;
+  organization?: string;
+  ogrn?: string;
+  ogrnip?: string;
+  phone?: string;
+  website?: string;
+};
+
 const employerTypes: Array<{ description: string; id: EmployerType; icon: typeof Building2; label: string }> = [
   {
     description: "Юрлицо, кафе, магазин, сервис или компания.",
@@ -85,9 +98,24 @@ function SelectedEmployerSummary({ employerType, onChange }: { employerType: Emp
   );
 }
 
-export function VacancyEmployerFields({ children }: { children: ReactNode }) {
-  const [employerType, setEmployerType] = useState<EmployerType | "">("");
-  const [step, setStep] = useState<1 | 2>(1);
+function normalizeEmployerType(value?: string): EmployerType | "" {
+  if (value === "private") {
+    return "person";
+  }
+
+  return value === "organization" || value === "ip" || value === "person" ? value : "";
+}
+
+export function VacancyEmployerFields({
+  children,
+  defaults,
+}: {
+  children: ReactNode;
+  defaults?: VacancyEmployerDefaults;
+}) {
+  const initialEmployerType = normalizeEmployerType(defaults?.employerType);
+  const [employerType, setEmployerType] = useState<EmployerType | "">(initialEmployerType);
+  const [step, setStep] = useState<1 | 2>(initialEmployerType ? 2 : 1);
   const isPrivatePerson = employerType === "person";
   const canContinue = Boolean(employerType);
 
@@ -141,9 +169,9 @@ export function VacancyEmployerFields({ children }: { children: ReactNode }) {
 
             {isPrivatePerson ? (
               <div className="vacancy-fields-grid">
-                <Field name="organization" label="Имя" placeholder="Иван" minLength={2} maxLength={60} pattern="[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё\\s.'’\\-]{1,59}" title="Введите имя буквами, без цифр и лишних символов." required />
-                <Field name="phone" label="Телефон" placeholder="+7..." required />
-                <Field name="messengerUrl" label="WhatsApp / Telegram" placeholder="@username или ссылка" required />
+                <Field name="organization" label="Имя" defaultValue={defaults?.organization} placeholder="Иван" minLength={2} maxLength={60} pattern="[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё\\s.'’\\-]{1,59}" title="Введите имя буквами, без цифр и лишних символов." required />
+                <Field name="phone" label="Телефон" defaultValue={defaults?.phone} placeholder="+7..." required />
+                <Field name="messengerUrl" label="WhatsApp / Telegram" defaultValue={defaults?.messengerUrl} placeholder="@username или ссылка" required />
               </div>
             ) : (
               <div className="vacancy-fields-grid">
@@ -151,28 +179,27 @@ export function VacancyEmployerFields({ children }: { children: ReactNode }) {
                   name="organization"
                   label={employerType === "ip" ? "ФИО ИП" : "Название организации"}
                   placeholder={employerType === "ip" ? "Иванов Иван Иванович" : "ООО РемДом"}
+                  defaultValue={defaults?.organization}
                   minLength={2}
                   maxLength={120}
                   required
                 />
-                <Field name="inn" label="ИНН" placeholder={employerType === "ip" ? "12 цифр" : "10 цифр"} inputMode="numeric" pattern={employerType === "ip" ? "\\d{12}" : "\\d{10}"} maxLength={employerType === "ip" ? 12 : 10} required />
+                <Field key={`inn-${employerType}`} name="inn" label="ИНН" defaultValue={defaults?.inn} placeholder={employerType === "ip" ? "12 цифр" : "10 цифр"} inputMode="numeric" pattern={employerType === "ip" ? "\\d{12}" : "\\d{10}"} maxLength={employerType === "ip" ? 12 : 10} required />
                 <Field
+                  key={`reg-${employerType}`}
                   name={employerType === "ip" ? "ogrnip" : "ogrn"}
                   label={employerType === "ip" ? "ОГРНИП при наличии" : "ОГРН при наличии"}
                   placeholder={employerType === "ip" ? "15 цифр" : "13 цифр"}
+                  defaultValue={employerType === "ip" ? defaults?.ogrnip : defaults?.ogrn}
                   inputMode="numeric"
                   pattern={employerType === "ip" ? "\\d{15}" : "\\d{13}"}
                   maxLength={employerType === "ip" ? 15 : 13}
                 />
-                <Field name="contactPerson" label="Контактное лицо" placeholder="Наталья, HR" minLength={2} maxLength={80} required />
-                <Field name="phone" label="Телефон" placeholder="+7..." required />
-                {employerType === "ip" ? (
-                  <Field name="emailOrMessenger" label="Email / мессенджер" placeholder="hr@example.ru, @username или ссылка" required />
-                ) : (
-                  <Field name="email" label="Email" type="email" placeholder="hr@example.ru" required />
-                )}
+                <Field name="contactPerson" label="Контактное лицо" defaultValue={defaults?.contactPerson} placeholder="Наталья, HR" minLength={2} maxLength={80} required />
+                <Field name="phone" label="Телефон" defaultValue={defaults?.phone} placeholder="+7..." required />
+                <Field name="emailOrMessenger" label="Email / мессенджер" defaultValue={defaults?.email || defaults?.messengerUrl} placeholder="hr@example.ru, @username или ссылка" required />
                 {employerType === "ip" ? null : (
-                  <Field name="website" label="Сайт / соцсеть" placeholder="https://... или @username" />
+                  <Field name="website" label="Сайт / соцсеть" defaultValue={defaults?.website} placeholder="https://... или @username" />
                 )}
               </div>
             )}

@@ -60,6 +60,7 @@ type CreateVacancyInput = {
   district?: string;
   address?: string;
   salary?: string;
+  images?: string[];
   phone?: string;
   messengerUrl?: string;
   email?: string;
@@ -353,6 +354,7 @@ export function createVacancy(input: CreateVacancyInput) {
     salary: input.salary?.trim() ?? "",
     logoText: input.organization.slice(0, 12),
     logoTone: "blue",
+    images: input.images,
     phone: input.phone?.trim(),
     messengerUrl: input.messengerUrl?.trim(),
     email: input.email?.trim(),

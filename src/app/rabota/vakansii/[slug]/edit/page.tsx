@@ -2,6 +2,9 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { VacancyEditClient } from "@/components/VacancyEditClient";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { vacancies } from "@/lib/data";
+import { getStoredVacancyById } from "@/lib/vacancy-store";
+
+export const dynamic = "force-dynamic";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -9,7 +12,7 @@ type PageProps = {
 
 export default async function EditVacancyPage({ params }: PageProps) {
   const { slug } = await params;
-  const initialVacancy = vacancies.find((vacancy) => vacancy.id === slug);
+  const initialVacancy = (await getStoredVacancyById(slug)) ?? vacancies.find((vacancy) => vacancy.id === slug);
 
   return (
     <>

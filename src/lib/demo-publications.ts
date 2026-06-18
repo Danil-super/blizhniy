@@ -33,6 +33,7 @@ export type DemoPublication = {
   phone?: string;
   messengerUrl?: string;
   email?: string;
+  profession?: string;
   employerType?: string;
   inn?: string;
   ogrn?: string;

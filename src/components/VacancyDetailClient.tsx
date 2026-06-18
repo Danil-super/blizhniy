@@ -5,6 +5,7 @@ import { BriefcaseBusiness, MapPin } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { LocationMap } from "@/components/LocationMap";
+import { VacancyMediaGallery } from "@/components/VacancyMediaGallery";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { demoPublicationsStorageKey, type DemoPublication } from "@/lib/demo-publications";
 
@@ -81,6 +82,7 @@ export function VacancyDetailClient({ vacancyId }: { vacancyId: string }) {
               <MapPin className="h-5 w-5" />
               {vacancy.showExactAddress && vacancy.address ? `${vacancy.city}, ${vacancy.address}` : vacancy.city}
             </p>
+            <VacancyMediaGallery images={vacancy.images} title={vacancy.title} />
             <div className="mt-8 grid gap-6 leading-7 text-slate-700">
               <section>
                 <h2 className="text-2xl font-black text-[#060b27]">Описание</h2>

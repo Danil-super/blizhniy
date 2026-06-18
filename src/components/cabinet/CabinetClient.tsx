@@ -25,8 +25,9 @@ import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { cities } from "@/lib/data";
 import { confirmClientPayment, createAndConfirmClientPayment } from "@/lib/client-payment-flow";
+import { cabinetDataUpdatedEvent, markCabinetDataChanged, readCabinetDataVersion } from "@/lib/cabinet-data-cache";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
-import type { FairApplication, Listing, Payment } from "@/lib/types";
+import type { FairApplication, JobVacancy, Listing, Payment } from "@/lib/types";
 import {
   type CabinetProfile,
   createDefaultCabinetProfile,
@@ -44,12 +45,17 @@ type UserCabinetState = {
   loading: boolean;
 };
 
+type CabinetDataListener = (state: UserCabinetState) => void;
+
 type CabinetListMode = DemoPublicationType | "payment" | "response" | "organization";
 type CabinetServerFairApplicationsPayload = {
   applications?: FairApplication[];
 };
 type CabinetServerListingsPayload = {
   listings?: Listing[];
+};
+type CabinetServerVacanciesPayload = {
+  vacancies?: JobVacancy[];
 };
 type CabinetServerPaymentsPayload = {
   payments?: Payment[];
@@ -85,6 +91,32 @@ export type CabinetResponseItem = {
 const deletedPublicationIdsStorageKey = "blizhniy-deleted-publication-ids";
 
 const sortedCities = [...cities].sort((left, right) => left.name.localeCompare(right.name, "ru"));
+const cabinetDataCacheTtlMs = 30_000;
+const cabinetDataListeners = new Set<CabinetDataListener>();
+
+let cachedCabinetState: UserCabinetState | null = null;
+let cachedCabinetStateAt = 0;
+let cachedCabinetStateVersion = 0;
+let cabinetDataRequest: Promise<UserCabinetState> | null = null;
+
+function publishCabinetState(state: UserCabinetState) {
+  cachedCabinetState = state;
+  cachedCabinetStateAt = Date.now();
+  cachedCabinetStateVersion = readCabinetDataVersion();
+  cabinetDataListeners.forEach((listener) => listener(state));
+}
+
+function getCachedCabinetState() {
+  if (
+    !cachedCabinetState ||
+    readCabinetDataVersion() > cachedCabinetStateVersion ||
+    Date.now() - cachedCabinetStateAt > cabinetDataCacheTtlMs
+  ) {
+    return null;
+  }
+
+  return cachedCabinetState;
+}
 
 const emptyCopy: Record<CabinetListMode, { title: string; text: string; href?: string; action?: string }> = {
   fairApplication: {
@@ -150,6 +182,7 @@ function readStoredPublications() {
 
 function writeStoredPublications(items: DemoPublication[]) {
   window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(items));
+  markCabinetDataChanged();
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
 }
 
@@ -174,10 +207,8 @@ function rememberDeletedPublicationId(itemId: string) {
   window.localStorage.setItem(deletedPublicationIdsStorageKey, JSON.stringify([...nextIds].slice(-300)));
 }
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const supabase = getSupabaseBrowserClient();
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+async function getAuthHeaders(accessToken?: string): Promise<Record<string, string>> {
+  const token = accessToken ?? (await resolveClientUserIdentity()).accessToken;
 
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -291,6 +322,71 @@ function listingToDemoPublication(listing: Listing, ownerKey: string): DemoPubli
   });
 }
 
+function vacancyStatusLabel(status: JobVacancy["status"]) {
+  if (status === "published" || status === "paid") {
+    return "Опубликовано";
+  }
+
+  if (status === "pending_payment") {
+    return "Ждет оплаты";
+  }
+
+  if (status === "draft") {
+    return "Черновик";
+  }
+
+  if (status === "archived") {
+    return unpublishedVacancyStatus;
+  }
+
+  if (status === "expired") {
+    return "Истек срок";
+  }
+
+  if (status === "rejected") {
+    return "Отклонено";
+  }
+
+  return status;
+}
+
+function vacancyToDemoPublication(vacancy: JobVacancy, ownerKey: string): DemoPublication {
+  return withPublicationHistory({
+    id: vacancy.id,
+    type: "vacancy",
+    ownerKey,
+    title: vacancy.title,
+    subtitle: vacancy.organization,
+    city: vacancy.city,
+    price: vacancy.salary,
+    description: vacancy.description,
+    images: vacancy.images,
+    lat: vacancy.lat,
+    lng: vacancy.lng,
+    address: vacancy.address ?? vacancy.district,
+    hasMapPoint: vacancy.hasMapPoint,
+    showExactAddress: vacancy.showExactAddress,
+    phone: vacancy.phone,
+    messengerUrl: vacancy.messengerUrl,
+    email: vacancy.email,
+    profession: vacancy.profession,
+    employerType: vacancy.employerType,
+    inn: vacancy.inn,
+    ogrn: vacancy.ogrn,
+    ogrnip: vacancy.ogrnip,
+    contactPerson: vacancy.contactPerson,
+    website: vacancy.website,
+    schedule: vacancy.schedule,
+    workFormat: vacancy.workFormat,
+    requirements: vacancy.requirements,
+    responsibilities: vacancy.responsibilities,
+    conditions: vacancy.conditions,
+    placementRightConfirmed: vacancy.placementRightConfirmed,
+    status: vacancyStatusLabel(vacancy.status),
+    createdAt: vacancy.createdAt ?? vacancy.publishedAt ?? new Date().toISOString(),
+  });
+}
+
 async function fetchCabinetFairApplications(identity: ClientUserIdentity) {
   if (!identity.accessToken) {
     return [];
@@ -298,7 +394,7 @@ async function fetchCabinetFairApplications(identity: ClientUserIdentity) {
 
   try {
     const response = await fetch("/api/cabinet/fair-applications", {
-      headers: await getAuthHeaders(),
+      headers: await getAuthHeaders(identity.accessToken),
     });
 
     if (!response.ok) {
@@ -321,7 +417,7 @@ async function fetchCabinetListings(identity: ClientUserIdentity) {
   try {
     const response = await fetch("/api/cabinet/listings", {
       cache: "no-store",
-      headers: await getAuthHeaders(),
+      headers: await getAuthHeaders(identity.accessToken),
     });
 
     if (!response.ok) {
@@ -331,6 +427,29 @@ async function fetchCabinetListings(identity: ClientUserIdentity) {
     const payload = (await response.json().catch(() => null)) as CabinetServerListingsPayload | null;
 
     return (payload?.listings ?? []).map((listing) => listingToDemoPublication(listing, identity.ownerKey));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCabinetVacancies(identity: ClientUserIdentity) {
+  if (!identity.accessToken) {
+    return [];
+  }
+
+  try {
+    const response = await fetch("/api/cabinet/vacancies", {
+      cache: "no-store",
+      headers: await getAuthHeaders(identity.accessToken),
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = (await response.json().catch(() => null)) as CabinetServerVacanciesPayload | null;
+
+    return (payload?.vacancies ?? []).map((vacancy) => vacancyToDemoPublication(vacancy, identity.ownerKey));
   } catch {
     return [];
   }
@@ -431,49 +550,85 @@ async function fetchCabinetPayments() {
   return (payload?.payments ?? []).map(paymentToHistoryItem);
 }
 
+async function loadUserCabinetData() {
+  const identity = await resolveClientUserIdentity();
+  const fallback = createDefaultCabinetProfile(identity);
+  const profile = readCabinetProfile(identity.ownerKey, fallback);
+  const [serverFairApplications, serverListings, serverVacancies] = await Promise.all([
+    fetchCabinetFairApplications(identity),
+    fetchCabinetListings(identity),
+    fetchCabinetVacancies(identity),
+  ]);
+  const deletedIds = readDeletedPublicationIds();
+  const storedOwnerItems = readStoredPublications().filter((item) => item.ownerKey === identity.ownerKey && !deletedIds.has(item.id));
+  const localItemById = new Map(storedOwnerItems.map((item) => [item.id, item]));
+  const visibleServerItems = [...serverFairApplications, ...serverListings, ...serverVacancies]
+    .filter((item) => !deletedIds.has(item.id))
+    .map((item) => mergeLocalListingMedia(item, localItemById.get(item.id)));
+  const serverItemIds = new Set(visibleServerItems.map((item) => item.id));
+  const localItems = storedOwnerItems.filter(
+    (item) => {
+      const inactiveServerListingOverlay = identity.accessToken && item.type === "listing" && isUuid(item.id) && isInactiveListing(item);
+      const serverBackedLocalItem = identity.accessToken && isUuid(item.id) && serverItemIds.has(item.id);
+
+      return (
+        (!serverItemIds.has(item.id) || inactiveServerListingOverlay) &&
+        !(serverBackedLocalItem && !inactiveServerListingOverlay)
+      );
+    },
+  );
+  const items = dedupeListingPublications(Array.from(new Map([...visibleServerItems, ...localItems].map((item) => [item.id, item])).values()));
+
+  return { identity, profile, items, loading: false };
+}
+
+function requestUserCabinetData(force = false) {
+  const cached = force ? null : getCachedCabinetState();
+
+  if (cached) {
+    return Promise.resolve(cached);
+  }
+
+  cabinetDataRequest ??= loadUserCabinetData()
+    .then((state) => {
+      publishCabinetState(state);
+      return state;
+    })
+    .finally(() => {
+      cabinetDataRequest = null;
+    });
+
+  return cabinetDataRequest;
+}
+
 function useUserCabinetData(): UserCabinetState {
-  const [state, setState] = useState<UserCabinetState>({ identity: null, profile: null, items: [], loading: true });
+  const [state, setState] = useState<UserCabinetState>(() => getCachedCabinetState() ?? { identity: null, profile: null, items: [], loading: true });
 
   useEffect(() => {
     let active = true;
 
-    async function sync() {
-      const identity = await resolveClientUserIdentity();
-      const fallback = createDefaultCabinetProfile(identity);
-      const profile = readCabinetProfile(identity.ownerKey, fallback);
-      const [serverFairApplications, serverListings] = await Promise.all([fetchCabinetFairApplications(identity), fetchCabinetListings(identity)]);
-      const deletedIds = readDeletedPublicationIds();
-      const storedOwnerItems = readStoredPublications().filter((item) => item.ownerKey === identity.ownerKey && !deletedIds.has(item.id));
-      const localItemById = new Map(storedOwnerItems.map((item) => [item.id, item]));
-      const visibleServerItems = [...serverFairApplications, ...serverListings]
-        .filter((item) => !deletedIds.has(item.id))
-        .map((item) => mergeLocalListingMedia(item, localItemById.get(item.id)));
-      const serverItemIds = new Set(visibleServerItems.map((item) => item.id));
-      const localItems = storedOwnerItems.filter(
-        (item) => {
-          const inactiveServerListingOverlay = identity.accessToken && item.type === "listing" && isUuid(item.id) && isInactiveListing(item);
-
-          return (
-            (!serverItemIds.has(item.id) || inactiveServerListingOverlay) &&
-            !(identity.accessToken && item.type === "listing" && isUuid(item.id) && !inactiveServerListingOverlay)
-          );
-        },
-      );
-      const items = dedupeListingPublications(Array.from(new Map([...visibleServerItems, ...localItems].map((item) => [item.id, item])).values()));
-
+    function handleState(nextState: UserCabinetState) {
       if (active) {
-        setState({ identity, profile, items, loading: false });
+        setState(nextState);
       }
     }
 
-    sync();
+    function sync() {
+      void requestUserCabinetData(true).then(handleState);
+    }
+
+    cabinetDataListeners.add(handleState);
+    void requestUserCabinetData().then(handleState);
     window.addEventListener("storage", sync);
+    window.addEventListener(cabinetDataUpdatedEvent, sync);
     window.addEventListener(demoPublicationsUpdatedEvent, sync);
     window.addEventListener("blizhniy-profile-updated", sync);
 
     return () => {
       active = false;
+      cabinetDataListeners.delete(handleState);
       window.removeEventListener("storage", sync);
+      window.removeEventListener(cabinetDataUpdatedEvent, sync);
       window.removeEventListener(demoPublicationsUpdatedEvent, sync);
       window.removeEventListener("blizhniy-profile-updated", sync);
     };
@@ -790,7 +945,7 @@ const soldReasonLabels: Record<SoldReason, string> = {
 };
 
 type ListingFilter = "all" | "draft" | "pending" | "published" | "inactive";
-type VacancyFilter = "all" | "published" | "draft" | "unpublished";
+type VacancyFilter = "all" | "published" | "draft" | "pending" | "unpublished";
 
 const listingFilterLabels: Record<ListingFilter, string> = {
   all: "Все",
@@ -803,6 +958,7 @@ const listingFilterLabels: Record<ListingFilter, string> = {
 const vacancyFilterLabels: Record<VacancyFilter, string> = {
   all: "Все",
   draft: "Черновики",
+  pending: "Ждут оплаты",
   published: "Опубликованные",
   unpublished: "Снятые",
 };
@@ -994,8 +1150,25 @@ async function markListingSold(currentItem: DemoPublication, reason: SoldReason)
   });
 }
 
-function unpublishPaidPublication(itemId: string) {
-  const currentItem = readStoredPublications().find((item) => item.id === itemId);
+async function requestServerVacancyAction(itemId: string, action: "archive" | "restore") {
+  const response = await fetch("/api/cabinet/vacancies", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    body: JSON.stringify({ action, id: itemId }),
+  });
+  const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "Не удалось изменить вакансию.");
+  }
+}
+
+async function unpublishPaidPublication(currentItem: DemoPublication) {
+  if (currentItem.type === "vacancy" && isUuid(currentItem.id)) {
+    await requestServerVacancyAction(currentItem.id, "archive");
+  }
+
+  const itemId = currentItem.id;
   const nextItems = readStoredPublications().map((item) => {
     if (item.id !== itemId || !getPublicationPaymentConfig(item)) {
       return item;
@@ -1015,21 +1188,23 @@ function unpublishPaidPublication(itemId: string) {
   });
 
   writeStoredPublications(nextItems);
-  if (currentItem) {
-    void addCurrentUserNotification({
-      category: "publication",
-      title: "Размещение скрыто",
-      message: `${currentItem.title}: публикация снята из публичной выдачи. Вернуть можно без повторной оплаты.`,
-      tone: "warning",
-      actionHref: getCabinetHrefByType(currentItem.type),
-      actionLabel: "Открыть раздел",
-      dedupeKey: `publication:${itemId}:unpublished`,
-    });
-  }
+  void addCurrentUserNotification({
+    category: "publication",
+    title: "Размещение скрыто",
+    message: `${currentItem.title}: публикация снята из публичной выдачи. Вернуть можно без повторной оплаты.`,
+    tone: "warning",
+    actionHref: getCabinetHrefByType(currentItem.type),
+    actionLabel: "Открыть раздел",
+    dedupeKey: `publication:${itemId}:unpublished`,
+  });
 }
 
-function restorePaidPublication(itemId: string) {
-  const currentItem = readStoredPublications().find((item) => item.id === itemId);
+async function restorePaidPublication(currentItem: DemoPublication) {
+  if (currentItem.type === "vacancy" && isUuid(currentItem.id)) {
+    await requestServerVacancyAction(currentItem.id, "restore");
+  }
+
+  const itemId = currentItem.id;
   const nextItems = readStoredPublications().map((item) => {
     if (item.id !== itemId || !getPublicationPaymentConfig(item)) {
       return item;
@@ -1049,17 +1224,15 @@ function restorePaidPublication(itemId: string) {
   });
 
   writeStoredPublications(nextItems);
-  if (currentItem) {
-    void addCurrentUserNotification({
-      category: "publication",
-      title: "Размещение снова опубликовано",
-      message: `${currentItem.title}: публикация снова видна пользователям, повторная оплата не нужна.`,
-      tone: "success",
-      actionHref: getItemHref(currentItem),
-      actionLabel: "Посмотреть",
-      dedupeKey: `publication:${itemId}:restored`,
-    });
-  }
+  void addCurrentUserNotification({
+    category: "publication",
+    title: "Размещение снова опубликовано",
+    message: `${currentItem.title}: публикация снова видна пользователям, повторная оплата не нужна.`,
+    tone: "success",
+    actionHref: getItemHref(currentItem),
+    actionLabel: "Посмотреть",
+    dedupeKey: `publication:${itemId}:restored`,
+  });
 }
 
 async function requestServerListingAction(itemId: string, action: "restore" | "sold") {
@@ -1086,6 +1259,19 @@ async function deletePublication(item: DemoPublication) {
 
     if (!response.ok) {
       throw new Error(payload?.error ?? "Не удалось удалить объявление.");
+    }
+  }
+
+  if (item.type === "vacancy" && isUuid(item.id)) {
+    const response = await fetch("/api/cabinet/vacancies", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+      body: JSON.stringify({ id: item.id }),
+    });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+
+    if (!response.ok) {
+      throw new Error(payload?.error ?? "Не удалось удалить вакансию.");
     }
   }
 
@@ -1167,6 +1353,7 @@ async function createPublicationPayment(item: DemoPublication) {
     targetId: item.id,
     targetType: paymentConfig.targetType,
     targetTitle: item.title,
+    vacancyDraft: item.type === "vacancy" && (isDraftPublication(item) || isPendingPaymentPublication(item)) ? item : undefined,
   });
 }
 
@@ -1376,6 +1563,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
     () => ({
       all: visibleSourceItems.length,
       draft: visibleSourceItems.filter(isDraftPublication).length,
+      pending: visibleSourceItems.filter(isPendingPaymentPublication).length,
       published: visibleSourceItems.filter((item) => item.type === "vacancy" && isPublishedPublication(item)).length,
       unpublished: visibleSourceItems.filter(isUnpublishedVacancy).length,
     }),
@@ -1408,6 +1596,10 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
 
     if (vacancyFilter === "draft") {
       return visibleSourceItems.filter(isDraftPublication);
+    }
+
+    if (vacancyFilter === "pending") {
+      return visibleSourceItems.filter(isPendingPaymentPublication);
     }
 
     if (vacancyFilter === "published") {
@@ -1594,13 +1786,27 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <button
                   type="button"
+                  disabled={actingItemId === item.id}
                   onClick={() => {
-                    unpublishPaidPublication(item.id);
-                    setUnpublishingItemId(null);
+                    setActionError("");
+                    setActionErrorItemId(null);
+                    setActionSuccess("");
+                    setActionSuccessItemId(null);
+                    setActingItemId(item.id);
+                    void unpublishPaidPublication(item)
+                      .then(() => {
+                        setUnpublishingItemId(null);
+                        showActionSuccess(item.id, "Размещение снято с публикации.");
+                      })
+                      .catch((error) => {
+                        setActionError(error instanceof Error ? error.message : "Не удалось снять размещение.");
+                        setActionErrorItemId(item.id);
+                      })
+                      .finally(() => setActingItemId(null));
                   }}
-                  className="inline-flex h-8 items-center justify-center rounded-lg border border-amber-200 bg-white px-2 text-xs font-bold text-amber-700 transition hover:border-amber-400 hover:bg-amber-50"
+                  className="inline-flex h-8 items-center justify-center rounded-lg border border-amber-200 bg-white px-2 text-xs font-bold text-amber-700 transition hover:border-amber-400 hover:bg-amber-50 disabled:cursor-wait disabled:bg-slate-50 disabled:text-slate-400"
                 >
-                  Снять
+                  {actingItemId === item.id ? "Снимаем..." : "Снять"}
                 </button>
                 <button type="button" onClick={() => setUnpublishingItemId(null)} className="h-8 rounded-lg border border-amber-200 bg-white text-xs font-bold text-slate-600 transition hover:text-[#0875d1]">
                   Отмена
@@ -1791,10 +1997,24 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               <>
                 <button
                   type="button"
-                  onClick={() => restorePaidPublication(item.id)}
+                  disabled={actingItemId === item.id}
+                  onClick={() => {
+                    setActionError("");
+                    setActionErrorItemId(null);
+                    setActionSuccess("");
+                    setActionSuccessItemId(null);
+                    setActingItemId(item.id);
+                    void restorePaidPublication(item)
+                      .then(() => showActionSuccess(item.id, "Размещение снова опубликовано."))
+                      .catch((error) => {
+                        setActionError(error instanceof Error ? error.message : "Не удалось вернуть размещение.");
+                        setActionErrorItemId(item.id);
+                      })
+                      .finally(() => setActingItemId(null));
+                  }}
                   className={actionSuccessClassName}
                 >
-                  Вернуть в публикацию
+                  {actingItemId === item.id ? "Возвращаем..." : "Вернуть в публикацию"}
                 </button>
                 <button
                   type="button"

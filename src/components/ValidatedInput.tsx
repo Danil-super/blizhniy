@@ -1,10 +1,13 @@
 "use client";
 
 import { ChangeEvent, FormEvent, InputHTMLAttributes, useEffect, useState } from "react";
+import { extractListingPriceDigits, formatListingPrice, maxListingPriceDigits } from "@/lib/listing-price";
+import { capitalizeFirstTextLetter } from "@/lib/text-format";
 
-type ValidationKind = "phone" | "email" | "messenger" | "emailOrMessenger" | "urlOrHandle" | "url";
+type ValidationKind = "phone" | "email" | "messenger" | "emailOrMessenger" | "salary" | "urlOrHandle" | "url";
 
 type ValidatedInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
+  capitalizeFirstLetter?: boolean;
   validation?: ValidationKind;
   onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
 };
@@ -60,7 +63,11 @@ function sanitizeNoSpaces(value: string) {
   return value.replace(/\s/g, "");
 }
 
-function sanitizeByValidation(value: string, validation?: ValidationKind) {
+function sanitizeByValidation(value: string, validation?: ValidationKind, capitalizeFirstLetter = false) {
+  if (validation === "salary") {
+    return formatListingPrice(extractListingPriceDigits(value));
+  }
+
   if (validation === "phone") {
     return sanitizePhone(value);
   }
@@ -69,10 +76,21 @@ function sanitizeByValidation(value: string, validation?: ValidationKind) {
     return sanitizeNoSpaces(value);
   }
 
-  return value;
+  return capitalizeFirstLetter ? capitalizeFirstTextLetter(value) : value;
 }
 
 function getValidationProps(validation?: ValidationKind) {
+  if (validation === "salary") {
+    return {
+      autoComplete: "off",
+      inputMode: "numeric" as const,
+      maxLength: maxListingPriceDigits + 4,
+      pattern: "^[0-9 ]+ ₽$",
+      title: "Введите сумму цифрами, например 80000. Поле автоматически покажет формат 80 000 ₽.",
+      type: "text",
+    };
+  }
+
   if (validation === "phone") {
     return {
       autoComplete: "tel",
@@ -137,21 +155,21 @@ function getValidationProps(validation?: ValidationKind) {
   return {};
 }
 
-export function ValidatedInput({ validation, defaultValue, value, onChange, onBeforeInput, onInput, ...props }: ValidatedInputProps) {
-  const [innerValue, setInnerValue] = useState(() => sanitizeByValidation(String(value ?? defaultValue ?? ""), validation));
+export function ValidatedInput({ validation, defaultValue, value, onChange, onBeforeInput, onInput, capitalizeFirstLetter = false, ...props }: ValidatedInputProps) {
+  const [innerValue, setInnerValue] = useState(() => sanitizeByValidation(String(value ?? defaultValue ?? ""), validation, capitalizeFirstLetter));
   const validationProps = getValidationProps(validation);
 
   function syncSanitizedValue(event: ChangeEvent<HTMLInputElement> | FormEvent<HTMLInputElement>) {
-    const nextValue = sanitizeByValidation(event.currentTarget.value, validation);
+    const nextValue = sanitizeByValidation(event.currentTarget.value, validation, capitalizeFirstLetter);
     event.currentTarget.value = nextValue;
     setInnerValue(nextValue);
   }
 
   useEffect(() => {
     if (value !== undefined) {
-      setInnerValue(sanitizeByValidation(String(value), validation));
+      setInnerValue(sanitizeByValidation(String(value), validation, capitalizeFirstLetter));
     }
-  }, [validation, value]);
+  }, [capitalizeFirstLetter, validation, value]);
 
   return (
     <input
@@ -161,11 +179,15 @@ export function ValidatedInput({ validation, defaultValue, value, onChange, onBe
       onBeforeInput={(event) => {
         onBeforeInput?.(event);
 
-        if (event.defaultPrevented || validation !== "phone") {
+        if (event.defaultPrevented || (validation !== "phone" && validation !== "salary")) {
           return;
         }
 
-        if (event.data && /[^\d()+\-\s]/.test(event.data)) {
+        if (event.data && validation === "phone" && /[^\d()+\-\s]/.test(event.data)) {
+          event.preventDefault();
+        }
+
+        if (event.data && validation === "salary" && /\D/.test(event.data)) {
           event.preventDefault();
         }
       }}

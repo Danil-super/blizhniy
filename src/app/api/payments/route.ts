@@ -4,6 +4,8 @@ import { createPayment, listPayments } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isUuid } from "@/lib/supabase-rest";
 import type { Payment } from "@/lib/types";
+import { getStoredVacancyForUser, markStoredVacancyPendingPaymentForUser } from "@/lib/vacancy-store";
+import { normalizeVacancyRequisites, validateVacancyRequisites } from "@/lib/vacancy-requisites";
 
 type CreatePaymentBody = {
   tariffId?: string;
@@ -74,6 +76,54 @@ export async function POST(request: Request) {
       }
 
       targetTitle = listing.title;
+    }
+
+    if (body.targetType === "vacancy") {
+      if (!body.targetId || !isUuid(body.targetId)) {
+        return NextResponse.json({ error: "Сначала сохраните вакансию, затем оплатите публикацию" }, { status: 400 });
+      }
+
+      const vacancy = await getStoredVacancyForUser(body.targetId, auth.user.id);
+
+      if (!vacancy) {
+        return NextResponse.json({ error: "Вакансия не найдена или уже удалена" }, { status: 404 });
+      }
+
+      if (vacancy.status === "published") {
+        return NextResponse.json({ error: "Вакансия уже опубликована" }, { status: 400 });
+      }
+
+      if (!vacancy.images?.length) {
+        return NextResponse.json({ error: "Добавьте фото работодателя или рабочего места перед оплатой вакансии" }, { status: 400 });
+      }
+
+      const requisitesError = validateVacancyRequisites(
+        normalizeVacancyRequisites({
+          employerType: vacancy.employerType,
+          inn: vacancy.inn,
+          ogrn: vacancy.ogrn,
+          ogrnip: vacancy.ogrnip,
+        }),
+        { requireInn: true },
+      );
+
+      if (requisitesError) {
+        return NextResponse.json({ error: requisitesError }, { status: 400 });
+      }
+
+      if (vacancy.status === "archived" || vacancy.status === "expired" || vacancy.status === "rejected") {
+        return NextResponse.json({ error: "Эта вакансия снята с публикации. Создайте новую или восстановите доступную вакансию." }, { status: 400 });
+      }
+
+      if (vacancy.status === "draft") {
+        const updated = await markStoredVacancyPendingPaymentForUser(body.targetId, auth.user.id);
+
+        if (!updated) {
+          return NextResponse.json({ error: "Не удалось подготовить вакансию к оплате. Обновите страницу и попробуйте снова." }, { status: 409 });
+        }
+      }
+
+      targetTitle = vacancy.title;
     }
 
     const payment = await createPayment({

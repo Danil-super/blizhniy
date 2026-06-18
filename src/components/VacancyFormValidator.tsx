@@ -4,37 +4,15 @@ import { useEffect, useRef } from "react";
 
 type EmployerType = "organization" | "ip" | "person";
 
-const innWeights10 = [2, 4, 10, 3, 5, 9, 4, 6, 8];
-const innWeights11 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
-const innWeights12 = [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
-
-function checksumDigit(value: string, weights: number[]) {
-  const sum = weights.reduce((total, weight, index) => total + Number(value[index]) * weight, 0);
-  return (sum % 11) % 10;
-}
-
-function isValidInn(value: string, employerType: EmployerType) {
-  if (employerType === "organization") {
-    return value.length === 10 && checksumDigit(value, innWeights10) === Number(value[9]);
-  }
-
-  if (employerType === "ip") {
-    return value.length === 12 && checksumDigit(value, innWeights11) === Number(value[10]) && checksumDigit(value, innWeights12) === Number(value[11]);
-  }
-
-  return true;
-}
-
-function isValidOgrn(value: string) {
-  return value.length === 13 && Number((BigInt(value.slice(0, 12)) % BigInt(11)) % BigInt(10)) === Number(value[12]);
-}
-
-function isValidOgrnip(value: string) {
-  return value.length === 15 && Number((BigInt(value.slice(0, 14)) % BigInt(13)) % BigInt(10)) === Number(value[14]);
-}
-
 function digitsOnly(value: string, maxLength: number) {
   return value.replace(/\D/g, "").slice(0, maxLength);
+}
+
+function salaryAmount(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const amount = Number(digits);
+
+  return Number.isFinite(amount) ? amount : 0;
 }
 
 function getInput(form: HTMLFormElement, name: string) {
@@ -45,7 +23,15 @@ function getInput(form: HTMLFormElement, name: string) {
 function getEmployerType(form: HTMLFormElement): EmployerType {
   const value = getInput(form, "employerType")?.value;
 
-  return value === "ip" || value === "person" ? value : "organization";
+  if (value === "ip") {
+    return "ip";
+  }
+
+  if (value === "person" || value === "private") {
+    return "person";
+  }
+
+  return "organization";
 }
 
 function setValidity(input: HTMLInputElement | HTMLTextAreaElement | null, message = "") {
@@ -69,28 +55,31 @@ export function VacancyFormValidator() {
       const inn = getInput(formElement, "inn");
       const ogrn = getInput(formElement, "ogrn");
       const ogrnip = getInput(formElement, "ogrnip");
+      const salary = getInput(formElement, "salary");
 
       if (inn instanceof HTMLInputElement) {
-        inn.value = digitsOnly(inn.value, employerType === "ip" ? 12 : 10);
+        inn.value = digitsOnly(inn.value, 12);
         const expectedLength = employerType === "ip" ? 12 : 10;
         const expectedLabel = employerType === "ip" ? "12 цифр" : "10 цифр";
         const message =
-          inn.value && inn.value.length !== expectedLength
+          employerType !== "person" && inn.value && inn.value.length !== expectedLength
             ? `ИНН должен содержать ${expectedLabel}.`
-            : inn.value && !isValidInn(inn.value, employerType)
-              ? "Проверьте ИНН: контрольное число не совпадает."
-              : "";
+            : "";
         setValidity(inn, message);
       }
 
       if (ogrn instanceof HTMLInputElement) {
         ogrn.value = digitsOnly(ogrn.value, 13);
-        setValidity(ogrn, ogrn.value && (ogrn.value.length !== 13 || !isValidOgrn(ogrn.value)) ? "Проверьте ОГРН: должно быть 13 цифр с верным контрольным числом." : "");
+        setValidity(ogrn, ogrn.value && ogrn.value.length !== 13 ? "ОГРН должен содержать 13 цифр." : "");
       }
 
       if (ogrnip instanceof HTMLInputElement) {
         ogrnip.value = digitsOnly(ogrnip.value, 15);
-        setValidity(ogrnip, ogrnip.value && (ogrnip.value.length !== 15 || !isValidOgrnip(ogrnip.value)) ? "Проверьте ОГРНИП: должно быть 15 цифр с верным контрольным числом." : "");
+        setValidity(ogrnip, ogrnip.value && ogrnip.value.length !== 15 ? "ОГРНИП должен содержать 15 цифр." : "");
+      }
+
+      if (salary instanceof HTMLInputElement) {
+        setValidity(salary, salary.value && salaryAmount(salary.value) <= 0 ? "Укажите оплату цифрами, например 80000." : "");
       }
     }
 

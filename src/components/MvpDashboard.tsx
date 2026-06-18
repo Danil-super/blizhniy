@@ -41,6 +41,7 @@ import {
 import { CategoryOrderAdminPanel } from "@/components/CategoryOrderAdminPanel";
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
+import { VacancyThumbnail } from "@/components/VacancyMedia";
 import { listDemoListings, toDemoListing } from "@/components/listings/ListingPages";
 import type { DemoPublication } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
@@ -841,6 +842,7 @@ export function AdminVacanciesPage() {
     id: vacancy.id,
     statusTargetId: vacancy.id,
     statusEntityType: "vacancy",
+    images: vacancy.images,
     organization: vacancy.organization,
     title: vacancy.title,
     city: vacancy.city,
@@ -857,6 +859,7 @@ export function AdminVacanciesPage() {
       rows={rows as unknown as Record<string, unknown>[]}
       columns={[
         { key: "id", label: "ID" },
+        { key: "images", label: "Фото", render: (row) => <VacancyThumbnail images={row.images as string[] | undefined} title={String(row.title ?? "Вакансия")} /> },
         { key: "organization", label: "Компания" },
         { key: "title", label: "Вакансия" },
         { key: "city", label: "Город" },

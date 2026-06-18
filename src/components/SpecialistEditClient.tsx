@@ -138,7 +138,7 @@ export function SpecialistEditClient({ specialistId }: { specialistId: string })
               <Field name="messengerUrl" label="Telegram / WhatsApp" defaultValue={specialist.messengerUrl} />
             </div>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="responsive-field-grid">
             <Field name="city" label="Город" defaultValue={specialist.city} />
             <Field name="status" label="Статус" defaultValue={specialist.status} placeholder="Опубликовано или Черновик" />
           </div>

@@ -1,10 +1,12 @@
 "use client";
 
 import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
+import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { getStoredMediaFile } from "@/lib/client-media-store";
+import { normalizeListingPrice } from "@/lib/listing-price";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
-import type { Listing, ListingKind, Payment } from "@/lib/types";
+import type { JobVacancy, Listing, ListingKind, Payment } from "@/lib/types";
 
 type ConfirmPaymentPayload = {
   nextStatus?: string;
@@ -24,6 +26,7 @@ type CreatePaymentInput = {
   targetId?: string;
   targetType?: Payment["targetType"];
   targetTitle?: string;
+  vacancyDraft?: DemoPublication;
 };
 
 type CreatedPaymentPayload = {
@@ -45,6 +48,17 @@ type CreatedListingPaymentPayload = {
   error?: string;
 };
 
+type CreatedVacancyPaymentPayload = {
+  error?: string;
+  payment?: CreatedPaymentPayload;
+  vacancy?: Partial<JobVacancy> & {
+    id?: string;
+    images?: string[];
+    status?: string;
+    title?: string;
+  };
+};
+
 type MediaUploadResponse = {
   files?: Array<{ path?: string }>;
   error?: string;
@@ -58,9 +72,65 @@ const pendingPaymentStorageKey = "blizhniy:pendingPaymentId";
 const confirmationRetryDelayMs = 1500;
 const confirmationRetryAttempts = 20;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const publicMediaPathMarker = "/storage/v1/object/public/blizhniy-media/";
 
 function isUuid(value?: string) {
   return Boolean(value && uuidPattern.test(value));
+}
+
+function storagePathFromMediaSource(source: string) {
+  const cleanSource = source.trim();
+
+  if (/^vacancies\/.+/i.test(cleanSource)) {
+    return cleanSource;
+  }
+
+  const markerIndex = cleanSource.indexOf(publicMediaPathMarker);
+
+  if (markerIndex < 0) {
+    return "";
+  }
+
+  const encodedPath = cleanSource.slice(markerIndex + publicMediaPathMarker.length).split(/[?#]/)[0] ?? "";
+
+  try {
+    return decodeURIComponent(encodedPath);
+  } catch {
+    return encodedPath;
+  }
+}
+
+function fileNameForImageSource(source: string, index: number, mimeType: string) {
+  const extension = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : mimeType === "image/gif" ? "gif" : "jpg";
+  const sourceName = source.split(/[/?#]/).filter(Boolean).at(-1)?.replace(/\.[^.]+$/, "") || `vacancy-photo-${index + 1}`;
+
+  return `${sourceName}.${extension}`;
+}
+
+async function imageSourceToFile(source: string, index: number) {
+  const storedFile = await getStoredMediaFile(source);
+
+  if (storedFile?.type.startsWith("image/")) {
+    return storedFile;
+  }
+
+  if (!/^(data:image\/|blob:|https?:\/\/)/i.test(source)) {
+    return undefined;
+  }
+
+  const response = await fetch(source).catch(() => null);
+
+  if (!response?.ok) {
+    return undefined;
+  }
+
+  const blob = await response.blob();
+
+  if (!blob.type.startsWith("image/")) {
+    return undefined;
+  }
+
+  return new File([blob], fileNameForImageSource(source, index, blob.type), { type: blob.type });
 }
 
 function readPendingPaymentId() {
@@ -108,6 +178,7 @@ function readStoredPublications() {
 
 function writeStoredPublications(items: DemoPublication[]) {
   window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(items));
+  markCabinetDataChanged();
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
 }
 
@@ -207,6 +278,91 @@ async function uploadDraftListingImages(item: DemoPublication) {
   return uploadedPaths;
 }
 
+function apiVacancyPayloadFromDraft(item: DemoPublication, tariffId: string, mediaPaths: string[] = []) {
+  return {
+    address: item.hasMapPoint ? item.address : undefined,
+    city: item.city || "Краснодар",
+    conditions: item.conditions || undefined,
+    contactPerson: item.contactPerson || undefined,
+    description: item.description || "Описание вакансии будет дополнено.",
+    email: item.email || undefined,
+    employerType: item.employerType || undefined,
+    inn: item.inn || undefined,
+    lat: item.hasMapPoint ? item.lat : undefined,
+    lng: item.hasMapPoint ? item.lng : undefined,
+    mediaPaths,
+    messengerUrl: item.messengerUrl || undefined,
+    ogrn: item.ogrn || undefined,
+    ogrnip: item.ogrnip || undefined,
+    organization: item.subtitle || "Работодатель",
+    placementRightConfirmed: item.placementRightConfirmed,
+    phone: item.phone || undefined,
+    profession: item.profession || item.title,
+    requirements: item.requirements || undefined,
+    responsibilities: item.responsibilities || undefined,
+    salary: item.price ? normalizeListingPrice(item.price) : undefined,
+    schedule: item.schedule || undefined,
+    tariffId,
+    title: item.title || "Новая вакансия",
+    website: item.website || undefined,
+    workFormat: item.workFormat || undefined,
+  };
+}
+
+function mergeCreatedVacancyIntoDraft(draft: DemoPublication, vacancy?: CreatedVacancyPaymentPayload["vacancy"]) {
+  return {
+    ...draft,
+    city: vacancy?.city ?? draft.city,
+    description: vacancy?.description ?? draft.description,
+    images: vacancy?.images?.length ? vacancy.images : draft.images,
+    price: vacancy?.salary ?? draft.price,
+    status: vacancy?.status === "published" ? "Опубликовано" : vacancy?.status === "draft" ? "Черновик" : draft.status,
+    subtitle: vacancy?.organization ?? draft.subtitle,
+    title: vacancy?.title ?? draft.title,
+  };
+}
+
+async function uploadDraftVacancyImage(item: DemoPublication) {
+  const sources = (item.images ?? []).slice(0, 12);
+
+  if (!sources.length) {
+    return [];
+  }
+
+  const existingStoragePaths = sources.map(storagePathFromMediaSource).filter(Boolean);
+  const sourcesToUpload = sources.filter((source) => !storagePathFromMediaSource(source));
+
+  const imageFiles = (
+    await Promise.all(
+      sourcesToUpload.map((source, index) => imageSourceToFile(source, index)),
+    )
+  ).filter((file): file is File => Boolean(file));
+
+  if (!imageFiles.length) {
+    return existingStoragePaths.slice(0, 12);
+  }
+
+  const uploadFormData = new FormData();
+
+  uploadFormData.set("folder", "vacancies");
+  imageFiles.forEach((file) => uploadFormData.append("files", file));
+
+  const response = await fetch("/api/uploads/media", {
+    body: uploadFormData,
+    headers: await getAuthHeaders(),
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as MediaUploadResponse | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "Не удалось загрузить фото вакансии.");
+  }
+
+  const uploadedPaths = (payload?.files ?? []).map((uploadedFile) => uploadedFile.path).filter((path): path is string => Boolean(path));
+
+  return [...existingStoragePaths, ...uploadedPaths].slice(0, 12);
+}
+
 async function findMatchingServerListing(draft: DemoPublication) {
   try {
     const response = await fetch("/api/cabinet/listings", {
@@ -239,9 +395,11 @@ export function syncPaidPublication(confirmPayload: ConfirmPaymentPayload) {
   }
 
   const items = readStoredPublications();
+  const targetType = confirmPayload.payment?.targetType;
 
-  if (confirmPayload.payment?.targetType === "listing" && isUuid(targetId)) {
+  if ((targetType === "listing" || targetType === "vacancy") && isUuid(targetId)) {
     writeStoredPublications(items.filter((item) => item.id !== targetId));
+    window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
     return;
   }
 
@@ -262,6 +420,7 @@ export function syncPaidPublication(confirmPayload: ConfirmPaymentPayload) {
   });
 
   writeStoredPublications(nextItems);
+  window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
 }
 
 async function requestPaymentConfirmation(paymentId: string) {
@@ -458,12 +617,90 @@ async function createListingPaymentFromLocalDraft(input: CreatePaymentInput) {
   return payload.payment;
 }
 
+async function createVacancyPaymentFromLocalDraft(input: CreatePaymentInput) {
+  const draft = input.vacancyDraft ?? readStoredPublications().find((item) => item.type === "vacancy" && item.id === input.targetId);
+
+  if (!draft) {
+    throw new Error("Черновик вакансии не найден. Откройте черновик и попробуйте сохранить его заново.");
+  }
+
+  if (!draft.price || normalizeListingPrice(draft.price, "") === "") {
+    throw new Error("Укажите оплату вакансии и сохраните черновик перед публикацией.");
+  }
+
+  if (isUuid(draft.id)) {
+    const payment = await createClientPayment({
+      tariffId: input.tariffId,
+      targetId: draft.id,
+      targetTitle: draft.title,
+      targetType: "vacancy",
+    });
+    const serverDraftCopy = withPublicationStatusHistory(
+      {
+        ...draft,
+        id: draft.id,
+        status: "Ждет оплаты",
+      },
+      "Ждет оплаты",
+      {
+        description: "Вакансия сохранена и отправлена на оплату перед публикацией.",
+      },
+    );
+    const nextItems = [serverDraftCopy, ...readStoredPublications().filter((item) => item.id !== draft.id)].slice(0, 50);
+
+    writeStoredPublications(nextItems);
+    rememberPendingPaymentId(payment.id);
+
+    return payment;
+  }
+
+  const mediaPaths = await uploadDraftVacancyImage(draft);
+
+  if (!mediaPaths.length) {
+    throw new Error("Добавьте фото работодателя или рабочего места перед оплатой вакансии.");
+  }
+
+  const response = await fetch("/api/vacancies", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    body: JSON.stringify(apiVacancyPayloadFromDraft(draft, input.tariffId, mediaPaths)),
+  });
+  const payload = (await response.json().catch(() => null)) as CreatedVacancyPaymentPayload | null;
+
+  if (!response.ok || !payload?.vacancy?.id || !payload.payment?.id) {
+    throw new Error(payload?.error ?? "Не удалось создать оплату для черновика вакансии.");
+  }
+
+  const serverVacancyId = payload.vacancy.id;
+  const serverDraftCopy = withPublicationStatusHistory(
+    {
+      ...mergeCreatedVacancyIntoDraft(draft, payload.vacancy),
+      id: serverVacancyId,
+      status: "Ждет оплаты",
+    },
+    "Ждет оплаты",
+    {
+      description: "Черновик вакансии перенесен в базу и отправлен на оплату перед публикацией.",
+    },
+  );
+  const nextItems = [serverDraftCopy, ...readStoredPublications().filter((item) => item.id !== draft.id && item.id !== serverVacancyId)].slice(0, 50);
+
+  writeStoredPublications(nextItems);
+  rememberPendingPaymentId(payload.payment.id);
+
+  return payload.payment;
+}
+
 export async function createAndConfirmClientPayment(input: CreatePaymentInput) {
   const payment =
     input.targetType === "listing" && input.listingDraft
       ? await createListingPaymentFromLocalDraft(input)
+      : input.targetType === "vacancy" && input.vacancyDraft
+      ? await createVacancyPaymentFromLocalDraft(input)
       : input.targetType === "listing" && input.targetId && !isUuid(input.targetId)
       ? await createListingPaymentFromLocalDraft(input)
+      : input.targetType === "vacancy" && input.targetId && !isUuid(input.targetId)
+      ? await createVacancyPaymentFromLocalDraft(input)
       : await createClientPayment(input);
 
   if (payment.confirmationUrl) {

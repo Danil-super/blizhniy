@@ -3,6 +3,7 @@ import { markStoredListingPaid } from "@/lib/listing-store";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import { getTariffs } from "@/lib/tariff-store";
 import type { Payment, Tariff } from "@/lib/types";
+import { markStoredVacancyPaid } from "@/lib/vacancy-store";
 
 type PaymentRow = {
   amount: number | string;
@@ -252,6 +253,16 @@ export async function markStoredPaymentTargetSucceeded(payment: Payment) {
 
   if (payment.targetType === "fair_application" && payment.targetId && isUuid(payment.targetId)) {
     await markStoredFairApplicationPaid(payment.targetId);
+    return "published" as const;
+  }
+
+  if (payment.targetType === "vacancy" && payment.targetId && isUuid(payment.targetId)) {
+    const updated = await markStoredVacancyPaid(payment.targetId);
+
+    if (!updated) {
+      throw new Error("Не удалось опубликовать вакансию после оплаты");
+    }
+
     return "published" as const;
   }
 

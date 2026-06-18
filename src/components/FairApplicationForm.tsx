@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CapitalizedTextarea } from "@/components/CapitalizedTextarea";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
@@ -186,49 +187,49 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
   }
 
   return (
-    <form className="mt-6 grid gap-4" onSubmit={handleSubmit} noValidate>
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="grid gap-2 text-sm font-bold text-slate-600">
+    <form className="responsive-form-panel mt-6 grid gap-4" onSubmit={handleSubmit} noValidate>
+      <div className="adaptive-field-grid">
+        <label className="form-field grid gap-2 text-sm font-bold text-slate-600" data-field-size="lg">
           Название мастерской или ФИО
-          <input name="participantName" className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="Мастерская Кубань Дуб" required />
+          <ValidatedInput name="participantName" className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="Мастерская Кубань Дуб" capitalizeFirstLetter required />
         </label>
-        <label className="grid gap-2 text-sm font-bold text-slate-600">
+        <label className="form-field grid gap-2 text-sm font-bold text-slate-600" data-field-size="md">
           Город
-          <input name="city" className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="Краснодар" required />
+          <ValidatedInput name="city" className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="Краснодар" capitalizeFirstLetter required />
         </label>
       </div>
-      <label className="grid gap-2 text-sm font-bold text-slate-600">
+      <label className="form-field grid gap-2 text-sm font-bold text-slate-600" data-field-size="md">
         Категория ярмарки
         <DropdownSelect name="category" options={fairCategories.map((category) => ({ value: category, label: category }))} buttonClassName="h-11 font-normal sm:h-12" />
       </label>
-      <label className="grid gap-2 text-sm font-bold text-slate-600">
+      <label className="form-field grid gap-2 text-sm font-bold text-slate-600" data-field-size="full">
         Описание работ или товаров
-        <textarea name="description" className="min-h-24 rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-[#0875d1] sm:min-h-28 sm:px-4" placeholder="Что вы покажете на ярмарке" required />
+        <CapitalizedTextarea name="description" className="min-h-24 rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-[#0875d1] sm:min-h-28 sm:px-4" placeholder="Что вы покажете на ярмарке" required />
       </label>
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="grid gap-2 text-sm font-bold text-slate-600">
+      <div className="adaptive-field-grid">
+        <label className="form-field grid gap-2 text-sm font-bold text-slate-600" data-field-size="lg">
           Фото товаров
           <input name="productPhotos" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-bold file:text-[#0875d1] focus:border-[#0875d1]" />
           <span className="text-xs font-semibold text-slate-500">До 10 изображений, каждый файл до 10 МБ.</span>
         </label>
-        <label className="grid gap-2 text-sm font-bold text-slate-600">
+        <label className="form-field grid gap-2 text-sm font-bold text-slate-600" data-field-size="lg">
           Ссылка на видео
           <ValidatedInput name="videoUrl" className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="https://..." validation="url" />
         </label>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="grid gap-2 text-sm font-bold text-slate-600">
+      <div className="adaptive-field-grid">
+        <label className="form-field grid gap-2 text-sm font-bold text-slate-600" data-field-size="sm">
           Телефон
           <ValidatedInput name="phone" className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="+7..." validation="phone" required />
         </label>
-        <label className="grid gap-2 text-sm font-bold text-slate-600">
+        <label className="form-field grid gap-2 text-sm font-bold text-slate-600" data-field-size="lg">
           Email
           <ValidatedInput name="email" className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1] sm:h-12 sm:px-4" placeholder="you@example.ru" validation="email" required />
         </label>
       </div>
-      <label className="grid gap-2 text-sm font-bold text-slate-600">
+      <label className="form-field grid gap-2 text-sm font-bold text-slate-600" data-field-size="full">
         Комментарий
-        <textarea name="comment" className="min-h-20 rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-[#0875d1] sm:min-h-24 sm:px-4" placeholder="Пожелания к месту, столу, электричеству" />
+        <CapitalizedTextarea name="comment" className="min-h-20 rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-[#0875d1] sm:min-h-24 sm:px-4" placeholder="Пожелания к месту, столу, электричеству" />
       </label>
       <LegalConsentCheckbox name="fairLegalAccepted" errorMessage="Примите условия документов, чтобы продолжить">
         Я соглашаюсь с <LegalLink href="/legal/agreement">Пользовательским соглашением</LegalLink> и{" "}

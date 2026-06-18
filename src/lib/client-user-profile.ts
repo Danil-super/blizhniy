@@ -39,7 +39,36 @@ export function profileStorageKey(ownerKey: string) {
   return `blizhniy-user-profile:${ownerKey}`;
 }
 
-export async function resolveClientUserIdentity(): Promise<ClientUserIdentity> {
+let cachedIdentity: ClientUserIdentity | null = null;
+let cachedIdentityAt = 0;
+let identityRequest: Promise<ClientUserIdentity> | null = null;
+let authListenerInitialized = false;
+
+const identityCacheTtlMs = 60_000;
+
+function clearCachedIdentity() {
+  cachedIdentity = null;
+  cachedIdentityAt = 0;
+  identityRequest = null;
+}
+
+function ensureIdentityAuthListener() {
+  if (authListenerInitialized) {
+    return;
+  }
+
+  authListenerInitialized = true;
+
+  try {
+    getSupabaseBrowserClient().auth.onAuthStateChange(() => {
+      clearCachedIdentity();
+    });
+  } catch {
+    // Supabase can be unavailable in local/demo modes. Identity resolution still falls back below.
+  }
+}
+
+async function loadClientUserIdentity(): Promise<ClientUserIdentity> {
   try {
     const supabase = getSupabaseBrowserClient();
     const { data } = await supabase.auth.getSession();
@@ -63,25 +92,34 @@ export async function resolveClientUserIdentity(): Promise<ClientUserIdentity> {
   }
 }
 
-export async function resolveAuthenticatedClientUserIdentity(): Promise<ClientUserIdentity> {
-  const supabase = getSupabaseBrowserClient();
-  const { data, error } = await supabase.auth.getSession();
+export async function resolveClientUserIdentity(): Promise<ClientUserIdentity> {
+  ensureIdentityAuthListener();
 
-  if (error || !data.session?.user) {
+  if (cachedIdentity && Date.now() - cachedIdentityAt < identityCacheTtlMs) {
+    return cachedIdentity;
+  }
+
+  identityRequest ??= loadClientUserIdentity()
+    .then((identity) => {
+      cachedIdentity = identity;
+      cachedIdentityAt = Date.now();
+      return identity;
+    })
+    .finally(() => {
+      identityRequest = null;
+    });
+
+  return identityRequest;
+}
+
+export async function resolveAuthenticatedClientUserIdentity(): Promise<ClientUserIdentity> {
+  const identity = await resolveClientUserIdentity();
+
+  if (!identity.accessToken || identity.ownerKey === "local-user") {
     throw new Error("Войдите или зарегистрируйтесь, чтобы разместить публикацию.");
   }
 
-  const user = data.session.user;
-  const email = user.email ?? "";
-  const metadataName = typeof user.user_metadata?.display_name === "string" ? user.user_metadata.display_name : "";
-  const fallbackName = email ? email.split("@")[0] : "Пользователь";
-
-  return {
-    accessToken: data.session.access_token,
-    ownerKey: user.id,
-    name: metadataName.trim() || fallbackName,
-    email,
-  };
+  return identity;
 }
 
 export function createDefaultCabinetProfile(identity: ClientUserIdentity): CabinetProfile {

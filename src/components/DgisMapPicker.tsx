@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapPin, Navigation, Search, X } from "lucide-react";
+import { capitalizeFirstTextLetter } from "@/lib/text-format";
 
 type DgisMapPickerProps = {
   defaultAddress?: string;
@@ -226,8 +227,8 @@ export function DgisMapPicker({
   const markerRef = useRef<DgisMarker | null>(null);
   const latestSearchRef = useRef(0);
   const [point, setPoint] = useState(typeof defaultLat === "number" && typeof defaultLng === "number" ? { lat: defaultLat, lng: defaultLng } : null);
-  const [address, setAddress] = useState(defaultAddress ?? "");
-  const [query, setQuery] = useState(defaultAddress ?? "");
+  const [address, setAddress] = useState(capitalizeFirstTextLetter(defaultAddress ?? ""));
+  const [query, setQuery] = useState(capitalizeFirstTextLetter(defaultAddress ?? ""));
   const [status, setStatus] = useState(apiKey() ? "Загрузка карты 2ГИС..." : "Добавьте NEXT_PUBLIC_2GIS_API_KEY, чтобы включить карту 2ГИС.");
   const [searching, setSearching] = useState(false);
 
@@ -296,8 +297,8 @@ export function DgisMapPicker({
               }
 
               if (nextAddress) {
-                setAddress(nextAddress);
-                setQuery(nextAddress);
+                setAddress(capitalizeFirstTextLetter(nextAddress));
+                setQuery(capitalizeFirstTextLetter(nextAddress));
                 setStatus("Адрес определен");
                 return;
               }
@@ -377,8 +378,8 @@ export function DgisMapPicker({
 
       const nextPoint = { lat: result.coords[1], lng: result.coords[0] };
       setPoint(nextPoint);
-      setAddress(result.address);
-      setQuery(result.address);
+      setAddress(capitalizeFirstTextLetter(result.address));
+      setQuery(capitalizeFirstTextLetter(result.address));
       setStatus("Адрес найден");
       setMapView(mapInstanceRef.current, result.coords, 16);
 
@@ -432,7 +433,7 @@ export function DgisMapPicker({
         <input
           className="h-11 w-full min-w-0 max-w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#0875d1]"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => setQuery(capitalizeFirstTextLetter(event.target.value))}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();

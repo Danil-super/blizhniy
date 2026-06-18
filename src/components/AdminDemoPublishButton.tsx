@@ -4,12 +4,16 @@ import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { createStoredListingPublication } from "@/lib/client-listing-flow";
+import { confirmClientPayment } from "@/lib/client-payment-flow";
+import { createStoredVacancyPublication } from "@/lib/client-vacancy-flow";
 import { storeMediaFile } from "@/lib/client-media-store";
+import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationHistory, type DemoPublication, type DemoPublicationType } from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { categories, cities } from "@/lib/data";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
+import { normalizeVacancyRequisites, validateVacancyRequisites } from "@/lib/vacancy-requisites";
 import type { ListingKind } from "@/lib/types";
 
 type AdminDemoPublishButtonProps = {
@@ -167,7 +171,15 @@ function readImageFiles(formData: FormData) {
   return readMediaFiles(formData).filter((file) => file.type.startsWith("image/"));
 }
 
-async function uploadPublicationMedia(formData: FormData, folder: "fair-applications" | "listings", accessToken: string) {
+function readExistingPhotos(formData: FormData) {
+  return formData.getAll("existingPhotos").flatMap((value) => {
+    const photo = String(value ?? "").trim();
+
+    return photo ? [photo] : [];
+  });
+}
+
+async function uploadPublicationMedia(formData: FormData, folder: "fair-applications" | "listings" | "vacancies", accessToken: string) {
   const files = readImageFiles(formData).slice(0, 20);
 
   if (!files.length) {
@@ -202,7 +214,7 @@ async function readLocalImageReferences(formData: FormData) {
   const files = readImageFiles(formData);
   const storedImages = await Promise.allSettled(files.map((file) => storeMediaFile(file)));
 
-  return storedImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+  return [...readExistingPhotos(formData), ...storedImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))];
 }
 
 async function readLocalMediaReferences(formData: FormData) {
@@ -215,9 +227,21 @@ async function readLocalMediaReferences(formData: FormData) {
   const fulfilledMedia = storedMedia.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
 
   return {
-    images: fulfilledMedia.filter((item) => item.kind === "image").map((item) => item.source),
+    images: [...readExistingPhotos(formData), ...fulfilledMedia.filter((item) => item.kind === "image").map((item) => item.source)],
     videos: fulfilledMedia.filter((item) => item.kind === "video").map((item) => item.source),
   };
+}
+
+function readEmailOrMessengerEmail(formData: FormData) {
+  const value = readRawValue(formData, "emailOrMessenger");
+
+  return value.includes("@") && !value.startsWith("@") && !value.startsWith("http") ? value : "";
+}
+
+function readEmailOrMessengerUrl(formData: FormData) {
+  const value = readRawValue(formData, "emailOrMessenger");
+
+  return value && !readEmailOrMessengerEmail(formData) ? value : readRawValue(formData, "messengerUrl");
 }
 
 async function buildFallbackPublication(formData: FormData, type: DemoPublicationType, status: string): Promise<DemoPublication> {
@@ -226,18 +250,45 @@ async function buildFallbackPublication(formData: FormData, type: DemoPublicatio
   const categorySlug = readValue(formData, "category", "dlya-doma-i-dachi");
   const categoryName = categories.find((category) => category.slug === categorySlug)?.name ?? "Категория";
   const media = type === "listing" ? await readLocalMediaReferences(formData) : { images: await readLocalImageReferences(formData), videos: [] };
+  const isVacancy = type === "vacancy";
+  const requisites = isVacancy
+    ? normalizeVacancyRequisites({
+        employerType: readValue(formData, "employerType"),
+        inn: readValue(formData, "inn"),
+        ogrn: readValue(formData, "ogrn"),
+        ogrnip: readValue(formData, "ogrnip"),
+      })
+    : undefined;
 
   return withPublicationHistory({
     id,
     type,
     title: readValue(formData, type === "specialist" ? "name" : "title", "Новая публикация"),
-    subtitle: type === "listing" ? categoryName : readValue(formData, "profession", "Публикация"),
+    subtitle: type === "listing" ? categoryName : isVacancy ? readValue(formData, "organization", "Работодатель") : readValue(formData, "profession", "Публикация"),
     city: inferCityFromFormData(formData),
     price: normalizeListingPrice(readRawValue(formData, type === "vacancy" ? "salary" : type === "specialist" ? "price" : "price"), "по договоренности"),
     description: readValue(formData, "description", "Описание будет дополнено."),
     phone: readValue(formData, "phone"),
-    email: readValue(formData, "email"),
-    messengerUrl: readValue(formData, "messengerUrl"),
+    email: isVacancy ? readEmailOrMessengerEmail(formData) || readValue(formData, "email") : readValue(formData, "email"),
+    messengerUrl: isVacancy ? readEmailOrMessengerUrl(formData) : readValue(formData, "messengerUrl"),
+    profession: isVacancy ? readValue(formData, "profession") || readValue(formData, "title") : readValue(formData, "profession"),
+    employerType: requisites?.employerType,
+    inn: requisites?.inn,
+    ogrn: requisites?.ogrn,
+    ogrnip: requisites?.ogrnip,
+    contactPerson: isVacancy ? readValue(formData, "contactPerson") : undefined,
+    website: isVacancy ? readValue(formData, "website") : undefined,
+    schedule: isVacancy ? readValue(formData, "schedule") : undefined,
+    workFormat: isVacancy ? readValue(formData, "workFormat") : undefined,
+    requirements: isVacancy ? readValue(formData, "requirements") : undefined,
+    responsibilities: isVacancy ? readValue(formData, "responsibilities") : undefined,
+    conditions: isVacancy ? readValue(formData, "conditions") : undefined,
+    placementRightConfirmed: isVacancy ? readRawValue(formData, "placementRightConfirmed") === "1" : undefined,
+    address: hasSelectedMapPoint(formData) ? readValue(formData, "address") : undefined,
+    lat: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lat") : undefined,
+    lng: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lng") : undefined,
+    hasMapPoint: hasSelectedMapPoint(formData),
+    showExactAddress: hasSelectedMapPoint(formData),
     listingKind: readValue(formData, "kind", "prodam") as ListingKind,
     categorySlug,
     subcategorySlug: readValue(formData, "subcategory"),
@@ -279,6 +330,62 @@ async function createSupabaseListing(formData: FormData, options: { accessToken:
     subcategory: readValue(formData, "subcategory"),
     tariffId: options.tariffId,
     title: readValue(formData, "title", isDraft ? "Черновик объявления" : "Новое объявление"),
+  });
+
+  return result;
+}
+
+async function createSupabaseVacancy(formData: FormData, options: { accessToken: string; status?: "draft"; tariffId?: string }) {
+  const isDraft = options.status === "draft";
+  const email = readEmailOrMessengerEmail(formData) || readRawValue(formData, "email");
+  const messengerUrl = readEmailOrMessengerUrl(formData);
+  const phone = readRawValue(formData, "phone");
+  const requisites = normalizeVacancyRequisites({
+    employerType: readValue(formData, "employerType"),
+    inn: readValue(formData, "inn"),
+    ogrn: readValue(formData, "ogrn"),
+    ogrnip: readValue(formData, "ogrnip"),
+  });
+  const requisitesError = validateVacancyRequisites(requisites, { requireInn: !isDraft });
+
+  if (requisitesError) {
+    throw new Error(requisitesError);
+  }
+
+  if (!isDraft && !phone && !messengerUrl && !email) {
+    throw new Error("Укажите хотя бы один контакт вакансии: телефон, email или Telegram/WhatsApp.");
+  }
+
+  const mediaPaths = await uploadPublicationMedia(formData, "vacancies", options.accessToken);
+  const result = await createStoredVacancyPublication({
+    accessToken: options.accessToken,
+    address: hasSelectedMapPoint(formData) ? readValue(formData, "address") : undefined,
+    city: inferCityFromFormData(formData),
+    conditions: readValue(formData, "conditions"),
+    contactPerson: readValue(formData, "contactPerson") || undefined,
+    description: readValue(formData, "description", "Описание вакансии будет дополнено."),
+    email: email || undefined,
+    employerType: requisites.employerType,
+    inn: requisites.inn || undefined,
+    ogrn: requisites.ogrn || undefined,
+    ogrnip: requisites.ogrnip || undefined,
+    lat: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lat") : undefined,
+    lng: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lng") : undefined,
+    mediaPaths,
+    messengerUrl: messengerUrl || undefined,
+    organization: readValue(formData, "organization", "Работодатель"),
+    placementRightConfirmed: readRawValue(formData, "placementRightConfirmed") === "1",
+    phone: phone || undefined,
+    profession: readValue(formData, "profession") || readValue(formData, "title"),
+    requirements: readValue(formData, "requirements"),
+    responsibilities: readValue(formData, "responsibilities"),
+    salary: normalizeListingPrice(readRawValue(formData, "salary"), "по договоренности"),
+    schedule: readValue(formData, "schedule"),
+    status: options.status,
+    tariffId: options.tariffId,
+    title: readValue(formData, "title", isDraft ? "Черновик вакансии" : "Новая вакансия"),
+    website: readValue(formData, "website") || undefined,
+    workFormat: readValue(formData, "workFormat"),
   });
 
   return result;
@@ -345,6 +452,7 @@ export function AdminDemoPublishButton({
           const stored = readStoredPublications();
 
           window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(storedPublicationsWithReplacement(publication, stored)));
+          markCabinetDataChanged();
           window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
           window.location.href = returnHref;
           return;
@@ -367,6 +475,52 @@ export function AdminDemoPublishButton({
         }
       }
 
+      if (publicationType === "vacancy") {
+        const identity = await resolveAuthenticatedClientUserIdentity();
+
+        if (identity.accessToken && isDraftStatus(status)) {
+          const result = await createSupabaseVacancy(formData, { accessToken: identity.accessToken, status: "draft" });
+          const fallbackPublication = await buildFallbackPublication(formData, publicationType, status);
+          const publication = {
+            ...fallbackPublication,
+            id: result.vacancy?.id ?? `demo-${publicationType}-${Date.now().toString(36)}`,
+            images: result.vacancy?.images?.length ? result.vacancy.images : fallbackPublication.images,
+            ownerKey: identity.ownerKey,
+            ownerName: identity.name,
+          };
+          const stored = readStoredPublications();
+
+          window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(storedPublicationsWithReplacement(publication, stored)));
+          markCabinetDataChanged();
+          window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+          window.location.href = returnHref;
+          return;
+        }
+
+        if (requiresPayment && paymentTariffId) {
+          if (!identity.accessToken) {
+            throw new Error("Сессия входа устарела. Выйдите и войдите снова, затем повторите публикацию.");
+          }
+
+          const result = await createSupabaseVacancy(formData, { accessToken: identity.accessToken, tariffId: paymentTariffId });
+
+          if (!result.payment?.id) {
+            throw new Error("Платеж не был создан. Проверьте настройки тарифа размещения вакансии.");
+          }
+
+          rememberPendingPaymentId(result.payment.id);
+
+          if (result.payment.confirmationUrl) {
+            window.location.href = result.payment.confirmationUrl;
+            return;
+          }
+
+          await confirmClientPayment(result.payment.id);
+          window.location.href = returnHref;
+          return;
+        }
+      }
+
       const identity = await resolveAuthenticatedClientUserIdentity();
       const publication = {
         ...(await buildFallbackPublication(formData, publicationType, status)),
@@ -376,6 +530,7 @@ export function AdminDemoPublishButton({
       const stored = readStoredPublications();
 
       window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(storedPublicationsWithReplacement(publication, stored)));
+      markCabinetDataChanged();
       window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
       window.location.href = returnHref;
     } catch (reason) {

@@ -130,8 +130,8 @@ export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequest
         Назад
       </BackLink>
       <FormPanel title="Редактировать заказ" description="Изменения применяются к выбранному заказу из личного кабинета.">
-        <form onSubmit={handleSubmit} className="grid gap-4">
-          <div className="grid gap-4 md:grid-cols-2">
+        <form onSubmit={handleSubmit} className="responsive-form-panel grid gap-4">
+          <div className="responsive-field-grid">
             <Field name="title" label="Заголовок заказа" defaultValue={request.title} />
             <Field name="profession" label="Профессия" defaultValue={request.subtitle} />
             <Field name="city" label="Город" defaultValue={request.city} />

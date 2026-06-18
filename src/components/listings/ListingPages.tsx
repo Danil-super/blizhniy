@@ -19,6 +19,7 @@ import {
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { BackLink } from "@/components/BackLink";
 import { CategoryGrid } from "@/components/CategoryGrid";
+import { CapitalizedTextarea } from "@/components/CapitalizedTextarea";
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { HomeHero } from "@/components/HomeHero";
 import { LocationMap } from "@/components/LocationMap";
@@ -1757,9 +1758,9 @@ export function ListingDetailPage({ slug, listingOverride }: { slug: string; lis
   );
 }
 
-function Field({ children, className = "", compact = false, label }: { label: string; children: ReactNode; className?: string; compact?: boolean }) {
+function Field({ children, className = "", compact = false, label, size = "md" }: { label: string; children: ReactNode; className?: string; compact?: boolean; size?: "xs" | "sm" | "md" | "lg" | "full" }) {
   return (
-    <label className={`block ${className}`}>
+    <label className={`form-field block ${className}`} data-field-size={size}>
       <span className={`${compact ? "text-xs sm:text-sm" : "text-sm"} font-bold text-slate-700`}>{label}</span>
       <span className={`${compact ? "mt-1 sm:mt-2" : "mt-2"} block`}>{children}</span>
     </label>
@@ -1780,6 +1781,7 @@ function TextInput({
   return (
     <ValidatedInput
       {...props}
+      capitalizeFirstLetter={!props.validation && (!props.type || props.type === "text")}
       className={`${compact ? "h-10 px-3 text-sm sm:h-12 sm:px-4 sm:text-base" : "h-12 px-4"} w-full rounded-lg border border-slate-300 outline-none focus:border-[#0875d1]`}
     />
   );
@@ -1857,8 +1859,8 @@ function ListingDeliveryFields({ defaultCity, delivery }: { defaultCity?: string
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Кто оплачивает" compact>
+        <div className="adaptive-field-grid">
+          <Field label="Кто оплачивает" compact size="md">
             <SelectInput
               name="deliveryPayer"
               defaultValue={delivery?.payer ?? "buyer"}
@@ -1870,33 +1872,33 @@ function ListingDeliveryFields({ defaultCity, delivery }: { defaultCity?: string
               ]}
             />
           </Field>
-          <Field label="Город отправления" compact>
+          <Field label="Город отправления" compact size="md">
             <TextInput name="deliveryOriginCity" defaultValue={delivery?.originCity ?? defaultCity} placeholder="Краснодар" compact />
           </Field>
-          <Field label="Вес, г" compact>
+          <Field label="Вес, г" compact size="sm">
             <NumberInput name="deliveryWeightGram" defaultValue={delivery?.packageWeightGram} placeholder="1200" />
           </Field>
-          <Field label="Подготовка, дней" compact>
+          <Field label="Подготовка, дней" compact size="sm">
             <NumberInput name="deliveryHandlingDays" defaultValue={delivery?.handlingDays} placeholder="1" />
           </Field>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <Field label="Длина, см" compact>
+      <div className="adaptive-field-grid mt-4">
+        <Field label="Длина, см" compact size="sm">
           <NumberInput name="deliveryLengthCm" defaultValue={delivery?.packageLengthCm} placeholder="30" />
         </Field>
-        <Field label="Ширина, см" compact>
+        <Field label="Ширина, см" compact size="sm">
           <NumberInput name="deliveryWidthCm" defaultValue={delivery?.packageWidthCm} placeholder="20" />
         </Field>
-        <Field label="Высота, см" compact>
+        <Field label="Высота, см" compact size="sm">
           <NumberInput name="deliveryHeightCm" defaultValue={delivery?.packageHeightCm} placeholder="15" />
         </Field>
       </div>
 
-      <label className="mt-4 block">
+      <label className="form-field mt-4 block" data-field-size="full">
         <span className="text-sm font-bold text-slate-700">Комментарий по доставке</span>
-        <textarea
+        <CapitalizedTextarea
           name="deliveryComment"
           defaultValue={delivery?.comment}
           className="mt-2 min-h-20 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0875d1]"
@@ -1992,24 +1994,24 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
           {error ? <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p> : null}
 
           <form action={adminMode ? publishWithoutPaymentAction : undefined} className="listing-create-form mt-6 grid min-w-0 max-w-full gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="listing-create-primary-grid">
+            <div className="listing-create-primary-grid adaptive-field-grid">
               <ListingKindAndCategoryFields
                 booking={listing?.booking}
                 defaultCategorySlug={listing?.categorySlug ?? formDefaults.categorySlug}
                 defaultKind={listing?.kind ?? formDefaults.kind}
                 defaultSubcategorySlug={listing?.subcategorySlug ?? formDefaults.subcategorySlug}
               />
-              <Field className="listing-title-field" label="Название" compact>
+              <Field className="listing-title-field" label="Название" compact size="lg">
                 <TextInput name="title" defaultValue={listing?.title} placeholder="Например, Комод из массива дуба" compact />
               </Field>
-              <Field className="listing-price-field" label="Цена" compact>
+              <Field className="listing-price-field" label="Цена" compact size="sm">
                 <PriceInput defaultValue={listing?.price} compact />
               </Field>
             </div>
 
-            <label className="block">
+            <label className="form-field block" data-field-size="full">
               <span className="text-sm font-bold text-slate-700">Описание</span>
-              <textarea
+              <CapitalizedTextarea
                 name="description"
                 defaultValue={listing?.description}
                 className="mt-2 min-h-28 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
@@ -2026,11 +2028,11 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
                 <Phone className="h-5 w-5 text-[#0aa337]" />
                 Контакты
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-4">
-                <Field label="Телефон" compact>
+              <div className="adaptive-field-grid mt-4 gap-2 sm:gap-4">
+                <Field label="Телефон" compact size="sm">
                   <TextInput name="phone" defaultValue={listing?.phone} placeholder="+7..." validation="phone" compact />
                 </Field>
-                <Field label="Основной способ связи" compact>
+                <Field label="Основной способ связи" compact size="md">
                   <SelectInput
                     name="contactMethod"
                     defaultValue="phone"
@@ -2042,10 +2044,10 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
                     ]}
                   />
                 </Field>
-                <Field label="Email для уведомлений" compact>
+                <Field label="Email для уведомлений" compact size="lg">
                   <TextInput name="email" placeholder="mail@example.ru" validation="email" compact />
                 </Field>
-                <Field label="Telegram или WhatsApp" compact>
+                <Field label="Telegram или WhatsApp" compact size="lg">
                   <TextInput name="messengerUrl" defaultValue={listing?.messengerUrl} placeholder="@username или ссылка" validation="messenger" compact />
                 </Field>
               </div>
