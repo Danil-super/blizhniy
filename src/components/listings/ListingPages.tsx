@@ -22,6 +22,7 @@ import { CategoryGrid } from "@/components/CategoryGrid";
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { HomeHero } from "@/components/HomeHero";
 import { LocationMap } from "@/components/LocationMap";
+import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
@@ -2051,6 +2052,24 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
             </div>
 
             <ListingPhotoUploader />
+
+            <div className="grid gap-3">
+              <LegalConsentCheckbox name="placementRightsAccepted" errorMessage="Примите условия документов, чтобы продолжить">
+                Я подтверждаю, что имею право размещать объявление, фотографии и контактные данные, и соглашаюсь с их публикацией на сайте БЛИЖНИЙ.{" "}
+                <LegalLink href="/legal/agreement">Пользовательское соглашение</LegalLink> и{" "}
+                <LegalLink href="/legal/privacy">Политика обработки персональных данных</LegalLink>.
+              </LegalConsentCheckbox>
+              {!adminMode ? (
+                <LegalConsentCheckbox
+                  name="publicOfferAccepted"
+                  requiredConsent={false}
+                  paymentConsent
+                  errorMessage="Примите условия публичной оферты, чтобы перейти к оплате"
+                >
+                  Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю услугу размещения объявления на сайте БЛИЖНИЙ.
+                </LegalConsentCheckbox>
+              ) : null}
+            </div>
 
             <div className="flex flex-wrap gap-3">
               <AdminDemoPublishButton

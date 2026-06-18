@@ -19,6 +19,7 @@ import {
   type DemoPublicationType,
 } from "@/lib/demo-publications";
 import { useAuthState } from "@/components/auth/useAuthState";
+import { LegalLink } from "@/components/LegalConsentCheckbox";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 import { ValidatedInput } from "@/components/ValidatedInput";
@@ -1352,6 +1353,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
   const [actingItemId, setActingItemId] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState("");
   const [paymentErrorItemId, setPaymentErrorItemId] = useState<string | null>(null);
+  const [paymentConsentItemIds, setPaymentConsentItemIds] = useState<Set<string>>(() => new Set());
   const [actionError, setActionError] = useState("");
   const [actionErrorItemId, setActionErrorItemId] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState("");
@@ -1425,6 +1427,19 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
   const clearPaymentError = () => {
     setPaymentError("");
     setPaymentErrorItemId(null);
+  };
+  const togglePaymentConsent = (itemId: string, checked: boolean) => {
+    setPaymentConsentItemIds((current) => {
+      const next = new Set(current);
+
+      if (checked) {
+        next.add(itemId);
+      } else {
+        next.delete(itemId);
+      }
+
+      return next;
+    });
   };
 
   if (!items.length) {
@@ -1655,6 +1670,19 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               </Link>
             ) : null}
             {payable ? (
+              <label className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={paymentConsentItemIds.has(item.id)}
+                  onChange={(event) => togglePaymentConsent(item.id, event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#0875d1]"
+                />
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  Принимаю <LegalLink href="/legal/offer">Публичную оферту</LegalLink> перед оплатой размещения.
+                </span>
+              </label>
+            ) : null}
+            {payable ? (
               <button
                 type="button"
                 disabled={payingItemId === item.id}
@@ -1667,6 +1695,11 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                   setActionErrorItemId(null);
                   setActionSuccess("");
                   setActionSuccessItemId(null);
+                  if (!paymentConsentItemIds.has(item.id)) {
+                    setPaymentError("Примите условия публичной оферты, чтобы перейти к оплате");
+                    setPaymentErrorItemId(item.id);
+                    return;
+                  }
                   setPayingItemId(item.id);
                   void createPublicationPayment(item)
                     .then(() => {
@@ -2529,6 +2562,8 @@ export function CabinetPublicationsClient({ type }: { type: DemoPublicationType 
 export function CabinetResponsesClient({ responses = [] }: { responses?: CabinetResponseItem[] }) {
   const [payingResponseId, setPayingResponseId] = useState("");
   const [responseError, setResponseError] = useState("");
+  const [responseErrorItemId, setResponseErrorItemId] = useState("");
+  const [acceptedOfferResponseIds, setAcceptedOfferResponseIds] = useState<Set<string>>(() => new Set());
 
   if (!responses.length) {
     return <EmptyState mode="response" />;
@@ -2545,22 +2580,54 @@ export function CabinetResponsesClient({ responses = [] }: { responses?: Cabinet
             </div>
             <h3 className="mt-2 truncate text-lg font-black text-[#060b27]">{response.vacancyTitle}</h3>
             <p className="mt-1 text-sm leading-6 text-slate-600">Отклик от: <span className="font-bold text-slate-800">{response.specialistName}</span></p>
-            {responseError && payingResponseId === response.id ? <p className="mt-2 text-xs font-bold text-rose-600">{responseError}</p> : null}
+            {responseError && responseErrorItemId === response.id ? <p className="mt-2 text-xs font-bold text-rose-600">{responseError}</p> : null}
           </div>
           <div className="grid gap-2 sm:justify-items-end">
             <Link href={response.href} className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]">
               Открыть вакансию
             </Link>
+            {response.status !== "sent" ? (
+              <label className="grid max-w-64 grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={acceptedOfferResponseIds.has(response.id)}
+                  onChange={(event) =>
+                    setAcceptedOfferResponseIds((current) => {
+                      const next = new Set(current);
+
+                      if (event.target.checked) {
+                        next.add(response.id);
+                      } else {
+                        next.delete(response.id);
+                      }
+
+                      return next;
+                    })
+                  }
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#0875d1]"
+                />
+                <span>
+                  Принимаю <LegalLink href="/legal/offer">Публичную оферту</LegalLink>.
+                </span>
+              </label>
+            ) : null}
             <button
               type="button"
               disabled={response.status === "sent" || payingResponseId === response.id}
               onClick={() => {
                 setResponseError("");
+                setResponseErrorItemId("");
+                if (!acceptedOfferResponseIds.has(response.id)) {
+                  setResponseError("Примите условия публичной оферты, чтобы перейти к оплате");
+                  setResponseErrorItemId(response.id);
+                  return;
+                }
                 setPayingResponseId(response.id);
                 void confirmClientPayment(response.paymentId)
                   .then(() => window.location.reload())
                   .catch((error) => {
                     setResponseError(error instanceof Error ? error.message : "Не удалось оплатить отклик.");
+                    setResponseErrorItemId(response.id);
                     setPayingResponseId("");
                   });
               }}
@@ -2578,6 +2645,8 @@ export function CabinetResponsesClient({ responses = [] }: { responses?: Cabinet
 export function CabinetPaymentsHistoryClient({ payments = [] }: { payments?: CabinetPaymentHistoryItem[] }) {
   const [payingPaymentId, setPayingPaymentId] = useState("");
   const [paymentError, setPaymentError] = useState("");
+  const [paymentErrorItemId, setPaymentErrorItemId] = useState("");
+  const [acceptedOfferPaymentIds, setAcceptedOfferPaymentIds] = useState<Set<string>>(() => new Set());
 
   if (!payments.length) {
     return <EmptyState mode="payment" />;
@@ -2594,20 +2663,52 @@ export function CabinetPaymentsHistoryClient({ payments = [] }: { payments?: Cab
             </div>
             <h3 className="mt-2 truncate text-lg font-black text-[#060b27]">{payment.subject}</h3>
             <p className="mt-1 text-xs font-semibold text-slate-500">Платеж {payment.id}</p>
-            {paymentError && payingPaymentId === payment.id ? <p className="mt-2 text-xs font-bold text-rose-600">{paymentError}</p> : null}
+            {paymentError && paymentErrorItemId === payment.id ? <p className="mt-2 text-xs font-bold text-rose-600">{paymentError}</p> : null}
           </div>
           <div className="grid gap-2 sm:justify-items-end">
             <p className="text-2xl font-black text-[#0875d1]">{payment.amount}</p>
+            {payment.status !== "succeeded" ? (
+              <label className="grid max-w-64 grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={acceptedOfferPaymentIds.has(payment.id)}
+                  onChange={(event) =>
+                    setAcceptedOfferPaymentIds((current) => {
+                      const next = new Set(current);
+
+                      if (event.target.checked) {
+                        next.add(payment.id);
+                      } else {
+                        next.delete(payment.id);
+                      }
+
+                      return next;
+                    })
+                  }
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#0875d1]"
+                />
+                <span>
+                  Принимаю <LegalLink href="/legal/offer">Публичную оферту</LegalLink>.
+                </span>
+              </label>
+            ) : null}
             <button
               type="button"
               disabled={payment.status === "succeeded" || payingPaymentId === payment.id}
               onClick={() => {
                 setPaymentError("");
+                setPaymentErrorItemId("");
+                if (!acceptedOfferPaymentIds.has(payment.id)) {
+                  setPaymentError("Примите условия публичной оферты, чтобы перейти к оплате");
+                  setPaymentErrorItemId(payment.id);
+                  return;
+                }
                 setPayingPaymentId(payment.id);
                 void confirmClientPayment(payment.id)
                   .then(() => window.location.reload())
                   .catch((error) => {
                     setPaymentError(error instanceof Error ? error.message : "Не удалось провести оплату.");
+                    setPaymentErrorItemId(payment.id);
                     setPayingPaymentId("");
                   });
               }}

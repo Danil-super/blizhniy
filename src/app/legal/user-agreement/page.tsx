@@ -1,33 +1,5 @@
-import { SiteHeader } from "@/components/SiteHeader";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return (
-    <>
-      <SiteHeader />
-      <main className="page-container py-10">
-        <section className="max-w-4xl">
-          <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Документы</p>
-          <h1 className="mt-3 text-4xl font-black text-[#060b27]">Пользовательское соглашение</h1>
-          <div className="mt-6 space-y-5 rounded-xl border border-slate-200 bg-white p-6 leading-7 text-slate-700 shadow-card">
-            <p>
-              Пользовательское соглашение платформы «БЛИЖНИЙ» определяет правила использования сервиса, размещения
-              объявлений, вакансий, анкет специалистов, заявок и иных материалов пользователей.
-            </p>
-            <p>
-              Пользователь обязуется размещать достоверную информацию, не публиковать запрещенные материалы, соблюдать
-              законодательство Российской Федерации и правила площадки.
-            </p>
-            <p>
-              Администрация вправе модерировать объявления, вакансии, анкеты специалистов и другие материалы, а также
-              ограничивать доступ к сервису при нарушении правил площадки или требований законодательства.
-            </p>
-            <p>
-              Продолжая использовать платформу, пользователь подтверждает согласие с настоящими условиями и принимает
-              ответственность за содержание размещаемых материалов.
-            </p>
-          </div>
-        </section>
-      </main>
-    </>
-  );
+  redirect("/legal/agreement");
 }

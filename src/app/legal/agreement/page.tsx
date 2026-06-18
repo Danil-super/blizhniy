@@ -1,5 +1,5 @@
 import { LegalDocumentPage } from "@/components/LegalDocumentPage";
 
 export default function Page() {
-  return <LegalDocumentPage documentKey="privacy" />;
+  return <LegalDocumentPage documentKey="agreement" />;
 }

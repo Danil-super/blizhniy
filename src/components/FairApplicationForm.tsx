@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DropdownSelect } from "@/components/DropdownSelect";
+import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { fairCategories } from "@/lib/data";
 import { ValidatedInput } from "@/components/ValidatedInput";
@@ -64,6 +65,22 @@ async function uploadFairPhotos(data: FormData, accessToken: string) {
   return payload?.files?.map((file) => file.path).filter((path): path is string => Boolean(path)) ?? [];
 }
 
+function findMissingConsent(form: HTMLFormElement) {
+  const missingRequiredConsent = Array.from(form.querySelectorAll<HTMLInputElement>('input[data-required-consent="true"]')).find((input) => !input.checked);
+
+  if (missingRequiredConsent) {
+    return missingRequiredConsent.dataset.errorMessage || "Примите условия документов, чтобы продолжить";
+  }
+
+  const paymentConsent = form.querySelector<HTMLInputElement>('input[data-payment-consent="true"]');
+
+  if (paymentConsent && !paymentConsent.checked) {
+    return paymentConsent.dataset.errorMessage || "Примите условия публичной оферты, чтобы перейти к оплате";
+  }
+
+  return "";
+}
+
 export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean }) {
   const router = useRouter();
   const [state, setState] = useState<SubmitState>("idle");
@@ -75,6 +92,13 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
     event.preventDefault();
 
     const form = event.currentTarget;
+    const missingConsent = findMissingConsent(form);
+
+    if (missingConsent) {
+      setState("error");
+      setMessage(missingConsent);
+      return;
+    }
 
     if (!form.reportValidity()) {
       return;
@@ -162,7 +186,7 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
   }
 
   return (
-    <form className="mt-6 grid gap-4" onSubmit={handleSubmit}>
+    <form className="mt-6 grid gap-4" onSubmit={handleSubmit} noValidate>
       <div className="grid gap-4 md:grid-cols-2">
         <label className="grid gap-2 text-sm font-bold text-slate-600">
           Название мастерской или ФИО
@@ -206,10 +230,20 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
         Комментарий
         <textarea name="comment" className="min-h-20 rounded-lg border border-slate-300 px-3 py-3 font-normal outline-none focus:border-[#0875d1] sm:min-h-24 sm:px-4" placeholder="Пожелания к месту, столу, электричеству" />
       </label>
-      <label className="flex gap-3 text-sm leading-6 text-slate-700">
-        <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-[#0875d1]" required />
-        <span>{adminMode ? "Согласен с правилами ярмарки. Заявка будет создана в тестовом режиме без оплаты." : "Согласен с правилами ярмарки и понимаю, что участие оплачивается после подачи заявки."}</span>
-      </label>
+      <LegalConsentCheckbox name="fairLegalAccepted" errorMessage="Примите условия документов, чтобы продолжить">
+        Я соглашаюсь с <LegalLink href="/legal/agreement">Пользовательским соглашением</LegalLink> и{" "}
+        <LegalLink href="/legal/privacy">Политикой обработки персональных данных</LegalLink>.
+      </LegalConsentCheckbox>
+      {!adminMode ? (
+        <LegalConsentCheckbox
+          name="publicOfferAccepted"
+          requiredConsent={false}
+          paymentConsent
+          errorMessage="Примите условия публичной оферты, чтобы перейти к оплате"
+        >
+          Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю участие в ярмарке на сайте БЛИЖНИЙ.
+        </LegalConsentCheckbox>
+      ) : null}
       <TurnstileWidget
         resetKey={captchaResetKey}
         onVerify={setCaptchaToken}

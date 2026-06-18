@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Buffer } from "node:buffer";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { DropdownSelect } from "@/components/DropdownSelect";
+import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SpecialistEditClient } from "@/components/SpecialistEditClient";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
@@ -278,6 +279,24 @@ export default async function SpecialistProfileFormPage({ searchParams }: PagePr
             <PhotoField defaultPhotos={selectedSpecialist?.images} label="Фото специалиста и работ" description="Добавьте портфолио, фото выполненных работ или рабочей зоны. В демо файлы выбираются локально, без загрузки на сервер." />
             <TextAreaField name="skills" label="Навыки" placeholder="Монтаж, ремонт, замена" defaultValue={selectedSpecialist?.skills} minLength={3} maxLength={120} required />
             <TextAreaField name="description" label="О себе и опыт работы" placeholder="Расскажите об опыте, подходе к работе, гарантиях и условиях выезда" defaultValue={selectedSpecialist?.description} maxLength={500} />
+            {!selectedSpecialist ? (
+              <div className="grid gap-3">
+                <LegalConsentCheckbox name="specialistLegalAccepted" errorMessage="Примите условия документов, чтобы продолжить">
+                  Я соглашаюсь с <LegalLink href="/legal/agreement">Пользовательским соглашением</LegalLink> и{" "}
+                  <LegalLink href="/legal/privacy">Политикой обработки персональных данных</LegalLink>.
+                </LegalConsentCheckbox>
+                {!adminMode ? (
+                  <LegalConsentCheckbox
+                    name="publicOfferAccepted"
+                    requiredConsent={false}
+                    paymentConsent
+                    errorMessage="Примите условия публичной оферты, чтобы перейти к оплате"
+                  >
+                    Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю услугу размещения анкеты специалиста на сайте БЛИЖНИЙ.
+                  </LegalConsentCheckbox>
+                ) : null}
+              </div>
+            ) : null}
             {adminMode ? (
               <AdminDemoPublishButton publicationType="specialist" returnHref="/cabinet/specialist" label="Сохранить анкету" />
             ) : !selectedSpecialist ? (

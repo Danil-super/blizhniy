@@ -109,6 +109,25 @@ function needsCaptcha(type: DemoPublicationType) {
   return type === "listing" || type === "vacancy" || type === "specialist" || type === "fairApplication";
 }
 
+function findMissingConsent(form: HTMLFormElement, requiresPayment: boolean) {
+  const requiredConsents = Array.from(form.querySelectorAll<HTMLInputElement>('input[data-required-consent="true"]'));
+  const missingRequiredConsent = requiredConsents.find((input) => !input.checked);
+
+  if (missingRequiredConsent) {
+    return missingRequiredConsent.dataset.errorMessage || "Примите условия документов, чтобы продолжить";
+  }
+
+  if (requiresPayment) {
+    const paymentConsent = form.querySelector<HTMLInputElement>('input[data-payment-consent="true"]');
+
+    if (paymentConsent && !paymentConsent.checked) {
+      return paymentConsent.dataset.errorMessage || "Примите условия публичной оферты, чтобы перейти к оплате";
+    }
+  }
+
+  return "";
+}
+
 async function verifyCaptchaToken(token: string) {
   const response = await fetch("/api/turnstile/verify", {
     method: "POST",
@@ -288,6 +307,14 @@ export function AdminDemoPublishButton({
       return;
     }
 
+    const requiresPayment = Boolean(paymentTariffId && !isDraftStatus(status));
+    const missingConsent = findMissingConsent(form, requiresPayment);
+
+    if (missingConsent) {
+      setError(missingConsent);
+      return;
+    }
+
     if (validateForm && !form.reportValidity()) {
       return;
     }
@@ -301,7 +328,6 @@ export function AdminDemoPublishButton({
       }
 
       const formData = new FormData(form);
-      const requiresPayment = Boolean(paymentTariffId && !isDraftStatus(status));
 
       if (publicationType === "listing") {
         const identity = await resolveAuthenticatedClientUserIdentity();

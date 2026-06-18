@@ -155,8 +155,7 @@ export function AuthForm({
   const [resetPassword, setResetPassword] = useState("");
   const [resetPasswordConfirm, setResetPasswordConfirm] = useState("");
   const [fullName, setFullName] = useState("");
-  const [acceptedAgreement, setAcceptedAgreement] = useState(false);
-  const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
+  const [acceptedLegalDocuments, setAcceptedLegalDocuments] = useState(false);
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
   const [captchaToken, setCaptchaToken] = useState("");
   const [state, setState] = useState<AuthState>("idle");
@@ -331,8 +330,8 @@ export function AuthForm({
           throw new Error("Пароли не совпадают");
         }
 
-        if (!acceptedAgreement || !acceptedPrivacy) {
-          throw new Error("Для регистрации нужно принять пользовательское соглашение и политику конфиденциальности");
+        if (!acceptedLegalDocuments) {
+          throw new Error("Примите условия документов, чтобы продолжить");
         }
 
         await verifyCaptcha();
@@ -378,7 +377,7 @@ export function AuthForm({
 
   const registerReady =
     mode !== "register" ||
-    (supabaseConfigured && !nameError && isValidEmail(normalizeAuthEmail(email)) && !passwordError && passwordConfirm.length > 0 && !passwordConfirmError && acceptedAgreement && acceptedPrivacy && Boolean(captchaToken));
+    (supabaseConfigured && !nameError && isValidEmail(normalizeAuthEmail(email)) && !passwordError && passwordConfirm.length > 0 && !passwordConfirmError && Boolean(captchaToken));
   const loginReady = supabaseConfigured && isValidEmail(normalizeAuthEmail(email)) && password.length > 0;
   const recoveryReady = supabaseConfigured && isValidEmail(normalizeAuthEmail(email)) && Boolean(captchaToken);
   const recoveryPasswordReady = supabaseConfigured && !resetPasswordError && resetPasswordConfirm.length > 0 && !resetPasswordConfirmError;
@@ -521,35 +520,24 @@ export function AuthForm({
               value={passwordConfirm}
             />
             {passwordConfirmError ? <span className="mt-2 block text-xs font-semibold text-rose-600">{passwordConfirmError}</span> : null}
-            <div className="mt-5 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
               <label className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3 text-sm leading-6 text-slate-700">
                 <input
                   type="checkbox"
-                  checked={acceptedAgreement}
-                  onChange={(event) => setAcceptedAgreement(event.target.checked)}
+                  checked={acceptedLegalDocuments}
+                  onChange={(event) => setAcceptedLegalDocuments(event.target.checked)}
                   className="mt-1 h-4 w-4 shrink-0 accent-[#0875d1]"
-                  required
                 />
                 <span className="min-w-0 [overflow-wrap:anywhere]">
-                  Принимаю{" "}
-                  <Link href="/legal/user-agreement" className="font-bold text-[#0875d1] [overflow-wrap:anywhere]">
-                    пользовательское соглашение
+                  Я принимаю{" "}
+                  <Link href="/legal/agreement" className="font-bold text-[#0875d1] [overflow-wrap:anywhere]">
+                    Пользовательское соглашение
                   </Link>
-                </span>
-              </label>
-              <label className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3 text-sm leading-6 text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={acceptedPrivacy}
-                  onChange={(event) => setAcceptedPrivacy(event.target.checked)}
-                  className="mt-1 h-4 w-4 shrink-0 accent-[#0875d1]"
-                  required
-                />
-                <span className="min-w-0 [overflow-wrap:anywhere]">
-                  Согласен с{" "}
+                  {" "}и{" "}
                   <Link href="/legal/privacy" className="font-bold text-[#0875d1] [overflow-wrap:anywhere]">
-                    политикой конфиденциальности
+                    Политику обработки персональных данных
                   </Link>
+                  .
                 </span>
               </label>
             </div>

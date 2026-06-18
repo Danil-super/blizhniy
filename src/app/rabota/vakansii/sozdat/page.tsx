@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
+import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { VacancyEmployerFields } from "@/components/VacancyEmployerFields";
@@ -127,6 +128,20 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
                   <input name="placementRightConfirmed" value="1" type="checkbox" required className="mt-0.5 h-4 w-4 shrink-0 accent-[#0875d1]" />
                   <span>Подтверждаю, что имею право размещать эту вакансию и указывать контакты работодателя.</span>
                 </label>
+                <LegalConsentCheckbox name="vacancyLegalAccepted" errorMessage="Примите условия документов, чтобы продолжить">
+                  Я соглашаюсь с <LegalLink href="/legal/agreement">Пользовательским соглашением</LegalLink> и{" "}
+                  <LegalLink href="/legal/privacy">Политикой обработки персональных данных</LegalLink>.
+                </LegalConsentCheckbox>
+                {!adminMode ? (
+                  <LegalConsentCheckbox
+                    name="publicOfferAccepted"
+                    requiredConsent={false}
+                    paymentConsent
+                    errorMessage="Примите условия публичной оферты, чтобы перейти к оплате"
+                  >
+                    Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю услугу размещения вакансии на сайте БЛИЖНИЙ.
+                  </LegalConsentCheckbox>
+                ) : null}
                 <div className="flex flex-wrap gap-3">
                   <AdminDemoPublishButton
                     publicationType="vacancy"

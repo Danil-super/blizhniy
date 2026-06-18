@@ -13,7 +13,7 @@ const publicLinks = [
   ["Как работает", "/kak-rabotaet"],
   ["Ярмарка мастеров", "/yarmarka-masterov"],
   ["Для бизнеса", "/cabinet/organization"],
-  ["Помощь", "/legal/user-agreement"],
+  ["Помощь", "/legal/agreement"],
 ];
 
 export function HeaderNav() {

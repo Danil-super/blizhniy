@@ -7,8 +7,12 @@ const footerLinks = [
   { href: "/kak-rabotaet", label: "Как работает" },
   { href: "/tarify", label: "Тарифы" },
   { href: "/rekvizity", label: "Реквизиты" },
-  { href: "/legal/user-agreement", label: "Пользовательское соглашение" },
-  { href: "/legal/privacy", label: "Политика конфиденциальности" },
+];
+
+const documentLinks = [
+  { href: "/legal/offer", label: "Публичная оферта" },
+  { href: "/legal/agreement", label: "Пользовательское соглашение" },
+  { href: "/legal/privacy", label: "Политика обработки персональных данных" },
 ];
 
 export function SiteFooter() {
@@ -27,13 +31,24 @@ export function SiteFooter() {
             prostova04@yandex.ru
           </a>
         </div>
-        <nav className="grid gap-2 text-sm font-semibold text-slate-700 sm:grid-cols-2 lg:grid-cols-3" aria-label="Нижняя навигация">
-          {footerLinks.map((link) => (
-            <Link key={link.href} href={link.href} className="py-1 transition hover:text-[#0875d1]">
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+        <div className="grid gap-6 sm:grid-cols-2">
+          <nav className="grid gap-2 text-sm font-semibold text-slate-700" aria-label="Нижняя навигация">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Разделы</p>
+            {footerLinks.map((link) => (
+              <Link key={link.href} href={link.href} className="py-1 transition hover:text-[#0875d1]">
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+          <nav className="grid gap-2 text-sm font-semibold text-slate-700" aria-label="Документы">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Документы</p>
+            {documentLinks.map((link) => (
+              <Link key={link.href} href={link.href} className="py-1 transition hover:text-[#0875d1]">
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
       </div>
     </footer>
   );
