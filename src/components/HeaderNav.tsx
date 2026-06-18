@@ -20,7 +20,7 @@ export function HeaderNav() {
   const { state } = useAuthState();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const links = state === "admin" ? [...publicLinks, ["Админка", "/admin"]] : publicLinks;
+  const links = state === "admin" ? [["Админка", "/admin"], ...publicLinks] : publicLinks;
 
   useEffect(() => {
     function handleDocumentClick(event: MouseEvent) {

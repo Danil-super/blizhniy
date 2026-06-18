@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { User } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 export type AuthState = "loading" | "signed-out" | "signed-in" | "admin";
@@ -11,6 +11,10 @@ type UserRoleRow = {
 };
 
 type AuthStateListener = (nextState: AuthState) => void;
+
+type AuthStateResponse = {
+  state?: AuthState;
+};
 
 let cachedState: AuthState = "loading";
 let initialized = false;
@@ -22,7 +26,22 @@ function publishState(nextState: AuthState) {
   listeners.forEach((listener) => listener(nextState));
 }
 
-async function resolveUserState(user: User | null | undefined, currentRequestId: number) {
+async function resolveUserStateFromRoles(user: User, currentRequestId: number) {
+  const supabase = getSupabaseBrowserClient();
+  const { data: roles, error } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+
+  if (error) {
+    throw error;
+  }
+
+  if (currentRequestId === requestId) {
+    publishState((roles as UserRoleRow[] | null)?.some((item) => item.role === "admin") ? "admin" : "signed-in");
+  }
+}
+
+async function resolveSessionState(session: Session | null | undefined, currentRequestId: number) {
+  const user = session?.user;
+
   if (!user) {
     if (currentRequestId === requestId) {
       publishState("signed-out");
@@ -31,16 +50,26 @@ async function resolveUserState(user: User | null | undefined, currentRequestId:
   }
 
   try {
-    const supabase = getSupabaseBrowserClient();
-    const { data: roles, error } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+    if (session?.access_token) {
+      const response = await fetch("/api/auth/state", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
 
-    if (error) {
-      throw error;
+      if (response.ok) {
+        const payload = (await response.json().catch(() => null)) as AuthStateResponse | null;
+
+        if (payload?.state === "admin" || payload?.state === "signed-in") {
+          if (currentRequestId === requestId) {
+            publishState(payload.state);
+          }
+          return;
+        }
+      }
     }
 
-    if (currentRequestId === requestId) {
-      publishState((roles as UserRoleRow[] | null)?.some((item) => item.role === "admin") ? "admin" : "signed-in");
-    }
+    await resolveUserStateFromRoles(user, currentRequestId);
   } catch {
     if (currentRequestId === requestId) {
       publishState("signed-in");
@@ -66,13 +95,13 @@ function ensureAuthStateInitialized() {
         }
 
         const currentRequestId = ++requestId;
-        return resolveUserState(data.session?.user, currentRequestId);
+        return resolveSessionState(data.session, currentRequestId);
       })
       .catch(() => publishState("signed-out"));
 
     supabase.auth.onAuthStateChange((_event, session) => {
       const currentRequestId = ++requestId;
-      window.setTimeout(() => resolveUserState(session?.user, currentRequestId), 0);
+      window.setTimeout(() => resolveSessionState(session, currentRequestId), 0);
     });
   } catch {
     publishState("signed-out");

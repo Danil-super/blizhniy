@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { User } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 export type AdminAccessState = "loading" | "admin" | "signed-out" | "forbidden" | "error";
 
 type UserRoleRow = {
   role: string;
+};
+
+type AuthStateResponse = {
+  state?: "admin" | "signed-in" | "signed-out";
 };
 
 export function useAdminAccess() {
@@ -18,8 +22,22 @@ export function useAdminAccess() {
     let active = true;
     const supabase = getSupabaseBrowserClient();
 
-    async function checkAdminRole(user: User | null | undefined) {
+    async function checkAdminRoleFromUser(user: User) {
+      const { data: roles, error: rolesError } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+
+      if (rolesError) {
+        throw rolesError;
+      }
+
+      if (active) {
+        setState((roles as UserRoleRow[] | null)?.some((item) => item.role === "admin") ? "admin" : "forbidden");
+      }
+    }
+
+    async function checkAdminRole(session: Session | null | undefined) {
       try {
+        const user = session?.user;
+
         if (!user) {
           if (active) {
             setState("signed-out");
@@ -27,15 +45,24 @@ export function useAdminAccess() {
           return;
         }
 
-        const { data: roles, error: rolesError } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+        if (session?.access_token) {
+          const response = await fetch("/api/auth/state", {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          });
 
-        if (rolesError) {
-          throw rolesError;
+          if (response.ok) {
+            const payload = (await response.json().catch(() => null)) as AuthStateResponse | null;
+
+            if (active) {
+              setState(payload?.state === "admin" ? "admin" : "forbidden");
+            }
+            return;
+          }
         }
 
-        if (active) {
-          setState((roles as UserRoleRow[] | null)?.some((item) => item.role === "admin") ? "admin" : "forbidden");
-        }
+        await checkAdminRoleFromUser(user);
       } catch (error) {
         if (active) {
           setState("forbidden");
@@ -51,7 +78,7 @@ export function useAdminAccess() {
           throw error;
         }
 
-        return checkAdminRole(data.session?.user);
+        return checkAdminRole(data.session);
       })
       .catch((error) => {
         if (active) {
@@ -65,7 +92,7 @@ export function useAdminAccess() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setState("loading");
       window.setTimeout(() => {
-        checkAdminRole(session?.user);
+        checkAdminRole(session);
       }, 0);
     });
 
