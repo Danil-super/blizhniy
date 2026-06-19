@@ -499,6 +499,16 @@ export function markPaymentTargetSucceeded(payment: Payment) {
     return "published";
   }
 
+  if (payment.targetType === "workRequest") {
+    const request = getMockStore().workRequests.find((item) => item.id === payment.targetId);
+
+    if (request) {
+      request.status = "published";
+    }
+
+    return "published";
+  }
+
   if (payment.targetType === "specialist") {
     const specialist = getMockStore().specialists.find((item) => item.id === payment.targetId);
 

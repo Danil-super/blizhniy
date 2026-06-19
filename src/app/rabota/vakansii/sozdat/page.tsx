@@ -132,7 +132,7 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
                     <Field name="workFormat" label="Формат работы" placeholder="На месте, удаленно, разъездная" minLength={2} maxLength={80} required />
                   </div>
                   <div className="vacancy-salary-field">
-                    <Field name="salary" label="Оплата" placeholder="80 000 ₽" minLength={2} maxLength={80} required />
+                    <Field name="salary" label="Оплата" placeholder="80000" minLength={2} maxLength={80} required />
                   </div>
                 </div>
                 <PhotoField label="Фото работодателя или рабочего места" description="Добавьте логотип, фасад, рабочее место или реальные фото работодателя. Первое фото будет обложкой вакансии." required autoOpenCropper={false} maxPhotos={12} />

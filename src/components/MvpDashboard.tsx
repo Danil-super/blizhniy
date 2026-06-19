@@ -647,7 +647,7 @@ export function CabinetVacanciesPage() {
 
 export function CabinetWorkRequestsPage() {
   return (
-    <Shell title="Мои заказы исполнителям" description="Задачи, которые пользователь размещает для специалистов и исполнителей." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/zakazy" createHref="/cabinet/zakazy" createLabel="Разместить заказ">
+    <Shell title="Мои заказы исполнителям" description="Задачи, которые пользователь размещает для специалистов и исполнителей." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/zakazy" createHref="/rabota/zakazy/sozdat" createLabel="Разместить заказ">
       <CabinetAuthGate>
         <CabinetPublicationsClient type="workRequest" />
       </CabinetAuthGate>

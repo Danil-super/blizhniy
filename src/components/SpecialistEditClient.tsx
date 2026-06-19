@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
+import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { appendPublicationHistory, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 
@@ -90,6 +91,7 @@ export function SpecialistEditClient({ specialistId }: { specialistId: string })
       });
 
       window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
+      markCabinetDataChanged();
       window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
       window.location.href = "/cabinet/specialist";
     } catch (error) {

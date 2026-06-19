@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { BriefcaseBusiness, ChevronRight, ClipboardList, MapPin, UserRound } from "lucide-react";
+import { BriefcaseBusiness, ChevronRight, ClipboardList, Clock3, MapPin, UserRound } from "lucide-react";
 import { VacancyCardMedia } from "@/components/VacancyMedia";
 import { specialists as fallbackSpecialists, vacancies as fallbackVacancies, workRequests as fallbackWorkRequests } from "@/lib/data";
+import { formatPublicationDateTime } from "@/lib/publication-time";
 import type { JobVacancy, SpecialistProfile, WorkRequest } from "@/lib/types";
 
 const previewLimit = 6;
@@ -51,11 +52,19 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
 }
 
 function WorkRequestCard({ request }: { request: WorkRequest }) {
+  const publishedLabel = formatPublicationDateTime(request.publishedAt ?? request.createdAt, "10:00");
+
   return (
-    <Link href="/cabinet/zakazy" className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
+    <Link href={`/rabota/zakazy/${request.id}`} className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
       <p className="truncate text-xs font-semibold text-slate-500">{request.author}</p>
       <h3 className="mt-1 line-clamp-2 min-h-10 text-sm font-black leading-5 text-[#060b27] transition group-hover:text-[#0875d1]">{request.title}</h3>
       <p className="mt-2 text-base font-black text-[#060b27]">{request.budget}</p>
+      {publishedLabel ? (
+        <p className="mt-2 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
+          <Clock3 className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{publishedLabel}</span>
+        </p>
+      ) : null}
       <p className="mt-2 flex items-center gap-1 text-xs text-slate-500">
         <MapPin className="h-3.5 w-3.5" />
         {request.city}

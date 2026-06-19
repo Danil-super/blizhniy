@@ -140,6 +140,7 @@ export type WorkRequest = {
   lng?: number;
   showExactAddress: boolean;
   budget: string;
+  images?: string[];
   phone?: string;
   messengerUrl?: string;
   status: PublicationStatus;
@@ -182,7 +183,7 @@ export type Profession = {
 export type Tariff = {
   id: string;
   name: string;
-  action: "listing_publication" | "vacancy_publication" | "specialist_publication" | "job_response" | "fair_participation" | "ad_marquee";
+  action: "listing_publication" | "vacancy_publication" | "work_request_publication" | "specialist_publication" | "job_response" | "fair_participation" | "ad_marquee";
   price: number;
   durationDays: number | null;
   active: boolean;
@@ -191,7 +192,7 @@ export type Tariff = {
 export type Payment = {
   id: string;
   userId?: string;
-  targetType: "listing" | "vacancy" | "specialist" | "application" | "fair_application" | "ad_marquee";
+  targetType: "listing" | "vacancy" | "workRequest" | "specialist" | "application" | "fair_application" | "ad_marquee";
   targetId?: string;
   targetTitle: string;
   tariffId: string;

@@ -67,6 +67,11 @@ export type CreateStoredListingInput = {
   title: string;
 };
 
+type StoreListingBodyOptions = {
+  clearMedia?: boolean;
+  preserveMedia?: boolean;
+};
+
 function normalizeLookupText(value?: string) {
   return value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
 }
@@ -412,6 +417,78 @@ export async function updateStoredListingForUser(listingId: string, userId: stri
   }
 
   await replaceListingImages(listingId, input.mediaPaths);
+
+  return listingWithMediaFallback((await getStoredListingById(listingId)) ?? mapListing(rows[0]), input.mediaPaths);
+}
+
+async function storedListingBody(input: CreateStoredListingInput, status: PublicationStatus, options: StoreListingBodyOptions = {}) {
+  const categoryId = await findCategoryId(input.categorySlug, input.subcategory);
+  const cityRow = await findCity(input.city);
+  const regionId = await findRegionId(cityRow);
+
+  return {
+    address: input.address ?? null,
+    category_id: categoryId ?? null,
+    city_id: cityRow?.id ?? null,
+    contact_phone: input.phone ?? null,
+    description: input.description || "Описание будет дополнено.",
+    district: input.district ?? null,
+    latitude: input.lat ?? null,
+    listing_type: dbTypeByListingKind[input.kind] ?? "sell",
+    longitude: input.lng ?? null,
+    messenger_url: input.messengerUrl ?? null,
+    price: priceToNumber(input.price),
+    ...(options.preserveMedia && input.mediaPaths === undefined ? {} : {}),
+    region_id: regionId ?? null,
+    show_exact_address: Boolean(input.address && input.lat && input.lng),
+    status,
+    title: input.title,
+  };
+}
+
+export async function saveStoredListingForUser(
+  listingId: string,
+  userId: string,
+  input: CreateStoredListingInput,
+  options: StoreListingBodyOptions = {},
+) {
+  if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
+    return undefined;
+  }
+
+  const existingRows = await supabaseRest<Array<Pick<ListingRow, "id" | "published_at" | "status">>>(
+    `/rest/v1/listings?select=id,published_at,status&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&limit=1`,
+  );
+  const existingListing = existingRows[0];
+
+  if (
+    !existingListing ||
+    existingListing.status === "archived" ||
+    existingListing.status === "sold" ||
+    existingListing.status === "expired" ||
+    existingListing.status === "rejected"
+  ) {
+    return undefined;
+  }
+
+  const status = existingListing.status;
+  const body = await storedListingBody(input, status, options);
+  const rows = await supabaseRest<ListingRow[]>(
+    `/rest/v1/listings?select=${listingSelect}&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}`,
+    {
+      method: "PATCH",
+      prefer: "return=representation",
+      body,
+    },
+  );
+
+  if (!rows[0]?.id) {
+    return undefined;
+  }
+
+  if (options.clearMedia || input.mediaPaths !== undefined) {
+    await replaceListingImages(listingId, input.mediaPaths);
+  }
 
   return listingWithMediaFallback((await getStoredListingById(listingId)) ?? mapListing(rows[0]), input.mediaPaths);
 }

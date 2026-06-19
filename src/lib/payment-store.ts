@@ -4,6 +4,7 @@ import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-r
 import { getTariffs } from "@/lib/tariff-store";
 import type { Payment, Tariff } from "@/lib/types";
 import { markStoredVacancyPaid } from "@/lib/vacancy-store";
+import { markStoredWorkRequestPaid } from "@/lib/work-request-store";
 
 type PaymentRow = {
   amount: number | string;
@@ -60,6 +61,20 @@ async function getStoredTariffByAction(action: Tariff["action"]) {
   return rows[0];
 }
 
+async function getPaymentTariffRow(input: StoredPaymentInput) {
+  const tariff = await getStoredTariffByAction(input.tariff.action);
+
+  if (tariff) {
+    return tariff;
+  }
+
+  if (input.targetType === "workRequest" && input.tariff.action === "work_request_publication") {
+    return getStoredTariffByAction("listing_publication");
+  }
+
+  return undefined;
+}
+
 async function getFairApplicationTitle(targetId: string) {
   if (!isUuid(targetId)) {
     return undefined;
@@ -111,7 +126,7 @@ async function getTariffActionById(tariffId?: string | null) {
 }
 
 export async function createStoredPayment(input: StoredPaymentInput) {
-  const tariff = await getStoredTariffByAction(input.tariff.action);
+  const tariff = await getPaymentTariffRow(input);
 
   if (!tariff) {
     throw new Error(`Tariff ${input.tariff.action} is not configured in Supabase`);
@@ -263,6 +278,11 @@ export async function markStoredPaymentTargetSucceeded(payment: Payment) {
       throw new Error("Не удалось опубликовать вакансию после оплаты");
     }
 
+    return "published" as const;
+  }
+
+  if (payment.targetType === "workRequest" && payment.targetId && isUuid(payment.targetId)) {
+    await markStoredWorkRequestPaid(payment.targetId);
     return "published" as const;
   }
 

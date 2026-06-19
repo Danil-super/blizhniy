@@ -40,12 +40,13 @@ function tariffFromRow(row: TariffRow): Tariff {
   };
 }
 
-function rowPatchFromTariffPatch(patch: TariffPatch) {
+function rowBodyFromTariff(tariff: Tariff, patch: TariffPatch = {}) {
   return {
-    ...(typeof patch.name === "string" ? { name: patch.name } : {}),
-    ...(typeof patch.price === "number" ? { price: patch.price } : {}),
-    ...(patch.durationDays !== undefined ? { duration_days: patch.durationDays } : {}),
-    ...(patch.active !== undefined ? { active: patch.active } : {}),
+    action: tariff.action,
+    active: patch.active ?? tariff.active,
+    duration_days: patch.durationDays === undefined ? tariff.durationDays : patch.durationDays,
+    name: patch.name ?? tariff.name,
+    price: patch.price ?? tariff.price,
     updated_at: new Date().toISOString(),
   };
 }
@@ -103,10 +104,10 @@ export async function updateTariff(tariffId: string, patch: TariffPatch) {
     return;
   }
 
-  await supabaseRest(`/rest/v1/tariffs?action=eq.${encodeURIComponent(tariff.action)}`, {
-    method: "PATCH",
-    prefer: "return=minimal",
-    body: rowPatchFromTariffPatch(patch),
+  await supabaseRest("/rest/v1/tariffs?on_conflict=action", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=minimal",
+    body: rowBodyFromTariff(tariff, patch),
   });
 }
 
@@ -116,21 +117,11 @@ export async function resetStoredTariffs() {
     return;
   }
 
-  await Promise.all(
-    baseTariffs.map((tariff) =>
-      supabaseRest(`/rest/v1/tariffs?action=eq.${encodeURIComponent(tariff.action)}`, {
-        method: "PATCH",
-        prefer: "return=minimal",
-        body: {
-          active: tariff.active,
-          duration_days: tariff.durationDays,
-          name: tariff.name,
-          price: tariff.price,
-          updated_at: new Date().toISOString(),
-        },
-      }),
-    ),
-  );
+  await supabaseRest("/rest/v1/tariffs?on_conflict=action", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=minimal",
+    body: baseTariffs.map((tariff) => rowBodyFromTariff(tariff)),
+  });
 }
 
 export function updateTariffPatch(tariffId: string, patch: TariffPatch) {

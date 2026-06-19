@@ -36,10 +36,18 @@ function tariffFormKey(tariff: Tariff) {
   return `${tariff.id}:${tariff.name}:${tariff.price}:${tariff.durationDays ?? "once"}:${tariff.active}`;
 }
 
-export function AdminTariffsClient({ initialPayments, initialTariffs }: { initialPayments: Payment[]; initialTariffs: Tariff[] }) {
+export function AdminTariffsClient({
+  initialMessage = "Готово к работе с тарифами.",
+  initialPayments,
+  initialTariffs,
+}: {
+  initialMessage?: string;
+  initialPayments: Payment[];
+  initialTariffs: Tariff[];
+}) {
   const [tariffs, setTariffs] = useState(initialTariffs);
   const [payments, setPayments] = useState(initialPayments);
-  const [message, setMessage] = useState("Готово к работе с тарифами.");
+  const [message, setMessage] = useState(initialMessage);
   const [saving, setSaving] = useState(false);
 
   async function load() {
@@ -58,7 +66,6 @@ export function AdminTariffsClient({ initialPayments, initialTariffs }: { initia
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function save(event: FormEvent<HTMLFormElement>) {

@@ -5,6 +5,7 @@ import { ClipboardList, MapPin } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { LocationMap } from "@/components/LocationMap";
+import { StoredMediaImage } from "@/components/StoredMedia";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { demoPublicationsStorageKey, type DemoPublication } from "@/lib/demo-publications";
 
@@ -30,6 +31,7 @@ function DemoStatusBadge({ status }: { status: string }) {
 
 export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
   const [items, setItems] = useState<DemoPublication[]>([]);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const request = useMemo(() => items.find((item) => item.type === "workRequest" && item.id === requestId), [items, requestId]);
 
   useEffect(() => {
@@ -51,6 +53,8 @@ export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
   }
 
   const messageHref = request.messengerUrl ?? `https://wa.me/${(request.phone ?? "+78610009999").replace(/\D/g, "")}`;
+  const images = request.images ?? [];
+  const activeImage = images[Math.min(activeImageIndex, Math.max(0, images.length - 1))];
 
   return (
     <>
@@ -69,6 +73,32 @@ export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
               <MapPin className="h-4 w-4 sm:h-5 sm:w-5" />
               {request.city}
             </p>
+            {activeImage ? (
+              <section className="mt-6">
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                  <div className="flex aspect-[4/3] max-h-[34rem] items-center justify-center bg-slate-100">
+                    <StoredMediaImage src={activeImage} alt={request.title} className="h-full w-full object-contain" />
+                  </div>
+                </div>
+                {images.length > 1 ? (
+                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
+                    {images.map((image, index) => (
+                      <button
+                        key={`${image}-${index}`}
+                        type="button"
+                        onClick={() => setActiveImageIndex(index)}
+                        className={`h-20 w-24 shrink-0 overflow-hidden rounded-xl border bg-white transition sm:h-24 sm:w-32 ${
+                          index === activeImageIndex ? "border-[#0875d1] ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
+                        }`}
+                        aria-label={`Показать фото ${index + 1}`}
+                      >
+                        <StoredMediaImage src={image} alt={`${request.title}, фото ${index + 1}`} className="h-full w-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
             <section className="mt-6 text-sm leading-6 text-slate-700 sm:text-base sm:leading-7">
               <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Описание</h2>
               <p className="mt-2 whitespace-pre-line">{request.description ?? "Описание заказа будет дополнено."}</p>

@@ -1,10 +1,26 @@
 import { AdminTariffsClient } from "@/components/admin/AdminTariffsClient";
 import { SiteHeader } from "@/components/SiteHeader";
 import { listPayments } from "@/lib/payment-provider";
-import { getStoredTariffs } from "@/lib/tariff-store";
+import { getStoredTariffs, getTariffs } from "@/lib/tariff-store";
+import type { Payment } from "@/lib/types";
+
+async function loadTariffPageData() {
+  try {
+    const [tariffs, payments] = await Promise.all([getStoredTariffs(), listPayments()]);
+
+    return { initialMessage: "Данные загружены из базы.", payments, tariffs };
+  } catch (error) {
+    console.error("Failed to load tariff admin data", error);
+    return {
+      initialMessage: "База временно недоступна, показаны локальные тарифы. Нажмите «Обновить», когда соединение восстановится.",
+      payments: [] as Payment[],
+      tariffs: getTariffs(),
+    };
+  }
+}
 
 export async function AdminTariffsPage() {
-  const [tariffs, payments] = await Promise.all([getStoredTariffs(), listPayments()]);
+  const { initialMessage, payments, tariffs } = await loadTariffPageData();
 
   return (
     <>
@@ -20,7 +36,7 @@ export async function AdminTariffsPage() {
           </div>
         </div>
         <div className="mt-5 sm:mt-7">
-          <AdminTariffsClient initialPayments={payments} initialTariffs={tariffs} />
+          <AdminTariffsClient initialMessage={initialMessage} initialPayments={payments} initialTariffs={tariffs} />
         </div>
       </main>
     </>

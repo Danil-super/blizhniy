@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
 import { SiteHeader } from "@/components/SiteHeader";
+import { WorkRequestDetailClient } from "@/components/WorkRequestDetailClient";
 import { listWorkRequests } from "@/lib/mock-store";
 
 type PageProps = {
@@ -11,7 +12,16 @@ export default async function Page({ params }: PageProps) {
   const { slug } = await params;
   const request = listWorkRequests().find((item) => item.id === slug);
 
-  if (!request || request.status !== "published") {
+  if (!request) {
+    return (
+      <>
+        <SiteHeader />
+        <WorkRequestDetailClient requestId={slug} />
+      </>
+    );
+  }
+
+  if (request.status !== "published") {
     notFound();
   }
 

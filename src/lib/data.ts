@@ -433,6 +433,7 @@ export const specialists: SpecialistProfile[] = [
 export const tariffs: Tariff[] = [
   { id: "listing-publication", name: "Размещение объявления", action: "listing_publication", price: 199, durationDays: 30, active: true },
   { id: "vacancy-publication", name: "Размещение вакансии", action: "vacancy_publication", price: 499, durationDays: 30, active: true },
+  { id: "work-request-publication", name: "Размещение заказа", action: "work_request_publication", price: 199, durationDays: 30, active: true },
   { id: "specialist-publication", name: "Размещение анкеты специалиста", action: "specialist_publication", price: 299, durationDays: 30, active: true },
   { id: "ad-marquee", name: "Реклама в бегущей строке", action: "ad_marquee", price: 299, durationDays: 7, active: true },
   { id: "job-response", name: "Отклик на вакансию", action: "job_response", price: 99, durationDays: null, active: true },

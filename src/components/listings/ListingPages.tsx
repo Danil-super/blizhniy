@@ -1789,15 +1789,18 @@ function TextInput({
 
 function PriceInput({ compact = false, defaultValue }: { compact?: boolean; defaultValue?: string }) {
   return (
-    <input
-      name="price"
-      defaultValue={extractListingPriceDigits(defaultValue)}
-      inputMode="numeric"
-      maxLength={maxListingPriceDigits}
-      pattern="[0-9]*"
-      placeholder="12000"
-      className={`${compact ? "h-10 px-3 text-sm sm:h-12 sm:px-4 sm:text-base" : "h-12 px-4"} w-full rounded-lg border border-slate-300 outline-none focus:border-[#0875d1]`}
-    />
+    <span className="relative block">
+      <input
+        name="price"
+        defaultValue={extractListingPriceDigits(defaultValue)}
+        inputMode="numeric"
+        maxLength={maxListingPriceDigits}
+        pattern="[0-9]*"
+        placeholder="12000"
+        className={`${compact ? "h-10 px-3 pr-9 text-sm sm:h-12 sm:px-4 sm:pr-10 sm:text-base" : "h-12 px-4 pr-10"} w-full rounded-lg border border-slate-300 outline-none focus:border-[#0875d1]`}
+      />
+      <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-sm font-black text-slate-500 sm:right-4 sm:text-base">₽</span>
+    </span>
   );
 }
 

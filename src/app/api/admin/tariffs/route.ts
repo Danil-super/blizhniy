@@ -11,6 +11,16 @@ type UpdateTariffBody = {
   price?: number;
 };
 
+function tariffErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+
+  if (message.includes("invalid input value for enum tariff_action")) {
+    return "В базе не применена миграция тарифов. Примените supabase/migrations/20260619_sync_publication_tariffs.sql и повторите сохранение.";
+  }
+
+  return message || "Не удалось сохранить тариф";
+}
+
 async function requireAdmin(request: Request) {
   if (!isSupabaseServerConfigured()) {
     return NextResponse.json({ error: "Auth is not configured" }, { status: 503 });
@@ -56,12 +66,16 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Invalid tariff duration" }, { status: 400 });
   }
 
-  await updateTariff(id, {
-    active: Boolean(body?.active),
-    durationDays,
-    name,
-    price,
-  });
+  try {
+    await updateTariff(id, {
+      active: Boolean(body?.active),
+      durationDays,
+      name,
+      price,
+    });
+  } catch (error) {
+    return NextResponse.json({ error: tariffErrorMessage(error) }, { status: 400 });
+  }
 
   const tariffs = await getStoredTariffs();
 
@@ -81,7 +95,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
   }
 
-  await resetStoredTariffs();
+  try {
+    await resetStoredTariffs();
+  } catch (error) {
+    return NextResponse.json({ error: tariffErrorMessage(error) }, { status: 400 });
+  }
   const tariffs = await getStoredTariffs();
 
   return NextResponse.json({ tariffs });

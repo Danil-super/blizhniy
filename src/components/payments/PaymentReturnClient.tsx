@@ -23,6 +23,10 @@ function cabinetHrefForPayment(targetType?: string) {
     return "/cabinet/vakansii";
   }
 
+  if (targetType === "workRequest") {
+    return "/cabinet/zakazy";
+  }
+
   if (targetType === "specialist") {
     return "/cabinet/specialist";
   }
@@ -53,7 +57,7 @@ export function PaymentReturnClient({ paymentId }: PaymentReturnClientProps) {
         setReturnHref(nextHref);
 
         if (payload.payment?.status !== "succeeded") {
-          setError("Платеж еще ожидает подтверждения от ЮKassa. Объявление обновится автоматически после финального статуса.");
+          setError("Платеж еще ожидает подтверждения от ЮKassa. Публикация обновится автоматически после финального статуса.");
           return;
         }
 

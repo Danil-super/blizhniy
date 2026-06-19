@@ -4,14 +4,73 @@ import {
   listStoredListingsForUser,
   markStoredListingSoldForUser,
   restoreStoredListingForUser,
+  saveStoredListingForUser,
 } from "@/lib/listing-store";
 import { confirmPayment } from "@/lib/payment-provider";
 import { listStoredPaymentsForUser, markStoredPaymentTargetSucceeded, updateStoredPayment } from "@/lib/payment-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import type { Payment } from "@/lib/types";
+import type { CreateStoredListingInput } from "@/lib/listing-store";
+import type { ListingKind } from "@/lib/types";
+
+type ListingActionBody = {
+  action?: string;
+  address?: string;
+  categorySlug?: string;
+  city?: string;
+  clearMedia?: boolean;
+  description?: string;
+  district?: string;
+  id?: string;
+  kind?: ListingKind;
+  lat?: number;
+  lng?: number;
+  mediaPaths?: string[];
+  messengerUrl?: string;
+  phone?: string;
+  price?: string;
+  subcategory?: string;
+  title?: string;
+};
 
 function isTestYooKassaMode() {
   return process.env.YOOKASSA_SECRET_KEY?.trim().startsWith("test_") ?? false;
+}
+
+const messengerPattern = /^(@[A-Za-z0-9_]{5,32}|https?:\/\/[^\s]+)$/;
+
+function cleanString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function cleanNumber(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function cleanKind(value: unknown): ListingKind {
+  return value === "kuplyu" || value === "menyayu" || value === "otdam-darom" || value === "arenda" ? value : "prodam";
+}
+
+function cleanMediaPaths(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((item) => cleanString(item)).filter((item) => item && item.length <= 500).slice(0, 20);
+}
+
+function hasValidPhone(value: string) {
+  if (!value) {
+    return false;
+  }
+
+  const digits = value.replace(/\D/g, "");
+  return digits.length === 10 || (digits.length === 11 && (digits.startsWith("7") || digits.startsWith("8")));
+}
+
+function hasValidMessenger(value: string) {
+  return Boolean(value && messengerPattern.test(value));
 }
 
 async function forceSucceededTestPayment(payment: Payment) {
@@ -99,15 +158,70 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы изменить объявление" }, { status: 401 });
   }
 
-  const payload = (await request.json().catch(() => null)) as { action?: string; id?: string } | null;
+  const payload = (await request.json().catch(() => null)) as ListingActionBody | null;
   const listingId = payload?.id?.trim();
   const action = payload?.action?.trim();
 
-  if (!listingId) {
+  if (!payload || !listingId) {
     return NextResponse.json({ error: "listing id is required" }, { status: 400 });
   }
 
   try {
+    if (!action) {
+      const title = cleanString(payload.title);
+      const description = cleanString(payload.description);
+      const phone = cleanString(payload.phone);
+      const messengerUrl = cleanString(payload.messengerUrl);
+
+      if (title.length < 3 || title.length > 120) {
+        return NextResponse.json({ error: "Название объявления должно быть от 3 до 120 символов" }, { status: 400 });
+      }
+
+      if (description.length > 3000) {
+        return NextResponse.json({ error: "Описание объявления слишком длинное" }, { status: 400 });
+      }
+
+      if (!phone && !messengerUrl) {
+        return NextResponse.json({ error: "Укажите телефон или мессенджер для связи" }, { status: 400 });
+      }
+
+      if (phone && !hasValidPhone(phone)) {
+        return NextResponse.json({ error: "Введите корректный телефон" }, { status: 400 });
+      }
+
+      if (messengerUrl && !hasValidMessenger(messengerUrl)) {
+        return NextResponse.json({ error: "Введите @username или ссылку на мессенджер" }, { status: 400 });
+      }
+
+      const listingInput: CreateStoredListingInput = {
+        address: cleanString(payload.address) || undefined,
+        authorId: auth.user.id,
+        categorySlug: cleanString(payload.categorySlug) || "dlya-doma-i-dachi",
+        city: cleanString(payload.city) || "Краснодар",
+        description: description || undefined,
+        district: cleanString(payload.district) || undefined,
+        kind: cleanKind(payload.kind),
+        lat: cleanNumber(payload.lat),
+        lng: cleanNumber(payload.lng),
+        mediaPaths: cleanMediaPaths(payload.mediaPaths),
+        messengerUrl: messengerUrl || undefined,
+        phone: phone || undefined,
+        price: cleanString(payload.price) || undefined,
+        subcategory: cleanString(payload.subcategory) || undefined,
+        title,
+      };
+      const listing = await saveStoredListingForUser(listingId, auth.user.id, listingInput, {
+        clearMedia: Boolean(payload.clearMedia),
+        preserveMedia: payload.mediaPaths === undefined && !payload.clearMedia,
+      });
+
+      if (!listing) {
+        return NextResponse.json({ error: "Не удалось сохранить объявление. Возможно, оно снято с публикации или уже удалено." }, { status: 409 });
+      }
+
+      return NextResponse.json({ listing }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     if (action === "sold") {
       const updated = await markStoredListingSoldForUser(listingId, auth.user.id);
 

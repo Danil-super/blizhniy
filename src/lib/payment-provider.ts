@@ -63,6 +63,10 @@ function resolveTargetType(tariff: Tariff): PaymentTargetType {
     return "vacancy";
   }
 
+  if (tariff.action === "work_request_publication") {
+    return "workRequest";
+  }
+
   if (tariff.action === "specialist_publication") {
     return "specialist";
   }

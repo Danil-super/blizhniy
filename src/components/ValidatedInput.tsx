@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, InputHTMLAttributes, useEffect, useState } from "react";
-import { extractListingPriceDigits, formatListingPrice, maxListingPriceDigits } from "@/lib/listing-price";
+import { extractListingPriceDigits, maxListingPriceDigits } from "@/lib/listing-price";
 import { capitalizeFirstTextLetter } from "@/lib/text-format";
 
 type ValidationKind = "phone" | "email" | "messenger" | "emailOrMessenger" | "salary" | "urlOrHandle" | "url";
@@ -65,7 +65,7 @@ function sanitizeNoSpaces(value: string) {
 
 function sanitizeByValidation(value: string, validation?: ValidationKind, capitalizeFirstLetter = false) {
   if (validation === "salary") {
-    return formatListingPrice(extractListingPriceDigits(value));
+    return extractListingPriceDigits(value);
   }
 
   if (validation === "phone") {
@@ -84,9 +84,9 @@ function getValidationProps(validation?: ValidationKind) {
     return {
       autoComplete: "off",
       inputMode: "numeric" as const,
-      maxLength: maxListingPriceDigits + 4,
-      pattern: "^[0-9 ]+ ₽$",
-      title: "Введите сумму цифрами, например 80000. Поле автоматически покажет формат 80 000 ₽.",
+      maxLength: maxListingPriceDigits,
+      pattern: "[0-9]*",
+      title: "Введите сумму цифрами, например 80000.",
       type: "text",
     };
   }

@@ -6,6 +6,7 @@ import { isUuid } from "@/lib/supabase-rest";
 import type { Payment } from "@/lib/types";
 import { getStoredVacancyForUser, markStoredVacancyPendingPaymentForUser } from "@/lib/vacancy-store";
 import { normalizeVacancyRequisites, validateVacancyRequisites } from "@/lib/vacancy-requisites";
+import { getStoredWorkRequestForUser, markStoredWorkRequestPendingPaymentForUser } from "@/lib/work-request-store";
 
 type CreatePaymentBody = {
   tariffId?: string;
@@ -124,6 +125,26 @@ export async function POST(request: Request) {
       }
 
       targetTitle = vacancy.title;
+    }
+
+    if (body.targetType === "workRequest") {
+      if (!body.targetId || !isUuid(body.targetId)) {
+        return NextResponse.json({ error: "Сначала сохраните заказ, затем оплатите публикацию" }, { status: 400 });
+      }
+
+      const request = await getStoredWorkRequestForUser(body.targetId, auth.user.id);
+
+      if (request?.status === "published") {
+        return NextResponse.json({ error: "Заказ уже опубликован" }, { status: 400 });
+      }
+
+      if (request && (request.status === "archived" || request.status === "expired" || request.status === "rejected")) {
+        return NextResponse.json({ error: "Этот заказ снят с публикации. Создайте новый заказ." }, { status: 400 });
+      }
+
+      if (request?.status === "draft") {
+        await markStoredWorkRequestPendingPaymentForUser(body.targetId, auth.user.id);
+      }
     }
 
     const payment = await createPayment({

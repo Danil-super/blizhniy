@@ -15,6 +15,7 @@ import {
   soldPublicationStatus,
   unpublishedVacancyStatus,
   withPublicationHistory,
+  withPublicationStatusHistory,
   type DemoPublication,
   type DemoPublicationType,
 } from "@/lib/demo-publications";
@@ -160,7 +161,7 @@ const emptyCopy: Record<CabinetListMode, { title: string; text: string; href?: s
   workRequest: {
     title: "Заказов исполнителям пока нет",
     text: "Опишите задачу для специалиста, и она появится в этом разделе.",
-    href: "/cabinet/zakazy",
+    href: "/rabota/zakazy/sozdat",
     action: "Разместить заказ",
   },
 };
@@ -1000,6 +1001,10 @@ function getPublicationPaymentConfig(item: DemoPublication): { tariffId: string;
     return { tariffId: "vacancy-publication", targetType: "vacancy" };
   }
 
+  if (item.type === "workRequest") {
+    return { tariffId: "work-request-publication", targetType: "workRequest" };
+  }
+
   if (item.type === "specialist") {
     return { tariffId: "specialist-publication", targetType: "specialist" };
   }
@@ -1040,6 +1045,10 @@ function canDeletePublication(item: DemoPublication) {
     return true;
   }
 
+  if (item.type === "workRequest") {
+    return true;
+  }
+
   return isDraftPublication(item) || isUnpublishedVacancy(item);
 }
 
@@ -1050,6 +1059,10 @@ function deletePublicationTitle(item: DemoPublication) {
 
   if (item.type === "vacancy") {
     return "Удалить вакансию?";
+  }
+
+  if (item.type === "workRequest") {
+    return "Удалить заказ?";
   }
 
   return "Удалить черновик?";
@@ -1064,6 +1077,10 @@ function deletePublicationDescription(item: DemoPublication) {
     return "Удалять можно только черновик или вакансию, уже снятую с публикации.";
   }
 
+  if (item.type === "workRequest") {
+    return "Заказ исчезнет из личного кабинета и больше не будет доступен исполнителям.";
+  }
+
   return "Черновик исчезнет из кабинета. Опубликованные публикации это действие не затрагивает.";
 }
 
@@ -1074,6 +1091,10 @@ function deletePublicationButtonLabel(item: DemoPublication) {
 
   if (item.type === "vacancy") {
     return "Удалить вакансию";
+  }
+
+  if (item.type === "workRequest") {
+    return "Удалить заказ";
   }
 
   return "Удалить черновик";
@@ -1275,6 +1296,19 @@ async function deletePublication(item: DemoPublication) {
     }
   }
 
+  if (item.type === "workRequest" && isUuid(item.id)) {
+    const response = await fetch("/api/cabinet/work-requests", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+      body: JSON.stringify({ id: item.id }),
+    });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+
+    if (!response.ok) {
+      throw new Error(payload?.error ?? "Не удалось удалить заказ.");
+    }
+  }
+
   writeStoredPublications(readStoredPublications().filter((storedItem) => storedItem.id !== item.id));
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
   void addCurrentUserNotification({
@@ -1347,12 +1381,29 @@ async function createPublicationPayment(item: DemoPublication) {
     throw new Error("Для этой публикации не настроен тариф оплаты.");
   }
 
+  let paymentItem = item;
+
+  if (item.type === "workRequest") {
+    const paymentItemId = isUuid(item.id) ? item.id : crypto.randomUUID();
+    paymentItem = withPublicationStatusHistory(
+      {
+        ...item,
+        id: paymentItemId,
+      },
+      "Ждет оплаты",
+      {
+        description: "Заказ сохранен и ожидает оплату перед публикацией.",
+      },
+    );
+    writeStoredPublications([paymentItem, ...readStoredPublications().filter((storedItem) => storedItem.id !== item.id && storedItem.id !== paymentItemId)].slice(0, 80));
+  }
+
   await createAndConfirmClientPayment({
     listingDraft: item.type === "listing" && (isDraftPublication(item) || isPendingPaymentPublication(item)) ? item : undefined,
     tariffId: paymentConfig.tariffId,
-    targetId: item.id,
+    targetId: paymentItem.id,
     targetType: paymentConfig.targetType,
-    targetTitle: item.title,
+    targetTitle: paymentItem.title,
     vacancyDraft: item.type === "vacancy" && (isDraftPublication(item) || isPendingPaymentPublication(item)) ? item : undefined,
   });
 }
@@ -1695,6 +1746,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         const inactivePaidPublication = isInactivePaidPublication(item);
         const showOpenAction = item.type === "listing" ? isPublishedPublication(item) : true;
         const showEditAction = item.type !== "fairApplication" && !sold;
+        const showMediaBlock = item.type !== "workRequest";
         const payable = canPayPublication(item);
         const actionGridClassName = "grid-cols-1";
         const actionBaseClassName = "relative z-20 inline-flex min-h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border bg-white px-3 py-2 text-center text-sm font-bold leading-5 transition disabled:cursor-wait disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400";
@@ -1706,6 +1758,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         return (
         <article key={item.id} className={`group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-card ${sold || inactivePaidPublication ? "ring-slate-300" : "ring-slate-200"}`}>
           <Link href={getItemHref(item)} className="block min-w-0" aria-label={`Открыть ${item.title}`}>
+          {showMediaBlock ? (
           <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-blue-50 text-[#0875d1]">
             {item.images?.[0] ? <StoredMediaImage src={item.images[0]} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
             {!item.images?.[0] && item.videos?.[0] ? <StoredMediaVideo src={item.videos[0]} className="absolute inset-0 h-full w-full bg-slate-950 object-cover transition duration-300 group-hover:scale-[1.03]" muted playsInline preload="metadata" /> : null}
@@ -1726,7 +1779,14 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
               </span>
             ) : null}
           </span>
-          <span className="block p-3">
+          ) : null}
+          <span className={`block p-3 ${showMediaBlock ? "" : "pt-4"}`}>
+            {!showMediaBlock ? (
+              <span className="mb-3 flex flex-wrap gap-1">
+                <StatusPill>{item.status}</StatusPill>
+                <span className="inline-flex h-6 items-center rounded-full bg-blue-50 px-2 text-[11px] font-bold text-slate-600 sm:h-7 sm:text-xs">{demoPublicationLabels[item.type]}</span>
+              </span>
+            ) : null}
             <span className="block truncate text-base font-black text-[#060b27]">{item.price ?? item.subtitle}</span>
             <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">{item.title}</span>
             <span className="mt-1 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
@@ -1994,41 +2054,27 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                 Снять с публикации
               </button>
             ) : canRestorePaidPublication(item) ? (
-              <>
-                <button
-                  type="button"
-                  disabled={actingItemId === item.id}
-                  onClick={() => {
-                    setActionError("");
-                    setActionErrorItemId(null);
-                    setActionSuccess("");
-                    setActionSuccessItemId(null);
-                    setActingItemId(item.id);
-                    void restorePaidPublication(item)
-                      .then(() => showActionSuccess(item.id, "Размещение снова опубликовано."))
-                      .catch((error) => {
-                        setActionError(error instanceof Error ? error.message : "Не удалось вернуть размещение.");
-                        setActionErrorItemId(item.id);
-                      })
-                      .finally(() => setActingItemId(null));
-                  }}
-                  className={actionSuccessClassName}
-                >
-                  {actingItemId === item.id ? "Возвращаем..." : "Вернуть в публикацию"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSellingItemId(null);
-                    setUnpublishingItemId(null);
-                    setDeletingItemId((current) => (current === item.id ? null : item.id));
-                  }}
-                  className={actionDangerClassName}
-                >
-                  <Trash2 className="h-4 w-4 shrink-0" />
-                  Удалить вакансию
-                </button>
-              </>
+              <button
+                type="button"
+                disabled={actingItemId === item.id}
+                onClick={() => {
+                  setActionError("");
+                  setActionErrorItemId(null);
+                  setActionSuccess("");
+                  setActionSuccessItemId(null);
+                  setActingItemId(item.id);
+                  void restorePaidPublication(item)
+                    .then(() => showActionSuccess(item.id, "Размещение снова опубликовано."))
+                    .catch((error) => {
+                      setActionError(error instanceof Error ? error.message : "Не удалось вернуть размещение.");
+                      setActionErrorItemId(item.id);
+                    })
+                    .finally(() => setActingItemId(null));
+                }}
+                className={actionSuccessClassName}
+              >
+                {actingItemId === item.id ? "Возвращаем..." : "Вернуть в публикацию"}
+              </button>
             ) : null}
           </div>
         </article>

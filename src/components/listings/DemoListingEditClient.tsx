@@ -6,6 +6,8 @@ import { BackLink } from "@/components/BackLink";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 import { ValidatedInput } from "@/components/ValidatedInput";
+import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
+import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
 import { appendPublicationHistory, DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
@@ -26,6 +28,12 @@ const listingKinds: { value: ListingKind; label: string }[] = [
 ];
 
 const maxMediaFiles = 20;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+
+type UpdatedListingResponse = {
+  error?: string;
+  listing?: Listing;
+};
 
 function readStoredPublications() {
   try {
@@ -40,6 +48,10 @@ function readStoredPublications() {
   }
 
   return [];
+}
+
+function isUuid(value: string) {
+  return uuidPattern.test(value);
 }
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -409,6 +421,47 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
         images,
         videos,
       };
+      const uploadedImagePaths = identity.accessToken && isUuid(listing.id) ? await uploadPublicationImageSources(images, "listings", identity.accessToken) : undefined;
+
+      if (identity.accessToken && isUuid(listing.id)) {
+        const response = await fetch("/api/cabinet/listings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${identity.accessToken}` },
+          body: JSON.stringify({
+            address: updated.address,
+            categorySlug: updated.categorySlug,
+            city: updated.city,
+            clearMedia: !images.length,
+            description: updated.description,
+            id: listing.id,
+            kind: updated.listingKind,
+            lat: updated.lat,
+            lng: updated.lng,
+            mediaPaths: uploadedImagePaths,
+            messengerUrl: updated.messengerUrl,
+            phone: updated.phone,
+            price: updated.price,
+            subcategory: updated.subcategorySlug,
+            title: updated.title,
+          }),
+        });
+        const payload = (await response.json().catch(() => null)) as UpdatedListingResponse | null;
+
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Не удалось сохранить объявление на сервере.");
+        }
+
+        if (payload?.listing) {
+          Object.assign(updated, serverListingToPublication(payload.listing), {
+            email: updated.email,
+            history: updated.history,
+            ownerKey: updated.ownerKey,
+            ownerName: updated.ownerName,
+            videos: updated.videos,
+          });
+        }
+      }
+
       const nextItems = items.map((item) =>
         item.id === slug
           ? appendPublicationHistory(updated, "updated", {
@@ -418,6 +471,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
           : item,
       );
       window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
+      markCabinetDataChanged();
       window.dispatchEvent(new Event("blizhniy-demo-publications-updated"));
       window.location.href = "/cabinet/obyavleniya";
     } catch (error) {
@@ -508,7 +562,10 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Цена</span>
-            <input name="price" defaultValue={extractListingPriceDigits(listing.price)} inputMode="numeric" maxLength={maxListingPriceDigits} pattern="[0-9]*" placeholder="12000" className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
+            <span className="relative mt-2 block">
+              <input name="price" defaultValue={extractListingPriceDigits(listing.price)} inputMode="numeric" maxLength={maxListingPriceDigits} pattern="[0-9]*" placeholder="12000" className="h-12 w-full rounded-lg border border-slate-300 px-4 pr-10 outline-none focus:border-[#0875d1]" />
+              <span className="pointer-events-none absolute inset-y-0 right-4 inline-flex items-center text-base font-black text-slate-500">₽</span>
+            </span>
           </label>
         </div>
 

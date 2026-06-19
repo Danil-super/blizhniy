@@ -7,6 +7,7 @@ import { VacancyEmployerFields } from "@/components/VacancyEmployerFields";
 import { VacancyFormValidator } from "@/components/VacancyFormValidator";
 import { ListingLocationFields } from "@/components/listings/ListingFormControls";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
+import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { storeMediaFile } from "@/lib/client-media-store";
 import { appendPublicationHistory, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, unpublishedVacancyStatus, withPublicationHistory, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
@@ -17,11 +18,6 @@ import type { JobVacancy } from "@/lib/types";
 type VacancyEditClientProps = {
   initialVacancy?: JobVacancy;
   vacancyId: string;
-};
-
-type MediaUploadResponse = {
-  error?: string;
-  files?: Array<{ path?: string }>;
 };
 
 type UpdatedVacancyResponse = {
@@ -158,13 +154,13 @@ function mergeStoredVacancyWithInitial(storedVacancy?: DemoPublication, initialV
   }
 
   return {
-    ...storedVacancy,
     ...initialPublication,
+    ...storedVacancy,
     history: storedVacancy.history ?? initialPublication.history,
-    images: initialPublication.images?.length ? initialPublication.images : storedVacancy.images,
+    images: storedVacancy.images?.length ? storedVacancy.images : initialPublication.images,
     ownerKey: storedVacancy.ownerKey,
     ownerName: storedVacancy.ownerName,
-    placementRightConfirmed: initialPublication.placementRightConfirmed ?? storedVacancy.placementRightConfirmed,
+    placementRightConfirmed: storedVacancy.placementRightConfirmed ?? initialPublication.placementRightConfirmed,
   };
 }
 
@@ -207,39 +203,6 @@ async function readLocalImageReferences(formData: FormData) {
   const storedImages = await Promise.allSettled(files.map((file) => storeMediaFile(file)));
 
   return [...readExistingPhotos(formData), ...storedImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))];
-}
-
-function readImageFiles(formData: FormData) {
-  return formData
-    .getAll("photos")
-    .filter((item): item is File => item instanceof File && item.size > 0 && item.type.startsWith("image/"))
-    .slice(0, 12);
-}
-
-async function uploadVacancyImages(formData: FormData, accessToken: string) {
-  const files = readImageFiles(formData);
-
-  if (!files.length) {
-    return undefined;
-  }
-
-  const uploadFormData = new FormData();
-
-  uploadFormData.set("folder", "vacancies");
-  files.forEach((file) => uploadFormData.append("files", file));
-
-  const response = await fetch("/api/uploads/media", {
-    body: uploadFormData,
-    headers: { Authorization: `Bearer ${accessToken}` },
-    method: "POST",
-  });
-  const payload = (await response.json().catch(() => null)) as MediaUploadResponse | null;
-
-  if (!response.ok) {
-    throw new Error(payload?.error ?? "Не удалось загрузить фото вакансии.");
-  }
-
-  return payload?.files?.map((file) => file.path).filter((path): path is string => Boolean(path)) ?? [];
 }
 
 function isPendingPaymentStatus(status?: string) {
@@ -307,7 +270,6 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
       return;
     }
 
-    const existingPhotos = readExistingPhotos(formData);
     const exactMapPoint = hasSelectedMapPoint(formData);
     const updatedVacancy: DemoPublication = {
       ...vacancy,
@@ -345,7 +307,10 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
     };
 
     try {
-      const uploadedMediaPaths = identity.accessToken && isUuid(vacancy.id) && options.validate !== false ? await uploadVacancyImages(formData, identity.accessToken) : undefined;
+      const uploadedMediaPaths =
+        identity.accessToken && isUuid(vacancy.id) && options.validate !== false
+          ? await uploadPublicationImageSources(updatedVacancy.images ?? [], "vacancies", identity.accessToken)
+          : undefined;
 
       if (identity.accessToken && isUuid(vacancy.id) && options.validate !== false) {
         const response = await fetch("/api/cabinet/vacancies", {
@@ -354,7 +319,7 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
           body: JSON.stringify({
             address: updatedVacancy.address,
             city: updatedVacancy.city,
-            clearMedia: !existingPhotos.length && !uploadedMediaPaths?.length,
+            clearMedia: !(updatedVacancy.images?.length ?? 0),
             conditions: updatedVacancy.conditions,
             contactPerson: updatedVacancy.contactPerson,
             description: updatedVacancy.description,
@@ -468,7 +433,7 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
               </div>
               <Field name="schedule" label="График" defaultValue={vacancy.schedule} placeholder="5/2" maxLength={60} />
               <Field name="workFormat" label="Формат работы" defaultValue={vacancy.workFormat} placeholder="На месте, удаленно, разъездная" minLength={2} maxLength={80} required />
-              <Field name="salary" label="Оплата" defaultValue={vacancy.price} placeholder="80 000 ₽" minLength={2} maxLength={80} required />
+              <Field name="salary" label="Оплата" defaultValue={vacancy.price} placeholder="80000" minLength={2} maxLength={80} required />
             </div>
             <ListingLocationFields
               className="vacancy-location-fields"

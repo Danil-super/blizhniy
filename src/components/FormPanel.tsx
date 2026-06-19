@@ -142,6 +142,20 @@ export function Field({
       <span className="break-words [overflow-wrap:anywhere]">{label}</span>
       {type === "file" ? (
         <input name={name} className={inputClassName} type={type} placeholder={placeholder} {...inputProps} />
+      ) : validation === "salary" ? (
+        <span className="relative block">
+          <ValidatedInput
+            name={name}
+            className={`${inputClassName} pr-10`}
+            type={type}
+            placeholder={placeholder}
+            validation={validation}
+            defaultValue={defaultValue}
+            capitalizeFirstLetter={capitalizeFirstLetter}
+            {...inputProps}
+          />
+          <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-sm font-black text-slate-500 sm:right-4 sm:text-base">₽</span>
+        </span>
       ) : (
         <ValidatedInput name={name} className={inputClassName} type={type} placeholder={placeholder} validation={validation} defaultValue={defaultValue} capitalizeFirstLetter={capitalizeFirstLetter} {...inputProps} />
       )}
