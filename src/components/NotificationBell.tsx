@@ -27,6 +27,7 @@ import {
   type CabinetProfile,
   type ClientUserIdentity,
 } from "@/lib/client-user-profile";
+import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 
 function readJsonArray<T>(key: string): T[] {
   try {
@@ -36,6 +37,27 @@ function readJsonArray<T>(key: string): T[] {
   } catch {
     return [];
   }
+}
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  if (!isSupabaseBrowserConfigured()) {
+    return {};
+  }
+
+  const { data } = await getSupabaseBrowserClient().auth.getSession();
+  const token = data.session?.access_token;
+
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function mergeNotifications(localItems: SiteNotification[], serverItems: SiteNotification[]) {
+  const byId = new Map<string, SiteNotification>();
+
+  for (const item of [...serverItems, ...localItems]) {
+    byId.set(item.id, item);
+  }
+
+  return [...byId.values()].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()).slice(0, 120);
 }
 
 function writeJsonArray<T>(key: string, items: T[]) {
@@ -119,7 +141,27 @@ export function NotificationBell() {
 
       setIdentity(nextIdentity);
       setProfile(nextProfile);
-      setSiteNotifications(readSiteNotifications(nextIdentity.ownerKey));
+      const localNotifications = readSiteNotifications(nextIdentity.ownerKey);
+      const serverNotifications = await getAuthHeaders()
+        .then((headers) =>
+          Object.keys(headers).length
+            ? fetch("/api/cabinet/notifications", {
+                cache: "no-store",
+                headers,
+              })
+            : null,
+        )
+        .then(async (response) => {
+          if (!response?.ok) {
+            return [];
+          }
+
+          const payload = (await response.json().catch(() => null)) as { notifications?: SiteNotification[] } | null;
+          return payload?.notifications ?? [];
+        })
+        .catch(() => []);
+
+      setSiteNotifications(mergeNotifications(localNotifications, serverNotifications));
       setRequests(readJsonArray<BookingRequest>(bookingRequestsStorageKey));
       setBookingNotifications(nextProfile.notifyBookings ? readJsonArray<BookingNotification>(bookingNotificationsStorageKey) : []);
     }
@@ -160,11 +202,21 @@ export function NotificationBell() {
       markSiteNotificationsRead(identity.ownerKey);
     }
 
+    void getAuthHeaders()
+      .then((headers) =>
+        Object.keys(headers).length
+          ? fetch("/api/cabinet/notifications", {
+              method: "PATCH",
+              headers,
+            })
+          : null,
+      )
+      .finally(() => syncStoredNotifications());
+
     const next = bookingNotifications.map((notification) => ({ ...notification, read: true }));
     writeJsonArray(bookingNotificationsStorageKey, next);
     setBookingNotifications(next);
     emitUpdate();
-    syncStoredNotifications();
   }
 
   function clearNotifications() {

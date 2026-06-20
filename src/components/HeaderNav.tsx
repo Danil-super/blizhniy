@@ -12,7 +12,7 @@ const publicLinks = [
   ["Объявления", "/obyavleniya"],
   ["Как работает", "/kak-rabotaet"],
   ["Ярмарка мастеров", "/yarmarka-masterov"],
-  ["Для бизнеса", "/cabinet/organization"],
+  ["Для бизнеса", "/rabota/vakansii/sozdat"],
   ["Помощь", "/legal/agreement"],
 ];
 

@@ -1,4 +1,6 @@
 import { markStoredFairApplicationPaid } from "@/lib/fair-application-store";
+import { applicationTitle, getStoredApplicationOwner, markStoredApplicationPaid } from "@/lib/application-store";
+import { createStoredNotification } from "@/lib/notification-store";
 import { markStoredListingPaid } from "@/lib/listing-store";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import { getTariffs } from "@/lib/tariff-store";
@@ -89,6 +91,10 @@ async function getFairApplicationTitle(targetId: string) {
 }
 
 async function targetTitleForPayment(row: PaymentRow) {
+  if (row.target_type === "application") {
+    return (await applicationTitle(row.target_id)) ?? "Отклик на вакансию";
+  }
+
   if (row.target_type === "fair_application") {
     return (await getFairApplicationTitle(row.target_id)) ?? "Заявка на ярмарку";
   }
@@ -284,6 +290,27 @@ export async function markStoredPaymentTargetSucceeded(payment: Payment) {
   if (payment.targetType === "workRequest" && payment.targetId && isUuid(payment.targetId)) {
     await markStoredWorkRequestPaid(payment.targetId);
     return "published" as const;
+  }
+
+  if (payment.targetType === "application" && payment.targetId && isUuid(payment.targetId)) {
+    const updated = await markStoredApplicationPaid(payment.targetId);
+
+    if (!updated) {
+      throw new Error("Не удалось отправить отклик после оплаты");
+    }
+
+    const owner = await getStoredApplicationOwner(payment.targetId);
+
+    if (updated === "sent" && owner?.ownerUserId) {
+      await createStoredNotification({
+        body: `Исполнитель оплатил и отправил отклик на «${owner.targetTitle}». Откройте раздел «Отклики», чтобы посмотреть анкету и контакты.`,
+        event: "application_paid",
+        subject: owner.targetType === "workRequest" ? "Новый отклик на заказ" : "Новый отклик на вакансию",
+        userId: owner.ownerUserId,
+      });
+    }
+
+    return "sent" as const;
   }
 
   return payment.targetType === "application" ? ("sent" as const) : ("published" as const);

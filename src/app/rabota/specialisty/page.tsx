@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { listSpecialists } from "@/lib/mock-store";
+import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/specialist-profile-store";
 
 export const metadata: Metadata = {
   title: "Специалисты",
@@ -10,8 +11,9 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default function Page() {
-  const specialists = listSpecialists().filter((specialist) => specialist.status === "published");
+export default async function Page() {
+  const storedSpecialists = await listStoredSpecialistProfiles(100);
+  const specialists = listSpecialistsWithStored(storedSpecialists, listSpecialists()).filter((specialist) => specialist.status === "published");
 
   return (
     <>

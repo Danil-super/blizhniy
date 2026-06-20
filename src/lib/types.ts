@@ -228,10 +228,27 @@ export type FairApplication = {
 
 export type Application = {
   id: string;
+  createdAt?: string;
+  employerMode?: boolean;
+  targetType?: "vacancy" | "workRequest";
+  message?: string;
+  paymentStatus?: Payment["status"];
+  phone?: string;
+  email?: string;
+  messengerUrl?: string;
+  price?: string;
+  profession?: string;
+  sentAt?: string;
+  skills?: string;
+  specialistProfileId?: string;
+  specialistHref?: string;
   vacancyTitle: string;
+  vacancyId?: string;
+  workRequestId?: string;
+  workRequestTitle?: string;
   specialistName: string;
-  status: "pending_payment" | "paid" | "sent";
-  paymentId: string;
+  status: "pending_payment" | "paid" | "sent" | "viewed" | "selected" | "rejected";
+  paymentId?: string;
 };
 
 export type UserProfile = {

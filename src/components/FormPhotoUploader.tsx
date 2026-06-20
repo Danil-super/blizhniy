@@ -152,7 +152,7 @@ export function FormPhotoUploader({
 
   return (
     <section className="min-w-0 max-w-full overflow-hidden rounded-xl border border-blue-100 bg-white p-3 shadow-sm sm:p-4">
-      <div className={`grid min-w-0 gap-3 ${photos.length ? "lg:grid-cols-[minmax(18rem,1fr)_minmax(18rem,26rem)] lg:items-start" : ""}`}>
+      <div className="grid min-w-0 gap-3">
         <label className="group flex min-w-0 cursor-pointer flex-col justify-between rounded-xl border border-dashed border-blue-200 bg-blue-50/60 p-3 transition hover:border-[#0875d1] hover:bg-blue-50 sm:min-h-32 sm:p-4">
           <input ref={inputRef} className="sr-only" name={name} type="file" accept="image/*" multiple={normalizedMaxPhotos > 1} required={required && !photos.length} onChange={handleFiles} />
           <span className="flex min-w-0 items-start gap-3">
@@ -186,9 +186,9 @@ export function FormPhotoUploader({
               <span className="text-xs font-black uppercase tracking-normal text-slate-500">Превью</span>
               <span className="text-xs font-bold text-slate-500">Первое фото - обложка</span>
             </div>
-            <div className="grid max-h-[17.5rem] min-w-0 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-2">
+            <div className="grid max-h-[17.5rem] min-w-0 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:flex lg:max-h-none lg:grid-cols-none lg:overflow-x-auto lg:overflow-y-hidden lg:pb-1 lg:pr-0">
               {photos.map((photo, index) => (
-                <figure key={photo.id} className="group relative aspect-square min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <figure key={photo.id} className="group relative aspect-square min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:w-36 lg:shrink-0">
                   <StoredMediaImage src={photo.url} alt={photo.name} className="h-full w-full object-cover" />
                   {index === 0 ? (
                     <span className="absolute left-1.5 top-1.5 rounded-md bg-white/95 px-2 py-1 text-[0.68rem] font-black text-[#0875d1] shadow-sm">
@@ -208,7 +208,8 @@ export function FormPhotoUploader({
                     onClick={() => setCropEditorId(photo.id)}
                     className="absolute bottom-1.5 left-1.5 rounded-lg bg-white/95 px-2 py-1 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3] sm:bottom-2 sm:left-2 sm:px-2.5 sm:py-1.5"
                   >
-                    Кадр
+                    <span className="lg:hidden">Кадр</span>
+                    <span className="hidden lg:inline">Изменить кадр</span>
                   </button>
                 </figure>
               ))}
@@ -222,6 +223,7 @@ export function FormPhotoUploader({
         .map((photo) => (
           <input key={`hidden-${photo.id}`} type="hidden" name="existingPhotos" value={photo.url} />
         ))}
+      <input type="hidden" name={`${name}Refs`} value={JSON.stringify(photos.map((photo) => photo.url))} />
       {cropEditorPhoto ? (
         <SquareImageCropper
           alt={cropEditorPhoto.name}

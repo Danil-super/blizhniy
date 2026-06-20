@@ -211,13 +211,28 @@ create table specialist_profiles (
 
 create table applications (
   id uuid primary key default gen_random_uuid(),
-  vacancy_id uuid not null references vacancies(id) on delete cascade,
-  specialist_profile_id uuid not null references specialist_profiles(id) on delete cascade,
+  applicant_user_id uuid references profiles(id) on delete cascade,
+  vacancy_id uuid references vacancies(id) on delete cascade,
+  work_request_id uuid references work_requests(id) on delete cascade,
+  specialist_profile_id uuid references specialist_profiles(id) on delete cascade,
   message text,
   status text not null default 'pending_payment',
   is_paid boolean not null default false,
+  specialist_name text,
+  specialist_profession text,
+  specialist_price text,
+  specialist_skills text,
+  specialist_phone text,
+  specialist_email text,
+  specialist_messenger_url text,
   created_at timestamptz not null default now(),
-  sent_at timestamptz
+  sent_at timestamptz,
+  updated_at timestamptz not null default now(),
+  constraint applications_target_check check (
+    (vacancy_id is not null and work_request_id is null)
+    or (vacancy_id is null and work_request_id is not null)
+  ),
+  constraint applications_status_check check (status in ('pending_payment', 'paid', 'sent', 'viewed', 'selected', 'rejected'))
 );
 
 create table fair_applications (

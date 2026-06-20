@@ -24,11 +24,11 @@ import { LegalLink } from "@/components/LegalConsentCheckbox";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 import { ValidatedInput } from "@/components/ValidatedInput";
-import { cities } from "@/lib/data";
-import { confirmClientPayment, createAndConfirmClientPayment } from "@/lib/client-payment-flow";
+import { cities, professions } from "@/lib/data";
+import { confirmClientPayment, createAndConfirmClientPayment, createClientPayment } from "@/lib/client-payment-flow";
 import { cabinetDataUpdatedEvent, markCabinetDataChanged, readCabinetDataVersion } from "@/lib/cabinet-data-cache";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
-import type { FairApplication, JobVacancy, Listing, Payment } from "@/lib/types";
+import type { Application, FairApplication, JobVacancy, Listing, Payment, SpecialistProfile } from "@/lib/types";
 import {
   type CabinetProfile,
   createDefaultCabinetProfile,
@@ -61,6 +61,9 @@ type CabinetServerVacanciesPayload = {
 type CabinetServerPaymentsPayload = {
   payments?: Payment[];
 };
+type CabinetServerApplicationsPayload = {
+  applications?: Application[];
+};
 type AvatarCropDraft = {
   src: string;
   zoom: number;
@@ -80,12 +83,27 @@ export type CabinetPaymentHistoryItem = {
   subject: string;
 };
 export type CabinetResponseItem = {
+  createdAt?: string;
+  email?: string;
+  employerMode?: boolean;
   href: string;
   id: string;
+  message?: string;
+  messengerUrl?: string;
   paymentHref: string;
-  paymentId: string;
+  paymentId?: string;
+  phone?: string;
+  price?: string;
+  profession?: string;
+  sentAt?: string;
+  skills?: string;
+  specialistHref?: string;
+  targetType?: "vacancy" | "workRequest";
   specialistName: string;
   status: string;
+  vacancyId?: string;
+  workRequestId?: string;
+  workRequestTitle?: string;
   vacancyTitle: string;
 };
 
@@ -1376,35 +1394,40 @@ async function restoreSoldListing(currentItem: DemoPublication) {
 
 async function createPublicationPayment(item: DemoPublication) {
   const paymentConfig = getPublicationPaymentConfig(item);
+  let paymentItem = item;
 
   if (!paymentConfig) {
     throw new Error("Для этой публикации не настроен тариф оплаты.");
   }
 
-  let paymentItem = item;
-
-  if (item.type === "workRequest") {
-    const paymentItemId = isUuid(item.id) ? item.id : crypto.randomUUID();
+  if (item.type === "specialist" && !isUuid(item.id)) {
     paymentItem = withPublicationStatusHistory(
       {
         ...item,
-        id: paymentItemId,
+        id: crypto.randomUUID(),
       },
       "Ждет оплаты",
       {
-        description: "Заказ сохранен и ожидает оплату перед публикацией.",
+        description: "Анкета подготовлена к оплате публикации.",
       },
     );
-    writeStoredPublications([paymentItem, ...readStoredPublications().filter((storedItem) => storedItem.id !== item.id && storedItem.id !== paymentItemId)].slice(0, 80));
+
+    writeStoredPublications([
+      paymentItem,
+      ...readStoredPublications().filter((storedItem) => storedItem.id !== item.id && storedItem.id !== paymentItem.id),
+    ]);
+    window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+    markCabinetDataChanged();
   }
 
   await createAndConfirmClientPayment({
-    listingDraft: item.type === "listing" && (isDraftPublication(item) || isPendingPaymentPublication(item)) ? item : undefined,
+    listingDraft: paymentItem.type === "listing" && (isDraftPublication(paymentItem) || isPendingPaymentPublication(paymentItem)) ? paymentItem : undefined,
     tariffId: paymentConfig.tariffId,
     targetId: paymentItem.id,
     targetType: paymentConfig.targetType,
     targetTitle: paymentItem.title,
-    vacancyDraft: item.type === "vacancy" && (isDraftPublication(item) || isPendingPaymentPublication(item)) ? item : undefined,
+    vacancyDraft: paymentItem.type === "vacancy" && (isDraftPublication(paymentItem) || isPendingPaymentPublication(paymentItem)) ? paymentItem : undefined,
+    workRequestDraft: paymentItem.type === "workRequest" && (isDraftPublication(paymentItem) || isPendingPaymentPublication(paymentItem)) ? paymentItem : undefined,
   });
 }
 
@@ -1460,12 +1483,14 @@ function PaymentStatusPill({ status }: { status: string }) {
 function ResponseStatusPill({ status }: { status: string }) {
   const normalizedStatus = status.trim().toLowerCase();
   const tone =
-    normalizedStatus === "sent"
+    normalizedStatus === "sent" || normalizedStatus === "viewed" || normalizedStatus === "selected"
       ? "border-emerald-200 bg-emerald-50 text-[#0a8f32]"
+      : normalizedStatus === "rejected"
+        ? "border-rose-200 bg-rose-50 text-rose-700"
       : normalizedStatus === "paid"
         ? "border-blue-200 bg-blue-50 text-[#0875d1]"
         : "border-amber-200 bg-amber-50 text-amber-700";
-  const label = normalizedStatus === "sent" ? "Отправлен" : normalizedStatus === "paid" ? "Оплачен" : "Ждет оплаты";
+  const label = normalizedStatus === "selected" ? "Выбран" : normalizedStatus === "viewed" ? "Просмотрен" : normalizedStatus === "sent" ? "Отправлен" : normalizedStatus === "rejected" ? "Отклонен" : normalizedStatus === "paid" ? "Оплачен" : "Ждет оплаты";
 
   return <span className={`inline-flex h-7 items-center rounded-full border px-3 text-xs font-bold ${tone}`}>{label}</span>;
 }
@@ -1744,9 +1769,9 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         const confirmSold = sellingItemId === item.id;
         const confirmUnpublish = unpublishingItemId === item.id;
         const inactivePaidPublication = isInactivePaidPublication(item);
-        const showOpenAction = item.type === "listing" ? isPublishedPublication(item) : true;
+        const showOpenAction = item.type === "listing" || item.type === "specialist" ? isPublishedPublication(item) : true;
         const showEditAction = item.type !== "fairApplication" && !sold;
-        const showMediaBlock = item.type !== "workRequest";
+        const showMediaBlock = true;
         const payable = canPayPublication(item);
         const actionGridClassName = "grid-cols-1";
         const actionBaseClassName = "relative z-20 inline-flex min-h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border bg-white px-3 py-2 text-center text-sm font-bold leading-5 transition disabled:cursor-wait disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400";
@@ -1754,10 +1779,11 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         const actionSuccessClassName = `${actionBaseClassName} border-emerald-200 text-[#0a8f32] hover:border-[#0a8f32] hover:bg-emerald-50`;
         const actionWarningClassName = `${actionBaseClassName} border-amber-200 text-amber-700 hover:border-amber-400 hover:bg-amber-50`;
         const actionDangerClassName = `${actionBaseClassName} border-rose-200 text-rose-700 hover:border-rose-400 hover:bg-rose-50`;
+        const primaryHref = showOpenAction ? getItemHref(item) : getEditHref(item);
 
         return (
         <article key={item.id} className={`group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-card ${sold || inactivePaidPublication ? "ring-slate-300" : "ring-slate-200"}`}>
-          <Link href={getItemHref(item)} className="block min-w-0" aria-label={`Открыть ${item.title}`}>
+          <Link href={primaryHref} className="block min-w-0" aria-label={`${showOpenAction ? "Открыть" : "Изменить"} ${item.title}`}>
           {showMediaBlock ? (
           <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-blue-50 text-[#0875d1]">
             {item.images?.[0] ? <StoredMediaImage src={item.images[0]} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
@@ -2826,33 +2852,153 @@ export function CabinetPublicationsClient({ type }: { type: DemoPublicationType 
 }
 
 export function CabinetResponsesClient({ responses = [] }: { responses?: CabinetResponseItem[] }) {
+  const [serverResponses, setServerResponses] = useState<CabinetResponseItem[] | null>(null);
+  const [loadingResponses, setLoadingResponses] = useState(true);
   const [payingResponseId, setPayingResponseId] = useState("");
   const [responseError, setResponseError] = useState("");
   const [responseErrorItemId, setResponseErrorItemId] = useState("");
   const [acceptedOfferResponseIds, setAcceptedOfferResponseIds] = useState<Set<string>>(() => new Set());
+  const visibleResponses = serverResponses ?? responses;
 
-  if (!responses.length) {
+  useEffect(() => {
+    let active = true;
+
+    setLoadingResponses(true);
+    getAuthHeaders()
+      .then((headers) =>
+        fetch("/api/cabinet/applications", {
+          cache: "no-store",
+          headers,
+        }),
+      )
+      .then(async (response) => {
+        if (!response.ok) {
+          return null;
+        }
+
+        const payload = (await response.json().catch(() => null)) as CabinetServerApplicationsPayload | null;
+        return (payload?.applications ?? []).map((application) => ({
+          ...application,
+          href: application.targetType === "workRequest" && application.workRequestId ? `/rabota/zakazy/${application.workRequestId}` : application.vacancyId ? `/vakansiya/${application.vacancyId}` : "/rabota/vakansii",
+          paymentHref: application.paymentId ? `/oplata/${application.paymentId}` : "/cabinet/oplata",
+        })) satisfies CabinetResponseItem[];
+      })
+      .then((items) => {
+        if (active && items) {
+          setServerResponses(items);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoadingResponses(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function updateResponseAction(response: CabinetResponseItem, action: "view" | "select" | "reject") {
+    setResponseError("");
+    setResponseErrorItemId("");
+
+    try {
+      const headers = await getAuthHeaders();
+      const result = await fetch("/api/cabinet/applications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ action, id: response.id }),
+      });
+      const payload = (await result.json().catch(() => null)) as { error?: string } | null;
+
+      if (!result.ok) {
+        throw new Error(payload?.error ?? "Не удалось обновить отклик.");
+      }
+
+      window.location.reload();
+    } catch (error) {
+      setResponseError(error instanceof Error ? error.message : "Не удалось обновить отклик.");
+      setResponseErrorItemId(response.id);
+    }
+  }
+
+  if (loadingResponses && !visibleResponses.length) {
+    return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем отклики...</div>;
+  }
+
+  if (!visibleResponses.length) {
     return <EmptyState mode="response" />;
   }
 
   return (
     <section className="grid gap-3">
-      {responses.map((response) => (
+      {visibleResponses.map((response) => {
+        const completedResponse = ["sent", "viewed", "selected", "rejected"].includes(response.status);
+        const targetLabel = response.targetType === "workRequest" ? "заказ" : "вакансию";
+
+        return (
         <article key={response.id} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:grid-cols-[1fr_auto] sm:items-center sm:p-5">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <ResponseStatusPill status={response.status} />
-              <span className="text-xs font-bold text-slate-500">Платеж {response.paymentId}</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{response.employerMode ? "Входящий" : "Мой отклик"}</span>
+              {response.paymentId ? <span className="break-all text-xs font-bold text-slate-500">Платеж {response.paymentId}</span> : null}
             </div>
-            <h3 className="mt-2 truncate text-lg font-black text-[#060b27]">{response.vacancyTitle}</h3>
-            <p className="mt-1 text-sm leading-6 text-slate-600">Отклик от: <span className="font-bold text-slate-800">{response.specialistName}</span></p>
+            <h3 className="mt-2 truncate text-lg font-black text-[#060b27]">{response.workRequestTitle ?? response.vacancyTitle}</h3>
+            <p className="mt-1 text-sm leading-6 text-slate-600">Отклик от: <span className="font-bold text-slate-800">{response.specialistName}</span>{response.profession ? ` · ${response.profession}` : ""}</p>
+            {response.message ? <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">{response.message}</p> : null}
+            {response.skills ? <p className="mt-1 text-sm leading-6 text-slate-500">Навыки: {response.skills}</p> : null}
+            {response.employerMode && (response.phone || response.email || response.messengerUrl) ? (
+              <div className="mt-3 flex flex-wrap gap-2 text-sm font-bold">
+                {response.phone ? <a className="break-all rounded-lg bg-blue-50 px-3 py-2 text-[#0875d1]" href={`tel:${response.phone}`}>{response.phone}</a> : null}
+                {response.email ? <a className="break-all rounded-lg bg-blue-50 px-3 py-2 text-[#0875d1]" href={`mailto:${response.email}`}>{response.email}</a> : null}
+                {response.messengerUrl ? <a className="rounded-lg bg-blue-50 px-3 py-2 text-[#0875d1]" href={response.messengerUrl}>Мессенджер</a> : null}
+              </div>
+            ) : null}
+            {!response.employerMode && response.status === "selected" ? (
+              <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700">Вас выбрали. Заказчик или работодатель свяжется с вами по контактам из анкеты.</p>
+            ) : null}
             {responseError && responseErrorItemId === response.id ? <p className="mt-2 text-xs font-bold text-rose-600">{responseError}</p> : null}
           </div>
           <div className="grid gap-2 sm:justify-items-end">
             <Link href={response.href} className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]">
-              Открыть вакансию
+              Открыть {targetLabel}
             </Link>
-            {response.status !== "sent" ? (
+            {response.employerMode && response.status === "sent" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void updateResponseAction(response, "view");
+                }}
+                className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0aa337] px-4 text-sm font-bold text-white transition hover:bg-[#078a2e]"
+              >
+                Отметить просмотренным
+              </button>
+            ) : null}
+            {response.employerMode && (response.status === "sent" || response.status === "viewed") ? (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void updateResponseAction(response, "select");
+                  }}
+                  className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0aa337] px-4 text-sm font-bold text-white transition hover:bg-[#078a2e]"
+                >
+                  Выбрать
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void updateResponseAction(response, "reject");
+                  }}
+                  className="inline-flex h-10 items-center justify-center rounded-lg border border-rose-200 bg-white px-4 text-sm font-bold text-rose-700 transition hover:bg-rose-50"
+                >
+                  Отклонить
+                </button>
+              </div>
+            ) : null}
+            {!response.employerMode && !completedResponse ? (
               <label className="grid max-w-64 grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-700">
                 <input
                   type="checkbox"
@@ -2879,7 +3025,7 @@ export function CabinetResponsesClient({ responses = [] }: { responses?: Cabinet
             ) : null}
             <button
               type="button"
-              disabled={response.status === "sent" || payingResponseId === response.id}
+              disabled={response.employerMode || completedResponse || payingResponseId === response.id}
               onClick={() => {
                 setResponseError("");
                 setResponseErrorItemId("");
@@ -2889,8 +3035,20 @@ export function CabinetResponsesClient({ responses = [] }: { responses?: Cabinet
                   return;
                 }
                 setPayingResponseId(response.id);
-                void confirmClientPayment(response.paymentId)
-                  .then(() => window.location.reload())
+                void createClientPayment({
+                  tariffId: "job-response",
+                  targetId: response.id,
+                  targetTitle: `Отклик ${response.specialistName} на ${response.workRequestTitle ?? response.vacancyTitle}`,
+                  targetType: "application",
+                })
+                  .then((payment) => {
+                    if (payment.confirmationUrl) {
+                      window.location.href = payment.confirmationUrl;
+                      return undefined;
+                    }
+
+                    return confirmClientPayment(payment.id).then(() => window.location.reload());
+                  })
                   .catch((error) => {
                     setResponseError(error instanceof Error ? error.message : "Не удалось оплатить отклик.");
                     setResponseErrorItemId(response.id);
@@ -2899,11 +3057,12 @@ export function CabinetResponsesClient({ responses = [] }: { responses?: Cabinet
               }}
               className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              {payingResponseId === response.id ? "Оплачиваем..." : response.status === "sent" ? "Отклик отправлен" : "Оплатить отклик"}
+              {response.employerMode ? "Отклик получен" : payingResponseId === response.id ? "Оплачиваем..." : completedResponse ? "Отклик отправлен" : "Оплатить отклик"}
             </button>
           </div>
         </article>
-      ))}
+        );
+      })}
     </section>
   );
 }
@@ -3225,30 +3384,370 @@ export function CabinetOrganizationClient() {
   );
 }
 
-export function CabinetSpecialistClient({ initialSpecialist }: { initialSpecialist?: DemoPublication }) {
-  const { items, loading } = useUserCabinetData();
-  const storedSpecialists = items.filter((item) => item.type === "specialist");
-  const specialists = initialSpecialist && !storedSpecialists.some((item) => item.id === initialSpecialist.id) ? [...storedSpecialists, initialSpecialist] : storedSpecialists;
-  const sortedSpecialists = [...specialists].sort((left, right) => {
-    const leftDraft = isDraftPublication(left);
-    const rightDraft = isDraftPublication(right);
+type SpecialistCompletenessPayload = {
+  complete: boolean;
+  missing: string[];
+};
 
-    if (leftDraft !== rightDraft) {
-      return leftDraft ? 1 : -1;
+type SpecialistFormState = {
+  description: string;
+  messengerUrl: string;
+  price: string;
+  profession: string;
+  skills: string;
+};
+
+function specialistFormFromProfile(specialist?: SpecialistProfile): SpecialistFormState {
+  return {
+    description: specialist?.description ?? "",
+    messengerUrl: specialist?.messengerUrl ?? "",
+    price: specialist?.price?.replace(/[^0-9]/g, "") ?? "",
+    profession: specialist?.profession ?? "",
+    skills: specialist?.skills ?? "",
+  };
+}
+
+function specialistAccountFields(profile?: CabinetProfile | null, specialist?: SpecialistProfile | null) {
+  return {
+    city: profile?.city || specialist?.city || "Краснодар",
+    email: profile?.email || specialist?.email || "",
+    name: profile?.name || specialist?.name || "",
+    phone: profile?.phone || specialist?.phone || "",
+  };
+}
+
+function normalizeMessengerInput(value: string) {
+  return value.trim();
+}
+
+function isValidMessengerInput(value: string) {
+  const cleanValue = normalizeMessengerInput(value);
+
+  if (!cleanValue) {
+    return true;
+  }
+
+  return /^@[a-zA-Z0-9_]{5,32}$/.test(cleanValue) || /^https?:\/\/[^\s]+\.[^\s]+$/i.test(cleanValue) || /^https:\/\/t\.me\/[a-zA-Z0-9_]{5,32}$/i.test(cleanValue);
+}
+
+function validateSpecialistForm(form: SpecialistFormState, accountFields: ReturnType<typeof specialistAccountFields>, action: "save" | "activate" | "deactivate", professionOptions: string[]) {
+  if (action === "deactivate") {
+    return "";
+  }
+
+  if (form.profession && !professionOptions.includes(form.profession)) {
+    return "Выберите профессию из списка.";
+  }
+
+  if (form.price) {
+    const price = Number(form.price);
+
+    if (!Number.isFinite(price) || price < 100) {
+      return "Укажите стоимость работ от 100 ₽.";
+    }
+  }
+
+  if (form.messengerUrl && !isValidMessengerInput(form.messengerUrl)) {
+    return "Укажите Telegram в формате @username или ссылку на профиль.";
+  }
+
+  if (form.skills && form.skills.trim().length < 3) {
+    return "Добавьте навыки: минимум 3 символа.";
+  }
+
+  if (form.description && form.description.trim().length < 20) {
+    return "Поле «О специалисте» должно быть не короче 20 символов.";
+  }
+
+  if (action === "activate") {
+    if (!accountFields.name) return "Укажите имя в настройках аккаунта.";
+    if (!accountFields.city) return "Укажите город в настройках аккаунта.";
+    if (!form.profession) return "Выберите профессию.";
+    if (!form.price) return "Укажите стоимость работ.";
+    if (!form.skills.trim()) return "Добавьте навыки.";
+    if (!form.description.trim()) return "Заполните поле «О специалисте».";
+    if (!accountFields.phone && !accountFields.email && !form.messengerUrl.trim()) return "В настройках аккаунта укажите телефон или email, либо добавьте Telegram / WhatsApp.";
+  }
+
+  return "";
+}
+
+function ReadonlyAccountField({ label, value, placeholder }: { label: string; placeholder: string; value: string }) {
+  return (
+    <div className="grid gap-1.5 text-sm font-bold text-slate-700">
+      {label}
+      <div className="flex h-11 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 font-semibold text-slate-700">
+        <span className={value ? "truncate" : "truncate text-slate-400"}>{value || placeholder}</span>
+      </div>
+    </div>
+  );
+}
+
+function ProfessionSelect({ options, value, onChange }: { onChange: (value: string) => void; options: string[]; value: string }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return options;
     }
 
-    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
-  });
+    return options.filter((option) => option.toLowerCase().includes(normalizedQuery));
+  }, [options, query]);
 
-  if (loading && !initialSpecialist) {
+  useEffect(() => {
+    function handleDocumentClick(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleDocumentClick);
+    return () => document.removeEventListener("mousedown", handleDocumentClick);
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      inputRef.current?.focus();
+    }
+  }, [open]);
+
+  function selectOption(option: string) {
+    onChange(option);
+    setQuery("");
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative min-w-0" ref={rootRef}>
+      <button
+        type="button"
+        onClick={() => {
+          setQuery("");
+          setOpen((current) => !current);
+        }}
+        className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-left font-normal text-slate-950 outline-none transition hover:border-blue-200 hover:bg-blue-50/30 focus:border-[#0875d1] focus:ring-2 focus:ring-blue-100"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <span className={value ? "truncate" : "truncate text-slate-400"}>{value || "Выберите профессию"}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open ? (
+        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10" role="listbox">
+          <div className="mb-2 flex h-10 items-center rounded-lg border border-slate-200 bg-white px-3 text-slate-500 focus-within:border-[#0875d1]">
+            <Search className="h-4 w-4 shrink-0" />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value.replace(/[^\p{L}\s-]/gu, "").slice(0, 60))}
+              className="min-w-0 flex-1 border-0 bg-transparent px-2 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+              placeholder="Найти профессию"
+              autoComplete="off"
+            />
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {filteredOptions.length ? (
+              filteredOptions.map((option) => {
+                const activeOption = option === value;
+
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => selectOption(option)}
+                    className={`flex h-10 w-full items-center justify-between rounded-lg px-3 text-left text-sm font-semibold transition ${
+                      activeOption ? "bg-blue-50 text-[#0875d1]" : "text-slate-700 hover:bg-slate-50 hover:text-[#0875d1]"
+                    }`}
+                    role="option"
+                    aria-selected={activeOption}
+                  >
+                    <span className="min-w-0 truncate">{option}</span>
+                    {activeOption ? <Check className="h-4 w-4 shrink-0" /> : null}
+                  </button>
+                );
+              })
+            ) : (
+              <p className="px-3 py-3 text-sm font-semibold text-slate-500">Профессия не найдена</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function CabinetSpecialistClient() {
+  const { profile, loading: profileLoading } = useUserCabinetData();
+  const [specialist, setSpecialist] = useState<SpecialistProfile | null>(null);
+  const [completeness, setCompleteness] = useState<SpecialistCompletenessPayload>({ complete: false, missing: [] });
+  const [form, setForm] = useState<SpecialistFormState>(() => specialistFormFromProfile());
+  const [loading, setLoading] = useState(true);
+  const [savingAction, setSavingAction] = useState<"save" | "activate" | "deactivate" | "">("");
+  const [message, setMessage] = useState("");
+  const active = specialist?.status === "published";
+  const professionOptions = professions.filter((profession) => profession.active).map((profession) => profession.name);
+  const accountFields = specialistAccountFields(profile, specialist);
+
+  useEffect(() => {
+    let mounted = true;
+
+    setLoading(true);
+    getAuthHeaders()
+      .then((headers) =>
+        fetch("/api/cabinet/specialist", {
+          cache: "no-store",
+          headers,
+        }),
+      )
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Не удалось загрузить анкету.");
+        }
+
+        return (await response.json()) as { completeness?: SpecialistCompletenessPayload; specialist?: SpecialistProfile };
+      })
+      .then((payload) => {
+        if (!mounted) {
+          return;
+        }
+
+        setSpecialist(payload.specialist ?? null);
+        setCompleteness(payload.completeness ?? { complete: false, missing: [] });
+        setForm(specialistFormFromProfile(payload.specialist));
+      })
+      .catch((error) => {
+        if (mounted) {
+          setMessage(error instanceof Error ? error.message : "Не удалось загрузить анкету.");
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [profile]);
+
+  async function submit(action: "save" | "activate" | "deactivate") {
+    const validationError = validateSpecialistForm(form, accountFields, action, professionOptions);
+
+    if (validationError) {
+      setMessage(validationError);
+      return;
+    }
+
+    setSavingAction(action);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/cabinet/specialist", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        body: JSON.stringify({ ...form, ...accountFields, messengerUrl: normalizeMessengerInput(form.messengerUrl), action }),
+      });
+      const payload = (await response.json().catch(() => null)) as { completeness?: SpecialistCompletenessPayload; error?: string; specialist?: SpecialistProfile } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Не удалось сохранить анкету.");
+      }
+
+      setSpecialist(payload?.specialist ?? null);
+      setCompleteness(payload?.completeness ?? { complete: false, missing: [] });
+      setForm(specialistFormFromProfile(payload?.specialist));
+      setMessage(action === "activate" ? "Анкета активирована и доступна для откликов." : action === "deactivate" ? "Анкета отключена и не показывается публично." : "Анкета сохранена.");
+      markCabinetDataChanged();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось сохранить анкету.");
+    } finally {
+      setSavingAction("");
+    }
+  }
+
+  if (loading || profileLoading) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем анкету...</div>;
   }
 
-  if (!sortedSpecialists.length) {
-    return <EmptyState mode="specialist" />;
-  }
+  return (
+    <section className="grid gap-4">
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-black text-[#060b27]">Анкета исполнителя</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              Анкета одна на аккаунт. Пока она не активирована, вас не видно в специалистах и нельзя отправлять платные отклики.
+            </p>
+          </div>
+          <StatusPill>{active ? "Активна" : completeness.complete ? "Готова к активации" : "Не активна"}</StatusPill>
+        </div>
 
-  return <PublicationList items={sortedSpecialists} mode="specialist" />;
+        {!completeness.complete ? (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-800">
+            Для активации заполните: {completeness.missing.length ? completeness.missing.join(", ") : "обязательные поля"}.
+          </div>
+        ) : null}
+
+        <form
+          className="mt-5 grid gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit("save");
+          }}
+        >
+          <div className="grid gap-4 md:grid-cols-2">
+            <ReadonlyAccountField label="Имя" value={accountFields.name} placeholder="Заполните в настройках" />
+            <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+              Профессия
+              <ProfessionSelect options={professionOptions} value={form.profession} onChange={(profession) => setForm({ ...form, profession })} />
+            </label>
+            <ReadonlyAccountField label="Город" value={accountFields.city} placeholder="Заполните в настройках" />
+            <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+              Стоимость работ, ₽
+              <div className="flex h-11 items-center rounded-lg border border-slate-300 bg-white px-3 focus-within:border-[#0875d1]">
+                <input className="min-w-0 flex-1 font-normal outline-none" inputMode="numeric" min={100} value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value.replace(/\D/g, "").slice(0, 9) })} placeholder="1500" />
+                <span className="font-black text-slate-500">₽</span>
+              </div>
+            </label>
+            <ReadonlyAccountField label="Телефон" value={accountFields.phone} placeholder="Заполните в настройках" />
+            <ReadonlyAccountField label="Email" value={accountFields.email} placeholder="Заполните в настройках" />
+            <label className="grid gap-1.5 text-sm font-bold text-slate-700 md:col-span-2">
+              Telegram / WhatsApp
+              <input className="h-11 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]" value={form.messengerUrl} onChange={(event) => setForm({ ...form, messengerUrl: event.target.value.slice(0, 120) })} placeholder="@username или https://t.me/username" />
+            </label>
+          </div>
+          <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+            Навыки
+            <textarea className="min-h-24 resize-y rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-[#0875d1]" minLength={3} value={form.skills} onChange={(event) => setForm({ ...form, skills: event.target.value.slice(0, 500) })} placeholder="Монтаж, ремонт, настройка, выезд" />
+          </label>
+          <label className="grid gap-1.5 text-sm font-bold text-slate-700">
+            О специалисте
+            <textarea className="min-h-28 resize-y rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-[#0875d1]" minLength={20} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value.slice(0, 900) })} placeholder="Опыт, условия выезда, гарантия, с какими задачами работаете." />
+          </label>
+          {message ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{message}</p> : null}
+          <div className="flex flex-wrap gap-3">
+            <button type="submit" disabled={Boolean(savingAction)} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-wait disabled:bg-slate-300">
+              {savingAction === "save" ? "Сохраняем..." : "Сохранить"}
+            </button>
+            {active ? (
+              <button type="button" disabled={Boolean(savingAction)} onClick={() => void submit("deactivate")} className="inline-flex h-11 items-center justify-center rounded-lg border border-amber-200 bg-white px-5 text-sm font-bold text-amber-700 transition hover:bg-amber-50 disabled:cursor-wait disabled:bg-slate-100">
+                {savingAction === "deactivate" ? "Отключаем..." : "Отключить анкету"}
+              </button>
+            ) : (
+              <button type="button" disabled={Boolean(savingAction)} onClick={() => void submit("activate")} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0aa337] px-5 text-sm font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:bg-slate-300">
+                {savingAction === "activate" ? "Активируем..." : "Активировать анкету"}
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+    </section>
+  );
 }
 
 export function CabinetCapabilities() {

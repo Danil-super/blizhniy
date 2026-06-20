@@ -34,6 +34,7 @@ export type DemoPublication = {
   messengerUrl?: string;
   email?: string;
   profession?: string;
+  skills?: string;
   employerType?: string;
   inn?: string;
   ogrn?: string;

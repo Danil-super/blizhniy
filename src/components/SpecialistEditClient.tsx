@@ -2,10 +2,16 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { BackLink } from "@/components/BackLink";
-import { Field, FormPanel, TextAreaField } from "@/components/FormPanel";
+import { DropdownSelect } from "@/components/DropdownSelect";
+import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
+import { ListingLocationFields } from "@/components/listings/ListingFormControls";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
+import { isStoredMediaReference, storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
+import { professions } from "@/lib/data";
 import { appendPublicationHistory, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
+import { normalizeListingPrice } from "@/lib/listing-price";
+import { hasMapCoordinates } from "@/lib/map-location";
 
 function readStoredPublications() {
   try {
@@ -35,9 +41,98 @@ function readValue(formData: FormData, name: string, fallback = "") {
   return String(formData.get(name) ?? "").trim() || fallback;
 }
 
+function readOptionalValue(formData: FormData, name: string) {
+  return String(formData.get(name) ?? "").trim();
+}
+
+function readPhotoRefs(formData: FormData) {
+  const rawValue = String(formData.get("photosRefs") ?? "").trim();
+
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.flatMap((value) => {
+      const photo = String(value ?? "").trim();
+
+      return photo ? [photo] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function storeImageReference(source: string, index: number) {
+  if (isStoredMediaReference(source) || /^https?:\/\//i.test(source)) {
+    return source;
+  }
+
+  if (/^data:image\//i.test(source)) {
+    return storeMediaDataUrl(source, `specialist-photo-${index + 1}.png`);
+  }
+
+  if (/^blob:/i.test(source)) {
+    const response = await fetch(source);
+    const blob = await response.blob();
+    const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
+
+    return storeMediaFile(new File([blob], `specialist-photo-${index + 1}.${extension}`, { type: blob.type || "image/jpeg" }));
+  }
+
+  return source;
+}
+
+async function readLocalImageReferences(formData: FormData) {
+  const previewRefs = readPhotoRefs(formData).slice(0, 12);
+
+  if (previewRefs.length) {
+    const storedRefs = await Promise.allSettled(previewRefs.map((source, index) => storeImageReference(source, index)));
+
+    return storedRefs.flatMap((result) => (result.status === "fulfilled" && result.value ? [result.value] : [])).slice(0, 12);
+  }
+
+  return formData
+    .getAll("existingPhotos")
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function parseCoordinate(formData: FormData, name: string) {
+  const rawValue = String(formData.get(name) ?? "").trim();
+
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const value = Number(rawValue.replace(",", "."));
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function hasSelectedMapPoint(formData: FormData) {
+  return String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1";
+}
+
 export function SpecialistEditClient({ specialistId }: { specialistId: string }) {
   const [storedItems, setStoredItems] = useState<DemoPublication[]>([]);
   const [message, setMessage] = useState("");
+  const professionOptions = useMemo(
+    () =>
+      professions
+        .filter((profession) => profession.active)
+        .map((profession) => ({
+          value: profession.name,
+          label: `${profession.name} · ${profession.parent}`,
+        })),
+    [],
+  );
 
   useEffect(() => {
     setStoredItems(readStoredPublications());
@@ -57,6 +152,19 @@ export function SpecialistEditClient({ specialistId }: { specialistId: string })
       const identity = await resolveAuthenticatedClientUserIdentity();
       const formData = new FormData(form);
       const nextStatus = isPendingPaymentStatus(specialist.status) ? specialist.status : readValue(formData, "status", specialist.status);
+      const hasMapPoint = hasSelectedMapPoint(formData);
+      const lat = hasMapPoint ? parseCoordinate(formData, "lat") : undefined;
+      const lng = hasMapPoint ? parseCoordinate(formData, "lng") : undefined;
+      const address = hasMapPoint ? readOptionalValue(formData, "address") : undefined;
+      const phone = readOptionalValue(formData, "phone");
+      const email = readOptionalValue(formData, "email");
+      const messengerUrl = readOptionalValue(formData, "messengerUrl");
+
+      if (!phone && !email && !messengerUrl) {
+        setMessage("Укажите телефон, email или Telegram / WhatsApp.");
+        return;
+      }
+
       const updatedSpecialist: DemoPublication = {
         ...specialist,
         ownerKey: identity.ownerKey,
@@ -64,11 +172,19 @@ export function SpecialistEditClient({ specialistId }: { specialistId: string })
         title: readValue(formData, "name", specialist.title),
         subtitle: readValue(formData, "profession", specialist.subtitle),
         city: readValue(formData, "city", specialist.city),
-        price: readValue(formData, "price", specialist.price ?? "по договоренности"),
+        price: normalizeListingPrice(readValue(formData, "price", specialist.price ?? ""), specialist.price ?? "по договоренности"),
         description: readValue(formData, "description", specialist.description ?? ""),
-        phone: readValue(formData, "phone", specialist.phone ?? ""),
-        email: readValue(formData, "email", specialist.email ?? ""),
-        messengerUrl: readValue(formData, "messengerUrl", specialist.messengerUrl ?? ""),
+        images: await readLocalImageReferences(formData),
+        address,
+        hasMapPoint,
+        lat,
+        lng,
+        phone,
+        email,
+        messengerUrl,
+        profession: readValue(formData, "profession", specialist.profession ?? specialist.subtitle),
+        showExactAddress: hasMapPoint,
+        skills: readValue(formData, "skills", specialist.skills ?? ""),
         status: nextStatus,
       };
       const nextItems = storedItems.map((item) => {
@@ -122,29 +238,38 @@ export function SpecialistEditClient({ specialistId }: { specialistId: string })
         <form onSubmit={handleSubmit} className="responsive-form-panel grid gap-4">
           <div className="responsive-field-grid specialist-primary-field-grid">
             <div className="specialist-primary-name">
-              <Field name="name" label="Имя / название профиля" defaultValue={specialist.title} />
+              <Field name="name" label="Имя / название профиля" defaultValue={specialist.title} minLength={2} maxLength={15} required />
             </div>
-            <div className="specialist-primary-profession">
-              <Field name="profession" label="Профессия" defaultValue={specialist.subtitle} />
-            </div>
+            <label className="specialist-primary-profession form-field grid min-w-0 gap-1.5 text-xs font-bold leading-4 text-slate-700 sm:gap-2 sm:text-sm" data-field-size="lg">
+              <span className="line-clamp-2">Профессия из классификатора</span>
+              <DropdownSelect name="profession" defaultValue={specialist.profession ?? specialist.subtitle} placeholder="Выбрать" options={professionOptions} required />
+            </label>
             <div className="specialist-primary-price">
-              <Field name="price" label="Стоимость работ" defaultValue={specialist.price} />
+              <Field name="price" label="Стоимость работ" defaultValue={specialist.price} placeholder="1500" maxLength={9} required />
             </div>
             <div className="specialist-primary-phone">
-              <Field name="phone" label="Телефон" defaultValue={specialist.phone} />
+              <Field name="phone" label="Телефон" placeholder="+7-(999)-999-99-99" defaultValue={specialist.phone} />
             </div>
             <div className="specialist-primary-email">
-              <Field name="email" label="Email" type="email" defaultValue={specialist.email} />
+              <Field name="email" label="Email" type="email" placeholder="name@example.ru" defaultValue={specialist.email} maxLength={64} />
             </div>
             <div className="specialist-primary-messenger">
-              <Field name="messengerUrl" label="Telegram / WhatsApp" defaultValue={specialist.messengerUrl} />
+              <Field name="messengerUrl" label="Telegram / WhatsApp" placeholder="@username или ссылка" defaultValue={specialist.messengerUrl} maxLength={64} />
             </div>
           </div>
-          <div className="responsive-field-grid">
-            <Field name="city" label="Город" defaultValue={specialist.city} />
-            <Field name="status" label="Статус" defaultValue={specialist.status} placeholder="Опубликовано или Черновик" />
-          </div>
-          <TextAreaField name="description" label="О себе и опыт работы" defaultValue={specialist.description} />
+          <input type="hidden" name="status" value={specialist.status} />
+          <ListingLocationFields
+            addressLegend="Адрес специалиста"
+            cityFieldName="city"
+            defaultAddress={specialist.address}
+            defaultCity={specialist.city}
+            defaultLat={(specialist.hasMapPoint ?? true) && hasMapCoordinates(specialist.lat, specialist.lng) ? specialist.lat : undefined}
+            defaultLng={(specialist.hasMapPoint ?? true) && hasMapCoordinates(specialist.lat, specialist.lng) ? specialist.lng : undefined}
+            inlineControls
+          />
+          <PhotoField defaultPhotos={specialist.images} label="Фото специалиста и работ" description="Добавьте портфолио, фото выполненных работ или рабочей зоны." />
+          <TextAreaField name="skills" label="Навыки" placeholder="Монтаж, ремонт, замена" defaultValue={specialist.skills} minLength={3} maxLength={120} required />
+          <TextAreaField name="description" label="О себе и опыт работы" placeholder="Расскажите об опыте, подходе к работе, гарантиях и условиях выезда" defaultValue={specialist.description} maxLength={500} />
           {message ? <p className="rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{message}</p> : null}
           <div className="flex flex-wrap gap-3">
             <button type="submit" className="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0875d1] px-7 font-bold text-white">

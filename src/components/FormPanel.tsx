@@ -30,7 +30,7 @@ function validationForField(label: string, type: string) {
     return "phone";
   }
 
-  if (normalizedLabel === "оплата") {
+  if (normalizedLabel === "оплата" || normalizedLabel === "стоимость работ") {
     return "salary";
   }
 

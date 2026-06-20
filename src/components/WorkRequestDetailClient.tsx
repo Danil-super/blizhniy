@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { ClipboardList, MapPin } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
-import { ContactAssetIcon } from "@/components/ContactAssetIcon";
+import { DetailImageGallery } from "@/components/DetailImageGallery";
 import { LocationMap } from "@/components/LocationMap";
-import { StoredMediaImage } from "@/components/StoredMedia";
+import { VacancyApplicationButton } from "@/components/VacancyApplicationButton";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { demoPublicationsStorageKey, type DemoPublication } from "@/lib/demo-publications";
+import { hasMapCoordinates } from "@/lib/map-location";
+import { formatPublicationDateTime } from "@/lib/publication-time";
 
 function readStoredPublications() {
   try {
@@ -29,9 +31,16 @@ function DemoStatusBadge({ status }: { status: string }) {
   return <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${draft ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{status}</span>;
 }
 
+function locationLabel(request: DemoPublication) {
+  if (request.showExactAddress && request.address) {
+    return [request.city, request.address].filter(Boolean).join(", ");
+  }
+
+  return request.city;
+}
+
 export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
   const [items, setItems] = useState<DemoPublication[]>([]);
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const request = useMemo(() => items.find((item) => item.type === "workRequest" && item.id === requestId), [items, requestId]);
 
   useEffect(() => {
@@ -52,9 +61,10 @@ export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
     );
   }
 
-  const messageHref = request.messengerUrl ?? `https://wa.me/${(request.phone ?? "+78610009999").replace(/\D/g, "")}`;
   const images = request.images ?? [];
-  const activeImage = images[Math.min(activeImageIndex, Math.max(0, images.length - 1))];
+  const hasPoint = hasMapCoordinates(request.lat, request.lng);
+  const placeLabel = locationLabel(request);
+  const publishedLabel = formatPublicationDateTime(request.createdAt, "10:00");
 
   return (
     <>
@@ -63,67 +73,59 @@ export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
         <BackLink fallbackHref="/cabinet/zakazy" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
         </BackLink>
-        <article className="grid gap-4 lg:grid-cols-[1fr_320px]">
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
-            <DemoStatusBadge status={request.status} />
-            <p className="mt-4 text-sm text-slate-500 sm:text-base">{request.subtitle}</p>
-            <h1 className="mt-2 text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">{request.title}</h1>
-            <p className="mt-3 text-xl font-black text-[#060b27] sm:text-2xl">{request.price ?? "по договоренности"}</p>
-            <p className="mt-3 flex items-center gap-2 text-sm text-slate-600 sm:text-base">
-              <MapPin className="h-4 w-4 sm:h-5 sm:w-5" />
-              {request.city}
-            </p>
-            {activeImage ? (
-              <section className="mt-6">
-                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                  <div className="flex aspect-[4/3] max-h-[34rem] items-center justify-center bg-slate-100">
-                    <StoredMediaImage src={activeImage} alt={request.title} className="h-full w-full object-contain" />
+        <article className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <section className="grid gap-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
+              <div className="grid gap-4 md:grid-cols-[minmax(17rem,24rem)_minmax(0,1fr)] md:items-start">
+                <DetailImageGallery images={images} title={request.title} fallbackIcon={<ClipboardList className="h-16 w-16 text-slate-300" />} />
+                <div className="order-1 min-w-0 md:order-2">
+                  <DemoStatusBadge status={request.status} />
+                  <p className="mt-3 text-sm text-slate-500">{request.subtitle}</p>
+                  <h1 className="mt-2 text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">{request.title}</h1>
+                  <p className="mt-3 text-xl font-black text-[#060b27] sm:text-2xl">{request.price ?? "по договоренности"}</p>
+                  <div className="mt-3 grid gap-2 text-sm font-semibold text-slate-600">
+                    {publishedLabel ? <p>{publishedLabel}</p> : null}
+                    <p className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-[#0875d1] sm:h-5 sm:w-5" />
+                      {placeLabel}
+                    </p>
                   </div>
                 </div>
-                {images.length > 1 ? (
-                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
-                    {images.map((image, index) => (
-                      <button
-                        key={`${image}-${index}`}
-                        type="button"
-                        onClick={() => setActiveImageIndex(index)}
-                        className={`h-20 w-24 shrink-0 overflow-hidden rounded-xl border bg-white transition sm:h-24 sm:w-32 ${
-                          index === activeImageIndex ? "border-[#0875d1] ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
-                        }`}
-                        aria-label={`Показать фото ${index + 1}`}
-                      >
-                        <StoredMediaImage src={image} alt={`${request.title}, фото ${index + 1}`} className="h-full w-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </section>
-            ) : null}
-            <section className="mt-6 text-sm leading-6 text-slate-700 sm:text-base sm:leading-7">
-              <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Описание</h2>
-              <p className="mt-2 whitespace-pre-line">{request.description ?? "Описание заказа будет дополнено."}</p>
+              </div>
+            </div>
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
+              <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Описание</h2>
+              <p className="mt-3 whitespace-pre-line">{request.description ?? "Описание заказа будет дополнено."}</p>
             </section>
-            <div className="mt-6">
-              <LocationMap location={{ ...request, showExactAddress: Boolean(request.showExactAddress) }} exactLabel="Точный адрес заказа показывается только если заказчик разрешил" />
-            </div>
           </section>
-          <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-[#0aa337] sm:h-20 sm:w-20">
-              <ClipboardList className="h-8 w-8 sm:h-10 sm:w-10" />
-            </div>
-            <h2 className="mt-4 text-xl font-black text-[#060b27] sm:text-2xl">Связаться</h2>
-            <div className="mt-4 grid gap-2 sm:mt-5">
-              {request.phone ? (
-                <a className="inline-flex h-11 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-[#0875d1] to-[#18a9ff] px-3 font-bold text-white shadow-sm shadow-blue-100 transition hover:from-[#0664b3] hover:to-[#0875d1]" href={`tel:${request.phone}`}>
-                  <ContactAssetIcon kind="phone" />
-                  Позвонить
-                </a>
-              ) : null}
-              <a className="inline-flex h-11 items-center justify-center gap-2.5 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-3 font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50" href={messageHref}>
-                <ContactAssetIcon kind="message" />
-                Написать
-              </a>
-            </div>
+          <aside className="grid h-fit gap-4">
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-[#0aa337] sm:h-16 sm:w-16">
+                  <ClipboardList className="h-7 w-7 sm:h-8 sm:w-8" />
+                </div>
+                <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Связаться</h2>
+              </div>
+              <div className="mt-5 grid gap-2">
+                <VacancyApplicationButton targetKind="workRequest" targetId={request.id} targetTitle={request.title} />
+                <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-600">
+                  Контакты заказчика не показываются публично. После отклика заказчик увидит вашу анкету и сам выберет исполнителя.
+                </p>
+              </div>
+            </section>
+            {hasPoint ? (
+              <div className="hidden lg:block">
+                <LocationMap location={{ ...request, showExactAddress: Boolean(request.showExactAddress), hasMapPoint: true }} exactLabel="Точный адрес заказа показывается только если заказчик разрешил" />
+              </div>
+            ) : (
+              <section className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:block">
+                <h2 className="text-xl font-black text-[#060b27]">Адрес</h2>
+                <p className="mt-3 flex items-start gap-2 text-sm font-semibold text-slate-600">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#0875d1]" />
+                  {placeLabel}
+                </p>
+              </section>
+            )}
           </aside>
         </article>
       </main>

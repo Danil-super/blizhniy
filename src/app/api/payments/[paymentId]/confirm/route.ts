@@ -54,7 +54,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
     if (isSupabaseServerConfigured()) {
       const auth = await getAuthenticatedRequestUser(request);
 
-      if (!auth && !payment) {
+      if (!auth) {
         return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы подтвердить платеж" }, { status: 401 });
       }
 
@@ -83,7 +83,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
       canTrustSuccessfulReturn &&
       canTrustSuccessfulReturnInThisEnvironment() &&
       result.payment.provider === "yookassa" &&
-      (result.payment.targetType === "listing" || result.payment.targetType === "vacancy" || result.payment.targetType === "workRequest") &&
+      (result.payment.targetType === "listing" || result.payment.targetType === "vacancy" || result.payment.targetType === "workRequest" || result.payment.targetType === "application") &&
       result.payment.status !== "succeeded"
     ) {
       return NextResponse.json(await forceSucceededTestPayment(result.payment));

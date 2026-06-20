@@ -1,5 +1,5 @@
-import { CabinetOrganizationPage } from "@/components/MvpDashboard";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <CabinetOrganizationPage />;
+  redirect("/cabinet/vakansii");
 }

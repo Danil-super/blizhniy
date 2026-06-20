@@ -27,6 +27,7 @@ type CreatePaymentInput = {
   targetType?: Payment["targetType"];
   targetTitle?: string;
   vacancyDraft?: DemoPublication;
+  workRequestDraft?: DemoPublication;
 };
 
 type CreatedPaymentPayload = {
@@ -59,6 +60,20 @@ type CreatedVacancyPaymentPayload = {
   };
 };
 
+type CreatedWorkRequestPaymentPayload = {
+  error?: string;
+  payment?: CreatedPaymentPayload;
+  workRequest?: {
+    budget?: string;
+    city?: string;
+    description?: string;
+    id?: string;
+    images?: string[];
+    status?: string;
+    title?: string;
+  };
+};
+
 type MediaUploadResponse = {
   files?: Array<{ path?: string }>;
   error?: string;
@@ -81,7 +96,7 @@ function isUuid(value?: string) {
 function storagePathFromMediaSource(source: string) {
   const cleanSource = source.trim();
 
-  if (/^vacancies\/.+/i.test(cleanSource)) {
+  if (/^(vacancies|work-requests)\/.+/i.test(cleanSource)) {
     return cleanSource;
   }
 
@@ -322,6 +337,16 @@ function mergeCreatedVacancyIntoDraft(draft: DemoPublication, vacancy?: CreatedV
   };
 }
 
+function mergeWorkRequestServerImages(serverImages: string[] | undefined, localImages: string[] | undefined) {
+  const local = localImages ?? [];
+
+  if (!serverImages?.length) {
+    return local;
+  }
+
+  return [...serverImages, ...local.slice(serverImages.length)].slice(0, 6);
+}
+
 async function uploadDraftVacancyImage(item: DemoPublication) {
   const sources = (item.images ?? []).slice(0, 12);
 
@@ -361,6 +386,62 @@ async function uploadDraftVacancyImage(item: DemoPublication) {
   const uploadedPaths = (payload?.files ?? []).map((uploadedFile) => uploadedFile.path).filter((path): path is string => Boolean(path));
 
   return [...existingStoragePaths, ...uploadedPaths].slice(0, 12);
+}
+
+function apiWorkRequestPayloadFromDraft(item: DemoPublication, tariffId: string, mediaPaths: string[] = []) {
+  return {
+    address: item.hasMapPoint ? item.address : undefined,
+    budget: item.price ? normalizeListingPrice(item.price) : undefined,
+    city: item.city || "Краснодар",
+    description: item.description || "Описание задачи будет дополнено.",
+    lat: item.hasMapPoint ? item.lat : undefined,
+    lng: item.hasMapPoint ? item.lng : undefined,
+    mediaPaths,
+    messengerUrl: item.messengerUrl || undefined,
+    phone: item.phone || undefined,
+    placementRightConfirmed: true,
+    profession: item.profession || item.subtitle || item.title,
+    tariffId,
+    title: item.title || "Новый заказ",
+  };
+}
+
+async function uploadDraftWorkRequestImage(item: DemoPublication) {
+  const sources = (item.images ?? []).slice(0, 6);
+
+  if (!sources.length) {
+    return [];
+  }
+
+  const existingStoragePaths = sources.map(storagePathFromMediaSource).filter(Boolean);
+  const sourcesToUpload = sources.filter((source) => !storagePathFromMediaSource(source));
+  const imageFiles = (
+    await Promise.all(sourcesToUpload.map((source, index) => imageSourceToFile(source, index)))
+  ).filter((file): file is File => Boolean(file));
+
+  if (!imageFiles.length) {
+    return existingStoragePaths.slice(0, 6);
+  }
+
+  const uploadFormData = new FormData();
+
+  uploadFormData.set("folder", "work-requests");
+  imageFiles.forEach((file) => uploadFormData.append("files", file));
+
+  const response = await fetch("/api/uploads/media", {
+    body: uploadFormData,
+    headers: await getAuthHeaders(),
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as MediaUploadResponse | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "Не удалось загрузить фото заказа.");
+  }
+
+  const uploadedPaths = (payload?.files ?? []).map((uploadedFile) => uploadedFile.path).filter((path): path is string => Boolean(path));
+
+  return [...existingStoragePaths, ...uploadedPaths].slice(0, 6);
 }
 
 async function findMatchingServerListing(draft: DemoPublication) {
@@ -691,16 +772,88 @@ async function createVacancyPaymentFromLocalDraft(input: CreatePaymentInput) {
   return payload.payment;
 }
 
+async function createWorkRequestPaymentFromLocalDraft(input: CreatePaymentInput) {
+  const draft = input.workRequestDraft ?? readStoredPublications().find((item) => item.type === "workRequest" && item.id === input.targetId);
+
+  if (!draft) {
+    throw new Error("Черновик заказа не найден. Откройте черновик и попробуйте сохранить его заново.");
+  }
+
+  if (isUuid(draft.id)) {
+    const payment = await createClientPayment({
+      tariffId: input.tariffId,
+      targetId: draft.id,
+      targetTitle: draft.title,
+      targetType: "workRequest",
+    });
+    const serverDraftCopy = withPublicationStatusHistory(
+      {
+        ...draft,
+        id: draft.id,
+        status: "Ждет оплаты",
+      },
+      "Ждет оплаты",
+      {
+        description: "Заказ сохранен и отправлен на оплату перед публикацией.",
+      },
+    );
+
+    writeStoredPublications([serverDraftCopy, ...readStoredPublications().filter((item) => item.id !== draft.id)].slice(0, 80));
+    rememberPendingPaymentId(payment.id);
+
+    return payment;
+  }
+
+  const mediaPaths = await uploadDraftWorkRequestImage(draft);
+  const response = await fetch("/api/work-requests", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    body: JSON.stringify(apiWorkRequestPayloadFromDraft(draft, input.tariffId, mediaPaths)),
+  });
+  const payload = (await response.json().catch(() => null)) as CreatedWorkRequestPaymentPayload | null;
+
+  if (!response.ok || !payload?.workRequest?.id || !payload.payment?.id) {
+    throw new Error(payload?.error ?? "Не удалось создать оплату для черновика заказа.");
+  }
+
+  const serverRequestId = payload.workRequest.id;
+  const serverDraftCopy = withPublicationStatusHistory(
+    {
+      ...draft,
+      id: serverRequestId,
+      city: payload.workRequest.city ?? draft.city,
+      description: payload.workRequest.description ?? draft.description,
+      images: mergeWorkRequestServerImages(payload.workRequest.images, draft.images),
+      price: payload.workRequest.budget ?? draft.price,
+      status: "Ждет оплаты",
+      title: payload.workRequest.title ?? draft.title,
+    },
+    "Ждет оплаты",
+    {
+      description: "Черновик заказа перенесен в базу и отправлен на оплату перед публикацией.",
+    },
+  );
+
+  writeStoredPublications([serverDraftCopy, ...readStoredPublications().filter((item) => item.id !== draft.id && item.id !== serverRequestId)].slice(0, 80));
+  rememberPendingPaymentId(payload.payment.id);
+
+  return payload.payment;
+}
+
 export async function createAndConfirmClientPayment(input: CreatePaymentInput) {
   const payment =
     input.targetType === "listing" && input.listingDraft
       ? await createListingPaymentFromLocalDraft(input)
       : input.targetType === "vacancy" && input.vacancyDraft
       ? await createVacancyPaymentFromLocalDraft(input)
+      : input.targetType === "workRequest" && input.workRequestDraft
+      ? await createWorkRequestPaymentFromLocalDraft(input)
       : input.targetType === "listing" && input.targetId && !isUuid(input.targetId)
       ? await createListingPaymentFromLocalDraft(input)
       : input.targetType === "vacancy" && input.targetId && !isUuid(input.targetId)
       ? await createVacancyPaymentFromLocalDraft(input)
+      : input.targetType === "workRequest" && input.targetId && !isUuid(input.targetId)
+      ? await createWorkRequestPaymentFromLocalDraft(input)
       : await createClientPayment(input);
 
   if (payment.confirmationUrl) {

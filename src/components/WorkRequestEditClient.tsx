@@ -5,7 +5,8 @@ import { BackLink } from "@/components/BackLink";
 import { CitySelectField } from "@/components/CitySelectField";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
-import { storeMediaFile } from "@/lib/client-media-store";
+import { isStoredMediaReference, storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
+import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { appendPublicationHistory, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
@@ -15,6 +16,13 @@ type WorkRequestEditClientProps = {
   initialRequest?: WorkRequest;
   requestId: string;
 };
+
+type WorkRequestUpdateResponse = {
+  error?: string;
+  workRequest?: WorkRequest;
+};
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function readStoredPublications() {
   try {
@@ -67,7 +75,59 @@ function readExistingPhotos(formData: FormData) {
     .slice(0, 6);
 }
 
+function readPhotoRefs(formData: FormData) {
+  const rawValue = String(formData.get("photosRefs") ?? "").trim();
+
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.flatMap((value) => {
+      const photo = String(value ?? "").trim();
+
+      return photo ? [photo] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function storeImageReference(source: string, index: number) {
+  if (isStoredMediaReference(source) || /^https?:\/\//i.test(source)) {
+    return source;
+  }
+
+  if (/^data:image\//i.test(source)) {
+    return storeMediaDataUrl(source, `work-request-photo-${index + 1}.png`);
+  }
+
+  if (/^blob:/i.test(source)) {
+    const response = await fetch(source);
+    const blob = await response.blob();
+    const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
+
+    return storeMediaFile(new File([blob], `work-request-photo-${index + 1}.${extension}`, { type: blob.type || "image/jpeg" }));
+  }
+
+  return source;
+}
+
 async function readLocalImageReferences(formData: FormData) {
+  const previewRefs = readPhotoRefs(formData).slice(0, 6);
+
+  if (previewRefs.length) {
+    const storedRefs = await Promise.allSettled(previewRefs.map((source, index) => storeImageReference(source, index)));
+
+    return storedRefs.flatMap((result) => (result.status === "fulfilled" && result.value ? [result.value] : [])).slice(0, 6);
+  }
+
   const files = formData
     .getAll("photos")
     .filter((item): item is File => item instanceof File && item.size > 0 && item.type.startsWith("image/"))
@@ -75,6 +135,14 @@ async function readLocalImageReferences(formData: FormData) {
   const storedImages = await Promise.allSettled(files.map((file) => storeMediaFile(file)));
 
   return [...readExistingPhotos(formData), ...storedImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))].slice(0, 6);
+}
+
+function mergeSavedImages(serverImages: string[] | undefined, localImages: string[]) {
+  if (!serverImages?.length) {
+    return localImages;
+  }
+
+  return [...serverImages, ...localImages.slice(serverImages.length)].slice(0, 6);
 }
 
 export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequestEditClientProps) {
@@ -107,23 +175,53 @@ export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequest
       const messengerUrl = readValue(formData, "messengerUrl", request.messengerUrl ?? "");
       const nextStatus = readValue(formData, "status", request.status);
       const images = await readLocalImageReferences(formData);
+      let serverRequest: WorkRequest | undefined;
 
       if (nextStatus.trim().toLowerCase() !== "черновик" && !phone && !messengerUrl) {
         setMessage("Укажите телефон или мессенджер, чтобы исполнитель мог связаться по заказу.");
         return;
       }
 
+      if (uuidPattern.test(request.id)) {
+        const mediaPaths = await uploadPublicationImageSources(images, "work-requests", identity.accessToken);
+        const response = await fetch("/api/cabinet/work-requests", {
+          body: JSON.stringify({
+            id: request.id,
+            budget: readValue(formData, "budget", request.price ?? ""),
+            city: readValue(formData, "city", request.city),
+            description: readValue(formData, "description", request.description ?? ""),
+            mediaPaths,
+            messengerUrl,
+            phone,
+            profession: readValue(formData, "profession", request.profession ?? request.subtitle),
+            title: readValue(formData, "title", request.title),
+          }),
+          headers: {
+            Authorization: `Bearer ${identity.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          method: "PATCH",
+        });
+        const payload = (await response.json().catch(() => null)) as WorkRequestUpdateResponse | null;
+
+        if (!response.ok || !payload?.workRequest) {
+          throw new Error(payload?.error ?? "Не удалось сохранить заказ.");
+        }
+
+        serverRequest = payload.workRequest;
+      }
+
       const updatedRequest: DemoPublication = {
         ...request,
         ownerKey: identity.ownerKey,
         ownerName: identity.name,
-        title: readValue(formData, "title", request.title),
-        subtitle: readValue(formData, "profession", request.subtitle),
-        profession: readValue(formData, "profession", request.profession ?? request.subtitle),
-        city: readValue(formData, "city", request.city),
-        price: normalizeListingPrice(readValue(formData, "budget", request.price ?? ""), "по договоренности"),
-        description: readValue(formData, "description", request.description ?? ""),
-        images,
+        title: serverRequest?.title ?? readValue(formData, "title", request.title),
+        subtitle: serverRequest?.profession ?? readValue(formData, "profession", request.subtitle),
+        profession: serverRequest?.profession ?? readValue(formData, "profession", request.profession ?? request.subtitle),
+        city: serverRequest?.city ?? readValue(formData, "city", request.city),
+        price: serverRequest?.budget ?? normalizeListingPrice(readValue(formData, "budget", request.price ?? ""), "по договоренности"),
+        description: serverRequest?.description ?? readValue(formData, "description", request.description ?? ""),
+        images: mergeSavedImages(serverRequest?.images, images),
         phone,
         messengerUrl,
         status: nextStatus,

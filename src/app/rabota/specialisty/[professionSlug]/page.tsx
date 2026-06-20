@@ -2,13 +2,15 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { professions } from "@/lib/data";
 import { listSpecialists } from "@/lib/mock-store";
+import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/specialist-profile-store";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page({ params }: { params: Promise<{ professionSlug: string }> }) {
   const { professionSlug } = await params;
   const profession = professions.find((item) => item.slug === professionSlug);
-  const specialists = listSpecialists().filter((specialist) => specialist.status === "published" && (profession ? specialist.profession === profession.name : true));
+  const storedSpecialists = await listStoredSpecialistProfiles(100);
+  const specialists = listSpecialistsWithStored(storedSpecialists, listSpecialists()).filter((specialist) => specialist.status === "published" && (profession ? specialist.profession === profession.name : true));
 
   return (
     <>

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getStoredApplicationForPayment } from "@/lib/application-store";
 import { getStoredListingForUser, markStoredListingPendingPaymentForUser } from "@/lib/listing-store";
 import { createPayment, listPayments } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
@@ -134,6 +135,10 @@ export async function POST(request: Request) {
 
       const request = await getStoredWorkRequestForUser(body.targetId, auth.user.id);
 
+      if (!request) {
+        return NextResponse.json({ error: "Заказ не найден или уже удален" }, { status: 404 });
+      }
+
       if (request?.status === "published") {
         return NextResponse.json({ error: "Заказ уже опубликован" }, { status: 400 });
       }
@@ -145,6 +150,27 @@ export async function POST(request: Request) {
       if (request?.status === "draft") {
         await markStoredWorkRequestPendingPaymentForUser(body.targetId, auth.user.id);
       }
+    }
+
+    if (body.targetType === "application") {
+      if (!body.targetId || !isUuid(body.targetId)) {
+        return NextResponse.json({ error: "Сначала создайте отклик, затем оплатите отправку" }, { status: 400 });
+      }
+
+      if (body.tariffId !== "job-response") {
+        return NextResponse.json({ error: "Для отклика доступен только тариф отклика" }, { status: 400 });
+      }
+
+      const application = await getStoredApplicationForPayment(body.targetId, auth.user.id);
+
+      if (!application) {
+        return NextResponse.json({ error: "Отклик не найден, уже отправлен или принадлежит другому пользователю" }, { status: 404 });
+      }
+
+      targetTitle =
+        application.targetType === "workRequest"
+          ? `Отклик ${application.specialistName} на заказ ${application.workRequestTitle ?? application.vacancyTitle}`
+          : `Отклик ${application.specialistName} на вакансию ${application.vacancyTitle}`;
     }
 
     const payment = await createPayment({

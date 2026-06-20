@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 import { Move, X } from "lucide-react";
+import { resolveStoredMediaUrl } from "@/lib/client-media-store";
 
 type ImageSize = {
   height: number;
@@ -87,6 +88,7 @@ async function cropSquareImage(src: string, draft: CropDraft, imageSize: ImageSi
 export function SquareImageCropper({ alt, description = "Перетащите фото внутри квадрата и настройте масштаб.", onApply, onCancel, outputSize = 2400, src, title = "Выберите кадр" }: SquareImageCropperProps) {
   const [draft, setDraft] = useState<CropDraft>({ offsetX: 0, offsetY: 0, zoom: 1 });
   const [imageSize, setImageSize] = useState<ImageSize | null>(null);
+  const [resolvedSrc, setResolvedSrc] = useState("");
   const [stageSize, setStageSize] = useState(320);
   const [dragStart, setDragStart] = useState<{ offsetX: number; offsetY: number; pointerId: number; startX: number; startY: number } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -96,7 +98,19 @@ export function SquareImageCropper({ alt, description = "Перетащите ф
   useEffect(() => {
     let active = true;
 
-    loadImage(src)
+    setDraft({ offsetX: 0, offsetY: 0, zoom: 1 });
+    setError("");
+    setImageSize(null);
+    setResolvedSrc("");
+
+    resolveStoredMediaUrl(src)
+      .then((value) => {
+        if (active) {
+          setResolvedSrc(value);
+        }
+
+        return loadImage(value);
+      })
       .then((image) => {
         if (active) {
           setImageSize({ width: image.naturalWidth || image.width, height: image.naturalHeight || image.height });
@@ -169,11 +183,13 @@ export function SquareImageCropper({ alt, description = "Перетащите ф
       return;
     }
 
+    const cropSource = resolvedSrc || src;
+
     setSaving(true);
     setError("");
 
     try {
-      await onApply(await cropSquareImage(src, draft, imageSize, stageSize, outputSize));
+      await onApply(await cropSquareImage(cropSource, draft, imageSize, stageSize, outputSize));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось применить кадр.");
     } finally {
@@ -208,7 +224,7 @@ export function SquareImageCropper({ alt, description = "Перетащите ф
             >
               {transform ? (
                 <img
-                  src={src}
+                  src={resolvedSrc || src}
                   alt={alt}
                   draggable={false}
                   className="absolute max-w-none select-none"

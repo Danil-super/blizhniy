@@ -3,7 +3,6 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import {
   ArrowRight,
-  BadgeCheck,
   Banknote,
   BriefcaseBusiness,
   CheckCircle2,
@@ -27,8 +26,6 @@ import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
 import { CabinetShellActions } from "@/components/cabinet/CabinetShellActions";
 import {
   CabinetCapabilities,
-  CabinetContactsHint,
-  CabinetOrganizationClient,
   CabinetOverviewClient,
   CabinetPaymentsClient,
   type CabinetResponseItem,
@@ -43,13 +40,11 @@ import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
 import { VacancyThumbnail } from "@/components/VacancyMedia";
 import { listDemoListings, toDemoListing } from "@/components/listings/ListingPages";
-import type { DemoPublication } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { listStoredFairApplications, updateStoredFairApplicationStatus } from "@/lib/fair-application-store";
 import { getPayment } from "@/lib/payment-provider";
 import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
 import {
-  getCurrentUserSpecialist,
   listApplications,
   listListings,
   listMockPayments,
@@ -62,7 +57,7 @@ import {
   updateVacancyStatus,
   updateWorkRequestStatus,
 } from "@/lib/mock-store";
-import type { PublicationStatus, SpecialistProfile } from "@/lib/types";
+import type { PublicationStatus } from "@/lib/types";
 import { getTariffById, getTariffs, resetTariffPatches, updateTariffPatch } from "@/lib/tariff-store";
 
 type StatusTone = "green" | "blue" | "amber" | "slate" | "red" | "violet";
@@ -129,34 +124,11 @@ const moderationStatusOptions: Array<{ label: string; value: PublicationStatus }
   { label: "Продано", value: "sold" },
 ];
 
-function specialistToDemoPublication(specialist: SpecialistProfile): DemoPublication {
-  return {
-    id: specialist.id,
-    type: "specialist",
-    title: specialist.name,
-    subtitle: specialist.profession,
-    city: specialist.city,
-    price: specialist.price,
-    description: specialist.description,
-    images: specialist.images,
-    lat: specialist.lat,
-    lng: specialist.lng,
-    address: specialist.address,
-    hasMapPoint: specialist.hasMapPoint,
-    showExactAddress: specialist.showExactAddress,
-    phone: specialist.phone,
-    messengerUrl: specialist.messengerUrl,
-    status: "Опубликовано",
-    createdAt: new Date().toISOString(),
-  };
-}
-
 const cabinetNav = [
   { href: "/cabinet", label: "Обзор", icon: Gauge },
   { href: "/cabinet/obyavleniya", label: "Объявления", icon: FileText },
   { href: "/cabinet/vakansii", label: "Вакансии", icon: BriefcaseBusiness },
   { href: "/cabinet/zakazy", label: "Заказы", icon: ClipboardList },
-  { href: "/cabinet/organization", label: "Организация", icon: BadgeCheck },
   { href: "/cabinet/specialist", label: "Анкета", icon: CircleUserRound },
   { href: "/cabinet/otkliki", label: "Отклики", icon: MessageSquare },
   { href: "/cabinet/fair-applications", label: "Ярмарка", icon: Store },
@@ -656,23 +628,10 @@ export function CabinetWorkRequestsPage() {
 }
 
 export function CabinetSpecialistPage() {
-  const specialist = getCurrentUserSpecialist();
-
   return (
-    <Shell title="Анкета специалиста" description="Профиль исполнителя с услугами, контактами, статусом проверки и будущей публикацией." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/specialist" createHref="/rabota/specialisty/anketa" createLabel="Создать анкету">
+    <Shell title="Анкета специалиста" description="Единая анкета исполнителя для платных откликов и публичного каталога." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/specialist" createHref={null}>
       <CabinetAuthGate>
-        <CabinetSpecialistClient initialSpecialist={specialist ? specialistToDemoPublication(specialist) : undefined} />
-      </CabinetAuthGate>
-    </Shell>
-  );
-}
-
-export function CabinetOrganizationPage() {
-  return (
-    <Shell title="Профиль организации" description="Профиль заказчика с публичным адресом и контактами для вакансий." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/organization" createHref={null}>
-      <CabinetAuthGate>
-        <CabinetOrganizationClient />
-        <CabinetContactsHint />
+        <CabinetSpecialistClient />
       </CabinetAuthGate>
     </Shell>
   );

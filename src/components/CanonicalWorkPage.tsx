@@ -10,6 +10,29 @@ import type { JobVacancy, SpecialistProfile, WorkRequest } from "@/lib/types";
 
 const previewLimit = 6;
 
+function publicationTime(value?: string) {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function newestWorkRequests(requests: WorkRequest[]) {
+  return [...requests].sort((left, right) => publicationTime(right.publishedAt ?? right.createdAt) - publicationTime(left.publishedAt ?? left.createdAt));
+}
+
+function formatPublicationDate(value?: string) {
+  const date = value ? new Date(value) : null;
+
+  if (!date || Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
 function SegmentTabs({ activeItem, onChange }: { activeItem: string; onChange: (item: string) => void }) {
   return (
     <div className="grid w-full grid-cols-2 gap-2">
@@ -30,6 +53,8 @@ function SegmentTabs({ activeItem, onChange }: { activeItem: string; onChange: (
 }
 
 function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
+  const publishedLabel = formatPublicationDate(vacancy.publishedAt ?? vacancy.createdAt);
+
   return (
     <Link href={`/vakansiya/${vacancy.id}`} className="group block min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
       <VacancyCardMedia images={vacancy.images} title={vacancy.title}>
@@ -42,6 +67,12 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
         <span className="block truncate text-xs font-semibold text-slate-500">{vacancy.organization}</span>
         <span className="mt-1 block line-clamp-2 min-h-10 text-sm font-black leading-5 text-[#060b27] transition group-hover:text-[#0875d1]">{vacancy.title}</span>
         <span className="mt-2 block text-base font-black text-[#060b27]">{vacancy.salary}</span>
+        {publishedLabel ? (
+          <span className="mt-2 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
+            <Clock3 className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{publishedLabel}</span>
+          </span>
+        ) : null}
         <span className="mt-2 flex items-center gap-1 text-xs text-slate-500">
           <MapPin className="h-3.5 w-3.5" />
           {vacancy.city}
@@ -74,11 +105,19 @@ function WorkRequestCard({ request }: { request: WorkRequest }) {
 }
 
 function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
+  const publishedLabel = formatPublicationDate(specialist.publishedAt ?? specialist.createdAt);
+
   return (
     <Link href={`/specialist/${specialist.id}`} className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
       <p className="text-base font-black text-[#060b27]">{specialist.name}</p>
       <p className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">{specialist.profession}</p>
       <p className="mt-2 text-base font-black text-[#060b27]">{specialist.price}</p>
+      {publishedLabel ? (
+        <p className="mt-2 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
+          <Clock3 className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{publishedLabel}</span>
+        </p>
+      ) : null}
       <p className="mt-2 flex items-center gap-1 text-xs text-slate-500">
         <MapPin className="h-3.5 w-3.5" />
         {specialist.city}
@@ -98,7 +137,7 @@ export function CanonicalWorkPage({
 }) {
   const [demandTab, setDemandTab] = useState("Новые вакансии");
   const visibleVacancies = vacancies.filter((vacancy) => vacancy.status === "published").slice(0, previewLimit);
-  const visibleWorkRequests = workRequests.filter((request) => request.status === "published").slice(0, previewLimit);
+  const visibleWorkRequests = newestWorkRequests(workRequests.filter((request) => request.status === "published")).slice(0, previewLimit);
   const visibleSpecialists = specialists.filter((specialist) => specialist.status === "published").slice(0, previewLimit);
   const showingWorkRequests = demandTab === "Заказчики";
 
@@ -115,10 +154,14 @@ export function CanonicalWorkPage({
           <h1 className="text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">Работа</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 sm:text-lg sm:leading-7">Вакансии, заказы и анкеты специалистов на платформе БЛИЖНИЙ.</p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-3">
           <Link href="/rabota/vakansii/sozdat" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]">
             <BriefcaseBusiness className="h-4 w-4" />
             Разместить вакансию
+          </Link>
+          <Link href="/rabota/zakazy/sozdat" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]">
+            <ClipboardList className="h-4 w-4" />
+            Разместить заказ
           </Link>
           <Link href="/rabota/specialisty/anketa" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#0aa337] bg-white px-4 text-sm font-black text-[#0a8f32] transition hover:bg-emerald-50">
             <UserRound className="h-4 w-4" />
@@ -140,8 +183,8 @@ export function CanonicalWorkPage({
               </span>
               {showingWorkRequests ? "Заказчики" : "Вакансии"}
             </h2>
-            <Link href={showingWorkRequests ? "/cabinet/zakazy" : "/rabota/vakansii"} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
-              {showingWorkRequests ? "Разместить" : "Смотреть все"}
+            <Link href={showingWorkRequests ? "/rabota/zakazy" : "/rabota/vakansii"} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
+              Смотреть все
               <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
             </Link>
           </div>

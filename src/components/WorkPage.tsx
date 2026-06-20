@@ -20,6 +20,29 @@ import type { JobVacancy, SpecialistProfile, WorkRequest } from "@/lib/types";
 
 const previewLimit = 6;
 
+function publicationTime(value?: string) {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function newestWorkRequests(requests: WorkRequest[]) {
+  return [...requests].sort((left, right) => publicationTime(right.publishedAt ?? right.createdAt) - publicationTime(left.publishedAt ?? left.createdAt));
+}
+
+function formatPublicationDate(value?: string) {
+  const date = value ? new Date(value) : null;
+
+  if (!date || Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
 function SegmentTabs({
   activeItem,
   items,
@@ -113,7 +136,7 @@ function WorkRequestCard({ request }: { request: WorkRequest }) {
 }
 
 function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
-  const publishedLabel = formatPublicationDateTime(specialist.publishedAt ?? specialist.createdAt, "11:00");
+  const publishedLabel = formatPublicationDate(specialist.publishedAt ?? specialist.createdAt);
   const firstImage = specialist.images?.[0];
 
   return (
@@ -167,7 +190,7 @@ export function WorkPage({
 }) {
   const [demandTab, setDemandTab] = useState("Новые вакансии");
   const visibleVacancies = vacancies.filter((vacancy) => vacancy.status === "published").slice(0, previewLimit);
-  const visibleWorkRequests = workRequests.filter((request) => request.status === "published").slice(0, previewLimit);
+  const visibleWorkRequests = newestWorkRequests(workRequests.filter((request) => request.status === "published")).slice(0, previewLimit);
   const visibleSpecialists = specialists.filter((specialist) => specialist.status === "published").slice(0, previewLimit);
   const showingWorkRequests = demandTab === "Заказчики";
 
@@ -185,13 +208,20 @@ export function WorkPage({
 
       <section className="mt-4 grid gap-3 sm:mt-5 lg:grid-cols-[minmax(0,34rem)_minmax(0,34rem)] lg:items-start lg:justify-between">
         <SegmentTabs activeItem={demandTab} items={["Новые вакансии", "Заказчики"]} onChange={setDemandTab} />
-        <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+        <div className="grid gap-2 sm:grid-cols-3 sm:gap-3">
           <Link
             href="/rabota/vakansii/sozdat"
             className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-3 text-center text-xs font-bold leading-tight text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:px-4 sm:text-sm lg:gap-2"
           >
             <BriefcaseBusiness className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
             <span className="min-w-0 [overflow-wrap:anywhere]">Разместить вакансию</span>
+          </Link>
+          <Link
+            href="/rabota/zakazy/sozdat"
+            className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-3 text-center text-xs font-bold leading-tight text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:px-4 sm:text-sm lg:gap-2"
+          >
+            <ClipboardList className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
+            <span className="min-w-0 [overflow-wrap:anywhere]">Разместить заказ</span>
           </Link>
           <Link
             href="/rabota/specialisty/anketa"
@@ -213,8 +243,8 @@ export function WorkPage({
                 </span>
                 {showingWorkRequests ? "Заказчики" : "Вакансии"}
               </h2>
-              <Link href={showingWorkRequests ? "/cabinet/zakazy" : "/rabota/vakansii"} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
-                {showingWorkRequests ? "Разместить" : "Смотреть все"}
+              <Link href={showingWorkRequests ? "/rabota/zakazy" : "/rabota/vakansii"} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
+                Смотреть все
                 <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
               </Link>
             </div>
