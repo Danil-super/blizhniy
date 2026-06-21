@@ -316,7 +316,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
                 address: listing.address,
                 lat: listing.lat,
                 lng: listing.lng,
-                showExactAddress: Boolean(listing.address),
+                showExactAddress: Boolean(listing.showExactAddress),
               }}
               exactLabel="Точный адрес частного лица по умолчанию не показывается"
             />

@@ -70,6 +70,19 @@ export function publicMediaUrl(path: string) {
   return `${baseUrl}/storage/v1/object/public/${mediaBucketName}/${cleanPath}`;
 }
 
+export function validateMediaStoragePathsForUser(paths: string[], folder: UploadFolder, userId: string) {
+  const ownerPrefix = `${folder}/${userId}/`;
+  const safePathPattern = /^[A-Za-z0-9/_-]+\.(jpe?g|png|webp|gif)$/i;
+
+  return paths.map((path) => path.trim()).filter((path) => {
+    if (!path || path.length > 500 || path.startsWith("/") || path.includes("..")) {
+      return false;
+    }
+
+    return path.startsWith(ownerPrefix) && safePathPattern.test(path);
+  });
+}
+
 export async function uploadMediaFile(file: File, folder: UploadFolder, userId: string): Promise<UploadedMedia> {
   if (!canUploadMediaToStorage()) {
     throw new Error("Supabase Storage is not configured");

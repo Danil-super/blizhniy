@@ -1,9 +1,10 @@
-import { region } from "@/lib/data";
+import { categories, region } from "@/lib/data";
+import { formatBookingPrice } from "@/lib/booking-details";
 import { publicMediaUrl } from "@/lib/storage-upload";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
-import type { Listing, ListingKind, PublicationStatus } from "@/lib/types";
+import type { BookingDetails, Listing, ListingKind, PublicationStatus } from "@/lib/types";
 
-type ListingTypeRow = "sell" | "buy" | "exchange" | "free";
+type ListingTypeRow = "sell" | "buy" | "exchange" | "free" | "rent";
 
 type ListingImageRow = {
   sort_order?: number | null;
@@ -15,6 +16,7 @@ type ListingRow = {
   listing_type: ListingTypeRow;
   title: string;
   description: string;
+  booking?: BookingDetails | null;
   price?: number | string | null;
   district?: string | null;
   address?: string | null;
@@ -51,6 +53,7 @@ type RegionIdRow = { id: string; name: string; slug: string };
 export type CreateStoredListingInput = {
   address?: string;
   authorId: string;
+  booking?: BookingDetails;
   categorySlug: string;
   city: string;
   description?: string;
@@ -62,6 +65,7 @@ export type CreateStoredListingInput = {
   messengerUrl?: string;
   phone?: string;
   price?: string;
+  showExactAddress?: boolean;
   status?: PublicationStatus;
   subcategory?: string;
   title: string;
@@ -80,11 +84,12 @@ const listingKindByDbType: Record<ListingTypeRow, ListingKind> = {
   buy: "kuplyu",
   exchange: "menyayu",
   free: "otdam-darom",
+  rent: "arenda",
   sell: "prodam",
 };
 
 const dbTypeByListingKind: Record<ListingKind, ListingTypeRow> = {
-  arenda: "sell",
+  arenda: "rent",
   kuplyu: "buy",
   menyayu: "exchange",
   "otdam-darom": "free",
@@ -93,14 +98,14 @@ const dbTypeByListingKind: Record<ListingKind, ListingTypeRow> = {
 
 const fallbackCategoryByKind: Record<ListingKind, string> = {
   arenda: "nedvizhimost",
-  kuplyu: "tovary-i-veshchi",
-  menyayu: "tovary-i-veshchi",
-  "otdam-darom": "tovary-i-veshchi",
-  prodam: "tovary-i-veshchi",
+  kuplyu: "raznoe",
+  menyayu: "raznoe",
+  "otdam-darom": "raznoe",
+  prodam: "raznoe",
 };
 
 const listingSelect =
-  "id,listing_type,title,description,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name,email)";
+  "id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name,email)";
 
 function toNumber(value: ListingRow["latitude"]) {
   if (value === null || value === undefined || value === "") {
@@ -155,9 +160,41 @@ function mediaUrls(row: ListingRow) {
     .map(publicMediaUrl);
 }
 
+function resolveShowExactAddress(input: CreateStoredListingInput) {
+  return Boolean(input.showExactAddress);
+}
+
+function normalizeBooking(value: ListingRow["booking"]) {
+  return value && typeof value === "object" ? value : undefined;
+}
+
+function resolveCategoryInfo(row: ListingRow) {
+  const storedCategory = row.categories;
+
+  if (!storedCategory) {
+    return { categorySlug: "", subcategory: "Объявление" };
+  }
+
+  if (storedCategory.parent_id) {
+    const parent = categories.find((category) => category.children.includes(storedCategory.name));
+
+    return {
+      categorySlug: parent?.slug ?? storedCategory.slug,
+      subcategory: storedCategory.name,
+    };
+  }
+
+  return {
+    categorySlug: storedCategory.slug,
+    subcategory: storedCategory.name,
+  };
+}
+
 function mapListing(row: ListingRow): Listing {
-  const kind = listingKindByDbType[row.listing_type] ?? "prodam";
-  const categorySlug = row.categories?.slug ?? fallbackCategoryByKind[kind];
+  const booking = normalizeBooking(row.booking);
+  const kind = row.listing_type === "rent" || booking ? "arenda" : listingKindByDbType[row.listing_type] ?? "prodam";
+  const categoryInfo = resolveCategoryInfo(row);
+  const categorySlug = categoryInfo.categorySlug || fallbackCategoryByKind[kind];
   const publishedAt = isoDate(row.published_at ?? row.created_at);
 
   return {
@@ -165,7 +202,7 @@ function mapListing(row: ListingRow): Listing {
     slug: row.id,
     kind,
     categorySlug,
-    subcategory: row.categories?.name ?? "Объявление",
+    subcategory: categoryInfo.subcategory,
     author: row.profiles?.display_name ?? "Пользователь БЛИЖНИЙ",
     title: row.title,
     description: row.description,
@@ -176,8 +213,9 @@ function mapListing(row: ListingRow): Listing {
     lng: toNumber(row.longitude),
     hasMapPoint: Boolean(row.latitude && row.longitude),
     showExactAddress: row.show_exact_address,
-    price: formatPrice(row.price),
+    price: booking ? formatBookingPrice(booking) : formatPrice(row.price),
     images: mediaUrls(row),
+    booking,
     imageTone: "blue",
     phone: row.contact_phone ?? undefined,
     email: row.profiles?.email ?? undefined,
@@ -195,12 +233,20 @@ async function findCategoryId(categorySlug: string, subcategory?: string) {
   );
 
   if (subcategory) {
-    const subcategoryRows = await supabaseRest<CategoryIdRow[]>(
+    const subcategoryBySlugRows = await supabaseRest<CategoryIdRow[]>(
+      `/rest/v1/categories?select=id,name,slug&slug=eq.${encodeURIComponent(subcategory)}&limit=1`,
+    );
+
+    if (subcategoryBySlugRows[0]?.id) {
+      return subcategoryBySlugRows[0].id;
+    }
+
+    const subcategoryByNameRows = await supabaseRest<CategoryIdRow[]>(
       `/rest/v1/categories?select=id,name,slug&name=eq.${encodeURIComponent(subcategory)}&limit=1`,
     );
 
-    if (subcategoryRows[0]?.id) {
-      return subcategoryRows[0].id;
+    if (subcategoryByNameRows[0]?.id) {
+      return subcategoryByNameRows[0].id;
     }
   }
 
@@ -297,6 +343,7 @@ export async function createStoredListing(input: CreateStoredListingInput) {
       city_id: cityRow?.id ?? null,
       contact_phone: input.phone ?? null,
       description: input.description || "Описание будет дополнено.",
+      booking: input.booking ?? null,
       district: input.district ?? null,
       is_paid: status === "published",
       latitude: input.lat ?? null,
@@ -306,7 +353,7 @@ export async function createStoredListing(input: CreateStoredListingInput) {
       price: priceToNumber(input.price),
       published_at: status === "published" ? new Date().toISOString() : null,
       region_id: regionId ?? null,
-      show_exact_address: Boolean(input.address && input.lat && input.lng),
+      show_exact_address: resolveShowExactAddress(input),
       status,
       title: input.title,
     },
@@ -336,6 +383,7 @@ function listingMatchesReusableInput(listing: Listing, input: CreateStoredListin
     normalizeLookupText(listing.city) === normalizeLookupText(input.city) &&
     priceToNumber(listing.price) === priceToNumber(input.price) &&
     listingDescription === inputDescription &&
+    JSON.stringify(listing.booking ?? null) === JSON.stringify(input.booking ?? null) &&
     (!inputPhone || !listingPhone || listingPhone === inputPhone) &&
     (!inputMessenger || !listingMessenger || listingMessenger === inputMessenger)
   );
@@ -398,6 +446,7 @@ export async function updateStoredListingForUser(listingId: string, userId: stri
         city_id: cityRow?.id ?? null,
         contact_phone: input.phone ?? null,
         description: input.description || "Описание будет дополнено.",
+        booking: input.booking ?? null,
         district: input.district ?? null,
         latitude: input.lat ?? null,
         listing_type: dbTypeByListingKind[input.kind] ?? "sell",
@@ -405,7 +454,7 @@ export async function updateStoredListingForUser(listingId: string, userId: stri
         messenger_url: input.messengerUrl ?? null,
         price: priceToNumber(input.price),
         region_id: regionId ?? null,
-        show_exact_address: Boolean(input.address && input.lat && input.lng),
+        show_exact_address: resolveShowExactAddress(input),
         status,
         title: input.title,
       },
@@ -432,6 +481,7 @@ async function storedListingBody(input: CreateStoredListingInput, status: Public
     city_id: cityRow?.id ?? null,
     contact_phone: input.phone ?? null,
     description: input.description || "Описание будет дополнено.",
+    ...(input.booking === undefined ? {} : { booking: input.booking }),
     district: input.district ?? null,
     latitude: input.lat ?? null,
     listing_type: dbTypeByListingKind[input.kind] ?? "sell",
@@ -440,7 +490,7 @@ async function storedListingBody(input: CreateStoredListingInput, status: Public
     price: priceToNumber(input.price),
     ...(options.preserveMedia && input.mediaPaths === undefined ? {} : {}),
     region_id: regionId ?? null,
-    show_exact_address: Boolean(input.address && input.lat && input.lng),
+    show_exact_address: resolveShowExactAddress(input),
     status,
     title: input.title,
   };

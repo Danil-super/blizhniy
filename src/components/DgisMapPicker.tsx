@@ -227,6 +227,7 @@ export function DgisMapPicker({
   const markerRef = useRef<DgisMarker | null>(null);
   const latestSearchRef = useRef(0);
   const [point, setPoint] = useState(typeof defaultLat === "number" && typeof defaultLng === "number" ? { lat: defaultLat, lng: defaultLng } : null);
+  const initialPointRef = useRef(point);
   const [address, setAddress] = useState(capitalizeFirstTextLetter(defaultAddress ?? ""));
   const [query, setQuery] = useState(capitalizeFirstTextLetter(defaultAddress ?? ""));
   const [status, setStatus] = useState(apiKey() ? "Загрузка карты 2ГИС..." : "Добавьте NEXT_PUBLIC_2GIS_API_KEY, чтобы включить карту 2ГИС.");
@@ -251,7 +252,7 @@ export function DgisMapPicker({
           return;
         }
 
-        const initialPoint = point;
+        const initialPoint = initialPointRef.current;
         const initialCenter = initialPoint ?? centerKrasnodar;
         const map = new window.mapgl.Map(mapRef.current, {
           center: [initialCenter.lng, initialCenter.lat],
@@ -466,11 +467,69 @@ export function DgisMapPicker({
 }
 
 export function DgisMapView({ lat, lng, label }: DgisMapViewProps) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<DgisMap | null>(null);
+  const markerRef = useRef<DgisMarker | null>(null);
+  const [status, setStatus] = useState(apiKey() ? "Загрузка карты 2ГИС..." : "Карта 2ГИС доступна после настройки ключа.");
+
+  useEffect(() => {
+    const key = apiKey();
+
+    if (!key) {
+      return;
+    }
+
+    let cancelled = false;
+
+    loadMapGl()
+      .then(() => {
+        if (cancelled || !mapRef.current || mapInstanceRef.current || !window.mapgl) {
+          return;
+        }
+
+        const coordinates: Coordinates = [lng, lat];
+        const map = new window.mapgl.Map(mapRef.current, {
+          center: coordinates,
+          key,
+          zoom: 16,
+          zoomControl: "bottomRight",
+        });
+
+        mapInstanceRef.current = map;
+        markerRef.current = new window.mapgl.Marker(map, { coordinates });
+        refreshMap(map);
+        setStatus("");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStatus("Карту 2ГИС не удалось загрузить. Откройте маршрут по ссылке ниже.");
+        }
+      });
+
+    function onResize() {
+      refreshMap(mapInstanceRef.current);
+    }
+
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("resize", onResize);
+      markerRef.current?.destroy();
+      markerRef.current = null;
+      mapInstanceRef.current?.destroy();
+      mapInstanceRef.current = null;
+    };
+  }, [lat, lng]);
+
   return (
     <div className="relative mt-5 h-64 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-      <div className="absolute inset-0 flex items-center justify-center bg-slate-50 p-4 text-center text-sm font-semibold text-slate-500">
-        Карта 2ГИС доступна по координатам: {formatCoord(lat)}, {formatCoord(lng)}.
-      </div>
+      <div ref={mapRef} className="absolute inset-0" />
+      {status ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-50 p-4 text-center text-sm font-semibold text-slate-500">
+          {status} Координаты: {formatCoord(lat)}, {formatCoord(lng)}.
+        </div>
+      ) : null}
       <a href={routeUrl(lat, lng)} target="_blank" rel="noreferrer" className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-lg bg-white/95 px-3 py-2 text-xs font-bold text-[#0875d1] shadow-card" aria-label={`Открыть карту: ${label}`}>
         <MapPin className="h-4 w-4" />
         Открыть карту

@@ -47,11 +47,11 @@ function hasListingMapPoint(listing: DemoListing) {
 }
 
 function listingPlaceLabel(listing: DemoListing) {
-  if (hasListingMapPoint(listing)) {
+  if (hasListingMapPoint(listing) && listing.showExactAddress) {
     return listing.address || [listing.city, listing.district].filter(Boolean).join(", ");
   }
 
-  return listing.city;
+  return [listing.city, listing.district].filter(Boolean).join(", ") || listing.city;
 }
 
 function formatListingDate(value?: string) {

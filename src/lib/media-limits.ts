@@ -14,7 +14,7 @@ export function formatFileSize(bytes: number) {
 }
 
 export function listingMediaLimitText() {
-  return `Фото до ${formatFileSize(maxListingImageFileSize)}, видео до ${formatFileSize(maxListingVideoFileSize)}, всего до ${formatFileSize(maxListingMediaTotalSize)}.`;
+  return `Фото до ${formatFileSize(maxListingImageFileSize)}, всего до ${formatFileSize(maxListingMediaTotalSize)}.`;
 }
 
 export function formPhotoLimitText() {
@@ -30,7 +30,7 @@ function fileLimitForType(file: File) {
 }
 
 export function isAllowedListingMediaType(file: File) {
-  return file.type.startsWith("image/") || file.type.startsWith("video/");
+  return file.type.startsWith("image/");
 }
 
 export function isAllowedFormPhotoType(file: File) {
@@ -44,7 +44,7 @@ export function filterListingMediaFiles(files: File[], currentTotalSize = 0) {
 
   files.forEach((file) => {
     if (!isAllowedListingMediaType(file)) {
-      rejectedMessages.push(`${file.name}: поддерживаются только фото и видео.`);
+      rejectedMessages.push(`${file.name}: поддерживаются только фото.`);
       return;
     }
 

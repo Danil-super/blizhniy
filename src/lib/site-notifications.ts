@@ -20,6 +20,7 @@ export type SiteNotification = {
   tone?: SiteNotificationTone;
   actionHref?: string;
   actionLabel?: string;
+  bookingRequestId?: string;
   dedupeKey?: string;
 };
 

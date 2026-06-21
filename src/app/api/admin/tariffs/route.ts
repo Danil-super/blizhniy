@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { listPayments } from "@/lib/payment-provider";
 import { isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { getStoredTariffs, resetStoredTariffs, updateTariff } from "@/lib/tariff-store";
 
@@ -40,9 +39,9 @@ export async function GET(request: Request) {
     return denied;
   }
 
-  const [tariffs, payments] = await Promise.all([getStoredTariffs(), listPayments()]);
+  const tariffs = await getStoredTariffs();
 
-  return NextResponse.json({ payments, tariffs });
+  return NextResponse.json({ tariffs });
 }
 
 export async function PATCH(request: Request) {

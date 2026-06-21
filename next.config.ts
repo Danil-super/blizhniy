@@ -8,6 +8,13 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb",
     },
   },
+  webpack(config, { isServer }) {
+    if (isServer && config.output) {
+      config.output.chunkFilename = "chunks/[name].js";
+    }
+
+    return config;
+  },
   async headers() {
     return [
       {

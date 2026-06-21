@@ -27,14 +27,17 @@ import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckb
 import { SiteHeader } from "@/components/SiteHeader";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
+import { formatBookingPrice, validateBookingDetailsForPublication } from "@/lib/booking-details";
 import { categories, cities } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { createListing, getListingStatusOverride, listListings } from "@/lib/mock-store";
-import { extractListingPriceDigits, maxListingPriceDigits, normalizeListingPrice } from "@/lib/listing-price";
+import { normalizeListingPrice } from "@/lib/listing-price";
+import { isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
 import { getTariffs } from "@/lib/tariff-store";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
+import type { BookingRequest } from "@/lib/booking-notifications";
 import type { BookingDetails, DeliveryOptions, DeliveryServiceId, Listing as StoreListing } from "@/lib/types";
 import { BookingCalculator } from "./BookingCalculator";
 import { DemoListingEditClient } from "./DemoListingEditClient";
@@ -205,10 +208,10 @@ const baseDemoListings: DemoListing[] = [
     slug: "kuplyu-vykroyki-sssr",
     title: "Куплю выкройки и журналы по рукоделию",
     kind: "kuplyu",
-    categorySlug: "tovary-i-veshchi",
-    categoryName: "Товары и вещи",
-    subcategorySlug: "vykroyki-i-rukodelie",
-    subcategoryName: "Выкройки и рукоделие",
+    categorySlug: "otdyh",
+    categoryName: "Хобби и отдых",
+    subcategorySlug: "tvorchestvo-i-rukodelie",
+    subcategoryName: "Творчество и рукоделие",
     city: "Краснодар",
     district: "Центр",
     lat: 45.037,
@@ -275,10 +278,10 @@ const baseDemoListings: DemoListing[] = [
     slug: "kartina-more-akril",
     title: "Картина акрилом Черное море",
     kind: "prodam",
-    categorySlug: "antikvariat-i-kollektsii",
-    categoryName: "Антиквариат и коллекции",
-    subcategorySlug: "kartiny-i-zhivopis",
-    subcategoryName: "Картины и живопись",
+    categorySlug: "raznoe",
+    categoryName: "Разное",
+    subcategorySlug: "kollektsii-i-antikvariat",
+    subcategoryName: "Коллекции и антиквариат",
     city: "Краснодар",
     district: "Черемушки",
     lat: 45.017,
@@ -392,12 +395,7 @@ const baseDemoListings: DemoListing[] = [
 ];
 
 function inferListingKind(categorySlug: string, subcategorySlug: string): ListingKind {
-  if (
-    categorySlug === "otdyh" ||
-    subcategorySlug === "arenda" ||
-    subcategorySlug === "kommercheskaya-nedvizhimost" ||
-    subcategorySlug === "zhile-dlya-puteshestviya"
-  ) {
+  if (isRentalSubcategorySlug(categorySlug, subcategorySlug, slugifySubcategory)) {
     return "arenda";
   }
 
@@ -598,7 +596,6 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
   nedvizhimost: {
     "Продам недвижимость": "Квартиры, дома, участки и коммерческие объекты для продажи в Краснодаре и крае.",
     "Куплю недвижимость": "Запросы покупателей на жилье, участки и помещения с нужным районом, бюджетом и условиями сделки.",
-    Аренда: "Жилье, комнаты, дома и помещения для краткосрочной или длительной аренды.",
     "Коммерческая недвижимость": "Офисы, торговые площади, склады, помещения свободного назначения и объекты для бизнеса.",
     "Жилье для путешествия": "Дома, квартиры, комнаты, гостевые объекты и варианты размещения для поездок и отдыха.",
   },
@@ -608,10 +605,6 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
     Компьютеры: "Системные блоки, мониторы, периферия, комплектующие и готовые рабочие места.",
     "Аудио и видео": "Телевизоры, колонки, наушники, камеры, проекторы и домашняя мультимедиа.",
     "Игровые приставки": "Консоли, игры, геймпады, аксессуары и предложения по обмену игровых устройств.",
-  },
-  "antikvariat-i-kollektsii": {
-    "Товары времен СССР": "Предметы быта, техника, значки, книги, посуда и коллекционные вещи советского периода.",
-    "Картины и живопись": "Картины, графика, авторские работы, декоративная живопись и предметы для коллекций.",
   },
   transport: {
     "Продам авто": "Легковые автомобили, коммерческий транспорт и предложения от частных продавцов.",
@@ -627,13 +620,7 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
   "krasota-i-uhod": {
     Парикмахеры: "Услуги стрижки, окрашивания, укладки, ухода за волосами и выездные мастера.",
     "Маникюр и педикюр": "Мастера ногтевого сервиса, уход, дизайн, коррекция и запись рядом с домом.",
-  },
-  meditsina: {
-    "Медицинский персонал": "Медицинские специалисты, частные услуги, консультации и помощь по уходу.",
-    "Уход на дому": "Сиделки, патронаж, помощь пожилым людям, сопровождение и бытовая поддержка.",
-  },
-  "mebel-i-interer": {
-    Мебель: "Мебель для дома, дачи и офиса: продажа, покупка, обмен, изготовление и реставрация.",
+    "Уход и косметика": "Товары и услуги для ухода, косметика, процедуры красоты и здоровья.",
   },
   "dlya-doma-i-dachi": {
     "Мебель для дома и дачи":
@@ -652,14 +639,11 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
     Турбазы: "Турбазы, гостевые дома и места отдыха с возможностью бронирования и связи с владельцем.",
     Гостиницы: "Гостиницы, номера, апартаменты и варианты размещения для поездок по краю.",
     Походы: "Походы, экскурсии, маршруты выходного дня, инструкторы и групповые выезды.",
+    "Творчество и рукоделие": "Материалы, выкройки, handmade-изделия, инструменты и товары для творчества.",
   },
   rabota: {
     Вакансии: "Предложения работы от организаций и частных работодателей с контактами и условиями.",
     "Анкеты специалистов": "Профили исполнителей и специалистов, которые готовы принять заказ или выйти на работу.",
-  },
-  "remont-i-stroitelstvo": {
-    "Ремонт квартир": "Мастера и бригады для ремонта квартир, домов, офисов и отдельных помещений.",
-    Сантехника: "Сантехнические работы, монтаж, ремонт, аварийные вызовы и обслуживание оборудования.",
   },
   "sad-i-rasteniya": {
     "Цветы и саженцы": "Цветы, декоративные растения, плодовые саженцы и предложения для озеленения.",
@@ -695,14 +679,30 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
     Обувь: "В этот раздел входит обувь для женщин, мужчин и детей, например:",
     Аксессуары: "К аксессуарам относятся:",
   },
-  "tovary-i-veshchi": {
-    "Выкройки и рукоделие": "Материалы, выкройки, handmade-изделия, инструменты и товары для творчества.",
-  },
   "uslugi-dlya-doma": {
     Клининг: "Уборка квартир, домов, офисов, мойка окон, разовые и регулярные услуги по дому.",
+    "Ремонт и строительство": "Мастера и бригады для ремонта квартир, домов, офисов и отдельных помещений.",
+    "Бытовые услуги": "Помощь по дому, мелкий ремонт, сборка, монтаж и разовые бытовые задачи.",
+  },
+  instrumenty: {
+    "Слесарно-монтажный ручной инструмент": "Отвертки, ключи, пассатижи, ножи и наборы ручного инструмента для ремонта.",
+    Электроинструмент: "Дрели, шуруповерты, перфораторы, пилы, шлифмашины и другой электроинструмент.",
+    "Измерительный инструмент": "Рулетки, уровни, нивелиры, разметочные инструменты и точные измерительные приборы.",
+    "Инструменты для стройки и отделки": "Инструменты для демонтажа, кладки, отделки, плиточных и монтажных работ.",
+    "Садовый инструмент": "Лопаты, грабли, секаторы, триммеры и техника для ухода за участком.",
+    "Вспомогательные и защитные средства": "Стремянки, фонари, каски, респираторы и средства безопасной работы.",
+  },
+  posuda: {
+    Кухонная: "Кастрюли, сковороды, сотейники и посуда для приготовления еды.",
+    Столовая: "Тарелки, блюда, пиалы и комплекты для сервировки стола.",
+    "Для напитков": "Бокалы, кружки, чашки и наборы для подачи напитков.",
+    "Для хранения и заготовок": "Контейнеры, банки, лотки и емкости для продуктов и заготовок.",
+    "Приборы для подачи": "Лопатки, щипцы, ложки для раскладывания и аксессуары сервировки.",
+    "Прочая утварь": "Мерные стаканы, доски, терки, воронки и другая кухонная утварь.",
   },
   raznoe: {
     Разное: "Объявления, которые не подошли к другим разделам, но могут быть полезны жителям рядом.",
+    "Коллекции и антиквариат": "Коллекционные вещи, предметы быта, картины, живопись и редкие находки.",
   },
 };
 
@@ -921,11 +921,11 @@ function hasListingMapPoint(listing: DemoListing) {
 }
 
 function listingPlaceLabel(listing: DemoListing) {
-  if (hasListingMapPoint(listing)) {
+  if (hasListingMapPoint(listing) && listing.showExactAddress) {
     return listing.address || [listing.city, listing.district].filter(Boolean).join(", ");
   }
 
-  return listing.city;
+  return [listing.city, listing.district].filter(Boolean).join(", ") || listing.city;
 }
 
 function formatListingDateOnly(value?: string) {
@@ -1027,7 +1027,7 @@ function parseDateList(formData: FormData, name: string) {
   return String(formData.get(name) ?? "")
     .split(/[\n,;]/)
     .map((item) => item.trim())
-    .filter(Boolean);
+    .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item));
 }
 
 function todayInputValue() {
@@ -1066,12 +1066,12 @@ function parseFutureDateList(formData: FormData, name: string) {
   return parseDateList(formData, name).filter((date) => date >= today);
 }
 
-function isBookingCategory(categorySlug: string) {
-  return categorySlug === "otdyh" || categorySlug === "nedvizhimost";
+function isBookingCategory(categorySlug: string, subcategorySlug: string) {
+  return isRentalSubcategorySlug(categorySlug, subcategorySlug, slugifySubcategory);
 }
 
-function parseBookingDetails(formData: FormData, categorySlug: string): BookingDetails | undefined {
-  if (!isBookingCategory(categorySlug)) {
+function parseBookingDetails(formData: FormData, categorySlug: string, subcategorySlug: string): BookingDetails | undefined {
+  if (!isBookingCategory(categorySlug, subcategorySlug)) {
     return undefined;
   }
 
@@ -1165,12 +1165,12 @@ export function toDemoListing(listing: StoreListing): DemoListing {
     subcategorySlug: slugifySubcategory(listing.subcategory),
     subcategoryName: listing.subcategory,
     city: listing.city,
-    district: listing.district ?? listing.address ?? "",
+    district: listing.district ?? "",
     address: listing.address,
     lat: listing.lat,
     lng: listing.lng,
     hasMapPoint: Boolean(listing.hasMapPoint),
-    showExactAddress: Boolean(listing.hasMapPoint && listing.address) || listing.showExactAddress,
+    showExactAddress: listing.showExactAddress,
     price: listing.price ?? "по договоренности",
     images: listing.images,
     booking: listing.booking,
@@ -1209,7 +1209,6 @@ export function slugifySubcategory(name: string) {
     "Картины и живопись": "kartiny-i-zhivopis",
     "Продам недвижимость": "prodam-nedvizhimost",
     "Куплю недвижимость": "kuplyu-nedvizhimost",
-    Аренда: "arenda",
     "Коммерческая недвижимость": "kommercheskaya-nedvizhimost",
     "Жилье для путешествия": "zhile-dlya-puteshestviya",
     Смартфоны: "smartfony",
@@ -1625,7 +1624,7 @@ function DeliveryInfoCard({ delivery }: { delivery?: DeliveryOptions }) {
   );
 }
 
-export function ListingDetailPage({ slug, listingOverride }: { slug: string; listingOverride?: DemoListing }) {
+export function ListingDetailPage({ bookingRequests = [], slug, listingOverride }: { bookingRequests?: BookingRequest[]; slug: string; listingOverride?: DemoListing }) {
   const listing = listingOverride ?? findListingBySlug(slug);
   const listingHref = `/obyavlenie/${listing?.slug ?? slug}`;
 
@@ -1647,7 +1646,7 @@ export function ListingDetailPage({ slug, listingOverride }: { slug: string; lis
   const sellerStats = listingSellerStats(listing);
   const contactCount = [listing.phone, listing.email, listing.messengerUrl].filter(Boolean).length;
   const actionCount = contactCount + 1;
-  const actionGridClass = actionCount >= 4 ? "grid-cols-[repeat(4,minmax(104px,1fr))]" : actionCount === 3 ? "grid-cols-3" : actionCount === 2 ? "grid-cols-2" : "grid-cols-1";
+  const actionGridClass = actionCount >= 4 ? "grid-cols-2 sm:grid-cols-[repeat(4,minmax(104px,1fr))]" : actionCount === 3 ? "grid-cols-2 sm:grid-cols-3" : actionCount === 2 ? "grid-cols-2" : "grid-cols-1";
   const galleryMedia: ListingGalleryMedia[] = (listing.images ?? []).map((src) => ({ kind: "image", src }));
 
   return (
@@ -1671,6 +1670,22 @@ export function ListingDetailPage({ slug, listingOverride }: { slug: string; lis
             <div className="mt-3 flex flex-wrap gap-2">
               <ListingKindBadge kind={listing.kind} />
               <StatusBadge status={listing.status} />
+            </div>
+            <div className="mt-4 min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-card lg:hidden">
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="[overflow-wrap:anywhere] text-xl font-black text-[#060b27]">{listing.price}</p>
+                  <p className="mt-2 flex min-w-0 items-start gap-2 text-sm font-semibold text-slate-600">
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#0875d1]" />
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{listingPlaceLabel(listing)}</span>
+                  </p>
+                </div>
+                {listing.booking ? (
+                  <a href="#booking-calculator" className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-[#0aa337] px-3 text-sm font-bold text-white">
+                    Рассчитать
+                  </a>
+                ) : null}
+              </div>
             </div>
             <ListingMediaGallery media={galleryMedia} title={listing.title} />
             <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
@@ -1699,15 +1714,17 @@ export function ListingDetailPage({ slug, listingOverride }: { slug: string; lis
 
           <aside className="min-w-0 space-y-4">
             <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
-              <p className="[overflow-wrap:anywhere] text-xl font-black text-[#060b27] sm:text-2xl">{listing.price}</p>
-              {!hasMapPoint ? (
-                <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
-                  <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
-                  <span className="min-w-0 [overflow-wrap:anywhere]">{listingPlaceLabel(listing)}</span>
-                </p>
-              ) : null}
-              <div className="mt-4 grid gap-2">
-                <div className={`grid min-w-0 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${actionGridClass}`}>
+              <div className="hidden lg:block">
+                <p className="[overflow-wrap:anywhere] text-xl font-black text-[#060b27] sm:text-2xl">{listing.price}</p>
+                {!hasMapPoint ? (
+                  <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
+                    <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{listingPlaceLabel(listing)}</span>
+                  </p>
+                ) : null}
+              </div>
+              <div className="grid gap-2 lg:mt-4">
+                <div className={`grid min-w-0 gap-2 ${actionGridClass}`}>
                   {listing.phone ? (
                     <a href={`tel:${listing.phone}`} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:text-sm">
                       <Phone className="h-4 w-4 shrink-0" />
@@ -1749,7 +1766,7 @@ export function ListingDetailPage({ slug, listingOverride }: { slug: string; lis
               profileHref={sellerProfileHref(listing)}
             />
             {hasMapPoint ? <LocationMap location={listing} exactLabel="Точный адрес частного лица по умолчанию не показывается" /> : null}
-            {listing.booking ? <BookingCalculator booking={listing.booking} listingId={listing.slug} listingTitle={listing.title} /> : null}
+            {listing.booking ? <BookingCalculator booking={listing.booking} initialRequests={bookingRequests} listingId={listing.slug} listingTitle={listing.title} /> : null}
             {showDeliveryUi ? <DeliveryInfoCard delivery={listing.delivery} /> : null}
           </aside>
         </div>
@@ -1784,23 +1801,6 @@ function TextInput({
       capitalizeFirstLetter={!props.validation && (!props.type || props.type === "text")}
       className={`${compact ? "h-10 px-3 text-sm sm:h-12 sm:px-4 sm:text-base" : "h-12 px-4"} w-full rounded-lg border border-slate-300 outline-none focus:border-[#0875d1]`}
     />
-  );
-}
-
-function PriceInput({ compact = false, defaultValue }: { compact?: boolean; defaultValue?: string }) {
-  return (
-    <span className="relative block">
-      <input
-        name="price"
-        defaultValue={extractListingPriceDigits(defaultValue)}
-        inputMode="numeric"
-        maxLength={maxListingPriceDigits}
-        pattern="[0-9]*"
-        placeholder="12000"
-        className={`${compact ? "h-10 px-3 pr-9 text-sm sm:h-12 sm:px-4 sm:pr-10 sm:text-base" : "h-12 px-4 pr-10"} w-full rounded-lg border border-slate-300 outline-none focus:border-[#0875d1]`}
-      />
-      <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-sm font-black text-slate-500 sm:right-4 sm:text-base">₽</span>
-    </span>
   );
 }
 
@@ -1925,13 +1925,14 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
     const title = String(formData.get("title") ?? "").trim() || "Новое объявление";
     const kindValue = String(formData.get("kind") ?? "prodam");
     const categorySlug = String(formData.get("category") ?? "").trim() || "dlya-doma-i-dachi";
-    const kind = categorySlug === "otdyh" || (categorySlug === "nedvizhimost" && kindValue === "arenda") ? "arenda" : listingKinds.some((item) => item.slug === kindValue) ? (kindValue as ListingKind) : "prodam";
+    const selectedKind = listingKinds.some((item) => item.slug === kindValue) ? (kindValue as ListingKind) : "prodam";
     const subcategorySlug = String(formData.get("subcategory") ?? "").trim();
     const category = categories.find((item) => item.slug === categorySlug);
     const subcategory =
       category?.children.find((child) => slugifySubcategory(child) === subcategorySlug) ??
       category?.children[0] ??
       "Без подкатегории";
+    const kind = selectedKind === "arenda" || isRentalSubcategorySlug(categorySlug, subcategorySlug, slugifySubcategory) ? "arenda" : selectedKind;
     const hasMapPoint = String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1";
     const city = inferCityFromFormData(formData);
     const phone = String(formData.get("phone") ?? "").trim();
@@ -1942,6 +1943,16 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
       redirect(`/razmestit/obyavlenie?admin=1&error=${encodeURIComponent("Укажите хотя бы один контакт объявления: телефон, email или Telegram/WhatsApp.")}`);
     }
 
+    const booking = kind === "arenda" ? parseBookingDetails(formData, categorySlug, subcategorySlug) : undefined;
+
+    if (kind === "arenda") {
+      const bookingErrors = validateBookingDetailsForPublication(booking);
+
+      if (bookingErrors.length) {
+        redirect(`/razmestit/obyavlenie?admin=1&error=${encodeURIComponent(bookingErrors[0])}`);
+      }
+    }
+
     createListing({
       title,
       kind,
@@ -1949,8 +1960,8 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
       subcategory,
       city,
       address: hasMapPoint ? String(formData.get("address") ?? "").trim() || undefined : undefined,
-      price: normalizeListingPrice(String(formData.get("price") ?? ""), kind === "arenda" && isBookingCategory(categorySlug) ? "расчет по датам" : "по договоренности"),
-      booking: kind === "arenda" ? parseBookingDetails(formData, categorySlug) : undefined,
+      price: booking ? formatBookingPrice(booking) : normalizeListingPrice(String(formData.get("price") ?? ""), "по договоренности"),
+      booking,
       delivery: parseDeliveryOptions(formData, city),
       description: String(formData.get("description") ?? "").trim() || undefined,
       phone: phone || undefined,
@@ -2002,13 +2013,11 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
                 booking={listing?.booking}
                 defaultCategorySlug={listing?.categorySlug ?? formDefaults.categorySlug}
                 defaultKind={listing?.kind ?? formDefaults.kind}
+                defaultPrice={listing?.price}
                 defaultSubcategorySlug={listing?.subcategorySlug ?? formDefaults.subcategorySlug}
               />
               <Field className="listing-title-field" label="Название" compact size="lg">
-                <TextInput name="title" defaultValue={listing?.title} placeholder="Например, Комод из массива дуба" compact />
-              </Field>
-              <Field className="listing-price-field" label="Цена" compact size="sm">
-                <PriceInput defaultValue={listing?.price} compact />
+                <TextInput name="title" defaultValue={listing?.title} placeholder="Например, турбаза у реки или комод из массива дуба" compact />
               </Field>
             </div>
 
@@ -2018,7 +2027,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
                 name="description"
                 defaultValue={listing?.description}
                 className="mt-2 min-h-28 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
-                placeholder="Состояние, детали, условия передачи"
+                placeholder="Опишите детали, условия, состояние или правила бронирования"
               />
             </label>
 

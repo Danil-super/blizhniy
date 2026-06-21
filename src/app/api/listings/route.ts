@@ -3,15 +3,19 @@ import { createStoredListing, findReusableStoredListingForPayment, updateStoredL
 import { createPayment } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
+import { formatBookingPrice, sanitizeBookingDetails, validateBookingDetailsForPublication } from "@/lib/booking-details";
+import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
 import type { CreateStoredListingInput } from "@/lib/listing-store";
-import type { ListingKind, Payment } from "@/lib/types";
+import type { BookingDetails, ListingKind, Payment } from "@/lib/types";
 
 type CreateListingBody = {
   address?: string;
+  booking?: BookingDetails;
   categorySlug?: string;
   city?: string;
   description?: string;
   district?: string;
+  email?: string;
   kind?: ListingKind;
   lat?: number;
   lng?: number;
@@ -88,6 +92,7 @@ export async function POST(request: Request) {
   const description = cleanString(body.description);
   const phone = cleanString(body.phone);
   const messengerUrl = cleanString(body.messengerUrl);
+  const profileEmail = cleanString(auth.user.email);
 
   if (title.length < 3 || title.length > 120) {
     return NextResponse.json({ error: "Название объявления должно быть от 3 до 120 символов" }, { status: 400 });
@@ -97,8 +102,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Описание объявления слишком длинное" }, { status: 400 });
   }
 
-  if (!phone && !messengerUrl) {
-    return NextResponse.json({ error: "Укажите телефон или мессенджер для связи" }, { status: 400 });
+  if (!phone && !messengerUrl && !profileEmail) {
+    return NextResponse.json({ error: "Укажите телефон, email или мессенджер для связи" }, { status: 400 });
   }
 
   if (phone && !hasValidPhone(phone)) {
@@ -110,20 +115,38 @@ export async function POST(request: Request) {
   }
 
   try {
+    const kind = cleanKind(body.kind);
+    const booking = sanitizeBookingDetails(body.booking);
+    const rawMediaPaths = cleanMediaPaths(body.mediaPaths);
+    const mediaPaths = validateMediaStoragePathsForUser(rawMediaPaths, "listings", auth.user.id);
+
+    if (mediaPaths.length !== rawMediaPaths.length) {
+      return NextResponse.json({ error: "Некорректные файлы объявления. Загрузите фото заново." }, { status: 400 });
+    }
+
+    if (kind === "arenda") {
+      const bookingErrors = validateBookingDetailsForPublication(booking);
+
+      if (bookingErrors.length) {
+        return NextResponse.json({ error: bookingErrors[0] }, { status: 400 });
+      }
+    }
+
     const listingInput: CreateStoredListingInput = {
       address: cleanString(body.address) || undefined,
       authorId: auth.user.id,
+      booking,
       categorySlug: cleanString(body.categorySlug) || "dlya-doma-i-dachi",
       city: cleanString(body.city) || "Краснодар",
       description: description || undefined,
       district: cleanString(body.district) || undefined,
-      kind: cleanKind(body.kind),
+      kind,
       lat: cleanNumber(body.lat),
       lng: cleanNumber(body.lng),
-      mediaPaths: cleanMediaPaths(body.mediaPaths),
+      mediaPaths,
       messengerUrl: messengerUrl || undefined,
       phone: phone || undefined,
-      price: cleanString(body.price) || undefined,
+      price: booking ? formatBookingPrice(booking) : cleanString(body.price) || undefined,
       status: body.tariffId ? "pending_payment" : "published",
       subcategory: cleanString(body.subcategory) || undefined,
       title,

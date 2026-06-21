@@ -120,6 +120,7 @@ export function NotificationBell() {
   const [siteNotifications, setSiteNotifications] = useState<SiteNotification[]>([]);
   const [bookingNotifications, setBookingNotifications] = useState<BookingNotification[]>([]);
   const [requests, setRequests] = useState<BookingRequest[]>([]);
+  const [resolvingServerRequestId, setResolvingServerRequestId] = useState("");
   const [identity, setIdentity] = useState<ClientUserIdentity | null>(null);
   const [profile, setProfile] = useState<CabinetProfile | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -163,7 +164,7 @@ export function NotificationBell() {
 
       setSiteNotifications(mergeNotifications(localNotifications, serverNotifications));
       setRequests(readJsonArray<BookingRequest>(bookingRequestsStorageKey));
-      setBookingNotifications(nextProfile.notifyBookings ? readJsonArray<BookingNotification>(bookingNotificationsStorageKey) : []);
+      setBookingNotifications(nextProfile.notifyBookings ? readJsonArray<BookingNotification>(bookingNotificationsStorageKey).filter((notification) => notification.recipient === "guest") : []);
     }
 
     void sync();
@@ -263,6 +264,22 @@ export function NotificationBell() {
     emitUpdate();
   }
 
+  async function resolveServerRequest(requestId: string, status: "accepted" | "declined") {
+    setResolvingServerRequestId(requestId);
+
+    try {
+      await fetch("/api/cabinet/bookings", {
+        body: JSON.stringify({ requestId, status }),
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        method: "PATCH",
+      });
+      window.dispatchEvent(new Event(siteNotificationsEventName));
+      syncStoredNotifications();
+    } finally {
+      setResolvingServerRequestId("");
+    }
+  }
+
   return (
     <div className="relative" ref={rootRef}>
       <button
@@ -341,7 +358,28 @@ export function NotificationBell() {
                     </div>
                     <span className="shrink-0 text-[11px] font-bold text-slate-400">{formatDateTime(notification.createdAt)}</span>
                   </div>
-                  {notification.actionHref ? (
+                  {notification.bookingRequestId ? (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={resolvingServerRequestId === notification.bookingRequestId}
+                        onClick={() => resolveServerRequest(notification.bookingRequestId!, "accepted")}
+                        className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-[#0aa337] text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        <Check className="h-4 w-4" />
+                        Принять
+                      </button>
+                      <button
+                        type="button"
+                        disabled={resolvingServerRequestId === notification.bookingRequestId}
+                        onClick={() => resolveServerRequest(notification.bookingRequestId!, "declined")}
+                        className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-rose-200 bg-white text-xs font-bold text-rose-700 disabled:cursor-not-allowed disabled:text-slate-400"
+                      >
+                        <X className="h-4 w-4" />
+                        Отклонить
+                      </button>
+                    </div>
+                  ) : notification.actionHref ? (
                     notification.actionHref.startsWith("http") ? (
                       <a href={notification.actionHref} className="mt-3 inline-flex h-8 items-center justify-center rounded-lg bg-white px-3 text-xs font-bold text-[#0875d1] ring-1 ring-blue-100 transition hover:ring-blue-200">
                         {notification.actionLabel ?? "Открыть"}

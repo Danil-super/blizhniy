@@ -11,13 +11,15 @@ import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
 import { appendPublicationHistory, DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
-import { categories, cities } from "@/lib/data";
-import { extractListingPriceDigits, maxListingPriceDigits, normalizeListingPrice } from "@/lib/listing-price";
+import { cities } from "@/lib/data";
+import { formatBookingPrice, validateBookingDetailsForPublication } from "@/lib/booking-details";
+import { normalizeListingPrice } from "@/lib/listing-price";
+import { parseListingBookingFormData } from "@/lib/listing-rental";
 import { filterListingMediaFiles, listingMediaLimitText } from "@/lib/media-limits";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import type { Listing } from "@/lib/types";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
-import { ListingLocationFields } from "@/components/listings/ListingFormControls";
+import { ListingKindAndCategoryFields, ListingLocationFields } from "@/components/listings/ListingFormControls";
 
 const listingKinds: { value: ListingKind; label: string }[] = [
   { value: "prodam", label: "Продам" },
@@ -118,8 +120,9 @@ function serverListingToPublication(listing: Listing): DemoPublication {
     messengerUrl: listing.messengerUrl,
     listingKind: listing.kind,
     categorySlug: listing.categorySlug,
+    booking: listing.booking,
     status: listingStatusLabel(listing.status),
-    subcategorySlug: listing.subcategory,
+    subcategorySlug: slugifySubcategory(listing.subcategory),
     expiresAt: listing.expiresAt,
     createdAt: listing.publishedAt,
   };
@@ -161,7 +164,6 @@ function slugifySubcategory(name: string) {
     "Картины и живопись": "kartiny-i-zhivopis",
     "Продам недвижимость": "prodam-nedvizhimost",
     "Куплю недвижимость": "kuplyu-nedvizhimost",
-    Аренда: "arenda",
     "Коммерческая недвижимость": "kommercheskaya-nedvizhimost",
     "Жилье для путешествия": "zhile-dlya-puteshestviya",
     Смартфоны: "smartfony",
@@ -209,6 +211,7 @@ function slugifySubcategory(name: string) {
     Сантехника: "santehnika",
     "Цветы и саженцы": "tsvety-i-sazhentsy",
     "Выкройки и рукоделие": "vykroyki-i-rukodelie",
+    "Творчество и рукоделие": "tvorchestvo-i-rukodelie",
     Игрушки: "igrushki",
     "Технические игрушки": "tehnicheskie-igrushki",
     "Дидактические игрушки": "didakticheskie-igrushki",
@@ -217,6 +220,8 @@ function slugifySubcategory(name: string) {
     Обувь: "obuv",
     Аксессуары: "aksessuary",
     Клининг: "klining",
+    Разное: "raznoe",
+    "Коллекции и антиквариат": "kollektsii-i-antikvariat",
   };
 
   return map[name] ?? name.toLowerCase().replaceAll(" ", "-");
@@ -252,7 +257,6 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
   const [items, setItems] = useState<DemoPublication[]>([]);
   const [images, setImages] = useState<string[]>([]);
   const [videos, setVideos] = useState<string[]>([]);
-  const [categorySlug, setCategorySlug] = useState("mebel-i-interer");
   const [cropEditorIndex, setCropEditorIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -260,8 +264,6 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
   const mediaCount = images.length + videos.length;
 
   const listing = useMemo(() => items.find((item) => item.type === "listing" && item.id === slug), [items, slug]);
-  const selectedCategory = categories.find((category) => category.slug === categorySlug) ?? categories[0];
-  const subcategories = selectedCategory?.children ?? [];
   const kind = (listing?.listingKind ?? "prodam") as ListingKind;
 
   useEffect(() => {
@@ -276,6 +278,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
           ? {
               ...serverListing,
               ...storedListing,
+              booking: storedListing.booking ?? serverListing.booking,
               images: storedListing.images?.length ? storedListing.images : serverListing.images,
               videos: storedListing.videos?.length ? storedListing.videos : serverListing.videos,
             }
@@ -292,7 +295,6 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
       setItems(nextItems);
       setImages(storedMedia.images);
       setVideos(storedMedia.videos);
-      setCategorySlug(mergedListing?.categorySlug ?? "mebel-i-interer");
     }
 
     void loadListing();
@@ -388,8 +390,10 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
     try {
       const identity = await resolveAuthenticatedClientUserIdentity();
       const formData = new FormData(form);
-      const nextCategorySlug = String(formData.get("category") ?? listing.categorySlug ?? "mebel-i-interer");
+      const nextCategorySlug = String(formData.get("category") ?? listing.categorySlug ?? "dlya-doma-i-dachi");
       const nextSubcategorySlug = String(formData.get("subcategory") ?? listing.subcategorySlug ?? "");
+      const nextKind = listingKinds.some((item) => item.value === formData.get("kind")) ? (formData.get("kind") as ListingKind) : kind;
+      const booking = parseListingBookingFormData(formData, nextCategorySlug, nextKind);
       const hasMapPoint = String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1";
       const city = inferCityFromFormData(formData, listing.city || "Краснодар");
       const phone = String(formData.get("phone") ?? "").trim();
@@ -398,6 +402,14 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
 
       if (!phone && !email && !messengerUrl) {
         throw new Error("Укажите хотя бы один контакт объявления: телефон, email или Telegram/WhatsApp.");
+      }
+
+      if (nextKind === "arenda") {
+        const bookingErrors = validateBookingDetailsForPublication(booking);
+
+        if (bookingErrors.length) {
+          throw new Error(bookingErrors[0]);
+        }
       }
 
       const updated: DemoPublication = {
@@ -410,12 +422,13 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
         lat: hasMapPoint ? readCoordinate(formData, "lat") : undefined,
         lng: hasMapPoint ? readCoordinate(formData, "lng") : undefined,
         hasMapPoint,
-        price: normalizeListingPrice(String(formData.get("price") ?? ""), "по договоренности"),
+        price: booking ? formatBookingPrice(booking) : normalizeListingPrice(String(formData.get("price") ?? ""), "по договоренности"),
+        booking,
         description: String(formData.get("description") ?? listing.description ?? "").trim() || "Описание будет дополнено.",
         phone,
         email,
         messengerUrl,
-        listingKind: listingKinds.some((item) => item.value === formData.get("kind")) ? (formData.get("kind") as ListingKind) : kind,
+        listingKind: nextKind,
         categorySlug: nextCategorySlug,
         subcategorySlug: nextSubcategorySlug,
         images,
@@ -429,6 +442,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${identity.accessToken}` },
           body: JSON.stringify({
             address: updated.address,
+            booking: updated.booking,
             categorySlug: updated.categorySlug,
             city: updated.city,
             clearMedia: !images.length,
@@ -441,6 +455,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
             messengerUrl: updated.messengerUrl,
             phone: updated.phone,
             price: updated.price,
+            email: updated.email,
             subcategory: updated.subcategorySlug,
             title: updated.title,
           }),
@@ -505,51 +520,16 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
       </div>
       <h1 className="mt-4 text-3xl font-black text-[#060b27] sm:text-5xl">Редактировать объявление</h1>
 
-      <form onSubmit={handleSubmit} className="mt-6 grid gap-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_minmax(0,1fr)]">
-          <label className="block">
-            <span className="text-sm font-bold text-slate-700">Тип объявления</span>
-            <select name="kind" defaultValue={kind} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]">
-              {listingKinds.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-sm font-bold text-slate-700">Категория</span>
-            <select
-              name="category"
-              value={categorySlug}
-              onChange={(event) => setCategorySlug(event.target.value)}
-              className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
-            >
-              {categories.map((category) => (
-                <option key={category.slug} value={category.slug}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-sm font-bold text-slate-700">Подкатегория</span>
-            <select key={categorySlug} name="subcategory" defaultValue={listing.subcategorySlug} className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]">
-              {subcategories.length ? (
-                subcategories.map((subcategory) => (
-                  <option key={subcategory} value={slugifySubcategory(subcategory)}>
-                    {subcategory}
-                  </option>
-                ))
-              ) : (
-                <option value="">Без подкатегории</option>
-              )}
-            </select>
-          </label>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-          <label className="block">
+      <form onSubmit={handleSubmit} className="listing-create-form mt-6 grid gap-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="listing-create-primary-grid adaptive-field-grid">
+          <ListingKindAndCategoryFields
+            booking={listing.booking}
+            defaultCategorySlug={listing.categorySlug}
+            defaultKind={kind}
+            defaultPrice={listing.price}
+            defaultSubcategorySlug={listing.subcategorySlug}
+          />
+          <label className="listing-title-field form-field block" data-field-size="lg">
             <span className="text-sm font-bold text-slate-700">Название</span>
             <input
               name="title"
@@ -557,15 +537,9 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
               minLength={3}
               maxLength={120}
               required
+              placeholder="Например, турбаза у реки или комод из массива дуба"
               className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
             />
-          </label>
-          <label className="block">
-            <span className="text-sm font-bold text-slate-700">Цена</span>
-            <span className="relative mt-2 block">
-              <input name="price" defaultValue={extractListingPriceDigits(listing.price)} inputMode="numeric" maxLength={maxListingPriceDigits} pattern="[0-9]*" placeholder="12000" className="h-12 w-full rounded-lg border border-slate-300 px-4 pr-10 outline-none focus:border-[#0875d1]" />
-              <span className="pointer-events-none absolute inset-y-0 right-4 inline-flex items-center text-base font-black text-slate-500">₽</span>
-            </span>
           </label>
         </div>
 
@@ -575,6 +549,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
             name="description"
             defaultValue={listing.description}
             maxLength={3000}
+            placeholder="Опишите детали, условия, состояние или правила бронирования"
             className="mt-2 min-h-32 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
           />
         </label>
@@ -606,13 +581,13 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
             <div className="flex items-center gap-3">
               <Camera className="h-5 w-5 text-[#0875d1]" />
               <div>
-                <h2 className="font-bold text-slate-800">Фото и видео объявления</h2>
+                <h2 className="font-bold text-slate-800">Фото объявления</h2>
                 <p className="mt-1 text-sm text-slate-500">До {maxMediaFiles} файлов. Сейчас сохранено: {mediaCount}. {listingMediaLimitText()}</p>
               </div>
             </div>
             <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-bold text-[#0875d1] transition hover:bg-blue-50">
               Добавить файлы
-              <input type="file" accept="image/*,video/*" multiple className="sr-only" onChange={handleMediaChange} />
+              <input type="file" accept="image/*" multiple className="sr-only" onChange={handleMediaChange} />
             </label>
           </div>
           {mediaMessage ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{mediaMessage}</p> : null}

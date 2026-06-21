@@ -1,4 +1,5 @@
 import { applications, fairApplications, listings, payments, specialists, vacancies, workRequests } from "@/lib/data";
+import { formatBookingPrice } from "@/lib/booking-details";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import type { Application, FairApplication, JobVacancy, Listing, Payment, PublicationStatus, SpecialistProfile, WorkRequest } from "@/lib/types";
 
@@ -314,7 +315,7 @@ export function createListing(input: CreateListingInput) {
     lng: input.lng,
     hasMapPoint: Boolean(input.hasMapPoint),
     showExactAddress: false,
-    price: normalizeListingPrice(input.price, "по договоренности"),
+    price: input.booking ? formatBookingPrice(input.booking) : normalizeListingPrice(input.price, "по договоренности"),
     booking: input.booking,
     delivery: input.delivery,
     imageTone: "blue",

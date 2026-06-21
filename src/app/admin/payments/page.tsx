@@ -1,7 +1,7 @@
-import { redirect } from "next/navigation";
+import { AdminPaymentsPage } from "@/components/admin/AdminPaymentsPage";
 
 export const dynamic = "force-dynamic";
 
 export default function Page() {
-  redirect("/admin/tariffs");
+  return <AdminPaymentsPage />;
 }

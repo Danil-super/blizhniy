@@ -8,13 +8,15 @@ import { confirmClientPayment } from "@/lib/client-payment-flow";
 import { createStoredVacancyPublication } from "@/lib/client-vacancy-flow";
 import { storeMediaFile } from "@/lib/client-media-store";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
+import { formatBookingPrice, validateBookingDetailsForPublication } from "@/lib/booking-details";
 import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationHistory, type DemoPublication, type DemoPublicationType } from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
+import { isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { categories, cities } from "@/lib/data";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
 import { normalizeVacancyRequisites, validateVacancyRequisites } from "@/lib/vacancy-requisites";
-import type { ListingKind } from "@/lib/types";
+import type { BookingDetails, ListingKind } from "@/lib/types";
 
 type AdminDemoPublishButtonProps = {
   publicationType: DemoPublicationType;
@@ -59,6 +61,107 @@ function readCoordinate(formData: FormData, name: string) {
 
   const value = Number(rawValue.replace(",", "."));
   return Number.isFinite(value) ? value : undefined;
+}
+
+function todayInputValue() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function readPositiveNumber(formData: FormData, name: string) {
+  const value = Number(readRawValue(formData, name).replace(/\s/g, "").replace(",", "."));
+
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function normalizeFutureDate(value: string) {
+  const date = value.trim();
+
+  if (!date) {
+    return "";
+  }
+
+  return date < todayInputValue() ? todayInputValue() : date;
+}
+
+function normalizeEndDate(value: string, startDate: string) {
+  const date = value.trim();
+
+  if (!date) {
+    return "";
+  }
+
+  const minDate = startDate || todayInputValue();
+  return date < minDate ? minDate : date;
+}
+
+function readFutureDateList(formData: FormData, name: string) {
+  const today = todayInputValue();
+
+  return readRawValue(formData, name)
+    .split(/[\n,;]/)
+    .map((item) => item.trim())
+    .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item) && item >= today);
+}
+
+function parseListingBooking(formData: FormData, categorySlug: string, kind: ListingKind): BookingDetails | undefined {
+  const subcategorySlug = readValue(formData, "subcategory");
+
+  if (kind !== "arenda" || !isRentalSubcategorySlug(categorySlug, subcategorySlug)) {
+    return undefined;
+  }
+
+  const mode: BookingDetails["mode"] = readValue(formData, "bookingMode", "stay") === "tour" ? "tour" : "stay";
+
+  if (mode === "tour") {
+    return {
+      mode,
+      pricePerPerson: readPositiveNumber(formData, "bookingPricePerPerson"),
+      maxGuests: readPositiveNumber(formData, "bookingMaxGuests"),
+      tourDate: normalizeFutureDate(readRawValue(formData, "tourDate")),
+      tourTime: readRawValue(formData, "tourTime"),
+      tourDuration: readRawValue(formData, "tourDuration"),
+      tourDifficulty: readRawValue(formData, "tourDifficulty"),
+      tourMeetingPoint: readRawValue(formData, "tourMeetingPoint"),
+      included: readRawValue(formData, "bookingIncluded"),
+      rules: readRawValue(formData, "bookingRules"),
+    };
+  }
+
+  const availableFrom = normalizeFutureDate(readRawValue(formData, "bookingAvailableFrom"));
+
+  return {
+    mode,
+    priceWeekday: readPositiveNumber(formData, "bookingPriceWeekday"),
+    priceWeekend: readPositiveNumber(formData, "bookingPriceWeekend"),
+    minNights: readPositiveNumber(formData, "bookingMinNights"),
+    includedGuests: readPositiveNumber(formData, "bookingIncludedGuests"),
+    maxGuests: readPositiveNumber(formData, "bookingMaxGuests"),
+    extraGuestPrice: readPositiveNumber(formData, "bookingExtraGuestPrice"),
+    availableFrom,
+    availableTo: normalizeEndDate(readRawValue(formData, "bookingAvailableTo"), availableFrom),
+    blockedDates: readFutureDateList(formData, "bookingBlockedDates"),
+    checkInTime: readRawValue(formData, "bookingCheckIn"),
+    checkOutTime: readRawValue(formData, "bookingCheckOut"),
+    included: readRawValue(formData, "bookingIncluded"),
+    rules: readRawValue(formData, "bookingRules"),
+  };
+}
+
+function validateListingBookingForSubmit(booking: BookingDetails | undefined, kind: ListingKind, isDraft: boolean) {
+  if (isDraft || kind !== "arenda") {
+    return;
+  }
+
+  const errors = validateBookingDetailsForPublication(booking);
+
+  if (errors.length) {
+    throw new Error(errors[0]);
+  }
 }
 
 function hasSelectedMapPoint(formData: FormData) {
@@ -163,7 +266,7 @@ function readStoredPublications() {
 function readMediaFiles(formData: FormData) {
   return formData
     .getAll("photos")
-    .filter((item): item is File => item instanceof File && item.size > 0 && (item.type.startsWith("image/") || item.type.startsWith("video/")))
+    .filter((item): item is File => item instanceof File && item.size > 0 && item.type.startsWith("image/"))
     .slice(0, 20);
 }
 
@@ -248,6 +351,8 @@ async function buildFallbackPublication(formData: FormData, type: DemoPublicatio
   const now = new Date().toISOString();
   const id = `demo-${type}-${Date.now().toString(36)}`;
   const categorySlug = readValue(formData, "category", "dlya-doma-i-dachi");
+  const listingKind = readValue(formData, "kind", "prodam") as ListingKind;
+  const booking = type === "listing" ? parseListingBooking(formData, categorySlug, listingKind) : undefined;
   const categoryName = categories.find((category) => category.slug === categorySlug)?.name ?? "Категория";
   const media = type === "listing" ? await readLocalMediaReferences(formData) : { images: await readLocalImageReferences(formData), videos: [] };
   const isVacancy = type === "vacancy";
@@ -266,7 +371,10 @@ async function buildFallbackPublication(formData: FormData, type: DemoPublicatio
     title: readValue(formData, type === "specialist" ? "name" : "title", "Новая публикация"),
     subtitle: type === "listing" ? categoryName : isVacancy ? readValue(formData, "organization", "Работодатель") : readValue(formData, "profession", "Публикация"),
     city: inferCityFromFormData(formData),
-    price: normalizeListingPrice(readRawValue(formData, type === "vacancy" ? "salary" : type === "specialist" ? "price" : "price"), "по договоренности"),
+    price:
+      type === "listing" && booking
+        ? formatBookingPrice(booking)
+        : normalizeListingPrice(readRawValue(formData, type === "vacancy" ? "salary" : type === "specialist" ? "price" : "price"), "по договоренности"),
     description: readValue(formData, "description", "Описание будет дополнено."),
     phone: readValue(formData, "phone"),
     email: isVacancy ? readEmailOrMessengerEmail(formData) || readValue(formData, "email") : readValue(formData, "email"),
@@ -289,9 +397,10 @@ async function buildFallbackPublication(formData: FormData, type: DemoPublicatio
     lng: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lng") : undefined,
     hasMapPoint: hasSelectedMapPoint(formData),
     showExactAddress: hasSelectedMapPoint(formData),
-    listingKind: readValue(formData, "kind", "prodam") as ListingKind,
+    listingKind,
     categorySlug,
     subcategorySlug: readValue(formData, "subcategory"),
+    booking,
     images: media.images,
     videos: media.videos,
     status,
@@ -302,7 +411,9 @@ async function buildFallbackPublication(formData: FormData, type: DemoPublicatio
 async function createSupabaseListing(formData: FormData, options: { accessToken: string; status?: "draft"; tariffId?: string }) {
   const categorySlug = readValue(formData, "category", "dlya-doma-i-dachi");
   const rawKind = readValue(formData, "kind", "prodam") as ListingKind;
-  const kind = categorySlug === "otdyh" || (categorySlug === "nedvizhimost" && rawKind === "arenda") ? "arenda" : rawKind;
+  const subcategorySlug = readValue(formData, "subcategory");
+  const kind = rawKind === "arenda" || isRentalSubcategorySlug(categorySlug, subcategorySlug) ? "arenda" : rawKind;
+  const booking = parseListingBooking(formData, categorySlug, kind);
   const phone = readRawValue(formData, "phone");
   const messengerUrl = readRawValue(formData, "messengerUrl");
   const email = readRawValue(formData, "email");
@@ -312,10 +423,13 @@ async function createSupabaseListing(formData: FormData, options: { accessToken:
     throw new Error("Укажите хотя бы один контакт объявления: телефон, email или Telegram/WhatsApp.");
   }
 
+  validateListingBookingForSubmit(booking, kind, isDraft);
+
   const mediaPaths = await uploadPublicationMedia(formData, "listings", options.accessToken);
   const result = await createStoredListingPublication({
     accessToken: options.accessToken,
     address: hasSelectedMapPoint(formData) ? readValue(formData, "address") : undefined,
+    booking,
     categorySlug,
     city: inferCityFromFormData(formData),
     description: readValue(formData, "description", "Описание будет дополнено."),
@@ -324,10 +438,11 @@ async function createSupabaseListing(formData: FormData, options: { accessToken:
     lng: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lng") : undefined,
     mediaPaths,
     messengerUrl: messengerUrl || undefined,
+    email: email || undefined,
     phone: phone || undefined,
-    price: normalizeListingPrice(readRawValue(formData, "price"), "по договоренности"),
+    price: booking ? formatBookingPrice(booking) : normalizeListingPrice(readRawValue(formData, "price"), "по договоренности"),
     status: options.status,
-    subcategory: readValue(formData, "subcategory"),
+    subcategory: subcategorySlug,
     tariffId: options.tariffId,
     title: readValue(formData, "title", isDraft ? "Черновик объявления" : "Новое объявление"),
   });
@@ -465,12 +580,19 @@ export function AdminDemoPublishButton({
 
           const result = await createSupabaseListing(formData, { accessToken: identity.accessToken, tariffId: paymentTariffId });
 
-          if (!result.payment?.confirmationUrl || !result.payment.id) {
-            throw new Error("Платеж создан, но ЮKassa не вернула ссылку на оплату. Проверьте YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и PAYMENT_PROVIDER=yookassa на сервере.");
+          if (!result.payment?.id) {
+            throw new Error("Платеж не был создан. Проверьте настройки тарифа размещения объявления.");
           }
 
           rememberPendingPaymentId(result.payment.id);
-          window.location.href = result.payment.confirmationUrl;
+
+          if (result.payment.confirmationUrl) {
+            window.location.href = result.payment.confirmationUrl;
+            return;
+          }
+
+          await confirmClientPayment(result.payment.id);
+          window.location.href = returnHref;
           return;
         }
       }

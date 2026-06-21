@@ -2,13 +2,16 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ChangeEvent, useEffect, useId, useRef, useState } from "react";
-import { Camera, ImagePlus, Trash2, Video, X } from "lucide-react";
+import type { ChangeEvent } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Camera, ImagePlus, Trash2, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
 import { categoryDisplayItems } from "@/lib/category-display-order";
 import { categories, cities, region } from "@/lib/data";
+import { extractListingPriceDigits, maxListingPriceDigits } from "@/lib/listing-price";
+import { getRentalSubcategories, isRentalCategorySlug, isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { filterListingMediaFiles, listingMediaLimitText } from "@/lib/media-limits";
 import { hasMapCoordinates } from "@/lib/map-location";
 import type { BookingDetails, ListingKind } from "@/lib/types";
@@ -31,11 +34,6 @@ const listingKindOptions: Array<{ value: ListingKind; label: string }> = [
   { value: "otdam-darom", label: "Отдам даром" },
 ];
 
-const rentalCategorySlugs = ["otdyh", "nedvizhimost"];
-const rentalSubcategoryNames: Record<string, string[] | undefined> = {
-  nedvizhimost: ["Аренда", "Коммерческая недвижимость", "Жилье для путешествия"],
-};
-
 const cityOptions = cities.map((city) => ({
   value: `${city.name}, ${region.name}`,
   label: `${city.name}, ${region.name}`,
@@ -55,7 +53,6 @@ function slugifySubcategoryValue(name: string) {
     "Картины и живопись": "kartiny-i-zhivopis",
     "Продам недвижимость": "prodam-nedvizhimost",
     "Куплю недвижимость": "kuplyu-nedvizhimost",
-    Аренда: "arenda",
     "Коммерческая недвижимость": "kommercheskaya-nedvizhimost",
     "Жилье для путешествия": "zhile-dlya-puteshestviya",
     Смартфоны: "smartfony",
@@ -143,27 +140,8 @@ function orderSubcategoriesLikeCatalog(subcategories: string[]) {
   });
 }
 
-function isRentalCategory(categorySlug: string) {
-  return rentalCategorySlugs.includes(categorySlug);
-}
-
-function getRentalSubcategories(categorySlug: string, subcategories: string[]) {
-  const allowedNames = rentalSubcategoryNames[categorySlug];
-
-  if (!allowedNames) {
-    return subcategories;
-  }
-
-  return subcategories.filter((subcategory) => allowedNames.includes(subcategory));
-}
-
 function inferListingKindFromCatalog(categorySlug: string, subcategorySlug: string): ListingKind {
-  if (
-    categorySlug === "otdyh" ||
-    subcategorySlug === "arenda" ||
-    subcategorySlug === "kommercheskaya-nedvizhimost" ||
-    subcategorySlug === "zhile-dlya-puteshestviya"
-  ) {
+  if (isRentalSubcategorySlug(categorySlug, subcategorySlug, slugifySubcategoryValue)) {
     return "arenda";
   }
 
@@ -204,17 +182,6 @@ const listingCategoryOptions = categoryDisplayItems.flatMap<ListingCategoryOptio
 
   if (!route) {
     return [];
-  }
-
-  if (route.categorySlug === "obmen-i-darom") {
-    return [
-      {
-        categorySlug: "tovary-i-veshchi",
-        label: item.label,
-        preferredKind: "menyayu",
-        value: item.id,
-      },
-    ];
   }
 
   const category = categories.find((entry) => entry.slug === route.categorySlug);
@@ -425,23 +392,25 @@ export function ListingCategoryFields({
 function BookingNumberInput({
   defaultValue,
   label,
+  min = 0,
   name,
   placeholder,
 }: {
   defaultValue?: number;
   label: string;
+  min?: number;
   name: string;
   placeholder: string;
 }) {
   return (
-    <label className="block">
+    <label className="booking-field block">
       <span className="text-sm font-bold text-slate-700">{label}</span>
       <input
         name={name}
         type="number"
-        min="0"
+        min={min}
         defaultValue={defaultValue}
-        className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
+        className="mt-2 h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm outline-none transition focus:border-[#0875d1] focus:ring-2 focus:ring-blue-100 sm:h-12"
         placeholder={placeholder}
       />
     </label>
@@ -464,14 +433,14 @@ function BookingTextInput({
   type?: string;
 }) {
   return (
-    <label className="block">
+    <label className="booking-field block">
       <span className="text-sm font-bold text-slate-700">{label}</span>
       <input
         name={name}
         type={type}
         defaultValue={defaultValue}
         min={min}
-        className="mt-2 h-12 w-full rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]"
+        className="mt-2 h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm outline-none transition focus:border-[#0875d1] focus:ring-2 focus:ring-blue-100 sm:h-12"
         placeholder={placeholder}
       />
     </label>
@@ -487,29 +456,49 @@ function todayInputValue() {
   return `${year}-${month}-${day}`;
 }
 
-function ListingBookingFields({ booking, mode }: { booking?: BookingDetails; mode: BookingDetails["mode"] }) {
+function ListingPriceField({ defaultValue }: { defaultValue?: string }) {
+  return (
+    <label className="listing-price-field form-field block min-w-0" data-field-size="sm">
+      <span className="text-xs font-bold text-slate-700 sm:text-sm">Цена</span>
+      <span className="relative mt-1 block sm:mt-2">
+        <input
+          name="price"
+          defaultValue={extractListingPriceDigits(defaultValue)}
+          inputMode="numeric"
+          maxLength={maxListingPriceDigits}
+          pattern="[0-9]*"
+          placeholder="12000"
+          className="h-10 w-full rounded-lg border border-slate-300 px-3 pr-9 text-sm outline-none focus:border-[#0875d1] sm:h-12 sm:px-4 sm:pr-10 sm:text-base"
+        />
+        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-sm font-black text-slate-500 sm:right-4 sm:text-base">₽</span>
+      </span>
+    </label>
+  );
+}
+
+export function ListingBookingFields({ booking, mode }: { booking?: BookingDetails; mode: BookingDetails["mode"] }) {
   const isTour = mode === "tour";
   const today = todayInputValue();
 
   return (
-    <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-black text-[#060b27]">{isTour ? "Параметры похода" : "Параметры бронирования"}</h2>
+    <section className="listing-booking-card rounded-xl border border-blue-100 bg-white p-4 shadow-sm sm:p-5">
+      <div className="grid gap-3 border-b border-slate-100 pb-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+        <div className="min-w-0">
+          <h2 className="text-base font-black text-[#060b27] sm:text-lg">{isTour ? "Поход и участие" : "Доступность и бронирование"}</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
             {isTour
               ? "Укажите дату, время, длительность, стоимость и условия участия. Эти данные будут показаны в карточке объявления."
-              : "Укажите цены, доступные даты и занятые дни. В карточке объявления пользователь сможет выбрать даты и увидеть итоговую стоимость."}
+              : "Задайте период приема гостей, правила заезда и занятые даты. На странице объявления пользователь выберет заезд и выезд в календаре."}
           </p>
         </div>
-        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#0875d1]">Аренда</span>
+        <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#0875d1]">Аренда</span>
       </div>
       <input type="hidden" name="bookingMode" value={mode} />
 
       {isTour ? (
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <BookingNumberInput name="bookingPricePerPerson" label="Стоимость с человека, ₽" placeholder="3500" defaultValue={booking?.pricePerPerson} />
-          <BookingNumberInput name="bookingMaxGuests" label="Количество мест" placeholder="12" defaultValue={booking?.maxGuests} />
+        <div className="booking-compact-grid mt-4 grid gap-4 md:grid-cols-2">
+          <BookingNumberInput name="bookingPricePerPerson" label="Стоимость с человека, ₽" placeholder="3500" defaultValue={booking?.pricePerPerson} min={1} />
+          <BookingNumberInput name="bookingMaxGuests" label="Количество мест" placeholder="12" defaultValue={booking?.maxGuests} min={1} />
           <BookingTextInput name="tourDate" label="Дата похода" type="date" placeholder="" defaultValue={booking?.tourDate} min={today} />
           <BookingTextInput name="tourTime" label="Время старта" type="time" placeholder="" defaultValue={booking?.tourTime} />
           <BookingTextInput name="tourDuration" label="Продолжительность" placeholder="6 часов / 2 дня" defaultValue={booking?.tourDuration} />
@@ -519,24 +508,36 @@ function ListingBookingFields({ booking, mode }: { booking?: BookingDetails; mod
           </div>
         </div>
       ) : (
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <BookingNumberInput name="bookingPriceWeekday" label="Цена за сутки в будни, ₽" placeholder="6000" defaultValue={booking?.priceWeekday} />
-          <BookingNumberInput name="bookingPriceWeekend" label="Цена за сутки в выходные, ₽" placeholder="8500" defaultValue={booking?.priceWeekend} />
-          <BookingNumberInput name="bookingMinNights" label="Минимум ночей" placeholder="1" defaultValue={booking?.minNights} />
-          <BookingNumberInput name="bookingIncludedGuests" label="Гостей включено в цену" placeholder="4" defaultValue={booking?.includedGuests} />
-          <BookingNumberInput name="bookingMaxGuests" label="Максимум гостей" placeholder="8" defaultValue={booking?.maxGuests} />
-          <BookingNumberInput name="bookingExtraGuestPrice" label="Доплата за гостя за сутки, ₽" placeholder="900" defaultValue={booking?.extraGuestPrice} />
-          <BookingTextInput name="bookingAvailableFrom" label="Можно арендовать с" type="date" placeholder="" defaultValue={booking?.availableFrom} min={today} />
-          <BookingTextInput name="bookingAvailableTo" label="Можно арендовать до" type="date" placeholder="" defaultValue={booking?.availableTo} min={today} />
-          <BookingTextInput name="bookingCheckIn" label="Заезд" type="time" placeholder="" defaultValue={booking?.checkInTime} />
-          <BookingTextInput name="bookingCheckOut" label="Выезд" type="time" placeholder="" defaultValue={booking?.checkOutTime} />
-          <label className="block md:col-span-2">
+        <div className="mt-4 grid gap-4">
+          <div className="booking-compact-grid grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:p-4 md:grid-cols-2 xl:grid-cols-3">
+            <BookingTextInput name="bookingAvailableFrom" label="Принимать гостей с" type="date" placeholder="" defaultValue={booking?.availableFrom} min={today} />
+            <BookingTextInput name="bookingAvailableTo" label="Принимать гостей до" type="date" placeholder="" defaultValue={booking?.availableTo} min={today} />
+            <BookingNumberInput name="bookingMinNights" label="Минимум ночей" placeholder="1" defaultValue={booking?.minNights} min={1} />
+          </div>
+
+          <div className="booking-compact-grid grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <BookingNumberInput name="bookingPriceWeekday" label="Будни, ₽/сутки" placeholder="6000" defaultValue={booking?.priceWeekday} min={1} />
+            <BookingNumberInput name="bookingPriceWeekend" label="Выходные, ₽/сутки" placeholder="8500" defaultValue={booking?.priceWeekend} min={1} />
+            <BookingNumberInput name="bookingIncludedGuests" label="Гостей включено" placeholder="4" defaultValue={booking?.includedGuests} min={1} />
+            <BookingNumberInput name="bookingMaxGuests" label="Максимум гостей" placeholder="8" defaultValue={booking?.maxGuests} min={1} />
+          </div>
+
+          <div className="booking-compact-grid grid gap-4 md:grid-cols-3">
+            <BookingNumberInput name="bookingExtraGuestPrice" label="Доплата за гостя, ₽/сутки" placeholder="900" defaultValue={booking?.extraGuestPrice} />
+            <BookingTextInput name="bookingCheckIn" label="Заезд после" type="time" placeholder="" defaultValue={booking?.checkInTime} />
+            <BookingTextInput name="bookingCheckOut" label="Выезд до" type="time" placeholder="" defaultValue={booking?.checkOutTime} />
+          </div>
+
+          <label className="block">
             <span className="text-sm font-bold text-slate-700">Занятые даты</span>
+            <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
+              Укажите даты через запятую или с новой строки. Эти дни будут недоступны в календаре гостя.
+            </span>
             <textarea
               name="bookingBlockedDates"
               defaultValue={booking?.blockedDates?.join(", ")}
-              className="mt-2 min-h-20 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
-              placeholder="2026-06-10, 2026-06-11, 2026-06-20"
+              className="mt-2 min-h-24 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-[#0875d1] focus:ring-2 focus:ring-blue-100"
+              placeholder="2026-06-10, 2026-06-11&#10;2026-06-20"
             />
           </label>
         </div>
@@ -548,7 +549,7 @@ function ListingBookingFields({ booking, mode }: { booking?: BookingDetails; mod
           <textarea
             name="bookingIncluded"
             defaultValue={booking?.included}
-            className="mt-2 min-h-24 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
+            className="mt-2 min-h-24 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0875d1] focus:ring-2 focus:ring-blue-100"
             placeholder={isTour ? "Трансфер, инструктор, перекус, страховка" : "Мангал, баня, бассейн, парковка"}
           />
         </label>
@@ -557,7 +558,7 @@ function ListingBookingFields({ booking, mode }: { booking?: BookingDetails; mod
           <textarea
             name="bookingRules"
             defaultValue={booking?.rules}
-            className="mt-2 min-h-24 w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-[#0875d1]"
+            className="mt-2 min-h-24 w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0875d1] focus:ring-2 focus:ring-blue-100"
             placeholder={isTour ? "Что взять с собой, возраст, отмена" : "Можно ли с детьми, животными, условия отмены"}
           />
         </label>
@@ -567,25 +568,27 @@ function ListingBookingFields({ booking, mode }: { booking?: BookingDetails; mod
 }
 
 export function ListingKindAndCategoryFields({
+  defaultPrice,
   defaultCategorySlug = "dlya-doma-i-dachi",
   defaultKind = "prodam",
   defaultSubcategorySlug,
   booking,
 }: {
+  defaultPrice?: string;
   defaultCategorySlug?: string;
   defaultKind?: ListingKind;
   defaultSubcategorySlug?: string;
   booking?: BookingDetails;
 }) {
-  const rentalCategories = categories.filter((category) => isRentalCategory(category.slug));
+  const rentalCategories = categories.filter((category) => isRentalCategorySlug(category.slug));
   const fallbackCategory = categories.find((category) => category.slug === defaultCategorySlug) ?? categories[0];
   const fallbackRentalCategory = rentalCategories[0] ?? fallbackCategory;
-  const initialCategory = defaultKind === "arenda" ? (isRentalCategory(fallbackCategory?.slug ?? "") ? fallbackCategory : fallbackRentalCategory) : fallbackCategory;
+  const initialCategory = defaultKind === "arenda" ? (isRentalCategorySlug(fallbackCategory?.slug ?? "") ? fallbackCategory : fallbackRentalCategory) : fallbackCategory;
   const initialCategoryOption = getCategoryOptionForDefaults(initialCategory?.slug ?? "", defaultSubcategorySlug);
   const [categorySlug, setCategorySlug] = useState(initialCategory?.slug ?? "");
   const [categoryOptionValue, setCategoryOptionValue] = useState(initialCategoryOption?.value ?? initialCategory?.slug ?? "");
   const selectedCategory = categories.find((category) => category.slug === categorySlug) ?? fallbackCategory;
-  const [kind, setKind] = useState<ListingKind>(defaultCategorySlug === "otdyh" || initialCategoryOption?.preferredKind === "arenda" || defaultKind === "arenda" ? "arenda" : defaultKind);
+  const [kind, setKind] = useState<ListingKind>(initialCategoryOption?.preferredKind === "arenda" || defaultKind === "arenda" ? "arenda" : defaultKind);
   const allSubcategories = orderSubcategoriesLikeCatalog(selectedCategory?.children ?? []);
   const subcategories = kind === "arenda" ? getRentalSubcategories(categorySlug, allSubcategories) : allSubcategories;
   const fallbackSubcategory = subcategories[0] ? slugifySubcategoryValue(subcategories[0]) : "";
@@ -596,7 +599,7 @@ export function ListingKindAndCategoryFields({
         ? initialCategoryOption.subcategorySlug
       : fallbackSubcategory;
   const [subcategorySlug, setSubcategorySlug] = useState(initialSubcategory);
-  const isRental = kind === "arenda" && isRentalCategory(categorySlug);
+  const isRental = kind === "arenda" && isRentalCategorySlug(categorySlug);
   const selectedSubcategoryName = subcategories.find((child) => slugifySubcategoryValue(child) === subcategorySlug) ?? subcategories[0] ?? "";
   const bookingMode: BookingDetails["mode"] = selectedSubcategoryName === "Походы" ? "tour" : "stay";
 
@@ -621,7 +624,7 @@ export function ListingKindAndCategoryFields({
     setKind(safeKind);
 
     if (safeKind === "arenda") {
-      const rentalCategorySlug = isRentalCategory(categorySlug) ? categorySlug : fallbackRentalCategory.slug;
+      const rentalCategorySlug = isRentalCategorySlug(categorySlug) ? categorySlug : fallbackRentalCategory.slug;
       const rentalOption = getCategoryOptionByCategorySlug(rentalCategorySlug);
 
       if (rentalOption) {
@@ -650,10 +653,23 @@ export function ListingKindAndCategoryFields({
 
     const nextKind =
       nextOption.preferredKind ??
-      (nextOption.categorySlug === "otdyh" ? "arenda" : kind === "arenda" && !isRentalCategory(nextOption.categorySlug) ? "prodam" : kind);
+      (kind === "arenda" && !isRentalCategorySlug(nextOption.categorySlug) ? "prodam" : kind);
 
     setKind(nextKind);
     setCategoryWithSubcategory(nextOption, nextKind);
+  }
+
+  function handleSubcategoryChange(nextSubcategorySlug: string) {
+    setSubcategorySlug(nextSubcategorySlug);
+
+    if (isRentalSubcategorySlug(categorySlug, nextSubcategorySlug, slugifySubcategoryValue)) {
+      setKind("arenda");
+      return;
+    }
+
+    if (kind === "arenda") {
+      setKind("prodam");
+    }
   }
 
   return (
@@ -685,7 +701,7 @@ export function ListingKindAndCategoryFields({
             key={categorySlug}
             name="subcategory"
             value={subcategorySlug}
-            onValueChange={setSubcategorySlug}
+            onValueChange={handleSubcategoryChange}
             buttonClassName="min-h-10 !h-auto gap-1 px-2 py-2 text-xs sm:min-h-12 sm:gap-3 sm:px-4 sm:text-sm"
             options={
               subcategories.length
@@ -696,8 +712,10 @@ export function ListingKindAndCategoryFields({
         </span>
       </label>
 
+      {isRental ? null : <ListingPriceField defaultValue={defaultPrice} />}
+
       {isRental ? (
-        <div className="listing-booking-fields col-span-full">
+        <div className="listing-booking-fields order-last col-span-full">
           <ListingBookingFields booking={booking} mode={bookingMode} />
         </div>
       ) : null}
@@ -736,7 +754,6 @@ export function ListingPhotoUploader() {
 
     if (!files.length) {
       syncFileInput(media);
-      event.currentTarget.value = "";
       return;
     }
 
@@ -761,7 +778,6 @@ export function ListingPhotoUploader() {
       return updated;
     });
     setSelectedId(nextMedia[0]?.id ?? selectedId);
-    event.currentTarget.value = "";
   }
 
   function removeMedia(item: PreviewMedia) {
@@ -854,12 +870,12 @@ export function ListingPhotoUploader() {
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <input ref={inputRef} className="sr-only" type="file" accept="image/*,video/*" name="photos" multiple onChange={handleFiles} />
+      <input ref={inputRef} className="sr-only" type="file" accept="image/*" name="photos" multiple onChange={handleFiles} />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <Camera className="h-5 w-5 shrink-0 text-[#0875d1]" />
           <div>
-            <h2 className="font-bold text-slate-800">Фото и видео объявления</h2>
+            <h2 className="font-bold text-slate-800">Фото объявления</h2>
             <p className="mt-1 text-sm text-slate-500">{media.length ? `${media.length} из ${maxFiles}` : "Файлы не выбраны"}. {listingMediaLimitText()}</p>
           </div>
         </div>
@@ -883,7 +899,7 @@ export function ListingPhotoUploader() {
         </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-black text-[#060b27]">{heroMedia ? heroMedia.name : "Добавить медиа"}</span>
-          <span className="mt-1 block text-sm font-semibold text-slate-500">{media.length ? `${media.length} файлов` : "Фото и видео"}</span>
+          <span className="mt-1 block text-sm font-semibold text-slate-500">{media.length ? `${media.length} файлов` : "Фото"}</span>
         </span>
         <span className="hidden rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 sm:inline-flex">Открыть</span>
       </button>
@@ -920,20 +936,13 @@ export function ListingPhotoUploader() {
                   Обложка
                 </button>
               )}
-              {item.kind === "image" ? (
-                <button
-                  type="button"
-                  onClick={() => setCropEditorId(item.id)}
-                  className="absolute bottom-2 right-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
-                >
-                  Кадр
-                </button>
-              ) : (
-                <span className="absolute right-2 bottom-2 inline-flex items-center gap-1 rounded-lg bg-slate-950/70 px-2.5 py-1.5 text-xs font-bold text-white">
-                  <Video className="h-3 w-3" />
-                  Видео
-                </span>
-              )}
+              <button
+                type="button"
+                onClick={() => setCropEditorId(item.id)}
+                className="absolute bottom-2 right-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+              >
+                Кадр
+              </button>
               <button
                 type="button"
                 onClick={() => removeMedia(item)}
@@ -973,25 +982,19 @@ export function ListingPhotoUploader() {
               <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
                 <div className="mx-auto max-w-xl">
                   <div className="relative mx-auto aspect-square max-h-[38dvh] overflow-hidden rounded-xl bg-slate-950 sm:max-h-[22rem]">
-                    {selectedMedia.kind === "video" ? (
-                      <video src={selectedMedia.url} className="h-full w-full object-contain" controls playsInline preload="metadata" />
-                    ) : (
-                      <img src={selectedMedia.url} alt={selectedMedia.name} className="h-full w-full object-cover" />
-                    )}
-                    {selectedMedia.kind === "image" ? <div className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-inset ring-white/70" /> : null}
+                    <img src={selectedMedia.url} alt={selectedMedia.name} className="h-full w-full object-cover" />
+                    <div className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-inset ring-white/70" />
                   </div>
 
                   <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-black text-[#060b27]">{selectedMedia.name}</h3>
-                      <p className="mt-0.5 text-xs font-semibold text-slate-500">{selectedMedia.kind === "video" ? "Видео" : "Фото"}</p>
+                      <p className="mt-0.5 text-xs font-semibold text-slate-500">Фото</p>
                     </div>
                     <div className="flex shrink-0 gap-2">
-                      {selectedMedia.kind === "image" ? (
-                        <button type="button" onClick={() => setCropEditorId(selectedMedia.id)} className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
-                          Кадр
-                        </button>
-                      ) : null}
+                      <button type="button" onClick={() => setCropEditorId(selectedMedia.id)} className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
+                        Кадр
+                      </button>
                       <button type="button" onClick={() => makeCover(selectedMedia)} disabled={heroMedia?.id === selectedMedia.id} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] disabled:opacity-50">
                         Обложка
                       </button>
@@ -1001,7 +1004,7 @@ export function ListingPhotoUploader() {
                     </div>
                   </div>
 
-                  {selectedMedia.kind === "image" ? <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold leading-6 text-slate-600">Для карточек используется квадратный кадр. Нажмите “Кадр”, чтобы перетащить фото и настроить масштаб.</p> : null}
+                  <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold leading-6 text-slate-600">Для карточек используется квадратный кадр. Нажмите “Кадр”, чтобы перетащить фото и настроить масштаб.</p>
                 </div>
               </div>
             ) : (
@@ -1032,18 +1035,9 @@ export function ListingPhotoUploader() {
                           selected ? "border-[#0875d1] ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
                         }`}
                       >
-                        {item.kind === "video" ? (
-                          <video src={item.url} className="h-full w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
-                        ) : (
-                          <img src={item.url} alt={item.name} className="h-full w-full object-cover" />
-                        )}
+                        <img src={item.url} alt={item.name} className="h-full w-full object-cover" />
                         <span className="absolute left-1 top-1 rounded-full bg-white/95 px-1.5 py-0.5 text-[10px] font-black text-slate-700">{index + 1}</span>
                         {index === 0 ? <span className="absolute bottom-1 left-1 rounded-full bg-[#0875d1] px-1.5 py-0.5 text-[10px] font-black text-white">Обл.</span> : null}
-                        {item.kind === "video" ? (
-                          <span className="absolute right-1 top-1 rounded-full bg-slate-950/70 p-1 text-white">
-                            <Video className="h-3 w-3" />
-                          </span>
-                        ) : null}
                       </button>
                     );
                   })}

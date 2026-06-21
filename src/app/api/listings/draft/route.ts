@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { createStoredListing, findReusableStoredDraftListing, updateStoredListingForUser } from "@/lib/listing-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
+import { formatBookingPrice, sanitizeBookingDetails } from "@/lib/booking-details";
+import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
 import type { CreateStoredListingInput } from "@/lib/listing-store";
-import type { ListingKind } from "@/lib/types";
+import type { BookingDetails, ListingKind } from "@/lib/types";
 
 type CreateDraftListingBody = {
   address?: string;
+  booking?: BookingDetails;
   categorySlug?: string;
   city?: string;
   description?: string;
@@ -97,9 +100,18 @@ export async function POST(request: Request) {
   }
 
   try {
+    const booking = sanitizeBookingDetails(body.booking);
+    const rawMediaPaths = cleanMediaPaths(body.mediaPaths);
+    const mediaPaths = validateMediaStoragePathsForUser(rawMediaPaths, "listings", auth.user.id);
+
+    if (mediaPaths.length !== rawMediaPaths.length) {
+      return NextResponse.json({ error: "Некорректные файлы объявления. Загрузите фото заново." }, { status: 400 });
+    }
+
     const listingInput: CreateStoredListingInput = {
       address: cleanString(body.address) || undefined,
       authorId: auth.user.id,
+      booking,
       categorySlug: cleanString(body.categorySlug) || "dlya-doma-i-dachi",
       city: cleanString(body.city) || "Краснодар",
       description: description || undefined,
@@ -107,10 +119,10 @@ export async function POST(request: Request) {
       kind: cleanKind(body.kind),
       lat: cleanNumber(body.lat),
       lng: cleanNumber(body.lng),
-      mediaPaths: cleanMediaPaths(body.mediaPaths),
+      mediaPaths,
       messengerUrl: messengerUrl || undefined,
       phone: phone || undefined,
-      price: cleanString(body.price) || undefined,
+      price: booking ? formatBookingPrice(booking) : cleanString(body.price) || undefined,
       status: "draft",
       subcategory: cleanString(body.subcategory) || undefined,
       title,

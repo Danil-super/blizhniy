@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   CircleUserRound,
   ClipboardList,
+  CreditCard,
   FileText,
   Gauge,
   MessageSquare,
@@ -143,6 +144,7 @@ const adminNav = [
   { href: "/admin/specialisty", label: "Специалисты", icon: CircleUserRound },
   { href: "/admin/categories", label: "Категории", icon: Tags },
   { href: "/admin/tariffs", label: "Тарифы", icon: WalletCards },
+  { href: "/admin/payments", label: "Платежи", icon: CreditCard },
   { href: "/admin/fair-applications", label: "Ярмарка", icon: Store },
 ];
 

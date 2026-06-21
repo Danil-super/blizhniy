@@ -1,4 +1,5 @@
 create extension if not exists pgcrypto;
+create extension if not exists btree_gist;
 
 create type publication_status as enum (
   'draft',
@@ -11,7 +12,7 @@ create type publication_status as enum (
   'sold'
 );
 
-create type listing_type as enum ('sell', 'buy', 'exchange', 'free');
+create type listing_type as enum ('sell', 'buy', 'exchange', 'free', 'rent');
 create type payment_status as enum ('created', 'pending', 'succeeded', 'failed', 'refunded');
 create type tariff_action as enum ('listing_publication', 'vacancy_publication', 'work_request_publication', 'job_response', 'fair_participation', 'specialist_publication', 'ad_marquee');
 create type app_role as enum ('user', 'specialist', 'organization', 'admin');
@@ -98,6 +99,7 @@ create table listings (
   show_exact_address boolean not null default false,
   title text not null,
   description text not null,
+  booking jsonb,
   price numeric(12, 2),
   contact_phone text,
   messenger_url text,
@@ -107,6 +109,38 @@ create table listings (
   published_at timestamptz,
   expires_at timestamptz
 );
+
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'booking_request_status') then
+    create type booking_request_status as enum ('pending', 'accepted', 'declined');
+  end if;
+end $$;
+
+create table booking_requests (
+  id uuid primary key default gen_random_uuid(),
+  listing_id uuid not null references listings(id) on delete cascade,
+  guest_id uuid not null references profiles(id) on delete cascade,
+  start_date date not null,
+  end_date date,
+  guests integer not null default 1 check (guests > 0),
+  total numeric(12, 2) not null default 0,
+  status booking_request_status not null default 'pending',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (end_date is null or end_date > start_date)
+);
+
+alter table booking_requests
+  add constraint booking_requests_no_active_overlap
+  exclude using gist (
+    listing_id with =,
+    daterange(start_date, coalesce(end_date, start_date + 1), '[)') with &&
+  )
+  where (status in ('pending', 'accepted'));
+
+create index booking_requests_listing_status_idx on booking_requests (listing_id, status, start_date);
+create index booking_requests_guest_id_idx on booking_requests (guest_id);
 
 create table listing_images (
   id uuid primary key default gen_random_uuid(),

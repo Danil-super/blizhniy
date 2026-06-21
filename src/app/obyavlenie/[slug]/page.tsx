@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { findListingBySlug, ListingDetailPage, toDemoListing } from "@/components/listings/ListingPages";
+import { listActiveBookingRequestsForListing } from "@/lib/booking-store";
 import { getStoredListingById } from "@/lib/listing-store";
 
 type PageProps = {
@@ -23,6 +24,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
   const storedListing = await getStoredListingById(slug, { publicOnly: true });
+  const bookingRequests = storedListing?.booking ? await listActiveBookingRequestsForListing(slug) : [];
 
-  return <ListingDetailPage slug={slug} listingOverride={storedListing ? toDemoListing(storedListing) : undefined} />;
+  return <ListingDetailPage bookingRequests={bookingRequests} slug={slug} listingOverride={storedListing ? toDemoListing(storedListing) : undefined} />;
 }

@@ -3,6 +3,8 @@ import { HomeHero } from "@/components/HomeHero";
 import { HomeListings } from "@/components/HomeListings";
 import { SiteHeader } from "@/components/SiteHeader";
 
+export const dynamic = "force-dynamic";
+
 export default function Home() {
   return (
     <>

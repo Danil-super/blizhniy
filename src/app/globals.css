@@ -135,6 +135,112 @@ canvas {
   max-width: 100%;
 }
 
+@media (max-width: 639px) {
+  .responsive-form-panel,
+  .listing-create-form,
+  .vacancy-create-form {
+    gap: 0.75rem;
+  }
+
+  .responsive-form-panel > .responsive-field-grid,
+  .responsive-form-panel > .adaptive-field-grid,
+  .responsive-form-panel .responsive-field-grid,
+  .responsive-form-panel .adaptive-field-grid,
+  .vacancy-fields-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .responsive-form-panel .form-field,
+  .listing-create-form .form-field,
+  .vacancy-create-form .form-field {
+    gap: 0.3rem;
+  }
+
+  .responsive-field-grid > .form-field,
+  .responsive-field-grid > :has(> .form-field),
+  .adaptive-field-grid > .form-field,
+  .adaptive-field-grid > :has(> .form-field),
+  .vacancy-fields-grid > .form-field,
+  .vacancy-fields-grid > :has(> .form-field) {
+    grid-column: span 2;
+  }
+
+  .responsive-field-grid > .form-field[data-field-size="xs"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="xs"]),
+  .responsive-field-grid > .form-field[data-field-size="sm"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="sm"]),
+  .responsive-field-grid > .form-field[data-field-size="md"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="md"]),
+  .adaptive-field-grid > .form-field[data-field-size="xs"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="xs"]),
+  .adaptive-field-grid > .form-field[data-field-size="sm"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="sm"]),
+  .adaptive-field-grid > .form-field[data-field-size="md"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="md"]),
+  .vacancy-fields-grid > .form-field[data-field-size="xs"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="xs"]),
+  .vacancy-fields-grid > .form-field[data-field-size="sm"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="sm"]),
+  .vacancy-fields-grid > .form-field[data-field-size="md"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="md"]),
+  .vacancy-fields-grid > :not(.vacancy-title-field, .vacancy-salary-field) {
+    grid-column: span 1;
+  }
+
+  .responsive-form-panel .form-field,
+  .listing-create-form .form-field,
+  .vacancy-create-form .form-field,
+  .responsive-form-panel label,
+  .listing-create-form label,
+  .vacancy-create-form label {
+    font-size: 0.72rem;
+    line-height: 1rem;
+  }
+
+  .responsive-form-panel input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([aria-hidden="true"]),
+  .responsive-form-panel select,
+  .listing-create-form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([aria-hidden="true"]),
+  .listing-create-form select,
+  .vacancy-create-form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([aria-hidden="true"]),
+  .vacancy-create-form select {
+    min-height: 2.45rem;
+    height: 2.45rem;
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+    font-size: 0.82rem;
+    line-height: 1.1rem;
+    border-radius: 0.65rem;
+  }
+
+  .responsive-form-panel button[role="combobox"],
+  .listing-create-form button[role="combobox"],
+  .vacancy-create-form button[role="combobox"] {
+    min-height: 2.45rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.78rem;
+    line-height: 1rem;
+    border-radius: 0.65rem;
+  }
+
+  .responsive-form-panel textarea,
+  .listing-create-form textarea,
+  .vacancy-create-form textarea {
+    min-height: 4.75rem;
+    padding: 0.65rem;
+    font-size: 0.82rem;
+    line-height: 1.25rem;
+    border-radius: 0.65rem;
+  }
+
+  .responsive-form-panel section,
+  .listing-create-form section,
+  .vacancy-create-form section {
+    border-radius: 0.75rem;
+  }
+
+}
+
 .responsive-field-grid > *,
 .vacancy-fields-grid > *,
 .adaptive-field-grid > * {
@@ -340,6 +446,60 @@ canvas {
   min-width: 0;
 }
 
+@container (min-width: 42rem) {
+  .listing-create-primary-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .listing-create-primary-grid > .listing-kind-field {
+    grid-column: span 2;
+  }
+
+  .listing-create-primary-grid > .listing-category-field,
+  .listing-create-primary-grid > .listing-subcategory-field {
+    grid-column: span 3;
+  }
+
+  .listing-create-primary-grid > .listing-title-field {
+    grid-column: span 3;
+  }
+
+  .listing-create-primary-grid > .listing-price-field {
+    grid-column: span 1;
+  }
+
+  .listing-create-primary-grid > .listing-booking-fields {
+    grid-column: 1 / -1;
+  }
+
+  .listing-create-primary-grid:has(> .listing-booking-fields) > .listing-title-field {
+    grid-column: span 4;
+  }
+}
+
+@container (min-width: 64rem) {
+  .listing-create-primary-grid > .listing-kind-field {
+    grid-column: span 2;
+  }
+
+  .listing-create-primary-grid > .listing-category-field,
+  .listing-create-primary-grid > .listing-subcategory-field {
+    grid-column: span 2;
+  }
+
+  .listing-create-primary-grid > .listing-title-field {
+    grid-column: span 4;
+  }
+
+  .listing-create-primary-grid > .listing-price-field {
+    grid-column: span 2;
+  }
+
+  .listing-create-primary-grid:has(> .listing-booking-fields) > .listing-title-field {
+    grid-column: span 6;
+  }
+}
+
 .listing-kind-field {
   order: 1;
 }
@@ -352,8 +512,194 @@ canvas {
   order: 3;
 }
 
-.listing-price-field {
+.listing-title-field {
   order: 4;
+}
+
+.listing-price-field {
+  order: 5;
+}
+
+.listing-booking-fields {
+  order: 6;
+}
+
+@media (max-width: 639px) {
+  .listing-create-form {
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .listing-booking-card {
+    padding: 0.75rem;
+  }
+
+  .listing-booking-card > div:first-child {
+    gap: 0.5rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .listing-booking-card h2 {
+    font-size: 0.95rem;
+    line-height: 1.25rem;
+  }
+
+  .listing-booking-card h2 + p {
+    font-size: 0.78rem;
+    line-height: 1.25rem;
+  }
+
+  .booking-compact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .booking-compact-grid > .booking-field {
+    min-width: 0;
+  }
+
+  .booking-field > span:first-child,
+  .listing-booking-card label > span:first-child {
+    font-size: 0.72rem;
+    line-height: 1rem;
+  }
+
+  .booking-field input {
+    height: 2.45rem;
+    margin-top: 0.3rem;
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+    font-size: 0.82rem;
+  }
+
+  .listing-booking-card textarea {
+    min-height: 4.75rem;
+    margin-top: 0.4rem;
+    padding: 0.65rem;
+    font-size: 0.82rem;
+    line-height: 1.25rem;
+  }
+
+  .listing-booking-card label > span:nth-child(2):not(.relative) {
+    font-size: 0.72rem;
+    line-height: 1.05rem;
+  }
+
+  .listing-booking-card > .mt-4,
+  .listing-booking-card .mt-4 {
+    margin-top: 0.75rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .responsive-form-panel,
+  .listing-create-form,
+  .vacancy-create-form {
+    gap: 0.75rem;
+  }
+
+  .responsive-form-panel > .responsive-field-grid,
+  .responsive-form-panel > .adaptive-field-grid,
+  .responsive-form-panel .responsive-field-grid,
+  .responsive-form-panel .adaptive-field-grid,
+  .vacancy-fields-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .responsive-field-grid > *,
+  .adaptive-field-grid > *,
+  .vacancy-fields-grid > * {
+    grid-column: span 2;
+  }
+
+  .responsive-field-grid > .form-field[data-field-size="xs"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="xs"]),
+  .responsive-field-grid > .form-field[data-field-size="sm"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="sm"]),
+  .responsive-field-grid > .form-field[data-field-size="md"],
+  .responsive-field-grid > :has(> .form-field[data-field-size="md"]),
+  .adaptive-field-grid > .form-field[data-field-size="xs"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="xs"]),
+  .adaptive-field-grid > .form-field[data-field-size="sm"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="sm"]),
+  .adaptive-field-grid > .form-field[data-field-size="md"],
+  .adaptive-field-grid > :has(> .form-field[data-field-size="md"]),
+  .vacancy-fields-grid > .form-field[data-field-size="xs"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="xs"]),
+  .vacancy-fields-grid > .form-field[data-field-size="sm"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="sm"]),
+  .vacancy-fields-grid > .form-field[data-field-size="md"],
+  .vacancy-fields-grid > :has(> .form-field[data-field-size="md"]),
+  .vacancy-fields-grid > :not(.vacancy-title-field, .vacancy-salary-field) {
+    grid-column: span 1;
+  }
+
+  .responsive-form-panel .form-field,
+  .listing-create-form .form-field,
+  .vacancy-create-form .form-field,
+  .responsive-form-panel label,
+  .listing-create-form label,
+  .vacancy-create-form label {
+    font-size: 0.72rem;
+    line-height: 1rem;
+  }
+
+  .responsive-form-panel input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([aria-hidden="true"]),
+  .responsive-form-panel select,
+  .listing-create-form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([aria-hidden="true"]),
+  .listing-create-form select,
+  .vacancy-create-form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([aria-hidden="true"]),
+  .vacancy-create-form select {
+    min-height: 2.45rem;
+    height: 2.45rem;
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+    font-size: 0.82rem;
+    line-height: 1.1rem;
+    border-radius: 0.65rem;
+  }
+
+  .responsive-form-panel button[role="combobox"],
+  .responsive-form-panel button[aria-haspopup="listbox"],
+  .listing-create-form button[role="combobox"],
+  .listing-create-form button[aria-haspopup="listbox"],
+  .vacancy-create-form button[role="combobox"],
+  .vacancy-create-form button[aria-haspopup="listbox"] {
+    min-height: 2.45rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.78rem;
+    line-height: 1rem;
+    border-radius: 0.65rem;
+  }
+
+  .responsive-form-panel textarea,
+  .listing-create-form textarea,
+  .vacancy-create-form textarea {
+    min-height: 4.75rem;
+    padding: 0.65rem;
+    font-size: 0.82rem;
+    line-height: 1.25rem;
+    border-radius: 0.65rem;
+  }
+
+  .listing-location-fields {
+    gap: 0.7rem;
+  }
+
+  .listing-location-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .listing-location-option {
+    min-height: 2.45rem;
+    height: auto;
+    gap: 0.45rem;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.76rem;
+    line-height: 1rem;
+  }
 }
 
 .map-picker-search {

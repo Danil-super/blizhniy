@@ -1,14 +1,16 @@
 "use client";
 
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
-import type { Listing, ListingKind, Payment } from "@/lib/types";
+import type { BookingDetails, Listing, ListingKind, Payment } from "@/lib/types";
 
 type CreateStoredListingInput = {
   accessToken?: string;
   address?: string;
+  booking?: BookingDetails;
   categorySlug?: string;
   city?: string;
   description?: string;
+  email?: string;
   kind?: ListingKind;
   lat?: number;
   lng?: number;

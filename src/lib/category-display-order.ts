@@ -25,7 +25,6 @@ export const categoryDisplayItems: CategoryDisplayItem[] = [
   { id: "posuda", label: "Посуда", href: "/katalog/posuda" },
   { id: "zhile-dlya-puteshestviya", label: "Жилье для путешествия", href: "/katalog/nedvizhimost/zhile-dlya-puteshestviya" },
   { id: "krasota-i-zdorove", label: "Красота и здоровье", href: "/katalog/krasota-i-uhod" },
-  { id: "obmen-i-darom", label: "Меняю и отдам даром", href: "/obyavleniya/obmen-i-darom" },
   { id: "raznoe", label: "Разное", href: "/katalog/raznoe" },
 ];
 

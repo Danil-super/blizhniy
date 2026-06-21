@@ -22,8 +22,18 @@ function displayLocation(location: MapLocation) {
   return [location.city, location.district].filter(Boolean).join(", ");
 }
 
+function publicCoordinate(value?: number, exact = false) {
+  if (typeof value !== "number") {
+    return undefined;
+  }
+
+  return exact ? value : Number(value.toFixed(2));
+}
+
 function routeUrl(location: MapLocation) {
-  const query = hasMapCoordinates(location.lat, location.lng) ? `${location.lat},${location.lng}` : displayLocation(location);
+  const lat = publicCoordinate(location.lat, location.showExactAddress);
+  const lng = publicCoordinate(location.lng, location.showExactAddress);
+  const query = hasMapCoordinates(lat, lng) ? `${lat},${lng}` : displayLocation(location);
 
   return `https://yandex.ru/maps/?rtext=~${encodeURIComponent(query)}&rtt=auto`;
 }
@@ -31,6 +41,8 @@ function routeUrl(location: MapLocation) {
 export function LocationMap({ location, exactLabel = "Точный адрес скрыт" }: { location: MapLocation; exactLabel?: string }) {
   const label = displayLocation(location);
   const hasPoint = (location.hasMapPoint ?? true) && hasMapCoordinates(location.lat, location.lng);
+  const publicLat = publicCoordinate(location.lat, location.showExactAddress);
+  const publicLng = publicCoordinate(location.lng, location.showExactAddress);
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
@@ -55,8 +67,8 @@ export function LocationMap({ location, exactLabel = "Точный адрес с
           </a>
         ) : null}
       </div>
-      {hasPoint ? (
-        <YandexMapView lat={location.lat as number} lng={location.lng as number} label={label} />
+      {hasPoint && hasMapCoordinates(publicLat, publicLng) ? (
+        <YandexMapView lat={publicLat as number} lng={publicLng as number} label={label} />
       ) : (
         <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-slate-600">Метка на карте не указана.</div>
       )}

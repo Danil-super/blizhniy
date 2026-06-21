@@ -1,26 +1,62 @@
-insert into categories (slug, name, sort_order) values
-  ('zhivotnye', 'Животные', 10),
-  ('sad-i-rasteniya', 'Сад и огород', 20),
-  ('tovary-dlya-detey', 'Товары для детей', 30),
-  ('ritualnye-uslugi', 'Ритуальные услуги', 40),
-  ('nedvizhimost', 'Недвижимость', 50),
-  ('rabota', 'Работа', 60),
-  ('odezhda-obuv-aksessuary', 'Одежда, обувь, аксессуары', 70),
-  ('otdyh', 'Хобби и отдых', 80),
-  ('transport', 'Авто', 90),
-  ('biznes', 'Готовый бизнес и оборудование', 100),
-  ('uslugi-dlya-doma', 'Услуги', 110),
-  ('elektronika', 'Электроника', 120),
-  ('dlya-doma-i-dachi', 'Для дома и дачи', 130),
-  ('instrumenty', 'Инструменты', 140),
-  ('posuda', 'Посуда', 150),
-  ('krasota-i-uhod', 'Красота и здоровье', 160),
-  ('raznoe', 'Разное', 170)
-on conflict (slug) do update set name = excluded.name, sort_order = excluded.sort_order, active = true;
+-- Align public catalog categories with the current product taxonomy.
+-- Old categories are deactivated instead of deleted to keep existing listing FK relations intact.
 
-insert into categories (parent_id, slug, name, sort_order)
-select parent.id, child.slug, child.name, child.sort_order
-from (
+with canonical(slug, name, sort_order) as (
+  values
+    ('zhivotnye', 'Животные', 10),
+    ('sad-i-rasteniya', 'Сад и огород', 20),
+    ('tovary-dlya-detey', 'Товары для детей', 30),
+    ('ritualnye-uslugi', 'Ритуальные услуги', 40),
+    ('nedvizhimost', 'Недвижимость', 50),
+    ('rabota', 'Работа', 60),
+    ('odezhda-obuv-aksessuary', 'Одежда, обувь, аксессуары', 70),
+    ('otdyh', 'Хобби и отдых', 80),
+    ('transport', 'Авто', 90),
+    ('biznes', 'Готовый бизнес и оборудование', 100),
+    ('uslugi-dlya-doma', 'Услуги', 110),
+    ('elektronika', 'Электроника', 120),
+    ('dlya-doma-i-dachi', 'Для дома и дачи', 130),
+    ('instrumenty', 'Инструменты', 140),
+    ('posuda', 'Посуда', 150),
+    ('krasota-i-uhod', 'Красота и здоровье', 160),
+    ('raznoe', 'Разное', 170)
+)
+insert into public.categories (slug, name, sort_order, active)
+select slug, name, sort_order, true
+from canonical
+on conflict (slug) do update
+set name = excluded.name,
+    sort_order = excluded.sort_order,
+    parent_id = null,
+    active = true;
+
+update public.categories
+set active = false
+where slug in (
+  'antikvariat-i-kollektsii',
+  'meditsina',
+  'mebel-i-interer',
+  'remont-i-stroitelstvo',
+  'tovary-i-veshchi',
+  'yarmarka-masterov',
+  'znakomstva'
+);
+
+update public.categories child
+set active = false
+from public.categories parent
+where child.parent_id = parent.id
+  and parent.slug in (
+    'antikvariat-i-kollektsii',
+    'meditsina',
+    'mebel-i-interer',
+    'remont-i-stroitelstvo',
+    'tovary-i-veshchi',
+    'yarmarka-masterov',
+    'znakomstva'
+  );
+
+with child_categories(parent_slug, slug, name, sort_order) as (
   values
     ('nedvizhimost', 'prodam-nedvizhimost', 'Продам недвижимость', 10),
     ('nedvizhimost', 'kuplyu-nedvizhimost', 'Куплю недвижимость', 20),
@@ -84,27 +120,13 @@ from (
     ('posuda', 'pribory-dlya-podachi', 'Приборы для подачи', 50),
     ('posuda', 'prochaya-utvar', 'Прочая утварь', 60),
     ('raznoe', 'kollektsii-i-antikvariat', 'Коллекции и антиквариат', 20)
-) as child(parent_slug, slug, name, sort_order)
-join categories parent on parent.slug = child.parent_slug
-on conflict (slug) do update set name = excluded.name, parent_id = excluded.parent_id, sort_order = excluded.sort_order, active = true;
-
-insert into tariffs (name, action, price, duration_days) values
-  ('Участие в ярмарке мастеров', 'fair_participation', 1000, null)
-on conflict (action) do update set name = excluded.name, price = excluded.price, duration_days = excluded.duration_days, active = true;
-
-insert into specialist_categories (parent_name, slug, name) values
-  ('Юридические услуги', 'yurist', 'Юрист'),
-  ('Красота и уход', 'shveya', 'Швея'),
-  ('Ремонт и строительство', 'svarshchik', 'Сварщик'),
-  ('Образование', 'repetitor-angliyskogo', 'Репетитор английского языка'),
-  ('Ремонт и строительство', 'santehnik', 'Сантехник'),
-  ('Красота и уход', 'parikmaher', 'Парикмахер'),
-  ('Красота и уход', 'master-manikyura', 'Мастер маникюра'),
-  ('Услуги для дома', 'klining-spetsialist', 'Клининг-специалист'),
-  ('Медицина', 'sidelka', 'Сиделка'),
-  ('Медицина', 'medsestra', 'Медсестра'),
-  ('Ремонт и строительство', 'plitochnik', 'Плиточник'),
-  ('Ремонт и строительство', 'elektrik', 'Электрик'),
-  ('Ремонт и строительство', 'master-remonta-kvartir', 'Мастер ремонта квартир'),
-  ('Мебель и интерьер', 'mebelshchik', 'Мебельщик')
-on conflict (slug) do update set parent_name = excluded.parent_name, name = excluded.name;
+)
+insert into public.categories (parent_id, slug, name, sort_order, active)
+select parent.id, child.slug, child.name, child.sort_order, true
+from child_categories child
+join public.categories parent on parent.slug = child.parent_slug
+on conflict (slug) do update
+set name = excluded.name,
+    parent_id = excluded.parent_id,
+    sort_order = excluded.sort_order,
+    active = true;

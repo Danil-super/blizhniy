@@ -10,7 +10,6 @@ import {
   Car,
   Cog,
   Ellipsis,
-  Gift,
   HeartPulse,
   MapPinned,
   PawPrint,
@@ -118,7 +117,6 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   "posuda": { icon: Utensils, tone: "amber" },
   "zhile-dlya-puteshestviya": { icon: MapPinned, tone: "green" },
   "krasota-i-zdorove": { icon: HeartPulse, tone: "violet" },
-  "obmen-i-darom": { icon: Gift, tone: "green" },
   "raznoe": { icon: Ellipsis, tone: "slate" },
 };
 

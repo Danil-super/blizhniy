@@ -21,6 +21,10 @@ export type CreateStoredNotificationInput = {
 };
 
 function categoryFromEvent(event: string): SiteNotification["category"] {
+  if (event.includes("booking")) {
+    return "booking";
+  }
+
   if (event.includes("payment")) {
     return "payment";
   }
@@ -33,6 +37,10 @@ function categoryFromEvent(event: string): SiteNotification["category"] {
 }
 
 function toneFromEvent(event: string): SiteNotification["tone"] {
+  if (event.includes("booking_response")) {
+    return event.includes("accepted") ? "success" : "info";
+  }
+
   if (event.includes("selected") || event.includes("paid")) {
     return "success";
   }
@@ -45,6 +53,10 @@ function toneFromEvent(event: string): SiteNotification["tone"] {
 }
 
 function actionHrefFromEvent(row: NotificationRow) {
+  if (row.event.includes("booking")) {
+    return "/cabinet/obyavleniya";
+  }
+
   if (row.event.includes("application")) {
     return "/cabinet/otkliki";
   }
@@ -52,11 +64,17 @@ function actionHrefFromEvent(row: NotificationRow) {
   return undefined;
 }
 
+function bookingRequestIdFromEvent(event: string) {
+  const match = event.match(/^booking_request:([0-9a-f-]{36})$/i);
+  return match?.[1];
+}
+
 export function mapStoredNotification(row: NotificationRow): SiteNotification {
   return {
     id: row.id,
     actionHref: actionHrefFromEvent(row),
-    actionLabel: row.event.includes("application") ? "Открыть отклики" : undefined,
+    actionLabel: row.event.includes("booking") ? "Открыть объявления" : row.event.includes("application") ? "Открыть отклики" : undefined,
+    bookingRequestId: bookingRequestIdFromEvent(row.event),
     category: categoryFromEvent(row.event),
     createdAt: row.created_at,
     dedupeKey: row.id,

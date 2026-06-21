@@ -9,6 +9,8 @@ import {
   bookingNotificationsStorageKey,
   bookingRequestsStorageKey,
 } from "@/lib/booking-notifications";
+import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
+import { siteNotificationsEventName } from "@/lib/site-notifications";
 import type { BookingDetails } from "@/lib/types";
 
 function toDate(value?: string) {
@@ -133,8 +135,30 @@ function dateIsBookedByRequest(date: Date, requests: BookingRequest[], listingId
   });
 }
 
+function rangeHasUnavailableDates(startDate: string, endDate: string, booking: BookingDetails, requests: BookingRequest[], listingId: string) {
+  const blockedDates = new Set(booking.blockedDates ?? []);
+
+  return nightsBetween(startDate, endDate).some((date) => blockedDates.has(dateKey(date)) || dateIsBookedByRequest(date, requests, listingId));
+}
+
 function readBookingRequests() {
   return readJsonArray<BookingRequest>(bookingRequestsStorageKey);
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  if (!isSupabaseBrowserConfigured()) {
+    return {};
+  }
+
+  const supabase = getSupabaseBrowserClient();
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function resolveFirstAvailableStayStart(booking: BookingDetails, requests: BookingRequest[], listingId: string) {
@@ -216,6 +240,9 @@ function BookingCalendar({
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
+      <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-600">
+        {selectingEndDate ? "Теперь выберите дату выезда. Ночи между заездом и выездом подсветятся синим." : "Сначала выберите дату заезда, затем дату выезда."}
+      </p>
       <div className="mt-3 grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500">
         {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => (
           <span key={day}>{day}</span>
@@ -273,29 +300,51 @@ function BookingCalendar({
   );
 }
 
-export function BookingCalculator({ booking, listingId = "listing", listingTitle = "Объявление" }: { booking?: BookingDetails; listingId?: string; listingTitle?: string }) {
-  const initialStartDate = booking?.mode === "stay" ? resolveFirstAvailableStayStart(booking, [], listingId) : "";
+export function BookingCalculator({
+  booking,
+  initialRequests = [],
+  listingId = "listing",
+  listingTitle = "Объявление",
+}: {
+  booking?: BookingDetails;
+  initialRequests?: BookingRequest[];
+  listingId?: string;
+  listingTitle?: string;
+}) {
+  const serverBacked = isUuid(listingId);
+  const initialStartDate = booking?.mode === "stay" ? resolveFirstAvailableStayStart(booking, initialRequests, listingId) : "";
   const [startDate, setStartDate] = useState(initialStartDate);
   const [endDate, setEndDate] = useState(resolveInitialStayEnd(initialStartDate, booking));
   const [guests, setGuests] = useState(1);
   const [bookingMessage, setBookingMessage] = useState("");
   const [bookingError, setBookingError] = useState("");
-  const [requests, setRequests] = useState<BookingRequest[]>([]);
+  const [requests, setRequests] = useState<BookingRequest[]>(initialRequests);
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
 
   useEffect(() => {
-    function syncRequests() {
+    async function syncRequests() {
+      if (serverBacked) {
+        const response = await fetch(`/api/listings/${encodeURIComponent(listingId)}/bookings`, { cache: "no-store" }).catch(() => null);
+        const payload = response?.ok ? ((await response.json().catch(() => null)) as { requests?: BookingRequest[] } | null) : null;
+
+        setRequests(payload?.requests ?? []);
+        return;
+      }
+
       setRequests(readBookingRequests());
     }
 
-    syncRequests();
+    void syncRequests();
     window.addEventListener("storage", syncRequests);
     window.addEventListener(bookingNotificationsEventName, syncRequests);
+    window.addEventListener(siteNotificationsEventName, syncRequests);
 
     return () => {
       window.removeEventListener("storage", syncRequests);
       window.removeEventListener(bookingNotificationsEventName, syncRequests);
+      window.removeEventListener(siteNotificationsEventName, syncRequests);
     };
-  }, []);
+  }, [listingId, serverBacked]);
 
   useEffect(() => {
     if (!booking || booking.mode !== "stay") {
@@ -315,7 +364,7 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
     }
   }, [booking, endDate, listingId, requests, startDate]);
 
-  function createBookingRequest(payload: { endDate?: string; guests: number; startDate?: string; total: number }) {
+  async function createBookingRequest(payload: { endDate?: string; guests: number; startDate?: string; total: number }) {
     setBookingError("");
     setBookingMessage("");
 
@@ -329,7 +378,7 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
       return false;
     }
 
-    const activeRequests = readBookingRequests();
+    const activeRequests = serverBacked ? requests : readBookingRequests();
     const duplicateRequest = activeRequests.some(
       (request) =>
         request.listingId === listingId &&
@@ -341,6 +390,34 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
     if (duplicateRequest) {
       setBookingError("На эти даты уже есть активная заявка.");
       return false;
+    }
+
+    if (serverBacked) {
+      setBookingSubmitting(true);
+
+      try {
+        const response = await fetch(`/api/listings/${encodeURIComponent(listingId)}/bookings`, {
+          body: JSON.stringify({
+            endDate: payload.endDate,
+            guests: payload.guests,
+            startDate: payload.startDate,
+          }),
+          headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+          method: "POST",
+        });
+        const responsePayload = (await response.json().catch(() => null)) as { booking?: BookingRequest; error?: string } | null;
+
+        if (!response.ok || !responsePayload?.booking) {
+          setBookingError(responsePayload?.error ?? "Не удалось отправить заявку на бронь.");
+          return false;
+        }
+
+        setRequests((current) => [responsePayload.booking as BookingRequest, ...current]);
+        window.dispatchEvent(new Event(siteNotificationsEventName));
+        return true;
+      } finally {
+        setBookingSubmitting(false);
+      }
     }
 
     const now = new Date().toISOString();
@@ -356,16 +433,6 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
       status: "pending",
       createdAt: now,
     };
-    const ownerNotification: BookingNotification = {
-      id: `booking-notification-owner-${Date.now().toString(36)}`,
-      requestId,
-      recipient: "owner",
-      title: "Новая заявка на бронь",
-      message: `Пользователь хочет забронировать "${listingTitle}"${payload.endDate ? ` с ${formatShortDate(payload.startDate)} до ${formatShortDate(payload.endDate)}` : ` на ${formatShortDate(payload.startDate)}`}. Гостей: ${payload.guests}, сумма: ${formatCurrency(payload.total)}.`,
-      createdAt: now,
-      read: false,
-      actionable: true,
-    };
     const guestNotification: BookingNotification = {
       id: `booking-notification-guest-${Date.now().toString(36)}`,
       requestId,
@@ -375,16 +442,20 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
       createdAt: now,
       read: false,
     };
-    const requests = readJsonArray<BookingRequest>(bookingRequestsStorageKey);
+    const storedRequests = readJsonArray<BookingRequest>(bookingRequestsStorageKey);
     const notifications = readJsonArray<BookingNotification>(bookingNotificationsStorageKey);
 
-    window.localStorage.setItem(bookingRequestsStorageKey, JSON.stringify([request, ...requests].slice(0, 50)));
-    window.localStorage.setItem(bookingNotificationsStorageKey, JSON.stringify([ownerNotification, guestNotification, ...notifications].slice(0, 80)));
+    window.localStorage.setItem(bookingRequestsStorageKey, JSON.stringify([request, ...storedRequests].slice(0, 50)));
+    window.localStorage.setItem(bookingNotificationsStorageKey, JSON.stringify([guestNotification, ...notifications].slice(0, 80)));
     window.dispatchEvent(new Event(bookingNotificationsEventName));
     return true;
   }
 
   function handleCalendarDateClick(nextDate: string) {
+    if (!booking || booking.mode !== "stay") {
+      return;
+    }
+
     const start = toDate(startDate);
     const next = toDate(nextDate);
 
@@ -398,6 +469,11 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
     if (!start || endDate || next <= start) {
       setStartDate(nextDate);
       setEndDate("");
+      return;
+    }
+
+    if (rangeHasUnavailableDates(startDate, nextDate, booking, requests, listingId)) {
+      setBookingError("Внутри выбранного периода есть занятые даты. Выберите другой выезд.");
       return;
     }
 
@@ -476,7 +552,7 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
     const tourAlreadyRequested = requests.some((request) => request.listingId === listingId && request.startDate === tourDate && (request.status === "pending" || request.status === "accepted"));
 
     return (
-      <section className="min-w-0 rounded-xl border border-blue-200 bg-blue-50/60 p-3 shadow-card sm:p-5">
+      <section id="booking-calculator" className="min-w-0 rounded-xl border border-blue-200 bg-blue-50/60 p-3 shadow-card sm:p-5">
         <h2 className="flex min-w-0 items-center gap-2 text-lg font-black leading-tight text-[#060b27] sm:text-xl">
           <CalendarDays className="h-5 w-5 text-[#0875d1]" />
           Бронирование похода
@@ -509,15 +585,15 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
         {tourAlreadyRequested ? <p className="mt-2 text-sm font-bold text-amber-700">На этот поход уже есть активная заявка.</p> : null}
         <button
           type="button"
-          disabled={Boolean(tooManyGuests || tourInPast || tourAlreadyRequested || !tourDate)}
-          onClick={() => {
-            if (createBookingRequest({ guests, total, startDate: booking.tourDate })) {
+          disabled={Boolean(tooManyGuests || tourInPast || tourAlreadyRequested || !tourDate || bookingSubmitting)}
+          onClick={async () => {
+            if (await createBookingRequest({ guests, total, startDate: booking.tourDate })) {
               setBookingMessage("Заявка отправлена владельцу. Ответ появится в уведомлениях.");
             }
           }}
           className="mt-4 inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#0aa337] font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          Забронировать
+          {bookingSubmitting ? "Отправляем..." : "Забронировать"}
         </button>
         {bookingError ? <p className="mt-3 rounded-lg bg-rose-50 p-3 text-sm font-bold leading-6 text-rose-700">{bookingError}</p> : null}
         {bookingMessage ? <p className="mt-3 rounded-lg bg-white p-3 text-sm font-semibold leading-6 text-[#0a8f32]">{bookingMessage}</p> : null}
@@ -526,11 +602,14 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
   }
 
   return (
-    <section className="min-w-0 rounded-xl border border-blue-200 bg-blue-50/60 p-3 shadow-card sm:p-5">
+    <section id="booking-calculator" className="min-w-0 rounded-xl border border-blue-200 bg-blue-50/60 p-3 shadow-card sm:p-5">
       <h2 className="flex min-w-0 items-center gap-2 text-lg font-black leading-tight text-[#060b27] sm:text-xl">
         <CalendarDays className="h-5 w-5 text-[#0875d1]" />
         <span className="min-w-0">Рассчитать бронирование</span>
       </h2>
+      <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+        Выберите заезд и выезд на календаре. Занятые даты и активные заявки недоступны для выбора.
+      </p>
       <div className="mt-4 grid gap-4">
         <BookingCalendar booking={booking} endDate={endDate} listingId={listingId} onDateClick={handleCalendarDateClick} requests={requests} selectedDates={result.selectedDates} startDate={startDate} />
         <div className="grid gap-3 sm:grid-cols-2">
@@ -609,15 +688,15 @@ export function BookingCalculator({ booking, listingId = "listing", listingTitle
       </div>
       <button
         type="button"
-        disabled={Boolean(result.errors.length) || !result.total}
-        onClick={() => {
-          if (createBookingRequest({ endDate, guests, startDate, total: result.total })) {
+        disabled={Boolean(result.errors.length) || !result.total || bookingSubmitting}
+        onClick={async () => {
+          if (await createBookingRequest({ endDate, guests, startDate, total: result.total })) {
             setBookingMessage("Заявка отправлена владельцу. Ответ появится в уведомлениях.");
           }
         }}
         className="mt-4 inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#0aa337] font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
       >
-        Забронировать
+        {bookingSubmitting ? "Отправляем..." : "Забронировать"}
       </button>
       {bookingError ? <p className="mt-3 rounded-lg bg-rose-50 p-3 text-sm font-bold leading-6 text-rose-700">{bookingError}</p> : null}
       {bookingMessage ? <p className="mt-3 rounded-lg bg-white p-3 text-sm font-semibold leading-6 text-[#0a8f32]">{bookingMessage}</p> : null}

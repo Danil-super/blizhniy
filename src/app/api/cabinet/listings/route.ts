@@ -7,20 +7,24 @@ import {
   saveStoredListingForUser,
 } from "@/lib/listing-store";
 import { confirmPayment } from "@/lib/payment-provider";
-import { listStoredPaymentsForUser, markStoredPaymentTargetSucceeded, updateStoredPayment } from "@/lib/payment-store";
+import { listStoredPaymentsForUser, markStoredPaymentTargetSucceeded } from "@/lib/payment-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
-import type { Payment } from "@/lib/types";
+import { formatBookingPrice, sanitizeBookingDetails, validateBookingDetailsForPublication } from "@/lib/booking-details";
+import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
+import type { BookingDetails } from "@/lib/types";
 import type { CreateStoredListingInput } from "@/lib/listing-store";
 import type { ListingKind } from "@/lib/types";
 
 type ListingActionBody = {
   action?: string;
   address?: string;
+  booking?: BookingDetails;
   categorySlug?: string;
   city?: string;
   clearMedia?: boolean;
   description?: string;
   district?: string;
+  email?: string;
   id?: string;
   kind?: ListingKind;
   lat?: number;
@@ -32,10 +36,6 @@ type ListingActionBody = {
   subcategory?: string;
   title?: string;
 };
-
-function isTestYooKassaMode() {
-  return process.env.YOOKASSA_SECRET_KEY?.trim().startsWith("test_") ?? false;
-}
 
 const messengerPattern = /^(@[A-Za-z0-9_]{5,32}|https?:\/\/[^\s]+)$/;
 
@@ -73,17 +73,6 @@ function hasValidMessenger(value: string) {
   return Boolean(value && messengerPattern.test(value));
 }
 
-async function forceSucceededTestPayment(payment: Payment) {
-  const paidPayment: Payment = {
-    ...payment,
-    paidAt: payment.paidAt ?? new Date().toISOString().slice(0, 10),
-    status: "succeeded",
-  };
-
-  await markStoredPaymentTargetSucceeded(paidPayment);
-  await updateStoredPayment(paidPayment);
-}
-
 async function syncPendingListingPayments(userId: string) {
   const payments = await listStoredPaymentsForUser(userId);
   const pendingListingPayments = payments.filter(
@@ -92,13 +81,7 @@ async function syncPendingListingPayments(userId: string) {
   const succeededListingPayments = payments.filter((payment) => payment.targetType === "listing" && payment.status === "succeeded");
 
   await Promise.allSettled([
-    ...pendingListingPayments.map(async (payment) => {
-      const result = await confirmPayment(payment, { trustSuccessfulReturn: true });
-
-      if (isTestYooKassaMode() && result.payment.status !== "succeeded") {
-        await forceSucceededTestPayment(result.payment);
-      }
-    }),
+    ...pendingListingPayments.map((payment) => confirmPayment(payment)),
     ...succeededListingPayments.map((payment) => markStoredPaymentTargetSucceeded(payment)),
   ]);
 }
@@ -172,6 +155,7 @@ export async function PATCH(request: Request) {
       const description = cleanString(payload.description);
       const phone = cleanString(payload.phone);
       const messengerUrl = cleanString(payload.messengerUrl);
+      const profileEmail = cleanString(auth.user.email);
 
       if (title.length < 3 || title.length > 120) {
         return NextResponse.json({ error: "Название объявления должно быть от 3 до 120 символов" }, { status: 400 });
@@ -181,8 +165,8 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: "Описание объявления слишком длинное" }, { status: 400 });
       }
 
-      if (!phone && !messengerUrl) {
-        return NextResponse.json({ error: "Укажите телефон или мессенджер для связи" }, { status: 400 });
+      if (!phone && !messengerUrl && !profileEmail) {
+        return NextResponse.json({ error: "Укажите телефон, email или мессенджер для связи" }, { status: 400 });
       }
 
       if (phone && !hasValidPhone(phone)) {
@@ -193,20 +177,38 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: "Введите @username или ссылку на мессенджер" }, { status: 400 });
       }
 
+      const kind = cleanKind(payload.kind);
+      const booking = sanitizeBookingDetails(payload.booking);
+      const rawMediaPaths = payload.mediaPaths === undefined ? undefined : cleanMediaPaths(payload.mediaPaths);
+      const mediaPaths = rawMediaPaths === undefined ? undefined : validateMediaStoragePathsForUser(rawMediaPaths, "listings", auth.user.id);
+
+      if (rawMediaPaths && mediaPaths && mediaPaths.length !== rawMediaPaths.length) {
+        return NextResponse.json({ error: "Некорректные файлы объявления. Загрузите фото заново." }, { status: 400 });
+      }
+
+      if (kind === "arenda") {
+        const bookingErrors = validateBookingDetailsForPublication(booking);
+
+        if (bookingErrors.length) {
+          return NextResponse.json({ error: bookingErrors[0] }, { status: 400 });
+        }
+      }
+
       const listingInput: CreateStoredListingInput = {
         address: cleanString(payload.address) || undefined,
         authorId: auth.user.id,
+        booking,
         categorySlug: cleanString(payload.categorySlug) || "dlya-doma-i-dachi",
         city: cleanString(payload.city) || "Краснодар",
         description: description || undefined,
         district: cleanString(payload.district) || undefined,
-        kind: cleanKind(payload.kind),
+        kind,
         lat: cleanNumber(payload.lat),
         lng: cleanNumber(payload.lng),
-        mediaPaths: cleanMediaPaths(payload.mediaPaths),
+        mediaPaths,
         messengerUrl: messengerUrl || undefined,
         phone: phone || undefined,
-        price: cleanString(payload.price) || undefined,
+        price: booking ? formatBookingPrice(booking) : cleanString(payload.price) || undefined,
         subcategory: cleanString(payload.subcategory) || undefined,
         title,
       };
