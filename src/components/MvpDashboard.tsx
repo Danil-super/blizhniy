@@ -360,7 +360,7 @@ function Shell({
         <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">{eyebrow}</p>
         <div className="mt-2 flex flex-col gap-4 sm:mt-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <h1 className="text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">{title}</h1>
+            <h1 className="text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">{title}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 [overflow-wrap:anywhere] sm:mt-3 sm:text-lg sm:leading-7">{description}</p>
           </div>
           <div className={nav ? "grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3" : "grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:gap-3"}>
@@ -421,7 +421,7 @@ function MetricCard({ icon, label, value, detail }: { icon: React.ReactNode; lab
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-bold leading-4 text-slate-500">{label}</p>
-          <p className="mt-1.5 line-clamp-1 text-2xl font-black leading-tight text-[#060b27]">{value}</p>
+          <p className="mt-1.5 line-clamp-1 text-xl font-bold leading-tight text-[#060b27]">{value}</p>
           <p className="mt-1 line-clamp-1 text-xs leading-4 text-slate-600">{detail}</p>
         </div>
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">{icon}</span>
@@ -557,7 +557,7 @@ function DataTable<T extends Record<string, unknown>>({ columns, rows }: { colum
 function SectionTitle({ title, actionHref, actionLabel }: { title: string; actionHref?: string; actionLabel?: string }) {
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h2 className="text-2xl font-black text-[#060b27]">{title}</h2>
+      <h2 className="text-xl font-bold text-[#060b27]">{title}</h2>
       {actionHref && actionLabel ? (
         <Link href={actionHref} className="inline-flex items-center gap-1 text-sm font-bold text-[#0875d1]">
           {actionLabel}
@@ -696,7 +696,7 @@ export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
     <Shell title="Оплата заказа" description="Проверьте заказ, выберите способ оплаты и подтвердите платеж." eyebrow="Оплата" createHref={null}>
       <section className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-5">
-          <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">{payment?.targetTitle ?? `Заказ ${paymentId ?? tariff.id}`}</h2>
+          <h2 className="text-xl font-bold text-[#060b27]">{payment?.targetTitle ?? `Заказ ${paymentId ?? tariff.id}`}</h2>
           {payment ? <p className="mt-2 text-sm font-semibold text-slate-500">Платеж {payment.id}</p> : null}
           <div className="mt-4 grid gap-3 sm:mt-6 sm:grid-cols-3 sm:gap-4">
             <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тариф" value={tariff.name} detail="Заказ сформирован." />
@@ -713,7 +713,7 @@ export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
         </article>
         <aside className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 shadow-card sm:p-5">
           <ShieldCheck className="h-8 w-8 text-[#0aa337] sm:h-10 sm:w-10" />
-          <h2 className="mt-3 text-xl font-black text-[#060b27] sm:mt-4 sm:text-2xl">Подтверждение оплаты</h2>
+          <h2 className="mt-3 text-xl font-bold text-[#060b27] sm:mt-4">Подтверждение оплаты</h2>
           <p className="mt-2 text-sm leading-6 text-slate-700 sm:mt-3 sm:text-base sm:leading-7">После подтверждения заказ получит статус «Оплата прошла», а публикация будет обновлена.</p>
           <MockPaymentButton paymentId={payment?.id} tariffId={tariff.id} returnHref={returnHref} />
         </aside>
@@ -751,7 +751,7 @@ export async function AdminPage() {
         <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <AdMarqueeAdminPanel />
           <section className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
-            <h2 className="text-lg font-black text-[#060b27]">Разделы управления</h2>
+            <h2 className="text-lg font-bold text-[#060b27]">Разделы управления</h2>
             <div className="mt-3 grid gap-2">
               <ActionLink href="/admin/obyavleniya" tone="plain">Объявления</ActionLink>
               <ActionLink href="/admin/vakansii" tone="plain">Вакансии</ActionLink>
@@ -864,7 +864,7 @@ function TariffEditorSection({ tariffs, title = "Редактирование т
     <section id="tariff-prices" className="scroll-mt-24 rounded-lg border border-blue-100 bg-blue-50/50 p-3 sm:p-4">
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-lg font-black text-[#060b27] sm:text-xl">{title}</h2>
+          <h2 className="text-lg font-bold text-[#060b27]">{title}</h2>
           {intro ? <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600 sm:text-sm">{intro}</p> : null}
         </div>
         <form action={resetTariffsAction} className="shrink-0">

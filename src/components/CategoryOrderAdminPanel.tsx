@@ -62,7 +62,7 @@ export function CategoryOrderAdminPanel() {
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-xl font-black text-[#060b27]">Порядок отображения категорий</h2>
+          <h2 className="text-xl font-bold text-[#060b27]">Порядок отображения категорий</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
             Меняйте последовательность плиток на главной и странице категорий. Изменения применяются сразу в этом браузере.
           </p>
@@ -80,11 +80,11 @@ export function CategoryOrderAdminPanel() {
       <div className="mt-4 grid gap-2">
         {orderedItems.map((item, index) => (
           <div key={item.id} className="grid grid-cols-[2rem_minmax(0,1fr)] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 sm:grid-cols-[2.5rem_minmax(0,1fr)_auto] sm:p-3">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-xs font-black text-slate-500 ring-1 ring-slate-200 sm:h-10 sm:w-10">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-xs font-bold text-slate-500 ring-1 ring-slate-200 sm:h-10 sm:w-10">
               {index + 1}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-black text-slate-900 sm:text-base">{item.label}</p>
+              <p className="truncate text-sm font-bold text-slate-900 sm:text-base">{item.label}</p>
               <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">{item.href}</p>
             </div>
             <div className="col-span-2 grid grid-cols-4 gap-1.5 sm:col-span-1 sm:flex sm:justify-end sm:gap-2">

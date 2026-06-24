@@ -119,14 +119,14 @@ export function ListingResultsPanel({ categorySlug, emptyText, kind, listings, s
   return (
     <>
       <details className="group mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm sm:mt-5 lg:mt-6">
-        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-black text-[#060b27] marker:hidden [&::-webkit-details-marker]:hidden">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-bold text-[#060b27] marker:hidden [&::-webkit-details-marker]:hidden">
           <span className="flex min-w-0 items-center gap-2">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">
               <Filter className="h-4 w-4" />
             </span>
             <span className="min-w-0">Фильтры</span>
           </span>
-          <span className="ml-auto inline-flex shrink-0 items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-700">
+          <span className="ml-auto inline-flex shrink-0 items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
             {formatCount(liveCount)}
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-slate-500 transition group-open:rotate-90" />
@@ -182,13 +182,13 @@ export function ListingResultsPanel({ categorySlug, emptyText, kind, listings, s
 
             <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
               <p className="text-xs font-semibold text-slate-500 sm:text-sm">
-                Подходит под фильтры: <span className="font-black text-[#060b27]">{formatCount(liveCount)}</span>
+                Подходит под фильтры: <span className="font-bold text-[#060b27]">{formatCount(liveCount)}</span>
               </p>
               <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
                 <button type="button" onClick={resetFilters} className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 px-3 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]">
                   Сбросить
                 </button>
-                <button type="submit" className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-black text-white transition hover:bg-[#0664b2]">
+                <button type="submit" className="inline-flex h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0664b2]">
                   Применить
                 </button>
               </div>

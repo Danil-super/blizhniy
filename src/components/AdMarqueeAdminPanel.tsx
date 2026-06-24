@@ -53,7 +53,7 @@ export function AdMarqueeAdminPanel() {
           <Megaphone className="h-5 w-5" />
         </span>
         <div className="min-w-0">
-          <h2 className="text-lg font-black text-[#060b27] sm:text-2xl">Бегущая строка рекламы</h2>
+          <h2 className="text-lg font-bold text-[#060b27] sm:text-xl">Бегущая строка рекламы</h2>
           <p className="mt-1 text-xs leading-5 text-slate-600 sm:text-sm">{message}</p>
         </div>
       </div>
@@ -68,11 +68,11 @@ export function AdMarqueeAdminPanel() {
       </label>
 
       <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-        <button type="button" onClick={saveMessages} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-4 text-xs font-black text-white transition hover:bg-[#0664b3] sm:text-sm">
+        <button type="button" onClick={saveMessages} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-4 text-xs font-bold text-white transition hover:bg-[#0664b3] sm:text-sm">
           <Save className="h-4 w-4" />
           Сохранить
         </button>
-        <button type="button" onClick={resetMessages} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-xs font-black text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:text-sm">
+        <button type="button" onClick={resetMessages} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:text-sm">
           <RotateCcw className="h-4 w-4" />
           Сбросить
         </button>

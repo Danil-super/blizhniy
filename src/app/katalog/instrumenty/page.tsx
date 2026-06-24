@@ -67,7 +67,7 @@ export default function InstrumentsCategoryPage() {
         <section className="mt-3">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Инструменты</h1>
+              <h1 className="text-xl font-bold leading-tight text-[#060b27] sm:text-2xl lg:text-3xl">Инструменты</h1>
               <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">
                 Раздел для ручного, электрического, измерительного, строительного и садового инструмента, а также средств защиты для ремонта и работ на участке.
               </p>

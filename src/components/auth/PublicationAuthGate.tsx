@@ -35,7 +35,7 @@ export function PublicationAuthGate({ children, title = "Войдите, что�
     <main className="page-container py-6 sm:py-10">
       <section className="mx-auto min-w-0 max-w-2xl">
         <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 p-4 sm:p-5">
-          <h1 className="text-2xl font-black text-[#060b27] [overflow-wrap:anywhere] sm:text-3xl">{title}</h1>
+          <h1 className="text-xl font-bold text-[#060b27] [overflow-wrap:anywhere] sm:text-2xl">{title}</h1>
           <p className="mt-2 text-sm leading-6 text-slate-700 [overflow-wrap:anywhere] sm:text-base sm:leading-7">
             Размещать объявления, вакансии, заказы и заявки могут только зарегистрированные пользователи. После входа вы вернетесь к этой форме.
           </p>

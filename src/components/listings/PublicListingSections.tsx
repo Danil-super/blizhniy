@@ -100,7 +100,7 @@ export async function PublicListingKindPage({ kind }: { kind: ListingKind }) {
             <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
               <div>
                 <ListingKindBadge kind={kind} />
-                <h1 className="mt-3 text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:mt-4 lg:text-4xl">{current.title}</h1>
+                <h1 className="mt-3 text-xl font-bold leading-tight text-[#060b27] sm:text-2xl lg:mt-4 lg:text-3xl">{current.title}</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">{current.description}</p>
               </div>
               <Link
@@ -135,7 +135,7 @@ export async function PublicExchangeAndFreePage() {
           <section>
             <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
               <div>
-                <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Отдам даром</h1>
+                <h1 className="text-xl font-bold leading-tight text-[#060b27] sm:text-2xl lg:text-3xl">Отдам даром</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">
                   Раздел бесплатных объявлений рядом с домом.
                 </p>

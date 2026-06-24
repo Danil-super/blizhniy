@@ -420,7 +420,7 @@ export function DgisMapPicker({
     <section className="map-picker-panel rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-lg font-black text-[#060b27]">Метка на карте</h2>
+          <h2 className="text-lg font-bold text-[#060b27]">Метка на карте</h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">Введите адрес, и карта поставит точку автоматически. Или поставьте точку кликом по карте, и адрес появится в строке поиска.</p>
         </div>
         {point ? (

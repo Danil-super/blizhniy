@@ -51,7 +51,7 @@ export function ListingViewCounter({ listingId }: { listingId: string }) {
   }, []);
 
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 text-xs font-black italic leading-none text-slate-800 sm:text-sm" aria-label={`${views} просмотров`}>
+    <span className="inline-flex shrink-0 items-center gap-1 text-xs font-bold italic leading-none text-slate-800 sm:text-sm" aria-label={`${views} просмотров`}>
       <span ref={iconRef} className="block h-5 w-5 shrink-0 overflow-hidden leading-none sm:h-6 sm:w-6" aria-hidden="true" />
       <span>{views}</span>
     </span>

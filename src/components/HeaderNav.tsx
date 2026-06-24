@@ -49,14 +49,14 @@ export function HeaderNav() {
         {open ? (
           <div className="fixed left-3 top-[116px] z-[120] w-[min(17.5rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-900/14 ring-1 ring-slate-900/5">
             <div className="px-2.5 pb-1 pt-1">
-              <p className="text-[10px] font-black uppercase leading-none tracking-wide text-[#2f8f12]">Меню</p>
+              <p className="text-[10px] font-bold uppercase leading-none tracking-wide text-[#2f8f12]">Меню</p>
             </div>
             {links.map(([label, href]) => (
               <Link
                 key={href}
                 href={href}
                 onClick={() => setOpen(false)}
-                className="flex min-h-10 items-center justify-between gap-3 rounded-xl px-2.5 text-sm font-black text-slate-800 transition hover:bg-emerald-50 hover:text-[#2f8f12]"
+                className="flex min-h-10 items-center justify-between gap-3 rounded-xl px-2.5 text-sm font-bold text-slate-800 transition hover:bg-emerald-50 hover:text-[#2f8f12]"
               >
                 <span>{label}</span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />

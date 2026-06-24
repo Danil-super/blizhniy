@@ -33,7 +33,7 @@ export default function Page() {
         <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div>
             <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">О проекте</p>
-            <h1 className="mt-3 text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">
+            <h1 className="mt-3 text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">
               <BrandName />: все рядом, регион за регионом
             </h1>
             <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
@@ -52,7 +52,7 @@ export default function Page() {
             </div>
           </div>
           <aside className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 shadow-card sm:p-6">
-            <h2 className="text-2xl font-black text-[#060b27]">Масштабирование</h2>
+            <h2 className="text-xl font-bold text-[#060b27]">Масштабирование</h2>
             <p className="mt-3 text-sm leading-6 text-slate-700">
               Текущая версия показывает первый регион запуска и ключевые пользовательские сценарии. Следующие регионы можно подключать поэтапно, сохраняя идею локальной витрины.
             </p>
@@ -66,7 +66,7 @@ export default function Page() {
             return (
               <article key={point.title} className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
                 <Icon className="h-6 w-6 text-[#0aa337]" />
-                <h2 className="mt-4 text-xl font-black text-[#060b27]">{point.title}</h2>
+                <h2 className="mt-4 text-xl font-bold text-[#060b27]">{point.title}</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-600">{point.text}</p>
               </article>
             );

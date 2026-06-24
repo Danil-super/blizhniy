@@ -1313,7 +1313,7 @@ export function CategoriesPage() {
           <BackLink fallbackHref="/" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             Назад
           </BackLink>
-          <h1 className="mt-3 text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Категории объявлений</h1>
+          <h1 className="mt-3 text-xl font-bold leading-tight text-[#060b27] sm:text-2xl lg:text-3xl">Категории объявлений</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">
             Первый уровень каталога и подкатегории отображаются плитками. Структура готова для расширения по городам и регионам.
           </p>
@@ -1344,7 +1344,7 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
             <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
               <div>
                 <ListingKindBadge kind={kind} />
-                <h1 className="mt-3 text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:mt-4 lg:text-4xl">{current.title} в Краснодаре</h1>
+                <h1 className="mt-3 text-xl font-bold leading-tight text-[#060b27] sm:text-2xl lg:mt-4 lg:text-3xl">{current.title} в Краснодаре</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">{current.description}</p>
               </div>
               <Link
@@ -1402,7 +1402,7 @@ export function ExchangeAndFreePage() {
           <section>
             <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
               <div>
-                <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Отдам даром</h1>
+                <h1 className="text-xl font-bold leading-tight text-[#060b27] sm:text-2xl lg:text-3xl">Отдам даром</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">
                   Отдельный раздел для бесплатных объявлений рядом с домом.
                 </p>
@@ -1465,7 +1465,7 @@ export function CategoryListingsPage({ categorySlug, subcategorySlug }: { catego
         </BackLink>
         <div className="grid gap-3">
           <section>
-            <h1 className="[overflow-wrap:anywhere] text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">
+            <h1 className="[overflow-wrap:anywhere] text-xl font-bold leading-tight text-[#060b27] sm:text-2xl lg:text-3xl">
               {subcategory ?? category?.name ?? "Категория"}
             </h1>
             {categoryDescription && !subcategory ? (
@@ -1579,7 +1579,7 @@ function DeliveryInfoCard({ delivery }: { delivery?: DeliveryOptions }) {
       <div className="flex items-start gap-3">
         <PackageCheck className="mt-1 h-5 w-5 shrink-0 text-[#0875d1]" />
         <div className="min-w-0">
-          <p className="font-black text-[#060b27]">Доставка</p>
+          <p className="font-bold text-[#060b27]">Доставка</p>
           <p className="mt-2 text-sm leading-6 text-slate-700">
             Возможна отправка через: <span className="font-bold">{serviceNames.join(", ")}</span>.
           </p>
@@ -1657,7 +1657,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
             <BackLink fallbackHref={`/obyavleniya?kind=${listing.kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
               Назад к разделу
             </BackLink>
-            <h1 className="[overflow-wrap:anywhere] mt-3 text-xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-3xl lg:text-4xl">{listing.title}</h1>
+            <h1 className="[overflow-wrap:anywhere] mt-3 text-xl font-bold leading-tight text-[#060b27] sm:mt-4 sm:text-2xl lg:text-3xl">{listing.title}</h1>
             <div className="mt-3 flex flex-wrap gap-2">
               <ListingKindBadge kind={listing.kind} />
               <StatusBadge status={listing.status} />
@@ -1665,7 +1665,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
             <div className="mt-4 min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-card lg:hidden">
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="[overflow-wrap:anywhere] text-xl font-black text-[#060b27]">{listing.price}</p>
+                  <p className="[overflow-wrap:anywhere] text-xl font-bold text-[#060b27]">{listing.price}</p>
                   <p className="mt-2 flex min-w-0 items-start gap-2 text-sm font-semibold text-slate-600">
                     <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#0875d1]" />
                     <span className="min-w-0 [overflow-wrap:anywhere]">{listingPlaceLabel(listing)}</span>
@@ -1680,7 +1680,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
             </div>
             <ListingMediaGallery media={galleryMedia} title={listing.title} />
             <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
-              <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Описание</h2>
+              <h2 className="text-lg font-bold text-[#060b27]">Описание</h2>
               <p className="mt-2 [overflow-wrap:anywhere] text-sm leading-6 text-slate-700 sm:mt-3 sm:text-base sm:leading-7">{listing.description}</p>
               <dl className="mt-5 grid min-w-0 gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4">
                 <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
@@ -1706,7 +1706,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
           <aside className="min-w-0 space-y-4">
             <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
               <div className="hidden lg:block">
-                <p className="[overflow-wrap:anywhere] text-xl font-black text-[#060b27] sm:text-2xl">{listing.price}</p>
+                <p className="[overflow-wrap:anywhere] text-xl font-bold text-[#060b27]">{listing.price}</p>
                 {!hasMapPoint ? (
                   <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
                     <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
@@ -1820,7 +1820,7 @@ function ListingDeliveryFields({ defaultCity, delivery }: { defaultCity?: string
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-lg font-black text-[#060b27]">
+          <div className="flex items-center gap-2 text-lg font-bold text-[#060b27]">
             <Truck className="h-5 w-5 text-[#0875d1]" />
             Доставка
           </div>
@@ -1836,7 +1836,7 @@ function ListingDeliveryFields({ defaultCity, delivery }: { defaultCity?: string
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="rounded-lg border border-slate-200 bg-white p-3">
-          <p className="text-sm font-black text-[#060b27]">Службы доставки</p>
+          <p className="text-sm font-bold text-[#060b27]">Службы доставки</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {deliveryServices.map((service) => (
               <label key={service.id} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-slate-50 px-3 text-sm font-semibold text-slate-700">
@@ -1992,7 +1992,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
             Назад
           </BackLink>
           <section>
-          <h1 className="mt-3 text-3xl font-black text-[#060b27] sm:text-5xl">{editing ? "Редактировать объявление" : "Создать объявление"}</h1>
+          <h1 className="mt-3 text-2xl font-bold text-[#060b27] sm:text-4xl">{editing ? "Редактировать объявление" : "Создать объявление"}</h1>
           <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
             Заполните объявление, добавьте фото и выберите удобный способ связи.
           </p>
@@ -2034,7 +2034,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
             {showDeliveryUi ? <ListingDeliveryFields delivery={listing?.delivery} defaultCity={listing?.city ?? "Краснодар"} /> : null}
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-lg font-black text-[#060b27]">
+              <div className="flex items-center gap-2 text-lg font-bold text-[#060b27]">
                 <Phone className="h-5 w-5 text-[#0aa337]" />
                 Контакты
               </div>
@@ -2109,7 +2109,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
 
           <div className="mb-16 mt-6 grid gap-3 sm:mb-20 md:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-2 font-black text-[#060b27]">
+              <div className="flex items-center gap-2 font-bold text-[#060b27]">
                 <ShieldCheck className="h-5 w-5 text-[#0aa337]" />
                 Публикация
               </div>
@@ -2118,14 +2118,14 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
               </p>
             </div>
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-              <div className="flex items-center gap-2 font-black text-[#060b27]">
+              <div className="flex items-center gap-2 font-bold text-[#060b27]">
                 <CreditCard className="h-5 w-5 text-[#0875d1]" />
                 Оплата
               </div>
               <p className="mt-2 text-sm leading-6 text-slate-700">{tariff?.name ?? "Размещение объявления"}: {tariff?.price ?? 199} ₽.</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-2 font-black text-[#060b27]">
+              <div className="flex items-center gap-2 font-bold text-[#060b27]">
                 <Mail className="h-5 w-5 text-[#0875d1]" />
                 Уведомления
               </div>
@@ -2142,7 +2142,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
 export function CategoryNotFoundHint() {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="flex items-center gap-3 text-xl font-black text-[#060b27]">
+      <div className="flex items-center gap-3 text-xl font-bold text-[#060b27]">
         <Sparkles className="h-6 w-6 text-[#0875d1]" />
         Категория готова к наполнению
       </div>

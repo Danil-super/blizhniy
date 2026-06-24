@@ -20,10 +20,10 @@ export function HomeIntro() {
         <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/8 lg:hidden" />
         <div className="relative z-10 grid min-h-[340px] items-center gap-5 p-5 sm:min-h-[390px] sm:p-7 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)] lg:p-10">
           <div className="max-w-[34rem] lg:max-w-[42rem]">
-            <p className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-[#0a8f32] sm:text-sm">
+            <p className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0a8f32] sm:text-sm">
               Краснодарский край рядом
             </p>
-            <h1 className="mt-4 max-w-none text-[23px] font-black leading-[1.16] text-[#06102d] sm:max-w-[40rem] sm:text-5xl sm:leading-tight lg:text-6xl">
+            <h1 className="mt-4 max-w-none text-[21px] font-bold leading-[1.16] text-[#06102d] sm:max-w-[40rem] sm:text-3xl sm:leading-tight lg:text-4xl">
               <span className="block whitespace-nowrap">
                 <BrandName /> помогает найти
               </span>
@@ -38,14 +38,14 @@ export function HomeIntro() {
             <div className="mt-5 flex flex-wrap items-center justify-start gap-2 sm:mt-6">
               <Link
                 href="/razmestit"
-                className="inline-flex h-10 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-3.5 text-xs font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:gap-2 sm:px-6 sm:text-sm"
+                className="inline-flex h-10 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-3.5 text-xs font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:gap-2 sm:px-6 sm:text-sm"
               >
                 <PlusCircle className="h-4 w-4 sm:h-5 sm:w-5" />
                 Разместить
               </Link>
               <Link
                 href="/obyavleniya"
-                className="inline-flex h-10 touch-manipulation items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-white/90 px-3.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:border-[#0875d1] hover:bg-blue-50 sm:h-12 sm:gap-2 sm:px-6 sm:text-sm"
+                className="inline-flex h-10 touch-manipulation items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-white/90 px-3.5 text-xs font-bold text-[#0875d1] shadow-sm transition hover:border-[#0875d1] hover:bg-blue-50 sm:h-12 sm:gap-2 sm:px-6 sm:text-sm"
               >
                 Объявления
                 <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />

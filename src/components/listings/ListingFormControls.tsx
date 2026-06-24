@@ -465,7 +465,7 @@ function ListingPriceField({ defaultValue }: { defaultValue?: string }) {
           placeholder="12000"
           className="h-10 w-full rounded-lg border border-slate-300 px-3 pr-9 text-sm outline-none focus:border-[#0875d1] sm:h-12 sm:px-4 sm:pr-10 sm:text-base"
         />
-        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-sm font-black text-slate-500 sm:right-4 sm:text-base">₽</span>
+        <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-sm font-bold text-slate-500 sm:right-4 sm:text-base">₽</span>
       </span>
     </label>
   );
@@ -479,14 +479,14 @@ export function ListingBookingFields({ booking, mode }: { booking?: BookingDetai
     <section className="listing-booking-card rounded-xl border border-blue-100 bg-white p-4 shadow-sm sm:p-5">
       <div className="grid gap-3 border-b border-slate-100 pb-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
         <div className="min-w-0">
-          <h2 className="text-base font-black text-[#060b27] sm:text-lg">{isTour ? "Поход и участие" : "Доступность и бронирование"}</h2>
+          <h2 className="text-base font-bold text-[#060b27] sm:text-lg">{isTour ? "Поход и участие" : "Доступность и бронирование"}</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
             {isTour
               ? "Укажите дату, время, длительность, стоимость и условия участия. Эти данные будут показаны в карточке объявления."
               : "Задайте период приема гостей, правила заезда и занятые даты. На странице объявления пользователь выберет заезд и выезд в календаре."}
           </p>
         </div>
-        <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#0875d1]">Аренда</span>
+        <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#0875d1]">Аренда</span>
       </div>
       <input type="hidden" name="bookingMode" value={mode} />
 
@@ -893,7 +893,7 @@ export function ListingPhotoUploader() {
           )}
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-black text-[#060b27]">{heroMedia ? heroMedia.name : "Добавить медиа"}</span>
+          <span className="block truncate text-sm font-bold text-[#060b27]">{heroMedia ? heroMedia.name : "Добавить медиа"}</span>
           <span className="mt-1 block text-sm font-semibold text-slate-500">{media.length ? `${media.length} файлов` : "Фото"}</span>
         </span>
         <span className="hidden rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 sm:inline-flex">Открыть</span>
@@ -921,12 +921,12 @@ export function ListingPhotoUploader() {
                 )}
               </button>
               {index === 0 ? (
-                <span className="absolute bottom-2 left-2 rounded-lg bg-[#0875d1] px-2.5 py-1.5 text-xs font-black text-white shadow-sm">Обложка</span>
+                <span className="absolute bottom-2 left-2 rounded-lg bg-[#0875d1] px-2.5 py-1.5 text-xs font-bold text-white shadow-sm">Обложка</span>
               ) : (
                 <button
                   type="button"
                   onClick={() => makeCover(item)}
-                  className="absolute bottom-2 left-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+                  className="absolute bottom-2 left-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-bold text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
                 >
                   Обложка
                 </button>
@@ -934,7 +934,7 @@ export function ListingPhotoUploader() {
               <button
                 type="button"
                 onClick={() => setCropEditorId(item.id)}
-                className="absolute bottom-2 right-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+                className="absolute bottom-2 right-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-bold text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
               >
                 Кадр
               </button>
@@ -956,7 +956,7 @@ export function ListingPhotoUploader() {
           <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[min(42rem,92vh)] sm:max-w-3xl sm:rounded-xl">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
               <div className="min-w-0">
-                <h2 className="text-base font-black text-[#060b27] sm:text-lg">Медиатека</h2>
+                <h2 className="text-base font-bold text-[#060b27] sm:text-lg">Медиатека</h2>
                 <p className="mt-0.5 text-xs font-semibold text-slate-500 sm:text-sm">{media.length} из {maxFiles}. {listingMediaLimitText()}</p>
               </div>
               <div className="flex shrink-0 gap-2">
@@ -983,7 +983,7 @@ export function ListingPhotoUploader() {
 
                   <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <h3 className="truncate text-sm font-black text-[#060b27]">{selectedMedia.name}</h3>
+                      <h3 className="truncate text-sm font-bold text-[#060b27]">{selectedMedia.name}</h3>
                       <p className="mt-0.5 text-xs font-semibold text-slate-500">Фото</p>
                     </div>
                     <div className="flex shrink-0 gap-2">
@@ -1031,8 +1031,8 @@ export function ListingPhotoUploader() {
                         }`}
                       >
                         <img src={item.url} alt={item.name} className="h-full w-full object-cover" />
-                        <span className="absolute left-1 top-1 rounded-full bg-white/95 px-1.5 py-0.5 text-[10px] font-black text-slate-700">{index + 1}</span>
-                        {index === 0 ? <span className="absolute bottom-1 left-1 rounded-full bg-[#0875d1] px-1.5 py-0.5 text-[10px] font-black text-white">Обл.</span> : null}
+                        <span className="absolute left-1 top-1 rounded-full bg-white/95 px-1.5 py-0.5 text-[10px] font-bold text-slate-700">{index + 1}</span>
+                        {index === 0 ? <span className="absolute bottom-1 left-1 rounded-full bg-[#0875d1] px-1.5 py-0.5 text-[10px] font-bold text-white">Обл.</span> : null}
                       </button>
                     );
                   })}

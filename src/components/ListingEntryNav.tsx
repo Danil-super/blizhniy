@@ -47,7 +47,7 @@ export function ListingEntryNav({ activeKind }: { activeKind?: ListingKind }) {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Объявления</p>
-            <h2 className="mt-1 text-xl font-black text-[#060b27] sm:text-2xl">Что хотите сделать?</h2>
+            <h2 className="mt-1 text-xl font-bold text-[#060b27]">Что хотите сделать?</h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
               Выберите тип объявления: продать, купить или отдать бесплатно.
             </p>
@@ -55,14 +55,14 @@ export function ListingEntryNav({ activeKind }: { activeKind?: ListingKind }) {
           <div className="flex flex-wrap gap-2">
             <Link
               href="/katalog"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-[#0875d1] sm:h-11 sm:px-5"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-[#0875d1] sm:h-11 sm:px-5"
             >
               <Search className="h-4 w-4" />
               Все категории
             </Link>
             <Link
               href="/razmestit/obyavlenie"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5"
             >
               <PlusCircle className="h-4 w-4" />
               Разместить
@@ -87,7 +87,7 @@ export function ListingEntryNav({ activeKind }: { activeKind?: ListingKind }) {
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 shadow-sm ring-1 ring-white/80">
                   <Icon className="h-5 w-5" />
                 </span>
-                <span className="mt-3 block text-base font-black text-[#060b27] group-hover:text-current">{entry.title}</span>
+                <span className="mt-3 block text-base font-bold text-[#060b27] group-hover:text-current">{entry.title}</span>
                 <span className="mt-1 block text-sm leading-5 text-slate-600">{entry.description}</span>
               </Link>
             );

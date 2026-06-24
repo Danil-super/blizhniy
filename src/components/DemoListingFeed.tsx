@@ -166,8 +166,8 @@ export function DemoGridCard({ item }: { item: DemoPublication }) {
           </span>
         </span>
         <span className="block p-2">
-          <span className="line-clamp-2 min-h-8 text-[13px] font-black leading-4 text-slate-900 transition group-hover:text-[#0875d1]">{item.title}</span>
-          <span className="mt-0.5 block truncate text-base font-black leading-5 text-[#060b27]">{item.price ?? "по договоренности"}</span>
+          <span className="line-clamp-2 min-h-8 text-[13px] font-bold leading-4 text-slate-900 transition group-hover:text-[#0875d1]">{item.title}</span>
+          <span className="mt-0.5 block truncate text-base font-bold leading-5 text-[#060b27]">{item.price ?? "по договоренности"}</span>
           {formatListingDate(item.createdAt) ? (
             <span className="mt-1 flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500">
               <CalendarDays className="h-3 w-3 shrink-0" />
@@ -228,7 +228,7 @@ function DemoListCard({ item }: { item: DemoPublication }) {
               Через админку
             </span>
           </div>
-          <h3 className="mt-2 line-clamp-2 text-sm font-black leading-5 text-[#060b27] transition group-hover:text-[#0875d1] sm:text-base sm:leading-6 lg:text-2xl lg:leading-tight">{item.title}</h3>
+          <h3 className="mt-2 line-clamp-2 text-sm font-bold leading-5 text-[#060b27] transition group-hover:text-[#0875d1] sm:text-base sm:leading-6 lg:text-xl lg:leading-tight">{item.title}</h3>
           <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:text-sm lg:mt-2 lg:leading-6">{item.description ?? "Описание будет дополнено."}</p>
           <p className="mt-1.5 flex min-w-0 items-start gap-1.5 text-xs text-slate-500 sm:text-sm lg:mt-3 lg:gap-2">
             <MapPin className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
@@ -238,7 +238,7 @@ function DemoListCard({ item }: { item: DemoPublication }) {
       </div>
       <div className="grid min-w-0 gap-2 sm:col-span-2 xl:col-span-1 xl:flex xl:flex-col xl:items-end xl:justify-between xl:gap-4">
         <div className="min-w-0 xl:text-right">
-          <p className="truncate text-base font-black text-[#060b27] sm:text-lg lg:text-2xl">{item.price ?? "по договоренности"}</p>
+          <p className="truncate text-base font-bold text-[#060b27] sm:text-lg lg:text-xl">{item.price ?? "по договоренности"}</p>
         </div>
         <div className="relative z-20 grid min-w-0 grid-cols-2 gap-1.5 sm:gap-2 xl:w-[280px]">
           {item.phone ? (

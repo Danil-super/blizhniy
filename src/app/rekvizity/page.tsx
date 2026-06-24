@@ -26,7 +26,7 @@ export default function Page() {
       <main className="page-container py-10">
         <section className="w-full">
           <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Документы</p>
-          <h1 className="mt-3 text-4xl font-black text-[#060b27]">Реквизиты</h1>
+          <h1 className="mt-3 text-3xl font-bold text-[#060b27]">Реквизиты</h1>
           <p className="mt-4 max-w-5xl text-base leading-7 text-slate-600">
             {renderBrandText("Информация об организации, которая администрирует платформу «БЛИЖНИЙ» и обеспечивает работу сервиса")}
             размещения объявлений, вакансий, анкет специалистов и заявок пользователей.
@@ -44,7 +44,7 @@ export default function Page() {
           </div>
 
           <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-6">
-            <h2 className="text-xl font-black text-[#060b27]">Контакты для связи</h2>
+            <h2 className="text-xl font-bold text-[#060b27]">Контакты для связи</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               По вопросам работы платформы, размещения материалов, оплаты и взаимодействия с сервисом можно связаться
               с администрацией по указанным контактам.

@@ -42,17 +42,17 @@ export function VacancyGridCard({ vacancy }: { vacancy: JobVacancy }) {
           {image ? (
             <StoredMediaImage src={image} alt={vacancy.title} className="h-full w-full bg-slate-100 object-contain transition duration-300 group-hover:scale-[1.02]" />
           ) : (
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/80 px-1 text-center text-[11px] font-black leading-4 text-[#0875d1] shadow-sm ring-1 ring-white/80">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/80 px-1 text-center text-[11px] font-bold leading-4 text-[#0875d1] shadow-sm ring-1 ring-white/80">
               {vacancy.logoText}
             </span>
           )}
           {image ? <span className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-slate-950/20 to-transparent" /> : <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />}
         </span>
         <span className="block p-2">
-          <span className="line-clamp-2 min-h-8 text-[13px] font-black leading-4 text-slate-900 transition group-hover:text-[#0875d1]">
+          <span className="line-clamp-2 min-h-8 text-[13px] font-bold leading-4 text-slate-900 transition group-hover:text-[#0875d1]">
             {vacancy.title}
           </span>
-          <span className="mt-0.5 block truncate text-base font-black leading-5 text-[#060b27]">{vacancy.salary}</span>
+          <span className="mt-0.5 block truncate text-base font-bold leading-5 text-[#060b27]">{vacancy.salary}</span>
           <span className="mt-0.5 block truncate text-[11px] font-semibold text-slate-500">{vacancy.organization}</span>
           {dateLabel ? (
             <span className="mt-1 flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500">

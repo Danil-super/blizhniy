@@ -48,7 +48,7 @@ export function DemoPublishedItems({ type }: { type: DemoPublicationType }) {
 
   return (
     <section className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 sm:p-5">
-      <div className="mb-3 flex items-center gap-2 text-sm font-black text-[#0a8f32] sm:text-base">
+      <div className="mb-3 flex items-center gap-2 text-sm font-bold text-[#0a8f32] sm:text-base">
         <CheckCircle2 className="h-5 w-5" />
         Создано через админку: {demoPublicationLabels[type]}
       </div>
@@ -68,7 +68,7 @@ export function DemoPublishedItems({ type }: { type: DemoPublicationType }) {
                 </span>
               ) : null}
               <div className="min-w-0">
-                <h3 className="line-clamp-2 text-sm font-black text-[#060b27] sm:text-base">{item.title}</h3>
+                <h3 className="line-clamp-2 text-sm font-bold text-[#060b27] sm:text-base">{item.title}</h3>
                 <p className="mt-1 text-xs font-semibold text-slate-500">{item.subtitle}</p>
               </div>
               <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-[#0a8f32]">

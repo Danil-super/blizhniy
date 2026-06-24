@@ -395,7 +395,7 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
     return (
       <main className="page-container py-10">
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-          <h1 className="text-2xl font-black text-[#060b27]">Вакансия не найдена</h1>
+          <h1 className="text-xl font-bold text-[#060b27]">Вакансия не найдена</h1>
           <p className="mt-2 text-slate-600">Черновики вакансий хранятся в браузере, где они были созданы.</p>
           <BackLink fallbackHref="/cabinet/vakansii" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
             Вернуться к вакансиям

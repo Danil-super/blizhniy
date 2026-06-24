@@ -38,7 +38,7 @@ export default function Page() {
       <main className="page-container py-8 sm:py-12">
         <section className="max-w-4xl">
           <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Сценарии сервиса</p>
-          <h1 className="mt-3 text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">
+          <h1 className="mt-3 text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">
             Как работает <BrandName />
           </h1>
           <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
@@ -55,7 +55,7 @@ export default function Page() {
                 <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">
                   <Icon className="h-5 w-5" />
                 </span>
-                <h2 className="mt-4 text-xl font-black text-[#060b27]">{step.title}</h2>
+                <h2 className="mt-4 text-xl font-bold text-[#060b27]">{step.title}</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-600">{step.text}</p>
               </article>
             );

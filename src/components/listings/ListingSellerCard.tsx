@@ -39,12 +39,12 @@ export function ListingSellerCard({ sellerName, registeredSince, listingCount = 
   return (
     <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
       <div className="flex min-w-0 items-start gap-3">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-lg font-black text-[#0875d1]">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-lg font-bold text-[#0875d1]">
           {sellerInitial(name)}
         </div>
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase text-slate-400">Продавец</p>
-          <h2 className="mt-1 [overflow-wrap:anywhere] text-lg font-black text-[#060b27]">{name}</h2>
+          <h2 className="mt-1 [overflow-wrap:anywhere] text-lg font-bold text-[#060b27]">{name}</h2>
           {hasContacts ? (
             <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
@@ -60,14 +60,14 @@ export function ListingSellerCard({ sellerName, registeredSince, listingCount = 
             <CalendarDays className="h-4 w-4 shrink-0 text-[#0875d1]" />
             На платформе
           </div>
-          <p className="mt-1 [overflow-wrap:anywhere] text-sm font-black text-[#060b27]">{registeredSince ? `с ${registeredSince}` : "недавно"}</p>
+          <p className="mt-1 [overflow-wrap:anywhere] text-sm font-bold text-[#060b27]">{registeredSince ? `с ${registeredSince}` : "недавно"}</p>
         </div>
         <div className="min-w-0 rounded-lg bg-slate-50 p-3">
           <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-400">
             <ClipboardList className="h-4 w-4 shrink-0 text-[#0875d1]" />
             Объявления
           </div>
-          <p className="mt-1 [overflow-wrap:anywhere] text-sm font-black text-[#060b27]">
+          <p className="mt-1 [overflow-wrap:anywhere] text-sm font-bold text-[#060b27]">
             {safeListingCount} {pluralListings(safeListingCount)}
           </p>
         </div>
@@ -76,7 +76,7 @@ export function ListingSellerCard({ sellerName, registeredSince, listingCount = 
             <CheckCircle2 className="h-4 w-4 shrink-0 text-[#0875d1]" />
             Продано
           </div>
-          <p className="mt-1 [overflow-wrap:anywhere] text-sm font-black text-[#060b27]">{soldCount} товаров</p>
+          <p className="mt-1 [overflow-wrap:anywhere] text-sm font-bold text-[#060b27]">{soldCount} товаров</p>
         </div>
       </div>
 

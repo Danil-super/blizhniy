@@ -47,7 +47,7 @@ export function LocationMap({ location, exactLabel = "Точный адрес с
   if (!hasPoint) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
-        <h2 className="text-2xl font-black text-[#060b27]">Адрес</h2>
+        <h2 className="text-xl font-bold text-[#060b27]">Адрес</h2>
         <p className="mt-2 flex items-center gap-2 text-slate-600">
           <MapPin className="h-5 w-5 text-[#0875d1]" />
           {label}
@@ -61,7 +61,7 @@ export function LocationMap({ location, exactLabel = "Точный адрес с
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black text-[#060b27]">Карта и местоположение</h2>
+          <h2 className="text-xl font-bold text-[#060b27]">Карта и местоположение</h2>
           <p className="mt-2 flex items-center gap-2 text-slate-600">
             <MapPin className="h-5 w-5 text-[#0875d1]" />
             {label}

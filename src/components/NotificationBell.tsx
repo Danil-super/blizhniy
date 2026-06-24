@@ -289,7 +289,7 @@ export function NotificationBell() {
       >
         <Bell className="h-[18px] w-[18px]" aria-hidden="true" />
         {unreadCount ? (
-          <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">
+          <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         ) : null}
@@ -299,7 +299,7 @@ export function NotificationBell() {
         <div className="fixed right-3 top-12 z-[100] w-[min(24rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10 md:absolute md:right-0 md:top-[calc(100%+8px)]">
           <div className="grid gap-3 border-b border-slate-100 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
             <div>
-              <p className="font-black text-[#060b27]">Уведомления</p>
+              <p className="font-bold text-[#060b27]">Уведомления</p>
               <p className="text-xs font-semibold text-slate-500">
                 {signedOut ? "Войдите, чтобы получать личные события" : "Оплаты, публикации, брони и системные события"}
               </p>
@@ -321,7 +321,7 @@ export function NotificationBell() {
           <div className="max-h-96 overflow-y-auto">
             {signedOut ? (
               <div className="border-b border-slate-100 bg-blue-50/60 px-4 py-4">
-                <p className="font-black text-[#060b27]">Уведомления доступны после входа</p>
+                <p className="font-bold text-[#060b27]">Уведомления доступны после входа</p>
                 <p className="mt-1 text-sm leading-5 text-slate-600">Личные события по оплатам, публикациям и заявкам привязываются к аккаунту. Гость видит только локальные уведомления текущего браузера.</p>
                 <Link href="/auth" className="mt-3 inline-flex h-9 items-center justify-center rounded-lg bg-[#0875d1] px-3 text-xs font-bold text-white">
                   Войти или зарегистрироваться
@@ -339,8 +339,8 @@ export function NotificationBell() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-black text-[#060b27]">{notification.title}</p>
-                        <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                        <p className="font-bold text-[#060b27]">{notification.title}</p>
+                        <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                           {notificationCategoryLabel(notification)}
                         </span>
                       </div>
@@ -392,7 +392,7 @@ export function NotificationBell() {
                   <article key={notification.id} className={`border-b border-slate-100 px-4 py-3 ${notification.read ? "bg-white" : "bg-blue-50/60"}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-black text-[#060b27]">{notification.title}</p>
+                        <p className="font-bold text-[#060b27]">{notification.title}</p>
                         <p className="mt-1 text-sm leading-5 text-slate-600">{notification.message}</p>
                       </div>
                       <span className="shrink-0 text-[11px] font-bold text-slate-400">{formatDateTime(notification.createdAt)}</span>

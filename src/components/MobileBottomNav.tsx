@@ -51,8 +51,8 @@ export function MobileBottomNav() {
               href={item.href}
               className={
                 item.primary
-                  ? "flex min-w-0 -translate-y-1 flex-col items-center justify-center gap-1 rounded-2xl bg-gradient-to-b from-[#16b344] to-[#079230] px-1 py-2 text-[10px] font-black leading-none text-white shadow-[0_14px_28px_rgba(10,163,55,0.28)] ring-1 ring-white/35 transition active:translate-y-0"
-                  : `flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-[10px] font-black leading-none transition ${
+                  ? "flex min-w-0 -translate-y-1 flex-col items-center justify-center gap-1 rounded-2xl bg-gradient-to-b from-[#16b344] to-[#079230] px-1 py-2 text-[10px] font-bold leading-none text-white shadow-[0_14px_28px_rgba(10,163,55,0.28)] ring-1 ring-white/35 transition active:translate-y-0"
+                  : `flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-[10px] font-bold leading-none transition ${
                       active ? "bg-slate-950/7 text-[#0875d1] shadow-sm ring-1 ring-white/65" : "text-slate-700 hover:bg-white/55 hover:text-[#0875d1]"
                     }`
               }

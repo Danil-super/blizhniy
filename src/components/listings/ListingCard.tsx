@@ -160,7 +160,7 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
             <ListingKindBadge kind={listing.kind} />
             <StatusBadge status={listing.status} />
           </div>
-          <Link href={href} className="mt-2 line-clamp-2 text-sm font-black leading-5 text-[#060b27] hover:text-[#0875d1] sm:text-base sm:leading-6 lg:text-2xl lg:leading-tight">
+          <Link href={href} className="mt-2 line-clamp-2 text-sm font-bold leading-5 text-[#060b27] hover:text-[#0875d1] sm:text-base sm:leading-6 lg:text-xl lg:leading-tight">
             {listing.title}
           </Link>
           <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 sm:text-sm lg:mt-2 lg:leading-6">{listing.description}</p>
@@ -173,7 +173,7 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
 
       <div className="grid min-w-0 gap-2 sm:col-span-2 sm:grid-cols-[minmax(0,auto)_minmax(240px,1fr)] sm:items-start sm:gap-3 xl:col-span-1 xl:flex xl:flex-col xl:items-end xl:justify-between xl:gap-4">
         <div className="min-w-0 sm:max-w-[220px] xl:max-w-none xl:text-right">
-          <p className="truncate text-base font-black text-[#060b27] sm:text-lg lg:text-2xl">{listing.price}</p>
+          <p className="truncate text-base font-bold text-[#060b27] sm:text-lg lg:text-xl">{listing.price}</p>
         </div>
         <div className={`grid min-w-0 gap-1.5 sm:gap-2 xl:w-[280px] xl:grid-cols-2 ${hasSecondaryContact ? "grid-cols-2" : "grid-cols-2"}`}>
           {listing.phone ? (
@@ -228,10 +228,10 @@ export function ListingGridCard({ listing }: { listing: DemoListing }) {
           {listing.images?.[0] ? <span className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-slate-950/30 to-transparent" /> : <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />}
         </span>
         <span className="block p-2">
-          <span className="line-clamp-2 min-h-8 text-[13px] font-black leading-4 text-slate-900 transition group-hover:text-[#0875d1]">
+          <span className="line-clamp-2 min-h-8 text-[13px] font-bold leading-4 text-slate-900 transition group-hover:text-[#0875d1]">
             {listing.title}
           </span>
-          <span className="mt-0.5 block truncate text-base font-black leading-5 text-[#060b27]">{listing.price}</span>
+          <span className="mt-0.5 block truncate text-base font-bold leading-5 text-[#060b27]">{listing.price}</span>
           {formatListingDate(listing.publishedAt || listing.createdAt) ? (
             <span className="mt-1 flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500">
               <CalendarDays className="h-3 w-3 shrink-0" />

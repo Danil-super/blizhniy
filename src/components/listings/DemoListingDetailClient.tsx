@@ -200,7 +200,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
     return (
       <main className="page-container py-10">
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-          <h1 className="text-2xl font-black text-[#060b27]">Объявление не найдено</h1>
+          <h1 className="text-xl font-bold text-[#060b27]">Объявление не найдено</h1>
           <p className="mt-2 text-slate-600">Объявление не найдено или больше не опубликовано.</p>
           <BackLink fallbackHref="/" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
             Вернуться в ленту
@@ -218,14 +218,14 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
           <BackLink fallbackHref={`/obyavleniya?kind=${kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             Назад к разделу
           </BackLink>
-          <h1 className="[overflow-wrap:anywhere] mt-3 text-xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-3xl lg:text-4xl">{listing.title}</h1>
+          <h1 className="[overflow-wrap:anywhere] mt-3 text-xl font-bold leading-tight text-[#060b27] sm:mt-4 sm:text-2xl lg:text-3xl">{listing.title}</h1>
           <div className="mt-3 flex flex-wrap gap-2">
             <ListingKindBadge kind={kind} />
             <StatusBadge status={sold ? "sold" : "published"} />
           </div>
           <DemoGallery media={galleryMedia} title={listing.title} />
           <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
-            <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Описание</h2>
+            <h2 className="text-lg font-bold text-[#060b27]">Описание</h2>
             <p className="mt-2 [overflow-wrap:anywhere] text-sm leading-6 text-slate-700 sm:mt-3 sm:text-base sm:leading-7">{listing.description ?? "Описание будет дополнено."}</p>
             <dl className="mt-5 grid min-w-0 gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4">
               <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
@@ -242,7 +242,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
 
         <aside className="min-w-0 space-y-4">
           <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
-            <p className="[overflow-wrap:anywhere] text-xl font-black text-[#060b27] sm:text-2xl">{listing.price ?? "по договоренности"}</p>
+            <p className="[overflow-wrap:anywhere] text-xl font-bold text-[#060b27]">{listing.price ?? "по договоренности"}</p>
             {sold ? (
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-start gap-3">
@@ -250,7 +250,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
                     <CheckCircle2 className="h-5 w-5" />
                   </span>
                   <div className="min-w-0">
-                    <p className="font-black text-slate-900">Объявление продано</p>
+                    <p className="font-bold text-slate-900">Объявление продано</p>
                     <p className="mt-1 text-sm leading-6 text-slate-600">
                       Контакты продавца скрыты, чтобы ему не звонили по неактуальному товару.
                       {listing.soldReason ? ` Причина: ${soldReasonLabels[listing.soldReason]}.` : ""}

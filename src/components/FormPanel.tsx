@@ -16,7 +16,7 @@ export function FormPanel({
 }) {
   return (
     <section className="mb-16 min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-card sm:mb-20 sm:p-6">
-      <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-4xl">{title}</h1>
+      <h1 className="text-xl font-bold leading-tight text-[#060b27] sm:text-3xl">{title}</h1>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">{description}</p>
       <div className="mt-5 grid gap-3 sm:mt-8 sm:gap-4">{children}</div>
     </section>
@@ -154,7 +154,7 @@ export function Field({
             capitalizeFirstLetter={capitalizeFirstLetter}
             {...inputProps}
           />
-          <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-sm font-black text-slate-500 sm:right-4 sm:text-base">₽</span>
+          <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-sm font-bold text-slate-500 sm:right-4 sm:text-base">₽</span>
         </span>
       ) : (
         <ValidatedInput name={name} className={inputClassName} type={type} placeholder={placeholder} validation={validation} defaultValue={defaultValue} capitalizeFirstLetter={capitalizeFirstLetter} {...inputProps} />

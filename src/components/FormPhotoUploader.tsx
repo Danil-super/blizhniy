@@ -183,7 +183,7 @@ export function FormPhotoUploader({
         {photos.length ? (
           <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2 sm:p-2.5">
             <div className="mb-2 flex min-w-0 items-center justify-between gap-2 px-1">
-              <span className="text-xs font-black uppercase tracking-normal text-slate-500">Превью</span>
+              <span className="text-xs font-bold uppercase tracking-normal text-slate-500">Превью</span>
               <span className="text-xs font-bold text-slate-500">Первое фото - обложка</span>
             </div>
             <div className="grid max-h-[17.5rem] min-w-0 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 lg:flex lg:max-h-none lg:grid-cols-none lg:overflow-x-auto lg:overflow-y-hidden lg:pb-1 lg:pr-0">
@@ -191,7 +191,7 @@ export function FormPhotoUploader({
                 <figure key={photo.id} className="group relative aspect-square min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:w-36 lg:shrink-0">
                   <StoredMediaImage src={photo.url} alt={photo.name} className="h-full w-full object-cover" />
                   {index === 0 ? (
-                    <span className="absolute left-1.5 top-1.5 rounded-md bg-white/95 px-2 py-1 text-[0.68rem] font-black text-[#0875d1] shadow-sm">
+                    <span className="absolute left-1.5 top-1.5 rounded-md bg-white/95 px-2 py-1 text-[0.68rem] font-bold text-[#0875d1] shadow-sm">
                       Обложка
                     </span>
                   ) : null}
@@ -206,7 +206,7 @@ export function FormPhotoUploader({
                   <button
                     type="button"
                     onClick={() => setCropEditorId(photo.id)}
-                    className="absolute bottom-1.5 left-1.5 rounded-lg bg-white/95 px-2 py-1 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3] sm:bottom-2 sm:left-2 sm:px-2.5 sm:py-1.5"
+                    className="absolute bottom-1.5 left-1.5 rounded-lg bg-white/95 px-2 py-1 text-xs font-bold text-[#0875d1] shadow-sm transition hover:text-[#0664b3] sm:bottom-2 sm:left-2 sm:px-2.5 sm:py-1.5"
                   >
                     <span className="lg:hidden">Кадр</span>
                     <span className="hidden lg:inline">Изменить кадр</span>

@@ -57,7 +57,7 @@ export async function FairHomePage() {
       <section className="grid gap-5 sm:gap-8 lg:grid-cols-[1fr_420px] lg:items-start">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">Последнее воскресенье месяца</p>
-          <h1 className="mt-2 text-3xl font-black leading-tight text-[#060b27] sm:mt-3 sm:text-6xl">Ярмарка мастеров</h1>
+          <h1 className="mt-2 text-2xl font-bold leading-tight text-[#060b27] sm:mt-3 sm:text-4xl">Ярмарка мастеров</h1>
           <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600 sm:mt-5 sm:text-lg sm:leading-8">
             Раздел для мастеров и небольших мастерских Краснодарского края: участники заранее оставляют заявку, оплачивают участие и показывают свои
             товары на странице ярмарки.
@@ -74,19 +74,19 @@ export async function FairHomePage() {
 
         <aside className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
           <CalendarDays className="h-8 w-8 text-[#0875d1] sm:h-10 sm:w-10" />
-          <h2 className="mt-3 text-xl font-black text-[#060b27] sm:mt-4 sm:text-2xl">Ближайшая ярмарка</h2>
-          <p className="mt-2 text-2xl font-black text-[#0aa337] sm:text-3xl">{formatFairDate(fairDate)}</p>
+          <h2 className="mt-3 text-xl font-bold text-[#060b27] sm:mt-4">Ближайшая ярмарка</h2>
+          <p className="mt-2 text-xl font-bold text-[#0aa337] sm:text-2xl">{formatFairDate(fairDate)}</p>
           <p className="mt-2 text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">Участие платное. Временный тариф: {fairTariff ? `${fairTariff.price} ₽` : "1000 ₽"}.</p>
         </aside>
       </section>
 
       <section className="mt-8 sm:mt-10">
-        <h2 className="text-2xl font-black text-[#060b27] sm:text-3xl">Категории ярмарки</h2>
+        <h2 className="text-xl font-bold text-[#060b27] sm:text-2xl">Категории ярмарки</h2>
         <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-5 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
           {fairCategories.map((category) => (
             <div key={category} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
               <Store className="h-5 w-5 text-[#0875d1] sm:h-7 sm:w-7" />
-              <p className="mt-3 text-sm font-black text-[#060b27] [overflow-wrap:anywhere] sm:mt-4 sm:text-base">{category}</p>
+              <p className="mt-3 text-sm font-bold text-[#060b27] [overflow-wrap:anywhere] sm:mt-4 sm:text-base">{category}</p>
             </div>
           ))}
         </div>
@@ -99,7 +99,7 @@ export async function FairHomePage() {
               <Video className="h-5 w-5 sm:h-6 sm:w-6" />
             </span>
             <div>
-              <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Онлайн-трансляция</h2>
+              <h2 className="text-xl font-bold text-[#060b27]">Онлайн-трансляция</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">Онлайн-трансляция будет доступна в день ярмарки.</p>
             </div>
           </div>
@@ -117,14 +117,14 @@ export async function FairHomePage() {
       </section>
 
       <section className="mt-8 sm:mt-10">
-        <h2 className="text-2xl font-black text-[#060b27] sm:text-3xl">Участники</h2>
+        <h2 className="text-xl font-bold text-[#060b27] sm:text-2xl">Участники</h2>
         <div className="mt-4 grid gap-3 sm:mt-5 sm:gap-4 lg:grid-cols-2">
           {publishedApplications.map((application) => (
             <article key={application.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
               <div className="grid gap-3 sm:flex sm:items-start sm:justify-between sm:gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wide text-[#0875d1] sm:text-sm">{application.category}</p>
-                  <h3 className="mt-1 text-xl font-black text-[#060b27] sm:mt-2 sm:text-2xl">{application.participantName}</h3>
+                  <h3 className="mt-1 text-xl font-bold text-[#060b27] sm:mt-2">{application.participantName}</h3>
                 </div>
                 <span className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-[#0a8f32]">опубликовано</span>
               </div>
@@ -192,12 +192,12 @@ export function FairApplicationFormPage({ adminMode = false }: { adminMode?: boo
       <section className="mb-16 grid gap-5 sm:mb-20 sm:gap-8 lg:grid-cols-[1fr_360px]">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
           <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">Заявка на участие</p>
-          <h1 className="mt-2 text-3xl font-black text-[#060b27] sm:mt-3 sm:text-4xl">Ярмарка мастеров</h1>
+          <h1 className="mt-2 text-2xl font-bold text-[#060b27] sm:mt-3 sm:text-3xl">Ярмарка мастеров</h1>
           <FairApplicationForm adminMode={adminMode} />
         </div>
         <aside className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
           <CheckCircle2 className="h-8 w-8 text-[#0aa337] sm:h-10 sm:w-10" />
-          <h2 className="mt-3 text-xl font-black text-[#060b27] sm:mt-4 sm:text-2xl">После подачи заявки</h2>
+          <h2 className="mt-3 text-xl font-bold text-[#060b27] sm:mt-4">После подачи заявки</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">
             После оплаты заявка получает статус «Заявка опубликована». Видео можно добавить ссылкой на внешний сервис.
           </p>

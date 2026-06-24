@@ -267,7 +267,7 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
                 }`}
               />
               {category.ageRating ? (
-                <span className="absolute right-4 top-4 z-20 inline-flex h-8 min-w-10 items-center justify-center rounded-full border border-white/80 bg-white/90 px-2 text-xs font-black text-slate-700 shadow-sm">
+                <span className="absolute right-4 top-4 z-20 inline-flex h-8 min-w-10 items-center justify-center rounded-full border border-white/80 bg-white/90 px-2 text-xs font-bold text-slate-700 shadow-sm">
                   {category.ageRating}
                 </span>
               ) : null}
@@ -279,7 +279,7 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
                 <span className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg transition group-hover:scale-105 sm:h-16 sm:w-16 ${tone.icon}`}>
                   <Icon className={category.iconClassName ?? "h-8 w-8 sm:h-9 sm:w-9"} />
                 </span>
-                <h2 className="mt-5 block text-2xl font-black leading-tight text-[#183114] sm:text-3xl lg:text-[34px]">{category.label}</h2>
+                <h2 className="mt-5 block text-xl font-bold leading-tight text-[#183114] sm:text-2xl lg:text-[28px]">{category.label}</h2>
                 <span className="mt-3 block max-w-[25rem] text-sm font-semibold leading-6 text-slate-700 sm:text-[15px]">{category.description}</span>
                 <span className="mt-4 grid gap-2 text-xs font-bold leading-5 text-slate-700 sm:text-sm">
                   {category.bullets.slice(0, 3).map((bullet) => (
@@ -290,7 +290,7 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
                   ))}
                 </span>
               </span>
-              <span className={`absolute bottom-5 left-5 z-20 inline-flex h-10 w-fit items-center justify-center gap-2 rounded-full border px-3.5 text-sm font-black shadow-lg backdrop-blur transition sm:bottom-6 sm:left-6 lg:bottom-8 lg:left-8 ${tone.button}`}>
+              <span className={`absolute bottom-5 left-5 z-20 inline-flex h-10 w-fit items-center justify-center gap-2 rounded-full border px-3.5 text-sm font-bold shadow-lg backdrop-blur transition sm:bottom-6 sm:left-6 lg:bottom-8 lg:left-8 ${tone.button}`}>
                 <span>Открыть</span>
                 <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition group-hover:translate-x-0.5 ${tone.buttonIcon}`}>
                   <ArrowRight className="h-3.5 w-3.5" />

@@ -42,7 +42,7 @@ function SegmentTabs({ activeItem, onChange }: { activeItem: string; onChange: (
           key={item}
           type="button"
           onClick={() => onChange(item)}
-          className={`inline-flex h-11 min-w-0 items-center justify-center rounded-xl border px-3 text-center text-sm font-black leading-tight transition sm:h-12 sm:text-base ${
+          className={`inline-flex h-11 min-w-0 items-center justify-center rounded-xl border px-3 text-center text-sm font-bold leading-tight transition sm:h-12 sm:text-base ${
             item === activeItem ? "border-[#0aa337] bg-emerald-50 text-[#0a8f32]" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
           }`}
         >
@@ -59,15 +59,15 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
   return (
     <Link href={`/vakansiya/${vacancy.id}`} className="group block min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
       <VacancyCardMedia images={vacancy.images} title={vacancy.title}>
-        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 px-1 text-center text-xs font-black leading-4 shadow-sm ring-1 ring-white/80 transition group-hover:scale-105">
+        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 px-1 text-center text-xs font-bold leading-4 shadow-sm ring-1 ring-white/80 transition group-hover:scale-105">
           {vacancy.logoText}
         </span>
         <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />
       </VacancyCardMedia>
       <span className="block p-4">
         <span className="block truncate text-xs font-semibold text-slate-500">{vacancy.organization}</span>
-        <span className="mt-1 block line-clamp-2 min-h-10 text-sm font-black leading-5 text-[#060b27] transition group-hover:text-[#0875d1]">{vacancy.title}</span>
-        <span className="mt-2 block text-base font-black text-[#060b27]">{vacancy.salary}</span>
+        <span className="mt-1 block line-clamp-2 min-h-10 text-sm font-bold leading-5 text-[#060b27] transition group-hover:text-[#0875d1]">{vacancy.title}</span>
+        <span className="mt-2 block text-base font-bold text-[#060b27]">{vacancy.salary}</span>
         {publishedLabel ? (
           <span className="mt-2 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
             <Clock3 className="h-3.5 w-3.5 shrink-0" />
@@ -89,8 +89,8 @@ function WorkRequestCard({ request }: { request: WorkRequest }) {
   return (
     <Link href={`/rabota/zakazy/${request.id}`} className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
       <p className="truncate text-xs font-semibold text-slate-500">{request.author}</p>
-      <h3 className="mt-1 line-clamp-2 min-h-10 text-sm font-black leading-5 text-[#060b27] transition group-hover:text-[#0875d1]">{request.title}</h3>
-      <p className="mt-2 text-base font-black text-[#060b27]">{request.budget}</p>
+      <h3 className="mt-1 line-clamp-2 min-h-10 text-sm font-bold leading-5 text-[#060b27] transition group-hover:text-[#0875d1]">{request.title}</h3>
+      <p className="mt-2 text-base font-bold text-[#060b27]">{request.budget}</p>
       {publishedLabel ? (
         <p className="mt-2 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
           <Clock3 className="h-3.5 w-3.5 shrink-0" />
@@ -110,9 +110,9 @@ function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
 
   return (
     <Link href={`/specialist/${specialist.id}`} className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
-      <p className="text-base font-black text-[#060b27]">{specialist.name}</p>
+      <p className="text-base font-bold text-[#060b27]">{specialist.name}</p>
       <p className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">{specialist.profession}</p>
-      <p className="mt-2 text-base font-black text-[#060b27]">{specialist.price}</p>
+      <p className="mt-2 text-base font-bold text-[#060b27]">{specialist.price}</p>
       {publishedLabel ? (
         <p className="mt-2 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
           <Clock3 className="h-3.5 w-3.5 shrink-0" />
@@ -152,19 +152,19 @@ export function CanonicalWorkPage({
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">Работа</h1>
+          <h1 className="text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">Работа</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 sm:text-lg sm:leading-7">Вакансии, заказы и анкеты специалистов на платформе <BrandName />.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Link href="/rabota/vakansii/sozdat" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]">
+          <Link href="/rabota/vakansii/sozdat" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]">
             <BriefcaseBusiness className="h-4 w-4" />
             Разместить вакансию
           </Link>
-          <Link href="/rabota/zakazy/sozdat" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]">
+          <Link href="/rabota/zakazy/sozdat" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]">
             <ClipboardList className="h-4 w-4" />
             Разместить заказ
           </Link>
-          <Link href="/rabota/specialisty/anketa" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#0aa337] bg-white px-4 text-sm font-black text-[#0a8f32] transition hover:bg-emerald-50">
+          <Link href="/rabota/specialisty/anketa" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#0aa337] bg-white px-4 text-sm font-bold text-[#0a8f32] transition hover:bg-emerald-50">
             <UserRound className="h-4 w-4" />
             Создать анкету
           </Link>
@@ -178,7 +178,7 @@ export function CanonicalWorkPage({
       <div className="mt-6 grid gap-8 xl:grid-cols-2">
         <section>
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="flex min-w-0 items-center gap-2 text-xl font-black text-[#060b27] lg:text-2xl">
+            <h2 className="flex min-w-0 items-center gap-2 text-xl font-bold text-[#060b27] lg:text-xl">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0aa337] text-white">
                 {showingWorkRequests ? <ClipboardList className="h-5 w-5" /> : <BriefcaseBusiness className="h-5 w-5" />}
               </span>
@@ -198,7 +198,7 @@ export function CanonicalWorkPage({
 
         <section>
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="flex min-w-0 items-center gap-2 text-xl font-black text-[#060b27] lg:text-2xl">
+            <h2 className="flex min-w-0 items-center gap-2 text-xl font-bold text-[#060b27] lg:text-xl">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0875d1] text-white">
                 <UserRound className="h-5 w-5" />
               </span>

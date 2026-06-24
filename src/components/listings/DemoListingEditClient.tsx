@@ -498,7 +498,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
     return (
       <main className="page-container py-10">
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-          <h1 className="text-2xl font-black text-[#060b27]">Объявление не найдено</h1>
+          <h1 className="text-xl font-bold text-[#060b27]">Объявление не найдено</h1>
           <p className="mt-2 text-slate-600">Черновик не найден или был создан в другом сеансе.</p>
           <BackLink fallbackHref="/cabinet/obyavleniya" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
             Вернуться в кабинет
@@ -517,7 +517,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
         <ListingKindBadge kind={kind} />
         <StatusBadge status="published" />
       </div>
-      <h1 className="mt-4 text-3xl font-black text-[#060b27] sm:text-5xl">Редактировать объявление</h1>
+      <h1 className="mt-4 text-2xl font-bold text-[#060b27] sm:text-4xl">Редактировать объявление</h1>
 
       <form onSubmit={handleSubmit} className="listing-create-form mt-6 grid gap-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="listing-create-primary-grid adaptive-field-grid">
@@ -606,12 +606,12 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
                   </button>
                   <div className="absolute inset-x-2 bottom-2 flex gap-2">
                     {index === 0 ? (
-                      <span className="rounded-lg bg-[#0875d1] px-2.5 py-1.5 text-xs font-black text-white shadow-sm">Обложка</span>
+                      <span className="rounded-lg bg-[#0875d1] px-2.5 py-1.5 text-xs font-bold text-white shadow-sm">Обложка</span>
                     ) : (
                       <button
                         type="button"
                         onClick={() => makeImageCover(index)}
-                        className="rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+                        className="rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-bold text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
                       >
                         Обложка
                       </button>
@@ -619,7 +619,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
                     <button
                       type="button"
                       onClick={() => setCropEditorIndex(index)}
-                      className="rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+                      className="rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-bold text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
                     >
                       Кадр
                     </button>
@@ -635,12 +635,12 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
                   </span>
                   {!images.length ? (
                     index === 0 ? (
-                      <span className="absolute left-2 top-2 rounded-lg bg-[#0875d1] px-2.5 py-1.5 text-xs font-black text-white shadow-sm">Обложка</span>
+                      <span className="absolute left-2 top-2 rounded-lg bg-[#0875d1] px-2.5 py-1.5 text-xs font-bold text-white shadow-sm">Обложка</span>
                     ) : (
                       <button
                         type="button"
                         onClick={() => makeVideoFirst(index)}
-                        className="absolute left-2 top-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
+                        className="absolute left-2 top-2 rounded-lg bg-white/95 px-2.5 py-1.5 text-xs font-bold text-[#0875d1] shadow-sm transition hover:text-[#0664b3]"
                       >
                         Обложка
                       </button>

@@ -22,7 +22,7 @@ export default async function Page() {
       <SiteHeader />
       <main className="page-container py-10">
         <Link href="/rabota" className="text-sm font-bold text-[#0875d1]">Назад к работе</Link>
-        <h1 className="mt-3 text-4xl font-black text-[#060b27]">Все специалисты</h1>
+        <h1 className="mt-3 text-3xl font-bold text-[#060b27]">Все специалисты</h1>
         <p className="mt-3 max-w-2xl text-slate-600">Каталог исполнителей.</p>
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           {specialists.map((specialist) => (

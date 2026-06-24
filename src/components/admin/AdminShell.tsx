@@ -73,7 +73,7 @@ export function AdminShell({
       <main className="page-container dashboard-shell pb-6 pt-6 sm:pb-10 sm:pt-10">
         <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">Администрирование</p>
         <div className="mt-2 min-w-0 sm:mt-3">
-          <h1 className="text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">{title}</h1>
+          <h1 className="text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">{title}</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 [overflow-wrap:anywhere] sm:mt-3 sm:text-lg sm:leading-7">{description}</p>
         </div>
         <AdminAuthGate>

@@ -65,7 +65,7 @@ function EmployerTypeButton({
         <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-8 sm:w-8 ${active ? "bg-[#0875d1] text-white" : "bg-slate-50 text-[#0875d1]"}`}>
           <Icon className="h-4 w-4" />
         </span>
-        <span className="min-w-0 text-sm font-black">{option.label}</span>
+        <span className="min-w-0 text-sm font-bold">{option.label}</span>
       </span>
       <span className="mt-1.5 text-xs font-semibold leading-4 text-slate-500 sm:mt-2 sm:leading-5">{option.description}</span>
     </button>
@@ -84,7 +84,7 @@ function SelectedEmployerSummary({ employerType, onChange }: { employerType: Emp
         </span>
         <span className="min-w-0">
           <span className="block text-xs font-bold uppercase text-blue-700">Кто размещает</span>
-          <span className="mt-0.5 block text-base font-black text-[#060b27]">{option.label}</span>
+          <span className="mt-0.5 block text-base font-bold text-[#060b27]">{option.label}</span>
         </span>
       </div>
       <button
@@ -124,8 +124,8 @@ export function VacancyEmployerFields({
       {step === 1 ? (
         <section className="vacancy-employer-step grid gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:gap-3 sm:p-4">
           <div>
-            <p className="text-xs font-black uppercase text-[#0875d1]">Шаг 1 из 2</p>
-            <h2 className="mt-1 text-lg font-black leading-tight text-[#060b27] sm:text-2xl">Кто размещает вакансию?</h2>
+            <p className="text-xs font-bold uppercase text-[#0875d1]">Шаг 1 из 2</p>
+            <h2 className="mt-1 text-lg font-bold leading-tight text-[#060b27] sm:text-xl">Кто размещает вакансию?</h2>
             <p className="mt-1 max-w-3xl text-sm leading-5 text-slate-600 sm:leading-6">
               Сначала выберите тип работодателя. Потом откроются только нужные поля для проверки и связи.
             </p>
@@ -158,8 +158,8 @@ export function VacancyEmployerFields({
 
           <section className="vacancy-employer-step grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:p-4">
             <div>
-              <p className="text-xs font-black uppercase text-[#0875d1]">Шаг 2 из 2</p>
-              <h2 className="mt-1 text-base font-black text-[#060b27] sm:text-lg">Данные работодателя</h2>
+              <p className="text-xs font-bold uppercase text-[#0875d1]">Шаг 2 из 2</p>
+              <h2 className="mt-1 text-base font-bold text-[#060b27] sm:text-lg">Данные работодателя</h2>
               <p className="mt-1 text-xs leading-5 text-slate-600 sm:text-sm sm:leading-6">
                 {isPrivatePerson
                   ? "Для частного работодателя достаточно имени, телефона и мессенджера. Документы здесь не запрашиваем."

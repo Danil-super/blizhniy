@@ -99,7 +99,7 @@ function PaymentsTable({ payments }: { payments: Payment[] }) {
           <col className="w-[150px]" />
           <col className="w-[120px]" />
         </colgroup>
-        <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-black uppercase tracking-normal text-slate-500 shadow-[0_1px_0_rgba(226,232,240,1)]">
+        <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-bold uppercase tracking-normal text-slate-500 shadow-[0_1px_0_rgba(226,232,240,1)]">
           <tr>
             <th className="px-4 py-3">ID платежа</th>
             <th className="px-4 py-3">Тип</th>
@@ -128,7 +128,7 @@ function PaymentsTable({ payments }: { payments: Payment[] }) {
                   </p>
                 ) : null}
               </td>
-              <td className="px-4 py-4 font-black text-[#060b27]">{money(payment.amount)}</td>
+              <td className="px-4 py-4 font-bold text-[#060b27]">{money(payment.amount)}</td>
               <td className="px-4 py-4 text-xs font-bold text-slate-600">{payment.provider === "yookassa" ? "ЮKassa" : "Оплата"}</td>
               <td className="px-4 py-4">
                 <PaymentStatusBadge status={payment.status} />
@@ -158,7 +158,7 @@ function RefundProcessInfo() {
           <RotateCcw className="h-5 w-5" />
         </span>
         <div className="min-w-0">
-          <h2 className="text-lg font-black text-[#060b27]">Как должны работать возвраты</h2>
+          <h2 className="text-lg font-bold text-[#060b27]">Как должны работать возвраты</h2>
           <p className="mt-1 text-sm leading-6 text-slate-700">
             Возврат не должен быть просто кнопкой в тарифах. Это финансовая операция с основанием, суммой, статусом у провайдера и решением по публикации.
           </p>
@@ -166,21 +166,21 @@ function RefundProcessInfo() {
       </div>
       <div className="grid gap-2 md:grid-cols-3">
         <div className="rounded-lg border border-slate-200 bg-white p-3">
-          <div className="flex items-center gap-2 font-black text-[#060b27]">
+          <div className="flex items-center gap-2 font-bold text-[#060b27]">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             Основание
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-600">Админ фиксирует причину: дубль оплаты, техническая ошибка, отказ до публикации или спорный случай.</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-3">
-          <div className="flex items-center gap-2 font-black text-[#060b27]">
+          <div className="flex items-center gap-2 font-bold text-[#060b27]">
             <CreditCard className="h-4 w-4 text-[#0875d1]" />
             Провайдер
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-600">Для ЮKassa возврат должен создаваться через API возвратов ЮKassa по `providerPaymentId`, а не локально в интерфейсе.</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-3">
-          <div className="flex items-center gap-2 font-black text-[#060b27]">
+          <div className="flex items-center gap-2 font-bold text-[#060b27]">
             <CheckCircle2 className="h-4 w-4 text-[#0aa337]" />
             Последствия
           </div>
@@ -255,15 +255,15 @@ export function AdminPaymentsClient() {
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <p className="text-[11px] font-bold text-slate-500 sm:text-xs">Оплачено</p>
-          <p className="mt-1 text-xl font-black text-[#060b27] sm:text-2xl">{money(totalSucceeded)}</p>
+          <p className="mt-1 text-xl font-bold text-[#060b27]">{money(totalSucceeded)}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <p className="text-[11px] font-bold text-slate-500 sm:text-xs">Ожидают</p>
-          <p className="mt-1 text-xl font-black text-[#060b27] sm:text-2xl">{pendingCount}</p>
+          <p className="mt-1 text-xl font-bold text-[#060b27]">{pendingCount}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <p className="text-[11px] font-bold text-slate-500 sm:text-xs">Всего</p>
-          <p className="mt-1 text-xl font-black text-[#060b27] sm:text-2xl">{payments.length}</p>
+          <p className="mt-1 text-xl font-bold text-[#060b27]">{payments.length}</p>
         </div>
       </div>
 
@@ -274,7 +274,7 @@ export function AdminPaymentsClient() {
       <section className="mt-5">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Финансовый журнал</h2>
+            <h2 className="text-lg font-bold text-[#060b27]">Финансовый журнал</h2>
             <p className="mt-1 text-sm leading-6 text-slate-600">
               Показаны последние {Math.min(payments.length, visiblePaymentsLimit)} из {payments.length}. Финансовые записи не удаляем автоматически из базы; для очистки интерфейса ограничиваем выдачу, а старые платежи нужно архивировать отдельной задачей.
             </p>

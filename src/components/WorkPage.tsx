@@ -59,7 +59,7 @@ function SegmentTabs({
           key={item}
           type="button"
           onClick={() => onChange(item)}
-          className={`inline-flex h-11 min-w-0 items-center justify-center rounded-xl border px-3 text-center text-sm font-black leading-tight transition sm:h-12 sm:text-base ${
+          className={`inline-flex h-11 min-w-0 items-center justify-center rounded-xl border px-3 text-center text-sm font-bold leading-tight transition sm:h-12 sm:text-base ${
             item === activeItem ? "border-[#0aa337] bg-emerald-50 text-[#0a8f32]" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
           }`}
         >
@@ -81,7 +81,7 @@ function Avatar({ specialist }: { specialist: SpecialistProfile }) {
     <span
       className={`flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${
         palettes[specialist.imageSeed] ?? "from-slate-100 to-blue-100"
-      } text-3xl font-black shadow-sm ring-1 ring-white/80 transition group-hover:scale-105`}
+      } text-2xl font-bold shadow-sm ring-1 ring-white/80 transition group-hover:scale-105`}
       aria-hidden="true"
     >
       {specialist.name.slice(0, 1)}
@@ -112,7 +112,7 @@ function WorkRequestCard({ request }: { request: WorkRequest }) {
       </span>
       <span className="block p-3">
         <span className="block truncate text-[11px] text-slate-500 sm:text-xs">{request.author}</span>
-        <span className="mt-1 block truncate text-base font-black text-[#060b27]">{request.budget}</span>
+        <span className="mt-1 block truncate text-base font-bold text-[#060b27]">{request.budget}</span>
         <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">
           {request.title}
         </span>
@@ -156,7 +156,7 @@ function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
         )}
       </span>
       <span className="block p-3">
-        <span className="block truncate text-base font-black text-[#060b27]">{specialist.price}</span>
+        <span className="block truncate text-base font-bold text-[#060b27]">{specialist.price}</span>
         <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">
           {specialist.name} · {specialist.profession}
         </span>
@@ -204,7 +204,7 @@ export function WorkPage({
         <span>Работа</span>
       </nav>
 
-      <h1 className="text-2xl font-black leading-tight tracking-normal text-[#060b27] sm:text-3xl lg:text-4xl">Работа</h1>
+      <h1 className="text-xl font-bold leading-tight tracking-normal text-[#060b27] sm:text-2xl lg:text-3xl">Работа</h1>
 
       <section className="mt-4 grid gap-3 sm:mt-5 lg:grid-cols-[minmax(0,34rem)_minmax(0,34rem)] lg:items-start lg:justify-between">
         <SegmentTabs activeItem={demandTab} items={["Новые вакансии", "Заказчики"]} onChange={setDemandTab} />
@@ -237,7 +237,7 @@ export function WorkPage({
         <section>
           <div className="mb-3 sm:mb-4">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="flex min-w-0 items-center gap-2 text-lg font-black text-[#060b27] sm:text-xl lg:gap-3 lg:text-2xl">
+              <h2 className="flex min-w-0 items-center gap-2 text-lg font-bold text-[#060b27] sm:text-xl lg:gap-3 lg:text-xl">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0aa337] text-white sm:h-9 sm:w-9">
                   <BriefcaseBusiness className="h-4 w-4 sm:h-5 sm:w-5" />
                 </span>
@@ -259,7 +259,7 @@ export function WorkPage({
         <section>
           <div className="mb-3 sm:mb-4">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="flex min-w-0 items-center gap-2 text-lg font-black text-[#060b27] sm:text-xl lg:gap-3 lg:text-2xl">
+              <h2 className="flex min-w-0 items-center gap-2 text-lg font-bold text-[#060b27] sm:text-xl lg:gap-3 lg:text-xl">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0875d1] text-white sm:h-9 sm:w-9">
                   <UserRound className="h-4 w-4 sm:h-5 sm:w-5" />
                 </span>

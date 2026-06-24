@@ -29,7 +29,7 @@ export async function HomeListings({ kind }: { kind?: ListingKind }) {
   return (
     <section className="page-container pb-10">
       <div className="mb-3 flex items-center justify-between gap-4">
-        <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">{title}</h2>
+        <h2 className="text-xl font-bold text-[#060b27]">{title}</h2>
         {kind ? (
           <Link href="/obyavleniya" className="text-sm font-bold text-[#0875d1] hover:text-[#0664b3]">
             Показать все

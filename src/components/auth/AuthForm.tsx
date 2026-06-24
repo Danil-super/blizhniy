@@ -386,7 +386,7 @@ export function AuthForm({
     <section className="min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
       {recoveryMode ? (
         <>
-          <h2 className="text-2xl font-black text-[#060b27]">Новый пароль</h2>
+          <h2 className="text-xl font-bold text-[#060b27]">Новый пароль</h2>
           <form className="mt-6" onSubmit={handleRecoverySubmit}>
             <PasswordField
               autoComplete="new-password"
@@ -451,7 +451,7 @@ export function AuthForm({
         </button>
       </div>
 
-      <h2 className="mt-6 text-2xl font-black text-[#060b27]">{mode === "register" ? "Регистрируемся здесь" : "Войти в кабинет"}</h2>
+      <h2 className="mt-6 text-xl font-bold text-[#060b27]">{mode === "register" ? "Регистрируемся здесь" : "Войти в кабинет"}</h2>
       <form className="mt-6" onSubmit={handleSubmit}>
         {mode === "register" ? (
           <label className="block">

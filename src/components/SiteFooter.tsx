@@ -20,7 +20,7 @@ export function SiteFooter() {
     <footer className="border-t border-slate-200 bg-white">
       <div className="site-footer-inner page-container grid gap-6 py-8 md:grid-cols-[1.1fr_2fr] md:items-start">
         <div>
-          <Link href="/" className="text-lg font-black text-[#0a1437]">
+          <Link href="/" className="text-lg font-bold text-[#0a1437]">
             <BrandName />
           </Link>
           <p className="mt-3 max-w-md text-sm leading-6 text-slate-600">

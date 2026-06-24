@@ -204,7 +204,7 @@ export function SquareImageCropper({ alt, description = "Перетащите ф
       <section className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4">
           <div className="min-w-0">
-            <h3 className="text-lg font-black text-[#060b27] sm:text-xl">{title}</h3>
+            <h3 className="text-lg font-bold text-[#060b27] sm:text-xl">{title}</h3>
             <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
           </div>
           <button type="button" onClick={onCancel} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:text-rose-600" aria-label="Закрыть редактор фото">

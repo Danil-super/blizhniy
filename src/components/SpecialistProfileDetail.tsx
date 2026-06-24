@@ -103,9 +103,9 @@ export function SpecialistProfileDetail({ fallbackHref = "/rabota/specialisty", 
               <div className="order-1 min-w-0 md:order-2">
                 <StatusPill status={specialist.status} />
                 <p className="mt-3 text-sm font-semibold text-slate-500">Анкета специалиста</p>
-                <h1 className="mt-2 text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">{specialist.name}</h1>
+                <h1 className="mt-2 text-xl font-bold leading-tight text-[#060b27] sm:text-2xl lg:text-3xl">{specialist.name}</h1>
                 <p className="mt-2 text-base font-bold text-[#0875d1] sm:text-lg">{specialist.profession}</p>
-                <p className="mt-3 text-xl font-black text-[#060b27] sm:text-2xl">{specialist.price}</p>
+                <p className="mt-3 text-xl font-bold text-[#060b27]">{specialist.price}</p>
                 <div className="mt-3 grid gap-2 text-sm font-semibold text-slate-600">
                   {publishedLabel ? <p>{publishedLabel}</p> : null}
                   <p className="flex items-start gap-2">
@@ -118,13 +118,13 @@ export function SpecialistProfileDetail({ fallbackHref = "/rabota/specialisty", 
           </div>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
-            <h2 className="text-lg font-black text-[#060b27] sm:text-xl">О специалисте</h2>
+            <h2 className="text-lg font-bold text-[#060b27]">О специалисте</h2>
             <p className="mt-3 whitespace-pre-line">{specialist.description || `${specialist.skills || specialist.profession}. Исполнитель для частных заказов и регулярной работы.`}</p>
           </section>
 
           {specialist.skills ? (
             <section className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
-              <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Навыки и работы</h2>
+              <h2 className="text-lg font-bold text-[#060b27]">Навыки и работы</h2>
               <p className="mt-3 whitespace-pre-line">{specialist.skills}</p>
             </section>
           ) : null}
@@ -136,7 +136,7 @@ export function SpecialistProfileDetail({ fallbackHref = "/rabota/specialisty", 
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-[#0aa337] sm:h-16 sm:w-16">
                 <BadgeCheck className="h-7 w-7 sm:h-8 sm:w-8" />
               </div>
-              <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Связаться</h2>
+              <h2 className="text-xl font-bold text-[#060b27]">Связаться</h2>
             </div>
             <div className="mt-5 grid gap-2">
               {specialist.phone ? (
@@ -160,7 +160,7 @@ export function SpecialistProfileDetail({ fallbackHref = "/rabota/specialisty", 
             </div>
           ) : (
             <section className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:block">
-              <h2 className="text-xl font-black text-[#060b27]">Адрес</h2>
+              <h2 className="text-xl font-bold text-[#060b27]">Адрес</h2>
               <p className="mt-3 flex items-start gap-2 text-sm font-semibold text-slate-600">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#0875d1]" />
                 {placeLabel}

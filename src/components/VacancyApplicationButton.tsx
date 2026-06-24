@@ -178,7 +178,7 @@ export function VacancyApplicationButton({ targetKind = "vacancy", targetId, tar
           <Send className="h-5 w-5" />
         </div>
         <div className="min-w-0">
-          <p className="font-black text-[#060b27]">Откликнуться</p>
+          <p className="font-bold text-[#060b27]">Откликнуться</p>
           <p className="mt-1 text-sm leading-5 text-slate-700">
             {ownerLabel} получит вашу анкету: {specialist.name}. Контакты {ownerGenitiveLabel} не раскрываются до его решения.
           </p>

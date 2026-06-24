@@ -1440,7 +1440,7 @@ function EmptyState({ mode }: { mode: CabinetListMode }) {
         <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#0875d1]">
           <Plus className="h-5 w-5" />
         </div>
-        <h2 className="mt-3 text-lg font-black text-[#060b27] sm:text-xl">{copy.title}</h2>
+        <h2 className="mt-3 text-lg font-bold text-[#060b27] sm:text-xl">{copy.title}</h2>
         <p className="mx-auto mt-1.5 max-w-2xl text-sm leading-6 text-slate-600">{copy.text}</p>
       </div>
       <div className="mt-4 min-h-10">
@@ -1578,7 +1578,7 @@ function PublicationHistoryOverview({ items }: { items: DemoPublication[] }) {
         <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#0875d1]">
           <Clock3 className="h-5 w-5" />
         </div>
-        <h2 className="mt-3 text-lg font-black text-[#060b27] sm:text-xl">Завершенных размещений пока нет</h2>
+        <h2 className="mt-3 text-lg font-bold text-[#060b27] sm:text-xl">Завершенных размещений пока нет</h2>
         <p className="mx-auto mt-1.5 max-w-2xl text-sm leading-6 text-slate-600">Здесь появятся публикации, которые были активны, а затем проданы, сняты, отклонены или завершили срок размещения.</p>
       </section>
     );
@@ -1591,7 +1591,7 @@ function PublicationHistoryOverview({ items }: { items: DemoPublication[] }) {
         {events.map(({ at, description, item, title }) => (
           <li key={item.id} className="grid min-h-[5rem] gap-1 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-              <span className="min-w-0 truncate text-sm font-black text-[#060b27]">{title}</span>
+              <span className="min-w-0 truncate text-sm font-bold text-[#060b27]">{title}</span>
               <span className="text-xs font-semibold text-slate-500">{formatDateTime(at)}</span>
             </div>
             <p className="flex min-w-0 flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
@@ -1737,7 +1737,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
             <div>
-              <h2 className="text-lg font-black text-[#060b27]">Выбор вакансии</h2>
+              <h2 className="text-lg font-bold text-[#060b27]">Выбор вакансии</h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">У работодателя может быть несколько вакансий: управляйте каждой отдельно по статусу.</p>
             </div>
             <Link href="/rabota/vakansii/sozdat" className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white sm:w-auto">
@@ -1813,7 +1813,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                 <span className="inline-flex h-6 items-center rounded-full bg-blue-50 px-2 text-[11px] font-bold text-slate-600 sm:h-7 sm:text-xs">{demoPublicationLabels[item.type]}</span>
               </span>
             ) : null}
-            <span className="block truncate text-base font-black text-[#060b27]">{item.price ?? item.subtitle}</span>
+            <span className="block truncate text-base font-bold text-[#060b27]">{item.price ?? item.subtitle}</span>
             <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">{item.title}</span>
             <span className="mt-1 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
               <Clock3 className="h-3.5 w-3.5 shrink-0" />
@@ -2109,7 +2109,7 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
         </div>
       ) : (
         <section className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center shadow-card">
-          <h2 className="text-lg font-black text-[#060b27]">В этом фильтре пока пусто</h2>
+          <h2 className="text-lg font-bold text-[#060b27]">В этом фильтре пока пусто</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">Переключите фильтр или создайте новую публикацию.</p>
         </section>
       )}
@@ -2124,7 +2124,7 @@ function MiniMetric({ icon, label, value, detail }: { icon: React.ReactNode; lab
         <p className="text-xs font-bold uppercase text-slate-500">{label}</p>
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">{icon}</span>
       </div>
-      <p className="mt-2 text-2xl font-black leading-none text-[#060b27]">{value}</p>
+      <p className="mt-2 text-xl font-bold leading-none text-[#060b27]">{value}</p>
       <p className="mt-1 text-xs leading-5 text-slate-600">{detail}</p>
     </article>
   );
@@ -2258,7 +2258,7 @@ function AvatarEditor({
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
       <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-4">
         <div className="flex justify-center">
-          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-blue-100 bg-white text-4xl font-black text-[#0875d1] shadow-sm sm:h-28 sm:w-28 sm:text-5xl">
+          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-blue-100 bg-white text-3xl font-bold text-[#0875d1] shadow-sm sm:h-28 sm:w-28 sm:text-4xl">
             {profile.avatarDataUrl ? (
               <img src={profile.avatarDataUrl} alt="Аватарка" className="h-full w-full object-cover" />
             ) : (
@@ -2270,7 +2270,7 @@ function AvatarEditor({
         <div className="min-w-0">
           <div className="grid gap-3">
             <div className="min-w-0">
-              <h3 className="text-base font-black text-[#060b27]">Аватарка</h3>
+              <h3 className="text-base font-bold text-[#060b27]">Аватарка</h3>
               <p className="mt-1 text-sm leading-6 text-slate-600">Выберите фото, затем выделите область аватарки в отдельном окне.</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -2298,7 +2298,7 @@ function AvatarEditor({
           <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-xl font-black text-[#060b27]">Выберите область аватарки</h3>
+                <h3 className="text-xl font-bold text-[#060b27]">Выберите область аватарки</h3>
                 <p className="mt-1 text-sm leading-6 text-slate-600">Перетащите фото внутри круга и настройте масштаб.</p>
               </div>
               <button
@@ -2564,7 +2564,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
     <section className="mt-4 rounded-xl border border-blue-100 bg-white p-4 shadow-card sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-black text-[#060b27]">Настройки аккаунта</h2>
+          <h2 className="text-xl font-bold text-[#060b27]">Настройки аккаунта</h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">Публичное имя, контакты, email для входа и уведомления кабинета.</p>
         </div>
         <button type="button" onClick={onClose} className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700">
@@ -2590,7 +2590,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
           <label className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
             <span className="flex min-h-4 items-center justify-between gap-2 leading-4">
               <span>Телефон</span>
-              <span className={`truncate text-[11px] font-black ${phoneIsVerified ? "text-[#0a8f32]" : "text-amber-700"}`}>
+              <span className={`truncate text-[11px] font-bold ${phoneIsVerified ? "text-[#0a8f32]" : "text-amber-700"}`}>
                 {!form.phone ? "не указан" : phoneIsVerified ? "подтвержден" : "не подтвержден"}
               </span>
             </span>
@@ -2639,7 +2639,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
         <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="font-black text-[#060b27]">Смена пароля</h3>
+              <h3 className="font-bold text-[#060b27]">Смена пароля</h3>
               <p className="mt-1 text-sm leading-6 text-slate-700">Для безопасности пароль меняется через письмо на подтвержденный email.</p>
             </div>
             <button
@@ -2654,7 +2654,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
         </section>
         <section className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <div>
-            <h3 className="font-black text-[#060b27]">Уведомления</h3>
+            <h3 className="font-bold text-[#060b27]">Уведомления</h3>
             <p className="mt-1 text-sm leading-6 text-slate-600">Выберите события, которые будут попадать в колокольчик и будущие email/push-каналы.</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -2704,7 +2704,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
             <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-xl font-black text-[#060b27]">Подтверждение телефона</h3>
+                  <h3 className="text-xl font-bold text-[#060b27]">Подтверждение телефона</h3>
                   <p className="mt-2 text-sm leading-6 text-slate-600">Введите 6 цифр из SMS, отправленного на номер {form.phone}.</p>
                 </div>
                 <button
@@ -2719,7 +2719,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
               <label className="mt-5 grid gap-2 text-sm font-bold text-slate-700">
                 Код из SMS
                 <input
-                  className="h-12 rounded-lg border border-slate-300 bg-white px-4 text-center text-lg font-black tracking-[0.35em] outline-none focus:border-[#0875d1]"
+                  className="h-12 rounded-lg border border-slate-300 bg-white px-4 text-center text-lg font-bold tracking-[0.35em] outline-none focus:border-[#0875d1]"
                   value={verificationCode}
                   onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
                   placeholder="000000"
@@ -2771,7 +2771,7 @@ export function CabinetProfileBar() {
     <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:mt-5 sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-50 text-lg font-black text-[#0875d1]">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-50 text-lg font-bold text-[#0875d1]">
             {profile.avatarDataUrl ? (
               <img
                 src={profile.avatarDataUrl}
@@ -2789,7 +2789,7 @@ export function CabinetProfileBar() {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold uppercase text-[#0aa337]">Пользователь</p>
-            <h2 className="truncate text-2xl font-black text-[#060b27]">{profile.name}</h2>
+            <h2 className="truncate text-xl font-bold text-[#060b27]">{profile.name}</h2>
             <p className="truncate text-sm text-slate-500">{profile.email || "Email не указан"}</p>
             {profile.phone ? (
               <p className={profile.phoneVerified && profile.verifiedPhone === profile.phone ? "mt-1 text-xs font-bold text-[#0a8f32]" : "mt-1 text-xs font-bold text-amber-700"}>
@@ -2828,7 +2828,7 @@ export function CabinetOverviewClient() {
       <div className="mt-8 grid min-w-0 items-stretch gap-8">
         <section className="grid min-h-0 min-w-0 grid-rows-[auto_1fr]">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-black text-[#060b27]">История завершенных размещений</h2>
+            <h2 className="text-xl font-bold text-[#060b27]">История завершенных размещений</h2>
             <Link href="/cabinet/obyavleniya" className="text-sm font-bold text-[#0875d1]">
               Управлять
             </Link>
@@ -2945,7 +2945,7 @@ export function CabinetResponsesClient({ responses = [] }: { responses?: Cabinet
               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{response.employerMode ? "Входящий" : "Мой отклик"}</span>
               {response.paymentId ? <span className="break-all text-xs font-bold text-slate-500">Платеж {response.paymentId}</span> : null}
             </div>
-            <h3 className="mt-2 truncate text-lg font-black text-[#060b27]">{response.workRequestTitle ?? response.vacancyTitle}</h3>
+            <h3 className="mt-2 truncate text-lg font-bold text-[#060b27]">{response.workRequestTitle ?? response.vacancyTitle}</h3>
             <p className="mt-1 text-sm leading-6 text-slate-600">Отклик от: <span className="font-bold text-slate-800">{response.specialistName}</span>{response.profession ? ` · ${response.profession}` : ""}</p>
             {response.message ? <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">{response.message}</p> : null}
             {response.skills ? <p className="mt-1 text-sm leading-6 text-slate-500">Навыки: {response.skills}</p> : null}
@@ -3086,12 +3086,12 @@ export function CabinetPaymentsHistoryClient({ payments = [] }: { payments?: Cab
               <PaymentStatusPill status={payment.status} />
               <span className="text-xs font-bold text-slate-500">{payment.method}</span>
             </div>
-            <h3 className="mt-2 truncate text-lg font-black text-[#060b27]">{payment.subject}</h3>
+            <h3 className="mt-2 truncate text-lg font-bold text-[#060b27]">{payment.subject}</h3>
             <p className="mt-1 text-xs font-semibold text-slate-500">Платеж {payment.id}</p>
             {paymentError && paymentErrorItemId === payment.id ? <p className="mt-2 text-xs font-bold text-rose-600">{paymentError}</p> : null}
           </div>
           <div className="grid gap-2 sm:justify-items-end">
-            <p className="text-2xl font-black text-[#0875d1]">{payment.amount}</p>
+            <p className="text-xl font-bold text-[#0875d1]">{payment.amount}</p>
             {payment.status !== "succeeded" ? (
               <label className="grid max-w-64 grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-700">
                 <input
@@ -3183,8 +3183,8 @@ export function CabinetPaymentsClient({ initialPayments = [] }: { initialPayment
       <section className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 shadow-card sm:p-5">
         <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
           <div>
-            <p className="text-xs font-black uppercase text-[#0875d1]">Оплата по заказу</p>
-            <h2 className="mt-1 text-lg font-black text-[#060b27] sm:text-2xl">Платеж появляется после создания публикации</h2>
+            <p className="text-xs font-bold uppercase text-[#0875d1]">Оплата по заказу</p>
+            <h2 className="mt-1 text-lg font-bold text-[#060b27] sm:text-xl">Платеж появляется после создания публикации</h2>
             <p className="mt-1 text-sm leading-6 text-slate-600">
               Сначала создайте объявление, вакансию, анкету, отклик или заявку на ярмарку. После этого здесь появится понятный счет с названием и суммой.
             </p>
@@ -3203,13 +3203,13 @@ export function CabinetPaymentsClient({ initialPayments = [] }: { initialPayment
       {loading ? <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 text-sm font-semibold text-slate-600 shadow-card">Загружаем платежи...</div> : null}
 
       <section className="mt-6">
-        <h2 className="mb-4 text-2xl font-black text-[#060b27]">Ожидают оплаты</h2>
+        <h2 className="mb-4 text-xl font-bold text-[#060b27]">Ожидают оплаты</h2>
         {pendingPayments.length ? (
           <CabinetPaymentsHistoryClient payments={pendingPayments} />
         ) : (
           <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
             <div>
-              <p className="text-sm font-black text-[#060b27]">Нет неоплаченных заказов</p>
+              <p className="text-sm font-bold text-[#060b27]">Нет неоплаченных заказов</p>
               <p className="mt-1 text-sm leading-6 text-slate-600">Когда публикация или отклик будут ждать оплату, они появятся в этом блоке.</p>
             </div>
           </article>
@@ -3217,7 +3217,7 @@ export function CabinetPaymentsClient({ initialPayments = [] }: { initialPayment
       </section>
 
       <section className="mt-8">
-        <h2 className="mb-4 text-2xl font-black text-[#060b27]">История платежей</h2>
+        <h2 className="mb-4 text-xl font-bold text-[#060b27]">История платежей</h2>
         <CabinetPaymentsHistoryClient payments={payments} />
       </section>
     </>
@@ -3285,7 +3285,7 @@ export function CabinetOrganizationClient() {
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black text-[#060b27]">{form.organizationName || "Профиль организации"}</h2>
+          <h2 className="text-xl font-bold text-[#060b27]">{form.organizationName || "Профиль организации"}</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
             Заполните данные работодателя один раз, чтобы при размещении вакансий было понятно, от чьего имени публикуется предложение.
           </p>
@@ -3295,15 +3295,15 @@ export function CabinetOrganizationClient() {
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-xs font-bold uppercase text-slate-500">Город</p>
-          <p className="mt-2 font-black text-[#060b27]">{profile.city}</p>
+          <p className="mt-2 font-bold text-[#060b27]">{profile.city}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-xs font-bold uppercase text-slate-500">Телефон</p>
-          <p className="mt-2 font-black text-[#060b27]">{profile.phone || "Не указан"}</p>
+          <p className="mt-2 font-bold text-[#060b27]">{profile.phone || "Не указан"}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-xs font-bold uppercase text-slate-500">Email</p>
-          <p className="mt-2 break-words font-black text-[#060b27]">{profile.email || "Не указан"}</p>
+          <p className="mt-2 break-words font-bold text-[#060b27]">{profile.email || "Не указан"}</p>
         </div>
       </div>
       <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
@@ -3679,7 +3679,7 @@ export function CabinetSpecialistClient() {
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-black text-[#060b27]">Анкета исполнителя</h2>
+            <h2 className="text-xl font-bold text-[#060b27]">Анкета исполнителя</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               Анкета одна на аккаунт. Пока она не активирована, вас не видно в специалистах и нельзя отправлять платные отклики.
             </p>
@@ -3711,7 +3711,7 @@ export function CabinetSpecialistClient() {
               Стоимость работ, ₽
               <div className="flex h-11 items-center rounded-lg border border-slate-300 bg-white px-3 focus-within:border-[#0875d1]">
                 <input className="min-w-0 flex-1 font-normal outline-none" inputMode="numeric" min={100} value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value.replace(/\D/g, "").slice(0, 9) })} placeholder="1500" />
-                <span className="font-black text-slate-500">₽</span>
+                <span className="font-bold text-slate-500">₽</span>
               </div>
             </label>
             <ReadonlyAccountField label="Телефон" value={accountFields.phone} placeholder="Заполните в настройках" />
@@ -3755,22 +3755,22 @@ export function CabinetCapabilities() {
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
         <UserRound className="h-5 w-5 text-[#0875d1]" />
-        <h3 className="mt-3 font-black text-[#060b27]">Профиль</h3>
+        <h3 className="mt-3 font-bold text-[#060b27]">Профиль</h3>
         <p className="mt-1 text-sm leading-6 text-slate-600">Имя, телефон, email и город хранятся в настройках.</p>
       </article>
       <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
         <LockKeyhole className="h-5 w-5 text-[#0875d1]" />
-        <h3 className="mt-3 font-black text-[#060b27]">Безопасность</h3>
+        <h3 className="mt-3 font-bold text-[#060b27]">Безопасность</h3>
         <p className="mt-1 text-sm leading-6 text-slate-600">Пароль меняется только через защищенную ссылку из письма.</p>
       </article>
       <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
         <Bell className="h-5 w-5 text-[#0875d1]" />
-        <h3 className="mt-3 font-black text-[#060b27]">Уведомления</h3>
+        <h3 className="mt-3 font-bold text-[#060b27]">Уведомления</h3>
         <p className="mt-1 text-sm leading-6 text-slate-600">Можно включить или выключить события по броням, оплатам и сообщениям.</p>
       </article>
       <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
         <CheckCircle2 className="h-5 w-5 text-[#0875d1]" />
-        <h3 className="mt-3 font-black text-[#060b27]">Публикации</h3>
+        <h3 className="mt-3 font-bold text-[#060b27]">Публикации</h3>
         <p className="mt-1 text-sm leading-6 text-slate-600">Новые пользователи начинают с нулевых счетчиков и понятных действий.</p>
       </article>
     </section>

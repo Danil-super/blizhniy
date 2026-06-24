@@ -24,11 +24,11 @@ export function SpecialistListCard({ specialist }: { specialist: SpecialistProfi
       href={`/specialist/${specialist.id}`}
       className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-card"
     >
-      <h2 className="truncate text-xl font-black leading-tight text-[#060b27]">{specialist.name}</h2>
-      <p className="mt-2 line-clamp-2 min-h-10 text-base font-black leading-5 text-slate-900 transition group-hover:text-[#0875d1]">
+      <h2 className="truncate text-xl font-bold leading-tight text-[#060b27]">{specialist.name}</h2>
+      <p className="mt-2 line-clamp-2 min-h-10 text-base font-bold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">
         {specialist.profession || "Специалист"}
       </p>
-      <p className="mt-6 text-xl font-black text-[#060b27]">{specialist.price || "по договоренности"}</p>
+      <p className="mt-6 text-xl font-bold text-[#060b27]">{specialist.price || "по договоренности"}</p>
       {publishedLabel ? (
         <p className="mt-3 flex min-w-0 items-center gap-1.5 text-sm font-semibold text-slate-500">
           <Clock3 className="h-4 w-4 shrink-0" />

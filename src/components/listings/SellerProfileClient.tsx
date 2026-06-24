@@ -101,7 +101,7 @@ function ListingTile({ item }: { item: SellerProfileListing }) {
           </span>
         </span>
         <span className="block p-3">
-          <span className="block truncate text-base font-black text-[#060b27]">{item.price ?? "по договоренности"}</span>
+          <span className="block truncate text-base font-bold text-[#060b27]">{item.price ?? "по договоренности"}</span>
           <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">{item.title}</span>
           <span className="mt-1 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
             <Clock3 className="h-3.5 w-3.5 shrink-0" />
@@ -120,7 +120,7 @@ function ListingTile({ item }: { item: SellerProfileListing }) {
 function ListingsSection({ emptyText, items, title }: { emptyText: string; items: SellerProfileListing[]; title: string }) {
   return (
     <section className="mt-8">
-      <h2 className="text-2xl font-black text-[#060b27]">{title}</h2>
+      <h2 className="text-xl font-bold text-[#060b27]">{title}</h2>
       {items.length ? (
         <div className="mt-4 grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
           {items.map((item) => (
@@ -169,12 +169,12 @@ export function SellerProfileClient({ initialListings, sellerKey }: SellerProfil
       <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-6">
         <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-50 text-2xl font-black text-[#0875d1]">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xl font-bold text-[#0875d1]">
               {sellerInitial(sellerName)}
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase text-slate-400">Профиль продавца</p>
-              <h1 className="mt-1 [overflow-wrap:anywhere] text-3xl font-black leading-tight text-[#060b27] sm:text-4xl">{sellerName}</h1>
+              <h1 className="mt-1 [overflow-wrap:anywhere] text-2xl font-bold leading-tight text-[#060b27] sm:text-3xl">{sellerName}</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Здесь собраны объявления продавца и история завершённых продаж на платформе.</p>
             </div>
           </div>
@@ -183,19 +183,19 @@ export function SellerProfileClient({ initialListings, sellerKey }: SellerProfil
         <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
           <div className="rounded-lg bg-slate-50 p-3">
             <p className="text-xs font-bold uppercase text-slate-400">На платформе</p>
-            <p className="mt-1 text-sm font-black text-[#060b27]">с {sellerSince(listings)}</p>
+            <p className="mt-1 text-sm font-bold text-[#060b27]">с {sellerSince(listings)}</p>
           </div>
           <div className="rounded-lg bg-slate-50 p-3">
             <p className="text-xs font-bold uppercase text-slate-400">Активные</p>
-            <p className="mt-1 text-sm font-black text-[#060b27]">{activeListings.length}</p>
+            <p className="mt-1 text-sm font-bold text-[#060b27]">{activeListings.length}</p>
           </div>
           <div className="rounded-lg bg-slate-50 p-3">
             <p className="text-xs font-bold uppercase text-slate-400">Продано</p>
-            <p className="mt-1 text-sm font-black text-[#060b27]">{soldListings.length}</p>
+            <p className="mt-1 text-sm font-bold text-[#060b27]">{soldListings.length}</p>
           </div>
           <div className="rounded-lg bg-slate-50 p-3">
             <p className="text-xs font-bold uppercase text-slate-400">Всего</p>
-            <p className="mt-1 text-sm font-black text-[#060b27]">{listings.length}</p>
+            <p className="mt-1 text-sm font-bold text-[#060b27]">{listings.length}</p>
           </div>
         </div>
 

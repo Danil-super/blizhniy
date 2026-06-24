@@ -107,22 +107,22 @@ export function AdminTariffsClient({
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <p className="text-[11px] font-bold text-slate-500 sm:text-xs">Активные</p>
-          <p className="mt-1 text-xl font-black text-[#060b27] sm:text-2xl">{activeCount}</p>
+          <p className="mt-1 text-xl font-bold text-[#060b27]">{activeCount}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <p className="text-[11px] font-bold text-slate-500 sm:text-xs">Всего</p>
-          <p className="mt-1 text-xl font-black text-[#060b27] sm:text-2xl">{tariffs.length}</p>
+          <p className="mt-1 text-xl font-bold text-[#060b27]">{tariffs.length}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <p className="text-[11px] font-bold text-slate-500 sm:text-xs">От</p>
-          <p className="mt-1 text-xl font-black text-[#060b27] sm:text-2xl">{Number.isFinite(minPrice) ? minPrice : 0} ₽</p>
+          <p className="mt-1 text-xl font-bold text-[#060b27]">{Number.isFinite(minPrice) ? minPrice : 0} ₽</p>
         </div>
       </div>
 
       <section className="mt-6 rounded-lg border border-blue-100 bg-blue-50/50 p-3 sm:p-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Редактирование тарифов</h2>
+            <h2 className="text-lg font-bold text-[#060b27]">Редактирование тарифов</h2>
             <p className="text-xs leading-5 text-slate-600 sm:text-sm">Сохранение идет через защищенный API и Supabase. Новые цены применяются только к новым оплатам.</p>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">

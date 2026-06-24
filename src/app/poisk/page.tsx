@@ -140,7 +140,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       <main className="page-container py-10">
         <section>
           <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Поиск</p>
-          <h1 className="mt-3 text-4xl font-black text-[#060b27]">{query ? `Результаты: ${query}` : "Поиск по площадке"}</h1>
+          <h1 className="mt-3 text-3xl font-bold text-[#060b27]">{query ? `Результаты: ${query}` : "Поиск по площадке"}</h1>
           <p className="mt-3 max-w-3xl leading-7 text-slate-600">
             Поиск работает по объявлениям, вакансиям, специалистам, категориям и классификатору профессий.
             Регион выдачи: {cityName ?? region.name}.
@@ -168,7 +168,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
                 )}
                 <span>
                   <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{result.type}</span>
-                  <span className="mt-1 block text-xl font-black text-[#060b27]">{result.title}</span>
+                  <span className="mt-1 block text-xl font-bold text-[#060b27]">{result.title}</span>
                   <span className="mt-2 block leading-6 text-slate-600">{result.description}</span>
                 </span>
                 <span className="inline-flex items-center gap-2 font-bold text-[#0875d1]">
@@ -179,7 +179,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
             ))
           ) : (
             <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-              <h2 className="text-2xl font-black text-[#060b27]">Ничего не найдено</h2>
+              <h2 className="text-xl font-bold text-[#060b27]">Ничего не найдено</h2>
               <p className="mt-3 leading-7 text-slate-600">Попробуйте запросы: сантехник, мебель, Краснодар, маникюр, работа.</p>
             </div>
           )}

@@ -34,7 +34,7 @@ export default async function Page() {
       <SiteHeader />
       <main className="page-container py-10">
         <Link href="/rabota" className="text-sm font-bold text-[#0875d1]">Назад к работе</Link>
-        <h1 className="mt-3 text-4xl font-black text-[#060b27]">Заказчики</h1>
+        <h1 className="mt-3 text-3xl font-bold text-[#060b27]">Заказчики</h1>
         <p className="mt-3 max-w-2xl text-slate-600">Свежие заказы от жителей и компаний для специалистов рядом.</p>
         <WorkRequestsIndexClient initialRequests={requests} />
       </main>

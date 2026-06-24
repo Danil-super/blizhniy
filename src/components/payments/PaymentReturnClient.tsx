@@ -85,7 +85,7 @@ export function PaymentReturnClient({ paymentId }: PaymentReturnClientProps) {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-[#0875d1]">
           {confirmed ? <CheckCircle2 className="h-6 w-6" /> : <Loader2 className="h-6 w-6 animate-spin" />}
         </div>
-        <h1 className="mt-4 text-2xl font-black text-[#060b27]">{confirmed ? "Платеж подтвержден" : "Проверяем платеж"}</h1>
+        <h1 className="mt-4 text-xl font-bold text-[#060b27]">{confirmed ? "Платеж подтвержден" : "Проверяем платеж"}</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">
           {confirmed
             ? "Статус заказа обновлен. Сейчас откроем нужный раздел кабинета."

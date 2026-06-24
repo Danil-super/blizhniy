@@ -74,8 +74,8 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
                   <StatusBadge status={vacancy.status} />
                   <p className="mt-3 text-sm font-semibold text-slate-500 [overflow-wrap:anywhere]">{vacancy.organization}</p>
                   <p className="mt-2 text-sm text-slate-500 [overflow-wrap:anywhere]">{vacancy.profession}</p>
-                  <h1 className="mt-2 text-2xl font-black leading-tight text-[#060b27] [overflow-wrap:anywhere] sm:text-3xl lg:text-4xl">{vacancy.title}</h1>
-                  <p className="mt-3 text-xl font-black text-[#060b27] [overflow-wrap:anywhere] sm:text-2xl">{vacancy.salary}</p>
+                  <h1 className="mt-2 text-xl font-bold leading-tight text-[#060b27] [overflow-wrap:anywhere] sm:text-2xl lg:text-3xl">{vacancy.title}</h1>
+                  <p className="mt-3 text-xl font-bold text-[#060b27] [overflow-wrap:anywhere]">{vacancy.salary}</p>
                   {vacancy.schedule || vacancy.workFormat ? (
                     <div className="mt-4 flex flex-wrap gap-2">
                       {vacancy.schedule ? <span className="min-w-0 rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-[#0875d1] [overflow-wrap:anywhere]">{vacancy.schedule}</span> : null}
@@ -95,23 +95,23 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
             <div className="grid gap-4">
               <section>
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
-                  <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Описание</h2>
+                  <h2 className="text-lg font-bold text-[#060b27]">Описание</h2>
                   <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.description}</p>
                 </div>
               </section>
               <section className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
-                  <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Требования</h2>
+                  <h2 className="text-lg font-bold text-[#060b27]">Требования</h2>
                   <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.requirements}</p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
-                  <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Обязанности</h2>
+                  <h2 className="text-lg font-bold text-[#060b27]">Обязанности</h2>
                   <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.responsibilities}</p>
                 </div>
               </section>
               {vacancy.conditions ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
-                  <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Условия</h2>
+                  <h2 className="text-lg font-bold text-[#060b27]">Условия</h2>
                   <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.conditions}</p>
                 </div>
               ) : null}
@@ -123,7 +123,7 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-[#0aa337] sm:h-16 sm:w-16">
                   <BriefcaseBusiness className="h-7 w-7 sm:h-8 sm:w-8" />
                 </div>
-                <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Связаться</h2>
+                <h2 className="text-xl font-bold text-[#060b27]">Связаться</h2>
               </div>
               <div className="mt-5 grid gap-2">
                 {canReceivePaidApplications ? (
@@ -146,7 +146,7 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
               </div>
             ) : (
               <section className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:block">
-                <h2 className="text-xl font-black text-[#060b27]">Адрес</h2>
+                <h2 className="text-xl font-bold text-[#060b27]">Адрес</h2>
                 <p className="mt-3 flex items-start gap-2 text-sm font-semibold text-slate-600">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#0875d1]" />
                   {placeLabel}

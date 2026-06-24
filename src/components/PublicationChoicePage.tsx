@@ -52,7 +52,7 @@ export function PublicationChoicePage({ adminMode = false }: { adminMode?: boole
     <>
       <SiteHeader />
       <main className="page-container py-8 sm:py-10">
-        <h1 className="text-3xl font-black text-[#060b27] sm:text-5xl">Что разместить?</h1>
+        <h1 className="text-2xl font-bold text-[#060b27] sm:text-4xl">Что разместить?</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-lg sm:leading-8">
           {adminMode
             ? "Выберите тип публикации. В админ-режиме формы можно сохранить без оплаты для служебной проверки."
@@ -74,13 +74,13 @@ export function PublicationChoicePage({ adminMode = false }: { adminMode?: boole
                         <Image src={type.restriction.image} alt="" width={64} height={64} className="h-full w-full object-cover" aria-hidden="true" />
                       </span>
                       <span className="min-w-0">
-                        <span className="block text-xs font-black leading-4 text-rose-700">{type.restriction.title}</span>
+                        <span className="block text-xs font-bold leading-4 text-rose-700">{type.restriction.title}</span>
                         <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-slate-700 sm:text-xs">{type.restriction.text}</span>
                       </span>
                     </span>
                   ) : null}
                 </span>
-                <h2 className="mt-4 text-xl font-black text-[#060b27]">{type.title}</h2>
+                <h2 className="mt-4 text-xl font-bold text-[#060b27]">{type.title}</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{type.description}</p>
               </Link>
             );

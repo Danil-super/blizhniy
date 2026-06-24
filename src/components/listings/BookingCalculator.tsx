@@ -233,7 +233,7 @@ function BookingCalendar({
         <button type="button" onClick={() => shiftMonth(-1)} disabled={!canGoPrevious} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-blue-200 hover:text-[#0875d1] disabled:cursor-not-allowed disabled:border-slate-100 disabled:text-slate-300" aria-label="Предыдущий месяц">
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <p className="min-w-0 text-center text-sm font-black text-[#060b27] sm:text-base">
+        <p className="min-w-0 text-center text-sm font-bold text-[#060b27] sm:text-base">
           {new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric" }).format(visibleMonth)}
         </p>
         <button type="button" onClick={() => shiftMonth(1)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-blue-200 hover:text-[#0875d1]" aria-label="Следующий месяц">
@@ -270,7 +270,7 @@ function BookingCalendar({
               type="button"
               onClick={() => onDateClick(key)}
               disabled={disabled}
-              className={`flex aspect-square items-center justify-center rounded-lg text-xs font-black transition ${
+              className={`flex aspect-square items-center justify-center rounded-lg text-xs font-bold transition ${
                 blocked
                   ? "cursor-not-allowed bg-rose-100 text-rose-700 line-through"
                   : edge
@@ -553,33 +553,33 @@ export function BookingCalculator({
 
     return (
       <section id="booking-calculator" className="min-w-0 rounded-xl border border-blue-200 bg-blue-50/60 p-3 shadow-card sm:p-5">
-        <h2 className="flex min-w-0 items-center gap-2 text-lg font-black leading-tight text-[#060b27] sm:text-xl">
+        <h2 className="flex min-w-0 items-center gap-2 text-lg font-bold leading-tight text-[#060b27] sm:text-xl">
           <CalendarDays className="h-5 w-5 text-[#0875d1]" />
           Бронирование похода
         </h2>
         <dl className="mt-4 grid min-w-0 gap-3 text-sm sm:grid-cols-2">
           <div className="rounded-lg bg-white p-3">
             <dt className="font-bold text-slate-500">Дата и время</dt>
-            <dd className="mt-1 font-black text-slate-900">{formatDate(booking.tourDate)} {booking.tourTime ? `в ${booking.tourTime}` : ""}</dd>
+            <dd className="mt-1 font-bold text-slate-900">{formatDate(booking.tourDate)} {booking.tourTime ? `в ${booking.tourTime}` : ""}</dd>
           </div>
           <div className="rounded-lg bg-white p-3">
             <dt className="font-bold text-slate-500">Продолжительность</dt>
-            <dd className="mt-1 font-black text-slate-900">{booking.tourDuration || "Уточняется"}</dd>
+            <dd className="mt-1 font-bold text-slate-900">{booking.tourDuration || "Уточняется"}</dd>
           </div>
           <div className="rounded-lg bg-white p-3">
             <dt className="font-bold text-slate-500">Сложность</dt>
-            <dd className="mt-1 font-black text-slate-900">{booking.tourDifficulty || "Уточняется"}</dd>
+            <dd className="mt-1 font-bold text-slate-900">{booking.tourDifficulty || "Уточняется"}</dd>
           </div>
           <div className="rounded-lg bg-white p-3">
             <dt className="font-bold text-slate-500">Место сбора</dt>
-            <dd className="mt-1 font-black text-slate-900">{booking.tourMeetingPoint || "Уточняется"}</dd>
+            <dd className="mt-1 font-bold text-slate-900">{booking.tourMeetingPoint || "Уточняется"}</dd>
           </div>
         </dl>
         <label className="mt-4 block min-w-0">
           <span className="text-sm font-bold text-slate-700">Количество участников</span>
           <input value={guests} onChange={(event) => setGuests(Math.max(1, Number(event.target.value) || 1))} type="number" min="1" max={booking.maxGuests} className="mt-2 h-12 w-full min-w-0 rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
         </label>
-        <p className="mt-4 text-3xl font-black text-[#060b27]">{price ? formatCurrency(total) : "Стоимость уточняется"}</p>
+        <p className="mt-4 text-2xl font-bold text-[#060b27]">{price ? formatCurrency(total) : "Стоимость уточняется"}</p>
         {tooManyGuests ? <p className="mt-2 text-sm font-bold text-rose-600">Свободных мест: {booking.maxGuests}</p> : null}
         {tourInPast ? <p className="mt-2 text-sm font-bold text-rose-600">Дата похода уже прошла.</p> : null}
         {tourAlreadyRequested ? <p className="mt-2 text-sm font-bold text-amber-700">На этот поход уже есть активная заявка.</p> : null}
@@ -603,7 +603,7 @@ export function BookingCalculator({
 
   return (
     <section id="booking-calculator" className="min-w-0 rounded-xl border border-blue-200 bg-blue-50/60 p-3 shadow-card sm:p-5">
-      <h2 className="flex min-w-0 items-center gap-2 text-lg font-black leading-tight text-[#060b27] sm:text-xl">
+      <h2 className="flex min-w-0 items-center gap-2 text-lg font-bold leading-tight text-[#060b27] sm:text-xl">
         <CalendarDays className="h-5 w-5 text-[#0875d1]" />
         <span className="min-w-0">Рассчитать бронирование</span>
       </h2>
@@ -647,23 +647,23 @@ export function BookingCalculator({
       <dl className="mt-4 grid min-w-0 gap-3 text-sm sm:grid-cols-2">
         <div className="rounded-lg bg-white p-3">
           <dt className="font-bold text-slate-500">Будни</dt>
-          <dd className="mt-1 font-black text-slate-900">{booking.priceWeekday ? `${formatCurrency(booking.priceWeekday)} / сутки` : "не указано"}</dd>
+          <dd className="mt-1 font-bold text-slate-900">{booking.priceWeekday ? `${formatCurrency(booking.priceWeekday)} / сутки` : "не указано"}</dd>
         </div>
         <div className="rounded-lg bg-white p-3">
           <dt className="font-bold text-slate-500">Выходные</dt>
-          <dd className="mt-1 font-black text-slate-900">{booking.priceWeekend ? `${formatCurrency(booking.priceWeekend)} / сутки` : "не указано"}</dd>
+          <dd className="mt-1 font-bold text-slate-900">{booking.priceWeekend ? `${formatCurrency(booking.priceWeekend)} / сутки` : "не указано"}</dd>
         </div>
         <div className="rounded-lg bg-white p-3">
           <dt className="font-bold text-slate-500">Заезд / выезд</dt>
-          <dd className="mt-1 font-black text-slate-900">{booking.checkInTime || "заезд"} / {booking.checkOutTime || "выезд"}</dd>
+          <dd className="mt-1 font-bold text-slate-900">{booking.checkInTime || "заезд"} / {booking.checkOutTime || "выезд"}</dd>
         </div>
         <div className="rounded-lg bg-white p-3">
           <dt className="font-bold text-slate-500">Гостей</dt>
-          <dd className="mt-1 font-black text-slate-900">включено {booking.includedGuests ?? "уточняется"}, до {booking.maxGuests ?? "уточняется"}</dd>
+          <dd className="mt-1 font-bold text-slate-900">включено {booking.includedGuests ?? "уточняется"}, до {booking.maxGuests ?? "уточняется"}</dd>
         </div>
         <div className="rounded-lg bg-white p-3 sm:col-span-2">
           <dt className="font-bold text-slate-500">Дополнительный гость</dt>
-          <dd className="mt-1 font-black text-slate-900">{booking.extraGuestPrice ? `${formatCurrency(booking.extraGuestPrice)} / сутки` : "без доплаты или уточняется"}</dd>
+          <dd className="mt-1 font-bold text-slate-900">{booking.extraGuestPrice ? `${formatCurrency(booking.extraGuestPrice)} / сутки` : "без доплаты или уточняется"}</dd>
         </div>
       </dl>
       <div className="mt-4 rounded-xl bg-white p-4">
@@ -677,7 +677,7 @@ export function BookingCalculator({
             Доплата за {result.extraGuests} гост.: {formatCurrency(result.extraGuestCost)}
           </p>
         ) : null}
-        <p className="mt-2 text-3xl font-black text-[#060b27]">{result.total ? formatCurrency(result.total) : "Выберите даты"}</p>
+        <p className="mt-2 text-2xl font-bold text-[#060b27]">{result.total ? formatCurrency(result.total) : "Выберите даты"}</p>
         {result.errors.length ? (
           <div className="mt-3 grid gap-1">
             {result.errors.map((error) => (
