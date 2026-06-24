@@ -15,11 +15,7 @@ function isTestYooKassaMode() {
 }
 
 function canTrustSuccessfulReturnInThisEnvironment() {
-  if (!isTestYooKassaMode()) {
-    return false;
-  }
-
-  return process.env.NODE_ENV !== "production";
+  return isTestYooKassaMode();
 }
 
 async function forceSucceededTestPayment(payment: Payment) {
