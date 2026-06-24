@@ -54,9 +54,11 @@ jobs:
           printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
+          SSH_OPTS="-o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o ConnectTimeout=30 -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa"
+
           ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
 
-          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "APP_DIR='$APP_DIR' REPO_URL='https://github.com/Danil-super/blizhniy.git' BRANCH='main' COMMIT_SHA='${{ github.sha }}' bash -s" <<'EOF'
+          ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "APP_DIR='$APP_DIR' REPO_URL='https://github.com/Danil-super/blizhniy.git' BRANCH='main' COMMIT_SHA='${{ github.sha }}' bash -s" <<'EOF'
             set -euo pipefail
 
             WORK_DIR="/tmp/blizhniy-deploy-${COMMIT_SHA}"
