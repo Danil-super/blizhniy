@@ -8,12 +8,10 @@ function hasValidWebhookSecret(request: Request) {
     return false;
   }
 
-  const url = new URL(request.url);
   const headerSecret = request.headers.get("x-yookassa-webhook-secret")?.trim();
   const bearerSecret = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
-  const querySecret = url.searchParams.get("secret")?.trim();
 
-  return headerSecret === secret || bearerSecret === secret || querySecret === secret;
+  return headerSecret === secret || bearerSecret === secret;
 }
 
 function requiresWebhookSecret() {

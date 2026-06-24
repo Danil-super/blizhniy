@@ -30,7 +30,6 @@ const listingKindOptions: Array<{ value: ListingKind; label: string }> = [
   { value: "prodam", label: "Продам" },
   { value: "kuplyu", label: "Куплю" },
   { value: "arenda", label: "Аренда" },
-  { value: "menyayu", label: "Меняю" },
   { value: "otdam-darom", label: "Отдам даром" },
 ];
 
@@ -149,10 +148,6 @@ function inferListingKindFromCatalog(categorySlug: string, subcategorySlug: stri
     return "kuplyu";
   }
 
-  if (subcategorySlug === "partnerstvo") {
-    return "menyayu";
-  }
-
   return "prodam";
 }
 
@@ -249,7 +244,7 @@ export function ListingLocationFields({
   defaultLng?: number;
   inlineControls?: boolean;
 }) {
-  const hasInitialPoint = hasMapCoordinates(defaultLat, defaultLng);
+  const hasInitialPoint = Boolean(defaultAddress?.trim()) && hasMapCoordinates(defaultLat, defaultLng);
   const addressGroupId = useId();
   const [mode, setMode] = useState<"city" | "exact">(hasInitialPoint ? "exact" : "city");
   const [cityValue, setCityValue] = useState(formatCityValue(defaultCity));

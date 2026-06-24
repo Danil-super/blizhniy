@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { createPayment } from "@/lib/payment-provider";
 import { createStoredFairApplication, listStoredFairApplications, markStoredFairApplicationPaid } from "@/lib/fair-application-store";
 import { createFairApplication, listFairApplications } from "@/lib/mock-store";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { getAuthenticatedRequestUser, isAdminRequest } from "@/lib/server-auth";
+import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
 import { isSupabaseRestConfigured } from "@/lib/supabase-rest";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileToken } from "@/lib/turnstile";
 
@@ -61,7 +63,9 @@ function getRemoteIp(request: Request) {
 export async function GET() {
   const applications = isSupabaseRestConfigured()
     ? await listStoredFairApplications("published")
-    : listFairApplications().filter((application) => application.status === "published");
+    : shouldShowFallbackContent()
+      ? listFairApplications().filter((application) => application.status === "published")
+      : [];
 
   return NextResponse.json({ applications });
 }
@@ -92,7 +96,12 @@ export async function POST(request: Request) {
   const phone = cleanText(body.phone);
   const email = cleanText(body.email);
   const videoUrl = cleanText(body.videoUrl);
-  const photos = cleanPhotos(body.productPhotos);
+  const rawPhotos = cleanPhotos(body.productPhotos);
+  const photos = validateMediaStoragePathsForUser(rawPhotos, "fair-applications", auth.user.id);
+
+  if (photos.length !== rawPhotos.length) {
+    return NextResponse.json({ error: "Некорректные файлы заявки. Загрузите фото заново." }, { status: 400 });
+  }
 
   if (participantName.length < 2 || participantName.length > 120) {
     return NextResponse.json({ error: "Имя участника должно быть от 2 до 120 символов" }, { status: 400 });
@@ -135,9 +144,11 @@ export async function POST(request: Request) {
     email,
     comment: cleanText(body.comment) || undefined,
   };
-  const application = isSupabaseRestConfigured()
-    ? await createStoredFairApplication({ ...applicationInput, userId: auth.user.id })
-    : createFairApplication(applicationInput);
+  const application = isSupabaseRestConfigured() ? await createStoredFairApplication({ ...applicationInput, userId: auth.user.id }) : shouldShowFallbackContent() ? createFairApplication(applicationInput) : null;
+
+  if (!application) {
+    return NextResponse.json({ error: "Server storage is not configured" }, { status: 503 });
+  }
 
   if (body.skipPayment === true) {
     application.paymentStatus = "succeeded";

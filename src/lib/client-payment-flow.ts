@@ -88,6 +88,7 @@ const confirmationRetryDelayMs = 1500;
 const confirmationRetryAttempts = 20;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 const publicMediaPathMarker = "/storage/v1/object/public/blizhniy-media/";
+const clientDraftPaymentFallbackEnabled = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
 
 function isUuid(value?: string) {
   return Boolean(value && uuidPattern.test(value));
@@ -202,7 +203,7 @@ function isDraftStatus(status: string) {
 }
 
 function normalizeListingKind(value?: ListingKind): ListingKind {
-  return value === "kuplyu" || value === "menyayu" || value === "otdam-darom" || value === "arenda" ? value : "prodam";
+  return value === "kuplyu" || value === "otdam-darom" || value === "arenda" ? value : "prodam";
 }
 
 function normalizeDuplicateText(value?: string) {
@@ -617,10 +618,10 @@ export async function createClientPayment(input: CreatePaymentInput): Promise<Cr
 
   void addCurrentUserNotification({
     category: "payment",
-    title: payload.payment.confirmationUrl ? "Платеж создан" : "Демо-платеж готов",
+    title: "Платеж создан",
     message: payload.payment.confirmationUrl
       ? "Перейдите к оплате в ЮKassa. После успешной оплаты публикация включится автоматически."
-      : "Платеж создан в демо-режиме. Подтвердите его, чтобы активировать публикацию.",
+      : "Откройте раздел оплат, чтобы подтвердить платеж и активировать публикацию.",
     tone: "info",
     actionHref: payload.payment.confirmationUrl ? payload.payment.confirmationUrl : "/cabinet/oplata",
     actionLabel: payload.payment.confirmationUrl ? "Перейти к оплате" : "Открыть оплаты",
@@ -631,6 +632,10 @@ export async function createClientPayment(input: CreatePaymentInput): Promise<Cr
 }
 
 async function createListingPaymentFromLocalDraft(input: CreatePaymentInput) {
+  if (!clientDraftPaymentFallbackEnabled) {
+    throw new Error("Сначала сохраните объявление на сервере, затем переходите к оплате.");
+  }
+
   const draft = input.listingDraft ?? readStoredPublications().find((item) => item.type === "listing" && item.id === input.targetId);
 
   if (!draft) {
@@ -699,6 +704,10 @@ async function createListingPaymentFromLocalDraft(input: CreatePaymentInput) {
 }
 
 async function createVacancyPaymentFromLocalDraft(input: CreatePaymentInput) {
+  if (!clientDraftPaymentFallbackEnabled) {
+    throw new Error("Сначала сохраните вакансию на сервере, затем переходите к оплате.");
+  }
+
   const draft = input.vacancyDraft ?? readStoredPublications().find((item) => item.type === "vacancy" && item.id === input.targetId);
 
   if (!draft) {
@@ -773,6 +782,10 @@ async function createVacancyPaymentFromLocalDraft(input: CreatePaymentInput) {
 }
 
 async function createWorkRequestPaymentFromLocalDraft(input: CreatePaymentInput) {
+  if (!clientDraftPaymentFallbackEnabled) {
+    throw new Error("Сначала сохраните заказ на сервере, затем переходите к оплате.");
+  }
+
   const draft = input.workRequestDraft ?? readStoredPublications().find((item) => item.type === "workRequest" && item.id === input.targetId);
 
   if (!draft) {

@@ -71,16 +71,16 @@ export default function Page() {
           <article className="rounded-xl border border-blue-200 bg-blue-50 p-5 sm:p-6">
             <h2 className="flex items-center gap-2 text-xl font-black text-[#060b27]">
               <ShieldCheck className="h-5 w-5 text-[#0875d1]" />
-              Тестовый режим
+              Оплата размещений
             </h2>
             <p className="mt-3 text-sm leading-6 text-slate-700">
-              Сейчас платежи не списывают реальные деньги. Кнопка оплаты имитирует успешное прохождение платежа и обновляет статус заявки или публикации.
+              После выбора тарифа сайт создает платеж и переводит публикацию в ожидание оплаты. После подтверждения платежа размещение становится активным.
             </p>
           </article>
           <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-card sm:p-6">
-            <h2 className="text-xl font-black text-[#060b27]">После утверждения</h2>
+            <h2 className="text-xl font-black text-[#060b27]">Платежный провайдер</h2>
             <p className="mt-3 text-sm leading-6 text-slate-700">
-              После согласования демонстрации к проекту можно подключить реальный платежный провайдер: ЮKassa или Т-Банк, без изменения пользовательского сценария.
+              Платежи обрабатываются через подключенного провайдера. Статус публикации обновляется после подтверждения оплаты сервером.
             </p>
           </article>
         </section>

@@ -109,7 +109,7 @@ const tariffs = [
 const listings = [
   { kind: "prodam", categorySlug: "dlya-doma-i-dachi", city: "krasnodar", title: "Комод из массива дерева", description: "Аккуратный комод для спальни, самовывоз из Краснодара. Есть небольшие следы использования.", district: "Фестивальный район", latitude: 45.056, longitude: 38.958, price: 12500, contact_phone: "+78610002001", published_at: "2026-05-20T10:00:00+03:00" },
   { kind: "kuplyu", categorySlug: "sad-i-rasteniya", city: "sochi", title: "Куплю саженцы гортензии", description: "Ищу 10-15 здоровых саженцев для участка. Рассмотрю Сочи и ближайшие поселки.", district: "Центральный район", latitude: 43.585, longitude: 39.723, price: 7000, messenger_url: "https://wa.me/78610002002", published_at: "2026-05-21T10:00:00+03:00" },
-  { kind: "menyayu", categorySlug: "remont-i-stroitelstvo", city: "novorossiysk", title: "Меняю набор электроинструмента", description: "Обменяю комплект инструмента на материалы для ремонта или садовую технику.", district: "Приморский район", latitude: 44.724, longitude: 37.768, contact_phone: "+78610002003", published_at: "2026-05-22T10:00:00+03:00" },
+  { kind: "otdam-darom", categorySlug: "instrumenty", city: "novorossiysk", title: "Отдам набор электроинструмента", description: "Отдам комплект инструмента. Забрать можно по договоренности.", district: "Приморский район", latitude: 44.724, longitude: 37.768, contact_phone: "+78610002003", published_at: "2026-05-22T10:00:00+03:00" },
   { kind: "otdam-darom", categorySlug: "tovary-i-veshchi", city: "anapa", title: "Отдам книги по рукоделию", description: "Подборка журналов и книг, все в хорошем состоянии. Забрать можно вечером.", district: "12-й микрорайон", latitude: 44.894, longitude: 37.316, messenger_url: "https://t.me/blizhniy_support", published_at: "2026-05-23T10:00:00+03:00" },
 ];
 
@@ -139,7 +139,7 @@ const fairApplications = [
 const listingTypeByKind = {
   prodam: "sell",
   kuplyu: "buy",
-  menyayu: "exchange",
+  arenda: "rent",
   "otdam-darom": "free",
 };
 

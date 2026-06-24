@@ -261,10 +261,10 @@ export function SpecialistEditClient({ specialistId }: { specialistId: string })
           <ListingLocationFields
             addressLegend="Адрес специалиста"
             cityFieldName="city"
-            defaultAddress={specialist.address}
+            defaultAddress={specialist.showExactAddress ? specialist.address : undefined}
             defaultCity={specialist.city}
-            defaultLat={(specialist.hasMapPoint ?? true) && hasMapCoordinates(specialist.lat, specialist.lng) ? specialist.lat : undefined}
-            defaultLng={(specialist.hasMapPoint ?? true) && hasMapCoordinates(specialist.lat, specialist.lng) ? specialist.lng : undefined}
+            defaultLat={specialist.showExactAddress && (specialist.hasMapPoint ?? true) && hasMapCoordinates(specialist.lat, specialist.lng) ? specialist.lat : undefined}
+            defaultLng={specialist.showExactAddress && (specialist.hasMapPoint ?? true) && hasMapCoordinates(specialist.lat, specialist.lng) ? specialist.lng : undefined}
             inlineControls
           />
           <PhotoField defaultPhotos={specialist.images} label="Фото специалиста и работ" description="Добавьте портфолио, фото выполненных работ или рабочей зоны." />

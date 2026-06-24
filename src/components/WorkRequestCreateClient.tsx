@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
+import { BrandName } from "@/components/BrandName";
 import { CitySelectField } from "@/components/CitySelectField";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
@@ -26,6 +27,8 @@ type CreatedWorkRequestResponse = {
     title?: string;
   };
 };
+
+const clientFallbackContentEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
 
 function readStoredPublications() {
   try {
@@ -210,28 +213,31 @@ export function WorkRequestCreateClient() {
         status: mode === "draft" ? "draft" : undefined,
         tariffId: mode === "publish" ? "work-request-publication" : undefined,
       });
-      const publication = withPublicationHistory({
-        id: result.workRequest?.id ?? createWorkRequestId(),
-        type: "workRequest",
-        ownerKey: identity.ownerKey,
-        ownerName: identity.name,
-        title,
-        subtitle: profession,
-        profession,
-        city,
-        price: normalizeListingPrice(rawBudget, "по договоренности"),
-        description: readValue(formData, "description"),
-        images: mergeSavedImages(result.workRequest?.images, images),
-        phone,
-        messengerUrl,
-        status: mode === "publish" ? "Ждет оплаты" : "Черновик",
-        createdAt: now,
-      });
-      const nextItems = [publication, ...readStoredPublications()].slice(0, 80);
+      if (clientFallbackContentEnabled) {
+        const publication = withPublicationHistory({
+          id: result.workRequest?.id ?? createWorkRequestId(),
+          type: "workRequest",
+          ownerKey: identity.ownerKey,
+          ownerName: identity.name,
+          title,
+          subtitle: profession,
+          profession,
+          city,
+          price: normalizeListingPrice(rawBudget, "по договоренности"),
+          description: readValue(formData, "description"),
+          images: mergeSavedImages(result.workRequest?.images, images),
+          phone,
+          messengerUrl,
+          status: mode === "publish" ? "Ждет оплаты" : "Черновик",
+          createdAt: now,
+        });
+        const nextItems = [publication, ...readStoredPublications()].slice(0, 80);
 
-      window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
+        window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
+        window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
+      }
+
       markCabinetDataChanged();
-      window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
 
       if (mode === "publish") {
         if (!result.payment?.id) {
@@ -276,7 +282,7 @@ export function WorkRequestCreateClient() {
             <span>Подтверждаю, что заказ реальный, данные указаны корректно, а исполнитель сможет связаться со мной.</span>
           </label>
           <LegalConsentCheckbox name="publicOfferAccepted" paymentConsent errorMessage="Примите условия публичной оферты, чтобы перейти к оплате">
-            Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю услугу размещения заказа на сайте БЛИЖНИЙ.
+            Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю услугу размещения заказа на сайте <BrandName />.
           </LegalConsentCheckbox>
           {message ? <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700">{message}</p> : null}
           <div className="grid gap-3 sm:flex sm:flex-wrap">
@@ -296,9 +302,6 @@ export function WorkRequestCreateClient() {
             >
               {savingMode === "publish" ? "Сохраняем..." : "Создать и оплатить"}
             </button>
-            <BackLink fallbackHref="/cabinet/zakazy" className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-7 font-bold text-slate-800">
-              Отмена
-            </BackLink>
           </div>
         </form>
       </FormPanel>

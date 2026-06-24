@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { WorkRequestsIndexClient } from "@/components/WorkRequestsIndexClient";
 import type { WorkRequest } from "@/lib/types";
 import { listWorkRequests } from "@/lib/mock-store";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { listStoredWorkRequests, listWorkRequestsWithStored } from "@/lib/work-request-store";
 
 export const metadata: Metadata = {
@@ -25,7 +26,7 @@ function newestWorkRequests(requests: WorkRequest[]) {
 export default async function Page() {
   const storedWorkRequests = await listStoredWorkRequests(1000);
   const requests = newestWorkRequests(
-    listWorkRequestsWithStored(storedWorkRequests.length ? storedWorkRequests : listWorkRequests()).filter((request) => request.status === "published"),
+    listWorkRequestsWithStored(storedWorkRequests.length ? storedWorkRequests : shouldShowFallbackContent() ? listWorkRequests() : []).filter((request) => request.status === "published"),
   );
 
   return (

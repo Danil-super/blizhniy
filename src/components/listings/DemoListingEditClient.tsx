@@ -25,7 +25,6 @@ const listingKinds: { value: ListingKind; label: string }[] = [
   { value: "prodam", label: "Продам" },
   { value: "kuplyu", label: "Куплю" },
   { value: "arenda", label: "Аренда" },
-  { value: "menyayu", label: "Меняю" },
   { value: "otdam-darom", label: "Отдам даром" },
 ];
 
@@ -500,7 +499,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
       <main className="page-container py-10">
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
           <h1 className="text-2xl font-black text-[#060b27]">Объявление не найдено</h1>
-          <p className="mt-2 text-slate-600">Демо-объявления хранятся в браузере, где они были опубликованы.</p>
+          <p className="mt-2 text-slate-600">Черновик не найден или был создан в другом сеансе.</p>
           <BackLink fallbackHref="/cabinet/obyavleniya" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
             Вернуться в кабинет
           </BackLink>

@@ -5,11 +5,11 @@ import { DetailImageGallery } from "@/components/DetailImageGallery";
 import { LocationMap } from "@/components/LocationMap";
 import { SiteHeader } from "@/components/SiteHeader";
 import { VacancyApplicationButton } from "@/components/VacancyApplicationButton";
-import { WorkRequestDetailClient } from "@/components/WorkRequestDetailClient";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { listWorkRequests } from "@/lib/mock-store";
 import { formatPublicationDateTime } from "@/lib/publication-time";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isUuid } from "@/lib/supabase-rest";
 import { getStoredWorkRequestById } from "@/lib/work-request-store";
 
@@ -27,15 +27,10 @@ function locationLabel(request: { address?: string; city: string; district?: str
 
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
-  const request = (await getStoredWorkRequestById(slug)) ?? listWorkRequests().find((item) => item.id === slug);
+  const request = (await getStoredWorkRequestById(slug)) ?? (shouldShowFallbackContent() ? listWorkRequests().find((item) => item.id === slug) : undefined);
 
   if (!request) {
-    return (
-      <>
-        <SiteHeader />
-        <WorkRequestDetailClient requestId={slug} />
-      </>
-    );
+    notFound();
   }
 
   if (request.status !== "published") {
@@ -43,7 +38,7 @@ export default async function Page({ params }: PageProps) {
   }
 
   const images = request.images ?? [];
-  const hasPoint = hasMapCoordinates(request.lat, request.lng);
+  const hasPoint = Boolean(request.showExactAddress) && hasMapCoordinates(request.lat, request.lng);
   const canReceivePaidApplications = isUuid(request.id);
   const placeLabel = locationLabel(request);
   const publishedLabel = formatPublicationDateTime(request.publishedAt ?? request.createdAt, "10:00");
@@ -106,7 +101,7 @@ export default async function Page({ params }: PageProps) {
             </section>
             {hasPoint ? (
               <div className="hidden lg:block">
-                <LocationMap location={{ ...request, showExactAddress: Boolean(request.showExactAddress), hasMapPoint: true }} exactLabel="Точный адрес заказа показывается только если заказчик разрешил" />
+                <LocationMap location={{ ...request, showExactAddress: Boolean(request.showExactAddress), hasMapPoint: hasPoint }} exactLabel="Точный адрес заказа показывается только если заказчик разрешил" />
               </div>
             ) : (
               <section className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:block">

@@ -19,7 +19,7 @@ function canTrustSuccessfulReturnInThisEnvironment() {
     return false;
   }
 
-  return process.env.NODE_ENV !== "production" || process.env.YOOKASSA_TRUST_SUCCESSFUL_RETURN === "true";
+  return process.env.NODE_ENV !== "production";
 }
 
 async function forceSucceededTestPayment(payment: Payment) {
@@ -32,11 +32,11 @@ async function forceSucceededTestPayment(payment: Payment) {
 
   await updateStoredPayment(paidPayment);
 
-  return {
+    return {
     payment: paidPayment,
     nextStatus,
     notification: {
-      subject: "Тестовая оплата прошла",
+      subject: "Оплата подтверждена",
       body: `${paidPayment.targetTitle}: статус изменен на ${nextStatus}.`,
     },
   };

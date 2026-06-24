@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAdminRequest } from "@/lib/server-auth";
 import { getSupabaseRestConfig, isSupabaseRestConfigured, supabaseRest } from "@/lib/supabase-rest";
 
 type PaymentDebugRow = {
@@ -13,7 +14,15 @@ type PaymentDebugRow = {
   user_id?: string | null;
 };
 
-export async function GET(_request: Request, { params }: { params: Promise<{ paymentId: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ paymentId: string }> }) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (!(await isAdminRequest(request))) {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+  }
+
   const { paymentId } = await params;
   const { key, supabaseUrl } = getSupabaseRestConfig();
 

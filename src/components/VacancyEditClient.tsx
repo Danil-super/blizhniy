@@ -440,10 +440,10 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
               addressLegend="Адрес вакансии"
               cityFieldName="city"
               cityLabel="Город / район"
-              defaultAddress={vacancy.address}
+              defaultAddress={vacancy.showExactAddress ? vacancy.address : undefined}
               defaultCity={vacancy.city}
-              defaultLat={vacancy.lat}
-              defaultLng={vacancy.lng}
+              defaultLat={vacancy.showExactAddress && vacancy.hasMapPoint ? vacancy.lat : undefined}
+              defaultLng={vacancy.showExactAddress && vacancy.hasMapPoint ? vacancy.lng : undefined}
               inlineControls
             />
             <PhotoField

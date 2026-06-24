@@ -6,7 +6,7 @@ import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
 import { formatBookingPrice, sanitizeBookingDetails, validateBookingDetailsForPublication } from "@/lib/booking-details";
 import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
 import type { CreateStoredListingInput } from "@/lib/listing-store";
-import type { BookingDetails, ListingKind, Payment } from "@/lib/types";
+import type { BookingDetails, ListingKind } from "@/lib/types";
 
 type CreateListingBody = {
   address?: string;
@@ -40,7 +40,7 @@ function cleanNumber(value: unknown) {
 }
 
 function cleanKind(value: unknown): ListingKind {
-  return value === "kuplyu" || value === "menyayu" || value === "otdam-darom" || value === "arenda" ? value : "prodam";
+  return value === "kuplyu" || value === "otdam-darom" || value === "arenda" ? value : "prodam";
 }
 
 function cleanMediaPaths(value: unknown) {
@@ -117,11 +117,16 @@ export async function POST(request: Request) {
   try {
     const kind = cleanKind(body.kind);
     const booking = sanitizeBookingDetails(body.booking);
+    const tariffId = cleanString(body.tariffId);
     const rawMediaPaths = cleanMediaPaths(body.mediaPaths);
     const mediaPaths = validateMediaStoragePathsForUser(rawMediaPaths, "listings", auth.user.id);
 
     if (mediaPaths.length !== rawMediaPaths.length) {
       return NextResponse.json({ error: "Некорректные файлы объявления. Загрузите фото заново." }, { status: 400 });
+    }
+
+    if (!tariffId) {
+      return NextResponse.json({ error: "Выберите тариф размещения, чтобы перейти к оплате" }, { status: 400 });
     }
 
     if (kind === "arenda") {
@@ -147,11 +152,11 @@ export async function POST(request: Request) {
       messengerUrl: messengerUrl || undefined,
       phone: phone || undefined,
       price: booking ? formatBookingPrice(booking) : cleanString(body.price) || undefined,
-      status: body.tariffId ? "pending_payment" : "published",
+      status: "pending_payment",
       subcategory: cleanString(body.subcategory) || undefined,
       title,
     };
-    const reusableListing = body.tariffId ? await findReusableStoredListingForPayment(listingInput) : undefined;
+    const reusableListing = await findReusableStoredListingForPayment(listingInput);
 
     const listing = reusableListing
       ? await updateStoredListingForUser(reusableListing.id, auth.user.id, listingInput)
@@ -161,17 +166,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Не удалось создать объявление в Supabase" }, { status: 500 });
     }
 
-    let payment: Payment | undefined;
-
-    if (body.tariffId) {
-      payment = await createPayment({
-        tariffId: body.tariffId,
-        targetId: listing.id,
-        targetTitle: title,
-        targetType: "listing",
-        userId: auth.user.id,
-      });
-    }
+    const payment = await createPayment({
+      tariffId,
+      targetId: listing.id,
+      targetTitle: title,
+      targetType: "listing",
+      userId: auth.user.id,
+    });
 
     return NextResponse.json({ listing, payment }, { status: 201 });
   } catch (error) {

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { BackLink } from "@/components/BackLink";
+import { BrandName } from "@/components/BrandName";
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { CapitalizedTextarea } from "@/components/CapitalizedTextarea";
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
@@ -34,6 +35,7 @@ import { createListing, getListingStatusOverride, listListings } from "@/lib/moc
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { formatPublicationDateTime } from "@/lib/publication-time";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
 import { getTariffs } from "@/lib/tariff-store";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
@@ -41,7 +43,6 @@ import type { BookingRequest } from "@/lib/booking-notifications";
 import type { BookingDetails, DeliveryOptions, DeliveryServiceId, Listing as StoreListing } from "@/lib/types";
 import { BookingCalculator } from "./BookingCalculator";
 import { DemoListingEditClient } from "./DemoListingEditClient";
-import { DemoListingDetailClient } from "./DemoListingDetailClient";
 import { ListingKindAndCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
 import { ListingMediaGallery, type ListingGalleryMedia } from "./ListingMediaGallery";
@@ -55,7 +56,6 @@ const listingKinds: { slug: ListingKind; title: string; description: string }[] 
   { slug: "prodam", title: "Продам", description: "Вещи, мебель, растения и полезные товары рядом с домом." },
   { slug: "kuplyu", title: "Куплю", description: "Запросы покупателей: что ищут жители Краснодара и края." },
   { slug: "arenda", title: "Аренда", description: "Бронирование турбаз, гостиниц, домов и активного отдыха." },
-  { slug: "menyayu", title: "Меняю", description: "Обмен товарами, коллекциями, вещами и материалами." },
   { slug: "otdam-darom", title: "Отдам даром", description: "Публикации без цены: забрать, передать, пристроить." },
 ];
 
@@ -228,9 +228,9 @@ const baseDemoListings: DemoListing[] = [
     imageTone: "violet",
   },
   {
-    slug: "menyayu-sazhentsy-lavandy",
-    title: "Меняю саженцы лаванды на комнатные растения",
-    kind: "menyayu",
+    slug: "otdam-sazhentsy-lavandy",
+    title: "Отдам саженцы лаванды",
+    kind: "otdam-darom",
     categorySlug: "sad-i-rasteniya",
     categoryName: "Сад и огород",
     subcategorySlug: "tsvety-i-sazhentsy",
@@ -240,8 +240,8 @@ const baseDemoListings: DemoListing[] = [
     lat: 45.02,
     lng: 38.93,
     showExactAddress: false,
-    price: "Обмен",
-    description: "Есть крепкие саженцы лаванды в контейнерах. Интересны фикусы, монстеры, сансевиерии или кашпо.",
+    price: "Бесплатно",
+    description: "Есть крепкие саженцы лаванды в контейнерах. Отдам соседям, самовывоз по договоренности.",
     phone: "+78610002003",
     messengerUrl: "https://t.me/blizhniy_support",
     status: "published",
@@ -401,10 +401,6 @@ function inferListingKind(categorySlug: string, subcategorySlug: string): Listin
 
   if (subcategorySlug.startsWith("kuplyu")) {
     return "kuplyu";
-  }
-
-  if (subcategorySlug === "partnerstvo") {
-    return "menyayu";
   }
 
   return "prodam";
@@ -600,11 +596,11 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
     "Жилье для путешествия": "Дома, квартиры, комнаты, гостевые объекты и варианты размещения для поездок и отдыха.",
   },
   elektronika: {
-    Смартфоны: "Телефоны, аксессуары, обмен и покупка смартфонов у жителей и организаций рядом.",
-    Ноутбуки: "Ноутбуки для работы, учебы, игр, комплектующие и предложения по ремонту или обмену.",
+    Смартфоны: "Телефоны, аксессуары и покупка смартфонов у жителей и организаций рядом.",
+    Ноутбуки: "Ноутбуки для работы, учебы, игр, комплектующие и предложения по ремонту.",
     Компьютеры: "Системные блоки, мониторы, периферия, комплектующие и готовые рабочие места.",
     "Аудио и видео": "Телевизоры, колонки, наушники, камеры, проекторы и домашняя мультимедиа.",
-    "Игровые приставки": "Консоли, игры, геймпады, аксессуары и предложения по обмену игровых устройств.",
+    "Игровые приставки": "Консоли, игры, геймпады, аксессуары и предложения по игровым устройствам.",
   },
   transport: {
     "Продам авто": "Легковые автомобили, коммерческий транспорт и предложения от частных продавцов.",
@@ -779,10 +775,6 @@ function coveragePrice(kind: ListingKind, categorySlug: string, index: number, s
     return `от ${Math.round((2_500 + index * 450) / 100) * 100} ₽/сутки`;
   }
 
-  if (kind === "menyayu") {
-    return "обмен";
-  }
-
   if (kind === "otdam-darom") {
     return "бесплатно";
   }
@@ -895,6 +887,10 @@ export function listDemoListings() {
 }
 
 export function listPublicDemoListings() {
+  if (!shouldShowFallbackContent()) {
+    return [];
+  }
+
   return [...listDemoListings(), ...listListings().map(toDemoListing)].filter((listing) => listing.status === "published");
 }
 
@@ -917,7 +913,7 @@ function inferCityFromFormData(formData: FormData, fallback = "Краснода�
 }
 
 function hasListingMapPoint(listing: DemoListing) {
-  return (listing.hasMapPoint ?? true) && hasMapCoordinates(listing.lat, listing.lng);
+  return Boolean(listing.showExactAddress) && (listing.hasMapPoint ?? true) && hasMapCoordinates(listing.lat, listing.lng);
 }
 
 function listingPlaceLabel(listing: DemoListing) {
@@ -1005,7 +1001,7 @@ function formatSellerDate(value: string) {
 
 function listingSellerStats(listing: DemoListing) {
   const sellerKey = listingSellerKey(listing);
-  const allListings = [...listDemoListings(), ...listListings().map(toDemoListing)];
+  const allListings = shouldShowFallbackContent() ? [...listDemoListings(), ...listListings().map(toDemoListing)] : [listing];
   const sellerListings = allListings.filter((item) => listingSellerKey(item) === sellerKey);
   const firstListing = sellerListings
     .filter((item) => Number.isFinite(dateSortValue(item.createdAt)))
@@ -1169,7 +1165,7 @@ export function toDemoListing(listing: StoreListing): DemoListing {
     address: listing.address,
     lat: listing.lat,
     lng: listing.lng,
-    hasMapPoint: Boolean(listing.hasMapPoint),
+    hasMapPoint: Boolean(listing.showExactAddress && listing.hasMapPoint),
     showExactAddress: listing.showExactAddress,
     price: listing.price ?? "по договоренности",
     images: listing.images,
@@ -1193,13 +1189,13 @@ export function findListingBySlug(slug?: string) {
     return undefined;
   }
 
-  const localListing = listDemoListings().find((item) => item.slug === slug);
+  const localListing = shouldShowFallbackContent() ? listDemoListings().find((item) => item.slug === slug) : undefined;
 
   if (localListing) {
     return localListing;
   }
 
-  const storeListing = listListings().find((item) => item.slug === slug || item.id === slug);
+  const storeListing = shouldShowFallbackContent() ? listListings().find((item) => item.slug === slug || item.id === slug) : undefined;
   return storeListing ? toDemoListing(storeListing) : undefined;
 }
 
@@ -1332,8 +1328,8 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
   const current = listingKinds.find((item) => item.slug === kind) ?? listingKinds[0];
   const listings = listPublicDemoListings().filter((listing) => listing.kind === kind);
   const primaryKinds = listingKinds.filter((item) => item.slug === "prodam" || item.slug === "kuplyu");
-  const exchangeKinds = listingKinds.filter((item) => item.slug === "menyayu" || item.slug === "otdam-darom");
-  const visibleKinds = kind === "prodam" || kind === "kuplyu" ? primaryKinds : exchangeKinds;
+  const freeKinds = listingKinds.filter((item) => item.slug === "otdam-darom");
+  const visibleKinds = kind === "prodam" || kind === "kuplyu" ? primaryKinds : freeKinds;
 
   return (
     <>
@@ -1375,10 +1371,10 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
               ))}
               {kind === "prodam" || kind === "kuplyu" ? (
                 <Link
-                  href="/obyavleniya/obmen-i-darom"
+                  href="/obyavleniya/otdam-darom"
                   className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
                 >
-                  Меняю и отдам даром
+                  Отдам даром
                 </Link>
               ) : null}
             </div>
@@ -1391,14 +1387,14 @@ export function ListingKindPage({ kind }: { kind: ListingKind }) {
 }
 
 export function ExchangeAndFreePage() {
-  const listings = listPublicDemoListings().filter((listing) => listing.kind === "menyayu" || listing.kind === "otdam-darom");
+  const listings = listPublicDemoListings().filter((listing) => listing.kind === "otdam-darom");
 
   return (
     <>
       <SiteHeader />
       <HomeHero />
       <main className="page-container py-2 sm:py-3 lg:py-4">
-        <Breadcrumbs items={[{ label: "Меняю и отдам даром" }]} />
+        <Breadcrumbs items={[{ label: "Отдам даром" }]} />
         <BackLink fallbackHref="/" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
         </BackLink>
@@ -1406,13 +1402,13 @@ export function ExchangeAndFreePage() {
           <section>
             <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
               <div>
-                <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Меняю и отдам даром</h1>
+                <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Отдам даром</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">
-                  Отдельный раздел для обмена и бесплатных объявлений рядом с домом.
+                  Отдельный раздел для бесплатных объявлений рядом с домом.
                 </p>
               </div>
               <Link
-                href="/razmestit/obyavlenie?kind=menyayu"
+                href="/razmestit/obyavlenie?kind=otdam-darom"
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5 lg:h-12 lg:px-6 lg:text-base"
               >
                 Разместить
@@ -1421,7 +1417,7 @@ export function ExchangeAndFreePage() {
             </div>
             <div className="mt-4 flex flex-wrap gap-2 sm:mt-5 lg:mt-6">
               {listingKinds
-                .filter((item) => item.slug === "menyayu" || item.slug === "otdam-darom")
+                .filter((item) => item.slug === "otdam-darom")
                 .map((item) => (
                   <Link
                     key={item.slug}
@@ -1432,7 +1428,7 @@ export function ExchangeAndFreePage() {
                   </Link>
                 ))}
             </div>
-            <ListingResultsPanel kind={["menyayu", "otdam-darom"]} listings={listings} />
+            <ListingResultsPanel kind="otdam-darom" listings={listings} />
           </section>
         </div>
       </main>
@@ -1629,12 +1625,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
   const listingHref = `/obyavlenie/${listing?.slug ?? slug}`;
 
   if (!listing) {
-    return (
-      <>
-        <SiteHeader />
-        <DemoListingDetailClient slug={slug} />
-      </>
-    );
+    notFound();
   }
 
   if (listing.status !== "published") {
@@ -1646,7 +1637,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
   const sellerStats = listingSellerStats(listing);
   const contactCount = [listing.phone, listing.email, listing.messengerUrl].filter(Boolean).length;
   const actionCount = contactCount + 1;
-  const actionGridClass = actionCount >= 4 ? "grid-cols-2 sm:grid-cols-[repeat(4,minmax(104px,1fr))]" : actionCount === 3 ? "grid-cols-2 sm:grid-cols-3" : actionCount === 2 ? "grid-cols-2" : "grid-cols-1";
+  const actionGridClass = actionCount >= 4 ? "grid-cols-2 sm:grid-cols-[repeat(4,minmax(104px,1fr))]" : actionCount === 3 ? "grid-cols-2" : actionCount === 2 ? "grid-cols-2" : "grid-cols-1";
   const galleryMedia: ListingGalleryMedia[] = (listing.images ?? []).map((src) => ({ kind: "image", src }));
 
   return (
@@ -1663,7 +1654,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
         />
         <div className="mx-auto grid max-w-[1180px] min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,768px)_minmax(320px,380px)] lg:items-start lg:justify-center">
           <section className="min-w-0 lg:max-w-3xl">
-            <BackLink fallbackHref={`/katalog/${listing.kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+            <BackLink fallbackHref={`/obyavleniya?kind=${listing.kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
               Назад к разделу
             </BackLink>
             <h1 className="[overflow-wrap:anywhere] mt-3 text-xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-3xl lg:text-4xl">{listing.title}</h1>
@@ -1726,15 +1717,15 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
               <div className="grid gap-2 lg:mt-4">
                 <div className={`grid min-w-0 gap-2 ${actionGridClass}`}>
                   {listing.phone ? (
-                    <a href={`tel:${listing.phone}`} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:text-sm">
+                    <a href={`tel:${listing.phone}`} className={`inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:text-sm ${actionCount === 3 ? "col-span-2" : ""}`}>
                       <Phone className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Позвонить</span>
+                      <span className="whitespace-nowrap">Позвонить</span>
                     </a>
                   ) : null}
                   {listing.email ? (
                     <a href={`mailto:${listing.email}`} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] bg-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:text-sm">
                       <Mail className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Email</span>
+                      <span className="whitespace-nowrap">Email</span>
                     </a>
                   ) : null}
                   {listing.messengerUrl ? (
@@ -1743,14 +1734,14 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
                       className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] bg-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:text-sm"
                     >
                       <MessageCircle className="h-4 w-4 shrink-0" />
-                      <span className="min-w-0 truncate">Сообщение</span>
+                      <span className="whitespace-nowrap">Сообщение</span>
                     </a>
                   ) : null}
                   <ListingShareButton
                     href={listingHref}
                     title={listing.title}
                     textBreakpoint="always"
-                    className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:text-sm"
+                    className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:text-sm"
                     iconClassName="h-4 w-4 shrink-0"
                   />
                 </div>
@@ -2031,7 +2022,14 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
               />
             </label>
 
-            <ListingLocationFields className="listing-create-location-fields" defaultAddress={listing?.address} defaultCity={listing?.city} defaultLat={listing?.lat} defaultLng={listing?.lng} inlineControls />
+            <ListingLocationFields
+              className="listing-create-location-fields"
+              defaultAddress={listing?.showExactAddress ? listing.address : undefined}
+              defaultCity={listing?.city}
+              defaultLat={listing?.showExactAddress && listing.hasMapPoint ? listing.lat : undefined}
+              defaultLng={listing?.showExactAddress && listing.hasMapPoint ? listing.lng : undefined}
+              inlineControls
+            />
 
             {showDeliveryUi ? <ListingDeliveryFields delivery={listing?.delivery} defaultCity={listing?.city ?? "Краснодар"} /> : null}
 
@@ -2069,7 +2067,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
 
             <div className="grid gap-3">
               <LegalConsentCheckbox name="placementRightsAccepted" errorMessage="Примите условия документов, чтобы продолжить">
-                Я подтверждаю, что имею право размещать объявление, фотографии и контактные данные, и соглашаюсь с их публикацией на сайте БЛИЖНИЙ.{" "}
+                Я подтверждаю, что имею право размещать объявление, фотографии и контактные данные, и соглашаюсь с их публикацией на сайте <BrandName />.{" "}
                 <LegalLink href="/legal/agreement">Пользовательское соглашение</LegalLink> и{" "}
                 <LegalLink href="/legal/privacy">Политика обработки персональных данных</LegalLink>.
               </LegalConsentCheckbox>
@@ -2080,7 +2078,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
                   paymentConsent
                   errorMessage="Примите условия публичной оферты, чтобы перейти к оплате"
                 >
-                  Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю услугу размещения объявления на сайте БЛИЖНИЙ.
+                  Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю услугу размещения объявления на сайте <BrandName />.
                 </LegalConsentCheckbox>
               ) : null}
             </div>
@@ -2116,7 +2114,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
                 Публикация
               </div>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                {adminMode ? "В админ-режиме публикация доступна без оплаты для тестирования сценария." : `После оплаты объявление будет опубликовано на ${tariff?.durationDays ?? 30} дней.`}
+                {adminMode ? "В админ-режиме публикацию можно сохранить без оплаты для служебной проверки." : `После оплаты объявление будет опубликовано на ${tariff?.durationDays ?? 30} дней.`}
               </p>
             </div>
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">

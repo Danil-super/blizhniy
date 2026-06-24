@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { demoListings, slugifySubcategory } from "@/components/listings/ListingPages";
 import { categories, listingKinds, professions, specialists, vacancies, workRequests } from "@/lib/data";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { getPublicSiteUrl } from "@/lib/site-url";
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -10,16 +11,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...category.children.map((child) => `/katalog/${category.slug}/${slugifySubcategory(child)}`),
   ]);
   const listingKindPaths = listingKinds.map((kind) => `/obyavleniya/${kind.slug}`);
-  const listingPaths = demoListings.map((listing) => `/obyavlenie/${listing.slug}`);
-  const vacancyPaths = vacancies.map((vacancy) => `/vakansiya/${vacancy.id}`);
-  const workRequestPaths = workRequests.map((request) => `/rabota/zakazy/${request.id}`);
-  const specialistPaths = specialists.map((specialist) => `/specialist/${specialist.id}`);
+  const fallbackContentEnabled = shouldShowFallbackContent();
+  const listingPaths = fallbackContentEnabled ? demoListings.map((listing) => `/obyavlenie/${listing.slug}`) : [];
+  const vacancyPaths = fallbackContentEnabled ? vacancies.map((vacancy) => `/vakansiya/${vacancy.id}`) : [];
+  const workRequestPaths = fallbackContentEnabled ? workRequests.map((request) => `/rabota/zakazy/${request.id}`) : [];
+  const specialistPaths = fallbackContentEnabled ? specialists.map((specialist) => `/specialist/${specialist.id}`) : [];
   const professionPaths = professions.map((profession) => `/rabota/specialisty/${profession.slug}`);
 
   return [
     "",
     "/obyavleniya",
-    "/obyavleniya/obmen-i-darom",
     "/katalog",
     "/razmestit",
     "/razmestit/obyavlenie",

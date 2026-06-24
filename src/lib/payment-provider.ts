@@ -9,6 +9,7 @@ import {
   markStoredPaymentTargetSucceeded,
   updateStoredPayment,
 } from "@/lib/payment-store";
+import { shouldAllowMockPayments } from "@/lib/runtime-mode";
 import { getPublicSiteUrl } from "@/lib/site-url";
 import { isSupabaseRestConfigured } from "@/lib/supabase-rest";
 import { getActiveStoredTariffById } from "@/lib/tariff-store";
@@ -104,7 +105,16 @@ function todayIsoDate() {
 
 export function getPaymentProviderName() {
   const provider = process.env.PAYMENT_PROVIDER?.trim().toLowerCase();
-  return provider === "yookassa" ? "yookassa" : ("mock" as const);
+
+  if (provider === "yookassa") {
+    return "yookassa";
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("PAYMENT_PROVIDER=yookassa is required in production");
+  }
+
+  return "mock" as const;
 }
 
 export async function listPayments() {
@@ -112,11 +122,11 @@ export async function listPayments() {
     return listStoredPayments();
   }
 
-  return listMockPayments();
+  return shouldAllowMockPayments() ? listMockPayments() : [];
 }
 
 export function getPayment(paymentId: string) {
-  return listMockPayments().find((payment) => payment.id === paymentId);
+  return shouldAllowMockPayments() ? listMockPayments().find((payment) => payment.id === paymentId) : undefined;
 }
 
 async function fetchYooKassaJson<T>(url: string, init: RequestInit) {
@@ -225,7 +235,15 @@ async function applySucceededPayment(payment: Payment): Promise<PaymentResult> {
   payment.paidAt = payment.paidAt ?? todayIsoDate();
 
   await updateStoredPayment(payment);
-  const nextStatus = canStorePayment(payment) ? await markStoredPaymentTargetSucceeded(payment) : markPaymentTargetSucceeded(payment);
+  const nextStatus = canStorePayment(payment)
+    ? await markStoredPaymentTargetSucceeded(payment)
+    : shouldAllowMockPayments()
+      ? markPaymentTargetSucceeded(payment)
+      : undefined;
+
+  if (!nextStatus) {
+    throw new Error("Stored payment target is required before confirming payment");
+  }
 
   return {
     payment,
@@ -238,6 +256,10 @@ async function applySucceededPayment(payment: Payment): Promise<PaymentResult> {
 }
 
 async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) {
+  if (!canStorePayment(input)) {
+    throw new Error("Payment persistence is required before creating YooKassa payment");
+  }
+
   const shopId = process.env.YOOKASSA_SHOP_ID?.trim();
   const secretKey = process.env.YOOKASSA_SECRET_KEY?.trim();
 
@@ -250,17 +272,11 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
   const localPaymentId = createPaymentId();
   const returnUrl = `${getPublicBaseUrl()}/oplata/${localPaymentId}`;
 
-  if (targetType === "listing" && !canStorePayment(input)) {
-    throw new Error("YooKassa listing payments require a stored listing UUID before payment creation");
-  }
-
-  const activePayment = canStorePayment(input)
-    ? await findActiveStoredPaymentForTarget({
-        targetId: input.targetId,
-        targetType,
-        userId: input.userId,
-      })
-    : undefined;
+  const activePayment = await findActiveStoredPaymentForTarget({
+    targetId: input.targetId,
+    targetType,
+    userId: input.userId,
+  });
 
   if (activePayment?.provider === "yookassa" && activePayment.providerPaymentId) {
     try {
@@ -329,25 +345,21 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
     ...(yookassaStatusToPaymentStatus(payload.status, payload.paid) === "succeeded" ? { paidAt: todayIsoDate() } : {}),
   };
 
-  if (canStorePayment(input)) {
-    const storedPayment = await createStoredPayment({
-      amount: payment.amount,
-      id: payment.id,
-      provider: payment.provider,
-      providerPaymentId: payment.providerPaymentId,
-      status: payment.status,
-      targetId: payment.targetId,
-      targetTitle: payment.targetTitle,
-      targetType: payment.targetType,
-      tariff,
-      userId: input.userId,
-    });
+  const storedPayment = await createStoredPayment({
+    amount: payment.amount,
+    id: payment.id,
+    provider: payment.provider,
+    providerPaymentId: payment.providerPaymentId,
+    status: payment.status,
+    targetId: payment.targetId,
+    targetTitle: payment.targetTitle,
+    targetType: payment.targetType,
+    tariff,
+    userId: input.userId,
+  });
 
-    if (!storedPayment) {
-      throw new Error("YooKassa payment was created, but local payment persistence failed");
-    }
-  } else {
-    listMockPayments().unshift(payment);
+  if (!storedPayment) {
+    throw new Error("YooKassa payment was created, but local payment persistence failed");
   }
 
   if (payment.status === "succeeded") {
@@ -394,15 +406,17 @@ export async function createPayment(input: CreatePaymentInput) {
       tariff,
       userId: input.userId,
     });
-  } else {
+  } else if (shouldAllowMockPayments()) {
     listMockPayments().unshift(payment);
+  } else {
+    throw new Error("Payment persistence is required");
   }
 
   return payment;
 }
 
 async function resolvePaymentForConfirmation(paymentId: string) {
-  return (await getStoredPayment(paymentId)) ?? (await findStoredPaymentByProvider(paymentId)) ?? getPayment(paymentId);
+  return (await getStoredPayment(paymentId)) ?? (await findStoredPaymentByProvider(paymentId)) ?? (shouldAllowMockPayments() ? getPayment(paymentId) : undefined);
 }
 
 export async function confirmPayment(paymentOrId: Payment | string, options?: ConfirmPaymentOptions): Promise<PaymentResult> {
@@ -444,7 +458,7 @@ async function findPaymentByYooKassaObject(yookassaPayment: YooKassaPaymentRespo
     return storedPayment;
   }
 
-  return listMockPayments().find((payment) => payment.id === localPaymentId || payment.providerPaymentId === yookassaPayment.id);
+  return shouldAllowMockPayments() ? listMockPayments().find((payment) => payment.id === localPaymentId || payment.providerPaymentId === yookassaPayment.id) : undefined;
 }
 
 export async function processYooKassaNotification(payload: YooKassaNotificationPayload) {

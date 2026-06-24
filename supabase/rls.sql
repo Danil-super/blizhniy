@@ -60,8 +60,8 @@ create policy "Admins can update roles" on user_roles for update using (public.i
 create policy "Admins can delete roles" on user_roles for delete using (public.is_admin());
 
 create policy "Public can read published listings" on listings for select using (status = 'published' or author_id = (select auth.uid()) or public.is_admin());
-create policy "Users can insert own listings" on listings for insert with check (author_id = (select auth.uid()) or public.is_admin());
-create policy "Users can update own listings" on listings for update using (author_id = (select auth.uid()) or public.is_admin()) with check (author_id = (select auth.uid()) or public.is_admin());
+create policy "Users can insert own listings" on listings for insert with check (author_id = (select auth.uid()) and status in ('draft', 'pending_payment') and is_paid = false);
+create policy "Users can update own listings" on listings for update using (author_id = (select auth.uid()) or public.is_admin()) with check (public.is_admin() or (author_id = (select auth.uid()) and status in ('draft', 'pending_payment', 'archived') and is_paid = false));
 create policy "Users can delete own listings" on listings for delete using (author_id = (select auth.uid()) or public.is_admin());
 
 create policy "Public can read listing images" on listing_images for select using (exists (select 1 from listings where listings.id = listing_images.listing_id and (listings.status = 'published' or listings.author_id = (select auth.uid()) or public.is_admin())));
@@ -70,8 +70,8 @@ create policy "Owners can update listing images" on listing_images for update us
 create policy "Owners can delete listing images" on listing_images for delete using (exists (select 1 from listings where listings.id = listing_images.listing_id and (listings.author_id = (select auth.uid()) or public.is_admin())));
 
 create policy "Public can read published vacancies" on vacancies for select using (status = 'published' or author_id = (select auth.uid()) or public.is_admin());
-create policy "Users can insert own vacancies" on vacancies for insert with check (author_id = (select auth.uid()) or public.is_admin());
-create policy "Users can update own vacancies" on vacancies for update using (author_id = (select auth.uid()) or public.is_admin()) with check (author_id = (select auth.uid()) or public.is_admin());
+create policy "Users can insert own vacancies" on vacancies for insert with check (author_id = (select auth.uid()) and status in ('draft', 'pending_payment') and is_paid = false);
+create policy "Users can update own vacancies" on vacancies for update using (author_id = (select auth.uid()) or public.is_admin()) with check (public.is_admin() or (author_id = (select auth.uid()) and status in ('draft', 'pending_payment', 'archived') and is_paid = false));
 create policy "Users can delete own vacancies" on vacancies for delete using (author_id = (select auth.uid()) or public.is_admin());
 
 create policy "Public can read vacancy images" on vacancy_images for select using (exists (select 1 from vacancies where vacancies.id = vacancy_images.vacancy_id and (vacancies.status = 'published' or vacancies.author_id = (select auth.uid()) or public.is_admin())));
@@ -80,8 +80,8 @@ create policy "Owners can update vacancy images" on vacancy_images for update us
 create policy "Owners can delete vacancy images" on vacancy_images for delete using (exists (select 1 from vacancies where vacancies.id = vacancy_images.vacancy_id and (vacancies.author_id = (select auth.uid()) or public.is_admin())));
 
 create policy "Public can read published work requests" on work_requests for select using (status = 'published' or author_id = (select auth.uid()) or public.is_admin());
-create policy "Users can insert own work requests" on work_requests for insert with check (author_id = (select auth.uid()) or public.is_admin());
-create policy "Users can update own work requests" on work_requests for update using (author_id = (select auth.uid()) or public.is_admin()) with check (author_id = (select auth.uid()) or public.is_admin());
+create policy "Users can insert own work requests" on work_requests for insert with check (author_id = (select auth.uid()) and status in ('draft', 'pending_payment'));
+create policy "Users can update own work requests" on work_requests for update using (author_id = (select auth.uid()) or public.is_admin()) with check (public.is_admin() or (author_id = (select auth.uid()) and status in ('draft', 'pending_payment', 'archived')));
 create policy "Users can delete own work requests" on work_requests for delete using (author_id = (select auth.uid()) or public.is_admin());
 
 create policy "Public can read published specialists" on specialist_profiles for select using (status = 'published' or user_id = (select auth.uid()) or public.is_admin());
@@ -100,8 +100,8 @@ create policy "Admins can update applications" on applications for update using 
 create policy "Admins can delete applications" on applications for delete using (public.is_admin());
 
 create policy "Public can read published fair applications" on fair_applications for select using (status = 'published' or user_id = (select auth.uid()) or public.is_admin());
-create policy "Users can insert own fair applications" on fair_applications for insert with check (user_id = (select auth.uid()) or public.is_admin());
-create policy "Users can update own fair applications" on fair_applications for update using (user_id = (select auth.uid()) or public.is_admin()) with check (user_id = (select auth.uid()) or public.is_admin());
+create policy "Users can insert own fair applications" on fair_applications for insert with check (user_id = (select auth.uid()) and status in ('draft', 'pending_payment') and payment_status in ('created', 'pending'));
+create policy "Users can update own fair applications" on fair_applications for update using (user_id = (select auth.uid()) or public.is_admin()) with check (public.is_admin() or (user_id = (select auth.uid()) and status in ('draft', 'pending_payment', 'archived') and payment_status in ('created', 'pending')));
 create policy "Users can delete own fair applications" on fair_applications for delete using (user_id = (select auth.uid()) or public.is_admin());
 
 create policy "Public can read fair application images" on fair_application_images for select using (exists (select 1 from fair_applications where fair_applications.id = fair_application_images.fair_application_id and (fair_applications.status = 'published' or fair_applications.user_id = (select auth.uid()) or public.is_admin())));

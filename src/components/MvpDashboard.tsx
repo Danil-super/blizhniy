@@ -22,6 +22,7 @@ import {
 import { AdminAuthGate } from "@/components/auth/AdminAuthGate";
 import { AdMarqueeAdminPanel } from "@/components/AdMarqueeAdminPanel";
 import { AdminPublicationStatusForm } from "@/components/AdminPublicationStatusForm";
+import { AdminPublicationsTableClient } from "@/components/admin/AdminPublicationsTableClient";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
 import { CabinetShellActions } from "@/components/cabinet/CabinetShellActions";
@@ -39,12 +40,15 @@ import {
 import { CategoryOrderAdminPanel } from "@/components/CategoryOrderAdminPanel";
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
-import { VacancyThumbnail } from "@/components/VacancyMedia";
-import { listDemoListings, toDemoListing } from "@/components/listings/ListingPages";
 import { categories } from "@/lib/data";
-import { listStoredFairApplications, updateStoredFairApplicationStatus } from "@/lib/fair-application-store";
-import { getPayment } from "@/lib/payment-provider";
+import { updateStoredFairApplicationStatus } from "@/lib/fair-application-store";
+import { getPayment, listPayments } from "@/lib/payment-provider";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
+import { listStoredListingsForAdmin } from "@/lib/listing-store";
+import { listStoredSpecialistProfilesForAdmin } from "@/lib/specialist-profile-store";
+import { listStoredVacanciesForAdmin } from "@/lib/vacancy-store";
+import { listStoredWorkRequestsForAdmin } from "@/lib/work-request-store";
 import {
   listApplications,
   listListings,
@@ -201,6 +205,10 @@ async function updatePublicationStatusAction(formData: FormData) {
     return;
   }
 
+  if (!shouldShowFallbackContent() && entityType !== "fairApplication") {
+    return;
+  }
+
   if (entityType === "listing") {
     updateListingStatus(id, status);
     revalidatePath("/admin/obyavleniya");
@@ -255,38 +263,27 @@ async function updatePublicationStatusAction(formData: FormData) {
   }
 }
 
-function listingRows() {
-  const allListings = [...listDemoListings(), ...listListings().map(toDemoListing)];
-  const uniqueListings = Array.from(new Map(allListings.map((listing) => [listing.slug, listing])).values());
-
-  return uniqueListings.map((listing, index) => ({
-    id: listing.viewId ?? listing.slug,
-    statusTargetId: listing.slug,
-    statusEntityType: "listing",
-    href: `/obyavlenie/${listing.slug}`,
-    editHref: `/obyavlenie/${listing.slug}/edit`,
-    title: listing.title,
-    category: listing.categoryName,
-    city: listing.city,
-    district: listing.district ?? listing.address ?? "",
-    status: listing.status,
-    views: index === 0 ? 124 : index === 1 ? 18 : 0,
-  }));
-}
-
 function paymentRows() {
+  if (!shouldShowFallbackContent()) {
+    return [];
+  }
+
   return listMockPayments().map((payment) => ({
     id: payment.id,
     href: `/oplata/${payment.id}`,
     editHref: "/cabinet/oplata",
     subject: payment.targetTitle,
     amount: `${payment.amount} ₽`,
-    method: payment.provider === "mock" ? "Тестовая оплата" : payment.provider,
+    method: payment.provider === "mock" ? "Оплата" : payment.provider,
     status: payment.status,
   }));
 }
 
 function responseRows(): CabinetResponseItem[] {
+  if (!shouldShowFallbackContent()) {
+    return [];
+  }
+
   return listApplications().map((application) => ({
     href: "/rabota/vakansii",
     id: application.id,
@@ -387,14 +384,14 @@ function Shell({
 
 function NavPills({ items, activeHref }: { items: typeof cabinetNav; activeHref?: string }) {
   return (
-    <nav className="mt-5 grid grid-flow-col grid-rows-2 gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:mt-7 sm:flex sm:flex-wrap sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden" aria-label="Разделы">
+    <nav className="mt-5 grid grid-cols-2 gap-2 pb-1 min-[430px]:grid-cols-3 sm:mt-7 sm:flex sm:flex-wrap sm:overflow-visible sm:pb-0" aria-label="Разделы">
       {items.map((item) => {
         const Icon = item.icon;
         const active = item.href === activeHref;
         return (
           <Link
             href={item.href}
-            className={`inline-flex min-h-10 w-[9.25rem] max-w-full items-center justify-start gap-2 rounded-lg border px-3 py-2 text-xs font-bold leading-snug transition sm:min-h-11 sm:w-auto sm:min-w-[9.5rem] sm:flex-none sm:px-4 sm:text-sm ${
+            className={`inline-flex min-h-10 w-full max-w-full items-center justify-start gap-2 rounded-lg border px-3 py-2 text-xs font-bold leading-snug transition sm:min-h-11 sm:w-auto sm:min-w-[9.5rem] sm:flex-none sm:px-4 sm:text-sm ${
               active ? "border-blue-200 bg-blue-50 text-[#0875d1] ring-1 ring-blue-100" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
             }`}
             aria-current={active ? "page" : undefined}
@@ -680,7 +677,7 @@ export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
     tariffs.find((item) => item.id === payment?.tariffId || item.id === paymentId) ??
     tariffs[0] ?? {
       id: "listing-publication",
-      name: "Тестовая оплата",
+      name: "Оплата размещения",
       action: "listing_publication" as const,
       price: 0,
       durationDays: null,
@@ -725,11 +722,22 @@ export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
   );
 }
 
-export function AdminPage() {
+export async function AdminPage() {
   const tariffs = getTariffs();
   const activeTariffs = tariffs.filter((tariff) => tariff.active).length;
-  const publicationsCount = listListings().length + listVacancies().length + listSpecialists().length;
-  const paymentsCount = adminPaymentRows().length;
+  const [adminListings, adminVacancies, adminSpecialists, adminWorkRequests, payments] = await Promise.all([
+    listStoredListingsForAdmin(),
+    listStoredVacanciesForAdmin(),
+    listStoredSpecialistProfilesForAdmin(),
+    listStoredWorkRequestsForAdmin(),
+    listPayments().catch((error) => {
+      console.error("Failed to load admin payment count", error);
+      return [];
+    }),
+  ]);
+  const fallbackPublicationsCount = shouldShowFallbackContent() ? listListings().length + listVacancies().length + listSpecialists().length + listWorkRequests().length : 0;
+  const publicationsCount = adminListings.length + adminVacancies.length + adminSpecialists.length + adminWorkRequests.length + fallbackPublicationsCount;
+  const paymentsCount = payments.length;
 
   return (
     <Shell title="Админка" description="Рабочий обзор: реклама, быстрый переход к разделам и ключевые показатели." eyebrow="Администрирование" createHref={null}>
@@ -782,115 +790,40 @@ export function AdminUsersPage() {
 
 export function AdminListingsPage() {
   return (
-    <AdminTablePage
+    <AdminRemoteTablePage
       title="Объявления"
       description="Модерация пользовательских объявлений и перевод между статусами публикации."
-      rows={listingRows()}
-      columns={[
-        { key: "id", label: "ID" },
-        { key: "title", label: "Название" },
-        { key: "category", label: "Категория" },
-        { key: "city", label: "Город" },
-        { key: "district", label: "Район/адрес" },
-        { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-      ]}
+      type="listings"
     />
   );
 }
 
 export function AdminVacanciesPage() {
-  const rows = listVacancies().map((vacancy) => ({
-    id: vacancy.id,
-    statusTargetId: vacancy.id,
-    statusEntityType: "vacancy",
-    images: vacancy.images,
-    organization: vacancy.organization,
-    title: vacancy.title,
-    city: vacancy.city,
-    address: vacancy.address ?? vacancy.district ?? "",
-    status: vacancy.status,
-    href: `/vakansiya/${vacancy.id}`,
-    editHref: `/rabota/vakansii/${vacancy.id}/edit`,
-  }));
-
   return (
-    <AdminTablePage
+    <AdminRemoteTablePage
       title="Вакансии"
       description="Рабочие публикации компаний и заказчиков в административном виде."
-      rows={rows as unknown as Record<string, unknown>[]}
-      columns={[
-        { key: "id", label: "ID" },
-        { key: "images", label: "Фото", render: (row) => <VacancyThumbnail images={row.images as string[] | undefined} title={String(row.title ?? "Вакансия")} /> },
-        { key: "organization", label: "Компания" },
-        { key: "title", label: "Вакансия" },
-        { key: "city", label: "Город" },
-        { key: "address", label: "Точный адрес" },
-        { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-      ]}
+      type="vacancies"
     />
   );
 }
 
 export function AdminWorkRequestsPage() {
-  const rows = listWorkRequests().map((request) => ({
-    id: request.id,
-    statusTargetId: request.id,
-    statusEntityType: "workRequest",
-    author: request.author,
-    title: request.title,
-    profession: request.profession,
-    city: request.city,
-    budget: request.budget,
-    status: request.status,
-    href: `/rabota/zakazy/${request.id}`,
-    editHref: `/rabota/zakazy/${request.id}/edit`,
-  }));
-
   return (
-    <AdminTablePage
+    <AdminRemoteTablePage
       title="Заказы"
       description="Заявки заказчиков для специалистов и исполнителей с управлением видимостью."
-      rows={rows as unknown as Record<string, unknown>[]}
-      columns={[
-        { key: "id", label: "ID" },
-        { key: "author", label: "Заказчик" },
-        { key: "title", label: "Задача" },
-        { key: "profession", label: "Профессия" },
-        { key: "city", label: "Город" },
-        { key: "budget", label: "Бюджет" },
-        { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-      ]}
+      type="workRequests"
     />
   );
 }
 
 export function AdminSpecialistsPage() {
-  const rows = listSpecialists().map((specialist) => ({
-    id: specialist.id,
-    statusTargetId: specialist.id,
-    statusEntityType: "specialist",
-    name: specialist.name,
-    profession: specialist.profession,
-    city: specialist.city,
-    district: specialist.district,
-    status: specialist.status,
-    href: `/specialist/${specialist.id}`,
-    editHref: `/rabota/specialisty/anketa?from=${specialist.id}`,
-  }));
-
   return (
-    <AdminTablePage
+    <AdminRemoteTablePage
       title="Специалисты"
       description="Анкеты исполнителей, профессии, города и статусы публикации."
-      rows={rows as unknown as Record<string, unknown>[]}
-      columns={[
-        { key: "id", label: "ID" },
-        { key: "name", label: "Имя" },
-        { key: "profession", label: "Профессия" },
-        { key: "city", label: "Город" },
-        { key: "district", label: "Зона" },
-        { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-      ]}
+      type="specialists"
     />
   );
 }
@@ -1048,29 +981,12 @@ export function AdminTariffsPage() {
   );
 }
 
-export async function AdminFairApplicationsPage() {
-  const applications = await listStoredFairApplications();
-  const rows = applications.map((application) => ({
-    ...application,
-    statusTargetId: application.id,
-    statusEntityType: "fairApplication",
-    href: "/yarmarka-masterov",
-    editHref: `/admin/fair-applications?edit=${application.id}`,
-  }));
-
+export function AdminFairApplicationsPage() {
   return (
-    <AdminTablePage
+    <AdminRemoteTablePage
       title="Заявки на ярмарку"
       description="Административный список заявок участников Ярмарки мастеров."
-      rows={rows as unknown as Record<string, unknown>[]}
-      columns={[
-        { key: "id", label: "ID" },
-        { key: "participantName", label: "Участник" },
-        { key: "category", label: "Категория" },
-        { key: "city", label: "Город" },
-        { key: "paymentStatus", label: "Оплата", render: (row) => <StatusBadge status={String(row.paymentStatus)} /> },
-        { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-      ]}
+      type="fairApplications"
     />
   );
 }
@@ -1092,6 +1008,26 @@ function AdminTablePage<T extends Record<string, unknown>>({
     <Shell title={title} description={description} eyebrow="Администрирование" createHref={createHref}>
       <AdminGuardedContent>
         <DataTable rows={rows} columns={columns} />
+      </AdminGuardedContent>
+    </Shell>
+  );
+}
+
+function AdminRemoteTablePage({
+  description,
+  title,
+  type,
+}: {
+  description: string;
+  title: string;
+  type: "fairApplications" | "listings" | "specialists" | "vacancies" | "workRequests";
+}) {
+  const createHref = isDemoAdminBypassEnabled() ? "/razmestit?admin=1" : "/razmestit";
+
+  return (
+    <Shell title={title} description={description} eyebrow="Администрирование" createHref={createHref}>
+      <AdminGuardedContent>
+        <AdminPublicationsTableClient type={type} />
       </AdminGuardedContent>
     </Shell>
   );

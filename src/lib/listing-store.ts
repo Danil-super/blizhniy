@@ -1,10 +1,11 @@
 import { categories, region } from "@/lib/data";
 import { formatBookingPrice } from "@/lib/booking-details";
+import { hasMapCoordinates } from "@/lib/map-location";
 import { publicMediaUrl } from "@/lib/storage-upload";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { BookingDetails, Listing, ListingKind, PublicationStatus } from "@/lib/types";
 
-type ListingTypeRow = "sell" | "buy" | "exchange" | "free" | "rent";
+type ListingTypeRow = "sell" | "buy" | "free" | "rent";
 
 type ListingImageRow = {
   sort_order?: number | null;
@@ -82,7 +83,6 @@ function normalizeLookupText(value?: string) {
 
 const listingKindByDbType: Record<ListingTypeRow, ListingKind> = {
   buy: "kuplyu",
-  exchange: "menyayu",
   free: "otdam-darom",
   rent: "arenda",
   sell: "prodam",
@@ -91,7 +91,6 @@ const listingKindByDbType: Record<ListingTypeRow, ListingKind> = {
 const dbTypeByListingKind: Record<ListingKind, ListingTypeRow> = {
   arenda: "rent",
   kuplyu: "buy",
-  menyayu: "exchange",
   "otdam-darom": "free",
   prodam: "sell",
 };
@@ -99,7 +98,6 @@ const dbTypeByListingKind: Record<ListingKind, ListingTypeRow> = {
 const fallbackCategoryByKind: Record<ListingKind, string> = {
   arenda: "nedvizhimost",
   kuplyu: "raznoe",
-  menyayu: "raznoe",
   "otdam-darom": "raznoe",
   prodam: "raznoe",
 };
@@ -161,7 +159,7 @@ function mediaUrls(row: ListingRow) {
 }
 
 function resolveShowExactAddress(input: CreateStoredListingInput) {
-  return Boolean(input.showExactAddress);
+  return Boolean((input.showExactAddress || input.address) && hasMapCoordinates(input.lat, input.lng));
 }
 
 function normalizeBooking(value: ListingRow["booking"]) {
@@ -203,7 +201,7 @@ function mapListing(row: ListingRow): Listing {
     kind,
     categorySlug,
     subcategory: categoryInfo.subcategory,
-    author: row.profiles?.display_name ?? "Пользователь БЛИЖНИЙ",
+    author: row.profiles?.display_name ?? "Пользователь",
     title: row.title,
     description: row.description,
     city: row.cities?.name ?? "Краснодар",
@@ -211,7 +209,7 @@ function mapListing(row: ListingRow): Listing {
     address: row.address ?? undefined,
     lat: toNumber(row.latitude),
     lng: toNumber(row.longitude),
-    hasMapPoint: Boolean(row.latitude && row.longitude),
+    hasMapPoint: Boolean(row.show_exact_address && row.latitude && row.longitude),
     showExactAddress: row.show_exact_address,
     price: booking ? formatBookingPrice(booking) : formatPrice(row.price),
     images: mediaUrls(row),
@@ -628,6 +626,23 @@ export async function listStoredListings(limit = 24) {
     return rows.map(mapListing);
   } catch (error) {
     console.error("Failed to load listings from Supabase", error);
+    return [];
+  }
+}
+
+export async function listStoredListingsForAdmin(limit = 200) {
+  if (!isSupabaseRestConfigured()) {
+    return [];
+  }
+
+  try {
+    const rows = await supabaseRest<ListingRow[]>(
+      `/rest/v1/listings?select=${listingSelect}&order=created_at.desc&limit=${limit}`,
+    );
+
+    return rows.map(mapListing);
+  } catch (error) {
+    console.error("Failed to load admin listings from Supabase", error);
     return [];
   }
 }

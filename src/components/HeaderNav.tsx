@@ -1,19 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { X } from "lucide-react";
-import { HeaderActions } from "@/components/HeaderActions";
+import { ChevronRight, Menu, X } from "lucide-react";
 import { useAuthState } from "@/components/auth/useAuthState";
-import menuGif from "../../menu.gif";
 
 const publicLinks = [
   ["Объявления", "/obyavleniya"],
   ["Как работает", "/kak-rabotaet"],
   ["Ярмарка мастеров", "/yarmarka-masterov"],
-  ["Для бизнеса", "/rabota/vakansii/sozdat"],
-  ["Помощь", "/legal/agreement"],
 ];
 
 export function HeaderNav() {
@@ -34,42 +29,49 @@ export function HeaderNav() {
   }, []);
 
   return (
-    <nav className="page-container relative flex min-h-8 min-w-0 items-center justify-between gap-2 overflow-x-clip text-sm md:min-h-10 md:gap-4" aria-label="Основная навигация">
-      <div className="relative md:hidden" ref={menuRef}>
+    <nav className="relative flex min-w-0 flex-1 items-center justify-start gap-2 overflow-visible text-sm md:justify-center md:gap-4" aria-label="Основная навигация">
+      <div className="relative lg:hidden" ref={menuRef}>
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}
-          className="inline-flex h-6 w-6 appearance-none items-center justify-center border-0 bg-transparent p-0 text-slate-800 transition hover:text-[#0875d1]"
+          className="inline-flex h-11 w-11 appearance-none items-center justify-center rounded-full border-0 bg-transparent p-0 text-slate-700 transition active:scale-95"
           aria-label={open ? "Закрыть меню" : "Открыть меню"}
           aria-expanded={open}
         >
-          {open ? <X className="h-6 w-6" /> : <Image src={menuGif} alt="" width={24} height={24} unoptimized className="h-6 w-6 object-contain" aria-hidden="true" />}
+          <span
+            className={`inline-flex h-9 w-9 items-center justify-center rounded-full border shadow-sm transition ${
+              open ? "border-emerald-200 bg-emerald-50 text-[#2f8f12]" : "border-slate-200 bg-white hover:border-emerald-200 hover:text-[#2f8f12]"
+            }`}
+          >
+            {open ? <X className="h-[18px] w-[18px]" aria-hidden="true" /> : <Menu className="h-[18px] w-[18px]" aria-hidden="true" />}
+          </span>
         </button>
         {open ? (
-          <div className="absolute left-0 top-[calc(100%+8px)] z-[90] w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-2 shadow-xl shadow-slate-900/10">
+          <div className="fixed left-3 top-[116px] z-[120] w-[min(17.5rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-900/14 ring-1 ring-slate-900/5">
+            <div className="px-2.5 pb-1 pt-1">
+              <p className="text-[10px] font-black uppercase leading-none tracking-wide text-[#2f8f12]">Меню</p>
+            </div>
             {links.map(([label, href]) => (
               <Link
                 key={href}
                 href={href}
                 onClick={() => setOpen(false)}
-                className="block px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-blue-50 hover:text-[#0875d1]"
+                className="flex min-h-10 items-center justify-between gap-3 rounded-xl px-2.5 text-sm font-black text-slate-800 transition hover:bg-emerald-50 hover:text-[#2f8f12]"
               >
-                {label}
+                <span>{label}</span>
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
               </Link>
             ))}
           </div>
         ) : null}
       </div>
 
-      <div className="hidden min-w-0 flex-1 items-center gap-4 text-slate-600 md:flex">
+      <div className="hidden min-w-0 flex-wrap items-center justify-center gap-7 text-slate-700 lg:flex">
         {links.map(([label, href]) => (
-          <Link key={href} href={href} className="transition hover:text-[#0875d1]">
+          <Link key={href} href={href} className="whitespace-nowrap font-semibold transition hover:text-[#2f8f12]">
             {label}
           </Link>
         ))}
-      </div>
-      <div className="min-w-0 shrink-0">
-        <HeaderActions compact />
       </div>
     </nav>
   );

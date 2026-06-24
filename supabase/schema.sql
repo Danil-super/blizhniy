@@ -12,7 +12,7 @@ create type publication_status as enum (
   'sold'
 );
 
-create type listing_type as enum ('sell', 'buy', 'exchange', 'free', 'rent');
+create type listing_type as enum ('sell', 'buy', 'free', 'rent');
 create type payment_status as enum ('created', 'pending', 'succeeded', 'failed', 'refunded');
 create type tariff_action as enum ('listing_publication', 'vacancy_publication', 'work_request_publication', 'job_response', 'fair_participation', 'specialist_publication', 'ad_marquee');
 create type app_role as enum ('user', 'specialist', 'organization', 'admin');

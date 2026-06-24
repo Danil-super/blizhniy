@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
+import { BrandName } from "@/components/BrandName";
 import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
@@ -113,7 +114,7 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
             title="Разместить вакансию"
             description={
               adminMode
-                ? "Админ-режим для тестирования: вакансию можно сохранить без оплаты."
+                ? "Админ-режим: вакансию можно сохранить без оплаты для служебной проверки."
                 : "После заполнения создается заказ на оплату тарифа размещения вакансии. После оплаты вакансия будет опубликована."
             }
           >
@@ -156,7 +157,7 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
                     paymentConsent
                     errorMessage="Примите условия публичной оферты, чтобы перейти к оплате"
                   >
-                    Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю услугу размещения вакансии на сайте БЛИЖНИЙ.
+                    Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю услугу размещения вакансии на сайте <BrandName />.
                   </LegalConsentCheckbox>
                 ) : null}
                 <div className="flex flex-wrap gap-3">

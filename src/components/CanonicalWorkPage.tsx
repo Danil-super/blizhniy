@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { BriefcaseBusiness, ChevronRight, ClipboardList, Clock3, MapPin, UserRound } from "lucide-react";
+import { BrandName } from "@/components/BrandName";
 import { VacancyCardMedia } from "@/components/VacancyMedia";
 import { specialists as fallbackSpecialists, vacancies as fallbackVacancies, workRequests as fallbackWorkRequests } from "@/lib/data";
 import { formatPublicationDateTime } from "@/lib/publication-time";
@@ -152,7 +153,7 @@ export function CanonicalWorkPage({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-3xl font-black leading-tight text-[#060b27] sm:text-5xl">Работа</h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 sm:text-lg sm:leading-7">Вакансии, заказы и анкеты специалистов на платформе БЛИЖНИЙ.</p>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 sm:text-lg sm:leading-7">Вакансии, заказы и анкеты специалистов на платформе <BrandName />.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
           <Link href="/rabota/vakansii/sozdat" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]">

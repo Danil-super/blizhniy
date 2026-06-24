@@ -3,6 +3,7 @@ import { CanonicalWorkPage } from "@/components/CanonicalWorkPage";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { listSpecialists, listWorkRequests } from "@/lib/mock-store";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/specialist-profile-store";
 import { listStoredVacancies, listVacanciesWithStored } from "@/lib/vacancy-store";
 import { listStoredWorkRequests, listWorkRequestsWithStored } from "@/lib/work-request-store";
@@ -20,13 +21,13 @@ export default async function Page() {
   const storedWorkRequests = await listStoredWorkRequests(12);
   const workRequests = listWorkRequestsWithStored(storedWorkRequests);
   const storedSpecialists = await listStoredSpecialistProfiles(12);
-  const specialists = listSpecialistsWithStored(storedSpecialists, listSpecialists());
+  const specialists = listSpecialistsWithStored(storedSpecialists, shouldShowFallbackContent() ? listSpecialists() : []);
 
   return (
     <>
       <SiteHeader />
       <HomeHero />
-      <CanonicalWorkPage specialists={specialists} vacancies={vacancies} workRequests={workRequests.length ? workRequests : listWorkRequests()} />
+      <CanonicalWorkPage specialists={specialists} vacancies={vacancies} workRequests={workRequests.length ? workRequests : shouldShowFallbackContent() ? listWorkRequests() : []} />
     </>
   );
 }

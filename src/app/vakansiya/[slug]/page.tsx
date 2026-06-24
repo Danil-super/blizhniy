@@ -7,11 +7,11 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LocationMap } from "@/components/LocationMap";
 import { VacancyApplicationButton } from "@/components/VacancyApplicationButton";
-import { VacancyDetailClient } from "@/components/VacancyDetailClient";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { listVacancies } from "@/lib/mock-store";
 import { formatPublicationDateTime } from "@/lib/publication-time";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isUuid } from "@/lib/supabase-rest";
 import type { JobVacancy } from "@/lib/types";
 import { getStoredVacancyById } from "@/lib/vacancy-store";
@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const vacancy = (await getStoredVacancyById(slug, { publicOnly: true })) ?? listVacancies().find((item) => item.id === slug);
+  const vacancy = (await getStoredVacancyById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listVacancies().find((item) => item.id === slug) : undefined);
 
   return {
     title: vacancy ? `${vacancy.title} — вакансия` : "Вакансия",
@@ -41,15 +41,10 @@ function vacancyLocationLabel(vacancy: JobVacancy) {
 
 export default async function VacancyDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const vacancy = (await getStoredVacancyById(slug, { publicOnly: true })) ?? listVacancies().find((item) => item.id === slug);
+  const vacancy = (await getStoredVacancyById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listVacancies().find((item) => item.id === slug) : undefined);
 
   if (!vacancy) {
-    return (
-      <>
-        <SiteHeader />
-        <VacancyDetailClient vacancyId={slug} />
-      </>
-    );
+    notFound();
   }
 
   if (vacancy.status !== "published") {
@@ -57,7 +52,7 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
   }
 
   const images = vacancy.images ?? [];
-  const hasPoint = hasMapCoordinates(vacancy.lat, vacancy.lng);
+  const hasPoint = Boolean(vacancy.showExactAddress) && hasMapCoordinates(vacancy.lat, vacancy.lng);
   const canReceivePaidApplications = isUuid(vacancy.id);
   const placeLabel = vacancyLocationLabel(vacancy);
   const publishedLabel = formatPublicationDateTime(vacancy.publishedAt ?? vacancy.createdAt, "10:00");
@@ -66,32 +61,32 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
     <>
       <SiteHeader />
       <ListingViewTracker listingId={`work-vacancy-${vacancy.id}`} />
-      <main className="page-container py-5 sm:py-10">
+      <main className="page-container pb-28 pt-4 sm:py-10">
         <BackLink fallbackHref="/rabota/vakansii" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
         </BackLink>
         <article className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
           <section className="grid gap-4">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
-              <div className="grid gap-4 md:grid-cols-[minmax(17rem,24rem)_minmax(0,1fr)] md:items-start">
-                <DetailImageGallery images={images} title={vacancy.title} fallbackIcon={<BriefcaseBusiness className="h-16 w-16 text-slate-300" />} />
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-card sm:p-5">
+              <div className="grid gap-3 md:grid-cols-[minmax(17rem,24rem)_minmax(0,1fr)] md:items-start md:gap-4">
+                <DetailImageGallery compactMobile images={images} title={vacancy.title} fallbackIcon={<BriefcaseBusiness className="h-14 w-14 text-slate-300 sm:h-16 sm:w-16" />} />
                 <div className="order-1 min-w-0 md:order-2">
                   <StatusBadge status={vacancy.status} />
-                  <p className="mt-3 text-sm font-semibold text-slate-500">{vacancy.organization}</p>
-                  <p className="mt-2 text-sm text-slate-500">{vacancy.profession}</p>
-                  <h1 className="mt-2 text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">{vacancy.title}</h1>
-                  <p className="mt-3 text-xl font-black text-[#060b27] sm:text-2xl">{vacancy.salary}</p>
+                  <p className="mt-3 text-sm font-semibold text-slate-500 [overflow-wrap:anywhere]">{vacancy.organization}</p>
+                  <p className="mt-2 text-sm text-slate-500 [overflow-wrap:anywhere]">{vacancy.profession}</p>
+                  <h1 className="mt-2 text-2xl font-black leading-tight text-[#060b27] [overflow-wrap:anywhere] sm:text-3xl lg:text-4xl">{vacancy.title}</h1>
+                  <p className="mt-3 text-xl font-black text-[#060b27] [overflow-wrap:anywhere] sm:text-2xl">{vacancy.salary}</p>
                   {vacancy.schedule || vacancy.workFormat ? (
                     <div className="mt-4 flex flex-wrap gap-2">
-                      {vacancy.schedule ? <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-[#0875d1]">{vacancy.schedule}</span> : null}
-                      {vacancy.workFormat ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700">{vacancy.workFormat}</span> : null}
+                      {vacancy.schedule ? <span className="min-w-0 rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-[#0875d1] [overflow-wrap:anywhere]">{vacancy.schedule}</span> : null}
+                      {vacancy.workFormat ? <span className="min-w-0 rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700 [overflow-wrap:anywhere]">{vacancy.workFormat}</span> : null}
                     </div>
                   ) : null}
                   <div className="mt-3 grid gap-2 text-sm font-semibold text-slate-600">
                     {publishedLabel ? <p>{publishedLabel}</p> : null}
-                    <p className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-[#0875d1] sm:h-5 sm:w-5" />
-                      {placeLabel}
+                    <p className="flex min-w-0 items-start gap-2">
+                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#0875d1] sm:h-5 sm:w-5" />
+                      <span className="min-w-0 [overflow-wrap:anywhere]">{placeLabel}</span>
                     </p>
                   </div>
                 </div>
@@ -101,23 +96,23 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
               <section>
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
                   <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Описание</h2>
-                  <p className="mt-3 whitespace-pre-line">{vacancy.description}</p>
+                  <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.description}</p>
                 </div>
               </section>
               <section className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
                   <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Требования</h2>
-                  <p className="mt-3 whitespace-pre-line">{vacancy.requirements}</p>
+                  <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.requirements}</p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
                   <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Обязанности</h2>
-                  <p className="mt-3 whitespace-pre-line">{vacancy.responsibilities}</p>
+                  <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.responsibilities}</p>
                 </div>
               </section>
               {vacancy.conditions ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
                   <h2 className="text-lg font-black text-[#060b27] sm:text-xl">Условия</h2>
-                  <p className="mt-3 whitespace-pre-line">{vacancy.conditions}</p>
+                  <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.conditions}</p>
                 </div>
               ) : null}
             </div>
@@ -147,7 +142,7 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
             </section>
             {hasPoint ? (
               <div className="hidden lg:block">
-                <LocationMap location={{ ...vacancy, showExactAddress: Boolean(vacancy.showExactAddress), hasMapPoint: true }} exactLabel="Для вакансий организаций можно показывать точный адрес" />
+                <LocationMap location={{ ...vacancy, showExactAddress: Boolean(vacancy.showExactAddress), hasMapPoint: hasPoint }} exactLabel="Для вакансий организаций можно показывать точный адрес" />
               </div>
             ) : (
               <section className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:block">

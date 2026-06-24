@@ -20,7 +20,7 @@ export type Category = {
   children: string[];
 };
 
-export type ListingKind = "prodam" | "kuplyu" | "menyayu" | "otdam-darom" | "arenda";
+export type ListingKind = "prodam" | "kuplyu" | "otdam-darom" | "arenda";
 
 export type BookingDetails = {
   mode: "stay" | "tour";

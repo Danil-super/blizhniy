@@ -36,7 +36,7 @@ export function ListingCard({ listing }: { listing: Listing }) {
         </p>
       </div>
       <div className="flex flex-col gap-3 sm:items-end">
-        <p className="[overflow-wrap:anywhere] text-lg font-black text-[#060b27] sm:text-xl">{listing.price ?? "Обмен"}</p>
+        <p className="[overflow-wrap:anywhere] text-lg font-black text-[#060b27] sm:text-xl">{listing.price ?? "Цена не указана"}</p>
         <div className="flex flex-wrap gap-2 sm:flex-col">
           {listing.phone ? (
             <a className="inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-3 text-sm font-semibold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] sm:flex-none sm:px-4" href={`tel:${listing.phone}`}>

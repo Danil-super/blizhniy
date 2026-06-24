@@ -5,7 +5,11 @@ import { VacancyThumbnail } from "@/components/VacancyMedia";
 import { listPublicDemoListings } from "@/components/listings/ListingPages";
 import { categories, cities, professions, region } from "@/lib/data";
 import { listFairApplications, listSpecialists, listWorkRequests } from "@/lib/mock-store";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
+import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/specialist-profile-store";
+import { listStoredFairApplications } from "@/lib/fair-application-store";
 import { listStoredVacancies, listVacanciesWithStored } from "@/lib/vacancy-store";
+import { listStoredWorkRequests, listWorkRequestsWithStored } from "@/lib/work-request-store";
 
 type SearchResult = {
   title: string;
@@ -34,6 +38,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const matchesCity = (value?: string) => !cityName || value === cityName;
   const storedVacancies = await listStoredVacancies(100);
   const vacancies = listVacanciesWithStored(storedVacancies);
+  const fallbackEnabled = shouldShowFallbackContent();
+  const storedSpecialists = await listStoredSpecialistProfiles(100);
+  const specialists = listSpecialistsWithStored(storedSpecialists, fallbackEnabled ? listSpecialists() : []);
+  const storedWorkRequests = await listStoredWorkRequests(100);
+  const workRequests = listWorkRequestsWithStored(storedWorkRequests.length ? storedWorkRequests : fallbackEnabled ? listWorkRequests() : []);
+  const fairApplications = fallbackEnabled ? listFairApplications() : await listStoredFairApplications("published");
 
   const listingResults: SearchResult[] = listPublicDemoListings()
     .filter((listing) =>
@@ -64,7 +74,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       type: "Вакансия",
     }));
 
-  const specialistResults: SearchResult[] = listSpecialists()
+  const specialistResults: SearchResult[] = specialists
     .filter(
       (specialist) =>
         specialist.status === "published" &&
@@ -77,7 +87,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       type: "Специалист",
     }));
 
-  const workRequestResults: SearchResult[] = listWorkRequests()
+  const workRequestResults: SearchResult[] = workRequests
     .filter(
       (request) =>
         request.status === "published" &&
@@ -90,7 +100,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       type: "Заказ",
     }));
 
-  const fairResults: SearchResult[] = listFairApplications()
+  const fairResults: SearchResult[] = fairApplications
     .filter(
       (application) =>
         application.status === "published" &&
@@ -130,7 +140,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
       <main className="page-container py-10">
         <section>
           <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Поиск</p>
-          <h1 className="mt-3 text-4xl font-black text-[#060b27]">{query ? `Результаты: ${query}` : "Все примеры на площадке"}</h1>
+          <h1 className="mt-3 text-4xl font-black text-[#060b27]">{query ? `Результаты: ${query}` : "Поиск по площадке"}</h1>
           <p className="mt-3 max-w-3xl leading-7 text-slate-600">
             Поиск работает по объявлениям, вакансиям, специалистам, категориям и классификатору профессий.
             Регион выдачи: {cityName ?? region.name}.

@@ -8,16 +8,16 @@ import { ListingKind, ListingKindBadge, type DemoListing } from "@/components/li
 import { listStoredListings } from "@/lib/listing-store";
 import { listListings } from "@/lib/mock-store";
 import { publicationTimestamp } from "@/lib/publication-time";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 
 const listingKinds: { slug: ListingKind; title: string; description: string }[] = [
   { slug: "prodam", title: "Продам", description: "Вещи, мебель, растения и полезные товары рядом с домом." },
   { slug: "kuplyu", title: "Куплю", description: "Запросы покупателей: что ищут жители Краснодара и края." },
-  { slug: "menyayu", title: "Меняю", description: "Обмен товарами, коллекциями, вещами и материалами." },
   { slug: "otdam-darom", title: "Отдам даром", description: "Публикации без цены: забрать, передать, пристроить." },
   { slug: "arenda", title: "Аренда", description: "Бронирование турбаз, гостиниц, домов и активного отдыха." },
 ];
 
-const mainListingKinds = listingKinds.filter((item) => item.slug === "prodam" || item.slug === "kuplyu" || item.slug === "menyayu" || item.slug === "otdam-darom");
+const mainListingKinds = listingKinds.filter((item) => item.slug === "prodam" || item.slug === "kuplyu" || item.slug === "otdam-darom");
 
 function listingKindHref(kind: ListingKind) {
   return `/obyavleniya/${kind}`;
@@ -33,11 +33,8 @@ function uniqueListings(listings: DemoListing[]) {
 
 async function listPublicListings(limit = 200) {
   const storedListings = await listStoredListings(limit);
-  const listings = uniqueListings([
-    ...storedListings.map(toDemoListing),
-    ...listListings().map(toDemoListing),
-    ...listDemoListings(),
-  ]);
+  const fallbackListings = shouldShowFallbackContent() ? [...listListings().map(toDemoListing), ...listDemoListings()] : [];
+  const listings = uniqueListings([...storedListings.map(toDemoListing), ...fallbackListings]);
 
   return listings
     .filter((listing) => listing.status === "published")
@@ -124,13 +121,13 @@ export async function PublicListingKindPage({ kind }: { kind: ListingKind }) {
 }
 
 export async function PublicExchangeAndFreePage() {
-  const listings = (await listPublicListings()).filter((listing) => listing.kind === "menyayu" || listing.kind === "otdam-darom");
+  const listings = (await listPublicListings()).filter((listing) => listing.kind === "otdam-darom");
 
   return (
     <>
       <SiteHeader />
       <main className="page-container py-6 sm:py-8 lg:py-10">
-        <Breadcrumbs items={[{ label: "Меняю и отдам даром" }]} />
+        <Breadcrumbs items={[{ label: "Отдам даром" }]} />
         <BackLink fallbackHref="/obyavleniya" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
           Назад
         </BackLink>
@@ -138,13 +135,13 @@ export async function PublicExchangeAndFreePage() {
           <section>
             <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
               <div>
-                <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Меняю и отдам даром</h1>
+                <h1 className="text-2xl font-black leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">Отдам даром</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">
-                  Раздел обмена и бесплатных объявлений рядом с домом.
+                  Раздел бесплатных объявлений рядом с домом.
                 </p>
               </div>
               <Link
-                href={createListingHref("menyayu")}
+                href={createListingHref("otdam-darom")}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5 lg:h-12 lg:px-6 lg:text-base"
               >
                 Разместить
@@ -153,19 +150,13 @@ export async function PublicExchangeAndFreePage() {
             </div>
             <div className="mt-4 flex flex-wrap gap-2 sm:mt-5 lg:mt-6">
               <Link
-                href="/obyavleniya/menyayu"
-                className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
-              >
-                Меняю
-              </Link>
-              <Link
                 href="/obyavleniya/otdam-darom"
                 className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] sm:h-9 sm:text-sm lg:h-10 lg:px-4"
               >
                 Отдам даром
               </Link>
             </div>
-            <ListingResultsPanel kind={["menyayu", "otdam-darom"]} listings={listings} />
+            <ListingResultsPanel kind="otdam-darom" listings={listings} />
           </section>
         </div>
       </main>

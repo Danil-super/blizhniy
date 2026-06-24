@@ -134,7 +134,6 @@ export const listingKinds: Array<{ slug: ListingKind; name: string; description:
   { slug: "prodam", name: "Продам", description: "Товары, вещи и услуги от жителей края" },
   { slug: "kuplyu", name: "Куплю", description: "Заявки покупателей и поиск нужных вещей" },
   { slug: "arenda", name: "Аренда", description: "Бронирование жилья, турбаз, гостиниц и активного отдыха" },
-  { slug: "menyayu", name: "Меняю", description: "Обмен товарами, материалами и услугами" },
   { slug: "otdam-darom", name: "Отдам даром", description: "Полезные вещи без оплаты" },
 ];
 
@@ -197,13 +196,13 @@ export const listings: Listing[] = [
   },
   {
     id: "3",
-    slug: "menyayu-instrument-novorossiysk-3",
-    kind: "menyayu",
+    slug: "otdam-instrument-novorossiysk-3",
+    kind: "otdam-darom",
     categorySlug: "instrumenty",
     subcategory: "Электроинструмент",
     author: "Сергей",
-    title: "Меняю набор электроинструмента",
-    description: "Обменяю комплект инструмента на материалы для ремонта или садовую технику.",
+    title: "Отдам набор электроинструмента",
+    description: "Отдам комплект инструмента. Забрать можно по договоренности.",
     city: "Новороссийск",
     district: "Приморский район",
     lat: 44.724,

@@ -1,5 +1,7 @@
 import { region, vacancies as demoVacancies } from "@/lib/data";
+import { hasMapCoordinates } from "@/lib/map-location";
 import { publicMediaUrl } from "@/lib/storage-upload";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { JobVacancy, PublicationStatus } from "@/lib/types";
 
@@ -233,7 +235,7 @@ function mapVacancy(row: VacancyRow): JobVacancy {
     address: row.address ?? undefined,
     lat: toNumber(row.latitude),
     lng: toNumber(row.longitude),
-    hasMapPoint: Boolean(row.latitude && row.longitude),
+    hasMapPoint: Boolean(row.show_exact_address && row.latitude && row.longitude),
     showExactAddress: row.show_exact_address,
     salary: formatSalary(row.salary),
     logoText: row.organization_name.slice(0, 12),
@@ -345,7 +347,7 @@ async function storedVacancyBody(input: CreateStoredVacancyInput, status: Public
     responsibilities: input.responsibilities || null,
     salary: salaryToNumber(input.salary),
     schedule: input.schedule || null,
-    show_exact_address: Boolean(input.address && input.lat && input.lng),
+    show_exact_address: Boolean(input.address && hasMapCoordinates(input.lat, input.lng)),
     specialist_category_id: specialistCategoryId,
     status,
     title: input.title,
@@ -511,6 +513,23 @@ export async function listStoredVacancies(limit = 24) {
   }
 }
 
+export async function listStoredVacanciesForAdmin(limit = 200) {
+  if (!isSupabaseRestConfigured()) {
+    return [];
+  }
+
+  try {
+    const rows = await supabaseRest<VacancyRow[]>(
+      `/rest/v1/vacancies?select=${vacancySelect}&order=created_at.desc&limit=${limit}`,
+    );
+
+    return rows.map(mapVacancy);
+  } catch (error) {
+    console.error("Failed to load admin vacancies from Supabase", error);
+    return [];
+  }
+}
+
 export async function listStoredVacanciesForUser(userId: string) {
   if (!isSupabaseRestConfigured()) {
     return [];
@@ -643,6 +662,10 @@ export async function markStoredVacancyPaid(vacancyId: string) {
 }
 
 export function listVacanciesWithStored(storedVacancies: JobVacancy[]) {
+  if (!shouldShowFallbackContent()) {
+    return storedVacancies;
+  }
+
   const storedIds = new Set(storedVacancies.map((vacancy) => vacancy.id));
 
   return [...storedVacancies, ...demoVacancies.filter((vacancy) => !storedIds.has(vacancy.id))];

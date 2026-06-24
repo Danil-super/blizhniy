@@ -105,5 +105,5 @@ export async function isAdminRequest(request: Request) {
 }
 
 export function isDemoAdminBypassEnabled() {
-  return process.env.ENABLE_DEMO_ADMIN_BYPASS === "true";
+  return process.env.NODE_ENV !== "production" && process.env.ENABLE_DEMO_ADMIN_BYPASS === "true";
 }

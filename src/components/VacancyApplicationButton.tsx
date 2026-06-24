@@ -16,6 +16,10 @@ type VacancyApplicationButtonProps = {
   vacancyTitle?: string;
 };
 
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   if (!isSupabaseBrowserConfigured()) {
     return {};
@@ -35,11 +39,12 @@ export function VacancyApplicationButton({ targetKind = "vacancy", targetId, tar
   const [statusMessage, setStatusMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const resolvedTargetId = targetId ?? vacancyId ?? "";
+  const resolvedTargetId = (targetId ?? vacancyId ?? "").trim();
   const resolvedTargetTitle = targetTitle ?? vacancyTitle ?? "";
   const targetLabel = targetKind === "workRequest" ? "заказ" : "вакансию";
   const ownerLabel = targetKind === "workRequest" ? "Заказчик" : "Работодатель";
   const ownerDativeLabel = targetKind === "workRequest" ? "заказчику" : "работодателю";
+  const ownerGenitiveLabel = targetKind === "workRequest" ? "заказчика" : "работодателя";
 
   useEffect(() => {
     let active = true;
@@ -82,6 +87,11 @@ export function VacancyApplicationButton({ targetKind = "vacancy", targetId, tar
 
     if (!specialist) {
       setStatusMessage("Сначала создайте и опубликуйте анкету специалиста.");
+      return;
+    }
+
+    if (!isUuidLike(resolvedTargetId)) {
+      setStatusMessage(`Отклик доступен только для опубликованн${targetKind === "workRequest" ? "ого заказа" : "ой вакансии"}.`);
       return;
     }
 
@@ -169,7 +179,9 @@ export function VacancyApplicationButton({ targetKind = "vacancy", targetId, tar
         </div>
         <div className="min-w-0">
           <p className="font-black text-[#060b27]">Откликнуться</p>
-          <p className="mt-1 text-sm leading-5 text-slate-700">{ownerLabel} получит вашу анкету: {specialist.name}. Контакты заказчика не раскрываются до его решения.</p>
+          <p className="mt-1 text-sm leading-5 text-slate-700">
+            {ownerLabel} получит вашу анкету: {specialist.name}. Контакты {ownerGenitiveLabel} не раскрываются до его решения.
+          </p>
         </div>
       </div>
       <textarea

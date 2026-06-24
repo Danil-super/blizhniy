@@ -1,9 +1,11 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
 import type { ComponentType } from "react";
-import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowRight,
   Baby,
   BriefcaseBusiness,
   Building2,
@@ -22,12 +24,7 @@ import {
   Utensils,
   Wrench,
 } from "lucide-react";
-import {
-  categoryDisplayItems,
-  categoryDisplayOrderEventName,
-  orderCategoryDisplayItems,
-  readCategoryDisplayOrder,
-} from "@/lib/category-display-order";
+import { categoryDisplayItems } from "@/lib/category-display-order";
 
 function MemorialIcon({ className }: { className?: string }) {
   return (
@@ -44,80 +41,173 @@ function MemorialIcon({ className }: { className?: string }) {
   );
 }
 
-const categoryTones = {
-  blue: {
-    card: "from-blue-50 via-white to-white hover:border-blue-200",
-    accent: "bg-[#0875d1]",
-    icon: "bg-blue-100 text-[#0875d1] ring-blue-200",
-    glow: "bg-blue-100",
-  },
-  green: {
-    card: "from-emerald-50 via-white to-white hover:border-emerald-200",
-    accent: "bg-[#0a8f32]",
-    icon: "bg-emerald-100 text-[#0a8f32] ring-emerald-200",
-    glow: "bg-emerald-100",
-  },
-  amber: {
-    card: "from-amber-50 via-white to-white hover:border-amber-200",
-    accent: "bg-amber-500",
-    icon: "bg-amber-100 text-amber-700 ring-amber-200",
-    glow: "bg-amber-100",
-  },
-  violet: {
-    card: "from-violet-50 via-white to-white hover:border-violet-200",
-    accent: "bg-violet-500",
-    icon: "bg-violet-100 text-violet-700 ring-violet-200",
-    glow: "bg-violet-100",
-  },
-  rose: {
-    card: "from-rose-50 via-white to-white hover:border-rose-200",
-    accent: "bg-rose-500",
-    icon: "bg-rose-100 text-rose-700 ring-rose-200",
-    glow: "bg-rose-100",
-  },
-  cyan: {
-    card: "from-cyan-50 via-white to-white hover:border-cyan-200",
-    accent: "bg-cyan-500",
-    icon: "bg-cyan-100 text-cyan-700 ring-cyan-200",
-    glow: "bg-cyan-100",
-  },
-  slate: {
-    card: "from-slate-100 via-white to-white hover:border-slate-300",
-    accent: "bg-slate-500",
-    icon: "bg-slate-100 text-slate-700 ring-slate-200",
-    glow: "bg-slate-100",
-  },
-};
-
 type CategoryTile = {
   id: string;
   label: string;
   href: string;
   icon: ComponentType<{ className?: string }>;
-  tone: keyof typeof categoryTones;
+  imageUrl: string;
+  description: string;
+  bullets: string[];
+  tone: "blue" | "green";
   ageRating?: string;
+  imagePosition?: string;
   iconClassName?: string;
 };
 
+const categoryImages = {
+  animals: "/images/categories/animals.webp",
+  garden: "/images/categories/garden.webp",
+  kids: "/images/categories/kids.webp",
+  ritual: "/images/categories/ritual.webp",
+  realEstate: "/images/categories/real-estate.webp",
+  jobs: "/images/categories/jobs.webp",
+  clothing: "/images/categories/clothing.webp",
+  hobby: "/images/categories/hobby.webp",
+  auto: "/images/categories/auto.webp",
+  business: "/images/categories/business-equipment.webp",
+  services: "/images/categories/services.webp",
+  electronics: "/images/categories/electronics.webp",
+  home: "/images/categories/home-dacha.webp",
+  tools: "/images/categories/tools.webp",
+  dishes: "/images/categories/dishes.webp",
+  travel: "/images/categories/travel-housing.webp",
+  beauty: "/images/categories/beauty-health.webp",
+  other: "/images/categories/other.webp",
+};
+
 const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "href">> = {
-  "zhivotnye": { icon: PawPrint, tone: "amber", ageRating: "7+" },
-  "sad-i-ogorod": { icon: Sprout, tone: "green" },
-  "tovary-dlya-detey": { icon: Baby, tone: "rose", ageRating: "7+" },
-  "ritualnye-uslugi": { icon: MemorialIcon, tone: "slate", iconClassName: "h-8 w-8 sm:h-9 sm:w-9 lg:h-10 lg:w-10" },
-  "nedvizhimost": { icon: Building2, tone: "green" },
-  "rabota": { icon: BriefcaseBusiness, tone: "cyan", ageRating: "14+" },
-  "odezhda-obuv-aksessuary": { icon: Shirt, tone: "rose" },
-  "hobbi-i-otdyh": { icon: TentTree, tone: "green" },
-  "transport": { icon: Car, tone: "blue" },
-  "biznes": { icon: Store, tone: "violet" },
-  "uslugi": { icon: Wrench, tone: "blue" },
-  "elektronika": { icon: Smartphone, tone: "cyan" },
-  "dlya-doma-i-dachi": { icon: Sofa, tone: "amber" },
-  "instrumenty": { icon: Cog, tone: "slate" },
-  "posuda": { icon: Utensils, tone: "amber" },
-  "zhile-dlya-puteshestviya": { icon: MapPinned, tone: "green" },
-  "krasota-i-zdorove": { icon: HeartPulse, tone: "violet" },
-  "raznoe": { icon: Ellipsis, tone: "slate" },
+  "zhivotnye": {
+    icon: PawPrint,
+    imageUrl: categoryImages.animals,
+    description: "Питомцы, товары для ухода и объявления от владельцев рядом с вами.",
+    bullets: ["Домашние питомцы", "Корма и уход", "Товары для животных"],
+    tone: "green",
+    ageRating: "7+",
+  },
+  "sad-i-ogorod": {
+    icon: Sprout,
+    imageUrl: categoryImages.garden,
+    description: "Все для участка, сада, растений и сезонных работ.",
+    bullets: ["Рассада и саженцы", "Инвентарь", "Цветы и огород"],
+    tone: "green",
+  },
+  "tovary-dlya-detey": {
+    icon: Baby,
+    imageUrl: categoryImages.kids,
+    description: "Игрушки, вещи и полезные товары для детей.",
+    bullets: ["Игрушки", "Детская комната", "Спорт и развитие"],
+    tone: "green",
+    ageRating: "7+",
+  },
+  "ritualnye-uslugi": {
+    icon: MemorialIcon,
+    imageUrl: categoryImages.ritual,
+    description: "Деликатные услуги, организация и сопутствующие товары.",
+    bullets: ["Организация", "Транспорт", "Уход и принадлежности"],
+    tone: "blue",
+    iconClassName: "h-8 w-8 sm:h-9 sm:w-9",
+  },
+  "nedvizhimost": {
+    icon: Building2,
+    imageUrl: categoryImages.realEstate,
+    description: "Квартиры, дома и коммерческие объекты в вашем городе.",
+    bullets: ["Продажа", "Покупка", "Аренда и объекты"],
+    tone: "blue",
+  },
+  "rabota": {
+    icon: BriefcaseBusiness,
+    imageUrl: categoryImages.jobs,
+    description: "Вакансии, заказы и анкеты специалистов рядом с домом.",
+    bullets: ["Вакансии", "Заказы", "Анкеты специалистов"],
+    tone: "green",
+    ageRating: "14+",
+  },
+  "odezhda-obuv-aksessuary": {
+    icon: Shirt,
+    imageUrl: categoryImages.clothing,
+    description: "Гардероб, обувь, сумки и аксессуары на каждый день.",
+    bullets: ["Одежда", "Обувь", "Аксессуары"],
+    tone: "green",
+  },
+  "hobbi-i-otdyh": {
+    icon: TentTree,
+    imageUrl: categoryImages.hobby,
+    description: "Отдых, турбазы, походы и товары для увлечений.",
+    bullets: ["Турбазы", "Походы", "Творчество"],
+    tone: "green",
+  },
+  "transport": {
+    icon: Car,
+    imageUrl: categoryImages.auto,
+    description: "Автомобили, мототехника и транспортные объявления.",
+    bullets: ["Авто", "Мототехника", "Запчасти"],
+    tone: "blue",
+  },
+  "biznes": {
+    icon: Store,
+    imageUrl: categoryImages.business,
+    description: "Готовый бизнес, оборудование и рабочие решения.",
+    bullets: ["Оборудование", "Готовый бизнес", "Партнерство"],
+    tone: "blue",
+  },
+  "uslugi": {
+    icon: Wrench,
+    imageUrl: categoryImages.services,
+    description: "Мастера, ремонт, уборка и бытовая помощь рядом.",
+    bullets: ["Проверенные мастера", "Ремонт и сервис", "Отзывы и рейтинг"],
+    tone: "blue",
+  },
+  "elektronika": {
+    icon: Smartphone,
+    imageUrl: categoryImages.electronics,
+    description: "Гаджеты, техника, ноутбуки и аудио для дома и работы.",
+    bullets: ["Смартфоны", "Ноутбуки", "Аудио и видео"],
+    tone: "blue",
+  },
+  "dlya-doma-i-dachi": {
+    icon: Sofa,
+    imageUrl: categoryImages.home,
+    description: "Мебель, декор, освещение и вещи для уютного дома.",
+    bullets: ["Мебель", "Декор", "Дача и баня"],
+    tone: "green",
+  },
+  "instrumenty": {
+    icon: Cog,
+    imageUrl: categoryImages.tools,
+    description: "Ручной и электрический инструмент для ремонта и сада.",
+    bullets: ["Ручной инструмент", "Электроинструмент", "Для сада"],
+    tone: "blue",
+  },
+  "posuda": {
+    icon: Utensils,
+    imageUrl: categoryImages.dishes,
+    description: "Кухонная посуда, сервировка и предметы для хранения.",
+    bullets: ["Кухня", "Столовая", "Хранение"],
+    tone: "green",
+  },
+  "zhile-dlya-puteshestviya": {
+    icon: MapPinned,
+    imageUrl: categoryImages.travel,
+    description: "Апартаменты, дома и места для отдыха с бронированием.",
+    bullets: ["Апартаменты", "Дома и турбазы", "Бронирование"],
+    tone: "blue",
+  },
+  "krasota-i-zdorove": {
+    icon: HeartPulse,
+    imageUrl: categoryImages.beauty,
+    description: "Красота, уход, здоровье и специалисты рядом с вами.",
+    bullets: ["Косметика", "Уход", "Здоровье"],
+    tone: "green",
+  },
+  "raznoe": {
+    icon: Ellipsis,
+    imageUrl: categoryImages.other,
+    description: "Редкие находки, коллекции, книги и полезные мелочи.",
+    bullets: ["Винтаж", "Коллекции", "Разные находки"],
+    tone: "blue",
+    imagePosition: "center 68%",
+  },
 };
 
 const categoryTiles: CategoryTile[] = categoryDisplayItems.map((item) => ({
@@ -125,57 +215,90 @@ const categoryTiles: CategoryTile[] = categoryDisplayItems.map((item) => ({
   ...categoryTileVisuals[item.id],
 }));
 
+const toneClasses: Record<CategoryTile["tone"], { button: string; buttonIcon: string; hover: string; icon: string; marker: string }> = {
+  blue: {
+    button: "border-blue-200 bg-white/92 text-[#0875d1] shadow-blue-100 group-hover:border-[#0875d1] group-hover:bg-blue-50",
+    buttonIcon: "bg-[#0875d1] text-white",
+    hover: "hover:border-blue-200",
+    icon: "bg-[#0875d1] text-white shadow-blue-100",
+    marker: "bg-[#0875d1]",
+  },
+  green: {
+    button: "border-lime-200 bg-white/92 text-[#2f7f12] shadow-lime-100 group-hover:border-[#3f8f18] group-hover:bg-lime-50",
+    buttonIcon: "bg-[#3f8f18] text-white",
+    hover: "hover:border-lime-200",
+    icon: "bg-[#3f8f18] text-white shadow-lime-100",
+    marker: "bg-[#3f8f18]",
+  },
+};
+
 export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "grid" }) {
-  const [displayOrder, setDisplayOrder] = useState<string[] | null>(null);
-  const outerClassName = variant === "scroll" ? "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "";
-  const gridClassName =
-    variant === "scroll"
-      ? "grid grid-flow-col grid-rows-2 auto-cols-[132px] gap-2 sm:grid-flow-row sm:grid-rows-none sm:grid-cols-[repeat(auto-fit,minmax(132px,1fr))] sm:auto-cols-auto lg:grid-cols-[repeat(auto-fit,minmax(142px,1fr))]"
-      : "grid grid-cols-[repeat(auto-fit,minmax(min(100%,132px),1fr))] gap-2 lg:grid-cols-[repeat(auto-fit,minmax(142px,1fr))]";
-  const orderedCategoryTiles = useMemo(() => orderCategoryDisplayItems(categoryTiles, displayOrder), [displayOrder]);
-
-  useEffect(() => {
-    const syncOrder = () => setDisplayOrder(readCategoryDisplayOrder());
-
-    syncOrder();
-    window.addEventListener("storage", syncOrder);
-    window.addEventListener(categoryDisplayOrderEventName, syncOrder);
-
-    return () => {
-      window.removeEventListener("storage", syncOrder);
-      window.removeEventListener(categoryDisplayOrderEventName, syncOrder);
-    };
-  }, []);
+  const topPadding = variant === "grid" ? "py-6 sm:py-8" : "pb-8 pt-4 sm:pb-10 sm:pt-5";
 
   return (
-    <section className="page-container pb-6 pt-3 sm:pb-8">
-      <div className={outerClassName}>
-        <div className={gridClassName}>
-          {orderedCategoryTiles.map((category) => {
-            const Icon = category.icon;
-            const tone = categoryTones[category.tone as keyof typeof categoryTones];
+    <section className={`${topPadding} page-container`} aria-label="Категории">
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 lg:gap-3">
+        {categoryTiles.map((category, index) => {
+          const Icon = category.icon;
+          const tone = toneClasses[category.tone];
+          const isLastOddCard = categoryTiles.length % 2 === 1 && index === categoryTiles.length - 1;
 
-            return (
-              <div key={`${category.label}-${category.href}`} className={`group relative flex min-h-24 min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-gradient-to-br p-2.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:min-h-28 sm:p-3 lg:min-h-32 ${tone.card}`}>
-                <span className={`pointer-events-none absolute inset-x-0 top-0 h-0.5 ${tone.accent}`} />
-                <span className={`pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full opacity-70 blur-sm transition group-hover:scale-110 sm:h-24 sm:w-24 ${tone.glow}`} />
-                {category.ageRating ? (
-                  <span className="absolute right-2 top-2 z-10 inline-flex h-6 min-w-8 items-center justify-center rounded-full border border-white/80 bg-white/90 px-1.5 text-[11px] font-black text-slate-700 shadow-sm">
-                    {category.ageRating}
-                  </span>
-                ) : null}
-                <div className="relative">
-                  <span className={`flex h-11 w-11 items-center justify-center rounded-xl ring-1 shadow-sm transition group-hover:scale-105 sm:h-12 sm:w-12 lg:h-14 lg:w-14 ${tone.icon}`}>
-                    <Icon className={category.iconClassName ?? "h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8"} />
-                  </span>
-                  <Link href={category.href} className="mt-2 line-clamp-3 block break-normal text-xs font-black leading-4 text-slate-950 hyphens-none group-hover:text-[#0875d1] sm:text-[13px] sm:leading-[18px] lg:text-sm lg:leading-5">
-                    {category.label}
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+          return (
+            <Link
+              key={`${category.label}-${category.href}`}
+              href={category.href}
+              data-category-card
+              className={`group relative block min-h-[300px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow transition duration-300 hover:-translate-y-0.5 hover:shadow-card lg:min-h-[340px] ${isLastOddCard ? "lg:col-span-2 lg:min-h-[420px]" : ""} ${tone.hover}`}
+            >
+              <img
+                aria-hidden="true"
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover brightness-[1.04] contrast-[1.12] saturate-[1.16] transition duration-500 group-hover:scale-[1.02]"
+                decoding="async"
+                fetchPriority={index < 2 || isLastOddCard ? "high" : "auto"}
+                loading={index < 2 || isLastOddCard ? "eager" : "lazy"}
+                src={category.imageUrl}
+                style={{ objectPosition: category.imagePosition ?? "center" }}
+              />
+              <span
+                aria-hidden="true"
+                className={`absolute inset-y-0 left-0 bg-gradient-to-r from-white via-white/96 to-white/0 ${
+                  isLastOddCard ? "w-[70%] sm:w-[58%] lg:w-[38%]" : "w-[82%] sm:w-[74%] lg:w-[56%]"
+                }`}
+              />
+              {category.ageRating ? (
+                <span className="absolute right-4 top-4 z-20 inline-flex h-8 min-w-10 items-center justify-center rounded-full border border-white/80 bg-white/90 px-2 text-xs font-black text-slate-700 shadow-sm">
+                  {category.ageRating}
+                </span>
+              ) : null}
+              <span
+                className={`relative z-10 flex min-h-[300px] flex-col p-5 pb-20 sm:p-6 sm:pb-24 lg:min-h-[340px] lg:p-8 lg:pb-24 ${
+                  isLastOddCard ? "max-w-[66%] sm:max-w-[54%] lg:min-h-[420px] lg:max-w-[32%]" : "max-w-[72%] sm:max-w-[68%] lg:max-w-[44%]"
+                }`}
+              >
+                <span className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg transition group-hover:scale-105 sm:h-16 sm:w-16 ${tone.icon}`}>
+                  <Icon className={category.iconClassName ?? "h-8 w-8 sm:h-9 sm:w-9"} />
+                </span>
+                <h2 className="mt-5 block text-2xl font-black leading-tight text-[#183114] sm:text-3xl lg:text-[34px]">{category.label}</h2>
+                <span className="mt-3 block max-w-[25rem] text-sm font-semibold leading-6 text-slate-700 sm:text-[15px]">{category.description}</span>
+                <span className="mt-4 grid gap-2 text-xs font-bold leading-5 text-slate-700 sm:text-sm">
+                  {category.bullets.slice(0, 3).map((bullet) => (
+                    <span key={bullet} className="flex min-w-0 items-start gap-2">
+                      <span className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${tone.marker}`} />
+                      <span className="min-w-0 [overflow-wrap:anywhere]">{bullet}</span>
+                    </span>
+                  ))}
+                </span>
+              </span>
+              <span className={`absolute bottom-5 left-5 z-20 inline-flex h-10 w-fit items-center justify-center gap-2 rounded-full border px-3.5 text-sm font-black shadow-lg backdrop-blur transition sm:bottom-6 sm:left-6 lg:bottom-8 lg:left-8 ${tone.button}`}>
+                <span>Открыть</span>
+                <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition group-hover:translate-x-0.5 ${tone.buttonIcon}`}>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </span>
+              </span>
+            </Link>
+          );
+        })}
       </div>
     </section>
   );

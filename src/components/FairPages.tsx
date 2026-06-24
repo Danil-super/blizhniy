@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { CalendarDays, CheckCircle2, ImagePlus, MapPin, PlaySquare, Store, Video } from "lucide-react";
 import { FairApplicationForm } from "@/components/FairApplicationForm";
 import { LocationMap } from "@/components/LocationMap";
@@ -138,13 +139,15 @@ export async function FairHomePage() {
                       href={imageUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="block aspect-square overflow-hidden rounded-lg bg-slate-100 ring-1 ring-slate-200"
+                      className="relative block aspect-square overflow-hidden rounded-lg bg-slate-100 ring-1 ring-slate-200"
                     >
-                      <img
+                      <Image
                         src={imageUrl}
                         alt={application.participantName}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
+                        fill
+                        sizes="(min-width: 1024px) 16rem, (min-width: 640px) 33vw, 50vw"
+                        className="object-cover"
+                        unoptimized
                       />
                     </a>
                   ) : (

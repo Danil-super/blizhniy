@@ -32,6 +32,8 @@ type SellerProfileClientProps = {
   sellerKey: string;
 };
 
+const clientFallbackContentEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
+
 function readStoredPublications() {
   try {
     const stored = window.localStorage.getItem(demoPublicationsStorageKey);
@@ -137,7 +139,7 @@ export function SellerProfileClient({ initialListings, sellerKey }: SellerProfil
 
   useEffect(() => {
     function syncItems() {
-      setStoredListings(readStoredPublications().filter((item) => isSellerDemoPublication(item, sellerKey)).map(storedProfileListing));
+      setStoredListings(clientFallbackContentEnabled ? readStoredPublications().filter((item) => isSellerDemoPublication(item, sellerKey)).map(storedProfileListing) : []);
     }
 
     syncItems();

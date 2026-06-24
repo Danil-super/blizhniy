@@ -8,6 +8,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import type { DemoListing } from "@/components/listings/ListingCard";
 import { instrumentSubcategories } from "@/lib/instrument-subcategories";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 
 type PageProps = {
   params: Promise<{ subcategorySlug: string }>;
@@ -62,7 +63,7 @@ export default async function InstrumentSubcategoryPage({ params }: PageProps) {
     notFound();
   }
 
-  const listings = [instrumentListing(subcategory, subcategoryIndex)];
+  const listings = shouldShowFallbackContent() ? [instrumentListing(subcategory, subcategoryIndex)] : [];
 
   return (
     <>

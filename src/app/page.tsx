@@ -1,6 +1,6 @@
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { HomeHero } from "@/components/HomeHero";
-import { HomeListings } from "@/components/HomeListings";
+import { HomeIntro } from "@/components/HomeIntro";
 import { SiteHeader } from "@/components/SiteHeader";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +11,8 @@ export default function Home() {
       <SiteHeader />
       <main>
         <HomeHero />
+        <HomeIntro />
         <CategoryGrid />
-        <HomeListings />
       </main>
     </>
   );

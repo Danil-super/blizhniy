@@ -1,38 +1,46 @@
 import Link from "next/link";
-import { Gift, PlusCircle, Search, ShoppingBag, Tags, ArrowRightLeft } from "lucide-react";
+import { Gift, PlusCircle, Search, ShoppingBag, Tags } from "lucide-react";
+import type { ListingKind } from "@/lib/types";
 
 const listingEntries = [
   {
-    href: "/obyavleniya/prodam",
+    href: "/obyavleniya?kind=prodam",
+    kind: "prodam",
     title: "Продам",
     description: "Разместить или найти товары рядом",
     icon: ShoppingBag,
+    activeTone: "border-blue-300 bg-blue-50 text-[#0875d1] ring-2 ring-blue-100",
     tone: "from-blue-50 via-white to-white text-[#0875d1] hover:border-blue-200",
   },
   {
-    href: "/obyavleniya/kuplyu",
+    href: "/obyavleniya?kind=kuplyu",
+    kind: "kuplyu",
     title: "Куплю",
     description: "Посмотреть, что ищут покупатели",
     icon: Tags,
+    activeTone: "border-violet-300 bg-violet-50 text-violet-700 ring-2 ring-violet-100",
     tone: "from-violet-50 via-white to-white text-violet-700 hover:border-violet-200",
   },
   {
-    href: "/obyavleniya/menyayu",
-    title: "Меняю",
-    description: "Обмен вещами и материалами",
-    icon: ArrowRightLeft,
-    tone: "from-emerald-50 via-white to-white text-[#0a8f32] hover:border-emerald-200",
-  },
-  {
-    href: "/obyavleniya/otdam-darom",
+    href: "/obyavleniya?kind=otdam-darom",
+    kind: "otdam-darom",
     title: "Отдам даром",
     description: "Бесплатные объявления рядом",
     icon: Gift,
+    activeTone: "border-amber-300 bg-amber-50 text-amber-700 ring-2 ring-amber-100",
     tone: "from-amber-50 via-white to-white text-amber-700 hover:border-amber-200",
   },
-];
+] satisfies Array<{
+  activeTone: string;
+  description: string;
+  href: string;
+  icon: typeof ShoppingBag;
+  kind: Extract<ListingKind, "kuplyu" | "otdam-darom" | "prodam">;
+  title: string;
+  tone: string;
+}>;
 
-export function ListingEntryNav() {
+export function ListingEntryNav({ activeKind }: { activeKind?: ListingKind }) {
   return (
     <section className="page-container pb-5 pt-2 sm:pb-7 sm:pt-3">
       <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 lg:p-5">
@@ -41,7 +49,7 @@ export function ListingEntryNav() {
             <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Объявления</p>
             <h2 className="mt-1 text-xl font-black text-[#060b27] sm:text-2xl">Что хотите сделать?</h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-              Выберите тип объявления: продать, купить, обменять или отдать бесплатно.
+              Выберите тип объявления: продать, купить или отдать бесплатно.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -62,15 +70,19 @@ export function ListingEntryNav() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {listingEntries.map((entry) => {
             const Icon = entry.icon;
+            const active = activeKind === entry.kind;
 
             return (
               <Link
                 key={entry.href}
                 href={entry.href}
-                className={`group relative overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card ${entry.tone}`}
+                aria-current={active ? "true" : undefined}
+                className={`group relative overflow-hidden rounded-xl border bg-gradient-to-br p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card ${
+                  active ? entry.activeTone : `border-slate-200 ${entry.tone}`
+                }`}
               >
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 shadow-sm ring-1 ring-white/80">
                   <Icon className="h-5 w-5" />

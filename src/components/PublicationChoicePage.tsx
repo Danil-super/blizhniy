@@ -7,7 +7,7 @@ const publicationTypes = [
   {
     href: "/razmestit/obyavlenie",
     title: "Объявление",
-    description: "Продать, купить, обменять или отдать вещь.",
+    description: "Продать, купить или отдать вещь.",
     restriction: {
       image: "/policy/no-tattoo.png",
       title: "Тату запрещены",
@@ -55,7 +55,7 @@ export function PublicationChoicePage({ adminMode = false }: { adminMode?: boole
         <h1 className="text-3xl font-black text-[#060b27] sm:text-5xl">Что разместить?</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-lg sm:leading-8">
           {adminMode
-            ? "Выберите тип публикации. В админ-режиме формы можно сохранить без оплаты, чтобы протестировать сценарии."
+            ? "Выберите тип публикации. В админ-режиме формы можно сохранить без оплаты для служебной проверки."
             : "Выберите тип публикации. После заполнения формы сайт создаст черновик или заказ на оплату, если для публикации нужен тариф."}
         </p>
         <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

@@ -1,5 +1,7 @@
 import { region, workRequests as demoWorkRequests } from "@/lib/data";
+import { hasMapCoordinates } from "@/lib/map-location";
 import { publicMediaUrl } from "@/lib/storage-upload";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { PublicationStatus, WorkRequest } from "@/lib/types";
 
@@ -109,7 +111,7 @@ function mapWorkRequest(row: WorkRequestRow): WorkRequest {
 
   return {
     id: row.id,
-    author: row.profiles?.display_name ?? "Заказчик БЛИЖНИЙ",
+    author: row.profiles?.display_name ?? "Заказчик",
     title: row.title,
     description: row.description,
     profession: row.specialist_categories?.name ?? "Заказ исполнителю",
@@ -212,7 +214,7 @@ async function storedWorkRequestBody(input: CreateStoredWorkRequestInput, status
     published_at: status === "published" ? (publishedAt ?? new Date().toISOString()) : null,
     region_id: regionId,
     request_type: "private_request",
-    show_exact_address: Boolean(input.address && input.lat && input.lng),
+    show_exact_address: Boolean(input.address && hasMapCoordinates(input.lat, input.lng)),
     specialist_category_id: specialistCategoryId,
     status,
     title: input.title,
@@ -344,7 +346,28 @@ export async function listStoredWorkRequests(limit = 24) {
   }
 }
 
+export async function listStoredWorkRequestsForAdmin(limit = 200) {
+  if (!isSupabaseRestConfigured()) {
+    return [];
+  }
+
+  try {
+    const rows = await supabaseRest<WorkRequestRow[]>(
+      `/rest/v1/work_requests?select=${workRequestSelect}&order=created_at.desc&limit=${limit}`,
+    );
+
+    return rows.map(mapWorkRequest);
+  } catch (error) {
+    console.error("Failed to load admin work requests from Supabase", error);
+    return [];
+  }
+}
+
 export function listWorkRequestsWithStored(storedRequests: WorkRequest[]) {
+  if (!shouldShowFallbackContent()) {
+    return storedRequests;
+  }
+
   if (!storedRequests.length) {
     return demoWorkRequests;
   }

@@ -37,7 +37,7 @@ function resolveCategoryName(item: DemoPublication) {
 }
 
 function hasListingMapPoint(item: DemoPublication) {
-  return item.hasMapPoint === true && hasMapCoordinates(item.lat, item.lng);
+  return Boolean(item.showExactAddress) && item.hasMapPoint === true && hasMapCoordinates(item.lat, item.lng);
 }
 
 function listingSellerName(item: DemoPublication) {
@@ -80,7 +80,7 @@ function listingSellerStats(listing: DemoPublication, items: DemoPublication[]) 
 const soldReasonLabels: Record<NonNullable<DemoPublication["soldReason"]>, string> = {
   elsewhere: "продано в другом месте",
   not_actual: "объявление больше не актуально",
-  platform: "продано через БЛИЖНИЙ",
+  platform: "продано на платформе",
 };
 
 type GalleryMedia = {
@@ -188,7 +188,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
   const sellerStats = listing ? listingSellerStats(listing, items) : undefined;
   const contactCount = [listing?.phone, listing?.messengerUrl, listing?.email].filter(Boolean).length;
   const actionCount = contactCount + 1;
-  const actionGridClass = actionCount >= 4 ? "grid-cols-[repeat(4,minmax(104px,1fr))]" : actionCount === 3 ? "grid-cols-3" : actionCount === 2 ? "grid-cols-2" : "grid-cols-1";
+  const actionGridClass = actionCount >= 4 ? "grid-cols-2 sm:grid-cols-[repeat(4,minmax(104px,1fr))]" : actionCount === 3 ? "grid-cols-2" : actionCount === 2 ? "grid-cols-2" : "grid-cols-1";
   const galleryMedia: GalleryMedia[] = listing
     ? [
         ...(listing.images ?? []).map((src) => ({ kind: "image" as const, src })),
@@ -201,7 +201,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
       <main className="page-container py-10">
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
           <h1 className="text-2xl font-black text-[#060b27]">Объявление не найдено</h1>
-          <p className="mt-2 text-slate-600">Созданные в демо объявления доступны в том же браузере, где они были опубликованы.</p>
+          <p className="mt-2 text-slate-600">Объявление не найдено или больше не опубликовано.</p>
           <BackLink fallbackHref="/" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
             Вернуться в ленту
           </BackLink>
@@ -215,7 +215,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
       <ListingViewTracker listingId={listing.id} />
       <div className="mx-auto grid max-w-[1180px] min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,768px)_minmax(320px,380px)] lg:items-start lg:justify-center">
         <section className="min-w-0 lg:max-w-3xl">
-          <BackLink fallbackHref={`/katalog/${kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+          <BackLink fallbackHref={`/obyavleniya?kind=${kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             Назад к разделу
           </BackLink>
           <h1 className="[overflow-wrap:anywhere] mt-3 text-xl font-black leading-tight text-[#060b27] sm:mt-4 sm:text-3xl lg:text-4xl">{listing.title}</h1>
@@ -257,7 +257,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
                     </p>
                   </div>
                 </div>
-                <Link href={`/katalog/${kind}`} className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-3 text-sm font-bold text-white">
+                <Link href={`/obyavleniya?kind=${kind}`} className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#0875d1] px-3 text-sm font-bold text-white">
                   Смотреть похожие объявления
                 </Link>
               </div>
@@ -270,30 +270,30 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
             ) : null}
             {!sold ? (
               <div className="mt-4 grid gap-2">
-                <div className={`grid min-w-0 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${actionGridClass}`}>
+                <div className={`grid min-w-0 gap-2 ${actionGridClass}`}>
                   {listing.phone ? (
-                    <a href={`tel:${listing.phone}`} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:text-sm">
+                    <a href={`tel:${listing.phone}`} className={`inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:text-sm ${actionCount === 3 ? "col-span-2" : ""}`}>
                       <Phone className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Позвонить</span>
+                      <span className="whitespace-nowrap">Позвонить</span>
                     </a>
                   ) : null}
                   {listing.email ? (
                     <a href={`mailto:${listing.email}`} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] bg-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:text-sm">
                       <Mail className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Email</span>
+                      <span className="whitespace-nowrap">Email</span>
                     </a>
                   ) : null}
                   {listing.messengerUrl ? (
                     <a href={listing.messengerUrl} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] bg-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:text-sm">
                       <MessageCircle className="h-4 w-4 shrink-0" />
-                      <span className="min-w-0 truncate">Сообщение</span>
+                      <span className="whitespace-nowrap">Сообщение</span>
                     </a>
                   ) : null}
                   <ListingShareButton
                     href={listingHref}
                     title={listing.title}
                     textBreakpoint="always"
-                    className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:text-sm"
+                    className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:text-sm"
                     iconClassName="h-4 w-4 shrink-0"
                   />
                 </div>

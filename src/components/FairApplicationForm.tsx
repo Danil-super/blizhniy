@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CapitalizedTextarea } from "@/components/CapitalizedTextarea";
+import { BrandName } from "@/components/BrandName";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
@@ -13,6 +14,7 @@ import { confirmClientPayment } from "@/lib/client-payment-flow";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 
 type SubmitState = "idle" | "loading" | "error";
+const clientFallbackContentEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
 
 type MediaUploadResponse = {
   error?: string;
@@ -160,7 +162,9 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
         createdAt: new Date().toISOString(),
       });
 
-      writeFairApplicationPublication(publication);
+      if (clientFallbackContentEnabled) {
+        writeFairApplicationPublication(publication);
+      }
 
       if (adminMode) {
         router.push("/cabinet/fair-applications");
@@ -242,7 +246,7 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
           paymentConsent
           errorMessage="Примите условия публичной оферты, чтобы перейти к оплате"
         >
-          Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю участие в ярмарке на сайте БЛИЖНИЙ.
+          Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю участие в ярмарке на сайте <BrandName />.
         </LegalConsentCheckbox>
       ) : null}
       <TurnstileWidget

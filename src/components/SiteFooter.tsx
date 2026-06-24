@@ -18,7 +18,7 @@ const documentLinks = [
 export function SiteFooter() {
   return (
     <footer className="border-t border-slate-200 bg-white">
-      <div className="site-footer-inner page-container grid gap-6 pt-8 md:grid-cols-[1.1fr_2fr] md:items-start">
+      <div className="site-footer-inner page-container grid gap-6 py-8 md:grid-cols-[1.1fr_2fr] md:items-start">
         <div>
           <Link href="/" className="text-lg font-black text-[#0a1437]">
             <BrandName />

@@ -6,17 +6,19 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { StoredMediaImage } from "@/components/StoredMedia";
 
 type DetailImageGalleryProps = {
+  compactMobile?: boolean;
   fallbackIcon: ReactNode;
   images?: string[];
   title: string;
 };
 
-export function DetailImageGallery({ fallbackIcon, images = [], title }: DetailImageGalleryProps) {
+export function DetailImageGallery({ compactMobile = false, fallbackIcon, images = [], title }: DetailImageGalleryProps) {
   const validImages = images.filter(Boolean);
   const [activeIndex, setActiveIndex] = useState(0);
   const [open, setOpen] = useState(false);
   const activeImage = validImages[Math.min(activeIndex, Math.max(0, validImages.length - 1))];
   const hasMultiple = validImages.length > 1;
+  const frameClassName = compactMobile ? "aspect-[4/3] sm:aspect-square" : "aspect-square";
 
   useEffect(() => {
     if (!open) {
@@ -60,7 +62,7 @@ export function DetailImageGallery({ fallbackIcon, images = [], title }: DetailI
             className="block w-full disabled:cursor-default"
             aria-label={activeImage ? `Открыть фото: ${title}` : undefined}
           >
-            <span className="flex aspect-square w-full items-center justify-center bg-slate-100">
+            <span className={`flex w-full items-center justify-center bg-slate-100 ${frameClassName}`}>
               {activeImage ? (
                 <StoredMediaImage src={activeImage} alt={title} className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.015]" />
               ) : (

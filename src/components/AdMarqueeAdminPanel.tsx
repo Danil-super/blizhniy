@@ -36,7 +36,7 @@ export function AdMarqueeAdminPanel() {
     const messages = text.split("\n").map((item) => item.trim()).filter(Boolean);
     window.localStorage.setItem(adMarqueeStorageKey, JSON.stringify(messages.length ? messages : defaultAdMarqueeMessages));
     window.dispatchEvent(new Event("blizhniy-ad-marquee-updated"));
-    setMessage("Сохранено для демонстрации в этом браузере.");
+    setMessage("Сохранено для текущего браузера.");
   }
 
   function resetMessages() {

@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
-import { SpecialistDetailClient } from "@/components/SpecialistDetailClient";
 import { SpecialistProfileDetail } from "@/components/SpecialistProfileDetail";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { listSpecialists } from "@/lib/mock-store";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { getStoredSpecialistProfileById } from "@/lib/specialist-profile-store";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const specialist = (await getStoredSpecialistProfileById(slug)) ?? listSpecialists().find((item) => item.id === slug);
+  const specialist = (await getStoredSpecialistProfileById(slug)) ?? (shouldShowFallbackContent() ? listSpecialists().find((item) => item.id === slug) : undefined);
 
   return {
     title: specialist ? `${specialist.name} — ${specialist.profession}` : "Специалист",
@@ -23,15 +23,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function SpecialistDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const specialist = (await getStoredSpecialistProfileById(slug)) ?? listSpecialists().find((item) => item.id === slug);
+  const specialist = (await getStoredSpecialistProfileById(slug)) ?? (shouldShowFallbackContent() ? listSpecialists().find((item) => item.id === slug) : undefined);
 
   if (!specialist) {
-    return (
-      <>
-        <SiteHeader />
-        <SpecialistDetailClient specialistId={slug} />
-      </>
-    );
+    notFound();
   }
 
   if (specialist.status !== "published") {

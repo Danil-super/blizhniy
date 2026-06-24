@@ -1,5 +1,6 @@
 import { region } from "@/lib/data";
 import { publicMediaUrl } from "@/lib/storage-upload";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { PublicationStatus, SpecialistProfile } from "@/lib/types";
 
@@ -367,6 +368,21 @@ export async function listStoredSpecialistProfiles(limit = 24) {
   return rows.map(mapSpecialistProfile);
 }
 
+export async function listStoredSpecialistProfilesForAdmin(limit = 200) {
+  if (!isSupabaseRestConfigured()) {
+    return [];
+  }
+
+  const rows = await supabaseRest<SpecialistProfileRow[]>(
+    `/rest/v1/specialist_profiles?select=${specialistProfileSelect}&order=updated_at.desc&limit=${limit}`,
+  ).catch((error) => {
+    console.error("Failed to load admin specialist profiles from Supabase", error);
+    return [];
+  });
+
+  return rows.map(mapSpecialistProfile);
+}
+
 export async function getStoredSpecialistProfileById(profileId: string) {
   if (!isSupabaseRestConfigured() || !isUuid(profileId)) {
     return undefined;
@@ -380,6 +396,10 @@ export async function getStoredSpecialistProfileById(profileId: string) {
 }
 
 export function listSpecialistsWithStored(storedProfiles: SpecialistProfile[], fallbackProfiles: SpecialistProfile[]) {
+  if (!shouldShowFallbackContent()) {
+    return storedProfiles;
+  }
+
   if (!storedProfiles.length) {
     return fallbackProfiles;
   }

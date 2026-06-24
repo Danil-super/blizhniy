@@ -8,6 +8,7 @@ import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import { SubcategoryShareButton } from "@/components/listings/SubcategoryShareButton";
 import type { DemoListing } from "@/components/listings/ListingCard";
 import { posudaSubcategories } from "@/lib/posuda-subcategories";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 
 export const metadata: Metadata = {
   title: "Посуда",
@@ -124,7 +125,7 @@ export default function PosudaCategoryPage() {
             })}
           </div>
 
-          <ListingResultsPanel categorySlug="posuda" listings={demoListings} />
+          <ListingResultsPanel categorySlug="posuda" listings={shouldShowFallbackContent() ? demoListings : []} />
         </section>
       </main>
     </>

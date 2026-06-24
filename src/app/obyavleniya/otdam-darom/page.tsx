@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { PublicListingKindPage } from "@/components/listings/PublicListingSections";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -12,5 +12,5 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <PublicListingKindPage kind="otdam-darom" />;
+  redirect("/obyavleniya?kind=otdam-darom");
 }

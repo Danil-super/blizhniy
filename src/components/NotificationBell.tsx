@@ -2,9 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
-import { Check, X } from "lucide-react";
-import bellGif from "../../bell.gif";
+import { Bell, Check, X } from "lucide-react";
 import { useAuthState } from "@/components/auth/useAuthState";
 import {
   BookingNotification,
@@ -285,19 +283,11 @@ export function NotificationBell() {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="relative inline-flex h-6 w-6 items-center justify-center overflow-visible bg-transparent text-slate-950 transition hover:text-[#0875d1]"
+        className="relative inline-flex h-9 w-9 items-center justify-center overflow-visible rounded-full border border-emerald-200 bg-emerald-50 text-[#2f8f12] shadow-sm transition hover:border-emerald-300 hover:bg-white active:scale-95"
         aria-label="Уведомления"
         aria-expanded={open}
       >
-        <Image
-          src={bellGif}
-          alt=""
-          width={34}
-          height={34}
-          unoptimized
-          className="absolute left-1/2 top-1/2 h-[34px] w-[34px] max-w-none -translate-x-1/2 -translate-y-1/2 object-contain"
-          aria-hidden="true"
-        />
+        <Bell className="h-[18px] w-[18px]" aria-hidden="true" />
         {unreadCount ? (
           <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">
             {unreadCount > 9 ? "9+" : unreadCount}

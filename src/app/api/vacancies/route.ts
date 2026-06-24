@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createPayment } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
+import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
 import { normalizeVacancyRequisites, validateVacancyRequisites } from "@/lib/vacancy-requisites";
 import {
   createStoredVacancy,
@@ -124,6 +125,8 @@ export async function POST(request: Request) {
   });
   const messengerUrl = cleanString(body.messengerUrl);
   const salary = cleanString(body.salary);
+  const tariffId = cleanString(body.tariffId);
+  const rawMediaPaths = cleanMediaPaths(body.mediaPaths);
 
   if (!isDraft && (title.length < 3 || title.length > 90)) {
     return NextResponse.json({ error: "Название вакансии должно быть от 3 до 90 символов" }, { status: 400 });
@@ -147,8 +150,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Укажите оплату цифрами, например 80000" }, { status: 400 });
   }
 
-  if (!isDraft && !cleanMediaPaths(body.mediaPaths).length) {
+  if (!isDraft && !rawMediaPaths.length) {
     return NextResponse.json({ error: "Добавьте фото работодателя или рабочего места" }, { status: 400 });
+  }
+
+  if (!isDraft && !tariffId) {
+    return NextResponse.json({ error: "Выберите тариф размещения, чтобы перейти к оплате" }, { status: 400 });
   }
 
   if (description.length > 3000) {
@@ -172,6 +179,12 @@ export async function POST(request: Request) {
   }
 
   try {
+    const mediaPaths = validateMediaStoragePathsForUser(rawMediaPaths, "vacancies", auth.user.id);
+
+    if (mediaPaths.length !== rawMediaPaths.length) {
+      return NextResponse.json({ error: "Некорректные файлы вакансии. Загрузите фото заново." }, { status: 400 });
+    }
+
     const vacancyInput: CreateStoredVacancyInput = {
       address: cleanString(body.address) || undefined,
       authorId: auth.user.id,
@@ -186,7 +199,7 @@ export async function POST(request: Request) {
       ogrnip: requisites.ogrnip || undefined,
       lat: cleanNumber(body.lat),
       lng: cleanNumber(body.lng),
-      mediaPaths: cleanMediaPaths(body.mediaPaths),
+      mediaPaths,
       messengerUrl: messengerUrl || undefined,
       organization: organization || "Работодатель",
       placementRightConfirmed: Boolean(body.placementRightConfirmed),
@@ -196,12 +209,12 @@ export async function POST(request: Request) {
       responsibilities: cleanString(body.responsibilities) || undefined,
       salary: salary || undefined,
       schedule: cleanString(body.schedule) || undefined,
-      status: isDraft ? "draft" : body.tariffId ? "pending_payment" : "published",
+      status: isDraft ? "draft" : "pending_payment",
       title,
       website: cleanString(body.website) || undefined,
       workFormat: cleanString(body.workFormat) || undefined,
     };
-    const reusableVacancy = body.tariffId ? await findReusableStoredVacancyForPayment(vacancyInput) : undefined;
+    const reusableVacancy = tariffId ? await findReusableStoredVacancyForPayment(vacancyInput) : undefined;
     const vacancy = reusableVacancy
       ? await updateStoredVacancyForUser(reusableVacancy.id, auth.user.id, vacancyInput)
       : await createStoredVacancy(vacancyInput);
@@ -212,9 +225,9 @@ export async function POST(request: Request) {
 
     let payment: Payment | undefined;
 
-    if (body.tariffId) {
+    if (tariffId) {
       payment = await createPayment({
-        tariffId: body.tariffId,
+        tariffId,
         targetId: vacancy.id,
         targetTitle: title,
         targetType: "vacancy",

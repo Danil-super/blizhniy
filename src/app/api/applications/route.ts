@@ -3,7 +3,7 @@ import { createStoredApplication, ensureVacancyCanReceiveApplication, ensureWork
 import { createPayment } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { getActiveStoredSpecialistProfileForUser, getSpecialistProfileCompleteness } from "@/lib/specialist-profile-store";
-import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
+import { isSupabaseServiceRoleConfigured, isUuid } from "@/lib/supabase-rest";
 
 type CreateApplicationBody = {
   message?: string;
@@ -50,6 +50,14 @@ export async function POST(request: Request) {
 
   if (vacancyId && workRequestId) {
     return NextResponse.json({ error: "Укажите только одну цель отклика" }, { status: 400 });
+  }
+
+  if (vacancyId && !isUuid(vacancyId)) {
+    return NextResponse.json({ error: "Отклик доступен только для опубликованной вакансии." }, { status: 400 });
+  }
+
+  if (workRequestId && !isUuid(workRequestId)) {
+    return NextResponse.json({ error: "Отклик доступен только для опубликованного заказа." }, { status: 400 });
   }
 
   const specialist = await getActiveStoredSpecialistProfileForUser(auth.user.id);

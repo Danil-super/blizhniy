@@ -37,7 +37,7 @@ function cleanNumber(value: unknown) {
 }
 
 function cleanKind(value: unknown): ListingKind {
-  return value === "kuplyu" || value === "menyayu" || value === "otdam-darom" || value === "arenda" ? value : "prodam";
+  return value === "kuplyu" || value === "otdam-darom" || value === "arenda" ? value : "prodam";
 }
 
 function cleanMediaPaths(value: unknown) {

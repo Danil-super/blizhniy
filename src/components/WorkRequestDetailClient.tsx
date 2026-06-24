@@ -39,6 +39,10 @@ function locationLabel(request: DemoPublication) {
   return request.city;
 }
 
+function isUuidLike(value?: string) {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
+
 export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
   const [items, setItems] = useState<DemoPublication[]>([]);
   const request = useMemo(() => items.find((item) => item.type === "workRequest" && item.id === requestId), [items, requestId]);
@@ -52,7 +56,7 @@ export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
       <main className="page-container py-10">
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
           <h1 className="text-2xl font-black text-[#060b27]">Заказ не найден</h1>
-          <p className="mt-2 text-slate-600">Демо-заказы хранятся в браузере, где они были созданы.</p>
+          <p className="mt-2 text-slate-600">Заказ не найден или больше не опубликован.</p>
           <BackLink fallbackHref="/cabinet/zakazy" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
             Вернуться к заказам
           </BackLink>
@@ -62,9 +66,10 @@ export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
   }
 
   const images = request.images ?? [];
-  const hasPoint = hasMapCoordinates(request.lat, request.lng);
+  const hasPoint = Boolean(request.showExactAddress) && hasMapCoordinates(request.lat, request.lng);
   const placeLabel = locationLabel(request);
   const publishedLabel = formatPublicationDateTime(request.createdAt, "10:00");
+  const canReceivePaidApplications = isUuidLike(request.id);
 
   return (
     <>
@@ -107,15 +112,23 @@ export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
                 <h2 className="text-xl font-black text-[#060b27] sm:text-2xl">Связаться</h2>
               </div>
               <div className="mt-5 grid gap-2">
-                <VacancyApplicationButton targetKind="workRequest" targetId={request.id} targetTitle={request.title} />
-                <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-600">
-                  Контакты заказчика не показываются публично. После отклика заказчик увидит вашу анкету и сам выберет исполнителя.
-                </p>
+                {canReceivePaidApplications ? (
+                  <>
+                    <VacancyApplicationButton targetKind="workRequest" targetId={request.id} targetTitle={request.title} />
+                    <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-600">
+                      Контакты заказчика не показываются публично. После отклика заказчик увидит вашу анкету и сам выберет исполнителя.
+                    </p>
+                  </>
+                ) : (
+                  <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm font-semibold leading-6 text-slate-600">
+                    Отклики доступны для опубликованных заказов пользователей.
+                  </p>
+                )}
               </div>
             </section>
             {hasPoint ? (
               <div className="hidden lg:block">
-                <LocationMap location={{ ...request, showExactAddress: Boolean(request.showExactAddress), hasMapPoint: true }} exactLabel="Точный адрес заказа показывается только если заказчик разрешил" />
+                <LocationMap location={{ ...request, showExactAddress: Boolean(request.showExactAddress), hasMapPoint: hasPoint }} exactLabel="Точный адрес заказа показывается только если заказчик разрешил" />
               </div>
             ) : (
               <section className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:block">

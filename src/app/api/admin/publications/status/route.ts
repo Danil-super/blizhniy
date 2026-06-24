@@ -9,6 +9,7 @@ import {
   updateWorkRequestStatus,
 } from "@/lib/mock-store";
 import { isAdminRequest, isDemoAdminBypassEnabled, isSupabaseServerConfigured } from "@/lib/server-auth";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { PublicationStatus } from "@/lib/types";
 
@@ -138,13 +139,20 @@ export async function POST(request: Request) {
       updated = await updateStoredPublicationStatus(entityType, id, status);
     }
 
-    if (!updated) {
+    if (!updated && shouldShowFallbackContent()) {
       updateMockPublicationStatus(entityType, id, status);
+      revalidateEntityPaths(entityType);
+
+      return NextResponse.json({ ok: true, updated: "mock" });
+    }
+
+    if (!updated) {
+      return NextResponse.json({ error: "Publication not found" }, { status: 404 });
     }
 
     revalidateEntityPaths(entityType);
 
-    return NextResponse.json({ ok: true, updated: updated ? "stored" : "mock" });
+    return NextResponse.json({ ok: true, updated: "stored" });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Publication status update failed" }, { status: 500 });
   }

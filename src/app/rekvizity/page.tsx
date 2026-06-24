@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Mail, MapPin, Phone } from "lucide-react";
+import { renderBrandText } from "@/components/BrandName";
 import { SiteHeader } from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
@@ -23,20 +24,20 @@ export default function Page() {
     <>
       <SiteHeader />
       <main className="page-container py-10">
-        <section className="max-w-4xl">
+        <section className="w-full">
           <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Документы</p>
           <h1 className="mt-3 text-4xl font-black text-[#060b27]">Реквизиты</h1>
-          <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600">
-            Информация об организации, которая администрирует платформу «БЛИЖНИЙ» и обеспечивает работу сервиса
+          <p className="mt-4 max-w-5xl text-base leading-7 text-slate-600">
+            {renderBrandText("Информация об организации, которая администрирует платформу «БЛИЖНИЙ» и обеспечивает работу сервиса")}
             размещения объявлений, вакансий, анкет специалистов и заявок пользователей.
           </p>
 
           <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
             <dl className="divide-y divide-slate-200">
               {requisites.map((item) => (
-                <div key={item.label} className="grid gap-2 p-5 sm:grid-cols-[220px_1fr]">
+                <div key={item.label} className="grid gap-2 p-5 sm:grid-cols-[minmax(220px,0.28fr)_minmax(0,1fr)] lg:p-6">
                   <dt className="text-sm font-bold text-slate-500">{item.label}</dt>
-                  <dd className="text-base font-semibold leading-7 text-[#060b27]">{item.value}</dd>
+                  <dd className="text-base font-semibold leading-7 text-[#060b27]">{renderBrandText(item.value)}</dd>
                 </div>
               ))}
             </dl>
@@ -48,14 +49,14 @@ export default function Page() {
               По вопросам работы платформы, размещения материалов, оплаты и взаимодействия с сервисом можно связаться
               с администрацией по указанным контактам.
             </p>
-            <div className="mt-4 grid gap-3 text-sm font-semibold text-slate-700">
+            <div className="mt-4 grid gap-3 text-sm font-semibold text-slate-700 lg:grid-cols-[minmax(220px,0.8fr)_minmax(180px,0.7fr)_minmax(0,1.8fr)] lg:items-start">
               <a href="mailto:prostova04@yandex.ru" className="inline-flex items-center gap-2 transition hover:text-[#0875d1]">
                 <Mail className="h-4 w-4 text-[#0875d1]" />
                 prostova04@yandex.ru
               </a>
-              <a href="tel:+79883828621" className="inline-flex items-center gap-2 transition hover:text-[#0875d1]">
+              <a href="tel:+79951907649" className="inline-flex items-center gap-2 transition hover:text-[#0875d1]">
                 <Phone className="h-4 w-4 text-[#0875d1]" />
-                +7 988 382-86-21
+                +79951907649
               </a>
               <span className="inline-flex items-start gap-2 leading-6">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#0875d1]" />

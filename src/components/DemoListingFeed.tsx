@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRightLeft, CalendarDays, Gift, Mail, MapPin, ShoppingBag, Tags, Video } from "lucide-react";
+import { CalendarDays, Gift, Mail, MapPin, ShoppingBag, Tags, Video } from "lucide-react";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 import { demoPublicationsStorageKey, DemoPublication, isDemoPublicationPubliclyVisible } from "@/lib/demo-publications";
@@ -21,6 +21,8 @@ type DemoListingFeedProps = {
   variant?: "grid" | "list";
 };
 
+const clientFallbackContentEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
+
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function isLocalOnlyPublication(item: DemoPublication) {
@@ -30,7 +32,6 @@ function isLocalOnlyPublication(item: DemoPublication) {
 const kindIcons = {
   prodam: ShoppingBag,
   kuplyu: Tags,
-  menyayu: ArrowRightLeft,
   "otdam-darom": Gift,
   arenda: CalendarDays,
 };
@@ -198,9 +199,10 @@ function DemoListCard({ item }: { item: DemoPublication }) {
   const firstImage = item.images?.[0];
   const firstVideo = item.videos?.[0];
   const href = `/obyavlenie/${item.id}`;
+  const hasSecondaryContact = Boolean(item.messengerUrl || item.email);
 
   return (
-    <article className="group relative grid min-w-0 gap-3 rounded-xl border border-emerald-200 bg-white p-3 shadow-sm transition hover:border-blue-200 hover:shadow-card sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-4 sm:p-4 xl:grid-cols-[140px_minmax(0,1fr)_minmax(180px,auto)]">
+    <article className="group relative grid min-w-0 gap-3 rounded-xl border border-emerald-200 bg-white p-3 shadow-sm transition hover:border-blue-200 hover:shadow-card sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-4 sm:p-4 xl:grid-cols-[140px_minmax(0,1fr)_minmax(280px,auto)]">
       <Link href={href} className="absolute inset-0 z-10 rounded-xl" aria-label={`Открыть объявление ${item.title}`} />
       <div className="flex min-w-0 gap-3 sm:contents">
         <Link
@@ -238,26 +240,32 @@ function DemoListCard({ item }: { item: DemoPublication }) {
         <div className="min-w-0 xl:text-right">
           <p className="truncate text-base font-black text-[#060b27] sm:text-lg lg:text-2xl">{item.price ?? "по договоренности"}</p>
         </div>
-        <div className={`relative z-20 grid min-w-0 gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end ${item.messengerUrl || item.email ? "grid-cols-3" : "grid-cols-2"}`}>
+        <div className="relative z-20 grid min-w-0 grid-cols-2 gap-1.5 sm:gap-2 xl:w-[280px]">
           {item.phone ? (
-            <a href={`tel:${item.phone}`} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
+            <a href={`tel:${item.phone}`} className={`inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4 ${hasSecondaryContact ? "col-span-2" : ""}`}>
               <ContactAssetIcon kind="phone" className="h-5 w-5 sm:h-6 sm:w-6" />
-              <span className="truncate">Позвонить</span>
+              <span className="whitespace-nowrap">Позвонить</span>
             </a>
           ) : null}
           {item.messengerUrl ? (
             <a href={item.messengerUrl} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
               <ContactAssetIcon kind="message" className="h-5 w-5 sm:h-6 sm:w-6" />
-              <span className="truncate">Написать</span>
+              <span className="whitespace-nowrap">Написать</span>
             </a>
           ) : null}
           {!item.messengerUrl && item.email ? (
             <a href={`mailto:${item.email}`} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
               <Mail className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
-              <span className="truncate">Email</span>
+              <span className="whitespace-nowrap">Email</span>
             </a>
           ) : null}
-          <ListingShareButton href={href} title={item.title} stopPropagation textBreakpoint="lg" />
+          <ListingShareButton
+            href={href}
+            title={item.title}
+            stopPropagation
+            textBreakpoint="always"
+            className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:h-9 sm:px-3 sm:text-sm lg:h-10"
+          />
         </div>
       </div>
     </article>
@@ -269,7 +277,7 @@ export function DemoListingFeed({ categorySlug, filters, kind, subcategorySlug, 
 
   useEffect(() => {
     function syncItems() {
-      setItems(readStoredPublications());
+      setItems(clientFallbackContentEnabled ? readStoredPublications() : []);
     }
 
     syncItems();

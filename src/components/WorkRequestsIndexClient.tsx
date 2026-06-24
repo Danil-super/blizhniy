@@ -30,7 +30,7 @@ function readLocalPublishedWorkRequests() {
       .filter((item) => item.type === "workRequest" && isDemoPublicationPubliclyVisible(item))
       .map((item): WorkRequest => ({
         id: item.id,
-        author: item.ownerName ?? "Заказчик БЛИЖНИЙ",
+        author: item.ownerName ?? "Заказчик",
         title: item.title,
         description: item.description ?? "Описание заказа будет дополнено.",
         profession: item.profession ?? item.subtitle ?? "Заказ исполнителю",

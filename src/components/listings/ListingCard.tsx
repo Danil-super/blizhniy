@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { ArrowRightLeft, CalendarDays, Gift, Mail, MapPin, ShoppingBag, Tags } from "lucide-react";
+import { CalendarDays, Gift, Mail, MapPin, ShoppingBag, Tags } from "lucide-react";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { StoredMediaImage } from "@/components/StoredMedia";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewCounter } from "./ListingViewCounter";
 
-export type ListingKind = "prodam" | "kuplyu" | "menyayu" | "otdam-darom" | "arenda";
+export type ListingKind = "prodam" | "kuplyu" | "otdam-darom" | "arenda";
 export type ListingStatus = "draft" | "pending_payment" | "paid" | "published" | "sold" | "archived" | "expired" | "rejected";
 
 export type DemoListing = {
@@ -43,7 +43,7 @@ export type DemoListing = {
 };
 
 function hasListingMapPoint(listing: DemoListing) {
-  return (listing.hasMapPoint ?? true) && hasMapCoordinates(listing.lat, listing.lng);
+  return Boolean(listing.showExactAddress) && (listing.hasMapPoint ?? true) && hasMapCoordinates(listing.lat, listing.lng);
 }
 
 function listingPlaceLabel(listing: DemoListing) {
@@ -71,7 +71,6 @@ function formatListingDate(value?: string) {
 const kindLabels: Record<ListingKind, string> = {
   prodam: "Продам",
   kuplyu: "Куплю",
-  menyayu: "Меняю",
   "otdam-darom": "Отдам даром",
   arenda: "Аренда",
 };
@@ -79,7 +78,6 @@ const kindLabels: Record<ListingKind, string> = {
 const kindIcons = {
   prodam: ShoppingBag,
   kuplyu: Tags,
-  menyayu: ArrowRightLeft,
   "otdam-darom": Gift,
   arenda: CalendarDays,
 };
@@ -144,9 +142,10 @@ export function StatusBadge({ status }: { status: ListingStatus }) {
 
 export function ListingCard({ listing }: { listing: DemoListing }) {
   const href = `/obyavlenie/${listing.slug}`;
+  const hasSecondaryContact = Boolean(listing.messengerUrl || listing.email);
 
   return (
-    <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-4 sm:p-4 xl:grid-cols-[140px_minmax(0,1fr)_minmax(180px,auto)]">
+    <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-4 sm:p-4 xl:grid-cols-[140px_minmax(0,1fr)_minmax(280px,auto)]">
       <div className="flex min-w-0 gap-3 sm:contents">
         <Link
           href={href}
@@ -176,36 +175,41 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
         <div className="min-w-0 sm:max-w-[220px] xl:max-w-none xl:text-right">
           <p className="truncate text-base font-black text-[#060b27] sm:text-lg lg:text-2xl">{listing.price}</p>
         </div>
-        <div className={`grid min-w-0 gap-1.5 sm:gap-2 xl:flex xl:flex-wrap xl:justify-end ${listing.messengerUrl || listing.email ? "grid-cols-3" : "grid-cols-2"}`}>
+        <div className={`grid min-w-0 gap-1.5 sm:gap-2 xl:w-[280px] xl:grid-cols-2 ${hasSecondaryContact ? "grid-cols-2" : "grid-cols-2"}`}>
           {listing.phone ? (
             <a
               href={`tel:${listing.phone}`}
-              className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
+              className={`inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4 ${hasSecondaryContact ? "col-span-2" : ""}`}
             >
               <ContactAssetIcon kind="phone" className="h-5 w-5 sm:h-6 sm:w-6" />
-              <span className="truncate">Позвонить</span>
+              <span className="whitespace-nowrap">Позвонить</span>
             </a>
           ) : null}
           {listing.messengerUrl ? (
             <a
               href={listing.messengerUrl}
-              className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
             >
               <ContactAssetIcon kind="message" className="h-5 w-5 sm:h-6 sm:w-6" />
-              <span className="truncate sm:hidden">Чат</span>
-              <span className="hidden truncate sm:inline">Написать</span>
+              <span className="whitespace-nowrap sm:hidden">Чат</span>
+              <span className="hidden whitespace-nowrap sm:inline">Написать</span>
             </a>
           ) : null}
           {!listing.messengerUrl && listing.email ? (
             <a
               href={`mailto:${listing.email}`}
-              className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
+              className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
             >
               <Mail className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
-              <span className="truncate">Email</span>
+              <span className="whitespace-nowrap">Email</span>
             </a>
           ) : null}
-          <ListingShareButton href={href} title={listing.title} textBreakpoint="lg" />
+          <ListingShareButton
+            href={href}
+            title={listing.title}
+            textBreakpoint="always"
+            className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1] sm:h-9 sm:px-3 sm:text-sm lg:h-10"
+          />
         </div>
       </div>
     </article>

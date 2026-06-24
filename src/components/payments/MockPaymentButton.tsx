@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { BackLink } from "@/components/BackLink";
+import { BrandName } from "@/components/BrandName";
 import { LegalLink } from "@/components/LegalConsentCheckbox";
 import { confirmClientPayment, createClientPayment } from "@/lib/client-payment-flow";
 
@@ -62,7 +63,7 @@ export function MockPaymentButton({ paymentId, tariffId, returnHref }: MockPayme
           className="mt-1 h-4 w-4 shrink-0 accent-[#0875d1]"
         />
         <span className="min-w-0 [overflow-wrap:anywhere]">
-          Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю услугу на сайте БЛИЖНИЙ.
+          Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю услугу на сайте <BrandName />.
         </span>
       </label>
       <button

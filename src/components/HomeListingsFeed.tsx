@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { DemoGridCard } from "@/components/DemoListingFeed";
-import { DemoListing, ListingGridCard } from "@/components/listings/ListingCard";
+import { DemoListing, ListingGridCard, type ListingKind } from "@/components/listings/ListingCard";
 import { demoPublicationsStorageKey, isDemoPublicationPubliclyVisible, type DemoPublication } from "@/lib/demo-publications";
 import { publicationTimestamp } from "@/lib/publication-time";
 
 type HomeListingsFeedProps = {
+  kind?: ListingKind;
   listings: DemoListing[];
 };
 
@@ -48,7 +49,7 @@ function readStoredListings() {
   return [];
 }
 
-export function HomeListingsFeed({ listings }: HomeListingsFeedProps) {
+export function HomeListingsFeed({ kind, listings }: HomeListingsFeedProps) {
   const [storedListings, setStoredListings] = useState<DemoPublication[]>([]);
 
   useEffect(() => {
@@ -67,12 +68,14 @@ export function HomeListingsFeed({ listings }: HomeListingsFeedProps) {
   }, []);
 
   const entries = useMemo(() => {
-    const storedEntries: FeedEntry[] = storedListings.map((item) => ({
-      id: `stored-${item.id}`,
-      item,
-      timestamp: publicationTimestamp(item.createdAt),
-      type: "stored",
-    }));
+    const storedEntries: FeedEntry[] = storedListings
+      .filter((item) => !kind || (item.listingKind ?? "prodam") === kind)
+      .map((item) => ({
+        id: `stored-${item.id}`,
+        item,
+        timestamp: publicationTimestamp(item.createdAt),
+        type: "stored",
+      }));
 
     const demoEntries: FeedEntry[] = listings.map((item) => ({
       id: `demo-${item.slug}`,
@@ -82,11 +85,17 @@ export function HomeListingsFeed({ listings }: HomeListingsFeedProps) {
     }));
 
     return [...storedEntries, ...demoEntries].sort((left, right) => right.timestamp - left.timestamp);
-  }, [listings, storedListings]);
+  }, [kind, listings, storedListings]);
 
   return (
     <>
-      {entries.map((entry) => (entry.type === "stored" ? <DemoGridCard key={entry.id} item={entry.item} /> : <ListingGridCard key={entry.id} listing={entry.item} />))}
+      {entries.length ? (
+        entries.map((entry) => (entry.type === "stored" ? <DemoGridCard key={entry.id} item={entry.item} /> : <ListingGridCard key={entry.id} listing={entry.item} />))
+      ) : (
+        <p className="col-span-full rounded-xl border border-dashed border-slate-200 bg-white p-6 text-sm font-semibold text-slate-500">
+          По выбранному фильтру пока нет объявлений.
+        </p>
+      )}
     </>
   );
 }

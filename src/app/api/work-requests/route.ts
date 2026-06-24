@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createPayment } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
+import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
 import {
   createStoredWorkRequest,
   findReusableStoredWorkRequestForPayment,
@@ -85,6 +86,8 @@ export async function POST(request: Request) {
   const description = cleanString(body.description);
   const phone = cleanString(body.phone);
   const messengerUrl = cleanString(body.messengerUrl);
+  const tariffId = cleanString(body.tariffId);
+  const rawMediaPaths = cleanMediaPaths(body.mediaPaths);
 
   if (!isDraft && (title.length < 3 || title.length > 90)) {
     return NextResponse.json({ error: "Название заказа должно быть от 3 до 90 символов" }, { status: 400 });
@@ -114,7 +117,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Подтвердите правила размещения заказа" }, { status: 400 });
   }
 
+  if (!isDraft && !tariffId) {
+    return NextResponse.json({ error: "Выберите тариф размещения, чтобы перейти к оплате" }, { status: 400 });
+  }
+
   try {
+    const mediaPaths = validateMediaStoragePathsForUser(rawMediaPaths, "work-requests", auth.user.id);
+
+    if (mediaPaths.length !== rawMediaPaths.length) {
+      return NextResponse.json({ error: "Некорректные файлы заказа. Загрузите фото заново." }, { status: 400 });
+    }
+
     const workRequestInput: CreateStoredWorkRequestInput = {
       address: cleanString(body.address) || undefined,
       authorId: auth.user.id,
@@ -123,14 +136,14 @@ export async function POST(request: Request) {
       description: description || undefined,
       lat: cleanNumber(body.lat),
       lng: cleanNumber(body.lng),
-      mediaPaths: cleanMediaPaths(body.mediaPaths),
+      mediaPaths,
       messengerUrl: messengerUrl || undefined,
       phone: phone || undefined,
       profession: cleanString(body.profession) || title,
-      status: isDraft ? "draft" : body.tariffId ? "pending_payment" : "published",
+      status: isDraft ? "draft" : "pending_payment",
       title,
     };
-    const reusableRequest = body.tariffId ? await findReusableStoredWorkRequestForPayment(workRequestInput) : undefined;
+    const reusableRequest = tariffId ? await findReusableStoredWorkRequestForPayment(workRequestInput) : undefined;
     const workRequest = reusableRequest
       ? await updateStoredWorkRequestForUser(reusableRequest.id, auth.user.id, workRequestInput)
       : await createStoredWorkRequest(workRequestInput);
@@ -141,9 +154,9 @@ export async function POST(request: Request) {
 
     let payment: Payment | undefined;
 
-    if (body.tariffId) {
+    if (tariffId) {
       payment = await createPayment({
-        tariffId: body.tariffId,
+        tariffId,
         targetId: workRequest.id,
         targetTitle: title,
         targetType: "workRequest",

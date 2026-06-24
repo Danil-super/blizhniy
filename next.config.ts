@@ -68,6 +68,16 @@ const nextConfig: NextConfig = {
         permanent: false,
       },
       {
+        source: "/obyavleniya/menyayu",
+        destination: "/obyavleniya/otdam-darom",
+        permanent: false,
+      },
+      {
+        source: "/obyavleniya/obmen-i-darom",
+        destination: "/obyavleniya/otdam-darom",
+        permanent: false,
+      },
+      {
         source: "/krasnodar/prodam",
         destination: "/obyavleniya/prodam",
         permanent: false,
@@ -79,7 +89,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/krasnodar/menyayu",
-        destination: "/obyavleniya/menyayu",
+        destination: "/obyavleniya/otdam-darom",
         permanent: false,
       },
       {
@@ -89,7 +99,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/krasnodar/obmen-i-darom",
-        destination: "/obyavleniya/obmen-i-darom",
+        destination: "/obyavleniya/otdam-darom",
         permanent: false,
       },
       {

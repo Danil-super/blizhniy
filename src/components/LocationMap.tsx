@@ -40,9 +40,22 @@ function routeUrl(location: MapLocation) {
 
 export function LocationMap({ location, exactLabel = "Точный адрес скрыт" }: { location: MapLocation; exactLabel?: string }) {
   const label = displayLocation(location);
-  const hasPoint = (location.hasMapPoint ?? true) && hasMapCoordinates(location.lat, location.lng);
+  const hasPoint = Boolean(location.showExactAddress) && (location.hasMapPoint ?? true) && hasMapCoordinates(location.lat, location.lng);
   const publicLat = publicCoordinate(location.lat, location.showExactAddress);
   const publicLng = publicCoordinate(location.lng, location.showExactAddress);
+
+  if (!hasPoint) {
+    return (
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
+        <h2 className="text-2xl font-black text-[#060b27]">Адрес</h2>
+        <p className="mt-2 flex items-center gap-2 text-slate-600">
+          <MapPin className="h-5 w-5 text-[#0875d1]" />
+          {label}
+        </p>
+        {!location.showExactAddress ? <p className="mt-2 text-sm text-slate-500">{exactLabel}.</p> : null}
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
@@ -53,7 +66,7 @@ export function LocationMap({ location, exactLabel = "Точный адрес с
             <MapPin className="h-5 w-5 text-[#0875d1]" />
             {label}
           </p>
-          {!location.showExactAddress ? <p className="mt-2 text-sm text-slate-500">{exactLabel}. Показана примерная зона.</p> : null}
+          {!location.showExactAddress ? <p className="mt-2 text-sm text-slate-500">{exactLabel}.</p> : null}
         </div>
         {hasPoint ? (
           <a
@@ -67,11 +80,9 @@ export function LocationMap({ location, exactLabel = "Точный адрес с
           </a>
         ) : null}
       </div>
-      {hasPoint && hasMapCoordinates(publicLat, publicLng) ? (
+      {hasMapCoordinates(publicLat, publicLng) ? (
         <YandexMapView lat={publicLat as number} lng={publicLng as number} label={label} />
-      ) : (
-        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-slate-600">Метка на карте не указана.</div>
-      )}
+      ) : null}
     </section>
   );
 }

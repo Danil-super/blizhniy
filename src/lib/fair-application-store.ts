@@ -1,4 +1,5 @@
 import { fairApplications as demoFairApplications } from "@/lib/data";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isSupabaseRestConfigured, supabaseRest } from "@/lib/supabase-rest";
 import type { FairApplication, PublicationStatus } from "@/lib/types";
 
@@ -142,7 +143,7 @@ async function findCityId(cityName: string) {
 
 export async function listStoredFairApplications(status?: PublicationStatus) {
   if (!isSupabaseRestConfigured()) {
-    return demoFairApplications.filter((application) => !status || application.status === status);
+    return shouldShowFallbackContent() ? demoFairApplications.filter((application) => !status || application.status === status) : [];
   }
 
   try {
@@ -154,7 +155,7 @@ export async function listStoredFairApplications(status?: PublicationStatus) {
     return mapRows(rows);
   } catch (error) {
     console.error("Failed to load fair applications from Supabase", error);
-    return demoFairApplications.filter((application) => !status || application.status === status);
+    return shouldShowFallbackContent() ? demoFairApplications.filter((application) => !status || application.status === status) : [];
   }
 }
 

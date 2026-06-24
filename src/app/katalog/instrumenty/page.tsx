@@ -8,6 +8,7 @@ import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import { SubcategoryShareButton } from "@/components/listings/SubcategoryShareButton";
 import type { DemoListing } from "@/components/listings/ListingCard";
 import { instrumentSubcategories } from "@/lib/instrument-subcategories";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 
 export const metadata: Metadata = {
   title: "Инструменты",
@@ -124,7 +125,7 @@ export default function InstrumentsCategoryPage() {
             })}
           </div>
 
-          <ListingResultsPanel categorySlug="instrumenty" listings={demoListings} />
+          <ListingResultsPanel categorySlug="instrumenty" listings={shouldShowFallbackContent() ? demoListings : []} />
         </section>
       </main>
     </>

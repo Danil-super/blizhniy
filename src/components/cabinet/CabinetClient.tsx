@@ -480,7 +480,7 @@ function paymentToHistoryItem(payment: Payment): CabinetPaymentHistoryItem {
     href: `/oplata/${payment.id}`,
     subject: payment.targetTitle,
     amount: `${payment.amount} ₽`,
-    method: payment.provider === "mock" ? "Тестовая оплата" : payment.provider,
+    method: payment.provider === "mock" ? "Оплата" : payment.provider,
     status: payment.status,
   };
 }
@@ -960,7 +960,7 @@ type SoldReason = NonNullable<DemoPublication["soldReason"]>;
 const soldReasonLabels: Record<SoldReason, string> = {
   elsewhere: "Продано в другом месте",
   not_actual: "Больше не актуально",
-  platform: "Продано через БЛИЖНИЙ",
+  platform: "Продано на платформе",
 };
 
 type ListingFilter = "all" | "draft" | "pending" | "published" | "inactive";

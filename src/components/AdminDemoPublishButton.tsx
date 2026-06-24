@@ -29,6 +29,8 @@ type AdminDemoPublishButtonProps = {
   paymentTariffId?: string;
 };
 
+const clientFallbackContentEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
+
 type MediaUploadResponse = {
   files?: Array<{ path?: string }>;
   error?: string;
@@ -556,6 +558,13 @@ export function AdminDemoPublishButton({
 
         if (identity.accessToken && isDraftStatus(status)) {
           const result = await createSupabaseListing(formData, { accessToken: identity.accessToken, status: "draft" });
+
+          if (!clientFallbackContentEnabled) {
+            markCabinetDataChanged();
+            window.location.href = returnHref;
+            return;
+          }
+
           const fallbackPublication = await buildFallbackPublication(formData, publicationType, status);
           const publication = {
             ...fallbackPublication,
@@ -602,6 +611,13 @@ export function AdminDemoPublishButton({
 
         if (identity.accessToken && isDraftStatus(status)) {
           const result = await createSupabaseVacancy(formData, { accessToken: identity.accessToken, status: "draft" });
+
+          if (!clientFallbackContentEnabled) {
+            markCabinetDataChanged();
+            window.location.href = returnHref;
+            return;
+          }
+
           const fallbackPublication = await buildFallbackPublication(formData, publicationType, status);
           const publication = {
             ...fallbackPublication,
@@ -644,6 +660,11 @@ export function AdminDemoPublishButton({
       }
 
       const identity = await resolveAuthenticatedClientUserIdentity();
+
+      if (!clientFallbackContentEnabled) {
+        throw new Error("Сохранение без серверной записи недоступно.");
+      }
+
       const publication = {
         ...(await buildFallbackPublication(formData, publicationType, status)),
         ownerKey: identity.ownerKey,

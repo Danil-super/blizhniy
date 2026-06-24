@@ -9,7 +9,7 @@ export const appConfig = {
     adminEmailEnv: "ADMIN_EMAIL",
   },
   payments: {
-    provider: process.env.PAYMENT_PROVIDER === "yookassa" ? "yookassa" : "mock",
+    provider: process.env.PAYMENT_PROVIDER === "yookassa" || process.env.NODE_ENV === "production" ? "yookassa" : "mock",
   },
 } as const;
 

@@ -146,7 +146,7 @@ export function ListingShareButton({
     <>
       <button type="button" onPointerDown={handlePress} onClick={handleShare} className={className} aria-label={`Поделиться объявлением: ${title}`}>
         <Share2 className={iconClassName} />
-        <span className={`${textVisibilityClasses[textBreakpoint]} min-w-0 truncate`}>{buttonLabel}</span>
+        <span className={`${textVisibilityClasses[textBreakpoint]} whitespace-nowrap`}>{buttonLabel}</span>
       </button>
       {status !== "idle" ? (
         <span
