@@ -12,8 +12,8 @@ KEEP_RELEASES="${KEEP_RELEASES:-5}"
 
 BASE_DIR="$(dirname "$APP_DIR")"
 RELEASES_DIR="${RELEASES_DIR:-${BASE_DIR}/blizhniy-releases}"
-LEGACY_DIR="${APP_DIR}.legacy-${TIMESTAMP}"
 TIMESTAMP="$(date -u +%Y%m%d%H%M%S)"
+LEGACY_DIR="${APP_DIR}.legacy-${TIMESTAMP}"
 SHORT_SHA="${COMMIT_SHA:0:12}"
 
 if [[ -z "$SHORT_SHA" ]]; then
