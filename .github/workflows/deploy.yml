@@ -56,16 +56,13 @@ jobs:
 
           ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
 
-          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "APP_DIR='$APP_DIR' bash -s" <<'EOF'
+          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "APP_DIR='$APP_DIR' REPO_URL='https://github.com/Danil-super/blizhniy.git' BRANCH='main' COMMIT_SHA='${{ github.sha }}' bash -s" <<'EOF'
             set -euo pipefail
 
-            cd "$APP_DIR"
-            git remote set-url origin https://github.com/Danil-super/blizhniy.git
-            git fetch origin main
-            git merge --ff-only origin/main
-            git rev-parse --short HEAD
-            npm ci
-            npm run build
-            pm2 startOrReload ecosystem.config.cjs
-            pm2 save
+            WORK_DIR="/tmp/blizhniy-deploy-${COMMIT_SHA}"
+            rm -rf "$WORK_DIR"
+            git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$WORK_DIR"
+            git -C "$WORK_DIR" fetch --depth 1 origin "$COMMIT_SHA"
+            git -C "$WORK_DIR" checkout --detach "$COMMIT_SHA"
+            bash "$WORK_DIR/scripts/deploy-release.sh"
           EOF

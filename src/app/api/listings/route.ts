@@ -176,6 +176,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ listing, payment }, { status: 201 });
   } catch (error) {
+    console.error("Listing publication payment flow failed", {
+      error: error instanceof Error ? error.message : String(error),
+      tariffId: body.tariffId,
+      userId: auth.user.id,
+    });
+
     return NextResponse.json({ error: error instanceof Error ? error.message : "Listing creation failed" }, { status: 400 });
   }
 }

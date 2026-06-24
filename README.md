@@ -163,7 +163,7 @@ git commit -m "Update site"
 git push
 ```
 
-GitHub Actions подключится к VPS, подтянет свежий `main`, выполнит `npm ci`, `npm run build` и перезапустит приложение через PM2.
+GitHub Actions подключится к VPS и выполнит zero-downtime deploy: новый релиз собирается в отдельной папке `/var/www/blizhniy-releases`, копирует серверные `.env*`, проходит healthcheck и только после этого переключает PM2. Если healthcheck не проходит, скрипт откатывает PM2 на предыдущий релиз.
 
 ## Ближайший план исправлений
 

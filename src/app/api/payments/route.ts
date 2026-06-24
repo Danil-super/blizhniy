@@ -183,6 +183,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ payment }, { status: 201 });
   } catch (error) {
+    console.error("Payment creation failed", {
+      error: error instanceof Error ? error.message : String(error),
+      hasTargetId: Boolean(body.targetId),
+      tariffId: body.tariffId,
+      targetType: body.targetType,
+      userId: auth.user.id,
+    });
+
     return NextResponse.json({ error: error instanceof Error ? error.message : "Payment creation failed" }, { status: 400 });
   }
 }
