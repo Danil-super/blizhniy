@@ -5,6 +5,8 @@ APP_DIR="${APP_DIR:-/var/www/blizhniy}"
 REPO_URL="${REPO_URL:-https://github.com/Danil-super/blizhniy.git}"
 BRANCH="${BRANCH:-main}"
 COMMIT_SHA="${COMMIT_SHA:-}"
+SOURCE_ARCHIVE="${SOURCE_ARCHIVE:-}"
+SOURCE_DIR="${SOURCE_DIR:-}"
 APP_NAME="${APP_NAME:-blizhniy}"
 PORT="${PORT:-3000}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${PORT}/api/health}"
@@ -65,9 +67,10 @@ healthcheck() {
 rollback() {
   if [[ -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" && -f "${PREVIOUS_RELEASE}/ecosystem.config.cjs" ]]; then
     log "healthcheck failed; rolling back to ${PREVIOUS_RELEASE}"
-    pm2 startOrReload "${PREVIOUS_RELEASE}/ecosystem.config.cjs" --update-env
     ln -sfn "$PREVIOUS_RELEASE" "${APP_DIR}.next"
     mv -Tf "${APP_DIR}.next" "$APP_DIR"
+    pm2 delete "$APP_NAME" || true
+    pm2 start "${PREVIOUS_RELEASE}/ecosystem.config.cjs" --update-env
     pm2 save
   else
     log "healthcheck failed and no previous release is available"
@@ -86,12 +89,22 @@ if [[ -d "$APP_DIR" && ! -L "$APP_DIR" ]]; then
   PREVIOUS_RELEASE="$LEGACY_DIR"
 fi
 
-log "cloning ${BRANCH} into ${RELEASE_DIR}"
-git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$RELEASE_DIR"
+if [[ -n "$SOURCE_ARCHIVE" ]]; then
+  log "extracting ${SOURCE_ARCHIVE} into ${RELEASE_DIR}"
+  mkdir -p "$RELEASE_DIR"
+  tar -xzf "$SOURCE_ARCHIVE" -C "$RELEASE_DIR"
+elif [[ -n "$SOURCE_DIR" ]]; then
+  log "copying ${SOURCE_DIR} into ${RELEASE_DIR}"
+  mkdir -p "$RELEASE_DIR"
+  tar -C "$SOURCE_DIR" --exclude .git -cf - . | tar -C "$RELEASE_DIR" -xf -
+else
+  log "cloning ${BRANCH} into ${RELEASE_DIR}"
+  git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$RELEASE_DIR"
 
-if [[ -n "$COMMIT_SHA" ]]; then
-  git -C "$RELEASE_DIR" fetch --depth 1 origin "$COMMIT_SHA"
-  git -C "$RELEASE_DIR" checkout --detach "$COMMIT_SHA"
+  if [[ -n "$COMMIT_SHA" ]]; then
+    git -C "$RELEASE_DIR" fetch --depth 1 origin "$COMMIT_SHA"
+    git -C "$RELEASE_DIR" checkout --detach "$COMMIT_SHA"
+  fi
 fi
 
 copy_env_files "$PREVIOUS_RELEASE"
@@ -103,7 +116,8 @@ log "building release"
 npm --prefix "$RELEASE_DIR" run build
 
 log "starting ${APP_NAME} from ${RELEASE_DIR}"
-pm2 startOrReload "${RELEASE_DIR}/ecosystem.config.cjs" --update-env
+pm2 delete "$APP_NAME" || true
+pm2 start "${RELEASE_DIR}/ecosystem.config.cjs" --update-env
 
 log "checking ${HEALTH_URL}"
 healthcheck
@@ -123,4 +137,8 @@ find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' |
     fi
   done
 
-log "deployed $(git -C "$RELEASE_DIR" rev-parse --short HEAD)"
+if [[ -d "${RELEASE_DIR}/.git" ]]; then
+  log "deployed $(git -C "$RELEASE_DIR" rev-parse --short HEAD)"
+else
+  log "deployed ${SHORT_SHA}"
+fi

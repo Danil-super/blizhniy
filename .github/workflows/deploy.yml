@@ -38,6 +38,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Deploy over SSH
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -56,15 +59,40 @@ jobs:
 
           SSH_OPTS="-o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o ConnectTimeout=30 -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa"
 
-          ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
+          retry() {
+            local attempt
 
-          ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "APP_DIR='$APP_DIR' REPO_URL='https://github.com/Danil-super/blizhniy.git' BRANCH='main' COMMIT_SHA='${{ github.sha }}' bash -s" <<'EOF'
+            for attempt in 1 2 3 4 5; do
+              if "$@"; then
+                return 0
+              fi
+
+              sleep "$((attempt * 5))"
+            done
+
+            return 1
+          }
+
+          retry ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
+
+          ARCHIVE_NAME="blizhniy-${{ github.sha }}.tar.gz"
+          LOCAL_ARCHIVE="/tmp/${ARCHIVE_NAME}"
+          REMOTE_ARCHIVE="/tmp/${ARCHIVE_NAME}"
+          LOCAL_SCRIPT="/tmp/blizhniy-deploy-${{ github.sha }}.sh"
+          REMOTE_SCRIPT="/tmp/blizhniy-deploy-${{ github.sha }}.sh"
+
+          git archive --format=tar.gz --output="$LOCAL_ARCHIVE" "${{ github.sha }}"
+
+          cat > "$LOCAL_SCRIPT" <<'EOF'
             set -euo pipefail
-
             WORK_DIR="/tmp/blizhniy-deploy-${COMMIT_SHA}"
             rm -rf "$WORK_DIR"
-            git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$WORK_DIR"
-            git -C "$WORK_DIR" fetch --depth 1 origin "$COMMIT_SHA"
-            git -C "$WORK_DIR" checkout --detach "$COMMIT_SHA"
+            mkdir -p "$WORK_DIR"
+            tar -xzf "$SOURCE_ARCHIVE" -C "$WORK_DIR"
             bash "$WORK_DIR/scripts/deploy-release.sh"
+            rm -rf "$WORK_DIR" "$SOURCE_ARCHIVE" "$0"
           EOF
+
+          retry scp $SSH_OPTS -i ~/.ssh/deploy_key -P "$VPS_PORT" "$LOCAL_ARCHIVE" "$LOCAL_SCRIPT" "$VPS_USER@$VPS_HOST:/tmp/"
+
+          retry ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "APP_DIR='$APP_DIR' SOURCE_ARCHIVE='$REMOTE_ARCHIVE' COMMIT_SHA='${{ github.sha }}' bash '$REMOTE_SCRIPT'"
