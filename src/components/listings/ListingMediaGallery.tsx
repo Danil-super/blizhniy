@@ -35,7 +35,7 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
         {activeMedia.kind === "video" ? (
           <StoredMediaVideo src={activeMedia.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
         ) : (
-          <StoredMediaImage src={activeMedia.src} alt={title} className="h-full w-full object-cover object-center" loading="eager" />
+          <StoredMediaImage src={activeMedia.src} alt={title} className="h-full w-full object-contain object-center" loading="eager" />
         )}
 
         {media.length > 1 ? (
@@ -70,7 +70,7 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
               type="button"
               key={`${item.src}-${index}`}
               onClick={() => setActiveIndex(index)}
-              className={`relative h-20 w-24 shrink-0 overflow-hidden rounded-lg border-2 bg-slate-100 transition ${
+              className={`relative h-20 w-[106px] shrink-0 overflow-hidden rounded-lg border-2 bg-slate-100 transition ${
                 index === activeIndex ? "border-[#0875d1]" : "border-slate-200 hover:border-blue-200"
               }`}
               aria-label={`Показать файл ${index + 1}`}
@@ -83,7 +83,7 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
                   </span>
                 </>
               ) : (
-                <StoredMediaImage src={item.src} alt={`${title}, фото ${index + 1}`} className="h-full w-full object-cover" loading="lazy" />
+                <StoredMediaImage src={item.src} alt={`${title}, фото ${index + 1}`} className="h-full w-full object-contain" loading="lazy" />
               )}
             </button>
           ))}

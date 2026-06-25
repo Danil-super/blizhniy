@@ -89,7 +89,7 @@ function ListingTile({ item }: { item: SellerProfileListing }) {
     <article className={`group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-card ${sold ? "ring-slate-300" : "ring-slate-200"}`}>
       <Link href={item.href} className="block min-w-0">
         <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-blue-50 text-[#0875d1]">
-          {item.image ? <StoredMediaImage src={item.image} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
+          {item.image ? <StoredMediaImage src={item.image} alt={item.title} className="absolute inset-0 h-full w-full bg-white object-contain" /> : null}
           {!item.image ? (
             <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/75 shadow-sm ring-1 ring-white/80 transition group-hover:scale-105">
               <FileText className="h-10 w-10" />

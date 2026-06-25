@@ -1,5 +1,6 @@
 export function getDemoListingViews(seed: string) {
   if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(seed) ||
     seed.startsWith("demo-listing-") ||
     seed.startsWith("listing-") ||
     seed.startsWith("vacancy-") ||
@@ -21,6 +22,10 @@ const viewedListingsStorageKey = "blizhniy-viewed-listing-ids";
 export const listingViewCountsUpdatedEvent = "blizhniy-listing-view-counts-updated";
 
 type ListingViewCounts = Record<string, number>;
+type ListingViewsUpdatedDetail = {
+  listingId: string;
+  views: number;
+};
 
 function readCounts(): ListingViewCounts {
   if (typeof window === "undefined") {
@@ -75,19 +80,42 @@ export function getListingExtraViews(listingId: string) {
   return readCounts()[listingId] ?? 0;
 }
 
-export function getListingTotalViews(listingId: string) {
-  return getDemoListingViews(listingId) + getListingExtraViews(listingId);
+function getBaseViews(listingId: string, initialViews?: number) {
+  if (typeof initialViews === "number" && Number.isFinite(initialViews)) {
+    return Math.max(0, Math.floor(initialViews));
+  }
+
+  return getDemoListingViews(listingId);
 }
 
-export function incrementListingViews(listingId: string) {
+export function getListingTotalViews(listingId: string, initialViews?: number) {
+  return getBaseViews(listingId, initialViews) + getListingExtraViews(listingId);
+}
+
+export function emitListingViewsUpdated(listingId: string, views: number) {
+  if (typeof window === "undefined" || !Number.isFinite(views)) {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent<ListingViewsUpdatedDetail>(listingViewCountsUpdatedEvent, {
+      detail: {
+        listingId,
+        views: Math.max(0, Math.floor(views)),
+      },
+    }),
+  );
+}
+
+export function incrementListingViews(listingId: string, initialViews?: number) {
   if (typeof window === "undefined") {
-    return getDemoListingViews(listingId);
+    return getBaseViews(listingId, initialViews);
   }
 
   const viewedIds = readViewedListingIds();
 
   if (viewedIds.has(listingId)) {
-    return getListingTotalViews(listingId);
+    return getListingTotalViews(listingId, initialViews);
   }
 
   const counts = readCounts();
@@ -96,5 +124,5 @@ export function incrementListingViews(listingId: string) {
   writeViewedListingIds(viewedIds);
   writeCounts(counts);
 
-  return getDemoListingViews(listingId) + counts[listingId];
+  return getBaseViews(listingId, initialViews) + counts[listingId];
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import {
   archiveStoredListingForUser,
   listStoredListingsForUser,
@@ -38,6 +39,23 @@ type ListingActionBody = {
 };
 
 const messengerPattern = /^(@[A-Za-z0-9_]{5,32}|https?:\/\/[^\s]+)$/;
+
+function revalidateListingPublicationPaths(listingId: string, categorySlug?: string) {
+  revalidatePath("/");
+  revalidatePath("/obyavleniya");
+  revalidatePath("/obyavleniya/prodam");
+  revalidatePath("/obyavleniya/kuplyu");
+  revalidatePath("/obyavleniya/otdam-darom");
+  revalidatePath("/obyavleniya/arenda");
+  revalidatePath("/poisk");
+  revalidatePath("/cabinet/obyavleniya");
+  revalidatePath(`/obyavlenie/${listingId}`);
+  revalidatePath(`/obyavlenie/${listingId}/edit`);
+
+  if (categorySlug) {
+    revalidatePath(`/katalog/${categorySlug}`);
+  }
+}
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -126,6 +144,8 @@ export async function DELETE(request: Request) {
   if (!archived) {
     return NextResponse.json({ error: "Объявление не найдено или уже удалено" }, { status: 404 });
   }
+
+  revalidateListingPublicationPaths(listingId);
 
   return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -221,6 +241,8 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: "Не удалось сохранить объявление. Возможно, оно снято с публикации или уже удалено." }, { status: 409 });
       }
 
+      revalidateListingPublicationPaths(listing.id, listing.categorySlug);
+
       return NextResponse.json({ listing }, { headers: { "Cache-Control": "no-store" } });
     }
 
@@ -231,6 +253,8 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: "Объявление не найдено или уже снято с публикации" }, { status: 404 });
       }
 
+      revalidateListingPublicationPaths(listingId);
+
       return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
     }
 
@@ -240,6 +264,8 @@ export async function PATCH(request: Request) {
       if (!updated) {
         return NextResponse.json({ error: "Объявление не найдено или его нужно оплатить перед публикацией" }, { status: 404 });
       }
+
+      revalidateListingPublicationPaths(listingId);
 
       return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
     }

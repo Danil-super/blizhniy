@@ -86,6 +86,7 @@ export type Listing = {
   messengerUrl?: string;
   status: PublicationStatus;
   paid: boolean;
+  viewCount?: number;
   publishedAt: string;
   expiresAt: string;
 };

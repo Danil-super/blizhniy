@@ -106,7 +106,7 @@ function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string })
         {activeMedia?.kind === "video" ? (
           <StoredMediaVideo src={activeMedia.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
         ) : (
-          <StoredMediaImage src={activeMedia?.src} alt={title} className="h-full w-full object-cover object-center" />
+          <StoredMediaImage src={activeMedia?.src} alt={title} className="h-full w-full object-contain object-center" />
         )}
         {media.length > 1 ? (
           <>
@@ -139,7 +139,7 @@ function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string })
               type="button"
               key={`${item.src.slice(0, 40)}-${index}`}
               onClick={() => setActiveIndex(index)}
-              className={`relative h-16 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-slate-100 transition sm:h-20 sm:w-24 ${
+              className={`relative h-16 w-[85px] shrink-0 overflow-hidden rounded-lg border-2 bg-slate-100 transition sm:h-20 sm:w-[106px] ${
                 index === activeIndex ? "border-[#0875d1]" : "border-transparent hover:border-blue-200"
               }`}
               aria-label={`Показать файл ${index + 1}`}
@@ -152,7 +152,7 @@ function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string })
                   </span>
                 </>
               ) : (
-                <StoredMediaImage src={item.src} alt="" className="h-full w-full object-cover object-center" />
+                <StoredMediaImage src={item.src} alt="" className="h-full w-full object-contain object-center" />
               )}
             </button>
           ))}

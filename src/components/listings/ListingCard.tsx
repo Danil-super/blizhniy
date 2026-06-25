@@ -36,6 +36,7 @@ export type DemoListing = {
   messengerUrl?: string;
   status: ListingStatus;
   paid: boolean;
+  viewCount?: number;
   createdAt: string;
   publishedAt: string;
   expiresAt: string;
@@ -95,7 +96,7 @@ function ListingImage({ className, iconClassName, listing }: { className: string
   const image = listing.images?.[0];
 
   if (image) {
-    return <StoredMediaImage src={image} alt={listing.title} className={`${className} bg-slate-100 object-cover`} />;
+    return <StoredMediaImage src={image} alt={listing.title} className={`${className} bg-slate-100 object-contain`} />;
   }
 
   return (
@@ -145,11 +146,11 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
   const hasSecondaryContact = Boolean(listing.messengerUrl || listing.email);
 
   return (
-    <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-4 sm:p-4 xl:grid-cols-[140px_minmax(0,1fr)_minmax(280px,auto)]">
+    <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:grid-cols-[128px_minmax(0,1fr)] sm:gap-4 sm:p-4 xl:grid-cols-[160px_minmax(0,1fr)_minmax(280px,auto)]">
       <div className="flex min-w-0 gap-3 sm:contents">
         <Link
           href={href}
-          className="block h-24 w-24 shrink-0 overflow-hidden rounded-lg sm:h-auto sm:min-h-28 sm:w-auto xl:min-h-32"
+          className="block aspect-[4/3] w-28 shrink-0 overflow-hidden rounded-lg sm:w-auto"
           aria-label={listing.title}
         >
           <ListingImage listing={listing} className="h-full w-full rounded-lg" iconClassName="h-8 w-8 sm:h-9 sm:w-9 lg:h-12 lg:w-12" />
@@ -223,7 +224,7 @@ export function ListingGridCard({ listing }: { listing: DemoListing }) {
   return (
     <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card">
       <Link href={href} className="block min-w-0">
-        <span className="relative block aspect-[1.18/1] overflow-hidden bg-slate-100">
+        <span className="relative block aspect-[4/3] overflow-hidden bg-slate-100">
           <ListingImage listing={listing} className="h-full w-full" iconClassName="h-8 w-8" />
           {listing.images?.[0] ? <span className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-slate-950/30 to-transparent" /> : <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />}
         </span>
@@ -243,7 +244,7 @@ export function ListingGridCard({ listing }: { listing: DemoListing }) {
               <MapPin className="h-3 w-3 shrink-0" />
               <span className="line-clamp-2 min-w-0 leading-[14px] [overflow-wrap:anywhere]" title={listingPlaceLabel(listing)}>{listingPlaceLabel(listing)}</span>
             </span>
-            <ListingViewCounter listingId={viewId} />
+            <ListingViewCounter initialViews={listing.viewCount} listingId={viewId} />
           </span>
         </span>
       </Link>

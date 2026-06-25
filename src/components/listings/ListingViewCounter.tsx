@@ -2,16 +2,25 @@
 
 import { useEffect, useRef, useState } from "react";
 import lottie, { type AnimationItem } from "lottie-web";
-import { getDemoListingViews, getListingTotalViews, listingViewCountsUpdatedEvent } from "@/lib/listing-views";
+import { getListingTotalViews, listingViewCountsUpdatedEvent } from "@/lib/listing-views";
 import eyesAnimation from "../../../eyes.json";
 
-export function ListingViewCounter({ listingId }: { listingId: string }) {
-  const [views, setViews] = useState(() => getDemoListingViews(listingId));
+export function ListingViewCounter({ initialViews, listingId }: { initialViews?: number; listingId: string }) {
+  const [views, setViews] = useState(() => getListingTotalViews(listingId, initialViews));
   const iconRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    function syncViews() {
-      setViews(getListingTotalViews(listingId));
+    function syncViews(event?: Event) {
+      if (event instanceof CustomEvent && event.detail && typeof event.detail === "object") {
+        const detail = event.detail as { listingId?: unknown; views?: unknown };
+
+        if (detail.listingId === listingId && typeof detail.views === "number" && Number.isFinite(detail.views)) {
+          setViews(Math.max(0, Math.floor(detail.views)));
+          return;
+        }
+      }
+
+      setViews(getListingTotalViews(listingId, initialViews));
     }
 
     syncViews();
@@ -22,7 +31,7 @@ export function ListingViewCounter({ listingId }: { listingId: string }) {
       window.removeEventListener("storage", syncViews);
       window.removeEventListener(listingViewCountsUpdatedEvent, syncViews);
     };
-  }, [listingId]);
+  }, [initialViews, listingId]);
 
   useEffect(() => {
     if (!iconRef.current) {

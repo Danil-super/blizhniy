@@ -1177,6 +1177,7 @@ export function toDemoListing(listing: StoreListing): DemoListing {
     messengerUrl: listing.messengerUrl,
     status: listing.status,
     paid: listing.paid,
+    viewCount: listing.viewCount,
     createdAt: listing.publishedAt,
     publishedAt: listing.publishedAt,
     expiresAt: listing.expiresAt,
@@ -1643,7 +1644,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
   return (
     <>
       <SiteHeader />
-      <ListingViewTracker listingId={viewId} />
+      <ListingViewTracker initialViews={listing.viewCount} listingId={viewId} />
       <main className="page-container py-10">
         <Breadcrumbs
           items={[

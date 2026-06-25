@@ -28,6 +28,7 @@ type ListingRow = {
   messenger_url?: string | null;
   status: PublicationStatus;
   is_paid: boolean;
+  view_count?: number | null;
   created_at: string;
   published_at?: string | null;
   expires_at?: string | null;
@@ -104,6 +105,22 @@ const fallbackCategoryByKind: Record<ListingKind, string> = {
 
 const listingSelect =
   "id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name,email)";
+const listingSelectWithViewCount =
+  "id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,view_count,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name,email)";
+
+async function fetchListingRows(querySuffix: string) {
+  try {
+    return await supabaseRest<ListingRow[]>(`/rest/v1/listings?select=${listingSelectWithViewCount}${querySuffix}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+
+    if (!message.includes("view_count")) {
+      throw error;
+    }
+
+    return supabaseRest<ListingRow[]>(`/rest/v1/listings?select=${listingSelect}${querySuffix}`);
+  }
+}
 
 function toNumber(value: ListingRow["latitude"]) {
   if (value === null || value === undefined || value === "") {
@@ -220,6 +237,7 @@ function mapListing(row: ListingRow): Listing {
     messengerUrl: row.messenger_url ?? undefined,
     status: row.status,
     paid: row.is_paid,
+    viewCount: Math.max(0, Math.floor(Number(row.view_count ?? 0) || 0)),
     publishedAt,
     expiresAt: isoDate(row.expires_at) || addDaysIsoDate(publishedAt, 30),
   };
@@ -590,9 +608,7 @@ export async function getStoredListingById(listingId: string, options: { publicO
 
   try {
     const statusFilter = options.publicOnly ? "&status=eq.published" : "";
-    const rows = await supabaseRest<ListingRow[]>(
-      `/rest/v1/listings?select=${listingSelect}&id=eq.${encodeURIComponent(listingId)}${statusFilter}&limit=1`,
-    );
+    const rows = await fetchListingRows(`&id=eq.${encodeURIComponent(listingId)}${statusFilter}&limit=1`);
 
     return rows[0] ? mapListing(rows[0]) : undefined;
   } catch (error) {
@@ -606,11 +622,33 @@ export async function getStoredListingForUser(listingId: string, userId: string)
     return undefined;
   }
 
-  const rows = await supabaseRest<ListingRow[]>(
-    `/rest/v1/listings?select=${listingSelect}&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&limit=1`,
-  );
+  const rows = await fetchListingRows(`&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&limit=1`);
 
   return rows[0] ? mapListing(rows[0]) : undefined;
+}
+
+export async function recordStoredListingView(listingId: string, viewerKey: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
+    return undefined;
+  }
+
+  const normalizedViewerKey = viewerKey.trim().slice(0, 160);
+
+  if (!normalizedViewerKey) {
+    return undefined;
+  }
+
+  const result = await supabaseRest<number | Array<{ record_listing_view: number }> | { record_listing_view?: number }>("/rest/v1/rpc/record_listing_view", {
+    method: "POST",
+    body: {
+      p_listing_id: listingId,
+      p_viewer_key: normalizedViewerKey,
+    },
+  });
+
+  const value = Number(Array.isArray(result) ? result[0]?.record_listing_view : typeof result === "object" ? result?.record_listing_view : result);
+
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 }
 
 export async function listStoredListings(limit = 24) {
@@ -619,9 +657,7 @@ export async function listStoredListings(limit = 24) {
   }
 
   try {
-    const rows = await supabaseRest<ListingRow[]>(
-      `/rest/v1/listings?select=${listingSelect}&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`,
-    );
+    const rows = await fetchListingRows(`&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`);
 
     return rows.map(mapListing);
   } catch (error) {
@@ -636,9 +672,7 @@ export async function listStoredListingsForAdmin(limit = 200) {
   }
 
   try {
-    const rows = await supabaseRest<ListingRow[]>(
-      `/rest/v1/listings?select=${listingSelect}&order=created_at.desc&limit=${limit}`,
-    );
+    const rows = await fetchListingRows(`&order=created_at.desc&limit=${limit}`);
 
     return rows.map(mapListing);
   } catch (error) {
@@ -653,9 +687,7 @@ export async function listStoredListingsForUser(userId: string) {
   }
 
   try {
-    const rows = await supabaseRest<ListingRow[]>(
-      `/rest/v1/listings?select=${listingSelect}&author_id=eq.${encodeURIComponent(userId)}&status=neq.archived&order=created_at.desc`,
-    );
+    const rows = await fetchListingRows(`&author_id=eq.${encodeURIComponent(userId)}&status=neq.archived&order=created_at.desc`);
 
     return rows.map(mapListing);
   } catch (error) {
