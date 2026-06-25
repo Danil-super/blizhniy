@@ -57,12 +57,12 @@ jobs:
           printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          SSH_OPTS="-o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o ConnectTimeout=30 -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa"
+          SSH_OPTS="-o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa"
 
           retry() {
             local attempt
 
-            for attempt in 1 2 3 4 5; do
+            for attempt in 1 2 3 4 5 6 7 8; do
               if "$@"; then
                 return 0
               fi
@@ -81,7 +81,18 @@ jobs:
           LOCAL_SCRIPT="/tmp/blizhniy-deploy-${{ github.sha }}.sh"
           REMOTE_SCRIPT="/tmp/blizhniy-deploy-${{ github.sha }}.sh"
 
-          git archive --format=tar.gz --output="$LOCAL_ARCHIVE" "${{ github.sha }}"
+          tar \
+            --exclude=.git \
+            --exclude=.github \
+            --exclude=.next \
+            --exclude=node_modules \
+            --exclude=category \
+            --exclude=docs \
+            --exclude=supabase \
+            --exclude=blizhniy_codex_tz.md \
+            -czf "$LOCAL_ARCHIVE" .
+
+          du -h "$LOCAL_ARCHIVE"
 
           cat > "$LOCAL_SCRIPT" <<'EOF'
             set -euo pipefail
