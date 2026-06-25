@@ -94,15 +94,15 @@ function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string })
 
   if (!media.length) {
     return (
-      <div className="mt-5 flex aspect-[4/3] w-full max-w-3xl items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
+      <div className="mx-auto mt-5 flex aspect-square w-full max-w-[640px] items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
         <Camera className="h-12 w-12 sm:h-16 sm:w-16" />
       </div>
     );
   }
 
   return (
-    <section className="mt-5 w-full max-w-3xl sm:mt-6">
-      <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+    <section className="mt-5 w-full sm:mt-6">
+      <div className="relative mx-auto flex aspect-square w-full max-w-[640px] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
         {activeMedia?.kind === "video" ? (
           <StoredMediaVideo src={activeMedia.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
         ) : (
@@ -139,7 +139,7 @@ function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string })
               type="button"
               key={`${item.src.slice(0, 40)}-${index}`}
               onClick={() => setActiveIndex(index)}
-              className={`relative h-16 w-[85px] shrink-0 overflow-hidden rounded-lg border-2 bg-slate-100 transition sm:h-20 sm:w-[106px] ${
+              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 bg-slate-100 transition sm:h-20 sm:w-20 ${
                 index === activeIndex ? "border-[#0875d1]" : "border-transparent hover:border-blue-200"
               }`}
               aria-label={`Показать файл ${index + 1}`}
