@@ -70,8 +70,9 @@ rollback() {
     ln -sfn "$PREVIOUS_RELEASE" "${APP_DIR}.next"
     mv -Tf "${APP_DIR}.next" "$APP_DIR"
     pm2 delete "$APP_NAME" || true
-    pm2 start "${PREVIOUS_RELEASE}/ecosystem.config.cjs" --update-env
-    pm2 save
+    mkdir -p "${PREVIOUS_RELEASE}/.pm2"
+    pm2 start "${PREVIOUS_RELEASE}/ecosystem.config.cjs" --update-env </dev/null
+    pm2 save </dev/null
   else
     log "healthcheck failed and no previous release is available"
   fi
@@ -116,8 +117,9 @@ log "building release"
 npm --prefix "$RELEASE_DIR" run build
 
 log "starting ${APP_NAME} from ${RELEASE_DIR}"
+mkdir -p "${RELEASE_DIR}/.pm2"
 pm2 delete "$APP_NAME" || true
-pm2 start "${RELEASE_DIR}/ecosystem.config.cjs" --update-env
+pm2 start "${RELEASE_DIR}/ecosystem.config.cjs" --update-env </dev/null
 
 log "checking ${HEALTH_URL}"
 healthcheck
@@ -125,7 +127,7 @@ healthcheck
 log "promoting release"
 ln -sfn "$RELEASE_DIR" "${APP_DIR}.next"
 mv -Tf "${APP_DIR}.next" "$APP_DIR"
-pm2 save
+pm2 save </dev/null
 
 log "pruning old releases"
 find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' |
