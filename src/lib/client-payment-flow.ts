@@ -560,8 +560,6 @@ export async function confirmClientPayment(paymentId: string) {
         ? `${payload.payment.targetTitle}: публикация активирована.`
         : "Платеж подтвержден, публикация активирована.",
       tone: "success",
-      actionHref: "/cabinet/oplata",
-      actionLabel: "История оплат",
       dedupeKey: `payment:${payload.payment.id ?? confirmedPaymentId}:succeeded`,
     });
   } else {
@@ -573,8 +571,6 @@ export async function confirmClientPayment(paymentId: string) {
         ? `${payload.payment.targetTitle}: банк или ЮKassa еще не прислали финальный статус.`
         : "Платеж создан, ожидаем финальный статус от платежного провайдера.",
       tone: "warning",
-      actionHref: "/cabinet/oplata",
-      actionLabel: "Проверить оплату",
       dedupeKey: `payment:${payload.payment?.id ?? confirmedPaymentId}:pending`,
     });
   }
@@ -621,10 +617,10 @@ export async function createClientPayment(input: CreatePaymentInput): Promise<Cr
     title: "Платеж создан",
     message: payload.payment.confirmationUrl
       ? "Перейдите к оплате в ЮKassa. После успешной оплаты публикация включится автоматически."
-      : "Откройте раздел оплат, чтобы подтвердить платеж и активировать публикацию.",
+      : "Платеж создан. После подтверждения публикация включится автоматически.",
     tone: "info",
-    actionHref: payload.payment.confirmationUrl ? payload.payment.confirmationUrl : "/cabinet/oplata",
-    actionLabel: payload.payment.confirmationUrl ? "Перейти к оплате" : "Открыть оплаты",
+    actionHref: payload.payment.confirmationUrl,
+    actionLabel: payload.payment.confirmationUrl ? "Перейти к оплате" : undefined,
     dedupeKey: `payment:${payload.payment.id}:created`,
   });
 
