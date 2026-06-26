@@ -271,12 +271,12 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
               key={`${category.label}-${category.href}`}
               href={category.href}
               data-category-card
-              className={`group relative isolate block min-h-[330px] overflow-hidden rounded-[26px] border border-slate-200/90 bg-white shadow-[0_14px_42px_rgba(15,23,42,0.06)] ring-1 ring-white transition duration-300 [clip-path:inset(0_round_26px)] [transform:translateZ(0)] hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_24px_70px_rgba(15,23,42,0.12)] sm:min-h-[300px] lg:min-h-[340px] ${isLastOddCard ? "lg:col-span-2 lg:min-h-[420px]" : ""} ${tone.hover}`}
+              className={`group relative isolate block min-h-[430px] overflow-hidden rounded-[26px] border border-slate-200/90 bg-white shadow-[0_14px_42px_rgba(15,23,42,0.06)] ring-1 ring-white transition duration-300 [clip-path:inset(0_round_26px)] [transform:translateZ(0)] hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_24px_70px_rgba(15,23,42,0.12)] sm:min-h-[400px] lg:min-h-[430px] xl:min-h-[440px] ${isLastOddCard ? "lg:col-span-2 lg:min-h-[540px]" : ""} ${tone.hover}`}
             >
               <img
                 aria-hidden="true"
                 alt=""
-                className="absolute inset-y-0 right-0 h-full w-[136%] max-w-none rounded-[26px] object-cover brightness-[1.04] contrast-[1.12] saturate-[1.16] transition duration-500 [clip-path:inset(0_round_26px)] [transform:translateZ(0)] group-hover:scale-[1.02] sm:w-[120%]"
+                className="absolute inset-y-0 right-0 h-full w-[124%] max-w-none rounded-[26px] object-cover brightness-[1.04] contrast-[1.12] saturate-[1.16] transition duration-500 [clip-path:inset(0_round_26px)] [transform:translateZ(0)] group-hover:scale-[1.02] sm:w-[108%] lg:w-[104%]"
                 decoding="async"
                 fetchPriority={index < 2 || isLastOddCard ? "high" : "auto"}
                 loading={index < 2 || isLastOddCard ? "eager" : "lazy"}
@@ -286,7 +286,7 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
               <span
                 aria-hidden="true"
                 className={`absolute inset-y-0 left-0 bg-gradient-to-r from-white via-white/96 to-white/0 ${
-                  isLastOddCard ? "w-[76%] sm:w-[44%] lg:w-[28%]" : "w-[76%] sm:w-[52%] lg:w-[36%]"
+                  isLastOddCard ? "w-[72%] sm:w-[44%] lg:w-[28%]" : "w-[72%] sm:w-[52%] lg:w-[36%]"
                 }`}
               />
               {category.ageRating ? (
@@ -295,8 +295,8 @@ export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "gri
                 </span>
               ) : null}
               <span
-                className={`relative z-10 flex min-h-[330px] flex-col p-5 pb-20 sm:min-h-[300px] sm:p-6 sm:pb-24 lg:min-h-[340px] lg:p-8 lg:pb-24 ${
-                  isLastOddCard ? "max-w-[76%] sm:max-w-[52%] lg:min-h-[420px] lg:max-w-[31%]" : "max-w-[76%] sm:max-w-[62%] lg:max-w-[42%]"
+                className={`relative z-10 flex min-h-[430px] flex-col p-5 pb-20 sm:min-h-[400px] sm:p-6 sm:pb-24 lg:min-h-[430px] lg:p-8 lg:pb-24 xl:min-h-[440px] ${
+                  isLastOddCard ? "max-w-[76%] sm:max-w-[52%] lg:min-h-[540px] lg:max-w-[31%]" : "max-w-[76%] sm:max-w-[62%] lg:max-w-[42%]"
                 }`}
               >
                 <span
