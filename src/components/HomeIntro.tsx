@@ -1,39 +1,52 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, BriefcaseBusiness, MapPinned, PlusCircle } from "lucide-react";
-import { BrandName } from "@/components/BrandName";
 
 export function HomeIntro() {
   return (
     <section className="page-container pb-3 pt-3 sm:pb-4 sm:pt-4 lg:pb-5" aria-label="Главный экран">
-      <div className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
-        <Image
-          src="/images/categories/free-gifts.webp"
-          alt=""
-          aria-hidden="true"
-          fill
-          priority
-          sizes="100vw"
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover object-right brightness-[1.08] contrast-[1.14] saturate-[1.28]"
-        />
-        <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white via-white/72 to-white/5 sm:via-white/68 lg:hidden" />
-        <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/8 lg:hidden" />
-        <div className="relative z-10 grid min-h-[340px] items-center gap-5 p-5 sm:min-h-[390px] sm:p-7 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)] lg:p-10">
-          <div className="max-w-[34rem] lg:max-w-[42rem]">
-            <p className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0a8f32] sm:text-sm">
+      <div className="relative overflow-hidden rounded-[28px] border border-emerald-100/80 bg-[#fbfdf9] shadow-[0_22px_70px_rgba(15,23,42,0.08)] ring-1 ring-white">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 hidden w-[58%] lg:block">
+          <Image
+            src="/images/categories/hero-city-crop.webp"
+            alt=""
+            aria-hidden="true"
+            fill
+            priority
+            sizes="58vw"
+            className="h-full w-full object-cover object-right brightness-[1.08] contrast-[1.13] saturate-[1.24]"
+          />
+        </div>
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 lg:hidden">
+          <Image
+            src="/images/categories/hero-city-crop.webp"
+            alt=""
+            aria-hidden="true"
+            fill
+            priority
+            sizes="100vw"
+            className="h-full w-full object-cover object-[62%_center] brightness-[1.08] contrast-[1.18] saturate-[1.22]"
+          />
+        </div>
+        <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-[54%] hidden w-[10%] bg-gradient-to-r from-[#fbfdf9] via-[#fbfdf9]/82 to-transparent lg:block" />
+        <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white via-white/86 to-white/12 sm:via-white/80 lg:hidden" />
+        <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/22 via-transparent to-black/8 lg:hidden" />
+        <div className="relative z-10 grid min-h-[410px] items-center gap-5 p-5 sm:min-h-[390px] sm:p-7 lg:min-h-[430px] lg:grid-cols-[minmax(0,0.84fr)_minmax(520px,1.16fr)] lg:p-10">
+          <div className="max-w-[34rem] rounded-[24px] bg-white/72 p-0 lg:max-w-[39rem] lg:bg-white/0">
+            <p className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#0a8f32] sm:text-sm">
               Краснодарский край рядом
             </p>
-            <h1 className="mt-4 max-w-none text-[21px] font-bold leading-[1.16] text-[#06102d] sm:max-w-[40rem] sm:text-3xl sm:leading-tight lg:text-4xl">
-              <span className="block whitespace-nowrap">
-                <BrandName /> помогает найти
-              </span>
-              {" "}
-              <span className="block whitespace-nowrap">нужное рядом с домом</span>
+            <h1 className="mt-4 max-w-[19rem] text-[1.85rem] font-black leading-[1.04] text-[#06102d] sm:max-w-none sm:text-[2.55rem] sm:leading-[1.04] lg:text-[3rem]">
+              <span className="block sm:whitespace-nowrap">Все нужное рядом.</span>
+              <span className="block text-[#188c32] sm:whitespace-nowrap">Для вас и ваших близких.</span>
             </h1>
-            <p className="mt-4 max-w-[20rem] text-base font-semibold leading-7 text-slate-700 sm:max-w-[35rem] sm:text-lg sm:leading-8">
-              <span className="block">Объявления, работа, специалисты,</span>
-              <span className="block">услуги и полезные вещи в одном</span>
-              <span className="block">спокойном городском пространстве.</span>
+            <p className="mt-4 max-w-[20rem] text-[13px] font-semibold leading-6 text-slate-700 sm:max-w-[46rem] sm:text-base sm:leading-7 lg:max-w-[52rem]">
+              <span className="block">
+                Местная платформа демонстрирует устойчивость к развитию услуг и размещению объявлений.
+              </span>
+              <span className="block sm:whitespace-nowrap">
+                Товары, услуги, работа и многое другое рядом с вами.
+              </span>
             </p>
             <div className="mt-5 flex flex-wrap items-center justify-start gap-2 sm:mt-6">
               <Link

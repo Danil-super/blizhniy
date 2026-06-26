@@ -19,7 +19,8 @@ Current filenames used by `src/components/CategoryGrid.tsx`:
 - `home-dacha.webp`
 - `tools.webp`
 - `dishes.webp`
-- `travel-housing.webp`
+- `exchange-free.webp`
+- `hero-city-crop.webp`
 - `beauty-health.webp`
 - `free-gifts.webp`
 - `other.webp`

@@ -13,6 +13,7 @@ export const categoryDisplayItems: CategoryDisplayItem[] = [
   { id: "tovary-dlya-detey", label: "Товары для детей", href: "/katalog/tovary-dlya-detey" },
   { id: "ritualnye-uslugi", label: "Ритуальные услуги", href: "/katalog/ritualnye-uslugi" },
   { id: "nedvizhimost", label: "Недвижимость", href: "/katalog/nedvizhimost" },
+  { id: "menyayu-ili-otdam-darom", label: "Меняю или отдам даром", href: "/katalog/menyayu-ili-otdam-darom" },
   { id: "rabota", label: "Работа", href: "/rabota" },
   { id: "odezhda-obuv-aksessuary", label: "Одежда, обувь, аксессуары", href: "/katalog/odezhda-obuv-aksessuary" },
   { id: "hobbi-i-otdyh", label: "Хобби и отдых", href: "/katalog/otdyh" },
@@ -23,7 +24,6 @@ export const categoryDisplayItems: CategoryDisplayItem[] = [
   { id: "dlya-doma-i-dachi", label: "Для дома и дачи", href: "/katalog/dlya-doma-i-dachi" },
   { id: "instrumenty", label: "Инструменты", href: "/katalog/instrumenty" },
   { id: "posuda", label: "Посуда", href: "/katalog/posuda" },
-  { id: "zhile-dlya-puteshestviya", label: "Жилье для путешествия", href: "/katalog/nedvizhimost/zhile-dlya-puteshestviya" },
   { id: "krasota-i-zdorove", label: "Красота и здоровье", href: "/katalog/krasota-i-uhod" },
   { id: "raznoe", label: "Разное", href: "/katalog/raznoe" },
 ];
