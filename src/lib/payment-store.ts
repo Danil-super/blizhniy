@@ -1,5 +1,5 @@
 import { markStoredFairApplicationPaid } from "@/lib/fair-application-store";
-import { applicationTitle, getStoredApplicationOwner, markStoredApplicationPaid } from "@/lib/application-store";
+import { getStoredApplicationOwner, markStoredApplicationPaid } from "@/lib/application-store";
 import { createStoredNotification } from "@/lib/notification-store";
 import { markStoredListingPaid } from "@/lib/listing-store";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
@@ -27,6 +27,17 @@ type TariffRow = {
   id: string;
   name: string;
   price: number | string;
+};
+
+type ApplicationTitleRow = {
+  id: string;
+  specialist_name?: string | null;
+  vacancies?: {
+    title?: string | null;
+  } | null;
+  work_requests?: {
+    title?: string | null;
+  } | null;
 };
 
 type FairApplicationTitleRow = {
@@ -77,41 +88,80 @@ async function getPaymentTariffRow(input: StoredPaymentInput) {
   return undefined;
 }
 
-async function getFairApplicationTitle(targetId: string) {
-  if (!isUuid(targetId)) {
-    return undefined;
-  }
-
-  const rows = await supabaseRest<FairApplicationTitleRow[]>(
-    `/rest/v1/fair_applications?select=id,participant_name&id=eq.${encodeURIComponent(targetId)}&limit=1`,
-  );
-  const participantName = rows[0]?.participant_name;
-
-  return participantName ? `Заявка на ярмарку: ${participantName}` : undefined;
-}
-
-async function targetTitleForPayment(row: PaymentRow) {
+function targetTitleForPayment(row: PaymentRow, context?: PaymentMappingContext) {
   if (row.target_type === "application") {
-    return (await applicationTitle(row.target_id)) ?? "Отклик на вакансию";
+    return context?.applicationTitlesById.get(row.target_id) ?? "Отклик на вакансию";
   }
 
   if (row.target_type === "fair_application") {
-    return (await getFairApplicationTitle(row.target_id)) ?? "Заявка на ярмарку";
+    return context?.fairApplicationTitlesById.get(row.target_id) ?? "Заявка на ярмарку";
   }
 
   return "Платеж";
 }
 
-export async function mapStoredPayment(row: PaymentRow): Promise<Payment> {
+type PaymentMappingContext = {
+  applicationTitlesById: Map<string, string>;
+  fairApplicationTitlesById: Map<string, string>;
+  tariffActionsById: Map<string, Tariff["action"]>;
+};
+
+async function buildPaymentMappingContext(rows: PaymentRow[]): Promise<PaymentMappingContext> {
+  const tariffIds = Array.from(new Set(rows.map((row) => row.tariff_id).filter((id): id is string => Boolean(id))));
+  const applicationIds = Array.from(new Set(rows.filter((row) => row.target_type === "application").map((row) => row.target_id).filter(isUuid)));
+  const fairApplicationIds = Array.from(new Set(rows.filter((row) => row.target_type === "fair_application").map((row) => row.target_id).filter(isUuid)));
+
+  const [tariffRows, applicationRows, fairApplicationRows] = await Promise.all([
+    tariffIds.length
+      ? supabaseRest<Array<Pick<TariffRow, "action" | "id">>>(
+          `/rest/v1/tariffs?select=id,action&id=in.${encodeURIComponent(`(${tariffIds.join(",")})`)}`,
+        )
+      : Promise.resolve([]),
+    applicationIds.length
+      ? supabaseRest<ApplicationTitleRow[]>(
+          `/rest/v1/applications?select=id,specialist_name,vacancies(title),work_requests(title)&id=in.${encodeURIComponent(`(${applicationIds.join(",")})`)}`,
+        )
+      : Promise.resolve([]),
+    fairApplicationIds.length
+      ? supabaseRest<FairApplicationTitleRow[]>(
+          `/rest/v1/fair_applications?select=id,participant_name&id=in.${encodeURIComponent(`(${fairApplicationIds.join(",")})`)}`,
+        )
+      : Promise.resolve([]),
+  ]);
+
+  return {
+    applicationTitlesById: new Map(
+      applicationRows.map((row) => {
+        const specialistName = row.specialist_name?.trim() || "Специалист";
+        const workRequestTitle = row.work_requests?.title?.trim();
+        const vacancyTitle = row.vacancies?.title?.trim();
+        const title = workRequestTitle
+          ? `Отклик ${specialistName} на заказ ${workRequestTitle}`
+          : `Отклик ${specialistName} на вакансию ${vacancyTitle || "Вакансия"}`;
+
+        return [row.id, title];
+      }),
+    ),
+    fairApplicationTitlesById: new Map(
+      fairApplicationRows.map((row) => [row.id, row.participant_name ? `Заявка на ярмарку: ${row.participant_name}` : "Заявка на ярмарку"]),
+    ),
+    tariffActionsById: new Map(tariffRows.map((row) => [row.id, row.action])),
+  };
+}
+
+export async function mapStoredPayment(row: PaymentRow, context?: PaymentMappingContext): Promise<Payment> {
+  const resolvedContext = context ?? (await buildPaymentMappingContext([row]));
+  const tariffAction = row.tariff_id ? resolvedContext.tariffActionsById.get(row.tariff_id) : undefined;
+
   return {
     id: row.id,
     userId: row.user_id ?? undefined,
     targetType: row.target_type,
     targetId: row.target_id,
-    targetTitle: await targetTitleForPayment(row),
-    tariffId: tariffIdFromAction((await getTariffActionById(row.tariff_id)) ?? "listing_publication"),
+    targetTitle: targetTitleForPayment(row, resolvedContext),
+    tariffId: tariffIdFromAction(tariffAction ?? (await getTariffActionById(row.tariff_id)) ?? "listing_publication"),
     amount: Number(row.amount),
-    status: row.status === "refunded" ? "failed" : row.status,
+    status: row.status,
     provider: row.provider,
     providerPaymentId: row.provider_payment_id ?? undefined,
     createdAt: row.created_at.slice(0, 10),
@@ -170,11 +220,12 @@ export async function getStoredPayment(paymentId: string) {
 
 export async function listStoredPayments() {
   if (!isSupabaseRestConfigured()) {
-    return [];
+    throw new Error("Supabase env is not configured");
   }
 
   const rows = await supabaseRest<PaymentRow[]>("/rest/v1/payments?select=*&order=created_at.desc");
-  const payments = await Promise.all(rows.map((row) => mapStoredPayment(row)));
+  const context = await buildPaymentMappingContext(rows);
+  const payments = await Promise.all(rows.map((row) => mapStoredPayment(row, context)));
 
   return payments;
 }
@@ -187,7 +238,8 @@ export async function listStoredPaymentsForUser(userId: string) {
   const rows = await supabaseRest<PaymentRow[]>(
     `/rest/v1/payments?select=*&user_id=eq.${encodeURIComponent(userId)}&order=created_at.desc`,
   );
-  const payments = await Promise.all(rows.map((row) => mapStoredPayment(row)));
+  const context = await buildPaymentMappingContext(rows);
+  const payments = await Promise.all(rows.map((row) => mapStoredPayment(row, context)));
 
   return payments;
 }

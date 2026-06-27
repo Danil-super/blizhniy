@@ -370,15 +370,12 @@ export async function listStoredSpecialistProfiles(limit = 24) {
 
 export async function listStoredSpecialistProfilesForAdmin(limit = 200) {
   if (!isSupabaseRestConfigured()) {
-    return [];
+    throw new Error("Supabase env is not configured");
   }
 
   const rows = await supabaseRest<SpecialistProfileRow[]>(
     `/rest/v1/specialist_profiles?select=${specialistProfileSelect}&order=updated_at.desc&limit=${limit}`,
-  ).catch((error) => {
-    console.error("Failed to load admin specialist profiles from Supabase", error);
-    return [];
-  });
+  );
 
   return rows.map(mapSpecialistProfile);
 }

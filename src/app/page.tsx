@@ -5,7 +5,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 
 export const dynamic = "force-dynamic";
 
-export default function Home() {
+export default async function Home() {
   return (
     <>
       <SiteHeader />

@@ -1,11 +1,13 @@
 import type { MetadataRoute } from "next";
 import { demoListings, slugifySubcategory } from "@/components/listings/ListingPages";
-import { categories, listingKinds, professions, specialists, vacancies, workRequests } from "@/lib/data";
+import { getPublicCategories } from "@/lib/category-store";
+import { listingKinds, professions, specialists, vacancies, workRequests } from "@/lib/data";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { getPublicSiteUrl } from "@/lib/site-url";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = getPublicSiteUrl();
+  const categories = await getPublicCategories();
   const categoryPaths = categories.flatMap((category) => [
     `/katalog/${category.slug}`,
     ...category.children.map((child) => `/katalog/${category.slug}/${slugifySubcategory(child)}`),

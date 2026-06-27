@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 
 export type AdminAccessState = "loading" | "admin" | "signed-out" | "forbidden" | "error";
 
@@ -20,9 +20,34 @@ export function useAdminAccess() {
 
   useEffect(() => {
     let active = true;
-    const supabase = getSupabaseBrowserClient();
+    const supabase = isSupabaseBrowserConfigured() ? getSupabaseBrowserClient() : null;
+
+    async function checkServerAdminState(session?: Session | null) {
+      const stateResponse = await fetch("/api/auth/state", {
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+      });
+
+      if (!stateResponse.ok) {
+        return false;
+      }
+
+      const payload = (await stateResponse.json().catch(() => null)) as AuthStateResponse | null;
+
+      if (payload?.state === "admin") {
+        if (active) {
+          setState("admin");
+        }
+        return true;
+      }
+
+      return false;
+    }
 
     async function checkAdminRoleFromUser(user: User) {
+      if (!supabase) {
+        throw new Error("Supabase env is not configured");
+      }
+
       const { data: roles, error: rolesError } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
 
       if (rolesError) {
@@ -36,6 +61,10 @@ export function useAdminAccess() {
 
     async function checkAdminRole(session: Session | null | undefined) {
       try {
+        if (await checkServerAdminState(session)) {
+          return;
+        }
+
         const user = session?.user;
 
         if (!user) {
@@ -43,23 +72,6 @@ export function useAdminAccess() {
             setState("signed-out");
           }
           return;
-        }
-
-        if (session?.access_token) {
-          const response = await fetch("/api/auth/state", {
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-            },
-          });
-
-          if (response.ok) {
-            const payload = (await response.json().catch(() => null)) as AuthStateResponse | null;
-
-            if (active) {
-              setState(payload?.state === "admin" ? "admin" : "forbidden");
-            }
-            return;
-          }
         }
 
         await checkAdminRoleFromUser(user);
@@ -71,14 +83,26 @@ export function useAdminAccess() {
       }
     }
 
-    supabase.auth
-      .getSession()
-      .then(({ data, error }) => {
-        if (error) {
-          throw error;
+    checkServerAdminState()
+      .then((isAdmin) => {
+        if (isAdmin) {
+          return undefined;
         }
 
-        return checkAdminRole(data.session);
+        if (!supabase) {
+          if (active) {
+            setState("signed-out");
+          }
+          return undefined;
+        }
+
+        return supabase.auth.getSession().then(({ data, error }) => {
+          if (error) {
+            throw error;
+          }
+
+          return checkAdminRole(data.session);
+        });
       })
       .catch((error) => {
         if (active) {
@@ -86,6 +110,12 @@ export function useAdminAccess() {
           setMessage(error instanceof Error ? error.message : "Не удалось проверить сессию");
         }
       });
+
+    if (!supabase) {
+      return () => {
+        active = false;
+      };
+    }
 
     const {
       data: { subscription },

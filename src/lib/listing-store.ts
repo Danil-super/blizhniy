@@ -668,17 +668,12 @@ export async function listStoredListings(limit = 24) {
 
 export async function listStoredListingsForAdmin(limit = 200) {
   if (!isSupabaseRestConfigured()) {
-    return [];
+    throw new Error("Supabase env is not configured");
   }
 
-  try {
-    const rows = await fetchListingRows(`&order=created_at.desc&limit=${limit}`);
+  const rows = await fetchListingRows(`&order=created_at.desc&limit=${limit}`);
 
-    return rows.map(mapListing);
-  } catch (error) {
-    console.error("Failed to load admin listings from Supabase", error);
-    return [];
-  }
+  return rows.map(mapListing);
 }
 
 export async function listStoredListingsForUser(userId: string) {

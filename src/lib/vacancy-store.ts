@@ -515,19 +515,14 @@ export async function listStoredVacancies(limit = 24) {
 
 export async function listStoredVacanciesForAdmin(limit = 200) {
   if (!isSupabaseRestConfigured()) {
-    return [];
+    throw new Error("Supabase env is not configured");
   }
 
-  try {
-    const rows = await supabaseRest<VacancyRow[]>(
-      `/rest/v1/vacancies?select=${vacancySelect}&order=created_at.desc&limit=${limit}`,
-    );
+  const rows = await supabaseRest<VacancyRow[]>(
+    `/rest/v1/vacancies?select=${vacancySelect}&order=created_at.desc&limit=${limit}`,
+  );
 
-    return rows.map(mapVacancy);
-  } catch (error) {
-    console.error("Failed to load admin vacancies from Supabase", error);
-    return [];
-  }
+  return rows.map(mapVacancy);
 }
 
 export async function listStoredVacanciesForUser(userId: string) {

@@ -6,7 +6,7 @@ import { LocationMap } from "@/components/LocationMap";
 import { fairCategories } from "@/lib/data";
 import { listStoredFairApplications } from "@/lib/fair-application-store";
 import { publicMediaUrl } from "@/lib/storage-upload";
-import { getTariffs } from "@/lib/tariff-store";
+import { getPublicTariffs } from "@/lib/tariff-store";
 
 function nextFairDate(today = new Date()) {
   const year = today.getFullYear();
@@ -40,7 +40,7 @@ function fairPhotoUrl(photo: string) {
 
 export async function FairHomePage() {
   const fairDate = nextFairDate();
-  const tariffs = getTariffs();
+  const tariffs = await getPublicTariffs();
   const fairTariff = tariffs.find((tariff) => tariff.action === "fair_participation");
   const publishedApplications = await listStoredFairApplications("published");
 
@@ -176,8 +176,8 @@ export async function FairHomePage() {
   );
 }
 
-export function FairApplicationFormPage({ adminMode = false }: { adminMode?: boolean }) {
-  const tariffs = getTariffs();
+export async function FairApplicationFormPage({ adminMode = false }: { adminMode?: boolean }) {
+  const tariffs = await getPublicTariffs();
   const fairTariff = tariffs.find((tariff) => tariff.action === "fair_participation");
 
   return (

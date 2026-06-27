@@ -29,7 +29,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { formatBookingPrice, validateBookingDetailsForPublication } from "@/lib/booking-details";
-import { categories, cities } from "@/lib/data";
+import { categories as fallbackCategories, cities } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { createListing, getListingStatusOverride, listListings } from "@/lib/mock-store";
 import { normalizeListingPrice } from "@/lib/listing-price";
@@ -37,7 +37,8 @@ import { isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
-import { getTariffs } from "@/lib/tariff-store";
+import { getPublicCategories } from "@/lib/category-store";
+import { getPublicTariffs } from "@/lib/tariff-store";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
 import type { BookingRequest } from "@/lib/booking-notifications";
 import type { BookingDetails, DeliveryOptions, DeliveryServiceId, Listing as StoreListing } from "@/lib/types";
@@ -417,7 +418,7 @@ function normalizeListingKind(value?: string): ListingKind | undefined {
 }
 
 function getListingFormDefaults(defaults?: ListingFormDefaults) {
-  const category = categories.find((item) => item.slug === defaults?.categorySlug) ?? categories.find((item) => item.slug === "dlya-doma-i-dachi") ?? categories[0];
+  const category = fallbackCategories.find((item) => item.slug === defaults?.categorySlug) ?? fallbackCategories.find((item) => item.slug === "dlya-doma-i-dachi") ?? fallbackCategories[0];
   const categoryChildren = category ? getCategoryChildren(category.children) : [];
   const fallbackSubcategorySlug = categoryChildren[0] ? slugifySubcategory(categoryChildren[0]) : "";
   const subcategorySlug =
@@ -830,7 +831,7 @@ function createCoverageListings(existingListings: DemoListing[]): DemoListing[] 
   const tones: DemoListing["imageTone"][] = ["blue", "green", "rose", "amber", "violet"];
   let index = 0;
 
-  return categories.flatMap((category) => {
+  return fallbackCategories.flatMap((category) => {
     if (category.slug === "yarmarka-masterov" || !category.children.length) {
       return [];
     }
@@ -1147,7 +1148,7 @@ function listingImageTone(tone: StoreListing["imageTone"]): DemoListing["imageTo
 }
 
 function listingCategoryName(listing: StoreListing) {
-  return categories.find((category) => category.slug === listing.categorySlug)?.name ?? listing.subcategory;
+  return fallbackCategories.find((category) => category.slug === listing.categorySlug)?.name ?? listing.subcategory;
 }
 
 export function toDemoListing(listing: StoreListing): DemoListing {
@@ -1439,7 +1440,8 @@ export function ExchangeAndFreePage() {
   );
 }
 
-export function CategoryListingsPage({ categorySlug, subcategorySlug }: { categorySlug: string; subcategorySlug?: string }) {
+export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { categorySlug: string; subcategorySlug?: string }) {
+  const categories = await getPublicCategories();
   const category = categories.find((item) => item.slug === categorySlug);
   const categoryChildren = category ? getCategoryChildren(category.children) : [];
   const subcategory = category?.children.find((item) => slugifySubcategory(item) === subcategorySlug);
@@ -1906,7 +1908,7 @@ function ListingDeliveryFields({ defaultCity, delivery }: { defaultCity?: string
   );
 }
 
-export function ListingFormPage({ slug, adminMode = false, defaults, error }: { slug?: string; adminMode?: boolean; defaults?: ListingFormDefaults; error?: string }) {
+export async function ListingFormPage({ slug, adminMode = false, defaults, error }: { slug?: string; adminMode?: boolean; defaults?: ListingFormDefaults; error?: string }) {
   async function publishWithoutPaymentAction(formData: FormData) {
     "use server";
 
@@ -1921,6 +1923,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
     const categorySlug = String(formData.get("category") ?? "").trim() || "dlya-doma-i-dachi";
     const selectedKind = listingKinds.some((item) => item.slug === kindValue) ? (kindValue as ListingKind) : "prodam";
     const subcategorySlug = String(formData.get("subcategory") ?? "").trim();
+    const categories = await getPublicCategories();
     const category = categories.find((item) => item.slug === categorySlug);
     const subcategory =
       category?.children.find((child) => slugifySubcategory(child) === subcategorySlug) ??
@@ -1971,7 +1974,8 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
 
   const editing = Boolean(slug);
   const listing = findListingBySlug(slug);
-  const tariff = getTariffs().find((item) => item.id === "listing-publication");
+  const categories = await getPublicCategories();
+  const tariff = (await getPublicTariffs()).find((item) => item.id === "listing-publication" || item.action === "listing_publication");
   const formDefaults = getListingFormDefaults(defaults);
 
   if (slug && !listing) {
@@ -2005,6 +2009,7 @@ export function ListingFormPage({ slug, adminMode = false, defaults, error }: { 
             <div className="listing-create-primary-grid adaptive-field-grid">
               <ListingKindAndCategoryFields
                 booking={listing?.booking}
+                categories={categories}
                 defaultCategorySlug={listing?.categorySlug ?? formDefaults.categorySlug}
                 defaultKind={listing?.kind ?? formDefaults.kind}
                 defaultPrice={listing?.price}

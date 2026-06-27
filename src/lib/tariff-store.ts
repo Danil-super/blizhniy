@@ -1,4 +1,5 @@
 import { tariffs as baseTariffs } from "@/lib/data";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isSupabaseRestConfigured, supabaseRest } from "@/lib/supabase-rest";
 import type { Tariff } from "@/lib/types";
 
@@ -73,15 +74,24 @@ export function getTariffs() {
 
 export async function getStoredTariffs() {
   if (!isSupabaseRestConfigured()) {
-    return getTariffs();
+    throw new Error("Supabase env is not configured");
   }
 
   const rows = await supabaseRest<TariffRow[]>("/rest/v1/tariffs?select=id,name,action,price,duration_days,active&order=price.asc");
-  const storedByAction = new Map(rows.map((row) => [row.action, tariffFromRow(row)]));
-  const merged = baseTariffs.map((tariff) => storedByAction.get(tariff.action) ?? { ...tariff });
-  const extra = rows.map(tariffFromRow).filter((tariff) => !baseTariffs.some((baseTariff) => baseTariff.action === tariff.action));
 
-  return [...merged, ...extra];
+  return rows.map(tariffFromRow);
+}
+
+export async function getPublicTariffs() {
+  if (isSupabaseRestConfigured()) {
+    const tariffs = await getStoredTariffs();
+
+    if (tariffs.length || !shouldShowFallbackContent()) {
+      return tariffs;
+    }
+  }
+
+  return shouldShowFallbackContent() ? getTariffs() : [];
 }
 
 export async function getStoredTariffById(tariffId: string) {
@@ -100,8 +110,7 @@ export async function updateTariff(tariffId: string, patch: TariffPatch) {
   }
 
   if (!isSupabaseRestConfigured()) {
-    updateTariffPatch(tariffId, patch);
-    return;
+    throw new Error("Supabase env is not configured");
   }
 
   await supabaseRest("/rest/v1/tariffs?on_conflict=action", {
@@ -113,8 +122,7 @@ export async function updateTariff(tariffId: string, patch: TariffPatch) {
 
 export async function resetStoredTariffs() {
   if (!isSupabaseRestConfigured()) {
-    resetTariffPatches();
-    return;
+    throw new Error("Supabase env is not configured");
   }
 
   await supabaseRest("/rest/v1/tariffs?on_conflict=action", {

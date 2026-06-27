@@ -198,7 +198,7 @@ export type Payment = {
   targetTitle: string;
   tariffId: string;
   amount: number;
-  status: "created" | "pending" | "succeeded" | "failed";
+  status: "created" | "pending" | "succeeded" | "failed" | "refunded";
   provider: "mock" | "yookassa";
   providerPaymentId?: string;
   confirmationUrl?: string;

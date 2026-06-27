@@ -5,11 +5,15 @@ export function isProductionRuntime() {
 }
 
 export function shouldShowFallbackContent() {
+  if (isProductionRuntime()) {
+    return false;
+  }
+
   if (process.env.ENABLE_DEMO_CONTENT === "true") {
     return true;
   }
 
-  return !isProductionRuntime() && !isSupabaseRestConfigured();
+  return !isSupabaseRestConfigured();
 }
 
 export function shouldAllowMockPayments() {

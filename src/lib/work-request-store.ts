@@ -348,19 +348,14 @@ export async function listStoredWorkRequests(limit = 24) {
 
 export async function listStoredWorkRequestsForAdmin(limit = 200) {
   if (!isSupabaseRestConfigured()) {
-    return [];
+    throw new Error("Supabase env is not configured");
   }
 
-  try {
-    const rows = await supabaseRest<WorkRequestRow[]>(
-      `/rest/v1/work_requests?select=${workRequestSelect}&order=created_at.desc&limit=${limit}`,
-    );
+  const rows = await supabaseRest<WorkRequestRow[]>(
+    `/rest/v1/work_requests?select=${workRequestSelect}&order=created_at.desc&limit=${limit}`,
+  );
 
-    return rows.map(mapWorkRequest);
-  } catch (error) {
-    console.error("Failed to load admin work requests from Supabase", error);
-    return [];
-  }
+  return rows.map(mapWorkRequest);
 }
 
 export function listWorkRequestsWithStored(storedRequests: WorkRequest[]) {

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CreditCard, ShieldCheck } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
-import { getTariffs } from "@/lib/tariff-store";
+import { getPublicTariffs } from "@/lib/tariff-store";
 import type { Tariff } from "@/lib/types";
 
 function tariffDetail(durationDays: number | null) {
@@ -32,8 +32,8 @@ function tariffCta(tariff: Tariff) {
   return { href: "/cabinet", label: "Открыть кабинет" };
 }
 
-export default function Page() {
-  const tariffs = getTariffs();
+export default async function Page() {
+  const tariffs = await getPublicTariffs();
 
   return (
     <>
@@ -47,6 +47,7 @@ export default function Page() {
           </p>
         </section>
 
+        {tariffs.length ? (
         <section className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {tariffs.map((tariff) => {
             const cta = tariffCta(tariff);
@@ -66,6 +67,11 @@ export default function Page() {
             );
           })}
         </section>
+        ) : (
+          <section className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm font-semibold leading-6 text-amber-800">
+            Тарифы пока не настроены в базе. Пожалуйста, вернитесь позже.
+          </section>
+        )}
 
         <section className="mt-8 grid gap-4 lg:grid-cols-2">
           <article className="rounded-xl border border-blue-200 bg-blue-50 p-5 sm:p-6">

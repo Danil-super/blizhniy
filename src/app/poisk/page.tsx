@@ -3,7 +3,8 @@ import { ArrowRight, Search, UserRound } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { VacancyThumbnail } from "@/components/VacancyMedia";
 import { listPublicDemoListings } from "@/components/listings/ListingPages";
-import { categories, cities, professions, region } from "@/lib/data";
+import { getPublicCategories } from "@/lib/category-store";
+import { cities, professions, region } from "@/lib/data";
 import { listFairApplications, listSpecialists, listWorkRequests } from "@/lib/mock-store";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/specialist-profile-store";
@@ -44,6 +45,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const storedWorkRequests = await listStoredWorkRequests(100);
   const workRequests = listWorkRequestsWithStored(storedWorkRequests.length ? storedWorkRequests : fallbackEnabled ? listWorkRequests() : []);
   const fairApplications = fallbackEnabled ? listFairApplications() : await listStoredFairApplications("published");
+  const categories = await getPublicCategories();
 
   const listingResults: SearchResult[] = listPublicDemoListings()
     .filter((listing) =>

@@ -8,13 +8,12 @@ import { Camera, ImagePlus, Trash2, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
-import { categoryDisplayItems } from "@/lib/category-display-order";
-import { categories, cities, region } from "@/lib/data";
+import { categories as fallbackCategories, cities, region } from "@/lib/data";
 import { extractListingPriceDigits, maxListingPriceDigits } from "@/lib/listing-price";
 import { getRentalSubcategories, isRentalCategorySlug, isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { filterListingMediaFiles, listingMediaLimitText } from "@/lib/media-limits";
 import { hasMapCoordinates } from "@/lib/map-location";
-import type { BookingDetails, ListingKind } from "@/lib/types";
+import type { BookingDetails, Category, ListingKind } from "@/lib/types";
 
 type PreviewMedia = {
   id: string;
@@ -139,18 +138,6 @@ function orderSubcategoriesLikeCatalog(subcategories: string[]) {
   });
 }
 
-function inferListingKindFromCatalog(categorySlug: string, subcategorySlug: string): ListingKind {
-  if (isRentalSubcategorySlug(categorySlug, subcategorySlug, slugifySubcategoryValue)) {
-    return "arenda";
-  }
-
-  if (subcategorySlug.startsWith("kuplyu")) {
-    return "kuplyu";
-  }
-
-  return "prodam";
-}
-
 type ListingCategoryOption = {
   categorySlug: string;
   label: string;
@@ -159,57 +146,36 @@ type ListingCategoryOption = {
   value: string;
 };
 
-function parseCatalogHref(href: string) {
-  const parts = href.split("?")[0]?.split("/").filter(Boolean) ?? [];
+function buildListingCategoryOptions(categories: Category[]) {
+  return categories.flatMap<ListingCategoryOption>((category) => {
+    if (category.slug === "rabota") {
+      return [];
+    }
 
-  if (parts[0] !== "katalog") {
-    return undefined;
-  }
-
-  return {
-    categorySlug: parts[1] ?? "",
-    subcategorySlug: parts[2],
-  };
+    return [
+      {
+        categorySlug: category.slug,
+        label: category.name,
+        value: category.slug,
+      },
+    ];
+  });
 }
 
-const listingCategoryOptions = categoryDisplayItems.flatMap<ListingCategoryOption>((item) => {
-  const route = parseCatalogHref(item.href);
-
-  if (!route) {
-    return [];
-  }
-
-  const category = categories.find((entry) => entry.slug === route.categorySlug);
-
-  if (!category) {
-    return [];
-  }
-
-  return [
-    {
-      categorySlug: category.slug,
-      label: item.label,
-      preferredKind: route.subcategorySlug ? inferListingKindFromCatalog(category.slug, route.subcategorySlug) : undefined,
-      subcategorySlug: route.subcategorySlug,
-      value: item.id,
-    },
-  ];
-});
-
-function getCategoryOptionByCategorySlug(categorySlug: string) {
-  return listingCategoryOptions.find((option) => option.categorySlug === categorySlug && !option.subcategorySlug) ?? listingCategoryOptions.find((option) => option.categorySlug === categorySlug);
+function getCategoryOptionByCategorySlug(options: ListingCategoryOption[], categorySlug: string) {
+  return options.find((option) => option.categorySlug === categorySlug && !option.subcategorySlug) ?? options.find((option) => option.categorySlug === categorySlug);
 }
 
-function getCategoryOptionForDefaults(categorySlug: string, subcategorySlug?: string) {
+function getCategoryOptionForDefaults(options: ListingCategoryOption[], categorySlug: string, subcategorySlug?: string) {
   if (subcategorySlug) {
-    const exactOption = listingCategoryOptions.find((option) => option.categorySlug === categorySlug && option.subcategorySlug === subcategorySlug);
+    const exactOption = options.find((option) => option.categorySlug === categorySlug && option.subcategorySlug === subcategorySlug);
 
     if (exactOption) {
       return exactOption;
     }
   }
 
-  return getCategoryOptionByCategorySlug(categorySlug);
+  return getCategoryOptionByCategorySlug(options, categorySlug);
 }
 
 function cropFileName(name: string) {
@@ -331,12 +297,15 @@ export function ListingLocationFields({
 }
 
 export function ListingCategoryFields({
+  categories = fallbackCategories,
   defaultCategorySlug = "dlya-doma-i-dachi",
   defaultSubcategorySlug,
 }: {
+  categories?: Category[];
   defaultCategorySlug?: string;
   defaultSubcategorySlug?: string;
 }) {
+  const listingCategoryOptions = buildListingCategoryOptions(categories);
   const fallbackCategory = categories.find((category) => category.slug === defaultCategorySlug) ?? categories[0];
   const [categorySlug, setCategorySlug] = useState(fallbackCategory?.slug ?? "");
   const selectedCategory = categories.find((category) => category.slug === categorySlug) ?? fallbackCategory;
@@ -346,7 +315,7 @@ export function ListingCategoryFields({
     defaultSubcategorySlug && subcategories.some((child) => slugifySubcategoryValue(child) === defaultSubcategorySlug)
       ? defaultSubcategorySlug
       : fallbackSubcategory;
-  const selectedCategoryOption = getCategoryOptionByCategorySlug(categorySlug);
+  const selectedCategoryOption = getCategoryOptionByCategorySlug(listingCategoryOptions, categorySlug);
 
   return (
     <>
@@ -563,23 +532,26 @@ export function ListingBookingFields({ booking, mode }: { booking?: BookingDetai
 }
 
 export function ListingKindAndCategoryFields({
+  categories = fallbackCategories,
   defaultPrice,
   defaultCategorySlug = "dlya-doma-i-dachi",
   defaultKind = "prodam",
   defaultSubcategorySlug,
   booking,
 }: {
+  categories?: Category[];
   defaultPrice?: string;
   defaultCategorySlug?: string;
   defaultKind?: ListingKind;
   defaultSubcategorySlug?: string;
   booking?: BookingDetails;
 }) {
+  const listingCategoryOptions = buildListingCategoryOptions(categories);
   const rentalCategories = categories.filter((category) => isRentalCategorySlug(category.slug));
   const fallbackCategory = categories.find((category) => category.slug === defaultCategorySlug) ?? categories[0];
   const fallbackRentalCategory = rentalCategories[0] ?? fallbackCategory;
   const initialCategory = defaultKind === "arenda" ? (isRentalCategorySlug(fallbackCategory?.slug ?? "") ? fallbackCategory : fallbackRentalCategory) : fallbackCategory;
-  const initialCategoryOption = getCategoryOptionForDefaults(initialCategory?.slug ?? "", defaultSubcategorySlug);
+  const initialCategoryOption = getCategoryOptionForDefaults(listingCategoryOptions, initialCategory?.slug ?? "", defaultSubcategorySlug);
   const [categorySlug, setCategorySlug] = useState(initialCategory?.slug ?? "");
   const [categoryOptionValue, setCategoryOptionValue] = useState(initialCategoryOption?.value ?? initialCategory?.slug ?? "");
   const selectedCategory = categories.find((category) => category.slug === categorySlug) ?? fallbackCategory;
@@ -620,7 +592,7 @@ export function ListingKindAndCategoryFields({
 
     if (safeKind === "arenda") {
       const rentalCategorySlug = isRentalCategorySlug(categorySlug) ? categorySlug : fallbackRentalCategory.slug;
-      const rentalOption = getCategoryOptionByCategorySlug(rentalCategorySlug);
+      const rentalOption = getCategoryOptionByCategorySlug(listingCategoryOptions, rentalCategorySlug);
 
       if (rentalOption) {
         setCategoryWithSubcategory(rentalOption, safeKind);
@@ -631,7 +603,7 @@ export function ListingKindAndCategoryFields({
     const currentOption = listingCategoryOptions.find((option) => option.value === categoryOptionValue);
 
     if (currentOption?.preferredKind === "arenda") {
-      const baseOption = getCategoryOptionByCategorySlug(categorySlug);
+      const baseOption = getCategoryOptionByCategorySlug(listingCategoryOptions, categorySlug);
 
       if (baseOption) {
         setCategoryWithSubcategory(baseOption, safeKind);

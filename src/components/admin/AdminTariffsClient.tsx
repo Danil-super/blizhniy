@@ -1,17 +1,20 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import type { Tariff } from "@/lib/types";
 
 type Payload = { tariffs?: Tariff[]; error?: string };
 
 async function token() {
+  if (!isSupabaseBrowserConfigured()) {
+    return "";
+  }
+
   const supabase = getSupabaseBrowserClient();
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
-  if (!data.session?.access_token) throw new Error("Нужно войти как администратор");
-  return data.session.access_token;
+  return data.session?.access_token ?? "";
 }
 
 function tariffFormKey(tariff: Tariff) {
@@ -32,7 +35,7 @@ export function AdminTariffsClient({
   async function load() {
     try {
       const authToken = await token();
-      const response = await fetch("/api/admin/tariffs", { headers: { Authorization: `Bearer ${authToken}` } });
+      const response = await fetch("/api/admin/tariffs", { headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined });
       const payload = (await response.json()) as Payload;
       if (!response.ok) throw new Error(payload.error ?? "Не удалось загрузить данные");
       setTariffs(payload.tariffs ?? []);
@@ -58,7 +61,7 @@ export function AdminTariffsClient({
       const authToken = await token();
       const response = await fetch("/api/admin/tariffs", {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" },
+        headers: { ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}), "Content-Type": "application/json" },
         body: JSON.stringify({
           active: form.get("active") === "1",
           durationDays: durationRaw ? Number(durationRaw) : null,
@@ -85,7 +88,7 @@ export function AdminTariffsClient({
       const authToken = await token();
       const response = await fetch("/api/admin/tariffs", {
         method: "POST",
-        headers: { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" },
+        headers: { ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}), "Content-Type": "application/json" },
         body: JSON.stringify({ action: "reset" }),
       });
       const payload = (await response.json()) as Payload;

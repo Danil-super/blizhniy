@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CategoryListingsPage } from "@/components/listings/ListingPages";
-import { categories } from "@/lib/data";
+import { getPublicCategories } from "@/lib/category-store";
 
 type PageProps = {
   params: Promise<{ categorySlug: string }>;
@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { categorySlug } = await params;
+  const categories = await getPublicCategories();
   const category = categories.find((item) => item.slug === categorySlug);
 
   return {

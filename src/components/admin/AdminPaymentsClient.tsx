@@ -12,6 +12,7 @@ const paymentStatusLabels: Record<Payment["status"], string> = {
   created: "Создан",
   failed: "Ошибка",
   pending: "Ожидает",
+  refunded: "Возврат",
   succeeded: "Оплачен",
 };
 
@@ -63,6 +64,10 @@ function statusClassName(status: Payment["status"]) {
     return "border-red-200 bg-red-50 text-red-700";
   }
 
+  if (status === "refunded") {
+    return "border-violet-200 bg-violet-50 text-violet-700";
+  }
+
   return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
@@ -87,7 +92,8 @@ async function getAccessToken() {
 
 function PaymentsTable({ payments }: { payments: Payment[] }) {
   return (
-    <div data-testid="payments-table-scroll" className="max-h-[65dvh] min-w-0 max-w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm sm:max-h-[560px]">
+    <div data-testid="payments-table-scroll" className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="hidden max-h-[65dvh] min-w-0 max-w-full overflow-auto rounded-xl sm:max-h-[560px] lg:block">
       <table data-testid="payments-table" className="w-full min-w-[1180px] table-fixed text-left text-sm">
         <colgroup>
           <col className="w-[170px]" />
@@ -146,6 +152,39 @@ function PaymentsTable({ payments }: { payments: Payment[] }) {
           ))}
         </tbody>
       </table>
+      </div>
+      <div className="grid gap-3 p-3 lg:hidden">
+        {payments.map((payment) => (
+          <article className="rounded-lg border border-slate-200 bg-white p-3" key={payment.id}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="break-words text-base font-bold text-[#060b27]">{payment.targetTitle}</p>
+                <p className="mt-1 break-all font-mono text-xs font-semibold text-slate-500">{shortId(payment.id)}</p>
+              </div>
+              <PaymentStatusBadge status={payment.status} />
+            </div>
+            <dl className="mt-3 grid gap-2 text-sm">
+              <div>
+                <dt className="text-xs font-bold text-slate-500">Тип</dt>
+                <dd className="font-semibold text-slate-700">{paymentTargetLabels[payment.targetType]}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-bold text-slate-500">Сумма</dt>
+                <dd className="font-bold text-[#060b27]">{money(payment.amount)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-bold text-slate-500">Дата</dt>
+                <dd className="font-semibold text-slate-700">{formatDate(payment.createdAt)}</dd>
+              </div>
+            </dl>
+            <div className="mt-3">
+              <Link href={`/oplata/${payment.id}`} className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
+                Открыть
+              </Link>
+            </div>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }

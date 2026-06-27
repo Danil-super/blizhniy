@@ -22,7 +22,10 @@ import {
 import { AdminAuthGate } from "@/components/auth/AdminAuthGate";
 import { AdMarqueeAdminPanel } from "@/components/AdMarqueeAdminPanel";
 import { AdminPublicationStatusForm } from "@/components/AdminPublicationStatusForm";
+import { AdminCategoriesClient } from "@/components/admin/AdminCategoriesClient";
 import { AdminPublicationsTableClient } from "@/components/admin/AdminPublicationsTableClient";
+import { AdminShell } from "@/components/admin/AdminShell";
+import { AdminUsersClient } from "@/components/admin/AdminUsersClient";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
 import { CabinetShellActions } from "@/components/cabinet/CabinetShellActions";
@@ -37,25 +40,19 @@ import {
   CabinetResponsesClient,
   CabinetSpecialistClient,
 } from "@/components/cabinet/CabinetClient";
-import { CategoryOrderAdminPanel } from "@/components/CategoryOrderAdminPanel";
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
 import { SiteHeader } from "@/components/SiteHeader";
-import { categories } from "@/lib/data";
 import { updateStoredFairApplicationStatus } from "@/lib/fair-application-store";
 import { getPayment, listPayments } from "@/lib/payment-provider";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
-import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
 import { listStoredListingsForAdmin } from "@/lib/listing-store";
 import { listStoredSpecialistProfilesForAdmin } from "@/lib/specialist-profile-store";
+import { listAdminUsers } from "@/lib/user-store";
 import { listStoredVacanciesForAdmin } from "@/lib/vacancy-store";
 import { listStoredWorkRequestsForAdmin } from "@/lib/work-request-store";
 import {
   listApplications,
-  listListings,
   listMockPayments,
-  listSpecialists,
-  listVacancies,
-  listWorkRequests,
   updateFairApplicationStatus,
   updateListingStatus,
   updateSpecialistStatus,
@@ -63,7 +60,7 @@ import {
   updateWorkRequestStatus,
 } from "@/lib/mock-store";
 import type { PublicationStatus } from "@/lib/types";
-import { getTariffById, getTariffs, resetTariffPatches, updateTariffPatch } from "@/lib/tariff-store";
+import { getStoredTariffs, getTariffById, getTariffs, resetTariffPatches, updateTariffPatch } from "@/lib/tariff-store";
 
 type StatusTone = "green" | "blue" | "amber" | "slate" | "red" | "violet";
 
@@ -72,12 +69,6 @@ type TableColumn<T> = {
   label: string;
   render?: (row: T) => React.ReactNode;
 };
-
-const adminUsers = [
-  { id: "U-1001", name: "Анна Петрова", role: "user", phone: "+7 861 000-11-01", status: "active" },
-  { id: "U-1002", name: "Сергей Орлов", role: "organization", phone: "+7 861 000-11-02", status: "active" },
-  { id: "U-1003", name: "Модератор", role: "admin", phone: "+7 861 000-11-03", status: "blocked" },
-];
 
 const statusLabels: Record<string, string> = {
   active: "Активен",
@@ -723,9 +714,11 @@ export function FakePaymentPage({ paymentId }: { paymentId?: string }) {
 }
 
 export async function AdminPage() {
-  const tariffs = getTariffs();
-  const activeTariffs = tariffs.filter((tariff) => tariff.active).length;
-  const [adminListings, adminVacancies, adminSpecialists, adminWorkRequests, payments] = await Promise.all([
+  const [tariffs, adminListings, adminVacancies, adminSpecialists, adminWorkRequests, payments, adminUsers] = await Promise.all([
+    getStoredTariffs().catch((error) => {
+      console.error("Failed to load admin tariff count", error);
+      return [];
+    }),
     listStoredListingsForAdmin(),
     listStoredVacanciesForAdmin(),
     listStoredSpecialistProfilesForAdmin(),
@@ -734,16 +727,19 @@ export async function AdminPage() {
       console.error("Failed to load admin payment count", error);
       return [];
     }),
+    listAdminUsers().catch((error) => {
+      console.error("Failed to load admin user count", error);
+      return [];
+    }),
   ]);
-  const fallbackPublicationsCount = shouldShowFallbackContent() ? listListings().length + listVacancies().length + listSpecialists().length + listWorkRequests().length : 0;
-  const publicationsCount = adminListings.length + adminVacancies.length + adminSpecialists.length + adminWorkRequests.length + fallbackPublicationsCount;
+  const activeTariffs = tariffs.filter((tariff) => tariff.active).length;
+  const publicationsCount = adminListings.length + adminVacancies.length + adminSpecialists.length + adminWorkRequests.length;
   const paymentsCount = payments.length;
 
   return (
-    <Shell title="Админка" description="Рабочий обзор: реклама, быстрый переход к разделам и ключевые показатели." eyebrow="Администрирование" createHref={null}>
-      <AdminGuardedContent>
+    <AdminShell activeHref="/admin" title="Админка" description="Рабочий обзор: реклама, быстрый переход к разделам и ключевые показатели.">
         <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard icon={<UsersRound className="h-5 w-5" />} label="Пользователи" value="3" detail="Роли user, organization, admin." />
+          <MetricCard icon={<UsersRound className="h-5 w-5" />} label="Пользователи" value={String(adminUsers.length)} detail="Профили и роли из базы." />
           <MetricCard icon={<ClipboardList className="h-5 w-5" />} label="Публикации" value={String(publicationsCount)} detail="Объявления, вакансии, анкеты." />
           <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тарифы" value={`${activeTariffs}/${tariffs.length}`} detail="Активные тарифы из общей сетки." />
           <MetricCard icon={<Banknote className="h-5 w-5" />} label="Платежи" value={String(paymentsCount)} detail="История на вкладке тарифов." />
@@ -760,31 +756,15 @@ export async function AdminPage() {
             </div>
           </section>
         </div>
-      </AdminGuardedContent>
-    </Shell>
+    </AdminShell>
   );
 }
 
 export function AdminUsersPage() {
-  const rows = adminUsers.map((user) => ({
-    ...user,
-    href: "/admin/users",
-    editHref: `/admin/users?edit=${user.id}`,
-  }));
-
   return (
-    <AdminTablePage
-      title="Пользователи"
-      description="Учетные записи, роли, телефоны и модерационные действия."
-      rows={rows}
-      columns={[
-        { key: "id", label: "ID" },
-        { key: "name", label: "Имя" },
-        { key: "role", label: "Роль" },
-        { key: "phone", label: "Телефон" },
-        { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-      ]}
-    />
+    <AdminShell activeHref="/admin/users" title="Пользователи" description="Учетные записи, роли, контакты, активность и модерационные действия.">
+        <AdminUsersClient />
+    </AdminShell>
   );
 }
 
@@ -829,33 +809,10 @@ export function AdminSpecialistsPage() {
 }
 
 export function AdminCategoriesPage() {
-  const rows = categories.map((category) => ({
-    ...category,
-    id: category.slug,
-    href: `/katalog/${category.slug}`,
-    editHref: `/admin/categories?edit=${category.slug}`,
-    childrenText: category.children.join(", "),
-    status: "active",
-  }));
-  const createHref = isDemoAdminBypassEnabled() ? "/razmestit?admin=1" : "/razmestit";
-
   return (
-    <Shell title="Категории" description="Рубрикатор объявлений с дочерними разделами для модерации каталога." eyebrow="Администрирование" createHref={createHref}>
-      <AdminGuardedContent>
-        <CategoryOrderAdminPanel />
-        <div className="mt-6">
-          <DataTable
-            rows={rows}
-            columns={[
-              { key: "name", label: "Категория" },
-              { key: "slug", label: "Slug" },
-              { key: "childrenText", label: "Подразделы" },
-              { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
-            ]}
-          />
-        </div>
-      </AdminGuardedContent>
-    </Shell>
+    <AdminShell activeHref="/admin/categories" title="Категории" description="Рубрикатор объявлений с дочерними разделами для модерации каталога.">
+        <AdminCategoriesClient />
+    </AdminShell>
   );
 }
 
@@ -991,28 +948,6 @@ export function AdminFairApplicationsPage() {
   );
 }
 
-function AdminTablePage<T extends Record<string, unknown>>({
-  title,
-  description,
-  rows,
-  columns,
-}: {
-  title: string;
-  description: string;
-  rows: T[];
-  columns: TableColumn<T>[];
-}) {
-  const createHref = isDemoAdminBypassEnabled() ? "/razmestit?admin=1" : "/razmestit";
-
-  return (
-    <Shell title={title} description={description} eyebrow="Администрирование" createHref={createHref}>
-      <AdminGuardedContent>
-        <DataTable rows={rows} columns={columns} />
-      </AdminGuardedContent>
-    </Shell>
-  );
-}
-
 function AdminRemoteTablePage({
   description,
   title,
@@ -1022,13 +957,17 @@ function AdminRemoteTablePage({
   title: string;
   type: "fairApplications" | "listings" | "specialists" | "vacancies" | "workRequests";
 }) {
-  const createHref = isDemoAdminBypassEnabled() ? "/razmestit?admin=1" : "/razmestit";
+  const activeHrefByType = {
+    fairApplications: "/admin/fair-applications",
+    listings: "/admin/obyavleniya",
+    specialists: "/admin/specialisty",
+    vacancies: "/admin/vakansii",
+    workRequests: "/admin/zakazy",
+  } as const;
 
   return (
-    <Shell title={title} description={description} eyebrow="Администрирование" createHref={createHref}>
-      <AdminGuardedContent>
+    <AdminShell activeHref={activeHrefByType[type]} title={title} description={description}>
         <AdminPublicationsTableClient type={type} />
-      </AdminGuardedContent>
-    </Shell>
+    </AdminShell>
   );
 }

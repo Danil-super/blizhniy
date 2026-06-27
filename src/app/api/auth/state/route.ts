@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
-import { getAuthenticatedRequestUser, isAdminRequest } from "@/lib/server-auth";
+import { getAuthenticatedRequestUser, isAdminRequest, isDemoAdminBypassEnabled } from "@/lib/server-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  if (isDemoAdminBypassEnabled()) {
+    return NextResponse.json({ state: "admin" });
+  }
+
   const auth = await getAuthenticatedRequestUser(request);
 
   if (!auth) {

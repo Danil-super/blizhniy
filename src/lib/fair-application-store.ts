@@ -159,6 +159,19 @@ export async function listStoredFairApplications(status?: PublicationStatus) {
   }
 }
 
+export async function listStoredFairApplicationsForAdmin(status?: PublicationStatus) {
+  if (!isSupabaseRestConfigured()) {
+    throw new Error("Supabase env is not configured");
+  }
+
+  const statusFilter = status ? `&status=eq.${encodeURIComponent(status)}` : "";
+  const rows = await supabaseRest<FairApplicationRow[]>(
+    `/rest/v1/fair_applications?select=*&order=created_at.desc${statusFilter}`,
+  );
+
+  return mapRows(rows);
+}
+
 export async function listStoredFairApplicationsForUser(userId: string) {
   if (!isSupabaseRestConfigured()) {
     return [];
@@ -229,13 +242,13 @@ export async function updateStoredFairApplicationStatus(applicationId: string, s
     body.published_at = new Date().toISOString();
   }
 
-  await supabaseRest(`/rest/v1/fair_applications?id=eq.${encodeURIComponent(applicationId)}`, {
+  const rows = await supabaseRest<Array<Pick<FairApplicationRow, "id">>>(`/rest/v1/fair_applications?select=id&id=eq.${encodeURIComponent(applicationId)}`, {
     method: "PATCH",
-    prefer: "return=minimal",
+    prefer: "return=representation",
     body,
   });
 
-  return true;
+  return Boolean(rows[0]?.id);
 }
 
 export async function markStoredFairApplicationPaid(applicationId: string) {

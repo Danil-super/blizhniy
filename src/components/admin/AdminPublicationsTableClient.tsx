@@ -162,17 +162,26 @@ function columnsForType(type: PublicationType): Column[] {
   ];
 }
 
-function actionHref(row: AdminRow) {
-  return row.href || row.editHref || "/admin";
+function primaryAction(row: AdminRow) {
+  if (row.status === "published" && row.href) {
+    return { href: row.href, label: "Открыть" };
+  }
+
+  if (row.editHref) {
+    return { href: row.editHref, label: "Редактировать" };
+  }
+
+  if (row.href) {
+    return { href: row.href, label: "Открыть" };
+  }
+
+  return undefined;
 }
 
 function editHref(row: AdminRow) {
   if (row.editHref) {
     return row.editHref;
   }
-
-  const href = actionHref(row);
-  return href.includes("?") ? `${href}&edit=1` : `${href}?edit=1`;
 }
 
 export function AdminPublicationsTableClient({ type }: { type: PublicationType }) {
@@ -260,9 +269,13 @@ export function AdminPublicationsTableClient({ type }: { type: PublicationType }
   function toggleMenu(rowId: string, event: MouseEvent<HTMLButtonElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
     const menuWidth = 224;
+    const menuHeight = 360;
     const viewportPadding = 12;
     const left = Math.max(viewportPadding, Math.min(window.innerWidth - menuWidth - viewportPadding, rect.right - menuWidth));
-    const top = Math.max(viewportPadding, rect.bottom + 8);
+    const preferredTop = rect.bottom + 8;
+    const top = preferredTop + menuHeight > window.innerHeight
+      ? Math.max(viewportPadding, rect.top - menuHeight - 8)
+      : Math.max(viewportPadding, preferredTop);
 
     setOpenMenu((current) => (current?.rowId === rowId ? null : { left, rowId, top }));
   }
@@ -277,10 +290,12 @@ export function AdminPublicationsTableClient({ type }: { type: PublicationType }
 
   const tableMinWidth = type === "listings" ? "min-w-[1340px]" : type === "vacancies" || type === "workRequests" ? "min-w-[1280px]" : "min-w-[1080px]";
   const openMenuRow = openMenu ? rows.find((row) => row.id === openMenu.rowId) : undefined;
+  const mobileColumns = columns.filter((column) => !["id", "images", "status"].includes(column.key));
+  const openMenuEditHref = openMenuRow ? editHref(openMenuRow) : undefined;
 
   return (
     <div className="min-w-0 rounded-xl border border-slate-200 bg-white shadow-card">
-      <div className="max-h-[65dvh] min-w-0 max-w-full overflow-auto rounded-xl">
+      <div className="hidden max-h-[65dvh] min-w-0 max-w-full overflow-auto rounded-xl lg:block">
         <table className={`w-full ${tableMinWidth} table-fixed border-collapse text-left text-sm`}>
           <thead className="bg-slate-50 text-sm text-slate-500">
             <tr>
@@ -305,9 +320,11 @@ export function AdminPublicationsTableClient({ type }: { type: PublicationType }
                   ))}
                   <td className="px-4 py-3 align-top sm:px-5 sm:py-4">
                     <div className="flex max-w-full flex-wrap items-start gap-2">
-                      <Link href={actionHref(row)} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">
-                        Открыть
-                      </Link>
+                      {primaryAction(row) ? (
+                        <Link href={primaryAction(row)!.href} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">
+                          {primaryAction(row)!.label}
+                        </Link>
+                      ) : null}
                       <button
                         type="button"
                         data-admin-actions-trigger
@@ -331,15 +348,62 @@ export function AdminPublicationsTableClient({ type }: { type: PublicationType }
           </tbody>
         </table>
       </div>
+      <div className="grid gap-3 p-3 lg:hidden">
+        {rows.length ? (
+          rows.map((row) => (
+            <article className="rounded-lg border border-slate-200 bg-white p-3" key={row.id}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="break-words text-base font-bold text-[#060b27]">
+                    {String(row.title ?? row.name ?? row.organization ?? row.participantName ?? row.id)}
+                  </p>
+                  <p className="mt-1 break-all font-mono text-xs text-slate-500">{row.id}</p>
+                </div>
+                <StatusBadge status={String(row.status)} />
+              </div>
+              <dl className="mt-3 grid gap-2 text-sm">
+                {mobileColumns.slice(0, 5).map((column) => (
+                  <div className="grid gap-0.5" key={column.key}>
+                    <dt className="text-xs font-bold text-slate-500">{column.label}</dt>
+                    <dd className="min-w-0 break-words font-semibold text-slate-700">
+                      {column.render ? column.render(row) : String(row[column.key] ?? "")}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {primaryAction(row) ? (
+                  <Link href={primaryAction(row)!.href} className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">
+                    {primaryAction(row)!.label}
+                  </Link>
+                ) : null}
+                <button
+                  type="button"
+                  data-admin-actions-trigger
+                  aria-expanded={openMenu?.rowId === row.id}
+                  className="inline-flex h-10 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-[#0875d1]"
+                  onClick={(event) => toggleMenu(row.id, event)}
+                >
+                  Изменить
+                </button>
+              </div>
+            </article>
+          ))
+        ) : (
+          <p className="px-1 py-5 text-sm font-semibold text-slate-500">Публикаций пока нет.</p>
+        )}
+      </div>
       {openMenu && openMenuRow ? (
         <div
           data-admin-actions-menu
-          className="fixed z-[300] w-56 max-w-[calc(100vw-3rem)] rounded-lg border border-slate-200 bg-white p-1 text-left shadow-xl shadow-slate-900/10"
+          className="fixed z-[300] max-h-[calc(100dvh-1.5rem)] w-56 max-w-[calc(100vw-3rem)] overflow-auto rounded-lg border border-slate-200 bg-white p-1 text-left shadow-xl shadow-slate-900/10"
           style={{ left: openMenu.left, top: openMenu.top }}
         >
-          <Link href={editHref(openMenuRow)} className="block rounded-md px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-[#0875d1]">
-            Редактировать карточку
-          </Link>
+          {openMenuEditHref ? (
+            <Link href={openMenuEditHref} className="block rounded-md px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-[#0875d1]">
+              Редактировать карточку
+            </Link>
+          ) : null}
           <AdminPublicationStatusForm
             entityType={String(openMenuRow.statusEntityType ?? "")}
             id={String(openMenuRow.statusTargetId ?? openMenuRow.id)}

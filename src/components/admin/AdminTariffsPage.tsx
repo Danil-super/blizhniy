@@ -1,6 +1,6 @@
 import { AdminTariffsClient } from "@/components/admin/AdminTariffsClient";
 import { AdminShell } from "@/components/admin/AdminShell";
-import { getStoredTariffs, getTariffs } from "@/lib/tariff-store";
+import { getStoredTariffs } from "@/lib/tariff-store";
 
 async function loadTariffPageData() {
   try {
@@ -10,8 +10,8 @@ async function loadTariffPageData() {
   } catch (error) {
     console.error("Failed to load tariff admin data", error);
     return {
-      initialMessage: "База временно недоступна, показаны локальные тарифы. Нажмите «Обновить», когда соединение восстановится.",
-      tariffs: getTariffs(),
+      initialMessage: "База временно недоступна. Локальные тарифы в админке не показываются.",
+      tariffs: [],
     };
   }
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
+import { isAdminRequest, isDemoAdminBypassEnabled, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { getStoredTariffs, resetStoredTariffs, updateTariff } from "@/lib/tariff-store";
 
 type UpdateTariffBody = {
@@ -21,6 +21,10 @@ function tariffErrorMessage(error: unknown) {
 }
 
 async function requireAdmin(request: Request) {
+  if (isDemoAdminBypassEnabled()) {
+    return null;
+  }
+
   if (!isSupabaseServerConfigured()) {
     return NextResponse.json({ error: "Auth is not configured" }, { status: 503 });
   }
@@ -39,9 +43,13 @@ export async function GET(request: Request) {
     return denied;
   }
 
-  const tariffs = await getStoredTariffs();
+  try {
+    const tariffs = await getStoredTariffs();
 
-  return NextResponse.json({ tariffs });
+    return NextResponse.json({ tariffs });
+  } catch (error) {
+    return NextResponse.json({ error: tariffErrorMessage(error) }, { status: 500 });
+  }
 }
 
 export async function PATCH(request: Request) {

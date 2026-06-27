@@ -1,16 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
-import { updateStoredFairApplicationStatus } from "@/lib/fair-application-store";
 import { createStoredNotification } from "@/lib/notification-store";
-import {
-  updateFairApplicationStatus,
-  updateListingStatus,
-  updateSpecialistStatus,
-  updateVacancyStatus,
-  updateWorkRequestStatus,
-} from "@/lib/mock-store";
-import { isAdminRequest, isDemoAdminBypassEnabled, isSupabaseServerConfigured } from "@/lib/server-auth";
-import { shouldShowFallbackContent } from "@/lib/runtime-mode";
+import { isAdminRequest, isDemoAdminBypassEnabled } from "@/lib/server-auth";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { PublicationStatus } from "@/lib/types";
 
@@ -117,11 +108,7 @@ const publicationStatusLabels: Record<PublicationStatus, string> = {
 };
 
 async function requireAdmin(request: Request) {
-  if (isSupabaseServerConfigured()) {
-    return isAdminRequest(request);
-  }
-
-  return isDemoAdminBypassEnabled();
+  return isDemoAdminBypassEnabled() || (await isAdminRequest(request));
 }
 
 function isEntityType(value: string): value is EntityType {
@@ -138,9 +125,31 @@ function revalidateEntityPaths(entityType: EntityType) {
   }
 }
 
+async function getCurrentPublicationStatus(entityType: EntityType, id: string) {
+  if (!isSupabaseRestConfigured()) {
+    throw new Error("Supabase env is not configured");
+  }
+
+  if (!isUuid(id)) {
+    return undefined;
+  }
+
+  const rows = await supabaseRest<Array<{ id: string; status: PublicationStatus }>>(
+    `/rest/v1/${storedTargets[entityType].table}?select=id,status&id=eq.${encodeURIComponent(id)}&limit=1`,
+  );
+
+  return rows[0];
+}
+
 async function updateStoredPublicationStatus(entityType: EntityType, id: string, status: PublicationStatus) {
-  if (!isSupabaseRestConfigured() || !isUuid(id)) {
-    return false;
+  const current = await getCurrentPublicationStatus(entityType, id);
+
+  if (!current?.id) {
+    return { changed: false, updated: false };
+  }
+
+  if (current.status === status) {
+    return { changed: false, updated: true };
   }
 
   const body: Record<string, unknown> = { status };
@@ -149,13 +158,13 @@ async function updateStoredPublicationStatus(entityType: EntityType, id: string,
     body.published_at = status === "published" ? new Date().toISOString() : null;
   }
 
-  await supabaseRest(`/rest/v1/${storedTargets[entityType].table}?id=eq.${encodeURIComponent(id)}`, {
+  const rows = await supabaseRest<Array<{ id: string }>>(`/rest/v1/${storedTargets[entityType].table}?select=id&id=eq.${encodeURIComponent(id)}`, {
     body,
     method: "PATCH",
-    prefer: "return=minimal",
+    prefer: "return=representation",
   });
 
-  return true;
+  return { changed: Boolean(rows[0]?.id), updated: Boolean(rows[0]?.id) };
 }
 
 async function getPublicationNotificationDetails(entityType: EntityType, id: string): Promise<PublicationNotificationDetails | undefined> {
@@ -200,32 +209,6 @@ async function notifyPublicationOwner(entityType: EntityType, id: string, status
   });
 }
 
-function updateMockPublicationStatus(entityType: EntityType, id: string, status: PublicationStatus) {
-  if (entityType === "listing") {
-    updateListingStatus(id, status);
-    return;
-  }
-
-  if (entityType === "vacancy") {
-    updateVacancyStatus(id, status);
-    return;
-  }
-
-  if (entityType === "specialist") {
-    updateSpecialistStatus(id, status);
-    return;
-  }
-
-  if (entityType === "workRequest") {
-    updateWorkRequestStatus(id, status);
-    return;
-  }
-
-  if (entityType === "fairApplication") {
-    updateFairApplicationStatus(id, status);
-  }
-}
-
 export async function POST(request: Request) {
   if (!(await requireAdmin(request))) {
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });
@@ -237,36 +220,23 @@ export async function POST(request: Request) {
   const reason = String(payload?.reason ?? "").trim().slice(0, 1000);
   const status = String(payload?.status ?? "") as PublicationStatus;
 
-  if (!isEntityType(entityType) || !id || !allowedStatuses.includes(status)) {
+  if (!isEntityType(entityType) || !id || !isUuid(id) || !allowedStatuses.includes(status)) {
     return NextResponse.json({ error: "Invalid publication status payload" }, { status: 400 });
   }
 
   try {
-    let updated = false;
+    const result = await updateStoredPublicationStatus(entityType, id, status);
 
-    if (entityType === "fairApplication") {
-      updated = await updateStoredFairApplicationStatus(id, status, { adminContext: true });
-    }
-
-    if (!updated) {
-      updated = await updateStoredPublicationStatus(entityType, id, status);
-    }
-
-    if (!updated && shouldShowFallbackContent()) {
-      updateMockPublicationStatus(entityType, id, status);
-      revalidateEntityPaths(entityType);
-
-      return NextResponse.json({ ok: true, updated: "mock" });
-    }
-
-    if (!updated) {
+    if (!result.updated) {
       return NextResponse.json({ error: "Publication not found" }, { status: 404 });
     }
 
-    revalidateEntityPaths(entityType);
-    await notifyPublicationOwner(entityType, id, status, reason);
+    if (result.changed) {
+      revalidateEntityPaths(entityType);
+      await notifyPublicationOwner(entityType, id, status, reason);
+    }
 
-    return NextResponse.json({ ok: true, updated: "stored" });
+    return NextResponse.json({ changed: result.changed, ok: true, updated: "stored" });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Publication status update failed" }, { status: 500 });
   }

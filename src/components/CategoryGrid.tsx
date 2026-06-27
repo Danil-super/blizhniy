@@ -1,5 +1,3 @@
-"use client";
-
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
@@ -24,7 +22,8 @@ import {
   Utensils,
   Wrench,
 } from "lucide-react";
-import { categoryDisplayItems } from "@/lib/category-display-order";
+import { getPublicCategories } from "@/lib/category-store";
+import type { Category } from "@/lib/types";
 
 function MemorialIcon({ className }: { className?: string }) {
   return (
@@ -229,10 +228,43 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
 };
 
-const categoryTiles: CategoryTile[] = categoryDisplayItems.map((item) => ({
-  ...item,
-  ...categoryTileVisuals[item.id],
-}));
+const categoryVisualAliases: Record<string, string> = {
+  "krasota-i-uhod": "krasota-i-zdorove",
+  "otdyh": "hobbi-i-otdyh",
+  "sad-i-rasteniya": "sad-i-ogorod",
+  "uslugi-dlya-doma": "uslugi",
+};
+
+function categoryVisualKey(slug: string) {
+  return categoryVisualAliases[slug] ?? slug;
+}
+
+function categoryHref(category: Category) {
+  if (category.slug === "rabota") {
+    return "/rabota";
+  }
+
+  return `/katalog/${category.slug}`;
+}
+
+function categoryTilesFromCategories(categories: Category[]): CategoryTile[] {
+  return categories
+    .map((category) => {
+      const visual = categoryTileVisuals[categoryVisualKey(category.slug)];
+
+      if (!visual) {
+        return undefined;
+      }
+
+      return {
+        ...visual,
+        href: categoryHref(category),
+        id: category.slug,
+        label: category.name,
+      };
+    })
+    .filter((tile): tile is CategoryTile => Boolean(tile));
+}
 
 const toneClasses: Record<CategoryTile["tone"], { button: string; buttonIcon: string; hover: string; icon: string; marker: string }> = {
   blue: {
@@ -251,8 +283,9 @@ const toneClasses: Record<CategoryTile["tone"], { button: string; buttonIcon: st
   },
 };
 
-export function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "grid" }) {
+export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" | "grid" }) {
   const topPadding = variant === "grid" ? "py-6 sm:py-8" : "pb-8 pt-4 sm:pb-10 sm:pt-5";
+  const categoryTiles = categoryTilesFromCategories(await getPublicCategories());
 
   return (
     <section className={`${topPadding} page-container`} aria-label="Категории">
