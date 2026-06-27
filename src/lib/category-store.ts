@@ -91,6 +91,28 @@ function mapPublicCategoryRows(rows: CategoryRow[]): Category[] {
     }));
 }
 
+function withRequiredFallbackCategories(categories: Category[]) {
+  const categoriesBySlug = new Map(categories.map((category) => [category.slug, category]));
+  const requiredSlugs = ["menyayu-ili-otdam-darom"];
+
+  for (const slug of requiredSlugs) {
+    const fallback = fallbackCategories.find((category) => category.slug === slug);
+
+    if (fallback && !categoriesBySlug.has(slug)) {
+      categoriesBySlug.set(slug, fallback);
+    }
+  }
+
+  const orderedCategories = fallbackCategories
+    .map((fallback) => categoriesBySlug.get(fallback.slug))
+    .filter((category): category is Category => Boolean(category));
+
+  const fallbackSlugs = new Set(fallbackCategories.map((category) => category.slug));
+  const extraCategories = categories.filter((category) => !fallbackSlugs.has(category.slug));
+
+  return [...orderedCategories, ...extraCategories];
+}
+
 export async function listAdminCategories() {
   if (!isSupabaseRestConfigured()) {
     throw new Error("Supabase env is not configured");
@@ -111,7 +133,7 @@ export async function getPublicCategories(): Promise<Category[]> {
     const categories = mapPublicCategoryRows(rows);
 
     if (categories.length || !shouldShowFallbackContent()) {
-      return categories;
+      return withRequiredFallbackCategories(categories);
     }
   } catch (error) {
     if (isProductionRuntime()) {
