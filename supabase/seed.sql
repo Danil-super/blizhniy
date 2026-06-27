@@ -61,6 +61,7 @@ from (
     ('rabota', 'vakansii', 'Вакансии', 10),
     ('rabota', 'ankety-spetsialistov', 'Анкеты специалистов', 20),
     ('sad-i-rasteniya', 'tsvety-i-sazhentsy', 'Цветы и саженцы', 10),
+    ('sad-i-rasteniya', 'semena', 'Семена', 20),
     ('tovary-dlya-detey', 'igrushki', 'Игрушки', 10),
     ('tovary-dlya-detey', 'tehnicheskie-igrushki', 'Технические игрушки', 20),
     ('tovary-dlya-detey', 'didakticheskie-igrushki', 'Дидактические игрушки', 30),
