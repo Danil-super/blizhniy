@@ -21,6 +21,10 @@ export type CreateStoredNotificationInput = {
 };
 
 function categoryFromEvent(event: string): SiteNotification["category"] {
+  if (event.includes("publication_status")) {
+    return "publication";
+  }
+
   if (event.includes("booking")) {
     return "booking";
   }
@@ -37,6 +41,10 @@ function categoryFromEvent(event: string): SiteNotification["category"] {
 }
 
 function toneFromEvent(event: string): SiteNotification["tone"] {
+  if (event.includes("publication_status")) {
+    return event.includes(":published") ? "success" : event.includes(":rejected") || event.includes(":expired") ? "warning" : "info";
+  }
+
   if (event.includes("booking_response")) {
     return event.includes("accepted") ? "success" : "info";
   }
@@ -53,6 +61,26 @@ function toneFromEvent(event: string): SiteNotification["tone"] {
 }
 
 function actionHrefFromEvent(row: NotificationRow) {
+  if (row.event.includes("publication_status:listing")) {
+    return "/cabinet/obyavleniya";
+  }
+
+  if (row.event.includes("publication_status:vacancy")) {
+    return "/cabinet/vakansii";
+  }
+
+  if (row.event.includes("publication_status:workRequest")) {
+    return "/cabinet/zakazy";
+  }
+
+  if (row.event.includes("publication_status:specialist")) {
+    return "/cabinet/specialist";
+  }
+
+  if (row.event.includes("publication_status:fairApplication")) {
+    return "/cabinet/fair-applications";
+  }
+
   if (row.event.includes("booking")) {
     return "/cabinet/obyavleniya";
   }
@@ -73,7 +101,13 @@ export function mapStoredNotification(row: NotificationRow): SiteNotification {
   return {
     id: row.id,
     actionHref: actionHrefFromEvent(row),
-    actionLabel: row.event.includes("booking") ? "Открыть объявления" : row.event.includes("application") ? "Открыть отклики" : undefined,
+    actionLabel: row.event.includes("publication_status")
+      ? "Открыть в кабинете"
+      : row.event.includes("booking")
+        ? "Открыть объявления"
+        : row.event.includes("application")
+          ? "Открыть отклики"
+          : undefined,
     bookingRequestId: bookingRequestIdFromEvent(row.event),
     category: categoryFromEvent(row.event),
     createdAt: row.created_at,

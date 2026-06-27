@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { AdminPublicationStatusForm } from "@/components/AdminPublicationStatusForm";
 import { VacancyThumbnail } from "@/components/VacancyMedia";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
@@ -20,14 +20,22 @@ type AdminRow = Record<string, unknown> & {
 };
 
 type Column = {
+  cellClassName?: string;
   key: string;
   label: string;
   render?: (row: AdminRow) => React.ReactNode;
+  widthClassName?: string;
 };
 
 type ApiResponse = {
   error?: string;
   rows?: AdminRow[];
+};
+
+type OpenMenu = {
+  left: number;
+  rowId: string;
+  top: number;
 };
 
 const statusLabels: Record<string, string> = {
@@ -100,12 +108,12 @@ async function getAccessToken() {
 function columnsForType(type: PublicationType): Column[] {
   if (type === "listings") {
     return [
-      { key: "id", label: "ID" },
-      { key: "title", label: "Название" },
-      { key: "category", label: "Категория" },
-      { key: "city", label: "Город" },
-      { key: "district", label: "Район/адрес" },
-      { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} /> },
+      { key: "id", label: "ID", cellClassName: "font-mono text-xs text-slate-500", widthClassName: "w-[180px]" },
+      { key: "title", label: "Название", widthClassName: "w-[260px]" },
+      { key: "category", label: "Категория", widthClassName: "w-[190px]" },
+      { key: "city", label: "Город", widthClassName: "w-[150px]" },
+      { key: "district", label: "Район/адрес", widthClassName: "w-[230px]" },
+      { key: "status", label: "Статус", render: (row) => <StatusBadge status={String(row.status)} />, widthClassName: "w-[150px]" },
     ];
   }
 
@@ -172,6 +180,7 @@ export function AdminPublicationsTableClient({ type }: { type: PublicationType }
   const [rows, setRows] = useState<AdminRow[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
+  const [openMenu, setOpenMenu] = useState<OpenMenu | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -210,6 +219,54 @@ export function AdminPublicationsTableClient({ type }: { type: PublicationType }
     };
   }, [type]);
 
+  useEffect(() => {
+    if (!openMenu) {
+      return;
+    }
+
+    function closeOnOutsideClick(event: globalThis.MouseEvent) {
+      const target = event.target;
+
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      if (target.closest("[data-admin-actions-menu]") || target.closest("[data-admin-actions-trigger]")) {
+        return;
+      }
+
+      setOpenMenu(null);
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenMenu(null);
+      }
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openMenu]);
+
+  useEffect(() => {
+    setOpenMenu(null);
+  }, [rows, type]);
+
+  function toggleMenu(rowId: string, event: MouseEvent<HTMLButtonElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 224;
+    const viewportPadding = 12;
+    const left = Math.max(viewportPadding, Math.min(window.innerWidth - menuWidth - viewportPadding, rect.right - menuWidth));
+    const top = Math.max(viewportPadding, rect.bottom + 8);
+
+    setOpenMenu((current) => (current?.rowId === rowId ? null : { left, rowId, top }));
+  }
+
   if (state === "loading") {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем публикации...</div>;
   }
@@ -218,50 +275,48 @@ export function AdminPublicationsTableClient({ type }: { type: PublicationType }
     return <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm font-semibold text-red-700 shadow-card">{error}</div>;
   }
 
+  const tableMinWidth = type === "listings" ? "min-w-[1340px]" : type === "vacancies" || type === "workRequests" ? "min-w-[1280px]" : "min-w-[1080px]";
+  const openMenuRow = openMenu ? rows.find((row) => row.id === openMenu.rowId) : undefined;
+
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-card">
-      <div className="overflow-x-auto overflow-y-visible">
-        <table className="w-full min-w-[640px] border-collapse text-left">
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white shadow-card">
+      <div className="max-h-[65dvh] min-w-0 max-w-full overflow-auto rounded-xl">
+        <table className={`w-full ${tableMinWidth} table-fixed border-collapse text-left text-sm`}>
           <thead className="bg-slate-50 text-sm text-slate-500">
             <tr>
               {columns.map((column) => (
-                <th className="border-b border-slate-200 px-4 py-3 font-bold sm:px-5 sm:py-4" key={column.key}>
+                <th className={`border-b border-slate-200 px-4 py-3 font-bold sm:px-5 sm:py-4 ${column.widthClassName ?? ""}`} key={column.key}>
                   {column.label}
                 </th>
               ))}
-              <th className="border-b border-slate-200 px-4 py-3 font-bold sm:px-5 sm:py-4">Действия</th>
+              <th className="w-[210px] border-b border-slate-200 px-4 py-3 font-bold sm:px-5 sm:py-4">Действия</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.length ? (
               rows.map((row) => (
-                <tr className="text-sm text-slate-700" key={row.id}>
+                <tr className="text-slate-700" key={row.id}>
                   {columns.map((column) => (
-                    <td className="px-4 py-3 align-middle sm:px-5 sm:py-4" key={column.key}>
-                      {column.render ? column.render(row) : String(row[column.key] ?? "")}
+                    <td className={`px-4 py-3 align-top sm:px-5 sm:py-4 ${column.cellClassName ?? ""}`} key={column.key}>
+                      <div className="max-w-full break-words [overflow-wrap:anywhere]">
+                        {column.render ? column.render(row) : String(row[column.key] ?? "")}
+                      </div>
                     </td>
                   ))}
-                  <td className="px-4 py-3 sm:px-5 sm:py-4">
-                    <div className="flex flex-wrap items-start gap-2">
+                  <td className="px-4 py-3 align-top sm:px-5 sm:py-4">
+                    <div className="flex max-w-full flex-wrap items-start gap-2">
                       <Link href={actionHref(row)} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">
                         Открыть
                       </Link>
-                      <details className="group relative">
-                        <summary className="inline-flex h-9 list-none cursor-pointer items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-[#0875d1] marker:content-none">
-                          Изменить
-                        </summary>
-                        <div className="absolute right-0 top-[calc(100%+0.25rem)] z-[200] min-w-56 rounded-lg border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/10">
-                          <Link href={editHref(row)} className="block rounded-md px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-[#0875d1]">
-                            Редактировать карточку
-                          </Link>
-                          <AdminPublicationStatusForm
-                            entityType={String(row.statusEntityType ?? "")}
-                            id={String(row.statusTargetId ?? row.id)}
-                            status={String(row.status ?? "published")}
-                            options={moderationStatusOptions}
-                          />
-                        </div>
-                      </details>
+                      <button
+                        type="button"
+                        data-admin-actions-trigger
+                        aria-expanded={openMenu?.rowId === row.id}
+                        className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-[#0875d1]"
+                        onClick={(event) => toggleMenu(row.id, event)}
+                      >
+                        Изменить
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -276,6 +331,24 @@ export function AdminPublicationsTableClient({ type }: { type: PublicationType }
           </tbody>
         </table>
       </div>
+      {openMenu && openMenuRow ? (
+        <div
+          data-admin-actions-menu
+          className="fixed z-[300] w-56 max-w-[calc(100vw-3rem)] rounded-lg border border-slate-200 bg-white p-1 text-left shadow-xl shadow-slate-900/10"
+          style={{ left: openMenu.left, top: openMenu.top }}
+        >
+          <Link href={editHref(openMenuRow)} className="block rounded-md px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-[#0875d1]">
+            Редактировать карточку
+          </Link>
+          <AdminPublicationStatusForm
+            entityType={String(openMenuRow.statusEntityType ?? "")}
+            id={String(openMenuRow.statusTargetId ?? openMenuRow.id)}
+            onSaved={() => setOpenMenu(null)}
+            status={String(openMenuRow.status ?? "published")}
+            options={moderationStatusOptions}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

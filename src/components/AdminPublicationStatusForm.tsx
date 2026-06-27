@@ -14,12 +14,13 @@ type StatusOption = {
 type AdminPublicationStatusFormProps = {
   entityType: string;
   id: string;
+  onSaved?: () => void;
   status: string;
   options: StatusOption[];
   updateStatusAction?: (formData: FormData) => void | Promise<void>;
 };
 
-export function AdminPublicationStatusForm({ entityType, id, status, options }: AdminPublicationStatusFormProps) {
+export function AdminPublicationStatusForm({ entityType, id, onSaved, status, options }: AdminPublicationStatusFormProps) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -49,6 +50,7 @@ export function AdminPublicationStatusForm({ entityType, id, status, options }: 
         body: JSON.stringify({
           entityType,
           id,
+          reason: String(formData.get("reason") ?? ""),
           status: String(formData.get("status") ?? ""),
         }),
         headers: {
@@ -70,6 +72,7 @@ export function AdminPublicationStatusForm({ entityType, id, status, options }: 
         details.open = false;
       }
 
+      onSaved?.();
       router.refresh();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Не удалось обновить статус");
@@ -89,6 +92,15 @@ export function AdminPublicationStatusForm({ entityType, id, status, options }: 
             </option>
           ))}
         </select>
+      </label>
+      <label className="grid gap-1 text-xs font-semibold text-slate-600">
+        Причина для владельца
+        <textarea
+          name="reason"
+          maxLength={1000}
+          className="min-h-20 resize-y rounded-md border border-slate-300 bg-white px-2 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[#0875d1]"
+          placeholder="Например: нарушены правила публикации, неактуальные контакты или требуется исправить описание."
+        />
       </label>
       {error ? <p className="rounded-md bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">{error}</p> : null}
       <button type="submit" disabled={saving} className="inline-flex h-8 items-center justify-center rounded-md bg-[#0875d1] px-3 text-xs font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-not-allowed disabled:opacity-60">
