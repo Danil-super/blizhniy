@@ -48,7 +48,7 @@ export type CreatePaymentInput = {
 
 export type PaymentResult = {
   payment: Payment;
-  nextStatus: "published" | "sent";
+  nextStatus: "active" | "paid" | "published" | "sent";
   notification: {
     subject: string;
     body: string;
@@ -214,7 +214,7 @@ function applyYooKassaPaymentState(payment: Payment, yookassaPayment: YooKassaPa
 function createPendingPaymentResult(payment: Payment): PaymentResult {
   return {
     payment,
-    nextStatus: payment.targetType === "application" ? "sent" : "published",
+    nextStatus: payment.targetType === "application" ? "sent" : payment.targetType === "ad_marquee" ? "paid" : "published",
     notification: {
       subject: "Оплата ожидает подтверждения",
       body: `${payment.targetTitle}: ЮKassa еще не подтвердила успешную оплату.`,

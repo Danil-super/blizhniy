@@ -35,6 +35,10 @@ function cabinetHrefForPayment(targetType?: string) {
     return "/cabinet/otkliki";
   }
 
+  if (targetType === "ad_marquee") {
+    return "/reklama/begushchaya-stroka";
+  }
+
   return "/cabinet";
 }
 

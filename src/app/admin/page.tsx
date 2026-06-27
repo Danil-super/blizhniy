@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { AlertTriangle, Banknote, ClipboardList, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
+import { AlertTriangle, ClipboardList, Megaphone, ShieldCheck, UsersRound, WalletCards } from "lucide-react";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { listAdMarqueePlacementsForAdmin } from "@/lib/ad-marquee-store";
 import { listStoredFairApplicationsForAdmin } from "@/lib/fair-application-store";
 import { listStoredListingsForAdmin } from "@/lib/listing-store";
 import { listStoredPayments } from "@/lib/payment-store";
@@ -60,7 +61,7 @@ function ActionLink({ children, href }: { children: React.ReactNode; href: strin
 }
 
 export default async function Page() {
-  const [tariffsResult, listingsResult, vacanciesResult, specialistsResult, workRequestsResult, fairApplicationsResult, paymentsResult, usersResult] = await Promise.all([
+  const [tariffsResult, listingsResult, vacanciesResult, specialistsResult, workRequestsResult, fairApplicationsResult, paymentsResult, usersResult, adMarqueeResult] = await Promise.all([
     safeLoad("тарифы", getStoredTariffs),
     safeLoad("объявления", listStoredListingsForAdmin),
     safeLoad("вакансии", listStoredVacanciesForAdmin),
@@ -69,6 +70,7 @@ export default async function Page() {
     safeLoad("заявки ярмарки", listStoredFairApplicationsForAdmin),
     safeLoad("платежи", listStoredPayments),
     safeLoad("пользователи", listAdminUsers),
+    safeLoad("бегущая строка", listAdMarqueePlacementsForAdmin),
   ]);
 
   const tariffs = tariffsResult.data ?? [];
@@ -79,7 +81,8 @@ export default async function Page() {
   const fairApplications = fairApplicationsResult.data ?? [];
   const payments = paymentsResult.data ?? [];
   const users = usersResult.data ?? [];
-  const warnings = [tariffsResult, listingsResult, vacanciesResult, specialistsResult, workRequestsResult, fairApplicationsResult, paymentsResult, usersResult]
+  const adMarqueePlacements = adMarqueeResult.data ?? [];
+  const warnings = [tariffsResult, listingsResult, vacanciesResult, specialistsResult, workRequestsResult, fairApplicationsResult, paymentsResult, usersResult, adMarqueeResult]
     .map((result) => result.error)
     .filter(Boolean);
 
@@ -88,6 +91,7 @@ export default async function Page() {
   const activeTariffs = tariffs.filter((tariff) => tariff.active).length;
   const succeededPayments = payments.filter((payment) => payment.status === "succeeded").length;
   const blockedUsers = users.filter((user) => user.status === "blocked").length;
+  const adMarqueeReview = adMarqueePlacements.filter((item) => item.status === "pending_review").length;
 
   return (
     <AdminShell activeHref="/admin" title="Админка" description="Рабочий обзор реальных данных: пользователи, публикации, тарифы, платежи и очередь модерации.">
@@ -95,7 +99,7 @@ export default async function Page() {
         <MetricCard icon={<UsersRound className="h-5 w-5" />} label="Пользователи" value={String(users.length)} detail={`${blockedUsers} заблокированных аккаунтов`} />
         <MetricCard icon={<ClipboardList className="h-5 w-5" />} label="Публикации" value={String(publications.length)} detail={`${moderationQueue} требуют внимания`} />
         <MetricCard icon={<WalletCards className="h-5 w-5" />} label="Тарифы" value={`${activeTariffs}/${tariffs.length}`} detail="Активные тарифы из базы" />
-        <MetricCard icon={<Banknote className="h-5 w-5" />} label="Платежи" value={String(payments.length)} detail={`${succeededPayments} успешных оплат`} />
+        <MetricCard icon={<Megaphone className="h-5 w-5" />} label="Бегущая строка" value={String(adMarqueePlacements.length)} detail={`${adMarqueeReview} требуют проверки`} />
       </div>
 
       {warnings.length ? (
@@ -133,7 +137,7 @@ export default async function Page() {
             <ActionLink href="/admin/zakazy">Заказы: {workRequests.length}</ActionLink>
             <ActionLink href="/admin/specialisty">Специалисты: {specialists.length}</ActionLink>
             <ActionLink href="/admin/fair-applications">Ярмарка: {fairApplications.length}</ActionLink>
-            <ActionLink href="/admin/payments">Платежи: {payments.length}</ActionLink>
+            <ActionLink href="/admin/ad-marquee">Бегущая строка: {adMarqueePlacements.length}</ActionLink>
           </div>
         </section>
 
@@ -143,7 +147,7 @@ export default async function Page() {
             <ActionLink href="/admin/users">Пользователи и роли</ActionLink>
             <ActionLink href="/admin/categories">Категории каталога</ActionLink>
             <ActionLink href="/admin/tariffs">Тарифы</ActionLink>
-            <ActionLink href="/admin/payments">Финансы</ActionLink>
+            <ActionLink href="/admin/payments">Платежи: {payments.length} / {succeededPayments}</ActionLink>
           </div>
         </section>
       </div>

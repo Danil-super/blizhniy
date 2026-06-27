@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getPayableAdMarqueePlacementForUser } from "@/lib/ad-marquee-store";
 import { getStoredApplicationForPayment } from "@/lib/application-store";
 import { getStoredListingForUser, markStoredListingPendingPaymentForUser } from "@/lib/listing-store";
 import { createPayment, listPayments } from "@/lib/payment-provider";
@@ -171,6 +172,24 @@ export async function POST(request: Request) {
         application.targetType === "workRequest"
           ? `Отклик ${application.specialistName} на заказ ${application.workRequestTitle ?? application.vacancyTitle}`
           : `Отклик ${application.specialistName} на вакансию ${application.vacancyTitle}`;
+    }
+
+    if (body.targetType === "ad_marquee") {
+      if (!body.targetId || !isUuid(body.targetId)) {
+        return NextResponse.json({ error: "Сначала отправьте текст бегущей строки на модерацию" }, { status: 400 });
+      }
+
+      if (body.tariffId !== "ad-marquee") {
+        return NextResponse.json({ error: "Для бегущей строки доступен только тариф бегущей строки" }, { status: 400 });
+      }
+
+      const placement = await getPayableAdMarqueePlacementForUser(body.targetId, auth.user.id);
+
+      if (!placement) {
+        return NextResponse.json({ error: "Заявка еще не одобрена администратором или уже оплачена" }, { status: 404 });
+      }
+
+      targetTitle = `Бегущая строка: ${placement.text}`;
     }
 
     const payment = await createPayment({

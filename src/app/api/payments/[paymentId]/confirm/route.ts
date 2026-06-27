@@ -28,7 +28,7 @@ async function forceSucceededTestPayment(payment: Payment) {
 
   await updateStoredPayment(paidPayment);
 
-    return {
+  return {
     payment: paidPayment,
     nextStatus,
     notification: {
@@ -79,7 +79,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
       canTrustSuccessfulReturn &&
       canTrustSuccessfulReturnInThisEnvironment() &&
       result.payment.provider === "yookassa" &&
-      (result.payment.targetType === "listing" || result.payment.targetType === "vacancy" || result.payment.targetType === "workRequest" || result.payment.targetType === "application") &&
+      (result.payment.targetType === "listing" ||
+        result.payment.targetType === "vacancy" ||
+        result.payment.targetType === "workRequest" ||
+        result.payment.targetType === "application" ||
+        result.payment.targetType === "ad_marquee") &&
       result.payment.status !== "succeeded"
     ) {
       return NextResponse.json(await forceSucceededTestPayment(result.payment));

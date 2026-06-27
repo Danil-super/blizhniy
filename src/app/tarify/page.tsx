@@ -29,6 +29,10 @@ function tariffCta(tariff: Tariff) {
     return { href: "/yarmarka-masterov/zayavka", label: "Подать заявку" };
   }
 
+  if (tariff.action === "ad_marquee") {
+    return { href: "/reklama/begushchaya-stroka", label: "Разместить текст" };
+  }
+
   return { href: "/cabinet", label: "Открыть кабинет" };
 }
 

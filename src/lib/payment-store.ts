@@ -1,3 +1,4 @@
+import { markStoredAdMarqueePlacementPaid } from "@/lib/ad-marquee-store";
 import { markStoredFairApplicationPaid } from "@/lib/fair-application-store";
 import { getStoredApplicationOwner, markStoredApplicationPaid } from "@/lib/application-store";
 import { createStoredNotification } from "@/lib/notification-store";
@@ -363,6 +364,16 @@ export async function markStoredPaymentTargetSucceeded(payment: Payment) {
     }
 
     return "sent" as const;
+  }
+
+  if (payment.targetType === "ad_marquee" && payment.targetId && isUuid(payment.targetId)) {
+    const updated = await markStoredAdMarqueePlacementPaid(payment.targetId, payment.id);
+
+    if (!updated) {
+      throw new Error("Не удалось активировать бегущую строку после оплаты");
+    }
+
+    return updated.status === "active" ? ("active" as const) : ("paid" as const);
   }
 
   return payment.targetType === "application" ? ("sent" as const) : ("published" as const);

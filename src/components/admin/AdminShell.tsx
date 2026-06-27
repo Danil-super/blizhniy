@@ -7,6 +7,7 @@ import {
   CreditCard,
   FileText,
   Gauge,
+  Megaphone,
   Store,
   Tags,
   UsersRound,
@@ -25,6 +26,7 @@ const adminNav = [
   { href: "/admin/categories", label: "Категории", icon: Tags },
   { href: "/admin/tariffs", label: "Тарифы", icon: WalletCards },
   { href: "/admin/payments", label: "Платежи", icon: CreditCard },
+  { href: "/admin/ad-marquee", label: "Бегущая строка", icon: Megaphone },
   { href: "/admin/fair-applications", label: "Ярмарка", icon: Store },
 ];
 
