@@ -204,7 +204,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   "menyayu-ili-otdam-darom": {
     icon: Gift,
     imageUrl: categoryImages.exchangeFree,
-    description: "Обмен вещей и бесплатные предложения рядом с вами.",
+    description: "Обмен вещей рядом с вами",
     bullets: ["Меняю", "Отдам даром", "Полезные находки"],
     tone: "green",
     accentColor: "#638b3f",
