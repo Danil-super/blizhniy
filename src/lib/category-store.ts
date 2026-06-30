@@ -1,5 +1,5 @@
 import { categories as fallbackCategories } from "@/lib/data";
-import { isProductionRuntime, shouldShowFallbackContent } from "@/lib/runtime-mode";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { Category } from "@/lib/types";
 
@@ -129,16 +129,17 @@ export async function getPublicCategories(): Promise<Category[]> {
   }
 
   try {
-    const rows = await supabaseRest<CategoryRow[]>("/rest/v1/categories?select=id,parent_id,slug,name,sort_order,active&order=sort_order.asc,name.asc");
+    const rows = await supabaseRest<CategoryRow[]>("/rest/v1/categories?select=id,parent_id,slug,name,sort_order,active&order=sort_order.asc,name.asc", {
+      attempts: 1,
+      timeoutMs: 500,
+    });
     const categories = mapPublicCategoryRows(rows);
 
     if (categories.length || !shouldShowFallbackContent()) {
       return withRequiredFallbackCategories(categories);
     }
-  } catch (error) {
-    if (isProductionRuntime()) {
-      throw error;
-    }
+  } catch {
+    return fallbackCategories;
   }
 
   return fallbackCategories;

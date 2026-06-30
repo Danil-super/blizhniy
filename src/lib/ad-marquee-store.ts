@@ -157,27 +157,29 @@ export async function refreshAdMarqueeQueue() {
   return [...activeRows, ...queuedRows];
 }
 
-export async function listActiveAdMarqueePlacements() {
+export async function listActiveAdMarqueePlacements(options: { refresh?: boolean; timeoutMs?: number } = {}) {
   if (!isSupabaseRestConfigured()) {
     return [];
   }
 
-  await refreshAdMarqueeQueue();
+  if (options.refresh ?? true) {
+    await refreshAdMarqueeQueue();
+  }
 
   const rows = await supabaseRest<AdMarqueePlacementRow[]>(
     "/rest/v1/ad_marquee_placements?select=*&status=eq.active&ends_at=gt.now()&order=sort_order.asc,starts_at.asc",
+    { attempts: options.timeoutMs ? 1 : undefined, timeoutMs: options.timeoutMs },
   );
 
   return rows.map(mapPlacement);
 }
 
 export async function getActiveAdMarqueeMessages() {
-  const placements = await listActiveAdMarqueePlacements().catch((error) => {
+  const placements = await listActiveAdMarqueePlacements({ refresh: false, timeoutMs: 300 }).catch((error) => {
     if (error && typeof error === "object" && "digest" in error && error.digest === "DYNAMIC_SERVER_USAGE") {
       throw error;
     }
 
-    console.error("Failed to load active ad marquee placements", error);
     return [];
   });
   const messages = placements.map((placement) => placement.text).filter(Boolean);

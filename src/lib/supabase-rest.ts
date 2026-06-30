@@ -3,8 +3,10 @@ type SupabaseRestMethod = "GET" | "POST" | "PATCH" | "DELETE";
 type SupabaseRestOptions = {
   body?: unknown;
   headers?: Record<string, string>;
+  attempts?: number;
   method?: SupabaseRestMethod;
   prefer?: string;
+  timeoutMs?: number;
   useServiceRole?: boolean;
 };
 
@@ -46,10 +48,16 @@ export async function supabaseRest<T>(path: string, options: SupabaseRestOptions
   let response: Response | undefined;
   let fetchError: unknown;
 
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  const maxAttempts = options.attempts ?? 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = options.timeoutMs ? new AbortController() : undefined;
+    const timeout = controller ? globalThis.setTimeout(() => controller.abort(), options.timeoutMs) : undefined;
+
     try {
       response = await fetch(buildSupabaseRestUrl(path), {
         method: options.method ?? "GET",
+        signal: controller?.signal,
         headers: {
           apikey: key,
           Authorization: `Bearer ${key}`,
@@ -61,14 +69,18 @@ export async function supabaseRest<T>(path: string, options: SupabaseRestOptions
         cache: "no-store",
       });
 
-      if (response.status < 500 || attempt === 3) {
+      if (response.status < 500 || attempt === maxAttempts) {
         break;
       }
     } catch (error) {
       fetchError = error;
 
-      if (attempt === 3) {
+      if (attempt === maxAttempts) {
         throw error;
+      }
+    } finally {
+      if (timeout) {
+        globalThis.clearTimeout(timeout);
       }
     }
 

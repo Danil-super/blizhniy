@@ -3,9 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   ArrowRight,
-  BadgePlus,
   ChevronRight,
-  ClipboardList,
   CreditCard,
   Mail,
   MapPin,
@@ -46,12 +44,12 @@ import { BookingCalculator } from "./BookingCalculator";
 import { DemoListingEditClient } from "./DemoListingEditClient";
 import { ListingKindAndCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
+import { CategoryHeaderBand, SubcategoryCard } from "./CategoryPageDesign";
 import { ListingMediaGallery, type ListingGalleryMedia } from "./ListingMediaGallery";
 import { ListingResultsPanel } from "./ListingResultsPanel";
 import { ListingSellerCard } from "./ListingSellerCard";
 import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewTracker } from "./ListingViewTracker";
-import { SubcategoryShareButton } from "./SubcategoryShareButton";
 
 const listingKinds: { slug: ListingKind; title: string; description: string }[] = [
   { slug: "prodam", title: "Продам", description: "Вещи, мебель, растения и полезные товары рядом с домом." },
@@ -714,7 +712,7 @@ function subcategoryWordCount(name: string) {
 }
 
 function getCategoryChildren(children: string[]) {
-  return [...children].sort((left, right) => {
+  return Array.from(new Set(children)).sort((left, right) => {
     const wordCountDiff = subcategoryWordCount(left) - subcategoryWordCount(right);
 
     return wordCountDiff || left.length - right.length || left.localeCompare(right, "ru");
@@ -1449,119 +1447,89 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
     (listing) => listing.categorySlug === categorySlug && (!subcategorySlug || listing.subcategorySlug === subcategorySlug),
   );
   const isKidsGoodsCategory = category?.slug === "tovary-dlya-detey";
+  const isGardenCategory = category?.slug === "sad-i-rasteniya";
   const categoryDescription = category ? categoryDescriptions[category.slug] : undefined;
   const backFallbackHref = subcategory && category ? `/katalog/${category.slug}` : "/katalog";
+  const title = subcategory ?? category?.name ?? "Категория";
+  const activeDescription =
+    subcategory && category ? subcategoryDescription(category.slug, subcategory) : categoryDescription ?? "Выберите подкатегорию, посмотрите предложения рядом или разместите свое объявление.";
+  const createHref =
+    category && subcategory
+      ? getCreateListingHref(category.slug, subcategory)
+      : category
+        ? `/razmestit/obyavlenie?category=${category.slug}&kind=${inferListingKind(category.slug, categoryChildren[0] ? slugifySubcategory(categoryChildren[0]) : "")}`
+        : "/razmestit/obyavlenie";
 
   return (
     <>
       <SiteHeader />
       <HomeHero />
-      <main className="page-container py-2 sm:py-3 lg:py-4">
-        <Breadcrumbs
-          compact
-          items={[
-            { label: "Категории", href: "/katalog" },
-            { label: category?.name ?? "Категория", href: category ? `/katalog/${category.slug}` : undefined },
-            ...(subcategory ? [{ label: subcategory }] : []),
-          ]}
-        />
-        <BackLink fallbackHref={backFallbackHref} className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
-          Назад
-        </BackLink>
-        <div className="grid gap-3">
-          <section>
-            <h1 className="[overflow-wrap:anywhere] text-xl font-bold leading-tight text-[#060b27] sm:text-2xl lg:text-3xl">
-              {subcategory ?? category?.name ?? "Категория"}
-            </h1>
-            {categoryDescription && !subcategory ? (
-              <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">
-                {categoryDescription}
-              </p>
-            ) : null}
+      <main className="bg-[#f6f8fb] pb-8">
+        <div className="page-container py-3 sm:py-4 lg:py-5">
+          <Breadcrumbs
+            compact
+            items={[
+              { label: "Категории", href: "/katalog" },
+              { label: category?.name ?? "Категория", href: category ? `/katalog/${category.slug}` : undefined },
+              ...(subcategory ? [{ label: subcategory }] : []),
+            ]}
+          />
+          <BackLink fallbackHref={backFallbackHref} className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+            Назад
+          </BackLink>
+          <div className="mt-3 grid gap-5">
+            <CategoryHeaderBand
+              categorySlug={category?.slug ?? categorySlug}
+              createHref={createHref}
+              description={activeDescription}
+              listingsCount={listings.length}
+              subcategoryCount={categoryChildren.length}
+              title={title}
+            />
             {category ? (
-              <div
-                className={
-                  isKidsGoodsCategory
-                    ? "mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2 lg:grid-cols-4"
-                    : "mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5"
-                }
-              >
-                {categoryChildren.map((child, index) => {
-                  const href = `/katalog/${category.slug}/${slugifySubcategory(child)}`;
-                  const description = subcategoryDescription(category.slug, child);
-                  const animalClassifier = category.slug === "zhivotnye" ? animalClassifiers[child] : undefined;
-                  const bulletPoints = subcategoryBulletPoints[category.slug]?.[child];
-                  const shouldSpanTwoColumns =
-                    category.slug === "ritualnye-uslugi" && categoryChildren.length % 2 === 1 && index === categoryChildren.length - 1;
-                  const shouldSpanKidsColumns = category.slug === "tovary-dlya-detey" && child === "Спортивные (спортивно-моторные) игрушки";
-                  const spanClassName = [
-                    shouldSpanTwoColumns ? "sm:col-span-2 md:col-span-1" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ");
+              <section aria-label="Подкатегории">
+                <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                  <h2 className="text-lg font-bold leading-tight text-[#060b27]">Подкатегории</h2>
+                  <p className="text-sm font-semibold text-slate-500">Быстрый вход в нужный раздел</p>
+                </div>
+                <div
+                  className={
+                    isGardenCategory
+                      ? "grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4 2xl:grid-cols-5"
+                      : isKidsGoodsCategory
+                        ? "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4"
+                        : "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5"
+                  }
+                >
+                  {categoryChildren.map((child, index) => {
+                    const href = `/katalog/${category.slug}/${slugifySubcategory(child)}`;
+                    const description = subcategoryDescription(category.slug, child);
+                    const animalClassifier = category.slug === "zhivotnye" ? animalClassifiers[child] : undefined;
+                    const bulletPoints = subcategoryBulletPoints[category.slug]?.[child];
+                    const shouldSpanTwoColumns =
+                      category.slug === "ritualnye-uslugi" && categoryChildren.length % 2 === 1 && index === categoryChildren.length - 1;
 
-                  return (
-                    <details
-                      key={child}
-                      className={`group min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition open:border-blue-200 ${isKidsGoodsCategory ? "p-2 sm:p-2.5 lg:p-3" : "p-2.5 sm:p-3"} ${spanClassName}`}
-                    >
-                      <summary className={`flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden ${isKidsGoodsCategory ? "min-h-9" : ""}`}>
-                        <span
-                          className={`block break-words font-bold text-slate-800 [overflow-wrap:anywhere] ${
-                            isKidsGoodsCategory ? "text-[13px] leading-4 sm:text-sm sm:leading-5 lg:text-[15px] lg:leading-5" : "text-sm leading-5 sm:text-[15px]"
-                          } ${shouldSpanKidsColumns ? "lg:text-[12.5px] lg:leading-4 xl:text-[13.5px] xl:leading-5 2xl:text-sm 2xl:leading-5 2xl:whitespace-nowrap" : ""}`}
-                        >
-                          {child}
-                        </span>
-                        <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-90 group-open:text-[#0875d1]" />
-                      </summary>
-                      <p className="mt-2 break-words text-xs font-medium leading-5 text-slate-600 [overflow-wrap:anywhere] sm:text-sm">{description}</p>
-                      {bulletPoints ? (
-                        <ul className="mt-2 grid gap-1.5 text-xs font-medium leading-5 text-slate-600 sm:text-sm">
-                          {bulletPoints.map((item) => (
-                            <li key={item} className="flex gap-2">
-                              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0875d1]" />
-                              <span className="break-words [overflow-wrap:anywhere]">{item}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {animalClassifier ? (
-                        <ul className="mt-2 grid gap-1.5 text-xs font-medium leading-5 text-slate-600 sm:text-sm">
-                          {animalClassifier.map((item) => (
-                            <li key={item} className="flex gap-2">
-                              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0875d1]" />
-                              <span className="break-words [overflow-wrap:anywhere]">{item}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        <Link
-                          href={href}
-                          className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-blue-100 text-[#0875d1] transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0664b3]"
-                          aria-label={`Открыть объявления: ${child}`}
-                          title="Объявления"
-                        >
-                          <ClipboardList className="h-5 w-5 shrink-0" />
-                        </Link>
-                        <Link
-                          href={getCreateListingHref(category.slug, child)}
-                          className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg bg-[#0aa337] text-white transition hover:bg-[#078a2e]"
-                          aria-label={`Разместить объявление: ${child}`}
-                          title="Разместить"
-                        >
-                          <BadgePlus className="h-5 w-5 shrink-0" />
-                        </Link>
-                        <SubcategoryShareButton href={href} title={child} />
-                      </div>
-                    </details>
-                  );
-                })}
-              </div>
+                    return (
+                      <SubcategoryCard
+                        compact={isGardenCategory}
+                        createHref={getCreateListingHref(category.slug, child)}
+                        description={description}
+                        href={href}
+                        items={[...(bulletPoints ?? []), ...(animalClassifier ?? [])]}
+                        key={child}
+                        spanClassName={shouldSpanTwoColumns ? "sm:col-span-2 md:col-span-1" : ""}
+                        title={child}
+                        visualSlug={category.slug}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
             ) : null}
-            <ListingResultsPanel categorySlug={categorySlug} listings={listings} subcategorySlug={subcategorySlug} />
-          </section>
+            <section id="listings" aria-label="Объявления категории">
+              <ListingResultsPanel categorySlug={categorySlug} listings={listings} subcategorySlug={subcategorySlug} />
+            </section>
+          </div>
         </div>
       </main>
     </>

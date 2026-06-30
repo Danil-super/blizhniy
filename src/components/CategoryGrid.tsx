@@ -25,17 +25,16 @@ import {
 import { getPublicCategories } from "@/lib/category-store";
 import type { Category } from "@/lib/types";
 
-function MemorialIcon({ className }: { className?: string }) {
+function CandleIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M11 23V10.5C11 7.5 13.2 5 16 5s5 2.5 5 5.5V23" fill="currentColor" fillOpacity="0.12" />
-      <path d="M11 23V10.5C11 7.5 13.2 5 16 5s5 2.5 5 5.5V23" />
-      <path d="M8 23h16" />
-      <path d="M6 27h20" />
-      <path d="M4 30h24" />
-      <path d="M14 12.5h4" />
-      <path d="M13 17h6" />
-      <path d="M13.5 20.5h5" />
+      <path d="M16 3.5c2.1 2.1 3.2 3.9 3.2 5.4a3.2 3.2 0 0 1-6.4 0c0-1.5 1.1-3.3 3.2-5.4Z" fill="currentColor" fillOpacity="0.12" />
+      <path d="M16 3.5c2.1 2.1 3.2 3.9 3.2 5.4a3.2 3.2 0 0 1-6.4 0c0-1.5 1.1-3.3 3.2-5.4Z" />
+      <path d="M10.2 13.2h11.6l-1.2 14H11.4l-1.2-14Z" fill="currentColor" fillOpacity="0.12" />
+      <path d="M10.2 13.2h11.6l-1.2 14H11.4l-1.2-14Z" />
+      <path d="M13.2 17.2h5.6" />
+      <path d="M15 21h2" />
+      <path d="M9 27.2h14" />
     </svg>
   );
 }
@@ -104,13 +103,13 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     ageRating: "7+",
   },
   "ritualnye-uslugi": {
-    icon: MemorialIcon,
+    icon: CandleIcon,
     imageUrl: categoryImages.ritual,
     description: "Деликатные услуги, организация и сопутствующие товары.",
     bullets: ["Организация", "Транспорт", "Уход и принадлежности"],
-    tone: "blue",
-    accentColor: "#5f7986",
-    iconClassName: "h-8 w-8 sm:h-9 sm:w-9",
+    tone: "green",
+    accentColor: "#3f8f18",
+    iconClassName: "h-9 w-9 sm:h-10 sm:w-10",
   },
   "nedvizhimost": {
     icon: Building2,
