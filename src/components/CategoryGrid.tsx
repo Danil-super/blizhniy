@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import {
   ArrowRight,
   Baby,
@@ -27,15 +27,41 @@ import type { Category } from "@/lib/types";
 
 function CandleIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M16 3.5c2.1 2.1 3.2 3.9 3.2 5.4a3.2 3.2 0 0 1-6.4 0c0-1.5 1.1-3.3 3.2-5.4Z" fill="currentColor" fillOpacity="0.12" />
-      <path d="M16 3.5c2.1 2.1 3.2 3.9 3.2 5.4a3.2 3.2 0 0 1-6.4 0c0-1.5 1.1-3.3 3.2-5.4Z" />
-      <path d="M10.2 13.2h11.6l-1.2 14H11.4l-1.2-14Z" fill="currentColor" fillOpacity="0.12" />
-      <path d="M10.2 13.2h11.6l-1.2 14H11.4l-1.2-14Z" />
-      <path d="M13.2 17.2h5.6" />
-      <path d="M15 21h2" />
-      <path d="M9 27.2h14" />
+    <svg className={className} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M16 3.7c2.2 2.4 3.4 4.2 3.4 5.9a3.4 3.4 0 0 1-6.8 0c0-1.7 1.2-3.5 3.4-5.9Z" />
+      <path d="M16 13.2v1.5" />
+      <path d="M9.7 15.2h12.6l-1.2 12H10.9l-1.2-12Z" />
+      <path d="M14 19.2v4.3" />
+      <path d="M18 19.2v4.3" />
     </svg>
+  );
+}
+
+function CategoryIconBadge({
+  accentColor,
+  children,
+}: {
+  accentColor: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-[18px] text-white shadow-[0_18px_34px_rgba(15,23,42,0.18)] ring-1 ring-white/70 transition group-hover:scale-105 sm:h-16 sm:w-16"
+      style={{
+        background: `linear-gradient(150deg, color-mix(in srgb, ${accentColor} 70%, white 30%) 0%, ${accentColor} 46%, color-mix(in srgb, ${accentColor} 70%, black 30%) 100%)`,
+        boxShadow: `0 16px 34px ${accentColor}38, inset 0 1px 0 rgba(255,255,255,0.42), inset 0 -14px 18px rgba(0,0,0,0.18)`,
+      }}
+    >
+      <span className="absolute inset-x-2 top-1 h-6 rounded-[999px_999px_18px_18px] bg-gradient-to-b from-white/54 via-white/20 to-white/0 blur-[0.5px]" />
+      <span className="absolute left-1.5 top-1.5 h-5 w-7 rounded-full bg-white/28 blur-[1px]" />
+      <span className="absolute -right-5 -top-5 h-14 w-14 rounded-full bg-white/22 blur-md" />
+      <span className="absolute -left-7 top-2 h-16 w-8 rotate-[28deg] bg-gradient-to-r from-white/0 via-white/28 to-white/0 blur-[0.5px]" />
+      <span className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/14 via-black/4 to-transparent" />
+      <span className="absolute inset-0 rounded-[18px] border border-white/20" />
+      <span className="relative drop-shadow-[0_2px_2px_rgba(0,0,0,0.22)] [&_svg]:stroke-[2.4]">
+        {children}
+      </span>
+    </span>
   );
 }
 
@@ -109,7 +135,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     bullets: ["Организация", "Транспорт", "Уход и принадлежности"],
     tone: "green",
     accentColor: "#3f8f18",
-    iconClassName: "h-9 w-9 sm:h-10 sm:w-10",
+    iconClassName: "h-10 w-10 sm:h-11 sm:w-11",
   },
   "nedvizhimost": {
     icon: Building2,
@@ -293,10 +319,6 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
           const Icon = category.icon;
           const tone = toneClasses[category.tone];
           const isLastOddCard = categoryTiles.length % 2 === 1 && index === categoryTiles.length - 1;
-          const accentStyle = {
-            backgroundColor: category.accentColor,
-            boxShadow: `0 14px 30px ${category.accentColor}26`,
-          };
 
           return (
             <Link
@@ -331,12 +353,9 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
                   isLastOddCard ? "max-w-[76%] sm:max-w-[52%] lg:min-h-[540px] lg:max-w-[31%]" : "max-w-[76%] sm:max-w-[62%] lg:max-w-[42%]"
                 }`}
               >
-                <span
-                  className="flex h-14 w-14 items-center justify-center rounded-[18px] text-white shadow-lg ring-1 ring-white/60 transition group-hover:scale-105 sm:h-16 sm:w-16"
-                  style={accentStyle}
-                >
+                <CategoryIconBadge accentColor={category.accentColor}>
                   <Icon className={category.iconClassName ?? "h-8 w-8 sm:h-9 sm:w-9"} />
-                </span>
+                </CategoryIconBadge>
                 <h2 className="mt-5 block text-lg font-black leading-tight text-[#132414] sm:text-2xl lg:text-[28px]">{category.label}</h2>
                 <span className="mt-3 block w-[229px] max-w-full text-[15px] font-semibold leading-6 text-slate-700 sm:w-auto sm:max-w-[25rem]">{category.description}</span>
                 <span className="mt-4 grid gap-1.5 text-[11px] font-bold leading-4 text-slate-700 sm:gap-2 sm:text-sm sm:leading-5">
