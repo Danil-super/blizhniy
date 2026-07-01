@@ -5,6 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { createStoredListingPublication } from "@/lib/client-listing-flow";
 import { confirmClientPayment } from "@/lib/client-payment-flow";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { createStoredVacancyPublication } from "@/lib/client-vacancy-flow";
 import { storeMediaFile } from "@/lib/client-media-store";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
@@ -29,7 +30,7 @@ type AdminDemoPublishButtonProps = {
   paymentTariffId?: string;
 };
 
-const clientFallbackContentEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
+const clientFallbackContentEnabled = shouldShowClientFallbackContent();
 
 type MediaUploadResponse = {
   files?: Array<{ path?: string }>;

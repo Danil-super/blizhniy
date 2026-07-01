@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Clock3, FileText, MapPin, PackageCheck, ShieldCheck } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { StoredMediaImage } from "@/components/StoredMedia";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import {
   demoPublicationsStorageKey,
   isDemoPublicationExpired,
@@ -32,7 +33,7 @@ type SellerProfileClientProps = {
   sellerKey: string;
 };
 
-const clientFallbackContentEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
+const clientFallbackContentEnabled = shouldShowClientFallbackContent();
 
 function readStoredPublications() {
   try {

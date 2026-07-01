@@ -12,6 +12,7 @@ import { formatPublicationDateTime, publicationTimestamp } from "@/lib/publicati
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { ListingViewCounter } from "@/components/listings/ListingViewCounter";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 
 type DemoListingFeedProps = {
   categorySlug?: string;
@@ -21,7 +22,7 @@ type DemoListingFeedProps = {
   variant?: "grid" | "list";
 };
 
-const clientFallbackContentEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
+const clientFallbackContentEnabled = shouldShowClientFallbackContent();
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

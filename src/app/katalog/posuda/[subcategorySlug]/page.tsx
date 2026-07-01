@@ -91,9 +91,6 @@ export default async function PosudaSubcategoryPage({ params }: PageProps) {
               categorySlug="posuda"
               createHref={`/razmestit/obyavlenie?category=posuda&kind=prodam&subcategory=${subcategory.slug}`}
               description={subcategory.description}
-              eyebrow="Посуда рядом"
-              listingsCount={listings.length}
-              subcategoryCount={posudaSubcategories.length}
               title={subcategory.name}
             />
             <section id="listings" aria-label="Объявления подкатегории">

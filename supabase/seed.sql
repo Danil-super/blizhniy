@@ -57,7 +57,6 @@ from (
     ('otdyh', 'turbazy', 'Турбазы', 10),
     ('otdyh', 'gostinitsy', 'Гостиницы', 20),
     ('otdyh', 'pohody', 'Походы', 30),
-    ('otdyh', 'tvorchestvo-i-rukodelie', 'Творчество и рукоделие', 40),
     ('rabota', 'vakansii', 'Вакансии', 10),
     ('rabota', 'ankety-spetsialistov', 'Анкеты специалистов', 20),
     ('sad-i-rasteniya', 'tsvety-i-sazhentsy', 'Цветы и саженцы', 10),

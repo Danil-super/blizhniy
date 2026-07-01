@@ -204,20 +204,20 @@ const baseDemoListings: DemoListing[] = [
     imageTone: "blue",
   },
   {
-    slug: "kuplyu-vykroyki-sssr",
-    title: "Куплю выкройки и журналы по рукоделию",
+    slug: "kuplyu-pohodnye-knigi-i-karty",
+    title: "Куплю книги и карты для походов",
     kind: "kuplyu",
     categorySlug: "otdyh",
     categoryName: "Хобби и отдых",
-    subcategorySlug: "tvorchestvo-i-rukodelie",
-    subcategoryName: "Творчество и рукоделие",
+    subcategorySlug: "pohody",
+    subcategoryName: "Походы",
     city: "Краснодар",
     district: "Центр",
     lat: 45.037,
     lng: 38.975,
     showExactAddress: false,
     price: "до 3 000 ₽",
-    description: "Интересуют старые журналы, лекала, наборы для вышивки и шитья. Рассмотрю подборки и отдельные экземпляры.",
+    description: "Интересуют путеводители, туристические карты и книги о маршрутах Краснодарского края. Рассмотрю подборки и отдельные экземпляры.",
     phone: "+78610002002",
     status: "published",
     paid: true,
@@ -634,7 +634,6 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
     Турбазы: "Турбазы, гостевые дома и места отдыха с возможностью бронирования и связи с владельцем.",
     Гостиницы: "Гостиницы, номера, апартаменты и варианты размещения для поездок по краю.",
     Походы: "Походы, экскурсии, маршруты выходного дня, инструкторы и групповые выезды.",
-    "Творчество и рукоделие": "Материалы, выкройки, handmade-изделия, инструменты и товары для творчества.",
   },
   rabota: {
     Вакансии: "Предложения работы от организаций и частных работодателей с контактами и условиями.",
@@ -1459,6 +1458,27 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
       : category
         ? `/razmestit/obyavlenie?category=${category.slug}&kind=${inferListingKind(category.slug, categoryChildren[0] ? slugifySubcategory(categoryChildren[0]) : "")}`
         : "/razmestit/obyavlenie";
+  const renderSubcategoryCard = (child: string, index: number) => {
+    const href = `/katalog/${category?.slug}/${slugifySubcategory(child)}`;
+    const description = subcategoryDescription(category?.slug ?? categorySlug, child);
+    const animalClassifier = category?.slug === "zhivotnye" ? animalClassifiers[child] : undefined;
+    const bulletPoints = subcategoryBulletPoints[category?.slug ?? categorySlug]?.[child];
+    const shouldSpanTwoColumns = category?.slug === "ritualnye-uslugi" && categoryChildren.length % 2 === 1 && index === categoryChildren.length - 1;
+
+    return (
+      <SubcategoryCard
+        compact={isGardenCategory}
+        createHref={getCreateListingHref(category?.slug ?? categorySlug, child)}
+        description={description}
+        href={href}
+        items={[...(bulletPoints ?? []), ...(animalClassifier ?? [])]}
+        key={child}
+        spanClassName={shouldSpanTwoColumns ? "sm:col-span-2 md:col-span-1" : ""}
+        title={child}
+        visualSlug={category?.slug ?? categorySlug}
+      />
+    );
+  };
 
   return (
     <>
@@ -1482,8 +1502,6 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
               categorySlug={category?.slug ?? categorySlug}
               createHref={createHref}
               description={activeDescription}
-              listingsCount={listings.length}
-              subcategoryCount={categoryChildren.length}
               title={title}
             />
             {category ? (
@@ -1495,34 +1513,28 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
                 <div
                   className={
                     isGardenCategory
-                      ? "grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4 2xl:grid-cols-5"
+                      ? "grid grid-cols-1 gap-2 sm:gap-3 lg:grid-cols-4 2xl:grid-cols-5"
                       : isKidsGoodsCategory
                         ? "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4"
                         : "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5"
                   }
                 >
-                  {categoryChildren.map((child, index) => {
-                    const href = `/katalog/${category.slug}/${slugifySubcategory(child)}`;
-                    const description = subcategoryDescription(category.slug, child);
-                    const animalClassifier = category.slug === "zhivotnye" ? animalClassifiers[child] : undefined;
-                    const bulletPoints = subcategoryBulletPoints[category.slug]?.[child];
-                    const shouldSpanTwoColumns =
-                      category.slug === "ritualnye-uslugi" && categoryChildren.length % 2 === 1 && index === categoryChildren.length - 1;
+                  {isGardenCategory
+                    ? categoryChildren.reduce<ReactNode[]>((rows, child, index) => {
+                        if (index % 2 === 0) {
+                          const nextChild = categoryChildren[index + 1];
 
-                    return (
-                      <SubcategoryCard
-                        compact={isGardenCategory}
-                        createHref={getCreateListingHref(category.slug, child)}
-                        description={description}
-                        href={href}
-                        items={[...(bulletPoints ?? []), ...(animalClassifier ?? [])]}
-                        key={child}
-                        spanClassName={shouldSpanTwoColumns ? "sm:col-span-2 md:col-span-1" : ""}
-                        title={child}
-                        visualSlug={category.slug}
-                      />
-                    );
-                  })}
+                          rows.push(
+                            <div className="subcategory-mobile-row grid grid-cols-2 gap-2 sm:gap-3 lg:contents" key={child}>
+                              {renderSubcategoryCard(child, index)}
+                              {nextChild ? renderSubcategoryCard(nextChild, index + 1) : null}
+                            </div>,
+                          );
+                        }
+
+                        return rows;
+                      }, [])
+                    : categoryChildren.map(renderSubcategoryCard)}
                 </div>
               </section>
             ) : null}

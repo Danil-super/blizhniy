@@ -69,8 +69,6 @@ export default function InstrumentsCategoryPage() {
               categorySlug="instrumenty"
               createHref="/razmestit/obyavlenie?category=instrumenty&kind=prodam"
               description="Раздел для ручного, электрического, измерительного, строительного и садового инструмента, а также средств защиты для ремонта и работ на участке."
-              listingsCount={demoListings.length}
-              subcategoryCount={instrumentSubcategories.length}
               title="Инструменты"
             />
 

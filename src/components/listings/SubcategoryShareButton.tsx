@@ -4,7 +4,9 @@ import { useState } from "react";
 import { Share2 } from "lucide-react";
 
 type SubcategoryShareButtonProps = {
+  className?: string;
   href: string;
+  label?: string;
   title: string;
 };
 
@@ -33,7 +35,7 @@ async function copyText(value: string) {
   document.body.removeChild(textarea);
 }
 
-export function SubcategoryShareButton({ href, title }: SubcategoryShareButtonProps) {
+export function SubcategoryShareButton({ className, href, label, title }: SubcategoryShareButtonProps) {
   const [status, setStatus] = useState<"idle" | "copied" | "error">("idle");
 
   async function handleShare() {
@@ -71,11 +73,14 @@ export function SubcategoryShareButton({ href, title }: SubcategoryShareButtonPr
     <button
       type="button"
       onClick={handleShare}
-      className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1]"
+      className={
+        className ??
+        "inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1]"
+      }
       aria-label={`Поделиться ссылкой: ${title}`}
       title={status === "copied" ? "Ссылка скопирована" : status === "error" ? "Не удалось скопировать" : "Поделиться"}
     >
-      <Share2 className="h-5 w-5 shrink-0" />
+      {label ? <span className="min-w-0 whitespace-nowrap">{label}</span> : <Share2 className="h-5 w-5 shrink-0" />}
     </button>
   );
 }

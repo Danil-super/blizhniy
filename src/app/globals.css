@@ -774,6 +774,20 @@ details.group {
   container-type: inline-size;
 }
 
+.subcategory-mobile-row:has(details[open]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.subcategory-mobile-row:has(details[open]) details[open] {
+  order: -1;
+}
+
+@media (min-width: 1024px) {
+  .subcategory-mobile-row:has(details[open]) details[open] {
+    order: 0;
+  }
+}
+
 details.group > div.mt-3.grid.grid-cols-3.gap-2 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.4rem;
@@ -800,18 +814,6 @@ a[aria-label^="Открыть объявления:"] svg,
 a[aria-label^="Разместить объявление:"] svg,
 button[aria-label^="Поделиться ссылкой:"] svg {
   display: none;
-}
-
-a[aria-label^="Открыть объявления:"]::after {
-  content: "Объявления";
-}
-
-a[aria-label^="Разместить объявление:"]::after {
-  content: "Разместить";
-}
-
-button[aria-label^="Поделиться ссылкой:"]::after {
-  content: "Поделиться";
 }
 
 @container (max-width: 19rem) {

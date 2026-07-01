@@ -3,6 +3,7 @@
 import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { getStoredMediaFile } from "@/lib/client-media-store";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
@@ -88,7 +89,7 @@ const confirmationRetryDelayMs = 1500;
 const confirmationRetryAttempts = 20;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 const publicMediaPathMarker = "/storage/v1/object/public/blizhniy-media/";
-const clientDraftPaymentFallbackEnabled = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
+const clientDraftPaymentFallbackEnabled = process.env.NODE_ENV !== "production" || shouldShowClientFallbackContent();
 
 function isUuid(value?: string) {
   return Boolean(value && uuidPattern.test(value));

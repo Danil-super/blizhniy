@@ -33,10 +33,7 @@ export function HomeIntro() {
         <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/22 via-transparent to-black/8 lg:hidden" />
         <div className="relative z-10 grid min-h-[410px] items-center gap-5 p-5 sm:min-h-[390px] sm:p-7 lg:min-h-[430px] lg:grid-cols-[minmax(0,0.84fr)_minmax(520px,1.16fr)] lg:p-10">
           <div className="max-w-[34rem] rounded-[24px] bg-white/72 p-0 lg:max-w-[39rem] lg:bg-white/0">
-            <p className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[#0a8f32] sm:text-sm">
-              Краснодарский край рядом
-            </p>
-            <h1 className="mt-4 max-w-[19rem] text-[1.85rem] font-black leading-[1.04] text-[#06102d] sm:max-w-none sm:text-[2.55rem] sm:leading-[1.04] lg:text-[3rem]">
+            <h1 className="max-w-[19rem] text-[1.85rem] font-black leading-[1.04] text-[#06102d] sm:max-w-none sm:text-[2.55rem] sm:leading-[1.04] lg:text-[3rem]">
               <span className="block sm:whitespace-nowrap">Все нужное рядом.</span>
               <span className="block text-[#188c32] sm:whitespace-nowrap">Для вас и ваших близких.</span>
             </h1>

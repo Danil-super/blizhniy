@@ -9,12 +9,13 @@ import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckb
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { fairCategories } from "@/lib/data";
 import { ValidatedInput } from "@/components/ValidatedInput";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationHistory, type DemoPublication } from "@/lib/demo-publications";
 import { confirmClientPayment } from "@/lib/client-payment-flow";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 
 type SubmitState = "idle" | "loading" | "error";
-const clientFallbackContentEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
+const clientFallbackContentEnabled = shouldShowClientFallbackContent();
 
 type MediaUploadResponse = {
   error?: string;

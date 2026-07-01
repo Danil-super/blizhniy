@@ -210,7 +210,6 @@ function slugifySubcategory(name: string) {
     Сантехника: "santehnika",
     "Цветы и саженцы": "tsvety-i-sazhentsy",
     "Выкройки и рукоделие": "vykroyki-i-rukodelie",
-    "Творчество и рукоделие": "tvorchestvo-i-rukodelie",
     Игрушки: "igrushki",
     "Технические игрушки": "tehnicheskie-igrushki",
     "Дидактические игрушки": "didakticheskie-igrushki",

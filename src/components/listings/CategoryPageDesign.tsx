@@ -3,7 +3,6 @@ import type { CSSProperties } from "react";
 import {
   ArrowRight,
   Baby,
-  BadgePlus,
   BriefcaseBusiness,
   Building2,
   Car,
@@ -39,9 +38,6 @@ type CategoryHeaderBandProps = {
   categorySlug: string;
   createHref: string;
   description?: string;
-  eyebrow?: string;
-  listingsCount?: number;
-  subcategoryCount?: number;
   title: string;
 };
 
@@ -64,24 +60,24 @@ const defaultVisual: CategoryVisual = {
 };
 
 const categoryVisuals: Record<string, CategoryVisual> = {
-  biznes: { accent: "#2d7fb4", border: "#bfdbfe", icon: BriefcaseBusiness, soft: "#eff8ff" },
-  "dlya-doma-i-dachi": { accent: "#638b3f", border: "#d9edb8", icon: Home, soft: "#f5fbeb" },
+  biznes: { accent: "#0875d1", border: "#93c5fd", icon: BriefcaseBusiness, soft: "#e9f4ff" },
+  "dlya-doma-i-dachi": { accent: "#0aa337", border: "#9be15d", icon: Home, soft: "#edffd8" },
   elektronika: { accent: "#2563eb", border: "#bfdbfe", icon: Search, soft: "#eff6ff" },
-  instrumenty: { accent: "#2d7fb4", border: "#bfdbfe", icon: Hammer, soft: "#eff8ff" },
-  "krasota-i-uhod": { accent: "#5c9a68", border: "#c9ebd0", icon: HeartPulse, soft: "#f0fbf3" },
-  "menyayu-ili-otdam-darom": { accent: "#638b3f", border: "#d9edb8", icon: Gift, soft: "#f5fbeb" },
-  nedvizhimost: { accent: "#2d7fb4", border: "#bfdbfe", icon: Building2, soft: "#eff8ff" },
-  "odezhda-obuv-aksessuary": { accent: "#5c9a68", border: "#c9ebd0", icon: Shirt, soft: "#f0fbf3" },
-  otdyh: { accent: "#2d7fb4", border: "#bfdbfe", icon: Sparkles, soft: "#eff8ff" },
+  instrumenty: { accent: "#0aa337", border: "#9be15d", icon: Hammer, soft: "#edffd8" },
+  "krasota-i-uhod": { accent: "#0aa337", border: "#86efac", icon: HeartPulse, soft: "#ecfdf3" },
+  "menyayu-ili-otdam-darom": { accent: "#0aa337", border: "#9be15d", icon: Gift, soft: "#edffd8" },
+  nedvizhimost: { accent: "#0875d1", border: "#93c5fd", icon: Building2, soft: "#e9f4ff" },
+  "odezhda-obuv-aksessuary": { accent: "#0aa337", border: "#86efac", icon: Shirt, soft: "#ecfdf3" },
+  otdyh: { accent: "#0aa337", border: "#9be15d", icon: Sparkles, soft: "#edffd8" },
   posuda: { accent: "#b7791f", border: "#fde68a", icon: Utensils, soft: "#fffbeb" },
   rabota: { accent: "#0875d1", border: "#bfdbfe", icon: BriefcaseBusiness, soft: "#eff6ff" },
-  raznoe: { accent: "#2d7fb4", border: "#bfdbfe", icon: MoreHorizontal, soft: "#eff8ff" },
+  raznoe: { accent: "#0aa337", border: "#9be15d", icon: MoreHorizontal, soft: "#edffd8" },
   "ritualnye-uslugi": { accent: "#52616f", border: "#cbd5e1", icon: ShieldCheck, soft: "#f8fafc" },
-  "sad-i-rasteniya": { accent: "#4f8b24", border: "#d9edb8", icon: Sprout, soft: "#f5fbeb" },
-  transport: { accent: "#2d7fb4", border: "#bfdbfe", icon: Car, soft: "#eff8ff" },
-  "tovary-dlya-detey": { accent: "#5c9a68", border: "#c9ebd0", icon: Baby, soft: "#f0fbf3" },
-  "uslugi-dlya-doma": { accent: "#2d7fb4", border: "#bfdbfe", icon: Wrench, soft: "#eff8ff" },
-  zhivotnye: { accent: "#638b3f", border: "#d9edb8", icon: PawPrint, soft: "#f5fbeb" },
+  "sad-i-rasteniya": { accent: "#0aa337", border: "#9be15d", icon: Sprout, soft: "#edffd8" },
+  transport: { accent: "#0875d1", border: "#93c5fd", icon: Car, soft: "#e9f4ff" },
+  "tovary-dlya-detey": { accent: "#0aa337", border: "#86efac", icon: Baby, soft: "#ecfdf3" },
+  "uslugi-dlya-doma": { accent: "#0aa337", border: "#9be15d", icon: Wrench, soft: "#edffd8" },
+  zhivotnye: { accent: "#0aa337", border: "#9be15d", icon: PawPrint, soft: "#edffd8" },
 };
 
 function visualForCategory(slug: string) {
@@ -96,53 +92,22 @@ function visualStyle(visual: CategoryVisual): CSSProperties {
   } as CSSProperties;
 }
 
-function formatCount(count: number, one: string, few: string, many: string) {
-  const lastTwo = count % 100;
-  const last = count % 10;
-
-  if (lastTwo >= 11 && lastTwo <= 14) {
-    return `${count} ${many}`;
-  }
-
-  if (last === 1) {
-    return `${count} ${one}`;
-  }
-
-  if (last >= 2 && last <= 4) {
-    return `${count} ${few}`;
-  }
-
-  return `${count} ${many}`;
-}
-
 export function CategoryHeaderBand({
   categorySlug,
   createHref,
   description,
-  eyebrow = "Краснодарский край рядом",
-  listingsCount = 0,
-  subcategoryCount = 0,
   title,
 }: CategoryHeaderBandProps) {
   const visual = visualForCategory(categorySlug);
-  const Icon = visual.icon;
 
   return (
     <section
-      className="relative overflow-hidden rounded-2xl border border-[var(--category-border)] bg-[var(--category-soft)] px-4 py-5 shadow-sm sm:px-5 sm:py-6 lg:px-7 lg:py-7"
+      className="relative overflow-hidden rounded-2xl border border-[var(--category-border)] bg-[var(--category-soft)] px-4 py-5 shadow-md shadow-emerald-100/60 sm:px-5 sm:py-6 lg:px-7 lg:py-7"
       style={visualStyle(visual)}
     >
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.34fr)] lg:items-end">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-[var(--category-accent)] shadow-sm ring-1 ring-[var(--category-border)]">
-              <Icon className="h-5 w-5" />
-            </span>
-            <span className="inline-flex min-h-8 items-center rounded-full bg-white/80 px-3 text-xs font-bold uppercase tracking-wide text-[var(--category-accent)] ring-1 ring-[var(--category-border)]">
-              {eyebrow}
-            </span>
-          </div>
-          <h1 className="mt-4 max-w-4xl [overflow-wrap:anywhere] text-2xl font-bold leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">{title}</h1>
+          <h1 className="max-w-4xl [overflow-wrap:anywhere] text-2xl font-bold leading-tight text-[#060b27] sm:text-3xl lg:text-4xl">{title}</h1>
           {description ? <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-slate-700 sm:text-base sm:leading-7">{description}</p> : null}
           <div className="mt-5 flex flex-wrap gap-2">
             <Link
@@ -162,15 +127,7 @@ export function CategoryHeaderBand({
           </div>
         </div>
 
-        <div className="grid gap-2 rounded-xl bg-white/70 p-3 ring-1 ring-[var(--category-border)]">
-          <div className="grid grid-cols-2 gap-2">
-            <span className="rounded-lg bg-white px-3 py-2 text-xs font-bold leading-5 text-slate-700 shadow-sm">
-              {formatCount(subcategoryCount, "подраздел", "подраздела", "подразделов")}
-            </span>
-            <span className="rounded-lg bg-white px-3 py-2 text-xs font-bold leading-5 text-slate-700 shadow-sm">
-              {formatCount(listingsCount, "объявление", "объявления", "объявлений")}
-            </span>
-          </div>
+        <div className="grid gap-2 rounded-xl bg-white/80 p-3 ring-1 ring-[var(--category-border)]">
           <span className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs font-bold leading-5 text-slate-700 shadow-sm">
             <MapPin className="h-4 w-4 shrink-0 text-[var(--category-accent)]" />
             Районы, города и предложения рядом
@@ -187,6 +144,7 @@ export function CategoryHeaderBand({
 
 export function SubcategoryCard({ compact = false, createHref, description, href, items = [], spanClassName = "", title, visualSlug }: SubcategoryCardProps) {
   const visual = visualForCategory(visualSlug);
+  const actionButtonClassName = `${compact ? "h-8 px-1 text-[11px] sm:h-9 sm:px-1.5 sm:text-xs" : "h-10 px-1.5 text-xs sm:px-2 sm:text-sm"} inline-flex min-w-0 items-center justify-center rounded-lg border font-bold leading-none transition`;
 
   return (
     <details
@@ -194,13 +152,8 @@ export function SubcategoryCard({ compact = false, createHref, description, href
       style={visualStyle(visual)}
     >
       <summary className={`flex cursor-pointer list-none items-center justify-between marker:hidden [&::-webkit-details-marker]:hidden ${compact ? "min-h-12 gap-2 p-2.5" : "min-h-14 gap-3 p-3"}`}>
-        <span className={`flex min-w-0 ${compact ? "gap-2" : "gap-3"}`}>
-          <span className={`flex shrink-0 items-center justify-center rounded-lg bg-[var(--category-soft)] text-[var(--category-accent)] ring-1 ring-[var(--category-border)] ${compact ? "h-8 w-8" : "h-9 w-9"}`}>
-            <ClipboardList className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-          </span>
-          <span className={`min-w-0 self-center break-words font-bold text-[#142315] [overflow-wrap:anywhere] ${compact ? "text-xs leading-4 sm:text-[15px] sm:leading-5" : "text-sm leading-5 sm:text-[15px]"}`}>
-            {title}
-          </span>
+        <span className={`min-w-0 self-center break-words font-bold text-[#142315] [overflow-wrap:anywhere] ${compact ? "text-xs leading-4 sm:text-[15px] sm:leading-5" : "text-sm leading-5 sm:text-[15px]"}`}>
+          {title}
         </span>
         <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-90 group-open:text-[var(--category-accent)]" />
       </summary>
@@ -217,24 +170,29 @@ export function SubcategoryCard({ compact = false, createHref, description, href
             ))}
           </ul>
         ) : null}
-        <div className={`${compact ? "mt-2 gap-1.5" : "mt-3 gap-2"} grid grid-cols-3`}>
+        <div className={`${compact ? "mt-2 gap-1" : "mt-3 gap-1.5"} grid grid-cols-3`}>
           <Link
             href={href}
-            className={`${compact ? "h-9" : "h-10"} inline-flex min-w-0 items-center justify-center rounded-lg border border-[var(--category-border)] bg-white text-[var(--category-accent)] transition hover:bg-[var(--category-soft)]`}
+            className={`${actionButtonClassName} border-[var(--category-border)] bg-white text-[var(--category-accent)] hover:bg-[var(--category-soft)]`}
             aria-label={`Открыть объявления: ${title}`}
             title="Объявления"
           >
-            <ClipboardList className={`${compact ? "h-4 w-4" : "h-5 w-5"} shrink-0`} />
+            <span className="min-w-0 whitespace-nowrap">Объявления</span>
           </Link>
           <Link
             href={createHref}
-            className={`${compact ? "h-9" : "h-10"} inline-flex min-w-0 items-center justify-center rounded-lg bg-[#0aa337] text-white transition hover:bg-[#078a2e]`}
+            className={`${actionButtonClassName} border-[#0aa337] bg-[#0aa337] text-white hover:bg-[#078a2e]`}
             aria-label={`Разместить объявление: ${title}`}
             title="Разместить"
           >
-            <BadgePlus className={`${compact ? "h-4 w-4" : "h-5 w-5"} shrink-0`} />
+            <span className="min-w-0 whitespace-nowrap">Разместить</span>
           </Link>
-          <SubcategoryShareButton href={href} title={title} />
+          <SubcategoryShareButton
+            className={`${actionButtonClassName} border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1]`}
+            href={href}
+            label="Поделиться"
+            title={title}
+          />
         </div>
       </div>
     </details>

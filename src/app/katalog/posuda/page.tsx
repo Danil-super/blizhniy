@@ -69,8 +69,6 @@ export default function PosudaCategoryPage() {
               categorySlug="posuda"
               createHref="/razmestit/obyavlenie?category=posuda&kind=prodam"
               description="Раздел для кухонной и столовой посуды, бокалов, кружек, контейнеров, приборов для подачи и полезной кухонной утвари."
-              listingsCount={demoListings.length}
-              subcategoryCount={posudaSubcategories.length}
               title="Посуда"
             />
 

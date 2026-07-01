@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ChevronRight, Filter, Search } from "lucide-react";
 import { DemoListingFeed } from "@/components/DemoListingFeed";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { demoPublicationsStorageKey, isDemoPublicationPubliclyVisible, type DemoPublication } from "@/lib/demo-publications";
 import {
   emptyListingFilters,
@@ -23,7 +24,7 @@ type ListingResultsPanelProps = {
 };
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
-const clientFallbackContentEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
+const clientFallbackContentEnabled = shouldShowClientFallbackContent();
 
 function isLocalOnlyPublication(item: DemoPublication) {
   return !uuidPattern.test(item.id);

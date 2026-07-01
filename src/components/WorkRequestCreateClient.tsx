@@ -10,6 +10,7 @@ import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckb
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { isStoredMediaReference, storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, type DemoPublication, withPublicationHistory } from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
@@ -28,7 +29,7 @@ type CreatedWorkRequestResponse = {
   };
 };
 
-const clientFallbackContentEnabled = process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
+const clientFallbackContentEnabled = shouldShowClientFallbackContent();
 
 function readStoredPublications() {
   try {

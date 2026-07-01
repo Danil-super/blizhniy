@@ -91,9 +91,6 @@ export default async function InstrumentSubcategoryPage({ params }: PageProps) {
               categorySlug="instrumenty"
               createHref={`/razmestit/obyavlenie?category=instrumenty&kind=prodam&subcategory=${subcategory.slug}`}
               description={subcategory.description}
-              eyebrow="Инструменты рядом"
-              listingsCount={listings.length}
-              subcategoryCount={instrumentSubcategories.length}
               title={subcategory.name}
             />
             <section id="listings" aria-label="Объявления подкатегории">
