@@ -1,0 +1,121 @@
+name: Security Checks - SAST, Secrets, Dependencies
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: security-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-checks:
+    name: Security checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare reports directory
+        run: mkdir -p security-reports
+
+      - name: Scan secrets with Gitleaks
+        id: gitleaks
+        continue-on-error: true
+        run: |
+          docker run --rm \
+            -v "${PWD}:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.24.3 \
+            detect \
+              --source=/repo \
+              --redact \
+              --report-format=sarif \
+              --report-path=/repo/security-reports/gitleaks.sarif \
+              --exit-code=1
+
+      - name: Scan code with Semgrep
+        id: semgrep
+        continue-on-error: true
+        run: |
+          docker run --rm \
+            -v "${PWD}:/src" \
+            -w /src \
+            semgrep/semgrep:1.109.0 \
+            semgrep scan \
+              --config=auto \
+              --sarif \
+              --output=security-reports/semgrep.sarif
+
+      - name: Scan dependencies and config with Trivy
+        id: trivy
+        continue-on-error: true
+        run: |
+          docker run --rm \
+            -v "${PWD}:/repo" \
+            aquasec/trivy:0.58.2 \
+            fs \
+              --scanners vuln,secret,misconfig \
+              --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+              --format sarif \
+              --output /repo/security-reports/trivy.sarif \
+              /repo
+
+      - name: Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: security-reports
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Gitleaks SARIF to GitHub Security
+        if: always() && hashFiles('security-reports/gitleaks.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/gitleaks.sarif
+          category: gitleaks
+
+      - name: Upload Semgrep SARIF to GitHub Security
+        if: always() && hashFiles('security-reports/semgrep.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/semgrep.sarif
+          category: semgrep
+
+      - name: Upload Trivy SARIF to GitHub Security
+        if: always() && hashFiles('security-reports/trivy.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/trivy.sarif
+          category: trivy
+
+      - name: Add security summary
+        if: always()
+        run: |
+          echo "## Security Checks" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| Check | Purpose | Result |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "|---|---|---|" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| Gitleaks | Secrets in Git history and files | ${{ steps.gitleaks.outcome }} |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| Semgrep | Static code analysis | ${{ steps.semgrep.outcome }} |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| Trivy | Dependencies, secrets, misconfig | ${{ steps.trivy.outcome }} |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Reports are available in the security-reports artifact." >> "${GITHUB_STEP_SUMMARY}"
