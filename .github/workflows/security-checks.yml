@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -77,7 +77,7 @@ jobs:
 
       - name: Upload security reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: security-reports
           path: security-reports
@@ -87,7 +87,7 @@ jobs:
       - name: Upload Gitleaks SARIF to GitHub Security
         if: always() && hashFiles('security-reports/gitleaks.sarif') != ''
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: security-reports/gitleaks.sarif
           category: gitleaks
@@ -95,7 +95,7 @@ jobs:
       - name: Upload Semgrep SARIF to GitHub Security
         if: always() && hashFiles('security-reports/semgrep.sarif') != ''
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: security-reports/semgrep.sarif
           category: semgrep
@@ -103,7 +103,7 @@ jobs:
       - name: Upload Trivy SARIF to GitHub Security
         if: always() && hashFiles('security-reports/trivy.sarif') != ''
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: security-reports/trivy.sarif
           category: trivy
