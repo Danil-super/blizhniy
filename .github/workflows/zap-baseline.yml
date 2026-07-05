@@ -1,0 +1,82 @@
+name: DAST - OWASP ZAP Baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Site URL to scan"
+        required: true
+        default: "https://xn----9sbphbgks4a4a.xn--p1ai"
+  schedule:
+    # Runs every Monday at 03:00 UTC.
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zap-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zap-baseline:
+    name: OWASP ZAP baseline scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      TARGET_URL: ${{ github.event.inputs.target_url || 'https://xn----9sbphbgks4a4a.xn--p1ai' }}
+
+    steps:
+      - name: Show scan target
+        run: |
+          echo "Scanning: ${TARGET_URL}"
+
+      - name: Run ZAP baseline scan
+        id: zap
+        run: |
+          set +e
+          docker run --rm \
+            -v "${PWD}:/zap/wrk/:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+              -t "${TARGET_URL}" \
+              -r zap-report.html \
+              -J zap-report.json \
+              -w zap-report.md \
+              -I
+          ZAP_EXIT_CODE=$?
+          echo "exit_code=${ZAP_EXIT_CODE}" >> "${GITHUB_OUTPUT}"
+          set -e
+
+      - name: Add ZAP report to job summary
+        if: always()
+        run: |
+          echo "## OWASP ZAP Baseline Scan" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Target: ${TARGET_URL}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "ZAP exit code: ${{ steps.zap.outputs.exit_code }}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          if [ -f zap-report.md ]; then
+            cat zap-report.md >> "${GITHUB_STEP_SUMMARY}"
+          else
+            echo "ZAP report was not generated." >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload ZAP reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline-report
+          path: |
+            zap-report.html
+            zap-report.json
+            zap-report.md
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Fail only on high-risk ZAP failure
+        if: ${{ steps.zap.outputs.exit_code == '2' }}
+        run: |
+          echo "OWASP ZAP found high-risk issues. Check the uploaded report."
+          exit 1
