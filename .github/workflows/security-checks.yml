@@ -69,7 +69,8 @@ jobs:
             aquasec/trivy:0.58.2 \
             fs \
               --scanners vuln,secret,misconfig \
-              --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+              --severity HIGH,CRITICAL \
+              --exit-code 1 \
               --format sarif \
               --output /repo/security-reports/trivy.sarif \
               /repo
@@ -110,12 +111,20 @@ jobs:
       - name: Add security summary
         if: always()
         run: |
-          echo "## Security Checks" >> "${GITHUB_STEP_SUMMARY}"
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
-          echo "| Check | Purpose | Result |" >> "${GITHUB_STEP_SUMMARY}"
-          echo "|---|---|---|" >> "${GITHUB_STEP_SUMMARY}"
-          echo "| Gitleaks | Secrets in Git history and files | ${{ steps.gitleaks.outcome }} |" >> "${GITHUB_STEP_SUMMARY}"
-          echo "| Semgrep | Static code analysis | ${{ steps.semgrep.outcome }} |" >> "${GITHUB_STEP_SUMMARY}"
-          echo "| Trivy | Dependencies, secrets, misconfig | ${{ steps.trivy.outcome }} |" >> "${GITHUB_STEP_SUMMARY}"
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
-          echo "Reports are available in the security-reports artifact." >> "${GITHUB_STEP_SUMMARY}"
+          {
+            echo "## Security Checks"
+            echo ""
+            echo "| Check | Purpose | Result |"
+            echo "|---|---|---|"
+            echo "| Gitleaks | Secrets in Git history and files | ${{ steps.gitleaks.outcome }} |"
+            echo "| Semgrep | Static code analysis | ${{ steps.semgrep.outcome }} |"
+            echo "| Trivy | Dependencies, secrets, misconfig | ${{ steps.trivy.outcome }} |"
+            echo ""
+            echo "Reports are available in the security-reports artifact."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Fail on high-risk findings
+        if: ${{ steps.gitleaks.outcome == 'failure' || steps.trivy.outcome == 'failure' }}
+        run: |
+          echo "High-risk security findings were detected. Check the security-reports artifact."
+          exit 1

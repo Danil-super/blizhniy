@@ -52,16 +52,18 @@ jobs:
       - name: Add ZAP report to job summary
         if: always()
         run: |
-          echo "## OWASP ZAP Baseline Scan" >> "${GITHUB_STEP_SUMMARY}"
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
-          echo "Target: ${TARGET_URL}" >> "${GITHUB_STEP_SUMMARY}"
-          echo "ZAP exit code: ${{ steps.zap.outputs.exit_code }}" >> "${GITHUB_STEP_SUMMARY}"
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
-          if [ -f zap-report.md ]; then
-            cat zap-report.md >> "${GITHUB_STEP_SUMMARY}"
-          else
-            echo "ZAP report was not generated." >> "${GITHUB_STEP_SUMMARY}"
-          fi
+          {
+            echo "## OWASP ZAP Baseline Scan"
+            echo ""
+            echo "Target: ${TARGET_URL}"
+            echo "ZAP exit code: ${{ steps.zap.outputs.exit_code }}"
+            echo ""
+            if [ -f zap-report.md ]; then
+              cat zap-report.md
+            else
+              echo "ZAP report was not generated."
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload ZAP reports
         if: always()
