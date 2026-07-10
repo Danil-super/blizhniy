@@ -255,7 +255,6 @@ export function AdminOverviewClient() {
           <h2 className="text-lg font-bold text-[#060b27]">Разделы управления</h2>
           <div className="mt-3 grid gap-2">
             <ActionLink href="/admin/users">Пользователи и роли</ActionLink>
-            <ActionLink href="/admin/categories">Категории каталога</ActionLink>
             <ActionLink href="/admin/tariffs">Тарифы</ActionLink>
             <ActionLink href="/admin/payments">Платежи: {payments.length} / {summary.succeededPayments}</ActionLink>
           </div>

@@ -1,10 +1,5 @@
-import { AdminCategoriesClient } from "@/components/admin/AdminCategoriesClient";
-import { AdminShell } from "@/components/admin/AdminShell";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return (
-    <AdminShell activeHref="/admin/categories" title="Категории" description="Рубрикатор объявлений с дочерними разделами для модерации каталога.">
-      <AdminCategoriesClient />
-    </AdminShell>
-  );
+  redirect("/admin");
 }

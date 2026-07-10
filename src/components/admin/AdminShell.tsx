@@ -9,7 +9,6 @@ import {
   Gauge,
   Megaphone,
   Store,
-  Tags,
   UsersRound,
   WalletCards,
 } from "lucide-react";
@@ -23,7 +22,6 @@ const adminNav = [
   { href: "/admin/vakansii", label: "Вакансии", icon: BriefcaseBusiness },
   { href: "/admin/zakazy", label: "Заказы", icon: ClipboardList },
   { href: "/admin/specialisty", label: "Специалисты", icon: CircleUserRound },
-  { href: "/admin/categories", label: "Категории", icon: Tags },
   { href: "/admin/tariffs", label: "Тарифы", icon: WalletCards },
   { href: "/admin/payments", label: "Платежи", icon: CreditCard },
   { href: "/admin/ad-marquee", label: "Бегущая строка", icon: Megaphone },
