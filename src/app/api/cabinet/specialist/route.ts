@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSpecialistProfileCompleteness, getStoredSpecialistProfileForUser, upsertStoredSpecialistProfileForUser, type SpecialistProfileInput } from "@/lib/specialist-profile-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
+import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
 
 type PatchBody = SpecialistProfileInput & {
   action?: "save" | "activate" | "deactivate";
@@ -26,6 +27,7 @@ function specialistInputFromBody(body: PatchBody): SpecialistProfileInput {
     lng: cleanNumber(body.lng),
     messengerUrl: cleanString(body.messengerUrl) || undefined,
     name: cleanString(body.name) || undefined,
+    photoPath: cleanString(body.photoPath) || undefined,
     phone: cleanString(body.phone) || undefined,
     price: cleanString(body.price) || undefined,
     profession: cleanString(body.profession) || undefined,
@@ -84,6 +86,18 @@ export async function PATCH(request: Request) {
 
   try {
     const input = specialistInputFromBody(body);
+
+    if (body.photoPath !== undefined) {
+      const rawPhotoPath = cleanString(body.photoPath);
+      const validPhotoPath = rawPhotoPath ? validateMediaStoragePathsForUser([rawPhotoPath], "specialists", auth.user.id)[0] : "";
+
+      if (rawPhotoPath && !validPhotoPath) {
+        return NextResponse.json({ error: "Некорректное фото профиля. Загрузите аватарку заново." }, { status: 400 });
+      }
+
+      input.photoPath = validPhotoPath || "";
+    }
+
     const status = body.action === "activate" ? "published" : body.action === "deactivate" ? "draft" : undefined;
     const specialist = await upsertStoredSpecialistProfileForUser(
       {

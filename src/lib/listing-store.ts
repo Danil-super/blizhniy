@@ -44,7 +44,6 @@ type ListingRow = {
   } | null;
   profiles?: {
     display_name?: string | null;
-    email?: string | null;
   } | null;
 };
 
@@ -104,9 +103,9 @@ const fallbackCategoryByKind: Record<ListingKind, string> = {
 };
 
 const listingSelect =
-  "id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name,email)";
+  "id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name)";
 const listingSelectWithViewCount =
-  "id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,view_count,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name,email)";
+  "id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,view_count,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name)";
 
 async function fetchListingRows(querySuffix: string) {
   try {
@@ -233,7 +232,6 @@ function mapListing(row: ListingRow): Listing {
     booking,
     imageTone: "blue",
     phone: row.contact_phone ?? undefined,
-    email: row.profiles?.email ?? undefined,
     messengerUrl: row.messenger_url ?? undefined,
     status: row.status,
     paid: row.is_paid,

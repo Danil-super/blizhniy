@@ -31,6 +31,7 @@ async function getSellerListings(sellerKey: string): Promise<SellerProfileListin
       createdAt: listing.publishedAt,
       href: `/obyavlenie/${listing.slug}`,
       id: listing.viewId ?? listing.slug,
+      image: listing.images?.[0],
       price: listing.price,
       sellerName: sellerDisplayName(listing),
       status: listing.status,

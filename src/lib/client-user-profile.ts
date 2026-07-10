@@ -191,7 +191,10 @@ export function readCabinetProfile(ownerKey: string, fallback: CabinetProfile): 
   return fallback;
 }
 
-export function writeCabinetProfile(ownerKey: string, profile: CabinetProfile) {
+export function writeCabinetProfile(ownerKey: string, profile: CabinetProfile, options: { notify?: boolean } = {}) {
   window.localStorage.setItem(profileStorageKey(ownerKey), JSON.stringify(profile));
-  window.dispatchEvent(new Event("blizhniy-profile-updated"));
+
+  if (options.notify !== false) {
+    window.dispatchEvent(new Event("blizhniy-profile-updated"));
+  }
 }

@@ -1629,16 +1629,17 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
     <>
       <SiteHeader />
       <ListingViewTracker initialViews={listing.viewCount} listingId={viewId} />
-      <main className="page-container py-10">
-        <Breadcrumbs
-          items={[
-            { label: listing.categoryName, href: `/katalog/${listing.categorySlug}` },
-            { label: listing.subcategoryName, href: `/katalog/${listing.categorySlug}/${listing.subcategorySlug}` },
-            { label: listing.title },
-          ]}
-        />
-        <div className="mx-auto grid max-w-[1180px] min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,768px)_minmax(320px,380px)] lg:items-start lg:justify-center">
-          <section className="min-w-0 lg:max-w-3xl">
+      <main className="page-container py-6 sm:py-8 lg:py-10">
+        <div className="mx-auto max-w-[1060px] min-w-0">
+          <Breadcrumbs
+            items={[
+              { label: listing.categoryName, href: `/katalog/${listing.categorySlug}` },
+              { label: listing.subcategoryName, href: `/katalog/${listing.categorySlug}/${listing.subcategorySlug}` },
+              { label: listing.title },
+            ]}
+          />
+          <div className="grid min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,640px)_minmax(320px,380px)] lg:items-start">
+          <section className="min-w-0 lg:max-w-[640px]">
             <BackLink fallbackHref={`/obyavleniya?kind=${listing.kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
               Назад к разделу
             </BackLink>
@@ -1664,7 +1665,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
               </div>
             </div>
             <ListingMediaGallery media={galleryMedia} title={listing.title} />
-            <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
+            <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6 lg:max-w-[640px]">
               <h2 className="text-lg font-bold text-[#060b27]">Описание</h2>
               <p className="mt-2 [overflow-wrap:anywhere] text-sm leading-6 text-slate-700 sm:mt-3 sm:text-base sm:leading-7">{listing.description}</p>
               <dl className="mt-5 grid min-w-0 gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4">
@@ -1688,10 +1689,10 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
             </div>
           </section>
 
-          <aside className="min-w-0 space-y-4">
-            <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
+          <aside className="min-w-0 space-y-4 lg:sticky lg:top-24">
+            <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
               <div className="hidden lg:block">
-                <p className="[overflow-wrap:anywhere] text-xl font-bold text-[#060b27]">{listing.price}</p>
+                <p className="[overflow-wrap:anywhere] text-2xl font-bold tracking-tight text-[#060b27]">{listing.price}</p>
                 {!hasMapPoint ? (
                   <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
                     <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
@@ -1745,6 +1746,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
             {listing.booking ? <BookingCalculator booking={listing.booking} initialRequests={bookingRequests} listingId={listing.slug} listingTitle={listing.title} /> : null}
             {showDeliveryUi ? <DeliveryInfoCard delivery={listing.delivery} /> : null}
           </aside>
+          </div>
         </div>
       </main>
     </>
@@ -1913,11 +1915,10 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
     const hasMapPoint = String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1";
     const city = inferCityFromFormData(formData);
     const phone = String(formData.get("phone") ?? "").trim();
-    const email = String(formData.get("email") ?? "").trim();
     const messengerUrl = String(formData.get("messengerUrl") ?? "").trim();
 
-    if (!phone && !email && !messengerUrl) {
-      redirect(`/razmestit/obyavlenie?admin=1&error=${encodeURIComponent("Укажите хотя бы один контакт объявления: телефон, email или Telegram/WhatsApp.")}`);
+    if (!phone && !messengerUrl) {
+      redirect(`/razmestit/obyavlenie?admin=1&error=${encodeURIComponent("Укажите хотя бы один контакт объявления: телефон или Telegram/WhatsApp.")}`);
     }
 
     const booking = kind === "arenda" ? parseBookingDetails(formData, categorySlug, subcategorySlug) : undefined;
@@ -1942,7 +1943,6 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
       delivery: parseDeliveryOptions(formData, city),
       description: String(formData.get("description") ?? "").trim() || undefined,
       phone: phone || undefined,
-      email: email || undefined,
       messengerUrl: messengerUrl || undefined,
       lat: hasMapPoint ? parseCoordinate(formData, "lat") : undefined,
       lng: hasMapPoint ? parseCoordinate(formData, "lng") : undefined,
@@ -2038,12 +2038,8 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
                     options={[
                       { value: "phone", label: "Телефон" },
                       { value: "messenger", label: "Мессенджер" },
-                      { value: "email", label: "Email" },
                     ]}
                   />
-                </Field>
-                <Field label="Email для уведомлений" compact size="lg">
-                  <TextInput name="email" placeholder="mail@example.ru" validation="email" compact />
                 </Field>
                 <Field label="Telegram или WhatsApp" compact size="lg">
                   <TextInput name="messengerUrl" defaultValue={listing?.messengerUrl} placeholder="@username или ссылка" validation="messenger" compact />

@@ -175,7 +175,6 @@ export async function PATCH(request: Request) {
       const description = cleanString(payload.description);
       const phone = cleanString(payload.phone);
       const messengerUrl = cleanString(payload.messengerUrl);
-      const profileEmail = cleanString(auth.user.email);
 
       if (title.length < 3 || title.length > 120) {
         return NextResponse.json({ error: "Название объявления должно быть от 3 до 120 символов" }, { status: 400 });
@@ -185,8 +184,8 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: "Описание объявления слишком длинное" }, { status: 400 });
       }
 
-      if (!phone && !messengerUrl && !profileEmail) {
-        return NextResponse.json({ error: "Укажите телефон, email или мессенджер для связи" }, { status: 400 });
+      if (!phone && !messengerUrl) {
+        return NextResponse.json({ error: "Укажите телефон или мессенджер для связи" }, { status: 400 });
       }
 
       if (phone && !hasValidPhone(phone)) {

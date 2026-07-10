@@ -78,10 +78,11 @@ export function VacancyDetailClient({ vacancyId }: { vacancyId: string }) {
     <>
       <ListingViewTracker listingId={`work-vacancy-${vacancy.id}`} />
       <main className="page-container pb-28 pt-4 sm:py-10">
-        <BackLink fallbackHref="/cabinet/vakansii" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
-          Назад
-        </BackLink>
-        <article className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="mx-auto max-w-[1120px]">
+          <BackLink fallbackHref="/cabinet/vakansii" className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+            Назад
+          </BackLink>
+          <article className="grid gap-4 lg:grid-cols-[minmax(0,740px)_340px] lg:justify-center">
           <section className="grid gap-4">
             <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-card sm:p-5">
               <div className="grid gap-3 md:grid-cols-[minmax(17rem,24rem)_minmax(0,1fr)] md:items-start md:gap-4">
@@ -154,7 +155,7 @@ export function VacancyDetailClient({ vacancyId }: { vacancyId: string }) {
               <div className="hidden lg:block">
                 <LocationMap location={{ ...vacancy, showExactAddress: Boolean(vacancy.showExactAddress), hasMapPoint: hasPoint }} exactLabel="Для вакансий можно показывать точный адрес" />
               </div>
-            ) : (
+            ) : placeLabel !== vacancy.city ? (
               <section className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:block">
                 <h2 className="text-xl font-bold text-[#060b27]">Адрес</h2>
                 <p className="mt-3 flex items-start gap-2 text-sm font-semibold text-slate-600">
@@ -162,9 +163,10 @@ export function VacancyDetailClient({ vacancyId }: { vacancyId: string }) {
                   {placeLabel}
                 </p>
               </section>
-            )}
+            ) : null}
           </aside>
-        </article>
+          </article>
+        </div>
       </main>
     </>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type TouchEvent, useRef, useState } from "react";
 import { Camera, ChevronLeft, ChevronRight, Video } from "lucide-react";
 import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 
@@ -11,7 +11,7 @@ export type ListingGalleryMedia = {
 
 export function ListingMediaGallery({ media, title }: { media: ListingGalleryMedia[]; title: string }) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const activeMedia = media[activeIndex] ?? media[0];
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   function showPrevious() {
     setActiveIndex((index) => (index <= 0 ? media.length - 1 : index - 1));
@@ -21,9 +21,37 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
     setActiveIndex((index) => (index >= media.length - 1 ? 0 : index + 1));
   }
 
+  function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
+    const touch = event.touches[0];
+    touchStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }
+
+  function handleTouchEnd(event: TouchEvent<HTMLDivElement>) {
+    const start = touchStartRef.current;
+    const touch = event.changedTouches[0];
+    touchStartRef.current = null;
+
+    if (!start || !touch || media.length < 2) {
+      return;
+    }
+
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+
+    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) {
+      return;
+    }
+
+    if (deltaX < 0) {
+      showNext();
+    } else {
+      showPrevious();
+    }
+  }
+
   if (!media.length) {
     return (
-      <div className="mx-auto mt-5 flex aspect-square w-full max-w-[640px] items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
+      <div className="mt-5 flex aspect-square w-full max-w-[640px] items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
         <Camera className="h-12 w-12 sm:h-16 sm:w-16" />
       </div>
     );
@@ -31,19 +59,29 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
 
   return (
     <section className="mt-5 grid gap-3 sm:mt-6">
-      <div className="relative mx-auto flex aspect-square w-full max-w-[640px] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-        {activeMedia.kind === "video" ? (
-          <StoredMediaVideo src={activeMedia.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
-        ) : (
-          <StoredMediaImage src={activeMedia.src} alt={title} className="h-full w-full object-contain object-center" loading="eager" />
-        )}
+      <div
+        className="relative flex aspect-square w-full max-w-[640px] select-none items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 [touch-action:pan-y]"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div className="flex h-full w-full transition-transform duration-300 ease-out motion-reduce:transition-none" style={{ transform: `translateX(-${activeIndex * 100}%)` }}>
+          {media.map((item, index) => (
+            <div className="flex h-full w-full shrink-0 items-center justify-center bg-slate-100" key={`${item.src}-${index}`}>
+              {item.kind === "video" ? (
+                <StoredMediaVideo src={item.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
+              ) : (
+                <StoredMediaImage src={item.src} alt={index === 0 ? title : `${title}, фото ${index + 1}`} className="h-full w-full object-contain object-center" loading={index === activeIndex ? "eager" : "lazy"} />
+              )}
+            </div>
+          ))}
+        </div>
 
         {media.length > 1 ? (
           <>
             <button
               type="button"
               onClick={showPrevious}
-              className="absolute left-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-card transition hover:bg-white sm:left-3"
+              className="absolute left-2 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-card transition hover:bg-white sm:left-3 sm:flex"
               aria-label="Предыдущий файл"
             >
               <ChevronLeft className="h-5 w-5" />
@@ -51,7 +89,7 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
             <button
               type="button"
               onClick={showNext}
-              className="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-card transition hover:bg-white sm:right-3"
+              className="absolute right-2 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-card transition hover:bg-white sm:right-3 sm:flex"
               aria-label="Следующий файл"
             >
               <ChevronRight className="h-5 w-5" />

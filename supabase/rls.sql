@@ -10,6 +10,7 @@ alter table listing_images enable row level security;
 alter table vacancies enable row level security;
 alter table vacancy_images enable row level security;
 alter table work_requests enable row level security;
+alter table work_request_images enable row level security;
 alter table specialist_profiles enable row level security;
 alter table applications enable row level security;
 alter table fair_applications enable row level security;
@@ -83,6 +84,11 @@ create policy "Public can read published work requests" on work_requests for sel
 create policy "Users can insert own work requests" on work_requests for insert with check (author_id = (select auth.uid()) and status in ('draft', 'pending_payment'));
 create policy "Users can update own work requests" on work_requests for update using (author_id = (select auth.uid()) or public.is_admin()) with check (public.is_admin() or (author_id = (select auth.uid()) and status in ('draft', 'pending_payment', 'archived')));
 create policy "Users can delete own work requests" on work_requests for delete using (author_id = (select auth.uid()) or public.is_admin());
+
+create policy "Public can read work request images" on work_request_images for select using (exists (select 1 from work_requests where work_requests.id = work_request_images.work_request_id and (work_requests.status = 'published' or work_requests.author_id = (select auth.uid()) or public.is_admin())));
+create policy "Owners can insert work request images" on work_request_images for insert with check (exists (select 1 from work_requests where work_requests.id = work_request_images.work_request_id and (work_requests.author_id = (select auth.uid()) or public.is_admin())));
+create policy "Owners can update work request images" on work_request_images for update using (exists (select 1 from work_requests where work_requests.id = work_request_images.work_request_id and (work_requests.author_id = (select auth.uid()) or public.is_admin()))) with check (exists (select 1 from work_requests where work_requests.id = work_request_images.work_request_id and (work_requests.author_id = (select auth.uid()) or public.is_admin())));
+create policy "Owners can delete work request images" on work_request_images for delete using (exists (select 1 from work_requests where work_requests.id = work_request_images.work_request_id and (work_requests.author_id = (select auth.uid()) or public.is_admin())));
 
 create policy "Public can read published specialists" on specialist_profiles for select using (status = 'published' or user_id = (select auth.uid()) or public.is_admin());
 create policy "Users can insert own specialist profile" on specialist_profiles for insert with check (user_id = (select auth.uid()) or public.is_admin());

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type TouchEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Camera, CheckCircle2, ChevronLeft, ChevronRight, Mail, MapPin, MessageCircle, Phone, Video } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
@@ -90,11 +90,47 @@ type GalleryMedia = {
 
 function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string }) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const activeMedia = media[activeIndex];
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  function showPrevious() {
+    setActiveIndex((index) => (index === 0 ? media.length - 1 : index - 1));
+  }
+
+  function showNext() {
+    setActiveIndex((index) => (index === media.length - 1 ? 0 : index + 1));
+  }
+
+  function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
+    const touch = event.touches[0];
+    touchStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }
+
+  function handleTouchEnd(event: TouchEvent<HTMLDivElement>) {
+    const start = touchStartRef.current;
+    const touch = event.changedTouches[0];
+    touchStartRef.current = null;
+
+    if (!start || !touch || media.length < 2) {
+      return;
+    }
+
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+
+    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) {
+      return;
+    }
+
+    if (deltaX < 0) {
+      showNext();
+    } else {
+      showPrevious();
+    }
+  }
 
   if (!media.length) {
     return (
-      <div className="mx-auto mt-5 flex aspect-square w-full max-w-[640px] items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
+      <div className="mt-5 flex aspect-square w-full max-w-[640px] items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
         <Camera className="h-12 w-12 sm:h-16 sm:w-16" />
       </div>
     );
@@ -102,26 +138,36 @@ function DemoGallery({ media, title }: { media: GalleryMedia[]; title: string })
 
   return (
     <section className="mt-5 w-full sm:mt-6">
-      <div className="relative mx-auto flex aspect-square w-full max-w-[640px] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-        {activeMedia?.kind === "video" ? (
-          <StoredMediaVideo src={activeMedia.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
-        ) : (
-          <StoredMediaImage src={activeMedia?.src} alt={title} className="h-full w-full object-contain object-center" />
-        )}
+      <div
+        className="relative flex aspect-square w-full max-w-[640px] select-none items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 [touch-action:pan-y]"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div className="flex h-full w-full transition-transform duration-300 ease-out motion-reduce:transition-none" style={{ transform: `translateX(-${activeIndex * 100}%)` }}>
+          {media.map((item, index) => (
+            <div className="flex h-full w-full shrink-0 items-center justify-center bg-slate-100" key={`${item.src.slice(0, 40)}-${index}`}>
+              {item.kind === "video" ? (
+                <StoredMediaVideo src={item.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
+              ) : (
+                <StoredMediaImage src={item.src} alt={index === 0 ? title : `${title}, фото ${index + 1}`} className="h-full w-full object-contain object-center" loading={index === activeIndex ? "eager" : "lazy"} />
+              )}
+            </div>
+          ))}
+        </div>
         {media.length > 1 ? (
           <>
             <button
               type="button"
-              onClick={() => setActiveIndex((index) => (index === 0 ? media.length - 1 : index - 1))}
-              className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-card transition hover:bg-white"
+              onClick={showPrevious}
+              className="absolute left-3 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-card transition hover:bg-white sm:flex"
               aria-label="Предыдущий файл"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
             <button
               type="button"
-              onClick={() => setActiveIndex((index) => (index === media.length - 1 ? 0 : index + 1))}
-              className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-card transition hover:bg-white"
+              onClick={showNext}
+              className="absolute right-3 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-800 shadow-card transition hover:bg-white sm:flex"
               aria-label="Следующий файл"
             >
               <ChevronRight className="h-5 w-5" />
@@ -213,8 +259,8 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
   return (
     <main className="page-container py-6 sm:py-8 lg:py-10">
       <ListingViewTracker listingId={listing.id} />
-      <div className="mx-auto grid max-w-[1180px] min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,768px)_minmax(320px,380px)] lg:items-start lg:justify-center">
-        <section className="min-w-0 lg:max-w-3xl">
+      <div className="mx-auto grid max-w-[1060px] min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,640px)_minmax(320px,380px)] lg:items-start">
+        <section className="min-w-0 lg:max-w-[640px]">
           <BackLink fallbackHref={`/obyavleniya?kind=${kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
             Назад к разделу
           </BackLink>
@@ -224,7 +270,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
             <StatusBadge status={sold ? "sold" : "published"} />
           </div>
           <DemoGallery media={galleryMedia} title={listing.title} />
-          <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6">
+          <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6 lg:max-w-[640px]">
             <h2 className="text-lg font-bold text-[#060b27]">Описание</h2>
             <p className="mt-2 [overflow-wrap:anywhere] text-sm leading-6 text-slate-700 sm:mt-3 sm:text-base sm:leading-7">{listing.description ?? "Описание будет дополнено."}</p>
             <dl className="mt-5 grid min-w-0 gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4">
@@ -240,9 +286,9 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
           </div>
         </section>
 
-        <aside className="min-w-0 space-y-4">
-          <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
-            <p className="[overflow-wrap:anywhere] text-xl font-bold text-[#060b27]">{listing.price ?? "по договоренности"}</p>
+        <aside className="min-w-0 space-y-4 lg:sticky lg:top-24">
+          <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
+            <p className="[overflow-wrap:anywhere] text-2xl font-bold tracking-tight text-[#060b27]">{listing.price ?? "по договоренности"}</p>
             {sold ? (
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-start gap-3">

@@ -276,6 +276,13 @@ create table work_requests (
   published_at timestamptz
 );
 
+create table work_request_images (
+  id uuid primary key default gen_random_uuid(),
+  work_request_id uuid not null references work_requests(id) on delete cascade,
+  storage_path text not null,
+  sort_order integer not null default 0
+);
+
 create table specialist_profiles (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null unique references profiles(id),

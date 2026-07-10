@@ -31,6 +31,7 @@ type WorkRequestRow = {
   status: PublicationStatus;
   created_at: string;
   published_at?: string | null;
+  work_request_images?: WorkRequestImageRow[] | null;
   cities?: {
     name: string;
     slug: string;
@@ -42,6 +43,11 @@ type WorkRequestRow = {
     name: string;
     slug: string;
   } | null;
+};
+
+type WorkRequestImageRow = {
+  sort_order?: number | null;
+  storage_path: string;
 };
 
 type CityIdRow = { id: string; name: string; region_id?: string | null; slug: string };
@@ -65,8 +71,24 @@ export type CreateStoredWorkRequestInput = {
   title: string;
 };
 
-const workRequestSelect =
+const legacyWorkRequestSelect =
   "id,author_id,title,description,specialist_category_id,region_id,city_id,district,address,latitude,longitude,show_exact_address,budget,photo_path,contact_phone,messenger_url,status,created_at,published_at,cities(slug,name),profiles(display_name),specialist_categories(slug,name)";
+const workRequestSelect =
+  "id,author_id,title,description,specialist_category_id,region_id,city_id,district,address,latitude,longitude,show_exact_address,budget,photo_path,contact_phone,messenger_url,status,created_at,published_at,work_request_images(storage_path,sort_order),cities(slug,name),profiles(display_name),specialist_categories(slug,name)";
+
+async function fetchWorkRequestRows(querySuffix: string) {
+  try {
+    return await supabaseRest<WorkRequestRow[]>(`/rest/v1/work_requests?select=${workRequestSelect}${querySuffix}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+
+    if (!message.includes("work_request_images")) {
+      throw error;
+    }
+
+    return supabaseRest<WorkRequestRow[]>(`/rest/v1/work_requests?select=${legacyWorkRequestSelect}${querySuffix}`);
+  }
+}
 
 function normalizeLookupText(value?: string) {
   return value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
@@ -103,6 +125,16 @@ function formatBudget(value: WorkRequestRow["budget"]) {
 }
 
 function mediaUrls(row: WorkRequestRow) {
+  const images = [...(row.work_request_images ?? [])]
+    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
+    .map((image) => image.storage_path)
+    .filter(Boolean)
+    .map(publicMediaUrl);
+
+  if (images.length) {
+    return images;
+  }
+
   return row.photo_path ? [publicMediaUrl(row.photo_path)] : undefined;
 }
 
@@ -182,11 +214,59 @@ function cleanMediaPaths(paths?: string[]) {
 function workRequestWithMediaFallback(request: WorkRequest, mediaPaths?: string[]) {
   const images = cleanMediaPaths(mediaPaths).map(publicMediaUrl);
 
-  if (!images.length || request.images?.length) {
+  if (!images.length || (request.images?.length ?? 0) >= images.length) {
     return request;
   }
 
   return { ...request, images };
+}
+
+function isMissingWorkRequestImagesError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  return message.includes("work_request_images");
+}
+
+async function insertWorkRequestImages(requestId: string, mediaPaths?: string[]) {
+  const paths = cleanMediaPaths(mediaPaths);
+
+  if (!paths.length) {
+    return;
+  }
+
+  try {
+    await supabaseRest("/rest/v1/work_request_images", {
+      method: "POST",
+      prefer: "return=minimal",
+      body: paths.map((path, index) => ({
+        sort_order: index,
+        storage_path: path,
+        work_request_id: requestId,
+      })),
+    });
+  } catch (error) {
+    if (!isMissingWorkRequestImagesError(error)) {
+      throw error;
+    }
+  }
+}
+
+async function replaceWorkRequestImages(requestId: string, mediaPaths?: string[]) {
+  const paths = cleanMediaPaths(mediaPaths);
+
+  try {
+    await supabaseRest(`/rest/v1/work_request_images?work_request_id=eq.${encodeURIComponent(requestId)}`, {
+      method: "DELETE",
+      prefer: "return=minimal",
+    });
+
+    if (paths.length) {
+      await insertWorkRequestImages(requestId, paths);
+    }
+  } catch (error) {
+    if (!isMissingWorkRequestImagesError(error)) {
+      throw error;
+    }
+  }
 }
 
 async function storedWorkRequestBody(input: CreateStoredWorkRequestInput, status: PublicationStatus, publishedAt?: string | null) {
@@ -236,7 +316,7 @@ export async function createStoredWorkRequest(input: CreateStoredWorkRequestInpu
   }
 
   const status = input.status ?? "pending_payment";
-  const rows = await supabaseRest<WorkRequestRow[]>(`/rest/v1/work_requests?select=${workRequestSelect}`, {
+  const rows = await supabaseRest<WorkRequestRow[]>(`/rest/v1/work_requests?select=${legacyWorkRequestSelect}`, {
     method: "POST",
     prefer: "return=representation",
     body: await storedWorkRequestBody(input, status),
@@ -246,6 +326,8 @@ export async function createStoredWorkRequest(input: CreateStoredWorkRequestInpu
   if (!request) {
     return undefined;
   }
+
+  await insertWorkRequestImages(request.id, input.mediaPaths);
 
   return workRequestWithMediaFallback((await getStoredWorkRequestById(request.id)) ?? mapWorkRequest(request), input.mediaPaths);
 }
@@ -261,8 +343,8 @@ export async function findReusableStoredWorkRequestForPayment(input: CreateStore
     return undefined;
   }
 
-  const rows = await supabaseRest<WorkRequestRow[]>(
-    `/rest/v1/work_requests?select=${workRequestSelect}&author_id=eq.${encodeURIComponent(input.authorId)}&title=eq.${encodeURIComponent(title)}&status=in.(draft,pending_payment)&order=created_at.desc&limit=20`,
+  const rows = await fetchWorkRequestRows(
+    `&author_id=eq.${encodeURIComponent(input.authorId)}&title=eq.${encodeURIComponent(title)}&status=in.(draft,pending_payment)&order=created_at.desc&limit=20`,
   );
 
   return rows.map(mapWorkRequest).find((request) => workRequestMatchesReusableInput(request, input));
@@ -273,9 +355,7 @@ export async function updateStoredWorkRequestForUser(requestId: string, userId: 
     return undefined;
   }
 
-  const existingRows = await supabaseRest<WorkRequestRow[]>(
-    `/rest/v1/work_requests?select=${workRequestSelect}&id=eq.${encodeURIComponent(requestId)}&author_id=eq.${encodeURIComponent(userId)}&limit=1`,
-  );
+  const existingRows = await fetchWorkRequestRows(`&id=eq.${encodeURIComponent(requestId)}&author_id=eq.${encodeURIComponent(userId)}&limit=1`);
   const existingRequest = existingRows[0];
 
   if (!existingRequest) {
@@ -297,7 +377,7 @@ export async function updateStoredWorkRequestForUser(requestId: string, userId: 
   }
 
   const rows = await supabaseRest<WorkRequestRow[]>(
-    `/rest/v1/work_requests?select=${workRequestSelect}&id=eq.${encodeURIComponent(requestId)}&author_id=eq.${encodeURIComponent(userId)}&status=in.(draft,pending_payment,published)`,
+    `/rest/v1/work_requests?select=${legacyWorkRequestSelect}&id=eq.${encodeURIComponent(requestId)}&author_id=eq.${encodeURIComponent(userId)}&status=in.(draft,pending_payment,published)`,
     {
       method: "PATCH",
       prefer: "return=representation",
@@ -309,6 +389,10 @@ export async function updateStoredWorkRequestForUser(requestId: string, userId: 
     return undefined;
   }
 
+  if (input.mediaPaths !== undefined) {
+    await replaceWorkRequestImages(requestId, input.mediaPaths);
+  }
+
   return workRequestWithMediaFallback((await getStoredWorkRequestById(requestId)) ?? mapWorkRequest(rows[0]), input.mediaPaths);
 }
 
@@ -318,9 +402,7 @@ export async function getStoredWorkRequestById(requestId: string) {
   }
 
   try {
-    const rows = await supabaseRest<WorkRequestRow[]>(
-      `/rest/v1/work_requests?select=${workRequestSelect}&id=eq.${encodeURIComponent(requestId)}&limit=1`,
-    );
+    const rows = await fetchWorkRequestRows(`&id=eq.${encodeURIComponent(requestId)}&limit=1`);
 
     return rows[0] ? mapWorkRequest(rows[0]) : undefined;
   } catch (error) {
@@ -335,9 +417,7 @@ export async function listStoredWorkRequests(limit = 24) {
   }
 
   try {
-    const rows = await supabaseRest<WorkRequestRow[]>(
-      `/rest/v1/work_requests?select=${workRequestSelect}&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`,
-    );
+    const rows = await fetchWorkRequestRows(`&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`);
 
     return rows.map(mapWorkRequest);
   } catch (error) {
@@ -351,9 +431,7 @@ export async function listStoredWorkRequestsForAdmin(limit = 200) {
     throw new Error("Supabase env is not configured");
   }
 
-  const rows = await supabaseRest<WorkRequestRow[]>(
-    `/rest/v1/work_requests?select=${workRequestSelect}&order=created_at.desc&limit=${limit}`,
-  );
+  const rows = await fetchWorkRequestRows(`&order=created_at.desc&limit=${limit}`);
 
   return rows.map(mapWorkRequest);
 }

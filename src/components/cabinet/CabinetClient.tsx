@@ -26,6 +26,7 @@ import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { cities, professions } from "@/lib/data";
 import { confirmClientPayment, createAndConfirmClientPayment, createClientPayment } from "@/lib/client-payment-flow";
+import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { cabinetDataUpdatedEvent, markCabinetDataChanged, readCabinetDataVersion } from "@/lib/cabinet-data-cache";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
 import type { Application, FairApplication, JobVacancy, Listing, Payment, SpecialistProfile } from "@/lib/types";
@@ -123,6 +124,34 @@ function publishCabinetState(state: UserCabinetState) {
   cachedCabinetStateAt = Date.now();
   cachedCabinetStateVersion = readCabinetDataVersion();
   cabinetDataListeners.forEach((listener) => listener(state));
+}
+
+function saveCabinetProfile(ownerKey: string, profile: CabinetProfile) {
+  const currentState = cachedCabinetState;
+  const canPublishLocally = currentState?.identity?.ownerKey === ownerKey;
+
+  writeCabinetProfile(ownerKey, profile, { notify: !canPublishLocally });
+
+  if (canPublishLocally) {
+    publishCabinetState({ ...currentState, profile });
+  }
+}
+
+async function settleSupabaseProfileUpdate<T>(request: Promise<T>, timeoutMs = 2500) {
+  let timeoutId: number | undefined;
+
+  try {
+    await Promise.race([
+      request,
+      new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(() => reject(new Error("Supabase profile update timed out.")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
+  }
 }
 
 function getCachedCabinetState() {
@@ -2131,10 +2160,12 @@ function MiniMetric({ icon, label, value, detail }: { icon: React.ReactNode; lab
 }
 
 function AvatarEditor({
+  ownerKey,
   profile,
   onChange,
   onError,
 }: {
+  ownerKey: string;
   profile: CabinetProfile;
   onChange: (profile: CabinetProfile) => void;
   onError: (message: string) => void;
@@ -2180,8 +2211,11 @@ function AvatarEditor({
     }
   }
 
-  function updateAvatarPatch(patch: Partial<CabinetProfile>) {
-    onChange({ ...profile, ...patch });
+  function commitAvatarPatch(patch: Partial<CabinetProfile>) {
+    const nextProfile = { ...profile, ...patch };
+
+    onChange(nextProfile);
+    saveCabinetProfile(ownerKey, nextProfile);
   }
 
   function updateCropDraft(patch: Partial<AvatarCropDraft>) {
@@ -2242,7 +2276,7 @@ function AvatarEditor({
     try {
       const cropped = await cropAvatarImage(cropDraft, cropImageSize, stageSize);
       const avatarDataUrl = await compressAvatarImage(cropped);
-      onChange({ ...profile, avatarDataUrl, avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 });
+      commitAvatarPatch({ avatarDataUrl, avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 });
       setCropDraft(null);
       setCropImageSize(null);
     } catch (error) {
@@ -2281,7 +2315,7 @@ function AvatarEditor({
               </label>
               <button
                 type="button"
-                onClick={() => updateAvatarPatch({ avatarDataUrl: "", avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 })}
+                onClick={() => commitAvatarPatch({ avatarDataUrl: "", avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 })}
                 disabled={!profile.avatarDataUrl}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-red-200 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
               >
@@ -2431,12 +2465,18 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
           updates.email = nextProfile.email;
         }
 
-        await supabase.auth.updateUser(updates);
+        await settleSupabaseProfileUpdate(
+          supabase.auth.updateUser(updates).then(({ error }) => {
+            if (error) {
+              throw error;
+            }
+          }),
+        );
       } catch {
         // The local demo profile still saves when Supabase settings are unavailable locally.
       }
 
-      writeCabinetProfile(identity.ownerKey, nextProfile);
+      saveCabinetProfile(identity.ownerKey, nextProfile);
       setForm(nextProfile);
       void addCurrentUserNotification({
         category: "system",
@@ -2520,7 +2560,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
       };
 
       setForm(nextProfile);
-      writeCabinetProfile(identity.ownerKey, nextProfile);
+      saveCabinetProfile(identity.ownerKey, nextProfile);
       setVerificationCode("");
       setPhoneVerificationOpen(false);
       setMessage("Телефон подтвержден и сохранен.");
@@ -2572,7 +2612,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
         </button>
       </div>
       <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
-        <AvatarEditor profile={form} onChange={setForm} onError={setMessage} />
+        <AvatarEditor ownerKey={identity.ownerKey} profile={form} onChange={setForm} onError={setMessage} />
         <div className="grid grid-cols-2 items-start gap-x-3 gap-y-3 sm:gap-x-4 sm:gap-y-4">
           <label className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
             <span className="leading-4">Имя</span>
@@ -3276,7 +3316,7 @@ export function CabinetOrganizationClient() {
       organizationDescription: form.organizationDescription.trim().slice(0, 500),
     };
 
-    writeCabinetProfile(identity.ownerKey, nextProfile);
+    saveCabinetProfile(identity.ownerKey, nextProfile);
     setForm(nextProfile);
     setMessage("Профиль организации сохранен.");
   }
@@ -3581,7 +3621,7 @@ function ProfessionSelect({ options, value, onChange }: { onChange: (value: stri
 }
 
 export function CabinetSpecialistClient() {
-  const { profile, loading: profileLoading } = useUserCabinetData();
+  const { identity, profile, loading: profileLoading } = useUserCabinetData();
   const [specialist, setSpecialist] = useState<SpecialistProfile | null>(null);
   const [completeness, setCompleteness] = useState<SpecialistCompletenessPayload>({ complete: false, missing: [] });
   const [form, setForm] = useState<SpecialistFormState>(() => specialistFormFromProfile());
@@ -3647,10 +3687,11 @@ export function CabinetSpecialistClient() {
     setMessage("");
 
     try {
+      const uploadedProfilePhotos = profile?.avatarDataUrl ? await uploadPublicationImageSources([profile.avatarDataUrl], "specialists", identity?.accessToken) : [];
       const response = await fetch("/api/cabinet/specialist", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
-        body: JSON.stringify({ ...form, ...accountFields, messengerUrl: normalizeMessengerInput(form.messengerUrl), action }),
+        body: JSON.stringify({ ...form, ...accountFields, messengerUrl: normalizeMessengerInput(form.messengerUrl), photoPath: uploadedProfilePhotos[0] ?? "", action }),
       });
       const payload = (await response.json().catch(() => null)) as { completeness?: SpecialistCompletenessPayload; error?: string; specialist?: SpecialistProfile } | null;
 

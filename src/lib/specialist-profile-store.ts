@@ -63,6 +63,7 @@ export type SpecialistProfileInput = {
   lng?: number;
   messengerUrl?: string;
   name?: string;
+  photoPath?: string;
   phone?: string;
   price?: string;
   profession?: string;
@@ -299,6 +300,7 @@ export async function upsertStoredSpecialistProfileForUser(user: { email?: strin
     longitude: input.lng ?? null,
     messenger_url: normalizeText(input.messengerUrl) || null,
     name: normalizeText(input.name) || current.name,
+    photo_path: normalizeText(input.photoPath) || null,
     price_from: priceToNumber(input.price),
     region_id: regionId,
     show_exact_address: Boolean(input.address && input.lat && input.lng),
@@ -318,6 +320,7 @@ export async function upsertStoredSpecialistProfileForUser(user: { email?: strin
     lng: body.longitude ?? undefined,
     messengerUrl: body.messenger_url ?? undefined,
     name: body.name,
+    images: body.photo_path ? [publicMediaUrl(body.photo_path)] : undefined,
     phone: body.contact_phone ?? undefined,
     price: formatPrice(body.price_from),
     profession: normalizeText(input.profession),
