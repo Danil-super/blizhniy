@@ -217,6 +217,20 @@ export async function listActiveBookingRequestsForListing(listingId: string) {
   return rows.map(mapBookingRequest);
 }
 
+export async function listActiveBookingRequestsForListingViewer(listingId: string, userId: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(listingId) || !isUuid(userId)) {
+    return [];
+  }
+
+  const rows = await supabaseRest<BookingRequestRow[]>(
+    `/rest/v1/booking_requests?select=id,listing_id,guest_id,start_date,end_date,guests,total,status,created_at,listings(author_id,title)&listing_id=eq.${encodeURIComponent(listingId)}&status=in.(pending,accepted)&order=start_date.asc`,
+  ).catch(() => []);
+
+  return rows
+    .filter((row) => row.guest_id === userId || row.listings?.author_id === userId)
+    .map(mapBookingRequest);
+}
+
 export async function createStoredBookingRequest(input: CreateBookingRequestInput) {
   const listing = await getListingForBooking(input.listingId);
 

@@ -2,7 +2,7 @@ server {
     listen 80;
     listen [::]:80;
 
-    server_name example.com www.example.com;
+    server_name ближний-ру.рф xn----9sbphbgks4a4a.xn--p1ai www.xn----9sbphbgks4a4a.xn--p1ai;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -16,4 +16,3 @@ server {
         proxy_cache_bypass $http_upgrade;
     }
 }
-

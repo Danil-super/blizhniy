@@ -3,14 +3,14 @@
 -- Applied to project jzdhpphcelljmjfwrxfi on 2026-06-15.
 
 alter policy "Users can read own profile" on public.profiles
-  using (id = (select auth.uid()) or public.is_admin());
+  using (id = (select auth.uid()) or private.is_admin());
 
 alter policy "Users can update own profile" on public.profiles
   using (id = (select auth.uid()))
   with check (id = (select auth.uid()));
 
 alter policy "Users can read own roles" on public.user_roles
-  using (user_id = (select auth.uid()) or public.is_admin());
+  using (user_id = (select auth.uid()) or private.is_admin());
 
 alter policy "Users can manage own listings" on public.listings
   using (author_id = (select auth.uid()))
@@ -64,7 +64,7 @@ alter policy "Users can read own applications" on public.applications
       where vacancies.id = applications.vacancy_id
         and vacancies.author_id = (select auth.uid())
     )
-    or public.is_admin()
+    or private.is_admin()
   );
 
 alter policy "Specialists can create own applications" on public.applications
@@ -100,10 +100,10 @@ alter policy "Owners can manage fair application images" on public.fair_applicat
   );
 
 alter policy "Users can read own payments" on public.payments
-  using (user_id = (select auth.uid()) or public.is_admin());
+  using (user_id = (select auth.uid()) or private.is_admin());
 
 alter policy "Users can create own payments" on public.payments
   with check (user_id = (select auth.uid()));
 
 alter policy "Users can read own notifications" on public.notifications
-  using (user_id = (select auth.uid()) or public.is_admin());
+  using (user_id = (select auth.uid()) or private.is_admin());

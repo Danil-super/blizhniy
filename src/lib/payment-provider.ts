@@ -59,32 +59,31 @@ type ConfirmPaymentOptions = {
   trustSuccessfulReturn?: boolean;
 };
 
-function resolveTargetType(tariff: Tariff): PaymentTargetType {
-  if (tariff.action === "vacancy_publication") {
-    return "vacancy";
+const tariffTargetTypes: Record<Tariff["action"], PaymentTargetType> = {
+  ad_marquee: "ad_marquee",
+  fair_participation: "fair_application",
+  job_response: "application",
+  listing_publication: "listing",
+  specialist_publication: "specialist",
+  vacancy_publication: "vacancy",
+  work_request_publication: "workRequest",
+};
+
+const pendingYooKassaPaymentCreations = new Map<string, Promise<Payment>>();
+const pendingSucceededPaymentApplications = new Map<string, Promise<PaymentResult>>();
+
+export function resolveTargetType(tariff: Pick<Tariff, "action">): PaymentTargetType {
+  return tariffTargetTypes[tariff.action] ?? "listing";
+}
+
+export function validatePaymentTargetTypeForTariff(tariff: Pick<Tariff, "action" | "name">, targetType?: PaymentTargetType) {
+  const expectedTargetType = resolveTargetType(tariff);
+
+  if (targetType && targetType !== expectedTargetType) {
+    throw new Error(`Tariff ${tariff.name} is only valid for ${expectedTargetType} payments`);
   }
 
-  if (tariff.action === "work_request_publication") {
-    return "workRequest";
-  }
-
-  if (tariff.action === "specialist_publication") {
-    return "specialist";
-  }
-
-  if (tariff.action === "job_response") {
-    return "application";
-  }
-
-  if (tariff.action === "fair_participation") {
-    return "fair_application";
-  }
-
-  if (tariff.action === "ad_marquee") {
-    return "ad_marquee";
-  }
-
-  return "listing";
+  return expectedTargetType;
 }
 
 function resolveTargetTitle(tariff: Tariff, targetTitle?: string) {
@@ -115,6 +114,10 @@ export function getPaymentProviderName() {
   }
 
   return "mock" as const;
+}
+
+export function canForceSucceedYooKassaReturn() {
+  return process.env.NODE_ENV !== "production" && (process.env.YOOKASSA_SECRET_KEY?.trim().startsWith("test_") ?? false);
 }
 
 export async function listPayments() {
@@ -187,7 +190,7 @@ function getPublicBaseUrl() {
 }
 
 function yookassaStatusToPaymentStatus(status: YooKassaPaymentStatus, paid?: boolean): Payment["status"] {
-  if (paid || status === "succeeded" || status === "waiting_for_capture") {
+  if (status === "succeeded" || (paid && status !== "waiting_for_capture" && status !== "canceled")) {
     return "succeeded";
   }
 
@@ -206,6 +209,8 @@ function applyYooKassaPaymentState(payment: Payment, yookassaPayment: YooKassaPa
 
   if (payment.status === "succeeded") {
     payment.paidAt = payment.paidAt ?? todayIsoDate();
+  } else {
+    payment.paidAt = undefined;
   }
 
   return payment;
@@ -225,16 +230,36 @@ function createPendingPaymentResult(payment: Payment): PaymentResult {
 function canTrustYooKassaReturn(payment: Payment, options?: ConfirmPaymentOptions) {
   return Boolean(
     options?.trustSuccessfulReturn &&
+      canForceSucceedYooKassaReturn() &&
       payment.provider === "yookassa" &&
       (payment.status === "created" || payment.status === "pending"),
   );
 }
 
-async function applySucceededPayment(payment: Payment): Promise<PaymentResult> {
+function succeededPaymentResult(payment: Payment, nextStatus?: PaymentResult["nextStatus"]): PaymentResult {
+  const resolvedNextStatus =
+    nextStatus ?? (payment.targetType === "application" ? "sent" : payment.targetType === "ad_marquee" ? "paid" : "published");
+
+  return {
+    payment,
+    nextStatus: resolvedNextStatus,
+    notification: {
+      subject: "Оплата прошла",
+      body: `${payment.targetTitle}: статус изменен на ${resolvedNextStatus}.`,
+    },
+  };
+}
+
+async function applySucceededPaymentOnce(payment: Payment, options: { targetAlreadyApplied?: boolean } = {}): Promise<PaymentResult> {
   payment.status = "succeeded";
   payment.paidAt = payment.paidAt ?? todayIsoDate();
 
   await updateStoredPayment(payment);
+
+  if (options.targetAlreadyApplied) {
+    return succeededPaymentResult(payment);
+  }
+
   const nextStatus = canStorePayment(payment)
     ? await markStoredPaymentTargetSucceeded(payment)
     : shouldAllowMockPayments()
@@ -245,17 +270,26 @@ async function applySucceededPayment(payment: Payment): Promise<PaymentResult> {
     throw new Error("Stored payment target is required before confirming payment");
   }
 
-  return {
-    payment,
-    nextStatus,
-    notification: {
-      subject: "Оплата прошла",
-      body: `${payment.targetTitle}: статус изменен на ${nextStatus}.`,
-    },
-  };
+  return succeededPaymentResult(payment, nextStatus);
 }
 
-async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) {
+async function applySucceededPayment(payment: Payment, options: { targetAlreadyApplied?: boolean } = {}): Promise<PaymentResult> {
+  const existing = pendingSucceededPaymentApplications.get(payment.id);
+
+  if (existing) {
+    return existing;
+  }
+
+  const applying = applySucceededPaymentOnce(payment, options).finally(() => {
+    pendingSucceededPaymentApplications.delete(payment.id);
+  });
+
+  pendingSucceededPaymentApplications.set(payment.id, applying);
+
+  return applying;
+}
+
+async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tariff) {
   if (!canStorePayment(input)) {
     throw new Error("Payment persistence is required before creating YooKassa payment");
   }
@@ -268,7 +302,7 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
   }
 
   const auth = Buffer.from(`${shopId}:${secretKey}`).toString("base64");
-  const targetType = input.targetType ?? resolveTargetType(tariff);
+  const targetType = validatePaymentTargetTypeForTariff(tariff, input.targetType);
   const localPaymentId = createPaymentId();
   const returnUrl = `${getPublicBaseUrl()}/oplata/${localPaymentId}`;
 
@@ -369,6 +403,25 @@ async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) 
   return payment;
 }
 
+async function createYooKassaPayment(input: CreatePaymentInput, tariff: Tariff) {
+  const targetType = validatePaymentTargetTypeForTariff(tariff, input.targetType);
+  const idempotencyKey =
+    input.targetId && input.userId ? `${input.userId}:${targetType}:${input.targetId}:${tariff.id}` : `payment:${createPaymentId()}`;
+  const existing = pendingYooKassaPaymentCreations.get(idempotencyKey);
+
+  if (existing) {
+    return existing;
+  }
+
+  const creating = createYooKassaPaymentOnce({ ...input, targetType }, tariff).finally(() => {
+    pendingYooKassaPaymentCreations.delete(idempotencyKey);
+  });
+
+  pendingYooKassaPaymentCreations.set(idempotencyKey, creating);
+
+  return creating;
+}
+
 export async function createPayment(input: CreatePaymentInput) {
   const tariff = await getActiveStoredTariffById(input.tariffId);
 
@@ -384,7 +437,7 @@ export async function createPayment(input: CreatePaymentInput) {
 
   const payment: Payment = {
     id: canStorePayment(input) ? createPaymentId() : createMockPaymentId(),
-    targetType: input.targetType ?? resolveTargetType(tariff),
+    targetType: validatePaymentTargetTypeForTariff(tariff, input.targetType),
     targetId: input.targetId,
     targetTitle: resolveTargetTitle(tariff, input.targetTitle),
     tariffId: tariff.id,
@@ -427,6 +480,8 @@ export async function confirmPayment(paymentOrId: Payment | string, options?: Co
   }
 
   if (payment.provider === "yookassa") {
+    const wasAlreadySucceeded = payment.status === "succeeded";
+
     if (!payment.providerPaymentId) {
       throw new Error("YooKassa payment id is missing");
     }
@@ -445,6 +500,8 @@ export async function confirmPayment(paymentOrId: Payment | string, options?: Co
       await updateStoredPayment(payment);
       return createPendingPaymentResult(payment);
     }
+
+    return applySucceededPayment(payment, { targetAlreadyApplied: wasAlreadySucceeded });
   }
 
   return applySucceededPayment(payment);
@@ -474,6 +531,7 @@ export async function processYooKassaNotification(payload: YooKassaNotificationP
     return { processed: false, reason: "payment_not_found" as const };
   }
 
+  const wasAlreadySucceeded = payment.status === "succeeded";
   const verifiedYooKassaPayment = await fetchYooKassaPayment(yookassaPayment.id);
 
   applyYooKassaPaymentState(payment, verifiedYooKassaPayment);
@@ -483,5 +541,5 @@ export async function processYooKassaNotification(payload: YooKassaNotificationP
     return { processed: true, result: createPendingPaymentResult(payment) };
   }
 
-  return { processed: true, result: await applySucceededPayment(payment) };
+  return { processed: true, result: await applySucceededPayment(payment, { targetAlreadyApplied: wasAlreadySucceeded }) };
 }

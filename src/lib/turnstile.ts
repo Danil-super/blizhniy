@@ -83,6 +83,10 @@ export async function verifyTurnstileToken(token: string, remoteIp?: string): Pr
     return verifyCloudflareTurnstileToken(cleanToken, secret, remoteIp);
   }
 
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+
   return isQuietDevelopmentToken(cleanToken);
 }
 

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode, TouchEvent } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { StoredMediaImage } from "@/components/StoredMedia";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { demoPublicationsStorageKey } from "@/lib/demo-publications";
 
 type DetailImageGalleryProps = {
@@ -13,6 +14,8 @@ type DetailImageGalleryProps = {
   localPublicationId?: string;
   title: string;
 };
+
+const clientFallbackContentEnabled = shouldShowClientFallbackContent();
 
 export function DetailImageGallery({ compactMobile = false, fallbackIcon, images = [], localPublicationId, title }: DetailImageGalleryProps) {
   const [localImages, setLocalImages] = useState<string[]>([]);
@@ -27,7 +30,7 @@ export function DetailImageGallery({ compactMobile = false, fallbackIcon, images
   const frameClassName = compactMobile ? "aspect-[4/3] sm:aspect-square" : "aspect-square";
 
   useEffect(() => {
-    if (!localPublicationId) {
+    if (!clientFallbackContentEnabled || !localPublicationId) {
       return;
     }
 

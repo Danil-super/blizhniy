@@ -66,7 +66,7 @@ drop policy if exists "Users can manage own work requests" on work_requests;
 create policy "Users can manage own work requests" on work_requests for all using (author_id = auth.uid()) with check (author_id = auth.uid());
 
 drop policy if exists "Admins can manage work requests" on work_requests;
-create policy "Admins can manage work requests" on work_requests for all using (public.is_admin()) with check (public.is_admin());
+create policy "Admins can manage work requests" on work_requests for all using (private.is_admin()) with check (private.is_admin());
 
 drop policy if exists "Public can read published fair applications" on fair_applications;
 create policy "Public can read published fair applications" on fair_applications for select using (status = 'published');
@@ -75,7 +75,7 @@ drop policy if exists "Users can manage own fair applications" on fair_applicati
 create policy "Users can manage own fair applications" on fair_applications for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 drop policy if exists "Admins can manage fair applications" on fair_applications;
-create policy "Admins can manage fair applications" on fair_applications for all using (public.is_admin()) with check (public.is_admin());
+create policy "Admins can manage fair applications" on fair_applications for all using (private.is_admin()) with check (private.is_admin());
 
 drop policy if exists "Public can read fair application images" on fair_application_images;
 create policy "Public can read fair application images" on fair_application_images for select using (
@@ -105,7 +105,7 @@ create policy "Owners can manage fair application images" on fair_application_im
 );
 
 drop policy if exists "Admins can manage fair application images" on fair_application_images;
-create policy "Admins can manage fair application images" on fair_application_images for all using (public.is_admin()) with check (public.is_admin());
+create policy "Admins can manage fair application images" on fair_application_images for all using (private.is_admin()) with check (private.is_admin());
 
 insert into tariffs (name, action, price, duration_days, active)
 values ('Участие в ярмарке мастеров', 'fair_participation', 1000, null, true)

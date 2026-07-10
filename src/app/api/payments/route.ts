@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { getPayableAdMarqueePlacementForUser } from "@/lib/ad-marquee-store";
 import { getStoredApplicationForPayment } from "@/lib/application-store";
 import { getStoredListingForUser, markStoredListingPendingPaymentForUser } from "@/lib/listing-store";
-import { createPayment, listPayments } from "@/lib/payment-provider";
+import { createPayment, listPayments, validatePaymentTargetTypeForTariff } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isUuid } from "@/lib/supabase-rest";
+import { getActiveStoredTariffById } from "@/lib/tariff-store";
 import type { Payment } from "@/lib/types";
 import { getStoredVacancyForUser, markStoredVacancyPendingPaymentForUser } from "@/lib/vacancy-store";
 import { normalizeVacancyRequisites, validateVacancyRequisites } from "@/lib/vacancy-requisites";
@@ -49,9 +50,16 @@ export async function POST(request: Request) {
   }
 
   try {
+    const tariff = await getActiveStoredTariffById(body.tariffId);
+
+    if (!tariff) {
+      return NextResponse.json({ error: "Tariff not found or inactive" }, { status: 400 });
+    }
+
+    const targetType = validatePaymentTargetTypeForTariff(tariff, body.targetType);
     let targetTitle = body.targetTitle;
 
-    if (body.targetType === "listing") {
+    if (targetType === "listing") {
       if (!body.targetId || !isUuid(body.targetId)) {
         return NextResponse.json({ error: "Сначала сохраните объявление, затем оплатите публикацию" }, { status: 400 });
       }
@@ -81,7 +89,7 @@ export async function POST(request: Request) {
       targetTitle = listing.title;
     }
 
-    if (body.targetType === "vacancy") {
+    if (targetType === "vacancy") {
       if (!body.targetId || !isUuid(body.targetId)) {
         return NextResponse.json({ error: "Сначала сохраните вакансию, затем оплатите публикацию" }, { status: 400 });
       }
@@ -129,7 +137,7 @@ export async function POST(request: Request) {
       targetTitle = vacancy.title;
     }
 
-    if (body.targetType === "workRequest") {
+    if (targetType === "workRequest") {
       if (!body.targetId || !isUuid(body.targetId)) {
         return NextResponse.json({ error: "Сначала сохраните заказ, затем оплатите публикацию" }, { status: 400 });
       }
@@ -153,7 +161,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (body.targetType === "application") {
+    if (targetType === "application") {
       if (!body.targetId || !isUuid(body.targetId)) {
         return NextResponse.json({ error: "Сначала создайте отклик, затем оплатите отправку" }, { status: 400 });
       }
@@ -174,7 +182,7 @@ export async function POST(request: Request) {
           : `Отклик ${application.specialistName} на вакансию ${application.vacancyTitle}`;
     }
 
-    if (body.targetType === "ad_marquee") {
+    if (targetType === "ad_marquee") {
       if (!body.targetId || !isUuid(body.targetId)) {
         return NextResponse.json({ error: "Сначала отправьте текст бегущей строки на модерацию" }, { status: 400 });
       }
@@ -195,7 +203,7 @@ export async function POST(request: Request) {
     const payment = await createPayment({
       tariffId: body.tariffId,
       targetId: body.targetId,
-      targetType: body.targetType,
+      targetType,
       targetTitle,
       userId: auth.user.id,
     });

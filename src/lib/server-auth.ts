@@ -9,6 +9,10 @@ type SupabaseAuthUser = {
   id: string;
 };
 
+type ProfileAccessRow = {
+  is_blocked?: boolean | null;
+};
+
 function getSupabaseServerConfig() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -23,6 +27,32 @@ export function isSupabaseServerConfigured() {
 
 function getBearerToken(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ?? "";
+}
+
+async function userCanAccessApi(userId: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return process.env.NODE_ENV !== "production";
+  }
+
+  const response = await fetch(buildSupabaseRestUrl(`/rest/v1/profiles?select=is_blocked&id=eq.${encodeURIComponent(userId)}&limit=1`), {
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    return false;
+  }
+
+  const data = (await response.json().catch(() => null)) as ProfileAccessRow[] | null;
+  const profile: ProfileAccessRow | undefined = data?.[0];
+
+  return profile !== undefined && profile.is_blocked !== true;
 }
 
 export async function getAuthenticatedRequestUser(request: Request) {
@@ -64,6 +94,10 @@ export async function getAuthenticatedRequestUser(request: Request) {
   const user = (await response.json().catch(() => null)) as SupabaseAuthUser | null;
 
   if (!user?.id) {
+    return null;
+  }
+
+  if (!(await userCanAccessApi(user.id))) {
     return null;
   }
 

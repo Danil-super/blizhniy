@@ -11,7 +11,7 @@ alter policy "Public can read listing images" on public.listing_images
         and (
           listings.status = 'published'
           or listings.author_id = (select auth.uid())
-          or public.is_admin()
+          or private.is_admin()
         )
     )
   );
@@ -28,7 +28,7 @@ create policy "Owners can insert listing images" on public.listing_images
       where listings.id = listing_images.listing_id
         and (
           listings.author_id = (select auth.uid())
-          or public.is_admin()
+          or private.is_admin()
         )
     )
   );
@@ -42,7 +42,7 @@ create policy "Owners can update listing images" on public.listing_images
       where listings.id = listing_images.listing_id
         and (
           listings.author_id = (select auth.uid())
-          or public.is_admin()
+          or private.is_admin()
         )
     )
   )
@@ -53,7 +53,7 @@ create policy "Owners can update listing images" on public.listing_images
       where listings.id = listing_images.listing_id
         and (
           listings.author_id = (select auth.uid())
-          or public.is_admin()
+          or private.is_admin()
         )
     )
   );
@@ -67,7 +67,7 @@ create policy "Owners can delete listing images" on public.listing_images
       where listings.id = listing_images.listing_id
         and (
           listings.author_id = (select auth.uid())
-          or public.is_admin()
+          or private.is_admin()
         )
     )
   );

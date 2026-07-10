@@ -31,6 +31,10 @@ function isLocalOnlyPublication(item: DemoPublication) {
 }
 
 function readStoredPublications() {
+  if (!clientFallbackContentEnabled) {
+    return [];
+  }
+
   try {
     const stored = window.localStorage.getItem(demoPublicationsStorageKey);
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
@@ -70,8 +74,13 @@ export function ListingResultsPanel({ categorySlug, emptyText, kind, listings, s
   const [storedItems, setStoredItems] = useState<DemoPublication[]>([]);
 
   useEffect(() => {
+    if (!clientFallbackContentEnabled) {
+      setStoredItems([]);
+      return;
+    }
+
     function syncItems() {
-      setStoredItems(clientFallbackContentEnabled ? readStoredPublications() : []);
+      setStoredItems(readStoredPublications());
     }
 
     syncItems();
@@ -208,7 +217,7 @@ export function ListingResultsPanel({ categorySlug, emptyText, kind, listings, s
         </div>
         {visibleTotal ? (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
-            <DemoListingFeed categorySlug={categorySlug} filters={appliedFilters} kind={kind} subcategorySlug={subcategorySlug} variant="grid" />
+            {clientFallbackContentEnabled ? <DemoListingFeed categorySlug={categorySlug} filters={appliedFilters} kind={kind} subcategorySlug={subcategorySlug} variant="grid" /> : null}
             {visibleListings.map((listing) => (
               <ListingGridCard key={listing.slug} listing={listing} />
             ))}

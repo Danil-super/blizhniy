@@ -5,11 +5,8 @@ revoke execute on function public.handle_new_user() from public;
 revoke execute on function public.handle_new_user() from anon;
 revoke execute on function public.handle_new_user() from authenticated;
 
-revoke execute on function public.has_role(public.app_role) from public;
-revoke execute on function public.has_role(public.app_role) from anon;
-
-revoke execute on function public.is_admin() from public;
-revoke execute on function public.is_admin() from anon;
+revoke all on function private.has_role(public.app_role) from public, anon, authenticated;
+revoke all on function private.is_admin() from public, anon, authenticated;
 
 create index if not exists applications_specialist_profile_id_idx on public.applications (specialist_profile_id);
 create index if not exists applications_vacancy_id_idx on public.applications (vacancy_id);

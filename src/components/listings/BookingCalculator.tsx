@@ -324,7 +324,10 @@ export function BookingCalculator({
   useEffect(() => {
     async function syncRequests() {
       if (serverBacked) {
-        const response = await fetch(`/api/listings/${encodeURIComponent(listingId)}/bookings`, { cache: "no-store" }).catch(() => null);
+        const response = await fetch(`/api/listings/${encodeURIComponent(listingId)}/bookings`, {
+          cache: "no-store",
+          headers: await getAuthHeaders(),
+        }).catch(() => null);
         const payload = response?.ok ? ((await response.json().catch(() => null)) as { requests?: BookingRequest[] } | null) : null;
 
         setRequests(payload?.requests ?? []);

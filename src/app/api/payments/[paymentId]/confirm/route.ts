@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPayment, confirmPayment } from "@/lib/payment-provider";
+import { canForceSucceedYooKassaReturn, getPayment, confirmPayment } from "@/lib/payment-provider";
 import {
   findStoredPaymentByProvider,
   getLatestPendingStoredPaymentForUser,
@@ -10,12 +10,8 @@ import {
 import { getAuthenticatedRequestUser, isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
 import type { Payment } from "@/lib/types";
 
-function isTestYooKassaMode() {
-  return process.env.YOOKASSA_SECRET_KEY?.trim().startsWith("test_") ?? false;
-}
-
 function canTrustSuccessfulReturnInThisEnvironment() {
-  return isTestYooKassaMode();
+  return canForceSucceedYooKassaReturn();
 }
 
 async function forceSucceededTestPayment(payment: Payment) {

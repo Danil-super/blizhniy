@@ -7,11 +7,18 @@ import { DetailImageGallery } from "@/components/DetailImageGallery";
 import { LocationMap } from "@/components/LocationMap";
 import { VacancyApplicationButton } from "@/components/VacancyApplicationButton";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { demoPublicationsStorageKey, type DemoPublication } from "@/lib/demo-publications";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 
+const clientFallbackContentEnabled = shouldShowClientFallbackContent();
+
 function readStoredPublications() {
+  if (!clientFallbackContentEnabled) {
+    return [];
+  }
+
   try {
     const stored = window.localStorage.getItem(demoPublicationsStorageKey);
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
@@ -50,6 +57,11 @@ export function VacancyDetailClient({ vacancyId }: { vacancyId: string }) {
   const [items, setItems] = useState<DemoPublication[]>([]);
 
   useEffect(() => {
+    if (!clientFallbackContentEnabled) {
+      setItems([]);
+      return;
+    }
+
     setItems(readStoredPublications());
   }, []);
 

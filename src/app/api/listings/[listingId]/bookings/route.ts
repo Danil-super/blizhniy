@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   createStoredBookingRequest,
-  listActiveBookingRequestsForListing,
+  listActiveBookingRequestsForListingViewer,
   updateStoredBookingRequestStatus,
 } from "@/lib/booking-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
@@ -31,7 +31,7 @@ function cleanGuests(value: unknown) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
 }
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { listingId } = await context.params;
 
   if (!isUuid(listingId)) {
@@ -42,7 +42,13 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ requests: [] }, { headers: { "Cache-Control": "no-store" } });
   }
 
-  const requests = await listActiveBookingRequestsForListing(listingId);
+  const auth = await getAuthenticatedRequestUser(request);
+
+  if (!auth) {
+    return NextResponse.json({ requests: [] }, { status: 401, headers: { "Cache-Control": "no-store" } });
+  }
+
+  const requests = await listActiveBookingRequestsForListingViewer(listingId, auth.user.id);
 
   return NextResponse.json({ requests }, { headers: { "Cache-Control": "no-store" } });
 }

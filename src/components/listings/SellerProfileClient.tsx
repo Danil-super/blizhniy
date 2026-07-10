@@ -36,6 +36,10 @@ type SellerProfileClientProps = {
 const clientFallbackContentEnabled = shouldShowClientFallbackContent();
 
 function readStoredPublications() {
+  if (!clientFallbackContentEnabled) {
+    return [];
+  }
+
   try {
     const stored = window.localStorage.getItem(demoPublicationsStorageKey);
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
@@ -139,8 +143,13 @@ export function SellerProfileClient({ initialListings, sellerKey }: SellerProfil
   const [storedListings, setStoredListings] = useState<SellerProfileListing[]>([]);
 
   useEffect(() => {
+    if (!clientFallbackContentEnabled) {
+      setStoredListings([]);
+      return;
+    }
+
     function syncItems() {
-      setStoredListings(clientFallbackContentEnabled ? readStoredPublications().filter((item) => isSellerDemoPublication(item, sellerKey)).map(storedProfileListing) : []);
+      setStoredListings(readStoredPublications().filter((item) => isSellerDemoPublication(item, sellerKey)).map(storedProfileListing));
     }
 
     syncItems();

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { DemoGridCard } from "@/components/DemoListingFeed";
 import { DemoListing, ListingGridCard, type ListingKind } from "@/components/listings/ListingCard";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { demoPublicationsStorageKey, isDemoPublicationPubliclyVisible, type DemoPublication } from "@/lib/demo-publications";
 import { publicationTimestamp } from "@/lib/publication-time";
 
@@ -26,12 +27,17 @@ type FeedEntry =
     };
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const clientFallbackContentEnabled = shouldShowClientFallbackContent();
 
 function isLocalOnlyPublication(item: DemoPublication) {
   return !uuidPattern.test(item.id);
 }
 
 function readStoredListings() {
+  if (!clientFallbackContentEnabled) {
+    return [];
+  }
+
   try {
     const stored = window.localStorage.getItem(demoPublicationsStorageKey);
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
@@ -53,6 +59,11 @@ export function HomeListingsFeed({ kind, listings }: HomeListingsFeedProps) {
   const [storedListings, setStoredListings] = useState<DemoPublication[]>([]);
 
   useEffect(() => {
+    if (!clientFallbackContentEnabled) {
+      setStoredListings([]);
+      return;
+    }
+
     function syncItems() {
       setStoredListings(readStoredListings());
     }

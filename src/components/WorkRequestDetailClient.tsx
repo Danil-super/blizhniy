@@ -7,11 +7,18 @@ import { DetailImageGallery } from "@/components/DetailImageGallery";
 import { LocationMap } from "@/components/LocationMap";
 import { VacancyApplicationButton } from "@/components/VacancyApplicationButton";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { demoPublicationsStorageKey, type DemoPublication } from "@/lib/demo-publications";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 
+const clientFallbackContentEnabled = shouldShowClientFallbackContent();
+
 function readStoredPublications() {
+  if (!clientFallbackContentEnabled) {
+    return [];
+  }
+
   try {
     const stored = window.localStorage.getItem(demoPublicationsStorageKey);
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
@@ -48,6 +55,11 @@ export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
   const request = useMemo(() => items.find((item) => item.type === "workRequest" && item.id === requestId), [items, requestId]);
 
   useEffect(() => {
+    if (!clientFallbackContentEnabled) {
+      setItems([]);
+      return;
+    }
+
     setItems(readStoredPublications());
   }, []);
 

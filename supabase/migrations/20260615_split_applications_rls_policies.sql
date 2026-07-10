@@ -16,7 +16,7 @@ alter policy "Users can read own applications" on public.applications
       where vacancies.id = applications.vacancy_id
         and vacancies.author_id = (select auth.uid())
     )
-    or public.is_admin()
+    or private.is_admin()
   );
 
 alter policy "Specialists can create own applications" on public.applications
@@ -27,16 +27,16 @@ alter policy "Specialists can create own applications" on public.applications
       where specialist_profiles.id = applications.specialist_profile_id
         and specialist_profiles.user_id = (select auth.uid())
     )
-    or public.is_admin()
+    or private.is_admin()
   );
 
 drop policy if exists "Admins can manage applications" on public.applications;
 
 create policy "Admins can update applications" on public.applications
   for update
-  using (public.is_admin())
-  with check (public.is_admin());
+  using (private.is_admin())
+  with check (private.is_admin());
 
 create policy "Admins can delete applications" on public.applications
   for delete
-  using (public.is_admin());
+  using (private.is_admin());

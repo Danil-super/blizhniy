@@ -11,7 +11,7 @@ alter policy "Public can read fair application images" on public.fair_applicatio
         and (
           fair_applications.status = 'published'
           or fair_applications.user_id = (select auth.uid())
-          or public.is_admin()
+          or private.is_admin()
         )
     )
   );
@@ -28,7 +28,7 @@ create policy "Owners can insert fair application images" on public.fair_applica
       where fair_applications.id = fair_application_images.fair_application_id
         and (
           fair_applications.user_id = (select auth.uid())
-          or public.is_admin()
+          or private.is_admin()
         )
     )
   );
@@ -42,7 +42,7 @@ create policy "Owners can update fair application images" on public.fair_applica
       where fair_applications.id = fair_application_images.fair_application_id
         and (
           fair_applications.user_id = (select auth.uid())
-          or public.is_admin()
+          or private.is_admin()
         )
     )
   )
@@ -53,7 +53,7 @@ create policy "Owners can update fair application images" on public.fair_applica
       where fair_applications.id = fair_application_images.fair_application_id
         and (
           fair_applications.user_id = (select auth.uid())
-          or public.is_admin()
+          or private.is_admin()
         )
     )
   );
@@ -67,7 +67,7 @@ create policy "Owners can delete fair application images" on public.fair_applica
       where fair_applications.id = fair_application_images.fair_application_id
         and (
           fair_applications.user_id = (select auth.uid())
-          or public.is_admin()
+          or private.is_admin()
         )
     )
   );

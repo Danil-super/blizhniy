@@ -4,10 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import { BackLink } from "@/components/BackLink";
 import { SpecialistProfileDetail } from "@/components/SpecialistProfileDetail";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { demoPublicationsStorageKey, type DemoPublication } from "@/lib/demo-publications";
 import { hasMapCoordinates } from "@/lib/map-location";
 
+const clientFallbackContentEnabled = shouldShowClientFallbackContent();
+
 function readStoredPublications() {
+  if (!clientFallbackContentEnabled) {
+    return [];
+  }
+
   try {
     const stored = window.localStorage.getItem(demoPublicationsStorageKey);
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
@@ -27,6 +34,11 @@ export function SpecialistDetailClient({ specialistId }: { specialistId: string 
   const specialist = useMemo(() => items.find((item) => item.type === "specialist" && item.id === specialistId), [items, specialistId]);
 
   useEffect(() => {
+    if (!clientFallbackContentEnabled) {
+      setItems([]);
+      return;
+    }
+
     setItems(readStoredPublications());
   }, []);
 

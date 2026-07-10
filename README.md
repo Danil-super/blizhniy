@@ -88,9 +88,12 @@ PAYMENT_PROVIDER=mock
 ```env
 PAYMENT_PROVIDER=yookassa
 YOOKASSA_SHOP_ID=...
-YOOKASSA_SECRET_KEY=...
-NEXT_PUBLIC_SITE_URL=https://example.com
+YOOKASSA_SECRET_KEY=... # production: live key only, not test_
+YOOKASSA_WEBHOOK_SECRET=...
+NEXT_PUBLIC_SITE_URL=https://ближний-ру.рф
 ```
+
+Канонический webhook ЮKassa: `https://ближний-ру.рф/api/payments/yookassa/webhook`.
 
 Для production-защиты форм нужно будет добавить настоящие ключи Cloudflare Turnstile:
 
@@ -137,7 +140,7 @@ pm2 startOrReload ecosystem.config.cjs
 pm2 save
 ```
 
-Пример nginx-конфига лежит в `deploy/nginx.conf.example`. В нем нужно заменить `example.com` на домен и подключить файл в `/etc/nginx/sites-enabled/`.
+Пример nginx-конфига лежит в `deploy/nginx.conf.example`. В нем указан домен `ближний-ру.рф`; после копирования подключите файл в `/etc/nginx/sites-enabled/`.
 
 ### 2. Секреты GitHub
 
