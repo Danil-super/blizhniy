@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType } from "react";
 import {
   ArrowRight,
   Baby,
@@ -37,34 +37,6 @@ function CandleIcon({ className }: { className?: string }) {
   );
 }
 
-function CategoryIconBadge({
-  accentColor,
-  children,
-}: {
-  accentColor: string;
-  children: ReactNode;
-}) {
-  return (
-    <span
-      className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-[18px] text-white shadow-[0_18px_34px_rgba(15,23,42,0.18)] ring-1 ring-white/70 transition group-hover:scale-105 sm:h-16 sm:w-16"
-      style={{
-        background: `linear-gradient(150deg, color-mix(in srgb, ${accentColor} 70%, white 30%) 0%, ${accentColor} 46%, color-mix(in srgb, ${accentColor} 70%, black 30%) 100%)`,
-        boxShadow: `0 16px 34px ${accentColor}38, inset 0 1px 0 rgba(255,255,255,0.42), inset 0 -14px 18px rgba(0,0,0,0.18)`,
-      }}
-    >
-      <span className="absolute inset-x-2 top-1 h-6 rounded-[999px_999px_18px_18px] bg-gradient-to-b from-white/54 via-white/20 to-white/0 blur-[0.5px]" />
-      <span className="absolute left-1.5 top-1.5 h-5 w-7 rounded-full bg-white/28 blur-[1px]" />
-      <span className="absolute -right-5 -top-5 h-14 w-14 rounded-full bg-white/22 blur-md" />
-      <span className="absolute -left-7 top-2 h-16 w-8 rotate-[28deg] bg-gradient-to-r from-white/0 via-white/28 to-white/0 blur-[0.5px]" />
-      <span className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/14 via-black/4 to-transparent" />
-      <span className="absolute inset-0 rounded-[18px] border border-white/20" />
-      <span className="relative drop-shadow-[0_2px_2px_rgba(0,0,0,0.22)] [&_svg]:stroke-[2.4]">
-        {children}
-      </span>
-    </span>
-  );
-}
-
 type CategoryTile = {
   id: string;
   label: string;
@@ -91,7 +63,7 @@ const categoryImages = {
   hobby: "/images/categories/hobby.webp",
   auto: "/images/categories/auto.webp",
   business: "/images/categories/business-equipment.webp",
-  services: "/images/categories/services.png",
+  services: "/images/categories/services.webp",
   electronics: "/images/categories/electronics.webp",
   home: "/images/categories/home-dacha.webp",
   tools: "/images/categories/tools.webp",
@@ -158,7 +130,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     icon: Shirt,
     imageUrl: categoryImages.clothing,
     description: "Гардероб, обувь, сумки и аксессуары на каждый день.",
-    bullets: ["Одежда", "Обувь", "Аксессуары"],
+    bullets: ["Одежда и обувь", "Аксессуары", "Текстиль и разное"],
     tone: "green",
     accentColor: "#6f8434",
   },
@@ -316,7 +288,6 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
     <section className={`${topPadding} page-container`} aria-label="Категории">
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2">
         {categoryTiles.map((category, index) => {
-          const Icon = category.icon;
           const tone = toneClasses[category.tone];
           const isLastOddCard = categoryTiles.length % 2 === 1 && index === categoryTiles.length - 1;
 
@@ -349,16 +320,14 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
                 </span>
               ) : null}
               <span
-                className={`relative z-10 flex min-h-[430px] flex-col p-5 pb-20 sm:min-h-[400px] sm:p-6 sm:pb-24 lg:min-h-[430px] lg:p-8 lg:pb-24 xl:min-h-[440px] ${
+                className={`relative z-10 flex min-h-[430px] flex-col p-5 pb-20 pt-7 sm:min-h-[400px] sm:p-6 sm:pb-24 sm:pt-8 lg:min-h-[430px] lg:p-8 lg:pb-24 lg:pt-10 xl:min-h-[440px] ${
                   isLastOddCard ? "max-w-[76%] sm:max-w-[52%] lg:min-h-[540px] lg:max-w-[31%]" : "max-w-[76%] sm:max-w-[62%] lg:max-w-[42%]"
                 }`}
               >
-                <CategoryIconBadge accentColor={category.accentColor}>
-                  <Icon className={category.iconClassName ?? "h-8 w-8 sm:h-9 sm:w-9"} />
-                </CategoryIconBadge>
-                <h2 className="mt-5 block text-lg font-black leading-tight text-[#132414] sm:text-2xl lg:text-[28px]">{category.label}</h2>
-                <span className="mt-3 block w-[229px] max-w-full text-[15px] font-semibold leading-6 text-slate-700 sm:w-auto sm:max-w-[25rem]">{category.description}</span>
-                <span className="mt-4 grid gap-1.5 text-[11px] font-bold leading-4 text-slate-700 sm:gap-2 sm:text-sm sm:leading-5">
+                <span className="mb-4 h-1 w-14 rounded-full" style={{ backgroundColor: category.accentColor }} />
+                <h2 className="block text-xl font-black leading-tight text-[#102414] sm:text-3xl lg:text-[32px]">{category.label}</h2>
+                <span className="mt-3 block w-[229px] max-w-full text-[15px] font-semibold leading-6 text-slate-700 sm:w-auto sm:max-w-[25rem] sm:text-base sm:leading-7">{category.description}</span>
+                <span className="mt-5 grid gap-1.5 text-[11px] font-bold leading-4 text-slate-700 sm:gap-2 sm:text-sm sm:leading-5">
                   {category.bullets.slice(0, 3).map((bullet) => (
                     <span key={bullet} className="flex min-w-0 items-start gap-2">
                       <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: category.accentColor }} />

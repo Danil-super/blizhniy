@@ -54,6 +54,8 @@ from (
     ('odezhda-obuv-aksessuary', 'odezhda', 'Одежда', 10),
     ('odezhda-obuv-aksessuary', 'obuv', 'Обувь', 20),
     ('odezhda-obuv-aksessuary', 'aksessuary', 'Аксессуары', 30),
+    ('odezhda-obuv-aksessuary', 'tekstil', 'Текстиль', 40),
+    ('odezhda-obuv-aksessuary', 'odezhda-obuv-aksessuary-raznoe', 'Разное', 50),
     ('otdyh', 'turbazy', 'Турбазы', 10),
     ('otdyh', 'gostinitsy', 'Гостиницы', 20),
     ('otdyh', 'pohody', 'Походы', 30),

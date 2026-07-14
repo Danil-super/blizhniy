@@ -120,6 +120,7 @@ function slugifySubcategoryValue(name: string) {
     Одежда: "odezhda",
     Обувь: "obuv",
     Аксессуары: "aksessuary",
+    Текстиль: "tekstil",
     Разное: "raznoe",
   };
 

@@ -217,6 +217,7 @@ function slugifySubcategory(name: string) {
     Одежда: "odezhda",
     Обувь: "obuv",
     Аксессуары: "aksessuary",
+    Текстиль: "tekstil",
     Клининг: "klining",
     Разное: "raznoe",
     "Коллекции и антиквариат": "kollektsii-i-antikvariat",

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { CanonicalWorkPage } from "@/components/CanonicalWorkPage";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
+import { categoryPageStyle } from "@/components/listings/CategoryPageDesign";
 import { listSpecialists, listWorkRequests } from "@/lib/mock-store";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/specialist-profile-store";
@@ -27,7 +28,9 @@ export default async function Page() {
     <>
       <SiteHeader />
       <HomeHero />
-      <CanonicalWorkPage specialists={specialists} vacancies={vacancies} workRequests={workRequests.length ? workRequests : shouldShowFallbackContent() ? listWorkRequests() : []} />
+      <div className="bg-[var(--category-page)]" style={categoryPageStyle("rabota")}>
+        <CanonicalWorkPage specialists={specialists} vacancies={vacancies} workRequests={workRequests.length ? workRequests : shouldShowFallbackContent() ? listWorkRequests() : []} />
+      </div>
     </>
   );
 }

@@ -100,7 +100,7 @@ export const categories: Category[] = [
   },
   { slug: "menyayu-ili-otdam-darom", name: "Меняю или отдам даром", children: ["Меняю", "Отдам даром"] },
   { slug: "rabota", name: "Работа", children: ["Вакансии", "Анкеты специалистов"] },
-  { slug: "odezhda-obuv-aksessuary", name: "Одежда, обувь, аксессуары", children: ["Одежда", "Обувь", "Аксессуары"] },
+  { slug: "odezhda-obuv-aksessuary", name: "Одежда, обувь, аксессуары", children: ["Одежда", "Обувь", "Аксессуары", "Текстиль", "Разное"] },
   { slug: "otdyh", name: "Хобби и отдых", children: ["Турбазы", "Гостиницы", "Походы"] },
   { slug: "transport", name: "Авто", children: ["Продам авто", "Куплю авто", "Мототехника"] },
   { slug: "biznes", name: "Готовый бизнес и оборудование", children: ["Продам бизнес", "Куплю бизнес", "Оборудование", "Партнерство"] },

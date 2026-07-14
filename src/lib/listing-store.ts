@@ -47,7 +47,7 @@ type ListingRow = {
   } | null;
 };
 
-type CategoryIdRow = { id: string; name: string; slug: string };
+type CategoryIdRow = { id: string; name: string; parent_id?: string | null; slug: string };
 type CityIdRow = { id: string; name: string; region_id?: string | null; slug: string };
 type RegionIdRow = { id: string; name: string; slug: string };
 
@@ -243,12 +243,13 @@ function mapListing(row: ListingRow): Listing {
 
 async function findCategoryId(categorySlug: string, subcategory?: string) {
   const exactSlugRows = await supabaseRest<CategoryIdRow[]>(
-    `/rest/v1/categories?select=id,name,slug&slug=eq.${encodeURIComponent(categorySlug)}&limit=1`,
+    `/rest/v1/categories?select=id,name,parent_id,slug&slug=eq.${encodeURIComponent(categorySlug)}&parent_id=is.null&limit=1`,
   );
+  const parentId = exactSlugRows[0]?.id;
 
-  if (subcategory) {
+  if (subcategory && parentId) {
     const subcategoryBySlugRows = await supabaseRest<CategoryIdRow[]>(
-      `/rest/v1/categories?select=id,name,slug&slug=eq.${encodeURIComponent(subcategory)}&limit=1`,
+      `/rest/v1/categories?select=id,name,parent_id,slug&slug=eq.${encodeURIComponent(subcategory)}&parent_id=eq.${encodeURIComponent(parentId)}&limit=1`,
     );
 
     if (subcategoryBySlugRows[0]?.id) {
@@ -256,7 +257,7 @@ async function findCategoryId(categorySlug: string, subcategory?: string) {
     }
 
     const subcategoryByNameRows = await supabaseRest<CategoryIdRow[]>(
-      `/rest/v1/categories?select=id,name,slug&name=eq.${encodeURIComponent(subcategory)}&limit=1`,
+      `/rest/v1/categories?select=id,name,parent_id,slug&name=eq.${encodeURIComponent(subcategory)}&parent_id=eq.${encodeURIComponent(parentId)}&order=sort_order.asc&limit=1`,
     );
 
     if (subcategoryByNameRows[0]?.id) {

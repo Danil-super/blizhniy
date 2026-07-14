@@ -44,7 +44,7 @@ import { BookingCalculator } from "./BookingCalculator";
 import { DemoListingEditClient } from "./DemoListingEditClient";
 import { ListingKindAndCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
-import { CategoryHeaderBand, SubcategoryCard } from "./CategoryPageDesign";
+import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard } from "./CategoryPageDesign";
 import { ListingMediaGallery, type ListingGalleryMedia } from "./ListingMediaGallery";
 import { ListingResultsPanel } from "./ListingResultsPanel";
 import { ListingSellerCard } from "./ListingSellerCard";
@@ -566,6 +566,17 @@ const subcategoryBulletPoints: Record<string, Record<string, string[]>> = {
       "Бижутерия и украшения: браслеты, серьги, кольца, цепочки.",
       "Мелкие аксессуары: брелоки, кошельки, визитницы, ключницы.",
     ],
+    Текстиль: [
+      "Постельное белье, покрывала, пледы и одеяла.",
+      "Полотенца, скатерти, салфетки и кухонный текстиль.",
+      "Шторы, тюль и готовые комплекты для окон.",
+      "Ткани, отрезы и материалы для шитья.",
+    ],
+    Разное: [
+      "Товары для гардероба, которые не подходят к другим подкатегориям.",
+      "Чехлы, вешалки, органайзеры и принадлежности для хранения вещей.",
+      "Наборы и смешанные лоты одежды, обуви, аксессуаров и текстиля.",
+    ],
   },
 };
 
@@ -673,6 +684,8 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
       "Раздел «Одежда, обувь и аксессуары» включает широкий ассортимент товаров для создания образа, комфорта и стиля. В него входят предметы гардероба, обувь для разных сезонов и случаев, а также аксессуары, дополняющие образ. К одежде относятся:",
     Обувь: "В этот раздел входит обувь для женщин, мужчин и детей, например:",
     Аксессуары: "К аксессуарам относятся:",
+    Текстиль: "Ткани, постельное белье, полотенца, шторы, пледы и другой домашний текстиль.",
+    Разное: "Товары для гардероба и текстильные принадлежности, которые не подошли к другим подкатегориям раздела.",
   },
   "uslugi-dlya-doma": {
     Клининг: "Уборка квартир, домов, офисов, мойка окон, разовые и регулярные услуги по дому.",
@@ -1230,6 +1243,7 @@ export function slugifySubcategory(name: string) {
     Одежда: "odezhda",
     Обувь: "obuv",
     Аксессуары: "aksessuary",
+    Текстиль: "tekstil",
     "Изготовление, установка и демонтаж намогильных сооружений":
       "izgotovlenie-ustanovka-demontazh-namogilnyh-sooruzheniy",
     "Уход за местом захоронения": "uhod-za-mestom-zahoroneniya",
@@ -1484,7 +1498,7 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
     <>
       <SiteHeader />
       <HomeHero />
-      <main className="bg-[#f6f8fb] pb-8">
+      <main className="bg-[var(--category-page)] pb-8" style={categoryPageStyle(category?.slug ?? categorySlug)}>
         <div className="page-container py-3 sm:py-4 lg:py-5">
           <Breadcrumbs
             compact

@@ -60,7 +60,7 @@ const categories = [
   { slug: "zhivotnye", name: "Животные", children: ["Домашние питомцы", "Сельхоз животные", "Экзотические животные"] },
   { slug: "sad-i-rasteniya", name: "Сад и огород", children: ["Цветы и саженцы", "Рассада", "Овощи", "Зелень", "Корнеплоды", "Бобовые", "Садовый инвентарь", "Удобрения и средства защиты растений", "Системы полива", "Мульча", "Плодовые деревья", "Ягодные кустарники", "Декоративные цветы и растения", "Газоны, клумбы, альпийские горки, живые изгороди", "Элементы ландшафтного дизайна", "Места для отдыха"] },
   { slug: "tovary-dlya-detey", name: "Товары для детей", children: ["Игрушки", "Технические игрушки", "Дидактические игрушки", "Спортивные игрушки"] },
-  { slug: "odezhda-obuv-aksessuary", name: "Одежда, обувь, аксессуары", children: ["Одежда", "Обувь", "Аксессуары"] },
+  { slug: "odezhda-obuv-aksessuary", name: "Одежда, обувь, аксессуары", children: ["Одежда", "Обувь", "Аксессуары", "Текстиль", "Разное"] },
   { slug: "tovary-i-veshchi", name: "Товары и вещи", children: ["Выкройки и рукоделие"] },
   { slug: "ritualnye-uslugi", name: "Ритуальные услуги", children: ["Кремация", "Уход за местом захоронения", "Транспортирование останков", "Подготовка тела к погребению", "Предпохоронное содержание останков", "Захоронение и сопутствующие работы", "Организация и проведение обряда прощания", "Продажа и изготовление похоронных принадлежностей", "Изготовление, установка и демонтаж намогильных сооружений"] },
   { slug: "nedvizhimost", name: "Недвижимость", children: ["Продам недвижимость", "Куплю недвижимость", "Аренда", "Коммерческая недвижимость", "Жилье для путешествия"] },
@@ -236,10 +236,21 @@ const topCategories = await upsert(
 );
 const topCategoryBySlug = Object.fromEntries(topCategories.map((category) => [category.slug, category]));
 
+const clothingSubcategorySlugs = {
+  Аксессуары: "aksessuary",
+  Обувь: "obuv",
+  Одежда: "odezhda",
+  Разное: "odezhda-obuv-aksessuary-raznoe",
+  Текстиль: "tekstil",
+};
+
 const childRows = categories.flatMap((category) =>
   category.children.map((name, index) => ({
     parent_id: topCategoryBySlug[category.slug].id,
-    slug: `${category.slug}-${slugify(name)}`.slice(0, 90),
+    slug:
+      category.slug === "odezhda-obuv-aksessuary"
+        ? clothingSubcategorySlugs[name]
+        : `${category.slug}-${slugify(name)}`.slice(0, 90),
     name,
     sort_order: (index + 1) * 10,
     active: true,

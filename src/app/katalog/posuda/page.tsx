@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { BackLink } from "@/components/BackLink";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
-import { CategoryHeaderBand, SubcategoryCard } from "@/components/listings/CategoryPageDesign";
+import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard } from "@/components/listings/CategoryPageDesign";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import type { DemoListing } from "@/components/listings/ListingCard";
 import { posudaSubcategories } from "@/lib/posuda-subcategories";
@@ -51,7 +51,7 @@ export default function PosudaCategoryPage() {
     <>
       <SiteHeader />
       <HomeHero />
-      <main className="bg-[#f6f8fb] pb-8">
+      <main className="bg-[var(--category-page)] pb-8" style={categoryPageStyle("posuda")}>
         <div className="page-container py-3 sm:py-4 lg:py-5">
           <nav className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:text-sm" aria-label="Хлебные крошки">
             <Link href="/katalog" className="hover:text-[#0875d1]">
