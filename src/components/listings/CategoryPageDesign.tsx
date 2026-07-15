@@ -102,17 +102,56 @@ export function categoryPageStyle(categorySlug: string): CSSProperties {
   return visualStyle(visualForCategory(categorySlug));
 }
 
+export function subcategoryGridClassName(
+  itemCount: number,
+  { compact = false, maxColumns = 5 }: { compact?: boolean; maxColumns?: 4 | 5 } = {},
+) {
+  if (compact) {
+    return "grid grid-cols-1 gap-2 sm:gap-3 lg:grid-cols-4 2xl:grid-cols-5";
+  }
+
+  if (maxColumns === 4) {
+    if (itemCount <= 1) {
+      return "grid grid-cols-1 gap-2 sm:gap-3";
+    }
+
+    if (itemCount <= 2) {
+      return "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3";
+    }
+
+    if (itemCount === 3) {
+      return "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3";
+    }
+
+    return "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4";
+  }
+
+  if (itemCount <= 1) {
+    return "grid grid-cols-1 gap-3";
+  }
+
+  if (itemCount === 2) {
+    return "grid grid-cols-1 gap-3 sm:grid-cols-2";
+  }
+
+  if (itemCount === 3) {
+    return "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3";
+  }
+
+  return "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5";
+}
+
 export function CategoryHeaderBand({ categorySlug, createHref, description, title }: CategoryHeaderBandProps) {
   const visual = visualForCategory(categorySlug);
   const isGardenCategory = categorySlug === "sad-i-rasteniya";
   const categoryInfoItemClassName = isGardenCategory
-    ? "flex w-fit max-w-full items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-xs font-bold leading-5 text-slate-700 shadow-sm lg:min-h-14 lg:px-4 lg:py-3 lg:text-sm"
+    ? "flex w-fit max-w-full items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-xs font-bold leading-5 text-slate-700 shadow-sm lg:min-h-14 lg:w-full lg:px-4 lg:py-3 lg:text-sm"
     : "flex items-center gap-2 rounded-lg bg-white/90 px-3 py-2 text-xs font-bold leading-5 text-slate-700 shadow-sm";
   const categoryInfo = (
     <div
       className={
         isGardenCategory
-          ? "mt-5 grid max-w-[800px] justify-items-start gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(350px,1fr)_minmax(350px,1fr)]"
+          ? "mt-5 grid max-w-[800px] justify-items-start gap-3 sm:grid-cols-2 lg:w-[390px] lg:grid-cols-1"
           : "grid gap-2 rounded-xl bg-white/80 p-3 ring-1 ring-[var(--category-border)]"
       }
     >
@@ -120,7 +159,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         <MapPin className="h-4 w-4 shrink-0 text-[var(--category-accent)]" />
         Районы, города и предложения рядом
       </span>
-      <span className={`${categoryInfoItemClassName} ${isGardenCategory ? "lg:translate-y-5" : ""}`}>
+      <span className={categoryInfoItemClassName}>
         <Leaf className="h-4 w-4 shrink-0 text-[var(--category-accent)]" />
         Быстрый переход к нужной подкатегории
       </span>
@@ -130,7 +169,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   return (
     <section
       className={`relative overflow-hidden rounded-2xl border border-[var(--category-border)] bg-[var(--category-soft)] px-4 py-5 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5 sm:py-6 lg:px-7 lg:py-7 ${
-        isGardenCategory ? "lg:min-h-[560px]" : ""
+        isGardenCategory ? "lg:min-h-[370px]" : ""
       }`}
       data-category-theme={categorySlug}
       style={visualStyle(visual)}
@@ -140,11 +179,12 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           <Image
             alt=""
             aria-hidden="true"
-            className="hidden origin-left scale-x-[2] object-cover object-left lg:block"
-            fill
+            className="absolute right-0 top-1/2 hidden h-[120%] w-auto max-w-none -translate-y-1/2 object-contain [mask-image:linear-gradient(to_right,transparent_0%,black_12%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_12%,black_100%)] lg:block xl:h-[180%] min-[1440px]:h-[200%]"
+            height={941}
             priority
-            sizes="100vw"
-            src="/images/categories/garden-category-hero.webp"
+            sizes="(min-width: 1280px) 500px, 430px"
+            src="/images/categories/garden-category-produce.webp"
+            width={952}
           />
           <Image
             alt=""
@@ -154,16 +194,6 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             priority
             sizes="100vw"
             src="/images/categories/garden-category-hero.webp"
-          />
-          <Image
-            alt=""
-            aria-hidden="true"
-            className="absolute right-0 top-1/2 hidden h-[125%] w-auto max-w-none -translate-y-1/2 lg:block"
-            height={941}
-            priority
-            sizes="720px"
-            src="/images/categories/garden-category-produce.webp"
-            width={952}
           />
         </>
       ) : null}
@@ -222,7 +252,11 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
 
 export function SubcategoryCard({ compact = false, createHref, description, href, items = [], spanClassName = "", title, visualSlug }: SubcategoryCardProps) {
   const visual = visualForCategory(visualSlug);
-  const actionButtonClassName = `${compact ? "h-8 px-1 text-[11px] sm:h-9 sm:px-1.5 sm:text-xs" : "h-10 px-1.5 text-xs sm:px-2 sm:text-sm"} inline-flex min-w-0 items-center justify-center rounded-lg border font-bold leading-none transition`;
+  const actionButtonClassName = `${
+    compact
+      ? "h-8 px-1 text-[11px] sm:h-9 sm:px-1.5 sm:text-xs lg:px-0.5 lg:text-[10px] xl:px-1.5 xl:text-xs"
+      : "h-10 px-1 text-[11px] sm:px-1.5 sm:text-xs lg:px-0.5 lg:text-[10px] xl:px-1.5 xl:text-xs"
+  } inline-flex min-w-0 items-center justify-center rounded-lg border font-bold leading-none transition`;
 
   return (
     <details
@@ -251,7 +285,7 @@ export function SubcategoryCard({ compact = false, createHref, description, href
         <div className={`${compact ? "mt-2 gap-1" : "mt-3 gap-1.5"} grid grid-cols-3`}>
           <Link
             href={href}
-            className={`${actionButtonClassName} border-[var(--category-border)] bg-white text-[var(--category-accent)] hover:bg-[var(--category-soft)]`}
+            className={`${actionButtonClassName} border-[#ef8c84] bg-white text-[#c6251a] hover:bg-[#fff1f0]`}
             aria-label={`Открыть объявления: ${title}`}
             title="Объявления"
           >
@@ -259,14 +293,14 @@ export function SubcategoryCard({ compact = false, createHref, description, href
           </Link>
           <Link
             href={createHref}
-            className={`${actionButtonClassName} border-[#0aa337] bg-[#0aa337] text-white hover:bg-[#078a2e]`}
+            className={`${actionButtonClassName} border-[#d92d20] bg-[#d92d20] text-white hover:border-[#b42318] hover:bg-[#b42318]`}
             aria-label={`Разместить объявление: ${title}`}
             title="Разместить"
           >
             <span className="min-w-0 whitespace-nowrap">Разместить</span>
           </Link>
           <SubcategoryShareButton
-            className={`${actionButtonClassName} border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-[#0875d1]`}
+            className={`${actionButtonClassName} border-[#ef8c84] bg-white text-[#c6251a] hover:bg-[#fff1f0]`}
             href={href}
             label="Поделиться"
             title={title}

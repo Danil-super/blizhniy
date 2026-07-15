@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { BackLink } from "@/components/BackLink";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
-import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard } from "@/components/listings/CategoryPageDesign";
+import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "@/components/listings/CategoryPageDesign";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import type { DemoListing } from "@/components/listings/ListingCard";
 import { posudaSubcategories } from "@/lib/posuda-subcategories";
@@ -77,7 +77,7 @@ export default function PosudaCategoryPage() {
                 <h2 className="text-lg font-bold leading-tight text-[#060b27]">Подкатегории</h2>
                 <p className="text-sm font-semibold text-slate-500">Кухня, сервировка и хранение рядом</p>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+              <div className={subcategoryGridClassName(posudaSubcategories.length)}>
                 {posudaSubcategories.map((subcategory) => (
                   <SubcategoryCard
                     createHref={`/razmestit/obyavlenie?category=posuda&kind=prodam&subcategory=${subcategory.slug}`}

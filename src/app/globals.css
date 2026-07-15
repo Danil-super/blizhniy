@@ -769,11 +769,7 @@ canvas {
   }
 }
 
-/* Compact adaptive subcategory action buttons across all category cards. */
-details.group {
-  container-type: inline-size;
-}
-
+/* Keep an opened compact subcategory readable on narrow screens. */
 .subcategory-mobile-row:has(details[open]) {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -785,61 +781,5 @@ details.group {
 @media (min-width: 1024px) {
   .subcategory-mobile-row:has(details[open]) details[open] {
     order: 0;
-  }
-}
-
-details.group > div.mt-3.grid.grid-cols-3.gap-2 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.4rem;
-}
-
-a[aria-label^="Открыть объявления:"],
-a[aria-label^="Разместить объявление:"],
-button[aria-label^="Поделиться ссылкой:"] {
-  height: auto !important;
-  min-height: 2.2rem;
-  padding: 0.35rem 0.45rem !important;
-  text-align: center;
-  white-space: nowrap;
-  word-break: normal;
-  overflow-wrap: normal;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: clamp(0.66rem, 2.2cqw, 0.8rem);
-  font-weight: 800;
-  line-height: 1rem;
-}
-
-a[aria-label^="Открыть объявления:"] svg,
-a[aria-label^="Разместить объявление:"] svg,
-button[aria-label^="Поделиться ссылкой:"] svg {
-  display: none;
-}
-
-@container (max-width: 19rem) {
-  details.group > div.mt-3.grid.grid-cols-3.gap-2 {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  a[aria-label^="Открыть объявления:"],
-  a[aria-label^="Разместить объявление:"],
-  button[aria-label^="Поделиться ссылкой:"] {
-    min-height: 2.3rem;
-    padding-left: 0.75rem !important;
-    padding-right: 0.75rem !important;
-    font-size: 0.82rem;
-  }
-}
-
-@media (min-width: 640px) {
-  details.group > div.mt-3.grid.grid-cols-3.gap-2 {
-    gap: 0.5rem;
-  }
-
-  a[aria-label^="Открыть объявления:"],
-  a[aria-label^="Разместить объявление:"],
-  button[aria-label^="Поделиться ссылкой:"] {
-    font-size: 0.82rem;
-    line-height: 1.05rem;
   }
 }

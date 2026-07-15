@@ -44,7 +44,7 @@ import { BookingCalculator } from "./BookingCalculator";
 import { DemoListingEditClient } from "./DemoListingEditClient";
 import { ListingKindAndCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
-import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard } from "./CategoryPageDesign";
+import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "./CategoryPageDesign";
 import { ListingMediaGallery, type ListingGalleryMedia } from "./ListingMediaGallery";
 import { ListingResultsPanel } from "./ListingResultsPanel";
 import { ListingSellerCard } from "./ListingSellerCard";
@@ -1525,13 +1525,10 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
                   <p className="text-sm font-semibold text-slate-500">Быстрый вход в нужный раздел</p>
                 </div>
                 <div
-                  className={
-                    isGardenCategory
-                      ? "grid grid-cols-1 gap-2 sm:gap-3 lg:grid-cols-4 2xl:grid-cols-5"
-                      : isKidsGoodsCategory
-                        ? "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4"
-                        : "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5"
-                  }
+                  className={subcategoryGridClassName(categoryChildren.length, {
+                    compact: isGardenCategory,
+                    maxColumns: isKidsGoodsCategory ? 4 : 5,
+                  })}
                 >
                   {isGardenCategory
                     ? categoryChildren.reduce<ReactNode[]>((rows, child, index) => {
