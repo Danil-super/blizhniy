@@ -717,6 +717,7 @@ const subcategoryDescriptions: Record<string, Record<string, string>> = {
 const categoryDescriptions: Record<string, string> = {
   "dlya-doma-i-dachi":
     "Раздел для дома и дачи включает товары для обустройства интерьера, садового участка, а также инструменты и аксессуары для ухода за растениями и территорией.",
+  "ritualnye-uslugi": "Деликатный раздел для организации прощания, ухода за местом захоронения, транспорта, принадлежностей и сопутствующих работ рядом.",
 };
 
 function subcategoryWordCount(name: string) {
@@ -1472,13 +1473,11 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
       : category
         ? `/razmestit/obyavlenie?category=${category.slug}&kind=${inferListingKind(category.slug, categoryChildren[0] ? slugifySubcategory(categoryChildren[0]) : "")}`
         : "/razmestit/obyavlenie";
-  const renderSubcategoryCard = (child: string, index: number) => {
+  const renderSubcategoryCard = (child: string) => {
     const href = `/katalog/${category?.slug}/${slugifySubcategory(child)}`;
     const description = subcategoryDescription(category?.slug ?? categorySlug, child);
     const animalClassifier = category?.slug === "zhivotnye" ? animalClassifiers[child] : undefined;
     const bulletPoints = subcategoryBulletPoints[category?.slug ?? categorySlug]?.[child];
-    const shouldSpanTwoColumns = category?.slug === "ritualnye-uslugi" && categoryChildren.length % 2 === 1 && index === categoryChildren.length - 1;
-
     return (
       <SubcategoryCard
         compact={isGardenCategory}
@@ -1487,7 +1486,6 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
         href={href}
         items={[...(bulletPoints ?? []), ...(animalClassifier ?? [])]}
         key={child}
-        spanClassName={shouldSpanTwoColumns ? "sm:col-span-2 md:col-span-1" : ""}
         title={child}
         visualSlug={category?.slug ?? categorySlug}
       />
@@ -1500,15 +1498,7 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
       <HomeHero />
       <main className="bg-[var(--category-page)] pb-8" style={categoryPageStyle(category?.slug ?? categorySlug)}>
         <div className="page-container py-3 sm:py-4 lg:py-5">
-          <Breadcrumbs
-            compact
-            items={[
-              { label: "Категории", href: "/katalog" },
-              { label: category?.name ?? "Категория", href: category ? `/katalog/${category.slug}` : undefined },
-              ...(subcategory ? [{ label: subcategory }] : []),
-            ]}
-          />
-          <BackLink fallbackHref={backFallbackHref} className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+          <BackLink fallbackHref={backFallbackHref} className="inline-flex items-center gap-2 text-sm font-bold text-[#d92d20] transition hover:text-[#b42318]">
             Назад
           </BackLink>
           <div className="mt-3 grid gap-5">
@@ -1537,8 +1527,8 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
 
                           rows.push(
                             <div className="subcategory-mobile-row grid grid-cols-2 gap-2 sm:gap-3 lg:contents" key={child}>
-                              {renderSubcategoryCard(child, index)}
-                              {nextChild ? renderSubcategoryCard(nextChild, index + 1) : null}
+                              {renderSubcategoryCard(child)}
+                              {nextChild ? renderSubcategoryCard(nextChild) : null}
                             </div>,
                           );
                         }

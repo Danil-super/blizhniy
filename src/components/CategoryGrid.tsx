@@ -265,15 +265,15 @@ function categoryTilesFromCategories(categories: Category[]): CategoryTile[] {
 
 const toneClasses: Record<CategoryTile["tone"], { button: string; buttonIcon: string; hover: string; icon: string; marker: string }> = {
   blue: {
-    button: "border-blue-200 bg-white/92 text-[#0875d1] shadow-blue-100 group-hover:border-[#0875d1] group-hover:bg-blue-50",
-    buttonIcon: "bg-[#0875d1] text-white",
+    button: "border-[#f2b8b3] bg-white/92 text-[#c6251a] shadow-rose-100 group-hover:border-[#d92d20] group-hover:bg-[#fff5f4]",
+    buttonIcon: "bg-[#d92d20] text-white",
     hover: "hover:border-blue-200",
     icon: "bg-[#0875d1] text-white shadow-blue-100",
     marker: "bg-[#0875d1]",
   },
   green: {
-    button: "border-lime-200 bg-white/92 text-[#2f7f12] shadow-lime-100 group-hover:border-[#3f8f18] group-hover:bg-lime-50",
-    buttonIcon: "bg-[#3f8f18] text-white",
+    button: "border-[#f2b8b3] bg-white/92 text-[#c6251a] shadow-rose-100 group-hover:border-[#d92d20] group-hover:bg-[#fff5f4]",
+    buttonIcon: "bg-[#d92d20] text-white",
     hover: "hover:border-lime-200",
     icon: "bg-[#3f8f18] text-white shadow-lime-100",
     marker: "bg-[#3f8f18]",
@@ -324,7 +324,6 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
                   isLastOddCard ? "max-w-[76%] sm:max-w-[52%] lg:min-h-[540px] lg:max-w-[31%]" : "max-w-[76%] sm:max-w-[62%] lg:max-w-[42%]"
                 }`}
               >
-                <span className="mb-4 h-1 w-14 rounded-full" style={{ backgroundColor: category.accentColor }} />
                 <h2 className="block text-xl font-black leading-tight text-[#102414] sm:text-3xl lg:text-[32px]">{category.label}</h2>
                 <span className="mt-3 block w-[229px] max-w-full text-[15px] font-semibold leading-6 text-slate-700 sm:w-auto sm:max-w-[25rem] sm:text-base sm:leading-7">{category.description}</span>
                 <span className="mt-5 grid gap-1.5 text-[11px] font-bold leading-4 text-slate-700 sm:gap-2 sm:text-sm sm:leading-5">
@@ -339,8 +338,7 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
               <span className={`absolute bottom-5 left-5 z-20 inline-flex h-10 w-fit items-center justify-center gap-2 rounded-full border px-3.5 text-sm font-bold shadow-lg backdrop-blur transition sm:bottom-6 sm:left-6 lg:bottom-8 lg:left-8 ${tone.button}`}>
                 <span>Открыть</span>
                 <span
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-full text-white transition group-hover:translate-x-0.5"
-                  style={{ backgroundColor: category.accentColor }}
+                  className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition group-hover:translate-x-0.5 ${tone.buttonIcon}`}
                 >
                   <ArrowRight className="h-3.5 w-3.5" />
                 </span>
