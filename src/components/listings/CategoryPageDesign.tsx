@@ -58,7 +58,19 @@ const categoryVisuals: Record<string, CategoryVisual> = {
   posuda: { accent: "#78601a", border: "#d7b94f", card: "#f7e9ad", cardOpen: "#fbf2cf", page: "#fffbea", soft: "#f2dc83" },
   rabota: { accent: "#237142", border: "#75ca94", card: "#ccefd8", cardOpen: "#dff7e8", page: "#eefbf3", soft: "#afe4c2" },
   raznoe: { accent: "#3c6075", border: "#8bb8ce", card: "#d8eaf2", cardOpen: "#e8f3f7", page: "#f0f8fb", soft: "#c5e0eb" },
-  "ritualnye-uslugi": { accent: "#574778", border: "#aa97ce", card: "#e2d9f2", cardOpen: "#eee8f7", page: "#f7f3fc", soft: "#cfc1e8" },
+  "ritualnye-uslugi": {
+    accent: "#36545f",
+    border: "#9fb1bd",
+    card: "#e6eee9",
+    cardOpen: "#f1f6f2",
+    page: "#f2f7f4",
+    primary: "#25313a",
+    primaryHover: "#111820",
+    secondary: "#25313a",
+    secondaryBorder: "#a8b5bd",
+    soft: "#d4e2d9",
+    title: "#111820",
+  },
   "sad-i-rasteniya": {
     accent: "#24752f",
     border: "#7fbd4f",
@@ -135,23 +147,31 @@ export function subcategoryGridClassName(
   }
 
   if (itemCount === 3) {
-    return "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3";
+    return "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3";
   }
 
-  return "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5";
+  return "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5";
 }
 
 export function CategoryHeaderBand({ categorySlug, createHref, description, title }: CategoryHeaderBandProps) {
   const visual = visualForCategory(categorySlug);
   const isGardenCategory = categorySlug === "sad-i-rasteniya";
-  const categoryInfoItemClassName = isGardenCategory
-    ? "flex w-fit max-w-full items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-xs font-bold leading-5 text-slate-700 shadow-sm lg:min-h-14 lg:w-full lg:px-4 lg:py-3 lg:text-sm"
+  const isRitualCategory = categorySlug === "ritualnye-uslugi";
+  const isRealEstateCategory = categorySlug === "nedvizhimost";
+  const hasImageHero = isGardenCategory || isRitualCategory || isRealEstateCategory;
+  const usesRightAlignedHero = isRitualCategory || isRealEstateCategory;
+  const categoryInfoItemClassName = hasImageHero
+    ? `flex w-fit max-w-full items-center gap-2 rounded-lg bg-white/95 px-3 py-2 text-xs font-bold leading-5 text-slate-700 shadow-sm ${
+        isGardenCategory ? "lg:min-h-14 lg:w-full lg:px-4 lg:py-3 lg:text-sm" : "lg:min-h-14 lg:w-[420px] lg:px-4 lg:py-3 lg:text-sm"
+      }`
     : "flex items-center gap-2 rounded-lg bg-white/90 px-3 py-2 text-xs font-bold leading-5 text-slate-700 shadow-sm";
   const categoryInfo = (
     <div
       className={
         isGardenCategory
           ? "mt-5 grid max-w-[800px] justify-items-start gap-3 sm:grid-cols-2 lg:w-[390px] lg:grid-cols-1"
+          : usesRightAlignedHero
+            ? "mt-5 grid max-w-[760px] justify-items-start gap-3 sm:grid-cols-2 lg:w-[420px] lg:grid-cols-1"
           : "grid gap-2 rounded-xl bg-white/80 p-3 ring-1 ring-[var(--category-border)]"
       }
     >
@@ -169,7 +189,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   return (
     <section
       className={`relative overflow-hidden rounded-2xl border border-[var(--category-border)] bg-[var(--category-soft)] px-4 py-5 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5 sm:py-6 lg:px-7 lg:py-7 ${
-        isGardenCategory ? "lg:min-h-[370px]" : ""
+        isGardenCategory ? "lg:min-h-[370px]" : usesRightAlignedHero ? "min-h-[390px] sm:min-h-[410px] lg:min-h-[390px]" : ""
       }`}
       data-category-theme={categorySlug}
       style={visualStyle(visual)}
@@ -197,9 +217,57 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           />
         </>
       ) : null}
+      {isRitualCategory ? (
+        <>
+          <Image
+            alt=""
+            aria-hidden="true"
+            className="object-cover object-[45%_center] sm:object-[62%_center] lg:hidden"
+            fill
+            priority
+            sizes="100vw"
+            src="/images/categories/ritual-category-hero.webp"
+          />
+          <Image
+            alt=""
+            aria-hidden="true"
+            className="absolute right-0 top-1/2 hidden h-[118%] w-auto max-w-none -translate-y-1/2 object-contain object-right [mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] lg:block"
+            height={941}
+            priority
+            sizes="(min-width: 1024px) 830px, 0px"
+            src="/images/categories/ritual-category-hero.webp"
+            width={1672}
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(242,247,244,0.98)_0%,rgba(242,247,244,0.92)_34%,rgba(242,247,244,0.44)_58%,rgba(242,247,244,0.04)_100%)] lg:bg-[linear-gradient(90deg,rgba(242,247,244,0.98)_0%,rgba(242,247,244,0.9)_31%,rgba(242,247,244,0.58)_48%,rgba(242,247,244,0.08)_70%,rgba(242,247,244,0)_100%)]" />
+        </>
+      ) : null}
+      {isRealEstateCategory ? (
+        <>
+          <Image
+            alt=""
+            aria-hidden="true"
+            className="object-cover object-[64%_center] sm:object-[66%_center] lg:hidden"
+            fill
+            priority
+            sizes="100vw"
+            src="/images/categories/real-estate-category-hero.png"
+          />
+          <Image
+            alt=""
+            aria-hidden="true"
+            className="absolute right-0 top-1/2 hidden h-[136%] w-auto max-w-none -translate-y-1/2 object-contain object-right [mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] lg:block"
+            height={941}
+            priority
+            sizes="(min-width: 1024px) 830px, 0px"
+            src="/images/categories/real-estate-category-hero.png"
+            width={1672}
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(237,250,253,0.98)_0%,rgba(237,250,253,0.92)_34%,rgba(237,250,253,0.44)_58%,rgba(237,250,253,0.04)_100%)] lg:bg-[linear-gradient(90deg,rgba(237,250,253,0.98)_0%,rgba(237,250,253,0.9)_31%,rgba(237,250,253,0.58)_48%,rgba(237,250,253,0.08)_70%,rgba(237,250,253,0)_100%)]" />
+        </>
+      ) : null}
       <div
         className={
-          isGardenCategory
+          hasImageHero
             ? "relative z-10 max-w-full lg:max-w-[800px]"
             : "grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.34fr)] lg:items-end"
         }
@@ -207,7 +275,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         <div className="min-w-0">
           <h1
             className={`text-2xl font-bold leading-tight text-[var(--category-title)] [overflow-wrap:anywhere] sm:text-3xl lg:text-4xl ${
-              isGardenCategory ? "max-w-[49%] sm:max-w-[58%] lg:max-w-2xl" : "max-w-4xl"
+              isGardenCategory ? "max-w-[49%] sm:max-w-[58%] lg:max-w-2xl" : usesRightAlignedHero ? "max-w-[78%] sm:max-w-[62%] lg:max-w-2xl" : "max-w-4xl"
             }`}
           >
             {title}
@@ -215,17 +283,17 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           {description ? (
             <p
               className={`mt-3 text-sm font-semibold leading-6 text-slate-700 sm:text-base sm:leading-7 ${
-                isGardenCategory ? "max-w-[49%] sm:max-w-[58%] lg:max-w-xl" : "max-w-4xl"
+                isGardenCategory ? "max-w-[49%] sm:max-w-[58%] lg:max-w-xl" : usesRightAlignedHero ? "max-w-[78%] sm:max-w-[62%] lg:max-w-xl" : "max-w-4xl"
               }`}
             >
               {description}
             </p>
           ) : null}
-          <div className={`${isGardenCategory ? "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex gap-2`}>
+          <div className={`${hasImageHero ? "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex gap-2`}>
             <Link
               href={createHref}
               className={`inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--category-primary)] font-bold text-white shadow-lg shadow-black/10 transition hover:bg-[var(--category-primary-hover)] ${
-                isGardenCategory ? "h-10 px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm"
+                hasImageHero ? "h-10 px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm"
               }`}
             >
               Разместить
@@ -234,17 +302,17 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             <a
               href="#listings"
               className={`inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--category-secondary-border)] bg-white font-bold text-[var(--category-secondary)] transition hover:bg-white/80 ${
-                isGardenCategory ? "h-10 px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm"
+                hasImageHero ? "h-10 px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm"
               }`}
             >
               Смотреть объявления
               <ClipboardList className="h-4 w-4" />
             </a>
           </div>
-          {isGardenCategory ? categoryInfo : null}
+          {hasImageHero ? categoryInfo : null}
         </div>
 
-        {!isGardenCategory ? categoryInfo : null}
+        {!hasImageHero ? categoryInfo : null}
       </div>
     </section>
   );
