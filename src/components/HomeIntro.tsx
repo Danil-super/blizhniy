@@ -48,14 +48,14 @@ export function HomeIntro() {
             <div className="mt-5 flex flex-wrap items-center justify-start gap-2 sm:mt-6">
               <Link
                 href="/razmestit"
-                className="inline-flex h-10 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-[#0aa337] px-3.5 text-xs font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-12 sm:gap-2 sm:px-6 sm:text-sm"
+                className="inline-flex h-10 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-[#d92d20] px-3.5 text-xs font-bold text-white shadow-sm shadow-black/10 transition hover:bg-[#b42318] sm:h-12 sm:gap-2 sm:px-6 sm:text-sm"
               >
                 <PlusCircle className="h-4 w-4 sm:h-5 sm:w-5" />
                 Разместить
               </Link>
               <Link
                 href="/obyavleniya"
-                className="inline-flex h-10 touch-manipulation items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-white/90 px-3.5 text-xs font-bold text-[#0875d1] shadow-sm transition hover:border-[#0875d1] hover:bg-blue-50 sm:h-12 sm:gap-2 sm:px-6 sm:text-sm"
+                className="inline-flex h-10 touch-manipulation items-center justify-center gap-1.5 rounded-xl border border-[#ef8c84] bg-white/90 px-3.5 text-xs font-bold text-[#c6251a] shadow-sm transition hover:border-[#d92d20] hover:bg-[#fff1f0] sm:h-12 sm:gap-2 sm:px-6 sm:text-sm"
               >
                 Объявления
                 <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />

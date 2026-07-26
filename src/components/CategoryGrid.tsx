@@ -63,7 +63,7 @@ const categoryImages = {
   hobby: "/images/categories/hobby.webp",
   auto: "/images/categories/auto.webp",
   business: "/images/categories/business-equipment.webp",
-  services: "/images/categories/services.webp",
+  services: "/images/categories/services.png",
   electronics: "/images/categories/electronics.webp",
   home: "/images/categories/home-dacha.webp",
   tools: "/images/categories/tools.webp",
@@ -326,7 +326,7 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
               >
                 <h2 className="block text-xl font-black leading-tight text-[#102414] sm:text-3xl lg:text-[32px]">{category.label}</h2>
                 <span className="mt-3 block w-[229px] max-w-full text-[15px] font-semibold leading-6 text-slate-700 sm:w-auto sm:max-w-[25rem] sm:text-base sm:leading-7">{category.description}</span>
-                <span className="mt-5 grid gap-1.5 text-[11px] font-bold leading-4 text-slate-700 sm:gap-2 sm:text-sm sm:leading-5">
+                <span className="mt-5 grid gap-2 text-sm font-bold leading-5 text-slate-700 sm:text-base sm:leading-6">
                   {category.bullets.slice(0, 3).map((bullet) => (
                     <span key={bullet} className="flex min-w-0 items-start gap-2">
                       <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: category.accentColor }} />
