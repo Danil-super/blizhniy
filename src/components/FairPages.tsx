@@ -120,16 +120,16 @@ export async function FairHomePage() {
         <h2 className="text-xl font-bold text-[#060b27] sm:text-2xl">Участники</h2>
         <div className="mt-4 grid gap-3 sm:mt-5 sm:gap-4 lg:grid-cols-2">
           {publishedApplications.map((application) => (
-            <article key={application.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
+            <article key={application.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:p-5">
               <div className="grid gap-3 sm:flex sm:items-start sm:justify-between sm:gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wide text-[#0875d1] sm:text-sm">{application.category}</p>
-                  <h3 className="mt-1 text-xl font-bold text-[#060b27] sm:mt-2">{application.participantName}</h3>
+                  <h3 className="mt-1 text-lg font-bold text-[#060b27] sm:mt-2 sm:text-xl">{application.participantName}</h3>
                 </div>
                 <span className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-[#0a8f32]">опубликовано</span>
               </div>
-              <p className="mt-3 text-sm leading-6 text-slate-600 sm:mt-4 sm:text-base sm:leading-7">{application.description}</p>
-              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <p className="mt-2 text-[13px] leading-5 text-slate-600 sm:mt-4 sm:text-base sm:leading-7">{application.description}</p>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:grid-cols-3">
                 {application.productPhotos.map((photo) => {
                   const imageUrl = fairPhotoUrl(photo);
 
@@ -164,7 +164,7 @@ export async function FairHomePage() {
                   </a>
                 ) : null}
               </div>
-              <p className="mt-4 flex items-center gap-2 text-sm text-slate-500">
+              <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-500 sm:mt-4 sm:gap-2 sm:text-sm">
                 <MapPin className="h-4 w-4" />
                 {[application.city, application.showExactAddress ? application.address : application.district].filter(Boolean).join(", ")}
               </p>

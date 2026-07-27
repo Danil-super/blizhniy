@@ -79,6 +79,10 @@ canvas {
   .app-shell main {
     padding-bottom: var(--mobile-nav-clearance);
   }
+
+  .site-footer-inner {
+    padding-bottom: calc(var(--mobile-nav-clearance) + env(safe-area-inset-bottom));
+  }
 }
 
 .dashboard-shell {

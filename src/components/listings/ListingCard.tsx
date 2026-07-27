@@ -224,7 +224,7 @@ export function ListingGridCard({ listing }: { listing: DemoListing }) {
   return (
     <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card">
       <Link href={href} className="block min-w-0">
-        <span className="relative block aspect-square overflow-hidden bg-slate-100">
+        <span className="relative block aspect-[4/3] overflow-hidden bg-slate-100 sm:aspect-square">
           <ListingImage listing={listing} className="h-full w-full" iconClassName="h-8 w-8" />
           {listing.images?.[0] ? <span className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-slate-950/30 to-transparent" /> : <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />}
         </span>

@@ -8,22 +8,6 @@ import { useAuthState } from "@/components/auth/useAuthState";
 export function MobileBottomNav() {
   const pathname = usePathname();
   const { state } = useAuthState();
-  const formPathPrefixes = [
-    "/auth",
-    "/razmestit",
-    "/rabota/vakansii/sozdat",
-    "/rabota/zakazy/sozdat",
-    "/rabota/specialisty/sozdat",
-    "/yarmarka-masterov/zayavka",
-  ];
-  const shouldHide =
-    /^\/vakansiya\/[^/]+\/?$/.test(pathname ?? "") ||
-    formPathPrefixes.some((prefix) => pathname === prefix || pathname?.startsWith(`${prefix}/`));
-
-  if (shouldHide) {
-    return null;
-  }
-
   const signedIn = state === "signed-in" || state === "admin";
   const checkingAuth = state === "loading";
   const authHref = signedIn || checkingAuth ? "/cabinet" : "/auth";

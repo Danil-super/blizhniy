@@ -71,14 +71,14 @@ export function HeaderControls({ placement = "desktop" }: { placement?: "desktop
           setCityQuery("");
           setCityMenuOpen((current) => !current);
         }}
-        className={`relative z-20 flex min-h-11 items-center gap-2 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 px-2 text-left text-sm text-slate-950 shadow-sm transition hover:border-emerald-200 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-100 ${
+        className={`relative z-20 flex min-h-10 items-center gap-2 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 px-2 text-left text-[13px] text-slate-950 shadow-sm transition hover:border-emerald-200 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-100 md:min-h-11 md:text-sm ${
           mobile ? "w-full" : "w-44 xl:w-48"
         }`}
         aria-expanded={cityMenuOpen}
         aria-haspopup="listbox"
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-[#2f8f12] shadow-sm">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-[#2f8f12] shadow-sm md:h-9 md:w-9">
             <MapPin className="h-[18px] w-[18px]" aria-hidden="true" />
           </span>
           <span className="sr-only">Регион</span>

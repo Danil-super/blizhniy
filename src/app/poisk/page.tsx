@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Search, UserRound } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { VacancyThumbnail } from "@/components/VacancyMedia";
-import { listPublicDemoListings } from "@/components/listings/ListingPages";
+import { listPublicDemoListings, toDemoListing } from "@/components/listings/ListingPages";
 import { getPublicCategories } from "@/lib/category-store";
 import { cities, professions, region } from "@/lib/data";
 import { listFairApplications, listSpecialists, listWorkRequests } from "@/lib/mock-store";
@@ -11,6 +11,7 @@ import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/s
 import { listStoredFairApplications } from "@/lib/fair-application-store";
 import { listStoredVacancies, listVacanciesWithStored } from "@/lib/vacancy-store";
 import { listStoredWorkRequests, listWorkRequestsWithStored } from "@/lib/work-request-store";
+import { listStoredListings } from "@/lib/listing-store";
 
 type SearchResult = {
   title: string;
@@ -40,6 +41,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const storedVacancies = await listStoredVacancies(100);
   const vacancies = listVacanciesWithStored(storedVacancies);
   const fallbackEnabled = shouldShowFallbackContent();
+  const storedListings = (await listStoredListings()).map((listing) => ({ ...toDemoListing(listing), images: listing.images }));
+  const publicListings = Array.from(
+    new Map([...storedListings, ...(fallbackEnabled ? listPublicDemoListings() : [])].map((listing) => [listing.slug, listing])).values(),
+  );
   const storedSpecialists = await listStoredSpecialistProfiles(100);
   const specialists = listSpecialistsWithStored(storedSpecialists, fallbackEnabled ? listSpecialists() : []);
   const storedWorkRequests = await listStoredWorkRequests(100);
@@ -47,8 +52,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const fairApplications = fallbackEnabled ? listFairApplications() : await listStoredFairApplications("published");
   const categories = await getPublicCategories();
 
-  const listingResults: SearchResult[] = listPublicDemoListings()
+  const listingResults: SearchResult[] = publicListings
     .filter((listing) =>
+      listing.status === "published" &&
       matchesCity(listing.city) &&
       (query
         ? includesQuery([listing.title, listing.description, listing.city, listing.categoryName, listing.subcategoryName, listing.kind], query)
@@ -139,28 +145,28 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   return (
     <>
       <SiteHeader />
-      <main className="page-container py-10">
+      <main className="page-container py-6 sm:py-10">
         <section>
           <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Поиск</p>
-          <h1 className="mt-3 text-3xl font-bold text-[#060b27]">{query ? `Результаты: ${query}` : "Поиск по площадке"}</h1>
-          <p className="mt-3 max-w-3xl leading-7 text-slate-600">
+          <h1 className="mt-2 text-2xl font-bold text-[#060b27] sm:mt-3 sm:text-3xl">{query ? `Результаты: ${query}` : "Поиск по площадке"}</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">
             Поиск работает по объявлениям, вакансиям, специалистам, категориям и классификатору профессий.
             Регион выдачи: {cityName ?? region.name}.
           </p>
         </section>
 
-        <section className="mt-8 grid gap-4">
+        <section className="mt-5 grid gap-2.5 sm:mt-8 sm:gap-4">
           {results.length ? (
-            results.map((result) => (
+            results.map((result, index) => (
               <Link
-                key={`${result.type}-${result.href}`}
+                key={`${result.type}-${result.href}-${result.title}-${index}`}
                 href={result.href}
-                className="group grid gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-card sm:grid-cols-[48px_1fr_auto] sm:items-center"
+                className="group grid grid-cols-[40px_minmax(0,1fr)] gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-200 hover:shadow-card sm:grid-cols-[48px_1fr_auto] sm:items-center sm:gap-4 sm:p-5"
               >
                 {result.type === "Вакансия" ? (
                   <VacancyThumbnail images={result.images} title={result.title} />
                 ) : (
-                  <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1]">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1] sm:h-12 sm:w-12">
                     {result.type === "Специалист" ? (
                       <UserRound className="h-5 w-5" />
                     ) : (
@@ -170,10 +176,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
                 )}
                 <span>
                   <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{result.type}</span>
-                  <span className="mt-1 block text-xl font-bold text-[#060b27]">{result.title}</span>
-                  <span className="mt-2 block leading-6 text-slate-600">{result.description}</span>
+                  <span className="mt-0.5 block text-base font-bold leading-5 text-[#060b27] sm:mt-1 sm:text-xl sm:leading-normal">{result.title}</span>
+                  <span className="mt-1 line-clamp-2 block text-sm leading-5 text-slate-600 sm:mt-2 sm:line-clamp-none sm:text-base sm:leading-6">{result.description}</span>
                 </span>
-                <span className="inline-flex items-center gap-2 font-bold text-[#0875d1]">
+                <span className="col-start-2 inline-flex items-center gap-1.5 text-sm font-bold text-[#0875d1] sm:col-start-auto sm:gap-2 sm:text-base">
                   Открыть
                   <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
                 </span>

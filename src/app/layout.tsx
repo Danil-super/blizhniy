@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SiteFooter } from "@/components/SiteFooter";
+import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { getPublicSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
@@ -22,6 +23,7 @@ export default function RootLayout({
     <html lang="ru">
       <body className="antialiased">
         <div className="app-shell">{children}</div>
+        <MobileBottomNav />
         <SiteFooter />
       </body>
     </html>

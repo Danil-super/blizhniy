@@ -38,7 +38,7 @@ export function VacancyGridCard({ vacancy }: { vacancy: JobVacancy }) {
   return (
     <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card">
       <Link href={href} className="block min-w-0" aria-label={`Открыть вакансию ${vacancy.title}`}>
-        <span className="relative flex aspect-[1.18/1] items-center justify-center overflow-hidden bg-slate-100">
+        <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-slate-100 sm:aspect-[1.18/1]">
           {image ? (
             <StoredMediaImage src={image} alt={vacancy.title} className="h-full w-full bg-slate-100 object-contain transition duration-300 group-hover:scale-[1.02]" />
           ) : (
@@ -52,7 +52,7 @@ export function VacancyGridCard({ vacancy }: { vacancy: JobVacancy }) {
           <span className="line-clamp-2 min-h-8 text-[13px] font-bold leading-4 text-slate-900 transition group-hover:text-[#0875d1]">
             {vacancy.title}
           </span>
-          <span className="mt-0.5 block truncate text-base font-bold leading-5 text-[#060b27]">{vacancy.salary}</span>
+          <span className="mt-0.5 block truncate text-sm font-bold leading-5 text-[#060b27] sm:text-base">{vacancy.salary}</span>
           <span className="mt-0.5 block truncate text-[11px] font-semibold text-slate-500">{vacancy.organization}</span>
           {dateLabel ? (
             <span className="mt-1 flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500">

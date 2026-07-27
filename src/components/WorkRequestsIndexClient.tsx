@@ -68,17 +68,17 @@ function WorkRequestListCard({ request }: { request: WorkRequest }) {
   const publishedLabel = formatPublicationDateTime(request.publishedAt ?? request.createdAt, "10:00");
 
   return (
-    <Link href={`/rabota/zakazy/${request.id}`} className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
+    <Link href={`/rabota/zakazy/${request.id}`} className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:p-4">
       <p className="truncate text-xs font-semibold text-slate-500">{request.author}</p>
-      <h2 className="mt-1 line-clamp-2 min-h-10 text-sm font-bold leading-5 text-[#060b27] transition group-hover:text-[#0875d1]">{request.title}</h2>
-      <p className="mt-2 text-base font-bold text-[#060b27]">{request.budget}</p>
+      <h2 className="mt-1 line-clamp-2 text-sm font-bold leading-5 text-[#060b27] transition group-hover:text-[#0875d1] sm:min-h-10">{request.title}</h2>
+      <p className="mt-1.5 text-sm font-bold text-[#060b27] sm:mt-2 sm:text-base">{request.budget}</p>
       {publishedLabel ? (
-        <p className="mt-2 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
+        <p className="mt-1.5 flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500 sm:mt-2 sm:text-xs">
           <Clock3 className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">{publishedLabel}</span>
         </p>
       ) : null}
-      <p className="mt-2 flex min-w-0 items-center gap-1 text-xs text-slate-500">
+      <p className="mt-1.5 flex min-w-0 items-center gap-1 text-[11px] text-slate-500 sm:mt-2 sm:text-xs">
         <MapPin className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{request.city}</span>
       </p>
@@ -106,7 +106,7 @@ export function WorkRequestsIndexClient({ initialRequests }: { initialRequests: 
   }, []);
 
   return (
-    <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+    <div className="mt-5 grid grid-cols-1 gap-2.5 sm:mt-6 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
       {requests.map((request) => (
         <WorkRequestListCard key={request.id} request={request} />
       ))}

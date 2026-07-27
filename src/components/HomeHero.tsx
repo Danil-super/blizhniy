@@ -4,10 +4,10 @@ export async function HomeHero() {
   const messages = await getActiveAdMarqueeMessages();
 
   return (
-    <section className="page-container py-2 sm:py-3" aria-label="Рекламная строка">
-      <div className="flex min-h-10 items-center overflow-hidden rounded-2xl border border-blue-100 bg-white py-2 shadow-sm sm:min-h-12">
+    <section className="page-container py-1 sm:py-3" aria-label="Рекламная строка">
+      <div className="flex min-h-8 items-center overflow-hidden rounded-xl border border-blue-100 bg-white py-1 shadow-sm sm:min-h-12 sm:rounded-2xl sm:py-2">
         <div className="min-w-0 flex-1 overflow-hidden" aria-live="off">
-          <div className="marquee-track flex w-max items-center gap-8 text-sm font-semibold text-slate-700">
+          <div className="marquee-track flex w-max items-center gap-8 text-xs font-semibold text-slate-700 sm:text-sm">
             {messages.map((message, index) => (
               <span key={`${index}-${message}`} className="flex items-center gap-8 whitespace-nowrap">
                 <span>{message}</span>

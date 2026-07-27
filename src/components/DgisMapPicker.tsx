@@ -523,7 +523,7 @@ export function DgisMapView({ lat, lng, label }: DgisMapViewProps) {
   }, [lat, lng]);
 
   return (
-    <div className="relative mt-5 h-64 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+    <div className="relative mt-4 h-52 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 sm:mt-5 sm:h-64">
       <div ref={mapRef} className="absolute inset-0" />
       {status ? (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-50 p-4 text-center text-sm font-semibold text-slate-500">

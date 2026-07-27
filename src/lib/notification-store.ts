@@ -173,3 +173,17 @@ export async function markStoredNotificationsRead(userId: string) {
 
   return rows.map(mapStoredNotification);
 }
+
+export async function clearStoredNotifications(userId: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(userId)) {
+    return;
+  }
+
+  await supabaseRest(
+    `/rest/v1/notifications?user_id=eq.${encodeURIComponent(userId)}`,
+    {
+      method: "DELETE",
+      prefer: "return=minimal",
+    },
+  );
+}

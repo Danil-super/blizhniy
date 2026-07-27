@@ -23,7 +23,7 @@ const publicationTypes = [
     icon: BriefcaseBusiness,
   },
   {
-    href: "/cabinet/zakazy",
+    href: "/rabota/zakazy/sozdat",
     title: "Заказ исполнителю",
     description: "Описать задачу для специалистов рядом.",
     restriction: undefined,
@@ -51,21 +51,21 @@ export function PublicationChoicePage({ adminMode = false }: { adminMode?: boole
   return (
     <>
       <SiteHeader />
-      <main className="page-container py-8 sm:py-10">
+      <main className="page-container py-6 sm:py-10">
         <h1 className="text-2xl font-bold text-[#060b27] sm:text-4xl">Что разместить?</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-lg sm:leading-8">
           {adminMode
             ? "Выберите тип публикации. В админ-режиме формы можно сохранить без оплаты для служебной проверки."
             : "Выберите тип публикации. После заполнения формы сайт создаст черновик или заказ на оплату, если для публикации нужен тариф."}
         </p>
-        <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <section className="mt-5 grid gap-2.5 sm:mt-6 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
           {publicationTypes.map((type) => {
             const Icon = type.icon;
 
             return (
-              <Link key={type.href} href={`${type.href}${querySuffix}`} className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-card">
-                <span className="grid grid-cols-[2.75rem_minmax(0,1fr)] items-start gap-3">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1] transition group-hover:bg-[#0875d1] group-hover:text-white">
+              <Link key={type.href} href={`${type.href}${querySuffix}`} className="group rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-200 hover:shadow-card sm:p-5">
+                <span className="grid grid-cols-[2.5rem_minmax(0,1fr)] items-start gap-2.5 sm:grid-cols-[2.75rem_minmax(0,1fr)] sm:gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1] transition group-hover:bg-[#0875d1] group-hover:text-white sm:h-11 sm:w-11">
                     <Icon className="h-5 w-5" />
                   </span>
                   {type.restriction ? (
@@ -80,8 +80,8 @@ export function PublicationChoicePage({ adminMode = false }: { adminMode?: boole
                     </span>
                   ) : null}
                 </span>
-                <h2 className="mt-4 text-xl font-bold text-[#060b27]">{type.title}</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{type.description}</p>
+                <h2 className="mt-2.5 text-base font-bold text-[#060b27] sm:mt-4 sm:text-xl">{type.title}</h2>
+                <p className="mt-1.5 text-[13px] leading-5 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{type.description}</p>
               </Link>
             );
           })}

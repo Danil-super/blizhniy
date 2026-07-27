@@ -119,6 +119,7 @@ export function NotificationBell() {
   const [bookingNotifications, setBookingNotifications] = useState<BookingNotification[]>([]);
   const [requests, setRequests] = useState<BookingRequest[]>([]);
   const [resolvingServerRequestId, setResolvingServerRequestId] = useState("");
+  const [actionError, setActionError] = useState("");
   const [identity, setIdentity] = useState<ClientUserIdentity | null>(null);
   const [profile, setProfile] = useState<CabinetProfile | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -218,7 +219,25 @@ export function NotificationBell() {
     emitUpdate();
   }
 
-  function clearNotifications() {
+  async function clearNotifications() {
+    setActionError("");
+
+    try {
+      const headers = await getAuthHeaders();
+
+      if (Object.keys(headers).length) {
+        const response = await fetch("/api/cabinet/notifications", { method: "DELETE", headers });
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Не удалось очистить уведомления");
+        }
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Не удалось очистить уведомления");
+      return;
+    }
+
     if (identity) {
       clearSiteNotifications(identity.ownerKey);
     }
@@ -264,15 +283,24 @@ export function NotificationBell() {
 
   async function resolveServerRequest(requestId: string, status: "accepted" | "declined") {
     setResolvingServerRequestId(requestId);
+    setActionError("");
 
     try {
-      await fetch("/api/cabinet/bookings", {
+      const response = await fetch("/api/cabinet/bookings", {
         body: JSON.stringify({ requestId, status }),
         headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         method: "PATCH",
       });
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Не удалось изменить статус бронирования");
+      }
+
       window.dispatchEvent(new Event(siteNotificationsEventName));
       syncStoredNotifications();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Не удалось изменить статус бронирования");
     } finally {
       setResolvingServerRequestId("");
     }
@@ -317,6 +345,8 @@ export function NotificationBell() {
               ) : null}
             </div>
           </div>
+
+          {actionError ? <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-xs font-bold text-rose-700">{actionError}</p> : null}
 
           <div className="max-h-96 overflow-y-auto">
             {signedOut ? (

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { BackLink } from "@/components/BackLink";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SpecialistListCard } from "@/components/SpecialistListCard";
 import { listSpecialists } from "@/lib/mock-store";
@@ -21,8 +21,8 @@ export default async function Page() {
     <>
       <SiteHeader />
       <main className="page-container py-10">
-        <Link href="/rabota" className="text-sm font-bold text-[#0875d1]">Назад к работе</Link>
-        <h1 className="mt-3 text-3xl font-bold text-[#060b27]">Все специалисты</h1>
+        <BackLink fallbackHref="/rabota">Назад к работе</BackLink>
+        <h1 className="mt-3 text-2xl font-bold text-[#060b27] sm:text-3xl">Все специалисты</h1>
         <p className="mt-3 max-w-2xl text-slate-600">Каталог исполнителей.</p>
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           {specialists.map((specialist) => (

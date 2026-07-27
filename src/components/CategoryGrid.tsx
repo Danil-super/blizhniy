@@ -296,12 +296,12 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
               key={`${category.label}-${category.href}`}
               href={category.href}
               data-category-card
-              className={`group relative isolate block min-h-[430px] overflow-hidden rounded-[26px] border border-slate-200/90 bg-white shadow-[0_14px_42px_rgba(15,23,42,0.06)] ring-1 ring-white transition duration-300 [clip-path:inset(0_round_26px)] [transform:translateZ(0)] hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_24px_70px_rgba(15,23,42,0.12)] sm:min-h-[400px] lg:min-h-[430px] xl:min-h-[440px] ${isLastOddCard ? "lg:col-span-2 lg:min-h-[540px]" : ""} ${tone.hover}`}
+              className={`group relative isolate block min-h-[320px] overflow-hidden rounded-[22px] border border-slate-200/90 bg-white shadow-[0_14px_42px_rgba(15,23,42,0.06)] ring-1 ring-white transition duration-300 [clip-path:inset(0_round_22px)] [transform:translateZ(0)] hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_24px_70px_rgba(15,23,42,0.12)] sm:min-h-[400px] sm:rounded-[26px] sm:[clip-path:inset(0_round_26px)] lg:min-h-[430px] xl:min-h-[440px] ${isLastOddCard ? "lg:col-span-2 lg:min-h-[540px]" : ""} ${tone.hover}`}
             >
               <img
                 aria-hidden="true"
                 alt=""
-                className="absolute inset-y-0 right-0 h-full w-[124%] max-w-none rounded-[26px] object-cover brightness-[1.04] contrast-[1.12] saturate-[1.16] transition duration-500 [clip-path:inset(0_round_26px)] [transform:translateZ(0)] group-hover:scale-[1.02] sm:w-[108%] lg:w-[104%]"
+                className="absolute inset-y-0 right-0 h-full w-[124%] max-w-none rounded-[22px] object-cover brightness-[1.04] contrast-[1.12] saturate-[1.16] transition duration-500 [clip-path:inset(0_round_22px)] [transform:translateZ(0)] group-hover:scale-[1.02] sm:w-[108%] sm:rounded-[26px] sm:[clip-path:inset(0_round_26px)] lg:w-[104%]"
                 decoding="async"
                 fetchPriority={index < 2 || isLastOddCard ? "high" : "auto"}
                 loading={index < 2 || isLastOddCard ? "eager" : "lazy"}
@@ -320,13 +320,13 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
                 </span>
               ) : null}
               <span
-                className={`relative z-10 flex min-h-[430px] flex-col p-5 pb-20 pt-7 sm:min-h-[400px] sm:p-6 sm:pb-24 sm:pt-8 lg:min-h-[430px] lg:p-8 lg:pb-24 lg:pt-10 xl:min-h-[440px] ${
+                className={`relative z-10 flex min-h-[320px] flex-col p-3.5 pb-14 pt-4 sm:min-h-[400px] sm:p-6 sm:pb-24 sm:pt-8 lg:min-h-[430px] lg:p-8 lg:pb-24 lg:pt-10 xl:min-h-[440px] ${
                   isLastOddCard ? "max-w-[76%] sm:max-w-[52%] lg:min-h-[540px] lg:max-w-[31%]" : "max-w-[76%] sm:max-w-[62%] lg:max-w-[42%]"
                 }`}
               >
-                <h2 className="block text-xl font-black leading-tight text-[#102414] sm:text-3xl lg:text-[32px]">{category.label}</h2>
-                <span className="mt-3 block w-[229px] max-w-full text-[15px] font-semibold leading-6 text-slate-700 sm:w-auto sm:max-w-[25rem] sm:text-base sm:leading-7">{category.description}</span>
-                <span className="mt-5 grid gap-2 text-sm font-bold leading-5 text-slate-700 sm:text-base sm:leading-6">
+                <h2 className="block text-lg font-black leading-tight text-[#102414] sm:text-3xl lg:text-[32px]">{category.label}</h2>
+                <span className="mt-2 block w-[229px] max-w-full text-[13px] font-semibold leading-5 text-slate-700 sm:mt-3 sm:w-auto sm:max-w-[25rem] sm:text-base sm:leading-7">{category.description}</span>
+                <span className="mt-3 grid gap-1.5 text-[13px] font-bold leading-[18px] text-slate-700 sm:mt-5 sm:gap-2 sm:text-base sm:leading-6">
                   {category.bullets.slice(0, 3).map((bullet) => (
                     <span key={bullet} className="flex min-w-0 items-start gap-2">
                       <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: category.accentColor }} />
@@ -335,7 +335,7 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
                   ))}
                 </span>
               </span>
-              <span className={`absolute bottom-5 left-5 z-20 inline-flex h-10 w-fit items-center justify-center gap-2 rounded-full border px-3.5 text-sm font-bold shadow-lg backdrop-blur transition sm:bottom-6 sm:left-6 lg:bottom-8 lg:left-8 ${tone.button}`}>
+              <span className={`absolute bottom-4 left-4 z-20 inline-flex h-9 w-fit items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-bold shadow-lg backdrop-blur transition sm:bottom-6 sm:left-6 sm:h-10 sm:gap-2 sm:px-3.5 sm:text-sm lg:bottom-8 lg:left-8 ${tone.button}`}>
                 <span>Открыть</span>
                 <span
                   className={`inline-flex h-6 w-6 items-center justify-center rounded-full transition group-hover:translate-x-0.5 ${tone.buttonIcon}`}

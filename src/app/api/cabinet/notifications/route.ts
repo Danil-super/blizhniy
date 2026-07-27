@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listStoredNotificationsForUser, markStoredNotificationsRead } from "@/lib/notification-store";
+import { clearStoredNotifications, listStoredNotificationsForUser, markStoredNotificationsRead } from "@/lib/notification-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 
 export async function GET(request: Request) {
@@ -32,4 +32,19 @@ export async function PATCH(request: Request) {
   const notifications = await markStoredNotificationsRead(auth.user.id);
 
   return NextResponse.json({ notifications });
+}
+
+export async function DELETE(request: Request) {
+  if (!isSupabaseServerConfigured()) {
+    return NextResponse.json({ error: "Auth is not configured" }, { status: 503 });
+  }
+
+  const auth = await getAuthenticatedRequestUser(request);
+
+  if (!auth) {
+    return NextResponse.json({ error: "Войдите, чтобы удалить уведомления" }, { status: 401 });
+  }
+
+  await clearStoredNotifications(auth.user.id);
+  return NextResponse.json({ ok: true });
 }

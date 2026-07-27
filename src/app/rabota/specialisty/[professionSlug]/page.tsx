@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackLink } from "@/components/BackLink";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SpecialistListCard } from "@/components/SpecialistListCard";
 import { professions } from "@/lib/data";
@@ -18,8 +18,8 @@ export default async function Page({ params }: { params: Promise<{ professionSlu
     <>
       <SiteHeader />
       <main className="page-container py-10">
-        <Link href="/rabota/specialisty" className="text-sm font-bold text-[#0875d1]">Назад к специалистам</Link>
-        <h1 className="mt-3 text-3xl font-bold text-[#060b27]">{profession ? `Специалисты: ${profession.name}` : "Специалисты"}</h1>
+        <BackLink fallbackHref="/rabota/specialisty">Назад к специалистам</BackLink>
+        <h1 className="mt-3 text-2xl font-bold text-[#060b27] sm:text-3xl">{profession ? `Специалисты: ${profession.name}` : "Специалисты"}</h1>
         {profession ? <p className="mt-3 max-w-2xl text-slate-600">Раздел: {profession.parent}</p> : null}
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           {specialists.map((specialist) => (
