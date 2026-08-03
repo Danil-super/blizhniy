@@ -28,6 +28,7 @@ type AdminDemoPublishButtonProps = {
   requireCaptcha?: boolean;
   buttonClassName?: string;
   paymentTariffId?: string;
+  captchaAfterButton?: boolean;
 };
 
 const clientFallbackContentEnabled = shouldShowClientFallbackContent();
@@ -511,6 +512,7 @@ async function createSupabaseVacancy(formData: FormData, options: { accessToken:
 
 export function AdminDemoPublishButton({
   buttonClassName,
+  captchaAfterButton = false,
   label,
   publicationType,
   requireCaptcha,
@@ -524,6 +526,7 @@ export function AdminDemoPublishButton({
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
   const captchaRequired = requireCaptcha ?? needsCaptcha(publicationType);
+  const captchaWidget = captchaRequired ? <TurnstileWidget inline={captchaAfterButton} resetKey={captchaResetKey} onVerify={setCaptchaToken} /> : null;
 
   async function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
     const form = event.currentTarget.form;
@@ -686,8 +689,8 @@ export function AdminDemoPublishButton({
   }
 
   return (
-    <div className="grid gap-2">
-      {captchaRequired ? <TurnstileWidget resetKey={captchaResetKey} onVerify={setCaptchaToken} tone="red" /> : null}
+    <div className={captchaAfterButton ? "grid gap-2 md:contents" : "grid gap-2"}>
+      {!captchaAfterButton ? captchaWidget : null}
       <button
         type="button"
         onClick={handleClick}
@@ -700,7 +703,8 @@ export function AdminDemoPublishButton({
         {saving ? (paymentTariffId && !isDraftStatus(status) ? "Создаем и оплачиваем..." : "Сохраняем...") : label}
         <ArrowRight className="h-5 w-5" />
       </button>
-      {error ? <p className="text-sm font-semibold text-rose-600">{error}</p> : null}
+      {captchaAfterButton ? captchaWidget : null}
+      {error ? <p className={`text-sm font-semibold text-rose-600 ${captchaAfterButton ? "md:basis-full" : ""}`}>{error}</p> : null}
     </div>
   );
 }

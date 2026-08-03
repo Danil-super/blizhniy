@@ -2068,7 +2068,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
               ) : null}
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap items-start gap-3">
               <AdminDemoPublishButton
                 publicationType="listing"
                 returnHref="/cabinet/obyavleniya"
@@ -2086,6 +2086,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
                   returnHref="/cabinet/obyavleniya"
                   label="Создать и оплатить"
                   paymentTariffId="listing-publication"
+                  captchaAfterButton
                   buttonClassName="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#d92d20] px-6 font-bold text-white transition hover:bg-[#b42318] disabled:cursor-wait disabled:bg-slate-300"
                 />
               )}

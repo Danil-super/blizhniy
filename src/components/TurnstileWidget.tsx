@@ -6,7 +6,7 @@ type TurnstileWidgetProps = {
   name?: string;
   resetKey?: number | string;
   onVerify?: (token: string) => void;
-  tone?: "default" | "red";
+  inline?: boolean;
 };
 
 type TurnstileApi = {
@@ -69,7 +69,7 @@ function loadTurnstileScript() {
   });
 }
 
-export function TurnstileWidget({ name = "captchaToken", onVerify, resetKey, tone = "default" }: TurnstileWidgetProps) {
+export function TurnstileWidget({ inline = false, name = "captchaToken", onVerify, resetKey }: TurnstileWidgetProps) {
   const [token, setToken] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -134,7 +134,7 @@ export function TurnstileWidget({ name = "captchaToken", onVerify, resetKey, ton
   return (
     <>
       <input type="hidden" name={name} value={token} />
-      {turnstileSiteKey ? <div ref={containerRef} className={`mt-3 min-h-[65px] ${tone === "red" ? "rounded-lg border border-[#ef8c84] bg-[#fff1f0] p-1" : ""}`} /> : null}
+      {turnstileSiteKey ? <div ref={containerRef} className={`${inline ? "" : "mt-3 "}min-h-[65px]`} /> : null}
       <input
         type="text"
         name="captchaWebsite"
