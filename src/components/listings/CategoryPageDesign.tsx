@@ -391,10 +391,21 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           {description ? (
             <p
               className={`mt-2.5 text-[13px] font-semibold leading-5 text-slate-700 sm:mt-3 sm:text-base sm:leading-7 ${isHomeAndDachaCategory ? "invisible sm:visible" : ""} ${
-                isGardenCategory ? "max-w-[49%] sm:max-w-[58%] lg:max-w-xl" : isKidsCategory ? "max-w-[18rem] lg:max-w-xl" : isAnimalsCategory || isRealEstateCategory || isElectronicsCategory || isHomeAndDachaCategory ? "max-w-[19rem] lg:max-w-xl" : usesRightAlignedHero ? "max-w-[78%] sm:max-w-[62%] lg:max-w-xl" : "max-w-4xl"
+                isGardenCategory ? "max-w-[49%] sm:max-w-[58%] lg:max-w-xl" : isKidsCategory ? "max-w-[18rem] lg:max-w-xl" : isRitualCategory ? "max-w-[28rem] lg:max-w-xl" : isAnimalsCategory || isRealEstateCategory || isElectronicsCategory || isHomeAndDachaCategory ? "max-w-[19rem] lg:max-w-xl" : usesRightAlignedHero ? "max-w-[78%] sm:max-w-[62%] lg:max-w-xl" : "max-w-4xl"
               }`}
             >
-              {isKidsCategory && description === "Выберите подкатегорию, посмотрите предложения рядом или разместите свое объявление." ? (
+              {isRitualCategory && description === "Деликатный раздел для организации прощания, ухода за местом захоронения, транспорта, принадлежностей и сопутствующих работ рядом." ? (
+                <>
+                  <span className="lg:hidden">
+                    Деликатный раздел для организации прощания,
+                    <br />
+                    ухода за местом захоронения, транспорта,
+                    <br />
+                    принадлежностей и сопутствующих работ рядом.
+                  </span>
+                  <span className="hidden lg:inline">{description}</span>
+                </>
+              ) : isKidsCategory && description === "Выберите подкатегорию, посмотрите предложения рядом или разместите свое объявление." ? (
                 <>
                   <span className="sm:hidden">
                     Выберите подкатегорию, посмотрите

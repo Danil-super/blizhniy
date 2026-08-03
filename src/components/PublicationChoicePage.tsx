@@ -63,9 +63,9 @@ export function PublicationChoicePage({ adminMode = false }: { adminMode?: boole
             const Icon = type.icon;
 
             return (
-              <Link key={type.href} href={`${type.href}${querySuffix}`} className="group rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-200 hover:shadow-card sm:p-5">
+              <Link key={type.href} href={`${type.href}${querySuffix}`} className="group rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-[#9bd6a6] hover:shadow-card sm:p-5">
                 <span className="grid grid-cols-[2.5rem_minmax(0,1fr)] items-start gap-2.5 sm:grid-cols-[2.75rem_minmax(0,1fr)] sm:gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0875d1] transition group-hover:bg-[#0875d1] group-hover:text-white sm:h-11 sm:w-11">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#effaf0] text-[#0aa337] transition group-hover:bg-[#0aa337] group-hover:text-white sm:h-11 sm:w-11">
                     <Icon className="h-5 w-5" />
                   </span>
                   {type.restriction ? (

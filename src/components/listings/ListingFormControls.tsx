@@ -847,7 +847,7 @@ export function ListingPhotoUploader() {
             <p className="mt-1 text-sm text-slate-500">{media.length ? `${media.length} из ${maxFiles}` : "Файлы не выбраны"}. {listingMediaLimitText()}</p>
           </div>
         </div>
-        <button type="button" onClick={openFileDialog} disabled={availableSlots <= 0} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0669bd] disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="button" onClick={openFileDialog} disabled={availableSlots <= 0} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#d92d20] px-4 text-sm font-bold text-white transition hover:bg-[#b42318] disabled:cursor-not-allowed disabled:opacity-50">
           <ImagePlus className="h-4 w-4" />
           Добавить файлы
         </button>

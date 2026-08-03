@@ -178,7 +178,7 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
                       returnHref="/cabinet/vakansii"
                       label="Создать и оплатить"
                       paymentTariffId="vacancy-publication"
-                      buttonClassName="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:bg-slate-300"
+                      buttonClassName="inline-flex h-12 w-fit items-center justify-center rounded-xl bg-[#d92d20] px-7 font-bold text-white transition hover:bg-[#b42318] disabled:cursor-wait disabled:bg-slate-300"
                     />
                   )}
                 </div>

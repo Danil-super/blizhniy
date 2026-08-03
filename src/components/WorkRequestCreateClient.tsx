@@ -297,7 +297,7 @@ export function WorkRequestCreateClient() {
             </button>
             <button
               type="button"
-              className="inline-flex h-12 items-center justify-center rounded-xl bg-[#0aa337] px-7 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:opacity-70"
+              className="inline-flex h-12 items-center justify-center rounded-xl bg-[#d92d20] px-7 font-bold text-white transition hover:bg-[#b42318] disabled:cursor-wait disabled:opacity-70"
               disabled={Boolean(savingMode)}
               onClick={() => void saveRequest("publish")}
             >

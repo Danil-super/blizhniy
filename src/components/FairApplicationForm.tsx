@@ -254,7 +254,7 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
         resetKey={captchaResetKey}
         onVerify={setCaptchaToken}
       />
-      <button type="submit" disabled={state === "loading" || !captchaToken} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#0aa337] px-5 text-sm font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-12 sm:w-fit sm:px-7 sm:text-base">
+      <button type="submit" disabled={state === "loading" || !captchaToken} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#d92d20] px-5 text-sm font-bold text-white transition hover:bg-[#b42318] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-12 sm:w-fit sm:px-7 sm:text-base">
         {state === "loading" ? (adminMode ? "Создаем заявку..." : "Создаем и оплачиваем...") : adminMode ? "Создать заявку без оплаты" : "Создать заявку и оплатить"}
       </button>
       {state === "error" ? <p className="text-sm font-semibold text-rose-600">{message}</p> : null}

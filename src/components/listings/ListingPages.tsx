@@ -2086,7 +2086,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
                   returnHref="/cabinet/obyavleniya"
                   label="Создать и оплатить"
                   paymentTariffId="listing-publication"
-                  buttonClassName="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:bg-slate-300"
+                  buttonClassName="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#d92d20] px-6 font-bold text-white transition hover:bg-[#b42318] disabled:cursor-wait disabled:bg-slate-300"
                 />
               )}
             </div>
