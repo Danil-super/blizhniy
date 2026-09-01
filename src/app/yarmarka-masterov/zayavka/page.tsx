@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { SiteHeader } from "@/components/SiteHeader";
 import { FairApplicationFormPage } from "@/components/FairPages";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
@@ -5,6 +6,14 @@ import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
 
 type PageProps = {
   searchParams?: Promise<{ admin?: string }>;
+};
+
+export const metadata: Metadata = {
+  title: "Заявка на ярмарку мастеров",
+  robots: {
+    index: false,
+    follow: true,
+  },
 };
 
 export default async function Page({ searchParams }: PageProps) {

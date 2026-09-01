@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Search, UserRound } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -22,6 +23,14 @@ type SearchResult = {
 };
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Поиск",
+  robots: {
+    index: false,
+    follow: true,
+  },
+};
 
 function normalize(value: string) {
   return value.toLowerCase().trim();

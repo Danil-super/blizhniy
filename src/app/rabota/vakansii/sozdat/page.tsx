@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { BrandName } from "@/components/BrandName";
@@ -15,6 +16,14 @@ import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstil
 
 type PageProps = {
   searchParams?: Promise<{ admin?: string; error?: string }>;
+};
+
+export const metadata: Metadata = {
+  title: "Создать вакансию",
+  robots: {
+    index: false,
+    follow: true,
+  },
 };
 
 function parseCoordinate(formData: FormData, name: string) {

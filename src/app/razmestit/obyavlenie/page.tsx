@@ -8,6 +8,10 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "/razmestit/obyavlenie",
   },
+  robots: {
+    index: false,
+    follow: true,
+  },
 };
 
 type PageProps = {

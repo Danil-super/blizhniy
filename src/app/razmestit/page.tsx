@@ -5,6 +5,10 @@ import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
 export const metadata: Metadata = {
   title: "Разместить публикацию",
   description: "Выбор типа публикации на платформе БЛИЖНИЙ.",
+  robots: {
+    index: false,
+    follow: true,
+  },
 };
 
 type PageProps = {
