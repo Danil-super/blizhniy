@@ -161,17 +161,17 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Check deployed kids hero on mobile and desktop
+      - name: Check deployed category heroes on mobile and desktop
         env:
           BASE_URL: https://xn----9sbphbgks4a4a.xn--p1ai
-        run: node scripts/check-kids-hero.mjs
+        run: node scripts/check-category-heroes.mjs
 
       - name: Upload responsive screenshots
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: kids-hero-responsive
-          path: artifacts/kids-hero
+          name: category-heroes-responsive
+          path: artifacts/category-heroes
           if-no-files-found: warn
           retention-days: 14
 
