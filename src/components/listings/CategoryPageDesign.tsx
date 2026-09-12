@@ -194,7 +194,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         isGardenCategory
           ? "lg:min-h-[370px]"
           : isKidsCategory
-            ? "grid gap-4 lg:min-h-[460px] lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-center lg:gap-6"
+            ? "min-h-[520px] sm:min-h-[680px] md:flex md:min-h-[440px] md:items-center lg:min-h-[460px] 2xl:min-h-[560px]"
             : usesRightAlignedHero
               ? "min-h-[330px] sm:min-h-[410px] lg:min-h-[390px]"
               : ""
@@ -250,16 +250,19 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </>
       ) : null}
       {isKidsCategory ? (
-        <Image
-          alt=""
-          aria-hidden="true"
-          className="block h-auto w-full min-w-0 object-contain"
-          height={941}
-          priority
-          sizes="(min-width: 1536px) 817px, (min-width: 1024px) 55vw, 100vw"
-          src="/images/categories/kids-category-hero-white.png"
-          width={1672}
-        />
+        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <source media="(min-width: 768px)" srcSet="/images/categories/kids-category-hero-desktop-v3.webp" />
+          {/* Native picture selects one composition before loading and keeps the full image visible. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            alt=""
+            className="h-full w-full object-contain object-bottom md:object-right-bottom"
+            fetchPriority="high"
+            height={1536}
+            src="/images/categories/kids-category-hero-mobile-v3.webp"
+            width={1024}
+          />
+        </picture>
       ) : null}
       {isAnimalsCategory ? (
         <>
@@ -481,7 +484,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       <div
         className={
           isKidsCategory
-            ? "relative order-first min-w-0"
+            ? "relative z-10 min-w-0 md:w-[32%] lg:w-[34%]"
             : hasImageHero
               ? "relative z-10 max-w-full lg:max-w-[800px]"
             : "grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.34fr)] lg:items-end"

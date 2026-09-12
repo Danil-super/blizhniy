@@ -35,6 +35,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
   deploy:
     needs: validate
     runs-on: ubuntu-latest
@@ -145,3 +148,30 @@ jobs:
           retry ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "tail -n 200 '$REMOTE_LOG' || true" || true
           echo "Deploy timed out while waiting for remote status file."
           exit 124
+
+      - name: Setup Node.js for deployed layout checks
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install layout check dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Check deployed kids hero on mobile and desktop
+        env:
+          BASE_URL: https://xn----9sbphbgks4a4a.xn--p1ai
+        run: node scripts/check-kids-hero.mjs
+
+      - name: Upload responsive screenshots
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: kids-hero-responsive
+          path: artifacts/kids-hero
+          if-no-files-found: warn
+          retention-days: 14
+
