@@ -259,7 +259,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
               fill
               priority
               sizes="100vw"
-              src="/images/categories/kids-category-hero-v2.png"
+              src="/images/categories/kids-category-hero-white.png"
             />
           </div>
           <Image
@@ -269,10 +269,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             height={941}
             priority
             sizes="(min-width: 1024px) 830px, 0px"
-            src="/images/categories/kids-category-hero-v2.png"
+            src="/images/categories/kids-category-hero-white.png"
             width={1672}
           />
-          <div className="absolute inset-0 hidden lg:block lg:bg-[linear-gradient(90deg,rgba(245,201,143,0.4)_0%,rgba(245,201,143,0.22)_30%,rgba(245,201,143,0.06)_52%,rgba(245,201,143,0)_70%)]" />
         </>
       ) : null}
       {isAnimalsCategory ? (
