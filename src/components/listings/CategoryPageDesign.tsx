@@ -169,14 +169,14 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   const isExchangeOrFreeCategory = categorySlug === "menyayu-ili-otdam-darom";
   const hasImageHero = isGardenCategory || isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
   const usesRightAlignedHero = isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
-  const heroActionSizeClassName = hasImageHero ? "h-10 px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm";
+  const heroActionSizeClassName = isKidsCategory ? "min-h-10 max-w-full px-2 py-2 text-xs leading-4 md:h-10 md:px-4 md:text-sm" : hasImageHero ? "h-10 px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm";
   const createAction = () => (
     <Link
       href={createHref}
       className={`inline-flex items-center justify-center gap-2 rounded-lg bg-[#d92d20] font-bold text-white shadow-sm shadow-black/10 transition hover:bg-[#b42318] ${heroActionSizeClassName}`}
     >
       Разместить
-      <ArrowRight className="h-4 w-4" />
+      <ArrowRight className={isKidsCategory ? "hidden h-4 w-4 shrink-0 md:block" : "h-4 w-4"} />
     </Link>
   );
   const listingsAction = () => (
@@ -185,7 +185,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       className={`inline-flex items-center justify-center gap-2 rounded-lg border border-[#ef8c84] bg-white font-bold text-[#c6251a] transition hover:bg-[#fff1f0] ${heroActionSizeClassName}`}
     >
       Смотреть объявления
-      <ClipboardList className="h-4 w-4" />
+      <ClipboardList className={isKidsCategory ? "hidden h-4 w-4 shrink-0 md:block" : "h-4 w-4"} />
     </a>
   );
   return (
@@ -194,7 +194,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         isGardenCategory
           ? "lg:min-h-[370px]"
           : isKidsCategory
-            ? "min-h-[520px] sm:min-h-[680px] md:flex md:min-h-[440px] md:items-center lg:min-h-[460px] 2xl:min-h-[560px]"
+            ? "min-h-[440px] sm:min-h-[460px] md:min-h-[390px] lg:min-h-[480px] 2xl:min-h-[520px]"
             : usesRightAlignedHero
               ? "min-h-[330px] sm:min-h-[410px] lg:min-h-[390px]"
               : ""
@@ -251,16 +251,16 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       ) : null}
       {isKidsCategory ? (
         <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
-          <source media="(min-width: 768px)" srcSet="/images/categories/kids-category-hero-desktop-v3.webp" />
+          <source media="(min-width: 768px)" srcSet="/images/categories/kids-category-hero-desktop-v4.webp" />
           {/* Native picture selects one composition before loading and keeps the full image visible. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
-            className="h-full w-full object-contain object-bottom md:object-right-bottom"
+            className="h-full w-full object-contain object-right-top md:object-bottom"
             fetchPriority="high"
-            height={1536}
-            src="/images/categories/kids-category-hero-mobile-v3.webp"
-            width={1024}
+            height={1402}
+            src="/images/categories/kids-category-hero-mobile-v4.webp"
+            width={1122}
           />
         </picture>
       ) : null}
@@ -484,7 +484,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       <div
         className={
           isKidsCategory
-            ? "relative z-10 min-w-0 md:w-[32%] lg:w-[34%]"
+            ? "relative z-10 min-w-0 w-[44%] md:w-full md:max-w-[800px]"
             : hasImageHero
               ? "relative z-10 max-w-full lg:max-w-[800px]"
             : "grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.34fr)] lg:items-end"
@@ -501,7 +501,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           {description ? (
             <p
               className={`mt-2.5 text-[13px] font-semibold leading-5 text-slate-700 sm:mt-3 sm:text-base sm:leading-7 ${isHomeAndDachaCategory ? "invisible sm:visible" : ""} ${
-                isGardenCategory ? "max-w-[49%] sm:max-w-[58%] lg:max-w-xl" : isKidsCategory ? "max-w-full" : isBeautyCategory || isTransportCategory || isDishesCategory ? "max-w-[14rem] sm:max-w-[19rem] lg:max-w-xl" : isBusinessCategory ? "max-w-[15rem] sm:max-w-[19rem] lg:max-w-xl" : isRitualCategory ? "max-w-[28rem] lg:max-w-xl" : isAnimalsCategory || isRealEstateCategory || isElectronicsCategory || isHomeAndDachaCategory ? "max-w-[19rem] lg:max-w-xl" : usesRightAlignedHero ? "max-w-[78%] sm:max-w-[62%] lg:max-w-xl" : "max-w-4xl"
+                isGardenCategory ? "max-w-[49%] sm:max-w-[58%] lg:max-w-xl" : isKidsCategory ? "max-w-full md:max-w-xl" : isBeautyCategory || isTransportCategory || isDishesCategory ? "max-w-[14rem] sm:max-w-[19rem] lg:max-w-xl" : isBusinessCategory ? "max-w-[15rem] sm:max-w-[19rem] lg:max-w-xl" : isRitualCategory ? "max-w-[28rem] lg:max-w-xl" : isAnimalsCategory || isRealEstateCategory || isElectronicsCategory || isHomeAndDachaCategory ? "max-w-[19rem] lg:max-w-xl" : usesRightAlignedHero ? "max-w-[78%] sm:max-w-[62%] lg:max-w-xl" : "max-w-4xl"
               }`}
             >
               {(isBeautyCategory || isTransportCategory || isDishesCategory) && description === "Выберите подкатегорию, посмотрите предложения рядом или разместите свое объявление." ? (
@@ -525,17 +525,6 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
                     принадлежностей и сопутствующих работ рядом.
                   </span>
                   <span className="hidden lg:inline">{description}</span>
-                </>
-              ) : isKidsCategory && description === "Выберите подкатегорию, посмотрите предложения рядом или разместите свое объявление." ? (
-                <>
-                  <span className="sm:hidden">
-                    Выберите подкатегорию, посмотрите
-                    <br />
-                    предложения рядом или
-                    <br />
-                    разместите свое объявление.
-                  </span>
-                  <span className="hidden sm:inline">{description}</span>
                 </>
               ) : isBusinessCategory && description === "Выберите подкатегорию, посмотрите предложения рядом или разместите свое объявление." ? (
                 <>
@@ -564,7 +553,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
               )}
             </p>
           ) : null}
-          <div className={`${hasImageHero ? isKidsCategory ? "mt-4 flex-wrap items-start" : "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex gap-2`}>
+          <div className={`${hasImageHero ? isKidsCategory ? "mt-4 flex-col items-start md:flex-row md:flex-wrap" : "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex gap-2`}>
             {isTransportCategory ? (
               <>
                 <div className="flex flex-col items-start gap-2 sm:hidden">
