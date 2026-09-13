@@ -194,6 +194,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       className={`relative overflow-hidden rounded-2xl border border-[var(--category-border)] ${hasCompactHero ? "bg-white" : "bg-[var(--category-soft)]"} px-4 py-5 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5 sm:py-6 lg:px-7 lg:py-7 ${
         isGardenCategory
           ? "lg:min-h-[370px]"
+          : isDishesCategory
+            ? "min-h-[420px] sm:min-h-[360px] lg:min-h-[400px]"
           : hasCompactHero
             ? "min-h-[280px] md:min-h-[320px]"
             : usesRightAlignedHero
@@ -338,19 +340,26 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </>
       ) : null}
       {isDishesCategory ? (
-        <picture className="pointer-events-none absolute bottom-4 right-2 top-4 w-[44%] md:right-4 md:w-[60%]" aria-hidden="true">
-          <source media="(min-width: 768px)" srcSet="/images/categories/dishes-category-hero-desktop-v2.webp" />
-          {/* Keep the complete portrait on phones and the adapted panorama on desktops. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            alt=""
-            className="h-full w-full object-contain object-right"
-            fetchPriority="high"
-            height={1444}
-            src="/images/categories/dishes-category-hero-mobile-v2.webp"
-            width={1089}
+        <>
+          <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+            <source media="(min-width: 640px)" srcSet="/images/categories/dishes-category-hero-desktop-v2.webp" />
+            {/* Full-bleed photo with a responsive readability gradient above it. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              alt=""
+              className="h-full w-full object-cover object-bottom sm:object-center"
+              fetchPriority="high"
+              height={1444}
+              src="/images/categories/dishes-category-hero-mobile-v2.webp"
+              width={1089}
+            />
+          </picture>
+          <div
+            aria-hidden="true"
+            data-hero-scrim="true"
+            className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.97)_0%,rgba(255,255,255,0.90)_34%,rgba(255,255,255,0.35)_60%,rgba(255,255,255,0)_82%)] sm:bg-[linear-gradient(90deg,rgba(255,255,255,0.97)_0%,rgba(255,255,255,0.92)_28%,rgba(255,255,255,0.65)_44%,rgba(255,255,255,0)_72%)]"
           />
-        </picture>
+        </>
       ) : null}
       {isBusinessCategory ? (
         <>
@@ -475,7 +484,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       ) : null}
       <div
         className={
-          hasCompactHero
+          isDishesCategory
+            ? "relative z-10 min-w-0 w-full max-w-[420px] sm:w-[52%] sm:max-w-[480px] lg:w-[42%]"
+            : hasCompactHero
             ? "relative z-10 min-w-0 w-[52%] md:w-[35%] md:max-w-[480px]"
             : hasImageHero
               ? "relative z-10 max-w-full lg:max-w-[800px]"
@@ -545,7 +556,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
               )}
             </p>
           ) : null}
-          <div className={`${hasImageHero ? hasCompactHero ? "mt-4 flex-col items-start md:flex-row md:flex-wrap" : "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex gap-2`}>
+          <div className={`${isDishesCategory ? "mt-4 flex-row flex-wrap items-start" : hasImageHero ? hasCompactHero ? "mt-4 flex-col items-start md:flex-row md:flex-wrap" : "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex gap-2`}>
             {isTransportCategory ? (
               <>
                 <div className="flex flex-col items-start gap-2 sm:hidden">

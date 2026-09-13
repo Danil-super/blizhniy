@@ -6,8 +6,8 @@ import { chromium } from "playwright";
 const baseUrl = process.env.BASE_URL;
 assert.ok(baseUrl, "BASE_URL is required");
 const scenarios = [
-  { slug: "tovary-dlya-detey", title: "Товары для детей", prefix: "kids-category-hero", version: "v5" },
-  { slug: "posuda", title: "Посуда", prefix: "dishes-category-hero", version: "v2" },
+  { slug: "tovary-dlya-detey", title: "Товары для детей", prefix: "kids-category-hero", version: "v5", breakpoint: 768, backdrop: false },
+  { slug: "posuda", title: "Посуда", prefix: "dishes-category-hero", version: "v2", breakpoint: 640, backdrop: true },
 ];
 const browser = await chromium.launch();
 try {
@@ -36,6 +36,12 @@ try {
           // The tight asset is fully contained beside the copy. Products may overlap each other.
           const products = { left: imageLeft, right: box.right, top: imageTop, bottom: imageTop + renderedHeight };
           return {
+            fullBleed: Math.abs(box.left - frame.left) <= 1 && Math.abs(box.top - frame.top) <= 1 && Math.abs(box.right - frame.right) <= 1 && Math.abs(box.bottom - frame.bottom) <= 1,
+            readableOverlay: !!section.querySelector("[data-hero-scrim]") && getComputedStyle(section.querySelector("[data-hero-scrim]")).backgroundImage.includes("linear-gradient") && Number(getComputedStyle(content).zIndex) > 0,
+            actionsUnobscured: [...content.querySelectorAll("a")].every((a) => {
+              const rect = a.getBoundingClientRect();
+              return a.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+            }),
             src: img.currentSrc,
             fit: getComputedStyle(img).objectFit,
             overlay: getComputedStyle(img.parentElement).position,
@@ -52,19 +58,25 @@ try {
         });
         await hero.screenshot({ path: `${artifactDir}/${width}.png` });
         assert.equal(layout.title, scenario.title, `${width}: category title`);
-        assert.ok(layout.src.endsWith(`${scenario.prefix}-${width < 768 ? "mobile" : "desktop"}-${scenario.version}.webp`), `${width}: deployed image`);
-        assert.equal(layout.fit, "contain", `${width}: all products must fit without cropping`);
+        assert.ok(layout.src.endsWith(`${scenario.prefix}-${width < scenario.breakpoint ? "mobile" : "desktop"}-${scenario.version}.webp`), `${width}: deployed image`);
+        assert.equal(layout.fit, scenario.backdrop ? "cover" : "contain", `${width}: correct image scaling`);
         assert.equal(layout.overlay, "absolute", `${width}: text must overlay the image`);
         assert.equal(layout.overflow, false, `${width}: horizontal overflow`);
         assert.equal(layout.contentOverflow, false, `${width}: text and buttons fit their column`);
         assert.equal(layout.topAligned, true, `${width}: text stays at top left`);
-        assert.equal(layout.composition, true, `${width}: products beside the copy on every screen`);
-        assert.ok(layout.height <= 380, `${width}: compact hero, got ${layout.height}px`);
+        if (scenario.backdrop) {
+          assert.equal(layout.fullBleed, true, `${width}: photo fills the entire banner`);
+          assert.equal(layout.readableOverlay, true, `${width}: copy sits above the readability gradient`);
+        } else {
+          assert.equal(layout.composition, true, `${width}: products beside the copy on every screen`);
+          assert.equal(layout.overlap, false, `${width}: text overlaps products`);
+        }
+        assert.ok(layout.height <= (scenario.backdrop ? 440 : 380), `${width}: compact hero, got ${layout.height}px`);
         assert.equal(layout.textInside, true, `${width}: text inside banner`);
-        assert.equal(layout.overlap, false, `${width}: text overlaps products`);
+        assert.equal(layout.actionsUnobscured, true, `${width}: action buttons remain clickable`);
         assert.ok(layout.actions.some((a) => a.href === "#listings"));
         assert.ok(layout.actions.some((a) => a.href.includes(`/razmestit/obyavlenie?category=${scenario.slug}`)));
-        console.log(`PASS ${scenario.slug} ${width}px: ${layout.height}px hero, image beside copy, no cropping or text overlap, actions present`);
+        console.log(`PASS ${scenario.slug} ${width}px: ${layout.height}px hero, ${scenario.backdrop ? "full-bleed photo with readable overlay" : "image beside copy without cropping or text overlap"}, actions clickable`);
       } finally {
         await page.close();
       }
