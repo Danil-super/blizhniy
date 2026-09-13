@@ -166,6 +166,11 @@ jobs:
           BASE_URL: https://xn----9sbphbgks4a4a.xn--p1ai
         run: node scripts/check-category-heroes.mjs
 
+      - name: Check deployed instruments hero
+        env:
+          BASE_URL: https://xn----9sbphbgks4a4a.xn--p1ai
+        run: node scripts/check-instruments-hero.mjs
+
       - name: Upload responsive screenshots
         if: always()
         uses: actions/upload-artifact@v5
