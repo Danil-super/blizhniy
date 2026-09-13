@@ -170,7 +170,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   const isExchangeOrFreeCategory = categorySlug === "menyayu-ili-otdam-darom";
   const hasImageHero = isGardenCategory || isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
   const usesRightAlignedHero = isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
-  const heroActionSizeClassName = hasCompactHero ? "min-h-10 max-w-full px-2 py-2 text-xs leading-4 md:h-10 md:px-4 md:text-sm" : hasImageHero ? "h-10 px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm";
+  const heroActionSizeClassName = hasCompactHero ? "min-h-10 max-w-full px-2 py-2 text-xs leading-4 [text-shadow:none] md:h-10 md:px-4 md:text-sm" : hasImageHero ? "h-10 px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm";
   const createAction = () => (
     <Link
       href={createHref}
@@ -195,7 +195,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         isGardenCategory
           ? "lg:min-h-[370px]"
           : isDishesCategory
-            ? "min-h-[420px] sm:min-h-[360px] lg:min-h-[400px]"
+            ? "aspect-[1089/1444] min-h-[360px] sm:aspect-[3/1] sm:min-h-[220px]"
           : hasCompactHero
             ? "min-h-[280px] md:min-h-[320px]"
             : usesRightAlignedHero
@@ -343,22 +343,17 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         <>
           <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
             <source media="(min-width: 640px)" srcSet="/images/categories/dishes-category-hero-desktop-v2.webp" />
-            {/* Full-bleed photo with a responsive readability gradient above it. */}
+            {/* Preserve the original photo; match the banner ratio to avoid cropping. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               alt=""
-              className="h-full w-full object-cover object-bottom sm:object-center"
+              className="h-full w-full object-cover object-center"
               fetchPriority="high"
               height={1444}
               src="/images/categories/dishes-category-hero-mobile-v2.webp"
               width={1089}
             />
           </picture>
-          <div
-            aria-hidden="true"
-            data-hero-scrim="true"
-            className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.97)_0%,rgba(255,255,255,0.90)_34%,rgba(255,255,255,0.35)_60%,rgba(255,255,255,0)_82%)] sm:bg-[linear-gradient(90deg,rgba(255,255,255,0.97)_0%,rgba(255,255,255,0.92)_28%,rgba(255,255,255,0.65)_44%,rgba(255,255,255,0)_72%)]"
-          />
         </>
       ) : null}
       {isBusinessCategory ? (
@@ -485,7 +480,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       <div
         className={
           isDishesCategory
-            ? "relative z-10 min-w-0 w-full max-w-[420px] sm:w-[52%] sm:max-w-[480px] lg:w-[42%]"
+            ? "relative z-10 min-w-0 w-full max-w-[480px] [text-shadow:0_1px_2px_white,0_0_3px_white]"
             : hasCompactHero
             ? "relative z-10 min-w-0 w-[52%] md:w-[35%] md:max-w-[480px]"
             : hasImageHero
@@ -495,7 +490,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       >
         <div className="min-w-0">
           <h1
-            className={`text-[22px] font-bold leading-tight text-[var(--category-title)] [overflow-wrap:anywhere] sm:text-3xl lg:text-4xl ${
+            className={`${isDishesCategory ? "text-[22px] lg:text-4xl" : "text-[22px] sm:text-3xl lg:text-4xl"} font-bold leading-tight text-[var(--category-title)] [overflow-wrap:anywhere] ${
                 isGardenCategory ? "max-w-[49%] sm:max-w-[58%] lg:max-w-2xl" : hasCompactHero ? "max-w-full" : isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory ? "max-w-[14rem] sm:max-w-[58%] lg:max-w-2xl" : isAnimalsCategory ? "max-w-[72%] sm:max-w-[58%] lg:max-w-2xl" : usesRightAlignedHero ? "max-w-[78%] sm:max-w-[62%] lg:max-w-2xl" : "max-w-4xl"
             }`}
           >
@@ -503,7 +498,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           </h1>
           {description ? (
             <p
-              className={`mt-2.5 text-[13px] font-semibold leading-5 text-slate-700 sm:mt-3 sm:text-base sm:leading-7 ${isHomeAndDachaCategory ? "invisible sm:visible" : ""} ${
+              className={`${isDishesCategory ? "mt-2.5 text-[13px] leading-5 lg:mt-3 lg:text-base lg:leading-7" : "mt-2.5 text-[13px] leading-5 sm:mt-3 sm:text-base sm:leading-7"} font-semibold text-slate-700 ${isHomeAndDachaCategory ? "invisible sm:visible" : ""} ${
                 isGardenCategory ? "max-w-[49%] sm:max-w-[58%] lg:max-w-xl" : hasCompactHero ? "max-w-full md:max-w-xl" : isBeautyCategory || isTransportCategory || isDishesCategory ? "max-w-[14rem] sm:max-w-[19rem] lg:max-w-xl" : isBusinessCategory ? "max-w-[15rem] sm:max-w-[19rem] lg:max-w-xl" : isRitualCategory ? "max-w-[28rem] lg:max-w-xl" : isAnimalsCategory || isRealEstateCategory || isElectronicsCategory || isHomeAndDachaCategory ? "max-w-[19rem] lg:max-w-xl" : usesRightAlignedHero ? "max-w-[78%] sm:max-w-[62%] lg:max-w-xl" : "max-w-4xl"
               }`}
             >
