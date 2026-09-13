@@ -10,11 +10,15 @@ try {
   const artifactDir = "artifacts/category-heroes/instrumenty";
   await mkdir(artifactDir, { recursive: true });
 
-  const assetResponse = await fetch(new URL("/images/categories/tools.webp", baseUrl));
-  assert.equal(assetResponse.status, 200, "tools background asset must load");
+  const assetPath = "/images/categories/tools-category-hero-v3.jpg";
+  const assetResponse = await fetch(new URL(assetPath, baseUrl));
+  assert.equal(assetResponse.status, 200, "selected tools background asset must load");
   assert.ok((assetResponse.headers.get("content-type") ?? "").startsWith("image/"), "tools asset must be an image");
   const asset = new Uint8Array(await assetResponse.arrayBuffer());
-  assert.ok(asset.length > 1000, "tools image must not be an empty or placeholder asset");
+  assert.ok(asset.length > 10_000, "tools image must not be an empty or placeholder asset");
+  assert.equal(asset[0], 0xff, "tools JPEG marker byte 1");
+  assert.equal(asset[1], 0xd8, "tools JPEG marker byte 2");
+  assert.equal(asset[2], 0xff, "tools JPEG marker byte 3");
 
   for (const width of [320, 390, 430, 768, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 1000 } });
@@ -54,7 +58,7 @@ try {
       });
 
       await hero.screenshot({ path: `${artifactDir}/${width}.png` });
-      assert.ok(layout.backgroundImage.includes("tools.webp"), `${width}: tools photo is the deployed background`);
+      assert.ok(layout.backgroundImage.includes("tools-category-hero-v3.jpg"), `${width}: selected tools photo is the deployed background`);
       assert.equal(layout.backgroundSize, "cover", `${width}: photo fills the hero`);
       assert.equal(layout.overflow, false, `${width}: no horizontal overflow`);
       assert.equal(layout.titleInside, true, `${width}: title stays inside hero`);
@@ -64,7 +68,7 @@ try {
       assert.equal(layout.actionsClickable, true, `${width}: buttons remain clickable`);
       if (width <= 430) assert.equal(layout.actionPosition, "static", `${width}: mobile buttons use normal layout flow`);
       assert.ok(layout.height <= 470, `${width}: hero remains compact, got ${layout.height}px`);
-      console.log(`PASS instrumenty ${width}px: real full-bleed photo, no text/button overlap`);
+      console.log(`PASS instrumenty ${width}px: selected full-bleed photo, no text/button overlap`);
     } finally {
       await page.close();
     }
