@@ -86,6 +86,74 @@ try {
       }
     }
   }
+
+  const electronicsSlug = "elektronika";
+  const electronicsArtifactDir = `artifacts/category-heroes/${electronicsSlug}`;
+  await mkdir(electronicsArtifactDir, { recursive: true });
+  for (const width of [320, 360, 390, 430, 640, 768, 1024, 1440, 1920]) {
+    const page = await browser.newPage({ viewport: { width, height: 1000 } });
+    try {
+      const response = await page.goto(new URL(`/katalog/${electronicsSlug}`, baseUrl).href, { waitUntil: "networkidle" });
+      assert.equal(response.status(), 200);
+      const hero = page.locator(`[data-category-theme="${electronicsSlug}"]`);
+      const image = hero.locator("img:visible").first();
+      await image.waitFor();
+      await image.evaluate((img) => img.decode());
+      const layout = await hero.evaluate((section) => {
+        const img = [...section.children].find((child) => child.tagName === "IMG" && getComputedStyle(child).display !== "none");
+        const content = section.querySelector("h1").parentElement.parentElement;
+        const frame = section.getBoundingClientRect();
+        const box = img.getBoundingClientRect();
+        const copy = content.getBoundingClientRect();
+        const directFogLayers = [...section.children].filter(
+          (child) => child.tagName === "DIV" && child !== content && getComputedStyle(child).display !== "none",
+        );
+        return {
+          title: section.querySelector("h1").textContent,
+          src: img.currentSrc,
+          fit: getComputedStyle(img).objectFit,
+          position: getComputedStyle(img).objectPosition,
+          filter: getComputedStyle(img).filter,
+          opacity: getComputedStyle(img).opacity,
+          mask: getComputedStyle(img).maskImage,
+          fogLayers: directFogLayers.length,
+          overflow: document.documentElement.scrollWidth > window.innerWidth,
+          contentOverflow: content.scrollWidth > content.clientWidth + 1,
+          textInside: copy.left >= frame.left && copy.right <= frame.right && copy.top >= frame.top && copy.bottom <= frame.bottom,
+          imageInside: box.left >= frame.left - 1 && box.right <= frame.right + 1 && box.top >= frame.top - 1 && box.bottom <= frame.bottom + 1,
+          desktopWidthFraction: box.width / frame.width,
+          actionsUnobscured: [...content.querySelectorAll("a")].every((a) => {
+            const rect = a.getBoundingClientRect();
+            return a.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+          }),
+          actions: [...content.querySelectorAll("a")].map((a) => ({ href: a.getAttribute("href") })),
+        };
+      });
+      await hero.screenshot({ path: `${electronicsArtifactDir}/${width}.png` });
+      assert.equal(layout.title, "Электроника", `${width}: category title`);
+      assert.ok(layout.src.endsWith("/images/categories/electronics-category-hero.png"), `${width}: deployed electronics image`);
+      assert.equal(layout.fit, "contain", `${width}: entire electronics composition remains visible`);
+      assert.equal(layout.filter, "none", `${width}: no image filter`);
+      assert.equal(layout.opacity, "1", `${width}: full image opacity`);
+      assert.equal(layout.mask, "none", `${width}: no fade mask`);
+      assert.equal(layout.fogLayers, 0, `${width}: no fog or whitening overlays`);
+      assert.equal(layout.overflow, false, `${width}: no horizontal overflow`);
+      assert.equal(layout.contentOverflow, false, `${width}: copy and actions fit`);
+      assert.equal(layout.textInside, true, `${width}: copy remains inside hero`);
+      assert.equal(layout.imageInside, true, `${width}: image stays inside hero`);
+      if (width < 1024) {
+        assert.ok(layout.position.endsWith("100%"), `${width}: mobile image anchored to the bottom`);
+      } else {
+        assert.ok(layout.desktopWidthFraction <= 0.73, `${width}: desktop image stays to the right of copy`);
+      }
+      assert.equal(layout.actionsUnobscured, true, `${width}: actions remain clickable`);
+      assert.ok(layout.actions.some((a) => a.href === "#listings"));
+      assert.ok(layout.actions.some((a) => a.href.includes("/razmestit/obyavlenie?category=elektronika")));
+      console.log(`PASS elektronika ${width}px: clear contained image, no fog or mask, actions clickable`);
+    } finally {
+      await page.close();
+    }
+  }
 } finally {
   await browser.close();
 }
