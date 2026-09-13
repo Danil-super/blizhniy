@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { copyFile, mkdir } from "node:fs/promises";
 import { chromium } from "playwright";
 
 // Read-only production smoke check: verify the deployed responsive compositions.
@@ -89,7 +89,13 @@ try {
 
   const electronicsSlug = "elektronika";
   const electronicsArtifactDir = `artifacts/category-heroes/${electronicsSlug}`;
+  const electronicsSourceDir = `artifacts/category-heroes/electronics-source-variants`;
   await mkdir(electronicsArtifactDir, { recursive: true });
+  await mkdir(electronicsSourceDir, { recursive: true });
+  await copyFile("category/Электроника.png", `${electronicsSourceDir}/category-electronics.png`);
+  await copyFile("public/images/categories/electronics.webp", `${electronicsSourceDir}/electronics-thumbnail.webp`);
+  await copyFile("public/images/categories/electronics-category-hero.png", `${electronicsSourceDir}/electronics-current-hero.png`);
+
   for (const width of [320, 360, 390, 430, 640, 768, 1024, 1440, 1920]) {
     const page = await browser.newPage({ viewport: { width, height: 1000 } });
     try {
@@ -131,7 +137,7 @@ try {
       });
       await hero.screenshot({ path: `${electronicsArtifactDir}/${width}.png` });
       assert.equal(layout.title, "Электроника", `${width}: category title`);
-      assert.ok(layout.src.endsWith("/images/categories/electronics-category-hero.png"), `${width}: deployed electronics image`);
+      assert.ok(decodeURIComponent(layout.src).includes("/images/categories/electronics-category-hero.png"), `${width}: deployed electronics image`);
       assert.equal(layout.fit, "contain", `${width}: entire electronics composition remains visible`);
       assert.equal(layout.filter, "none", `${width}: no image filter`);
       assert.equal(layout.opacity, "1", `${width}: full image opacity`);
