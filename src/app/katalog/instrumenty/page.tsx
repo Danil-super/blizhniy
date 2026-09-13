@@ -58,7 +58,7 @@ export default function InstrumentsCategoryPage() {
           min-height: 430px;
           padding: 2rem !important;
           background-color: #302820 !important;
-          background-image: url('/images/categories/tools-category-hero-v3.jpg') !important;
+          background-image: url('/images/categories/tools.webp') !important;
           background-repeat: no-repeat !important;
           background-size: cover !important;
           background-position: 62% center !important;
