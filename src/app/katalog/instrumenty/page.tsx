@@ -57,10 +57,11 @@ export default function InstrumentsCategoryPage() {
           isolation: isolate;
           min-height: 430px;
           padding: 2rem !important;
-          background-image: url('/images/categories/tools-category-hero.jpg') !important;
+          background-color: #302820 !important;
+          background-image: url('/images/categories/tools.webp') !important;
           background-repeat: no-repeat !important;
           background-size: cover !important;
-          background-position: 56% 44% !important;
+          background-position: 62% center !important;
         }
 
         [data-category-theme="instrumenty"]::before {
@@ -69,7 +70,7 @@ export default function InstrumentsCategoryPage() {
           inset: 0;
           z-index: 1;
           pointer-events: none;
-          background: linear-gradient(90deg, rgba(13, 12, 10, 0.82) 0%, rgba(13, 12, 10, 0.66) 30%, rgba(13, 12, 10, 0.30) 52%, rgba(13, 12, 10, 0.04) 76%, rgba(13, 12, 10, 0) 100%);
+          background: linear-gradient(90deg, rgba(13, 12, 10, 0.86) 0%, rgba(13, 12, 10, 0.70) 28%, rgba(13, 12, 10, 0.34) 52%, rgba(13, 12, 10, 0.06) 76%, rgba(13, 12, 10, 0) 100%);
         }
 
         [data-category-theme="instrumenty"] > div:last-child {
@@ -83,7 +84,7 @@ export default function InstrumentsCategoryPage() {
         [data-category-theme="instrumenty"] h1,
         [data-category-theme="instrumenty"] p {
           color: white !important;
-          text-shadow: 0 2px 7px rgba(0, 0, 0, 0.72);
+          text-shadow: 0 2px 7px rgba(0, 0, 0, 0.76);
         }
 
         [data-category-theme="instrumenty"] h1 {
@@ -136,35 +137,40 @@ export default function InstrumentsCategoryPage() {
           [data-category-theme="instrumenty"] {
             min-height: 440px;
             padding: 1rem !important;
-            background-position: 59% center !important;
+            background-position: 67% center !important;
           }
 
           [data-category-theme="instrumenty"]::before {
-            background: linear-gradient(90deg, rgba(13, 12, 10, 0.78) 0%, rgba(13, 12, 10, 0.53) 47%, rgba(13, 12, 10, 0.12) 72%, rgba(13, 12, 10, 0) 100%);
+            background: linear-gradient(90deg, rgba(13, 12, 10, 0.84) 0%, rgba(13, 12, 10, 0.64) 45%, rgba(13, 12, 10, 0.18) 74%, rgba(13, 12, 10, 0) 100%);
           }
 
           [data-category-theme="instrumenty"] > div:last-child {
-            width: 68% !important;
+            width: 72% !important;
+            min-height: 408px;
+          }
+
+          [data-category-theme="instrumenty"] > div:last-child > div {
+            display: flex !important;
+            min-height: 408px;
+            flex-direction: column !important;
           }
 
           [data-category-theme="instrumenty"] h1 {
             font-size: 1.7rem !important;
-            line-height: 1 !important;
+            line-height: 1.02 !important;
           }
 
           [data-category-theme="instrumenty"] p {
-            margin-top: 0.75rem !important;
+            margin-top: 0.8rem !important;
             max-width: 15rem !important;
             font-size: 0.76rem !important;
             line-height: 1.18rem !important;
           }
 
           [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
-            position: absolute;
-            left: 1rem;
-            bottom: 1rem;
-            width: min(18rem, calc(100vw - 4.5rem));
-            margin-top: 0 !important;
+            position: static !important;
+            width: 100% !important;
+            margin-top: auto !important;
             gap: 0.5rem !important;
           }
 
@@ -182,7 +188,7 @@ export default function InstrumentsCategoryPage() {
         @media (min-width: 640px) and (max-width: 1023px) {
           [data-category-theme="instrumenty"] {
             min-height: 430px;
-            background-position: 57% 44% !important;
+            background-position: 64% center !important;
           }
 
           [data-category-theme="instrumenty"] > div:last-child {
@@ -197,7 +203,7 @@ export default function InstrumentsCategoryPage() {
         @media (min-width: 1024px) {
           [data-category-theme="instrumenty"] {
             min-height: 460px;
-            background-position: center 44% !important;
+            background-position: 58% center !important;
           }
         }
       `}</style>
