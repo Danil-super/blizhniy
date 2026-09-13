@@ -51,6 +51,50 @@ export default function PosudaCategoryPage() {
     <>
       <SiteHeader />
       <HomeHero />
+      <style>{`
+        [data-category-theme="posuda"] > div:last-child {
+          position: static;
+        }
+
+        [data-category-theme="posuda"] > div:last-child h1,
+        [data-category-theme="posuda"] > div:last-child p {
+          position: relative;
+          z-index: 10;
+        }
+
+        [data-category-theme="posuda"] > div:last-child > div > div:last-child {
+          position: absolute;
+          left: 1rem;
+          right: 1rem;
+          bottom: 1rem;
+          z-index: 20;
+          display: flex;
+          flex-flow: row nowrap;
+          align-items: center;
+          gap: 0.5rem;
+          margin-top: 0;
+        }
+
+        [data-category-theme="posuda"] > div:last-child > div > div:last-child > a {
+          flex: 0 0 auto;
+          white-space: nowrap;
+        }
+
+        @media (min-width: 640px) {
+          [data-category-theme="posuda"] > div:last-child > div > div:last-child {
+            left: 1.25rem;
+            right: auto;
+            bottom: 1.25rem;
+          }
+        }
+
+        @media (min-width: 1024px) {
+          [data-category-theme="posuda"] > div:last-child > div > div:last-child {
+            left: 1.75rem;
+            bottom: 1.5rem;
+          }
+        }
+      `}</style>
       <main className="bg-[var(--category-page)] pb-8" style={categoryPageStyle("posuda")}>
         <div className="page-container py-3 sm:py-4 lg:py-5">
           <nav className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:text-sm" aria-label="Хлебные крошки">
