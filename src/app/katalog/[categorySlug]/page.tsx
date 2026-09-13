@@ -99,6 +99,45 @@ export default async function Page({ params }: PageProps) {
           }
         `}</style>
       ) : null}
+      {categorySlug === "elektronika" ? (
+        <style>{`
+          [data-category-theme="elektronika"] > div:not(:last-child) {
+            display: none !important;
+          }
+
+          [data-category-theme="elektronika"] > img {
+            opacity: 1 !important;
+            filter: none !important;
+            mask-image: none !important;
+            -webkit-mask-image: none !important;
+          }
+
+          [data-category-theme="elektronika"] > div:last-child h1,
+          [data-category-theme="elektronika"] > div:last-child p {
+            text-shadow: 0 1px 2px rgba(255,255,255,0.98), 0 0 5px rgba(255,255,255,0.9);
+          }
+
+          @media (max-width: 1023px) {
+            [data-category-theme="elektronika"] > img:first-of-type {
+              object-position: 68% center !important;
+            }
+          }
+
+          @media (min-width: 1024px) {
+            [data-category-theme="elektronika"] > img:nth-of-type(2) {
+              position: absolute !important;
+              inset: 0 !important;
+              display: block !important;
+              width: 100% !important;
+              height: 100% !important;
+              max-width: none !important;
+              transform: none !important;
+              object-fit: cover !important;
+              object-position: 62% center !important;
+            }
+          }
+        `}</style>
+      ) : null}
     </>
   );
 }
