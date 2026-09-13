@@ -101,6 +101,10 @@ export default async function Page({ params }: PageProps) {
       ) : null}
       {categorySlug === "elektronika" ? (
         <style>{`
+          [data-category-theme="elektronika"] {
+            background: #eef4ff !important;
+          }
+
           [data-category-theme="elektronika"] > div:not(:last-child) {
             display: none !important;
           }
@@ -114,26 +118,30 @@ export default async function Page({ params }: PageProps) {
 
           [data-category-theme="elektronika"] > div:last-child h1,
           [data-category-theme="elektronika"] > div:last-child p {
-            text-shadow: 0 1px 2px rgba(255,255,255,0.98), 0 0 5px rgba(255,255,255,0.9);
+            text-shadow: 0 1px 2px rgba(255,255,255,0.98), 0 0 4px rgba(255,255,255,0.92);
           }
 
           @media (max-width: 1023px) {
             [data-category-theme="elektronika"] > img:first-of-type {
-              object-position: 68% center !important;
+              object-fit: contain !important;
+              object-position: center bottom !important;
             }
           }
 
           @media (min-width: 1024px) {
             [data-category-theme="elektronika"] > img:nth-of-type(2) {
               position: absolute !important;
-              inset: 0 !important;
+              top: 0 !important;
+              right: 1rem !important;
+              bottom: 0 !important;
+              left: auto !important;
               display: block !important;
-              width: 100% !important;
+              width: 72% !important;
               height: 100% !important;
               max-width: none !important;
               transform: none !important;
-              object-fit: cover !important;
-              object-position: 62% center !important;
+              object-fit: contain !important;
+              object-position: right center !important;
             }
           }
         `}</style>
