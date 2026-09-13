@@ -127,6 +127,8 @@ try {
           contentOverflow: content.scrollWidth > content.clientWidth + 1,
           textInside: copy.left >= frame.left && copy.right <= frame.right && copy.top >= frame.top && copy.bottom <= frame.bottom,
           imageInside: box.left >= frame.left - 1 && box.right <= frame.right + 1 && box.top >= frame.top - 1 && box.bottom <= frame.bottom + 1,
+          fullBleedBox: Math.abs(box.left - frame.left) <= 1 && Math.abs(box.top - frame.top) <= 1 && Math.abs(box.right - frame.right) <= 1 && Math.abs(box.bottom - frame.bottom) <= 1,
+          copyWidthFraction: copy.width / frame.width,
           desktopWidthFraction: box.width / frame.width,
           actionsUnobscured: [...content.querySelectorAll("a")].every((a) => {
             const rect = a.getBoundingClientRect();
@@ -138,7 +140,6 @@ try {
       await hero.screenshot({ path: `${electronicsArtifactDir}/${width}.png` });
       assert.equal(layout.title, "Электроника", `${width}: category title`);
       assert.ok(decodeURIComponent(layout.src).includes("/images/categories/electronics-category-hero.png"), `${width}: deployed electronics image`);
-      assert.equal(layout.fit, "contain", `${width}: entire electronics composition remains visible`);
       assert.equal(layout.filter, "none", `${width}: no image filter`);
       assert.equal(layout.opacity, "1", `${width}: full image opacity`);
       assert.equal(layout.mask, "none", `${width}: no fade mask`);
@@ -148,14 +149,18 @@ try {
       assert.equal(layout.textInside, true, `${width}: copy remains inside hero`);
       assert.equal(layout.imageInside, true, `${width}: image stays inside hero`);
       if (width < 1024) {
-        assert.ok(layout.position.endsWith("100%"), `${width}: mobile image anchored to the bottom`);
+        assert.equal(layout.fit, "cover", `${width}: mobile photo fills the hero`);
+        assert.equal(layout.fullBleedBox, true, `${width}: mobile image box fills the whole hero`);
+        assert.ok(layout.position.startsWith("100%"), `${width}: mobile composition stays anchored to the right`);
+        assert.ok(layout.copyWidthFraction <= 0.62, `${width}: mobile copy leaves the electronics visible`);
       } else {
+        assert.equal(layout.fit, "contain", `${width}: desktop keeps the full composition visible`);
         assert.ok(layout.desktopWidthFraction <= 0.73, `${width}: desktop image stays to the right of copy`);
       }
       assert.equal(layout.actionsUnobscured, true, `${width}: actions remain clickable`);
       assert.ok(layout.actions.some((a) => a.href === "#listings"));
       assert.ok(layout.actions.some((a) => a.href.includes("/razmestit/obyavlenie?category=elektronika")));
-      console.log(`PASS elektronika ${width}px: clear contained image, no fog or mask, actions clickable`);
+      console.log(`PASS elektronika ${width}px: ${width < 1024 ? "full-bleed cover image with compact copy" : "full composition contained on desktop"}, no fog or mask, actions clickable`);
     } finally {
       await page.close();
     }
