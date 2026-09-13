@@ -53,96 +53,151 @@ export default function InstrumentsCategoryPage() {
       <HomeHero />
       <style>{`
         [data-category-theme="instrumenty"] {
-          min-height: 360px;
+          position: relative;
+          isolation: isolate;
+          min-height: 430px;
+          padding: 2rem !important;
           background-image: url('/images/categories/tools-category-hero.jpg') !important;
           background-repeat: no-repeat !important;
           background-size: cover !important;
-          background-position: 58% 44% !important;
+          background-position: 56% 44% !important;
+        }
+
+        [data-category-theme="instrumenty"]::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          pointer-events: none;
+          background: linear-gradient(90deg, rgba(13, 12, 10, 0.82) 0%, rgba(13, 12, 10, 0.66) 30%, rgba(13, 12, 10, 0.30) 52%, rgba(13, 12, 10, 0.04) 76%, rgba(13, 12, 10, 0) 100%);
         }
 
         [data-category-theme="instrumenty"] > div:last-child {
           position: relative;
           z-index: 10;
           display: block !important;
-          max-width: 100% !important;
+          width: min(520px, 46%) !important;
+          max-width: none !important;
         }
 
         [data-category-theme="instrumenty"] h1,
         [data-category-theme="instrumenty"] p {
           color: white !important;
-          text-shadow: 0 2px 5px rgba(0,0,0,0.92), 0 0 2px rgba(0,0,0,0.75);
+          text-shadow: 0 2px 7px rgba(0, 0, 0, 0.72);
         }
 
         [data-category-theme="instrumenty"] h1 {
-          max-width: 18rem !important;
+          max-width: none !important;
+          font-size: clamp(2.35rem, 4vw, 3.8rem) !important;
+          line-height: 0.98 !important;
+          letter-spacing: -0.035em;
         }
 
         [data-category-theme="instrumenty"] p {
-          max-width: 32rem !important;
+          margin-top: 1.25rem !important;
+          max-width: 31rem !important;
+          font-size: 1.08rem !important;
+          line-height: 1.55 !important;
+        }
+
+        [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
+          margin-top: 1.5rem !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: flex-start !important;
+          gap: 0.75rem !important;
+        }
+
+        [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
+          width: min(100%, 23rem) !important;
+          min-height: 4.25rem !important;
+          height: 4.25rem !important;
+          justify-content: space-between !important;
+          border-radius: 1rem !important;
+          padding-left: 1.5rem !important;
+          padding-right: 1.5rem !important;
+          font-size: 1.05rem !important;
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16) !important;
+        }
+
+        [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a:first-child {
+          background: #eb2b1d !important;
+          color: white !important;
+          border-color: #eb2b1d !important;
+        }
+
+        [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a:last-child {
+          background: rgba(255, 255, 255, 0.97) !important;
+          color: #c6251a !important;
+          border: 2px solid #e77770 !important;
         }
 
         @media (max-width: 639px) {
           [data-category-theme="instrumenty"] {
-            min-height: 420px;
+            min-height: 440px;
             padding: 1rem !important;
-            background-position: 62% center !important;
+            background-position: 59% center !important;
+          }
+
+          [data-category-theme="instrumenty"]::before {
+            background: linear-gradient(90deg, rgba(13, 12, 10, 0.78) 0%, rgba(13, 12, 10, 0.53) 47%, rgba(13, 12, 10, 0.12) 72%, rgba(13, 12, 10, 0) 100%);
+          }
+
+          [data-category-theme="instrumenty"] > div:last-child {
+            width: 68% !important;
           }
 
           [data-category-theme="instrumenty"] h1 {
-            max-width: 62% !important;
-            font-size: 1.55rem !important;
-            line-height: 1.1 !important;
+            font-size: 1.7rem !important;
+            line-height: 1 !important;
           }
 
           [data-category-theme="instrumenty"] p {
-            max-width: 62% !important;
+            margin-top: 0.75rem !important;
+            max-width: 15rem !important;
             font-size: 0.76rem !important;
-            line-height: 1.15rem !important;
+            line-height: 1.18rem !important;
           }
 
           [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
             position: absolute;
             left: 1rem;
-            right: 1rem;
             bottom: 1rem;
+            width: min(18rem, calc(100vw - 4.5rem));
             margin-top: 0 !important;
-            display: flex !important;
-            flex-flow: row wrap !important;
             gap: 0.5rem !important;
           }
 
           [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
-            min-height: 2.25rem !important;
-            height: 2.25rem !important;
-            padding-left: 0.7rem !important;
-            padding-right: 0.7rem !important;
-            font-size: 0.7rem !important;
-          }
-
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a svg {
-            display: none !important;
+            width: 100% !important;
+            min-height: 2.9rem !important;
+            height: 2.9rem !important;
+            padding-left: 0.9rem !important;
+            padding-right: 0.9rem !important;
+            border-radius: 0.8rem !important;
+            font-size: 0.77rem !important;
           }
         }
 
-        @media (min-width: 640px) {
+        @media (min-width: 640px) and (max-width: 1023px) {
           [data-category-theme="instrumenty"] {
-            min-height: 390px;
-            background-position: 56% 42% !important;
+            min-height: 430px;
+            background-position: 57% 44% !important;
           }
 
           [data-category-theme="instrumenty"] > div:last-child {
-            max-width: 54% !important;
+            width: 50% !important;
+          }
+
+          [data-category-theme="instrumenty"] h1 {
+            font-size: 2.8rem !important;
           }
         }
 
         @media (min-width: 1024px) {
           [data-category-theme="instrumenty"] {
-            min-height: 410px;
+            min-height: 460px;
             background-position: center 44% !important;
-          }
-
-          [data-category-theme="instrumenty"] > div:last-child {
-            max-width: 44% !important;
           }
         }
       `}</style>
@@ -163,7 +218,7 @@ export default function InstrumentsCategoryPage() {
             <CategoryHeaderBand
               categorySlug="instrumenty"
               createHref="/razmestit/obyavlenie?category=instrumenty&kind=prodam"
-              description="Раздел для ручного, электрического, измерительного, строительного и садового инструмента, а также средств защиты для ремонта и работ на участке."
+              description="Выберите подкатегорию, посмотрите предложения рядом или разместите свое объявление."
               title="Инструменты"
             />
 
