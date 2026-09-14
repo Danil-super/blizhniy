@@ -54,159 +54,110 @@ export default function InstrumentsCategoryPage() {
       <style>{`
         [data-category-theme="instrumenty"] {
           position: relative;
-          isolation: isolate;
-          min-height: 410px;
-          padding: 2rem !important;
-          background-color: #302820 !important;
-          background-image: url('/images/categories/tools.webp') !important;
+          min-height: 0 !important;
+          height: auto !important;
+          aspect-ratio: 4 / 5;
+          padding: 0 !important;
+          border-color: transparent !important;
+          background-color: transparent !important;
+          background-image: url('/images/categories/tools-hero-mobile-v4.webp') !important;
           background-repeat: no-repeat !important;
-          background-size: cover !important;
+          background-size: contain !important;
           background-position: center center !important;
+          box-shadow: none !important;
         }
 
-        [data-category-theme="instrumenty"]::before {
+        [data-category-theme="instrumenty"]::before,
+        [data-category-theme="instrumenty"]::after {
           content: none !important;
           display: none !important;
         }
 
         [data-category-theme="instrumenty"] > div:last-child {
-          position: relative;
+          position: absolute !important;
+          inset: 0 !important;
           z-index: 10;
           display: block !important;
-          width: min(520px, 46%) !important;
+          width: 100% !important;
           max-width: none !important;
+          min-height: 0 !important;
+          pointer-events: none;
+        }
+
+        [data-category-theme="instrumenty"] > div:last-child > div {
+          position: absolute !important;
+          inset: 0 !important;
+          min-height: 0 !important;
         }
 
         [data-category-theme="instrumenty"] h1,
         [data-category-theme="instrumenty"] p {
-          color: white !important;
-          text-shadow: 0 2px 7px rgba(0, 0, 0, 0.9), 0 0 3px rgba(0, 0, 0, 0.7);
-        }
-
-        [data-category-theme="instrumenty"] h1 {
-          max-width: none !important;
-          font-size: clamp(2.35rem, 4vw, 3.8rem) !important;
-          line-height: 0.98 !important;
-          letter-spacing: -0.035em;
-        }
-
-        [data-category-theme="instrumenty"] p {
-          margin-top: 1.25rem !important;
-          max-width: 31rem !important;
-          font-size: 1.08rem !important;
-          line-height: 1.55 !important;
+          position: absolute !important;
+          width: 1px !important;
+          height: 1px !important;
+          padding: 0 !important;
+          margin: -1px !important;
+          overflow: hidden !important;
+          clip: rect(0, 0, 0, 0) !important;
+          white-space: nowrap !important;
+          border: 0 !important;
         }
 
         [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
-          margin-top: 1.35rem !important;
-          display: flex !important;
-          flex-direction: column !important;
-          align-items: flex-start !important;
-          gap: 0.65rem !important;
+          position: absolute !important;
+          inset: 0 !important;
+          display: block !important;
+          margin: 0 !important;
+          pointer-events: none;
         }
 
         [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
-          width: auto !important;
+          position: absolute !important;
+          z-index: 20;
           min-width: 0 !important;
-          min-height: 3.35rem !important;
-          height: 3.35rem !important;
-          justify-content: space-between !important;
-          border-radius: 0.9rem !important;
-          padding-left: 1.15rem !important;
-          padding-right: 1.15rem !important;
-          font-size: 0.96rem !important;
-          box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14) !important;
-          white-space: nowrap;
+          min-height: 0 !important;
+          padding: 0 !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          color: transparent !important;
+          opacity: 0.001 !important;
+          pointer-events: auto;
         }
 
         [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a:first-child {
-          width: 14.5rem !important;
-          background: #eb2b1d !important;
-          color: white !important;
-          border-color: #eb2b1d !important;
+          left: 5.8% !important;
+          top: 42.1% !important;
+          width: 31.8% !important;
+          height: 6.8% !important;
         }
 
         [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a:last-child {
-          width: 17rem !important;
-          background: rgba(255, 255, 255, 0.97) !important;
-          color: #c6251a !important;
-          border: 2px solid #e77770 !important;
+          left: 5.8% !important;
+          top: 49.6% !important;
+          width: 31.8% !important;
+          height: 6.5% !important;
         }
 
-        @media (max-width: 639px) {
+        @media (min-width: 640px) {
           [data-category-theme="instrumenty"] {
-            min-height: 405px;
-            padding: 1rem !important;
-            background-position: 64% center !important;
-          }
-
-          [data-category-theme="instrumenty"] > div:last-child {
-            width: 74% !important;
-            min-height: 373px;
-          }
-
-          [data-category-theme="instrumenty"] > div:last-child > div {
-            display: flex !important;
-            min-height: 373px;
-            flex-direction: column !important;
-          }
-
-          [data-category-theme="instrumenty"] h1 {
-            font-size: 1.65rem !important;
-            line-height: 1.02 !important;
-          }
-
-          [data-category-theme="instrumenty"] p {
-            margin-top: 0.75rem !important;
-            max-width: 15rem !important;
-            font-size: 0.74rem !important;
-            line-height: 1.14rem !important;
-          }
-
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
-            position: static !important;
-            width: auto !important;
-            margin-top: auto !important;
-            gap: 0.45rem !important;
-          }
-
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
-            min-height: 2.6rem !important;
-            height: 2.6rem !important;
-            padding-left: 0.8rem !important;
-            padding-right: 0.8rem !important;
-            border-radius: 0.75rem !important;
-            font-size: 0.72rem !important;
+            aspect-ratio: 3 / 2;
+            background-image: url('/images/categories/tools-hero-desktop-v4.webp') !important;
           }
 
           [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a:first-child {
-            width: 10.5rem !important;
+            left: 5.3% !important;
+            top: 51.0% !important;
+            width: 25.5% !important;
+            height: 9.2% !important;
           }
 
           [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a:last-child {
-            width: 13.5rem !important;
-          }
-        }
-
-        @media (min-width: 640px) and (max-width: 1023px) {
-          [data-category-theme="instrumenty"] {
-            min-height: 420px;
-            background-position: 60% center !important;
-          }
-
-          [data-category-theme="instrumenty"] > div:last-child {
-            width: 50% !important;
-          }
-
-          [data-category-theme="instrumenty"] h1 {
-            font-size: 2.8rem !important;
-          }
-        }
-
-        @media (min-width: 1024px) {
-          [data-category-theme="instrumenty"] {
-            min-height: 440px;
-            background-position: center center !important;
+            left: 5.3% !important;
+            top: 61.2% !important;
+            width: 25.5% !important;
+            height: 9.0% !important;
           }
         }
       `}</style>
