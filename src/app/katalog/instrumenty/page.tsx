@@ -54,110 +54,90 @@ export default function InstrumentsCategoryPage() {
       <style>{`
         [data-category-theme="instrumenty"] {
           position: relative;
-          min-height: 0 !important;
-          height: auto !important;
-          aspect-ratio: 4 / 5;
-          padding: 0 !important;
-          border-color: transparent !important;
-          background-color: transparent !important;
-          background-image: url('/images/categories/tools-hero-mobile-v4.webp') !important;
+          min-height: 320px;
+          aspect-ratio: 1.12 / 1;
+          overflow: hidden;
+          background-color: #ffffff !important;
+          background-image: url('/images/categories/tools-category-hero-full.png') !important;
           background-repeat: no-repeat !important;
-          background-size: contain !important;
+          background-size: cover !important;
           background-position: center center !important;
-          box-shadow: none !important;
-        }
-
-        [data-category-theme="instrumenty"]::before,
-        [data-category-theme="instrumenty"]::after {
-          content: none !important;
-          display: none !important;
         }
 
         [data-category-theme="instrumenty"] > div:last-child {
-          position: absolute !important;
-          inset: 0 !important;
+          position: static;
+          width: 100%;
+          max-width: 480px;
+          text-shadow: 0 1px 2px white, 0 0 3px white;
+        }
+
+        [data-category-theme="instrumenty"] > div:last-child h1,
+        [data-category-theme="instrumenty"] > div:last-child p {
+          position: relative;
           z-index: 10;
-          display: block !important;
-          width: 100% !important;
-          max-width: none !important;
-          min-height: 0 !important;
-          pointer-events: none;
-        }
-
-        [data-category-theme="instrumenty"] > div:last-child > div {
-          position: absolute !important;
-          inset: 0 !important;
-          min-height: 0 !important;
-        }
-
-        [data-category-theme="instrumenty"] h1,
-        [data-category-theme="instrumenty"] p {
-          position: absolute !important;
-          width: 1px !important;
-          height: 1px !important;
-          padding: 0 !important;
-          margin: -1px !important;
-          overflow: hidden !important;
-          clip: rect(0, 0, 0, 0) !important;
-          white-space: nowrap !important;
-          border: 0 !important;
+          max-width: 15rem;
         }
 
         [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
-          position: absolute !important;
-          inset: 0 !important;
-          display: block !important;
-          margin: 0 !important;
-          pointer-events: none;
+          position: absolute;
+          left: 1rem;
+          right: 1rem;
+          bottom: 1rem;
+          z-index: 20;
+          display: flex;
+          flex-flow: row nowrap;
+          align-items: center;
+          gap: 0.5rem;
+          margin-top: 0;
+          text-shadow: none;
         }
 
         [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
-          position: absolute !important;
-          z-index: 20;
-          min-width: 0 !important;
-          min-height: 0 !important;
-          padding: 0 !important;
-          border: 0 !important;
-          border-radius: 0 !important;
-          background: transparent !important;
-          box-shadow: none !important;
-          color: transparent !important;
-          opacity: 0.001 !important;
-          pointer-events: auto;
-        }
-
-        [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a:first-child {
-          left: 5.8% !important;
-          top: 42.1% !important;
-          width: 31.8% !important;
-          height: 6.8% !important;
-        }
-
-        [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a:last-child {
-          left: 5.8% !important;
-          top: 49.6% !important;
-          width: 31.8% !important;
-          height: 6.5% !important;
+          flex: 0 0 auto;
+          min-height: 40px;
+          height: 40px;
+          padding-left: 0.65rem;
+          padding-right: 0.65rem;
+          font-size: 0.75rem;
+          white-space: nowrap;
         }
 
         @media (min-width: 640px) {
           [data-category-theme="instrumenty"] {
-            aspect-ratio: 3 / 2;
-            background-image: url('/images/categories/tools-hero-desktop-v4.webp') !important;
+            min-height: 330px;
+            aspect-ratio: 2.2 / 1;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a:first-child {
-            left: 5.3% !important;
-            top: 51.0% !important;
-            width: 25.5% !important;
-            height: 9.2% !important;
+          [data-category-theme="instrumenty"] > div:last-child {
+            max-width: 520px;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a:last-child {
-            left: 5.3% !important;
-            top: 61.2% !important;
-            width: 25.5% !important;
-            height: 9.0% !important;
+          [data-category-theme="instrumenty"] > div:last-child h1,
+          [data-category-theme="instrumenty"] > div:last-child p {
+            max-width: 19rem;
+          }
+
+          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
+            left: 1.25rem;
+            right: auto;
+            bottom: 1.25rem;
+          }
+
+          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
+            padding-left: 1rem;
+            padding-right: 1rem;
+            font-size: 0.875rem;
+          }
+        }
+
+        @media (min-width: 1024px) {
+          [data-category-theme="instrumenty"] {
+            min-height: 360px;
+          }
+
+          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
+            left: 1.75rem;
+            bottom: 1.5rem;
           }
         }
       `}</style>
