@@ -66,6 +66,7 @@ export default function InstrumentsCategoryPage() {
 
         [data-category-theme="instrumenty"] > div:last-child {
           position: static;
+          display: block !important;
           width: 100%;
           max-width: 480px;
           text-shadow: 0 1px 2px white, 0 0 3px white;
@@ -75,6 +76,14 @@ export default function InstrumentsCategoryPage() {
         [data-category-theme="instrumenty"] > div:last-child p {
           position: relative;
           z-index: 10;
+        }
+
+        [data-category-theme="instrumenty"] > div:last-child h1 {
+          max-width: none !important;
+          white-space: nowrap;
+        }
+
+        [data-category-theme="instrumenty"] > div:last-child p {
           max-width: 15rem;
         }
 
@@ -112,7 +121,6 @@ export default function InstrumentsCategoryPage() {
             max-width: 520px;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child h1,
           [data-category-theme="instrumenty"] > div:last-child p {
             max-width: 19rem;
           }
