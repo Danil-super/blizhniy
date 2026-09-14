@@ -10,16 +10,12 @@ try {
   const artifactDir = "artifacts/category-heroes/instrumenty";
   await mkdir(artifactDir, { recursive: true });
 
-  for (const assetPath of [
-    "/images/categories/tools-hero-mobile-v4.webp",
-    "/images/categories/tools-hero-desktop-v4.webp",
-  ]) {
-    const assetResponse = await fetch(new URL(assetPath, baseUrl));
-    assert.equal(assetResponse.status, 200, `${assetPath}: asset must load`);
-    assert.ok((assetResponse.headers.get("content-type") ?? "").startsWith("image/"), `${assetPath}: asset must be an image`);
-    const asset = new Uint8Array(await assetResponse.arrayBuffer());
-    assert.ok(asset.length > 20_000, `${assetPath}: asset must not be a placeholder`);
-  }
+  const assetPath = "/images/categories/tools-category-hero-full.png";
+  const assetResponse = await fetch(new URL(assetPath, baseUrl));
+  assert.equal(assetResponse.status, 200, `${assetPath}: asset must load`);
+  assert.ok((assetResponse.headers.get("content-type") ?? "").startsWith("image/"), `${assetPath}: asset must be an image`);
+  const asset = new Uint8Array(await assetResponse.arrayBuffer());
+  assert.ok(asset.length > 100_000, `${assetPath}: full source image must be deployed`);
 
   for (const width of [320, 390, 430, 639, 640, 768, 1024, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 1200 } });
@@ -32,39 +28,54 @@ try {
       const layout = await hero.evaluate((section) => {
         const style = getComputedStyle(section);
         const frame = section.getBoundingClientRect();
+        const title = section.querySelector("h1");
+        const description = section.querySelector("p");
         const actions = [...section.querySelectorAll("a")];
+        const titleRect = title.getBoundingClientRect();
+        const descriptionRect = description.getBoundingClientRect();
         const actionRects = actions.map((action) => action.getBoundingClientRect());
         return {
           backgroundImage: style.backgroundImage,
           backgroundSize: style.backgroundSize,
           backgroundPosition: style.backgroundPosition,
           overflow: document.documentElement.scrollWidth > window.innerWidth,
-          width: frame.width,
           height: frame.height,
+          title: title.textContent,
+          titleVisible: titleRect.width > 20 && titleRect.height > 20,
+          descriptionVisible: descriptionRect.width > 20 && descriptionRect.height > 20,
+          textInside:
+            titleRect.left >= frame.left &&
+            titleRect.right <= frame.right &&
+            titleRect.top >= frame.top &&
+            titleRect.bottom <= frame.bottom &&
+            descriptionRect.left >= frame.left &&
+            descriptionRect.right <= frame.right &&
+            descriptionRect.top >= frame.top &&
+            descriptionRect.bottom <= frame.bottom,
           actionsInside: actionRects.every((rect) => rect.left >= frame.left && rect.right <= frame.right && rect.top >= frame.top && rect.bottom <= frame.bottom),
           actionsClickable: actions.every((action) => {
             const rect = action.getBoundingClientRect();
             return action.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
           }),
+          actions: actions.map((action) => ({ text: action.textContent.trim(), href: action.getAttribute("href") })),
         };
       });
 
       await hero.screenshot({ path: `${artifactDir}/${width}.png` });
-      const mobile = width < 640;
-      assert.ok(
-        layout.backgroundImage.includes(mobile ? "tools-hero-mobile-v4.webp" : "tools-hero-desktop-v4.webp"),
-        `${width}: correct full hero artwork`,
-      );
-      assert.equal(layout.backgroundSize, "contain", `${width}: entire artwork remains visible`);
-      assert.equal(layout.backgroundPosition, "50% 50%", `${width}: artwork stays centered`);
+      assert.equal(layout.title, "Инструменты", `${width}: category title`);
+      assert.ok(layout.backgroundImage.includes("tools-category-hero-full.png"), `${width}: full instruments photo is deployed`);
+      assert.equal(layout.backgroundSize, "cover", `${width}: photo fills the banner`);
+      assert.equal(layout.backgroundPosition, "50% 50%", `${width}: photo remains centered`);
       assert.equal(layout.overflow, false, `${width}: no horizontal overflow`);
-      assert.equal(layout.actionsInside, true, `${width}: clickable areas stay inside hero`);
-      assert.equal(layout.actionsClickable, true, `${width}: baked-in buttons remain clickable`);
-
-      const expectedRatio = mobile ? 4 / 5 : 3 / 2;
-      const actualRatio = layout.width / layout.height;
-      assert.ok(Math.abs(actualRatio - expectedRatio) < 0.03, `${width}: hero ratio preserves the complete artwork`);
-      console.log(`PASS instrumenty ${width}px: full ${mobile ? "mobile" : "desktop"} artwork visible, no fade, clickable actions`);
+      assert.equal(layout.titleVisible, true, `${width}: title is visible over the photo`);
+      assert.equal(layout.descriptionVisible, true, `${width}: description is visible over the photo`);
+      assert.equal(layout.textInside, true, `${width}: text remains inside the banner`);
+      assert.equal(layout.actionsInside, true, `${width}: buttons remain inside the banner`);
+      assert.equal(layout.actionsClickable, true, `${width}: buttons remain clickable`);
+      assert.ok(layout.actions.some((a) => a.href === "#listings"), `${width}: listings action exists`);
+      assert.ok(layout.actions.some((a) => a.href?.includes("/razmestit/obyavlenie?category=instrumenty")), `${width}: create action exists`);
+      assert.ok(layout.height >= 300 && layout.height <= 660, `${width}: hero height remains reasonable, got ${layout.height}px`);
+      console.log(`PASS instrumenty ${width}px: clear photo with overlaid text and two real buttons`);
     } finally {
       await page.close();
     }
