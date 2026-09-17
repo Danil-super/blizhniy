@@ -491,9 +491,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       {isBeautyCategory ? (
         <style>{`
           [data-category-theme="krasota-i-uhod"] > [data-hero-copy] {
-            position: static;
-            width: 100%;
-            max-width: none;
+            position: relative;
+            z-index: 10;
           }
 
           [data-category-theme="krasota-i-uhod"] h1,
@@ -502,29 +501,6 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             text-shadow: 0 2px 8px rgba(57, 30, 13, 0.92), 0 1px 2px rgba(57, 30, 13, 0.92);
           }
 
-          [data-category-theme="krasota-i-uhod"] [data-hero-actions] {
-            position: absolute;
-            z-index: 20;
-            right: 1rem;
-            bottom: 1rem;
-            left: 1rem;
-          }
-
-          @media (min-width: 640px) {
-            [data-category-theme="krasota-i-uhod"] [data-hero-actions] {
-              right: auto;
-              bottom: 1.25rem;
-              left: 1.25rem;
-              flex-direction: row;
-            }
-          }
-
-          @media (min-width: 1024px) {
-            [data-category-theme="krasota-i-uhod"] [data-hero-actions] {
-              bottom: 1.75rem;
-              left: 1.75rem;
-            }
-          }
         `}</style>
       ) : null}
       <div

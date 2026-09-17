@@ -251,6 +251,7 @@ try {
             sources: photos.map((photo) => photo.src),
             titleColor: title ? getComputedStyle(title).color : "",
             descriptionColor: section.querySelector("p") ? getComputedStyle(section.querySelector("p")).color : "",
+            copyAbovePhoto: Number(getComputedStyle(copy).zIndex) > 0,
             overflow: document.documentElement.scrollWidth > window.innerWidth,
             copyInside:
               copyBox.left >= frame.left &&
@@ -292,6 +293,7 @@ try {
         if (scenario.whiteCopy) {
           assert.equal(layout.titleColor, "rgb(255, 255, 255)", `${scenario.slug} ${width}: heading remains white over the photo`);
           assert.equal(layout.descriptionColor, "rgb(255, 255, 255)", `${scenario.slug} ${width}: description remains white over the photo`);
+          assert.equal(layout.copyAbovePhoto, true, `${scenario.slug} ${width}: copy stays above the photo`);
         }
         if (width <= 640) {
           if (scenario.mobileMode === "cover") {
