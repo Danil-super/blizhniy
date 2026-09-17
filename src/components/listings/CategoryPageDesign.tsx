@@ -170,7 +170,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   const isExchangeOrFreeCategory = categorySlug === "menyayu-ili-otdam-darom";
   const hasImageHero = isGardenCategory || isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
   const usesRightAlignedHero = isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
-  const heroActionSizeClassName = hasCompactHero ? "min-h-10 max-w-full px-2 py-2 text-xs leading-4 [text-shadow:none] md:h-10 md:px-4 md:text-sm" : hasImageHero ? "h-10 px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm";
+  const heroActionSizeClassName = hasCompactHero ? "min-h-10 min-w-0 max-w-full px-2 py-2 text-xs leading-4 [text-shadow:none] md:h-10 md:px-4 md:text-sm" : hasImageHero ? "h-10 min-w-0 max-w-full px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm";
   const createAction = () => (
     <Link
       href={createHref}
@@ -203,8 +203,27 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
               : ""
       }`}
       data-category-theme={categorySlug}
+      data-image-hero={hasImageHero ? "true" : undefined}
       style={visualStyle(visual)}
     >
+      {hasImageHero ? (
+        <style>{`
+          @media (max-width: 639px) {
+            [data-image-hero="true"] [data-hero-copy],
+            [data-image-hero="true"] [data-hero-actions] {
+              min-width: 0;
+              max-width: 100%;
+            }
+
+            [data-image-hero="true"] [data-hero-actions] > a,
+            [data-image-hero="true"] [data-hero-actions] > div,
+            [data-image-hero="true"] [data-hero-actions] > div > a {
+              min-width: 0;
+              max-width: 100%;
+            }
+          }
+        `}</style>
+      ) : null}
       {isGardenCategory ? (
         <>
           <Image
@@ -478,6 +497,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </>
       ) : null}
       <div
+        data-hero-copy
         className={
           isDishesCategory
             ? "relative z-10 min-w-0 w-full max-w-[480px] [text-shadow:0_1px_2px_white,0_0_3px_white]"
@@ -551,7 +571,10 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
               )}
             </p>
           ) : null}
-          <div className={`${isDishesCategory ? "mt-4 flex-row flex-wrap items-start" : hasImageHero ? hasCompactHero ? "mt-4 flex-col items-start md:flex-row md:flex-wrap" : "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex gap-2`}>
+          <div
+            data-hero-actions
+            className={`${isDishesCategory ? "mt-4 flex-row flex-wrap items-start" : hasImageHero ? hasCompactHero ? "mt-4 flex-col items-start md:flex-row md:flex-wrap" : "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex min-w-0 max-w-full gap-2`}
+          >
             {isTransportCategory ? (
               <>
                 <div className="flex flex-col items-start gap-2 sm:hidden">

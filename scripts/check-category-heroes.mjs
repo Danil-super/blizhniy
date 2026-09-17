@@ -9,6 +9,21 @@ const scenarios = [
   { slug: "tovary-dlya-detey", title: "Товары для детей", prefix: "kids-category-hero", version: "v5", breakpoint: 768, backdrop: false },
   { slug: "posuda", title: "Посуда", prefix: "dishes-category-hero", version: "v2", breakpoint: 640, backdrop: true },
 ];
+const responsiveImageHeroScenarios = [
+  { slug: "sad-i-rasteniya", mobileMode: "cover" },
+  { slug: "ritualnye-uslugi", mobileMode: "cover" },
+  { slug: "nedvizhimost", mobileMode: "cover" },
+  { slug: "tovary-dlya-detey", mobileMode: "contained" },
+  { slug: "zhivotnye", mobileMode: "cover" },
+  { slug: "krasota-i-uhod", mobileMode: "cover" },
+  { slug: "transport", mobileMode: "cover" },
+  { slug: "posuda", mobileMode: "cover" },
+  { slug: "biznes", mobileMode: "cover" },
+  { slug: "elektronika", mobileMode: "cover" },
+  { slug: "dlya-doma-i-dachi", mobileMode: "cover" },
+  { slug: "menyayu-ili-otdam-darom", mobileMode: "cover" },
+];
+
 const browser = await chromium.launch();
 try {
   for (const scenario of scenarios) {
@@ -163,6 +178,97 @@ try {
       console.log(`PASS elektronika ${width}px: ${width < 1024 ? "full-bleed cover image with compact copy" : "full composition contained on desktop"}, no fog or mask, actions clickable`);
     } finally {
       await page.close();
+    }
+  }
+
+  for (const scenario of responsiveImageHeroScenarios) {
+    const artifactDir = `artifacts/category-heroes/${scenario.slug}`;
+    await mkdir(artifactDir, { recursive: true });
+
+    for (const width of [320, 360, 390, 430, 640, 1024]) {
+      const page = await browser.newPage({ viewport: { width, height: 1000 } });
+      try {
+        const response = await page.goto(new URL(`/katalog/${scenario.slug}`, baseUrl).href, { waitUntil: "networkidle" });
+        assert.equal(response.status(), 200);
+
+        const hero = page.locator(`[data-category-theme="${scenario.slug}"]`);
+        await hero.waitFor();
+        const layout = await hero.evaluate((section) => {
+          const frame = section.getBoundingClientRect();
+          const title = section.querySelector("h1");
+          const copy = section.querySelector("[data-hero-copy]") ?? title?.parentElement?.parentElement;
+          const copyBox = copy.getBoundingClientRect();
+          const actions = [...copy.querySelectorAll("a")];
+          const actionRects = actions.map((action) => action.getBoundingClientRect());
+          const photos = [...section.querySelectorAll("img")]
+            .map((img) => {
+              const box = img.getBoundingClientRect();
+              const style = getComputedStyle(img);
+              return {
+                box,
+                visible: style.display !== "none" && style.visibility !== "hidden" && box.width > 1 && box.height > 1,
+                fit: style.objectFit,
+                coversHero:
+                  Math.abs(box.left - frame.left) <= 2 &&
+                  Math.abs(box.top - frame.top) <= 2 &&
+                  Math.abs(box.right - frame.right) <= 2 &&
+                  Math.abs(box.bottom - frame.bottom) <= 2,
+                insideHero:
+                  box.left >= frame.left - 2 &&
+                  box.right <= frame.right + 2 &&
+                  box.top >= frame.top - 2 &&
+                  box.bottom <= frame.bottom + 2,
+              };
+            })
+            .filter((photo) => photo.visible);
+
+          return {
+            imageHero: section.getAttribute("data-image-hero"),
+            titleVisible: Boolean(title) && title.getBoundingClientRect().width > 10 && title.getBoundingClientRect().height > 10,
+            photoCount: photos.length,
+            fullBleedCover: photos.some((photo) => photo.fit === "cover" && photo.coversHero),
+            containedPhoto: photos.some((photo) => photo.fit === "contain" && photo.insideHero),
+            overflow: document.documentElement.scrollWidth > window.innerWidth,
+            copyInside:
+              copyBox.left >= frame.left &&
+              copyBox.right <= frame.right &&
+              copyBox.top >= frame.top &&
+              copyBox.bottom <= frame.bottom,
+            actionsInside: actionRects.every(
+              (rect) =>
+                rect.left >= frame.left &&
+                rect.right <= frame.right &&
+                rect.top >= frame.top &&
+                rect.bottom <= frame.bottom,
+            ),
+            actionsClickable: actions.every((action) => {
+              const rect = action.getBoundingClientRect();
+              return action.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+            }),
+            actionCount: actions.length,
+          };
+        });
+
+        await hero.screenshot({ path: `${artifactDir}/${width}.png` });
+        assert.equal(layout.imageHero, "true", `${scenario.slug} ${width}: shared responsive image-hero contract`);
+        assert.equal(layout.titleVisible, true, `${scenario.slug} ${width}: title remains visible`);
+        assert.ok(layout.photoCount > 0, `${scenario.slug} ${width}: hero photo remains rendered`);
+        assert.equal(layout.overflow, false, `${scenario.slug} ${width}: no horizontal overflow`);
+        assert.equal(layout.copyInside, true, `${scenario.slug} ${width}: copy stays inside hero`);
+        assert.equal(layout.actionsInside, true, `${scenario.slug} ${width}: actions stay inside hero`);
+        assert.equal(layout.actionsClickable, true, `${scenario.slug} ${width}: actions stay clickable`);
+        assert.ok(layout.actionCount >= 2, `${scenario.slug} ${width}: both hero actions exist`);
+        if (width <= 640) {
+          if (scenario.mobileMode === "cover") {
+            assert.equal(layout.fullBleedCover, true, `${scenario.slug} ${width}: mobile photo fills the banner without blank bands`);
+          } else {
+            assert.equal(layout.containedPhoto, true, `${scenario.slug} ${width}: mobile photo remains contained inside the banner`);
+          }
+        }
+        console.log(`PASS ${scenario.slug} ${width}px: responsive hero photo, copy and actions remain inside the banner`);
+      } finally {
+        await page.close();
+      }
     }
   }
 } finally {
