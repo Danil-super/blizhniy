@@ -17,7 +17,7 @@ try {
   const asset = new Uint8Array(await assetResponse.arrayBuffer());
   assert.ok(asset.length > 250_000, `${assetPath}: full sharp source image must be deployed`);
 
-  for (const width of [320, 390, 430, 639, 640, 768, 1024, 1440]) {
+  for (const width of [320, 360, 390, 430, 639, 640, 768, 1024, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 1200 } });
     try {
       const response = await page.goto(new URL("/katalog/instrumenty", baseUrl).href, { waitUntil: "networkidle" });
@@ -61,6 +61,8 @@ try {
             descriptionRect.top >= frame.top &&
             descriptionRect.bottom <= frame.bottom,
           actionsInside: actionRects.every((rect) => rect.left >= frame.left && rect.right <= frame.right && rect.top >= frame.top && rect.bottom <= frame.bottom),
+          narrowActionsStacked:
+            actionRects.length < 2 || actionRects[1].top >= actionRects[0].bottom + 3,
           actionsAtBottom: actionRects.every((rect) => frame.bottom - rect.bottom >= 0 && frame.bottom - rect.bottom <= 32),
           actionsClickable: actions.every((action) => {
             const rect = action.getBoundingClientRect();
@@ -95,6 +97,9 @@ try {
       assert.equal(layout.descriptionVisible, true, `${width}: description is visible over the photo`);
       assert.equal(layout.textInside, true, `${width}: text remains inside the banner`);
       assert.equal(layout.actionsInside, true, `${width}: buttons remain inside the banner`);
+      if (width <= 374) {
+        assert.equal(layout.narrowActionsStacked, true, `${width}: narrow-screen buttons stack inside the banner`);
+      }
       assert.equal(layout.actionsAtBottom, true, `${width}: buttons remain at the bottom of the banner`);
       assert.equal(layout.actionsClickable, true, `${width}: buttons remain clickable`);
       assert.ok(layout.actions.some((a) => a.href === "#listings"), `${width}: listings action exists`);

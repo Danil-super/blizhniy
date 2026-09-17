@@ -123,6 +123,23 @@ export default function InstrumentsCategoryPage() {
           white-space: nowrap;
         }
 
+
+        @media (max-width: 374px) {
+          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
+            left: 0.75rem;
+            right: 0.75rem;
+            bottom: 0.75rem;
+            flex-flow: column nowrap;
+            align-items: stretch;
+            gap: 0.4rem;
+          }
+
+          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
+            width: 100%;
+            justify-content: center;
+          }
+        }
+
         @media (min-width: 768px) {
           [data-category-theme="instrumenty"] {
             min-height: 360px;
