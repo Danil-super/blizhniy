@@ -41,6 +41,7 @@ try {
           backgroundPosition: style.backgroundPosition,
           photoHasNoGradient: !style.backgroundImage.includes("gradient"),
           backgroundRepeat: style.backgroundRepeat,
+          heroAspectRatio: frame.width / frame.height,
           titleColor: getComputedStyle(title).color,
           descriptionColor: getComputedStyle(description).color,
           copyBackground: getComputedStyle(copy).backgroundColor,
@@ -72,7 +73,17 @@ try {
       await hero.screenshot({ path: `${artifactDir}/${width}.png` });
       assert.equal(layout.title, "Инструменты", `${width}: category title`);
       assert.ok(layout.backgroundImage.includes("tools-category-hero-clean-v3.webp"), `${width}: full instruments photo is deployed`);
-      assert.equal(layout.backgroundSize, "contain", `${width}: full source image remains visible`);
+      assert.equal(
+        layout.backgroundSize,
+        width < 768 ? "cover" : "contain",
+        `${width}: the photo fits the active banner without blank bands`,
+      );
+      if (width < 768) {
+        assert.ok(
+          Math.abs(layout.heroAspectRatio - 1362 / 1155) < 0.03,
+          `${width}: mobile banner preserves the source photo proportion without top or bottom bands`,
+        );
+      }
       assert.equal(layout.photoHasNoGradient, true, `${width}: photo must not be faded`);
       assert.equal(layout.backgroundRepeat, "no-repeat", `${width}: source image must not repeat`);
       assert.equal(layout.titleColor, "rgb(255, 255, 255)", `${width}: title uses readable white text`);
@@ -88,8 +99,11 @@ try {
       assert.equal(layout.actionsClickable, true, `${width}: buttons remain clickable`);
       assert.ok(layout.actions.some((a) => a.href === "#listings"), `${width}: listings action exists`);
       assert.ok(layout.actions.some((a) => a.href?.includes("/razmestit/obyavlenie?category=instrumenty")), `${width}: create action exists`);
-      assert.ok(layout.height >= 300 && layout.height <= 660, `${width}: hero height remains reasonable, got ${layout.height}px`);
-      console.log(`PASS instrumenty ${width}px: full sharp source photo, white overlay copy and bottom actions`);
+      assert.ok(
+        layout.height >= (width < 768 ? 240 : 300) && layout.height <= 660,
+        `${width}: hero height remains reasonable, got ${layout.height}px`,
+      );
+      console.log(`PASS instrumenty ${width}px: sharp photo without mobile bands, white overlay copy and bottom actions`);
     } finally {
       await page.close();
     }
