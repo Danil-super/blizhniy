@@ -63,7 +63,10 @@ try {
           actionsInside: actionRects.every((rect) => rect.left >= frame.left && rect.right <= frame.right && rect.top >= frame.top && rect.bottom <= frame.bottom),
           narrowActionsStacked:
             actionRects.length < 2 || actionRects[1].top >= actionRects[0].bottom + 3,
-          actionsAtBottom: actionRects.every((rect) => frame.bottom - rect.bottom >= 0 && frame.bottom - rect.bottom <= 32),
+          actionsAtBottom:
+            actionRects.length > 0 &&
+            frame.bottom - Math.max(...actionRects.map((rect) => rect.bottom)) >= 0 &&
+            frame.bottom - Math.max(...actionRects.map((rect) => rect.bottom)) <= 32,
           actionsClickable: actions.every((action) => {
             const rect = action.getBoundingClientRect();
             return action.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
