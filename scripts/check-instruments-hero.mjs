@@ -66,7 +66,7 @@ try {
 
       await hero.screenshot({ path: `${artifactDir}/${width}.png` });
       assert.equal(layout.title, "Инструменты", `${width}: category title`);
-      assert.ok(layout.backgroundImage.includes("tools-category-hero-full.png"), `${width}: full instruments photo is deployed`);
+      assert.ok(layout.backgroundImage.includes("tools-category-hero-clean-v2.webp"), `${width}: full instruments photo is deployed`);
       assert.equal(layout.backgroundSize, "contain", `${width}: full source image remains visible`);
       assert.equal(layout.photoHasNoGradient, true, `${width}: photo must not be faded`);
       assert.equal(layout.backgroundRepeat, "no-repeat", `${width}: source image must not repeat`);
