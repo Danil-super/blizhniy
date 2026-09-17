@@ -15,7 +15,14 @@ const responsiveImageHeroScenarios = [
   { slug: "nedvizhimost", mobileMode: "cover" },
   { slug: "tovary-dlya-detey", mobileMode: "contained" },
   { slug: "zhivotnye", mobileMode: "cover" },
-  { slug: "krasota-i-uhod", mobileMode: "cover" },
+  {
+    slug: "krasota-i-uhod",
+    mobileMode: "cover",
+    fullBleed: true,
+    clearPhoto: true,
+    whiteCopy: true,
+    source: "/images/categories/beauty-health-category-hero-v2.webp",
+  },
   { slug: "transport", mobileMode: "cover" },
   { slug: "posuda", mobileMode: "cover" },
   { slug: "biznes", mobileMode: "cover" },
@@ -212,6 +219,10 @@ try {
                 box,
                 visible: style.display !== "none" && style.visibility !== "hidden" && box.width > 1 && box.height > 1,
                 fit: style.objectFit,
+                filter: style.filter,
+                opacity: style.opacity,
+                mask: style.maskImage,
+                src: img.currentSrc,
                 coversHero:
                   Math.abs(box.left - frame.left) <= 2 &&
                   Math.abs(box.top - frame.top) <= 2 &&
@@ -225,6 +236,9 @@ try {
               };
             })
             .filter((photo) => photo.visible);
+          const directFogLayers = [...section.children].filter(
+            (child) => child.tagName === "DIV" && child !== copy && getComputedStyle(child).display !== "none",
+          );
 
           return {
             imageHero: section.getAttribute("data-image-hero"),
@@ -232,6 +246,11 @@ try {
             photoCount: photos.length,
             fullBleedCover: photos.some((photo) => photo.fit === "cover" && photo.coversHero),
             containedPhoto: photos.some((photo) => photo.fit === "contain" && photo.insideHero),
+            clearPhoto: photos.every((photo) => photo.filter === "none" && photo.opacity === "1" && photo.mask === "none"),
+            fogLayers: directFogLayers.length,
+            sources: photos.map((photo) => photo.src),
+            titleColor: title ? getComputedStyle(title).color : "",
+            descriptionColor: section.querySelector("p") ? getComputedStyle(section.querySelector("p")).color : "",
             overflow: document.documentElement.scrollWidth > window.innerWidth,
             copyInside:
               copyBox.left >= frame.left &&
@@ -262,6 +281,18 @@ try {
         assert.equal(layout.actionsInside, true, `${scenario.slug} ${width}: actions stay inside hero`);
         assert.equal(layout.actionsClickable, true, `${scenario.slug} ${width}: actions stay clickable`);
         assert.ok(layout.actionCount >= 2, `${scenario.slug} ${width}: both hero actions exist`);
+        if (scenario.fullBleed) {
+          assert.equal(layout.fullBleedCover, true, `${scenario.slug} ${width}: clear photo fills the whole banner`);
+        }
+        if (scenario.clearPhoto) {
+          assert.equal(layout.clearPhoto, true, `${scenario.slug} ${width}: photo has no blur, opacity or mask`);
+          assert.equal(layout.fogLayers, 0, `${scenario.slug} ${width}: no fog layer covers the photo`);
+          assert.ok(layout.sources.some((src) => decodeURIComponent(src).includes(scenario.source)), `${scenario.slug} ${width}: cleaned beauty photo is deployed`);
+        }
+        if (scenario.whiteCopy) {
+          assert.equal(layout.titleColor, "rgb(255, 255, 255)", `${scenario.slug} ${width}: heading remains white over the photo`);
+          assert.equal(layout.descriptionColor, "rgb(255, 255, 255)", `${scenario.slug} ${width}: description remains white over the photo`);
+        }
         if (width <= 640) {
           if (scenario.mobileMode === "cover") {
             assert.equal(layout.fullBleedCover, true, `${scenario.slug} ${width}: mobile photo fills the banner without blank bands`);

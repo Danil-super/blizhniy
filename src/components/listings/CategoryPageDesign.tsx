@@ -196,6 +196,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           ? "lg:min-h-[370px]"
           : isDishesCategory
             ? "aspect-[1089/1444] min-h-[360px] sm:aspect-[3/1] sm:min-h-[220px]"
+          : isBeautyCategory
+            ? "aspect-[1069/1471] min-h-0 sm:aspect-[3/2] sm:min-h-[350px] lg:min-h-[430px]"
           : hasCompactHero
             ? "min-h-[280px] md:min-h-[320px]"
             : usesRightAlignedHero
@@ -311,28 +313,18 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </>
       ) : null}
       {isBeautyCategory ? (
-        <>
-          <Image
+        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+          {/* The photo stays clear and fills the banner on every breakpoint. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             alt=""
-            aria-hidden="true"
-            className="object-cover object-[40%_center] lg:hidden"
-            fill
-            priority
-            sizes="100vw"
-            src="/images/categories/beauty-health-category-hero.png"
+            className="h-full w-full object-cover object-center"
+            fetchPriority="high"
+            height={1471}
+            src="/images/categories/beauty-health-category-hero-v2.webp"
+            width={1069}
           />
-          <Image
-            alt=""
-            aria-hidden="true"
-            className="absolute right-0 top-1/2 hidden h-[140%] w-auto max-w-none -translate-y-1/2 object-contain object-right [mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] lg:block"
-            height={941}
-            priority
-            sizes="(min-width: 1024px) 830px, 0px"
-            src="/images/categories/beauty-health-category-hero.png"
-            width={1672}
-          />
-          <div className="absolute inset-0 hidden lg:block lg:bg-[linear-gradient(90deg,rgba(255,244,238,0.98)_0%,rgba(255,244,238,0.9)_31%,rgba(255,244,238,0.58)_48%,rgba(255,244,238,0.08)_70%,rgba(255,244,238,0)_100%)]" />
-        </>
+        </picture>
       ) : null}
       {isTransportCategory ? (
         <>
@@ -495,6 +487,45 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           />
           <div className="absolute inset-0 hidden lg:block lg:bg-[linear-gradient(90deg,rgba(237,250,253,0.98)_0%,rgba(237,250,253,0.9)_31%,rgba(237,250,253,0.58)_48%,rgba(237,250,253,0.08)_70%,rgba(237,250,253,0)_100%)]" />
         </>
+      ) : null}
+      {isBeautyCategory ? (
+        <style>{`
+          [data-category-theme="krasota-i-uhod"] > [data-hero-copy] {
+            position: static;
+            width: 100%;
+            max-width: none;
+          }
+
+          [data-category-theme="krasota-i-uhod"] h1,
+          [data-category-theme="krasota-i-uhod"] p {
+            color: #fff !important;
+            text-shadow: 0 2px 8px rgba(57, 30, 13, 0.92), 0 1px 2px rgba(57, 30, 13, 0.92);
+          }
+
+          [data-category-theme="krasota-i-uhod"] [data-hero-actions] {
+            position: absolute;
+            z-index: 20;
+            right: 1rem;
+            bottom: 1rem;
+            left: 1rem;
+          }
+
+          @media (min-width: 640px) {
+            [data-category-theme="krasota-i-uhod"] [data-hero-actions] {
+              right: auto;
+              bottom: 1.25rem;
+              left: 1.25rem;
+              flex-direction: row;
+            }
+          }
+
+          @media (min-width: 1024px) {
+            [data-category-theme="krasota-i-uhod"] [data-hero-actions] {
+              bottom: 1.75rem;
+              left: 1.75rem;
+            }
+          }
+        `}</style>
       ) : null}
       <div
         data-hero-copy
