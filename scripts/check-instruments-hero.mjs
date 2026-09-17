@@ -10,12 +10,12 @@ try {
   const artifactDir = "artifacts/category-heroes/instrumenty";
   await mkdir(artifactDir, { recursive: true });
 
-  const assetPath = "/images/categories/tools-category-hero-clean-v2.webp";
+  const assetPath = "/images/categories/tools-category-hero-clean-v3.webp";
   const assetResponse = await fetch(new URL(assetPath, baseUrl));
   assert.equal(assetResponse.status, 200, `${assetPath}: asset must load`);
   assert.ok((assetResponse.headers.get("content-type") ?? "").startsWith("image/"), `${assetPath}: asset must be an image`);
   const asset = new Uint8Array(await assetResponse.arrayBuffer());
-  assert.ok(asset.length > 150_000, `${assetPath}: full source image must be deployed`);
+  assert.ok(asset.length > 250_000, `${assetPath}: full sharp source image must be deployed`);
 
   for (const width of [320, 390, 430, 639, 640, 768, 1024, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 1200 } });
@@ -31,6 +31,7 @@ try {
         const title = section.querySelector("h1");
         const description = section.querySelector("p");
         const actions = [...section.querySelectorAll("a")];
+        const copy = title.parentElement;
         const titleRect = title.getBoundingClientRect();
         const descriptionRect = description.getBoundingClientRect();
         const actionRects = actions.map((action) => action.getBoundingClientRect());
@@ -40,6 +41,10 @@ try {
           backgroundPosition: style.backgroundPosition,
           photoHasNoGradient: !style.backgroundImage.includes("gradient"),
           backgroundRepeat: style.backgroundRepeat,
+          titleColor: getComputedStyle(title).color,
+          descriptionColor: getComputedStyle(description).color,
+          copyBackground: getComputedStyle(copy).backgroundColor,
+          copyBorderWidth: getComputedStyle(copy).borderTopWidth,
           overflow: document.documentElement.scrollWidth > window.innerWidth,
           height: frame.height,
           title: title.textContent,
@@ -66,10 +71,14 @@ try {
 
       await hero.screenshot({ path: `${artifactDir}/${width}.png` });
       assert.equal(layout.title, "Инструменты", `${width}: category title`);
-      assert.ok(layout.backgroundImage.includes("tools-category-hero-clean-v2.webp"), `${width}: full instruments photo is deployed`);
+      assert.ok(layout.backgroundImage.includes("tools-category-hero-clean-v3.webp"), `${width}: full instruments photo is deployed`);
       assert.equal(layout.backgroundSize, "contain", `${width}: full source image remains visible`);
       assert.equal(layout.photoHasNoGradient, true, `${width}: photo must not be faded`);
       assert.equal(layout.backgroundRepeat, "no-repeat", `${width}: source image must not repeat`);
+      assert.equal(layout.titleColor, "rgb(255, 255, 255)", `${width}: title uses readable white text`);
+      assert.equal(layout.descriptionColor, "rgb(255, 255, 255)", `${width}: description uses readable white text`);
+      assert.equal(layout.copyBackground, "rgba(0, 0, 0, 0)", `${width}: copy has no white background card`);
+      assert.equal(layout.copyBorderWidth, "0px", `${width}: copy has no card border`);
       assert.equal(layout.overflow, false, `${width}: no horizontal overflow`);
       assert.equal(layout.titleVisible, true, `${width}: title is visible over the photo`);
       assert.equal(layout.descriptionVisible, true, `${width}: description is visible over the photo`);
@@ -80,7 +89,7 @@ try {
       assert.ok(layout.actions.some((a) => a.href === "#listings"), `${width}: listings action exists`);
       assert.ok(layout.actions.some((a) => a.href?.includes("/razmestit/obyavlenie?category=instrumenty")), `${width}: create action exists`);
       assert.ok(layout.height >= 300 && layout.height <= 660, `${width}: hero height remains reasonable, got ${layout.height}px`);
-      console.log(`PASS instrumenty ${width}px: full clear source photo, readable copy and bottom actions`);
+      console.log(`PASS instrumenty ${width}px: full sharp source photo, white overlay copy and bottom actions`);
     } finally {
       await page.close();
     }

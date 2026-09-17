@@ -57,8 +57,8 @@ export default function InstrumentsCategoryPage() {
           min-height: 420px;
           aspect-ratio: 1.12 / 1;
           overflow: hidden;
-          background-color: #af8f66 !important;
-          background-image: url('/images/categories/tools-category-hero-clean-v2.webp') !important;
+          background-color: #4e3829 !important;
+          background-image: url('/images/categories/tools-category-hero-clean-v3.webp') !important;
           background-repeat: no-repeat !important;
           background-size: contain !important;
           background-position: center bottom !important;
@@ -75,11 +75,11 @@ export default function InstrumentsCategoryPage() {
         [data-category-theme="instrumenty"] > div:last-child > div:first-child {
           display: inline-block;
           max-width: 17.5rem;
-          padding: 0.75rem;
-          border: 1px solid rgba(255, 255, 255, 0.58);
-          border-radius: 0.75rem;
-          background: rgba(255, 255, 255, 0.90);
-          box-shadow: 0 4px 14px rgba(44, 28, 12, 0.16);
+          padding: 0;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          box-shadow: none;
         }
 
         [data-category-theme="instrumenty"] > div:last-child h1,
@@ -87,7 +87,8 @@ export default function InstrumentsCategoryPage() {
           position: relative;
           z-index: 10;
           max-width: none !important;
-          text-shadow: none;
+          color: #fff !important;
+          text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.95);
         }
 
         [data-category-theme="instrumenty"] > div:last-child h1 {
@@ -131,7 +132,6 @@ export default function InstrumentsCategoryPage() {
 
           [data-category-theme="instrumenty"] > div:last-child > div:first-child {
             max-width: 17rem;
-            padding: 1rem;
           }
 
           [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
