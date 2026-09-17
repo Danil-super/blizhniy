@@ -198,7 +198,11 @@ try {
           const title = section.querySelector("h1");
           const copy = section.querySelector("[data-hero-copy]") ?? title?.parentElement?.parentElement;
           const copyBox = copy.getBoundingClientRect();
-          const actions = [...copy.querySelectorAll("a")];
+          const actions = [...copy.querySelectorAll("a")].filter((action) => {
+            const style = getComputedStyle(action);
+            const rect = action.getBoundingClientRect();
+            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 1 && rect.height > 1;
+          });
           const actionRects = actions.map((action) => action.getBoundingClientRect());
           const photos = [...section.querySelectorAll("img")]
             .map((img) => {
