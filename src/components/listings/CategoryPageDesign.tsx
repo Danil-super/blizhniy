@@ -170,14 +170,14 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   const isExchangeOrFreeCategory = categorySlug === "menyayu-ili-otdam-darom";
   const hasImageHero = isGardenCategory || isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
   const usesRightAlignedHero = isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
-  const heroActionSizeClassName = hasCompactHero ? "min-h-10 min-w-0 max-w-full px-2 py-2 text-xs leading-4 [text-shadow:none] md:h-10 md:px-4 md:text-sm" : hasImageHero ? "h-10 min-w-0 max-w-full px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm";
+  const heroActionSizeClassName = hasCompactHero ? "min-h-10 min-w-0 max-w-full px-2 py-2 text-xs leading-4 [text-shadow:none] md:h-10 md:px-4 md:text-sm" : isTransportCategory ? "h-9 min-w-0 max-w-full px-2 text-[11px] leading-4 sm:h-10 sm:px-3 sm:text-xs" : hasImageHero ? "h-10 min-w-0 max-w-full px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm";
   const createAction = () => (
     <Link
       href={createHref}
       className={`inline-flex items-center justify-center gap-2 rounded-lg bg-[#d92d20] font-bold text-white shadow-sm shadow-black/10 transition hover:bg-[#b42318] ${heroActionSizeClassName}`}
     >
       Разместить
-      <ArrowRight className={hasCompactHero ? "hidden h-4 w-4 shrink-0 md:block" : "h-4 w-4"} />
+      <ArrowRight className={hasCompactHero ? "hidden h-4 w-4 shrink-0 md:block" : isTransportCategory ? "hidden h-4 w-4 shrink-0 sm:block" : "h-4 w-4"} />
     </Link>
   );
   const listingsAction = () => (
@@ -186,7 +186,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       className={`inline-flex items-center justify-center gap-2 rounded-lg border border-[#ef8c84] bg-white font-bold text-[#c6251a] transition hover:bg-[#fff1f0] ${heroActionSizeClassName}`}
     >
       Смотреть объявления
-      <ClipboardList className={hasCompactHero ? "hidden h-4 w-4 shrink-0 md:block" : "h-4 w-4"} />
+      <ClipboardList className={hasCompactHero ? "hidden h-4 w-4 shrink-0 md:block" : isTransportCategory ? "hidden h-4 w-4 shrink-0 sm:block" : "h-4 w-4"} />
     </a>
   );
   return (
@@ -196,6 +196,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           ? "lg:min-h-[370px]"
           : isDishesCategory
             ? "aspect-[1089/1444] min-h-[360px] sm:aspect-[3/1] sm:min-h-[220px]"
+          : isTransportCategory
+            ? "aspect-[1122/1402] min-h-0 sm:aspect-[1983/793] sm:min-h-0"
           : isBeautyCategory
             ? "aspect-[1069/1471] min-h-0 sm:aspect-[3/2] sm:min-h-[350px] lg:min-h-[430px]"
           : hasCompactHero
@@ -327,28 +329,19 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </picture>
       ) : null}
       {isTransportCategory ? (
-        <>
-          <Image
+        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <source media="(min-width: 640px)" srcSet="/images/categories/transport-category-hero-desktop-v2.webp" />
+          {/* Each breakpoint receives a composition where every vehicle stays in frame. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             alt=""
-            aria-hidden="true"
-            className="object-cover object-[55%_center] lg:hidden"
-            fill
-            priority
-            sizes="100vw"
-            src="/images/categories/transport-category-hero.png"
+            className="h-full w-full object-cover object-center"
+            fetchPriority="high"
+            height={1402}
+            src="/images/categories/transport-category-hero-mobile-v2.webp"
+            width={1122}
           />
-          <Image
-            alt=""
-            aria-hidden="true"
-            className="absolute right-0 top-1/2 hidden h-[140%] w-auto max-w-none -translate-y-1/2 object-contain object-right [mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] lg:block"
-            height={941}
-            priority
-            sizes="(min-width: 1024px) 830px, 0px"
-            src="/images/categories/transport-category-hero.png"
-            width={1672}
-          />
-          <div className="absolute inset-0 hidden lg:block lg:bg-[linear-gradient(90deg,rgba(238,249,255,0.98)_0%,rgba(238,249,255,0.9)_31%,rgba(238,249,255,0.58)_48%,rgba(238,249,255,0.08)_70%,rgba(238,249,255,0)_100%)]" />
-        </>
+        </picture>
       ) : null}
       {isDishesCategory ? (
         <>
@@ -578,31 +571,23 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
               )}
             </p>
           ) : null}
-          <div
-            data-hero-actions
-            className={`${isDishesCategory ? "mt-4 flex-row flex-wrap items-start" : hasImageHero ? hasCompactHero ? "mt-4 flex-col items-start md:flex-row md:flex-wrap" : "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex min-w-0 max-w-full gap-2`}
-          >
-            {isTransportCategory ? (
-              <>
-                <div className="flex flex-col items-start gap-2 sm:hidden">
-                  {listingsAction()}
-                  {createAction()}
-                </div>
-                <div className="hidden items-center gap-2 sm:flex">
-                  {createAction()}
-                  {listingsAction()}
-                </div>
-              </>
-            ) : (
-              <>
-                {createAction()}
-                {listingsAction()}
-              </>
-            )}
-          </div>
+          {!isTransportCategory ? (
+            <div
+              data-hero-actions
+              className={`${isDishesCategory ? "mt-4 flex-row flex-wrap items-start" : hasImageHero ? hasCompactHero ? "mt-4 flex-col items-start md:flex-row md:flex-wrap" : "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex min-w-0 max-w-full gap-2`}
+            >
+              {createAction()}
+              {listingsAction()}
+            </div>
+          ) : null}
         </div>
       </div>
-    </section>
+      {isTransportCategory ? (
+        <div data-hero-actions className="absolute bottom-4 left-4 right-4 z-20 flex flex-nowrap items-center gap-2 sm:bottom-5 sm:left-5 sm:right-auto lg:bottom-7 lg:left-7">
+          {createAction()}
+          {listingsAction()}
+        </div>
+      ) : null}    </section>
   );
 }
 

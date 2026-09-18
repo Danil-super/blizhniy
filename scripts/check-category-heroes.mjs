@@ -23,7 +23,17 @@ const responsiveImageHeroScenarios = [
     whiteCopy: true,
     source: "/images/categories/beauty-health-category-hero-v2.webp",
   },
-  { slug: "transport", mobileMode: "cover" },
+  {
+    slug: "transport",
+    mobileMode: "cover",
+    fullBleed: true,
+    clearPhoto: true,
+    preserveFullPhoto: true,
+    oneLineActions: true,
+    copyOnTop: true,
+    mobileSource: "/images/categories/transport-category-hero-mobile-v2.webp",
+    desktopSource: "/images/categories/transport-category-hero-desktop-v2.webp",
+  },
   { slug: "posuda", mobileMode: "cover" },
   { slug: "biznes", mobileMode: "cover" },
   { slug: "elektronika", mobileMode: "cover" },
@@ -205,7 +215,7 @@ try {
           const title = section.querySelector("h1");
           const copy = section.querySelector("[data-hero-copy]") ?? title?.parentElement?.parentElement;
           const copyBox = copy.getBoundingClientRect();
-          const actions = [...copy.querySelectorAll("a")].filter((action) => {
+          const actions = [...section.querySelectorAll("[data-hero-actions] a")].filter((action) => {
             const style = getComputedStyle(action);
             const rect = action.getBoundingClientRect();
             return style.display !== "none" && style.visibility !== "hidden" && rect.width > 1 && rect.height > 1;
@@ -223,6 +233,10 @@ try {
                 opacity: style.opacity,
                 mask: style.maskImage,
                 src: img.currentSrc,
+                visibleFraction: Math.min(
+                  (box.width / box.height) / (img.naturalWidth / img.naturalHeight),
+                  (img.naturalWidth / img.naturalHeight) / (box.width / box.height),
+                ),
                 coversHero:
                   Math.abs(box.left - frame.left) <= 2 &&
                   Math.abs(box.top - frame.top) <= 2 &&
@@ -237,7 +251,7 @@ try {
             })
             .filter((photo) => photo.visible);
           const directFogLayers = [...section.children].filter(
-            (child) => child.tagName === "DIV" && child !== copy && getComputedStyle(child).display !== "none",
+            (child) => child.tagName === "DIV" && child !== copy && child.getAttribute("data-hero-actions") === null && getComputedStyle(child).display !== "none",
           );
 
           return {
@@ -252,6 +266,8 @@ try {
             titleColor: title ? getComputedStyle(title).color : "",
             descriptionColor: section.querySelector("p") ? getComputedStyle(section.querySelector("p")).color : "",
             copyAbovePhoto: Number(getComputedStyle(copy).zIndex) > 0,
+            visiblePhotoFraction: Math.max(...photos.map((photo) => photo.visibleFraction)),
+            actionsOneLine: actionRects.length >= 2 && Math.abs(actionRects[0].top - actionRects[1].top) <= 2,
             overflow: document.documentElement.scrollWidth > window.innerWidth,
             copyInside:
               copyBox.left >= frame.left &&
@@ -288,7 +304,20 @@ try {
         if (scenario.clearPhoto) {
           assert.equal(layout.clearPhoto, true, `${scenario.slug} ${width}: photo has no blur, opacity or mask`);
           assert.equal(layout.fogLayers, 0, `${scenario.slug} ${width}: no fog layer covers the photo`);
-          assert.ok(layout.sources.some((src) => decodeURIComponent(src).includes(scenario.source)), `${scenario.slug} ${width}: cleaned beauty photo is deployed`);
+          if (scenario.source) {
+            assert.ok(layout.sources.some((src) => decodeURIComponent(src).includes(scenario.source)), `${scenario.slug} ${width}: cleaned hero photo is deployed`);
+          }
+        }
+        if (scenario.preserveFullPhoto) {
+          const expectedSource = width < 640 ? scenario.mobileSource : scenario.desktopSource;
+          assert.ok(layout.sources.some((src) => decodeURIComponent(src).includes(expectedSource)), `${scenario.slug} ${width}: breakpoint selects the uncropped vehicle photo`);
+          assert.ok(layout.visiblePhotoFraction >= 0.98, `${scenario.slug} ${width}: all four vehicles remain in frame, got ${layout.visiblePhotoFraction}`);
+        }
+        if (scenario.oneLineActions) {
+          assert.equal(layout.actionsOneLine, true, `${scenario.slug} ${width}: both actions stay on one row`);
+        }
+        if (scenario.copyOnTop) {
+          assert.equal(layout.copyAbovePhoto, true, `${scenario.slug} ${width}: title and description stay above the photo`);
         }
         if (scenario.whiteCopy) {
           assert.equal(layout.titleColor, "rgb(255, 255, 255)", `${scenario.slug} ${width}: heading remains white over the photo`);
