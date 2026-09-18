@@ -197,7 +197,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           : isDishesCategory
             ? "aspect-[1089/1444] min-h-[360px] sm:aspect-[3/1] sm:min-h-[220px]"
           : isTransportCategory
-            ? "aspect-[1122/922] min-h-0 sm:aspect-[1983/593] sm:min-h-0"
+            ? "aspect-[1122/922] min-h-0 md:aspect-[1983/593] md:min-h-0"
           : isBusinessCategory
             ? "aspect-[1672/1200] min-h-0 sm:aspect-[1672/941] sm:min-h-0"
           : isBeautyCategory
