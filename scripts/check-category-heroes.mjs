@@ -42,7 +42,7 @@ const responsiveImageHeroScenarios = [
     clearPhoto: true,
     copyOnTop: true,
     whiteCopy: true,
-    source: "/images/categories/business-category-hero.png",
+    source: "/images/categories/business-category-hero-v2.webp",
   },
   { slug: "posuda", mobileMode: "cover" },
   { slug: "biznes", mobileMode: "cover" },

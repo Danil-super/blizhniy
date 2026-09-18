@@ -371,7 +371,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             className="h-full w-full object-cover object-[58%_center] sm:object-center"
             fetchPriority="high"
             height={941}
-            src="/images/categories/business-category-hero.png"
+            src="/images/categories/business-category-hero-v2.webp"
             width={1672}
           />
         </picture>
