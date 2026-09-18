@@ -31,8 +31,18 @@ const responsiveImageHeroScenarios = [
     preserveFullPhoto: true,
     oneLineActions: true,
     copyOnTop: true,
+    breakpoint: 768,
     mobileSource: "/images/categories/transport-category-hero-mobile-v4.webp",
     desktopSource: "/images/categories/transport-category-hero-desktop-v4.webp",
+  },
+  {
+    slug: "biznes",
+    mobileMode: "cover",
+    fullBleed: true,
+    clearPhoto: true,
+    copyOnTop: true,
+    whiteCopy: true,
+    source: "/images/categories/business-category-hero.png",
   },
   { slug: "posuda", mobileMode: "cover" },
   { slug: "biznes", mobileMode: "cover" },
@@ -309,7 +319,7 @@ try {
           }
         }
         if (scenario.preserveFullPhoto) {
-          const expectedSource = width < 640 ? scenario.mobileSource : scenario.desktopSource;
+          const expectedSource = width < (scenario.breakpoint ?? 640) ? scenario.mobileSource : scenario.desktopSource;
           assert.ok(layout.sources.some((src) => decodeURIComponent(src).includes(expectedSource)), `${scenario.slug} ${width}: breakpoint selects the uncropped vehicle photo`);
           assert.ok(layout.visiblePhotoFraction >= 0.98, `${scenario.slug} ${width}: all four vehicles remain in frame, got ${layout.visiblePhotoFraction}`);
         }

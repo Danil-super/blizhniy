@@ -170,14 +170,14 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   const isExchangeOrFreeCategory = categorySlug === "menyayu-ili-otdam-darom";
   const hasImageHero = isGardenCategory || isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
   const usesRightAlignedHero = isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
-  const heroActionSizeClassName = hasCompactHero ? "min-h-10 min-w-0 max-w-full px-2 py-2 text-xs leading-4 [text-shadow:none] md:h-10 md:px-4 md:text-sm" : isTransportCategory ? "h-9 min-w-0 max-w-full px-2 text-[11px] leading-4 sm:h-10 sm:px-3 sm:text-xs" : hasImageHero ? "h-10 min-w-0 max-w-full px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm";
+  const heroActionSizeClassName = hasCompactHero ? "min-h-10 min-w-0 max-w-full px-2 py-2 text-xs leading-4 [text-shadow:none] md:h-10 md:px-4 md:text-sm" : isTransportCategory ? "h-9 min-w-0 max-w-full px-2 text-[11px] leading-4 sm:h-10 sm:px-3 sm:text-xs" : isBusinessCategory ? "h-9 min-w-0 max-w-full px-2 text-[11px] leading-4 sm:h-10 sm:px-4 sm:text-sm" : hasImageHero ? "h-10 min-w-0 max-w-full px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm";
   const createAction = () => (
     <Link
       href={createHref}
       className={`inline-flex items-center justify-center gap-2 rounded-lg bg-[#d92d20] font-bold text-white shadow-sm shadow-black/10 transition hover:bg-[#b42318] ${heroActionSizeClassName}`}
     >
       Разместить
-      <ArrowRight className={hasCompactHero ? "hidden h-4 w-4 shrink-0 md:block" : isTransportCategory ? "hidden h-4 w-4 shrink-0 sm:block" : "h-4 w-4"} />
+      <ArrowRight className={hasCompactHero ? "hidden h-4 w-4 shrink-0 md:block" : isTransportCategory || isBusinessCategory ? "hidden h-4 w-4 shrink-0 sm:block" : "h-4 w-4"} />
     </Link>
   );
   const listingsAction = () => (
@@ -186,7 +186,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       className={`inline-flex items-center justify-center gap-2 rounded-lg border border-[#ef8c84] bg-white font-bold text-[#c6251a] transition hover:bg-[#fff1f0] ${heroActionSizeClassName}`}
     >
       Смотреть объявления
-      <ClipboardList className={hasCompactHero ? "hidden h-4 w-4 shrink-0 md:block" : isTransportCategory ? "hidden h-4 w-4 shrink-0 sm:block" : "h-4 w-4"} />
+      <ClipboardList className={hasCompactHero ? "hidden h-4 w-4 shrink-0 md:block" : isTransportCategory || isBusinessCategory ? "hidden h-4 w-4 shrink-0 sm:block" : "h-4 w-4"} />
     </a>
   );
   return (
@@ -198,6 +198,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             ? "aspect-[1089/1444] min-h-[360px] sm:aspect-[3/1] sm:min-h-[220px]"
           : isTransportCategory
             ? "aspect-[1122/922] min-h-0 sm:aspect-[1983/593] sm:min-h-0"
+          : isBusinessCategory
+            ? "aspect-[1672/1200] min-h-0 sm:aspect-[1672/941] sm:min-h-0"
           : isBeautyCategory
             ? "aspect-[1069/1471] min-h-0 sm:aspect-[3/2] sm:min-h-[350px] lg:min-h-[430px]"
           : hasCompactHero
@@ -330,7 +332,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       ) : null}
       {isTransportCategory ? (
         <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
-          <source media="(min-width: 640px)" srcSet="/images/categories/transport-category-hero-desktop-v4.webp" />
+          <source media="(min-width: 768px)" srcSet="/images/categories/transport-category-hero-desktop-v4.webp" />
           {/* Each breakpoint receives a composition where every vehicle stays in frame. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -361,28 +363,18 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </>
       ) : null}
       {isBusinessCategory ? (
-        <>
-          <Image
+        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+          {/* One clear photo across the whole banner: no fade, mask or white transition. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             alt=""
-            aria-hidden="true"
-            className="object-cover object-[45%_center] lg:hidden"
-            fill
-            priority
-            sizes="100vw"
-            src="/images/categories/business-category-hero.png"
-          />
-          <Image
-            alt=""
-            aria-hidden="true"
-            className="absolute right-0 top-1/2 hidden h-[140%] w-auto max-w-none -translate-y-1/2 object-contain object-right [mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] lg:block"
+            className="h-full w-full object-cover object-[58%_center] sm:object-center"
+            fetchPriority="high"
             height={941}
-            priority
-            sizes="(min-width: 1024px) 830px, 0px"
             src="/images/categories/business-category-hero.png"
             width={1672}
           />
-          <div className="absolute inset-0 hidden lg:block lg:bg-[linear-gradient(90deg,rgba(241,248,255,0.98)_0%,rgba(241,248,255,0.9)_31%,rgba(241,248,255,0.58)_48%,rgba(241,248,255,0.08)_70%,rgba(241,248,255,0)_100%)]" />
-        </>
+        </picture>
       ) : null}
       {isElectronicsCategory ? (
         <>
@@ -496,6 +488,20 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
 
         `}</style>
       ) : null}
+      {isBusinessCategory ? (
+        <style>{`
+          [data-category-theme="biznes"] > [data-hero-copy] {
+            position: relative;
+            z-index: 10;
+          }
+
+          [data-category-theme="biznes"] h1,
+          [data-category-theme="biznes"] p {
+            color: #fff !important;
+            text-shadow: 0 2px 8px rgba(6, 30, 43, 0.96), 0 1px 2px rgba(6, 30, 43, 0.96);
+          }
+        `}</style>
+      ) : null}
       <div
         data-hero-copy
         className={
@@ -574,7 +580,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           {!isTransportCategory ? (
             <div
               data-hero-actions
-              className={`${isDishesCategory ? "mt-4 flex-row flex-wrap items-start" : hasImageHero ? hasCompactHero ? "mt-4 flex-col items-start md:flex-row md:flex-wrap" : "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex min-w-0 max-w-full gap-2`}
+              className={`${isDishesCategory || isBusinessCategory ? "mt-4 flex-row flex-nowrap items-start" : hasImageHero ? hasCompactHero ? "mt-4 flex-col items-start md:flex-row md:flex-wrap" : "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex min-w-0 max-w-full gap-2`}
             >
               {createAction()}
               {listingsAction()}
