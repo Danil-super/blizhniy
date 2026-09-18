@@ -197,7 +197,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           : isDishesCategory
             ? "aspect-[1089/1444] min-h-[360px] sm:aspect-[3/1] sm:min-h-[220px]"
           : isTransportCategory
-            ? "aspect-[1122/1402] min-h-0 sm:aspect-[1983/793] sm:min-h-0"
+            ? "aspect-[1122/922] min-h-0 sm:aspect-[1983/593] sm:min-h-0"
           : isBeautyCategory
             ? "aspect-[1069/1471] min-h-0 sm:aspect-[3/2] sm:min-h-[350px] lg:min-h-[430px]"
           : hasCompactHero
@@ -330,15 +330,15 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       ) : null}
       {isTransportCategory ? (
         <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
-          <source media="(min-width: 640px)" srcSet="/images/categories/transport-category-hero-desktop-v2.webp" />
+          <source media="(min-width: 640px)" srcSet="/images/categories/transport-category-hero-desktop-v4.webp" />
           {/* Each breakpoint receives a composition where every vehicle stays in frame. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
             className="h-full w-full object-cover object-center"
             fetchPriority="high"
-            height={1402}
-            src="/images/categories/transport-category-hero-mobile-v2.webp"
+            height={922}
+            src="/images/categories/transport-category-hero-mobile-v4.webp"
             width={1122}
           />
         </picture>
