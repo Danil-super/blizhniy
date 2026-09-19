@@ -201,7 +201,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           : isBusinessCategory
             ? "aspect-[1672/1200] min-h-0 sm:aspect-[1672/941] sm:min-h-0"
           : isBeautyCategory
-            ? "aspect-[1069/1471] min-h-0 sm:aspect-[3/2] sm:min-h-[350px] lg:min-h-[430px]"
+            ? "aspect-[1069/1471] min-h-0 sm:aspect-[3/2] sm:min-h-[350px] lg:aspect-[1069/1471] lg:min-h-0"
           : hasCompactHero
             ? "min-h-[280px] md:min-h-[320px]"
             : usesRightAlignedHero

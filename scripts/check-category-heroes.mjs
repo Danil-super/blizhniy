@@ -21,6 +21,7 @@ const responsiveImageHeroScenarios = [
     fullBleed: true,
     clearPhoto: true,
     whiteCopy: true,
+    desktopSubcategories: 3,
     source: "/images/categories/beauty-health-category-hero-v2.webp",
   },
   {
@@ -263,6 +264,8 @@ try {
           const directFogLayers = [...section.children].filter(
             (child) => child.tagName === "DIV" && child !== copy && child.getAttribute("data-hero-actions") === null && getComputedStyle(child).display !== "none",
           );
+          const desktopSubcategoryPanel = document.querySelector("[data-beauty-desktop-subcategories]");
+          const desktopSubcategoryBox = desktopSubcategoryPanel?.getBoundingClientRect();
 
           return {
             imageHero: section.getAttribute("data-image-hero"),
@@ -296,10 +299,16 @@ try {
               return action.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
             }),
             actionCount: actions.length,
+            desktopSubcategoryCount: desktopSubcategoryPanel?.querySelectorAll("details").length ?? 0,
+            desktopSubcategoriesRightOfHero: Boolean(desktopSubcategoryBox) && desktopSubcategoryBox.left >= frame.right - 2,
+            desktopSubcategoriesTopAligned: Boolean(desktopSubcategoryBox) && Math.abs(desktopSubcategoryBox.top - frame.top) <= 2,
           };
         });
 
         await hero.screenshot({ path: `${artifactDir}/${width}.png` });
+        if (scenario.desktopSubcategories && width >= 1024) {
+          await page.locator("[data-beauty-desktop-layout]").screenshot({ path: `${artifactDir}/${width}-desktop-layout.png` });
+        }
         assert.equal(layout.imageHero, "true", `${scenario.slug} ${width}: shared responsive image-hero contract`);
         assert.equal(layout.titleVisible, true, `${scenario.slug} ${width}: title remains visible`);
         assert.ok(layout.photoCount > 0, `${scenario.slug} ${width}: hero photo remains rendered`);
@@ -328,6 +337,11 @@ try {
         }
         if (scenario.copyOnTop) {
           assert.equal(layout.copyAbovePhoto, true, `${scenario.slug} ${width}: title and description stay above the photo`);
+        }
+        if (scenario.desktopSubcategories && width >= 1024) {
+          assert.equal(layout.desktopSubcategoryCount, scenario.desktopSubcategories, `${scenario.slug} ${width}: every beauty subcategory is present beside the hero`);
+          assert.equal(layout.desktopSubcategoriesRightOfHero, true, `${scenario.slug} ${width}: subcategories stay to the right of the portrait hero`);
+          assert.equal(layout.desktopSubcategoriesTopAligned, true, `${scenario.slug} ${width}: subcategories align with the top of the hero`);
         }
         if (scenario.whiteCopy) {
           assert.equal(layout.titleColor, "rgb(255, 255, 255)", `${scenario.slug} ${width}: heading remains white over the photo`);
