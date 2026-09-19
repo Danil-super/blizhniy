@@ -32,7 +32,7 @@ const responsiveImageHeroScenarios = [
     oneLineActions: true,
     copyOnTop: true,
     breakpoint: 768,
-    mobileSource: "/images/categories/transport-category-hero-mobile-v4.webp",
+    mobileSource: "/images/categories/transport-category-hero-mobile-v5.webp",
     desktopSource: "/images/categories/transport-category-hero-desktop-v4.webp",
   },
   {
