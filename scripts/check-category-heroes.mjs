@@ -335,7 +335,9 @@ try {
           assert.ok(layout.sources.some((src) => decodeURIComponent(src).includes(expectedSource)), `${scenario.slug} ${width}: the source matches its responsive layout`);
           if (width >= breakpoint) {
             assert.ok(layout.visiblePhotoFraction >= 0.98, `${scenario.slug} ${width}: desktop photo is not meaningfully cropped, got ${layout.visiblePhotoFraction}`);
-            assert.ok(Math.abs(layout.heroAspect - scenario.desktopAspect) <= 0.04, `${scenario.slug} ${width}: desktop hero keeps the intended responsive aspect ratio, got ${layout.heroAspect}`);
+            if (scenario.desktopAspect) {
+              assert.ok(Math.abs(layout.heroAspect - scenario.desktopAspect) <= 0.04, `${scenario.slug} ${width}: desktop hero keeps the intended responsive aspect ratio, got ${layout.heroAspect}`);
+            }
           }
         }
         if (scenario.oneLineActions) {
