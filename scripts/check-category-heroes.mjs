@@ -27,6 +27,17 @@ const responsiveImageHeroScenarios = [
     desktopAspect: 8 / 3,
   },
   {
+    slug: "instrumenty",
+    mobileMode: "cover",
+    fullBleed: true,
+    clearPhoto: true,
+    whiteCopy: true,
+    mobileSource: "/images/categories/tools-category-hero-clean-v3.webp",
+    desktopSource: "/images/categories/tools-category-hero-desktop-v1.webp",
+    desktopBreakpoint: 768,
+    desktopAspect: 8 / 3,
+  },
+  {
     slug: "transport",
     mobileMode: "cover",
     fullBleed: true,
@@ -215,7 +226,7 @@ try {
     const artifactDir = `artifacts/category-heroes/${scenario.slug}`;
     await mkdir(artifactDir, { recursive: true });
 
-    const widths = scenario.slug === "krasota-i-uhod" ? [320, 360, 390, 430, 640, 1024, 1280, 1440, 1920] : [320, 360, 390, 430, 640, 1024];
+    const widths = scenario.desktopAspect ? [320, 360, 390, 430, 640, 768, 1024, 1280, 1440, 1920] : [320, 360, 390, 430, 640, 1024];
 
     for (const width of widths) {
       const page = await browser.newPage({ viewport: { width, height: 1000 } });

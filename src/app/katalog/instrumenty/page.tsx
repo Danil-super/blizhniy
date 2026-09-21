@@ -58,7 +58,7 @@ export default function InstrumentsCategoryPage() {
           aspect-ratio: 1362 / 1155;
           overflow: hidden;
           background-color: #4e3829 !important;
-          background-image: url('/images/categories/tools-category-hero-clean-v3.webp') !important;
+          background-image: none !important;
           background-repeat: no-repeat !important;
           background-size: cover !important;
           background-position: center center !important;
@@ -142,10 +142,8 @@ export default function InstrumentsCategoryPage() {
 
         @media (min-width: 768px) {
           [data-category-theme="instrumenty"] {
-            min-height: 360px;
-            aspect-ratio: 2.2 / 1;
-            background-size: contain !important;
-            background-position: right 1.25rem center !important;
+            min-height: 0 !important;
+            aspect-ratio: 8 / 3;
           }
 
           [data-category-theme="instrumenty"] > div:last-child > div:first-child {
@@ -166,10 +164,6 @@ export default function InstrumentsCategoryPage() {
         }
 
         @media (min-width: 1024px) {
-          [data-category-theme="instrumenty"] {
-            min-height: 380px;
-          }
-
           [data-category-theme="instrumenty"] > div:last-child > div:first-child {
             max-width: 19rem;
           }

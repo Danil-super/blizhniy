@@ -162,14 +162,15 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   const isAnimalsCategory = categorySlug === "zhivotnye";
   const isBeautyCategory = categorySlug === "krasota-i-uhod";
   const isTransportCategory = categorySlug === "transport";
+  const isToolsCategory = categorySlug === "instrumenty";
   const isDishesCategory = categorySlug === "posuda";
   const hasCompactHero = isKidsCategory || isDishesCategory;
   const isBusinessCategory = categorySlug === "biznes";
   const isElectronicsCategory = categorySlug === "elektronika";
   const isHomeAndDachaCategory = categorySlug === "dlya-doma-i-dachi";
   const isExchangeOrFreeCategory = categorySlug === "menyayu-ili-otdam-darom";
-  const hasImageHero = isGardenCategory || isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
-  const usesRightAlignedHero = isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
+  const hasImageHero = isGardenCategory || isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isToolsCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
+  const usesRightAlignedHero = isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isToolsCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
   const heroActionSizeClassName = hasCompactHero ? "min-h-10 min-w-0 max-w-full px-2 py-2 text-xs leading-4 [text-shadow:none] md:h-10 md:px-4 md:text-sm" : isTransportCategory ? "h-9 min-w-0 max-w-full px-2 text-[11px] leading-4 sm:h-10 sm:px-3 sm:text-xs" : isBusinessCategory ? "h-9 min-w-0 max-w-full px-2 text-[11px] leading-4 sm:h-10 sm:px-4 sm:text-sm" : hasImageHero ? "h-10 min-w-0 max-w-full px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm";
   const createAction = () => (
     <Link
@@ -328,6 +329,21 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             height={1471}
             src="/images/categories/beauty-health-category-hero-v2.webp"
             width={1069}
+          />
+        </picture>
+      ) : null}
+      {isToolsCategory ? (
+        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <source media="(min-width: 768px)" srcSet="/images/categories/tools-category-hero-desktop-v1.webp" />
+          {/* Preserve the mobile cabinet; the desktop photo is composed for a wide banner. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            alt=""
+            className="h-full w-full object-cover object-center"
+            fetchPriority="high"
+            height={1155}
+            src="/images/categories/tools-category-hero-clean-v3.webp"
+            width={1362}
           />
         </picture>
       ) : null}
