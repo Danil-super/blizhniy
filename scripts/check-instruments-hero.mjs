@@ -10,12 +10,15 @@ try {
   const artifactDir = "artifacts/category-heroes/instrumenty";
   await mkdir(artifactDir, { recursive: true });
 
-  const assetPath = "/images/categories/tools-category-hero-clean-v3.webp";
-  const assetResponse = await fetch(new URL(assetPath, baseUrl));
-  assert.equal(assetResponse.status, 200, `${assetPath}: asset must load`);
-  assert.ok((assetResponse.headers.get("content-type") ?? "").startsWith("image/"), `${assetPath}: asset must be an image`);
-  const asset = new Uint8Array(await assetResponse.arrayBuffer());
-  assert.ok(asset.length > 250_000, `${assetPath}: full sharp source image must be deployed`);
+  const mobileAssetPath = "/images/categories/tools-category-hero-clean-v3.webp";
+  const desktopAssetPath = "/images/categories/tools-category-hero-desktop-v1.webp";
+  for (const [assetPath, minimumBytes] of [[mobileAssetPath, 250_000], [desktopAssetPath, 100_000]]) {
+    const assetResponse = await fetch(new URL(assetPath, baseUrl));
+    assert.equal(assetResponse.status, 200, `${assetPath}: asset must load`);
+    assert.ok((assetResponse.headers.get("content-type") ?? "").startsWith("image/"), `${assetPath}: asset must be an image`);
+    const asset = new Uint8Array(await assetResponse.arrayBuffer());
+    assert.ok(asset.length > minimumBytes, `${assetPath}: sharp source image must be deployed`);
+  }
 
   for (const width of [320, 360, 390, 430, 639, 640, 768, 1024, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 1200 } });
@@ -24,9 +27,15 @@ try {
       assert.equal(response.status(), 200);
       const hero = page.locator('[data-category-theme="instrumenty"]');
       await hero.waitFor();
+      const photo = hero.locator("picture img");
+      await photo.waitFor();
+      await photo.evaluate((image) => image.decode());
 
       const layout = await hero.evaluate((section) => {
         const style = getComputedStyle(section);
+        const image = section.querySelector("picture img");
+        const imageStyle = getComputedStyle(image);
+        const imageRect = image.getBoundingClientRect();
         const frame = section.getBoundingClientRect();
         const title = section.querySelector("h1");
         const description = section.querySelector("p");
@@ -36,11 +45,16 @@ try {
         const descriptionRect = description.getBoundingClientRect();
         const actionRects = actions.map((action) => action.getBoundingClientRect());
         return {
-          backgroundImage: style.backgroundImage,
-          backgroundSize: style.backgroundSize,
-          backgroundPosition: style.backgroundPosition,
-          photoHasNoGradient: !style.backgroundImage.includes("gradient"),
-          backgroundRepeat: style.backgroundRepeat,
+          photoSrc: image.currentSrc,
+          photoFit: imageStyle.objectFit,
+          photoFilter: imageStyle.filter,
+          photoOpacity: imageStyle.opacity,
+          photoMask: imageStyle.maskImage,
+          photoFullBleed:
+            Math.abs(imageRect.left - frame.left) <= 2 &&
+            Math.abs(imageRect.top - frame.top) <= 2 &&
+            Math.abs(imageRect.right - frame.right) <= 2 &&
+            Math.abs(imageRect.bottom - frame.bottom) <= 2,
           heroAspectRatio: frame.width / frame.height,
           titleColor: getComputedStyle(title).color,
           descriptionColor: getComputedStyle(description).color,
@@ -77,20 +91,24 @@ try {
 
       await hero.screenshot({ path: `${artifactDir}/${width}.png` });
       assert.equal(layout.title, "Инструменты", `${width}: category title`);
-      assert.ok(layout.backgroundImage.includes("tools-category-hero-clean-v3.webp"), `${width}: full instruments photo is deployed`);
-      assert.equal(
-        layout.backgroundSize,
-        width < 768 ? "cover" : "contain",
-        `${width}: the photo fits the active banner without blank bands`,
-      );
+      const expectedAssetPath = width < 768 ? mobileAssetPath : desktopAssetPath;
+      assert.ok(decodeURIComponent(layout.photoSrc).includes(expectedAssetPath), `${width}: the photo source matches this layout`);
+      assert.equal(layout.photoFit, "cover", `${width}: photo fills the hero without blank bands`);
+      assert.equal(layout.photoFilter, "none", `${width}: photo stays sharp without filters`);
+      assert.equal(layout.photoOpacity, "1", `${width}: photo stays fully opaque`);
+      assert.equal(layout.photoMask, "none", `${width}: photo has no fade mask`);
+      assert.equal(layout.photoFullBleed, true, `${width}: photo fills the entire hero`);
       if (width < 768) {
         assert.ok(
           Math.abs(layout.heroAspectRatio - 1362 / 1155) < 0.03,
           `${width}: mobile banner preserves the source photo proportion without top or bottom bands`,
         );
+      } else {
+        assert.ok(
+          Math.abs(layout.heroAspectRatio - 8 / 3) < 0.04,
+          `${width}: desktop banner keeps the wide source proportion`,
+        );
       }
-      assert.equal(layout.photoHasNoGradient, true, `${width}: photo must not be faded`);
-      assert.equal(layout.backgroundRepeat, "no-repeat", `${width}: source image must not repeat`);
       assert.equal(layout.titleColor, "rgb(255, 255, 255)", `${width}: title uses readable white text`);
       assert.equal(layout.descriptionColor, "rgb(255, 255, 255)", `${width}: description uses readable white text`);
       assert.equal(layout.copyBackground, "rgba(0, 0, 0, 0)", `${width}: copy has no white background card`);
@@ -108,7 +126,7 @@ try {
       assert.ok(layout.actions.some((a) => a.href === "#listings"), `${width}: listings action exists`);
       assert.ok(layout.actions.some((a) => a.href?.includes("/razmestit/obyavlenie?category=instrumenty")), `${width}: create action exists`);
       assert.ok(
-        layout.height >= (width < 768 ? 240 : 300) && layout.height <= 660,
+        layout.height >= 240 && layout.height <= 660,
         `${width}: hero height remains reasonable, got ${layout.height}px`,
       );
       console.log(`PASS instrumenty ${width}px: sharp photo without mobile bands, white overlay copy and bottom actions`);
