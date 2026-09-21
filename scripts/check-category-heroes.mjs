@@ -21,8 +21,10 @@ const responsiveImageHeroScenarios = [
     fullBleed: true,
     clearPhoto: true,
     whiteCopy: true,
-    desktopSubcategories: 3,
-    source: "/images/categories/beauty-health-category-hero-v2.webp",
+    mobileSource: "/images/categories/beauty-health-category-hero-v2.webp",
+    desktopSource: "/images/categories/beauty-health-category-hero-desktop-v1.webp",
+    desktopBreakpoint: 1024,
+    desktopAspect: 8 / 3,
   },
   {
     slug: "transport",
@@ -213,7 +215,9 @@ try {
     const artifactDir = `artifacts/category-heroes/${scenario.slug}`;
     await mkdir(artifactDir, { recursive: true });
 
-    for (const width of [320, 360, 390, 430, 640, 1024]) {
+    const widths = scenario.slug === "krasota-i-uhod" ? [320, 360, 390, 430, 640, 1024, 1280, 1440, 1920] : [320, 360, 390, 430, 640, 1024];
+
+    for (const width of widths) {
       const page = await browser.newPage({ viewport: { width, height: 1000 } });
       try {
         const response = await page.goto(new URL(`/katalog/${scenario.slug}`, baseUrl).href, { waitUntil: "networkidle" });
@@ -264,8 +268,6 @@ try {
           const directFogLayers = [...section.children].filter(
             (child) => child.tagName === "DIV" && child !== copy && child.getAttribute("data-hero-actions") === null && getComputedStyle(child).display !== "none",
           );
-          const desktopSubcategoryPanel = document.querySelector("[data-beauty-desktop-subcategories]");
-          const desktopSubcategoryBox = desktopSubcategoryPanel?.getBoundingClientRect();
 
           return {
             imageHero: section.getAttribute("data-image-hero"),
@@ -280,6 +282,7 @@ try {
             descriptionColor: section.querySelector("p") ? getComputedStyle(section.querySelector("p")).color : "",
             copyAbovePhoto: Number(getComputedStyle(copy).zIndex) > 0,
             visiblePhotoFraction: Math.max(...photos.map((photo) => photo.visibleFraction)),
+            heroAspect: frame.width / frame.height,
             actionsOneLine: actionRects.length >= 2 && Math.abs(actionRects[0].top - actionRects[1].top) <= 2,
             overflow: document.documentElement.scrollWidth > window.innerWidth,
             copyInside:
@@ -299,16 +302,10 @@ try {
               return action.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
             }),
             actionCount: actions.length,
-            desktopSubcategoryCount: desktopSubcategoryPanel?.querySelectorAll("details").length ?? 0,
-            desktopSubcategoriesRightOfHero: Boolean(desktopSubcategoryBox) && desktopSubcategoryBox.left >= frame.right - 2,
-            desktopSubcategoriesTopAligned: Boolean(desktopSubcategoryBox) && Math.abs(desktopSubcategoryBox.top - frame.top) <= 2,
           };
         });
 
         await hero.screenshot({ path: `${artifactDir}/${width}.png` });
-        if (scenario.desktopSubcategories && width >= 1024) {
-          await page.locator("[data-beauty-desktop-layout]").screenshot({ path: `${artifactDir}/${width}-desktop-layout.png` });
-        }
         assert.equal(layout.imageHero, "true", `${scenario.slug} ${width}: shared responsive image-hero contract`);
         assert.equal(layout.titleVisible, true, `${scenario.slug} ${width}: title remains visible`);
         assert.ok(layout.photoCount > 0, `${scenario.slug} ${width}: hero photo remains rendered`);
@@ -332,16 +329,20 @@ try {
           assert.ok(layout.sources.some((src) => decodeURIComponent(src).includes(expectedSource)), `${scenario.slug} ${width}: breakpoint selects the uncropped vehicle photo`);
           assert.ok(layout.visiblePhotoFraction >= 0.98, `${scenario.slug} ${width}: all four vehicles remain in frame, got ${layout.visiblePhotoFraction}`);
         }
+        if (scenario.desktopSource) {
+          const breakpoint = scenario.desktopBreakpoint ?? 1024;
+          const expectedSource = width < breakpoint ? scenario.mobileSource : scenario.desktopSource;
+          assert.ok(layout.sources.some((src) => decodeURIComponent(src).includes(expectedSource)), `${scenario.slug} ${width}: the source matches its responsive layout`);
+          if (width >= breakpoint) {
+            assert.ok(layout.visiblePhotoFraction >= 0.98, `${scenario.slug} ${width}: desktop photo is not meaningfully cropped, got ${layout.visiblePhotoFraction}`);
+            assert.ok(Math.abs(layout.heroAspect - scenario.desktopAspect) <= 0.04, `${scenario.slug} ${width}: desktop hero keeps the intended responsive aspect ratio, got ${layout.heroAspect}`);
+          }
+        }
         if (scenario.oneLineActions) {
           assert.equal(layout.actionsOneLine, true, `${scenario.slug} ${width}: both actions stay on one row`);
         }
         if (scenario.copyOnTop) {
           assert.equal(layout.copyAbovePhoto, true, `${scenario.slug} ${width}: title and description stay above the photo`);
-        }
-        if (scenario.desktopSubcategories && width >= 1024) {
-          assert.equal(layout.desktopSubcategoryCount, scenario.desktopSubcategories, `${scenario.slug} ${width}: every beauty subcategory is present beside the hero`);
-          assert.equal(layout.desktopSubcategoriesRightOfHero, true, `${scenario.slug} ${width}: subcategories stay to the right of the portrait hero`);
-          assert.equal(layout.desktopSubcategoriesTopAligned, true, `${scenario.slug} ${width}: subcategories align with the top of the hero`);
         }
         if (scenario.whiteCopy) {
           assert.equal(layout.titleColor, "rgb(255, 255, 255)", `${scenario.slug} ${width}: heading remains white over the photo`);

@@ -201,7 +201,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           : isBusinessCategory
             ? "aspect-[1672/1200] min-h-0 sm:aspect-[1672/941] sm:min-h-0"
           : isBeautyCategory
-            ? "aspect-[1069/1471] min-h-0 sm:aspect-[3/2] sm:min-h-[350px] lg:aspect-[1069/1471] lg:min-h-0"
+            ? "aspect-[1069/1471] min-h-0 sm:aspect-[3/2] sm:min-h-[350px] lg:aspect-[8/3] lg:min-h-0"
           : hasCompactHero
             ? "min-h-[280px] md:min-h-[320px]"
             : usesRightAlignedHero
@@ -318,7 +318,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       ) : null}
       {isBeautyCategory ? (
         <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
-          {/* The photo stays clear and fills the banner on every breakpoint. */}
+          <source media="(min-width: 1024px)" srcSet="/images/categories/beauty-health-category-hero-desktop-v1.webp" />
+          {/* Each layout gets a photo composed for its own aspect ratio. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""

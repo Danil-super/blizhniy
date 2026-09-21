@@ -1462,7 +1462,6 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
   );
   const isKidsGoodsCategory = category?.slug === "tovary-dlya-detey";
   const isGardenCategory = category?.slug === "sad-i-rasteniya";
-  const isBeautyDesktopLayout = category?.slug === "krasota-i-uhod" && !subcategorySlug;
   const categoryDescription = category ? categoryDescriptions[category.slug] : undefined;
   const backFallbackHref = subcategory && category ? `/katalog/${category.slug}` : "/katalog";
   const title = subcategory ?? category?.name ?? "Категория";
@@ -1487,7 +1486,6 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
         href={href}
         items={[...(bulletPoints ?? []), ...(animalClassifier ?? [])]}
         key={child}
-        spanClassName={isBeautyDesktopLayout ? "lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:[&>summary]:flex-1" : ""}
         title={child}
         visualSlug={category?.slug ?? categorySlug}
       />
@@ -1504,70 +1502,43 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
             Назад
           </BackLink>
           <div className="mt-3 grid gap-5">
-            {isBeautyDesktopLayout ? (
-              <div
-                className="grid min-w-0 gap-5 lg:grid-cols-[minmax(300px,420px)_minmax(0,1fr)] lg:items-stretch"
-                data-beauty-desktop-layout="true"
-              >
-                <CategoryHeaderBand
-                  categorySlug={category?.slug ?? categorySlug}
-                  createHref={createHref}
-                  description={activeDescription}
-                  title={title}
-                />
-                {category ? (
-                  <section aria-label="Подкатегории" className="min-w-0 lg:flex lg:h-full lg:flex-col" data-beauty-desktop-subcategories="true">
-                    <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-                      <h2 className="text-lg font-bold leading-tight text-[#060b27]">Подкатегории</h2>
-                      <p className="text-sm font-semibold text-slate-500">Быстрый вход в нужный раздел</p>
-                    </div>
-                    <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-1 lg:grid-rows-3">
-                      {categoryChildren.map(renderSubcategoryCard)}
-                    </div>
-                  </section>
-                ) : null}
-              </div>
-            ) : (
-              <>
-                <CategoryHeaderBand
-                  categorySlug={category?.slug ?? categorySlug}
-                  createHref={createHref}
-                  description={activeDescription}
-                  title={title}
-                />
-                {category ? (
-                  <section aria-label="Подкатегории">
-                    <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-                      <h2 className="text-lg font-bold leading-tight text-[#060b27]">Подкатегории</h2>
-                      <p className="text-sm font-semibold text-slate-500">Быстрый вход в нужный раздел</p>
-                    </div>
-                    <div
-                      className={subcategoryGridClassName(categoryChildren.length, {
-                        compact: isGardenCategory,
-                        maxColumns: isKidsGoodsCategory ? 4 : 5,
-                      })}
-                    >
-                      {isGardenCategory
-                        ? categoryChildren.reduce<ReactNode[]>((rows, child, index) => {
-                            if (index % 2 === 0) {
-                              const nextChild = categoryChildren[index + 1];
+            <CategoryHeaderBand
+              categorySlug={category?.slug ?? categorySlug}
+              createHref={createHref}
+              description={activeDescription}
+              title={title}
+            />
+            {category ? (
+              <section aria-label="Подкатегории">
+                <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                  <h2 className="text-lg font-bold leading-tight text-[#060b27]">Подкатегории</h2>
+                  <p className="text-sm font-semibold text-slate-500">Быстрый вход в нужный раздел</p>
+                </div>
+                <div
+                  className={subcategoryGridClassName(categoryChildren.length, {
+                    compact: isGardenCategory,
+                    maxColumns: isKidsGoodsCategory ? 4 : 5,
+                  })}
+                >
+                  {isGardenCategory
+                    ? categoryChildren.reduce<ReactNode[]>((rows, child, index) => {
+                        if (index % 2 === 0) {
+                          const nextChild = categoryChildren[index + 1];
 
-                              rows.push(
-                                <div className="subcategory-mobile-row grid grid-cols-2 gap-2 sm:gap-3 lg:contents" key={child}>
-                                  {renderSubcategoryCard(child)}
-                                  {nextChild ? renderSubcategoryCard(nextChild) : null}
-                                </div>,
-                              );
-                            }
+                          rows.push(
+                            <div className="subcategory-mobile-row grid grid-cols-2 gap-2 sm:gap-3 lg:contents" key={child}>
+                              {renderSubcategoryCard(child)}
+                              {nextChild ? renderSubcategoryCard(nextChild) : null}
+                            </div>,
+                          );
+                        }
 
-                            return rows;
-                          }, [])
-                        : categoryChildren.map(renderSubcategoryCard)}
-                    </div>
-                  </section>
-                ) : null}
-              </>
-            )}
+                        return rows;
+                      }, [])
+                    : categoryChildren.map(renderSubcategoryCard)}
+                </div>
+              </section>
+            ) : null}
             <section id="listings" aria-label="Объявления категории">
               <ListingResultsPanel categorySlug={categorySlug} listings={listings} subcategorySlug={subcategorySlug} />
             </section>
