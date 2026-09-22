@@ -44,6 +44,7 @@ const responsiveImageHeroScenarios = [
     clearPhoto: true,
     preserveFullPhoto: true,
     oneLineActions: true,
+    actionsAtBottom: true,
     copyOnTop: true,
     breakpoint: 768,
     mobileSource: "/images/categories/transport-category-hero-mobile-v5.webp",
@@ -295,6 +296,7 @@ try {
             visiblePhotoFraction: Math.max(...photos.map((photo) => photo.visibleFraction)),
             heroAspect: frame.width / frame.height,
             actionsOneLine: actionRects.length >= 2 && Math.abs(actionRects[0].top - actionRects[1].top) <= 2,
+            actionsBottomOffset: actionRects.length ? frame.bottom - Math.max(...actionRects.map((rect) => rect.bottom)) : Number.POSITIVE_INFINITY,
             overflow: document.documentElement.scrollWidth > window.innerWidth,
             copyInside:
               copyBox.left >= frame.left &&
@@ -353,6 +355,9 @@ try {
         }
         if (scenario.oneLineActions) {
           assert.equal(layout.actionsOneLine, true, `${scenario.slug} ${width}: both actions stay on one row`);
+        }
+        if (scenario.actionsAtBottom) {
+          assert.ok(layout.actionsBottomOffset >= 0 && layout.actionsBottomOffset <= 36, `${scenario.slug} ${width}: actions stay at the bottom of the hero, got ${layout.actionsBottomOffset}px`);
         }
         if (scenario.copyOnTop) {
           assert.equal(layout.copyAbovePhoto, true, `${scenario.slug} ${width}: title and description stay above the photo`);
