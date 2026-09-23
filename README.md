@@ -168,6 +168,10 @@ git push
 
 GitHub Actions подключится к VPS и выполнит zero-downtime deploy: новый релиз собирается в отдельной папке `/var/www/blizhniy-releases`, копирует серверные `.env*`, проходит healthcheck и только после этого переключает PM2. Если healthcheck не проходит, скрипт откатывает PM2 на предыдущий релиз.
 
+### TLS-сертификат
+
+Файл `.github/workflows/tls-renewal.yml` ежедневно запускает `certbot renew` на VPS и затем проверяет сертификат, который получают посетители домена. Он также включает системный таймер Certbot (`certbot.timer` или `snap.certbot.renew.timer`), если такой таймер есть на сервере. Для workflow нужны те же секреты `VPS_HOST`, `VPS_PORT`, `VPS_USER` и `VPS_SSH_KEY`, что и для деплоя; у `VPS_USER` должен быть пароль-независимый `sudo` для `certbot` и `systemctl reload nginx`.
+
 ## Ближайший план исправлений
 
 1. Убрать mock/demo-хранилища из production-сценариев.
