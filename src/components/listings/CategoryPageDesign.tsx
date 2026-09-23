@@ -201,6 +201,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             ? "aspect-[1122/760] min-h-0 md:aspect-[1983/593] md:min-h-0"
           : isBusinessCategory
             ? "aspect-[1672/1200] min-h-0 md:aspect-[3/1] md:min-h-0"
+          : isRitualCategory
+            ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
           : isAnimalsCategory
             ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
           : isBeautyCategory
@@ -265,28 +267,19 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </>
       ) : null}
       {isRitualCategory ? (
-        <>
-          <Image
+        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <source media="(min-width: 1024px)" srcSet="/images/categories/ritual-category-hero-desktop-v2.webp" />
+          {/* Keep the existing mobile memorial photo; the desktop crop preserves its full scene. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             alt=""
-            aria-hidden="true"
-            className="object-cover object-[45%_center] sm:object-[62%_center] lg:hidden"
-            fill
-            priority
-            sizes="100vw"
-            src="/images/categories/ritual-category-hero.webp"
-          />
-          <Image
-            alt=""
-            aria-hidden="true"
-            className="absolute right-0 top-1/2 hidden h-[118%] w-auto max-w-none -translate-y-1/2 object-contain object-right [mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] lg:block"
+            className="h-full w-full object-cover object-[45%_center] sm:object-[62%_center] lg:object-center"
+            fetchPriority="high"
             height={941}
-            priority
-            sizes="(min-width: 1024px) 830px, 0px"
             src="/images/categories/ritual-category-hero.webp"
             width={1672}
           />
-          <div className="absolute inset-0 hidden lg:block lg:bg-[linear-gradient(90deg,rgba(242,247,244,0.98)_0%,rgba(242,247,244,0.9)_31%,rgba(242,247,244,0.58)_48%,rgba(242,247,244,0.08)_70%,rgba(242,247,244,0)_100%)]" />
-        </>
+        </picture>
       ) : null}
       {isKidsCategory ? (
         <picture className="pointer-events-none absolute bottom-4 right-2 top-4 w-[44%] md:right-4 md:w-[60%]" aria-hidden="true">
@@ -527,7 +520,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             ? "relative z-10 min-w-0 w-full max-w-[480px] [text-shadow:0_1px_2px_white,0_0_3px_white]"
             : hasCompactHero
             ? "relative z-10 min-w-0 w-[52%] md:w-[35%] md:max-w-[480px]"
-            : isAnimalsCategory
+            : isAnimalsCategory || isRitualCategory
               ? "relative z-10 max-w-full lg:max-w-xl"
             : hasImageHero
               ? "relative z-10 max-w-full lg:max-w-[800px]"
