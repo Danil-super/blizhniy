@@ -55,6 +55,8 @@ const responsiveImageHeroScenarios = [
     mobileMode: "cover",
     fullBleed: true,
     clearPhoto: true,
+    oneLineActions: true,
+    actionsAtBottom: true,
     copyOnTop: true,
     whiteCopy: true,
     source: "/images/categories/business-category-hero-v2.webp",

@@ -594,7 +594,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
               )}
             </p>
           ) : null}
-          {!isTransportCategory ? (
+          {!isTransportCategory && !isBusinessCategory ? (
             <div
               data-hero-actions
               className={`${isDishesCategory || isBusinessCategory ? "mt-4 flex-row flex-nowrap items-start" : hasImageHero ? hasCompactHero ? "mt-4 flex-col items-start md:flex-row md:flex-wrap" : "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex min-w-0 max-w-full gap-2`}
@@ -605,12 +605,13 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           ) : null}
         </div>
       </div>
-      {isTransportCategory ? (
+      {isTransportCategory || isBusinessCategory ? (
         <div data-hero-actions className="absolute bottom-4 left-4 right-4 z-20 flex flex-nowrap items-center gap-2 sm:bottom-5 sm:left-5 sm:right-auto lg:bottom-7 lg:left-7">
           {createAction()}
           {listingsAction()}
         </div>
-      ) : null}    </section>
+      ) : null}
+    </section>
   );
 }
 
