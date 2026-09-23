@@ -55,89 +55,36 @@ jobs:
             'bash -s' <<'REMOTE'
           set -euo pipefail
 
-          if ! command -v certbot >/dev/null 2>&1; then
-            echo 'certbot is not installed on the VPS.' >&2
+          if ! command -v caddy >/dev/null 2>&1; then
+            echo 'Caddy is required to manage the public TLS certificate.' >&2
             exit 1
           fi
 
-          if command -v caddy >/dev/null 2>&1; then
-            echo 'Caddy is serving the public HTTP(S) ports; inspect its TLS configuration before using Certbot.' >&2
-            sudo -n caddy version || true
-            sudo -n systemctl status caddy --no-pager || true
-            sudo -n sed -n '1,260p' /etc/caddy/Caddyfile || true
-            sudo -n ss -ltnp '( sport = :80 or sport = :443 )' || true
-            exit 1
-          fi
+          caddyfile='/etc/caddy/Caddyfile'
+          static_tls='tls /etc/letsencrypt/live/xn----9sbphbgks4a4a.xn--p1ai/fullchain.pem /etc/letsencrypt/live/xn----9sbphbgks4a4a.xn--p1ai/privkey.pem'
 
-          lineage='xn----9sbphbgks4a4a.xn--p1ai'
-          certificate_path="/etc/letsencrypt/live/$lineage/fullchain.pem"
-          pre_hook='/etc/letsencrypt/renewal-hooks/pre/10-stop-nginx'
-          post_hook='/etc/letsencrypt/renewal-hooks/post/10-start-nginx'
+          # A file-based tls directive disables Caddy's Automatic HTTPS for the
+          # named domains. Remove only that legacy Certbot certificate reference.
+          if sudo -n grep -Fxq "$static_tls" "$caddyfile"; then
+            backup="/etc/caddy/Caddyfile.before-auto-https-$(date -u +%Y%m%d%H%M%S)"
+            sudo -n cp -p "$caddyfile" "$backup"
+            sudo -n sed -i '\|^[[:space:]]*tls /etc/letsencrypt/live/xn----9sbphbgks4a4a.xn--p1ai/fullchain.pem /etc/letsencrypt/live/xn----9sbphbgks4a4a.xn--p1ai/privkey.pem[[:space:]]*$|d' "$caddyfile"
 
-          # Use Certbot's standalone HTTP-01 server. It does not depend on the
-          # application or an Nginx webroot being reachable from the Internet.
-          sudo -n install -d -m 0755 "$(dirname "$pre_hook")" "$(dirname "$post_hook")"
-          printf '%s\n' '#!/bin/sh' 'systemctl stop nginx' | sudo -n tee "$pre_hook" >/dev/null
-          printf '%s\n' '#!/bin/sh' 'systemctl start nginx' | sudo -n tee "$post_hook" >/dev/null
-          sudo -n chmod 0755 "$pre_hook" "$post_hook"
-
-          if ! sudo -n openssl x509 -checkend $((21 * 24 * 60 * 60)) -noout -in "$certificate_path"; then
-            nginx_stopped=false
-            restart_nginx() {
-              if [ "$nginx_stopped" = true ]; then
-                sudo -n systemctl start nginx || true
-              fi
-            }
-            trap restart_nginx EXIT
-
-            sudo -n systemctl stop nginx
-            nginx_stopped=true
-            if ! timeout --foreground 180 sudo -n certbot certonly --standalone --non-interactive --cert-name "$lineage" -d "$lineage" -d "www.$lineage"; then
-              echo 'Standalone certificate recovery failed.' >&2
+            if ! sudo -n caddy validate --config "$caddyfile" --adapter caddyfile; then
+              sudo -n cp -p "$backup" "$caddyfile"
               exit 1
             fi
-            sudo -n systemctl start nginx
-            nginx_stopped=false
-            trap - EXIT
-
-            if ! sudo -n grep -Fxq 'authenticator = standalone' "/etc/letsencrypt/renewal/$lineage.conf"; then
-              echo 'Certbot did not persist the standalone authenticator.' >&2
+            if ! sudo -n systemctl reload caddy; then
+              sudo -n cp -p "$backup" "$caddyfile"
               exit 1
             fi
           fi
 
-          if ! timeout --foreground 300 sudo -n certbot renew --no-random-sleep-on-renew --deploy-hook 'systemctl reload nginx'; then
-            echo 'certbot renewal failed or did not complete within five minutes.' >&2
-            sudo -n systemctl status certbot.timer --no-pager || true
-            sudo -n journalctl -u certbot.service -n 50 --no-pager || true
-            sudo -n tail -n 120 /var/log/letsencrypt/letsencrypt.log || true
-            sudo -n sed -n '1,160p' /etc/letsencrypt/renewal/xn----9sbphbgks4a4a.xn--p1ai.conf || true
-            echo 'Nginx virtual host configuration:' >&2
-            sudo -n sed -n '1,260p' /etc/nginx/sites-enabled/blizhniy || true
-            echo 'Nginx ACME routing:' >&2
-            sudo -n nginx -T 2>&1 | awk '
-              /^# configuration file / { current_file = $0 }
-              /server_name/ || /acme-challenge/ || /root +\/var\/www\/certbot/ {
-                print current_file
-                print
-              }
-            ' || true
-            exit 1
-          fi
-
-          timer_enabled=false
-          for timer in certbot.timer snap.certbot.renew.timer; do
-            if systemctl list-unit-files --type=timer --no-legend "$timer" 2>/dev/null | awk '{print $1}' | grep -Fxq "$timer"; then
-              sudo -n systemctl enable --now "$timer"
-              timer_enabled=true
-            fi
-          done
-
-          if [ "$timer_enabled" = false ]; then
-            echo 'No system Certbot timer was found; GitHub Actions will perform the daily renewal check.' >&2
-          fi
-
-          sudo -n certbot certificates
+          # Remove the hooks created for the failed Certbot/Nginx path. Caddy
+          # now owns certificate issuance and renewal.
+          sudo -n rm -f /etc/letsencrypt/renewal-hooks/pre/10-stop-nginx /etc/letsencrypt/renewal-hooks/post/10-start-nginx
+          sudo -n systemctl disable --now certbot.timer || true
+          sudo -n systemctl is-active --quiet caddy
           REMOTE
 
       - name: Verify the certificate served to visitors
@@ -146,15 +93,22 @@ jobs:
         run: |
           set -euo pipefail
 
-          certificate="$(echo | openssl s_client -connect "$SITE_HOST:443" -servername "$SITE_HOST" 2>/dev/null | openssl x509 -noout -subject -issuer -enddate)"
-          printf '%s\n' "$certificate"
-
-          expires_at="$(printf '%s\n' "$certificate" | sed -n 's/^notAfter=//p')"
-          expires_epoch="$(date --date="$expires_at" +%s)"
-          now_epoch="$(date +%s)"
           minimum_validity_seconds=$((21 * 24 * 60 * 60))
+          for attempt in $(seq 1 30); do
+            certificate="$(echo | openssl s_client -connect "$SITE_HOST:443" -servername "$SITE_HOST" 2>/dev/null | openssl x509 -noout -subject -issuer -enddate 2>/dev/null || true)"
+            expires_at="$(printf '%s\n' "$certificate" | sed -n 's/^notAfter=//p')"
 
-          if (( expires_epoch - now_epoch < minimum_validity_seconds )); then
-            echo "The public certificate expires too soon: $expires_at" >&2
-            exit 1
-          fi
+            if [ -n "$expires_at" ]; then
+              expires_epoch="$(date --date="$expires_at" +%s)"
+              now_epoch="$(date +%s)"
+              if (( expires_epoch - now_epoch >= minimum_validity_seconds )); then
+                printf '%s\n' "$certificate"
+                exit 0
+              fi
+            fi
+
+            sleep 5
+          done
+
+          echo 'Caddy did not present a certificate valid for at least 21 days.' >&2
+          exit 1
