@@ -85,13 +85,27 @@ jobs:
           sudo -n rm -f /etc/letsencrypt/renewal-hooks/pre/10-stop-nginx /etc/letsencrypt/renewal-hooks/post/10-start-nginx
           sudo -n systemctl disable --now certbot.timer || true
 
-          # The service was originally running with a manually loaded
-          # certificate. Restart it once after the migration so the active
-          # configuration is rebuilt with Caddy's certificate automation.
-          bootstrap_marker='/var/lib/caddy/.automatic-https-bootstrap-v1'
-          if ! sudo -n test -e "$bootstrap_marker"; then
+          # Caddy 2.6 skips automation when it finds an already-loaded
+          # certificate, even if that cached certificate is expired. Archive
+          # only expired cache entries for these two names; retain ACME account
+          # data and every valid certificate.
+          certificate_cache='/var/lib/caddy/.local/share/caddy/certificates'
+          cache_backup="$certificate_cache/expired-before-renewal-$(date -u +%Y%m%d%H%M%S)"
+          cache_changed=0
+          for domain in xn----9sbphbgks4a4a.xn--p1ai www.xn----9sbphbgks4a4a.xn--p1ai; do
+            while IFS= read -r cached_domain; do
+              cached_certificate="$(sudo -n find "$cached_domain" -maxdepth 1 -type f -name '*.crt' -print -quit)"
+              if [ -z "$cached_certificate" ] || ! sudo -n openssl x509 -checkend $((21 * 24 * 60 * 60)) -noout -in "$cached_certificate"; then
+                issuer_directory="$(basename "$(dirname "$cached_domain")")"
+                sudo -n mkdir -p "$cache_backup/$issuer_directory"
+                sudo -n mv "$cached_domain" "$cache_backup/$issuer_directory/"
+                cache_changed=1
+              fi
+            done < <(sudo -n find "$certificate_cache" -mindepth 2 -maxdepth 2 -type d -name "$domain" -print)
+          done
+
+          if [ "$cache_changed" -eq 1 ]; then
             sudo -n systemctl restart caddy
-            sudo -n touch "$bootstrap_marker"
           fi
           sudo -n systemctl is-active --quiet caddy
           REMOTE
