@@ -61,14 +61,14 @@ jobs:
           fi
 
           caddyfile='/etc/caddy/Caddyfile'
-          static_tls='tls /etc/letsencrypt/live/xn----9sbphbgks4a4a.xn--p1ai/fullchain.pem /etc/letsencrypt/live/xn----9sbphbgks4a4a.xn--p1ai/privkey.pem'
+          static_tls_pattern='^[[:space:]]*tls /etc/letsencrypt/live/xn----9sbphbgks4a4a\.xn--p1ai/fullchain\.pem /etc/letsencrypt/live/xn----9sbphbgks4a4a\.xn--p1ai/privkey\.pem[[:space:]]*$'
 
           # A file-based tls directive disables Caddy's Automatic HTTPS for the
           # named domains. Remove only that legacy Certbot certificate reference.
-          if sudo -n grep -Fxq "$static_tls" "$caddyfile"; then
+          if sudo -n grep -Eq "$static_tls_pattern" "$caddyfile"; then
             backup="/etc/caddy/Caddyfile.before-auto-https-$(date -u +%Y%m%d%H%M%S)"
             sudo -n cp -p "$caddyfile" "$backup"
-            sudo -n sed -i '\|^[[:space:]]*tls /etc/letsencrypt/live/xn----9sbphbgks4a4a.xn--p1ai/fullchain.pem /etc/letsencrypt/live/xn----9sbphbgks4a4a.xn--p1ai/privkey.pem[[:space:]]*$|d' "$caddyfile"
+            sudo -n sed -i "\|$static_tls_pattern|d" "$caddyfile"
 
             if ! sudo -n caddy validate --config "$caddyfile" --adapter caddyfile; then
               sudo -n cp -p "$backup" "$caddyfile"
@@ -85,28 +85,6 @@ jobs:
           sudo -n rm -f /etc/letsencrypt/renewal-hooks/pre/10-stop-nginx /etc/letsencrypt/renewal-hooks/post/10-start-nginx
           sudo -n systemctl disable --now certbot.timer || true
 
-          # Caddy 2.6 skips automation when it finds an already-loaded
-          # certificate, even if that cached certificate is expired. Archive
-          # only expired cache entries for these two names; retain ACME account
-          # data and every valid certificate.
-          certificate_cache='/var/lib/caddy/.local/share/caddy/certificates'
-          cache_backup="$certificate_cache/expired-before-renewal-$(date -u +%Y%m%d%H%M%S)"
-          cache_changed=0
-          for domain in xn----9sbphbgks4a4a.xn--p1ai www.xn----9sbphbgks4a4a.xn--p1ai; do
-            while IFS= read -r cached_domain; do
-              cached_certificate="$(sudo -n find "$cached_domain" -maxdepth 1 -type f -name '*.crt' -print -quit)"
-              if [ -z "$cached_certificate" ] || ! sudo -n openssl x509 -checkend $((21 * 24 * 60 * 60)) -noout -in "$cached_certificate"; then
-                issuer_directory="$(basename "$(dirname "$cached_domain")")"
-                sudo -n mkdir -p "$cache_backup/$issuer_directory"
-                sudo -n mv "$cached_domain" "$cache_backup/$issuer_directory/"
-                cache_changed=1
-              fi
-            done < <(sudo -n find "$certificate_cache" -mindepth 2 -maxdepth 2 -type d -name "$domain" -print)
-          done
-
-          if [ "$cache_changed" -eq 1 ]; then
-            sudo -n systemctl restart caddy
-          fi
           sudo -n systemctl is-active --quiet caddy
           REMOTE
 
