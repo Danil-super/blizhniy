@@ -17,7 +17,7 @@ permissions:
 
 concurrency:
   group: production-tls
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   renew:
@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ssh \
+          timeout 360 ssh \
             -i ~/.ssh/deploy_key \
             -p "$VPS_PORT" \
             -o BatchMode=yes \
@@ -60,7 +60,12 @@ jobs:
             exit 1
           fi
 
-          sudo -n certbot renew --deploy-hook 'systemctl reload nginx'
+          if ! timeout --foreground 300 sudo -n certbot renew --deploy-hook 'systemctl reload nginx'; then
+            echo 'certbot renewal did not complete within five minutes.' >&2
+            sudo -n systemctl status certbot.timer --no-pager || true
+            sudo -n journalctl -u certbot.service -n 50 --no-pager || true
+            exit 1
+          fi
 
           timer_enabled=false
           for timer in certbot.timer snap.certbot.renew.timer; do
