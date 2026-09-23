@@ -84,6 +84,15 @@ jobs:
           # now owns certificate issuance and renewal.
           sudo -n rm -f /etc/letsencrypt/renewal-hooks/pre/10-stop-nginx /etc/letsencrypt/renewal-hooks/post/10-start-nginx
           sudo -n systemctl disable --now certbot.timer || true
+
+          # The service was originally running with a manually loaded
+          # certificate. Restart it once after the migration so the active
+          # configuration is rebuilt with Caddy's certificate automation.
+          bootstrap_marker='/var/lib/caddy/.automatic-https-bootstrap-v1'
+          if ! sudo -n test -e "$bootstrap_marker"; then
+            sudo -n systemctl restart caddy
+            sudo -n touch "$bootstrap_marker"
+          fi
           sudo -n systemctl is-active --quiet caddy
           REMOTE
 
@@ -97,7 +106,7 @@ jobs:
           set -euo pipefail
 
           minimum_validity_seconds=$((21 * 24 * 60 * 60))
-          for attempt in $(seq 1 30); do
+          for attempt in $(seq 1 60); do
             certificate="$(echo | openssl s_client -connect "$SITE_HOST:443" -servername "$SITE_HOST" 2>/dev/null | openssl x509 -noout -subject -issuer -enddate 2>/dev/null || true)"
             expires_at="$(printf '%s\n' "$certificate" | sed -n 's/^notAfter=//p')"
 
