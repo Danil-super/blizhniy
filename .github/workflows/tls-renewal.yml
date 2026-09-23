@@ -109,10 +109,11 @@ jobs:
           for host in xn----9sbphbgks4a4a.xn--p1ai www.xn----9sbphbgks4a4a.xn--p1ai; do
             for scheme in http https; do
               port=80
-              curl_flags=(--fail --silent --show-error --max-time 15)
+              # The currently served certificate may be expired while this
+              # pre-renewal route probe follows the HTTP-to-HTTPS redirect.
+              curl_flags=(--fail --silent --show-error --max-time 15 --insecure)
               if [ "$scheme" = https ]; then
                 port=443
-                curl_flags+=(--insecure)
               fi
 
               local_response="$(curl "${curl_flags[@]}" --resolve "$host:$port:127.0.0.1" "$scheme://$host/.well-known/acme-challenge/$probe_token")"
