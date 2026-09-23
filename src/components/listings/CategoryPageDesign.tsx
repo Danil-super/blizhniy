@@ -192,7 +192,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   );
   return (
     <section
-      className={`relative overflow-hidden rounded-2xl border border-[var(--category-border)] ${hasCompactHero ? "bg-white" : "bg-[var(--category-soft)]"} px-4 py-5 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5 sm:py-6 lg:px-7 lg:py-7 ${hasImageHero ? "pb-28 sm:pb-20 lg:pb-24" : ""} ${
+      className={`relative isolate overflow-hidden rounded-2xl border border-[var(--category-border)] ${hasCompactHero ? "bg-white" : "bg-[var(--category-soft)]"} px-4 py-5 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5 sm:py-6 lg:px-7 lg:py-7 ${hasImageHero ? "pb-28 sm:pb-20 lg:pb-24" : ""} ${
         isGardenCategory
           ? "lg:aspect-[3/1] lg:min-h-0"
           : isDishesCategory
@@ -240,6 +240,12 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
               min-width: 0;
               max-width: 100%;
             }
+          }
+
+          [data-category-theme="instrumenty"] [data-hero-copy] h1,
+          [data-category-theme="instrumenty"] [data-hero-copy] p {
+            color: #fff !important;
+            text-shadow: 0 2px 8px rgba(8, 27, 22, 0.96), 0 1px 2px rgba(8, 27, 22, 0.96);
           }
 
           @media (min-width: 1024px) {
@@ -571,7 +577,10 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             </p>
           ) : null}
           {!hasImageHero ? (
-            <div data-hero-actions className="mt-5 flex min-w-0 max-w-full flex-wrap gap-2">
+            <div
+              data-hero-actions
+              className="mt-5 flex min-w-0 max-w-full flex-wrap gap-2"
+            >
               {createAction()}
               {listingsAction()}
             </div>
@@ -581,7 +590,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       {hasImageHero ? (
         <div
           data-hero-actions
-          className={`absolute bottom-4 left-4 right-4 z-20 flex min-w-0 gap-2 sm:bottom-5 sm:left-5 sm:right-5 lg:bottom-7 lg:left-7 lg:right-7 ${
+          aria-label="Действия категории"
+          className={`pointer-events-auto absolute bottom-4 left-4 right-4 z-30 flex min-w-0 gap-2 sm:bottom-5 sm:left-5 sm:right-5 lg:bottom-7 lg:left-7 lg:right-7 ${
             isTransportCategory || isBusinessCategory || isDishesCategory ? "flex-nowrap items-center" : "flex-wrap items-start sm:flex-nowrap sm:items-center"
           }`}
         >
