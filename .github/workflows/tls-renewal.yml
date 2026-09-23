@@ -116,11 +116,16 @@ jobs:
                 port=443
               fi
 
-              local_response="$(curl "${curl_flags[@]}" --resolve "$host:$port:127.0.0.1" "$scheme://$host/.well-known/acme-challenge/$probe_token")"
-              public_response="$(curl "${curl_flags[@]}" --location "$scheme://$host/.well-known/acme-challenge/$probe_token")"
-
+              if ! local_response="$(curl "${curl_flags[@]}" --resolve "$host:$port:127.0.0.1" "$scheme://$host/.well-known/acme-challenge/$probe_token")"; then
+                echo "ACME probe failed for the local $scheme route on $host." >&2
+                exit 1
+              fi
+              if ! public_response="$(curl "${curl_flags[@]}" --location "$scheme://$host/.well-known/acme-challenge/$probe_token")"; then
+                echo "ACME probe failed for the public $scheme route on $host." >&2
+                exit 1
+              fi
               if [ "$local_response" != "$probe_token" ] || [ "$public_response" != "$probe_token" ]; then
-                echo "ACME probe failed for $scheme://$host (local or public route does not serve the challenge file)." >&2
+                echo "ACME probe returned unexpected content for $scheme://$host." >&2
                 exit 1
               fi
             done
