@@ -98,6 +98,33 @@ jobs:
             sudo -n systemctl reload nginx
           fi
 
+          probe_token="acme-probe-$(date -u +%s)-$RANDOM"
+          probe_path="/var/www/certbot/.well-known/acme-challenge/$probe_token"
+          sudo -n install -d -m 0755 /var/www/certbot/.well-known/acme-challenge
+          printf '%s' "$probe_token" | sudo -n tee "$probe_path" >/dev/null
+          sudo -n chmod 0644 "$probe_path"
+          cleanup_probe() { sudo -n rm -f "$probe_path"; }
+          trap cleanup_probe EXIT
+
+          for host in xn----9sbphbgks4a4a.xn--p1ai www.xn----9sbphbgks4a4a.xn--p1ai; do
+            for scheme in http https; do
+              port=80
+              curl_flags=(--fail --silent --show-error --max-time 15)
+              if [ "$scheme" = https ]; then
+                port=443
+                curl_flags+=(--insecure)
+              fi
+
+              local_response="$(curl "${curl_flags[@]}" --resolve "$host:$port:127.0.0.1" "$scheme://$host/.well-known/acme-challenge/$probe_token")"
+              public_response="$(curl "${curl_flags[@]}" --location "$scheme://$host/.well-known/acme-challenge/$probe_token")"
+
+              if [ "$local_response" != "$probe_token" ] || [ "$public_response" != "$probe_token" ]; then
+                echo "ACME probe failed for $scheme://$host (local or public route does not serve the challenge file)." >&2
+                exit 1
+              fi
+            done
+          done
+
           if ! timeout --foreground 300 sudo -n certbot renew --no-random-sleep-on-renew --deploy-hook 'systemctl reload nginx'; then
             echo 'certbot renewal failed or did not complete within five minutes.' >&2
             sudo -n systemctl status certbot.timer --no-pager || true
