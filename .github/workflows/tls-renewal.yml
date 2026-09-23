@@ -60,6 +60,15 @@ jobs:
             exit 1
           fi
 
+          if command -v caddy >/dev/null 2>&1; then
+            echo 'Caddy is serving the public HTTP(S) ports; inspect its TLS configuration before using Certbot.' >&2
+            sudo -n caddy version || true
+            sudo -n systemctl status caddy --no-pager || true
+            sudo -n sed -n '1,260p' /etc/caddy/Caddyfile || true
+            sudo -n ss -ltnp '( sport = :80 or sport = :443 )' || true
+            exit 1
+          fi
+
           lineage='xn----9sbphbgks4a4a.xn--p1ai'
           certificate_path="/etc/letsencrypt/live/$lineage/fullchain.pem"
           pre_hook='/etc/letsencrypt/renewal-hooks/pre/10-stop-nginx'
