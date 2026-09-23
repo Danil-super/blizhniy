@@ -102,7 +102,7 @@ try {
     for (const width of [320, 360, 390, 430, 639, 640, 767, 768, 1024, 1440, 1535, 1536, 1920]) {
       const page = await browser.newPage({ viewport: { width, height: 1000 } });
       try {
-        const response = await page.goto(new URL(`/katalog/${scenario.slug}`, baseUrl).href, { waitUntil: "networkidle" });
+        const response = await page.goto(new URL(`/katalog/${scenario.slug}`, baseUrl).href, { waitUntil: "domcontentloaded" });
         assert.equal(response.status(), 200);
         const hero = page.locator(`[data-category-theme="${scenario.slug}"]`);
         await hero.locator("picture img").waitFor();
@@ -184,7 +184,7 @@ try {
     for (const width of widths) {
       const page = await browser.newPage({ viewport: { width, height: 1000 } });
       try {
-        const response = await page.goto(new URL(`/katalog/${scenario.slug}`, baseUrl).href, { waitUntil: "networkidle" });
+        const response = await page.goto(new URL(`/katalog/${scenario.slug}`, baseUrl).href, { waitUntil: "domcontentloaded" });
         assert.equal(response.status(), 200);
 
         const hero = page.locator(`[data-category-theme="${scenario.slug}"]`);
