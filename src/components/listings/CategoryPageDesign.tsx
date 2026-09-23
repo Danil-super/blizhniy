@@ -192,7 +192,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   );
   return (
     <section
-      className={`relative overflow-hidden rounded-2xl border border-[var(--category-border)] ${hasCompactHero ? "bg-white" : "bg-[var(--category-soft)]"} px-4 py-5 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5 sm:py-6 lg:px-7 lg:py-7 ${
+      className={`relative overflow-hidden rounded-2xl border border-[var(--category-border)] ${hasCompactHero ? "bg-white" : "bg-[var(--category-soft)]"} px-4 py-5 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5 sm:py-6 lg:px-7 lg:py-7 ${hasImageHero ? "pb-28 sm:pb-20 lg:pb-24" : ""} ${
         isGardenCategory
           ? "lg:min-h-[370px]"
           : isDishesCategory
@@ -298,8 +298,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       ) : null}
       {isAnimalsCategory ? (
         <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
-          <source media="(min-width: 1024px)" srcSet="/images/categories/animals-category-hero-desktop-v1.webp" />
-          {/* Preserve the established mobile crop; desktop receives a composition made for a 3:1 hero. */}
+          <source media="(min-width: 1024px)" srcSet="/images/categories/animals-category-hero-desktop-v2.webp" />
+          {/* Keep the mobile animal scene intact; desktop uses the same composition in a wide 3:1 frame. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
@@ -590,19 +590,21 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
               )}
             </p>
           ) : null}
-          {!isTransportCategory && !isBusinessCategory ? (
-            <div
-              data-hero-actions
-              className={`${isDishesCategory || isBusinessCategory ? "mt-4 flex-row flex-nowrap items-start" : hasImageHero ? hasCompactHero ? "mt-4 flex-col items-start md:flex-row md:flex-wrap" : "mt-4 flex-col items-start sm:flex-row" : "mt-5 flex-wrap"} flex min-w-0 max-w-full gap-2`}
-            >
+          {!hasImageHero ? (
+            <div data-hero-actions className="mt-5 flex min-w-0 max-w-full flex-wrap gap-2">
               {createAction()}
               {listingsAction()}
             </div>
           ) : null}
         </div>
       </div>
-      {isTransportCategory || isBusinessCategory ? (
-        <div data-hero-actions className="absolute bottom-4 left-4 right-4 z-20 flex flex-nowrap items-center gap-2 sm:bottom-5 sm:left-5 sm:right-auto lg:bottom-7 lg:left-7">
+      {hasImageHero ? (
+        <div
+          data-hero-actions
+          className={`absolute bottom-4 left-4 right-4 z-20 flex min-w-0 gap-2 sm:bottom-5 sm:left-5 sm:right-5 lg:bottom-7 lg:left-7 lg:right-7 ${
+            isTransportCategory || isBusinessCategory || isDishesCategory ? "flex-nowrap items-center" : "flex-wrap items-start sm:flex-nowrap sm:items-center"
+          }`}
+        >
           {createAction()}
           {listingsAction()}
         </div>
