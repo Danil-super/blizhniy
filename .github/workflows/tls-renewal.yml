@@ -60,8 +60,8 @@ jobs:
             exit 1
           fi
 
-          if ! timeout --foreground 300 sudo -n certbot renew --deploy-hook 'systemctl reload nginx'; then
-            echo 'certbot renewal did not complete within five minutes.' >&2
+          if ! timeout --foreground 300 sudo -n certbot renew --no-random-sleep-on-renew --deploy-hook 'systemctl reload nginx'; then
+            echo 'certbot renewal failed or did not complete within five minutes.' >&2
             sudo -n systemctl status certbot.timer --no-pager || true
             sudo -n journalctl -u certbot.service -n 50 --no-pager || true
             sudo -n tail -n 120 /var/log/letsencrypt/letsencrypt.log || true
