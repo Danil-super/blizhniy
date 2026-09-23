@@ -189,6 +189,12 @@ try {
 
         const hero = page.locator(`[data-category-theme="${scenario.slug}"]`);
         await hero.waitFor();
+        const heroImage = hero.locator("img:visible").first();
+        await heroImage.waitFor();
+        await heroImage.evaluate(async (img) => {
+          if (!img.complete) await new Promise((resolve) => img.addEventListener("load", resolve, { once: true }));
+          await img.decode().catch(() => undefined);
+        });
         const layout = await hero.evaluate((section) => {
           const frame = section.getBoundingClientRect();
           const title = section.querySelector("h1");
