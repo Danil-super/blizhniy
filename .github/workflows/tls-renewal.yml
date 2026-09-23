@@ -38,7 +38,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Renew certificate and enable local renewal timer
+      - name: Enable Caddy automatic HTTPS
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
@@ -90,6 +90,9 @@ jobs:
       - name: Verify the certificate served to visitors
         env:
           SITE_HOST: xn----9sbphbgks4a4a.xn--p1ai
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+          VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           set -euo pipefail
 
@@ -111,4 +114,12 @@ jobs:
           done
 
           echo 'Caddy did not present a certificate valid for at least 21 days.' >&2
+          echo 'Recent Caddy journal:' >&2
+          timeout 60 ssh \
+            -i ~/.ssh/deploy_key \
+            -p "$VPS_PORT" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            "$VPS_USER@$VPS_HOST" \
+            'sudo -n journalctl -u caddy --since "10 minutes ago" --no-pager -n 160' >&2 || true
           exit 1
