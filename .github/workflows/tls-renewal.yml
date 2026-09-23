@@ -64,6 +64,8 @@ jobs:
             echo 'certbot renewal did not complete within five minutes.' >&2
             sudo -n systemctl status certbot.timer --no-pager || true
             sudo -n journalctl -u certbot.service -n 50 --no-pager || true
+            sudo -n tail -n 120 /var/log/letsencrypt/letsencrypt.log || true
+            sudo -n sed -n '1,160p' /etc/letsencrypt/renewal/xn----9sbphbgks4a4a.xn--p1ai.conf || true
             exit 1
           fi
 
