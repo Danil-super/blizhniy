@@ -170,7 +170,7 @@ GitHub Actions подключится к VPS и выполнит zero-downtime d
 
 ### TLS-сертификат
 
-Файл `.github/workflows/tls-renewal.yml` ежедневно запускает `certbot renew` на VPS и затем проверяет сертификат, который получают посетители домена. Он также включает системный таймер Certbot (`certbot.timer` или `snap.certbot.renew.timer`), если такой таймер есть на сервере. Для workflow нужны те же секреты `VPS_HOST`, `VPS_PORT`, `VPS_USER` и `VPS_SSH_KEY`, что и для деплоя; у `VPS_USER` должен быть пароль-независимый `sudo` для `certbot` и `systemctl reload nginx`.
+Caddy получает и продлевает сертификаты через Automatic HTTPS. В Caddyfile для домена не должно быть устаревшей директивы `tls /путь/к/fullchain.pem /путь/к/privkey.pem`: она фиксирует сертификат из файла и отключает автоматическое управление. Файл `.github/workflows/tls-renewal.yml` ежедневно проверяет сертификат, который получают посетители, и мигрирует эту устаревшую настройку, если она вновь появится. Для workflow нужны те же секреты `VPS_HOST`, `VPS_PORT`, `VPS_USER` и `VPS_SSH_KEY`, что и для деплоя; у `VPS_USER` должен быть пароль-независимый `sudo` для проверки конфигурации и перезагрузки Caddy.
 
 ## Ближайший план исправлений
 
