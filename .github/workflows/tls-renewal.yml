@@ -66,6 +66,8 @@ jobs:
             sudo -n journalctl -u certbot.service -n 50 --no-pager || true
             sudo -n tail -n 120 /var/log/letsencrypt/letsencrypt.log || true
             sudo -n sed -n '1,160p' /etc/letsencrypt/renewal/xn----9sbphbgks4a4a.xn--p1ai.conf || true
+            echo 'Nginx virtual host configuration:' >&2
+            sudo -n sed -n '1,260p' /etc/nginx/sites-enabled/blizhniy || true
             echo 'Nginx ACME routing:' >&2
             sudo -n nginx -T 2>&1 | awk '
               /^# configuration file / { current_file = $0 }
