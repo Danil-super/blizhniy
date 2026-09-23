@@ -33,7 +33,7 @@ const responsiveImageHeroScenarios = [
     clearPhoto: true,
     copyOnTop: true,
     mobileSource: "/images/categories/animals-category-hero.png",
-    desktopSource: "/images/categories/animals-category-hero-desktop-v1.webp",
+    desktopSource: "/images/categories/animals-category-hero-desktop-v2.webp",
     desktopBreakpoint: 1024,
     desktopAspect: 3,
     desktopHeroAspect: 3,
@@ -120,15 +120,17 @@ try {
           const imageTop = box.top + (box.height - renderedHeight) / 2;
           // The tight asset is fully contained beside the copy. Products may overlap each other.
           const products = { left: imageLeft, right: box.right, top: imageTop, bottom: imageTop + renderedHeight };
+          const actions = [...section.querySelectorAll("[data-hero-actions] a")];
           return {
             fullBleed: Math.abs(box.left - frame.left) <= 1 && Math.abs(box.top - frame.top) <= 1 && Math.abs(box.right - frame.right) <= 1 && Math.abs(box.bottom - frame.bottom) <= 1,
             clearPhoto: !section.querySelector("[data-hero-scrim]") && getComputedStyle(img).filter === "none" && getComputedStyle(img).opacity === "1" && getComputedStyle(img).maskImage === "none",
             visibleFraction: Math.min(box.width / box.height / (img.naturalWidth / img.naturalHeight), (img.naturalWidth / img.naturalHeight) / (box.width / box.height)),
             copyAbovePhoto: Number(getComputedStyle(content).zIndex) > 0,
-            actionsUnobscured: [...content.querySelectorAll("a")].every((a) => {
+            actionsUnobscured: actions.every((a) => {
               const rect = a.getBoundingClientRect();
               return a.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
             }),
+            actionsBottomOffset: actions.length ? frame.bottom - Math.max(...actions.map((a) => a.getBoundingClientRect().bottom)) : Number.POSITIVE_INFINITY,
             src: img.currentSrc,
             fit: getComputedStyle(img).objectFit,
             overlay: getComputedStyle(img.parentElement).position,
@@ -140,7 +142,7 @@ try {
             composition: copy.right <= products.left && products.top < copy.bottom && products.bottom > copy.top,
             textInside: copy.left >= frame.left && copy.right <= frame.right && copy.top >= frame.top && copy.bottom <= frame.bottom,
             overlap: copy.left < products.right && copy.right > products.left && copy.top < products.bottom && copy.bottom > products.top,
-            actions: [...content.querySelectorAll("a")].map((a) => ({ text: a.textContent.trim(), href: a.getAttribute("href") })),
+            actions: actions.map((a) => ({ text: a.textContent.trim(), href: a.getAttribute("href") })),
           };
         });
         await hero.screenshot({ path: `${artifactDir}/${width}.png` });
@@ -163,6 +165,7 @@ try {
         if (!scenario.backdrop) assert.ok(layout.height <= 380, `${width}: compact kids hero, got ${layout.height}px`);
         assert.equal(layout.textInside, true, `${width}: text inside banner`);
         assert.equal(layout.actionsUnobscured, true, `${width}: action buttons remain clickable`);
+        assert.ok(layout.actionsBottomOffset >= 0 && layout.actionsBottomOffset <= 36, `${width}: actions stay at the bottom of the hero, got ${layout.actionsBottomOffset}px`);
         assert.ok(layout.actions.some((a) => a.href === "#listings"));
         assert.ok(layout.actions.some((a) => a.href.includes(`/razmestit/obyavlenie?category=${scenario.slug}`)));
         console.log(`PASS ${scenario.slug} ${width}px: ${layout.height}px hero, ${scenario.backdrop ? "clear full-bleed photo, at least 90% visible, text overlaid" : "image beside copy without cropping or text overlap"}, actions clickable`);
@@ -390,9 +393,7 @@ try {
         if (scenario.oneLineActions) {
           assert.equal(layout.actionsOneLine, true, `${scenario.slug} ${width}: both actions stay on one row`);
         }
-        if (scenario.actionsAtBottom) {
-          assert.ok(layout.actionsBottomOffset >= 0 && layout.actionsBottomOffset <= 36, `${scenario.slug} ${width}: actions stay at the bottom of the hero, got ${layout.actionsBottomOffset}px`);
-        }
+        assert.ok(layout.actionsBottomOffset >= 0 && layout.actionsBottomOffset <= 36, `${scenario.slug} ${width}: actions stay at the bottom of the hero, got ${layout.actionsBottomOffset}px`);
         if (scenario.copyOnTop) {
           assert.equal(layout.copyAbovePhoto, true, `${scenario.slug} ${width}: title and description stay above the photo`);
         }
