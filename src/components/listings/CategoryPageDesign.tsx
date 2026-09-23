@@ -205,6 +205,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
           : isAnimalsCategory
             ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
+          : isHomeAndDachaCategory
+            ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
           : isBeautyCategory
             ? "aspect-[1069/1471] min-h-0 sm:aspect-[3/2] sm:min-h-[350px] lg:aspect-[8/3] lg:min-h-0"
           : hasCompactHero
@@ -236,7 +238,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
 
           @media (min-width: 1024px) {
             [data-category-theme="zhivotnye"] h1,
-            [data-category-theme="zhivotnye"] p {
+            [data-category-theme="zhivotnye"] p,
+            [data-category-theme="dlya-doma-i-dachi"] h1,
+            [data-category-theme="dlya-doma-i-dachi"] p {
               color: #fff !important;
               text-shadow: 0 2px 8px rgba(8, 27, 22, 0.96), 0 1px 2px rgba(8, 27, 22, 0.96);
             }
@@ -426,14 +430,12 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           <Image
             alt=""
             aria-hidden="true"
-            className="absolute right-0 top-1/2 hidden h-[136%] w-auto max-w-none -translate-y-1/2 object-contain object-right [mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] lg:block"
-            height={1086}
+            className="absolute inset-0 hidden object-cover lg:block"
+            fill
             priority
-            sizes="(min-width: 1024px) 830px, 0px"
-            src="/images/categories/home-dacha-category-hero.png"
-            width={1448}
+            sizes="(min-width: 1280px) 1280px, 100vw"
+            src="/images/categories/home-dacha-category-hero-desktop-v1.webp"
           />
-          <div className="absolute inset-0 hidden lg:block lg:bg-[linear-gradient(90deg,rgba(247,251,233,0.98)_0%,rgba(247,251,233,0.9)_31%,rgba(247,251,233,0.58)_48%,rgba(247,251,233,0.08)_70%,rgba(247,251,233,0)_100%)]" />
         </>
       ) : null}
       {isExchangeOrFreeCategory ? (
