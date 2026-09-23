@@ -60,90 +60,42 @@ jobs:
             exit 1
           fi
 
-          # Let’s Encrypt may follow an HTTP redirect to HTTPS. Keep the
-          # challenge path static in the TLS virtual host too, rather than proxying
-          # it to the Next.js application (which responds 404).
-          nginx_site=/etc/nginx/sites-enabled/blizhniy
-          # Older diagnostic runs left a temporary backup in sites-enabled, where
-          # Nginx loads every file and treats it as a second default server.
-          sudo -n find /etc/nginx/sites-enabled -maxdepth 1 -type f -name 'blizhniy.before-acme-*' -delete
-          if ! sudo -n awk '
-            /^[[:space:]]*listen[[:space:]]+443[[:space:]]+ssl/ { in_tls_server = 1 }
-            in_tls_server && /location[[:space:]]+\^~[[:space:]]+\/\.well-known\/acme-challenge\// { found = 1 }
-            END { exit found ? 0 : 1 }
-          ' "$nginx_site"; then
-            sudo -n cp -p "$nginx_site" "/tmp/blizhniy.before-acme-$(date -u +%Y%m%d%H%M%S)"
-            sudo -n python3 - "$nginx_site" <<'PY'
-          from pathlib import Path
-          import sys
+          lineage='xn----9sbphbgks4a4a.xn--p1ai'
+          certificate_path="/etc/letsencrypt/live/$lineage/fullchain.pem"
+          pre_hook='/etc/letsencrypt/renewal-hooks/pre/10-stop-nginx'
+          post_hook='/etc/letsencrypt/renewal-hooks/post/10-start-nginx'
 
-          site = Path(sys.argv[1])
-          config = site.read_text()
-          anchor = "    location /_next/static/ {\n"
-          acme_location = """    location ^~ /.well-known/acme-challenge/ {
-                  root /var/www/certbot;
-                  default_type text/plain;
-                  try_files $uri =404;
-              }
+          # Use Certbot's standalone HTTP-01 server. It does not depend on the
+          # application or an Nginx webroot being reachable from the Internet.
+          sudo -n install -d -m 0755 "$(dirname "$pre_hook")" "$(dirname "$post_hook")"
+          printf '%s\n' '#!/bin/sh' 'systemctl stop nginx' | sudo -n tee "$pre_hook" >/dev/null
+          printf '%s\n' '#!/bin/sh' 'systemctl start nginx' | sudo -n tee "$post_hook" >/dev/null
+          sudo -n chmod 0755 "$pre_hook" "$post_hook"
 
-          """
-          position = config.find(anchor)
-          if position < 0:
-              raise SystemExit("TLS static-files location was not found in Nginx vhost")
-          tls_prefix = config[config.rfind("server {", 0, position):position]
-          if "location ^~ /.well-known/acme-challenge/" not in tls_prefix:
-              site.write_text(config[:position] + acme_location + config[position:])
-          PY
-            sudo -n nginx -t
-            sudo -n systemctl reload nginx
+          if ! sudo -n openssl x509 -checkend $((21 * 24 * 60 * 60)) -noout -in "$certificate_path"; then
+            nginx_stopped=false
+            restart_nginx() {
+              if [ "$nginx_stopped" = true ]; then
+                sudo -n systemctl start nginx || true
+              fi
+            }
+            trap restart_nginx EXIT
+
+            sudo -n systemctl stop nginx
+            nginx_stopped=true
+            if ! timeout --foreground 180 sudo -n certbot certonly --standalone --non-interactive --cert-name "$lineage" -d "$lineage" -d "www.$lineage"; then
+              echo 'Standalone certificate recovery failed.' >&2
+              exit 1
+            fi
+            sudo -n systemctl start nginx
+            nginx_stopped=false
+            trap - EXIT
+
+            if ! sudo -n grep -Fxq 'authenticator = standalone' "/etc/letsencrypt/renewal/$lineage.conf"; then
+              echo 'Certbot did not persist the standalone authenticator.' >&2
+              exit 1
+            fi
           fi
-
-          probe_token="acme-probe-$(date -u +%s)-$RANDOM"
-          probe_path="/var/www/certbot/.well-known/acme-challenge/$probe_token"
-          sudo -n install -d -m 0755 /var/www/certbot/.well-known/acme-challenge
-          printf '%s' "$probe_token" | sudo -n tee "$probe_path" >/dev/null
-          sudo -n chmod 0644 "$probe_path"
-          cleanup_probe() { sudo -n rm -f "$probe_path"; }
-          trap cleanup_probe EXIT
-          show_nginx_acme_routing() {
-            echo 'Nginx ACME routing:' >&2
-            sudo -n sed -n '1,300p' "$nginx_site" || true
-            sudo -n nginx -T 2>&1 | awk '
-              /^# configuration file / { current_file = $0 }
-              /server_name/ || /acme-challenge/ || /root +\/var\/www\/certbot/ {
-                print current_file
-                print
-              }
-            ' || true
-          }
-
-          for host in xn----9sbphbgks4a4a.xn--p1ai www.xn----9sbphbgks4a4a.xn--p1ai; do
-            for scheme in http https; do
-              port=80
-              # The currently served certificate may be expired while this
-              # pre-renewal route probe follows the HTTP-to-HTTPS redirect.
-              curl_flags=(--fail --silent --show-error --max-time 15 --insecure)
-              if [ "$scheme" = https ]; then
-                port=443
-              fi
-
-              if ! local_response="$(curl "${curl_flags[@]}" --resolve "$host:$port:127.0.0.1" "$scheme://$host/.well-known/acme-challenge/$probe_token")"; then
-                echo "ACME probe failed for the local $scheme route on $host." >&2
-                show_nginx_acme_routing
-                exit 1
-              fi
-              if ! public_response="$(curl "${curl_flags[@]}" --location "$scheme://$host/.well-known/acme-challenge/$probe_token")"; then
-                echo "ACME probe failed for the public $scheme route on $host." >&2
-                show_nginx_acme_routing
-                exit 1
-              fi
-              if [ "$local_response" != "$probe_token" ] || [ "$public_response" != "$probe_token" ]; then
-                echo "ACME probe returned unexpected content for $scheme://$host." >&2
-                show_nginx_acme_routing
-                exit 1
-              fi
-            done
-          done
 
           if ! timeout --foreground 300 sudo -n certbot renew --no-random-sleep-on-renew --deploy-hook 'systemctl reload nginx'; then
             echo 'certbot renewal failed or did not complete within five minutes.' >&2
