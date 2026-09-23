@@ -60,6 +60,8 @@ const responsiveImageHeroScenarios = [
     copyOnTop: true,
     whiteCopy: true,
     source: "/images/categories/business-category-hero-v2.webp",
+    desktopHeroAspect: 3,
+    desktopHeroBreakpoint: 768,
   },
   { slug: "posuda", mobileMode: "cover" },
   { slug: "biznes", mobileMode: "cover" },
@@ -343,6 +345,12 @@ try {
           const expectedSource = width < (scenario.breakpoint ?? 640) ? scenario.mobileSource : scenario.desktopSource;
           assert.ok(layout.sources.some((src) => decodeURIComponent(src).includes(expectedSource)), `${scenario.slug} ${width}: breakpoint selects the uncropped vehicle photo`);
           assert.ok(layout.visiblePhotoFraction >= 0.98, `${scenario.slug} ${width}: all four vehicles remain in frame, got ${layout.visiblePhotoFraction}`);
+        }
+        if (scenario.desktopHeroAspect && width >= (scenario.desktopHeroBreakpoint ?? 1024)) {
+          assert.ok(
+            Math.abs(layout.heroAspect - scenario.desktopHeroAspect) <= 0.04,
+            `${scenario.slug} ${width}: desktop hero keeps the shared compact aspect ratio, got ${layout.heroAspect}`,
+          );
         }
         if (scenario.desktopSource) {
           const breakpoint = scenario.desktopBreakpoint ?? 1024;
