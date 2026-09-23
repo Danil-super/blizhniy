@@ -105,6 +105,17 @@ jobs:
           sudo -n chmod 0644 "$probe_path"
           cleanup_probe() { sudo -n rm -f "$probe_path"; }
           trap cleanup_probe EXIT
+          show_nginx_acme_routing() {
+            echo 'Nginx ACME routing:' >&2
+            sudo -n sed -n '1,300p' "$nginx_site" || true
+            sudo -n nginx -T 2>&1 | awk '
+              /^# configuration file / { current_file = $0 }
+              /server_name/ || /acme-challenge/ || /root +\/var\/www\/certbot/ {
+                print current_file
+                print
+              }
+            ' || true
+          }
 
           for host in xn----9sbphbgks4a4a.xn--p1ai www.xn----9sbphbgks4a4a.xn--p1ai; do
             for scheme in http https; do
@@ -118,14 +129,17 @@ jobs:
 
               if ! local_response="$(curl "${curl_flags[@]}" --resolve "$host:$port:127.0.0.1" "$scheme://$host/.well-known/acme-challenge/$probe_token")"; then
                 echo "ACME probe failed for the local $scheme route on $host." >&2
+                show_nginx_acme_routing
                 exit 1
               fi
               if ! public_response="$(curl "${curl_flags[@]}" --location "$scheme://$host/.well-known/acme-challenge/$probe_token")"; then
                 echo "ACME probe failed for the public $scheme route on $host." >&2
+                show_nginx_acme_routing
                 exit 1
               fi
               if [ "$local_response" != "$probe_token" ] || [ "$public_response" != "$probe_token" ]; then
                 echo "ACME probe returned unexpected content for $scheme://$host." >&2
+                show_nginx_acme_routing
                 exit 1
               fi
             done
