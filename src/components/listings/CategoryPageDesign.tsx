@@ -207,6 +207,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
           : isHomeAndDachaCategory
             ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
+          : isExchangeOrFreeCategory
+            ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
           : isBeautyCategory
             ? "aspect-[1069/1471] min-h-0 sm:aspect-[3/2] sm:min-h-[350px] lg:aspect-[8/3] lg:min-h-0"
           : hasCompactHero
@@ -240,7 +242,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             [data-category-theme="zhivotnye"] h1,
             [data-category-theme="zhivotnye"] p,
             [data-category-theme="dlya-doma-i-dachi"] h1,
-            [data-category-theme="dlya-doma-i-dachi"] p {
+            [data-category-theme="dlya-doma-i-dachi"] p,
+            [data-category-theme="menyayu-ili-otdam-darom"] h1,
+            [data-category-theme="menyayu-ili-otdam-darom"] p {
               color: #fff !important;
               text-shadow: 0 2px 8px rgba(8, 27, 22, 0.96), 0 1px 2px rgba(8, 27, 22, 0.96);
             }
@@ -439,28 +443,19 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </>
       ) : null}
       {isExchangeOrFreeCategory ? (
-        <>
-          <Image
+        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <source media="(min-width: 1024px)" srcSet="/images/categories/exchange-free-category-hero-desktop-v1.webp" />
+          {/* Keep the mobile giveaway scene intact; desktop uses the same objects in a wide frame. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             alt=""
-            aria-hidden="true"
-            className="object-cover object-[68%_center] lg:hidden"
-            fill
-            priority
-            sizes="100vw"
-            src="/images/categories/exchange-free-category-hero.png"
-          />
-          <Image
-            alt=""
-            aria-hidden="true"
-            className="absolute right-0 top-1/2 hidden h-[136%] w-auto max-w-none -translate-y-1/2 object-contain object-right [mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] lg:block"
+            className="h-full w-full object-cover object-[68%_center] lg:object-center"
+            fetchPriority="high"
             height={941}
-            priority
-            sizes="(min-width: 1024px) 830px, 0px"
             src="/images/categories/exchange-free-category-hero.png"
             width={1672}
           />
-          <div className="absolute inset-0 hidden lg:block lg:bg-[linear-gradient(90deg,rgba(239,250,240,0.98)_0%,rgba(239,250,240,0.9)_31%,rgba(239,250,240,0.58)_48%,rgba(239,250,240,0.08)_70%,rgba(239,250,240,0)_100%)]" />
-        </>
+        </picture>
       ) : null}
       {isRealEstateCategory ? (
         <>
