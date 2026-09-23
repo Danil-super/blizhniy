@@ -194,7 +194,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
     <section
       className={`relative overflow-hidden rounded-2xl border border-[var(--category-border)] ${hasCompactHero ? "bg-white" : "bg-[var(--category-soft)]"} px-4 py-5 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5 sm:py-6 lg:px-7 lg:py-7 ${hasImageHero ? "pb-28 sm:pb-20 lg:pb-24" : ""} ${
         isGardenCategory
-          ? "lg:min-h-[370px]"
+          ? "lg:aspect-[3/1] lg:min-h-0"
           : isDishesCategory
             ? "aspect-[1089/1444] min-h-[360px] sm:aspect-[3/1] sm:min-h-[220px]"
           : isTransportCategory
@@ -210,6 +210,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           : isHomeAndDachaCategory
             ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
           : isExchangeOrFreeCategory
+            ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
+          : isElectronicsCategory
             ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
           : isBeautyCategory
             ? "aspect-[1069/1471] min-h-0 sm:aspect-[3/2] sm:min-h-[350px] lg:aspect-[8/3] lg:min-h-0"
@@ -248,7 +250,11 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             [data-category-theme="menyayu-ili-otdam-darom"] h1,
             [data-category-theme="menyayu-ili-otdam-darom"] p,
             [data-category-theme="nedvizhimost"] h1,
-            [data-category-theme="nedvizhimost"] p {
+            [data-category-theme="nedvizhimost"] p,
+            [data-category-theme="elektronika"] h1,
+            [data-category-theme="elektronika"] p,
+            [data-category-theme="sad-i-rasteniya"] h1,
+            [data-category-theme="sad-i-rasteniya"] p {
               color: #fff !important;
               text-shadow: 0 2px 8px rgba(8, 27, 22, 0.96), 0 1px 2px rgba(8, 27, 22, 0.96);
             }
@@ -256,27 +262,19 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         `}</style>
       ) : null}
       {isGardenCategory ? (
-        <>
-          <Image
+        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <source media="(min-width: 1024px)" srcSet="/images/categories/garden-category-hero-desktop-v1.webp" />
+          {/* Preserve the mobile vegetable composition; desktop expands the same produce scene. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             alt=""
-            aria-hidden="true"
-            className="absolute right-0 top-1/2 hidden h-[120%] w-auto max-w-none -translate-y-1/2 object-contain [mask-image:linear-gradient(to_right,transparent_0%,black_12%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_12%,black_100%)] lg:block xl:h-[180%] min-[1440px]:h-[200%]"
+            className="h-full w-full object-cover object-center"
+            fetchPriority="high"
             height={941}
-            priority
-            sizes="(min-width: 1280px) 500px, 430px"
-            src="/images/categories/garden-category-produce.webp"
-            width={952}
-          />
-          <Image
-            alt=""
-            aria-hidden="true"
-            className="object-cover object-center lg:hidden"
-            fill
-            priority
-            sizes="100vw"
             src="/images/categories/garden-category-hero.webp"
+            width={1672}
           />
-        </>
+        </picture>
       ) : null}
       {isRitualCategory ? (
         <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
@@ -400,29 +398,19 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </picture>
       ) : null}
       {isElectronicsCategory ? (
-        <>
-          <Image
+        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <source media="(min-width: 1024px)" srcSet="/images/categories/electronics-category-hero-desktop-v1.webp" />
+          {/* Keep the mobile electronics room intact; desktop uses the full room in a wide frame. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             alt=""
-            aria-hidden="true"
-            className="object-cover object-[76%_center] lg:hidden"
-            fill
-            priority
-            sizes="100vw"
-            src="/images/categories/electronics-category-hero.png"
-          />
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.92)_0%,rgba(255,255,255,0.72)_46%,rgba(255,255,255,0.08)_82%)] lg:hidden" />
-          <Image
-            alt=""
-            aria-hidden="true"
-            className="absolute right-0 top-1/2 hidden h-[136%] w-auto max-w-none -translate-y-1/2 object-contain object-right [mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] lg:block"
+            className="h-full w-full object-cover object-[76%_center] lg:object-center"
+            fetchPriority="high"
             height={941}
-            priority
-            sizes="(min-width: 1024px) 830px, 0px"
             src="/images/categories/electronics-category-hero.png"
             width={1672}
           />
-          <div className="absolute inset-0 hidden lg:block lg:bg-[linear-gradient(90deg,rgba(238,244,255,0.98)_0%,rgba(238,244,255,0.9)_31%,rgba(238,244,255,0.58)_48%,rgba(238,244,255,0.08)_70%,rgba(238,244,255,0)_100%)]" />
-        </>
+        </picture>
       ) : null}
       {isHomeAndDachaCategory ? (
         <>
