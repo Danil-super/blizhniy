@@ -175,7 +175,6 @@ try {
     }
   }
 
-  const el
   for (const scenario of responsiveImageHeroScenarios) {
     const artifactDir = `artifacts/category-heroes/${scenario.slug}`;
     await mkdir(artifactDir, { recursive: true });
