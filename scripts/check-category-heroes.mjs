@@ -11,7 +11,19 @@ const scenarios = [
 ];
 const responsiveImageHeroScenarios = [
   { slug: "sad-i-rasteniya", mobileMode: "cover" },
-  { slug: "ritualnye-uslugi", mobileMode: "cover" },
+  {
+    slug: "ritualnye-uslugi",
+    mobileMode: "cover",
+    fullBleed: true,
+    clearPhoto: true,
+    copyOnTop: true,
+    mobileSource: "/images/categories/ritual-category-hero.webp",
+    desktopSource: "/images/categories/ritual-category-hero-desktop-v2.webp",
+    desktopBreakpoint: 1024,
+    desktopAspect: 3,
+    desktopHeroAspect: 3,
+    desktopHeroBreakpoint: 1024,
+  },
   { slug: "nedvizhimost", mobileMode: "cover" },
   { slug: "tovary-dlya-detey", mobileMode: "contained" },
   {
