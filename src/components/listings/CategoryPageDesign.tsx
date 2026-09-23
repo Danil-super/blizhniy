@@ -201,6 +201,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             ? "aspect-[1122/760] min-h-0 md:aspect-[1983/593] md:min-h-0"
           : isBusinessCategory
             ? "aspect-[1672/1200] min-h-0 md:aspect-[3/1] md:min-h-0"
+          : isRealEstateCategory
+            ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
           : isRitualCategory
             ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
           : isAnimalsCategory
@@ -244,7 +246,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             [data-category-theme="dlya-doma-i-dachi"] h1,
             [data-category-theme="dlya-doma-i-dachi"] p,
             [data-category-theme="menyayu-ili-otdam-darom"] h1,
-            [data-category-theme="menyayu-ili-otdam-darom"] p {
+            [data-category-theme="menyayu-ili-otdam-darom"] p,
+            [data-category-theme="nedvizhimost"] h1,
+            [data-category-theme="nedvizhimost"] p {
               color: #fff !important;
               text-shadow: 0 2px 8px rgba(8, 27, 22, 0.96), 0 1px 2px rgba(8, 27, 22, 0.96);
             }
@@ -458,28 +462,19 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </picture>
       ) : null}
       {isRealEstateCategory ? (
-        <>
-          <Image
+        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <source media="(min-width: 1024px)" srcSet="/images/categories/real-estate-category-hero-desktop-v1.webp" />
+          {/* Keep the mobile property scene intact; desktop uses the complete estate in a wide frame. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             alt=""
-            aria-hidden="true"
-            className="object-cover object-[64%_center] sm:object-[66%_center] lg:hidden"
-            fill
-            priority
-            sizes="100vw"
-            src="/images/categories/real-estate-category-hero-v2.png"
-          />
-          <Image
-            alt=""
-            aria-hidden="true"
-            className="absolute right-0 top-1/2 hidden h-[136%] w-auto max-w-none -translate-y-1/2 object-contain object-right [mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] lg:block"
+            className="h-full w-full object-cover object-[64%_center] sm:object-[66%_center] lg:object-center"
+            fetchPriority="high"
             height={941}
-            priority
-            sizes="(min-width: 1024px) 830px, 0px"
             src="/images/categories/real-estate-category-hero-v2.png"
             width={1672}
           />
-          <div className="absolute inset-0 hidden lg:block lg:bg-[linear-gradient(90deg,rgba(237,250,253,0.98)_0%,rgba(237,250,253,0.9)_31%,rgba(237,250,253,0.58)_48%,rgba(237,250,253,0.08)_70%,rgba(237,250,253,0)_100%)]" />
-        </>
+        </picture>
       ) : null}
       {isBeautyCategory ? (
         <style>{`
