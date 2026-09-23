@@ -201,6 +201,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             ? "aspect-[1122/760] min-h-0 md:aspect-[1983/593] md:min-h-0"
           : isBusinessCategory
             ? "aspect-[1672/1200] min-h-0 md:aspect-[3/1] md:min-h-0"
+          : isAnimalsCategory
+            ? "min-h-[330px] sm:min-h-[410px] lg:aspect-[3/1] lg:min-h-0"
           : isBeautyCategory
             ? "aspect-[1069/1471] min-h-0 sm:aspect-[3/2] sm:min-h-[350px] lg:aspect-[8/3] lg:min-h-0"
           : hasCompactHero
@@ -227,6 +229,14 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             [data-image-hero="true"] [data-hero-actions] > div > a {
               min-width: 0;
               max-width: 100%;
+            }
+          }
+
+          @media (min-width: 1024px) {
+            [data-category-theme="zhivotnye"] h1,
+            [data-category-theme="zhivotnye"] p {
+              color: #fff !important;
+              text-shadow: 0 2px 8px rgba(8, 27, 22, 0.96), 0 1px 2px rgba(8, 27, 22, 0.96);
             }
           }
         `}</style>
@@ -294,28 +304,19 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </picture>
       ) : null}
       {isAnimalsCategory ? (
-        <>
-          <Image
+        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <source media="(min-width: 1024px)" srcSet="/images/categories/animals-category-hero-desktop-v1.webp" />
+          {/* Preserve the established mobile crop; desktop receives a composition made for a 3:1 hero. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             alt=""
-            aria-hidden="true"
-            className="object-cover object-[76%_center] lg:hidden"
-            fill
-            priority
-            sizes="100vw"
-            src="/images/categories/animals-category-hero.png"
-          />
-          <Image
-            alt=""
-            aria-hidden="true"
-            className="absolute right-0 top-1/2 hidden h-[118%] w-auto max-w-none -translate-y-1/2 object-contain object-right [mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_24%,black_100%)] lg:block"
+            className="h-full w-full object-cover object-[76%_center] lg:object-center"
+            fetchPriority="high"
             height={941}
-            priority
-            sizes="(min-width: 1024px) 830px, 0px"
             src="/images/categories/animals-category-hero.png"
             width={1672}
           />
-          <div className="absolute inset-0 hidden lg:block lg:bg-[linear-gradient(90deg,rgba(247,251,232,0.98)_0%,rgba(247,251,232,0.9)_31%,rgba(247,251,232,0.58)_48%,rgba(247,251,232,0.08)_70%,rgba(247,251,232,0)_100%)]" />
-        </>
+        </picture>
       ) : null}
       {isBeautyCategory ? (
         <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
@@ -526,6 +527,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             ? "relative z-10 min-w-0 w-full max-w-[480px] [text-shadow:0_1px_2px_white,0_0_3px_white]"
             : hasCompactHero
             ? "relative z-10 min-w-0 w-[52%] md:w-[35%] md:max-w-[480px]"
+            : isAnimalsCategory
+              ? "relative z-10 max-w-full lg:max-w-xl"
             : hasImageHero
               ? "relative z-10 max-w-full lg:max-w-[800px]"
             : "grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.34fr)] lg:items-end"
