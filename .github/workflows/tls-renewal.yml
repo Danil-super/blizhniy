@@ -64,12 +64,15 @@ jobs:
           # challenge path static in the TLS virtual host too, rather than proxying
           # it to the Next.js application (which responds 404).
           nginx_site=/etc/nginx/sites-enabled/blizhniy
+          # Older diagnostic runs left a temporary backup in sites-enabled, where
+          # Nginx loads every file and treats it as a second default server.
+          sudo -n find /etc/nginx/sites-enabled -maxdepth 1 -type f -name 'blizhniy.before-acme-*' -delete
           if ! sudo -n awk '
             /^[[:space:]]*listen[[:space:]]+443[[:space:]]+ssl/ { in_tls_server = 1 }
             in_tls_server && /location[[:space:]]+\^~[[:space:]]+\/\.well-known\/acme-challenge\// { found = 1 }
             END { exit found ? 0 : 1 }
           ' "$nginx_site"; then
-            sudo -n cp -p "$nginx_site" "$nginx_site.before-acme-$(date -u +%Y%m%d%H%M%S)"
+            sudo -n cp -p "$nginx_site" "/tmp/blizhniy.before-acme-$(date -u +%Y%m%d%H%M%S)"
             sudo -n python3 - "$nginx_site" <<'PY'
           from pathlib import Path
           import sys
