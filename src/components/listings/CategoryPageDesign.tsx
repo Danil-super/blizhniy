@@ -164,6 +164,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   const isTransportCategory = categorySlug === "transport";
   const isToolsCategory = categorySlug === "instrumenty";
   const isDishesCategory = categorySlug === "posuda";
+  const isWorkCategory = categorySlug === "rabota";
   const hasCompactHero = isKidsCategory || isDishesCategory;
   const isBusinessCategory = categorySlug === "biznes";
   const isElectronicsCategory = categorySlug === "elektronika";
@@ -172,10 +173,11 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   const hasImageHero = isGardenCategory || isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isToolsCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
   const usesRightAlignedHero = isRitualCategory || isRealEstateCategory || isKidsCategory || isAnimalsCategory || isBeautyCategory || isTransportCategory || isToolsCategory || isDishesCategory || isBusinessCategory || isElectronicsCategory || isHomeAndDachaCategory || isExchangeOrFreeCategory;
   const heroActionSizeClassName = hasCompactHero ? "min-h-10 min-w-0 max-w-full px-2 py-2 text-xs leading-4 [text-shadow:none] md:h-10 md:px-4 md:text-sm" : isTransportCategory ? "h-9 min-w-0 max-w-full px-2 text-[11px] leading-4 sm:h-10 sm:px-3 sm:text-xs" : isBusinessCategory ? "h-9 min-w-0 max-w-full px-2 text-[11px] leading-4 sm:h-10 sm:px-4 sm:text-sm" : hasImageHero ? "h-10 min-w-0 max-w-full px-3 text-xs sm:px-4 sm:text-sm" : "h-11 px-4 text-sm";
+  const workActionColorClassName = "border-[#b7d957] bg-[#dff39c] text-slate-600 hover:border-[#a8ca47] hover:bg-[#d3eb82]";
   const createAction = () => (
     <Link
       href={createHref}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg bg-[#d92d20] font-bold text-white shadow-sm shadow-black/10 transition hover:bg-[#b42318] ${heroActionSizeClassName}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg font-bold shadow-sm shadow-black/10 transition ${isWorkCategory ? workActionColorClassName : "bg-[#d92d20] text-white hover:bg-[#b42318]"} ${heroActionSizeClassName}`}
     >
       Разместить
       <ArrowRight className={hasCompactHero ? "hidden h-4 w-4 shrink-0 md:block" : isTransportCategory || isBusinessCategory ? "hidden h-4 w-4 shrink-0 sm:block" : "h-4 w-4"} />
@@ -184,7 +186,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
   const listingsAction = () => (
     <a
       href="#listings"
-      className={`inline-flex items-center justify-center gap-2 rounded-lg border border-[#ef8c84] bg-white font-bold text-[#c6251a] transition hover:bg-[#fff1f0] ${heroActionSizeClassName}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg border font-bold transition ${isWorkCategory ? workActionColorClassName : "border-[#ef8c84] bg-white text-[#c6251a] hover:bg-[#fff1f0]"} ${heroActionSizeClassName}`}
     >
       Смотреть объявления
       <ClipboardList className={hasCompactHero ? "hidden h-4 w-4 shrink-0 md:block" : isTransportCategory || isBusinessCategory ? "hidden h-4 w-4 shrink-0 sm:block" : "h-4 w-4"} />
@@ -605,11 +607,13 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
 
 export function SubcategoryCard({ compact = false, createHref, description, href, items = [], spanClassName = "", title, visualSlug }: SubcategoryCardProps) {
   const visual = visualForCategory(visualSlug);
+  const isWorkCategory = visualSlug === "rabota";
   const actionButtonClassName = `${
     compact
       ? "h-8 px-1 text-[11px] sm:h-9 sm:px-1.5 sm:text-xs lg:px-0.5 lg:text-[10px] xl:px-1.5 xl:text-xs"
       : "h-10 px-1 text-[11px] sm:px-1.5 sm:text-xs lg:px-0.5 lg:text-[10px] xl:px-1.5 xl:text-xs"
   } inline-flex min-w-0 items-center justify-center rounded-lg border font-bold leading-none transition`;
+  const workActionColorClassName = "border-[#b7d957] bg-[#dff39c] text-slate-600 hover:border-[#a8ca47] hover:bg-[#d3eb82]";
 
   return (
     <details
@@ -638,7 +642,7 @@ export function SubcategoryCard({ compact = false, createHref, description, href
         <div className={`${compact ? "mt-2 gap-1" : "mt-3 gap-1.5"} grid grid-cols-3`}>
           <Link
             href={href}
-            className={`${actionButtonClassName} border-[#ef8c84] bg-white text-[#c6251a] hover:bg-[#fff1f0]`}
+            className={`${actionButtonClassName} ${isWorkCategory ? workActionColorClassName : "border-[#ef8c84] bg-white text-[#c6251a] hover:bg-[#fff1f0]"}`}
             aria-label={`Открыть объявления: ${title}`}
             title="Объявления"
           >
@@ -646,14 +650,14 @@ export function SubcategoryCard({ compact = false, createHref, description, href
           </Link>
           <Link
             href={createHref}
-            className={`${actionButtonClassName} border-[#d92d20] bg-[#d92d20] text-white hover:border-[#b42318] hover:bg-[#b42318]`}
+            className={`${actionButtonClassName} ${isWorkCategory ? workActionColorClassName : "border-[#d92d20] bg-[#d92d20] text-white hover:border-[#b42318] hover:bg-[#b42318]"}`}
             aria-label={`Разместить объявление: ${title}`}
             title="Разместить"
           >
             <span className="min-w-0 whitespace-nowrap">Разместить</span>
           </Link>
           <SubcategoryShareButton
-            className={`${actionButtonClassName} border-[#ef8c84] bg-white text-[#c6251a] hover:bg-[#fff1f0]`}
+            className={`${actionButtonClassName} ${isWorkCategory ? workActionColorClassName : "border-[#ef8c84] bg-white text-[#c6251a] hover:bg-[#fff1f0]"}`}
             href={href}
             label="Поделиться"
             title={title}
