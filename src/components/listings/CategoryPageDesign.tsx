@@ -250,6 +250,12 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             text-shadow: 0 2px 8px rgba(8, 27, 22, 0.96), 0 1px 2px rgba(8, 27, 22, 0.96);
           }
 
+          [data-category-theme="elektronika"] [data-hero-copy] h1,
+          [data-category-theme="elektronika"] [data-hero-copy] p {
+            color: #fff !important;
+            text-shadow: 0 2px 8px rgba(6, 11, 39, 0.96), 0 1px 2px rgba(6, 11, 39, 0.96);
+          }
+
           @media (min-width: 1024px) {
             [data-category-theme="zhivotnye"] h1,
             [data-category-theme="zhivotnye"] p,
@@ -259,8 +265,6 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             [data-category-theme="menyayu-ili-otdam-darom"] p,
             [data-category-theme="nedvizhimost"] h1,
             [data-category-theme="nedvizhimost"] p,
-            [data-category-theme="elektronika"] h1,
-            [data-category-theme="elektronika"] p,
             [data-category-theme="sad-i-rasteniya"] h1,
             [data-category-theme="sad-i-rasteniya"] p {
               color: #fff !important;
