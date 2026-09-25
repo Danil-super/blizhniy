@@ -1,13 +1,21 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
-import {
+import ts from "typescript";
+
+// Transpile the real implementation so the tests also run on supported Node 20.
+const source = await readFile(new URL("../src/lib/booking-availability.ts", import.meta.url), "utf8");
+const compiled = ts.transpileModule(source, {
+  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const {
   addBookingDays,
   bookingNightsCount,
   bookingTodayKey,
   isStayPeriodUnavailable,
   parseBookingDate,
   remainingTourSeats,
-} from "../src/lib/booking-availability.ts";
+} = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
 
 const listingId = "11111111-1111-4111-8111-111111111111";
 const request = (startDate, endDate, guests, status) => ({ listingId, startDate, endDate, guests, status });
