@@ -153,4 +153,57 @@ begin
 end
 $assert_success$;
 
+-- Paid specialist profile becomes visible for exactly one tariff term, and a
+-- duplicate success cannot extend the entitlement.
+do $specialist_fixture$
+declare
+  owner_id uuid := current_setting('app.test_owner_id')::uuid;
+  profile_id uuid := gen_random_uuid();
+  payment_id uuid := gen_random_uuid();
+  tariff public.tariffs%rowtype;
+  v_region_id uuid;
+  city_id uuid;
+  first_expiry timestamptz;
+  was_new boolean;
+  next_status text;
+begin
+  select * into tariff from public.tariffs where action = 'specialist_publication';
+  select id into v_region_id from public.regions where active = true limit 1;
+  select c.id into city_id from public.cities c where c.active = true and c.region_id = v_region_id limit 1;
+  if tariff.id is null or v_region_id is null or city_id is null then
+    raise exception 'Specialist test fixtures missing';
+  end if;
+  if exists (select 1 from public.specialist_profiles where user_id = owner_id) then
+    raise exception 'Use a synthetic owner with no existing specialist profile';
+  end if;
+
+  insert into public.specialist_profiles(id,user_id,name,region_id,city_id,status,skills,description,price_from,contact_phone)
+  values(profile_id,owner_id,'Synthetic specialist',v_region_id,city_id,'pending_payment',
+         array['repair'],'Temporary rollback-only specialist profile',1000,'+70000000000');
+  insert into public.payments(id,user_id,tariff_id,target_type,target_id,provider,provider_payment_id,amount,status,duration_days)
+  values(payment_id,owner_id,tariff.id,'specialist',profile_id,'yookassa','synthetic_specialist_provider',
+         tariff.price,'pending',tariff.duration_days);
+
+  select p.next_status,p.newly_applied into next_status,was_new
+  from public.apply_confirmed_payment(payment_id,'synthetic_specialist_provider') p;
+  if next_status <> 'published' or was_new is distinct from true then
+    raise exception 'Specialist payment did not publish';
+  end if;
+
+  select expires_at into first_expiry from public.specialist_profiles
+  where id=profile_id and is_paid=true and status='published' and publication_payment_id=payment_id;
+  if first_expiry is null or first_expiry <= now() then
+    raise exception 'Paid specialist entitlement was not saved';
+  end if;
+
+  select p.next_status,p.newly_applied into next_status,was_new
+  from public.apply_confirmed_payment(payment_id,'synthetic_specialist_provider') p;
+  if was_new is distinct from false or not exists (
+    select 1 from public.specialist_profiles where id=profile_id and expires_at=first_expiry
+  ) then
+    raise exception 'Duplicate payment extended specialist entitlement';
+  end if;
+end
+$specialist_fixture$;
+
 rollback;
