@@ -16,26 +16,9 @@ import { getPublicSiteUrl } from "@/lib/site-url";
 import { isSupabaseRestConfigured } from "@/lib/supabase-rest";
 import { getActiveStoredTariffById } from "@/lib/tariff-store";
 import type { Payment, Tariff } from "@/lib/types";
+import { verifyYooKassaPayment, yookassaStatusToPaymentStatus, type YooKassaPaymentResponse } from "@/lib/yookassa-payment-validation";
 
 type PaymentTargetType = Payment["targetType"];
-type YooKassaPaymentStatus = "pending" | "waiting_for_capture" | "succeeded" | "canceled";
-type YooKassaPaymentResponse = {
-  confirmation?: {
-    confirmation_url?: string;
-  };
-  id: string;
-  paid?: boolean;
-  amount?: { value: string; currency: string };
-  status: YooKassaPaymentStatus;
-  test?: boolean;
-  metadata?: {
-    localPaymentId?: string;
-    tariffId?: string;
-    targetId?: string;
-    targetType?: PaymentTargetType;
-  };
-};
-
 type YooKassaNotificationPayload = {
   event?: string;
   object?: YooKassaPaymentResponse;
@@ -192,18 +175,6 @@ function getPublicBaseUrl() {
   return getPublicSiteUrl();
 }
 
-function yookassaStatusToPaymentStatus(status: YooKassaPaymentStatus, paid?: boolean): Payment["status"] {
-  if (status === "succeeded" || (paid && status !== "waiting_for_capture" && status !== "canceled")) {
-    return "succeeded";
-  }
-
-  if (status === "canceled") {
-    return "failed";
-  }
-
-  return "pending";
-}
-
 function applyYooKassaPaymentState(payment: Payment, yookassaPayment: YooKassaPaymentResponse) {
   payment.provider = "yookassa";
   payment.providerPaymentId = yookassaPayment.id;
@@ -287,31 +258,6 @@ async function applySucceededPayment(payment: Payment): Promise<PaymentResult> {
   pendingSucceededPaymentApplications.set(payment.id, applying);
 
   return applying;
-}
-
-function verifyYooKassaPayment(payment: Payment, providerPayment: YooKassaPaymentResponse) {
-  if (providerPayment.id !== payment.providerPaymentId) {
-    throw new Error("YooKassa payment id mismatch");
-  }
-
-  if (
-    !providerPayment.amount ||
-    providerPayment.amount.currency !== "RUB" ||
-    Math.round(Number(providerPayment.amount.value) * 100) !== Math.round(payment.amount * 100)
-  ) {
-    throw new Error("YooKassa payment amount mismatch");
-  }
-
-  const metadata = providerPayment.metadata;
-
-  if (
-    metadata?.localPaymentId && metadata.localPaymentId !== payment.id ||
-    metadata?.targetId && metadata.targetId !== payment.targetId ||
-    metadata?.targetType && metadata.targetType !== payment.targetType ||
-    metadata?.tariffId && metadata.tariffId !== payment.tariffId
-  ) {
-    throw new Error("YooKassa payment metadata mismatch");
-  }
 }
 
 async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tariff) {

@@ -158,7 +158,11 @@ export async function POST(request: Request) {
       }
 
       if (request?.status === "draft") {
-        await markStoredWorkRequestPendingPaymentForUser(body.targetId, auth.user.id);
+        const updated = await markStoredWorkRequestPendingPaymentForUser(body.targetId, auth.user.id);
+
+        if (!updated) {
+          return NextResponse.json({ error: "Не удалось подготовить заказ к оплате. Обновите страницу и попробуйте снова." }, { status: 409 });
+        }
       }
     }
 
