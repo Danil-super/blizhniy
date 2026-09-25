@@ -38,6 +38,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
   const { paymentId } = await params;
   const body = (await request.json().catch(() => null)) as { trustSuccessfulReturn?: boolean } | null;
 
+  if (process.env.NODE_ENV === "production" && !isSupabaseServerConfigured()) {
+    return NextResponse.json({ error: "Auth is not configured" }, { status: 503 });
+  }
+
   try {
     let payment = (await getStoredPayment(paymentId)) ?? (await findStoredPaymentByProvider(paymentId)) ?? getPayment(paymentId);
     let resolvedPaymentId = payment?.id ?? paymentId;
@@ -54,7 +58,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
         payment ??= await getLatestPendingStoredPaymentForUser(auth.user.id);
         const isAdmin = await isAdminRequest(request);
 
-        if (payment?.userId && payment.userId !== auth.user.id && !isAdmin) {
+        if (payment && payment.userId !== auth.user.id && !isAdmin) {
           return NextResponse.json({ error: "Платеж принадлежит другому пользователю" }, { status: 403 });
         }
 
