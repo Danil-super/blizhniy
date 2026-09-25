@@ -118,6 +118,10 @@ let cachedCabinetState: UserCabinetState | null = null;
 let cachedCabinetStateAt = 0;
 let cachedCabinetStateVersion = 0;
 let cabinetDataRequest: Promise<UserCabinetState> | null = null;
+let cabinetDataRequestOwnerKey: string | null = null;
+let cabinetRequestGeneration = 0;
+
+const emptyCabinetState: UserCabinetState = { identity: null, profile: null, items: [], loading: true };
 
 function publishCabinetState(state: UserCabinetState) {
   cachedCabinetState = state;
@@ -598,8 +602,7 @@ async function fetchCabinetPayments() {
   return (payload?.payments ?? []).map(paymentToHistoryItem);
 }
 
-async function loadUserCabinetData() {
-  const identity = await resolveClientUserIdentity();
+async function loadUserCabinetData(identity: ClientUserIdentity) {
   const fallback = createDefaultCabinetProfile(identity);
   const profile = readCabinetProfile(identity.ownerKey, fallback);
   const [serverFairApplications, serverListings, serverVacancies] = await Promise.all([
@@ -630,27 +633,44 @@ async function loadUserCabinetData() {
   return { identity, profile, items, loading: false };
 }
 
-function requestUserCabinetData(force = false) {
+async function requestUserCabinetData(force = false): Promise<UserCabinetState> {
+  const identity = await resolveClientUserIdentity();
   const cached = force ? null : getCachedCabinetState();
 
-  if (cached) {
-    return Promise.resolve(cached);
+  if (cached?.identity?.ownerKey === identity.ownerKey) {
+    return cached;
   }
 
-  cabinetDataRequest ??= loadUserCabinetData()
-    .then((state) => {
+  if (cabinetDataRequest && cabinetDataRequestOwnerKey === identity.ownerKey) {
+    return cabinetDataRequest;
+  }
+
+  const generation = ++cabinetRequestGeneration;
+  const request = loadUserCabinetData(identity)
+    .then(async (state) => {
+      const currentIdentity = await resolveClientUserIdentity();
+
+      if (generation !== cabinetRequestGeneration || currentIdentity.ownerKey !== identity.ownerKey) {
+        return emptyCabinetState;
+      }
+
       publishCabinetState(state);
       return state;
     })
     .finally(() => {
-      cabinetDataRequest = null;
+      if (cabinetDataRequest === request) {
+        cabinetDataRequest = null;
+        cabinetDataRequestOwnerKey = null;
+      }
     });
 
-  return cabinetDataRequest;
+  cabinetDataRequestOwnerKey = identity.ownerKey;
+  cabinetDataRequest = request;
+  return request;
 }
 
 function useUserCabinetData(): UserCabinetState {
-  const [state, setState] = useState<UserCabinetState>(() => getCachedCabinetState() ?? { identity: null, profile: null, items: [], loading: true });
+  const [state, setState] = useState<UserCabinetState>(emptyCabinetState);
 
   useEffect(() => {
     let active = true;
@@ -667,6 +687,24 @@ function useUserCabinetData(): UserCabinetState {
 
     cabinetDataListeners.add(handleState);
     void requestUserCabinetData().then(handleState);
+
+    let authSubscription: { unsubscribe: () => void } | undefined;
+    try {
+      const { data } = getSupabaseBrowserClient().auth.onAuthStateChange((event) => {
+        if (event === "INITIAL_SESSION") {
+          return;
+        }
+
+        cachedCabinetState = null;
+        cabinetRequestGeneration += 1;
+        handleState(emptyCabinetState);
+        window.setTimeout(sync, 0);
+      });
+      authSubscription = data.subscription;
+    } catch {
+      // The demo runtime can have no configured Auth client.
+    }
+
     window.addEventListener("storage", sync);
     window.addEventListener(cabinetDataUpdatedEvent, sync);
     window.addEventListener(demoPublicationsUpdatedEvent, sync);
@@ -675,6 +713,7 @@ function useUserCabinetData(): UserCabinetState {
     return () => {
       active = false;
       cabinetDataListeners.delete(handleState);
+      authSubscription?.unsubscribe();
       window.removeEventListener("storage", sync);
       window.removeEventListener(cabinetDataUpdatedEvent, sync);
       window.removeEventListener(demoPublicationsUpdatedEvent, sync);
