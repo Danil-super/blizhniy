@@ -42,14 +42,24 @@ function createRestorationHarness(row) {
     calls.push({ path, options });
     assert.equal(options.method, "PATCH");
     const params = new URL(path, "https://example.test").searchParams;
-    const expiresAfter = params.get("expires_at")?.replace(/^gt\./, "");
+    const matchesFilter = (column, actual) => {
+      const filter = params.get(column);
+      if (!filter) return true;
+      if (filter.startsWith("eq.")) return String(actual) === filter.slice(3);
+      if (filter.startsWith("in.(") && filter.endsWith(")")) {
+        return filter.slice(4, -1).split(",").includes(String(actual));
+      }
+      if (filter.startsWith("gt.")) {
+        return actual != null && new Date(actual).getTime() > new Date(filter.slice(3)).getTime();
+      }
+      throw new Error(`Unexpected filter: ${column}=${filter}`);
+    };
     const match =
-      params.get("id") === `eq.${row.id}` &&
-      params.get("author_id") === `eq.${row.author_id}` &&
-      params.get("is_paid") === `eq.${row.is_paid}` &&
-      params.get("status") === `eq.${row.status}` &&
-      expiresAfter && row.expires_at &&
-      new Date(row.expires_at).getTime() > new Date(expiresAfter).getTime();
+      matchesFilter("id", row.id) &&
+      matchesFilter("author_id", row.author_id) &&
+      matchesFilter("is_paid", row.is_paid) &&
+      matchesFilter("status", row.status) &&
+      matchesFilter("expires_at", row.expires_at);
 
     if (!match) return [];
     Object.assign(row, options.body);
