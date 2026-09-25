@@ -163,6 +163,10 @@ function mapWorkRequest(row: WorkRequestRow): WorkRequest {
   };
 }
 
+function publicWorkRequest(request: WorkRequest): WorkRequest {
+  return request.showExactAddress ? request : { ...request, address: undefined, lat: undefined, lng: undefined };
+}
+
 async function findCity(city: string) {
   const cityName = city.split(",")[0]?.trim() || "Краснодар";
   const rows = await supabaseRest<CityIdRow[]>(
@@ -396,7 +400,7 @@ export async function updateStoredWorkRequestForUser(requestId: string, userId: 
   return workRequestWithMediaFallback((await getStoredWorkRequestById(requestId)) ?? mapWorkRequest(rows[0]), input.mediaPaths);
 }
 
-export async function getStoredWorkRequestById(requestId: string) {
+export async function getStoredWorkRequestById(requestId: string, options: { publicOnly?: boolean } = {}) {
   if (!isSupabaseRestConfigured() || !isUuid(requestId)) {
     return undefined;
   }
@@ -404,7 +408,9 @@ export async function getStoredWorkRequestById(requestId: string) {
   try {
     const rows = await fetchWorkRequestRows(`&id=eq.${encodeURIComponent(requestId)}&limit=1`);
 
-    return rows[0] ? mapWorkRequest(rows[0]) : undefined;
+    const request = rows[0] ? mapWorkRequest(rows[0]) : undefined;
+
+    return request && options.publicOnly ? publicWorkRequest(request) : request;
   } catch (error) {
     console.error("Failed to load work request from Supabase", error);
     return undefined;
@@ -419,7 +425,7 @@ export async function listStoredWorkRequests(limit = 24) {
   try {
     const rows = await fetchWorkRequestRows(`&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`);
 
-    return rows.map(mapWorkRequest);
+    return rows.map(mapWorkRequest).map(publicWorkRequest);
   } catch (error) {
     console.error("Failed to load work requests from Supabase", error);
     return [];
