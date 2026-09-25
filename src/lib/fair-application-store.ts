@@ -85,6 +85,12 @@ function mapFairApplication(row: FairApplicationRow, citiesById = new Map<string
   };
 }
 
+function publicFairApplication(application: FairApplication): FairApplication {
+  return application.showExactAddress
+    ? application
+    : { ...application, address: undefined, lat: undefined, lng: undefined };
+}
+
 async function fetchCitiesById(cityIds: string[]) {
   const uniqueCityIds = Array.from(new Set(cityIds.filter(Boolean)));
 
@@ -143,7 +149,7 @@ async function findCityId(cityName: string) {
 
 export async function listStoredFairApplications(status?: PublicationStatus) {
   if (!isSupabaseRestConfigured()) {
-    return shouldShowFallbackContent() ? demoFairApplications.filter((application) => !status || application.status === status) : [];
+    return shouldShowFallbackContent() ? demoFairApplications.filter((application) => !status || application.status === status).map(publicFairApplication) : [];
   }
 
   try {
@@ -152,10 +158,10 @@ export async function listStoredFairApplications(status?: PublicationStatus) {
       `/rest/v1/fair_applications?select=*&order=created_at.desc${statusFilter}`,
     );
 
-    return mapRows(rows);
+    return (await mapRows(rows)).map(publicFairApplication);
   } catch (error) {
     console.error("Failed to load fair applications from Supabase", error);
-    return shouldShowFallbackContent() ? demoFairApplications.filter((application) => !status || application.status === status) : [];
+    return shouldShowFallbackContent() ? demoFairApplications.filter((application) => !status || application.status === status).map(publicFairApplication) : [];
   }
 }
 
