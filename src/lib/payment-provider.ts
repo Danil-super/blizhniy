@@ -381,6 +381,8 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
     throw new Error("Unable to reserve the target for YooKassa payment");
   }
 
+  activePayment.targetTitle = resolveTargetTitle(tariff, input.targetTitle);
+
   if (activePayment.tariffId !== tariff.id || activePayment.amount !== tariff.price) {
     throw new Error("Tariff changed during an unfinished payment. Contact support to reconcile it.");
   }
@@ -565,14 +567,36 @@ export async function confirmPayment(paymentOrId: Payment | string, options?: Co
 }
 
 async function findPaymentByYooKassaObject(yookassaPayment: YooKassaPaymentResponse) {
-  const localPaymentId = yookassaPayment.metadata?.localPaymentId;
   const storedPayment = await findStoredPaymentByProvider(yookassaPayment.id);
 
   if (storedPayment) {
     return storedPayment;
   }
 
-  return shouldAllowMockPayments() ? listMockPayments().find((payment) => payment.id === localPaymentId || payment.providerPaymentId === yookassaPayment.id) : undefined;
+  const localPaymentId = yookassaPayment.metadata?.localPaymentId;
+  const reservation = localPaymentId ? await getStoredPayment(localPaymentId) : undefined;
+
+  if (reservation?.provider === "yookassa" && !reservation.providerPaymentId) {
+    // A webhook can arrive between provider creation and saving the provider ID.
+    // Only the server's verified GET response may bind this reserved payment.
+    const verified = await fetchYooKassaPayment(yookassaPayment.id);
+    if (verified.metadata?.localPaymentId !== reservation.id) {
+      throw new Error("YooKassa reservation metadata mismatch");
+    }
+
+    const payment = {
+      ...reservation,
+      providerPaymentId: verified.id,
+      confirmationUrl: verified.confirmation?.confirmation_url,
+    };
+    verifyYooKassaPayment(payment, verified);
+    await bindStoredPaymentProvider(payment);
+    return payment;
+  }
+
+  return shouldAllowMockPayments()
+    ? listMockPayments().find((payment) => payment.id === localPaymentId || payment.providerPaymentId === yookassaPayment.id)
+    : undefined;
 }
 
 export async function processYooKassaNotification(payload: YooKassaNotificationPayload) {
