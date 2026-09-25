@@ -1,24 +1,8 @@
 import { NextResponse } from "next/server";
 import { processYooKassaNotification } from "@/lib/payment-provider";
+import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
-
-function hasValidWebhookSecret(request: Request) {
-  const secret = process.env.YOOKASSA_WEBHOOK_SECRET?.trim();
-
-  if (!secret) {
-    return false;
-  }
-
-  const headerSecret = request.headers.get("x-yookassa-webhook-secret")?.trim();
-  const bearerSecret = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
-
-  return headerSecret === secret || bearerSecret === secret;
-}
-
-function requiresWebhookSecret() {
-  return process.env.NODE_ENV === "production" || Boolean(process.env.YOOKASSA_WEBHOOK_SECRET?.trim());
-}
 
 export function GET() {
   return NextResponse.json({
@@ -28,20 +12,34 @@ export function GET() {
 }
 
 export async function POST(request: Request) {
-  if (requiresWebhookSecret() && !hasValidWebhookSecret(request)) {
-    return NextResponse.json({ ok: false, error: "Invalid webhook secret" }, { status: 403 });
+  if (!isSupabaseServiceRoleConfigured()) {
+    return NextResponse.json({ ok: false, error: "Payment storage is unavailable" }, { status: 503 });
   }
 
   const payload = (await request.json().catch(() => null)) as unknown;
 
-  if (!payload || typeof payload !== "object") {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("type" in payload) ||
+    payload.type !== "notification" ||
+    !("event" in payload) ||
+    typeof payload.event !== "string" ||
+    !("object" in payload) ||
+    !payload.object ||
+    typeof payload.object !== "object" ||
+    !("id" in payload.object) ||
+    typeof payload.object.id !== "string"
+  ) {
     return NextResponse.json({ ok: false, error: "Invalid YooKassa notification payload" }, { status: 400 });
   }
 
   try {
-    const result = await processYooKassaNotification(payload);
+    // The sender's JSON is untrusted. The provider payment ID and current status
+    // are checked against YooKassa's API before any payment is applied.
+    const result = await processYooKassaNotification(payload as Parameters<typeof processYooKassaNotification>[0]);
 
-    return NextResponse.json({ ok: true, verifiedBySecret: hasValidWebhookSecret(request), ...result });
+    return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "YooKassa webhook processing failed";
 
