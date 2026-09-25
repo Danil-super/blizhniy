@@ -5,17 +5,29 @@ import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "@/components/listings/CategoryPageDesign";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
+import { ListingPagination } from "@/components/listings/ListingPagination";
+import { parseListingPage, toDemoListing } from "@/components/listings/ListingPages";
+import { listStoredListingsForCategory } from "@/lib/listing-store";
 import type { DemoListing } from "@/components/listings/ListingCard";
 import { posudaSubcategories } from "@/lib/posuda-subcategories";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 
-export const metadata: Metadata = {
+const categoryMetadata: Metadata = {
   title: "Посуда",
   description: "Подкатегории посуды на БЛИЖНИЙ: кухонная, столовая, для напитков, хранения, подачи и прочая утварь.",
   alternates: {
     canonical: "/katalog/posuda",
   },
 };
+
+export async function generateMetadata({ searchParams }: { searchParams?: Promise<{ page?: string }> }): Promise<Metadata> {
+  const page = parseListingPage((await searchParams)?.page);
+
+  return {
+    ...categoryMetadata,
+    alternates: { canonical: page > 1 ? `/katalog/posuda?page=${page}` : "/katalog/posuda" },
+  };
+}
 
 function posudaListing(subcategory: (typeof posudaSubcategories)[number], index: number): DemoListing {
   return {
@@ -46,7 +58,16 @@ function posudaListing(subcategory: (typeof posudaSubcategories)[number], index:
 
 const demoListings = posudaSubcategories.map(posudaListing);
 
-export default function PosudaCategoryPage() {
+export const dynamic = "force-dynamic";
+
+export default async function PosudaCategoryPage({ searchParams }: { searchParams?: Promise<{ page?: string }> }) {
+  const page = parseListingPage((await searchParams)?.page);
+  const pageSize = 24;
+  const storedListings = await listStoredListingsForCategory("posuda", { page, pageSize });
+  const listings = [
+    ...storedListings.slice(0, pageSize).map(toDemoListing),
+    ...(page === 1 && shouldShowFallbackContent() ? demoListings : []),
+  ];
   return (
     <>
       <SiteHeader />
@@ -137,7 +158,8 @@ export default function PosudaCategoryPage() {
             </section>
 
             <section id="listings" aria-label="Объявления категории">
-              <ListingResultsPanel categorySlug="posuda" listings={shouldShowFallbackContent() ? demoListings : []} />
+              <ListingResultsPanel categorySlug="posuda" listings={listings} />
+              <ListingPagination baseHref="/katalog/posuda" hasMore={storedListings.length > pageSize} page={page} />
             </section>
           </div>
         </div>

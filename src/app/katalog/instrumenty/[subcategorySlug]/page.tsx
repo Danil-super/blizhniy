@@ -6,12 +6,16 @@ import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { categoryPageStyle, CategoryHeaderBand } from "@/components/listings/CategoryPageDesign";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
+import { ListingPagination } from "@/components/listings/ListingPagination";
+import { parseListingPage, toDemoListing } from "@/components/listings/ListingPages";
+import { listStoredListingsForCategory } from "@/lib/listing-store";
 import type { DemoListing } from "@/components/listings/ListingCard";
 import { instrumentSubcategories } from "@/lib/instrument-subcategories";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 
 type PageProps = {
   params: Promise<{ subcategorySlug: string }>;
+  searchParams?: Promise<{ page?: string }>;
 };
 
 function instrumentListing(subcategory: (typeof instrumentSubcategories)[number], index: number): DemoListing {
@@ -41,7 +45,10 @@ function instrumentListing(subcategory: (typeof instrumentSubcategories)[number]
   };
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+  const page = parseListingPage((await searchParams)?.page);
   const { subcategorySlug } = await params;
   const subcategory = instrumentSubcategories.find((item) => item.slug === subcategorySlug);
 
@@ -49,12 +56,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: subcategory ? `${subcategory.name} — Инструменты` : "Инструменты",
     description: subcategory ? `${subcategory.description} Объявления в подкатегории ${subcategory.name}.` : "Объявления раздела Инструменты.",
     alternates: {
-      canonical: `/katalog/instrumenty/${subcategorySlug}`,
+      canonical: page > 1 ? `/katalog/instrumenty/${subcategorySlug}?page=${page}` : `/katalog/instrumenty/${subcategorySlug}`,
     },
   };
 }
 
-export default async function InstrumentSubcategoryPage({ params }: PageProps) {
+export default async function InstrumentSubcategoryPage({ params, searchParams }: PageProps) {
   const { subcategorySlug } = await params;
   const subcategoryIndex = instrumentSubcategories.findIndex((item) => item.slug === subcategorySlug);
   const subcategory = instrumentSubcategories[subcategoryIndex];
@@ -63,7 +70,13 @@ export default async function InstrumentSubcategoryPage({ params }: PageProps) {
     notFound();
   }
 
-  const listings = shouldShowFallbackContent() ? [instrumentListing(subcategory, subcategoryIndex)] : [];
+  const page = parseListingPage((await searchParams)?.page);
+  const pageSize = 24;
+  const storedListings = await listStoredListingsForCategory("instrumenty", { subcategoryName: subcategory.name, page, pageSize });
+  const listings = [
+    ...storedListings.slice(0, pageSize).map(toDemoListing),
+    ...(page === 1 && shouldShowFallbackContent() ? [instrumentListing(subcategory, subcategoryIndex)] : []),
+  ];
 
   return (
     <>
@@ -95,6 +108,7 @@ export default async function InstrumentSubcategoryPage({ params }: PageProps) {
             />
             <section id="listings" aria-label="Объявления подкатегории">
               <ListingResultsPanel categorySlug="instrumenty" listings={listings} subcategorySlug={subcategory.slug} />
+              <ListingPagination baseHref={`/katalog/instrumenty/${subcategory.slug}`} hasMore={storedListings.length > pageSize} page={page} />
             </section>
           </div>
         </div>

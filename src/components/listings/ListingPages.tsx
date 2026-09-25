@@ -36,6 +36,7 @@ import { formatPublicationDateTime } from "@/lib/publication-time";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
 import { getPublicCategories } from "@/lib/category-store";
+import { listStoredListingsForCategory } from "@/lib/listing-store";
 import { getPublicTariffs } from "@/lib/tariff-store";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
 import type { BookingRequest } from "@/lib/booking-notifications";
@@ -47,6 +48,7 @@ import { DemoListing, ListingKind, ListingKindBadge, StatusBadge } from "./Listi
 import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "./CategoryPageDesign";
 import { ListingMediaGallery, type ListingGalleryMedia } from "./ListingMediaGallery";
 import { ListingResultsPanel } from "./ListingResultsPanel";
+import { ListingPagination } from "./ListingPagination";
 import { ListingSellerCard } from "./ListingSellerCard";
 import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewTracker } from "./ListingViewTracker";
@@ -1452,14 +1454,28 @@ export function ExchangeAndFreePage() {
   );
 }
 
-export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { categorySlug: string; subcategorySlug?: string }) {
+export function parseListingPage(value?: string) {
+  const page = Number(value);
+
+  return Number.isSafeInteger(page) && page >= 1 && page <= 1000 ? page : 1;
+}
+
+export async function CategoryListingsPage({ categorySlug, subcategorySlug, page = 1 }: { categorySlug: string; subcategorySlug?: string; page?: number }) {
   const categories = await getPublicCategories();
   const category = categories.find((item) => item.slug === categorySlug);
   const categoryChildren = category ? getCategoryChildren(category.children) : [];
   const subcategory = category?.children.find((item) => slugifySubcategory(item) === subcategorySlug);
-  const listings = listPublicDemoListings().filter(
-    (listing) => listing.categorySlug === categorySlug && (!subcategorySlug || listing.subcategorySlug === subcategorySlug),
-  );
+
+  if (!category || (subcategorySlug && !subcategory)) {
+    notFound();
+  }
+
+  const pageSize = 24;
+  const storedListings = await listStoredListingsForCategory(categorySlug, { subcategoryName: subcategory, page, pageSize });
+  const listings = [
+    ...storedListings.slice(0, pageSize).map(toDemoListing),
+    ...(page === 1 ? listPublicDemoListings() : []),
+  ].filter((listing) => listing.categorySlug === categorySlug && (!subcategorySlug || listing.subcategorySlug === subcategorySlug));
   const isKidsGoodsCategory = category?.slug === "tovary-dlya-detey";
   const isGardenCategory = category?.slug === "sad-i-rasteniya";
   const categoryDescription = category ? categoryDescriptions[category.slug] : undefined;
@@ -1541,6 +1557,11 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug }: { 
             ) : null}
             <section id="listings" aria-label="Объявления категории">
               <ListingResultsPanel categorySlug={categorySlug} listings={listings} subcategorySlug={subcategorySlug} />
+              <ListingPagination
+                baseHref={subcategorySlug ? `/katalog/${categorySlug}/${subcategorySlug}` : `/katalog/${categorySlug}`}
+                hasMore={storedListings.length > pageSize}
+                page={page}
+              />
             </section>
           </div>
         </div>

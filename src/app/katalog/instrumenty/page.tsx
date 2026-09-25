@@ -5,17 +5,29 @@ import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "@/components/listings/CategoryPageDesign";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
+import { ListingPagination } from "@/components/listings/ListingPagination";
+import { parseListingPage, toDemoListing } from "@/components/listings/ListingPages";
+import { listStoredListingsForCategory } from "@/lib/listing-store";
 import type { DemoListing } from "@/components/listings/ListingCard";
 import { instrumentSubcategories } from "@/lib/instrument-subcategories";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 
-export const metadata: Metadata = {
+const categoryMetadata: Metadata = {
   title: "Инструменты",
   description: "Подкатегории инструментов на БЛИЖНИЙ: ручной инструмент, электроинструмент, измерительный инструмент, строительный и садовый инструмент.",
   alternates: {
     canonical: "/katalog/instrumenty",
   },
 };
+
+export async function generateMetadata({ searchParams }: { searchParams?: Promise<{ page?: string }> }): Promise<Metadata> {
+  const page = parseListingPage((await searchParams)?.page);
+
+  return {
+    ...categoryMetadata,
+    alternates: { canonical: page > 1 ? `/katalog/instrumenty?page=${page}` : "/katalog/instrumenty" },
+  };
+}
 
 function instrumentListing(subcategory: (typeof instrumentSubcategories)[number], index: number): DemoListing {
   return {
@@ -46,7 +58,16 @@ function instrumentListing(subcategory: (typeof instrumentSubcategories)[number]
 
 const demoListings = instrumentSubcategories.map(instrumentListing);
 
-export default function InstrumentsCategoryPage() {
+export const dynamic = "force-dynamic";
+
+export default async function InstrumentsCategoryPage({ searchParams }: { searchParams?: Promise<{ page?: string }> }) {
+  const page = parseListingPage((await searchParams)?.page);
+  const pageSize = 24;
+  const storedListings = await listStoredListingsForCategory("instrumenty", { page, pageSize });
+  const listings = [
+    ...storedListings.slice(0, pageSize).map(toDemoListing),
+    ...(page === 1 && shouldShowFallbackContent() ? demoListings : []),
+  ];
   return (
     <>
       <SiteHeader />
@@ -216,7 +237,8 @@ export default function InstrumentsCategoryPage() {
             </section>
 
             <section id="listings" aria-label="Объявления категории">
-              <ListingResultsPanel categorySlug="instrumenty" listings={shouldShowFallbackContent() ? demoListings : []} />
+              <ListingResultsPanel categorySlug="instrumenty" listings={listings} />
+              <ListingPagination baseHref="/katalog/instrumenty" hasMore={storedListings.length > pageSize} page={page} />
             </section>
           </div>
         </div>
