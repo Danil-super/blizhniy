@@ -3667,7 +3667,9 @@ export function CabinetSpecialistClient() {
   const [loading, setLoading] = useState(true);
   const [savingAction, setSavingAction] = useState<"save" | "activate" | "deactivate" | "">("");
   const [message, setMessage] = useState("");
-  const active = specialist?.status === "published";
+  const [acceptedOffer, setAcceptedOffer] = useState(false);
+  const paidEntitlementActive = Boolean(specialist?.isPaid && specialist.expiresAt && new Date(specialist.expiresAt).getTime() > Date.now());
+  const active = specialist?.status === "published" && paidEntitlementActive;
   const professionOptions = professions.filter((profession) => profession.active).map((profession) => profession.name);
   const accountFields = specialistAccountFields(profile, specialist);
 
@@ -3722,6 +3724,11 @@ export function CabinetSpecialistClient() {
       return;
     }
 
+    if (action === "activate" && !paidEntitlementActive && !acceptedOffer) {
+      setMessage("Примите условия публичной оферты, чтобы перейти к оплате.");
+      return;
+    }
+
     setSavingAction(action);
     setMessage("");
 
@@ -3732,7 +3739,7 @@ export function CabinetSpecialistClient() {
         headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({ ...form, ...accountFields, messengerUrl: normalizeMessengerInput(form.messengerUrl), photoPath: uploadedProfilePhotos[0] ?? "", action }),
       });
-      const payload = (await response.json().catch(() => null)) as { completeness?: SpecialistCompletenessPayload; error?: string; specialist?: SpecialistProfile } | null;
+      const payload = (await response.json().catch(() => null)) as { completeness?: SpecialistCompletenessPayload; error?: string; specialist?: SpecialistProfile; requiresPayment?: boolean } | null;
 
       if (!response.ok) {
         throw new Error(payload?.error ?? "Не удалось сохранить анкету.");
@@ -3741,6 +3748,23 @@ export function CabinetSpecialistClient() {
       setSpecialist(payload?.specialist ?? null);
       setCompleteness(payload?.completeness ?? { complete: false, missing: [] });
       setForm(specialistFormFromProfile(payload?.specialist));
+      if (action === "activate" && payload?.requiresPayment) {
+        const payment = await createClientPayment({
+          tariffId: "specialist-publication",
+          targetId: payload.specialist?.id,
+          targetType: "specialist",
+          targetTitle: `Публикация анкеты: ${payload.specialist?.name ?? "Специалист"}`,
+        });
+        if (payment.confirmationUrl) {
+          window.location.href = payment.confirmationUrl;
+          return;
+        }
+
+        await confirmClientPayment(payment.id);
+        window.location.reload();
+        return;
+      }
+
       setMessage(action === "activate" ? "Анкета активирована и доступна для откликов." : action === "deactivate" ? "Анкета отключена и не показывается публично." : "Анкета сохранена.");
       markCabinetDataChanged();
     } catch (error) {
@@ -3761,7 +3785,7 @@ export function CabinetSpecialistClient() {
           <div>
             <h2 className="text-xl font-bold text-[#060b27]">Анкета исполнителя</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              Анкета одна на аккаунт. Пока она не активирована, вас не видно в специалистах и нельзя отправлять платные отклики.
+              Анкета одна на аккаунт. Публикация оплачивается по тарифу. После окончания срока понадобится новая оплата.
             </p>
           </div>
           <StatusPill>{active ? "Активна" : completeness.complete ? "Готова к активации" : "Не активна"}</StatusPill>
@@ -3809,6 +3833,12 @@ export function CabinetSpecialistClient() {
             О специалисте
             <textarea className="min-h-28 resize-y rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-[#0875d1]" minLength={20} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value.slice(0, 900) })} placeholder="Опыт, условия выезда, гарантия, с какими задачами работаете." />
           </label>
+          {!active && !paidEntitlementActive ? (
+            <label className="flex max-w-lg items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-700">
+              <input type="checkbox" checked={acceptedOffer} onChange={(event) => setAcceptedOffer(event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-[#0875d1]" />
+              <span>Принимаю <LegalLink href="/legal/offer">публичную оферту</LegalLink> на платное размещение анкеты. <LegalLink href="/tarify">Посмотреть тариф</LegalLink>.</span>
+            </label>
+          ) : null}
           {message ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{message}</p> : null}
           <div className="flex flex-wrap gap-3">
             <button type="submit" disabled={Boolean(savingAction)} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-wait disabled:bg-slate-300">
@@ -3820,7 +3850,7 @@ export function CabinetSpecialistClient() {
               </button>
             ) : (
               <button type="button" disabled={Boolean(savingAction)} onClick={() => void submit("activate")} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0aa337] px-5 text-sm font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:bg-slate-300">
-                {savingAction === "activate" ? "Активируем..." : "Активировать анкету"}
+                {savingAction === "activate" ? "Готовим оплату..." : paidEntitlementActive ? "Активировать анкету" : "Оплатить и активировать анкету"}
               </button>
             )}
           </div>

@@ -9,6 +9,8 @@ type WorkRequestStatusRow = {
   id: string;
   published_at?: string | null;
   status: PublicationStatus;
+  is_paid?: boolean;
+  expires_at?: string | null;
 };
 
 type WorkRequestRow = {
@@ -29,6 +31,8 @@ type WorkRequestRow = {
   contact_phone?: string | null;
   messenger_url?: string | null;
   status: PublicationStatus;
+  is_paid?: boolean;
+  expires_at?: string | null;
   created_at: string;
   published_at?: string | null;
   work_request_images?: WorkRequestImageRow[] | null;
@@ -72,9 +76,9 @@ export type CreateStoredWorkRequestInput = {
 };
 
 const legacyWorkRequestSelect =
-  "id,author_id,title,description,specialist_category_id,region_id,city_id,district,address,latitude,longitude,show_exact_address,budget,photo_path,contact_phone,messenger_url,status,created_at,published_at,cities(slug,name),profiles(display_name),specialist_categories(slug,name)";
+  "id,author_id,title,description,specialist_category_id,region_id,city_id,district,address,latitude,longitude,show_exact_address,budget,photo_path,contact_phone,messenger_url,status,is_paid,expires_at,created_at,published_at,cities(slug,name),profiles(display_name),specialist_categories(slug,name)";
 const workRequestSelect =
-  "id,author_id,title,description,specialist_category_id,region_id,city_id,district,address,latitude,longitude,show_exact_address,budget,photo_path,contact_phone,messenger_url,status,created_at,published_at,work_request_images(storage_path,sort_order),cities(slug,name),profiles(display_name),specialist_categories(slug,name)";
+  "id,author_id,title,description,specialist_category_id,region_id,city_id,district,address,latitude,longitude,show_exact_address,budget,photo_path,contact_phone,messenger_url,status,is_paid,expires_at,created_at,published_at,work_request_images(storage_path,sort_order),cities(slug,name),profiles(display_name),specialist_categories(slug,name)";
 
 async function fetchWorkRequestRows(querySuffix: string) {
   try {
@@ -158,6 +162,7 @@ function mapWorkRequest(row: WorkRequestRow): WorkRequest {
     phone: row.contact_phone ?? undefined,
     messengerUrl: row.messenger_url ?? undefined,
     status: row.status,
+    expiresAt: row.expires_at ?? undefined,
     createdAt: row.created_at,
     publishedAt: publishedAt ?? undefined,
   };
@@ -406,7 +411,8 @@ export async function getStoredWorkRequestById(requestId: string, options: { pub
   }
 
   try {
-    const rows = await fetchWorkRequestRows(`&id=eq.${encodeURIComponent(requestId)}&limit=1`);
+    const publicFilter = options.publicOnly ? `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}` : "";
+    const rows = await fetchWorkRequestRows(`&id=eq.${encodeURIComponent(requestId)}${publicFilter}&limit=1`);
 
     const request = rows[0] ? mapWorkRequest(rows[0]) : undefined;
 
@@ -417,13 +423,13 @@ export async function getStoredWorkRequestById(requestId: string, options: { pub
   }
 }
 
-export async function listStoredWorkRequests(limit = 24) {
+export async function listStoredWorkRequests(limit = 24, offset = 0) {
   if (!isSupabaseRestConfigured()) {
     return [];
   }
 
   try {
-    const rows = await fetchWorkRequestRows(`&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`);
+    const rows = await fetchWorkRequestRows(`&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${limit}&offset=${offset}`);
 
     return rows.map(mapWorkRequest).map(publicWorkRequest);
   } catch (error) {
@@ -480,44 +486,6 @@ export async function markStoredWorkRequestPendingPaymentForUser(requestId: stri
       prefer: "return=representation",
       body: {
         status: "pending_payment",
-      },
-    },
-  );
-
-  return Boolean(rows[0]?.id);
-}
-
-export async function markStoredWorkRequestPaid(requestId: string) {
-  if (!isSupabaseRestConfigured() || !isUuid(requestId)) {
-    return false;
-  }
-
-  const now = new Date().toISOString();
-  const existingRows = await supabaseRest<WorkRequestStatusRow[]>(
-    `/rest/v1/work_requests?select=id,status,published_at&id=eq.${encodeURIComponent(requestId)}&limit=1`,
-  );
-  const existingRequest = existingRows[0];
-
-  if (!existingRequest) {
-    return false;
-  }
-
-  if (existingRequest.status === "published") {
-    return true;
-  }
-
-  if (existingRequest.status === "archived" || existingRequest.status === "expired" || existingRequest.status === "rejected") {
-    return true;
-  }
-
-  const rows = await supabaseRest<Array<Pick<WorkRequestStatusRow, "id">>>(
-    `/rest/v1/work_requests?select=id&id=eq.${encodeURIComponent(requestId)}`,
-    {
-      method: "PATCH",
-      prefer: "return=representation",
-      body: {
-        published_at: now,
-        status: "published",
       },
     },
   );

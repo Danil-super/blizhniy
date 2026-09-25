@@ -98,7 +98,14 @@ export async function PATCH(request: Request) {
       input.photoPath = validPhotoPath || "";
     }
 
-    const status = body.action === "activate" ? "published" : body.action === "deactivate" ? "draft" : undefined;
+    const current = await getStoredSpecialistProfileForUser({ id: auth.user.id }, { createDraft: true });
+    const paidEntitlementActive = Boolean(
+      current?.isPaid && current.expiresAt && new Date(current.expiresAt).getTime() > Date.now(),
+    );
+    const status =
+      body.action === "activate"
+        ? paidEntitlementActive ? "published" : "pending_payment"
+        : body.action === "deactivate" ? "draft" : undefined;
     const specialist = await upsertStoredSpecialistProfileForUser(
       {
         email: auth.user.email,
@@ -112,7 +119,7 @@ export async function PATCH(request: Request) {
       },
     );
 
-    return NextResponse.json({ completeness: getSpecialistProfileCompleteness(specialist), specialist });
+    return NextResponse.json({ completeness: getSpecialistProfileCompleteness(specialist), specialist, requiresPayment: body.action === "activate" && !paidEntitlementActive });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось сохранить анкету" }, { status: 400 });
   }

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getPayableAdMarqueePlacementForUser } from "@/lib/ad-marquee-store";
+import { getSpecialistProfileCompleteness, getStoredSpecialistProfileForUser } from "@/lib/specialist-profile-store";
 import { getStoredApplicationForPayment } from "@/lib/application-store";
 import { getStoredListingForUser, markStoredListingPendingPaymentForUser } from "@/lib/listing-store";
 import { createPayment, listPayments, validatePaymentTargetTypeForTariff } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
-import { isUuid } from "@/lib/supabase-rest";
+import { isUuid, supabaseRest } from "@/lib/supabase-rest";
 import { getActiveStoredTariffById } from "@/lib/tariff-store";
 import type { Payment } from "@/lib/types";
 import { getStoredVacancyForUser, markStoredVacancyPendingPaymentForUser } from "@/lib/vacancy-store";
@@ -180,6 +181,39 @@ export async function POST(request: Request) {
         application.targetType === "workRequest"
           ? `Отклик ${application.specialistName} на заказ ${application.workRequestTitle ?? application.vacancyTitle}`
           : `Отклик ${application.specialistName} на вакансию ${application.vacancyTitle}`;
+    }
+
+    if (targetType === "specialist") {
+      if (!body.targetId || !isUuid(body.targetId)) {
+        return NextResponse.json({ error: "Сначала сохраните анкету специалиста" }, { status: 400 });
+      }
+
+      const profile = await getStoredSpecialistProfileForUser({ id: auth.user.id });
+      if (!profile || profile.id !== body.targetId || profile.status !== "pending_payment") {
+        return NextResponse.json({ error: "Анкета не ожидает оплаты или не принадлежит вам" }, { status: 404 });
+      }
+
+      const completeness = getSpecialistProfileCompleteness(profile);
+      if (!completeness.complete) {
+        return NextResponse.json({ error: `Заполните анкету: ${completeness.missing.join(", ")}` }, { status: 400 });
+      }
+
+      targetTitle = `Публикация анкеты: ${profile.name}`;
+    }
+
+    if (targetType === "fair_application") {
+      if (!body.targetId || !isUuid(body.targetId)) {
+        return NextResponse.json({ error: "Сначала создайте заявку на ярмарку" }, { status: 400 });
+      }
+
+      const rows = await supabaseRest<Array<{ participant_name: string; status: string; payment_status: string }>>(
+        `/rest/v1/fair_applications?select=participant_name,status,payment_status&id=eq.${encodeURIComponent(body.targetId)}&user_id=eq.${encodeURIComponent(auth.user.id)}&limit=1`,
+      );
+      if (!rows[0] || !["draft", "pending_payment"].includes(rows[0].status) || !["created", "pending"].includes(rows[0].payment_status)) {
+        return NextResponse.json({ error: "Заявка не ожидает оплаты или не принадлежит вам" }, { status: 404 });
+      }
+
+      targetTitle = `Заявка на ярмарку: ${rows[0].participant_name}`;
     }
 
     if (targetType === "ad_marquee") {
