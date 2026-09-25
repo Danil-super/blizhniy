@@ -7,6 +7,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
+import { REGISTRATION_LEGAL_VERSIONS } from "@/lib/registration-legal";
 
 type AuthMode = "login" | "register";
 type AuthState = "idle" | "loading" | "success" | "error";
@@ -72,6 +73,10 @@ function getReadableAuthError(error: unknown) {
 
   if (lowerMessage.includes("user already registered") || lowerMessage.includes("already registered")) {
     return "Аккаунт с таким email уже есть. Перейдите на вкладку «Вход».";
+  }
+
+  if (lowerMessage.includes("captcha") || lowerMessage.includes("turnstile")) {
+    return TURNSTILE_ERROR_MESSAGE;
   }
 
   if (lowerMessage.includes("supabase env is not configured")) {
@@ -147,6 +152,7 @@ export function AuthForm({
 }: AuthFormProps = {}) {
   const router = useRouter();
   const supabaseConfigured = isSupabaseBrowserConfigured();
+  const turnstileConfigured = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim());
   const [mode, setMode] = useState<AuthMode>("register");
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [email, setEmail] = useState("");
@@ -155,7 +161,8 @@ export function AuthForm({
   const [resetPassword, setResetPassword] = useState("");
   const [resetPasswordConfirm, setResetPasswordConfirm] = useState("");
   const [fullName, setFullName] = useState("");
-  const [acceptedLegalDocuments, setAcceptedLegalDocuments] = useState(false);
+  const [acceptedAgreement, setAcceptedAgreement] = useState(false);
+  const [acknowledgedPrivacy, setAcknowledgedPrivacy] = useState(false);
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
   const [captchaToken, setCaptchaToken] = useState("");
   const [state, setState] = useState<AuthState>("idle");
@@ -224,19 +231,6 @@ export function AuthForm({
     setCaptchaResetKey((value) => value + 1);
   }
 
-  async function verifyCaptcha() {
-    const response = await fetch("/api/turnstile/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: captchaToken }),
-    });
-
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(payload?.error ?? TURNSTILE_ERROR_MESSAGE);
-    }
-  }
-
   async function handleForgotPassword() {
     const recoveryEmail = normalizeAuthEmail(email);
 
@@ -250,11 +244,14 @@ export function AuthForm({
     setMessage("Отправляем письмо для смены пароля...");
 
     try {
-      await verifyCaptcha();
+      if (!turnstileConfigured || !captchaToken) {
+        throw new Error(TURNSTILE_ERROR_MESSAGE);
+      }
 
       const supabase = getSupabaseBrowserClient();
       const { error } = await supabase.auth.resetPasswordForEmail(recoveryEmail, {
         redirectTo: `${window.location.origin}/auth?type=recovery`,
+        captchaToken,
       });
 
       if (error) {
@@ -330,11 +327,13 @@ export function AuthForm({
           throw new Error("Пароли не совпадают");
         }
 
-        if (!acceptedLegalDocuments) {
-          throw new Error("Примите условия документов, чтобы продолжить");
+        if (!acceptedAgreement || !acknowledgedPrivacy) {
+          throw new Error("Примите Пользовательское соглашение и подтвердите ознакомление с Политикой.");
         }
+      }
 
-        await verifyCaptcha();
+      if (!turnstileConfigured || !captchaToken) {
+        throw new Error(TURNSTILE_ERROR_MESSAGE);
       }
 
       const supabase = getSupabaseBrowserClient();
@@ -344,12 +343,20 @@ export function AuthForm({
               email: authEmail,
               password: authPassword,
               options: {
+                captchaToken,
                 data: {
                   display_name: fullName.trim().replace(/\s+/g, " "),
+                  registration_legal: {
+                    purpose: "account_registration",
+                    agreement_accepted: true,
+                    agreement_version: REGISTRATION_LEGAL_VERSIONS.agreement,
+                    privacy_acknowledged: true,
+                    privacy_version: REGISTRATION_LEGAL_VERSIONS.privacy,
+                  },
                 },
               },
             })
-          : await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+          : await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword, options: { captchaToken } });
 
       if (result.error) {
         throw result.error;
@@ -369,17 +376,15 @@ export function AuthForm({
     } catch (error) {
       setState("error");
       setMessage(getReadableAuthError(error));
-      if (mode === "register") {
-        resetCaptcha();
-      }
+      resetCaptcha();
     }
   }
 
   const registerReady =
     mode !== "register" ||
-    (supabaseConfigured && !nameError && isValidEmail(normalizeAuthEmail(email)) && !passwordError && passwordConfirm.length > 0 && !passwordConfirmError && Boolean(captchaToken));
-  const loginReady = supabaseConfigured && isValidEmail(normalizeAuthEmail(email)) && password.length > 0;
-  const recoveryReady = supabaseConfigured && isValidEmail(normalizeAuthEmail(email)) && Boolean(captchaToken);
+    (supabaseConfigured && turnstileConfigured && acceptedAgreement && acknowledgedPrivacy && !nameError && isValidEmail(normalizeAuthEmail(email)) && !passwordError && passwordConfirm.length > 0 && !passwordConfirmError && Boolean(captchaToken));
+  const loginReady = supabaseConfigured && turnstileConfigured && isValidEmail(normalizeAuthEmail(email)) && password.length > 0 && Boolean(captchaToken);
+  const recoveryReady = supabaseConfigured && turnstileConfigured && isValidEmail(normalizeAuthEmail(email)) && Boolean(captchaToken);
   const recoveryPasswordReady = supabaseConfigured && !resetPasswordError && resetPasswordConfirm.length > 0 && !resetPasswordConfirmError;
 
   return (
@@ -434,6 +439,7 @@ export function AuthForm({
           onClick={() => {
             setMode("register");
             setShowRecoveryRequest(false);
+            resetCaptcha();
           }}
           className={`h-10 rounded-md text-sm font-bold ${mode === "register" ? "bg-white text-[#0875d1] shadow-sm" : "text-slate-600"}`}
         >
@@ -444,6 +450,7 @@ export function AuthForm({
           onClick={() => {
             setMode("login");
             setShowRecoveryRequest(false);
+            resetCaptcha();
           }}
           className={`h-10 rounded-md text-sm font-bold ${mode === "login" ? "bg-white text-[#0875d1] shadow-sm" : "text-slate-600"}`}
         >
@@ -524,33 +531,47 @@ export function AuthForm({
               <label className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3 text-sm leading-6 text-slate-700">
                 <input
                   type="checkbox"
-                  checked={acceptedLegalDocuments}
-                  onChange={(event) => setAcceptedLegalDocuments(event.target.checked)}
+                  checked={acceptedAgreement}
+                  onChange={(event) => setAcceptedAgreement(event.target.checked)}
                   className="mt-1 h-4 w-4 shrink-0 accent-[#0875d1]"
+                  required
                 />
                 <span className="min-w-0 [overflow-wrap:anywhere]">
                   Я принимаю{" "}
                   <Link href="/legal/agreement" className="font-bold text-[#0875d1] [overflow-wrap:anywhere]">
                     Пользовательское соглашение
                   </Link>
-                  {" "}и{" "}
+                  {" "}от {REGISTRATION_LEGAL_VERSIONS.agreement}.
+                </span>
+              </label>
+              <label className="mt-3 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3 text-sm leading-6 text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={acknowledgedPrivacy}
+                  onChange={(event) => setAcknowledgedPrivacy(event.target.checked)}
+                  className="mt-1 h-4 w-4 shrink-0 accent-[#0875d1]"
+                  required
+                />
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  Я ознакомился(-ась) с{" "}
                   <Link href="/legal/privacy" className="font-bold text-[#0875d1] [overflow-wrap:anywhere]">
-                    Политику обработки персональных данных
+                    Политикой обработки персональных данных
                   </Link>
-                  .
+                  {" "}от {REGISTRATION_LEGAL_VERSIONS.privacy}.
                 </span>
               </label>
             </div>
           </>
         ) : null}
-        {mode === "register" ? (
-          <div className="mt-5">
-            <TurnstileWidget
-              resetKey={captchaResetKey}
-              onVerify={setCaptchaToken}
-            />
-          </div>
-        ) : null}
+        <div className="mt-5">
+          <TurnstileWidget
+            resetKey={captchaResetKey}
+            onVerify={setCaptchaToken}
+          />
+          {!turnstileConfigured ? (
+            <p className="mt-2 text-sm text-rose-600">Проверка CAPTCHA временно недоступна. Повторите попытку позже.</p>
+          ) : null}
+        </div>
         <button
           type="submit"
           disabled={state === "loading" || (mode === "register" ? !registerReady : !loginReady)}
@@ -562,10 +583,6 @@ export function AuthForm({
           <div className="mt-5 grid gap-3">
             {showRecoveryRequest ? (
               <>
-                <TurnstileWidget
-                  resetKey={captchaResetKey}
-                  onVerify={setCaptchaToken}
-                />
                 <button type="button" onClick={handleForgotPassword} disabled={state === "loading" || !recoveryReady} className="inline-flex w-full items-center justify-center text-sm font-bold text-[#0875d1] transition hover:text-[#065fa8] disabled:text-slate-400">
                   Отправить письмо для смены пароля
                 </button>
