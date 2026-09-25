@@ -1,11 +1,13 @@
 -- The old exclusion constraint treats a tour with many seats like a one-room rental.
 -- Only confirmed tour seats count against capacity. Serialize checks per listing.
+-- The VOLATILE trigger uses a new snapshot for the capacity SELECT after the row lock.
 alter table public.booking_requests
   drop constraint if exists booking_requests_no_active_overlap;
 
 create or replace function public.enforce_booking_inventory()
 returns trigger
 language plpgsql
+volatile
 security invoker
 set search_path = pg_catalog, public
 as $$
