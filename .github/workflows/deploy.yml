@@ -10,7 +10,7 @@ on:
 
 concurrency:
   group: production-deploy
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   validate:
@@ -69,6 +69,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Deploy over SSH
+        id: ship
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
@@ -192,6 +193,19 @@ jobs:
         env:
           BASE_URL: https://xn----9sbphbgks4a4a.xn--p1ai
         run: node scripts/check-instruments-hero.mjs
+
+      - name: Roll back release if a deployed check failed
+        if: ${{ failure() && steps.ship.outcome == 'success' }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          APP_DIR: ${{ secrets.APP_DIR }}
+        run: |
+          set -euo pipefail
+          APP_DIR="${APP_DIR:-/var/www/blizhniy}"
+          printf -v rollback_cmd 'APP_DIR=%q COMMIT_SHA=%q bash %q' "$APP_DIR" "$GITHUB_SHA" "$APP_DIR/scripts/rollback-release.sh"
+          ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "$rollback_cmd"
 
       - name: Upload responsive screenshots
         if: always()
