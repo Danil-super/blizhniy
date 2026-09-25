@@ -194,6 +194,15 @@ jobs:
           BASE_URL: https://xn----9sbphbgks4a4a.xn--p1ai
         run: node scripts/check-instruments-hero.mjs
 
+      - name: Upload responsive screenshots
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: category-heroes-responsive
+          path: artifacts/category-heroes
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Roll back release if a deployed check failed
         if: ${{ failure() && steps.ship.outcome == 'success' }}
         env:
@@ -206,13 +215,4 @@ jobs:
           APP_DIR="${APP_DIR:-/var/www/blizhniy}"
           printf -v rollback_cmd 'APP_DIR=%q COMMIT_SHA=%q bash %q' "$APP_DIR" "$GITHUB_SHA" "$APP_DIR/scripts/rollback-release.sh"
           ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "$rollback_cmd"
-
-      - name: Upload responsive screenshots
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: category-heroes-responsive
-          path: artifacts/category-heroes
-          if-no-files-found: warn
-          retention-days: 14
 
