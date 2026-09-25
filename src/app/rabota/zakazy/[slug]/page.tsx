@@ -27,7 +27,7 @@ function locationLabel(request: { address?: string; city: string; district?: str
 
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
-  const request = (await getStoredWorkRequestById(slug)) ?? (shouldShowFallbackContent() ? listWorkRequests().find((item) => item.id === slug) : undefined);
+  const request = (await getStoredWorkRequestById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listWorkRequests().find((item) => item.id === slug) : undefined);
 
   if (!request) {
     notFound();
