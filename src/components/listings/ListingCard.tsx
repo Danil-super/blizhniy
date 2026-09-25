@@ -3,6 +3,7 @@ import { CalendarDays, Gift, Mail, MapPin, ShoppingBag, Tags } from "lucide-reac
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { StoredMediaImage } from "@/components/StoredMedia";
 import { hasMapCoordinates } from "@/lib/map-location";
+import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewCounter } from "./ListingViewCounter";
 
@@ -143,7 +144,8 @@ export function StatusBadge({ status }: { status: ListingStatus }) {
 
 export function ListingCard({ listing }: { listing: DemoListing }) {
   const href = `/obyavlenie/${listing.slug}`;
-  const hasSecondaryContact = Boolean(listing.messengerUrl || listing.email);
+  const messengerHref = normalizeMessengerHref(listing.messengerUrl);
+  const hasSecondaryContact = Boolean(messengerHref || listing.email);
 
   return (
     <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:grid-cols-[128px_minmax(0,1fr)] sm:gap-4 sm:p-4 xl:grid-cols-[160px_minmax(0,1fr)_minmax(280px,auto)]">
@@ -186,9 +188,9 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
               <span className="whitespace-nowrap">Позвонить</span>
             </a>
           ) : null}
-          {listing.messengerUrl ? (
+          {messengerHref ? (
             <a
-              href={listing.messengerUrl}
+              href={messengerHref}
               className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
             >
               <ContactAssetIcon kind="message" className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -196,7 +198,7 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
               <span className="hidden whitespace-nowrap sm:inline">Написать</span>
             </a>
           ) : null}
-          {!listing.messengerUrl && listing.email ? (
+          {!messengerHref && listing.email ? (
             <a
               href={`mailto:${listing.email}`}
               className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4"
