@@ -504,12 +504,16 @@ export async function confirmPayment(paymentOrId: Payment | string, options?: Co
     return applySucceededPayment(payment, { targetAlreadyApplied: wasAlreadySucceeded });
   }
 
+  if (!shouldAllowMockPayments()) {
+    throw new Error("Mock payment confirmation is disabled");
+  }
+
   return applySucceededPayment(payment);
 }
 
 async function findPaymentByYooKassaObject(yookassaPayment: YooKassaPaymentResponse) {
   const localPaymentId = yookassaPayment.metadata?.localPaymentId;
-  const storedPayment = await findStoredPaymentByProvider(yookassaPayment.id, localPaymentId);
+  const storedPayment = await findStoredPaymentByProvider(yookassaPayment.id);
 
   if (storedPayment) {
     return storedPayment;
@@ -529,6 +533,11 @@ export async function processYooKassaNotification(payload: YooKassaNotificationP
 
   if (!payment) {
     return { processed: false, reason: "payment_not_found" as const };
+  }
+
+  // Notification metadata is untrusted. Never apply a provider payment to a different local payment.
+  if (payment.provider !== "yookassa" || payment.providerPaymentId !== yookassaPayment.id) {
+    return { processed: false, reason: "payment_mismatch" as const };
   }
 
   const wasAlreadySucceeded = payment.status === "succeeded";
