@@ -14,7 +14,7 @@ type ListingSellerCardProps = {
 
 function supportMailHref(listingTitle: string) {
   const subject = encodeURIComponent(`Жалоба на объявление: ${listingTitle}`);
-  return `mailto:demo@blizhniy.local?subject=${subject}`;
+  return `mailto:prostova04@yandex.ru?subject=${subject}`;
 }
 
 function pluralListings(count: number) {
