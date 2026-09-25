@@ -2889,13 +2889,13 @@ export function CabinetProfileBar() {
             ) : null}
           </div>
         </div>
-        <button type="button" onClick={() => setOpen((value) => !value)} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
+        <button type="button" disabled={Boolean(profileError)} onClick={() => setOpen((value) => !value)} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1] disabled:cursor-not-allowed disabled:opacity-50">
           <Settings2 className="h-4 w-4" />
           Настройки
         </button>
       </div>
       {profileError ? <p role="alert" className="mt-3 text-sm font-semibold text-amber-700">{profileError}</p> : null}
-      {open ? <SettingsPanel identity={identity} profile={profile} onClose={() => setOpen(false)} /> : null}
+      {open && !profileError ? <SettingsPanel identity={identity} profile={profile} onClose={() => setOpen(false)} /> : null}
     </section>
   );
 }
@@ -3340,6 +3340,11 @@ export function CabinetOrganizationClient() {
       return;
     }
 
+    if (profileError) {
+      setMessage("Профиль не загружен. Обновите страницу перед сохранением.");
+      return;
+    }
+
     const organizationName = form.organizationName.trim();
     const organizationInn = form.organizationInn.replace(/\D/g, "");
     const organizationOgrn = form.organizationOgrn.replace(/\D/g, "");
@@ -3477,7 +3482,7 @@ export function CabinetOrganizationClient() {
           />
         </label>
         <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" disabled={saving} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-wait disabled:opacity-60">
+          <button type="submit" disabled={saving || Boolean(profileError)} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-wait disabled:opacity-60">
             {saving ? "Сохраняем..." : "Сохранить профиль организации"}
           </button>
           {message ? <p className="text-sm font-semibold text-slate-600">{message}</p> : null}
