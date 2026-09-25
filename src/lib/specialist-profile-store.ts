@@ -155,6 +155,12 @@ function mapSpecialistProfile(row: SpecialistProfileRow): SpecialistProfile {
   };
 }
 
+function publicSpecialistProfile(profile: SpecialistProfile): SpecialistProfile {
+  return profile.showExactAddress
+    ? profile
+    : { ...profile, address: undefined, lat: undefined, lng: undefined, hasMapPoint: false };
+}
+
 async function findCity(city?: string) {
   const cityName = normalizeText(city).split(",")[0]?.trim() || "Краснодар";
   const rows = await supabaseRest<CityIdRow[]>(
@@ -368,7 +374,7 @@ export async function listStoredSpecialistProfiles(limit = 24) {
     `/rest/v1/specialist_profiles?select=${specialistProfileSelect}&status=eq.published&order=updated_at.desc&limit=${limit}`,
   ).catch(() => []);
 
-  return rows.map(mapSpecialistProfile);
+  return rows.map(mapSpecialistProfile).map(publicSpecialistProfile);
 }
 
 export async function listStoredSpecialistProfilesForAdmin(limit = 200) {
@@ -392,7 +398,7 @@ export async function getStoredSpecialistProfileById(profileId: string) {
     `/rest/v1/specialist_profiles?select=${specialistProfileSelect}&id=eq.${encodeURIComponent(profileId)}&status=eq.published&limit=1`,
   ).catch(() => []);
 
-  return rows[0] ? mapSpecialistProfile(rows[0]) : undefined;
+  return rows[0] ? publicSpecialistProfile(mapSpecialistProfile(rows[0])) : undefined;
 }
 
 export function listSpecialistsWithStored(storedProfiles: SpecialistProfile[], fallbackProfiles: SpecialistProfile[]) {
