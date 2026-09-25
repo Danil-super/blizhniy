@@ -55,7 +55,9 @@ async function userCanAccessApi(userId: string) {
   return profile !== undefined && profile.is_blocked !== true;
 }
 
-export async function getAuthenticatedRequestUser(request: Request) {
+// A verified Supabase session is enough for data-subject requests, including
+// requests from an account whose access to the rest of the site is blocked.
+export async function getVerifiedRequestUser(request: Request) {
   const token = getBearerToken(request);
   const { supabaseAnonKey, supabaseUrl } = getSupabaseServerConfig();
 
@@ -97,11 +99,17 @@ export async function getAuthenticatedRequestUser(request: Request) {
     return null;
   }
 
-  if (!(await userCanAccessApi(user.id))) {
+  return { user };
+}
+
+export async function getAuthenticatedRequestUser(request: Request) {
+  const auth = await getVerifiedRequestUser(request);
+
+  if (!auth || !(await userCanAccessApi(auth.user.id))) {
     return null;
   }
 
-  return { user };
+  return auth;
 }
 
 export async function isAuthenticatedRequest(request: Request) {

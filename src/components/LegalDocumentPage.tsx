@@ -1,6 +1,7 @@
 import { SiteHeader } from "@/components/SiteHeader";
 import { renderBrandText } from "@/components/BrandName";
 import { legalDocuments, type LegalDocumentKey } from "@/lib/legal-documents";
+import Link from "next/link";
 
 function isSectionHeading(value: string) {
   return /^\d+\.\s+\S/.test(value);
@@ -30,6 +31,11 @@ export function LegalDocumentPage({ documentKey }: { documentKey: LegalDocumentK
               ),
             )}
           </div>
+          {documentKey === "privacy" ? (
+            <Link href="/cabinet/udalit-akkaunt" className="mt-8 inline-flex min-h-11 items-center rounded-lg bg-[#0875d1] px-5 font-semibold text-white">
+              Подать запрос на удаление аккаунта
+            </Link>
+          ) : null}
         </article>
       </main>
     </>
