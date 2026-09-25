@@ -772,16 +772,15 @@ export async function restoreStoredListingForUser(listingId: string, userId: str
   }
 
   const now = new Date().toISOString();
+  // Restoring a sold or archived listing must keep the already paid publication window.
   const restoreBody = {
-    expires_at: addDaysIsoDate(now, 30),
-    is_paid: true,
     published_at: now,
     status: "published",
   };
 
   async function patchRestorableListing(statusFilter: string) {
     return supabaseRest<Array<Pick<ListingRow, "id">>>(
-      `/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&is_paid=eq.true&${statusFilter}`,
+      `/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&is_paid=eq.true&expires_at=gt.${encodeURIComponent(now)}&${statusFilter}`,
       {
         method: "PATCH",
         prefer: "return=representation",
