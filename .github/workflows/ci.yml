@@ -40,3 +40,25 @@ jobs:
 
       - name: Audit production npm dependencies for high and critical vulnerabilities
         run: npm audit --omit=dev --audit-level=high
+
+      - name: Install Chromium for layout checks
+        run: npx playwright install --with-deps chromium
+
+      - name: Check category heroes before deployment
+        env:
+          BASE_URL: http://127.0.0.1:3100
+        run: |
+          npm run dev -- -p 3100 > /tmp/blizhniy-ci-next.log 2>&1 &
+          app_pid=$!
+          trap 'kill "$app_pid" || true' EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 3 "$BASE_URL/katalog/instrumenty" >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          curl -fsS --max-time 5 "$BASE_URL/katalog/instrumenty" >/dev/null
+          node scripts/check-category-heroes.mjs
+          node scripts/check-instruments-hero.mjs

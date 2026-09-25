@@ -5,17 +5,29 @@ import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "@/components/listings/CategoryPageDesign";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
+import { ListingPagination } from "@/components/listings/ListingPagination";
+import { parseListingPage, toDemoListing } from "@/components/listings/ListingPages";
+import { listStoredListingsForCategory } from "@/lib/listing-store";
 import type { DemoListing } from "@/components/listings/ListingCard";
 import { instrumentSubcategories } from "@/lib/instrument-subcategories";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 
-export const metadata: Metadata = {
+const categoryMetadata: Metadata = {
   title: "Инструменты",
   description: "Подкатегории инструментов на БЛИЖНИЙ: ручной инструмент, электроинструмент, измерительный инструмент, строительный и садовый инструмент.",
   alternates: {
     canonical: "/katalog/instrumenty",
   },
 };
+
+export async function generateMetadata({ searchParams }: { searchParams?: Promise<{ page?: string }> }): Promise<Metadata> {
+  const page = parseListingPage((await searchParams)?.page);
+
+  return {
+    ...categoryMetadata,
+    alternates: { canonical: page > 1 ? `/katalog/instrumenty?page=${page}` : "/katalog/instrumenty" },
+  };
+}
 
 function instrumentListing(subcategory: (typeof instrumentSubcategories)[number], index: number): DemoListing {
   return {
@@ -46,7 +58,16 @@ function instrumentListing(subcategory: (typeof instrumentSubcategories)[number]
 
 const demoListings = instrumentSubcategories.map(instrumentListing);
 
-export default function InstrumentsCategoryPage() {
+export const dynamic = "force-dynamic";
+
+export default async function InstrumentsCategoryPage({ searchParams }: { searchParams?: Promise<{ page?: string }> }) {
+  const page = parseListingPage((await searchParams)?.page);
+  const pageSize = 24;
+  const storedListings = await listStoredListingsForCategory("instrumenty", { page, pageSize });
+  const listings = [
+    ...storedListings.slice(0, pageSize).map(toDemoListing),
+    ...(page === 1 && shouldShowFallbackContent() ? demoListings : []),
+  ];
   return (
     <>
       <SiteHeader />
@@ -64,7 +85,7 @@ export default function InstrumentsCategoryPage() {
           background-position: center center !important;
         }
 
-        [data-category-theme="instrumenty"] > div:last-child {
+        [data-category-theme="instrumenty"] > [data-hero-copy] {
           position: static;
           display: block !important;
           width: 100%;
@@ -72,7 +93,7 @@ export default function InstrumentsCategoryPage() {
           text-shadow: none;
         }
 
-        [data-category-theme="instrumenty"] > div:last-child > div:first-child {
+        [data-category-theme="instrumenty"] > [data-hero-copy] > div:first-child {
           display: inline-block;
           max-width: 17.5rem;
           padding: 0;
@@ -82,8 +103,8 @@ export default function InstrumentsCategoryPage() {
           box-shadow: none;
         }
 
-        [data-category-theme="instrumenty"] > div:last-child h1,
-        [data-category-theme="instrumenty"] > div:last-child p {
+        [data-category-theme="instrumenty"] > [data-hero-copy] h1,
+        [data-category-theme="instrumenty"] > [data-hero-copy] p {
           position: relative;
           z-index: 10;
           max-width: none !important;
@@ -91,15 +112,15 @@ export default function InstrumentsCategoryPage() {
           text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.95);
         }
 
-        [data-category-theme="instrumenty"] > div:last-child h1 {
+        [data-category-theme="instrumenty"] > [data-hero-copy] h1 {
           white-space: nowrap;
         }
 
-        [data-category-theme="instrumenty"] > div:last-child p {
+        [data-category-theme="instrumenty"] > [data-hero-copy] p {
           margin-top: 0.35rem;
         }
 
-        [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
+        [data-category-theme="instrumenty"] [data-hero-actions] {
           position: absolute;
           left: 1rem;
           right: 1rem;
@@ -113,7 +134,7 @@ export default function InstrumentsCategoryPage() {
           text-shadow: none;
         }
 
-        [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
+        [data-category-theme="instrumenty"] [data-hero-actions] > a {
           flex: 0 0 auto;
           min-height: 40px;
           height: 40px;
@@ -125,16 +146,16 @@ export default function InstrumentsCategoryPage() {
 
 
         @media (max-width: 374px) {
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
-            left: 0.75rem;
-            right: 0.75rem;
-            bottom: 0.75rem;
+          [data-category-theme="instrumenty"] [data-hero-actions] {
+            left: 0.75rem !important;
+            right: 0.75rem !important;
+            bottom: 0.75rem !important;
             flex-flow: column nowrap;
             align-items: stretch;
             gap: 0.4rem;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
+          [data-category-theme="instrumenty"] [data-hero-actions] > a {
             width: 100%;
             justify-content: center;
           }
@@ -146,17 +167,17 @@ export default function InstrumentsCategoryPage() {
             aspect-ratio: 8 / 3;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child > div:first-child {
+          [data-category-theme="instrumenty"] > [data-hero-copy] > div:first-child {
             max-width: 17rem;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
+          [data-category-theme="instrumenty"] [data-hero-actions] {
             left: 1.25rem;
             right: auto;
             bottom: 1.25rem;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
+          [data-category-theme="instrumenty"] [data-hero-actions] > a {
             padding-left: 1rem;
             padding-right: 1rem;
             font-size: 0.875rem;
@@ -164,11 +185,11 @@ export default function InstrumentsCategoryPage() {
         }
 
         @media (min-width: 1024px) {
-          [data-category-theme="instrumenty"] > div:last-child > div:first-child {
+          [data-category-theme="instrumenty"] > [data-hero-copy] > div:first-child {
             max-width: 19rem;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
+          [data-category-theme="instrumenty"] [data-hero-actions] {
             left: 1.75rem;
             bottom: 1.5rem;
           }
@@ -216,7 +237,8 @@ export default function InstrumentsCategoryPage() {
             </section>
 
             <section id="listings" aria-label="Объявления категории">
-              <ListingResultsPanel categorySlug="instrumenty" listings={shouldShowFallbackContent() ? demoListings : []} />
+              <ListingResultsPanel categorySlug="instrumenty" listings={listings} />
+              <ListingPagination baseHref="/katalog/instrumenty" hasMore={storedListings.length > pageSize} page={page} />
             </section>
           </div>
         </div>

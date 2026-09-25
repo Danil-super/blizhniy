@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
-import { CategoryListingsPage } from "@/components/listings/ListingPages";
+import { CategoryListingsPage, parseListingPage } from "@/components/listings/ListingPages";
 import { getPublicCategories } from "@/lib/category-store";
 
 type PageProps = {
+  searchParams?: Promise<{ page?: string }>;
   params: Promise<{ categorySlug: string }>;
 };
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+  const page = parseListingPage((await searchParams)?.page);
   const { categorySlug } = await params;
   const categories = await getPublicCategories();
   const category = categories.find((item) => item.slug === categorySlug);
@@ -17,13 +19,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: category?.name ?? "Категория",
     description: `Объявления категории ${category?.name ?? categorySlug} на БЛИЖНИЙ.`,
     alternates: {
-      canonical: `/katalog/${categorySlug}`,
+      canonical: page > 1 ? `/katalog/${categorySlug}?page=${page}` : `/katalog/${categorySlug}`,
     },
   };
 }
 
-export default async function Page({ params }: PageProps) {
+export default async function Page({ params, searchParams }: PageProps) {
   const { categorySlug } = await params;
 
-  return <CategoryListingsPage categorySlug={categorySlug} />;
+  const page = parseListingPage((await searchParams)?.page);
+
+  return <CategoryListingsPage categorySlug={categorySlug} page={page} />;
 }

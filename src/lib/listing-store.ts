@@ -606,7 +606,7 @@ export async function getStoredListingById(listingId: string, options: { publicO
   }
 
   try {
-    const statusFilter = options.publicOnly ? "&status=eq.published" : "";
+    const statusFilter = options.publicOnly ? `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}` : "";
     const rows = await fetchListingRows(`&id=eq.${encodeURIComponent(listingId)}${statusFilter}&limit=1`);
 
     return rows[0] ? mapListing(rows[0]) : undefined;
@@ -656,11 +656,55 @@ export async function listStoredListings(limit = 24) {
   }
 
   try {
-    const rows = await fetchListingRows(`&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`);
+    const rows = await fetchListingRows(`&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`);
 
     return rows.map(mapListing);
   } catch (error) {
     console.error("Failed to load listings from Supabase", error);
+    return [];
+  }
+}
+
+export async function listStoredListingsForCategory(
+  categorySlug: string,
+  options: { subcategoryName?: string; page?: number; pageSize?: number } = {},
+) {
+  if (!isSupabaseRestConfigured()) {
+    return [];
+  }
+
+  const page = Math.max(1, Math.min(1000, Math.floor(options.page ?? 1)));
+  const pageSize = Math.max(1, Math.min(96, Math.floor(options.pageSize ?? 24)));
+
+  try {
+    const roots = await supabaseRest<CategoryIdRow[]>(
+      `/rest/v1/categories?select=id,name,parent_id,slug&slug=eq.${encodeURIComponent(categorySlug)}&parent_id=is.null&limit=1`,
+    );
+    const root = roots[0];
+
+    if (!root) {
+      return [];
+    }
+
+    const children = await supabaseRest<CategoryIdRow[]>(
+      `/rest/v1/categories?select=id,name,parent_id,slug&parent_id=eq.${encodeURIComponent(root.id)}&limit=200`,
+    );
+    const matchingChildren = options.subcategoryName
+      ? children.filter((child) => child.name === options.subcategoryName)
+      : children;
+    const categoryIds = options.subcategoryName ? matchingChildren.map((child) => child.id) : [root.id, ...children.map((child) => child.id)];
+
+    if (!categoryIds.length) {
+      return [];
+    }
+
+    const rows = await fetchListingRows(
+      `&category_id=in.(${categoryIds.join(",")})&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc&limit=${pageSize + 1}&offset=${(page - 1) * pageSize}`,
+    );
+
+    return rows.map(mapListing);
+  } catch (error) {
+    console.error("Failed to load category listings from Supabase", error);
     return [];
   }
 }

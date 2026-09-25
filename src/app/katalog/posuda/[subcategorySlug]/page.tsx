@@ -6,12 +6,16 @@ import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { categoryPageStyle, CategoryHeaderBand } from "@/components/listings/CategoryPageDesign";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
+import { ListingPagination } from "@/components/listings/ListingPagination";
+import { parseListingPage, toDemoListing } from "@/components/listings/ListingPages";
+import { listStoredListingsForCategory } from "@/lib/listing-store";
 import type { DemoListing } from "@/components/listings/ListingCard";
 import { posudaSubcategories } from "@/lib/posuda-subcategories";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 
 type PageProps = {
   params: Promise<{ subcategorySlug: string }>;
+  searchParams?: Promise<{ page?: string }>;
 };
 
 function posudaListing(subcategory: (typeof posudaSubcategories)[number], index: number): DemoListing {
@@ -41,7 +45,10 @@ function posudaListing(subcategory: (typeof posudaSubcategories)[number], index:
   };
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+  const page = parseListingPage((await searchParams)?.page);
   const { subcategorySlug } = await params;
   const subcategory = posudaSubcategories.find((item) => item.slug === subcategorySlug);
 
@@ -49,12 +56,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: subcategory ? `${subcategory.name} — Посуда` : "Посуда",
     description: subcategory ? `${subcategory.description} Объявления в подкатегории ${subcategory.name}.` : "Объявления раздела Посуда.",
     alternates: {
-      canonical: `/katalog/posuda/${subcategorySlug}`,
+      canonical: page > 1 ? `/katalog/posuda/${subcategorySlug}?page=${page}` : `/katalog/posuda/${subcategorySlug}`,
     },
   };
 }
 
-export default async function PosudaSubcategoryPage({ params }: PageProps) {
+export default async function PosudaSubcategoryPage({ params, searchParams }: PageProps) {
   const { subcategorySlug } = await params;
   const subcategoryIndex = posudaSubcategories.findIndex((item) => item.slug === subcategorySlug);
   const subcategory = posudaSubcategories[subcategoryIndex];
@@ -63,7 +70,13 @@ export default async function PosudaSubcategoryPage({ params }: PageProps) {
     notFound();
   }
 
-  const listings = shouldShowFallbackContent() ? [posudaListing(subcategory, subcategoryIndex)] : [];
+  const page = parseListingPage((await searchParams)?.page);
+  const pageSize = 24;
+  const storedListings = await listStoredListingsForCategory("posuda", { subcategoryName: subcategory.name, page, pageSize });
+  const listings = [
+    ...storedListings.slice(0, pageSize).map(toDemoListing),
+    ...(page === 1 && shouldShowFallbackContent() ? [posudaListing(subcategory, subcategoryIndex)] : []),
+  ];
 
   return (
     <>
@@ -95,6 +108,7 @@ export default async function PosudaSubcategoryPage({ params }: PageProps) {
             />
             <section id="listings" aria-label="Объявления подкатегории">
               <ListingResultsPanel categorySlug="posuda" listings={listings} subcategorySlug={subcategory.slug} />
+              <ListingPagination baseHref={`/katalog/posuda/${subcategory.slug}`} hasMore={storedListings.length > pageSize} page={page} />
             </section>
           </div>
         </div>
