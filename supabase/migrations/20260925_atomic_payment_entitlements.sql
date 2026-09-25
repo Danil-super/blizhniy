@@ -87,6 +87,43 @@ set status = 'draft'
 where status = 'published'
   and (is_paid = false or expires_at is null or expires_at <= now());
 
+-- Historic successful payments that already delivered their target must be marked
+-- consumed. Otherwise the first replay could grant another full term for free.
+update public.payments p
+set applied_at = coalesce(p.paid_at, p.created_at)
+where p.status = 'succeeded'
+  and p.applied_at is null
+  and (
+    (p.target_type = 'listing' and exists (
+      select 1 from public.listings l
+      where l.id = p.target_id and l.author_id = p.user_id and l.is_paid = true
+    ))
+    or (p.target_type = 'vacancy' and exists (
+      select 1 from public.vacancies v
+      where v.id = p.target_id and v.author_id = p.user_id and v.is_paid = true
+    ))
+    or (p.target_type = 'workRequest' and exists (
+      select 1 from public.work_requests r
+      where r.id = p.target_id and r.author_id = p.user_id and r.is_paid = true
+    ))
+    or (p.target_type = 'specialist' and exists (
+      select 1 from public.specialist_profiles s
+      where s.id = p.target_id and s.user_id = p.user_id and s.publication_payment_id = p.id
+    ))
+    or (p.target_type = 'application' and exists (
+      select 1 from public.applications a
+      where a.id = p.target_id and a.applicant_user_id = p.user_id and a.is_paid = true
+    ))
+    or (p.target_type = 'fair_application' and exists (
+      select 1 from public.fair_applications f
+      where f.id = p.target_id and f.user_id = p.user_id and f.payment_status = 'succeeded'
+    ))
+    or (p.target_type = 'ad_marquee' and exists (
+      select 1 from public.ad_marquee_placements m
+      where m.id = p.target_id and m.user_id = p.user_id and m.payment_id = p.id
+    ))
+  );
+
 -- New publicly visible specialists require a paid, still valid entitlement.
 drop policy if exists "Public can read published specialists" on public.specialist_profiles;
 create policy "Public can read paid specialists and own profile" on public.specialist_profiles

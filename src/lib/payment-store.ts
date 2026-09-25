@@ -23,6 +23,7 @@ type PaymentRow = {
 
 type TariffRow = {
   action: Tariff["action"];
+  duration_days?: number | null;
   id: string;
   name: string;
   price: number | string;
@@ -67,7 +68,7 @@ function tariffIdFromAction(action: Tariff["action"]) {
 
 async function getStoredTariffByAction(action: Tariff["action"]) {
   const rows = await supabaseRest<TariffRow[]>(
-    `/rest/v1/tariffs?select=id,name,action,price&action=eq.${encodeURIComponent(action)}&limit=1`,
+    `/rest/v1/tariffs?select=id,name,action,price,duration_days&action=eq.${encodeURIComponent(action)}&limit=1`,
   );
 
   return rows[0];
@@ -180,6 +181,10 @@ export async function createStoredPayment(input: StoredPaymentInput) {
     throw new Error(`Tariff ${input.tariff.action} is not configured in Supabase`);
   }
 
+  if (Number(tariff.price) !== input.amount) {
+    throw new Error("Tariff price changed before payment reservation. Refresh and try again.");
+  }
+
   const rows = await supabaseRest<PaymentRow[]>("/rest/v1/payments?select=*", {
     method: "POST",
     prefer: "return=representation",
@@ -192,7 +197,7 @@ export async function createStoredPayment(input: StoredPaymentInput) {
       provider: input.provider,
       provider_payment_id: input.providerPaymentId ?? null,
       amount: input.amount,
-      duration_days: input.tariff.durationDays ?? null,
+      duration_days: tariff.duration_days ?? null,
       status: input.status,
       paid_at: input.status === "succeeded" ? new Date().toISOString() : null,
     },
@@ -281,6 +286,23 @@ export async function findUnappliedSucceededStoredPaymentForTarget(input: {
   );
 
   return rows[0] ? mapStoredPayment(rows[0]) : undefined;
+}
+
+export async function listStoredPaymentReconciliationCandidateIds(limit = 50) {
+  if (!isSupabaseRestConfigured()) {
+    throw new Error("Supabase is not configured for payment reconciliation");
+  }
+
+  const [open, legacy] = await Promise.all([
+    supabaseRest<Array<Pick<PaymentRow, "id">>>(
+      `/rest/v1/payments?select=id&provider=eq.yookassa&provider_payment_id=not.is.null&status=in.(created,pending)&order=created_at.asc&limit=${limit}`,
+    ),
+    supabaseRest<Array<Pick<PaymentRow, "id">>>(
+      `/rest/v1/payments?select=id&provider=eq.yookassa&provider_payment_id=not.is.null&status=eq.succeeded&applied_at=is.null&order=created_at.asc&limit=${limit}`,
+    ),
+  ]);
+
+  return Array.from(new Set([...legacy, ...open].map((row) => row.id))).slice(0, limit);
 }
 
 export async function findStoredPaymentByProvider(providerPaymentId: string, localPaymentId?: string) {

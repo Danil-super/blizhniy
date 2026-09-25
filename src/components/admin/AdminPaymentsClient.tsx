@@ -234,6 +234,42 @@ export function AdminPaymentsClient() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
+  const [reconciling, setReconciling] = useState(false);
+  const [reconciliationMessage, setReconciliationMessage] = useState("");
+  const [reconciliationFailures, setReconciliationFailures] = useState<Array<{ id: string; error: string }>>([]);
+
+  async function reconcilePayments() {
+    setReconciling(true);
+    setReconciliationMessage("");
+    setReconciliationFailures([]);
+    try {
+      const token = await getAccessToken();
+      const headers = { Authorization: `Bearer ${token}` };
+      const response = await fetch("/api/admin/payments/reconcile", { method: "POST", headers });
+      const payload = (await response.json().catch(() => null)) as {
+        checked?: number;
+        succeeded?: number;
+        pending?: number;
+        failures?: Array<{ id: string; error: string }>;
+        error?: string;
+      } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Сверка платежей не удалась");
+      }
+
+      setReconciliationFailures(payload?.failures ?? []);
+      setReconciliationMessage(
+        `Проверено: ${payload?.checked ?? 0}. Подтверждено: ${payload?.succeeded ?? 0}. Ожидают: ${payload?.pending ?? 0}. Ошибок: ${payload?.failures?.length ?? 0}.`
+      );
+      const refreshed = await fetch("/api/admin/payments", { headers, cache: "no-store" });
+      const data = (await refreshed.json().catch(() => null)) as PaymentsPayload | null;
+      if (refreshed.ok) setPayments(data?.payments ?? []);
+    } catch (reconcileError) {
+      setReconciliationMessage(reconcileError instanceof Error ? reconcileError.message : "Сверка платежей не удалась");
+    } finally {
+      setReconciling(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -318,7 +354,12 @@ export function AdminPaymentsClient() {
               Показаны последние {Math.min(payments.length, visiblePaymentsLimit)} из {payments.length}. Финансовые записи не удаляем автоматически из базы; для очистки интерфейса ограничиваем выдачу, а старые платежи нужно архивировать отдельной задачей.
             </p>
           </div>
+          <button type="button" disabled={reconciling} onClick={() => void reconcilePayments()} className="inline-flex min-h-10 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white disabled:cursor-wait disabled:opacity-50">
+            {reconciling ? "Сверяем..." : "Сверить с ЮKassa"}
+          </button>
         </div>
+        {reconciliationMessage ? <p role="status" className="mb-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm font-semibold text-slate-700">{reconciliationMessage}</p> : null}
+        {reconciliationFailures.length ? <ul className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-900">{reconciliationFailures.map((item) => <li key={item.id} className="break-all">{shortId(item.id)}: {item.error}</li>)}</ul> : null}
         <div className="grid gap-3">
           {payments.length ? (
             <>
