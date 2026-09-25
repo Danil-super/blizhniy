@@ -140,6 +140,17 @@ export function AccountDeletionRequestClient() {
         </div>
       ) : null}
 
+      {!loading && !signedOut && request?.status === 'resolved' ? (
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={() => void submit()}
+          className="mt-5 min-h-11 rounded-lg border border-blue-200 px-5 font-semibold text-[#0875d1] disabled:opacity-60"
+        >
+          {submitting ? 'Отправляем запрос...' : 'Подать новый запрос'}
+        </button>
+      ) : null}
+
       {!loading && !signedOut && !request && !error ? (
         <button
           type="button"

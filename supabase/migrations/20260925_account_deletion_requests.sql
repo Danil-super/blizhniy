@@ -2,7 +2,7 @@
 -- human review of paid services, retention grounds, foreign keys and backups.
 create table public.account_deletion_requests (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null unique references auth.users(id) on delete restrict,
+  user_id uuid not null references auth.users(id) on delete restrict,
   status text not null default 'requested'
     check (status in ('requested', 'in_review', 'resolved')),
   requested_at timestamptz not null default now(),
@@ -19,6 +19,14 @@ create table public.account_deletion_requests (
 
 create index account_deletion_requests_queue_idx
   on public.account_deletion_requests (status, requested_at);
+
+-- Keep past resolutions, while a user can have only one pending review.
+create unique index account_deletion_requests_one_active_per_user_idx
+  on public.account_deletion_requests (user_id)
+  where status in ('requested', 'in_review');
+
+create index account_deletion_requests_user_history_idx
+  on public.account_deletion_requests (user_id, requested_at desc);
 
 alter table public.account_deletion_requests enable row level security;
 

@@ -28,7 +28,15 @@ export async function getDeletionRequestForUser(userId: string) {
   }
 
   const rows = await supabaseRest<DeletionRequestRow[]>(
-    `/rest/v1/account_deletion_requests?select=${columns}&user_id=eq.${encodeURIComponent(userId)}&limit=1`,
+    `/rest/v1/account_deletion_requests?select=${columns}&user_id=eq.${encodeURIComponent(userId)}&order=requested_at.desc&limit=1`,
+  );
+
+  return rows[0] ? toPublicRequest(rows[0]) : null;
+}
+
+async function getActiveDeletionRequestForUser(userId: string) {
+  const rows = await supabaseRest<DeletionRequestRow[]>(
+    `/rest/v1/account_deletion_requests?select=${columns}&user_id=eq.${encodeURIComponent(userId)}&status=in.(requested,in_review)&order=requested_at.desc&limit=1`,
   );
 
   return rows[0] ? toPublicRequest(rows[0]) : null;
@@ -39,38 +47,50 @@ export async function requestAccountDeletion(userId: string) {
     throw new Error('Invalid user ID');
   }
 
-  // Unique user_id plus ignore-duplicates makes concurrent clicks and retries
-  // idempotent; no client-controlled identifier, email or free-text is saved.
-  const rows = await supabaseRest<DeletionRequestRow[]>(
-    `/rest/v1/account_deletion_requests?on_conflict=user_id&select=${columns}`,
-    {
-      method: 'POST',
-      prefer: 'resolution=ignore-duplicates,return=representation',
-      body: { user_id: userId },
-    },
-  );
+  // The partial unique index serializes simultaneous requests while retaining
+  // resolved cases so the user can file a new request after an earlier one.
+  const active = await getActiveDeletionRequestForUser(userId);
+  if (active) return active;
 
-  return rows[0] ? toPublicRequest(rows[0]) : await getDeletionRequestForUser(userId);
+  try {
+    const rows = await supabaseRest<DeletionRequestRow[]>(
+      `/rest/v1/account_deletion_requests?select=${columns}`,
+      { method: 'POST', prefer: 'return=representation', body: { user_id: userId } },
+    );
+
+    if (!rows[0]) throw new Error('No deletion request persisted');
+    return toPublicRequest(rows[0]);
+  } catch (error) {
+    // A concurrent request won the unique-index race. Fail on every other
+    // error unless a committed active row is now actually visible.
+    const duplicate = await getActiveDeletionRequestForUser(userId).catch(() => null);
+    if (duplicate) return duplicate;
+    throw error;
+  }
 }
 
 export type AdminDeletionRequest = DeletionRequestRow & { email: string | null };
 
-export async function listDeletionRequestsForAdmin(): Promise<AdminDeletionRequest[]> {
-  const rows = await supabaseRest<DeletionRequestRow[]>(
-    `/rest/v1/account_deletion_requests?select=${columns}&status=in.(requested,in_review)&order=requested_at.asc&limit=100`,
-  );
+export const accountDeletionPageSize = 50;
 
-  if (!rows.length) {
-    return [];
+export async function listDeletionRequestsForAdmin(page: number): Promise<{ requests: AdminDeletionRequest[]; hasMore: boolean }> {
+  const rows = await supabaseRest<DeletionRequestRow[]>(
+    `/rest/v1/account_deletion_requests?select=${columns}&status=in.(requested,in_review)&order=requested_at.asc,id.asc&limit=${accountDeletionPageSize + 1}&offset=${page * accountDeletionPageSize}`,
+  );
+  const hasMore = rows.length > accountDeletionPageSize;
+  const currentPage = rows.slice(0, accountDeletionPageSize);
+
+  if (!currentPage.length) {
+    return { requests: [], hasMore };
   }
 
-  const ids = rows.map((row) => row.user_id);
+  const ids = currentPage.map((row) => row.user_id);
   const profiles = await supabaseRest<{ id: string; email: string | null }[]>(
     `/rest/v1/profiles?select=id,email&id=in.(${ids.map(encodeURIComponent).join(',')})`,
   );
   const emailById = new Map(profiles.map((row) => [row.id, row.email]));
 
-  return rows.map((row) => ({ ...row, email: emailById.get(row.user_id) ?? null }));
+  return { requests: currentPage.map((row) => ({ ...row, email: emailById.get(row.user_id) ?? null })), hasMore };
 }
 
 export async function startDeletionReview(requestId: string) {
@@ -84,6 +104,30 @@ export async function startDeletionReview(requestId: string) {
       method: 'PATCH',
       prefer: 'return=representation',
       body: { status: 'in_review', review_started_at: new Date().toISOString() },
+    },
+  );
+
+  return rows[0] ?? null;
+}
+
+export type DeletionResolution = 'fulfilled' | 'partly_retained' | 'declined';
+
+export async function resolveDeletionReview(requestId: string, resolution: DeletionResolution, caseReference: string) {
+  if (!isUuid(requestId)) {
+    return null;
+  }
+
+  const rows = await supabaseRest<DeletionRequestRow[]>(
+    `/rest/v1/account_deletion_requests?select=${columns}&id=eq.${encodeURIComponent(requestId)}&status=eq.in_review`,
+    {
+      method: 'PATCH',
+      prefer: 'return=representation',
+      body: {
+        status: 'resolved',
+        resolved_at: new Date().toISOString(),
+        resolution,
+        resolution_note: caseReference,
+      },
     },
   );
 
