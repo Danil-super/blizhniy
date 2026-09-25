@@ -43,6 +43,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 type UserCabinetState = {
   identity: ClientUserIdentity | null;
   profile: CabinetProfile | null;
+  profileError?: string;
   items: DemoPublication[];
   loading: boolean;
 };
@@ -130,18 +131,25 @@ function publishCabinetState(state: UserCabinetState) {
   cabinetDataListeners.forEach((listener) => listener(state));
 }
 
-function saveCabinetProfile(ownerKey: string, profile: CabinetProfile) {
-  const currentState = cachedCabinetState;
-  const canPublishLocally = currentState?.identity?.ownerKey === ownerKey;
+async function saveCabinetProfile(ownerKey: string, profile: CabinetProfile) {
+  const identity = await resolveClientUserIdentity();
 
-  writeCabinetProfile(ownerKey, profile, { notify: !canPublishLocally });
-
-  if (canPublishLocally) {
-    publishCabinetState({ ...currentState, profile });
+  if (identity.ownerKey !== ownerKey || !identity.accessToken) {
+    throw new Error("Сеанс изменился. Войдите снова, чтобы сохранить профиль.");
   }
+
+  const saved = await writeCabinetProfile(identity, profile);
+  const currentState = cachedCabinetState;
+
+  if (currentState?.identity?.ownerKey === ownerKey) {
+    publishCabinetState({ ...currentState, profile: saved, profileError: undefined });
+  }
+
+  markCabinetDataChanged();
+  return saved;
 }
 
-async function settleSupabaseProfileUpdate<T>(request: Promise<T>, timeoutMs = 2500) {
+async function settleSupabaseProfileUpdate<T>(request: Promise<T>, timeoutMs = 10000) {
   let timeoutId: number | undefined;
 
   try {
@@ -604,8 +612,10 @@ async function fetchCabinetPayments() {
 
 async function loadUserCabinetData(identity: ClientUserIdentity) {
   const fallback = createDefaultCabinetProfile(identity);
-  const profile = readCabinetProfile(identity.ownerKey, fallback);
-  const [serverFairApplications, serverListings, serverVacancies] = await Promise.all([
+  const [profileResult, serverFairApplications, serverListings, serverVacancies] = await Promise.all([
+    readCabinetProfile(identity)
+      .then((profile) => ({ profile, profileError: undefined }))
+      .catch(() => ({ profile: fallback, profileError: "Не удалось загрузить профиль. Повторите позже." })),
     fetchCabinetFairApplications(identity),
     fetchCabinetListings(identity),
     fetchCabinetVacancies(identity),
@@ -630,7 +640,7 @@ async function loadUserCabinetData(identity: ClientUserIdentity) {
   );
   const items = dedupeListingPublications(Array.from(new Map([...visibleServerItems, ...localItems].map((item) => [item.id, item])).values()));
 
-  return { identity, profile, items, loading: false };
+  return { identity, ...profileResult, items, loading: false };
 }
 
 async function requestUserCabinetData(force = false): Promise<UserCabinetState> {
@@ -2250,11 +2260,11 @@ function AvatarEditor({
     }
   }
 
-  function commitAvatarPatch(patch: Partial<CabinetProfile>) {
+  async function commitAvatarPatch(patch: Partial<CabinetProfile>) {
     const nextProfile = { ...profile, ...patch };
 
-    onChange(nextProfile);
-    saveCabinetProfile(ownerKey, nextProfile);
+    const saved = await saveCabinetProfile(ownerKey, nextProfile);
+    onChange(saved);
   }
 
   function updateCropDraft(patch: Partial<AvatarCropDraft>) {
@@ -2315,7 +2325,7 @@ function AvatarEditor({
     try {
       const cropped = await cropAvatarImage(cropDraft, cropImageSize, stageSize);
       const avatarDataUrl = await compressAvatarImage(cropped);
-      commitAvatarPatch({ avatarDataUrl, avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 });
+      await commitAvatarPatch({ avatarDataUrl, avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 });
       setCropDraft(null);
       setCropImageSize(null);
     } catch (error) {
@@ -2354,8 +2364,14 @@ function AvatarEditor({
               </label>
               <button
                 type="button"
-                onClick={() => commitAvatarPatch({ avatarDataUrl: "", avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 })}
-                disabled={!profile.avatarDataUrl}
+                onClick={() => {
+                  setLoading(true);
+                  onError("");
+                  void commitAvatarPatch({ avatarDataUrl: "", avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 })
+                    .catch((error) => onError(error instanceof Error ? error.message : "Не удалось удалить аватарку."))
+                    .finally(() => setLoading(false));
+                }}
+                disabled={loading || !profile.avatarDataUrl}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-red-200 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Trash2 className="h-4 w-4" />
@@ -2489,34 +2505,28 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
         throw new Error("Выберите город из списка.");
       }
 
-      try {
-        const supabase = getSupabaseBrowserClient();
-        const updates: Parameters<typeof supabase.auth.updateUser>[0] = {
-          data: {
-            display_name: nextProfile.name,
-            phone: nextProfile.phone,
-            phone_verified: nextProfile.phoneVerified,
-            city: nextProfile.city,
-          },
-        };
+      const supabase = getSupabaseBrowserClient();
+      const updates: Parameters<typeof supabase.auth.updateUser>[0] = {
+        data: {
+          display_name: nextProfile.name,
+          city: nextProfile.city,
+        },
+      };
 
-        if (nextProfile.email && nextProfile.email !== identity.email) {
-          updates.email = nextProfile.email;
-        }
-
-        await settleSupabaseProfileUpdate(
-          supabase.auth.updateUser(updates).then(({ error }) => {
-            if (error) {
-              throw error;
-            }
-          }),
-        );
-      } catch {
-        // The local demo profile still saves when Supabase settings are unavailable locally.
+      if (nextProfile.email && nextProfile.email !== identity.email) {
+        updates.email = nextProfile.email;
       }
 
-      saveCabinetProfile(identity.ownerKey, nextProfile);
-      setForm(nextProfile);
+      await settleSupabaseProfileUpdate(
+        supabase.auth.updateUser(updates).then(({ error }) => {
+          if (error) {
+            throw error;
+          }
+        }),
+      );
+
+      const saved = await saveCabinetProfile(identity.ownerKey, nextProfile);
+      setForm(saved);
       void addCurrentUserNotification({
         category: "system",
         title: "Настройки уведомлений сохранены",
@@ -2526,7 +2536,9 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
         actionLabel: "Открыть кабинет",
         dedupeKey: "profile:notification-settings",
       });
-      setMessage("Настройки сохранены.");
+      setMessage(updates.email
+        ? "Настройки сохранены. Если для смены email отправлено письмо, подтвердите новый адрес по ссылке."
+        : "Настройки сохранены.");
       window.setTimeout(onClose, 450);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось сохранить настройки.");
@@ -2598,8 +2610,8 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
         verifiedPhone: phone,
       };
 
-      setForm(nextProfile);
-      saveCabinetProfile(identity.ownerKey, nextProfile);
+      const saved = await saveCabinetProfile(identity.ownerKey, nextProfile);
+      setForm(saved);
       setVerificationCode("");
       setPhoneVerificationOpen(false);
       setMessage("Телефон подтвержден и сохранен.");
@@ -2835,7 +2847,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
 
 export function CabinetProfileBar() {
   const { state: authState } = useAuthState();
-  const { identity, profile, loading } = useUserCabinetData();
+  const { identity, profile, profileError, loading } = useUserCabinetData();
   const [open, setOpen] = useState(false);
 
   if (authState !== "signed-in" && authState !== "admin") {
@@ -2882,6 +2894,7 @@ export function CabinetProfileBar() {
           Настройки
         </button>
       </div>
+      {profileError ? <p role="alert" className="mt-3 text-sm font-semibold text-amber-700">{profileError}</p> : null}
       {open ? <SettingsPanel identity={identity} profile={profile} onClose={() => setOpen(false)} /> : null}
     </section>
   );
@@ -3304,9 +3317,10 @@ export function CabinetPaymentsClient({ initialPayments = [] }: { initialPayment
 }
 
 export function CabinetOrganizationClient() {
-  const { identity, profile, loading } = useUserCabinetData();
+  const { identity, profile, profileError, loading } = useUserCabinetData();
   const [form, setForm] = useState<CabinetProfile | null>(profile);
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setForm(profile);
@@ -3319,7 +3333,7 @@ export function CabinetOrganizationClient() {
   const completedFields = [form.organizationName, form.organizationInn, form.organizationAddress, form.organizationDescription].filter((value) => value.trim()).length;
   const completionLabel = completedFields >= 3 ? "Заполнен" : completedFields > 0 ? "Нужно дополнить" : "Не заполнен";
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!identity || !form) {
@@ -3355,9 +3369,18 @@ export function CabinetOrganizationClient() {
       organizationDescription: form.organizationDescription.trim().slice(0, 500),
     };
 
-    saveCabinetProfile(identity.ownerKey, nextProfile);
-    setForm(nextProfile);
-    setMessage("Профиль организации сохранен.");
+    setSaving(true);
+    setMessage("");
+
+    try {
+      const saved = await saveCabinetProfile(identity.ownerKey, nextProfile);
+      setForm(saved);
+      setMessage("Профиль организации сохранен.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось сохранить профиль организации.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -3385,6 +3408,7 @@ export function CabinetOrganizationClient() {
           <p className="mt-2 break-words font-bold text-[#060b27]">{profile.email || "Не указан"}</p>
         </div>
       </div>
+      {profileError ? <p role="alert" className="mt-4 text-sm font-semibold text-amber-700">{profileError}</p> : null}
       <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="grid gap-1.5 text-sm font-bold text-slate-700">
@@ -3453,8 +3477,8 @@ export function CabinetOrganizationClient() {
           />
         </label>
         <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3]">
-            Сохранить профиль организации
+          <button type="submit" disabled={saving} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-wait disabled:opacity-60">
+            {saving ? "Сохраняем..." : "Сохранить профиль организации"}
           </button>
           {message ? <p className="text-sm font-semibold text-slate-600">{message}</p> : null}
         </div>
