@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SpecialistListCard } from "@/components/SpecialistListCard";
@@ -8,9 +10,21 @@ import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/s
 
 export const dynamic = "force-dynamic";
 
+export async function generateMetadata({ params }: { params: Promise<{ professionSlug: string }> }): Promise<Metadata> {
+  const { professionSlug } = await params;
+  const profession = professions.find((item) => item.active && item.slug === professionSlug);
+
+  return {
+    title: profession ? `Специалисты: ${profession.name}` : "Профессия",
+    alternates: { canonical: `/rabota/specialisty/${professionSlug}` },
+  };
+}
+
 export default async function Page({ params }: { params: Promise<{ professionSlug: string }> }) {
   const { professionSlug } = await params;
-  const profession = professions.find((item) => item.slug === professionSlug);
+  const profession = professions.find((item) => item.active && item.slug === professionSlug);
+
+  if (!profession) notFound();
   const storedSpecialists = await listStoredSpecialistProfiles(100);
   const specialists = listSpecialistsWithStored(storedSpecialists, shouldShowFallbackContent() ? listSpecialists() : []).filter((specialist) => specialist.status === "published" && (profession ? specialist.profession === profession.name : true));
 

@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { SiteHeader } from "@/components/SiteHeader";
 import { WorkRequestEditClient } from "@/components/WorkRequestEditClient";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { workRequests } from "@/lib/data";
+
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 type PageProps = {
   params: Promise<{ slug: string }>;
