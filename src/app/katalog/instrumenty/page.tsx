@@ -85,7 +85,7 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
           background-position: center center !important;
         }
 
-        [data-category-theme="instrumenty"] > div:last-child {
+        [data-category-theme="instrumenty"] > [data-hero-copy] {
           position: static;
           display: block !important;
           width: 100%;
@@ -93,7 +93,7 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
           text-shadow: none;
         }
 
-        [data-category-theme="instrumenty"] > div:last-child > div:first-child {
+        [data-category-theme="instrumenty"] > [data-hero-copy] > div:first-child {
           display: inline-block;
           max-width: 17.5rem;
           padding: 0;
@@ -103,8 +103,8 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
           box-shadow: none;
         }
 
-        [data-category-theme="instrumenty"] > div:last-child h1,
-        [data-category-theme="instrumenty"] > div:last-child p {
+        [data-category-theme="instrumenty"] > [data-hero-copy] h1,
+        [data-category-theme="instrumenty"] > [data-hero-copy] p {
           position: relative;
           z-index: 10;
           max-width: none !important;
@@ -112,11 +112,11 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
           text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.95);
         }
 
-        [data-category-theme="instrumenty"] > div:last-child h1 {
+        [data-category-theme="instrumenty"] > [data-hero-copy] h1 {
           white-space: nowrap;
         }
 
-        [data-category-theme="instrumenty"] > div:last-child p {
+        [data-category-theme="instrumenty"] > [data-hero-copy] p {
           margin-top: 0.35rem;
         }
 
@@ -167,7 +167,7 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
             aspect-ratio: 8 / 3;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child > div:first-child {
+          [data-category-theme="instrumenty"] > [data-hero-copy] > div:first-child {
             max-width: 17rem;
           }
 
@@ -185,7 +185,7 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
         }
 
         @media (min-width: 1024px) {
-          [data-category-theme="instrumenty"] > div:last-child > div:first-child {
+          [data-category-theme="instrumenty"] > [data-hero-copy] > div:first-child {
             max-width: 19rem;
           }
 
