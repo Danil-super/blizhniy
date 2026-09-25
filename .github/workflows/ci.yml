@@ -48,7 +48,7 @@ jobs:
         env:
           BASE_URL: http://127.0.0.1:3100
         run: |
-          npm run start -- -p 3100 > /tmp/blizhniy-ci-next.log 2>&1 &
+          npm run dev -- -p 3100 > /tmp/blizhniy-ci-next.log 2>&1 &
           app_pid=$!
           trap 'kill "$app_pid" || true' EXIT
 
