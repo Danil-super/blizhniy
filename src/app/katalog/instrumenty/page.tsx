@@ -120,7 +120,7 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
           margin-top: 0.35rem;
         }
 
-        [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
+        [data-category-theme="instrumenty"] [data-hero-actions] {
           position: absolute;
           left: 1rem;
           right: 1rem;
@@ -134,7 +134,7 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
           text-shadow: none;
         }
 
-        [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
+        [data-category-theme="instrumenty"] [data-hero-actions] > a {
           flex: 0 0 auto;
           min-height: 40px;
           height: 40px;
@@ -146,16 +146,16 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
 
 
         @media (max-width: 374px) {
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
-            left: 0.75rem;
-            right: 0.75rem;
-            bottom: 0.75rem;
+          [data-category-theme="instrumenty"] [data-hero-actions] {
+            left: 0.75rem !important;
+            right: 0.75rem !important;
+            bottom: 0.75rem !important;
             flex-flow: column nowrap;
             align-items: stretch;
             gap: 0.4rem;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
+          [data-category-theme="instrumenty"] [data-hero-actions] > a {
             width: 100%;
             justify-content: center;
           }
@@ -171,13 +171,13 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
             max-width: 17rem;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
+          [data-category-theme="instrumenty"] [data-hero-actions] {
             left: 1.25rem;
             right: auto;
             bottom: 1.25rem;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child > a {
+          [data-category-theme="instrumenty"] [data-hero-actions] > a {
             padding-left: 1rem;
             padding-right: 1rem;
             font-size: 0.875rem;
@@ -189,7 +189,7 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
             max-width: 19rem;
           }
 
-          [data-category-theme="instrumenty"] > div:last-child > div > div:last-child {
+          [data-category-theme="instrumenty"] [data-hero-actions] {
             left: 1.75rem;
             bottom: 1.5rem;
           }
