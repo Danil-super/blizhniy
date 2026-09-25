@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import {
   createStoredBookingRequest,
+  isStoredListingBookable,
+  listBookingAvailabilityForListing,
   listActiveBookingRequestsForListingViewer,
   updateStoredBookingRequestStatus,
 } from "@/lib/booking-store";
@@ -27,30 +29,33 @@ function cleanDate(value: unknown) {
 }
 
 function cleanGuests(value: unknown) {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
 export async function GET(request: Request, context: RouteContext) {
   const { listingId } = await context.params;
 
   if (!isUuid(listingId)) {
-    return NextResponse.json({ requests: [] }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ availability: [], requests: [] }, { headers: { "Cache-Control": "no-store" } });
   }
 
   if (!isSupabaseServerConfigured() || !isSupabaseServiceRoleConfigured()) {
-    return NextResponse.json({ requests: [] }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ availability: [], requests: [] }, { headers: { "Cache-Control": "no-store" } });
+  }
+
+  // Publish anonymous inventory only for a currently live, paid listing.
+  const activeListing = await isStoredListingBookable(listingId);
+  if (!activeListing) {
+    return NextResponse.json({ availability: [], requests: [] }, { headers: { "Cache-Control": "no-store" } });
   }
 
   const auth = await getAuthenticatedRequestUser(request);
+  const [availability, requests] = await Promise.all([
+    listBookingAvailabilityForListing(listingId),
+    auth ? listActiveBookingRequestsForListingViewer(listingId, auth.user.id) : Promise.resolve([]),
+  ]);
 
-  if (!auth) {
-    return NextResponse.json({ requests: [] }, { status: 401, headers: { "Cache-Control": "no-store" } });
-  }
-
-  const requests = await listActiveBookingRequestsForListingViewer(listingId, auth.user.id);
-
-  return NextResponse.json({ requests }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ availability, requests }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: Request, context: RouteContext) {
@@ -76,10 +81,16 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
+  const guests = cleanGuests(body.guests);
+
+  if (!guests) {
+    return NextResponse.json({ error: "Укажите целое положительное количество гостей" }, { status: 400 });
+  }
+
   try {
     const booking = await createStoredBookingRequest({
       endDate: cleanDate(body.endDate),
-      guests: cleanGuests(body.guests),
+      guests,
       listingId,
       startDate: cleanDate(body.startDate),
       userId: auth.user.id,
@@ -111,6 +122,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   try {
     const booking = await updateStoredBookingRequestStatus({
+      listingId,
       requestId: body.requestId,
       status: body.status,
       userId: auth.user.id,

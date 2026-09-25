@@ -10,6 +10,15 @@ import {
   bookingRequestsStorageKey,
 } from "@/lib/booking-notifications";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
+import {
+  addBookingDays,
+  bookingNightsCount,
+  bookingTodayKey,
+  MAX_BOOKING_LEAD_DAYS,
+  MAX_BOOKING_NIGHTS,
+  remainingTourSeats,
+} from "@/lib/booking-availability";
+import type { BookingAvailability } from "@/lib/booking-availability";
 import { siteNotificationsEventName } from "@/lib/site-notifications";
 import type { BookingDetails } from "@/lib/types";
 
@@ -54,7 +63,7 @@ function dateKey(date: Date) {
 }
 
 function todayKey() {
-  return dateKey(new Date());
+  return bookingTodayKey();
 }
 
 function maxDateKey(...values: Array<string | undefined>) {
@@ -116,10 +125,12 @@ function resolveStayStartLimit(booking: BookingDetails) {
 }
 
 function resolveStayEndLimit(booking: BookingDetails) {
-  return booking.availableTo ? addDaysKey(booking.availableTo, 1) : undefined;
+  const yearEnd = addBookingDays(todayKey(), MAX_BOOKING_LEAD_DAYS + 1)!;
+  const listingEnd = booking.availableTo ? addDaysKey(booking.availableTo, 1) : undefined;
+  return listingEnd && listingEnd < yearEnd ? listingEnd : yearEnd;
 }
 
-function dateIsBookedByRequest(date: Date, requests: BookingRequest[], listingId: string) {
+function dateIsBookedByRequest(date: Date, requests: BookingAvailability[], listingId: string) {
   const key = dateKey(date);
 
   return requests.some((request) => {
@@ -135,7 +146,7 @@ function dateIsBookedByRequest(date: Date, requests: BookingRequest[], listingId
   });
 }
 
-function rangeHasUnavailableDates(startDate: string, endDate: string, booking: BookingDetails, requests: BookingRequest[], listingId: string) {
+function rangeHasUnavailableDates(startDate: string, endDate: string, booking: BookingDetails, requests: BookingAvailability[], listingId: string) {
   const blockedDates = new Set(booking.blockedDates ?? []);
 
   return nightsBetween(startDate, endDate).some((date) => blockedDates.has(dateKey(date)) || dateIsBookedByRequest(date, requests, listingId));
@@ -161,7 +172,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-function resolveFirstAvailableStayStart(booking: BookingDetails, requests: BookingRequest[], listingId: string) {
+function resolveFirstAvailableStayStart(booking: BookingDetails, requests: BookingAvailability[], listingId: string) {
   const blockedDates = new Set(booking.blockedDates ?? []);
   const startLimit = resolveStayStartLimit(booking);
   const endLimit = booking.availableTo;
@@ -171,11 +182,11 @@ function resolveFirstAvailableStayStart(booking: BookingDetails, requests: Booki
     return todayKey();
   }
 
-  for (let offset = 0; offset < 370; offset += 1) {
+  for (let offset = 0; offset <= MAX_BOOKING_LEAD_DAYS; offset += 1) {
     const candidate = addDays(startDate, offset);
     const key = dateKey(candidate);
 
-    if (endLimit && key > endLimit) {
+    if ((endLimit && key > endLimit) || key > addBookingDays(todayKey(), MAX_BOOKING_LEAD_DAYS)!) {
       return "";
     }
 
@@ -208,7 +219,7 @@ function BookingCalendar({
   endDate: string;
   listingId: string;
   onDateClick: (date: string) => void;
-  requests: BookingRequest[];
+  requests: BookingAvailability[];
   selectedDates: Set<string>;
   startDate: string;
 }) {
@@ -260,7 +271,9 @@ function BookingCalendar({
           const selected = selectedDates.has(key);
           const edge = key === startDate || key === endDate;
           const afterEndLimit = Boolean(availableTo && date > availableTo);
-          const startAfterLastNight = Boolean(!selectingEndDate && booking.availableTo && key > booking.availableTo);
+          const lastBookableDay = addBookingDays(todayKey(), MAX_BOOKING_LEAD_DAYS)!;
+          const lastNight = booking.availableTo && booking.availableTo < lastBookableDay ? booking.availableTo : lastBookableDay;
+          const startAfterLastNight = Boolean(!selectingEndDate && key > lastNight);
           const outOfRange = Boolean((availableFrom && date < availableFrom) || afterEndLimit || startAfterLastNight);
           const disabled = blocked || outOfRange;
 
@@ -307,7 +320,7 @@ export function BookingCalculator({
   listingTitle = "Объявление",
 }: {
   booking?: BookingDetails;
-  initialRequests?: BookingRequest[];
+  initialRequests?: BookingAvailability[];
   listingId?: string;
   listingTitle?: string;
 }) {
@@ -318,7 +331,7 @@ export function BookingCalculator({
   const [guests, setGuests] = useState(1);
   const [bookingMessage, setBookingMessage] = useState("");
   const [bookingError, setBookingError] = useState("");
-  const [requests, setRequests] = useState<BookingRequest[]>(initialRequests);
+  const [requests, setRequests] = useState<BookingAvailability[]>(initialRequests);
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
 
   useEffect(() => {
@@ -328,9 +341,11 @@ export function BookingCalculator({
           cache: "no-store",
           headers: await getAuthHeaders(),
         }).catch(() => null);
-        const payload = response?.ok ? ((await response.json().catch(() => null)) as { requests?: BookingRequest[] } | null) : null;
+        const payload = response?.ok ? ((await response.json().catch(() => null)) as { availability?: BookingAvailability[] } | null) : null;
 
-        setRequests(payload?.requests ?? []);
+        if (payload?.availability) {
+          setRequests(payload.availability);
+        }
         return;
       }
 
@@ -390,7 +405,7 @@ export function BookingCalculator({
         (request.status === "pending" || request.status === "accepted"),
     );
 
-    if (duplicateRequest) {
+    if (!serverBacked && duplicateRequest) {
       setBookingError("На эти даты уже есть активная заявка.");
       return false;
     }
@@ -480,6 +495,11 @@ export function BookingCalculator({
       return;
     }
 
+    if ((bookingNightsCount(startDate, nextDate) ?? 0) > MAX_BOOKING_NIGHTS) {
+      setBookingError(`Максимальный срок бронирования: ${MAX_BOOKING_NIGHTS} ночей.`);
+      return;
+    }
+
     setEndDate(nextDate);
   }
 
@@ -507,6 +527,10 @@ export function BookingCalculator({
 
     if (booking.minNights && nights.length > 0 && nights.length < booking.minNights) {
       errors.push(`Минимальный срок бронирования: ${booking.minNights} ноч.`);
+    }
+
+    if (nights.length > MAX_BOOKING_NIGHTS) {
+      errors.push(`Максимальный срок бронирования: ${MAX_BOOKING_NIGHTS} ночей.`);
     }
 
     if (booking.maxGuests && guests > booking.maxGuests) {
@@ -552,7 +576,9 @@ export function BookingCalculator({
     const tooManyGuests = booking.maxGuests && guests > booking.maxGuests;
     const tourDate = booking.tourDate ?? "";
     const tourInPast = Boolean(tourDate && tourDate < todayKey());
-    const tourAlreadyRequested = requests.some((request) => request.listingId === listingId && request.startDate === tourDate && (request.status === "pending" || request.status === "accepted"));
+    const freeSeats = remainingTourSeats(booking.maxGuests ?? 0, tourDate, requests, listingId);
+    const tourFullyBooked = guests > freeSeats;
+    const tourTooFar = Boolean(tourDate && tourDate > addBookingDays(todayKey(), MAX_BOOKING_LEAD_DAYS)!);
 
     return (
       <section id="booking-calculator" className="min-w-0 rounded-xl border border-blue-200 bg-blue-50/60 p-3 shadow-card sm:p-5">
@@ -583,12 +609,13 @@ export function BookingCalculator({
           <input value={guests} onChange={(event) => setGuests(Math.max(1, Number(event.target.value) || 1))} type="number" min="1" max={booking.maxGuests} className="mt-2 h-12 w-full min-w-0 rounded-lg border border-slate-300 px-4 outline-none focus:border-[#0875d1]" />
         </label>
         <p className="mt-4 text-2xl font-bold text-[#060b27]">{price ? formatCurrency(total) : "Стоимость уточняется"}</p>
-        {tooManyGuests ? <p className="mt-2 text-sm font-bold text-rose-600">Свободных мест: {booking.maxGuests}</p> : null}
+        <p className="mt-2 text-sm font-semibold text-slate-700">Свободных мест: {freeSeats}. Заявка ожидает подтверждения владельца.</p>
+        {tooManyGuests || tourFullyBooked ? <p className="mt-2 text-sm font-bold text-rose-600">На выбранное количество участников мест недостаточно.</p> : null}
         {tourInPast ? <p className="mt-2 text-sm font-bold text-rose-600">Дата похода уже прошла.</p> : null}
-        {tourAlreadyRequested ? <p className="mt-2 text-sm font-bold text-amber-700">На этот поход уже есть активная заявка.</p> : null}
+        {tourTooFar ? <p className="mt-2 text-sm font-bold text-amber-700">Бронирование доступно на год вперед.</p> : null}
         <button
           type="button"
-          disabled={Boolean(tooManyGuests || tourInPast || tourAlreadyRequested || !tourDate || bookingSubmitting)}
+          disabled={Boolean(tooManyGuests || tourFullyBooked || tourInPast || tourTooFar || !tourDate || bookingSubmitting)}
           onClick={async () => {
             if (await createBookingRequest({ guests, total, startDate: booking.tourDate })) {
               setBookingMessage("Заявка отправлена владельцу. Ответ появится в уведомлениях.");
