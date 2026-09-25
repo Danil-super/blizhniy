@@ -27,7 +27,9 @@ export async function POST(request: Request) {
     typeof payload.event !== "string" ||
     !("object" in payload) ||
     !payload.object ||
-    typeof payload.object !== "object"
+    typeof payload.object !== "object" ||
+    !("id" in payload.object) ||
+    typeof payload.object.id !== "string"
   ) {
     return NextResponse.json({ ok: false, error: "Invalid YooKassa notification payload" }, { status: 400 });
   }
@@ -35,7 +37,7 @@ export async function POST(request: Request) {
   try {
     // The sender's JSON is untrusted. The provider payment ID and current status
     // are checked against YooKassa's API before any payment is applied.
-    const result = await processYooKassaNotification(payload);
+    const result = await processYooKassaNotification(payload as Parameters<typeof processYooKassaNotification>[0]);
 
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
