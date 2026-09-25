@@ -29,6 +29,7 @@ import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { formatBookingPrice, validateBookingDetailsForPublication } from "@/lib/booking-details";
 import { categories as fallbackCategories, cities } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
+import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { createListing, getListingStatusOverride, listListings } from "@/lib/mock-store";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { isRentalSubcategorySlug } from "@/lib/listing-rental";
@@ -1621,7 +1622,8 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
   const hasMapPoint = hasListingMapPoint(listing);
   const viewId = listing.viewId ?? listing.slug;
   const sellerStats = listingSellerStats(listing);
-  const contactCount = [listing.phone, listing.email, listing.messengerUrl].filter(Boolean).length;
+  const messengerHref = normalizeMessengerHref(listing.messengerUrl);
+  const contactCount = [listing.phone, listing.email, messengerHref].filter(Boolean).length;
   const actionCount = contactCount + 1;
   const actionGridClass = actionCount >= 4 ? "grid-cols-2 sm:grid-cols-[repeat(4,minmax(104px,1fr))]" : actionCount === 3 ? "grid-cols-2" : actionCount === 2 ? "grid-cols-2" : "grid-cols-1";
   const galleryMedia: ListingGalleryMedia[] = (listing.images ?? []).map((src) => ({ kind: "image", src }));
@@ -1715,9 +1717,9 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
                       <span className="whitespace-nowrap">Email</span>
                     </a>
                   ) : null}
-                  {listing.messengerUrl ? (
+                  {messengerHref ? (
                     <a
-                      href={listing.messengerUrl}
+                      href={messengerHref}
                       className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] bg-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:text-sm"
                     >
                       <MessageCircle className="h-4 w-4 shrink-0" />
@@ -1916,7 +1918,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
     const hasMapPoint = String(formData.get("locationMode") ?? "") === "exact" && String(formData.get("mapPointSelected") ?? "") === "1";
     const city = inferCityFromFormData(formData);
     const phone = String(formData.get("phone") ?? "").trim();
-    const messengerUrl = String(formData.get("messengerUrl") ?? "").trim();
+    const messengerUrl = normalizeMessengerHref(String(formData.get("messengerUrl") ?? ""));
 
     if (!phone && !messengerUrl) {
       redirect(`/razmestit/obyavlenie?admin=1&error=${encodeURIComponent("Укажите хотя бы один контакт объявления: телефон или Telegram/WhatsApp.")}`);
