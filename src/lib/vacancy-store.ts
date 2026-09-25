@@ -588,12 +588,11 @@ export async function restoreStoredVacancyForUser(vacancyId: string, userId: str
 
   const now = new Date().toISOString();
   const rows = await supabaseRest<Array<Pick<VacancyRow, "id">>>(
-    `/rest/v1/vacancies?select=id&id=eq.${encodeURIComponent(vacancyId)}&author_id=eq.${encodeURIComponent(userId)}&is_paid=eq.true&status=in.(archived,expired)`,
+    `/rest/v1/vacancies?select=id&id=eq.${encodeURIComponent(vacancyId)}&author_id=eq.${encodeURIComponent(userId)}&is_paid=eq.true&expires_at=gt.${encodeURIComponent(now)}&status=eq.archived`,
     {
       method: "PATCH",
       prefer: "return=representation",
       body: {
-        expires_at: addDaysIsoDate(now, 30),
         published_at: now,
         status: "published",
       },
