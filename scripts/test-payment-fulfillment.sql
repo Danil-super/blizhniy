@@ -99,6 +99,7 @@ declare
   application_count integer;
   status_text text;
   was_new boolean;
+  duplicate_payment_id uuid := gen_random_uuid();
 begin
   select next_status, newly_applied into status_text, was_new
   from public.apply_confirmed_payment(current_setting('app.test_payment_id')::uuid, 'synthetic_provider_payment');
@@ -129,7 +130,7 @@ begin
   -- Another payment cannot reserve the same still-open target.
   insert into public.payments
     (id,user_id,tariff_id,target_type,target_id,provider,provider_payment_id,amount,status)
-  select gen_random_uuid(), user_id, tariff_id, target_type, target_id,
+  select duplicate_payment_id, user_id, tariff_id, target_type, target_id,
          'yookassa', 'synthetic_second_provider', amount, 'created'
   from public.payments where id = current_setting('app.test_payment_id')::uuid;
   begin
@@ -149,6 +150,21 @@ begin
     and status in ('created', 'pending');
   if application_count <> 1 then
     raise exception 'Target has more than one open provider reservation';
+  end if;
+
+  -- A distinct newly paid transaction cannot silently consume a publication
+  -- that was already delivered by the first transaction.
+  begin
+    perform * from public.apply_confirmed_payment(duplicate_payment_id,'synthetic_second_provider');
+    raise exception 'Expected already-delivered target to reject a new payment';
+  exception when others then
+    if sqlerrm <> 'Listing is not awaiting this payment; reconcile before a new charge' then
+      raise;
+    end if;
+  end;
+  if not exists (select 1 from public.payments where id=duplicate_payment_id and applied_at is null)
+    or not exists (select 1 from public.listings where id=current_setting('app.test_listing_id')::uuid and expires_at=first_expiry) then
+    raise exception 'Second payment consumed an already delivered entitlement';
   end if;
 end
 $assert_success$;

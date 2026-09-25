@@ -176,12 +176,8 @@ declare
   v_duration integer;
   v_owner uuid;
   v_status public.publication_status;
-  v_paid boolean;
-  v_expiry timestamptz;
   v_application_status text;
-  v_fair_payment_status public.payment_status;
   v_marquee_status text;
-  v_marquee_payment_id uuid;
   v_specialist_payment_id uuid;
   v_now timestamptz := clock_timestamp();
   v_next_status text := 'published';
@@ -249,7 +245,7 @@ begin
   end if;
 
   if v_payment.target_type = 'listing' then
-    select author_id, status, is_paid into v_owner, v_status, v_paid
+    select author_id, status into v_owner, v_status
     from public.listings where id = v_payment.target_id for update;
     if not found or v_owner <> v_payment.user_id then
       raise exception 'Listing payment owner mismatch or target missing';
@@ -261,12 +257,12 @@ begin
           published_at = v_now,
           expires_at = v_now + make_interval(days => v_duration)
       where id = v_payment.target_id;
-    elsif not coalesce(v_paid, false) then
-      raise exception 'Listing cannot be marked as already fulfilled';
+    else
+      raise exception 'Listing is not awaiting this payment; reconcile before a new charge';
     end if;
 
   elsif v_payment.target_type = 'vacancy' then
-    select author_id, status, is_paid into v_owner, v_status, v_paid
+    select author_id, status into v_owner, v_status
     from public.vacancies where id = v_payment.target_id for update;
     if not found or v_owner <> v_payment.user_id then
       raise exception 'Vacancy payment owner mismatch or target missing';
@@ -278,12 +274,12 @@ begin
           published_at = v_now,
           expires_at = v_now + make_interval(days => v_duration)
       where id = v_payment.target_id;
-    elsif not coalesce(v_paid, false) then
-      raise exception 'Vacancy cannot be marked as already fulfilled';
+    else
+      raise exception 'Vacancy is not awaiting this payment; reconcile before a new charge';
     end if;
 
   elsif v_payment.target_type = 'workRequest' then
-    select author_id, status, is_paid into v_owner, v_status, v_paid
+    select author_id, status into v_owner, v_status
     from public.work_requests where id = v_payment.target_id for update;
     if not found or v_owner <> v_payment.user_id then
       raise exception 'Work request payment owner mismatch or target missing';
@@ -294,34 +290,31 @@ begin
       set status = 'published', is_paid = true, published_at = v_now,
           expires_at = v_now + make_interval(days => v_duration)
       where id = v_payment.target_id;
-    elsif v_status not in ('published', 'archived', 'expired')
-      or not coalesce(v_paid, false) then
-      raise exception 'Work request cannot be marked as already fulfilled';
+    else
+      raise exception 'Work request is not awaiting this payment; reconcile before a new charge';
     end if;
 
   elsif v_payment.target_type = 'specialist' then
-    select user_id, status, is_paid, expires_at, publication_payment_id
-    into v_owner, v_status, v_paid, v_expiry, v_specialist_payment_id
+    select user_id, status, publication_payment_id
+    into v_owner, v_status, v_specialist_payment_id
     from public.specialist_profiles where id = v_payment.target_id for update;
     if not found or v_owner <> v_payment.user_id then
       raise exception 'Specialist payment owner mismatch or target missing';
     end if;
-    if v_specialist_payment_id is distinct from v_payment.id then
-      if v_status not in ('draft', 'pending_payment') then
-        raise exception 'Specialist profile must be awaiting payment';
-      end if;
-      if v_duration is null then raise exception 'Specialist duration is missing'; end if;
-      update public.specialist_profiles
-      set status = 'published', is_paid = true,
-          publication_payment_id = v_payment.id,
-          expires_at = v_now + make_interval(days => v_duration),
-          updated_at = v_now
-      where id = v_payment.target_id;
+    if v_status not in ('draft', 'pending_payment') or v_specialist_payment_id = v_payment.id then
+      raise exception 'Specialist profile is not awaiting this payment';
     end if;
+    if v_duration is null then raise exception 'Specialist duration is missing'; end if;
+    update public.specialist_profiles
+    set status = 'published', is_paid = true,
+        publication_payment_id = v_payment.id,
+        expires_at = v_now + make_interval(days => v_duration),
+        updated_at = v_now
+    where id = v_payment.target_id;
 
   elsif v_payment.target_type = 'application' then
     v_next_status := 'sent';
-    select applicant_user_id, status, is_paid into v_owner, v_application_status, v_paid
+    select applicant_user_id, status into v_owner, v_application_status
     from public.applications where id = v_payment.target_id for update;
     if not found or v_owner <> v_payment.user_id then
       raise exception 'Application payment owner mismatch or target missing';
@@ -330,12 +323,12 @@ begin
       update public.applications
       set status = 'sent', is_paid = true, sent_at = v_now, updated_at = v_now
       where id = v_payment.target_id;
-    elsif not (v_application_status in ('sent', 'viewed', 'selected', 'rejected') and coalesce(v_paid, false)) then
-      raise exception 'Application cannot be marked as already fulfilled';
+    else
+      raise exception 'Application is not awaiting this payment';
     end if;
 
   elsif v_payment.target_type = 'fair_application' then
-    select user_id, status, payment_status into v_owner, v_status, v_fair_payment_status
+    select user_id, status into v_owner, v_status
     from public.fair_applications where id = v_payment.target_id for update;
     if not found or v_owner <> v_payment.user_id then
       raise exception 'Fair application payment owner mismatch or target missing';
@@ -345,14 +338,13 @@ begin
       set status = 'published', payment_status = 'succeeded',
           published_at = v_now
       where id = v_payment.target_id;
-    elsif v_fair_payment_status <> 'succeeded' then
-      raise exception 'Fair application cannot be marked as already fulfilled';
+    else
+      raise exception 'Fair application is not awaiting this payment';
     end if;
 
   elsif v_payment.target_type = 'ad_marquee' then
     v_next_status := 'paid';
-    select user_id, status, payment_id
-    into v_owner, v_marquee_status, v_marquee_payment_id
+    select user_id, status into v_owner, v_marquee_status
     from public.ad_marquee_placements where id = v_payment.target_id for update;
     if not found or v_owner <> v_payment.user_id then
       raise exception 'Marquee payment owner mismatch or target missing';
@@ -362,9 +354,8 @@ begin
       set status = 'paid', payment_status = 'succeeded',
           payment_id = v_payment.id, paid_at = v_now, updated_at = v_now
       where id = v_payment.target_id;
-    elsif v_marquee_payment_id is distinct from v_payment.id
-      or v_marquee_status not in ('paid', 'active', 'archived', 'expired') then
-      raise exception 'Marquee target cannot be marked as already fulfilled';
+    else
+      raise exception 'Marquee target is not awaiting this payment';
     end if;
   else
     raise exception 'Unsupported payment target';
