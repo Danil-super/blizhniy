@@ -348,9 +348,9 @@ export function AuthForm({
                   display_name: fullName.trim().replace(/\s+/g, " "),
                   registration_legal: {
                     purpose: "account_registration",
-                    agreement_accepted: true,
+                    agreement_acceptance_asserted: true,
                     agreement_version: REGISTRATION_LEGAL_VERSIONS.agreement,
-                    privacy_acknowledged: true,
+                    privacy_review_asserted: true,
                     privacy_version: REGISTRATION_LEGAL_VERSIONS.privacy,
                   },
                 },
