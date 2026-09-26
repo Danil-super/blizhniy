@@ -24,6 +24,7 @@ fi
 
 RELEASE_DIR="${RELEASES_DIR}/${TIMESTAMP}-${SHORT_SHA}"
 PREVIOUS_RELEASE=""
+SERVICE_REPLACED=false
 
 log() {
   printf '[deploy] %s\n' "$*"
@@ -65,6 +66,11 @@ healthcheck() {
 }
 
 rollback() {
+  if [[ "$SERVICE_REPLACED" != true ]]; then
+    log "service was not switched; keeping current release"
+    return 0
+  fi
+
   if [[ -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" && -f "${PREVIOUS_RELEASE}/ecosystem.config.cjs" ]]; then
     log "healthcheck failed; rolling back to ${PREVIOUS_RELEASE}"
     ln -sfn "$PREVIOUS_RELEASE" "${APP_DIR}.next"
@@ -78,7 +84,13 @@ rollback() {
   fi
 }
 
-trap 'log "deploy failed"; rollback' ERR
+on_deploy_error() {
+  trap - ERR
+  log "deploy failed"
+  rollback || log "automatic rollback also failed; intervention required"
+}
+
+trap on_deploy_error ERR
 
 mkdir -p "$RELEASES_DIR"
 PREVIOUS_RELEASE="$(current_release || true)"
@@ -118,6 +130,7 @@ npm --prefix "$RELEASE_DIR" run build
 
 log "starting ${APP_NAME} from ${RELEASE_DIR}"
 mkdir -p "${RELEASE_DIR}/.pm2"
+SERVICE_REPLACED=true
 pm2 delete "$APP_NAME" || true
 pm2 start "${RELEASE_DIR}/ecosystem.config.cjs" --update-env </dev/null
 
@@ -125,6 +138,10 @@ log "checking ${HEALTH_URL}"
 healthcheck
 
 log "promoting release"
+# The CI job can run browser checks only after the public endpoint switches.
+# Keep the exact previous release so a failed post-deploy check can reverse it.
+printf '%s\n' "$PREVIOUS_RELEASE" > "${RELEASE_DIR}/.previous-release"
+chmod 600 "${RELEASE_DIR}/.previous-release"
 ln -sfn "$RELEASE_DIR" "${APP_DIR}.next"
 mv -Tf "${APP_DIR}.next" "$APP_DIR"
 pm2 save </dev/null
