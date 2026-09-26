@@ -30,6 +30,16 @@ else
 fi
 printf '%s\n' "$deploy_status" > "$REMOTE_STATUS"
 if (( deploy_status != 0 )); then
+  # A connection or wrapper error could be reported after the new symlink was
+  # promoted. Reconcile the active SHA before accepting a failed deploy.
+  if [[ -L "$APP_DIR" && "$(readlink -f "$APP_DIR")" == *-"${COMMIT_SHA:0:12}" ]]; then
+    if APP_DIR="$APP_DIR" COMMIT_SHA="$COMMIT_SHA" bash "$APP_DIR/scripts/rollback-release.sh"; then
+      printf 'rolled_back\n' > "$REMOTE_RESULT"
+      exit "$deploy_status"
+    fi
+    printf 'rollback_failed\n' > "$REMOTE_RESULT"
+    exit 1
+  fi
   printf 'deploy_failed\n' > "$REMOTE_RESULT"
   exit "$deploy_status"
 fi
