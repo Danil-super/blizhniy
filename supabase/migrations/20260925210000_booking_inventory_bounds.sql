@@ -18,9 +18,20 @@ declare
   accepted_guests integer;
   today_moscow date := (now() at time zone 'Europe/Moscow')::date;
 begin
-  -- A response is final; repeat or reverse responses require an explicit cancellation flow.
-  if tg_op = 'UPDATE' and old.status <> 'pending' and new.status <> old.status then
-    raise exception 'Booking response is already final' using errcode = '23514';
+  -- Only the response may change after submission. Otherwise a final reservation
+  -- could be moved to a different date or listing without a new request.
+  if tg_op = 'UPDATE' then
+    if old.status <> 'pending' then
+      raise exception 'Booking response is already final' using errcode = '23514';
+    end if;
+
+    if row(new.id, new.listing_id, new.guest_id, new.start_date, new.end_date,
+           new.guests, new.total, new.created_at)
+       is distinct from
+       row(old.id, old.listing_id, old.guest_id, old.start_date, old.end_date,
+           old.guests, old.total, old.created_at) then
+      raise exception 'Booking details cannot change after submission' using errcode = '23514';
+    end if;
   end if;
 
   select * into listing_row from public.listings where id = new.listing_id for update;
