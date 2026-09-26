@@ -221,6 +221,20 @@ begin
     raise exception 'Paid specialist entitlement was not saved';
   end if;
 
+  -- Changing entitlement fields without the linked applied payment must fail.
+  begin
+    update public.specialist_profiles set is_paid=false where id=profile_id;
+    raise exception 'Expected published specialist entitlement to remain paid';
+  exception when check_violation then
+    null;
+  end;
+  if not exists (
+    select 1 from public.specialist_profiles
+    where id=profile_id and is_paid=true and publication_payment_id=payment_id
+  ) then
+    raise exception 'Rejected entitlement edit changed the specialist';
+  end if;
+
   select p.next_status,p.newly_applied into next_status,was_new
   from public.apply_confirmed_payment(payment_id,'synthetic_specialist_provider') p;
   if was_new is distinct from false or not exists (
