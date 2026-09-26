@@ -241,6 +241,14 @@ function mapListing(row: ListingRow): Listing {
   };
 }
 
+// Public callers must never receive a hidden address or exact coordinates,
+// even if a future page forgets to sanitize its props before serialization.
+function publicListing(listing: Listing): Listing {
+  return listing.showExactAddress
+    ? listing
+    : { ...listing, address: undefined, lat: undefined, lng: undefined, hasMapPoint: false };
+}
+
 async function findCategoryId(categorySlug: string, subcategory?: string) {
   const exactSlugRows = await supabaseRest<CategoryIdRow[]>(
     `/rest/v1/categories?select=id,name,parent_id,slug&slug=eq.${encodeURIComponent(categorySlug)}&parent_id=is.null&limit=1`,
@@ -609,7 +617,7 @@ export async function getStoredListingById(listingId: string, options: { publicO
     const statusFilter = options.publicOnly ? `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}` : "";
     const rows = await fetchListingRows(`&id=eq.${encodeURIComponent(listingId)}${statusFilter}&limit=1`);
 
-    return rows[0] ? mapListing(rows[0]) : undefined;
+    return rows[0] ? (options.publicOnly ? publicListing(mapListing(rows[0])) : mapListing(rows[0])) : undefined;
   } catch (error) {
     console.error("Failed to load listing from Supabase", error);
     return undefined;
@@ -658,7 +666,7 @@ export async function listStoredListings(limit = 24) {
   try {
     const rows = await fetchListingRows(`&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`);
 
-    return rows.map(mapListing);
+    return rows.map(mapListing).map(publicListing);
   } catch (error) {
     console.error("Failed to load listings from Supabase", error);
     return [];
@@ -702,7 +710,7 @@ export async function listStoredListingsForCategory(
       `&category_id=in.(${categoryIds.join(",")})&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc&limit=${pageSize + 1}&offset=${(page - 1) * pageSize}`,
     );
 
-    return rows.map(mapListing);
+    return rows.map(mapListing).map(publicListing);
   } catch (error) {
     console.error("Failed to load category listings from Supabase", error);
     return [];
