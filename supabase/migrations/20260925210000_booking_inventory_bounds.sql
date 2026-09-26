@@ -111,6 +111,38 @@ create index if not exists booking_requests_active_dates_idx
   (listing_id, daterange(start_date, coalesce(end_date, start_date + 1), '[)'))
   where status in ('pending', 'accepted');
 
+-- A booking locks its listing before checking inventory. The listing UPDATE owns
+-- that same row lock, so this guard also serializes schedule/capacity edits with
+-- concurrent booking requests and responses.
+create or replace function public.prevent_booked_listing_schedule_change()
+returns trigger
+language plpgsql
+security invoker
+set search_path = pg_catalog, public
+as $$
+begin
+  if (new.booking is distinct from old.booking or new.listing_type is distinct from old.listing_type)
+     and exists (
+       select 1 from public.booking_requests request
+       where request.listing_id = old.id
+         and request.status in ('pending', 'accepted')
+     ) then
+    raise exception 'Resolve active booking requests before changing booking details'
+      using errcode = '23514';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.prevent_booked_listing_schedule_change() from public, anon, authenticated;
+grant execute on function public.prevent_booked_listing_schedule_change() to service_role;
+
+drop trigger if exists booked_listing_schedule_guard on public.listings;
+create trigger booked_listing_schedule_guard
+  before update of booking, listing_type on public.listings for each row
+  execute function public.prevent_booked_listing_schedule_change();
+
 do $$
 begin
   if exists (select 1 from pg_constraint where conrelid = 'public.booking_requests'::regclass
@@ -121,6 +153,11 @@ begin
   if not exists (select 1 from pg_trigger where tgrelid = 'public.booking_requests'::regclass
                  and tgname = 'booking_requests_inventory_guard' and not tgisinternal) then
     raise exception 'Booking inventory trigger was not installed';
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgrelid = 'public.listings'::regclass
+                 and tgname = 'booked_listing_schedule_guard' and not tgisinternal) then
+    raise exception 'Booked listing schedule guard was not installed';
   end if;
 end;
 $$;
