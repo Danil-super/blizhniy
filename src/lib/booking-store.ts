@@ -1,6 +1,7 @@
 import { createStoredNotification } from "@/lib/notification-store";
 import {
   addBookingDays,
+  bookingAvailabilityPath,
   bookingDateKey,
   bookingNightsCount,
   bookingTodayKey,
@@ -241,7 +242,7 @@ export async function listBookingAvailabilityForListing(listingId: string): Prom
     guests: number;
     status: BookingRequestStatus;
   }>>(
-    `/rest/v1/booking_requests?select=listing_id,start_date,end_date,guests,status&listing_id=eq.${encodeURIComponent(listingId)}&status=in.(pending,accepted)&start_date=gte.${bookingTodayKey()}&order=start_date.asc`,
+    bookingAvailabilityPath(listingId),
   );
 
   return rows.map((row) => ({
