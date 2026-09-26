@@ -10,6 +10,7 @@ const compiled = ts.transpileModule(source, {
 }).outputText;
 const {
   addBookingDays,
+  bookingAvailabilityPath,
   bookingNightsCount,
   bookingTodayKey,
   isStayPeriodUnavailable,
@@ -46,4 +47,11 @@ test("stay reservations overlap by occupied nights, leaving checkout free", () =
   assert.equal(isStayPeriodUnavailable("2026-10-11", "2026-10-13", requests, listingId), true);
   assert.equal(isStayPeriodUnavailable("2026-10-12", "2026-10-13", requests, listingId), false);
   assert.equal(isStayPeriodUnavailable("2026-10-13", "2026-10-14", requests, listingId), false);
+});
+
+test("public availability includes a stay that started before today and ends tomorrow", () => {
+  const path = bookingAvailabilityPath(listingId, "2026-10-11");
+  assert.match(path, /&or=\(start_date\.gte\.2026-10-11,end_date\.gt\.2026-10-11\)/);
+  assert.equal(isStayPeriodUnavailable("2026-10-11", "2026-10-12", [request("2026-10-10", "2026-10-12", 2, "accepted")], listingId), true);
+  assert.equal(isStayPeriodUnavailable("2026-10-12", "2026-10-13", [request("2026-10-10", "2026-10-12", 2, "accepted")], listingId), false);
 });
