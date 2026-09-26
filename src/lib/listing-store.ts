@@ -14,6 +14,7 @@ type ListingImageRow = {
 
 type ListingRow = {
   id: string;
+  author_id: string;
   listing_type: ListingTypeRow;
   title: string;
   description: string;
@@ -103,9 +104,9 @@ const fallbackCategoryByKind: Record<ListingKind, string> = {
 };
 
 const listingSelect =
-  "id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name)";
+  "id,author_id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name)";
 const listingSelectWithViewCount =
-  "id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,view_count,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name)";
+  "id,author_id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,view_count,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name)";
 
 async function fetchListingRows(querySuffix: string) {
   try {
@@ -214,6 +215,7 @@ function mapListing(row: ListingRow): Listing {
   return {
     id: row.id,
     slug: row.id,
+    ownerKey: row.author_id,
     kind,
     categorySlug,
     subcategory: categoryInfo.subcategory,
@@ -671,6 +673,25 @@ export async function listStoredListings(limit = 24) {
     console.error("Failed to load listings from Supabase", error);
     return [];
   }
+}
+
+export async function listStoredListingsForSeller(ownerKey: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(ownerKey)) {
+    return [];
+  }
+
+  const batchSize = 200;
+  const listings: Listing[] = [];
+
+  for (let offset = 0; ; offset += batchSize) {
+    const rows = await fetchListingRows(
+      `&author_id=eq.${encodeURIComponent(ownerKey)}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${batchSize}&offset=${offset}`,
+    );
+    listings.push(...rows.map(mapListing).map(publicListing));
+    if (rows.length < batchSize) break;
+  }
+
+  return listings;
 }
 
 export async function listStoredListingsForCategory(
