@@ -206,7 +206,9 @@ begin
     update public.specialist_profiles set status='published' where id=profile_id;
     raise exception 'Expected unpaid direct specialist activation to fail';
   exception when check_violation then
-    null;
+    if sqlerrm <> 'Published specialist requires an applied YooKassa payment' then
+      raise;
+    end if;
   end;
 
   select p.next_status,p.newly_applied into next_status,was_new
@@ -226,7 +228,9 @@ begin
     update public.specialist_profiles set is_paid=false where id=profile_id;
     raise exception 'Expected published specialist entitlement to remain paid';
   exception when check_violation then
-    null;
+    if sqlerrm <> 'Published specialist requires an applied YooKassa payment' then
+      raise;
+    end if;
   end;
   if not exists (
     select 1 from public.specialist_profiles
