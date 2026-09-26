@@ -113,7 +113,7 @@ grant execute on function public.enforce_booking_inventory() to service_role;
 
 drop trigger if exists booking_requests_inventory_guard on public.booking_requests;
 create trigger booking_requests_inventory_guard
-  before insert or update of listing_id, guest_id, start_date, end_date, guests, status
+  before insert or update
   on public.booking_requests for each row
   execute function public.enforce_booking_inventory();
 
