@@ -80,8 +80,10 @@ NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 ADMIN_EMAIL=admin@example.ru
-PAYMENT_PROVIDER=mock # исключительно локальный тест без публичных пользователей
+PAYMENT_PROVIDER=mock
 ```
+
+`PAYMENT_PROVIDER=mock` допускается только для локальной разработки с синтетическими данными.
 
 Для ЮKassa:
 
