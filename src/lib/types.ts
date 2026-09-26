@@ -63,6 +63,7 @@ export type DeliveryOptions = {
 export type Listing = {
   id: string;
   slug: string;
+  ownerKey?: string;
   kind: ListingKind;
   categorySlug: string;
   subcategory: string;
