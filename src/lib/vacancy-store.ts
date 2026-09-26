@@ -480,7 +480,7 @@ export async function getStoredVacancyById(vacancyId: string, options: { publicO
   }
 
   try {
-    const statusFilter = options.publicOnly ? "&status=eq.published" : "";
+    const statusFilter = options.publicOnly ? `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}` : "";
     const rows = await supabaseRest<VacancyRow[]>(
       `/rest/v1/vacancies?select=${vacancySelect}&id=eq.${encodeURIComponent(vacancyId)}${statusFilter}&limit=1`,
     );
@@ -504,14 +504,17 @@ export async function getStoredVacancyForUser(vacancyId: string, userId: string)
   return rows[0] ? mapVacancy(rows[0]) : undefined;
 }
 
-export async function listStoredVacancies(limit = 24) {
+export async function listStoredVacancies(limit = 24, offset = 0) {
   if (!isSupabaseRestConfigured()) {
     return [];
   }
 
+  const pageSize = Math.max(1, Math.min(1000, Math.floor(limit)));
+  const pageOffset = Math.max(0, Math.floor(offset));
+
   try {
     const rows = await supabaseRest<VacancyRow[]>(
-      `/rest/v1/vacancies?select=${vacancySelect}&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`,
+      `/rest/v1/vacancies?select=${vacancySelect}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${pageOffset}`,
     );
 
     return rows.map(mapVacancy).map(publicVacancy);

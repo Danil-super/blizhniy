@@ -7,6 +7,7 @@ import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/specialist-profile-store";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/rabota/specialisty" },
   title: "Специалисты",
   description: "Каталог исполнителей на БЛИЖНИЙ.",
 };

@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { HomeHero } from "@/components/HomeHero";
 import { HomeIntro } from "@/components/HomeIntro";
 import { SiteHeader } from "@/components/SiteHeader";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 export default async function Home() {
   return (
