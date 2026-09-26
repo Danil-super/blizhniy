@@ -28,6 +28,9 @@ jobs:
       TARGET_URL: ${{ github.event.inputs.target_url || 'https://xn----9sbphbgks4a4a.xn--p1ai' }}
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
       - name: Show scan target
         run: |
           echo "Scanning: ${TARGET_URL}"
@@ -43,8 +46,7 @@ jobs:
               -t "${TARGET_URL}" \
               -r zap-report.html \
               -J zap-report.json \
-              -w zap-report.md \
-              -I
+              -w zap-report.md
           ZAP_EXIT_CODE=$?
           echo "exit_code=${ZAP_EXIT_CODE}" >> "${GITHUB_OUTPUT}"
           set -e
@@ -74,11 +76,9 @@ jobs:
             zap-report.html
             zap-report.json
             zap-report.md
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
-      - name: Fail only on high-risk ZAP failure
-        if: ${{ steps.zap.outputs.exit_code == '2' }}
-        run: |
-          echo "OWASP ZAP found high-risk issues. Check the uploaded report."
-          exit 1
+      - name: Verify ZAP findings and reports
+        if: always()
+        run: bash scripts/check-zap-result.sh '${{ steps.zap.outputs.exit_code }}'
