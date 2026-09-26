@@ -29,6 +29,11 @@ export function bookingTodayKey(now = new Date()) {
   }).format(now);
 }
 
+// An occupied stay can start before today and still block future nights.
+export function bookingAvailabilityPath(listingId: string, today = bookingTodayKey()) {
+  return `/rest/v1/booking_requests?select=listing_id,start_date,end_date,guests,status&listing_id=eq.${encodeURIComponent(listingId)}&status=in.(pending,accepted)&or=(start_date.gte.${today},end_date.gt.${today})&order=start_date.asc`;
+}
+
 export function addBookingDays(value: string, days: number) {
   const date = parseBookingDate(value);
   return date ? bookingDateKey(new Date(date.getTime() + days * DAY_MS)) : undefined;
