@@ -35,6 +35,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Test Supabase REST timeout and write retry behavior
+        run: node --experimental-strip-types --test tests/supabase-rest.test.mjs
+
       - name: Build
         run: npm run build
 
