@@ -660,13 +660,19 @@ export async function recordStoredListingView(listingId: string, viewerKey: stri
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 }
 
-export async function listStoredListings(limit = 24) {
+export async function listStoredListings(limit = 24, options: { kind?: ListingKind; offset?: number } = {}) {
   if (!isSupabaseRestConfigured()) {
     return [];
   }
 
+  const pageSize = Math.max(1, Math.min(1000, Math.floor(limit)));
+  const offset = Math.max(0, Math.floor(options.offset ?? 0));
+  const kindFilter = options.kind ? `&listing_type=eq.${dbTypeByListingKind[options.kind]}` : "";
+
   try {
-    const rows = await fetchListingRows(`&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`);
+    const rows = await fetchListingRows(
+      `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}${kindFilter}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${offset}`,
+    );
 
     return rows.map(mapListing).map(publicListing);
   } catch (error) {

@@ -147,15 +147,18 @@ async function findCityId(cityName: string) {
   return rows[0]?.id ?? null;
 }
 
-export async function listStoredFairApplications(status?: PublicationStatus) {
+export async function listStoredFairApplications(status?: PublicationStatus, options: { limit?: number; offset?: number } = {}) {
   if (!isSupabaseRestConfigured()) {
     return shouldShowFallbackContent() ? demoFairApplications.filter((application) => !status || application.status === status).map(publicFairApplication) : [];
   }
 
   try {
     const statusFilter = status ? `&status=eq.${encodeURIComponent(status)}` : "";
+    const pageFilter = options.limit
+      ? `&limit=${Math.max(1, Math.min(1000, Math.floor(options.limit)))}&offset=${Math.max(0, Math.floor(options.offset ?? 0))}`
+      : "";
     const rows = await supabaseRest<FairApplicationRow[]>(
-      `/rest/v1/fair_applications?select=*&order=created_at.desc${statusFilter}`,
+      `/rest/v1/fair_applications?select=*&order=created_at.desc,id.desc${statusFilter}${pageFilter}`,
     );
 
     return (await mapRows(rows)).map(publicFairApplication);

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { BadgeCheck, CreditCard, MessageCircle, Search, Store, UploadCloud } from "lucide-react";
 import { BrandName } from "@/components/BrandName";
@@ -30,6 +31,8 @@ const steps = [
     text: "Мастера подают заявку, выбирают категорию, описывают товары и оплачивают участие. После подтверждения заявка отображается в разделе ярмарки.",
   },
 ];
+
+export const metadata: Metadata = { title: "Как работает БЛИЖНИЙ", alternates: { canonical: "/kak-rabotaet" } };
 
 export default function Page() {
   return (
