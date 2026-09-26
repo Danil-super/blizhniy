@@ -257,6 +257,14 @@ function mapVacancy(row: VacancyRow): JobVacancy {
   };
 }
 
+// Raw vacancy rows may contain a private location. Strip it before a public
+// page serializes the value into HTML or a React Server Components response.
+function publicVacancy(vacancy: JobVacancy): JobVacancy {
+  return vacancy.showExactAddress
+    ? vacancy
+    : { ...vacancy, address: undefined, lat: undefined, lng: undefined, hasMapPoint: false };
+}
+
 async function findCity(city: string) {
   const cityName = city.split(",")[0]?.trim() || "Краснодар";
   const rows = await supabaseRest<CityIdRow[]>(
@@ -477,7 +485,7 @@ export async function getStoredVacancyById(vacancyId: string, options: { publicO
       `/rest/v1/vacancies?select=${vacancySelect}&id=eq.${encodeURIComponent(vacancyId)}${statusFilter}&limit=1`,
     );
 
-    return rows[0] ? mapVacancy(rows[0]) : undefined;
+    return rows[0] ? (options.publicOnly ? publicVacancy(mapVacancy(rows[0])) : mapVacancy(rows[0])) : undefined;
   } catch (error) {
     console.error("Failed to load vacancy from Supabase", error);
     return undefined;
@@ -506,7 +514,7 @@ export async function listStoredVacancies(limit = 24) {
       `/rest/v1/vacancies?select=${vacancySelect}&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`,
     );
 
-    return rows.map(mapVacancy);
+    return rows.map(mapVacancy).map(publicVacancy);
   } catch (error) {
     console.error("Failed to load vacancies from Supabase", error);
     return [];
