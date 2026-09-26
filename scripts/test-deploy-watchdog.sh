@@ -69,6 +69,17 @@ wait "$worker"
 [[ $(readlink -f "$APP_DIR") == "$PREVIOUS" ]]
 echo 'failed postcheck rollback: passed'
 
+prepare failed_after_switch
+printf 'exit 17\n' >> "$REMOTE_SCRIPT"
+if bash "$SCRIPT_DIR/deploy-watchdog.sh"; then
+  echo 'expected the failed deployment to remain unsuccessful' >&2
+  exit 1
+fi
+[[ $(cat "$REMOTE_STATUS") == 17 ]]
+[[ $(cat "$REMOTE_RESULT") == rolled_back ]]
+[[ $(readlink -f "$APP_DIR") == "$PREVIOUS" ]]
+echo 'failure after switch reconciliation: passed'
+
 prepare lost_ssh
 ACK_TIMEOUT_SECONDS=1 bash "$SCRIPT_DIR/deploy-watchdog.sh" & worker=$!
 wait "$worker"
