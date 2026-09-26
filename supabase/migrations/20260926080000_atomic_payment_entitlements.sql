@@ -244,6 +244,12 @@ begin
     return;
   end if;
 
+  -- Mark the payment within the same transaction before updating the target. A
+  -- rejection by the target or its entitlement guard rolls back both writes.
+  update public.payments
+  set status = 'succeeded', paid_at = coalesce(paid_at, v_now), applied_at = v_now
+  where id = p_payment_id;
+
   if v_payment.target_type = 'listing' then
     select author_id, status into v_owner, v_status
     from public.listings where id = v_payment.target_id for update;
@@ -361,10 +367,6 @@ begin
     raise exception 'Unsupported payment target';
   end if;
 
-  update public.payments
-  set status = 'succeeded', paid_at = coalesce(paid_at, v_now), applied_at = v_now
-  where id = p_payment_id;
-
   return query select v_next_status, true;
 end;
 $function$;
@@ -373,8 +375,43 @@ $function$;
 revoke all on function public.apply_confirmed_payment(uuid, text) from public, anon, authenticated;
 grant execute on function public.apply_confirmed_payment(uuid, text) to service_role;
 
--- This temporary production guard blocked the old server-side free activation.
--- The paid-entitlement columns, RLS rules and atomic service-role RPC above are
--- now installed, so normal confirmed-payment fulfillment may publish again.
+-- Keep a permanent database guard. During deployment, old application workers
+-- may still attempt service-role activation without verified payment. A paid
+-- entitlement must point at the same owner's applied YooKassa transaction.
+create or replace function private.reject_unpaid_specialist_activation()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $guard$
+begin
+  if new.status = 'published' and (
+    new.is_paid is distinct from true
+    or new.expires_at is null
+    or new.expires_at <= clock_timestamp()
+    or new.publication_payment_id is null
+    or not exists (
+      select 1 from public.payments p
+      where p.id = new.publication_payment_id
+        and p.target_type = 'specialist'
+        and p.target_id = new.id
+        and p.user_id = new.user_id
+        and p.provider = 'yookassa'
+        and p.provider_payment_id is not null
+        and p.status = 'succeeded'
+        and p.applied_at is not null
+    )
+  ) then
+    raise exception using errcode = '23514',
+      message = 'Published specialist requires an applied YooKassa payment';
+  end if;
+  return new;
+end;
+$guard$;
+
+revoke all on function private.reject_unpaid_specialist_activation() from public, anon, authenticated;
+grant execute on function private.reject_unpaid_specialist_activation() to service_role;
 drop trigger if exists reject_unpaid_specialist_activation on public.specialist_profiles;
-drop function if exists private.reject_unpaid_specialist_activation();
+create trigger reject_unpaid_specialist_activation
+before insert or update of status, is_paid, expires_at, publication_payment_id on public.specialist_profiles
+for each row execute function private.reject_unpaid_specialist_activation();

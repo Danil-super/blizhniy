@@ -48,10 +48,11 @@ begin
 end
 $fixture$;
 
--- Simulate a DB failure after the target UPDATE but before the payment UPDATE.
+-- Simulate a target failure after payment.status and applied_at have changed.
+-- The SQL transaction must roll that earlier payment write back.
 create function public.test_fail_payment_success() returns trigger language plpgsql as $fail$
 begin
-  if new.status = 'succeeded' then
+  if new.status = 'published' then
     raise exception 'synthetic write failure';
   end if;
   return new;
@@ -59,7 +60,7 @@ end
 $fail$;
 
 create trigger test_fail_payment_success
-before update on public.payments
+before update on public.listings
 for each row execute function public.test_fail_payment_success();
 
 do $assert_rollback$
@@ -89,7 +90,7 @@ begin
 end
 $assert_rollback$;
 
-drop trigger test_fail_payment_success on public.payments;
+drop trigger test_fail_payment_success on public.listings;
 drop function public.test_fail_payment_success();
 
 do $assert_success$
@@ -199,6 +200,14 @@ begin
   insert into public.payments(id,user_id,tariff_id,target_type,target_id,provider,provider_payment_id,amount,status,duration_days)
   values(payment_id,owner_id,tariff.id,'specialist',profile_id,'yookassa','synthetic_specialist_provider',
          tariff.price,'pending',tariff.duration_days);
+
+  -- The old server's direct activation path must still fail after migration.
+  begin
+    update public.specialist_profiles set status='published' where id=profile_id;
+    raise exception 'Expected unpaid direct specialist activation to fail';
+  exception when check_violation then
+    null;
+  end;
 
   select p.next_status,p.newly_applied into next_status,was_new
   from public.apply_confirmed_payment(payment_id,'synthetic_specialist_provider') p;
