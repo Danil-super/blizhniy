@@ -1,26 +1,61 @@
 import type { MetadataRoute } from "next";
-import { demoListings, slugifySubcategory } from "@/components/listings/ListingPages";
+import { slugifySubcategory } from "@/components/listings/ListingPages";
 import { getPublicCategories } from "@/lib/category-store";
-import { listingKinds, professions, specialists, vacancies, workRequests } from "@/lib/data";
-import { shouldShowFallbackContent } from "@/lib/runtime-mode";
+import { professions } from "@/lib/data";
+import { instrumentSubcategories } from "@/lib/instrument-subcategories";
+import { posudaSubcategories } from "@/lib/posuda-subcategories";
 import { getPublicSiteUrl } from "@/lib/site-url";
+import { isSupabaseRestConfigured, supabaseRest } from "@/lib/supabase-rest";
+
+type PublishedRow = { id: string; published_at?: string | null; updated_at?: string | null };
+type PublishedTable = "listings" | "vacancies" | "work_requests" | "specialist_profiles";
+
+export const dynamic = "force-dynamic";
+
+async function publishedUrls(table: PublishedTable, pathPrefix: string, filters: string, timestampColumn: "published_at" | "updated_at"): Promise<MetadataRoute.Sitemap> {
+  if (!isSupabaseRestConfigured()) return [];
+
+  const base = getPublicSiteUrl();
+  const entries: MetadataRoute.Sitemap = [];
+  const batchSize = 500;
+
+  for (let offset = 0; ; offset += batchSize) {
+    const rows = await supabaseRest<PublishedRow[]>(
+      `/rest/v1/${table}?select=id,${timestampColumn}&status=eq.published${filters}&order=id.asc&limit=${batchSize}&offset=${offset}`,
+      { attempts: 1, timeoutMs: 5000 },
+    );
+
+    for (const row of rows) {
+      const date = row[timestampColumn];
+      const lastModified = date && Number.isFinite(Date.parse(date)) ? new Date(date) : undefined;
+      entries.push({ url: `${base}${pathPrefix}/${row.id}`, lastModified, changeFrequency: "weekly", priority: 0.7 });
+    }
+
+    if (rows.length < batchSize) break;
+  }
+
+  return entries;
+}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = getPublicSiteUrl();
   const categories = await getPublicCategories();
-  const categoryPaths = categories.flatMap((category) => [
-    `/katalog/${category.slug}`,
-    ...category.children.map((child) => `/katalog/${category.slug}/${slugifySubcategory(child)}`),
-  ]);
-  const listingKindPaths = listingKinds.map((kind) => `/obyavleniya/${kind.slug}`);
-  const fallbackContentEnabled = shouldShowFallbackContent();
-  const listingPaths = fallbackContentEnabled ? demoListings.map((listing) => `/obyavlenie/${listing.slug}`) : [];
-  const vacancyPaths = fallbackContentEnabled ? vacancies.map((vacancy) => `/vakansiya/${vacancy.id}`) : [];
-  const workRequestPaths = fallbackContentEnabled ? workRequests.map((request) => `/rabota/zakazy/${request.id}`) : [];
-  const specialistPaths = fallbackContentEnabled ? specialists.map((specialist) => `/specialist/${specialist.id}`) : [];
-  const professionPaths = professions.map((profession) => `/rabota/specialisty/${profession.slug}`);
+  const categoryPaths = categories.flatMap((category) => {
+    if (category.slug === "rabota" || category.slug === "yarmarka-masterov") return [];
 
-  return [
+    const childPaths = category.children.flatMap((child) => {
+      const slug = category.slug === "instrumenty"
+        ? instrumentSubcategories.find((item) => item.name === child)?.slug
+        : category.slug === "posuda"
+          ? posudaSubcategories.find((item) => item.name === child)?.slug
+          : slugifySubcategory(child);
+
+      return slug ? [`/katalog/${category.slug}/${slug}`] : [];
+    });
+
+    return [`/katalog/${category.slug}`, ...childPaths];
+  });
+  const staticPaths = [
     "",
     "/obyavleniya",
     "/katalog",
@@ -34,16 +69,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/legal/offer",
     "/legal/agreement",
     "/legal/privacy",
-    ...listingKindPaths,
     ...categoryPaths,
-    ...listingPaths,
-    ...vacancyPaths,
-    ...workRequestPaths,
-    ...specialistPaths,
-    ...professionPaths,
-  ].map((path) => ({
-    url: `${base}${path}`,
-    changeFrequency: "weekly",
-    priority: path === "" ? 1 : 0.7,
-  }));
+    ...professions.filter((profession) => profession.active).map((profession) => `/rabota/specialisty/${profession.slug}`),
+  ];
+  const expiresAfter = encodeURIComponent(new Date().toISOString());
+  const [listingEntries, vacancyEntries, workRequestEntries, specialistEntries] = await Promise.all([
+    publishedUrls("listings", "/obyavlenie", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`, "published_at"),
+    publishedUrls("vacancies", "/vakansiya", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`, "published_at"),
+    publishedUrls("work_requests", "/rabota/zakazy", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`, "published_at"),
+    publishedUrls("specialist_profiles", "/specialist", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`, "updated_at"),
+  ]);
+
+  return [
+    ...Array.from(new Set(staticPaths)).map((path) => ({ url: `${base}${path}`, changeFrequency: "weekly" as const, priority: path === "" ? 1 : 0.7 })),
+    ...listingEntries,
+    ...vacancyEntries,
+    ...workRequestEntries,
+    ...specialistEntries,
+  ];
 }

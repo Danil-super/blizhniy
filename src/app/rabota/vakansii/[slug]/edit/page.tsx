@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { SiteHeader } from "@/components/SiteHeader";
 import { VacancyEditClient } from "@/components/VacancyEditClient";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
@@ -5,6 +6,8 @@ import { vacancies } from "@/lib/data";
 import { getStoredVacancyById } from "@/lib/vacancy-store";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 type PageProps = {
   params: Promise<{ slug: string }>;

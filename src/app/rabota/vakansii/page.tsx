@@ -5,6 +5,7 @@ import { VacancyGridCard } from "@/components/VacancyGridCard";
 import { listStoredVacancies, listVacanciesWithStored } from "@/lib/vacancy-store";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/rabota/vakansii" },
   title: "Вакансии",
   description: "Каталог вакансий и заказчиков на БЛИЖНИЙ.",
 };

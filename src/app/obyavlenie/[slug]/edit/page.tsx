@@ -12,9 +12,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: `Редактирование: ${listing?.title ?? "объявление"}`,
     description: "Форма редактирования объявления.",
-    alternates: {
-      canonical: `/obyavlenie/${slug}/edit`,
-    },
+    robots: { index: false, follow: false },
   };
 }
 

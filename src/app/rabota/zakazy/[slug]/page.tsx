@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ClipboardList, MapPin } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
@@ -16,6 +17,17 @@ import { getStoredWorkRequestById } from "@/lib/work-request-store";
 type PageProps = {
   params: Promise<{ slug: string }>;
 };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const request = (await getStoredWorkRequestById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listWorkRequests().find((item) => item.id === slug) : undefined);
+
+  return {
+    title: request ? `${request.title} — заказ` : "Заказ",
+    description: request?.description ?? "Карточка заказа на платформе БЛИЖНИЙ.",
+    alternates: { canonical: `/rabota/zakazy/${slug}` },
+  };
+}
 
 function locationLabel(request: { address?: string; city: string; district?: string; showExactAddress?: boolean }) {
   if (request.showExactAddress && request.address) {
