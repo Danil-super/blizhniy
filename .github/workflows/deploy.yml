@@ -138,7 +138,7 @@ jobs:
             mkdir -p "$WORK_DIR"
             tar -xzf "$SOURCE_ARCHIVE" -C "$WORK_DIR"
             bash "$WORK_DIR/scripts/deploy-release.sh"
-            rm -rf "$WORK_DIR" "$SOURCE_ARCHIVE" "$0"
+            rm -rf "$WORK_DIR" "$SOURCE_ARCHIVE" "$0" || true
           EOF
 
           {
@@ -272,4 +272,3 @@ jobs:
           done
           echo "Remote result is unknown; the host confirmation lease remains the recovery path." >&2
           exit 1
-
