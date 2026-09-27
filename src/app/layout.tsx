@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { SiteFooter } from "@/components/SiteFooter";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
+import { BookingLegacyStorageCleanup } from "@/components/BookingLegacyStorageCleanup";
 import { getPublicSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
@@ -22,6 +23,7 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body className="antialiased">
+        <BookingLegacyStorageCleanup />
         <div className="app-shell">{children}</div>
         <MobileBottomNav />
         <SiteFooter />

@@ -9,6 +9,7 @@ import {
   bookingNotificationsStorageKey,
   bookingRequestsStorageKey,
 } from "@/lib/booking-notifications";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import {
   addBookingDays,
@@ -325,6 +326,7 @@ export function BookingCalculator({
   listingTitle?: string;
 }) {
   const serverBacked = isUuid(listingId);
+  const demoBooking = shouldShowClientFallbackContent();
   const initialStartDate = booking?.mode === "stay" ? resolveFirstAvailableStayStart(booking, initialRequests, listingId) : "";
   const [startDate, setStartDate] = useState(initialStartDate);
   const [endDate, setEndDate] = useState(resolveInitialStayEnd(initialStartDate, booking));
@@ -349,7 +351,7 @@ export function BookingCalculator({
         return;
       }
 
-      setRequests(readBookingRequests());
+      setRequests(demoBooking ? readBookingRequests() : []);
     }
 
     void syncRequests();
@@ -362,7 +364,7 @@ export function BookingCalculator({
       window.removeEventListener(bookingNotificationsEventName, syncRequests);
       window.removeEventListener(siteNotificationsEventName, syncRequests);
     };
-  }, [listingId, serverBacked]);
+  }, [demoBooking, listingId, serverBacked]);
 
   useEffect(() => {
     if (!booking || booking.mode !== "stay") {
@@ -393,6 +395,11 @@ export function BookingCalculator({
 
     if (payload.startDate < todayKey()) {
       setBookingError("Нельзя забронировать прошедшую дату.");
+      return false;
+    }
+
+    if (!serverBacked && !demoBooking) {
+      setBookingError("Бронирование этого объявления недоступно.");
       return false;
     }
 
@@ -566,7 +573,7 @@ export function BookingCalculator({
     return { baseTotal, nights, selectedDates: new Set(nights.map(dateKey)), extraGuestCost, extraGuests, total, errors };
   }, [booking, endDate, guests, listingId, requests, startDate]);
 
-  if (!booking) {
+  if (!booking || (!serverBacked && !demoBooking)) {
     return null;
   }
 
