@@ -1,5 +1,6 @@
 import { region, vacancies as demoVacancies } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
+import { effectivePublicationStatus } from "@/lib/publication-time";
 import { publicMediaUrl } from "@/lib/storage-upload";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
@@ -255,6 +256,10 @@ function mapVacancy(row: VacancyRow): JobVacancy {
     createdAt: row.created_at,
     publishedAt: isoDate(publishedAt),
   };
+}
+
+function mapVacancyWithEffectiveStatus(row: VacancyRow): JobVacancy {
+  return { ...mapVacancy(row), status: effectivePublicationStatus(row.status, row.expires_at) };
 }
 
 // Raw vacancy rows may contain a private location. Strip it before a public
@@ -533,7 +538,7 @@ export async function listStoredVacanciesForAdmin(limit = 200) {
     `/rest/v1/vacancies?select=${vacancySelect}&order=created_at.desc&limit=${limit}`,
   );
 
-  return rows.map(mapVacancy);
+  return rows.map(mapVacancyWithEffectiveStatus);
 }
 
 export async function listStoredVacanciesForUser(userId: string) {
@@ -546,7 +551,7 @@ export async function listStoredVacanciesForUser(userId: string) {
       `/rest/v1/vacancies?select=${vacancySelect}&author_id=eq.${encodeURIComponent(userId)}&order=created_at.desc`,
     );
 
-    return rows.map(mapVacancy);
+    return rows.map(mapVacancyWithEffectiveStatus);
   } catch (error) {
     console.error("Failed to load user vacancies from Supabase", error);
     return [];
