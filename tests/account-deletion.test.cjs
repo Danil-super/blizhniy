@@ -8,6 +8,7 @@ const userA = '11111111-1111-4111-8111-111111111111';
 const userB = '22222222-2222-4222-8222-222222222222';
 const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 let rows = [];
+let profileQueries = [];
 
 function loadTs(relativePath, stubs) {
   const filename = path.join(__dirname, '..', relativePath);
@@ -31,6 +32,7 @@ const rest = {
   isSupabaseServiceRoleConfigured() { return true; },
   async supabaseRest(url, options = {}) {
     if (url.startsWith('/rest/v1/profiles')) {
+      profileQueries.push(url);
       return [{ id: userA, email: 'a@example.test' }, { id: userB, email: 'b@example.test' }];
     }
     if (options.method === 'POST') {
@@ -164,4 +166,26 @@ test('all pending cases remain reachable beyond the first page', async () => {
   assert.equal(second.body.hasMore, true);
   assert.equal(third.body.hasMore, false);
   assert.equal(new Set([...first.body.requests, ...second.body.requests, ...third.body.requests].map((row) => row.id)).size, 105);
+});
+
+test('a detached case stays in the admin queue without looking up a deleted profile', async () => {
+  rows = [{
+    id, user_id: null, status: 'in_review', requested_at: '2026-09-27T08:00:00Z',
+    review_started_at: '2026-09-27T08:01:00Z', resolved_at: null, resolution: null,
+  }];
+  profileQueries = [];
+
+  const response = await admin.GET(request('admin'));
+  assert.equal(response.status, 200);
+  assert.equal(response.body.requests[0].user_id, null);
+  assert.equal(response.body.requests[0].email, null);
+  assert.deepEqual(profileQueries, []);
+  assert.equal((await cabinet.GET(request('A'))).body.request, null);
+
+  const resolved = await admin.PATCH(request('admin', 'PATCH', {
+    action: 'resolve', requestId: id, resolution: 'fulfilled',
+    caseReference: 'CASE-2026-0002', confirmedManualDecision: true,
+  }));
+  assert.equal(resolved.status, 200);
+  assert.equal(rows[0].status, 'resolved');
 });
