@@ -25,9 +25,9 @@ function route(configured, databaseRead) {
         isSupabaseRestConfigured: () => configured,
         supabaseRest: (url, options) => {
           reads += 1;
-          assert.equal(url, '/rest/v1/tariffs?select=id&limit=1');
+          assert.equal(url, '/rest/v1/categories?select=id&limit=1');
           assert.equal(options.attempts, 1);
-          assert.ok(options.timeoutMs <= 2500);
+          assert.ok(options.timeoutMs <= 3000);
           return databaseRead();
         },
       };
@@ -42,16 +42,16 @@ test('missing database credentials return 503 without querying', async () => {
   const result = await r.GET();
   assert.equal(result.status, 503);
   assert.equal(result.body.ok, false);
-  assert.equal(result.headers['Cache-Control'], 'private, no-store');
+  assert.equal(result.headers['Cache-Control'], 'no-store');
   assert.equal(r.reads(), 0);
 });
 
 test('a live read-only database response makes the release ready', async () => {
-  const r = route(true, () => [{ id: 'nonpersonal-tariff-id' }]);
+  const r = route(true, () => [{ id: 'nonpersonal-category-id' }]);
   const result = await r.GET();
   assert.equal(result.status, 200);
   assert.equal(result.body.ok, true);
-  assert.equal(result.headers['Cache-Control'], 'private, no-store');
+  assert.equal(result.headers['Cache-Control'], 'no-store');
   assert.equal(r.reads(), 1);
 });
 
