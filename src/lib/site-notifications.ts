@@ -5,6 +5,8 @@ import {
   resolveClientUserIdentity,
   type CabinetProfile,
 } from "@/lib/client-user-profile";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
+import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 export type SiteNotificationCategory = "booking" | "message" | "payment" | "publication" | "system" | "security";
 export type SiteNotificationTone = "info" | "success" | "warning" | "danger";
@@ -30,10 +32,43 @@ export type AddSiteNotificationInput = Omit<SiteNotification, "createdAt" | "id"
 };
 
 export const siteNotificationsEventName = "blizhniy-site-notifications-updated";
+const storagePrefix = "blizhniy-site-notifications:";
+const notificationMemory = new Map<string, SiteNotification[]>();
+let authCleanupInitialized = false;
 
 export function siteNotificationsStorageKey(ownerKey: string) {
-  return `blizhniy-site-notifications:${ownerKey || "local-user"}`;
+  return `${storagePrefix}${ownerKey || "local-user"}`;
 }
+
+function removePersistedNotifications() {
+  try {
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith(storagePrefix)) window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Storage may be disabled. In-memory notifications remain owner scoped.
+  }
+}
+
+function ensurePrivateNotificationStorage() {
+  if (shouldShowClientFallbackContent() || authCleanupInitialized) return;
+  authCleanupInitialized = true;
+  removePersistedNotifications();
+
+  try {
+    getSupabaseBrowserClient().auth.onAuthStateChange((event) => {
+      if (event === "INITIAL_SESSION") return;
+      notificationMemory.clear();
+      removePersistedNotifications();
+      window.setTimeout(() => window.dispatchEvent(new Event(siteNotificationsEventName)), 0);
+    });
+  } catch {
+    // A configured Auth client is unavailable in local builds.
+  }
+}
+
+if (typeof window !== "undefined") ensurePrivateNotificationStorage();
 
 function createNotificationId() {
   return `notice-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -50,13 +85,22 @@ function readJsonArray<T>(key: string): T[] {
 }
 
 export function readSiteNotifications(ownerKey: string) {
-  return readJsonArray<SiteNotification>(siteNotificationsStorageKey(ownerKey)).filter(
+  ensurePrivateNotificationStorage();
+  const items = shouldShowClientFallbackContent()
+    ? readJsonArray<SiteNotification>(siteNotificationsStorageKey(ownerKey))
+    : notificationMemory.get(ownerKey) ?? [];
+  return items.filter(
     (item) => item && typeof item === "object" && typeof item.id === "string",
   );
 }
 
 export function writeSiteNotifications(ownerKey: string, items: SiteNotification[]) {
-  window.localStorage.setItem(siteNotificationsStorageKey(ownerKey), JSON.stringify(items.slice(0, 120)));
+  ensurePrivateNotificationStorage();
+  if (shouldShowClientFallbackContent()) {
+    window.localStorage.setItem(siteNotificationsStorageKey(ownerKey), JSON.stringify(items.slice(0, 120)));
+  } else {
+    notificationMemory.set(ownerKey, items.slice(0, 120));
+  }
   window.dispatchEvent(new CustomEvent(siteNotificationsEventName, { detail: { ownerKey } }));
 }
 
