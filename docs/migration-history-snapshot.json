@@ -1,0 +1,485 @@
+{
+  "sourceRepository": "Danil-super/blizhniy",
+  "repositoryCommit": "f8c906e8e2455793eecccaad0c307c0f5690199e",
+  "databaseProjectRef": "jzdhpphcelljmjfwrxfi",
+  "capturedDateUTC": "2026-09-27",
+  "meaning": "Read-only inventory of actual migration history and repository files; not an executable migration sequence. Comparison is the database statements[1] MD5 versus file bytes, ignoring at most trailing LF.",
+  "migrations": [
+    {
+      "version": "20260615135834",
+      "name": "security_and_fk_indexes",
+      "file": "supabase/migrations/20260615_security_and_fk_indexes.sql",
+      "blobSha1": "c11eafee35c19beaacf4013f7e0e30adbf3a229d",
+      "appliedStatementMd5": "4b96e785e0a7462d21f9a1ec7556f15c",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615140352",
+      "name": "optimize_auth_uid_rls_policies",
+      "file": "supabase/migrations/20260615_optimize_auth_uid_rls_policies.sql",
+      "blobSha1": "f9c3182505e1a3b7de54ffd5556709ded8f8fe4b",
+      "appliedStatementMd5": "cb5b4fecbdf6a96c1204dbdec1e19b6b",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615140809",
+      "name": "merge_profiles_and_roles_rls_policies",
+      "file": "supabase/migrations/20260615_merge_profiles_and_roles_rls_policies.sql",
+      "blobSha1": "33d5d8ca419307ec11db5eedd3752359a53ff538",
+      "appliedStatementMd5": "d5723fb5631f5503ee5482c215bf06ad",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615140932",
+      "name": "merge_payments_and_notifications_rls_policies",
+      "file": "supabase/migrations/20260615_merge_payments_and_notifications_rls_policies.sql",
+      "blobSha1": "d7d6a0644910985a40dcdc0f30b63820e203f94f",
+      "appliedStatementMd5": "6e159d415abecb7b7d16cb36a5d7cbf0",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615141237",
+      "name": "merge_listing_job_rls_policies",
+      "file": "supabase/migrations/20260615_merge_listing_job_rls_policies.sql",
+      "blobSha1": "e9a6a53ad195674afe1702fdf7d0dc2d62bbb623",
+      "appliedStatementMd5": "9bb8984d3b04c3a21d2cf77193ab9140",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615141335",
+      "name": "split_listing_job_owner_rls_policies",
+      "file": "supabase/migrations/20260615_split_listing_job_owner_rls_policies.sql",
+      "blobSha1": "66a4a336ee09b65ddcd8d58d5e20af180c80bb94",
+      "appliedStatementMd5": "fc9b7c6ef8839010420d8ec1c801c7ba",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615141748",
+      "name": "security_and_fk_indexes",
+      "file": "supabase/migrations/20260615_security_and_fk_indexes.sql",
+      "blobSha1": "c11eafee35c19beaacf4013f7e0e30adbf3a229d",
+      "appliedStatementMd5": "4b96e785e0a7462d21f9a1ec7556f15c",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615141753",
+      "name": "split_profile_owner_rls_policies",
+      "file": "supabase/migrations/20260615_split_profile_owner_rls_policies.sql",
+      "blobSha1": "cdf1675139b35dbbe9ed3d1054b8d705a75da661",
+      "appliedStatementMd5": "a4a851973fe9567c6d1a73b4b00606a6",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615142050",
+      "name": "split_listing_images_rls_policies",
+      "file": "supabase/migrations/20260615_split_listing_images_rls_policies.sql",
+      "blobSha1": "850a40c3fad8ba02a6baf7e148d040329be18cc0",
+      "appliedStatementMd5": "fc209f4c6df70e8f1ff0664c6a9c0b9f",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615142507",
+      "name": "split_fair_applications_rls_policies",
+      "file": "supabase/migrations/20260615_split_fair_applications_rls_policies.sql",
+      "blobSha1": "a6d654f3a6a913895b3e35a579baa53ebdd32e5c",
+      "appliedStatementMd5": "57c9b740fdcc1853018277225fc7a888",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615142550",
+      "name": "split_fair_application_images_rls_policies",
+      "file": "supabase/migrations/20260615_split_fair_application_images_rls_policies.sql",
+      "blobSha1": "8c7523e6720a745f9e75ac6ce83b9856f1fd4801",
+      "appliedStatementMd5": "d1204a0e7e440324244af9f0292bfb83",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615142805",
+      "name": "split_applications_rls_policies",
+      "file": "supabase/migrations/20260615_split_applications_rls_policies.sql",
+      "blobSha1": "822ff0c898fceb1277e94cffe336e57d37a5c8d8",
+      "appliedStatementMd5": "9e28bd9ebd5b1b89c27461ea97a26631",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615150303",
+      "name": "create_public_media_storage_bucket",
+      "file": "supabase/migrations/20260615_create_public_media_storage_bucket.sql",
+      "blobSha1": "a8a0728111527c6140c03a9d5ad48bf1c664179b",
+      "appliedStatementMd5": "618bcb73cb7ad46ff2a7864040ed3b50",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615150642",
+      "name": "remove_public_media_bucket_listing_policy",
+      "file": "supabase/migrations/20260615_remove_public_media_bucket_listing_policy.sql",
+      "blobSha1": "bacf5fabc33f0847b484a687afb08091fbb0f5cc",
+      "appliedStatementMd5": "65cb742e62f6fc80c4bd3ce3e2021f40",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615150705",
+      "name": "ensure_public_media_bucket_safe_access",
+      "file": "supabase/migrations/20260615_ensure_public_media_bucket_safe_access.sql",
+      "blobSha1": "00f69ecad89723150855cadd24cf4567a9460e73",
+      "appliedStatementMd5": "3dee9711eca52b7c3f365f143127f909",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615161224",
+      "name": "move_role_helpers_to_private_schema_complete",
+      "file": "supabase/migrations/20260615_move_role_helpers_to_private_schema_complete.sql",
+      "blobSha1": "c075c940b6450cf6b9a98339f33d0cd6493e6b8d",
+      "appliedStatementMd5": "f914a30c639d899a772be0a173ad6b21",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615161404",
+      "name": "verify_private_role_helpers_noop",
+      "file": "supabase/migrations/20260615_verify_private_role_helpers_noop.sql",
+      "blobSha1": "512d9abcb082ac0e322fd6588ef24ec34f0d3425",
+      "appliedStatementMd5": "1074241b2929860954248f287b2ca641",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615161800",
+      "name": "verify_private_role_helpers_marker_final",
+      "file": "supabase/migrations/20260615_verify_private_role_helpers_marker_final.sql",
+      "blobSha1": "073869135664fc91af7d36ec07f61a566a95b497",
+      "appliedStatementMd5": "78d137c2edc9081d14946818d8f37395",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615161832",
+      "name": "verify_private_role_helpers_marker_20260615",
+      "file": "supabase/migrations/20260615_verify_private_role_helpers_marker_20260615.sql",
+      "blobSha1": "512d9abcb082ac0e322fd6588ef24ec34f0d3425",
+      "appliedStatementMd5": "1b335feff9dfd8ef138329ef0c78ea82",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260615161856",
+      "name": "verify_private_role_helpers_marker_last",
+      "file": null,
+      "blobSha1": null,
+      "appliedStatementMd5": "6a7bf89640e904f2b2142993cdc2259a",
+      "comparison": "missing"
+    },
+    {
+      "version": "20260615161910",
+      "name": "verify_private_role_helpers_marker_done",
+      "file": null,
+      "blobSha1": null,
+      "appliedStatementMd5": "0f0fae155e89d8a38e16db832987025a",
+      "comparison": "missing"
+    },
+    {
+      "version": "20260615161927",
+      "name": "verify_private_role_helpers_marker_finish",
+      "file": null,
+      "blobSha1": null,
+      "appliedStatementMd5": "ccb5b4481bced39454dca6d845601d54",
+      "comparison": "missing"
+    },
+    {
+      "version": "20260615161945",
+      "name": "verify_private_role_helpers_marker_close",
+      "file": null,
+      "blobSha1": null,
+      "appliedStatementMd5": "ccb5b4481bced39454dca6d845601d54",
+      "comparison": "missing"
+    },
+    {
+      "version": "20260618152144",
+      "name": "extend_vacancy_details_and_images",
+      "file": "supabase/migrations/20260618_extend_vacancy_details_and_images.sql",
+      "blobSha1": "d13b4aad2ae62ef7c4c3f5ece5e4a4f0e461ce27",
+      "appliedStatementMd5": "ed5c00a7085b6525b8a18245edde8116",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260710102300",
+      "name": "add_work_request_images",
+      "file": "supabase/migrations/20260710_add_work_request_images.sql",
+      "blobSha1": "8d93779818b51be6885442f1996a970a8e9b49c8",
+      "appliedStatementMd5": "1930d907e64bac79519d0ff63d4aeaaa",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153003",
+      "name": "20260615_align_statuses_and_tariffs",
+      "file": "supabase/migrations/20260615_align_statuses_and_tariffs.sql",
+      "blobSha1": "9b517be45b8f1cfd88b69453be12db079193add0",
+      "appliedStatementMd5": "850b547f782f1d0c0f6fd1df09d8d2c5",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153009",
+      "name": "20260617_add_sold_publication_status",
+      "file": "supabase/migrations/20260617_add_sold_publication_status.sql",
+      "blobSha1": "e7a4f4e1c3197acf250d22a9af9a6e0b448fb87f",
+      "appliedStatementMd5": "43e7302357cb2ea17461e2cb6a0e356e",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153015",
+      "name": "20260617_grant_private_role_helper_rls_execute",
+      "file": "supabase/migrations/20260617_grant_private_role_helper_rls_execute.sql",
+      "blobSha1": "fd17cda4fb1043d03262fded6b3cf0c4754c845d",
+      "appliedStatementMd5": "128bf229dab540067d471d06c0d140c2",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153020",
+      "name": "20260619_add_work_request_publication_tariff",
+      "file": "supabase/migrations/20260619_add_work_request_publication_tariff.sql",
+      "blobSha1": "360e2daa3bf579d0b5ca2f41368d7ed9e4ad0271",
+      "appliedStatementMd5": "66c9763b4fa969dccd74005ee78907b0",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153027",
+      "name": "20260619_seed_work_request_publication_tariff",
+      "file": "supabase/migrations/20260619_seed_work_request_publication_tariff.sql",
+      "blobSha1": "588a30a0a9e1a7a61491f90b8b9560bade2b07dc",
+      "appliedStatementMd5": "6b86495147d72dfb8d746f8529515ca0",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153033",
+      "name": "20260619_sync_publication_tariffs",
+      "file": "supabase/migrations/20260619_sync_publication_tariffs.sql",
+      "blobSha1": "1cd3a57d770ca313e1741c72784fbe7af9477ed9",
+      "appliedStatementMd5": "67b710ce251f568c03492215b87ddee4",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153047",
+      "name": "20260620_add_work_request_applications_and_notifications",
+      "file": "supabase/migrations/20260620_add_work_request_applications_and_notifications.sql",
+      "blobSha1": "4e3ac6ace5934f795c350fe503547b89bfa2cfa7",
+      "appliedStatementMd5": "a898cd180dec796e5ff0f111a376a7c8",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153101",
+      "name": "20260620_harden_job_applications_flow",
+      "file": "supabase/migrations/20260620_harden_job_applications_flow.sql",
+      "blobSha1": "8b89feb0e7f6f5cf9d5f48cb3052d50f47c305f2",
+      "appliedStatementMd5": "f4d8c2c6039e7cd54208dfe0cf7db656",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153105",
+      "name": "20260620_single_user_specialist_profile",
+      "file": "supabase/migrations/20260620_single_user_specialist_profile.sql",
+      "blobSha1": "0268e39d27c0ee73a0b73b85ad6fd0d2285a9d7a",
+      "appliedStatementMd5": "c4a8d8902ab90f15b157b948d06def03",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153116",
+      "name": "20260620_zz_harden_application_response_security",
+      "file": "supabase/migrations/20260620_zz_harden_application_response_security.sql",
+      "blobSha1": "4aec2b09f2d52612cb7fdc029da44a0946f9d5b3",
+      "appliedStatementMd5": "e2a240151679436ab3b278339f503740",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153127",
+      "name": "20260621_add_booking_requests",
+      "file": "supabase/migrations/20260621_add_booking_requests.sql",
+      "blobSha1": "c809e49f028edd89808b6fd5188f8ed41e7e7c47",
+      "appliedStatementMd5": "6c1c2e2942b4e1253340e2cd7198a1aa",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153134",
+      "name": "20260621_add_listing_booking_details",
+      "file": "supabase/migrations/20260621_add_listing_booking_details.sql",
+      "blobSha1": "e27e225485917bd83d17316732a7fcda2474cd2b",
+      "appliedStatementMd5": "d6f70bbd2cee680aa4d2f8872246eb31",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153208",
+      "name": "20260621_align_catalog_categories",
+      "file": "supabase/migrations/20260621_align_catalog_categories.sql",
+      "blobSha1": "8c24d3786b8df6aa6171a07041af4d23c9ff6509",
+      "appliedStatementMd5": "ba6764949224079cce306c65768018cd",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153221",
+      "name": "20260622_remove_exchange_listing_type",
+      "file": "supabase/migrations/20260622_remove_exchange_listing_type.sql",
+      "blobSha1": "d7ed96f8cecae34c2e6e93c8306b279bc165b23f",
+      "appliedStatementMd5": "578a6630a8f80a330a0fe100cd8d7e82",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153237",
+      "name": "20260624_explicit_public_schema_grants",
+      "file": "supabase/migrations/20260624_explicit_public_schema_grants.sql",
+      "blobSha1": "9048f28c7e319fffe8c0df11c7a269c969642fa3",
+      "appliedStatementMd5": "1d694d6d4d5d88a85c8c8985a92c2e78",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153252",
+      "name": "20260624_harden_publication_payment_rls",
+      "file": "supabase/migrations/20260624_harden_publication_payment_rls.sql",
+      "blobSha1": "0bb0b64529af3276f329199b80933bc9fa25f627",
+      "appliedStatementMd5": "367d91ec85d2c56d536fbe5545db6b1e",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153302",
+      "name": "20260625_add_listing_view_counts",
+      "file": "supabase/migrations/20260625_add_listing_view_counts.sql",
+      "blobSha1": "f19ad59d92c6abc699e9d693c02ca50f4fcc6298",
+      "appliedStatementMd5": "19642d7dd7dedc3489af71c25faa374d",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153315",
+      "name": "20260627_add_ad_marquee_placements",
+      "file": "supabase/migrations/20260627_add_ad_marquee_placements.sql",
+      "blobSha1": "3b6cc6ae4dcf2644932b2955dc9a677601f8d05f",
+      "appliedStatementMd5": "036f28005f6de32e5527e56e8e6b0920",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153320",
+      "name": "20260627_add_garden_seeds_subcategory",
+      "file": "supabase/migrations/20260627_add_garden_seeds_subcategory.sql",
+      "blobSha1": "24321b0e558627b85e236c316320d35f102a11d2",
+      "appliedStatementMd5": "46fafa42708b45f04cf2ab6a06031793",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260710153331",
+      "name": "20260701_delete_removed_hobby_subcategory",
+      "file": "supabase/migrations/20260701_delete_removed_hobby_subcategory.sql",
+      "blobSha1": "326bf22efd9f78bd4aa7a007605ed56a678a3d79",
+      "appliedStatementMd5": "d20606e9c77b4dc1554646690d45b8f8",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260714174750",
+      "name": "add_clothing_textile_and_misc_subcategories",
+      "file": "supabase/migrations/20260714_add_clothing_textile_and_misc_subcategories.sql",
+      "blobSha1": "5bf4e8577f93fed95be5f4ad3c38ab273e6387c2",
+      "appliedStatementMd5": "212992521932133c973c35330fc3fa14",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260925155643",
+      "name": "restrict_payment_profile_client_grants",
+      "file": "supabase/migrations/20260925_restrict_payment_profile_client_grants.sql",
+      "blobSha1": "3fb1be780cb9061ef04594063cc7ed97930bee3a",
+      "appliedStatementMd5": "e919161ef8799eecd47df1211ef1cd93",
+      "comparison": "exact"
+    },
+    {
+      "version": "20260925155856",
+      "name": "hide_raw_location_tables",
+      "file": "supabase/migrations/20260925_hide_raw_location_tables.sql",
+      "blobSha1": "380befc2164b5ac520fd9e2ceef572fc0b407a05",
+      "appliedStatementMd5": "51b7ce5546f73bfde165579b5d36fca7",
+      "comparison": "exact"
+    },
+    {
+      "version": "20260925162049",
+      "name": "restrict_booking_client_writes",
+      "file": "supabase/migrations/20260925_restrict_booking_client_writes.sql",
+      "blobSha1": "05f420e52f4572e6a7e109fcda8e77018d05ffaf",
+      "appliedStatementMd5": "d0399d7b14ca3a593f1011c222e82bb8",
+      "comparison": "exact"
+    },
+    {
+      "version": "20260926072813",
+      "name": "lock_unpaid_specialist_activation_20260926",
+      "file": "supabase/migrations/20260926072813_lock_unpaid_specialist_activation_20260926.sql",
+      "blobSha1": "e844f6b0da2b585e886b27b6c44f8ff9f1291bb6",
+      "appliedStatementMd5": "334dd0e2199564771c04785366c0b5ab",
+      "comparison": "trailing_newline_only"
+    },
+    {
+      "version": "20260926072901",
+      "name": "grant_specialist_guard_service_role_20260926",
+      "file": "supabase/migrations/20260926072901_grant_specialist_guard_service_role_20260926.sql",
+      "blobSha1": "0144c850f6846d2ae2b360d659696f53bc171d2b",
+      "appliedStatementMd5": "10b96113d572e184ec6b704f4099a0f9",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260926074136",
+      "name": "restrict_public_listing_view_rpc_20260926",
+      "file": "supabase/migrations/20260926074136_restrict_public_listing_view_rpc_20260926.sql",
+      "blobSha1": "dea591b51c2cef608e85d3da3371fd04de7061ff",
+      "appliedStatementMd5": "9e5673afd584c58cd16a47712cbcacbe",
+      "comparison": "divergent"
+    },
+    {
+      "version": "20260927080912",
+      "name": "private_cabinet_profiles_20260927",
+      "file": null,
+      "blobSha1": null,
+      "appliedStatementMd5": "39486092b725afca8b020e839bc67bed",
+      "comparison": "missing"
+    },
+    {
+      "version": "20260927080926",
+      "name": "account_deletion_request_intake_20260927",
+      "file": null,
+      "blobSha1": null,
+      "appliedStatementMd5": "80bf6e2c1fda088387024cbaa5bc47ea",
+      "comparison": "missing"
+    },
+    {
+      "version": "20260927081011",
+      "name": "record_registration_legal_events_20260927",
+      "file": null,
+      "blobSha1": null,
+      "appliedStatementMd5": "45209698d733fdf53a974324cd46e0ad",
+      "comparison": "missing"
+    },
+    {
+      "version": "20260927081111",
+      "name": "booking_inventory_bounds_20260927",
+      "file": "supabase/migrations/20260927081111_booking_inventory_bounds_20260927.sql",
+      "blobSha1": "769e98b1ad06928e4958119fb607ab29b12e771d",
+      "appliedStatementMd5": "80f6f36da224ba3c412428d3d466470b",
+      "comparison": "exact"
+    },
+    {
+      "version": "20260927081944",
+      "name": "revoke_unsafe_client_table_privileges_20260927",
+      "file": "supabase/migrations/20260927081944_revoke_unsafe_client_table_privileges_20260927.sql",
+      "blobSha1": "0e136dd579a7db6a23e2f8b5a266c202a5719fba",
+      "appliedStatementMd5": "cc984bf377dfe440db402ecf3b5e9d43",
+      "comparison": "exact"
+    },
+    {
+      "version": "20260927082317",
+      "name": "add_ad_marquee_payment_fk_index_20260927",
+      "file": null,
+      "blobSha1": null,
+      "appliedStatementMd5": "5523370302fbc663e2c6e2185078b3bf",
+      "comparison": "missing"
+    },
+    {
+      "version": "20260927082405",
+      "name": "relocate_btree_gist_extension_20260927",
+      "file": "supabase/migrations/20260927082405_relocate_btree_gist_extension_20260927.sql",
+      "blobSha1": "00b8b4f69b468a3ed53c32d88c1245bb968597a5",
+      "appliedStatementMd5": "0448c5de23062ce92f3103a8e69712b4",
+      "comparison": "exact"
+    }
+  ],
+  "repositoryFilesNotInHistory": [
+    "supabase/migrations/20260926074500_restrict_raw_vacancy_reads.sql",
+    "supabase/migrations/20260710_clean_catalog_categories.sql"
+  ]
+}
