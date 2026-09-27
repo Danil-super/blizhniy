@@ -39,6 +39,7 @@ import {
   writeCabinetProfile,
 } from "@/lib/client-user-profile";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { normalizeMessengerHref } from "@/lib/messenger-url";
 
 type UserCabinetState = {
   identity: ClientUserIdentity | null;
@@ -3034,6 +3035,7 @@ export function CabinetResponsesClient({ responses = [] }: { responses?: Cabinet
       {visibleResponses.map((response) => {
         const completedResponse = ["sent", "viewed", "selected", "rejected"].includes(response.status);
         const targetLabel = response.targetType === "workRequest" ? "заказ" : "вакансию";
+        const messengerHref = normalizeMessengerHref(response.messengerUrl);
 
         return (
         <article key={response.id} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:grid-cols-[1fr_auto] sm:items-center sm:p-5">
@@ -3047,11 +3049,11 @@ export function CabinetResponsesClient({ responses = [] }: { responses?: Cabinet
             <p className="mt-1 text-sm leading-6 text-slate-600">Отклик от: <span className="font-bold text-slate-800">{response.specialistName}</span>{response.profession ? ` · ${response.profession}` : ""}</p>
             {response.message ? <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">{response.message}</p> : null}
             {response.skills ? <p className="mt-1 text-sm leading-6 text-slate-500">Навыки: {response.skills}</p> : null}
-            {response.employerMode && (response.phone || response.email || response.messengerUrl) ? (
+            {response.employerMode && (response.phone || response.email || messengerHref) ? (
               <div className="mt-3 flex flex-wrap gap-2 text-sm font-bold">
                 {response.phone ? <a className="break-all rounded-lg bg-blue-50 px-3 py-2 text-[#0875d1]" href={`tel:${response.phone}`}>{response.phone}</a> : null}
                 {response.email ? <a className="break-all rounded-lg bg-blue-50 px-3 py-2 text-[#0875d1]" href={`mailto:${response.email}`}>{response.email}</a> : null}
-                {response.messengerUrl ? <a className="rounded-lg bg-blue-50 px-3 py-2 text-[#0875d1]" href={response.messengerUrl}>Мессенджер</a> : null}
+                {messengerHref ? <a className="rounded-lg bg-blue-50 px-3 py-2 text-[#0875d1]" href={messengerHref}>Мессенджер</a> : null}
               </div>
             ) : null}
             {!response.employerMode && response.status === "selected" ? (
