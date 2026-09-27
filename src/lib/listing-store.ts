@@ -1,6 +1,7 @@
 import { categories, region } from "@/lib/data";
 import { formatBookingPrice } from "@/lib/booking-details";
 import { hasMapCoordinates } from "@/lib/map-location";
+import { effectivePublicationStatus } from "@/lib/publication-time";
 import { publicMediaUrl } from "@/lib/storage-upload";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { BookingDetails, Listing, ListingKind, PublicationStatus } from "@/lib/types";
@@ -241,6 +242,10 @@ function mapListing(row: ListingRow): Listing {
     publishedAt,
     expiresAt: isoDate(row.expires_at) || addDaysIsoDate(publishedAt, 30),
   };
+}
+
+function mapListingWithEffectiveStatus(row: ListingRow): Listing {
+  return { ...mapListing(row), status: effectivePublicationStatus(row.status, row.expires_at) };
 }
 
 // Public callers must never receive a hidden address or exact coordinates,
@@ -751,7 +756,7 @@ export async function listStoredListingsForAdmin(limit = 200) {
 
   const rows = await fetchListingRows(`&order=created_at.desc&limit=${limit}`);
 
-  return rows.map(mapListing);
+  return rows.map(mapListingWithEffectiveStatus);
 }
 
 export async function listStoredListingsForUser(userId: string) {
@@ -762,7 +767,7 @@ export async function listStoredListingsForUser(userId: string) {
   try {
     const rows = await fetchListingRows(`&author_id=eq.${encodeURIComponent(userId)}&status=neq.archived&order=created_at.desc`);
 
-    return rows.map(mapListing);
+    return rows.map(mapListingWithEffectiveStatus);
   } catch (error) {
     console.error("Failed to load user listings from Supabase", error);
     return [];

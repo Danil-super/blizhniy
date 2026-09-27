@@ -1,3 +1,5 @@
+import type { PublicationStatus } from "@/lib/types";
+
 const russianMonths = [
   "января",
   "февраля",
@@ -113,4 +115,13 @@ export function publicationTimestamp(value?: string) {
 
   const parsed = new Date(normalized).getTime();
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+export function effectivePublicationStatus(status: PublicationStatus, expiresAt?: string | null, now = Date.now()): PublicationStatus {
+  if (status !== "published" || !expiresAt) {
+    return status;
+  }
+
+  const expiry = Date.parse(expiresAt);
+  return Number.isFinite(expiry) && expiry <= now ? "expired" : status;
 }
