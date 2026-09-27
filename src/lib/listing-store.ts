@@ -206,7 +206,7 @@ function resolveCategoryInfo(row: ListingRow) {
   };
 }
 
-function mapListing(row: ListingRow, showEffectiveStatus = false): Listing {
+function mapListing(row: ListingRow): Listing {
   const booking = normalizeBooking(row.booking);
   const kind = row.listing_type === "rent" || booking ? "arenda" : listingKindByDbType[row.listing_type] ?? "prodam";
   const categoryInfo = resolveCategoryInfo(row);
@@ -236,12 +236,16 @@ function mapListing(row: ListingRow, showEffectiveStatus = false): Listing {
     imageTone: "blue",
     phone: row.contact_phone ?? undefined,
     messengerUrl: row.messenger_url ?? undefined,
-    status: showEffectiveStatus ? effectivePublicationStatus(row.status, row.expires_at) : row.status,
+    status: row.status,
     paid: row.is_paid,
     viewCount: Math.max(0, Math.floor(Number(row.view_count ?? 0) || 0)),
     publishedAt,
     expiresAt: isoDate(row.expires_at) || addDaysIsoDate(publishedAt, 30),
   };
+}
+
+function mapListingWithEffectiveStatus(row: ListingRow): Listing {
+  return { ...mapListing(row), status: effectivePublicationStatus(row.status, row.expires_at) };
 }
 
 // Public callers must never receive a hidden address or exact coordinates,
@@ -752,7 +756,7 @@ export async function listStoredListingsForAdmin(limit = 200) {
 
   const rows = await fetchListingRows(`&order=created_at.desc&limit=${limit}`);
 
-  return rows.map((row) => mapListing(row, true));
+  return rows.map(mapListingWithEffectiveStatus);
 }
 
 export async function listStoredListingsForUser(userId: string) {
@@ -763,7 +767,7 @@ export async function listStoredListingsForUser(userId: string) {
   try {
     const rows = await fetchListingRows(`&author_id=eq.${encodeURIComponent(userId)}&status=neq.archived&order=created_at.desc`);
 
-    return rows.map((row) => mapListing(row, true));
+    return rows.map(mapListingWithEffectiveStatus);
   } catch (error) {
     console.error("Failed to load user listings from Supabase", error);
     return [];
