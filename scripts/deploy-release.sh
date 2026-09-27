@@ -125,6 +125,9 @@ copy_env_files "$PREVIOUS_RELEASE"
 log "installing dependencies"
 npm --prefix "$RELEASE_DIR" ci --prefer-online --no-audit --no-fund
 
+log "checking Auth CAPTCHA configuration"
+NODE_ENV=production node "$RELEASE_DIR/scripts/check-auth-captcha-env.cjs" "$RELEASE_DIR"
+
 log "building release"
 npm --prefix "$RELEASE_DIR" run build
 
