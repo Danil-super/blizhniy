@@ -13,6 +13,7 @@ import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listing
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { ListingViewCounter } from "@/components/listings/ListingViewCounter";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
+import { normalizeMessengerHref } from "@/lib/messenger-url";
 
 type DemoListingFeedProps = {
   categorySlug?: string;
@@ -202,7 +203,8 @@ function DemoListCard({ item }: { item: DemoPublication }) {
   const firstImage = item.images?.[0];
   const firstVideo = item.videos?.[0];
   const href = `/obyavlenie/${item.id}`;
-  const hasSecondaryContact = Boolean(item.messengerUrl || item.email);
+  const messengerHref = normalizeMessengerHref(item.messengerUrl);
+  const hasSecondaryContact = Boolean(messengerHref || item.email);
 
   return (
     <article className="group relative grid min-w-0 gap-3 rounded-xl border border-emerald-200 bg-white p-3 shadow-sm transition hover:border-blue-200 hover:shadow-card sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-4 sm:p-4 xl:grid-cols-[140px_minmax(0,1fr)_minmax(280px,auto)]">
@@ -250,13 +252,13 @@ function DemoListCard({ item }: { item: DemoPublication }) {
               <span className="whitespace-nowrap">Позвонить</span>
             </a>
           ) : null}
-          {item.messengerUrl ? (
-            <a href={item.messengerUrl} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
+          {messengerHref ? (
+            <a href={messengerHref} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
               <ContactAssetIcon kind="message" className="h-5 w-5 sm:h-6 sm:w-6" />
               <span className="whitespace-nowrap">Написать</span>
             </a>
           ) : null}
-          {!item.messengerUrl && item.email ? (
+          {!messengerHref && item.email ? (
             <a href={`mailto:${item.email}`} className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] hover:from-white hover:to-blue-50 sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:px-4">
               <Mail className="h-4 w-4 shrink-0 sm:h-5 sm:w-5" />
               <span className="whitespace-nowrap">Email</span>

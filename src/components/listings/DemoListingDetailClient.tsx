@@ -10,6 +10,7 @@ import { DemoPublication, demoPublicationsStorageKey, isDemoPublicationPubliclyV
 import { categories } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { formatPublicationDateTime } from "@/lib/publication-time";
+import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
 import { ListingKind, ListingKindBadge, StatusBadge } from "@/components/listings/ListingCard";
 import { ListingSellerCard } from "@/components/listings/ListingSellerCard";
@@ -232,7 +233,8 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
   const hasMapPoint = listing ? hasListingMapPoint(listing) : false;
   const sold = listing ? isDemoPublicationSold(listing) : false;
   const sellerStats = listing ? listingSellerStats(listing, items) : undefined;
-  const contactCount = [listing?.phone, listing?.messengerUrl, listing?.email].filter(Boolean).length;
+  const messengerHref = normalizeMessengerHref(listing?.messengerUrl);
+  const contactCount = [listing?.phone, messengerHref, listing?.email].filter(Boolean).length;
   const actionCount = contactCount + 1;
   const actionGridClass = actionCount >= 4 ? "grid-cols-2 sm:grid-cols-[repeat(4,minmax(104px,1fr))]" : actionCount === 3 ? "grid-cols-2" : actionCount === 2 ? "grid-cols-2" : "grid-cols-1";
   const galleryMedia: GalleryMedia[] = listing
@@ -329,8 +331,8 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
                       <span className="whitespace-nowrap">Email</span>
                     </a>
                   ) : null}
-                  {listing.messengerUrl ? (
-                    <a href={listing.messengerUrl} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] bg-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:text-sm">
+                  {messengerHref ? (
+                    <a href={messengerHref} className="inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-[#0875d1] bg-white px-2 text-xs font-bold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:bg-blue-50 sm:text-sm">
                       <MessageCircle className="h-4 w-4 shrink-0" />
                       <span className="whitespace-nowrap">Сообщение</span>
                     </a>
@@ -351,7 +353,7 @@ export function DemoListingDetailClient({ slug }: { slug: string }) {
             registeredSince={sellerStats?.registeredSince}
             listingCount={sellerStats?.listingCount}
             soldCount={sellerStats?.soldCount}
-            hasContacts={!sold && Boolean(listing.phone || listing.email || listing.messengerUrl)}
+            hasContacts={!sold && Boolean(listing.phone || listing.email || messengerHref)}
             listingTitle={listing.title}
             profileHref={sellerProfileHref(listing)}
           />

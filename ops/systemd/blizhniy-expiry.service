@@ -1,0 +1,18 @@
+[Unit]
+Description=Reconcile expired Blizhniy listings and vacancies
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=blizhniy-expiry
+Group=blizhniy-expiry
+Environment=PGSERVICEFILE=/etc/blizhniy/pg_service.conf
+Environment=PGPASSFILE=/etc/blizhniy/pgpass
+Environment=PGCONNECT_TIMEOUT=5
+ExecStart=/usr/bin/bash /var/www/blizhniy/scripts/reconcile-expired-publications.sh
+TimeoutStartSec=90
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
