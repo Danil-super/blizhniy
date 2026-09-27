@@ -9,10 +9,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: [
-          "/admin", "/auth", "/cabinet", "/oplata", "/api",
-          "/rabota/vakansii/sozdat", "/rabota/zakazy/sozdat", "/rabota/specialisty/anketa",
-        ],
+        disallow: ["/admin", "/cabinet", "/oplata", "/api"],
       },
     ],
     sitemap: `${base}/sitemap.xml`,
