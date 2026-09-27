@@ -1,10 +1,13 @@
+import type { Metadata } from "next";
 import { SiteHeader } from "@/components/SiteHeader";
 import { VacancyEditClient } from "@/components/VacancyEditClient";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { vacancies } from "@/lib/data";
-import { getStoredVacancyById } from "@/lib/vacancy-store";
+import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -12,7 +15,9 @@ type PageProps = {
 
 export default async function EditVacancyPage({ params }: PageProps) {
   const { slug } = await params;
-  const initialVacancy = (await getStoredVacancyById(slug)) ?? vacancies.find((vacancy) => vacancy.id === slug);
+  // An edit URL is public. Never preload service-role data into this RSC response;
+  // the client fetches its own vacancy from the authenticated cabinet endpoint.
+  const initialVacancy = shouldShowFallbackContent() ? vacancies.find((vacancy) => vacancy.id === slug) : undefined;
 
   return (
     <>
