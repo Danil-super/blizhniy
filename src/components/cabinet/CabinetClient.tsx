@@ -139,6 +139,12 @@ async function saveCabinetProfile(ownerKey: string, profile: CabinetProfile) {
   }
 
   const saved = await writeCabinetProfile(identity, profile);
+  const currentIdentity = await resolveClientUserIdentity();
+
+  if (currentIdentity.ownerKey !== ownerKey) {
+    throw new Error("Сеанс изменился. Обновите страницу кабинета.");
+  }
+
   const currentState = cachedCabinetState;
 
   if (currentState?.identity?.ownerKey === ownerKey) {
