@@ -61,6 +61,35 @@ export type DemoPublication = {
 
 export const demoPublicationsStorageKey = "blizhniy-demo-publications";
 export const demoPublicationsUpdatedEvent = "blizhniy-demo-publications-updated";
+
+export function canUseDemoPublicationsStorage() {
+  return process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT === "true";
+}
+
+export function readStoredDemoPublications(storage?: Pick<Storage, "getItem">) {
+  if (!canUseDemoPublicationsStorage()) {
+    return null;
+  }
+
+  return (storage ?? window.localStorage).getItem(demoPublicationsStorageKey);
+}
+
+export function writeStoredDemoPublications(value: string, storage?: Pick<Storage, "setItem">) {
+  if (!canUseDemoPublicationsStorage()) {
+    return false;
+  }
+
+  (storage ?? window.localStorage).setItem(demoPublicationsStorageKey, value);
+  return true;
+}
+
+export function clearLegacyDemoPublicationsStorage(storage: Pick<Storage, "removeItem">) {
+  try {
+    storage.removeItem(demoPublicationsStorageKey);
+  } catch {
+    // A browser can disable storage; server-backed publications still work.
+  }
+}
 export const soldPublicationStatus = "Продано";
 export const unpublishedVacancyStatus = "Снята с публикации";
 

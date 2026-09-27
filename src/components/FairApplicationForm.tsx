@@ -10,7 +10,7 @@ import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { fairCategories } from "@/lib/data";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
-import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationHistory, type DemoPublication } from "@/lib/demo-publications";
+import { readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, withPublicationHistory, type DemoPublication } from "@/lib/demo-publications";
 import { confirmClientPayment } from "@/lib/client-payment-flow";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 
@@ -24,7 +24,7 @@ type MediaUploadResponse = {
 
 function readStoredPublications() {
   try {
-    const storedRaw = window.localStorage.getItem(demoPublicationsStorageKey);
+    const storedRaw = readStoredDemoPublications();
     const stored = storedRaw ? (JSON.parse(storedRaw) as unknown) : [];
 
     return Array.isArray(stored) ? stored.filter((item): item is DemoPublication => Boolean(item && typeof item === "object" && "id" in item)) : [];
@@ -36,7 +36,7 @@ function readStoredPublications() {
 function writeFairApplicationPublication(publication: DemoPublication) {
   const stored = readStoredPublications().filter((item) => item.id !== publication.id);
 
-  window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify([publication, ...stored].slice(0, 50)));
+  writeStoredDemoPublications(JSON.stringify([publication, ...stored].slice(0, 50)));
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
 }
 

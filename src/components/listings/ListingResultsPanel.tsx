@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ChevronRight, Filter, Search } from "lucide-react";
 import { DemoListingFeed } from "@/components/DemoListingFeed";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
-import { demoPublicationsStorageKey, isDemoPublicationPubliclyVisible, type DemoPublication } from "@/lib/demo-publications";
+import { readStoredDemoPublications, isDemoPublicationPubliclyVisible, type DemoPublication } from "@/lib/demo-publications";
 import {
   emptyListingFilters,
   listingFiltersEqual,
@@ -36,7 +36,7 @@ function readStoredPublications() {
   }
 
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {

@@ -8,7 +8,7 @@ import { LocationMap } from "@/components/LocationMap";
 import { VacancyApplicationButton } from "@/components/VacancyApplicationButton";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
-import { demoPublicationsStorageKey, type DemoPublication } from "@/lib/demo-publications";
+import { readStoredDemoPublications, type DemoPublication } from "@/lib/demo-publications";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 
@@ -20,7 +20,7 @@ function readStoredPublications() {
   }
 
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {

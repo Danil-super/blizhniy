@@ -5,7 +5,7 @@ import Link from "next/link";
 import { CalendarDays, Gift, Mail, MapPin, ShoppingBag, Tags, Video } from "lucide-react";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
-import { demoPublicationsStorageKey, DemoPublication, isDemoPublicationPubliclyVisible } from "@/lib/demo-publications";
+import { readStoredDemoPublications, DemoPublication, isDemoPublicationPubliclyVisible } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { matchesDemoPublicationFilters, matchesListingScope, type ListingFilterCriteria } from "@/lib/listing-filters";
 import { formatPublicationDateTime, publicationTimestamp } from "@/lib/publication-time";
@@ -40,7 +40,7 @@ const kindIcons = {
 
 function readStoredPublications() {
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {

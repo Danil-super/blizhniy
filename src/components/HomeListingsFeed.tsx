@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DemoGridCard } from "@/components/DemoListingFeed";
 import { DemoListing, ListingGridCard, type ListingKind } from "@/components/listings/ListingCard";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
-import { demoPublicationsStorageKey, isDemoPublicationPubliclyVisible, type DemoPublication } from "@/lib/demo-publications";
+import { readStoredDemoPublications, isDemoPublicationPubliclyVisible, type DemoPublication } from "@/lib/demo-publications";
 import { publicationTimestamp } from "@/lib/publication-time";
 
 type HomeListingsFeedProps = {
@@ -39,7 +39,7 @@ function readStoredListings() {
   }
 
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {

@@ -6,7 +6,7 @@ import { Camera, CheckCircle2, ChevronLeft, ChevronRight, Mail, MapPin, MessageC
 import { BackLink } from "@/components/BackLink";
 import { LocationMap } from "@/components/LocationMap";
 import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
-import { DemoPublication, demoPublicationsStorageKey, isDemoPublicationPubliclyVisible, isDemoPublicationSold } from "@/lib/demo-publications";
+import { DemoPublication, readStoredDemoPublications, isDemoPublicationPubliclyVisible, isDemoPublicationSold } from "@/lib/demo-publications";
 import { categories } from "@/lib/data";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { formatPublicationDateTime } from "@/lib/publication-time";
@@ -20,7 +20,7 @@ import { ListingViewTracker } from "./ListingViewTracker";
 
 function readStoredPublications() {
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {
