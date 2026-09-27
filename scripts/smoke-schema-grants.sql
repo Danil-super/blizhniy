@@ -12,7 +12,8 @@ begin
   foreach table_name in array array[
     'profiles', 'payments', 'specialist_profiles', 'listings',
     'vacancies', 'work_requests', 'fair_applications', 'booking_requests',
-    'registration_legal_events', 'account_deletion_requests'
+    'registration_legal_events', 'account_deletion_requests',
+    'organization_profiles'
   ] loop
     relation_oid := to_regclass(format('public.%I', table_name));
     if relation_oid is null or not exists (
@@ -30,7 +31,7 @@ begin
     'payments', 'specialist_profiles', 'booking_requests',
     'listings', 'listing_images', 'vacancies', 'vacancy_images',
     'work_requests', 'work_request_images', 'fair_applications',
-    'fair_application_images', 'ad_marquee_placements'
+    'fair_application_images', 'ad_marquee_placements', 'organization_profiles'
   ] loop
     relation_oid := to_regclass(format('public.%I', table_name));
     foreach browser_role in array array['anon', 'authenticated'] loop
