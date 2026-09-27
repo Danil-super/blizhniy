@@ -6,9 +6,7 @@ import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 export const metadata: Metadata = {
   title: "Разместить заказ",
   description: "Создание заказа для специалистов и исполнителей.",
-  alternates: {
-    canonical: "/rabota/zakazy/sozdat",
-  },
+  robots: { index: false, follow: false },
 };
 
 export default function CreateWorkRequestPage() {

@@ -61,6 +61,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/katalog",
     "/rabota",
     "/rabota/vakansii",
+    "/rabota/zakazy",
     "/rabota/specialisty",
     "/kak-rabotaet",
     "/tarify",
