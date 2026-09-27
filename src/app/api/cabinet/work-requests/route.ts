@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isUuid } from "@/lib/supabase-rest";
-import { deleteStoredWorkRequestForUser, updateStoredWorkRequestForUser, type CreateStoredWorkRequestInput } from "@/lib/work-request-store";
+import {
+  archiveStoredWorkRequestForUser,
+  deleteStoredWorkRequestForUser,
+  getStoredWorkRequestForUser,
+  listStoredWorkRequestsForUser,
+  restoreStoredWorkRequestForUser,
+  updateStoredWorkRequestForUser,
+  type CreateStoredWorkRequestInput,
+} from "@/lib/work-request-store";
 
 type WorkRequestBody = {
+  action?: "archive" | "restore";
   budget?: string;
   city?: string;
   description?: string;
@@ -42,6 +51,25 @@ function hasValidMessenger(value: string) {
   return Boolean(value && messengerPattern.test(value));
 }
 
+export async function GET(request: Request) {
+  if (!isSupabaseServerConfigured()) {
+    return NextResponse.json({ error: "Auth is not configured" }, { status: 503 });
+  }
+
+  const auth = await getAuthenticatedRequestUser(request);
+  if (!auth) {
+    return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы увидеть свои заказы" }, { status: 401 });
+  }
+
+  try {
+    const workRequests = await listStoredWorkRequestsForUser(auth.user.id);
+    return NextResponse.json({ workRequests });
+  } catch (error) {
+    console.error("Failed to load owner work requests", error);
+    return NextResponse.json({ error: "Не удалось загрузить заказы" }, { status: 503 });
+  }
+}
+
 export async function PATCH(request: Request) {
   if (!isSupabaseServerConfigured()) {
     return NextResponse.json({ error: "Auth is not configured" }, { status: 503 });
@@ -54,10 +82,41 @@ export async function PATCH(request: Request) {
   }
 
   const body = (await request.json().catch(() => null)) as WorkRequestBody | null;
-  const requestId = body?.id?.trim();
+  const requestId = cleanString(body?.id);
 
   if (!body || !requestId || !isUuid(requestId)) {
     return NextResponse.json({ error: "Некорректный заказ" }, { status: 400 });
+  }
+
+  if (body.action !== undefined) {
+    if (body.action !== "archive" && body.action !== "restore") {
+      return NextResponse.json({ error: "Некорректное действие" }, { status: 400 });
+    }
+
+    try {
+      const owned = await getStoredWorkRequestForUser(requestId, auth.user.id);
+      if (!owned) {
+        return NextResponse.json({ error: "Заказ не найден" }, { status: 404 });
+      }
+
+      if (body.action === "archive" && owned.status !== "published" && owned.status !== "archived") {
+        return NextResponse.json({ error: "Архивировать можно только опубликованный заказ" }, { status: 409 });
+      }
+      if (body.action === "restore" && owned.status !== "archived") {
+        return NextResponse.json({ error: "Восстановить можно только архивный заказ" }, { status: 409 });
+      }
+
+      const workRequest = body.action === "archive"
+        ? await archiveStoredWorkRequestForUser(requestId, auth.user.id)
+        : await restoreStoredWorkRequestForUser(requestId, auth.user.id);
+      if (!workRequest) {
+        return NextResponse.json({ error: "Заказ не изменён: срок публикации истёк, оплата не найдена или статус изменился" }, { status: 409 });
+      }
+      return NextResponse.json({ workRequest });
+    } catch (error) {
+      console.error("Failed to change owner work request status", error);
+      return NextResponse.json({ error: "Не удалось изменить статус заказа" }, { status: 503 });
+    }
   }
 
   const title = cleanString(body.title);
@@ -117,13 +176,17 @@ export async function DELETE(request: Request) {
   }
 
   const body = (await request.json().catch(() => null)) as WorkRequestBody | null;
-  const requestId = body?.id?.trim();
+  const requestId = cleanString(body?.id);
 
   if (!requestId || !isUuid(requestId)) {
     return NextResponse.json({ error: "Некорректный заказ" }, { status: 400 });
   }
 
   const deleted = await deleteStoredWorkRequestForUser(requestId, auth.user.id);
+
+  if (!deleted) {
+    return NextResponse.json({ error: "Заказ не найден или уже удалён", deleted: false }, { status: 404 });
+  }
 
   return NextResponse.json({ deleted });
 }
