@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: dependency-review-${{ github.ref }}
@@ -16,9 +15,6 @@ concurrency:
 jobs:
   dependency-review:
     name: Review dependency changes
-    # Dependency Review requires GitHub Advanced Security for private repositories.
-    # Enable it explicitly with the repository variable once the feature is available.
-    if: ${{ vars.ENABLE_DEPENDENCY_REVIEW == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -30,4 +26,4 @@ jobs:
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
         with:
           fail-on-severity: high
-          comment-summary-in-pr: always
+          fail-on-scopes: runtime, development, unknown

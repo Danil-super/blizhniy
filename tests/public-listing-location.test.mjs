@@ -37,7 +37,7 @@ function harness(showExactAddress) {
   const supabaseRest = async (path) => {
     calls.push(path);
     if (path.startsWith('/rest/v1/categories?')) {
-      return path.includes('parent_id=is.null')
+      return path.includes('parent_id=is.null') || path.includes('limit=1000')
         ? [{ id: 'cat-1', slug: 'test', name: 'Test', parent_id: null }]
         : [];
     }

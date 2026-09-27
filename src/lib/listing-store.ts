@@ -717,18 +717,30 @@ export async function listStoredListingsForCategory(
   const pageSize = Math.max(1, Math.min(96, Math.floor(options.pageSize ?? 24)));
 
   try {
-    const roots = await supabaseRest<CategoryIdRow[]>(
-      `/rest/v1/categories?select=id,name,parent_id,slug&slug=eq.${encodeURIComponent(categorySlug)}&parent_id=is.null&limit=1`,
-    );
-    const root = roots[0];
+    // A catalog normally has far fewer than 1,000 nodes. Reading its taxonomy
+    // once avoids a second sequential round-trip to resolve child IDs. If the
+    // response hits the limit, use the targeted lookups so no child is missed.
+    const taxonomy = await supabaseRest<CategoryIdRow[]>("/rest/v1/categories?select=id,name,parent_id,slug&limit=1000");
+    let root = taxonomy.find((row) => row.slug === categorySlug && !row.parent_id);
+    const rootId = root?.id;
+    let children = rootId ? taxonomy.filter((row) => row.parent_id === rootId) : [];
+
+    if (taxonomy.length === 1000) {
+      const roots = await supabaseRest<CategoryIdRow[]>(
+        `/rest/v1/categories?select=id,name,parent_id,slug&slug=eq.${encodeURIComponent(categorySlug)}&parent_id=is.null&limit=1`,
+      );
+      root = roots[0];
+      children = root
+        ? await supabaseRest<CategoryIdRow[]>(
+            `/rest/v1/categories?select=id,name,parent_id,slug&parent_id=eq.${encodeURIComponent(root.id)}&limit=200`,
+          )
+        : [];
+    }
 
     if (!root) {
       return [];
     }
 
-    const children = await supabaseRest<CategoryIdRow[]>(
-      `/rest/v1/categories?select=id,name,parent_id,slug&parent_id=eq.${encodeURIComponent(root.id)}&limit=200`,
-    );
     const matchingChildren = options.subcategoryName
       ? children.filter((child) => child.name === options.subcategoryName)
       : children;

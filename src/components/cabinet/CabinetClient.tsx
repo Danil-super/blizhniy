@@ -3950,12 +3950,18 @@ export function CabinetSpecialistClient() {
               Анкета одна на аккаунт. Пока она не активирована, вас не видно в специалистах и нельзя отправлять платные отклики.
             </p>
           </div>
-          <StatusPill>{active ? "Активна" : completeness.complete ? "Готова к активации" : "Не активна"}</StatusPill>
+          <StatusPill>{active ? "Активна" : completeness.complete ? "Черновик готов" : "Не активна"}</StatusPill>
         </div>
+
+        {!active ? (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-800">
+            Публикация анкет временно недоступна. Заполните и сохраните черновик — он пока не показывается другим пользователям.
+          </div>
+        ) : null}
 
         {!completeness.complete ? (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-800">
-            Для активации заполните: {completeness.missing.length ? completeness.missing.join(", ") : "обязательные поля"}.
+            Для подготовки анкеты заполните: {completeness.missing.length ? completeness.missing.join(", ") : "обязательные поля"}.
           </div>
         ) : null}
 
@@ -4004,11 +4010,7 @@ export function CabinetSpecialistClient() {
               <button type="button" disabled={Boolean(savingAction)} onClick={() => void submit("deactivate")} className="inline-flex h-11 items-center justify-center rounded-lg border border-amber-200 bg-white px-5 text-sm font-bold text-amber-700 transition hover:bg-amber-50 disabled:cursor-wait disabled:bg-slate-100">
                 {savingAction === "deactivate" ? "Отключаем..." : "Отключить анкету"}
               </button>
-            ) : (
-              <button type="button" disabled={Boolean(savingAction)} onClick={() => void submit("activate")} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0aa337] px-5 text-sm font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:bg-slate-300">
-                {savingAction === "activate" ? "Активируем..." : "Активировать анкету"}
-              </button>
-            )}
+            ) : null}
           </div>
         </form>
       </div>

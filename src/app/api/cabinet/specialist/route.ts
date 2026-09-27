@@ -84,6 +84,13 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
+  if (body.action === "activate") {
+    return NextResponse.json(
+      { error: "Публикация анкеты временно недоступна. Анкету можно сохранить как черновик." },
+      { status: 409 },
+    );
+  }
+
   try {
     const input = specialistInputFromBody(body);
 
@@ -98,7 +105,7 @@ export async function PATCH(request: Request) {
       input.photoPath = validPhotoPath || "";
     }
 
-    const status = body.action === "activate" ? "published" : body.action === "deactivate" ? "draft" : undefined;
+    const status = body.action === "deactivate" ? "draft" : undefined;
     const specialist = await upsertStoredSpecialistProfileForUser(
       {
         email: auth.user.email,
