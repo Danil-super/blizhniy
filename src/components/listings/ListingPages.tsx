@@ -36,7 +36,7 @@ import { isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
-import { getPublicCategories } from "@/lib/category-store";
+import { getPublicCategories, getPublicCategoriesWithListingScope } from "@/lib/category-store";
 import { listStoredListingsForCategory } from "@/lib/listing-store";
 import { getPublicTariffs } from "@/lib/tariff-store";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
@@ -1463,7 +1463,7 @@ export function parseListingPage(value?: string) {
 }
 
 export async function CategoryListingsPage({ categorySlug, subcategorySlug, page = 1 }: { categorySlug: string; subcategorySlug?: string; page?: number }) {
-  const categories = await getPublicCategories();
+  const categories = await getPublicCategoriesWithListingScope();
   const category = categories.find((item) => item.slug === categorySlug);
   const categoryChildren = category ? getCategoryChildren(category.children) : [];
   const subcategory = category?.children.find((item) => slugifySubcategory(item) === subcategorySlug);
@@ -1473,7 +1473,12 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug, page
   }
 
   const pageSize = 24;
-  const storedListings = await listStoredListingsForCategory(categorySlug, { subcategoryName: subcategory, page, pageSize });
+  const storedListings = await listStoredListingsForCategory(categorySlug, {
+    page,
+    pageSize,
+    resolvedCategory: category.listingScope,
+    subcategoryName: subcategory,
+  });
   const listings = [
     ...storedListings.slice(0, pageSize).map(toDemoListing),
     ...(page === 1 ? listPublicDemoListings() : []),

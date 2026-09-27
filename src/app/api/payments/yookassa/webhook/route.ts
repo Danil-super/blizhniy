@@ -4,13 +4,6 @@ import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
 
-export function GET() {
-  return NextResponse.json({
-    ok: true,
-    endpoint: "yookassa-webhook",
-  });
-}
-
 export async function POST(request: Request) {
   if (!isSupabaseServiceRoleConfigured()) {
     return NextResponse.json({ ok: false, error: "Payment storage is unavailable" }, { status: 503 });

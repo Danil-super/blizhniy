@@ -25,6 +25,15 @@ type CategoryRow = {
   sort_order?: number | null;
 };
 
+export type PublicCategoryListingScope = {
+  children: Array<{ id: string; name: string }>;
+  id: string;
+};
+
+export type PublicCategoryWithListingScope = Category & {
+  listingScope?: PublicCategoryListingScope;
+};
+
 type UpdateCategoryInput = {
   active?: boolean;
   id: string;
@@ -68,31 +77,49 @@ function mapCategoryRows(rows: CategoryRow[]): AdminCategoryRow[] {
     }));
 }
 
-function mapPublicCategoryRows(rows: CategoryRow[]): Category[] {
+function mapPublicCategoryRows(rows: CategoryRow[]): PublicCategoryWithListingScope[] {
   const activeRows = rows.filter((row) => row.active);
-  const childrenByParentId = new Map<string, CategoryRow[]>();
+  const activeChildrenByParentId = new Map<string, CategoryRow[]>();
+  const allChildrenByParentId = new Map<string, CategoryRow[]>();
+
+  for (const row of rows) {
+    if (!row.parent_id) {
+      continue;
+    }
+
+    allChildrenByParentId.set(row.parent_id, [...(allChildrenByParentId.get(row.parent_id) ?? []), row]);
+  }
 
   for (const row of activeRows) {
     if (!row.parent_id) {
       continue;
     }
 
-    childrenByParentId.set(row.parent_id, [...(childrenByParentId.get(row.parent_id) ?? []), row]);
+    activeChildrenByParentId.set(row.parent_id, [...(activeChildrenByParentId.get(row.parent_id) ?? []), row]);
   }
 
   return activeRows
     .filter((row) => !row.parent_id)
     .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0) || left.name.localeCompare(right.name, "ru"))
     .map((row) => ({
-      children: [...(childrenByParentId.get(row.id) ?? [])]
+      children: [...(activeChildrenByParentId.get(row.id) ?? [])]
         .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0) || left.name.localeCompare(right.name, "ru"))
         .map((child) => child.name),
+      // Listing queries historically include a public root and all of its
+      // direct children. Keep that scope separate from the visible child list
+      // so resolving it here does not alter catalog results.
+      listingScope: {
+        children: [...(allChildrenByParentId.get(row.id) ?? [])]
+          .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0) || left.name.localeCompare(right.name, "ru"))
+          .map((child) => ({ id: child.id, name: child.name })),
+        id: row.id,
+      },
       name: row.name,
       slug: row.slug,
     }));
 }
 
-function withRequiredFallbackCategories(categories: Category[]) {
+function withRequiredFallbackCategories(categories: PublicCategoryWithListingScope[]) {
   const categoriesBySlug = new Map(categories.map((category) => [category.slug, category]));
   const requiredSlugs = ["menyayu-ili-otdam-darom"];
 
@@ -106,7 +133,7 @@ function withRequiredFallbackCategories(categories: Category[]) {
 
   const orderedCategories = fallbackCategories
     .map((fallback) => categoriesBySlug.get(fallback.slug))
-    .filter((category): category is Category => Boolean(category));
+    .filter((category): category is PublicCategoryWithListingScope => Boolean(category));
 
   const fallbackSlugs = new Set(fallbackCategories.map((category) => category.slug));
   const extraCategories = categories.filter((category) => !fallbackSlugs.has(category.slug));
@@ -126,7 +153,7 @@ export async function listAdminCategories() {
 
 // The same categories are requested by generateMetadata, the page and nested
 // server components. Share one read within the render, never across requests.
-export const getPublicCategories = cache(async (): Promise<Category[]> => {
+export const getPublicCategoriesWithListingScope = cache(async (): Promise<PublicCategoryWithListingScope[]> => {
   if (!isSupabaseRestConfigured()) {
     return shouldShowFallbackContent() ? fallbackCategories : [];
   }
@@ -146,6 +173,12 @@ export const getPublicCategories = cache(async (): Promise<Category[]> => {
   }
 
   return fallbackCategories;
+});
+
+export const getPublicCategories = cache(async (): Promise<Category[]> => {
+  const categories = await getPublicCategoriesWithListingScope();
+
+  return categories.map(({ children, name, slug }) => ({ children, name, slug }));
 });
 
 export async function updateAdminCategory(input: UpdateCategoryInput) {

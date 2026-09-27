@@ -1,1 +1,1 @@
-export { dynamic, GET, POST } from "@/app/api/payments/yookassa/webhook/route";
+export { dynamic, POST } from "@/app/api/payments/yookassa/webhook/route";

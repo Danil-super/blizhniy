@@ -71,7 +71,7 @@ export async function POST(request: Request) {
 
   if (!isSupabaseServiceRoleConfigured()) {
     return NextResponse.json(
-      { error: "Для создания объявления на сервере нужно добавить SUPABASE_SERVICE_ROLE_KEY в переменные окружения Vercel." },
+      { error: "Для создания объявления на сервере нужно добавить SUPABASE_SERVICE_ROLE_KEY в переменные окружения сервера." },
       { status: 503 },
     );
   }

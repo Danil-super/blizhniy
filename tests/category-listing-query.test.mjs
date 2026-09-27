@@ -61,6 +61,32 @@ test('category and subcategory each resolve with one taxonomy read', async () =>
   assert.equal(missing.calls.length, 1);
 });
 
+test('a resolved category scope skips the duplicate taxonomy read without changing filters', async () => {
+  const taxonomy = [
+    { id: 'root', slug: 'target', parent_id: null },
+    { id: 'first', name: 'First', parent_id: 'root' },
+    { id: 'second', name: 'Second', parent_id: 'root' },
+  ];
+  const scope = {
+    id: 'root',
+    children: [
+      { id: 'first', name: 'First' },
+      { id: 'second', name: 'Second' },
+    ],
+  };
+
+  const parent = createReader(taxonomy);
+  assert.equal((await parent.listStoredListingsForCategory('target', { page: 2, pageSize: 24, resolvedCategory: scope })).length, 1);
+  assert.equal(parent.calls.length, 1, 'only the listings query is needed when the category was already resolved');
+  assert.match(parent.calls[0], /category_id=in\.\(root,first,second\)/);
+  assert.match(parent.calls[0], /&limit=25&offset=24/);
+
+  const child = createReader(taxonomy);
+  assert.equal((await child.listStoredListingsForCategory('target', { resolvedCategory: scope, subcategoryName: 'First' })).length, 1);
+  assert.equal(child.calls.length, 1);
+  assert.match(child.calls[0], /category_id=in\.\(first\)/);
+});
+
 test('when taxonomy reaches 1,000 rows the targeted lookups preserve completeness', async () => {
   const taxonomy = Array.from({ length: 1000 }, (_, index) => ({ id: `unrelated-${index}`, parent_id: null }));
   taxonomy.push({ id: 'first', name: 'First', parent_id: 'root' });
