@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { canForceSucceedYooKassaReturn, getPayment, confirmPayment } from "@/lib/payment-provider";
 import {
   findStoredPaymentByProvider,
-  getLatestPendingStoredPaymentForUser,
   getStoredPayment,
   markStoredPaymentTargetSucceeded,
   updateStoredPayment,
@@ -43,8 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
   }
 
   try {
-    let payment = (await getStoredPayment(paymentId)) ?? (await findStoredPaymentByProvider(paymentId)) ?? getPayment(paymentId);
-    let resolvedPaymentId = payment?.id ?? paymentId;
+    const payment = (await getStoredPayment(paymentId)) ?? (await findStoredPaymentByProvider(paymentId)) ?? getPayment(paymentId);
     let canTrustSuccessfulReturn = false;
 
     if (isSupabaseServerConfigured()) {
@@ -54,23 +52,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ pay
         return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы подтвердить платеж" }, { status: 401 });
       }
 
-      if (auth) {
-        payment ??= await getLatestPendingStoredPaymentForUser(auth.user.id);
-        const isAdmin = await isAdminRequest(request);
-
-        if (payment && payment.userId !== auth.user.id && !isAdmin) {
-          return NextResponse.json({ error: "Платеж принадлежит другому пользователю" }, { status: 403 });
-        }
-
-        canTrustSuccessfulReturn = Boolean(payment?.userId && (payment.userId === auth.user.id || isAdmin));
+      if (!payment) {
+        // A return URL is bound to one exact local/provider payment id. Never
+        // substitute a different pending payment for the newly signed-in user:
+        // an A → B account switch could otherwise confirm B's payment.
+        return NextResponse.json({ error: "Платеж не найден" }, { status: 404 });
       }
 
-      if (payment?.id) {
-        resolvedPaymentId = payment.id;
+      const isAdmin = await isAdminRequest(request);
+
+      if (payment.userId !== auth.user.id && !isAdmin) {
+        return NextResponse.json({ error: "Платеж принадлежит другому пользователю" }, { status: 403 });
       }
+
+      canTrustSuccessfulReturn = Boolean(payment.userId && (payment.userId === auth.user.id || isAdmin));
     }
 
-    const result = await confirmPayment(payment ?? resolvedPaymentId, {
+    if (!payment) {
+      return NextResponse.json({ error: "Платеж не найден" }, { status: 404 });
+    }
+
+    const result = await confirmPayment(payment, {
       trustSuccessfulReturn: Boolean(body?.trustSuccessfulReturn && canTrustSuccessfulReturn && canTrustSuccessfulReturnInThisEnvironment()),
     });
 
