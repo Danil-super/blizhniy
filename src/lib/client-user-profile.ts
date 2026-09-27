@@ -23,10 +23,12 @@ let cachedIdentity: ClientUserIdentity | null = null;
 let cachedIdentityAt = 0;
 let identityRequest: Promise<ClientUserIdentity> | null = null;
 let authListenerInitialized = false;
+let identityGeneration = 0;
 
 const identityCacheTtlMs = 60_000;
 
 function clearCachedIdentity() {
+  identityGeneration += 1;
   cachedIdentity = null;
   cachedIdentityAt = 0;
   identityRequest = null;
@@ -79,17 +81,29 @@ export async function resolveClientUserIdentity(): Promise<ClientUserIdentity> {
     return cachedIdentity;
   }
 
-  identityRequest ??= loadClientUserIdentity()
+  if (identityRequest) {
+    return identityRequest;
+  }
+
+  const generation = identityGeneration;
+  const request = loadClientUserIdentity()
     .then((identity) => {
+      // An Auth event can arrive while getSession is pending. Its old result
+      // must neither repopulate the cache nor be returned to the next account.
+      if (generation !== identityGeneration) {
+        return resolveClientUserIdentity();
+      }
+
       cachedIdentity = identity;
       cachedIdentityAt = Date.now();
       return identity;
     })
     .finally(() => {
-      identityRequest = null;
+      if (identityRequest === request) identityRequest = null;
     });
 
-  return identityRequest;
+  identityRequest = request;
+  return request;
 }
 
 export async function resolveAuthenticatedClientUserIdentity(): Promise<ClientUserIdentity> {
