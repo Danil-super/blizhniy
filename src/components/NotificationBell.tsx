@@ -150,6 +150,16 @@ export function NotificationBell() {
     async function sync() {
       try {
         const nextIdentity = await resolveClientUserIdentity();
+        if (isSupabaseBrowserConfigured() && !nextIdentity.accessToken) {
+          if (generation === syncGeneration.current) {
+            setIdentity(null);
+            setProfile(null);
+            setSiteNotifications([]);
+            setBookingNotifications([]);
+            setRequests([]);
+          }
+          return;
+        }
         const nextProfile = await readCabinetProfile(nextIdentity);
         const localNotifications = readSiteNotifications(nextIdentity.ownerKey);
         const serverNotifications = nextIdentity.accessToken
@@ -215,7 +225,7 @@ export function NotificationBell() {
         setSiteNotifications([]);
         setBookingNotifications([]);
         setRequests([]);
-        window.setTimeout(syncStoredNotifications, 0);
+        if (event !== "SIGNED_OUT") window.setTimeout(syncStoredNotifications, 0);
       });
       authSubscription = data.subscription;
     } catch {
@@ -392,7 +402,7 @@ export function NotificationBell() {
             {signedOut ? (
               <div className="border-b border-slate-100 bg-blue-50/60 px-4 py-4">
                 <p className="font-bold text-[#060b27]">Уведомления доступны после входа</p>
-                <p className="mt-1 text-sm leading-5 text-slate-600">Личные события по оплатам, публикациям и заявкам привязываются к аккаунту. Гость видит только локальные уведомления текущего браузера.</p>
+                <p className="mt-1 text-sm leading-5 text-slate-600">Личные события по оплатам, публикациям и заявкам привязываются к аккаунту.</p>
                 <Link href="/auth" className="mt-3 inline-flex h-9 items-center justify-center rounded-lg bg-[#0875d1] px-3 text-xs font-bold text-white">
                   Войти или зарегистрироваться
                 </Link>
