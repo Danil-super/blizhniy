@@ -32,7 +32,6 @@ try {
       await photo.evaluate((image) => image.decode());
 
       const layout = await hero.evaluate((section) => {
-        const style = getComputedStyle(section);
         const image = section.querySelector("picture img");
         const imageStyle = getComputedStyle(image);
         const imageRect = image.getBoundingClientRect();

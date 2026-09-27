@@ -274,10 +274,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         `}</style>
       ) : null}
       {isGardenCategory ? (
-        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <picture className="pointer-events-none absolute inset-0">
           <source media="(min-width: 1024px)" srcSet="/images/categories/garden-category-hero-desktop-v1.webp" />
           {/* Preserve the mobile vegetable composition; desktop expands the same produce scene. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
             className="h-full w-full object-cover object-center"
@@ -289,10 +288,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </picture>
       ) : null}
       {isRitualCategory ? (
-        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <picture className="pointer-events-none absolute inset-0">
           <source media="(min-width: 1024px)" srcSet="/images/categories/ritual-category-hero-desktop-v2.webp" />
           {/* Keep the existing mobile memorial photo; the desktop crop preserves its full scene. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
             className="h-full w-full object-cover object-[45%_center] sm:object-[62%_center] lg:object-center"
@@ -304,10 +302,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </picture>
       ) : null}
       {isKidsCategory ? (
-        <picture className="pointer-events-none absolute bottom-4 right-2 top-4 w-[44%] md:right-4 md:w-[60%]" aria-hidden="true">
+        <picture className="pointer-events-none absolute bottom-4 right-2 top-4 w-[44%] md:right-4 md:w-[60%]">
           <source media="(min-width: 768px)" srcSet="/images/categories/kids-category-hero-desktop-v5.webp" />
           {/* Native picture selects one composition before loading and keeps the full image visible. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
             className="h-full w-full object-contain object-right"
@@ -319,10 +316,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </picture>
       ) : null}
       {isAnimalsCategory ? (
-        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <picture className="pointer-events-none absolute inset-0">
           <source media="(min-width: 1024px)" srcSet="/images/categories/animals-category-hero-desktop-v2.webp" />
           {/* Keep the mobile animal scene intact; desktop uses the same composition in a wide 3:1 frame. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
             className="h-full w-full object-cover object-[76%_center] lg:object-center"
@@ -334,10 +330,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </picture>
       ) : null}
       {isBeautyCategory ? (
-        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <picture className="pointer-events-none absolute inset-0">
           <source media="(min-width: 1024px)" srcSet="/images/categories/beauty-health-category-hero-desktop-v1.webp" />
           {/* Each layout gets a photo composed for its own aspect ratio. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
             className="h-full w-full object-cover object-center"
@@ -349,10 +344,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </picture>
       ) : null}
       {isToolsCategory ? (
-        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <picture className="pointer-events-none absolute inset-0">
           <source media="(min-width: 768px)" srcSet="/images/categories/tools-category-hero-desktop-v1.webp" />
           {/* Preserve the mobile cabinet; the desktop photo is composed for a wide banner. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
             className="h-full w-full object-cover object-center"
@@ -364,10 +358,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </picture>
       ) : null}
       {isTransportCategory ? (
-        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <picture className="pointer-events-none absolute inset-0">
           <source media="(min-width: 768px)" srcSet="/images/categories/transport-category-hero-desktop-v4.webp" />
           {/* Each breakpoint receives a composition where every vehicle stays in frame. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
             className="h-full w-full object-cover object-center"
@@ -380,10 +373,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       ) : null}
       {isDishesCategory ? (
         <>
-          <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <picture className="pointer-events-none absolute inset-0">
             <source media="(min-width: 640px)" srcSet="/images/categories/dishes-category-hero-desktop-v2.webp" />
             {/* Preserve the original photo; match the banner ratio to avoid cropping. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               alt=""
               className="h-full w-full object-cover object-center"
@@ -396,9 +388,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </>
       ) : null}
       {isBusinessCategory ? (
-        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <picture className="pointer-events-none absolute inset-0">
           {/* One clear photo across the whole banner: no fade, mask or white transition. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
             className="h-full w-full object-cover object-[58%_center] sm:object-center"
@@ -410,10 +401,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </picture>
       ) : null}
       {isElectronicsCategory ? (
-        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <picture className="pointer-events-none absolute inset-0">
           <source media="(min-width: 1024px)" srcSet="/images/categories/electronics-category-hero-desktop-v1.webp" />
           {/* Keep the mobile electronics room intact; desktop uses the full room in a wide frame. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
             className="h-full w-full object-cover object-[76%_center] lg:object-center"
@@ -447,10 +437,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </>
       ) : null}
       {isExchangeOrFreeCategory ? (
-        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <picture className="pointer-events-none absolute inset-0">
           <source media="(min-width: 1024px)" srcSet="/images/categories/exchange-free-category-hero-desktop-v1.webp" />
           {/* Keep the mobile giveaway scene intact; desktop uses the same objects in a wide frame. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
             className="h-full w-full object-cover object-[68%_center] lg:object-center"
@@ -462,10 +451,9 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
         </picture>
       ) : null}
       {isRealEstateCategory ? (
-        <picture className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <picture className="pointer-events-none absolute inset-0">
           <source media="(min-width: 1024px)" srcSet="/images/categories/real-estate-category-hero-desktop-v1.webp" />
           {/* Keep the mobile property scene intact; desktop uses the complete estate in a wide frame. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             alt=""
             className="h-full w-full object-cover object-[64%_center] sm:object-[66%_center] lg:object-center"

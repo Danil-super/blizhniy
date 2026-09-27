@@ -62,7 +62,7 @@ async function listRowsByUserOwnership(table: string, ownerColumn: "author_id" |
 
 async function optionalRows<T>(promise: Promise<T[]>, label: string) {
   return promise.catch((error) => {
-    console.error(`Failed to load admin users ${label}`, error);
+    console.error("Failed to load admin users", label, error);
     return [] as T[];
   });
 }

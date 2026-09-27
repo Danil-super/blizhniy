@@ -4,9 +4,10 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - ".github/**"
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: production-deploy
@@ -14,62 +15,24 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Build
-        run: npm run build
-
-      - name: Test expiry maintenance runner
-        run: bash scripts/test-reconcile-expired-publications.sh
-
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
-
-      - name: Install Chromium for predeployment checks
-        run: npx playwright install --with-deps chromium
-
-      - name: Check category layouts before SSH deployment
-        env:
-          BASE_URL: http://127.0.0.1:3100
-        run: |
-          npm run dev -- -p 3100 > /tmp/blizhniy-validate-next.log 2>&1 &
-          app_pid=$!
-          trap 'kill "$app_pid" || true' EXIT
-
-          for attempt in $(seq 1 30); do
-            if curl -fsS --max-time 3 "$BASE_URL/katalog/instrumenty" >/dev/null; then
-              break
-            fi
-            sleep 2
-          done
-
-          curl -fsS --max-time 5 "$BASE_URL/katalog/instrumenty" >/dev/null
-          node scripts/check-category-heroes.mjs
-          node scripts/check-instruments-hero.mjs
+  security:
+    uses: ./.github/workflows/security-checks.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
 
   deploy:
-    needs: validate
+    needs: [validate, security]
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Deploy over SSH
         id: ship
@@ -186,7 +149,7 @@ jobs:
           exit 124
 
       - name: Setup Node.js for deployed layout checks
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
           cache: npm
@@ -209,7 +172,7 @@ jobs:
 
       - name: Upload responsive screenshots
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: category-heroes-responsive
           path: artifacts/category-heroes

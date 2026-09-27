@@ -1,9 +1,7 @@
 name: Security Checks - SAST, Secrets, Dependencies
 
 on:
-  push:
-    branches:
-      - main
+  workflow_call:
   pull_request:
     branches:
       - main
@@ -26,12 +24,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
       - name: Prepare reports directory
         run: mkdir -p security-reports
+
+      - name: Setup Node.js for report validation
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
 
       - name: Scan secrets with Gitleaks
         id: gitleaks
@@ -60,6 +63,12 @@ jobs:
               --sarif \
               --output=security-reports/semgrep.sarif
 
+      - name: Block severe static analysis findings
+        if: ${{ steps.semgrep.outcome == 'success' }}
+        id: semgrep_gate
+        continue-on-error: true
+        run: node scripts/check-semgrep-report.mjs security-reports/semgrep.sarif
+
       - name: Scan dependencies and config with Trivy
         id: trivy
         continue-on-error: true
@@ -77,7 +86,7 @@ jobs:
 
       - name: Upload security reports
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: security-reports
           path: security-reports
@@ -87,7 +96,7 @@ jobs:
       - name: Upload Gitleaks SARIF to GitHub Security
         if: ${{ always() && vars.ENABLE_CODE_SCANNING_UPLOAD == 'true' && hashFiles('security-reports/gitleaks.sarif') != '' }}
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
         with:
           sarif_file: security-reports/gitleaks.sarif
           category: gitleaks
@@ -95,7 +104,7 @@ jobs:
       - name: Upload Semgrep SARIF to GitHub Security
         if: ${{ always() && vars.ENABLE_CODE_SCANNING_UPLOAD == 'true' && hashFiles('security-reports/semgrep.sarif') != '' }}
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
         with:
           sarif_file: security-reports/semgrep.sarif
           category: semgrep
@@ -103,7 +112,7 @@ jobs:
       - name: Upload Trivy SARIF to GitHub Security
         if: ${{ always() && vars.ENABLE_CODE_SCANNING_UPLOAD == 'true' && hashFiles('security-reports/trivy.sarif') != '' }}
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
         with:
           sarif_file: security-reports/trivy.sarif
           category: trivy
@@ -118,13 +127,14 @@ jobs:
             echo "|---|---|---|"
             echo "| Gitleaks | Secrets in Git history and files | ${{ steps.gitleaks.outcome }} |"
             echo "| Semgrep | Static code analysis | ${{ steps.semgrep.outcome }} |"
+            echo "| Semgrep gate | Severe findings | ${{ steps.semgrep_gate.outcome }} |"
             echo "| Trivy | Dependencies, secrets, misconfig | ${{ steps.trivy.outcome }} |"
             echo ""
             echo "Reports are available in the security-reports artifact."
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Fail on high-risk findings
-        if: ${{ steps.gitleaks.outcome == 'failure' || steps.trivy.outcome == 'failure' }}
+      - name: Fail on security findings or scanner errors
+        if: ${{ steps.gitleaks.outcome == 'failure' || steps.semgrep.outcome == 'failure' || steps.semgrep_gate.outcome == 'failure' || steps.trivy.outcome == 'failure' }}
         run: |
-          echo "High-risk security findings were detected. Check the security-reports artifact."
+          echo "Security findings or a scanner error blocked the release. Check the security-reports artifact."
           exit 1
