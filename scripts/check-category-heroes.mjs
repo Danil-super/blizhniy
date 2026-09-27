@@ -94,6 +94,26 @@ const responsiveImageHeroScenarios = [
   { slug: "menyayu-ili-otdam-darom", mobileMode: "cover" },
 ];
 
+let transientNavigationTimeouts = 0;
+
+async function openCategory(page, slug) {
+  const url = new URL(`/katalog/${slug}`, baseUrl).href;
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return await page.goto(url, { waitUntil: "domcontentloaded" });
+    } catch (error) {
+      if (error?.name !== "TimeoutError" || attempt === 2 || ++transientNavigationTimeouts > 2) {
+        throw error;
+      }
+
+      console.warn(`Navigation to ${slug} timed out; retrying once (${transientNavigationTimeouts}/2 transient timeouts).`);
+    }
+  }
+
+  throw new Error(`Could not open ${slug}`);
+}
+
 const browser = await chromium.launch();
 try {
   for (const scenario of scenarios) {
@@ -102,7 +122,7 @@ try {
     for (const width of [320, 360, 390, 430, 639, 640, 767, 768, 1024, 1440, 1535, 1536, 1920]) {
       const page = await browser.newPage({ viewport: { width, height: 1000 } });
       try {
-        const response = await page.goto(new URL(`/katalog/${scenario.slug}`, baseUrl).href, { waitUntil: "domcontentloaded" });
+        const response = await openCategory(page, scenario.slug);
         assert.equal(response.status(), 200);
         const hero = page.locator(`[data-category-theme="${scenario.slug}"]`);
         await hero.locator("picture img").waitFor();
@@ -184,7 +204,7 @@ try {
     for (const width of widths) {
       const page = await browser.newPage({ viewport: { width, height: 1000 } });
       try {
-        const response = await page.goto(new URL(`/katalog/${scenario.slug}`, baseUrl).href, { waitUntil: "domcontentloaded" });
+        const response = await openCategory(page, scenario.slug);
         assert.equal(response.status(), 200);
 
         const hero = page.locator(`[data-category-theme="${scenario.slug}"]`);
