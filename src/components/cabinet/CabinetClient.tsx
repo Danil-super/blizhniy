@@ -480,7 +480,6 @@ function workRequestToDemoPublication(request: WorkRequest, ownerKey: string): D
     messengerUrl: request.messengerUrl,
     profession: request.profession,
     status: vacancyStatusLabel(request.status),
-    expiresAt: request.expiresAt,
     createdAt: request.createdAt,
   });
 }
@@ -507,7 +506,6 @@ function specialistToDemoPublication(profile: SpecialistProfile, ownerKey: strin
     profession: profile.profession,
     skills: profile.skills,
     status: vacancyStatusLabel(profile.status),
-    expiresAt: profile.expiresAt,
     createdAt: profile.createdAt ?? profile.publishedAt ?? new Date().toISOString(),
   });
 }
