@@ -1,4 +1,5 @@
 import { AdMarqueePlacementClient } from "@/components/AdMarqueePlacementClient";
+import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { SiteHeader } from "@/components/SiteHeader";
 import { getPublicTariffs } from "@/lib/tariff-store";
 
@@ -10,9 +11,11 @@ export default async function Page() {
   return (
     <>
       <SiteHeader />
-      <main className="page-container py-6 sm:py-10">
-        <AdMarqueePlacementClient tariff={tariff} />
-      </main>
+      <PublicationAuthGate title="Войдите, чтобы разместить рекламу в бегущей строке">
+        <main className="page-container py-6 sm:py-10">
+          <AdMarqueePlacementClient tariff={tariff} />
+        </main>
+      </PublicationAuthGate>
     </>
   );
 }

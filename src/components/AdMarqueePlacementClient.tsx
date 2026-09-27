@@ -1,8 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import { CheckCircle2, Clock3, Loader2, Send, WalletCards } from "lucide-react";
-import { createClientPayment } from "@/lib/client-payment-flow";
+import { readCabinetProfile } from "@/lib/client-user-profile";
+import { addSiteNotification, type AddSiteNotificationInput } from "@/lib/site-notifications";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import type { AdMarqueePlacement, AdMarqueePlacementStatus } from "@/lib/ad-marquee-store";
 import type { Tariff } from "@/lib/types";
@@ -12,6 +14,25 @@ type Payload = {
   placement?: AdMarqueePlacement;
   placements?: AdMarqueePlacement[];
 };
+
+type CreatedPayment = {
+  confirmationUrl?: string;
+  id: string;
+};
+
+type AuthenticatedAdMarqueeSession = {
+  accessToken: string;
+  email: string;
+  name: string;
+  userId: string;
+};
+
+type SessionReader = () => Promise<{
+  data: { session: Session | null };
+  error: Error | null;
+}>;
+
+const sessionChangedError = "Сессия изменилась. Войдите в аккаунт повторно и повторите действие.";
 
 const statusLabels: Record<AdMarqueePlacementStatus, string> = {
   active: "Показывается",
@@ -23,16 +44,86 @@ const statusLabels: Record<AdMarqueePlacementStatus, string> = {
   rejected: "Отклонено",
 };
 
-async function authHeaders(): Promise<Record<string, string>> {
-  if (!isSupabaseBrowserConfigured()) {
-    return {};
+function toAuthenticatedAdMarqueeSession(session: Session | null | undefined): AuthenticatedAdMarqueeSession | null {
+  const userId = session?.user?.id;
+  const accessToken = session?.access_token;
+
+  if (!userId || !accessToken) {
+    return null;
   }
 
-  const supabase = getSupabaseBrowserClient();
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const email = session.user.email ?? "";
+  const displayName = typeof session.user.user_metadata?.display_name === "string" ? session.user.user_metadata.display_name.trim() : "";
 
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return {
+    accessToken,
+    email,
+    name: displayName || (email ? email.split("@")[0] : "Пользователь"),
+    userId,
+  };
+}
+
+async function readAuthenticatedAdMarqueeSession(readSession: SessionReader) {
+  const { data, error } = await readSession();
+
+  if (error) {
+    throw error;
+  }
+
+  return toAuthenticatedAdMarqueeSession(data.session);
+}
+
+function isSameAdMarqueeOwner(left: AuthenticatedAdMarqueeSession, right: AuthenticatedAdMarqueeSession | null) {
+  return Boolean(right && left.userId === right.userId);
+}
+
+async function assertBoundAdMarqueeSession(
+  origin: AuthenticatedAdMarqueeSession,
+  readSession: SessionReader,
+  isOriginCurrent: () => boolean,
+) {
+  // The request keeps the token captured for this screen. Compare owners here
+  // so a normal refresh of A's token does not become an A → B transition.
+  if (!isOriginCurrent() || !isSameAdMarqueeOwner(origin, await readAuthenticatedAdMarqueeSession(readSession))) {
+    throw new Error(sessionChangedError);
+  }
+}
+
+/**
+ * This page is public and can outlive an account switch in another tab. Keep
+ * each request tied to the owner and access token that started it, and refuse
+ * to apply the result if that owner is no longer active.
+ */
+export async function runBoundAdMarqueeRequest<Result>(
+  origin: AuthenticatedAdMarqueeSession,
+  readSession: SessionReader,
+  sendRequest: (accessToken: string) => Promise<Result>,
+  isOriginCurrent: () => boolean,
+) {
+  await assertBoundAdMarqueeSession(origin, readSession, isOriginCurrent);
+  const result = await sendRequest(origin.accessToken);
+  await assertBoundAdMarqueeSession(origin, readSession, isOriginCurrent);
+
+  return result;
+}
+
+/**
+ * Do not resolve a new "current user" after creating a payment. The profile
+ * lookup and notification write stay bound to the account that started it.
+ */
+export async function addBoundAdMarqueePaymentNotification<Profile>(
+  origin: AuthenticatedAdMarqueeSession,
+  readSession: SessionReader,
+  loadProfile: (session: AuthenticatedAdMarqueeSession) => Promise<Profile>,
+  writeNotification: (ownerKey: string, profile: Profile, input: AddSiteNotificationInput) => unknown,
+  input: AddSiteNotificationInput,
+  isOriginCurrent: () => boolean,
+) {
+  await assertBoundAdMarqueeSession(origin, readSession, isOriginCurrent);
+  const profile = await loadProfile(origin);
+  await assertBoundAdMarqueeSession(origin, readSession, isOriginCurrent);
+
+  return writeNotification(origin.userId, profile, input);
 }
 
 function formatDate(value?: string) {
@@ -51,6 +142,10 @@ export function AdMarqueePlacementClient({ tariff }: { tariff?: Tariff }) {
   const [payingId, setPayingId] = useState("");
   const [text, setText] = useState("");
   const [href, setHref] = useState("");
+  const mounted = useRef(false);
+  const sessionGeneration = useRef(0);
+  const latestLoadRequest = useRef(0);
+  const authenticatedSession = useRef<AuthenticatedAdMarqueeSession | null>(null);
 
   const stats = useMemo(
     () => ({
@@ -61,12 +156,91 @@ export function AdMarqueePlacementClient({ tariff }: { tariff?: Tariff }) {
     [placements],
   );
 
-  async function load() {
+  const resetPrivateState = useCallback(() => {
+    sessionGeneration.current += 1;
+    latestLoadRequest.current += 1;
+    authenticatedSession.current = null;
+    setPlacements([]);
+    setPayingId("");
+    setSubmitting(false);
+    setText("");
+    setHref("");
+    setLoading(true);
+    setMessage("Проверяем вход...");
+  }, []);
+
+  const isOriginCurrent = useCallback((origin: AuthenticatedAdMarqueeSession, generation: number) => (
+      mounted.current &&
+      generation === sessionGeneration.current &&
+      authenticatedSession.current?.userId === origin.userId
+  ), []);
+
+  const load = useCallback(async (providedSession?: Session | null) => {
+    const requestId = ++latestLoadRequest.current;
+    const generation = sessionGeneration.current;
+    const isLoadCurrent = () => (
+      mounted.current && requestId === latestLoadRequest.current && generation === sessionGeneration.current
+    );
+
+    if (!mounted.current) {
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const response = await fetch("/api/ad-marquee", { headers: await authHeaders() });
-      const payload = (await response.json().catch(() => null)) as Payload | null;
+      if (!isSupabaseBrowserConfigured()) {
+        if (isLoadCurrent()) {
+          authenticatedSession.current = null;
+          setPlacements([]);
+          setMessage("Войдите в аккаунт, чтобы управлять размещениями.");
+        }
+        return;
+      }
+
+      const supabase = getSupabaseBrowserClient();
+      const origin = providedSession === undefined
+        ? await readAuthenticatedAdMarqueeSession(() => supabase.auth.getSession())
+        : toAuthenticatedAdMarqueeSession(providedSession);
+
+      if (!isLoadCurrent()) {
+        return;
+      }
+
+      if (!origin) {
+        authenticatedSession.current = null;
+        setPlacements([]);
+        setMessage("Войдите в аккаунт, чтобы управлять размещениями.");
+        return;
+      }
+
+      // The Auth event normally gets here first. This guard also covers an
+      // out-of-order getSession result from a browser tab switch.
+      if (authenticatedSession.current && authenticatedSession.current.userId !== origin.userId) {
+        resetPrivateState();
+        void load();
+        return;
+      }
+
+      authenticatedSession.current = origin;
+      const { response, payload } = await runBoundAdMarqueeRequest(
+        origin,
+        () => supabase.auth.getSession(),
+        async (accessToken) => {
+          const response = await fetch("/api/ad-marquee", {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          const payload = (await response.json().catch(() => null)) as Payload | null;
+
+          return { response, payload };
+        },
+        () => isOriginCurrent(origin, generation),
+      );
+
+      if (!isLoadCurrent() || !isOriginCurrent(origin, generation)) {
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(payload?.error ?? "Не удалось загрузить заявки");
@@ -75,31 +249,101 @@ export function AdMarqueePlacementClient({ tariff }: { tariff?: Tariff }) {
       setPlacements(payload?.placements ?? []);
       setMessage("Данные обновлены.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Ошибка загрузки");
+      if (isLoadCurrent()) {
+        setPlacements([]);
+        setMessage(error instanceof Error ? error.message : "Ошибка загрузки");
+      }
     } finally {
-      setLoading(false);
+      if (isLoadCurrent()) {
+        setLoading(false);
+      }
     }
-  }
+  }, [isOriginCurrent, resetPrivateState]);
 
   useEffect(() => {
+    mounted.current = true;
+
+    if (!isSupabaseBrowserConfigured()) {
+      void load();
+
+      return () => {
+        mounted.current = false;
+        sessionGeneration.current += 1;
+        latestLoadRequest.current += 1;
+      };
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const next = toAuthenticatedAdMarqueeSession(nextSession);
+      const current = authenticatedSession.current;
+
+      if (current && next && isSameAdMarqueeOwner(current, next)) {
+        // Keep the view mounted for a regular token refresh, but use its new
+        // token for subsequent requests.
+        authenticatedSession.current = next;
+        return;
+      }
+
+      resetPrivateState();
+      window.setTimeout(() => {
+        if (mounted.current) {
+          void load(nextSession);
+        }
+      }, 0);
+    });
+
     void load();
-  }, []);
+
+    return () => {
+      mounted.current = false;
+      sessionGeneration.current += 1;
+      latestLoadRequest.current += 1;
+      authenticatedSession.current = null;
+      listener.subscription.unsubscribe();
+    };
+  }, [load, resetPrivateState]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const origin = authenticatedSession.current;
+    const generation = sessionGeneration.current;
+
+    if (!origin || !isOriginCurrent(origin, generation)) {
+      setMessage("Войдите в аккаунт повторно, чтобы отправить заявку.");
+      return;
+    }
+
     setSubmitting(true);
     setMessage("Отправляем текст на модерацию...");
 
     try {
-      const response = await fetch("/api/ad-marquee", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-        body: JSON.stringify({ href, text }),
-      });
-      const payload = (await response.json().catch(() => null)) as Payload | null;
+      const supabase = getSupabaseBrowserClient();
+      const submittedText = text;
+      const submittedHref = href;
+      const { response, payload } = await runBoundAdMarqueeRequest(
+        origin,
+        () => supabase.auth.getSession(),
+        async (accessToken) => {
+          const response = await fetch("/api/ad-marquee", {
+            body: JSON.stringify({ href: submittedHref, text: submittedText }),
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            method: "POST",
+          });
+          const payload = (await response.json().catch(() => null)) as Payload | null;
+
+          return { response, payload };
+        },
+        () => isOriginCurrent(origin, generation),
+      );
 
       if (!response.ok || !payload?.placement) {
         throw new Error(payload?.error ?? "Не удалось создать заявку");
+      }
+
+      if (!isOriginCurrent(origin, generation)) {
+        throw new Error(sessionChangedError);
       }
 
       setText("");
@@ -107,9 +351,13 @@ export function AdMarqueePlacementClient({ tariff }: { tariff?: Tariff }) {
       setPlacements((current) => [payload.placement as AdMarqueePlacement, ...current]);
       setMessage("Заявка отправлена. После проверки появится кнопка оплаты.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Ошибка отправки");
+      if (isOriginCurrent(origin, generation)) {
+        setMessage(error instanceof Error ? error.message : "Ошибка отправки");
+      }
     } finally {
-      setSubmitting(false);
+      if (isOriginCurrent(origin, generation)) {
+        setSubmitting(false);
+      }
     }
   }
 
@@ -119,20 +367,82 @@ export function AdMarqueePlacementClient({ tariff }: { tariff?: Tariff }) {
       return;
     }
 
+    const origin = authenticatedSession.current;
+    const generation = sessionGeneration.current;
+
+    if (!origin || !isOriginCurrent(origin, generation)) {
+      setMessage("Войдите в аккаунт повторно, чтобы создать платеж.");
+      return;
+    }
+
     setPayingId(placement.id);
     setMessage("Создаем платеж...");
 
     try {
-      const payment = await createClientPayment({
-        tariffId: tariff.id,
-        targetId: placement.id,
-        targetTitle: `Бегущая строка: ${placement.text}`,
-        targetType: "ad_marquee",
+      const supabase = getSupabaseBrowserClient();
+      const targetTitle = `Бегущая строка: ${placement.text}`;
+      const payment = await runBoundAdMarqueeRequest(
+        origin,
+        () => supabase.auth.getSession(),
+        async (accessToken) => {
+          const response = await fetch("/api/payments", {
+            body: JSON.stringify({
+              tariffId: tariff.id,
+              targetId: placement.id,
+              targetTitle,
+              targetType: "ad_marquee",
+            }),
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            method: "POST",
+          });
+          const payload = (await response.json().catch(() => null)) as { error?: string; payment?: CreatedPayment } | null;
+
+          if (!response.ok || !payload?.payment?.id) {
+            throw new Error(payload?.error ?? "Не удалось создать платеж");
+          }
+
+          return payload.payment;
+        },
+        () => isOriginCurrent(origin, generation),
+      );
+
+      await assertBoundAdMarqueeSession(origin, () => supabase.auth.getSession(), () => isOriginCurrent(origin, generation));
+
+      const notification: AddSiteNotificationInput = {
+        actionHref: payment.confirmationUrl,
+        actionLabel: payment.confirmationUrl ? "Перейти к оплате" : undefined,
+        category: "payment",
+        dedupeKey: `payment:${payment.id}:created`,
+        message: payment.confirmationUrl
+          ? "Перейдите к оплате в ЮKassa. После успешной оплаты размещение включится автоматически."
+          : "Платеж создан. После подтверждения размещение включится автоматически.",
+        title: "Платеж создан",
+        tone: "info",
+      };
+      void addBoundAdMarqueePaymentNotification(
+        origin,
+        () => supabase.auth.getSession(),
+        (session) => readCabinetProfile({
+          accessToken: session.accessToken,
+          email: session.email,
+          name: session.name,
+          ownerKey: session.userId,
+        }),
+        addSiteNotification,
+        notification,
+        () => isOriginCurrent(origin, generation),
+      ).catch(() => {
+        // Notifications are optional, but must never fall through to another account.
       });
+
+      await assertBoundAdMarqueeSession(origin, () => supabase.auth.getSession(), () => isOriginCurrent(origin, generation));
       window.location.assign(payment.confirmationUrl || `/oplata/${payment.id}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Не удалось создать платеж");
-      setPayingId("");
+      if (isOriginCurrent(origin, generation)) {
+        setMessage(error instanceof Error ? error.message : "Не удалось создать платеж");
+        setPayingId("");
+      }
     }
   }
 
@@ -204,7 +514,7 @@ export function AdMarqueePlacementClient({ tariff }: { tariff?: Tariff }) {
             <h2 className="text-xl font-bold text-[#060b27]">Мои размещения</h2>
             <p className="mt-1 text-sm leading-6 text-slate-600">Проверка, оплата, очередь и сроки показа.</p>
           </div>
-          <button onClick={load} disabled={loading} className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 disabled:opacity-60">
+          <button onClick={() => void load()} disabled={loading} className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 disabled:opacity-60">
             Обновить
           </button>
         </div>
