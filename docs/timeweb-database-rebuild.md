@@ -15,7 +15,7 @@ Run `node scripts/check-migration-history.mjs`. It deliberately exits nonzero:
 
 ## Exact applied SQL archive
 
-`docs/applied-migrations-2026-09-27.json` separately preserves the exact SQL text, order, names and MD5 hashes of **63** migration rows queried from the connected database on 27 September 2026 at 08:57 UTC. It includes four rows added after the 59-row source comparison above. The archive contains SQL and therefore belongs in `docs/`, never in `supabase/migrations/`: neither Supabase CLI nor an operator should execute it as a migration. It was checked for URLs, email addresses and common credential strings before committing. That screening is not a guarantee that arbitrary historical SQL is safe to execute.
+`docs/applied-migrations-2026-09-27.json` separately preserves the exact SQL text, order, names and MD5 hashes of **64** migration rows queried from the connected database on 27 September 2026 at 09:15 UTC, with repository commit `fbdb88184aa6aad0664917b2bd5bb46b296b38a2` recorded as the source snapshot. It includes five rows added after the 59-row source comparison above. The archive contains SQL and therefore belongs in `docs/`, never in `supabase/migrations/`: neither Supabase CLI nor an operator should execute it as a migration. It was checked for URLs, email addresses and common credential strings before committing. That screening is not a guarantee that arbitrary historical SQL is safe to execute.
 
 `node scripts/verify-applied-migration-archive.mjs` checks ordering and every archived statement's MD5. Given a fresh metadata-only export from the connected project, it also detects subsequent migration rows or changed statements:
 

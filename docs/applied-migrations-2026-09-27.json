@@ -1,9 +1,9 @@
 {
   "kind": "read-only applied SQL evidence; never pass this JSON to a migration runner",
   "sourceRepository": "Danil-super/blizhniy",
-  "sourceRepositoryCommitAtCapture": "c7e5e092f96a66cdef72443f1c4a68c2e85a49c4",
+  "sourceRepositoryCommitAtCapture": "fbdb88184aa6aad0664917b2bd5bb46b296b38a2",
   "databaseProjectRef": "jzdhpphcelljmjfwrxfi",
-  "capturedAtUTC": "2026-09-27T08:57:03.348Z",
+  "capturedAtUTC": "2026-09-27T09:15:01.898Z",
   "migrations": [
     {
       "version": "20260615135834",
@@ -382,6 +382,12 @@
       "name": "revoke_unused_org_profile_client_writes_20260927",
       "statementMd5": "d6b7888bb51d85af8c3301b0b7026550",
       "statement": "-- Organization profiles are not written by the current or audited browser app.\n-- Keep server service_role access while closing raw Data API writes to public fields.\nrevoke insert, update, delete on table public.organization_profiles from anon, authenticated;\n"
+    },
+    {
+      "version": "20260927090646",
+      "name": "demote_unentitled_test_publications_20260927",
+      "statementMd5": "b961ce3bc6fc8575b498fcf1865eaeb3",
+      "statement": "-- One-time cleanup for synthetic publications created before atomic entitlements.\n-- Keep confirmed, unexpired YooKassa publications for the same owner and target.\n-- The payment table is locked briefly so a concurrent success cannot commit\n-- between the entitlement check and the publication-status update.\nlock table public.payments in share mode;\n\nupdate public.specialist_profiles s\nset status = 'draft'::public.publication_status\nwhere s.status = 'published'::public.publication_status\n  and not exists (\n    select 1\n    from public.payments p\n    join public.tariffs t on t.id = p.tariff_id\n    where p.user_id = s.user_id\n      and p.target_type = 'specialist'\n      and p.target_id = s.id\n      and p.provider = 'yookassa'\n      and p.status = 'succeeded'::public.payment_status\n      and nullif(btrim(p.provider_payment_id), '') is not null\n      and p.paid_at is not null\n      and p.paid_at <= now()\n      and t.action = 'specialist_publication'::public.tariff_action\n      and t.duration_days > 0\n      and p.paid_at + make_interval(days => t.duration_days) > now()\n  );\n\nupdate public.work_requests w\nset status = case\n  when exists (\n    select 1\n    from public.payments p\n    join public.tariffs t on t.id = p.tariff_id\n    where p.user_id = w.author_id\n      and p.target_type = 'workRequest'\n      and p.target_id = w.id\n      and p.provider = 'yookassa'\n      and p.status = 'succeeded'::public.payment_status\n      and nullif(btrim(p.provider_payment_id), '') is not null\n      and p.paid_at is not null\n      and t.action in ('work_request_publication'::public.tariff_action, 'listing_publication'::public.tariff_action)\n      and t.duration_days > 0\n  ) then 'expired'::public.publication_status\n  else 'draft'::public.publication_status\nend\nwhere w.status = 'published'::public.publication_status\n  and not exists (\n    select 1\n    from public.payments p\n    join public.tariffs t on t.id = p.tariff_id\n    where p.user_id = w.author_id\n      and p.target_type = 'workRequest'\n      and p.target_id = w.id\n      and p.provider = 'yookassa'\n      and p.status = 'succeeded'::public.payment_status\n      and nullif(btrim(p.provider_payment_id), '') is not null\n      and p.paid_at is not null\n      and t.action in ('work_request_publication'::public.tariff_action, 'listing_publication'::public.tariff_action)\n      and t.duration_days > 0\n      and greatest(p.paid_at, coalesce(w.published_at, p.paid_at)) <= now()\n      and greatest(p.paid_at, coalesce(w.published_at, p.paid_at))\n        + make_interval(days => t.duration_days) > now()\n  );\n"
     }
   ]
 }
