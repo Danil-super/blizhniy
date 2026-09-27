@@ -217,7 +217,7 @@ function normalizeEmployerType(value?: string) {
   return value === "ip" || value === "person" || value === "private" ? (value === "private" ? "person" : value) : "organization";
 }
 
-function mapVacancy(row: VacancyRow, showEffectiveStatus = false): JobVacancy {
+function mapVacancy(row: VacancyRow): JobVacancy {
   const publishedAt = row.published_at ?? row.created_at;
 
   return {
@@ -252,10 +252,14 @@ function mapVacancy(row: VacancyRow, showEffectiveStatus = false): JobVacancy {
     responsibilities: row.responsibilities ?? undefined,
     conditions: row.conditions ?? undefined,
     placementRightConfirmed: Boolean(row.placement_right_confirmed),
-    status: showEffectiveStatus ? effectivePublicationStatus(row.status, row.expires_at) : row.status,
+    status: row.status,
     createdAt: row.created_at,
     publishedAt: isoDate(publishedAt),
   };
+}
+
+function mapVacancyWithEffectiveStatus(row: VacancyRow): JobVacancy {
+  return { ...mapVacancy(row), status: effectivePublicationStatus(row.status, row.expires_at) };
 }
 
 // Raw vacancy rows may contain a private location. Strip it before a public
@@ -534,7 +538,7 @@ export async function listStoredVacanciesForAdmin(limit = 200) {
     `/rest/v1/vacancies?select=${vacancySelect}&order=created_at.desc&limit=${limit}`,
   );
 
-  return rows.map((row) => mapVacancy(row, true));
+  return rows.map(mapVacancyWithEffectiveStatus);
 }
 
 export async function listStoredVacanciesForUser(userId: string) {
@@ -547,7 +551,7 @@ export async function listStoredVacanciesForUser(userId: string) {
       `/rest/v1/vacancies?select=${vacancySelect}&author_id=eq.${encodeURIComponent(userId)}&order=created_at.desc`,
     );
 
-    return rows.map((row) => mapVacancy(row, true));
+    return rows.map(mapVacancyWithEffectiveStatus);
   } catch (error) {
     console.error("Failed to load user vacancies from Supabase", error);
     return [];
