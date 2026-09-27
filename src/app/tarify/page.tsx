@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { CreditCard, ShieldCheck } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -35,6 +36,8 @@ function tariffCta(tariff: Tariff) {
 
   return { href: "/cabinet", label: "Открыть кабинет" };
 }
+
+export const metadata: Metadata = { title: "Тарифы", alternates: { canonical: "/tarify" } };
 
 export default async function Page() {
   const tariffs = await getPublicTariffs();

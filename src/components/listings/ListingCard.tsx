@@ -13,6 +13,7 @@ export type ListingStatus = "draft" | "pending_payment" | "paid" | "published" |
 export type DemoListing = {
   viewId?: string;
   slug: string;
+  ownerKey?: string;
   author?: string;
   title: string;
   kind: ListingKind;

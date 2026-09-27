@@ -10,6 +10,9 @@ type SupabaseRestOptions = {
   useServiceRole?: boolean;
 };
 
+const DEFAULT_READ_TIMEOUT_MS = 8000;
+const DEFAULT_WRITE_TIMEOUT_MS = 20000;
+
 export function getSupabaseRestConfig(useServiceRole = true) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
@@ -45,19 +48,25 @@ export async function supabaseRest<T>(path: string, options: SupabaseRestOptions
     throw new Error("Supabase env is not configured");
   }
 
+  const method = options.method ?? "GET";
+  // A write can have committed even if its response is lost. Do not automatically
+  // repeat non-idempotent requests; callers may opt in when they have an idempotency key.
+  const maxAttempts = options.attempts ?? (method === "GET" ? 3 : 1);
+  const timeoutMs = options.timeoutMs && options.timeoutMs > 0
+    ? options.timeoutMs
+    : method === "GET" ? DEFAULT_READ_TIMEOUT_MS : DEFAULT_WRITE_TIMEOUT_MS;
   let response: Response | undefined;
+  let payload: T | null = null;
   let fetchError: unknown;
 
-  const maxAttempts = options.attempts ?? 3;
-
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const controller = options.timeoutMs ? new AbortController() : undefined;
-    const timeout = controller ? globalThis.setTimeout(() => controller.abort(), options.timeoutMs) : undefined;
+    const controller = new AbortController();
+    const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       response = await fetch(buildSupabaseRestUrl(path), {
-        method: options.method ?? "GET",
-        signal: controller?.signal,
+        method,
+        signal: controller.signal,
         headers: {
           apikey: key,
           Authorization: `Bearer ${key}`,
@@ -68,6 +77,8 @@ export async function supabaseRest<T>(path: string, options: SupabaseRestOptions
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
         cache: "no-store",
       });
+      const text = await response.text();
+      payload = text ? (JSON.parse(text) as T) : null;
 
       if (response.status < 500 || attempt === maxAttempts) {
         break;
@@ -79,9 +90,7 @@ export async function supabaseRest<T>(path: string, options: SupabaseRestOptions
         throw error;
       }
     } finally {
-      if (timeout) {
-        globalThis.clearTimeout(timeout);
-      }
+      globalThis.clearTimeout(timeout);
     }
 
     await new Promise((resolve) => setTimeout(resolve, attempt * 250));
@@ -90,9 +99,6 @@ export async function supabaseRest<T>(path: string, options: SupabaseRestOptions
   if (!response) {
     throw fetchError instanceof Error ? fetchError : new Error("Supabase request failed");
   }
-
-  const text = await response.text();
-  const payload = text ? (JSON.parse(text) as T) : null;
 
   if (!response.ok) {
     const message =

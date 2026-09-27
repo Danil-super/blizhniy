@@ -14,6 +14,7 @@ type ListingImageRow = {
 
 type ListingRow = {
   id: string;
+  author_id: string;
   listing_type: ListingTypeRow;
   title: string;
   description: string;
@@ -103,9 +104,9 @@ const fallbackCategoryByKind: Record<ListingKind, string> = {
 };
 
 const listingSelect =
-  "id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name)";
+  "id,author_id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name)";
 const listingSelectWithViewCount =
-  "id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,view_count,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name)";
+  "id,author_id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,view_count,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name)";
 
 async function fetchListingRows(querySuffix: string) {
   try {
@@ -214,6 +215,7 @@ function mapListing(row: ListingRow): Listing {
   return {
     id: row.id,
     slug: row.id,
+    ownerKey: row.author_id,
     kind,
     categorySlug,
     subcategory: categoryInfo.subcategory,
@@ -239,6 +241,14 @@ function mapListing(row: ListingRow): Listing {
     publishedAt,
     expiresAt: isoDate(row.expires_at) || addDaysIsoDate(publishedAt, 30),
   };
+}
+
+// Public callers must never receive a hidden address or exact coordinates,
+// even if a future page forgets to sanitize its props before serialization.
+function publicListing(listing: Listing): Listing {
+  return listing.showExactAddress
+    ? listing
+    : { ...listing, address: undefined, lat: undefined, lng: undefined, hasMapPoint: false };
 }
 
 async function findCategoryId(categorySlug: string, subcategory?: string) {
@@ -609,7 +619,7 @@ export async function getStoredListingById(listingId: string, options: { publicO
     const statusFilter = options.publicOnly ? `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}` : "";
     const rows = await fetchListingRows(`&id=eq.${encodeURIComponent(listingId)}${statusFilter}&limit=1`);
 
-    return rows[0] ? mapListing(rows[0]) : undefined;
+    return rows[0] ? (options.publicOnly ? publicListing(mapListing(rows[0])) : mapListing(rows[0])) : undefined;
   } catch (error) {
     console.error("Failed to load listing from Supabase", error);
     return undefined;
@@ -650,19 +660,44 @@ export async function recordStoredListingView(listingId: string, viewerKey: stri
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 }
 
-export async function listStoredListings(limit = 24) {
+export async function listStoredListings(limit = 24, options: { kind?: ListingKind; offset?: number } = {}) {
   if (!isSupabaseRestConfigured()) {
     return [];
   }
 
-  try {
-    const rows = await fetchListingRows(`&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`);
+  const pageSize = Math.max(1, Math.min(1000, Math.floor(limit)));
+  const offset = Math.max(0, Math.floor(options.offset ?? 0));
+  const kindFilter = options.kind ? `&listing_type=eq.${dbTypeByListingKind[options.kind]}` : "";
 
-    return rows.map(mapListing);
+  try {
+    const rows = await fetchListingRows(
+      `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}${kindFilter}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${offset}`,
+    );
+
+    return rows.map(mapListing).map(publicListing);
   } catch (error) {
     console.error("Failed to load listings from Supabase", error);
     return [];
   }
+}
+
+export async function listStoredListingsForSeller(ownerKey: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(ownerKey)) {
+    return [];
+  }
+
+  const batchSize = 200;
+  const listings: Listing[] = [];
+
+  for (let offset = 0; ; offset += batchSize) {
+    const rows = await fetchListingRows(
+      `&author_id=eq.${encodeURIComponent(ownerKey)}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${batchSize}&offset=${offset}`,
+    );
+    listings.push(...rows.map(mapListing).map(publicListing));
+    if (rows.length < batchSize) break;
+  }
+
+  return listings;
 }
 
 export async function listStoredListingsForCategory(
@@ -702,7 +737,7 @@ export async function listStoredListingsForCategory(
       `&category_id=in.(${categoryIds.join(",")})&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc&limit=${pageSize + 1}&offset=${(page - 1) * pageSize}`,
     );
 
-    return rows.map(mapListing);
+    return rows.map(mapListing).map(publicListing);
   } catch (error) {
     console.error("Failed to load category listings from Supabase", error);
     return [];
