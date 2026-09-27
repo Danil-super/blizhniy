@@ -257,6 +257,14 @@ function mapVacancy(row: VacancyRow): JobVacancy {
   };
 }
 
+// Raw vacancy rows may contain a private location. Strip it before a public
+// page serializes the value into HTML or a React Server Components response.
+function publicVacancy(vacancy: JobVacancy): JobVacancy {
+  return vacancy.showExactAddress
+    ? vacancy
+    : { ...vacancy, address: undefined, lat: undefined, lng: undefined, hasMapPoint: false };
+}
+
 async function findCity(city: string) {
   const cityName = city.split(",")[0]?.trim() || "Краснодар";
   const rows = await supabaseRest<CityIdRow[]>(
@@ -472,12 +480,12 @@ export async function getStoredVacancyById(vacancyId: string, options: { publicO
   }
 
   try {
-    const statusFilter = options.publicOnly ? "&status=eq.published" : "";
+    const statusFilter = options.publicOnly ? `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}` : "";
     const rows = await supabaseRest<VacancyRow[]>(
       `/rest/v1/vacancies?select=${vacancySelect}&id=eq.${encodeURIComponent(vacancyId)}${statusFilter}&limit=1`,
     );
 
-    return rows[0] ? mapVacancy(rows[0]) : undefined;
+    return rows[0] ? (options.publicOnly ? publicVacancy(mapVacancy(rows[0])) : mapVacancy(rows[0])) : undefined;
   } catch (error) {
     console.error("Failed to load vacancy from Supabase", error);
     return undefined;
@@ -496,17 +504,20 @@ export async function getStoredVacancyForUser(vacancyId: string, userId: string)
   return rows[0] ? mapVacancy(rows[0]) : undefined;
 }
 
-export async function listStoredVacancies(limit = 24) {
+export async function listStoredVacancies(limit = 24, offset = 0) {
   if (!isSupabaseRestConfigured()) {
     return [];
   }
 
+  const pageSize = Math.max(1, Math.min(1000, Math.floor(limit)));
+  const pageOffset = Math.max(0, Math.floor(offset));
+
   try {
     const rows = await supabaseRest<VacancyRow[]>(
-      `/rest/v1/vacancies?select=${vacancySelect}&status=eq.published&order=published_at.desc.nullslast,created_at.desc&limit=${limit}`,
+      `/rest/v1/vacancies?select=${vacancySelect}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${pageOffset}`,
     );
 
-    return rows.map(mapVacancy);
+    return rows.map(mapVacancy).map(publicVacancy);
   } catch (error) {
     console.error("Failed to load vacancies from Supabase", error);
     return [];
@@ -588,12 +599,11 @@ export async function restoreStoredVacancyForUser(vacancyId: string, userId: str
 
   const now = new Date().toISOString();
   const rows = await supabaseRest<Array<Pick<VacancyRow, "id">>>(
-    `/rest/v1/vacancies?select=id&id=eq.${encodeURIComponent(vacancyId)}&author_id=eq.${encodeURIComponent(userId)}&is_paid=eq.true&status=in.(archived,expired)`,
+    `/rest/v1/vacancies?select=id&id=eq.${encodeURIComponent(vacancyId)}&author_id=eq.${encodeURIComponent(userId)}&is_paid=eq.true&expires_at=gt.${encodeURIComponent(now)}&status=eq.archived`,
     {
       method: "PATCH",
       prefer: "return=representation",
       body: {
-        expires_at: addDaysIsoDate(now, 30),
         published_at: now,
         status: "published",
       },

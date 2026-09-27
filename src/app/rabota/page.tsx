@@ -10,6 +10,7 @@ import { listStoredVacancies, listVacanciesWithStored } from "@/lib/vacancy-stor
 import { listStoredWorkRequests, listWorkRequestsWithStored } from "@/lib/work-request-store";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/rabota" },
   title: "Работа",
   description: "Вакансии, заказчики, специалисты и исполнители на платформе БЛИЖНИЙ.",
 };

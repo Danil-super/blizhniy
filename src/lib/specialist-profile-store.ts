@@ -374,8 +374,10 @@ export async function listStoredSpecialistProfiles(limit = 24, offset = 0) {
     return [];
   }
 
+  const pageSize = Math.max(1, Math.min(1000, Math.floor(limit)));
+  const pageOffset = Math.max(0, Math.floor(offset));
   const rows = await supabaseRest<SpecialistProfileRow[]>(
-    `/rest/v1/specialist_profiles?select=${specialistProfileSelect}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=updated_at.desc,id.desc&limit=${limit}&offset=${offset}`,
+    `/rest/v1/specialist_profiles?select=${specialistProfileSelect}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=updated_at.desc,id.desc&limit=${pageSize}&offset=${pageOffset}`,
   ).catch(() => []);
 
   return rows.map(mapSpecialistProfile).map(publicSpecialistProfile);

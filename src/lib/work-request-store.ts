@@ -428,8 +428,11 @@ export async function listStoredWorkRequests(limit = 24, offset = 0) {
     return [];
   }
 
+  const pageSize = Math.max(1, Math.min(1000, Math.floor(limit)));
+  const pageOffset = Math.max(0, Math.floor(offset));
+
   try {
-    const rows = await fetchWorkRequestRows(`&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${limit}&offset=${offset}`);
+    const rows = await fetchWorkRequestRows(`&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${pageOffset}`);
 
     return rows.map(mapWorkRequest).map(publicWorkRequest);
   } catch (error) {

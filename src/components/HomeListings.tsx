@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { HomeListingsFeed } from "@/components/HomeListingsFeed";
 import { listDemoListings, toDemoListing } from "@/components/listings/ListingPages";
 import { listStoredListings } from "@/lib/listing-store";
@@ -14,10 +15,13 @@ const kindLabels: Record<ListingKind, string> = {
   "otdam-darom": "Отдам даром",
 };
 
-export async function HomeListings({ kind }: { kind?: ListingKind }) {
-  const storedListings = await listStoredListings();
+export async function HomeListings({ kind, page = 1 }: { kind?: ListingKind; page?: number }) {
+  const pageSize = 24;
+  const storedListings = await listStoredListings(pageSize + 1, { kind, offset: (page - 1) * pageSize });
+
+  if (page > 1 && !storedListings.length) notFound();
   const storedCards = storedListings.map((listing) => ({ ...toDemoListing(listing), images: listing.images }));
-  const demoListings = shouldShowFallbackContent() ? [...listListings().map(toDemoListing), ...listDemoListings()] : [];
+  const demoListings = page === 1 && shouldShowFallbackContent() ? [...listListings().map(toDemoListing), ...listDemoListings()] : [];
   const allListings = [...storedCards, ...demoListings];
   const uniqueListings = Array.from(new Map(allListings.map((listing) => [listing.slug, listing])).values());
   const title = kind ? kindLabels[kind] : "Свежие объявления";
@@ -25,6 +29,14 @@ export async function HomeListings({ kind }: { kind?: ListingKind }) {
     .filter((listing) => listing.status === "published")
     .filter((listing) => !kind || listing.kind === kind)
     .sort((left, right) => publicationTimestamp(right.publishedAt) - publicationTimestamp(left.publishedAt));
+  const hasMore = storedListings.length > pageSize;
+  const visibleListings = listings.slice(0, pageSize);
+  const pageHref = (number: number) => {
+    const params = new URLSearchParams();
+    if (kind) params.set("kind", kind);
+    if (number > 1) params.set("page", String(number));
+    return `/obyavleniya${params.size ? `?${params}` : ""}`;
+  };
 
   return (
     <section className="page-container pb-10">
@@ -37,8 +49,15 @@ export async function HomeListings({ kind }: { kind?: ListingKind }) {
         ) : null}
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-        <HomeListingsFeed kind={kind} listings={listings} />
+        <HomeListingsFeed kind={kind} listings={visibleListings} />
       </div>
+      {page > 1 || hasMore ? (
+        <nav aria-label="Страницы объявлений" className="mt-6 flex items-center justify-center gap-3">
+          {page > 1 ? <Link href={pageHref(page - 1)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-[#0875d1]">Назад</Link> : null}
+          <span className="text-sm font-bold text-slate-700">Страница {page}</span>
+          {hasMore ? <Link href={pageHref(page + 1)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-[#0875d1]">Далее</Link> : null}
+        </nav>
+      ) : null}
     </section>
   );
 }

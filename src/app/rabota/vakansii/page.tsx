@@ -1,19 +1,32 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
 import { SiteHeader } from "@/components/SiteHeader";
+import { ListingPagination } from "@/components/listings/ListingPagination";
+import { parseListingPage } from "@/components/listings/ListingPages";
 import { VacancyGridCard } from "@/components/VacancyGridCard";
 import { listStoredVacancies, listVacanciesWithStored } from "@/lib/vacancy-store";
 
-export const metadata: Metadata = {
-  title: "Вакансии",
-  description: "Каталог вакансий и заказчиков на БЛИЖНИЙ.",
-};
+type PageProps = { searchParams?: Promise<{ page?: string }> };
+
+export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
+  const page = parseListingPage((await searchParams)?.page);
+  return {
+    alternates: { canonical: page > 1 ? `/rabota/vakansii?page=${page}` : "/rabota/vakansii" },
+    title: "Вакансии",
+    description: "Каталог вакансий и заказчиков на БЛИЖНИЙ.",
+  };
+}
 
 export const dynamic = "force-dynamic";
 
-export default async function Page() {
-  const storedVacancies = await listStoredVacancies(100);
-  const vacancies = listVacanciesWithStored(storedVacancies).filter((vacancy) => vacancy.status === "published");
+export default async function Page({ searchParams }: PageProps) {
+  const page = parseListingPage((await searchParams)?.page);
+  const pageSize = 24;
+  const storedVacancies = await listStoredVacancies(pageSize + 1, (page - 1) * pageSize);
+  if (page > 1 && !storedVacancies.length) notFound();
+  const vacancies = (page === 1 ? listVacanciesWithStored(storedVacancies) : storedVacancies)
+    .filter((vacancy) => vacancy.status === "published").slice(0, pageSize);
 
   return (
     <>
@@ -27,6 +40,7 @@ export default async function Page() {
             <VacancyGridCard key={vacancy.id} vacancy={vacancy} />
           ))}
         </div>
+        <ListingPagination baseHref="/rabota/vakansii" hasMore={storedVacancies.length > pageSize} page={page} label="Страницы вакансий" />
       </main>
     </>
   );

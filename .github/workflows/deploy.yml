@@ -10,7 +10,7 @@ on:
 
 concurrency:
   group: production-deploy
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   validate:
@@ -69,6 +69,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Deploy over SSH
+        id: ship
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
@@ -102,15 +103,20 @@ jobs:
 
           retry ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
 
-          ARCHIVE_NAME="blizhniy-${{ github.sha }}.tar.gz"
+          RUN_TOKEN="${{ github.run_id }}-${{ github.run_attempt }}"
+          ARCHIVE_NAME="blizhniy-${RUN_TOKEN}.tar.gz"
           LOCAL_ARCHIVE="/tmp/${ARCHIVE_NAME}"
           REMOTE_ARCHIVE="/tmp/${ARCHIVE_NAME}"
-          LOCAL_SCRIPT="/tmp/blizhniy-deploy-${{ github.sha }}.sh"
-          REMOTE_SCRIPT="/tmp/blizhniy-deploy-${{ github.sha }}.sh"
-          LOCAL_RUNNER="/tmp/blizhniy-deploy-runner-${{ github.sha }}.sh"
-          REMOTE_RUNNER="/tmp/blizhniy-deploy-runner-${{ github.sha }}.sh"
-          REMOTE_LOG="/tmp/blizhniy-deploy-${{ github.sha }}.log"
-          REMOTE_STATUS="/tmp/blizhniy-deploy-${{ github.sha }}.status"
+          LOCAL_SCRIPT="/tmp/blizhniy-deploy-${RUN_TOKEN}.sh"
+          REMOTE_SCRIPT="/tmp/blizhniy-deploy-${RUN_TOKEN}.sh"
+          LOCAL_RUNNER="/tmp/blizhniy-deploy-runner-${RUN_TOKEN}.sh"
+          REMOTE_RUNNER="/tmp/blizhniy-deploy-runner-${RUN_TOKEN}.sh"
+          REMOTE_LOG="/tmp/blizhniy-deploy-${RUN_TOKEN}.log"
+          REMOTE_STATUS="/tmp/blizhniy-deploy-${RUN_TOKEN}.status"
+          REMOTE_RESULT="/tmp/blizhniy-deploy-${RUN_TOKEN}.result"
+          REMOTE_CONFIRMED="/tmp/blizhniy-deploy-${RUN_TOKEN}.confirmed"
+          REMOTE_ABORT="/tmp/blizhniy-deploy-${RUN_TOKEN}.abort"
+          REMOTE_WATCHDOG="/tmp/blizhniy-deploy-watchdog-${RUN_TOKEN}.sh"
 
           tar \
             --exclude=.git \
@@ -127,12 +133,12 @@ jobs:
 
           cat > "$LOCAL_SCRIPT" <<'EOF'
             set -euo pipefail
-            WORK_DIR="/tmp/blizhniy-deploy-${COMMIT_SHA}"
+            WORK_DIR="/tmp/blizhniy-deploy-${RUN_TOKEN}"
             rm -rf "$WORK_DIR"
             mkdir -p "$WORK_DIR"
             tar -xzf "$SOURCE_ARCHIVE" -C "$WORK_DIR"
             bash "$WORK_DIR/scripts/deploy-release.sh"
-            rm -rf "$WORK_DIR" "$SOURCE_ARCHIVE" "$0"
+            rm -rf "$WORK_DIR" "$SOURCE_ARCHIVE" "$0" || true
           EOF
 
           {
@@ -141,22 +147,27 @@ jobs:
             printf 'export APP_DIR=%q\n' "$APP_DIR"
             printf 'export SOURCE_ARCHIVE=%q\n' "$REMOTE_ARCHIVE"
             printf 'export COMMIT_SHA=%q\n' "${{ github.sha }}"
-            printf 'bash %q\n' "$REMOTE_SCRIPT"
+            printf 'export RUN_TOKEN=%q\n' "$RUN_TOKEN"
+            printf 'export REMOTE_SCRIPT=%q\n' "$REMOTE_SCRIPT"
+            printf 'export REMOTE_STATUS=%q\n' "$REMOTE_STATUS"
+            printf 'export REMOTE_RESULT=%q\n' "$REMOTE_RESULT"
+            printf 'export REMOTE_CONFIRMED=%q\n' "$REMOTE_CONFIRMED"
+            printf 'export REMOTE_ABORT=%q\n' "$REMOTE_ABORT"
+            printf 'bash %q\n' "$REMOTE_WATCHDOG"
             printf 'status=$?\n'
-            printf 'printf "%%s\\n" "$status" > %q\n' "$REMOTE_STATUS"
             printf 'rm -f "$0"\n'
             printf 'exit "$status"\n'
           } > "$LOCAL_RUNNER"
 
           retry scp $SSH_OPTS -i ~/.ssh/deploy_key -P "$VPS_PORT" "$LOCAL_ARCHIVE" "$LOCAL_SCRIPT" "$LOCAL_RUNNER" "$VPS_USER@$VPS_HOST:/tmp/"
+          retry scp $SSH_OPTS -i ~/.ssh/deploy_key -P "$VPS_PORT" scripts/deploy-watchdog.sh "$VPS_USER@$VPS_HOST:$REMOTE_WATCHDOG"
 
-          retry ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "rm -f '$REMOTE_LOG' '$REMOTE_STATUS'; chmod +x '$REMOTE_RUNNER'; nohup bash '$REMOTE_RUNNER' > '$REMOTE_LOG' 2>&1 < /dev/null &"
+          retry ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "rm -f '$REMOTE_LOG' '$REMOTE_STATUS' '$REMOTE_RESULT' '$REMOTE_CONFIRMED' '$REMOTE_ABORT'; chmod +x '$REMOTE_RUNNER'; nohup bash '$REMOTE_RUNNER' > '$REMOTE_LOG' 2>&1 < /dev/null &"
 
           for poll_attempt in $(seq 1 80); do
             if ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "test -f '$REMOTE_STATUS'"; then
               retry ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "tail -n 200 '$REMOTE_LOG' || true"
               DEPLOY_STATUS="$(retry ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cat '$REMOTE_STATUS'")"
-              retry ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "rm -f '$REMOTE_LOG' '$REMOTE_STATUS'" || true
               exit "$DEPLOY_STATUS"
             fi
 
@@ -202,3 +213,62 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Confirm deployed release
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          remote_confirm="/tmp/blizhniy-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.confirmed"
+          remote_result="/tmp/blizhniy-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.result"
+          ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "touch '$remote_confirm'"
+          for attempt in $(seq 1 30); do
+            result="$(ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cat '$remote_result' 2>/dev/null || true")"
+            if [[ "$result" == "confirmed" ]]; then
+              exit 0
+            fi
+            if [[ -n "$result" ]]; then
+              echo "Remote release result: $result" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "Remote confirmation result is unknown; host watchdog will roll back if it was not confirmed." >&2
+          exit 1
+
+      - name: Roll back release if a deployed check failed
+        if: ${{ failure() }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          APP_DIR: ${{ secrets.APP_DIR }}
+        run: |
+          set -euo pipefail
+          # The server runner holds the release lock and owns rollback. If SSH
+          # is unavailable, its 30-minute confirmation lease still expires.
+          remote_abort="/tmp/blizhniy-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.abort"
+          remote_result="/tmp/blizhniy-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.result"
+          if [[ ! -f ~/.ssh/deploy_key ]]; then
+            echo "Deploy never initialized its SSH key; no release switch was attempted."
+            exit 0
+          fi
+          ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "touch '$remote_abort'" || {
+            echo "Could not signal remote runner. Outcome unknown until its lease expires; inspect VPS release status." >&2
+            exit 1
+          }
+          for attempt in $(seq 1 60); do
+            result="$(ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cat '$remote_result' 2>/dev/null || true")" || true
+            if [[ "$result" == "rolled_back" || "$result" == "deploy_failed" || "$result" == "lock_busy" ]]; then
+              echo "Remote release result: $result"
+              exit 0
+            fi
+            if [[ "$result" == "rollback_failed" || "$result" == "confirmed" ]]; then
+              echo "Remote release result: $result" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "Remote result is unknown; the host confirmation lease remains the recovery path." >&2
+          exit 1
