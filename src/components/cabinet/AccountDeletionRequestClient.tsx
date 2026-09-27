@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 
 type DeletionRequest = {
@@ -12,6 +13,62 @@ type DeletionRequest = {
 };
 
 const supportEmail = 'prostova04@yandex.ru';
+const sessionChangedError = 'Сессия изменилась. Войдите в аккаунт повторно и отправьте запрос ещё раз.';
+
+type AuthenticatedSession = {
+  userId: string;
+  accessToken: string;
+};
+
+type SessionReader = () => Promise<{
+  data: { session: Session | null };
+  error: Error | null;
+}>;
+
+function toAuthenticatedSession(session: Session | null | undefined): AuthenticatedSession | null {
+  const userId = session?.user?.id;
+  const accessToken = session?.access_token;
+
+  return userId && accessToken ? { userId, accessToken } : null;
+}
+
+async function readAuthenticatedSession(readSession: SessionReader) {
+  const { data, error } = await readSession();
+
+  if (error) {
+    throw error;
+  }
+
+  return toAuthenticatedSession(data.session);
+}
+
+function isSameSession(left: AuthenticatedSession, right: AuthenticatedSession | null) {
+  return Boolean(right && left.userId === right.userId && left.accessToken === right.accessToken);
+}
+
+/**
+ * Re-check the browser session immediately before and after the destructive
+ * request. The POST always receives the token that was bound to the screen
+ * which initiated the action, never a token read after an account switch.
+ */
+export async function submitBoundAccountDeletionRequest(
+  origin: AuthenticatedSession,
+  readSession: SessionReader,
+  sendRequest: (accessToken: string) => Promise<Response>,
+  isOriginCurrent: () => boolean,
+) {
+  if (!isOriginCurrent() || !isSameSession(origin, await readAuthenticatedSession(readSession))) {
+    throw new Error(sessionChangedError);
+  }
+
+  const response = await sendRequest(origin.accessToken);
+
+  if (!isOriginCurrent() || !isSameSession(origin, await readAuthenticatedSession(readSession))) {
+    throw new Error(sessionChangedError);
+  }
+
+  return response;
+}
 
 function statusText(request: DeletionRequest) {
   if (request.status === 'requested') return 'Запрос получен и ожидает проверки';
@@ -28,6 +85,7 @@ export function AccountDeletionRequestClient() {
   const [signedOut, setSignedOut] = useState(false);
   const [error, setError] = useState('');
   const generation = useRef(0);
+  const authenticatedSession = useRef<AuthenticatedSession | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -40,19 +98,20 @@ export function AccountDeletionRequestClient() {
       setSubmitting(false);
       setSignedOut(false);
       setError('');
+      authenticatedSession.current = null;
 
       try {
         const { data, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) throw sessionError;
 
-        const token = data.session?.access_token;
-        if (!token) {
+        const session = toAuthenticatedSession(data.session);
+        if (!session) {
           if (active && current === generation.current) setSignedOut(true);
           return;
         }
 
         const response = await fetch('/api/cabinet/account-deletion', {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${session.accessToken}` },
           cache: 'no-store',
         });
 
@@ -60,6 +119,7 @@ export function AccountDeletionRequestClient() {
 
         const payload = (await response.json()) as { request: DeletionRequest | null };
         if (active && current === generation.current) {
+          authenticatedSession.current = session;
           setSignedOut(false);
           setRequest(payload.request);
         }
@@ -74,32 +134,55 @@ export function AccountDeletionRequestClient() {
 
     void refresh();
     const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      // Invalidate the old screen synchronously. The scheduled refresh below
+      // must not leave a moment in which its action can use the next account.
+      generation.current += 1;
+      authenticatedSession.current = null;
+      if (active) {
+        setLoading(true);
+        setRequest(null);
+        setSignedOut(false);
+        setError('');
+      }
       window.setTimeout(() => { if (active) void refresh(); }, 0);
     });
 
     return () => {
       active = false;
       generation.current += 1;
+      authenticatedSession.current = null;
       listener.subscription.unsubscribe();
     };
   }, []);
 
   async function submit() {
     const current = generation.current;
+    const origin = authenticatedSession.current;
     setSubmitting(true);
     setError('');
 
     try {
-      const { data, error: sessionError } = await getSupabaseBrowserClient().auth.getSession();
-      if (sessionError || !data.session?.access_token) throw new Error('Войдите в аккаунт повторно.');
+      if (!origin) throw new Error('Войдите в аккаунт повторно.');
 
-      const response = await fetch('/api/cabinet/account-deletion', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${data.session.access_token}` },
-        cache: 'no-store',
-      });
+      const supabase = getSupabaseBrowserClient();
+      const isOriginCurrent = () => (
+        current === generation.current
+        && authenticatedSession.current?.userId === origin.userId
+        && authenticatedSession.current?.accessToken === origin.accessToken
+      );
+      const response = await submitBoundAccountDeletionRequest(
+        origin,
+        () => supabase.auth.getSession(),
+        (accessToken) => fetch('/api/cabinet/account-deletion', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: 'no-store',
+        }),
+        isOriginCurrent,
+      );
       const payload = (await response.json().catch(() => null)) as { request?: DeletionRequest; error?: string } | null;
 
+      if (!isOriginCurrent()) throw new Error(sessionChangedError);
       if (!response.ok || !payload?.request) {
         throw new Error(payload?.error ?? 'Не удалось отправить запрос. Попробуйте позже.');
       }
