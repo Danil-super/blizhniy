@@ -4,7 +4,7 @@ export type DeletionRequestStatus = 'requested' | 'in_review' | 'resolved';
 
 type DeletionRequestRow = {
   id: string;
-  user_id: string;
+  user_id: string | null;
   status: DeletionRequestStatus;
   requested_at: string;
   review_started_at: string | null;
@@ -84,13 +84,13 @@ export async function listDeletionRequestsForAdmin(page: number): Promise<{ requ
     return { requests: [], hasMore };
   }
 
-  const ids = currentPage.map((row) => row.user_id);
-  const profiles = await supabaseRest<{ id: string; email: string | null }[]>(
+  const ids = currentPage.map((row) => row.user_id).filter((id): id is string => id !== null);
+  const profiles = ids.length ? await supabaseRest<{ id: string; email: string | null }[]>(
     `/rest/v1/profiles?select=id,email&id=in.(${ids.map(encodeURIComponent).join(',')})`,
-  );
+  ) : [];
   const emailById = new Map(profiles.map((row) => [row.id, row.email]));
 
-  return { requests: currentPage.map((row) => ({ ...row, email: emailById.get(row.user_id) ?? null })), hasMore };
+  return { requests: currentPage.map((row) => ({ ...row, email: row.user_id ? emailById.get(row.user_id) ?? null : null })), hasMore };
 }
 
 export async function startDeletionReview(requestId: string) {
