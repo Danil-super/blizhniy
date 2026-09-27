@@ -19,13 +19,13 @@ import {
   type SiteNotification,
 } from "@/lib/site-notifications";
 import {
-  createDefaultCabinetProfile,
   readCabinetProfile,
   resolveClientUserIdentity,
   type CabinetProfile,
   type ClientUserIdentity,
 } from "@/lib/client-user-profile";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
+import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 
 function readJsonArray<T>(key: string): T[] {
   try {
@@ -123,6 +123,7 @@ export function NotificationBell() {
   const [identity, setIdentity] = useState<ClientUserIdentity | null>(null);
   const [profile, setProfile] = useState<CabinetProfile | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const syncGeneration = useRef(0);
   const signedOut = authState === "signed-out";
   const unreadCount = siteNotifications.filter((notification) => !notification.read).length + bookingNotifications.filter((notification) => !notification.read).length;
   const sortedSiteNotifications = useMemo(
@@ -135,39 +136,69 @@ export function NotificationBell() {
   );
 
   const syncStoredNotifications = useCallback(() => {
+    const generation = ++syncGeneration.current;
+
+    if (authState === "signed-out" || authState === "loading") {
+      setIdentity(null);
+      setProfile(null);
+      setSiteNotifications([]);
+      setBookingNotifications([]);
+      setRequests([]);
+      return;
+    }
+
     async function sync() {
-      const nextIdentity = await resolveClientUserIdentity();
-      const nextProfile = readCabinetProfile(nextIdentity.ownerKey, createDefaultCabinetProfile(nextIdentity));
-
-      setIdentity(nextIdentity);
-      setProfile(nextProfile);
-      const localNotifications = readSiteNotifications(nextIdentity.ownerKey);
-      const serverNotifications = await getAuthHeaders()
-        .then((headers) =>
-          Object.keys(headers).length
-            ? fetch("/api/cabinet/notifications", {
-                cache: "no-store",
-                headers,
-              })
-            : null,
-        )
-        .then(async (response) => {
-          if (!response?.ok) {
-            return [];
+      try {
+        const nextIdentity = await resolveClientUserIdentity();
+        if (isSupabaseBrowserConfigured() && !nextIdentity.accessToken) {
+          if (generation === syncGeneration.current) {
+            setIdentity(null);
+            setProfile(null);
+            setSiteNotifications([]);
+            setBookingNotifications([]);
+            setRequests([]);
           }
+          return;
+        }
+        const nextProfile = await readCabinetProfile(nextIdentity);
+        const localNotifications = readSiteNotifications(nextIdentity.ownerKey);
+        const serverNotifications = nextIdentity.accessToken
+          ? await fetch("/api/cabinet/notifications", {
+              cache: "no-store",
+              headers: { Authorization: `Bearer ${nextIdentity.accessToken}` },
+            }).then(async (response) => {
+              if (!response.ok) return [];
+              const payload = (await response.json().catch(() => null)) as { notifications?: SiteNotification[] } | null;
+              return payload?.notifications ?? [];
+            }).catch(() => [])
+          : [];
 
-          const payload = (await response.json().catch(() => null)) as { notifications?: SiteNotification[] } | null;
-          return payload?.notifications ?? [];
-        })
-        .catch(() => []);
+        const currentIdentity = await resolveClientUserIdentity();
+        if (generation !== syncGeneration.current || currentIdentity.ownerKey !== nextIdentity.ownerKey) return;
 
-      setSiteNotifications(mergeNotifications(localNotifications, serverNotifications));
-      setRequests(readJsonArray<BookingRequest>(bookingRequestsStorageKey));
-      setBookingNotifications(nextProfile.notifyBookings ? readJsonArray<BookingNotification>(bookingNotificationsStorageKey).filter((notification) => notification.recipient === "guest") : []);
+        setIdentity(nextIdentity);
+        setProfile(nextProfile);
+        setSiteNotifications(mergeNotifications(localNotifications, serverNotifications));
+        // Legacy booking arrays are global to this browser, not scoped to a
+        // signed-in account. Never display them outside the explicit demo mode.
+        const demoMode = shouldShowClientFallbackContent();
+        setRequests(demoMode ? readJsonArray<BookingRequest>(bookingRequestsStorageKey) : []);
+        setBookingNotifications(demoMode && nextProfile.notifyBookings
+          ? readJsonArray<BookingNotification>(bookingNotificationsStorageKey).filter((item) => item.recipient === "guest")
+          : []);
+      } catch {
+        if (generation !== syncGeneration.current) return;
+        setIdentity(null);
+        setProfile(null);
+        setSiteNotifications([]);
+        setBookingNotifications([]);
+        setRequests([]);
+        setActionError("Не удалось загрузить уведомления. Обновите страницу.");
+      }
     }
 
     void sync();
-  }, []);
+  }, [authState]);
 
   useEffect(() => {
     syncStoredNotifications();
@@ -184,7 +215,26 @@ export function NotificationBell() {
     window.addEventListener("blizhniy-profile-updated", syncStoredNotifications);
     document.addEventListener("mousedown", handleDocumentClick);
 
+    let authSubscription: { unsubscribe: () => void } | undefined;
+    try {
+      const { data } = getSupabaseBrowserClient().auth.onAuthStateChange((event) => {
+        if (event === "INITIAL_SESSION") return;
+        syncGeneration.current += 1;
+        setIdentity(null);
+        setProfile(null);
+        setSiteNotifications([]);
+        setBookingNotifications([]);
+        setRequests([]);
+        if (event !== "SIGNED_OUT") window.setTimeout(syncStoredNotifications, 0);
+      });
+      authSubscription = data.subscription;
+    } catch {
+      // Demo builds may not have an Auth client.
+    }
+
     return () => {
+      syncGeneration.current += 1;
+      authSubscription?.unsubscribe();
       window.removeEventListener("storage", syncStoredNotifications);
       window.removeEventListener(bookingNotificationsEventName, syncStoredNotifications);
       window.removeEventListener(siteNotificationsEventName, syncStoredNotifications);
@@ -352,7 +402,7 @@ export function NotificationBell() {
             {signedOut ? (
               <div className="border-b border-slate-100 bg-blue-50/60 px-4 py-4">
                 <p className="font-bold text-[#060b27]">Уведомления доступны после входа</p>
-                <p className="mt-1 text-sm leading-5 text-slate-600">Личные события по оплатам, публикациям и заявкам привязываются к аккаунту. Гость видит только локальные уведомления текущего браузера.</p>
+                <p className="mt-1 text-sm leading-5 text-slate-600">Личные события по оплатам, публикациям и заявкам привязываются к аккаунту.</p>
                 <Link href="/auth" className="mt-3 inline-flex h-9 items-center justify-center rounded-lg bg-[#0875d1] px-3 text-xs font-bold text-white">
                   Войти или зарегистрироваться
                 </Link>
