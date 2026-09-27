@@ -148,6 +148,7 @@ export type WorkRequest = {
   status: PublicationStatus;
   createdAt: string;
   publishedAt?: string;
+  expiresAt?: string;
 };
 
 export type SpecialistProfile = {
@@ -171,6 +172,8 @@ export type SpecialistProfile = {
   messengerUrl?: string;
   videoUrl?: string;
   status: PublicationStatus;
+  isPaid?: boolean;
+  expiresAt?: string;
   createdAt?: string;
   publishedAt?: string;
 };

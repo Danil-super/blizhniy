@@ -26,6 +26,8 @@ type SpecialistProfileRow = {
   messenger_url?: string | null;
   video_url?: string | null;
   status: PublicationStatus;
+  is_paid?: boolean;
+  expires_at?: string | null;
   created_at: string;
   updated_at: string;
   cities?: {
@@ -78,7 +80,7 @@ export type SpecialistProfileCompleteness = {
 };
 
 const specialistProfileSelect =
-  "id,user_id,name,photo_path,region_id,city_id,district,address,latitude,longitude,show_exact_address,specialist_category_id,skills,description,experience,price_from,contact_phone,email,messenger_url,video_url,status,created_at,updated_at,cities(slug,name),specialist_categories(slug,name),profiles(display_name,email,phone)";
+  "id,user_id,name,photo_path,region_id,city_id,district,address,latitude,longitude,show_exact_address,specialist_category_id,skills,description,experience,price_from,contact_phone,email,messenger_url,video_url,status,is_paid,expires_at,created_at,updated_at,cities(slug,name),specialist_categories(slug,name),profiles(display_name,email,phone)";
 
 function normalizeText(value?: string | null) {
   return value?.trim().replace(/\s+/g, " ") ?? "";
@@ -150,6 +152,8 @@ function mapSpecialistProfile(row: SpecialistProfileRow): SpecialistProfile {
     messengerUrl: row.messenger_url ?? undefined,
     videoUrl: row.video_url ?? undefined,
     status: row.status,
+    isPaid: row.is_paid ?? false,
+    expiresAt: row.expires_at ?? undefined,
     createdAt: row.created_at,
     publishedAt: row.status === "published" ? row.updated_at : undefined,
   };
@@ -335,7 +339,7 @@ export async function upsertStoredSpecialistProfileForUser(user: { email?: strin
     videoUrl: body.video_url ?? undefined,
   };
 
-  if (desiredStatus === "published") {
+  if (desiredStatus === "published" || desiredStatus === "pending_payment") {
     const completeness = getSpecialistProfileCompleteness(previewProfile);
 
     if (!completeness.complete) {
@@ -358,7 +362,7 @@ export async function upsertStoredSpecialistProfileForUser(user: { email?: strin
 export async function getActiveStoredSpecialistProfileForUser(userId: string) {
   const profile = await getStoredSpecialistProfileForUser({ id: userId }, { createDraft: false });
 
-  if (!profile || profile.status !== "published") {
+  if (!profile || profile.status !== "published" || !profile.isPaid || !profile.expiresAt || new Date(profile.expiresAt).getTime() <= Date.now()) {
     return undefined;
   }
 
@@ -373,7 +377,7 @@ export async function listStoredSpecialistProfiles(limit = 24, offset = 0) {
   const pageSize = Math.max(1, Math.min(1000, Math.floor(limit)));
   const pageOffset = Math.max(0, Math.floor(offset));
   const rows = await supabaseRest<SpecialistProfileRow[]>(
-    `/rest/v1/specialist_profiles?select=${specialistProfileSelect}&status=eq.published&order=updated_at.desc,id.desc&limit=${pageSize}&offset=${pageOffset}`,
+    `/rest/v1/specialist_profiles?select=${specialistProfileSelect}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=updated_at.desc,id.desc&limit=${pageSize}&offset=${pageOffset}`,
   ).catch(() => []);
 
   return rows.map(mapSpecialistProfile).map(publicSpecialistProfile);
@@ -397,7 +401,7 @@ export async function getStoredSpecialistProfileById(profileId: string) {
   }
 
   const rows = await supabaseRest<SpecialistProfileRow[]>(
-    `/rest/v1/specialist_profiles?select=${specialistProfileSelect}&id=eq.${encodeURIComponent(profileId)}&status=eq.published&limit=1`,
+    `/rest/v1/specialist_profiles?select=${specialistProfileSelect}&id=eq.${encodeURIComponent(profileId)}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&limit=1`,
   ).catch(() => []);
 
   return rows[0] ? publicSpecialistProfile(mapSpecialistProfile(rows[0])) : undefined;

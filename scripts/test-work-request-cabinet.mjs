@@ -14,13 +14,14 @@ const ownerId = "00000000-0000-4000-8000-000000000001";
 const otherId = "00000000-0000-4000-8000-000000000002";
 const requestId = "00000000-0000-4000-8000-000000000003";
 let requests = [];
-let payments = [];
+let expireBeforePatch = false;
 
 function row(id, authorId, status) {
   return {
     id, author_id: authorId, title: "Тестовый заказ", description: "Подробное описание заказа",
     region_id: ownerId, city_id: ownerId, city: "Краснодар", show_exact_address: false,
-    status, created_at: "2026-09-26T10:00:00Z", published_at: status === "published" ? "2026-09-26T12:00:00Z" : null,
+    status, is_paid: status === "published", expires_at: status === "published" ? new Date(Date.now() + 86_400_000).toISOString() : null,
+    created_at: "2026-09-26T10:00:00Z", published_at: status === "published" ? "2026-09-26T12:00:00Z" : null,
     cities: { name: "Краснодар", slug: "krasnodar" }, work_request_images: [],
   };
 }
@@ -28,16 +29,16 @@ function row(id, authorId, status) {
 async function fakeRest(path, options = {}) {
   const url = new URL(path, "http://test.local");
   const qp = url.searchParams;
-  if (url.pathname === "/rest/v1/payments") {
-    return payments.filter((p) => p.user_id === qp.get("user_id")?.slice(3)
-      && p.target_id === qp.get("target_id")?.slice(3)
-      && p.target_type === "workRequest" && p.provider === "yookassa"
-      && p.status === "succeeded" && p.paid_at !== null).map(({ paid_at, tariffs }) => ({ paid_at, tariffs }));
-  }
   if (url.pathname !== "/rest/v1/work_requests") throw new Error(`Unexpected REST path ${path}`);
+  if (options.method === "PATCH" && expireBeforePatch) {
+    expireBeforePatch = false;
+    for (const request of requests) request.expires_at = new Date(Date.now() - 1000).toISOString();
+  }
   const rows = requests.filter((r) => (!qp.has("id") || r.id === qp.get("id")?.slice(3))
     && (!qp.has("author_id") || r.author_id === qp.get("author_id")?.slice(3))
-    && (!qp.has("status") || r.status === qp.get("status")?.slice(3)));
+    && (!qp.has("status") || r.status === qp.get("status")?.slice(3))
+    && (!qp.has("is_paid") || String(r.is_paid) === qp.get("is_paid")?.slice(3))
+    && (!qp.has("expires_at") || Date.parse(r.expires_at) > Date.parse(qp.get("expires_at")?.slice(3))));
   if (options.method === "PATCH") {
     for (const target of rows) Object.assign(target, options.body);
     return rows.map((target) => ({ ...target }));
@@ -72,23 +73,24 @@ test("archive is owner-scoped and idempotent", async () => {
   assert.equal((await store.archiveStoredWorkRequestForUser(requestId, ownerId)).status, "archived");
 });
 
-test("restore accepts only an active captured owner-and-target YooKassa payment", async () => {
+test("restore needs the stored paid, unexpired target entitlement", async () => {
   requests = [row(requestId, ownerId, "archived")];
-  const valid = { user_id: ownerId, target_id: requestId, target_type: "workRequest", provider: "yookassa", status: "succeeded", paid_at: new Date(Date.now() - 2 * 86_400_000).toISOString(), tariffs: { action: "work_request_publication", duration_days: 30 } };
   for (const invalid of [
-    { ...valid, user_id: otherId },
-    { ...valid, target_id: otherId },
-    { ...valid, provider: "mock" },
-    { ...valid, status: "pending" },
-    { ...valid, paid_at: new Date(Date.now() - 31 * 86_400_000).toISOString() },
-    { ...valid, tariffs: { action: "job_response", duration_days: 30 } },
-    { ...valid, tariffs: { action: "work_request_publication", duration_days: null } },
+    { is_paid: false, expires_at: new Date(Date.now() + 86_400_000).toISOString() },
+    { is_paid: true, expires_at: null },
+    { is_paid: true, expires_at: new Date(Date.now() - 1000).toISOString() },
   ]) {
-    payments = [invalid];
+    Object.assign(requests[0], invalid);
     assert.equal(await store.restoreStoredWorkRequestForUser(requestId, ownerId), undefined);
     assert.equal(requests[0].status, "archived");
   }
-  payments = [{ ...valid, tariffs: { action: "listing_publication", duration_days: 30 } }];
+  requests[0].is_paid = true;
+  requests[0].expires_at = new Date(Date.now() + 86_400_000).toISOString();
+  assert.equal(await store.restoreStoredWorkRequestForUser(requestId, otherId), undefined);
+  expireBeforePatch = true;
+  assert.equal(await store.restoreStoredWorkRequestForUser(requestId, ownerId), undefined);
+  assert.equal(requests[0].status, "archived");
+  requests[0].expires_at = new Date(Date.now() + 86_400_000).toISOString();
   assert.equal((await store.restoreStoredWorkRequestForUser(requestId, ownerId)).status, "published");
   assert.equal(await store.restoreStoredWorkRequestForUser(requestId, ownerId), undefined);
 });

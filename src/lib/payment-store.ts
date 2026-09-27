@@ -1,17 +1,15 @@
-import { markStoredAdMarqueePlacementPaid } from "@/lib/ad-marquee-store";
-import { markStoredFairApplicationPaid } from "@/lib/fair-application-store";
-import { getStoredApplicationOwner, markStoredApplicationPaid } from "@/lib/application-store";
+import { refreshAdMarqueeQueue } from "@/lib/ad-marquee-store";
+import { getStoredApplicationOwner } from "@/lib/application-store";
 import { createStoredNotification } from "@/lib/notification-store";
-import { markStoredListingPaid } from "@/lib/listing-store";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import { getTariffs } from "@/lib/tariff-store";
 import type { Payment, Tariff } from "@/lib/types";
-import { markStoredVacancyPaid } from "@/lib/vacancy-store";
-import { markStoredWorkRequestPaid } from "@/lib/work-request-store";
 
 type PaymentRow = {
   amount: number | string;
   created_at: string;
+  duration_days?: number | null;
+  confirmation_url?: string | null;
   id: string;
   paid_at?: string | null;
   provider: Payment["provider"];
@@ -25,6 +23,7 @@ type PaymentRow = {
 
 type TariffRow = {
   action: Tariff["action"];
+  duration_days?: number | null;
   id: string;
   name: string;
   price: number | string;
@@ -69,24 +68,16 @@ function tariffIdFromAction(action: Tariff["action"]) {
 
 async function getStoredTariffByAction(action: Tariff["action"]) {
   const rows = await supabaseRest<TariffRow[]>(
-    `/rest/v1/tariffs?select=id,name,action,price&action=eq.${encodeURIComponent(action)}&limit=1`,
+    `/rest/v1/tariffs?select=id,name,action,price,duration_days&action=eq.${encodeURIComponent(action)}&limit=1`,
   );
 
   return rows[0];
 }
 
 async function getPaymentTariffRow(input: StoredPaymentInput) {
-  const tariff = await getStoredTariffByAction(input.tariff.action);
-
-  if (tariff) {
-    return tariff;
-  }
-
-  if (input.targetType === "workRequest" && input.tariff.action === "work_request_publication") {
-    return getStoredTariffByAction("listing_publication");
-  }
-
-  return undefined;
+  // An action must be backed by its own tariff; substituting the listing
+  // tariff could charge the wrong amount and fail to fulfill the target.
+  return getStoredTariffByAction(input.tariff.action);
 }
 
 function targetTitleForPayment(row: PaymentRow, context?: PaymentMappingContext) {
@@ -165,7 +156,8 @@ export async function mapStoredPayment(row: PaymentRow, context?: PaymentMapping
     status: row.status,
     provider: row.provider,
     providerPaymentId: row.provider_payment_id ?? undefined,
-    createdAt: row.created_at.slice(0, 10),
+    createdAt: row.created_at,
+    confirmationUrl: row.confirmation_url ?? undefined,
     paidAt: row.paid_at?.slice(0, 10),
   };
 }
@@ -189,6 +181,10 @@ export async function createStoredPayment(input: StoredPaymentInput) {
     throw new Error(`Tariff ${input.tariff.action} is not configured in Supabase`);
   }
 
+  if (Number(tariff.price) !== input.amount) {
+    throw new Error("Tariff price changed before payment reservation. Refresh and try again.");
+  }
+
   const rows = await supabaseRest<PaymentRow[]>("/rest/v1/payments?select=*", {
     method: "POST",
     prefer: "return=representation",
@@ -201,6 +197,7 @@ export async function createStoredPayment(input: StoredPaymentInput) {
       provider: input.provider,
       provider_payment_id: input.providerPaymentId ?? null,
       amount: input.amount,
+      duration_days: tariff.duration_days ?? null,
       status: input.status,
       paid_at: input.status === "succeeded" ? new Date().toISOString() : null,
     },
@@ -275,6 +272,39 @@ export async function findActiveStoredPaymentForTarget(input: {
   return rows[0] ? mapStoredPayment(rows[0]) : undefined;
 }
 
+export async function findUnappliedSucceededStoredPaymentForTarget(input: {
+  targetId?: string;
+  targetType: Payment["targetType"];
+  userId?: string;
+}) {
+  if (!isSupabaseRestConfigured() || !input.targetId || !input.userId || !isUuid(input.targetId)) {
+    return undefined;
+  }
+
+  const rows = await supabaseRest<PaymentRow[]>(
+    `/rest/v1/payments?select=*&target_type=eq.${encodeURIComponent(input.targetType)}&target_id=eq.${encodeURIComponent(input.targetId)}&user_id=eq.${encodeURIComponent(input.userId)}&provider=eq.yookassa&status=eq.succeeded&applied_at=is.null&order=created_at.desc&limit=1`,
+  );
+
+  return rows[0] ? mapStoredPayment(rows[0]) : undefined;
+}
+
+export async function listStoredPaymentReconciliationCandidateIds(limit = 50) {
+  if (!isSupabaseRestConfigured()) {
+    throw new Error("Supabase is not configured for payment reconciliation");
+  }
+
+  const [open, legacy] = await Promise.all([
+    supabaseRest<Array<Pick<PaymentRow, "id">>>(
+      `/rest/v1/payments?select=id&provider=eq.yookassa&provider_payment_id=not.is.null&status=in.(created,pending)&order=created_at.asc&limit=${limit}`,
+    ),
+    supabaseRest<Array<Pick<PaymentRow, "id">>>(
+      `/rest/v1/payments?select=id&provider=eq.yookassa&provider_payment_id=not.is.null&status=eq.succeeded&applied_at=is.null&order=created_at.asc&limit=${limit}`,
+    ),
+  ]);
+
+  return Array.from(new Set([...legacy, ...open].map((row) => row.id))).slice(0, limit);
+}
+
 export async function findStoredPaymentByProvider(providerPaymentId: string, localPaymentId?: string) {
   if (!isSupabaseRestConfigured()) {
     return undefined;
@@ -295,86 +325,96 @@ export async function findStoredPaymentByProvider(providerPaymentId: string, loc
   return rows[0] ? mapStoredPayment(rows[0]) : undefined;
 }
 
+export async function bindStoredPaymentProvider(payment: Payment) {
+  if (!isSupabaseRestConfigured() || !isUuid(payment.id) || !payment.providerPaymentId) {
+    throw new Error("Provider reference is required before payment confirmation");
+  }
+
+  await supabaseRest(
+    `/rest/v1/payments?id=eq.${encodeURIComponent(payment.id)}&provider=eq.yookassa&status=in.(created,pending)`,
+    {
+      method: "PATCH",
+      prefer: "return=minimal",
+      body: {
+        provider_payment_id: payment.providerPaymentId,
+        confirmation_url: payment.confirmationUrl ?? null,
+      },
+    },
+  );
+}
+
 export async function updateStoredPayment(payment: Payment) {
   if (!isSupabaseRestConfigured() || !isUuid(payment.id)) {
     return payment;
   }
 
-  await supabaseRest(`/rest/v1/payments?id=eq.${encodeURIComponent(payment.id)}`, {
-    method: "PATCH",
-    prefer: "return=minimal",
-    body: {
-      paid_at: payment.status === "succeeded" ? new Date().toISOString() : payment.paidAt ?? null,
-      provider: payment.provider,
-      provider_payment_id: payment.providerPaymentId ?? null,
-      status: payment.status,
+  if (payment.status === "succeeded") {
+    throw new Error("Successful payment must be applied through the atomic RPC");
+  }
+
+  // A late pending/canceled response cannot undo a concurrent successful webhook.
+  await supabaseRest(
+    `/rest/v1/payments?id=eq.${encodeURIComponent(payment.id)}&status=in.(created,pending)`,
+    {
+      method: "PATCH",
+      prefer: "return=minimal",
+      body: {
+        confirmation_url: payment.confirmationUrl ?? null,
+        provider_payment_id: payment.providerPaymentId ?? null,
+        status: payment.status,
+      },
     },
-  });
+  );
 
   return payment;
 }
 
 export async function markStoredPaymentTargetSucceeded(payment: Payment) {
-  if (payment.targetType === "listing" && payment.targetId && isUuid(payment.targetId)) {
-    const updated = await markStoredListingPaid(payment.targetId);
+  if (!isSupabaseRestConfigured() || !isUuid(payment.id)) {
+    throw new Error("Stored payment is required for atomic fulfillment");
+  }
 
-    if (!updated) {
-      throw new Error("Не удалось опубликовать объявление после оплаты");
+  const applied = await supabaseRest<Array<{ next_status: string; newly_applied: boolean }>>(
+    "/rest/v1/rpc/apply_confirmed_payment",
+    {
+      method: "POST",
+      body: {
+        p_payment_id: payment.id,
+        p_provider_payment_id: payment.provider === "yookassa" ? payment.providerPaymentId : null,
+      },
+    },
+  );
+  const nextStatus = applied[0]?.next_status;
+
+  if (!nextStatus || !["active", "paid", "published", "sent"].includes(nextStatus)) {
+    throw new Error("Payment target was not applied");
+  }
+
+  if (payment.targetType === "application" && applied[0].newly_applied && payment.targetId) {
+    // Fulfillment has already committed. Notification failures are reported
+    // separately so the provider does not trigger a second entitlement.
+    try {
+      const owner = await getStoredApplicationOwner(payment.targetId);
+      if (owner?.ownerUserId) {
+        await createStoredNotification({
+          body: `Исполнитель оплатил и отправил отклик на «${owner.targetTitle}». Откройте раздел «Отклики», чтобы посмотреть анкету и контакты.`,
+          event: "application_paid",
+          subject: owner.targetType === "workRequest" ? "Новый отклик на заказ" : "Новый отклик на вакансию",
+          userId: owner.ownerUserId,
+        });
+      }
+    } catch (error) {
+      console.error("Application payment notification failed", { paymentId: payment.id, error });
     }
-
-    return "published" as const;
   }
 
-  if (payment.targetType === "fair_application" && payment.targetId && isUuid(payment.targetId)) {
-    await markStoredFairApplicationPaid(payment.targetId);
-    return "published" as const;
-  }
-
-  if (payment.targetType === "vacancy" && payment.targetId && isUuid(payment.targetId)) {
-    const updated = await markStoredVacancyPaid(payment.targetId);
-
-    if (!updated) {
-      throw new Error("Не удалось опубликовать вакансию после оплаты");
+  if (payment.targetType === "ad_marquee") {
+    try {
+      await refreshAdMarqueeQueue();
+    } catch (error) {
+      console.error("Paid marquee queue refresh failed", { paymentId: payment.id, error });
     }
-
-    return "published" as const;
   }
 
-  if (payment.targetType === "workRequest" && payment.targetId && isUuid(payment.targetId)) {
-    await markStoredWorkRequestPaid(payment.targetId);
-    return "published" as const;
-  }
-
-  if (payment.targetType === "application" && payment.targetId && isUuid(payment.targetId)) {
-    const updated = await markStoredApplicationPaid(payment.targetId);
-
-    if (!updated) {
-      throw new Error("Не удалось отправить отклик после оплаты");
-    }
-
-    const owner = await getStoredApplicationOwner(payment.targetId);
-
-    if (updated === "sent" && owner?.ownerUserId) {
-      await createStoredNotification({
-        body: `Исполнитель оплатил и отправил отклик на «${owner.targetTitle}». Откройте раздел «Отклики», чтобы посмотреть анкету и контакты.`,
-        event: "application_paid",
-        subject: owner.targetType === "workRequest" ? "Новый отклик на заказ" : "Новый отклик на вакансию",
-        userId: owner.ownerUserId,
-      });
-    }
-
-    return "sent" as const;
-  }
-
-  if (payment.targetType === "ad_marquee" && payment.targetId && isUuid(payment.targetId)) {
-    const updated = await markStoredAdMarqueePlacementPaid(payment.targetId, payment.id);
-
-    if (!updated) {
-      throw new Error("Не удалось активировать бегущую строку после оплаты");
-    }
-
-    return updated.status === "active" ? ("active" as const) : ("paid" as const);
-  }
-
-  return payment.targetType === "application" ? ("sent" as const) : ("published" as const);
+  return nextStatus as "active" | "paid" | "published" | "sent";
 }
