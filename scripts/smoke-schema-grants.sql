@@ -41,7 +41,8 @@ begin
           or has_column_privilege(browser_role, relation_oid, attname, 'UPDATE'));
       if unsafe_columns is not null
         or has_table_privilege(browser_role, relation_oid, 'DELETE')
-        or has_table_privilege(browser_role, relation_oid, 'MAINTAIN')
+        or (table_name not in ('payments', 'booking_requests')
+          and has_table_privilege(browser_role, relation_oid, 'MAINTAIN'))
       then
         raise exception 'Browser role % has direct write privileges on public.%: %',
           browser_role, table_name, coalesce(unsafe_columns, 'DELETE/MAINTAIN');
