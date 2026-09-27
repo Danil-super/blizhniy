@@ -414,7 +414,8 @@ export async function getStoredWorkRequestById(requestId: string, options: { pub
   }
 
   try {
-    const rows = await fetchWorkRequestRows(`&id=eq.${encodeURIComponent(requestId)}&limit=1`);
+    const publicFilter = options.publicOnly ? "&status=eq.published" : "";
+    const rows = await fetchWorkRequestRows(`&id=eq.${encodeURIComponent(requestId)}${publicFilter}&limit=1`);
 
     const request = rows[0] ? mapWorkRequest(rows[0]) : undefined;
 

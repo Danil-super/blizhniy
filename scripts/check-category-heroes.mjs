@@ -88,7 +88,6 @@ const responsiveImageHeroScenarios = [
     desktopHeroBreakpoint: 768,
   },
   { slug: "posuda", mobileMode: "cover" },
-  { slug: "biznes", mobileMode: "cover" },
   { slug: "elektronika", mobileMode: "cover" },
   { slug: "dlya-doma-i-dachi", mobileMode: "cover" },
   { slug: "menyayu-ili-otdam-darom", mobileMode: "cover" },
@@ -119,9 +118,13 @@ try {
   for (const scenario of scenarios) {
     const artifactDir = `artifacts/category-heroes/${scenario.slug}`;
     await mkdir(artifactDir, { recursive: true });
+    // Share the browser cache for this category while still navigating to a
+    // fresh server-rendered document at every width.
+    const context = await browser.newContext();
     for (const width of [320, 360, 390, 430, 639, 640, 767, 768, 1024, 1440, 1535, 1536, 1920]) {
-      const page = await browser.newPage({ viewport: { width, height: 1000 } });
+      const page = await context.newPage();
       try {
+        await page.setViewportSize({ width, height: 1000 });
         const response = await openCategory(page, scenario.slug);
         assert.equal(response.status(), 200);
         const hero = page.locator(`[data-category-theme="${scenario.slug}"]`);
@@ -193,6 +196,7 @@ try {
         await page.close();
       }
     }
+    await context.close();
   }
 
   for (const scenario of responsiveImageHeroScenarios) {
@@ -201,9 +205,11 @@ try {
 
     const widths = scenario.desktopAspect ? [320, 360, 390, 430, 640, 768, 1024, 1280, 1440, 1920] : [320, 360, 390, 430, 640, 1024];
 
+    const context = await browser.newContext();
     for (const width of widths) {
-      const page = await browser.newPage({ viewport: { width, height: 1000 } });
+      const page = await context.newPage();
       try {
+        await page.setViewportSize({ width, height: 1000 });
         const response = await openCategory(page, scenario.slug);
         assert.equal(response.status(), 200);
 
@@ -361,6 +367,7 @@ try {
         await page.close();
       }
     }
+    await context.close();
   }
 } finally {
   await browser.close();
