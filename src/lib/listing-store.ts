@@ -1,6 +1,7 @@
 import { categories, region } from "@/lib/data";
 import { formatBookingPrice } from "@/lib/booking-details";
 import { hasMapCoordinates } from "@/lib/map-location";
+import { effectivePublicationStatus } from "@/lib/publication-time";
 import { publicMediaUrl } from "@/lib/storage-upload";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { BookingDetails, Listing, ListingKind, PublicationStatus } from "@/lib/types";
@@ -205,7 +206,7 @@ function resolveCategoryInfo(row: ListingRow) {
   };
 }
 
-function mapListing(row: ListingRow): Listing {
+function mapListing(row: ListingRow, showEffectiveStatus = false): Listing {
   const booking = normalizeBooking(row.booking);
   const kind = row.listing_type === "rent" || booking ? "arenda" : listingKindByDbType[row.listing_type] ?? "prodam";
   const categoryInfo = resolveCategoryInfo(row);
@@ -235,7 +236,7 @@ function mapListing(row: ListingRow): Listing {
     imageTone: "blue",
     phone: row.contact_phone ?? undefined,
     messengerUrl: row.messenger_url ?? undefined,
-    status: row.status,
+    status: showEffectiveStatus ? effectivePublicationStatus(row.status, row.expires_at) : row.status,
     paid: row.is_paid,
     viewCount: Math.max(0, Math.floor(Number(row.view_count ?? 0) || 0)),
     publishedAt,
@@ -751,7 +752,7 @@ export async function listStoredListingsForAdmin(limit = 200) {
 
   const rows = await fetchListingRows(`&order=created_at.desc&limit=${limit}`);
 
-  return rows.map(mapListing);
+  return rows.map((row) => mapListing(row, true));
 }
 
 export async function listStoredListingsForUser(userId: string) {
@@ -762,7 +763,7 @@ export async function listStoredListingsForUser(userId: string) {
   try {
     const rows = await fetchListingRows(`&author_id=eq.${encodeURIComponent(userId)}&status=neq.archived&order=created_at.desc`);
 
-    return rows.map(mapListing);
+    return rows.map((row) => mapListing(row, true));
   } catch (error) {
     console.error("Failed to load user listings from Supabase", error);
     return [];
