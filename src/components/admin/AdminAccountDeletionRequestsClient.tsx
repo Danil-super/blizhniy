@@ -5,7 +5,7 @@ import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 
 type QueueRequest = {
   id: string;
-  user_id: string;
+  user_id: string | null;
   email: string | null;
   status: 'requested' | 'in_review';
   requested_at: string;
@@ -139,9 +139,9 @@ export function AdminAccountDeletionRequestsClient() {
         <div className="mt-5 space-y-3">
           {requests.map((item) => (
             <article key={item.id} className="rounded-lg border border-slate-200 p-4 [overflow-wrap:anywhere]">
-              <p className="font-semibold text-slate-900">{item.email ?? 'Email не указан'} · {item.status === 'requested' ? 'Ожидает' : 'Проверяется'}</p>
+              <p className="font-semibold text-slate-900">{item.user_id ? item.email ?? 'Email не указан' : 'Аккаунт уже удалён'} · {item.status === 'requested' ? 'Ожидает' : 'Проверяется'}</p>
               <p className="mt-1 text-sm text-slate-600">Получен: {new Date(item.requested_at).toLocaleString('ru-RU')}</p>
-              <p className="mt-1 text-xs text-slate-500">Заявление: {item.id} · Пользователь: {item.user_id}</p>
+              <p className="mt-1 text-xs text-slate-500">Заявление: {item.id} · Пользователь: {item.user_id ?? 'удалён'}</p>
               {item.status === 'requested' ? (
                 <button
                   type="button"
