@@ -38,6 +38,9 @@ jobs:
       - name: Test Supabase REST timeout and write retry behavior
         run: node --experimental-strip-types --test tests/supabase-rest.test.mjs
 
+      - name: Test expiry maintenance runner
+        run: bash scripts/test-reconcile-expired-publications.sh
+
       - name: Build
         run: npm run build
 
