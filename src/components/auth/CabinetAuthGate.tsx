@@ -1,17 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { ReactNode } from "react";
+import { Fragment, ReactNode } from "react";
 import { useAuthState } from "@/components/auth/useAuthState";
 
 export function CabinetAuthGate({ children }: { children: ReactNode }) {
-  const { state } = useAuthState();
+  const { state, userId } = useAuthState();
 
-  if (state === "signed-in" || state === "admin") {
-    return <>{children}</>;
+  if ((state === "signed-in" || state === "admin") && userId) {
+    return <Fragment key={userId}>{children}</Fragment>;
   }
 
-  if (state === "loading") {
+  if (state === "loading" || state === "signed-in" || state === "admin") {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">
         Проверяем вход...
