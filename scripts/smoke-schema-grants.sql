@@ -7,6 +7,7 @@ declare
   browser_role text;
   relation_oid oid;
   unsafe_columns text;
+  raw_column text;
 begin
   foreach table_name in array array[
     'profiles', 'payments', 'specialist_profiles', 'listings',
@@ -54,6 +55,44 @@ begin
   then
     raise exception 'Browser can invoke public.record_listing_view';
   end if;
+
+  -- TRUNCATE bypasses row-level security. Browser roles must also never
+  -- create triggers or reference other tables as a schema privilege.
+  for relation_oid in
+    select c.oid from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind in ('r', 'p')
+  loop
+    foreach browser_role in array array['anon', 'authenticated'] loop
+      if has_table_privilege(browser_role, relation_oid, 'TRUNCATE')
+        or has_table_privilege(browser_role, relation_oid, 'TRIGGER')
+        or has_table_privilege(browser_role, relation_oid, 'REFERENCES') then
+        raise exception 'Browser role % has unsafe table privileges on %',
+          browser_role, relation_oid::regclass;
+      end if;
+    end loop;
+  end loop;
+
+  foreach table_name in array array[
+    'listings', 'vacancies', 'work_requests',
+    'specialist_profiles', 'fair_applications'
+  ] loop
+    relation_oid := to_regclass(format('public.%I', table_name));
+    foreach browser_role in array array['anon', 'authenticated'] loop
+      foreach raw_column in array array['address', 'latitude', 'longitude'] loop
+        if has_column_privilege(browser_role, relation_oid, raw_column, 'SELECT') then
+          raise exception 'Browser role % can read private %.%',
+            browser_role, relation_oid::regclass, raw_column;
+        end if;
+      end loop;
+    end loop;
+  end loop;
+
+  foreach browser_role in array array['anon', 'authenticated'] loop
+    if has_column_privilege(browser_role, 'public.profiles'::regclass, 'is_blocked', 'UPDATE') then
+      raise exception 'Browser role % can update profiles.is_blocked', browser_role;
+    end if;
+  end loop;
 
   raise notice 'Structural schema, RLS, grants and specialist guard checks passed';
 end
