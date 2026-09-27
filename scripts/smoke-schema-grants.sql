@@ -79,12 +79,28 @@ begin
     foreach browser_role in array array['anon', 'authenticated'] loop
       if has_table_privilege(browser_role, relation_oid, 'TRUNCATE')
         or has_table_privilege(browser_role, relation_oid, 'TRIGGER')
-        or has_table_privilege(browser_role, relation_oid, 'REFERENCES') then
+        or has_table_privilege(browser_role, relation_oid, 'REFERENCES')
+        or has_table_privilege(browser_role, relation_oid, 'MAINTAIN') then
         raise exception 'Browser role % has unsafe table privileges on %',
           browser_role, relation_oid::regclass;
       end if;
     end loop;
   end loop;
+
+  if exists (
+    select 1
+    from pg_default_acl d
+    join pg_namespace n on n.oid = d.defaclnamespace
+    cross join lateral aclexplode(d.defaclacl) acl
+    join pg_roles r on r.oid = acl.grantee
+    where n.nspname = 'public'
+      and d.defaclrole = 'postgres'::regrole
+      and d.defaclobjtype = 'r'
+      and r.rolname in ('anon', 'authenticated')
+      and acl.privilege_type = 'MAINTAIN'
+  ) then
+    raise exception 'postgres defaults grant browser MAINTAIN on future public tables';
+  end if;
 
   foreach table_name in array array[
     'listings', 'vacancies', 'work_requests',
