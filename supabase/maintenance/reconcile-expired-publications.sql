@@ -22,3 +22,12 @@ with expired_rows as (
   returning id
 )
 select 'vacancies' as entity, count(*) as expired_count from expired_rows;
+
+-- A failed postcondition aborts the surrounding --single-transaction run.
+do $$
+begin
+  if exists (select 1 from listings where status = 'published' and expires_at <= now())
+     or exists (select 1 from vacancies where status = 'published' and expires_at <= now()) then
+    raise exception 'Expired published rows remain after reconciliation';
+  end if;
+end $$;
