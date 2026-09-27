@@ -38,16 +38,6 @@ type MediaUploadResponse = {
   error?: string;
 };
 
-const pendingPaymentStorageKey = "blizhniy:pendingPaymentId";
-
-function rememberPendingPaymentId(paymentId: string) {
-  try {
-    window.localStorage.setItem(pendingPaymentStorageKey, paymentId);
-  } catch {
-    // Storage can be unavailable; the return URL still contains the payment id.
-  }
-}
-
 function readValue(formData: FormData, name: string, fallback = "") {
   return String(formData.get(name) ?? "").trim() || fallback;
 }
@@ -597,8 +587,6 @@ export function AdminDemoPublishButton({
             throw new Error("Платеж не был создан. Проверьте настройки тарифа размещения объявления.");
           }
 
-          rememberPendingPaymentId(result.payment.id);
-
           if (result.payment.confirmationUrl) {
             window.location.href = result.payment.confirmationUrl;
             return;
@@ -649,8 +637,6 @@ export function AdminDemoPublishButton({
           if (!result.payment?.id) {
             throw new Error("Платеж не был создан. Проверьте настройки тарифа размещения вакансии.");
           }
-
-          rememberPendingPaymentId(result.payment.id);
 
           if (result.payment.confirmationUrl) {
             window.location.href = result.payment.confirmationUrl;

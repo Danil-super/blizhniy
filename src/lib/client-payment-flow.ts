@@ -84,7 +84,6 @@ type CabinetListingsPayload = {
   listings?: Listing[];
 };
 
-const pendingPaymentStorageKey = "blizhniy:pendingPaymentId";
 const confirmationRetryDelayMs = 1500;
 const confirmationRetryAttempts = 20;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
@@ -148,34 +147,6 @@ async function imageSourceToFile(source: string, index: number) {
   }
 
   return new File([blob], fileNameForImageSource(source, index, blob.type), { type: blob.type });
-}
-
-function readPendingPaymentId() {
-  try {
-    return window.localStorage.getItem(pendingPaymentStorageKey)?.trim() || "";
-  } catch {
-    return "";
-  }
-}
-
-function rememberPendingPaymentId(paymentId: string) {
-  try {
-    window.localStorage.setItem(pendingPaymentStorageKey, paymentId);
-  } catch {
-    // localStorage can be unavailable in private modes; payment flow still has the URL id fallback.
-  }
-}
-
-function clearPendingPaymentId(paymentId?: string) {
-  try {
-    const storedPaymentId = readPendingPaymentId();
-
-    if (!paymentId || !storedPaymentId || storedPaymentId === paymentId) {
-      window.localStorage.removeItem(pendingPaymentStorageKey);
-    }
-  } catch {
-    // Ignore storage cleanup failures.
-  }
 }
 
 function readStoredPublications() {
@@ -517,10 +488,6 @@ async function requestPaymentConfirmation(paymentId: string) {
   return { payload, response };
 }
 
-function shouldRetryWithRememberedPayment(payload: (ConfirmPaymentPayload & { error?: string }) | null, responseOk: boolean) {
-  return !responseOk && /payment not found/i.test(payload?.error ?? "");
-}
-
 function shouldRetryPendingConfirmation(payload: (ConfirmPaymentPayload & { error?: string }) | null, responseOk: boolean) {
   return responseOk && payload?.payment?.status !== "succeeded";
 }
@@ -530,21 +497,11 @@ function wait(ms: number) {
 }
 
 export async function confirmClientPayment(paymentId: string) {
-  let confirmedPaymentId = paymentId;
   let { payload, response } = await requestPaymentConfirmation(paymentId);
-
-  if (shouldRetryWithRememberedPayment(payload, response.ok)) {
-    const rememberedPaymentId = readPendingPaymentId();
-
-    if (rememberedPaymentId && rememberedPaymentId !== paymentId) {
-      confirmedPaymentId = rememberedPaymentId;
-      ({ payload, response } = await requestPaymentConfirmation(rememberedPaymentId));
-    }
-  }
 
   for (let attempt = 1; attempt < confirmationRetryAttempts && shouldRetryPendingConfirmation(payload, response.ok); attempt += 1) {
     await wait(confirmationRetryDelayMs);
-    ({ payload, response } = await requestPaymentConfirmation(confirmedPaymentId));
+    ({ payload, response } = await requestPaymentConfirmation(paymentId));
   }
 
   if (!response.ok || !payload) {
@@ -552,7 +509,6 @@ export async function confirmClientPayment(paymentId: string) {
   }
 
   if (payload.payment?.status === "succeeded") {
-    clearPendingPaymentId(payload.payment.id ?? confirmedPaymentId);
     syncPaidPublication(payload);
     void addCurrentUserNotification({
       category: "payment",
@@ -561,10 +517,9 @@ export async function confirmClientPayment(paymentId: string) {
         ? `${payload.payment.targetTitle}: публикация активирована.`
         : "Платеж подтвержден, публикация активирована.",
       tone: "success",
-      dedupeKey: `payment:${payload.payment.id ?? confirmedPaymentId}:succeeded`,
+      dedupeKey: `payment:${payload.payment.id ?? paymentId}:succeeded`,
     });
   } else {
-    rememberPendingPaymentId(payload.payment?.id ?? confirmedPaymentId);
     void addCurrentUserNotification({
       category: "payment",
       title: "Платеж ожидает подтверждения",
@@ -572,7 +527,7 @@ export async function confirmClientPayment(paymentId: string) {
         ? `${payload.payment.targetTitle}: банк или ЮKassa еще не прислали финальный статус.`
         : "Платеж создан, ожидаем финальный статус от платежного провайдера.",
       tone: "warning",
-      dedupeKey: `payment:${payload.payment?.id ?? confirmedPaymentId}:pending`,
+      dedupeKey: `payment:${payload.payment?.id ?? paymentId}:pending`,
     });
   }
 
@@ -607,10 +562,6 @@ export async function createClientPayment(input: CreatePaymentInput): Promise<Cr
 
   if (!response.ok || !payload?.payment?.id) {
     throw new Error(payload?.error ?? "Не удалось создать платеж.");
-  }
-
-  if (payload.payment.confirmationUrl) {
-    rememberPendingPaymentId(payload.payment.id);
   }
 
   void addCurrentUserNotification({
@@ -662,8 +613,6 @@ async function createListingPaymentFromLocalDraft(input: CreatePaymentInput) {
     const nextItems = [serverDraftCopy, ...readStoredPublications().filter((item) => item.id !== draft.id && item.id !== matchingServerListing.id)].slice(0, 50);
 
     writeStoredPublications(nextItems);
-    rememberPendingPaymentId(payment.id);
-
     return payment;
   }
 
@@ -695,8 +644,6 @@ async function createListingPaymentFromLocalDraft(input: CreatePaymentInput) {
   const nextItems = [serverDraftCopy, ...readStoredPublications().filter((item) => item.id !== draft.id && item.id !== serverListingId)].slice(0, 50);
 
   writeStoredPublications(nextItems);
-  rememberPendingPaymentId(payload.payment.id);
-
   return payload.payment;
 }
 
@@ -736,8 +683,6 @@ async function createVacancyPaymentFromLocalDraft(input: CreatePaymentInput) {
     const nextItems = [serverDraftCopy, ...readStoredPublications().filter((item) => item.id !== draft.id)].slice(0, 50);
 
     writeStoredPublications(nextItems);
-    rememberPendingPaymentId(payment.id);
-
     return payment;
   }
 
@@ -773,8 +718,6 @@ async function createVacancyPaymentFromLocalDraft(input: CreatePaymentInput) {
   const nextItems = [serverDraftCopy, ...readStoredPublications().filter((item) => item.id !== draft.id && item.id !== serverVacancyId)].slice(0, 50);
 
   writeStoredPublications(nextItems);
-  rememberPendingPaymentId(payload.payment.id);
-
   return payload.payment;
 }
 
@@ -809,8 +752,6 @@ async function createWorkRequestPaymentFromLocalDraft(input: CreatePaymentInput)
     );
 
     writeStoredPublications([serverDraftCopy, ...readStoredPublications().filter((item) => item.id !== draft.id)].slice(0, 80));
-    rememberPendingPaymentId(payment.id);
-
     return payment;
   }
 
@@ -845,8 +786,6 @@ async function createWorkRequestPaymentFromLocalDraft(input: CreatePaymentInput)
   );
 
   writeStoredPublications([serverDraftCopy, ...readStoredPublications().filter((item) => item.id !== draft.id && item.id !== serverRequestId)].slice(0, 80));
-  rememberPendingPaymentId(payload.payment.id);
-
   return payload.payment;
 }
 
@@ -867,7 +806,6 @@ export async function createAndConfirmClientPayment(input: CreatePaymentInput) {
       : await createClientPayment(input);
 
   if (payment.confirmationUrl) {
-    rememberPendingPaymentId(payment.id);
     window.location.href = payment.confirmationUrl;
     return { confirmation: null, paymentId: payment.id };
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import { Fragment, ReactNode, useEffect, useState } from "react";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { useAuthState } from "@/components/auth/useAuthState";
 
@@ -10,18 +10,18 @@ type PublicationAuthGateProps = {
 };
 
 export function PublicationAuthGate({ children, title = "Войдите, чтобы разместить публикацию" }: PublicationAuthGateProps) {
-  const { state } = useAuthState();
+  const { state, userId } = useAuthState();
   const [returnHref, setReturnHref] = useState("/cabinet");
 
   useEffect(() => {
     setReturnHref(`${window.location.pathname}${window.location.search}`);
   }, []);
 
-  if (state === "signed-in" || state === "admin") {
-    return <>{children}</>;
+  if ((state === "signed-in" || state === "admin") && userId) {
+    return <Fragment key={userId}>{children}</Fragment>;
   }
 
-  if (state === "loading") {
+  if (state === "loading" || state === "signed-in" || state === "admin") {
     return (
       <main className="page-container py-10">
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">

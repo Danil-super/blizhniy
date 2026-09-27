@@ -117,8 +117,6 @@ export type CabinetResponseItem = {
   vacancyTitle: string;
 };
 
-const deletedPublicationIdsStorageKey = "blizhniy-deleted-publication-ids";
-
 const sortedCities = [...cities].sort((left, right) => left.name.localeCompare(right.name, "ru"));
 const cabinetDataCacheTtlMs = 30_000;
 const cabinetDataListeners = new Set<CabinetDataListener>();
@@ -258,27 +256,6 @@ function writeStoredPublications(items: DemoPublication[]) {
   writeStoredDemoPublications(JSON.stringify(items));
   markCabinetDataChanged();
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
-}
-
-function readDeletedPublicationIds() {
-  try {
-    const stored = window.localStorage.getItem(deletedPublicationIdsStorageKey);
-    const parsed = stored ? (JSON.parse(stored) as unknown) : null;
-
-    if (Array.isArray(parsed)) {
-      return new Set(parsed.filter((item): item is string => typeof item === "string" && item.length > 0));
-    }
-  } catch {
-    return new Set<string>();
-  }
-
-  return new Set<string>();
-}
-
-function rememberDeletedPublicationId(itemId: string) {
-  const nextIds = readDeletedPublicationIds();
-  nextIds.add(itemId);
-  window.localStorage.setItem(deletedPublicationIdsStorageKey, JSON.stringify([...nextIds].slice(-300)));
 }
 
 async function getAuthHeaders(accessToken?: string): Promise<Record<string, string>> {
@@ -517,6 +494,7 @@ async function fetchCabinetFairApplications(identity: ClientUserIdentity) {
 
   try {
     const response = await fetch("/api/cabinet/fair-applications", {
+      cache: "no-store",
       headers: await getAuthHeaders(identity.accessToken),
     });
 
@@ -721,11 +699,9 @@ async function loadUserCabinetData(identity: ClientUserIdentity) {
     fetchCabinetWorkRequests(identity),
     fetchCabinetSpecialist(identity),
   ]);
-  const deletedIds = readDeletedPublicationIds();
-  const storedOwnerItems = readStoredPublications().filter((item) => item.ownerKey === identity.ownerKey && !deletedIds.has(item.id));
+  const storedOwnerItems = readStoredPublications().filter((item) => item.ownerKey === identity.ownerKey);
   const localItemById = new Map(storedOwnerItems.map((item) => [item.id, item]));
   const visibleServerItems = [...serverFairApplications, ...serverListings, ...serverVacancies, ...serverWorkRequests, ...serverSpecialist]
-    .filter((item) => !deletedIds.has(item.id))
     .map((item) => mergeLocalListingMedia(item, localItemById.get(item.id)));
   const serverItemIds = new Set(visibleServerItems.map((item) => item.id));
   const localItems = storedOwnerItems.filter(
@@ -2153,7 +2129,6 @@ function PublicationList({ items, mode }: { items: DemoPublication[]; mode: Demo
                           next.add(item.id);
                           return next;
                         });
-                        rememberDeletedPublicationId(item.id);
                         setDeletingItemId(null);
                       })
                       .catch((error) => {

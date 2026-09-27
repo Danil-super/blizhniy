@@ -6,24 +6,48 @@ import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 export type AuthState = "loading" | "signed-out" | "signed-in" | "admin";
 
+export type AuthStateSnapshot = {
+  state: AuthState;
+  userId: string | null;
+};
+
 type UserRoleRow = {
   role: string;
 };
 
-type AuthStateListener = (nextState: AuthState) => void;
+type AuthStateListener = (nextSnapshot: AuthStateSnapshot) => void;
 
 type AuthStateResponse = {
   state?: AuthState;
 };
 
-let cachedState: AuthState = "loading";
+let cachedSnapshot: AuthStateSnapshot = { state: "loading", userId: null };
 let initialized = false;
 let requestId = 0;
 const listeners = new Set<AuthStateListener>();
 
-function publishState(nextState: AuthState) {
-  cachedState = nextState;
-  listeners.forEach((listener) => listener(nextState));
+function publishState(nextState: AuthState, userId: string | null) {
+  if (cachedSnapshot.state === nextState && cachedSnapshot.userId === userId) {
+    return;
+  }
+
+  cachedSnapshot = { state: nextState, userId };
+  listeners.forEach((listener) => listener(cachedSnapshot));
+}
+
+function prepareSessionState(session: Session | null | undefined) {
+  const userId = session?.user?.id ?? null;
+
+  if (!userId) {
+    publishState("signed-out", null);
+    return;
+  }
+
+  if (cachedSnapshot.userId !== userId) {
+    // Do not let an authenticated subtree for the previous account stay mounted
+    // while the new account's role is being resolved.
+    publishState("loading", userId);
+  }
 }
 
 async function resolveUserStateFromRoles(user: User, currentRequestId: number) {
@@ -35,16 +59,20 @@ async function resolveUserStateFromRoles(user: User, currentRequestId: number) {
   }
 
   if (currentRequestId === requestId) {
-    publishState((roles as UserRoleRow[] | null)?.some((item) => item.role === "admin") ? "admin" : "signed-in");
+    publishState((roles as UserRoleRow[] | null)?.some((item) => item.role === "admin") ? "admin" : "signed-in", user.id);
   }
 }
 
 async function resolveSessionState(session: Session | null | undefined, currentRequestId: number) {
+  if (currentRequestId !== requestId) {
+    return;
+  }
+
   const user = session?.user;
 
   if (!user) {
     if (currentRequestId === requestId) {
-      publishState("signed-out");
+      publishState("signed-out", null);
     }
     return;
   }
@@ -62,7 +90,7 @@ async function resolveSessionState(session: Session | null | undefined, currentR
 
         if (payload?.state === "admin" || payload?.state === "signed-in") {
           if (currentRequestId === requestId) {
-            publishState(payload.state);
+            publishState(payload.state, user.id);
           }
           return;
         }
@@ -72,7 +100,7 @@ async function resolveSessionState(session: Session | null | undefined, currentR
     await resolveUserStateFromRoles(user, currentRequestId);
   } catch {
     if (currentRequestId === requestId) {
-      publishState("signed-in");
+      publishState("signed-in", user.id);
     }
   }
 }
@@ -87,39 +115,55 @@ function ensureAuthStateInitialized() {
   try {
     const supabase = getSupabaseBrowserClient();
 
-    supabase.auth
+    const initialRequestId = ++requestId;
+
+    void supabase.auth
       .getSession()
       .then(({ data, error }) => {
         if (error) {
           throw error;
         }
 
-        const currentRequestId = ++requestId;
-        return resolveSessionState(data.session, currentRequestId);
+        if (initialRequestId !== requestId) {
+          return;
+        }
+
+        prepareSessionState(data.session);
+        return resolveSessionState(data.session, initialRequestId);
       })
-      .catch(() => publishState("signed-out"));
+      .catch(() => {
+        if (initialRequestId === requestId) {
+          publishState("signed-out", null);
+        }
+      });
 
     supabase.auth.onAuthStateChange((_event, session) => {
       const currentRequestId = ++requestId;
+      prepareSessionState(session);
+
+      if (!session?.user) {
+        return;
+      }
+
       window.setTimeout(() => resolveSessionState(session, currentRequestId), 0);
     });
   } catch {
-    publishState("signed-out");
+    publishState("signed-out", null);
   }
 }
 
 export function useAuthState() {
-  const [state, setState] = useState<AuthState>(cachedState);
+  const [snapshot, setSnapshot] = useState<AuthStateSnapshot>(cachedSnapshot);
 
   useEffect(() => {
     ensureAuthStateInitialized();
-    listeners.add(setState);
-    setState(cachedState);
+    listeners.add(setSnapshot);
+    setSnapshot(cachedSnapshot);
 
     return () => {
-      listeners.delete(setState);
+      listeners.delete(setSnapshot);
     };
   }, []);
 
-  return { state };
+  return snapshot;
 }
