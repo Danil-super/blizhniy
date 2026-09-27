@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  createDefaultCabinetProfile,
   readCabinetProfile,
   resolveClientUserIdentity,
   type CabinetProfile,
@@ -100,11 +99,16 @@ export function addSiteNotification(ownerKey: string, profile: CabinetProfile, i
 }
 
 export async function addCurrentUserNotification(input: AddSiteNotificationInput) {
-  const identity = await resolveClientUserIdentity();
-  const fallback = createDefaultCabinetProfile(identity);
-  const profile = readCabinetProfile(identity.ownerKey, fallback);
-
-  return addSiteNotification(identity.ownerKey, profile, input);
+  try {
+    const identity = await resolveClientUserIdentity();
+    const profile = await readCabinetProfile(identity);
+    if ((await resolveClientUserIdentity()).ownerKey !== identity.ownerKey) return null;
+    return addSiteNotification(identity.ownerKey, profile, input);
+  } catch {
+    // Notifications are optional; a failing profile request must not produce
+    // an unhandled promise rejection or write to the wrong account's key.
+    return null;
+  }
 }
 
 export function markSiteNotificationsRead(ownerKey: string) {
