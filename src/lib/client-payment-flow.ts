@@ -21,6 +21,24 @@ type ConfirmPaymentPayload = {
   };
 };
 
+export type ClientPaymentConfirmationOptions = {
+  /**
+   * Lets a caller bind the confirmation to the session that started it. This
+   * is needed on public return pages, which can outlive an account switch.
+   */
+  authorizationToken?: string;
+  /**
+   * Re-checks that the initiating session is still current before sending a
+   * request and before applying its client-side result.
+   */
+  assertCurrentSession?: () => Promise<void>;
+  /**
+   * Callers that provide a session-bound notification writer can suppress the
+   * default current-user notification lookup.
+   */
+  notify?: boolean;
+};
+
 type CreatePaymentInput = {
   listingDraft?: DemoPublication;
   tariffId: string;
@@ -477,13 +495,23 @@ export function syncPaidPublication(confirmPayload: ConfirmPaymentPayload) {
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
 }
 
-async function requestPaymentConfirmation(paymentId: string) {
+async function requestPaymentConfirmation(paymentId: string, options?: ClientPaymentConfirmationOptions) {
+  await options?.assertCurrentSession?.();
+
+  const authorization = options?.authorizationToken
+    ? { Authorization: `Bearer ${options.authorizationToken}` }
+    : await getAuthHeaders();
+
+  await options?.assertCurrentSession?.();
+
   const response = await fetch(`/api/payments/${paymentId}/confirm`, {
     body: JSON.stringify({ trustSuccessfulReturn: true }),
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    headers: { "Content-Type": "application/json", ...authorization },
   });
   const payload = (await response.json().catch(() => null)) as (ConfirmPaymentPayload & { error?: string }) | null;
+
+  await options?.assertCurrentSession?.();
 
   return { payload, response };
 }
@@ -496,39 +524,45 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function confirmClientPayment(paymentId: string) {
-  let { payload, response } = await requestPaymentConfirmation(paymentId);
+export async function confirmClientPayment(paymentId: string, options?: ClientPaymentConfirmationOptions) {
+  let { payload, response } = await requestPaymentConfirmation(paymentId, options);
 
   for (let attempt = 1; attempt < confirmationRetryAttempts && shouldRetryPendingConfirmation(payload, response.ok); attempt += 1) {
     await wait(confirmationRetryDelayMs);
-    ({ payload, response } = await requestPaymentConfirmation(paymentId));
+    ({ payload, response } = await requestPaymentConfirmation(paymentId, options));
   }
 
   if (!response.ok || !payload) {
     throw new Error(payload?.error ?? "Не удалось подтвердить платеж.");
   }
 
+  await options?.assertCurrentSession?.();
+
   if (payload.payment?.status === "succeeded") {
     syncPaidPublication(payload);
-    void addCurrentUserNotification({
-      category: "payment",
-      title: "Оплата прошла",
-      message: payload.payment.targetTitle
-        ? `${payload.payment.targetTitle}: публикация активирована.`
-        : "Платеж подтвержден, публикация активирована.",
-      tone: "success",
-      dedupeKey: `payment:${payload.payment.id ?? paymentId}:succeeded`,
-    });
+    if (options?.notify !== false) {
+      void addCurrentUserNotification({
+        category: "payment",
+        title: "Оплата прошла",
+        message: payload.payment.targetTitle
+          ? `${payload.payment.targetTitle}: публикация активирована.`
+          : "Платеж подтвержден, публикация активирована.",
+        tone: "success",
+        dedupeKey: `payment:${payload.payment.id ?? paymentId}:succeeded`,
+      });
+    }
   } else {
-    void addCurrentUserNotification({
-      category: "payment",
-      title: "Платеж ожидает подтверждения",
-      message: payload.payment?.targetTitle
-        ? `${payload.payment.targetTitle}: банк или ЮKassa еще не прислали финальный статус.`
-        : "Платеж создан, ожидаем финальный статус от платежного провайдера.",
-      tone: "warning",
-      dedupeKey: `payment:${payload.payment?.id ?? paymentId}:pending`,
-    });
+    if (options?.notify !== false) {
+      void addCurrentUserNotification({
+        category: "payment",
+        title: "Платеж ожидает подтверждения",
+        message: payload.payment?.targetTitle
+          ? `${payload.payment.targetTitle}: банк или ЮKassa еще не прислали финальный статус.`
+          : "Платеж создан, ожидаем финальный статус от платежного провайдера.",
+        tone: "warning",
+        dedupeKey: `payment:${payload.payment?.id ?? paymentId}:pending`,
+      });
+    }
   }
 
   return payload;
