@@ -8,7 +8,15 @@ import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { isStoredMediaReference, storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
-import { appendPublicationHistory, readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
+import {
+  appendPublicationHistory,
+  canUseDemoPublicationsStorage,
+  demoPublicationsUpdatedEvent,
+  readStoredDemoPublications,
+  withPublicationStatusHistory,
+  writeStoredDemoPublications,
+  type DemoPublication,
+} from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import type { WorkRequest } from "@/lib/types";
 
@@ -20,6 +28,11 @@ type WorkRequestEditClientProps = {
 type WorkRequestUpdateResponse = {
   error?: string;
   workRequest?: WorkRequest;
+};
+
+type WorkRequestsResponse = {
+  error?: string;
+  workRequests?: WorkRequest[];
 };
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -137,24 +150,74 @@ async function readLocalImageReferences(formData: FormData) {
   return [...readExistingPhotos(formData), ...storedImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))].slice(0, 6);
 }
 
-function mergeSavedImages(serverImages: string[] | undefined, localImages: string[]) {
-  if (!serverImages?.length) {
-    return localImages;
-  }
-
-  return [...serverImages, ...localImages.slice(serverImages.length)].slice(0, 6);
-}
-
 export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequestEditClientProps) {
   const [storedItems, setStoredItems] = useState<DemoPublication[]>([]);
+  const [serverRequest, setServerRequest] = useState<WorkRequest>();
+  const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "error">(uuidPattern.test(requestId) ? "loading" : "ready");
+  const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState("");
+  const isServerRequest = uuidPattern.test(requestId);
 
   useEffect(() => {
-    setStoredItems(readStoredPublications());
+    setStoredItems(canUseDemoPublicationsStorage() ? readStoredPublications() : []);
   }, []);
 
-  const storedRequest = useMemo(() => storedItems.find((item) => item.type === "workRequest" && item.id === requestId), [storedItems, requestId]);
-  const request = storedRequest ?? (initialRequest ? initialToPublication(initialRequest) : undefined);
+  useEffect(() => {
+    if (!isServerRequest) {
+      setServerRequest(undefined);
+      setLoadError("");
+      setLoadStatus("ready");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadOwnedWorkRequest() {
+      try {
+        const identity = await resolveAuthenticatedClientUserIdentity();
+        const response = await fetch("/api/cabinet/work-requests", {
+          headers: { Authorization: `Bearer ${identity.accessToken}` },
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => null)) as WorkRequestsResponse | null;
+
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Не удалось загрузить заказ.");
+        }
+
+        if (!cancelled) {
+          setServerRequest(payload?.workRequests?.find((item) => item.id === requestId));
+          setLoadStatus("ready");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : "Не удалось загрузить заказ.");
+          setLoadStatus("error");
+        }
+      }
+    }
+
+    setServerRequest(undefined);
+    setLoadError("");
+    setLoadStatus("loading");
+    void loadOwnedWorkRequest();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isServerRequest, requestId]);
+
+  const storedRequest = useMemo(
+    () => (canUseDemoPublicationsStorage() ? storedItems.find((item) => item.type === "workRequest" && item.id === requestId) : undefined),
+    [storedItems, requestId],
+  );
+  // UUID records are owned server publications. Never substitute a browser
+  // cache or an RSC fallback object, which may have belonged to another user.
+  const request = isServerRequest
+    ? (serverRequest?.id === requestId ? initialToPublication(serverRequest) : undefined)
+    : canUseDemoPublicationsStorage()
+      ? storedRequest ?? (initialRequest ? initialToPublication(initialRequest) : undefined)
+      : undefined;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -175,18 +238,17 @@ export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequest
       const messengerUrl = readValue(formData, "messengerUrl", request.messengerUrl ?? "");
       const nextStatus = readValue(formData, "status", request.status);
       const images = await readLocalImageReferences(formData);
-      let serverRequest: WorkRequest | undefined;
 
       if (nextStatus.trim().toLowerCase() !== "черновик" && !phone && !messengerUrl) {
         setMessage("Укажите телефон или мессенджер, чтобы исполнитель мог связаться по заказу.");
         return;
       }
 
-      if (uuidPattern.test(request.id)) {
+      if (isServerRequest) {
         const mediaPaths = await uploadPublicationImageSources(images, "work-requests", identity.accessToken);
         const response = await fetch("/api/cabinet/work-requests", {
           body: JSON.stringify({
-            id: request.id,
+            id: requestId,
             budget: readValue(formData, "budget", request.price ?? ""),
             city: readValue(formData, "city", request.city),
             description: readValue(formData, "description", request.description ?? ""),
@@ -208,20 +270,26 @@ export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequest
           throw new Error(payload?.error ?? "Не удалось сохранить заказ.");
         }
 
-        serverRequest = payload.workRequest;
+        markCabinetDataChanged();
+        window.location.href = "/cabinet/zakazy";
+        return;
+      }
+
+      if (!canUseDemoPublicationsStorage()) {
+        throw new Error("Редактирование демо-заказа недоступно.");
       }
 
       const updatedRequest: DemoPublication = {
         ...request,
         ownerKey: identity.ownerKey,
         ownerName: identity.name,
-        title: serverRequest?.title ?? readValue(formData, "title", request.title),
-        subtitle: serverRequest?.profession ?? readValue(formData, "profession", request.subtitle),
-        profession: serverRequest?.profession ?? readValue(formData, "profession", request.profession ?? request.subtitle),
-        city: serverRequest?.city ?? readValue(formData, "city", request.city),
-        price: serverRequest?.budget ?? normalizeListingPrice(readValue(formData, "budget", request.price ?? ""), "по договоренности"),
-        description: serverRequest?.description ?? readValue(formData, "description", request.description ?? ""),
-        images: mergeSavedImages(serverRequest?.images, images),
+        title: readValue(formData, "title", request.title),
+        subtitle: readValue(formData, "profession", request.subtitle),
+        profession: readValue(formData, "profession", request.profession ?? request.subtitle),
+        city: readValue(formData, "city", request.city),
+        price: normalizeListingPrice(readValue(formData, "budget", request.price ?? ""), "по договоренности"),
+        description: readValue(formData, "description", request.description ?? ""),
+        images,
         phone,
         messengerUrl,
         status: nextStatus,
@@ -246,12 +314,30 @@ export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequest
     }
   }
 
+  if (isServerRequest && loadStatus === "loading") {
+    return (
+      <main className="page-container py-10">
+        <p role="status" className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600 shadow-card">
+          Загружаем заказ...
+        </p>
+      </main>
+    );
+  }
+
   if (!request) {
     return (
       <main className="page-container py-10">
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
-          <h1 className="text-xl font-bold text-[#060b27]">Заказ не найден</h1>
-          <p className="mt-2 text-slate-600">Черновики заказов хранятся в браузере, где они были созданы.</p>
+          <h1 className="text-xl font-bold text-[#060b27]">Заказ не найден или недоступен</h1>
+          <p className="mt-2 text-slate-600">
+            {isServerRequest
+              ? loadStatus === "error"
+                ? loadError || "Не удалось загрузить заказ. Попробуйте еще раз."
+                : "Проверьте номер заказа и доступ к аккаунту владельца."
+              : canUseDemoPublicationsStorage()
+                ? "Черновики заказов хранятся в браузере, где они были созданы."
+                : "Редактирование доступно только для заказов из вашего личного кабинета."}
+          </p>
           <BackLink fallbackHref="/cabinet/zakazy" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
             Вернуться к заказам
           </BackLink>
