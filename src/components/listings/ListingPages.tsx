@@ -40,7 +40,7 @@ import { getPublicCategories } from "@/lib/category-store";
 import { listStoredListingsForCategory } from "@/lib/listing-store";
 import { getPublicTariffs } from "@/lib/tariff-store";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
-import type { BookingRequest } from "@/lib/booking-notifications";
+import type { BookingAvailability } from "@/lib/booking-availability";
 import type { BookingDetails, DeliveryOptions, DeliveryServiceId, Listing as StoreListing } from "@/lib/types";
 import { BookingCalculator } from "./BookingCalculator";
 import { DemoListingEditClient } from "./DemoListingEditClient";
@@ -1629,7 +1629,7 @@ function DeliveryInfoCard({ delivery }: { delivery?: DeliveryOptions }) {
   );
 }
 
-export function ListingDetailPage({ bookingRequests = [], slug, listingOverride }: { bookingRequests?: BookingRequest[]; slug: string; listingOverride?: DemoListing }) {
+export function ListingDetailPage({ bookingRequests = [], slug, listingOverride }: { bookingRequests?: BookingAvailability[]; slug: string; listingOverride?: DemoListing }) {
   const listing = listingOverride ?? findListingBySlug(slug);
   const listingHref = `/obyavlenie/${listing?.slug ?? slug}`;
 

@@ -1,4 +1,17 @@
 import { createStoredNotification } from "@/lib/notification-store";
+import {
+  addBookingDays,
+  bookingAvailabilityPath,
+  bookingDateKey,
+  bookingNightsCount,
+  bookingTodayKey,
+  isStayPeriodUnavailable,
+  MAX_BOOKING_LEAD_DAYS,
+  MAX_BOOKING_NIGHTS,
+  parseBookingDate,
+  remainingTourSeats,
+} from "@/lib/booking-availability";
+import type { BookingAvailability } from "@/lib/booking-availability";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { BookingDetails } from "@/lib/types";
 import type { BookingRequest, BookingRequestStatus } from "@/lib/booking-notifications";
@@ -35,34 +48,16 @@ export type CreateBookingRequestInput = {
   userId: string;
 };
 
-function todayKey() {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function toDate(value?: string) {
-  if (!value) {
-    return undefined;
-  }
-
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? undefined : date;
+  return parseBookingDate(value);
 }
 
 function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
+  return new Date(date.getTime() + days * 86_400_000);
 }
 
 function dateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return bookingDateKey(date);
 }
 
 function nightsBetween(start?: string, end?: string) {
@@ -82,7 +77,7 @@ function nightsBetween(start?: string, end?: string) {
 }
 
 function isWeekend(date: Date) {
-  const day = date.getDay();
+  const day = date.getUTCDay();
   return day === 0 || day === 6;
 }
 
@@ -110,21 +105,27 @@ function mapBookingRequest(row: BookingRequestRow): BookingRequest {
 }
 
 function calculateServerTotal(booking: BookingDetails, input: CreateBookingRequestInput) {
-  const guests = Math.max(1, Math.floor(input.guests || 1));
+  const guests = input.guests;
+  if (!Number.isSafeInteger(guests) || guests < 1) {
+    throw new Error("Количество гостей должно быть целым положительным числом.");
+  }
+
+  const today = bookingTodayKey();
+  const lastBookableDay = addBookingDays(today, MAX_BOOKING_LEAD_DAYS)!;
 
   if (booking.mode === "tour") {
     const startDate = booking.tourDate;
 
-    if (!startDate) {
-      throw new Error("Дата похода не указана.");
+    if (!startDate || !parseBookingDate(startDate)) {
+      throw new Error("Дата похода указана неверно.");
     }
 
     if (input.startDate && input.startDate !== startDate) {
       throw new Error("Выберите дату этого похода.");
     }
 
-    if (startDate < todayKey()) {
-      throw new Error("Дата похода уже прошла.");
+    if (startDate < today || startDate > lastBookableDay) {
+      throw new Error("Дата похода должна быть в пределах ближайшего года.");
     }
 
     if (booking.maxGuests && guests > booking.maxGuests) {
@@ -142,15 +143,21 @@ function calculateServerTotal(booking: BookingDetails, input: CreateBookingReque
 
   const startDate = input.startDate;
   const endDate = input.endDate;
-  const nights = nightsBetween(startDate, endDate);
+  const nightCount = bookingNightsCount(startDate, endDate);
 
-  if (!startDate || !endDate || !nights.length) {
+  if (!startDate || !endDate || !nightCount || nightCount < 1) {
     throw new Error("Выберите корректные даты заезда и выезда.");
   }
 
-  if (startDate < todayKey()) {
-    throw new Error("Нельзя забронировать прошедшую дату.");
+  if (nightCount > MAX_BOOKING_NIGHTS) {
+    throw new Error(`Максимальный срок бронирования: ${MAX_BOOKING_NIGHTS} ночей.`);
   }
+
+  if (startDate < today || startDate > lastBookableDay || endDate > addBookingDays(lastBookableDay, 1)!) {
+    throw new Error("Даты бронирования должны быть в пределах ближайшего года.");
+  }
+
+  const nights = nightsBetween(startDate, endDate);
 
   if (booking.availableFrom && startDate < booking.availableFrom) {
     throw new Error("Дата заезда раньше доступного периода.");
@@ -199,10 +206,15 @@ async function getListingForBooking(listingId: string) {
   }
 
   const rows = await supabaseRest<ListingBookingRow[]>(
-    `/rest/v1/listings?select=id,author_id,title,booking,status&id=eq.${encodeURIComponent(listingId)}&status=eq.published&limit=1`,
+    `/rest/v1/listings?select=id,author_id,title,booking,status&id=eq.${encodeURIComponent(listingId)}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&limit=1`,
   );
 
   return rows[0];
+}
+
+export async function isStoredListingBookable(listingId: string) {
+  const listing = await getListingForBooking(listingId);
+  return Boolean(listing?.booking);
 }
 
 export async function listActiveBookingRequestsForListing(listingId: string) {
@@ -215,6 +227,31 @@ export async function listActiveBookingRequestsForListing(listingId: string) {
   ).catch(() => []);
 
   return rows.map(mapBookingRequest);
+}
+
+// Availability is public; never expose the guest, price, or creation timestamp.
+export async function listBookingAvailabilityForListing(listingId: string): Promise<BookingAvailability[]> {
+  if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
+    return [];
+  }
+
+  const rows = await supabaseRest<Array<{
+    listing_id: string;
+    start_date: string;
+    end_date: string | null;
+    guests: number;
+    status: BookingRequestStatus;
+  }>>(
+    bookingAvailabilityPath(listingId),
+  );
+
+  return rows.map((row) => ({
+    listingId: row.listing_id,
+    startDate: row.start_date,
+    endDate: row.end_date ?? undefined,
+    guests: row.guests,
+    status: row.status,
+  }));
 }
 
 export async function listActiveBookingRequestsForListingViewer(listingId: string, userId: string) {
@@ -244,13 +281,13 @@ export async function createStoredBookingRequest(input: CreateBookingRequestInpu
 
   const calculated = calculateServerTotal(listing.booking, input);
   const activeRequests = await listActiveBookingRequestsForListing(input.listingId);
-  const selectedDates = new Set(calculated.nights);
-  const hasOverlap = activeRequests.some((request) => {
-    const requestDates = request.endDate ? nightsBetween(request.startDate, request.endDate).map(dateKey) : request.startDate ? [request.startDate] : [];
-    return requestDates.some((date) => selectedDates.has(date));
-  });
 
-  if (hasOverlap) {
+  if (listing.booking.mode === "tour") {
+    const seats = remainingTourSeats(listing.booking.maxGuests ?? 0, calculated.startDate, activeRequests, input.listingId);
+    if (calculated.guests > seats) {
+      throw new Error(`Свободных мест: ${seats}.`);
+    }
+  } else if (calculated.endDate && isStayPeriodUnavailable(calculated.startDate, calculated.endDate, activeRequests, input.listingId)) {
     throw new Error("На эти даты уже есть активная заявка.");
   }
 
@@ -294,7 +331,7 @@ export async function createStoredBookingRequest(input: CreateBookingRequestInpu
   return request;
 }
 
-export async function updateStoredBookingRequestStatus(input: { requestId: string; status: "accepted" | "declined"; userId: string }) {
+export async function updateStoredBookingRequestStatus(input: { listingId?: string; requestId: string; status: "accepted" | "declined"; userId: string }) {
   if (!isSupabaseRestConfigured() || !isUuid(input.requestId)) {
     return undefined;
   }
@@ -304,11 +341,11 @@ export async function updateStoredBookingRequestStatus(input: { requestId: strin
   );
   const row = rows[0];
 
-  if (!row || row.listings?.author_id !== input.userId) {
+  if (!row || row.listings?.author_id !== input.userId || row.status !== "pending" || (input.listingId && row.listing_id !== input.listingId)) {
     return undefined;
   }
 
-  const updatedRows = await supabaseRest<BookingRequestRow[]>(`/rest/v1/booking_requests?select=id,listing_id,guest_id,start_date,end_date,guests,total,status,created_at,listings(title)&id=eq.${encodeURIComponent(input.requestId)}`, {
+  const updatedRows = await supabaseRest<BookingRequestRow[]>(`/rest/v1/booking_requests?select=id,listing_id,guest_id,start_date,end_date,guests,total,status,created_at,listings(title)&id=eq.${encodeURIComponent(input.requestId)}&status=eq.pending`, {
     method: "PATCH",
     prefer: "return=representation",
     body: {
