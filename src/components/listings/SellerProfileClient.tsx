@@ -7,7 +7,7 @@ import { BackLink } from "@/components/BackLink";
 import { StoredMediaImage } from "@/components/StoredMedia";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import {
-  demoPublicationsStorageKey,
+  readStoredDemoPublications,
   isDemoPublicationExpired,
   isDemoPublicationSold,
   type DemoPublication,
@@ -41,7 +41,7 @@ function readStoredPublications() {
   }
 
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {

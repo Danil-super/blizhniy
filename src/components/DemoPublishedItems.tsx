@@ -6,7 +6,7 @@ import { CheckCircle2, ExternalLink, FilePenLine, Video } from "lucide-react";
 import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
-import { demoPublicationLabels, demoPublicationsStorageKey, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
+import { demoPublicationLabels, readStoredDemoPublications, DemoPublication, DemoPublicationType } from "@/lib/demo-publications";
 
 const clientFallbackContentEnabled = shouldShowClientFallbackContent();
 
@@ -16,7 +16,7 @@ function readStoredPublications() {
   }
 
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {

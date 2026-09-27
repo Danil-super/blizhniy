@@ -40,8 +40,12 @@ export function clearLegacyBookingStorage(storage: Pick<Storage, "removeItem">) 
 export function installLegacyBookingStorageCleanup(
   storage: Pick<Storage, "removeItem">,
   subscribeToAuthChanges: (onChange: () => void) => () => void,
+  afterBookingCleanup: () => void = () => {},
 ) {
-  const clear = () => clearLegacyBookingStorage(storage);
+  const clear = () => {
+    clearLegacyBookingStorage(storage);
+    afterBookingCleanup();
+  };
   clear();
   return subscribeToAuthChanges(clear);
 }

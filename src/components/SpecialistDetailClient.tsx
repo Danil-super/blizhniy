@@ -5,7 +5,7 @@ import { BackLink } from "@/components/BackLink";
 import { SpecialistProfileDetail } from "@/components/SpecialistProfileDetail";
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
-import { demoPublicationsStorageKey, type DemoPublication } from "@/lib/demo-publications";
+import { readStoredDemoPublications, type DemoPublication } from "@/lib/demo-publications";
 import { hasMapCoordinates } from "@/lib/map-location";
 
 const clientFallbackContentEnabled = shouldShowClientFallbackContent();
@@ -16,7 +16,7 @@ function readStoredPublications() {
   }
 
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {

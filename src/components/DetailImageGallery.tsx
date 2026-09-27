@@ -5,7 +5,7 @@ import type { ReactNode, TouchEvent } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { StoredMediaImage } from "@/components/StoredMedia";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
-import { demoPublicationsStorageKey } from "@/lib/demo-publications";
+import { readStoredDemoPublications } from "@/lib/demo-publications";
 
 type DetailImageGalleryProps = {
   compactMobile?: boolean;
@@ -35,7 +35,7 @@ export function DetailImageGallery({ compactMobile = false, fallbackIcon, images
     }
 
     try {
-      const parsed = JSON.parse(window.localStorage.getItem(demoPublicationsStorageKey) ?? "[]") as unknown;
+      const parsed = JSON.parse(readStoredDemoPublications() ?? "[]") as unknown;
 
       if (!Array.isArray(parsed)) {
         return;

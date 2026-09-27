@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Clock3, MapPin } from "lucide-react";
-import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, isDemoPublicationPubliclyVisible, type DemoPublication } from "@/lib/demo-publications";
+import { readStoredDemoPublications, demoPublicationsUpdatedEvent, isDemoPublicationPubliclyVisible, type DemoPublication } from "@/lib/demo-publications";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import type { WorkRequest } from "@/lib/types";
 
@@ -18,7 +18,7 @@ function newestWorkRequests(requests: WorkRequest[]) {
 
 function readLocalPublishedWorkRequests() {
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (!Array.isArray(parsed)) {

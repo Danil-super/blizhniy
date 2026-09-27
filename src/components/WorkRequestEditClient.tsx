@@ -8,7 +8,7 @@ import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { isStoredMediaReference, storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
-import { appendPublicationHistory, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
+import { appendPublicationHistory, readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import type { WorkRequest } from "@/lib/types";
 
@@ -26,7 +26,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 
 function readStoredPublications() {
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {
@@ -237,7 +237,7 @@ export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequest
         ? storedItems.map((item) => (item.id === request.id ? updatedWithHistory : item))
         : [updatedWithHistory, ...storedItems].slice(0, 50);
 
-      window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
+      writeStoredDemoPublications(JSON.stringify(nextItems));
       markCabinetDataChanged();
       window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
       window.location.href = "/cabinet/zakazy";

@@ -10,7 +10,7 @@ import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { storeMediaFile } from "@/lib/client-media-store";
-import { appendPublicationHistory, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, unpublishedVacancyStatus, withPublicationHistory, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
+import { appendPublicationHistory, readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, unpublishedVacancyStatus, withPublicationHistory, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { normalizeVacancyRequisites, validateVacancyRequisites } from "@/lib/vacancy-requisites";
 import type { JobVacancy } from "@/lib/types";
@@ -59,7 +59,7 @@ function isUuid(value: string) {
 
 function readStoredPublications() {
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {
@@ -404,7 +404,7 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
             })
           : withPublicationStatusHistory({ ...updatedVacancy, status: vacancy.status }, status);
       const nextItems = canPersist ? storedItems.map((item) => (item.id === vacancy.id ? updatedWithHistory : item)) : [withPublicationHistory(updatedVacancy), ...storedItems].slice(0, 50);
-      window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
+      writeStoredDemoPublications(JSON.stringify(nextItems));
       markCabinetDataChanged();
       window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
       window.location.href = "/cabinet/vakansii";

@@ -10,7 +10,7 @@ import { createStoredVacancyPublication } from "@/lib/client-vacancy-flow";
 import { storeMediaFile } from "@/lib/client-media-store";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { formatBookingPrice, validateBookingDetailsForPublication } from "@/lib/booking-details";
-import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationHistory, type DemoPublication, type DemoPublicationType } from "@/lib/demo-publications";
+import { readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, withPublicationHistory, type DemoPublication, type DemoPublicationType } from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { categories, cities } from "@/lib/data";
@@ -254,7 +254,7 @@ async function verifyCaptchaToken(token: string) {
 
 function readStoredPublications() {
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {
@@ -579,7 +579,7 @@ export function AdminDemoPublishButton({
           };
           const stored = readStoredPublications();
 
-          window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(storedPublicationsWithReplacement(publication, stored)));
+          writeStoredDemoPublications(JSON.stringify(storedPublicationsWithReplacement(publication, stored)));
           markCabinetDataChanged();
           window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
           window.location.href = returnHref;
@@ -632,7 +632,7 @@ export function AdminDemoPublishButton({
           };
           const stored = readStoredPublications();
 
-          window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(storedPublicationsWithReplacement(publication, stored)));
+          writeStoredDemoPublications(JSON.stringify(storedPublicationsWithReplacement(publication, stored)));
           markCabinetDataChanged();
           window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
           window.location.href = returnHref;
@@ -676,7 +676,7 @@ export function AdminDemoPublishButton({
       };
       const stored = readStoredPublications();
 
-      window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(storedPublicationsWithReplacement(publication, stored)));
+      writeStoredDemoPublications(JSON.stringify(storedPublicationsWithReplacement(publication, stored)));
       markCabinetDataChanged();
       window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
       window.location.href = returnHref;

@@ -7,7 +7,8 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, FileText, LockKeyhole, Mail, MapPin, Move, Phone, Plus, Search, Settings2, Trash2, UserRound, Video, X } from "lucide-react";
 import {
   demoPublicationLabels,
-  demoPublicationsStorageKey,
+  canUseDemoPublicationsStorage,
+  readStoredDemoPublications, writeStoredDemoPublications,
   demoPublicationsUpdatedEvent,
   appendPublicationHistory,
   getPublicationHistory,
@@ -29,7 +30,7 @@ import { confirmClientPayment, createAndConfirmClientPayment, createClientPaymen
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { cabinetDataUpdatedEvent, markCabinetDataChanged, readCabinetDataVersion } from "@/lib/cabinet-data-cache";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
-import type { Application, FairApplication, JobVacancy, Listing, Payment, SpecialistProfile } from "@/lib/types";
+import type { Application, FairApplication, JobVacancy, Listing, Payment, SpecialistProfile, WorkRequest } from "@/lib/types";
 import {
   type CabinetProfile,
   createDefaultCabinetProfile,
@@ -60,6 +61,12 @@ type CabinetServerListingsPayload = {
 };
 type CabinetServerVacanciesPayload = {
   vacancies?: JobVacancy[];
+};
+type CabinetServerWorkRequestsPayload = {
+  workRequests?: WorkRequest[];
+};
+type CabinetServerSpecialistPayload = {
+  specialist?: SpecialistProfile | null;
 };
 type CabinetServerPaymentsPayload = {
   payments?: Payment[];
@@ -234,7 +241,7 @@ const emptyCopy: Record<CabinetListMode, { title: string; text: string; href?: s
 
 function readStoredPublications() {
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {
@@ -248,7 +255,7 @@ function readStoredPublications() {
 }
 
 function writeStoredPublications(items: DemoPublication[]) {
-  window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(items));
+  writeStoredDemoPublications(JSON.stringify(items));
   markCabinetDataChanged();
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
 }
@@ -389,7 +396,7 @@ function listingToDemoPublication(listing: Listing, ownerKey: string): DemoPubli
   });
 }
 
-function vacancyStatusLabel(status: JobVacancy["status"]) {
+function vacancyStatusLabel(status: string) {
   if (status === "published" || status === "paid") {
     return "Опубликовано";
   }
@@ -451,6 +458,57 @@ function vacancyToDemoPublication(vacancy: JobVacancy, ownerKey: string): DemoPu
     placementRightConfirmed: vacancy.placementRightConfirmed,
     status: vacancyStatusLabel(vacancy.status),
     createdAt: vacancy.createdAt ?? vacancy.publishedAt ?? new Date().toISOString(),
+  });
+}
+
+function workRequestToDemoPublication(request: WorkRequest, ownerKey: string): DemoPublication {
+  return withPublicationHistory({
+    id: request.id,
+    type: "workRequest",
+    ownerKey,
+    title: request.title,
+    subtitle: request.profession,
+    city: request.city,
+    price: request.budget,
+    description: request.description,
+    images: request.images,
+    lat: request.lat,
+    lng: request.lng,
+    address: request.address ?? request.district,
+    showExactAddress: request.showExactAddress,
+    phone: request.phone,
+    messengerUrl: request.messengerUrl,
+    profession: request.profession,
+    status: vacancyStatusLabel(request.status),
+    expiresAt: request.expiresAt,
+    createdAt: request.createdAt,
+  });
+}
+
+function specialistToDemoPublication(profile: SpecialistProfile, ownerKey: string): DemoPublication {
+  return withPublicationHistory({
+    id: profile.id,
+    type: "specialist",
+    ownerKey,
+    title: profile.name,
+    subtitle: profile.profession,
+    city: profile.city,
+    price: profile.price,
+    description: profile.description,
+    images: profile.images,
+    lat: profile.lat,
+    lng: profile.lng,
+    address: profile.address ?? profile.district,
+    hasMapPoint: profile.hasMapPoint,
+    showExactAddress: profile.showExactAddress,
+    phone: profile.phone,
+    messengerUrl: profile.messengerUrl,
+    email: profile.email,
+    profession: profile.profession,
+    skills: profile.skills,
+    status: vacancyStatusLabel(profile.status),
+    expiresAt: profile.expiresAt,
+    createdAt: profile.createdAt ?? profile.publishedAt ?? new Date().toISOString(),
   });
 }
 
@@ -517,6 +575,42 @@ async function fetchCabinetVacancies(identity: ClientUserIdentity) {
     const payload = (await response.json().catch(() => null)) as CabinetServerVacanciesPayload | null;
 
     return (payload?.vacancies ?? []).map((vacancy) => vacancyToDemoPublication(vacancy, identity.ownerKey));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCabinetWorkRequests(identity: ClientUserIdentity) {
+  if (!identity.accessToken) {
+    return [];
+  }
+
+  try {
+    const response = await fetch("/api/cabinet/work-requests", {
+      cache: "no-store",
+      headers: await getAuthHeaders(identity.accessToken),
+    });
+    if (!response.ok) return [];
+    const payload = (await response.json().catch(() => null)) as CabinetServerWorkRequestsPayload | null;
+    return (payload?.workRequests ?? []).map((request) => workRequestToDemoPublication(request, identity.ownerKey));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCabinetSpecialist(identity: ClientUserIdentity) {
+  if (!identity.accessToken) {
+    return [];
+  }
+
+  try {
+    const response = await fetch("/api/cabinet/specialist?createDraft=false", {
+      cache: "no-store",
+      headers: await getAuthHeaders(identity.accessToken),
+    });
+    if (!response.ok) return [];
+    const payload = (await response.json().catch(() => null)) as CabinetServerSpecialistPayload | null;
+    return payload?.specialist ? [specialistToDemoPublication(payload.specialist, identity.ownerKey)] : [];
   } catch {
     return [];
   }
@@ -619,18 +713,20 @@ async function fetchCabinetPayments() {
 
 async function loadUserCabinetData(identity: ClientUserIdentity) {
   const fallback = createDefaultCabinetProfile(identity);
-  const [profileResult, serverFairApplications, serverListings, serverVacancies] = await Promise.all([
+  const [profileResult, serverFairApplications, serverListings, serverVacancies, serverWorkRequests, serverSpecialist] = await Promise.all([
     readCabinetProfile(identity)
       .then((profile) => ({ profile, profileError: undefined }))
       .catch(() => ({ profile: fallback, profileError: "Не удалось загрузить профиль. Повторите позже." })),
     fetchCabinetFairApplications(identity),
     fetchCabinetListings(identity),
     fetchCabinetVacancies(identity),
+    fetchCabinetWorkRequests(identity),
+    fetchCabinetSpecialist(identity),
   ]);
   const deletedIds = readDeletedPublicationIds();
   const storedOwnerItems = readStoredPublications().filter((item) => item.ownerKey === identity.ownerKey && !deletedIds.has(item.id));
   const localItemById = new Map(storedOwnerItems.map((item) => [item.id, item]));
-  const visibleServerItems = [...serverFairApplications, ...serverListings, ...serverVacancies]
+  const visibleServerItems = [...serverFairApplications, ...serverListings, ...serverVacancies, ...serverWorkRequests, ...serverSpecialist]
     .filter((item) => !deletedIds.has(item.id))
     .map((item) => mergeLocalListingMedia(item, localItemById.get(item.id)));
   const serverItemIds = new Set(visibleServerItems.map((item) => item.id));
@@ -1026,7 +1122,7 @@ function getEditHref(item: DemoPublication) {
   }
 
   if (item.type === "specialist") {
-    return `/rabota/specialisty/anketa?from=${item.id}`;
+    return canUseDemoPublicationsStorage() ? `/rabota/specialisty/anketa?from=${item.id}` : "/cabinet/specialist";
   }
 
   if (item.type === "vacancy") {
@@ -1116,6 +1212,10 @@ function getPublicationPaymentConfig(item: DemoPublication): { tariffId: string;
 }
 
 function canPayPublication(item: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && item.type === "specialist") {
+    return false;
+  }
+
   return Boolean(getPublicationPaymentConfig(item) && (isDraftPublication(item) || isPendingPaymentPublication(item)));
 }
 
@@ -1136,14 +1236,26 @@ function isInactivePaidPublication(item: DemoPublication) {
 }
 
 function canDeactivatePaidPublication(item: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && item.type !== "vacancy" && item.type !== "workRequest") {
+    return false;
+  }
+
   return Boolean(getPublicationPaymentConfig(item) && isPublishedPublication(item));
 }
 
 function canRestorePaidPublication(item: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && item.type !== "listing" && item.type !== "vacancy" && item.type !== "workRequest") {
+    return false;
+  }
+
   return isInactivePaidPublication(item);
 }
 
 function canDeletePublication(item: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && (item.type === "specialist" || item.type === "fairApplication")) {
+    return false;
+  }
+
   if (item.type === "listing") {
     return true;
   }
@@ -1287,9 +1399,30 @@ async function requestServerVacancyAction(itemId: string, action: "archive" | "r
   }
 }
 
+async function requestServerWorkRequestAction(itemId: string, action: "archive" | "restore") {
+  const response = await fetch("/api/cabinet/work-requests", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    body: JSON.stringify({ action, id: itemId }),
+  });
+  const payload = (await response.json().catch(() => null)) as { error?: string; workRequest?: WorkRequest } | null;
+
+  if (!response.ok || !payload?.workRequest) {
+    throw new Error(payload?.error ?? "Не удалось изменить заказ.");
+  }
+}
+
 async function unpublishPaidPublication(currentItem: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && !isUuid(currentItem.id)) {
+    throw new Error("Снять с публикации можно только запись, сохраненную на сервере.");
+  }
+
   if (currentItem.type === "vacancy" && isUuid(currentItem.id)) {
     await requestServerVacancyAction(currentItem.id, "archive");
+  } else if (currentItem.type === "workRequest" && isUuid(currentItem.id)) {
+    await requestServerWorkRequestAction(currentItem.id, "archive");
+  } else if (!canUseDemoPublicationsStorage()) {
+    throw new Error("Управляйте этой публикацией в ее разделе кабинета.");
   }
 
   const itemId = currentItem.id;
@@ -1324,8 +1457,18 @@ async function unpublishPaidPublication(currentItem: DemoPublication) {
 }
 
 async function restorePaidPublication(currentItem: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && !isUuid(currentItem.id)) {
+    throw new Error("Вернуть в публикацию можно только запись, сохраненную на сервере.");
+  }
+
   if (currentItem.type === "vacancy" && isUuid(currentItem.id)) {
     await requestServerVacancyAction(currentItem.id, "restore");
+  } else if (currentItem.type === "workRequest" && isUuid(currentItem.id)) {
+    await requestServerWorkRequestAction(currentItem.id, "restore");
+  } else if (currentItem.type === "listing" && isUuid(currentItem.id)) {
+    await requestServerListingAction(currentItem.id, "restore");
+  } else if (!canUseDemoPublicationsStorage()) {
+    throw new Error("Управляйте этой публикацией в ее разделе кабинета.");
   }
 
   const itemId = currentItem.id;
@@ -1373,6 +1516,10 @@ async function requestServerListingAction(itemId: string, action: "restore" | "s
 }
 
 async function deletePublication(item: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && (!isUuid(item.id) || item.type === "specialist" || item.type === "fairApplication")) {
+    throw new Error("Удаление этой публикации недоступно в общем списке кабинета.");
+  }
+
   if (item.type === "listing" && isUuid(item.id)) {
     const response = await fetch("/api/cabinet/listings", {
       method: "DELETE",
@@ -1405,9 +1552,9 @@ async function deletePublication(item: DemoPublication) {
       headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
       body: JSON.stringify({ id: item.id }),
     });
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    const payload = (await response.json().catch(() => null)) as { deleted?: boolean; error?: string } | null;
 
-    if (!response.ok) {
+    if (!response.ok || payload?.deleted !== true) {
       throw new Error(payload?.error ?? "Не удалось удалить заказ.");
     }
   }
@@ -1486,6 +1633,10 @@ async function createPublicationPayment(item: DemoPublication) {
   }
 
   if (item.type === "specialist" && !isUuid(item.id)) {
+    if (!canUseDemoPublicationsStorage()) {
+      throw new Error("Анкета специалиста должна быть сохранена на сервере перед оплатой.");
+    }
+
     paymentItem = withPublicationStatusHistory(
       {
         ...item,
