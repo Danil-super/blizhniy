@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import {
   BriefcaseBusiness,
   CircleUserRound,
+  UserRoundX,
   ClipboardList,
   CreditCard,
   FileText,
@@ -18,6 +19,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 const adminNav = [
   { href: "/admin", label: "Обзор", icon: Gauge },
   { href: "/admin/users", label: "Пользователи", icon: UsersRound },
+  { href: "/admin/account-deletion", label: "Удаление аккаунтов", icon: UserRoundX },
   { href: "/admin/obyavleniya", label: "Объявления", icon: FileText },
   { href: "/admin/vakansii", label: "Вакансии", icon: BriefcaseBusiness },
   { href: "/admin/zakazy", label: "Заказы", icon: ClipboardList },

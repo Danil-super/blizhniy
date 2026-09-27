@@ -9,13 +9,13 @@ import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { isStoredMediaReference, storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { professions } from "@/lib/data";
-import { appendPublicationHistory, demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
+import { appendPublicationHistory, readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { hasMapCoordinates } from "@/lib/map-location";
 
 function readStoredPublications() {
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {
@@ -206,7 +206,7 @@ export function SpecialistEditClient({ specialistId }: { specialistId: string })
         return item;
       });
 
-      window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
+      writeStoredDemoPublications(JSON.stringify(nextItems));
       markCabinetDataChanged();
       window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
       window.location.href = "/cabinet/specialist";

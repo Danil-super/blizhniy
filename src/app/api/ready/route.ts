@@ -14,10 +14,15 @@ export async function GET() {
   try {
     // The table may be empty; a successful response still proves the DB is reachable
     // and the server credentials can query the application schema.
-    await supabaseRest<unknown[]>("/rest/v1/categories?select=id&limit=1", {
+    const categories = await supabaseRest<unknown>("/rest/v1/categories?select=id&limit=1", {
       attempts: 1,
       timeoutMs: 3000,
     });
+
+    if (!Array.isArray(categories)) {
+      throw new Error("Unexpected database response");
+    }
+
     return NextResponse.json({ ok: true, service: "blizhniy" }, { headers });
   } catch {
     return NextResponse.json({ ok: false, service: "blizhniy" }, { status: 503, headers });

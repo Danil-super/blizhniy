@@ -10,6 +10,7 @@ SOURCE_DIR="${SOURCE_DIR:-}"
 APP_NAME="${APP_NAME:-blizhniy}"
 PORT="${PORT:-3000}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${PORT}/api/health}"
+READY_URL="${READY_URL:-http://127.0.0.1:${PORT}/api/ready}"
 KEEP_RELEASES="${KEEP_RELEASES:-5}"
 
 BASE_DIR="$(dirname "$APP_DIR")"
@@ -51,11 +52,12 @@ copy_env_files() {
   done
 }
 
-healthcheck() {
+check_endpoint() {
+  local url="$1"
   local attempt
 
   for attempt in $(seq 1 30); do
-    if curl -fsS --max-time 5 "$HEALTH_URL" >/dev/null; then
+    if curl -fsS --max-time 5 "$url" >/dev/null; then
       return 0
     fi
 
@@ -125,6 +127,9 @@ copy_env_files "$PREVIOUS_RELEASE"
 log "installing dependencies"
 npm --prefix "$RELEASE_DIR" ci --prefer-online --no-audit --no-fund
 
+log "checking Auth CAPTCHA configuration"
+NODE_ENV=production node "$RELEASE_DIR/scripts/check-auth-captcha-env.cjs" "$RELEASE_DIR"
+
 log "building release"
 npm --prefix "$RELEASE_DIR" run build
 
@@ -135,7 +140,10 @@ pm2 delete "$APP_NAME" || true
 pm2 start "${RELEASE_DIR}/ecosystem.config.cjs" --update-env </dev/null
 
 log "checking ${HEALTH_URL}"
-healthcheck
+check_endpoint "$HEALTH_URL"
+
+log "checking ${READY_URL}"
+check_endpoint "$READY_URL"
 
 log "promoting release"
 # The CI job can run browser checks only after the public endpoint switches.

@@ -10,7 +10,7 @@ import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
-import { appendPublicationHistory, DemoPublication, demoPublicationsStorageKey } from "@/lib/demo-publications";
+import { appendPublicationHistory, DemoPublication, readStoredDemoPublications, writeStoredDemoPublications } from "@/lib/demo-publications";
 import { cities } from "@/lib/data";
 import { formatBookingPrice, validateBookingDetailsForPublication } from "@/lib/booking-details";
 import { normalizeListingPrice } from "@/lib/listing-price";
@@ -38,7 +38,7 @@ type UpdatedListingResponse = {
 
 function readStoredPublications() {
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {
@@ -484,7 +484,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
             })
           : item,
       );
-      window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
+      writeStoredDemoPublications(JSON.stringify(nextItems));
       markCabinetDataChanged();
       window.dispatchEvent(new Event("blizhniy-demo-publications-updated"));
       window.location.href = "/cabinet/obyavleniya";

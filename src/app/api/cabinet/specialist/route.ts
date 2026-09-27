@@ -57,7 +57,7 @@ export async function GET(request: Request) {
       id: auth.user.id,
       name: auth.user.email?.split("@")[0],
     },
-    { createDraft: true },
+    { createDraft: new URL(request.url).searchParams.get("createDraft") !== "false" },
   );
 
   return NextResponse.json({ completeness: getSpecialistProfileCompleteness(specialist), specialist }, { headers: { "Cache-Control": "no-store" } });

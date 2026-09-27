@@ -1,6 +1,10 @@
 "use client";
 
+import { createDefaultCabinetProfile, type CabinetProfile } from "@/lib/cabinet-profile";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+
+export { createDefaultCabinetProfile };
+export type { CabinetProfile };
 
 export type ClientUserIdentity = {
   accessToken?: string;
@@ -9,44 +13,22 @@ export type ClientUserIdentity = {
   email: string;
 };
 
-export type CabinetProfile = {
-  name: string;
-  avatarDataUrl: string;
-  avatarZoom: number;
-  avatarPositionX: number;
-  avatarPositionY: number;
-  phone: string;
-  phoneVerified: boolean;
-  verifiedPhone: string;
-  email: string;
-  city: string;
-  notifyBookings: boolean;
-  notifyMessages: boolean;
-  notifyPayments: boolean;
-  notifyPublicationStatus: boolean;
-  notifySystem: boolean;
-  emailNotifications: boolean;
-  pushNotifications: boolean;
-  organizationName: string;
-  organizationInn: string;
-  organizationOgrn: string;
-  organizationAddress: string;
-  organizationWebsite: string;
-  organizationDescription: string;
-};
+const legacyProfilePrefix = "blizhniy-user-profile:";
 
 export function profileStorageKey(ownerKey: string) {
-  return `blizhniy-user-profile:${ownerKey}`;
+  return legacyProfilePrefix + ownerKey;
 }
 
 let cachedIdentity: ClientUserIdentity | null = null;
 let cachedIdentityAt = 0;
 let identityRequest: Promise<ClientUserIdentity> | null = null;
 let authListenerInitialized = false;
+let identityGeneration = 0;
 
 const identityCacheTtlMs = 60_000;
 
 function clearCachedIdentity() {
+  identityGeneration += 1;
   cachedIdentity = null;
   cachedIdentityAt = 0;
   identityRequest = null;
@@ -99,17 +81,29 @@ export async function resolveClientUserIdentity(): Promise<ClientUserIdentity> {
     return cachedIdentity;
   }
 
-  identityRequest ??= loadClientUserIdentity()
+  if (identityRequest) {
+    return identityRequest;
+  }
+
+  const generation = identityGeneration;
+  const request = loadClientUserIdentity()
     .then((identity) => {
+      // An Auth event can arrive while getSession is pending. Its old result
+      // must neither repopulate the cache nor be returned to the next account.
+      if (generation !== identityGeneration) {
+        return resolveClientUserIdentity();
+      }
+
       cachedIdentity = identity;
       cachedIdentityAt = Date.now();
       return identity;
     })
     .finally(() => {
-      identityRequest = null;
+      if (identityRequest === request) identityRequest = null;
     });
 
-  return identityRequest;
+  identityRequest = request;
+  return request;
 }
 
 export async function resolveAuthenticatedClientUserIdentity(): Promise<ClientUserIdentity> {
@@ -122,79 +116,104 @@ export async function resolveAuthenticatedClientUserIdentity(): Promise<ClientUs
   return identity;
 }
 
-export function createDefaultCabinetProfile(identity: ClientUserIdentity): CabinetProfile {
-  return {
-    name: identity.name,
-    avatarDataUrl: "",
-    avatarZoom: 1,
-    avatarPositionX: 50,
-    avatarPositionY: 50,
-    phone: "",
-    phoneVerified: false,
-    verifiedPhone: "",
-    email: identity.email,
-    city: "Краснодар",
-    notifyBookings: true,
-    notifyMessages: true,
-    notifyPayments: true,
-    notifyPublicationStatus: true,
-    notifySystem: true,
-    emailNotifications: true,
-    pushNotifications: false,
-    organizationName: "",
-    organizationInn: "",
-    organizationOgrn: "",
-    organizationAddress: "",
-    organizationWebsite: "",
-    organizationDescription: "",
-  };
-}
-
-export function readCabinetProfile(ownerKey: string, fallback: CabinetProfile): CabinetProfile {
+function clearOtherLegacyProfiles(currentKey: string) {
   try {
-    const stored = window.localStorage.getItem(profileStorageKey(ownerKey));
-    const parsed = stored ? (JSON.parse(stored) as Partial<CabinetProfile>) : null;
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
 
-    if (parsed && typeof parsed === "object") {
-      return {
-        ...fallback,
-        ...parsed,
-        name: String(parsed.name ?? fallback.name),
-        avatarDataUrl: String(parsed.avatarDataUrl ?? fallback.avatarDataUrl),
-        avatarZoom: Number(parsed.avatarZoom ?? fallback.avatarZoom),
-        avatarPositionX: Number(parsed.avatarPositionX ?? fallback.avatarPositionX),
-        avatarPositionY: Number(parsed.avatarPositionY ?? fallback.avatarPositionY),
-        phone: String(parsed.phone ?? fallback.phone),
-        phoneVerified: Boolean(parsed.phoneVerified ?? fallback.phoneVerified),
-        verifiedPhone: String(parsed.verifiedPhone ?? fallback.verifiedPhone),
-        email: String(parsed.email ?? fallback.email),
-        city: String(parsed.city ?? fallback.city),
-        notifyBookings: Boolean(parsed.notifyBookings ?? fallback.notifyBookings),
-        notifyMessages: Boolean(parsed.notifyMessages ?? fallback.notifyMessages),
-        notifyPayments: Boolean(parsed.notifyPayments ?? fallback.notifyPayments),
-        notifyPublicationStatus: Boolean(parsed.notifyPublicationStatus ?? fallback.notifyPublicationStatus),
-        notifySystem: Boolean(parsed.notifySystem ?? fallback.notifySystem),
-        emailNotifications: Boolean(parsed.emailNotifications ?? fallback.emailNotifications),
-        pushNotifications: Boolean(parsed.pushNotifications ?? fallback.pushNotifications),
-        organizationName: String(parsed.organizationName ?? fallback.organizationName),
-        organizationInn: String(parsed.organizationInn ?? fallback.organizationInn),
-        organizationOgrn: String(parsed.organizationOgrn ?? fallback.organizationOgrn),
-        organizationAddress: String(parsed.organizationAddress ?? fallback.organizationAddress),
-        organizationWebsite: String(parsed.organizationWebsite ?? fallback.organizationWebsite),
-        organizationDescription: String(parsed.organizationDescription ?? fallback.organizationDescription),
-      };
+      if (key?.startsWith(legacyProfilePrefix) && key !== currentKey) {
+        window.localStorage.removeItem(key);
+      }
     }
   } catch {
+    // Browser storage may be disabled; the server profile still works.
+  }
+}
+
+function removeLegacyProfile(key: string) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Browser storage may be disabled; the server profile still works.
+  }
+}
+
+export async function readCabinetProfile(identity: ClientUserIdentity): Promise<CabinetProfile> {
+  const fallback = createDefaultCabinetProfile(identity);
+
+  if (!identity.accessToken || identity.ownerKey === "local-user") {
     return fallback;
   }
 
-  return fallback;
+  const legacyKey = profileStorageKey(identity.ownerKey);
+  clearOtherLegacyProfiles(legacyKey);
+
+  const response = await fetch("/api/cabinet/profile", {
+    headers: { Authorization: "Bearer " + identity.accessToken },
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => null)) as {
+    error?: string;
+    exists?: boolean;
+    profile?: CabinetProfile;
+  } | null;
+
+  if (!response.ok || !payload?.profile) {
+    throw new Error(payload?.error || "Не удалось загрузить профиль.");
+  }
+
+  if (payload.exists) {
+    removeLegacyProfile(legacyKey);
+    return payload.profile;
+  }
+
+  let legacy: Partial<CabinetProfile> | null = null;
+
+  try {
+    const raw = window.localStorage.getItem(legacyKey);
+    const parsed = raw ? JSON.parse(raw) as unknown : null;
+    legacy = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Partial<CabinetProfile>
+      : null;
+  } catch {
+    // Corrupted legacy data is not used as a profile.
+  }
+
+  if (!legacy) {
+    removeLegacyProfile(legacyKey);
+    return payload.profile;
+  }
+
+  // Transfer a legacy profile only if the account has no server profile yet.
+  // Keep the old copy if the upload fails, so a later retry can recover it.
+  const saved = await writeCabinetProfile(identity, { ...payload.profile, ...legacy, email: identity.email });
+  removeLegacyProfile(legacyKey);
+  return saved;
 }
 
-export function writeCabinetProfile(ownerKey: string, profile: CabinetProfile, options: { notify?: boolean } = {}) {
-  window.localStorage.setItem(profileStorageKey(ownerKey), JSON.stringify(profile));
-
-  if (options.notify !== false) {
-    window.dispatchEvent(new Event("blizhniy-profile-updated"));
+export async function writeCabinetProfile(identity: ClientUserIdentity, profile: CabinetProfile): Promise<CabinetProfile> {
+  if (!identity.accessToken || identity.ownerKey === "local-user") {
+    throw new Error("Войдите в аккаунт, чтобы сохранить профиль.");
   }
+
+  const response = await fetch("/api/cabinet/profile", {
+    method: "PUT",
+    headers: {
+      Authorization: "Bearer " + identity.accessToken,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ profile }),
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => null)) as {
+    error?: string;
+    profile?: CabinetProfile;
+  } | null;
+
+  if (!response.ok || !payload?.profile) {
+    throw new Error(payload?.error || "Не удалось сохранить профиль.");
+  }
+
+  removeLegacyProfile(profileStorageKey(identity.ownerKey));
+  return payload.profile;
 }

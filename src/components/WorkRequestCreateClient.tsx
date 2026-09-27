@@ -12,7 +12,7 @@ import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { isStoredMediaReference, storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
-import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, type DemoPublication, withPublicationHistory } from "@/lib/demo-publications";
+import { readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, type DemoPublication, withPublicationHistory } from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
 
 type CreatedWorkRequestResponse = {
@@ -33,7 +33,7 @@ const clientFallbackContentEnabled = shouldShowClientFallbackContent();
 
 function readStoredPublications() {
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {
@@ -234,7 +234,7 @@ export function WorkRequestCreateClient() {
         });
         const nextItems = [publication, ...readStoredPublications()].slice(0, 80);
 
-        window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(nextItems));
+        writeStoredDemoPublications(JSON.stringify(nextItems));
         window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
       }
 

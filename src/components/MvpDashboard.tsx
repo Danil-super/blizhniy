@@ -582,6 +582,9 @@ export function CabinetPage() {
         <div className="mt-8">
           <CabinetCapabilities />
         </div>
+        <div className="mt-8 border-t border-slate-200 pt-5 text-sm">
+          <Link href="/cabinet/udalit-akkaunt" className="font-semibold text-[#0875d1] underline">Запросить удаление аккаунта</Link>
+        </div>
       </CabinetAuthGate>
     </Shell>
   );

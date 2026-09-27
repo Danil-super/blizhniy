@@ -1,6 +1,6 @@
 -- Atomic fulfillment of provider-confirmed payments. Deploy together with payment-provider.ts.
--- Existing published specialist profiles without a matching YooKassa payment become drafts.
--- Review the three affected legacy profiles with the owner before applying this migration.
+-- Legacy unentitled publications were demoted by migration 20260927090646.
+-- This migration also demotes any later published specialist without a valid entitlement.
 alter table public.payments
   add column if not exists duration_days integer,
   add column if not exists confirmation_url text,

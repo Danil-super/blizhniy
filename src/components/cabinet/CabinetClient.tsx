@@ -7,7 +7,8 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, FileText, LockKeyhole, Mail, MapPin, Move, Phone, Plus, Search, Settings2, Trash2, UserRound, Video, X } from "lucide-react";
 import {
   demoPublicationLabels,
-  demoPublicationsStorageKey,
+  canUseDemoPublicationsStorage,
+  readStoredDemoPublications, writeStoredDemoPublications,
   demoPublicationsUpdatedEvent,
   appendPublicationHistory,
   getPublicationHistory,
@@ -29,7 +30,7 @@ import { confirmClientPayment, createAndConfirmClientPayment, createClientPaymen
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { cabinetDataUpdatedEvent, markCabinetDataChanged, readCabinetDataVersion } from "@/lib/cabinet-data-cache";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
-import type { Application, FairApplication, JobVacancy, Listing, Payment, SpecialistProfile } from "@/lib/types";
+import type { Application, FairApplication, JobVacancy, Listing, Payment, SpecialistProfile, WorkRequest } from "@/lib/types";
 import {
   type CabinetProfile,
   createDefaultCabinetProfile,
@@ -44,6 +45,7 @@ import { normalizeMessengerHref } from "@/lib/messenger-url";
 type UserCabinetState = {
   identity: ClientUserIdentity | null;
   profile: CabinetProfile | null;
+  profileError?: string;
   items: DemoPublication[];
   loading: boolean;
 };
@@ -59,6 +61,12 @@ type CabinetServerListingsPayload = {
 };
 type CabinetServerVacanciesPayload = {
   vacancies?: JobVacancy[];
+};
+type CabinetServerWorkRequestsPayload = {
+  workRequests?: WorkRequest[];
+};
+type CabinetServerSpecialistPayload = {
+  specialist?: SpecialistProfile | null;
 };
 type CabinetServerPaymentsPayload = {
   payments?: Payment[];
@@ -131,18 +139,31 @@ function publishCabinetState(state: UserCabinetState) {
   cabinetDataListeners.forEach((listener) => listener(state));
 }
 
-function saveCabinetProfile(ownerKey: string, profile: CabinetProfile) {
-  const currentState = cachedCabinetState;
-  const canPublishLocally = currentState?.identity?.ownerKey === ownerKey;
+async function saveCabinetProfile(ownerKey: string, profile: CabinetProfile) {
+  const identity = await resolveClientUserIdentity();
 
-  writeCabinetProfile(ownerKey, profile, { notify: !canPublishLocally });
-
-  if (canPublishLocally) {
-    publishCabinetState({ ...currentState, profile });
+  if (identity.ownerKey !== ownerKey || !identity.accessToken) {
+    throw new Error("Сеанс изменился. Войдите снова, чтобы сохранить профиль.");
   }
+
+  const saved = await writeCabinetProfile(identity, profile);
+  const currentIdentity = await resolveClientUserIdentity();
+
+  if (currentIdentity.ownerKey !== ownerKey) {
+    throw new Error("Сеанс изменился. Обновите страницу кабинета.");
+  }
+
+  const currentState = cachedCabinetState;
+
+  if (currentState?.identity?.ownerKey === ownerKey) {
+    publishCabinetState({ ...currentState, profile: saved, profileError: undefined });
+  }
+
+  markCabinetDataChanged();
+  return saved;
 }
 
-async function settleSupabaseProfileUpdate<T>(request: Promise<T>, timeoutMs = 2500) {
+async function settleSupabaseProfileUpdate<T>(request: Promise<T>, timeoutMs = 10000) {
   let timeoutId: number | undefined;
 
   try {
@@ -220,7 +241,7 @@ const emptyCopy: Record<CabinetListMode, { title: string; text: string; href?: s
 
 function readStoredPublications() {
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {
@@ -234,7 +255,7 @@ function readStoredPublications() {
 }
 
 function writeStoredPublications(items: DemoPublication[]) {
-  window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(items));
+  writeStoredDemoPublications(JSON.stringify(items));
   markCabinetDataChanged();
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
 }
@@ -375,7 +396,7 @@ function listingToDemoPublication(listing: Listing, ownerKey: string): DemoPubli
   });
 }
 
-function vacancyStatusLabel(status: JobVacancy["status"]) {
+function vacancyStatusLabel(status: string) {
   if (status === "published" || status === "paid") {
     return "Опубликовано";
   }
@@ -437,6 +458,57 @@ function vacancyToDemoPublication(vacancy: JobVacancy, ownerKey: string): DemoPu
     placementRightConfirmed: vacancy.placementRightConfirmed,
     status: vacancyStatusLabel(vacancy.status),
     createdAt: vacancy.createdAt ?? vacancy.publishedAt ?? new Date().toISOString(),
+  });
+}
+
+function workRequestToDemoPublication(request: WorkRequest, ownerKey: string): DemoPublication {
+  return withPublicationHistory({
+    id: request.id,
+    type: "workRequest",
+    ownerKey,
+    title: request.title,
+    subtitle: request.profession,
+    city: request.city,
+    price: request.budget,
+    description: request.description,
+    images: request.images,
+    lat: request.lat,
+    lng: request.lng,
+    address: request.address ?? request.district,
+    showExactAddress: request.showExactAddress,
+    phone: request.phone,
+    messengerUrl: request.messengerUrl,
+    profession: request.profession,
+    status: vacancyStatusLabel(request.status),
+    expiresAt: request.expiresAt,
+    createdAt: request.createdAt,
+  });
+}
+
+function specialistToDemoPublication(profile: SpecialistProfile, ownerKey: string): DemoPublication {
+  return withPublicationHistory({
+    id: profile.id,
+    type: "specialist",
+    ownerKey,
+    title: profile.name,
+    subtitle: profile.profession,
+    city: profile.city,
+    price: profile.price,
+    description: profile.description,
+    images: profile.images,
+    lat: profile.lat,
+    lng: profile.lng,
+    address: profile.address ?? profile.district,
+    hasMapPoint: profile.hasMapPoint,
+    showExactAddress: profile.showExactAddress,
+    phone: profile.phone,
+    messengerUrl: profile.messengerUrl,
+    email: profile.email,
+    profession: profile.profession,
+    skills: profile.skills,
+    status: vacancyStatusLabel(profile.status),
+    expiresAt: profile.expiresAt,
+    createdAt: profile.createdAt ?? profile.publishedAt ?? new Date().toISOString(),
   });
 }
 
@@ -503,6 +575,42 @@ async function fetchCabinetVacancies(identity: ClientUserIdentity) {
     const payload = (await response.json().catch(() => null)) as CabinetServerVacanciesPayload | null;
 
     return (payload?.vacancies ?? []).map((vacancy) => vacancyToDemoPublication(vacancy, identity.ownerKey));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCabinetWorkRequests(identity: ClientUserIdentity) {
+  if (!identity.accessToken) {
+    return [];
+  }
+
+  try {
+    const response = await fetch("/api/cabinet/work-requests", {
+      cache: "no-store",
+      headers: await getAuthHeaders(identity.accessToken),
+    });
+    if (!response.ok) return [];
+    const payload = (await response.json().catch(() => null)) as CabinetServerWorkRequestsPayload | null;
+    return (payload?.workRequests ?? []).map((request) => workRequestToDemoPublication(request, identity.ownerKey));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCabinetSpecialist(identity: ClientUserIdentity) {
+  if (!identity.accessToken) {
+    return [];
+  }
+
+  try {
+    const response = await fetch("/api/cabinet/specialist?createDraft=false", {
+      cache: "no-store",
+      headers: await getAuthHeaders(identity.accessToken),
+    });
+    if (!response.ok) return [];
+    const payload = (await response.json().catch(() => null)) as CabinetServerSpecialistPayload | null;
+    return payload?.specialist ? [specialistToDemoPublication(payload.specialist, identity.ownerKey)] : [];
   } catch {
     return [];
   }
@@ -605,16 +713,20 @@ async function fetchCabinetPayments() {
 
 async function loadUserCabinetData(identity: ClientUserIdentity) {
   const fallback = createDefaultCabinetProfile(identity);
-  const profile = readCabinetProfile(identity.ownerKey, fallback);
-  const [serverFairApplications, serverListings, serverVacancies] = await Promise.all([
+  const [profileResult, serverFairApplications, serverListings, serverVacancies, serverWorkRequests, serverSpecialist] = await Promise.all([
+    readCabinetProfile(identity)
+      .then((profile) => ({ profile, profileError: undefined }))
+      .catch(() => ({ profile: fallback, profileError: "Не удалось загрузить профиль. Повторите позже." })),
     fetchCabinetFairApplications(identity),
     fetchCabinetListings(identity),
     fetchCabinetVacancies(identity),
+    fetchCabinetWorkRequests(identity),
+    fetchCabinetSpecialist(identity),
   ]);
   const deletedIds = readDeletedPublicationIds();
   const storedOwnerItems = readStoredPublications().filter((item) => item.ownerKey === identity.ownerKey && !deletedIds.has(item.id));
   const localItemById = new Map(storedOwnerItems.map((item) => [item.id, item]));
-  const visibleServerItems = [...serverFairApplications, ...serverListings, ...serverVacancies]
+  const visibleServerItems = [...serverFairApplications, ...serverListings, ...serverVacancies, ...serverWorkRequests, ...serverSpecialist]
     .filter((item) => !deletedIds.has(item.id))
     .map((item) => mergeLocalListingMedia(item, localItemById.get(item.id)));
   const serverItemIds = new Set(visibleServerItems.map((item) => item.id));
@@ -631,7 +743,7 @@ async function loadUserCabinetData(identity: ClientUserIdentity) {
   );
   const items = dedupeListingPublications(Array.from(new Map([...visibleServerItems, ...localItems].map((item) => [item.id, item])).values()));
 
-  return { identity, profile, items, loading: false };
+  return { identity, ...profileResult, items, loading: false };
 }
 
 async function requestUserCabinetData(force = false): Promise<UserCabinetState> {
@@ -1010,7 +1122,7 @@ function getEditHref(item: DemoPublication) {
   }
 
   if (item.type === "specialist") {
-    return `/rabota/specialisty/anketa?from=${item.id}`;
+    return canUseDemoPublicationsStorage() ? `/rabota/specialisty/anketa?from=${item.id}` : "/cabinet/specialist";
   }
 
   if (item.type === "vacancy") {
@@ -1100,6 +1212,10 @@ function getPublicationPaymentConfig(item: DemoPublication): { tariffId: string;
 }
 
 function canPayPublication(item: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && item.type === "specialist") {
+    return false;
+  }
+
   return Boolean(getPublicationPaymentConfig(item) && (isDraftPublication(item) || isPendingPaymentPublication(item)));
 }
 
@@ -1120,14 +1236,26 @@ function isInactivePaidPublication(item: DemoPublication) {
 }
 
 function canDeactivatePaidPublication(item: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && item.type !== "vacancy" && item.type !== "workRequest") {
+    return false;
+  }
+
   return Boolean(getPublicationPaymentConfig(item) && isPublishedPublication(item));
 }
 
 function canRestorePaidPublication(item: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && item.type !== "listing" && item.type !== "vacancy" && item.type !== "workRequest") {
+    return false;
+  }
+
   return isInactivePaidPublication(item);
 }
 
 function canDeletePublication(item: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && (item.type === "specialist" || item.type === "fairApplication")) {
+    return false;
+  }
+
   if (item.type === "listing") {
     return true;
   }
@@ -1271,9 +1399,30 @@ async function requestServerVacancyAction(itemId: string, action: "archive" | "r
   }
 }
 
+async function requestServerWorkRequestAction(itemId: string, action: "archive" | "restore") {
+  const response = await fetch("/api/cabinet/work-requests", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    body: JSON.stringify({ action, id: itemId }),
+  });
+  const payload = (await response.json().catch(() => null)) as { error?: string; workRequest?: WorkRequest } | null;
+
+  if (!response.ok || !payload?.workRequest) {
+    throw new Error(payload?.error ?? "Не удалось изменить заказ.");
+  }
+}
+
 async function unpublishPaidPublication(currentItem: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && !isUuid(currentItem.id)) {
+    throw new Error("Снять с публикации можно только запись, сохраненную на сервере.");
+  }
+
   if (currentItem.type === "vacancy" && isUuid(currentItem.id)) {
     await requestServerVacancyAction(currentItem.id, "archive");
+  } else if (currentItem.type === "workRequest" && isUuid(currentItem.id)) {
+    await requestServerWorkRequestAction(currentItem.id, "archive");
+  } else if (!canUseDemoPublicationsStorage()) {
+    throw new Error("Управляйте этой публикацией в ее разделе кабинета.");
   }
 
   const itemId = currentItem.id;
@@ -1308,8 +1457,18 @@ async function unpublishPaidPublication(currentItem: DemoPublication) {
 }
 
 async function restorePaidPublication(currentItem: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && !isUuid(currentItem.id)) {
+    throw new Error("Вернуть в публикацию можно только запись, сохраненную на сервере.");
+  }
+
   if (currentItem.type === "vacancy" && isUuid(currentItem.id)) {
     await requestServerVacancyAction(currentItem.id, "restore");
+  } else if (currentItem.type === "workRequest" && isUuid(currentItem.id)) {
+    await requestServerWorkRequestAction(currentItem.id, "restore");
+  } else if (currentItem.type === "listing" && isUuid(currentItem.id)) {
+    await requestServerListingAction(currentItem.id, "restore");
+  } else if (!canUseDemoPublicationsStorage()) {
+    throw new Error("Управляйте этой публикацией в ее разделе кабинета.");
   }
 
   const itemId = currentItem.id;
@@ -1357,6 +1516,10 @@ async function requestServerListingAction(itemId: string, action: "restore" | "s
 }
 
 async function deletePublication(item: DemoPublication) {
+  if (!canUseDemoPublicationsStorage() && (!isUuid(item.id) || item.type === "specialist" || item.type === "fairApplication")) {
+    throw new Error("Удаление этой публикации недоступно в общем списке кабинета.");
+  }
+
   if (item.type === "listing" && isUuid(item.id)) {
     const response = await fetch("/api/cabinet/listings", {
       method: "DELETE",
@@ -1389,9 +1552,9 @@ async function deletePublication(item: DemoPublication) {
       headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
       body: JSON.stringify({ id: item.id }),
     });
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    const payload = (await response.json().catch(() => null)) as { deleted?: boolean; error?: string } | null;
 
-    if (!response.ok) {
+    if (!response.ok || payload?.deleted !== true) {
       throw new Error(payload?.error ?? "Не удалось удалить заказ.");
     }
   }
@@ -1470,6 +1633,10 @@ async function createPublicationPayment(item: DemoPublication) {
   }
 
   if (item.type === "specialist" && !isUuid(item.id)) {
+    if (!canUseDemoPublicationsStorage()) {
+      throw new Error("Анкета специалиста должна быть сохранена на сервере перед оплатой.");
+    }
+
     paymentItem = withPublicationStatusHistory(
       {
         ...item,
@@ -2251,11 +2418,11 @@ function AvatarEditor({
     }
   }
 
-  function commitAvatarPatch(patch: Partial<CabinetProfile>) {
+  async function commitAvatarPatch(patch: Partial<CabinetProfile>) {
     const nextProfile = { ...profile, ...patch };
 
-    onChange(nextProfile);
-    saveCabinetProfile(ownerKey, nextProfile);
+    const saved = await saveCabinetProfile(ownerKey, nextProfile);
+    onChange(saved);
   }
 
   function updateCropDraft(patch: Partial<AvatarCropDraft>) {
@@ -2316,7 +2483,7 @@ function AvatarEditor({
     try {
       const cropped = await cropAvatarImage(cropDraft, cropImageSize, stageSize);
       const avatarDataUrl = await compressAvatarImage(cropped);
-      commitAvatarPatch({ avatarDataUrl, avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 });
+      await commitAvatarPatch({ avatarDataUrl, avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 });
       setCropDraft(null);
       setCropImageSize(null);
     } catch (error) {
@@ -2355,8 +2522,14 @@ function AvatarEditor({
               </label>
               <button
                 type="button"
-                onClick={() => commitAvatarPatch({ avatarDataUrl: "", avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 })}
-                disabled={!profile.avatarDataUrl}
+                onClick={() => {
+                  setLoading(true);
+                  onError("");
+                  void commitAvatarPatch({ avatarDataUrl: "", avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 })
+                    .catch((error) => onError(error instanceof Error ? error.message : "Не удалось удалить аватарку."))
+                    .finally(() => setLoading(false));
+                }}
+                disabled={loading || !profile.avatarDataUrl}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-red-200 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Trash2 className="h-4 w-4" />
@@ -2490,34 +2663,28 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
         throw new Error("Выберите город из списка.");
       }
 
-      try {
-        const supabase = getSupabaseBrowserClient();
-        const updates: Parameters<typeof supabase.auth.updateUser>[0] = {
-          data: {
-            display_name: nextProfile.name,
-            phone: nextProfile.phone,
-            phone_verified: nextProfile.phoneVerified,
-            city: nextProfile.city,
-          },
-        };
+      const supabase = getSupabaseBrowserClient();
+      const updates: Parameters<typeof supabase.auth.updateUser>[0] = {
+        data: {
+          display_name: nextProfile.name,
+          city: nextProfile.city,
+        },
+      };
 
-        if (nextProfile.email && nextProfile.email !== identity.email) {
-          updates.email = nextProfile.email;
-        }
-
-        await settleSupabaseProfileUpdate(
-          supabase.auth.updateUser(updates).then(({ error }) => {
-            if (error) {
-              throw error;
-            }
-          }),
-        );
-      } catch {
-        // The local demo profile still saves when Supabase settings are unavailable locally.
+      if (nextProfile.email && nextProfile.email !== identity.email) {
+        updates.email = nextProfile.email;
       }
 
-      saveCabinetProfile(identity.ownerKey, nextProfile);
-      setForm(nextProfile);
+      await settleSupabaseProfileUpdate(
+        supabase.auth.updateUser(updates).then(({ error }) => {
+          if (error) {
+            throw error;
+          }
+        }),
+      );
+
+      const saved = await saveCabinetProfile(identity.ownerKey, nextProfile);
+      setForm(saved);
       void addCurrentUserNotification({
         category: "system",
         title: "Настройки уведомлений сохранены",
@@ -2527,7 +2694,9 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
         actionLabel: "Открыть кабинет",
         dedupeKey: "profile:notification-settings",
       });
-      setMessage("Настройки сохранены.");
+      setMessage(updates.email
+        ? "Настройки сохранены. Если для смены email отправлено письмо, подтвердите новый адрес по ссылке."
+        : "Настройки сохранены.");
       window.setTimeout(onClose, 450);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось сохранить настройки.");
@@ -2599,8 +2768,8 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
         verifiedPhone: phone,
       };
 
-      setForm(nextProfile);
-      saveCabinetProfile(identity.ownerKey, nextProfile);
+      const saved = await saveCabinetProfile(identity.ownerKey, nextProfile);
+      setForm(saved);
       setVerificationCode("");
       setPhoneVerificationOpen(false);
       setMessage("Телефон подтвержден и сохранен.");
@@ -2836,7 +3005,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
 
 export function CabinetProfileBar() {
   const { state: authState } = useAuthState();
-  const { identity, profile, loading } = useUserCabinetData();
+  const { identity, profile, profileError, loading } = useUserCabinetData();
   const [open, setOpen] = useState(false);
 
   if (authState !== "signed-in" && authState !== "admin") {
@@ -2878,12 +3047,13 @@ export function CabinetProfileBar() {
             ) : null}
           </div>
         </div>
-        <button type="button" onClick={() => setOpen((value) => !value)} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1]">
+        <button type="button" disabled={Boolean(profileError)} onClick={() => setOpen((value) => !value)} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1] disabled:cursor-not-allowed disabled:opacity-50">
           <Settings2 className="h-4 w-4" />
           Настройки
         </button>
       </div>
-      {open ? <SettingsPanel identity={identity} profile={profile} onClose={() => setOpen(false)} /> : null}
+      {profileError ? <p role="alert" className="mt-3 text-sm font-semibold text-amber-700">{profileError}</p> : null}
+      {open && !profileError ? <SettingsPanel identity={identity} profile={profile} onClose={() => setOpen(false)} /> : null}
     </section>
   );
 }
@@ -3306,9 +3476,10 @@ export function CabinetPaymentsClient({ initialPayments = [] }: { initialPayment
 }
 
 export function CabinetOrganizationClient() {
-  const { identity, profile, loading } = useUserCabinetData();
+  const { identity, profile, profileError, loading } = useUserCabinetData();
   const [form, setForm] = useState<CabinetProfile | null>(profile);
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setForm(profile);
@@ -3321,10 +3492,15 @@ export function CabinetOrganizationClient() {
   const completedFields = [form.organizationName, form.organizationInn, form.organizationAddress, form.organizationDescription].filter((value) => value.trim()).length;
   const completionLabel = completedFields >= 3 ? "Заполнен" : completedFields > 0 ? "Нужно дополнить" : "Не заполнен";
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!identity || !form) {
+      return;
+    }
+
+    if (profileError) {
+      setMessage("Профиль не загружен. Обновите страницу перед сохранением.");
       return;
     }
 
@@ -3357,9 +3533,18 @@ export function CabinetOrganizationClient() {
       organizationDescription: form.organizationDescription.trim().slice(0, 500),
     };
 
-    saveCabinetProfile(identity.ownerKey, nextProfile);
-    setForm(nextProfile);
-    setMessage("Профиль организации сохранен.");
+    setSaving(true);
+    setMessage("");
+
+    try {
+      const saved = await saveCabinetProfile(identity.ownerKey, nextProfile);
+      setForm(saved);
+      setMessage("Профиль организации сохранен.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Не удалось сохранить профиль организации.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -3387,6 +3572,7 @@ export function CabinetOrganizationClient() {
           <p className="mt-2 break-words font-bold text-[#060b27]">{profile.email || "Не указан"}</p>
         </div>
       </div>
+      {profileError ? <p role="alert" className="mt-4 text-sm font-semibold text-amber-700">{profileError}</p> : null}
       <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="grid gap-1.5 text-sm font-bold text-slate-700">
@@ -3455,8 +3641,8 @@ export function CabinetOrganizationClient() {
           />
         </label>
         <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3]">
-            Сохранить профиль организации
+          <button type="submit" disabled={saving || Boolean(profileError)} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-wait disabled:opacity-60">
+            {saving ? "Сохраняем..." : "Сохранить профиль организации"}
           </button>
           {message ? <p className="text-sm font-semibold text-slate-600">{message}</p> : null}
         </div>

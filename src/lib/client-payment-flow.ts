@@ -1,6 +1,6 @@
 "use client";
 
-import { demoPublicationsStorageKey, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
+import { readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { getStoredMediaFile } from "@/lib/client-media-store";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
@@ -180,7 +180,7 @@ function clearPendingPaymentId(paymentId?: string) {
 
 function readStoredPublications() {
   try {
-    const stored = window.localStorage.getItem(demoPublicationsStorageKey);
+    const stored = readStoredDemoPublications();
     const parsed = stored ? (JSON.parse(stored) as unknown) : null;
 
     if (Array.isArray(parsed)) {
@@ -194,7 +194,7 @@ function readStoredPublications() {
 }
 
 function writeStoredPublications(items: DemoPublication[]) {
-  window.localStorage.setItem(demoPublicationsStorageKey, JSON.stringify(items));
+  writeStoredDemoPublications(JSON.stringify(items));
   markCabinetDataChanged();
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
 }
