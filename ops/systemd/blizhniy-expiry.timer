@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Blizhniy publication expiry reconciliation every 15 minutes
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+AccuracySec=1min
+Unit=blizhniy-expiry.service
+
+[Install]
+WantedBy=timers.target
