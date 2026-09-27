@@ -5,6 +5,30 @@ import {
   bookingRequestsStorageKey,
   installLegacyBookingStorageCleanup,
 } from "../src/lib/booking-notifications.ts";
+import { shouldShowClientFallbackContent } from "../src/lib/client-runtime-mode.ts";
+
+test("shared booking storage is enabled only in explicit development demo mode", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousDemoContent = process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT;
+
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT = "true";
+    assert.equal(shouldShowClientFallbackContent(), false);
+
+    process.env.NODE_ENV = "development";
+    process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT = "false";
+    assert.equal(shouldShowClientFallbackContent(), false);
+
+    process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT = "true";
+    assert.equal(shouldShowClientFallbackContent(), true);
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    if (previousDemoContent === undefined) delete process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT;
+    else process.env.NEXT_PUBLIC_ENABLE_DEMO_CONTENT = previousDemoContent;
+  }
+});
 
 test("legacy booking data is cleared on load, logout, and the next login", () => {
   const values = new Map([
