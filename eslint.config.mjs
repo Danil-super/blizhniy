@@ -14,6 +14,18 @@ const eslintConfig = [
     ignores: [".next/**", "node_modules/**", "next-env.d.ts"],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
+  {
+    files: ["**/*.cjs"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+  {
+    files: ["tests/**/*.{mjs,cjs}", "scripts/test-*.mjs"],
+    rules: {
+      "@next/next/no-assign-module-variable": "off",
+    },
+  },
 ];
 
 export default eslintConfig;
