@@ -63,7 +63,7 @@ export async function GET(request: Request) {
 
   try {
     const workRequests = await listStoredWorkRequestsForUser(auth.user.id);
-    return NextResponse.json({ workRequests });
+    return NextResponse.json({ workRequests }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("Failed to load owner work requests", error);
     return NextResponse.json({ error: "Не удалось загрузить заказы" }, { status: 503 });
