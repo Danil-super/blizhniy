@@ -1,4 +1,5 @@
 import type { BookingDetails } from "@/lib/types";
+import { MAX_BOOKING_NIGHTS } from "@/lib/booking-availability";
 
 function formatRubles(value: number) {
   return new Intl.NumberFormat("ru-RU").format(value).replace(/\u00a0/g, " ") + " ₽";
@@ -11,6 +12,11 @@ function positiveNumber(value?: number) {
 function cleanPositiveNumber(value: unknown) {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function cleanPositiveInteger(value: unknown) {
+  const parsed = cleanPositiveNumber(value);
+  return parsed && Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
 function cleanString(value: unknown, limit = 500) {
@@ -63,7 +69,7 @@ export function sanitizeBookingDetails(value: unknown): BookingDetails | undefin
     return {
       mode,
       pricePerPerson: cleanPositiveNumber(input.pricePerPerson),
-      maxGuests: cleanPositiveNumber(input.maxGuests),
+      maxGuests: cleanPositiveInteger(input.maxGuests),
       tourDate: cleanDate(input.tourDate),
       tourTime: cleanTime(input.tourTime),
       tourDuration: cleanString(input.tourDuration),
@@ -78,9 +84,9 @@ export function sanitizeBookingDetails(value: unknown): BookingDetails | undefin
     mode,
     priceWeekday: cleanPositiveNumber(input.priceWeekday),
     priceWeekend: cleanPositiveNumber(input.priceWeekend),
-    minNights: cleanPositiveNumber(input.minNights),
-    includedGuests: cleanPositiveNumber(input.includedGuests),
-    maxGuests: cleanPositiveNumber(input.maxGuests),
+    minNights: cleanPositiveInteger(input.minNights),
+    includedGuests: cleanPositiveInteger(input.includedGuests),
+    maxGuests: cleanPositiveInteger(input.maxGuests),
     extraGuestPrice: cleanPositiveNumber(input.extraGuestPrice),
     availableFrom: cleanDate(input.availableFrom),
     availableTo: cleanDate(input.availableTo),
@@ -143,6 +149,8 @@ export function validateBookingDetailsForPublication(booking?: BookingDetails) {
 
   if (!positiveNumber(booking.minNights)) {
     errors.push("Укажите минимальное количество ночей.");
+  } else if (booking.minNights && booking.minNights > MAX_BOOKING_NIGHTS) {
+    errors.push(`Минимальный срок не может превышать ${MAX_BOOKING_NIGHTS} ночей.`);
   }
 
   if (!positiveNumber(booking.includedGuests)) {
