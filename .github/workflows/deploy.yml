@@ -35,6 +35,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Test expiry maintenance runner
+        run: bash scripts/test-reconcile-expired-publications.sh
+
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 
