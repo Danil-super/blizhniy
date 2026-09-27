@@ -7,12 +7,12 @@ import { posudaSubcategories } from "@/lib/posuda-subcategories";
 import { getPublicSiteUrl } from "@/lib/site-url";
 import { isSupabaseRestConfigured, supabaseRest } from "@/lib/supabase-rest";
 
-type PublishedRow = { id: string; published_at?: string | null };
-type PublishedTable = "listings" | "vacancies";
+type PublishedRow = { id: string; published_at?: string | null; updated_at?: string | null };
+type PublishedTable = "listings" | "vacancies" | "work_requests" | "specialist_profiles";
 
 export const dynamic = "force-dynamic";
 
-async function publishedUrls(table: PublishedTable, pathPrefix: string, filters: string): Promise<MetadataRoute.Sitemap> {
+async function publishedUrls(table: PublishedTable, pathPrefix: string, filters: string, timestampColumn: "published_at" | "updated_at"): Promise<MetadataRoute.Sitemap> {
   if (!isSupabaseRestConfigured()) return [];
 
   const base = getPublicSiteUrl();
@@ -21,12 +21,12 @@ async function publishedUrls(table: PublishedTable, pathPrefix: string, filters:
 
   for (let offset = 0; ; offset += batchSize) {
     const rows = await supabaseRest<PublishedRow[]>(
-      `/rest/v1/${table}?select=id,published_at&status=eq.published${filters}&order=id.asc&limit=${batchSize}&offset=${offset}`,
+      `/rest/v1/${table}?select=id,${timestampColumn}&status=eq.published${filters}&order=id.asc&limit=${batchSize}&offset=${offset}`,
       { attempts: 1, timeoutMs: 5000 },
     );
 
     for (const row of rows) {
-      const date = row.published_at;
+      const date = row[timestampColumn];
       const lastModified = date && Number.isFinite(Date.parse(date)) ? new Date(date) : undefined;
       entries.push({ url: `${base}${pathPrefix}/${row.id}`, lastModified, changeFrequency: "weekly", priority: 0.7 });
     }
@@ -74,14 +74,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...professions.filter((profession) => profession.active).map((profession) => `/rabota/specialisty/${profession.slug}`),
   ];
   const expiresAfter = encodeURIComponent(new Date().toISOString());
-  const [listingEntries, vacancyEntries] = await Promise.all([
-    publishedUrls("listings", "/obyavlenie", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`),
-    publishedUrls("vacancies", "/vakansiya", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`),
+  const [listingEntries, vacancyEntries, workRequestEntries, specialistEntries] = await Promise.all([
+    publishedUrls("listings", "/obyavlenie", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`, "published_at"),
+    publishedUrls("vacancies", "/vakansiya", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`, "published_at"),
+    publishedUrls("work_requests", "/rabota/zakazy", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`, "published_at"),
+    publishedUrls("specialist_profiles", "/specialist", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`, "updated_at"),
   ]);
 
   return [
     ...Array.from(new Set(staticPaths)).map((path) => ({ url: `${base}${path}`, changeFrequency: "weekly" as const, priority: path === "" ? 1 : 0.7 })),
     ...listingEntries,
     ...vacancyEntries,
+    ...workRequestEntries,
+    ...specialistEntries,
   ];
 }

@@ -59,11 +59,26 @@ test("sitemap spans batches, includes paid active URLs, and omits redirects and 
   const rows = Array.from({ length: 501 }, (_, index) => ({
     id: `listing-${index}`,
     published_at: "2026-09-25T00:00:00Z",
+    status: "published",
     is_paid: true,
     expires_at: "2027-09-25T00:00:00Z",
   }));
-  rows.push({ id: "unpaid", published_at: "2026-09-25T00:00:00Z", is_paid: false, expires_at: "2027-09-25T00:00:00Z" });
-  rows.push({ id: "expired", published_at: "2026-09-25T00:00:00Z", is_paid: true, expires_at: "2025-09-25T00:00:00Z" });
+  rows.push({ id: "unpaid", published_at: "2026-09-25T00:00:00Z", status: "published", is_paid: false, expires_at: "2027-09-25T00:00:00Z" });
+  rows.push({ id: "expired", published_at: "2026-09-25T00:00:00Z", status: "published", is_paid: true, expires_at: "2025-09-25T00:00:00Z" });
+  const workRows = Array.from({ length: 501 }, (_, index) => ({
+    id: `work-${index}`,
+    published_at: "2026-09-25T00:00:00Z",
+    status: "published",
+    is_paid: true,
+    expires_at: "2027-09-25T00:00:00Z",
+  }));
+  workRows.push({ id: "work-unpaid", published_at: "2026-09-25T00:00:00Z", status: "published", is_paid: false, expires_at: "2027-09-25T00:00:00Z" });
+  workRows.push({ id: "work-expired", published_at: "2026-09-25T00:00:00Z", status: "published", is_paid: true, expires_at: "2025-09-25T00:00:00Z" });
+  const specialistRows = [
+    { id: "specialist-paid", updated_at: "2026-09-26T00:00:00Z", status: "published", is_paid: true, expires_at: "2027-09-25T00:00:00Z" },
+    { id: "specialist-unpaid", updated_at: "2026-09-26T00:00:00Z", status: "published", is_paid: false, expires_at: "2027-09-25T00:00:00Z" },
+    { id: "specialist-draft", updated_at: "2026-09-26T00:00:00Z", status: "draft", is_paid: true, expires_at: "2027-09-25T00:00:00Z" },
+  ];
   const mockModules = {
     "@/components/listings/ListingPages": { slugifySubcategory: (name) => name.toLowerCase() },
     "@/lib/category-store": {
@@ -82,9 +97,10 @@ test("sitemap spans batches, includes paid active URLs, and omits redirects and 
       supabaseRest: async (path) => {
         requests.push(path);
         const url = new URL(`https://example.test${path}`);
-        if (url.pathname.endsWith("/vacancies")) return [];
-        return rows
-          .filter((row) => row.is_paid && Date.parse(row.expires_at) > Date.now())
+        const table = url.pathname.split("/").at(-1);
+        const tableRows = { listings: rows, vacancies: [], work_requests: workRows, specialist_profiles: specialistRows }[table] ?? [];
+        return tableRows
+          .filter((row) => row.status === "published" && row.is_paid && Date.parse(row.expires_at) > Date.now())
           .slice(Number(url.searchParams.get("offset")), Number(url.searchParams.get("offset")) + Number(url.searchParams.get("limit")));
       },
     },
@@ -94,9 +110,15 @@ test("sitemap spans batches, includes paid active URLs, and omits redirects and 
   const urls = sitemap.map((entry) => entry.url);
 
   assert.equal(urls.filter((url) => url.includes("/obyavlenie/")).length, 501);
+  assert.equal(urls.filter((url) => url.includes("/rabota/zakazy/work-")).length, 501);
   assert.ok(urls.includes("https://example.test/obyavlenie/listing-500"));
+  assert.ok(urls.includes("https://example.test/rabota/zakazy/work-500"));
+  assert.ok(urls.includes("https://example.test/rabota/zakazy"));
+  assert.ok(urls.includes("https://example.test/specialist/specialist-paid"));
+  assert.equal(sitemap.find((entry) => entry.url.endsWith("/specialist/specialist-paid"))?.lastModified?.toISOString(), "2026-09-26T00:00:00.000Z");
   assert.ok(urls.includes("https://example.test/katalog/dom/mebel"));
   assert.ok(urls.includes("https://example.test/rabota/specialisty/active"));
-  assert.ok(!urls.some((url) => /unpaid|expired|inactive|Missing|\/obyavleniya\/prodam|\/katalog\/rabota/.test(url)));
-  assert.ok(requests.every((path) => /\/(listings|vacancies)\?/.test(path) && path.includes("is_paid=eq.true") && path.includes("expires_at=gt.")));
+  assert.ok(!urls.some((url) => /unpaid|expired|specialist-draft|inactive|Missing|\/obyavleniya\/prodam|\/katalog\/rabota/.test(url)));
+  assert.ok(requests.every((path) => /\/(listings|vacancies|work_requests|specialist_profiles)\?/.test(path) && path.includes("status=eq.published") && path.includes("is_paid=eq.true") && path.includes("expires_at=gt.")));
+  assert.ok(requests.find((path) => path.includes("/specialist_profiles?"))?.includes("select=id,updated_at"));
 });
