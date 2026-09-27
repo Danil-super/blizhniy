@@ -19,7 +19,7 @@ function tariffCta(tariff: Tariff) {
   }
 
   if (tariff.action === "specialist_publication") {
-    return { href: "/rabota/specialisty/anketa", label: "Создать анкету" };
+    return { href: "/rabota/specialisty/anketa", label: "Подготовить черновик анкеты" };
   }
 
   if (tariff.action === "job_response") {
@@ -50,7 +50,7 @@ export default async function Page() {
           <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Оплата публикаций</p>
           <h1 className="mt-3 text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">Тарифы</h1>
           <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-            Выберите нужное действие: счет на оплату появится после создания объявления, вакансии, анкеты, отклика или заявки.
+            Выберите нужное действие: счет на оплату появится после создания объявления, вакансии, отклика или заявки. Анкету специалиста пока можно сохранить как черновик.
           </p>
         </section>
 
@@ -67,6 +67,9 @@ export default async function Page() {
                 </div>
                 <p className="mt-4 text-2xl font-bold text-[#0875d1]">{tariff.price} ₽</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{tariffDetail(tariff.durationDays)}</p>
+                {tariff.action === "specialist_publication" ? (
+                  <p className="mt-2 text-sm font-semibold leading-6 text-amber-700">Публикация и оплата анкеты временно недоступны. Черновик можно сохранить.</p>
+                ) : null}
                 <Link href={cta.href} className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#0aa337] text-sm font-bold text-white">
                   {cta.label}
                 </Link>

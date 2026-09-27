@@ -57,6 +57,14 @@ export async function POST(request: Request) {
     }
 
     const targetType = validatePaymentTargetTypeForTariff(tariff, body.targetType);
+
+    if (targetType === "specialist") {
+      return NextResponse.json(
+        { error: "Оплата публикации анкеты специалиста временно недоступна. Платеж не создан." },
+        { status: 409 },
+      );
+    }
+
     let targetTitle = body.targetTitle;
 
     if (targetType === "listing") {

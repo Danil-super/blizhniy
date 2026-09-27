@@ -224,6 +224,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid publication status payload" }, { status: 400 });
   }
 
+  if (entityType === "specialist" && status === "published") {
+    return NextResponse.json(
+      { error: "Публикация анкеты специалиста временно недоступна до настройки оплаты." },
+      { status: 409 },
+    );
+  }
+
   try {
     const result = await updateStoredPublicationStatus(entityType, id, status);
 

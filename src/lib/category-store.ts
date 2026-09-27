@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { categories as fallbackCategories } from "@/lib/data";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
@@ -123,7 +124,9 @@ export async function listAdminCategories() {
   return mapCategoryRows(rows);
 }
 
-export async function getPublicCategories(): Promise<Category[]> {
+// The same categories are requested by generateMetadata, the page and nested
+// server components. Share one read within the render, never across requests.
+export const getPublicCategories = cache(async (): Promise<Category[]> => {
   if (!isSupabaseRestConfigured()) {
     return shouldShowFallbackContent() ? fallbackCategories : [];
   }
@@ -143,7 +146,7 @@ export async function getPublicCategories(): Promise<Category[]> {
   }
 
   return fallbackCategories;
-}
+});
 
 export async function updateAdminCategory(input: UpdateCategoryInput) {
   if (!isSupabaseRestConfigured()) {
