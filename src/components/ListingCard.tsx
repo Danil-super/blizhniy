@@ -3,6 +3,7 @@ import { MapPin } from "lucide-react";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import type { Listing } from "@/lib/types";
 import { listingKinds } from "@/lib/data";
+import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { StatusBadge } from "./StatusBadge";
 
 const tones = {
@@ -15,6 +16,7 @@ const tones = {
 
 export function ListingCard({ listing }: { listing: Listing }) {
   const kind = listingKinds.find((item) => item.slug === listing.kind)?.name ?? "Объявление";
+  const messengerHref = normalizeMessengerHref(listing.messengerUrl);
 
   return (
     <article className="grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-card sm:grid-cols-[128px_1fr_auto] sm:gap-4 sm:p-4">
@@ -44,8 +46,8 @@ export function ListingCard({ listing }: { listing: Listing }) {
               Позвонить
             </a>
           ) : null}
-          {listing.messengerUrl ? (
-            <a className="inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-3 text-sm font-semibold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] sm:flex-none sm:px-4" href={listing.messengerUrl}>
+          {messengerHref ? (
+            <a className="inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-3 text-sm font-semibold text-[#0875d1] shadow-sm shadow-blue-50 transition hover:border-[#0875d1] sm:flex-none sm:px-4" href={messengerHref}>
               <ContactAssetIcon kind="message" className="h-6 w-6" />
               Написать
             </a>
