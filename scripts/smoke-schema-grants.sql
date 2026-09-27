@@ -26,7 +26,12 @@ begin
     raise exception 'RLS disabled on storage.objects';
   end if;
 
-  foreach table_name in array array['payments', 'specialist_profiles', 'booking_requests'] loop
+  foreach table_name in array array[
+    'payments', 'specialist_profiles', 'booking_requests',
+    'listings', 'listing_images', 'vacancies', 'vacancy_images',
+    'work_requests', 'work_request_images', 'fair_applications',
+    'fair_application_images', 'ad_marquee_placements'
+  ] loop
     relation_oid := to_regclass(format('public.%I', table_name));
     foreach browser_role in array array['anon', 'authenticated'] loop
       select string_agg(attname, ', ' order by attname) into unsafe_columns
@@ -34,9 +39,13 @@ begin
       where attrelid = relation_oid and attnum > 0 and not attisdropped
         and (has_column_privilege(browser_role, relation_oid, attname, 'INSERT')
           or has_column_privilege(browser_role, relation_oid, attname, 'UPDATE'));
-      if unsafe_columns is not null then
+      if unsafe_columns is not null
+        or has_table_privilege(browser_role, relation_oid, 'DELETE')
+        or (table_name not in ('payments', 'booking_requests')
+          and has_table_privilege(browser_role, relation_oid, 'MAINTAIN'))
+      then
         raise exception 'Browser role % has direct write privileges on public.%: %',
-          browser_role, table_name, unsafe_columns;
+          browser_role, table_name, coalesce(unsafe_columns, 'DELETE/MAINTAIN');
       end if;
     end loop;
   end loop;
@@ -48,6 +57,10 @@ begin
       and tgenabled in ('O', 'A')
   ) then
     raise exception 'Specialist publication guard missing or disabled';
+  end if;
+
+  if not has_function_privilege('service_role', 'public.record_listing_view(uuid,text)', 'EXECUTE') then
+    raise exception 'Server cannot invoke public.record_listing_view';
   end if;
 
   if has_function_privilege('anon', 'public.record_listing_view(uuid,text)', 'EXECUTE')
