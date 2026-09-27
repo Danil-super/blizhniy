@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowRight, Search, UserRound } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { VacancyThumbnail } from "@/components/VacancyMedia";
-import { listPublicDemoListings, toDemoListing } from "@/components/listings/ListingPages";
+import { listPublicDemoListings, parseListingPage, toDemoListing } from "@/components/listings/ListingPages";
 import { getPublicCategories } from "@/lib/category-store";
 import { cities, professions, region } from "@/lib/data";
 import { listFairApplications, listSpecialists, listWorkRequests } from "@/lib/mock-store";
@@ -11,8 +11,9 @@ import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/specialist-profile-store";
 import { listStoredFairApplications } from "@/lib/fair-application-store";
 import { listStoredVacancies, listVacanciesWithStored } from "@/lib/vacancy-store";
-import { listStoredWorkRequests, listWorkRequestsWithStored } from "@/lib/work-request-store";
+import { listStoredWorkRequests } from "@/lib/work-request-store";
 import { listStoredListings } from "@/lib/listing-store";
+import { isSupabaseRestConfigured } from "@/lib/supabase-rest";
 
 type SearchResult = {
   title: string;
@@ -41,115 +42,156 @@ function includesQuery(values: Array<string | undefined>, query: string) {
   return values.some((value) => normalize(value ?? "").includes(normalizedQuery));
 }
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; city?: string }> }) {
+async function scanStoredResults<T>(
+  readPage: (limit: number, offset: number) => Promise<T[]>,
+  matches: (item: T) => boolean,
+  toResult: (item: T) => SearchResult,
+  add: (result: SearchResult) => void,
+  enough: () => boolean,
+) {
+  const batchSize = 100;
+
+  for (let offset = 0; !enough(); offset += batchSize) {
+    const page = await readPage(batchSize, offset);
+
+    for (const item of page) {
+      if (matches(item)) add(toResult(item));
+      if (enough()) break;
+    }
+
+    if (page.length < batchSize) break;
+  }
+}
+
+export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; city?: string; page?: string }> }) {
   const params = await searchParams;
-  const query = params.q?.trim() ?? "";
+  const query = params.q?.trim().slice(0, 200) ?? "";
+  const page = parseListingPage(params.page);
+  const pageSize = 24;
+  const skip = (page - 1) * pageSize;
   const selectedCity = cities.find((city) => city.slug === params.city);
   const cityName = selectedCity?.name;
   const matchesCity = (value?: string) => !cityName || value === cityName;
-  const storedVacancies = await listStoredVacancies(100);
-  const vacancies = listVacanciesWithStored(storedVacancies);
   const fallbackEnabled = shouldShowFallbackContent();
-  const storedListings = (await listStoredListings()).map((listing) => ({ ...toDemoListing(listing), images: listing.images }));
-  const publicListings = Array.from(
-    new Map([...storedListings, ...(fallbackEnabled ? listPublicDemoListings() : [])].map((listing) => [listing.slug, listing])).values(),
+  const results: SearchResult[] = [];
+  let matchedCount = 0;
+  const enough = () => results.length > pageSize;
+  const add = (result: SearchResult) => {
+    if (matchedCount >= skip && !enough()) results.push(result);
+    matchedCount += 1;
+  };
+  const textMatch = (values: Array<string | undefined>) => !query || includesQuery(values, query);
+  const seenListingSlugs = new Set<string>();
+
+  await scanStoredResults(
+    async (limit, offset) => (await listStoredListings(limit, { offset })).map(toDemoListing),
+    (listing) => listing.status === "published" && matchesCity(listing.city) && textMatch([listing.title, listing.description, listing.city, listing.categoryName, listing.subcategoryName, listing.kind]),
+    (listing) => {
+      seenListingSlugs.add(listing.slug);
+      return {
+        title: listing.title,
+        description: `${listing.categoryName}, ${listing.city}. ${listing.description}`,
+        href: `/obyavlenie/${listing.slug}`,
+        type: "Объявление",
+      };
+    },
+    add,
+    enough,
   );
-  const storedSpecialists = await listStoredSpecialistProfiles(100);
-  const specialists = listSpecialistsWithStored(storedSpecialists, fallbackEnabled ? listSpecialists() : []);
-  const storedWorkRequests = await listStoredWorkRequests(100);
-  const workRequests = listWorkRequestsWithStored(storedWorkRequests.length ? storedWorkRequests : fallbackEnabled ? listWorkRequests() : []);
-  const fairApplications = fallbackEnabled ? listFairApplications() : await listStoredFairApplications("published");
+
+  if (fallbackEnabled && !enough()) {
+    for (const listing of listPublicDemoListings()) {
+      if (seenListingSlugs.has(listing.slug) || !matchesCity(listing.city) || !textMatch([listing.title, listing.description, listing.city, listing.categoryName, listing.subcategoryName, listing.kind])) continue;
+      add({ title: listing.title, description: `${listing.categoryName}, ${listing.city}. ${listing.description}`, href: `/obyavlenie/${listing.slug}`, type: "Объявление" });
+      if (enough()) break;
+    }
+  }
+
+  if (!enough()) await scanStoredResults(
+    listStoredVacancies,
+    (vacancy) => vacancy.status === "published" && matchesCity(vacancy.city) && textMatch([vacancy.title, vacancy.organization, vacancy.profession, vacancy.city, vacancy.description]),
+    (vacancy) => ({ title: vacancy.title, description: `${vacancy.organization}, ${vacancy.city}. ${vacancy.salary}`, href: `/vakansiya/${vacancy.id}`, images: vacancy.images, type: "Вакансия" }),
+    add,
+    enough,
+  );
+
+  if (fallbackEnabled && !enough()) {
+    for (const vacancy of listVacanciesWithStored([])) {
+      if (vacancy.status !== "published" || !matchesCity(vacancy.city) || !textMatch([vacancy.title, vacancy.organization, vacancy.profession, vacancy.city, vacancy.description])) continue;
+      add({ title: vacancy.title, description: `${vacancy.organization}, ${vacancy.city}. ${vacancy.salary}`, href: `/vakansiya/${vacancy.id}`, images: vacancy.images, type: "Вакансия" });
+      if (enough()) break;
+    }
+  }
+
+  if (!enough()) await scanStoredResults(
+    listStoredWorkRequests,
+    (request) => request.status === "published" && matchesCity(request.city) && textMatch([request.title, request.description, request.author, request.profession, request.city]),
+    (request) => ({ title: request.title, description: `${request.author}, ${request.city}. ${request.budget}`, href: `/rabota/zakazy/${request.id}`, type: "Заказ" }),
+    add,
+    enough,
+  );
+
+  if (fallbackEnabled && !enough()) {
+    for (const request of listWorkRequests()) {
+      if (request.status !== "published" || !matchesCity(request.city) || !textMatch([request.title, request.description, request.author, request.profession, request.city])) continue;
+      add({ title: request.title, description: `${request.author}, ${request.city}. ${request.budget}`, href: `/rabota/zakazy/${request.id}`, type: "Заказ" });
+      if (enough()) break;
+    }
+  }
+
+  if (!enough()) await scanStoredResults(
+    listStoredSpecialistProfiles,
+    (specialist) => specialist.status === "published" && matchesCity(specialist.city) && textMatch([specialist.name, specialist.profession, specialist.skills, specialist.city]),
+    (specialist) => ({ title: `${specialist.name} - ${specialist.profession}`, description: `${specialist.city}. ${specialist.skills}. ${specialist.price}`, href: `/specialist/${specialist.id}`, type: "Специалист" }),
+    add,
+    enough,
+  );
+
+  if (fallbackEnabled && !enough()) {
+    for (const specialist of listSpecialistsWithStored([], listSpecialists())) {
+      if (specialist.status !== "published" || !matchesCity(specialist.city) || !textMatch([specialist.name, specialist.profession, specialist.skills, specialist.city])) continue;
+      add({ title: `${specialist.name} - ${specialist.profession}`, description: `${specialist.city}. ${specialist.skills}. ${specialist.price}`, href: `/specialist/${specialist.id}`, type: "Специалист" });
+      if (enough()) break;
+    }
+  }
+
+  if (!enough()) await scanStoredResults(
+    (limit, offset) => listStoredFairApplications("published", { limit, offset }),
+    (application) => application.status === "published" && matchesCity(application.city) && textMatch([application.participantName, application.category, application.description, application.city]),
+    (application) => ({ title: application.participantName, description: `${application.category}, ${application.city}. ${application.description}`, href: "/yarmarka-masterov", type: "Ярмарка" }),
+    add,
+    enough,
+  );
+
+  if (fallbackEnabled && isSupabaseRestConfigured() && !enough()) {
+    for (const application of listFairApplications()) {
+      if (application.status !== "published" || !matchesCity(application.city) || !textMatch([application.participantName, application.category, application.description, application.city])) continue;
+      add({ title: application.participantName, description: `${application.category}, ${application.city}. ${application.description}`, href: "/yarmarka-masterov", type: "Ярмарка" });
+      if (enough()) break;
+    }
+  }
+
   const categories = await getPublicCategories();
+  for (const category of categories) {
+    if (enough()) break;
+    if (!textMatch([category.name, ...category.children])) continue;
+    add({ title: category.name, description: category.children.join(", "), href: category.slug === "rabota" ? "/rabota" : category.slug === "yarmarka-masterov" ? "/yarmarka-masterov" : `/katalog/${category.slug}`, type: "Категория" });
+  }
 
-  const listingResults: SearchResult[] = publicListings
-    .filter((listing) =>
-      listing.status === "published" &&
-      matchesCity(listing.city) &&
-      (query
-        ? includesQuery([listing.title, listing.description, listing.city, listing.categoryName, listing.subcategoryName, listing.kind], query)
-        : true),
-    )
-    .map((listing) => ({
-      title: listing.title,
-      description: `${listing.categoryName}, ${listing.city}. ${listing.description}`,
-      href: `/obyavlenie/${listing.slug}`,
-      type: "Объявление",
-    }));
+  for (const profession of professions) {
+    if (enough()) break;
+    if (!profession.active || !textMatch([profession.name, profession.parent])) continue;
+    add({ title: profession.name, description: profession.parent, href: `/rabota/specialisty/${profession.slug}`, type: "Профессия" });
+  }
 
-  const vacancyResults: SearchResult[] = vacancies
-    .filter(
-      (vacancy) =>
-        vacancy.status === "published" &&
-        matchesCity(vacancy.city) &&
-        (query ? includesQuery([vacancy.title, vacancy.organization, vacancy.profession, vacancy.city, vacancy.description], query) : true),
-    )
-    .map((vacancy) => ({
-      title: vacancy.title,
-      description: `${vacancy.organization}, ${vacancy.city}. ${vacancy.salary}`,
-      href: `/vakansiya/${vacancy.id}`,
-      images: vacancy.images,
-      type: "Вакансия",
-    }));
-
-  const specialistResults: SearchResult[] = specialists
-    .filter(
-      (specialist) =>
-        specialist.status === "published" &&
-        matchesCity(specialist.city) && (query ? includesQuery([specialist.name, specialist.profession, specialist.skills, specialist.city], query) : true),
-    )
-    .map((specialist) => ({
-      title: `${specialist.name} - ${specialist.profession}`,
-      description: `${specialist.city}. ${specialist.skills}. ${specialist.price}`,
-      href: `/specialist/${specialist.id}`,
-      type: "Специалист",
-    }));
-
-  const workRequestResults: SearchResult[] = workRequests
-    .filter(
-      (request) =>
-        request.status === "published" &&
-        matchesCity(request.city) && (query ? includesQuery([request.title, request.description, request.author, request.profession, request.city], query) : true),
-    )
-    .map((request) => ({
-      title: request.title,
-      description: `${request.author}, ${request.city}. ${request.budget}`,
-      href: `/rabota/zakazy/${request.id}`,
-      type: "Заказ",
-    }));
-
-  const fairResults: SearchResult[] = fairApplications
-    .filter(
-      (application) =>
-        application.status === "published" &&
-        matchesCity(application.city) &&
-        (query ? includesQuery([application.participantName, application.category, application.description, application.city], query) : true),
-    )
-    .map((application) => ({
-      title: application.participantName,
-      description: `${application.category}, ${application.city}. ${application.description}`,
-      href: "/yarmarka-masterov",
-      type: "Ярмарка",
-    }));
-
-  const categoryResults: SearchResult[] = categories
-    .filter((category) => (query ? includesQuery([category.name, ...category.children], query) : true))
-    .map((category) => ({
-      title: category.name,
-      description: category.children.join(", "),
-      href: category.slug === "rabota" ? "/rabota" : category.slug === "yarmarka-masterov" ? "/yarmarka-masterov" : `/katalog/${category.slug}`,
-      type: "Категория",
-    }));
-
-  const professionResults: SearchResult[] = professions
-    .filter((profession) => (query ? includesQuery([profession.name, profession.parent], query) : true))
-    .map((profession) => ({
-      title: profession.name,
-      description: profession.parent,
-      href: `/rabota/specialisty/${profession.slug}`,
-      type: "Профессия",
-    }));
-
-  const results = [...listingResults, ...vacancyResults, ...workRequestResults, ...specialistResults, ...fairResults, ...categoryResults, ...professionResults].slice(0, 24);
+  const visibleResults = results.slice(0, pageSize);
+  const searchHref = (number: number) => {
+    const nextParams = new URLSearchParams();
+    if (query) nextParams.set("q", query);
+    if (selectedCity) nextParams.set("city", selectedCity.slug);
+    if (number > 1) nextParams.set("page", String(number));
+    return `/poisk${nextParams.size ? `?${nextParams}` : ""}`;
+  };
 
   return (
     <>
@@ -166,7 +208,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
 
         <section className="mt-5 grid gap-2.5 sm:mt-8 sm:gap-4">
           {results.length ? (
-            results.map((result, index) => (
+            visibleResults.map((result, index) => (
               <Link
                 key={`${result.type}-${result.href}-${result.title}-${index}`}
                 href={result.href}
@@ -201,6 +243,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
             </div>
           )}
         </section>
+        {page > 1 || results.length > pageSize ? (
+          <nav aria-label="Страницы результатов" className="mt-6 flex items-center justify-center gap-3">
+            {page > 1 ? <Link href={searchHref(page - 1)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-[#0875d1]">Назад</Link> : null}
+            <span className="text-sm font-bold text-slate-700">Страница {page}</span>
+            {results.length > pageSize ? <Link href={searchHref(page + 1)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-[#0875d1]">Далее</Link> : null}
+          </nav>
+        ) : null}
       </main>
     </>
   );

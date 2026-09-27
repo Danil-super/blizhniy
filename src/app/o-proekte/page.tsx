@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { MapPinned, Search, UsersRound } from "lucide-react";
 import { BrandName } from "@/components/BrandName";
@@ -24,6 +25,8 @@ const points = [
     text: "Архитектура предполагает расширение на другие регионы с отдельными витринами объявлений, специалистов, вакансий и заказов.",
   },
 ];
+
+export const metadata: Metadata = { title: "О проекте", alternates: { canonical: "/o-proekte" } };
 
 export default function Page() {
   return (

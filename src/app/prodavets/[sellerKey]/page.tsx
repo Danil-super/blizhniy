@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { listDemoListings, toDemoListing } from "@/components/listings/ListingPages";
 import { SellerProfileClient, type SellerProfileListing } from "@/components/listings/SellerProfileClient";
-import { listStoredListings } from "@/lib/listing-store";
+import { listStoredListingsForSeller } from "@/lib/listing-store";
 import { listListings } from "@/lib/mock-store";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isSameSeller, sellerDisplayName } from "@/lib/seller-profile";
@@ -20,7 +21,7 @@ function decodeSellerKey(value: string) {
 }
 
 async function getSellerListings(sellerKey: string): Promise<SellerProfileListing[]> {
-  const storedListings = (await listStoredListings(200)).map(toDemoListing);
+  const storedListings = (await listStoredListingsForSeller(sellerKey)).map(toDemoListing);
   const fallbackListings = shouldShowFallbackContent() ? [...listDemoListings(), ...listListings().map(toDemoListing)] : [];
 
   return [...storedListings, ...fallbackListings]
@@ -48,6 +49,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: `${sellerName} - профиль продавца`,
     description: `Объявления продавца ${sellerName} на БЛИЖНИЙ.`,
+    ...(listing ? {} : { robots: { index: false, follow: false } }),
     alternates: {
       canonical: `/prodavets/${encodeURIComponent(decodedKey)}`,
     },
@@ -57,11 +59,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function Page({ params }: PageProps) {
   const { sellerKey } = await params;
   const decodedKey = decodeSellerKey(sellerKey);
+  const initialListings = await getSellerListings(decodedKey);
+
+  if (!initialListings.length && !shouldShowFallbackContent()) notFound();
 
   return (
     <>
       <SiteHeader />
-      <SellerProfileClient sellerKey={decodedKey} initialListings={await getSellerListings(decodedKey)} />
+      <SellerProfileClient sellerKey={decodedKey} initialListings={initialListings} />
     </>
   );
 }

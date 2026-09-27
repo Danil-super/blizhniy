@@ -1169,6 +1169,7 @@ export function toDemoListing(listing: StoreListing): DemoListing {
   return {
     viewId: listing.id,
     slug: listing.slug,
+    ownerKey: listing.ownerKey,
     author: listing.author,
     title: listing.title,
     kind: listing.kind,

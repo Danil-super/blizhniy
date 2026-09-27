@@ -229,6 +229,9 @@ function readEmailOrMessengerUrl(formData: FormData) {
 
 export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClientProps) {
   const [storedItems, setStoredItems] = useState<DemoPublication[]>([]);
+  const [serverVacancy, setServerVacancy] = useState<JobVacancy>();
+  const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [loadError, setLoadError] = useState("");
   const [message, setMessage] = useState("");
   const [savingAction, setSavingAction] = useState<"save" | "">("");
 
@@ -236,8 +239,44 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
     setStoredItems(readStoredPublications());
   }, []);
 
+  useEffect(() => {
+    if (!isUuid(vacancyId)) {
+      return;
+    }
+
+    let cancelled = false;
+    async function loadOwnedVacancy() {
+      try {
+        const identity = await resolveAuthenticatedClientUserIdentity();
+        const response = await fetch("/api/cabinet/vacancies", {
+          headers: { Authorization: `Bearer ${identity.accessToken}` },
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => null)) as { vacancies?: JobVacancy[]; error?: string } | null;
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Не удалось загрузить вакансию.");
+        }
+        if (!cancelled) {
+          setServerVacancy(payload?.vacancies?.find((item) => item.id === vacancyId));
+          setLoadStatus("ready");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : "Не удалось загрузить вакансию.");
+          setLoadStatus("error");
+        }
+      }
+    }
+    void loadOwnedVacancy();
+    return () => { cancelled = true; };
+  }, [vacancyId]);
+
   const storedVacancy = useMemo(() => storedItems.find((item) => item.type === "vacancy" && item.id === vacancyId), [storedItems, vacancyId]);
-  const vacancy = useMemo(() => mergeStoredVacancyWithInitial(storedVacancy, initialVacancy), [initialVacancy, storedVacancy]);
+  // UUID publications must come from the owner-scoped server response. A local
+  // browser cache can belong to an earlier account on the same device.
+  const vacancy = isUuid(vacancyId)
+    ? (serverVacancy ? initialToPublication(serverVacancy) : undefined)
+    : mergeStoredVacancyWithInitial(storedVacancy, initialVacancy);
   const canPersist = Boolean(storedVacancy);
 
   async function saveVacancy(form: HTMLFormElement, status: string, options: { validate?: boolean } = {}) {
@@ -391,12 +430,22 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
     void saveVacancy(event.currentTarget, nextStatus);
   }
 
+  if (isUuid(vacancyId) && loadStatus !== "ready") {
+    return (
+      <main className="page-container py-10">
+        <p role="status" className="rounded-xl border border-slate-200 bg-white p-6 text-slate-600 shadow-card">
+          {loadStatus === "loading" ? "Загружаем вакансию..." : loadError}
+        </p>
+      </main>
+    );
+  }
+
   if (!vacancy) {
     return (
       <main className="page-container py-10">
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
           <h1 className="text-xl font-bold text-[#060b27]">Вакансия не найдена</h1>
-          <p className="mt-2 text-slate-600">Черновики вакансий хранятся в браузере, где они были созданы.</p>
+          <p className="mt-2 text-slate-600">Проверьте номер вакансии и доступ к аккаунту владельца.</p>
           <BackLink fallbackHref="/cabinet/vakansii" className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-5 font-bold text-white">
             Вернуться к вакансиям
           </BackLink>
