@@ -11,6 +11,14 @@ type WorkRequestStatusRow = {
   status: PublicationStatus;
 };
 
+type WorkRequestPaymentRow = {
+  paid_at: string | null;
+  tariffs?: {
+    action: "work_request_publication" | "listing_publication" | string;
+    duration_days: number | null;
+  } | null;
+};
+
 type WorkRequestRow = {
   id: string;
   author_id: string;
@@ -445,6 +453,26 @@ export async function listStoredWorkRequestsForAdmin(limit = 200) {
   return rows.map(mapWorkRequest);
 }
 
+export async function listStoredWorkRequestsForUser(userId: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(userId)) {
+    throw new Error("Supabase env is not configured or owner is invalid");
+  }
+
+  const pageSize = 500;
+  const requests: WorkRequest[] = [];
+
+  for (let offset = 0; ; offset += pageSize) {
+    const rows = await fetchWorkRequestRows(
+      `&author_id=eq.${encodeURIComponent(userId)}&order=created_at.desc,id.desc&limit=${pageSize}&offset=${offset}`,
+    );
+    requests.push(...rows.map(mapWorkRequest));
+
+    if (rows.length < pageSize) {
+      return requests;
+    }
+  }
+}
+
 export function listWorkRequestsWithStored(storedRequests: WorkRequest[]) {
   if (!shouldShowFallbackContent()) {
     return storedRequests;
@@ -469,6 +497,75 @@ export async function getStoredWorkRequestForUser(requestId: string, userId: str
   );
 
   return rows[0];
+}
+
+async function ownedWorkRequestRow(requestId: string, userId: string) {
+  const rows = await fetchWorkRequestRows(
+    `&id=eq.${encodeURIComponent(requestId)}&author_id=eq.${encodeURIComponent(userId)}&limit=1`,
+  );
+  return rows[0];
+}
+
+export async function archiveStoredWorkRequestForUser(requestId: string, userId: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(requestId) || !isUuid(userId)) {
+    return undefined;
+  }
+
+  const existing = await ownedWorkRequestRow(requestId, userId);
+  if (existing?.status === "archived") {
+    return mapWorkRequest(existing);
+  }
+  if (existing?.status !== "published") {
+    return undefined;
+  }
+
+  const rows = await supabaseRest<Array<Pick<WorkRequestStatusRow, "id">>>(
+    `/rest/v1/work_requests?select=id&id=eq.${encodeURIComponent(requestId)}&author_id=eq.${encodeURIComponent(userId)}&status=eq.published`,
+    { method: "PATCH", prefer: "return=representation", body: { status: "archived" } },
+  );
+  const updated = rows[0]?.id ? await ownedWorkRequestRow(requestId, userId) : undefined;
+  return updated?.status === "archived" ? mapWorkRequest(updated) : undefined;
+}
+
+async function hasActiveWorkRequestPayment(requestId: string, userId: string) {
+  // The current work_requests schema has no is_paid/expires_at columns. Verify
+  // a YooKassa payment tied to this target and owner, using its original paid_at.
+  // PR #40 will snapshot duration_days and enforce publication in the database.
+  const rows = await supabaseRest<WorkRequestPaymentRow[]>(
+    `/rest/v1/payments?select=paid_at,tariffs(action,duration_days)&user_id=eq.${encodeURIComponent(userId)}&target_type=eq.workRequest&target_id=eq.${encodeURIComponent(requestId)}&provider=eq.yookassa&status=eq.succeeded&paid_at=not.is.null&order=paid_at.desc&limit=100`,
+  );
+  const now = Date.now();
+
+  return rows.some((payment) => {
+    const action = payment.tariffs?.action;
+    // Earlier work-request payments used listing_publication as a fallback tariff.
+    if (action !== "work_request_publication" && action !== "listing_publication") {
+      return false;
+    }
+    const duration = Number(payment.tariffs?.duration_days);
+    const paidAt = payment.paid_at ? Date.parse(payment.paid_at) : NaN;
+    return Number.isInteger(duration) && duration > 0 && Number.isFinite(paidAt)
+      && paidAt <= now && paidAt + duration * 24 * 60 * 60 * 1000 > now;
+  });
+}
+
+export async function restoreStoredWorkRequestForUser(requestId: string, userId: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(requestId) || !isUuid(userId)) {
+    return undefined;
+  }
+
+  const existing = await ownedWorkRequestRow(requestId, userId);
+  if (existing?.status !== "archived" || !(await hasActiveWorkRequestPayment(requestId, userId))) {
+    return undefined;
+  }
+
+  const now = new Date().toISOString();
+  const rows = await supabaseRest<Array<Pick<WorkRequestStatusRow, "id">>>(
+    `/rest/v1/work_requests?select=id&id=eq.${encodeURIComponent(requestId)}&author_id=eq.${encodeURIComponent(userId)}&status=eq.archived`,
+    { method: "PATCH", prefer: "return=representation", body: { status: "published", published_at: now } },
+  );
+  const updated = rows[0]?.id ? await ownedWorkRequestRow(requestId, userId) : undefined;
+  return updated?.status === "published" ? mapWorkRequest(updated) : undefined;
 }
 
 export async function markStoredWorkRequestPendingPaymentForUser(requestId: string, userId: string) {
