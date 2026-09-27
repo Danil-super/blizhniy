@@ -413,5 +413,5 @@ revoke all on function private.reject_unpaid_specialist_activation() from public
 grant execute on function private.reject_unpaid_specialist_activation() to service_role;
 drop trigger if exists reject_unpaid_specialist_activation on public.specialist_profiles;
 create trigger reject_unpaid_specialist_activation
-before insert or update of status, is_paid, expires_at, publication_payment_id on public.specialist_profiles
+before insert or update of id, user_id, status, is_paid, expires_at, publication_payment_id on public.specialist_profiles
 for each row execute function private.reject_unpaid_specialist_activation();
