@@ -9,8 +9,18 @@ begin
     or has_function_privilege('authenticated', 'public.apply_confirmed_payment(uuid,text)', 'EXECUTE') then
     raise exception 'Payment RPC is callable by a browser role';
   end if;
-  if has_table_privilege('authenticated', 'public.specialist_profiles', 'UPDATE') then
-    raise exception 'Browser role can publish a specialist profile';
+  if exists (
+    select 1 from pg_attribute a
+    where a.attrelid = 'public.specialist_profiles'::regclass
+      and a.attnum > 0 and not a.attisdropped
+      and (
+        has_column_privilege('anon', a.attrelid, a.attnum, 'INSERT')
+        or has_column_privilege('anon', a.attrelid, a.attnum, 'UPDATE')
+        or has_column_privilege('authenticated', a.attrelid, a.attnum, 'INSERT')
+        or has_column_privilege('authenticated', a.attrelid, a.attnum, 'UPDATE')
+      )
+  ) then
+    raise exception 'Browser role can write a specialist profile column';
   end if;
 end
 $check$;
@@ -141,6 +151,19 @@ begin
            'yookassa', 'synthetic_third_provider', amount, 'pending'
     from public.payments where id = current_setting('app.test_payment_id')::uuid;
     raise exception 'Expected open-target uniqueness failure';
+  exception when unique_violation then
+    null;
+  end;
+
+  -- A provider payment ID may be used by exactly one local payment, even
+  -- when a second row has a different target and is no longer open.
+  begin
+    insert into public.payments
+      (id,user_id,tariff_id,target_type,target_id,provider,provider_payment_id,amount,status)
+    select gen_random_uuid(), user_id, tariff_id, target_type, gen_random_uuid(),
+           provider, provider_payment_id, amount, 'failed'
+    from public.payments where id = current_setting('app.test_payment_id')::uuid;
+    raise exception 'Expected duplicate provider reference rejection';
   exception when unique_violation then
     null;
   end;
