@@ -10,6 +10,24 @@ const compile = (source) => ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 
+test("catalog pages consolidate pagination and expose crawlable category context", () => {
+  const dynamicCategorySource = readFileSync(new URL("../src/app/katalog/[categorySlug]/page.tsx", import.meta.url), "utf8");
+  const dynamicSubcategorySource = readFileSync(new URL("../src/app/katalog/[categorySlug]/[subcategorySlug]/page.tsx", import.meta.url), "utf8");
+  const instrumentsSource = readFileSync(new URL("../src/app/katalog/instrumenty/page.tsx", import.meta.url), "utf8");
+  const dishesSource = readFileSync(new URL("../src/app/katalog/posuda/page.tsx", import.meta.url), "utf8");
+  const seoContentSource = readFileSync(new URL("../src/components/listings/CatalogSeoContent.tsx", import.meta.url), "utf8");
+
+  for (const source of [dynamicCategorySource, dynamicSubcategorySource, instrumentsSource, dishesSource]) {
+    assert.match(source, /canonical: ["`]\/katalog/);
+    assert.match(source, /page > 1 \? \{ index: false, follow: true \}/);
+  }
+
+  assert.match(seoContentSource, /BreadcrumbList/);
+  assert.match(seoContentSource, /CollectionPage/);
+  assert.match(seoContentSource, /Смотрите также/);
+  assert.match(seoContentSource, /replace\(\/</);
+});
+
 test("listing pagination filters before offset and redacts hidden location", async () => {
   const source = readFileSync(new URL("../src/lib/listing-store.ts", import.meta.url), "utf8");
   const redaction = source.match(/function publicListing\([\s\S]*?(?=\nasync function findCategoryId\()/)?.[0];
