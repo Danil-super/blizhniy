@@ -53,6 +53,7 @@ import { ListingPagination } from "./ListingPagination";
 import { ListingSellerCard } from "./ListingSellerCard";
 import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewTracker } from "./ListingViewTracker";
+import { CatalogSeoContent } from "./CatalogSeoContent";
 
 const listingKinds: { slug: ListingKind; title: string; description: string }[] = [
   { slug: "prodam", title: "Продам", description: "Вещи, мебель, растения и полезные товары рядом с домом." },
@@ -1570,6 +1571,16 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug, page
                 page={page}
               />
             </section>
+            <CatalogSeoContent
+              categoryName={category.name}
+              categoryPath={`/katalog/${category.slug}`}
+              description={activeDescription}
+              sectionName={subcategory}
+              sectionPath={subcategorySlug ? `/katalog/${category.slug}/${subcategorySlug}` : undefined}
+              relatedSections={categoryChildren
+                .filter((child) => child !== subcategory)
+                .map((child) => ({ href: `/katalog/${category.slug}/${slugifySubcategory(child)}`, label: child }))}
+            />
           </div>
         </div>
       </main>
