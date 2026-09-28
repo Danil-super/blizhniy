@@ -4,6 +4,7 @@ import { BackLink } from "@/components/BackLink";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "@/components/listings/CategoryPageDesign";
+import { CatalogSeoContent } from "@/components/listings/CatalogSeoContent";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import { ListingPagination } from "@/components/listings/ListingPagination";
 import { parseListingPage, toDemoListing } from "@/components/listings/ListingPages";
@@ -25,7 +26,8 @@ export async function generateMetadata({ searchParams }: { searchParams?: Promis
 
   return {
     ...categoryMetadata,
-    alternates: { canonical: page > 1 ? `/katalog/instrumenty?page=${page}` : "/katalog/instrumenty" },
+    alternates: { canonical: "/katalog/instrumenty" },
+    robots: page > 1 ? { index: false, follow: true } : undefined,
   };
 }
 
@@ -240,6 +242,7 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
               <ListingResultsPanel categorySlug="instrumenty" listings={listings} />
               <ListingPagination baseHref="/katalog/instrumenty" hasMore={storedListings.length > pageSize} page={page} />
             </section>
+            <CatalogSeoContent categoryName="Инструменты" categoryPath="/katalog/instrumenty" description="Раздел с ручным, электрическим, измерительным, строительным и садовым инструментом для ремонта, стройки и участка." relatedSections={instrumentSubcategories.map((subcategory) => ({ href: `/katalog/instrumenty/${subcategory.slug}`, label: subcategory.name }))} />
           </div>
         </div>
       </main>
