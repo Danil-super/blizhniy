@@ -4,6 +4,7 @@ import { BackLink } from "@/components/BackLink";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "@/components/listings/CategoryPageDesign";
+import { CatalogSeoContent } from "@/components/listings/CatalogSeoContent";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import { ListingPagination } from "@/components/listings/ListingPagination";
 import { parseListingPage, toDemoListing } from "@/components/listings/ListingPages";
@@ -25,7 +26,8 @@ export async function generateMetadata({ searchParams }: { searchParams?: Promis
 
   return {
     ...categoryMetadata,
-    alternates: { canonical: page > 1 ? `/katalog/posuda?page=${page}` : "/katalog/posuda" },
+    alternates: { canonical: "/katalog/posuda" },
+    robots: page > 1 ? { index: false, follow: true } : undefined,
   };
 }
 
@@ -161,6 +163,7 @@ export default async function PosudaCategoryPage({ searchParams }: { searchParam
               <ListingResultsPanel categorySlug="posuda" listings={listings} />
               <ListingPagination baseHref="/katalog/posuda" hasMore={storedListings.length > pageSize} page={page} />
             </section>
+            <CatalogSeoContent categoryName="Посуда" categoryPath="/katalog/posuda" description="Кухонная и столовая посуда, товары для напитков, хранения, сервировки и другая полезная утварь рядом." relatedSections={posudaSubcategories.map((subcategory) => ({ href: `/katalog/posuda/${subcategory.slug}`, label: subcategory.name }))} />
           </div>
         </div>
       </main>
