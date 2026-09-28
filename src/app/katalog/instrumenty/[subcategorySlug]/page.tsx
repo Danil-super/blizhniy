@@ -5,6 +5,7 @@ import { BackLink } from "@/components/BackLink";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { categoryPageStyle, CategoryHeaderBand } from "@/components/listings/CategoryPageDesign";
+import { CatalogSeoContent } from "@/components/listings/CatalogSeoContent";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import { ListingPagination } from "@/components/listings/ListingPagination";
 import { parseListingPage, toDemoListing } from "@/components/listings/ListingPages";
@@ -56,8 +57,9 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     title: subcategory ? `${subcategory.name} — Инструменты` : "Инструменты",
     description: subcategory ? `${subcategory.description} Объявления в подкатегории ${subcategory.name}.` : "Объявления раздела Инструменты.",
     alternates: {
-      canonical: page > 1 ? `/katalog/instrumenty/${subcategorySlug}?page=${page}` : `/katalog/instrumenty/${subcategorySlug}`,
+      canonical: `/katalog/instrumenty/${subcategorySlug}`,
     },
+    robots: subcategory ? (page > 1 ? { index: false, follow: true } : undefined) : { index: false, follow: false },
   };
 }
 
@@ -110,6 +112,7 @@ export default async function InstrumentSubcategoryPage({ params, searchParams }
               <ListingResultsPanel categorySlug="instrumenty" listings={listings} subcategorySlug={subcategory.slug} />
               <ListingPagination baseHref={`/katalog/instrumenty/${subcategory.slug}`} hasMore={storedListings.length > pageSize} page={page} />
             </section>
+            <CatalogSeoContent categoryName="Инструменты" categoryPath="/katalog/instrumenty" description={subcategory.description} sectionName={subcategory.name} sectionPath={`/katalog/instrumenty/${subcategory.slug}`} relatedSections={instrumentSubcategories.filter((item) => item.slug !== subcategory.slug).map((item) => ({ href: `/katalog/instrumenty/${item.slug}`, label: item.name }))} />
           </div>
         </div>
       </main>
