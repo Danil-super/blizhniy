@@ -20,8 +20,9 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     title: subcategory ?? "Подкатегория",
     description: `Объявления подкатегории ${subcategory ?? subcategorySlug} на БЛИЖНИЙ.`,
     alternates: {
-      canonical: page > 1 ? `/katalog/${categorySlug}/${subcategorySlug}?page=${page}` : `/katalog/${categorySlug}/${subcategorySlug}`,
+      canonical: `/katalog/${categorySlug}/${subcategorySlug}`,
     },
+    robots: subcategory ? (page > 1 ? { index: false, follow: true } : undefined) : { index: false, follow: false },
   };
 }
 
