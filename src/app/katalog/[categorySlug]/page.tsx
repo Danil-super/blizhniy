@@ -19,8 +19,9 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     title: category?.name ?? "Категория",
     description: `Объявления категории ${category?.name ?? categorySlug} на БЛИЖНИЙ.`,
     alternates: {
-      canonical: page > 1 ? `/katalog/${categorySlug}?page=${page}` : `/katalog/${categorySlug}`,
+      canonical: `/katalog/${categorySlug}`,
     },
+    robots: category ? (page > 1 ? { index: false, follow: true } : undefined) : { index: false, follow: false },
   };
 }
 
