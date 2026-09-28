@@ -5,6 +5,7 @@ import { BackLink } from "@/components/BackLink";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
 import { categoryPageStyle, CategoryHeaderBand } from "@/components/listings/CategoryPageDesign";
+import { CatalogSeoContent } from "@/components/listings/CatalogSeoContent";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import { ListingPagination } from "@/components/listings/ListingPagination";
 import { parseListingPage, toDemoListing } from "@/components/listings/ListingPages";
@@ -56,8 +57,9 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     title: subcategory ? `${subcategory.name} — Посуда` : "Посуда",
     description: subcategory ? `${subcategory.description} Объявления в подкатегории ${subcategory.name}.` : "Объявления раздела Посуда.",
     alternates: {
-      canonical: page > 1 ? `/katalog/posuda/${subcategorySlug}?page=${page}` : `/katalog/posuda/${subcategorySlug}`,
+      canonical: `/katalog/posuda/${subcategorySlug}`,
     },
+    robots: subcategory ? (page > 1 ? { index: false, follow: true } : undefined) : { index: false, follow: false },
   };
 }
 
@@ -110,6 +112,7 @@ export default async function PosudaSubcategoryPage({ params, searchParams }: Pa
               <ListingResultsPanel categorySlug="posuda" listings={listings} subcategorySlug={subcategory.slug} />
               <ListingPagination baseHref={`/katalog/posuda/${subcategory.slug}`} hasMore={storedListings.length > pageSize} page={page} />
             </section>
+            <CatalogSeoContent categoryName="Посуда" categoryPath="/katalog/posuda" description={subcategory.description} sectionName={subcategory.name} sectionPath={`/katalog/posuda/${subcategory.slug}`} relatedSections={posudaSubcategories.filter((item) => item.slug !== subcategory.slug).map((item) => ({ href: `/katalog/posuda/${item.slug}`, label: item.name }))} />
           </div>
         </div>
       </main>
