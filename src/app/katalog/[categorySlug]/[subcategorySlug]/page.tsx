@@ -15,7 +15,7 @@ function legacySubcategorySlug(name: string) {
 }
 
 function resolveSubcategory(category: { children: string[] } | undefined, subcategorySlug: string) {
-  const { subcategory, canonicalSlug } = resolveSubcategory(category, subcategorySlug);
+  const subcategory = category?.children.find((item) => slugifySubcategory(item) === subcategorySlug);
   const legacySubcategory = category?.children.find((item) => legacySubcategorySlug(item) === subcategorySlug);
 
   return {
@@ -29,7 +29,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   const { categorySlug, subcategorySlug } = await params;
   const categories = await getPublicCategories();
   const category = categories.find((item) => item.slug === categorySlug);
-  const subcategory = category?.children.find((item) => slugifySubcategory(item) === subcategorySlug);
+  const { subcategory, canonicalSlug } = resolveSubcategory(category, subcategorySlug);
 
   return {
     title: subcategory ?? "Подкатегория",
