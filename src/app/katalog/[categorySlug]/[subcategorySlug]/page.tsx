@@ -14,6 +14,14 @@ function legacySubcategorySlug(name: string) {
   return name.toLowerCase().replaceAll(" ", "-");
 }
 
+function decodeSubcategorySlug(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function resolveSubcategory(category: { children: string[] } | undefined, subcategorySlug: string) {
   const subcategory = category?.children.find((item) => slugifySubcategory(item) === subcategorySlug);
   const legacySubcategory = category?.children.find((item) => legacySubcategorySlug(item) === subcategorySlug);
@@ -27,9 +35,10 @@ function resolveSubcategory(category: { children: string[] } | undefined, subcat
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const page = parseListingPage((await searchParams)?.page);
   const { categorySlug, subcategorySlug } = await params;
+  const decodedSubcategorySlug = decodeSubcategorySlug(subcategorySlug);
   const categories = await getPublicCategories();
   const category = categories.find((item) => item.slug === categorySlug);
-  const { subcategory, canonicalSlug } = resolveSubcategory(category, subcategorySlug);
+  const { subcategory, canonicalSlug } = resolveSubcategory(category, decodedSubcategorySlug);
 
   return {
     title: subcategory ?? "Подкатегория",
@@ -43,13 +52,14 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 
 export default async function Page({ params, searchParams }: PageProps) {
   const { categorySlug, subcategorySlug } = await params;
+  const decodedSubcategorySlug = decodeSubcategorySlug(subcategorySlug);
   const query = await searchParams;
   const page = parseListingPage(query?.page);
   const categories = await getPublicCategories();
   const category = categories.find((item) => item.slug === categorySlug);
-  const { subcategory, canonicalSlug } = resolveSubcategory(category, subcategorySlug);
+  const { subcategory, canonicalSlug } = resolveSubcategory(category, decodedSubcategorySlug);
 
-  if (subcategory && canonicalSlug !== subcategorySlug) {
+  if (subcategory && canonicalSlug !== decodedSubcategorySlug) {
     const pageQuery = query?.page ? `?page=${encodeURIComponent(query.page)}` : "";
     permanentRedirect(`/katalog/${categorySlug}/${canonicalSlug}${pageQuery}`);
   }
