@@ -4,10 +4,17 @@ const baseUrl = process.env.BASE_URL;
 assert.ok(baseUrl, "BASE_URL is required");
 
 const base = new URL(baseUrl);
-const noStore = { cache: "no-store" };
 
 function pageUrl(pathname) {
   return new URL(pathname, base).href;
+}
+
+function requestOptions(options = {}) {
+  return {
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+    ...options,
+  };
 }
 
 function escapeRegExp(value) {
@@ -15,7 +22,7 @@ function escapeRegExp(value) {
 }
 
 async function fetchOk(pathname) {
-  const response = await fetch(pageUrl(pathname), noStore);
+  const response = await fetch(pageUrl(pathname), requestOptions());
   assert.equal(response.status, 200, `${pathname}: expected HTTP 200`);
   return response;
 }
@@ -80,7 +87,7 @@ for (const pathname of requiredCatalogPaths) {
 }
 
 for (const [legacyPath, canonicalPath] of legacyRedirects) {
-  const response = await fetch(pageUrl(legacyPath), { ...noStore, redirect: "manual" });
+  const response = await fetch(pageUrl(legacyPath), requestOptions({ redirect: "manual" }));
   assert.equal(response.status, 308, `${legacyPath}: expected permanent redirect`);
   assert.equal(response.headers.get("location"), canonicalPath, `${legacyPath}: canonical redirect target`);
 }
