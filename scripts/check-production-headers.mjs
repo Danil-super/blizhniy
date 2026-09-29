@@ -18,12 +18,17 @@ function requiredHeader(name) {
   return value;
 }
 
+function assertRepeatedHeader(name, expected) {
+  const values = requiredHeader(name).split(",").map((value) => value.trim());
+  assert.ok(values.length > 0 && values.every((value) => value.toLowerCase() === expected.toLowerCase()), `home page: ${name} must be ${expected}`);
+}
+
 const hsts = requiredHeader("strict-transport-security");
 const hstsMaxAge = Number(hsts.match(/(?:^|;)\s*max-age=(\d+)/i)?.[1]);
 assert.ok(Number.isFinite(hstsMaxAge) && hstsMaxAge >= 31_536_000, "home page: HSTS max-age must be at least one year");
-assert.match(requiredHeader("x-content-type-options"), /^nosniff$/i, "home page: X-Content-Type-Options must be nosniff");
-assert.match(requiredHeader("x-frame-options"), /^sameorigin$/i, "home page: X-Frame-Options must be SAMEORIGIN");
-assert.match(requiredHeader("referrer-policy"), /^strict-origin-when-cross-origin$/i, "home page: unexpected referrer policy");
+assertRepeatedHeader("x-content-type-options", "nosniff");
+assertRepeatedHeader("x-frame-options", "SAMEORIGIN");
+assertRepeatedHeader("referrer-policy", "strict-origin-when-cross-origin");
 
 const permissions = requiredHeader("permissions-policy");
 for (const disabledFeature of ["camera=()", "microphone=()", "geolocation=()"]) {
