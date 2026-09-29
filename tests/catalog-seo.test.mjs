@@ -28,6 +28,32 @@ test("catalog pages consolidate pagination and expose crawlable category context
   assert.match(seoContentSource, /replace\(\/</);
 });
 
+test("all catalogue subcategory slugs are stable latin URLs and legacy slugs redirect", () => {
+  const listingPagesSource = readFileSync(new URL("../src/components/listings/ListingPages.tsx", import.meta.url), "utf8");
+  const slugFunction = listingPagesSource.match(/export function slugifySubcategory\([\s\S]*?(?=\nfunction Breadcrumbs)/)?.[0];
+  assert.ok(slugFunction);
+
+  const exports = {};
+  vm.runInNewContext(compile(slugFunction), { exports });
+
+  const expectedSlugs = {
+    "Уход и косметика": "uhod-i-kosmetika",
+    "Меняю": "menyayu",
+    "Отдам даром": "otdam-darom",
+    "Коллекции и антиквариат": "kollektsii-i-antikvariat",
+    "Ремонт и строительство": "remont-i-stroitelstvo",
+    "Бытовые услуги": "bytovye-uslugi",
+  };
+  for (const [name, slug] of Object.entries(expectedSlugs)) {
+    assert.equal(exports.slugifySubcategory(name), slug);
+    assert.match(slug, /^[a-z0-9-]+$/);
+  }
+
+  const routeSource = readFileSync(new URL("../src/app/katalog/[categorySlug]/[subcategorySlug]/page.tsx", import.meta.url), "utf8");
+  assert.match(routeSource, /permanentRedirect\(/);
+  assert.match(routeSource, /legacySubcategorySlug/);
+});
+
 test("listing pagination filters before offset and redacts hidden location", async () => {
   const source = readFileSync(new URL("../src/lib/listing-store.ts", import.meta.url), "utf8");
   const redaction = source.match(/function publicListing\([\s\S]*?(?=\nasync function findCategoryId\()/)?.[0];
