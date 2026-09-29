@@ -170,6 +170,11 @@ jobs:
           BASE_URL: https://xn----9sbphbgks4a4a.xn--p1ai
         run: node scripts/check-instruments-hero.mjs
 
+      - name: Check deployed public SEO and readiness
+        env:
+          BASE_URL: https://xn----9sbphbgks4a4a.xn--p1ai
+        run: node scripts/check-public-seo.mjs
+
       - name: Upload responsive screenshots
         if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
