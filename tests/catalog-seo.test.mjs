@@ -52,6 +52,7 @@ test("all catalogue subcategory slugs are stable latin URLs and legacy slugs red
   const routeSource = readFileSync(new URL("../src/app/katalog/[categorySlug]/[subcategorySlug]/page.tsx", import.meta.url), "utf8");
   assert.match(routeSource, /permanentRedirect\(/);
   assert.match(routeSource, /legacySubcategorySlug/);
+  assert.match(routeSource, /decodeSubcategorySlug/);
 });
 
 test("listing pagination filters before offset and redacts hidden location", async () => {
