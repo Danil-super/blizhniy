@@ -1,4 +1,5 @@
 import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
+import { withServerRequestTimeout } from "@/lib/server-request-timeout";
 
 export { TURNSTILE_ERROR_MESSAGE };
 
@@ -9,6 +10,7 @@ const rateLimitWindowMs = 60 * 1000;
 const maximumChecksPerWindow = 40;
 const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
 const turnstileSiteverifyUrl = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+const turnstileVerificationTimeoutMs = 5000;
 
 type TurnstileSiteverifyResponse = {
   success: boolean;
@@ -54,16 +56,19 @@ async function verifyCloudflareTurnstileToken(token: string, secret: string, rem
     body.set("remoteip", remoteIp);
   }
 
-  const response = await fetch(turnstileSiteverifyUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-  });
-  const payload = (await response.json().catch(() => null)) as TurnstileSiteverifyResponse | null;
+  return withServerRequestTimeout(turnstileVerificationTimeoutMs, async (signal) => {
+    const response = await fetch(turnstileSiteverifyUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+      signal,
+    });
+    const payload = (await response.json().catch(() => null)) as TurnstileSiteverifyResponse | null;
 
-  return Boolean(response.ok && payload?.success);
+    return Boolean(response.ok && payload?.success);
+  });
 }
 
 export async function verifyTurnstileToken(token: string, remoteIp?: string): Promise<boolean> {
@@ -80,7 +85,13 @@ export async function verifyTurnstileToken(token: string, remoteIp?: string): Pr
   const secret = process.env.TURNSTILE_SECRET_KEY?.trim();
 
   if (secret) {
-    return verifyCloudflareTurnstileToken(cleanToken, secret, remoteIp);
+    try {
+      return await verifyCloudflareTurnstileToken(cleanToken, secret, remoteIp);
+    } catch {
+      // Captcha verification is an authorization boundary: an unavailable
+      // provider must reject the request rather than let it continue.
+      return false;
+    }
   }
 
   if (process.env.NODE_ENV === "production") {
