@@ -1,9 +1,11 @@
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
+import { withServerRequestTimeout } from "@/lib/server-request-timeout";
 
 export const mediaBucketName = "blizhniy-media";
 
 const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const maxFileSizeBytes = 10 * 1024 * 1024;
+const mediaUploadTimeoutMs = 20000;
 
 export type UploadFolder = "fair-applications" | "listings" | "specialists" | "vacancies" | "work-requests";
 
@@ -94,21 +96,32 @@ export async function uploadMediaFile(file: File, folder: UploadFolder, userId: 
   const serviceRoleKey = getServiceRoleKey();
   const path = buildObjectPath(folder, userId, file);
   const uploadUrl = `${baseUrl}/storage/v1/object/${mediaBucketName}/${path}`;
-  const response = await fetch(uploadUrl, {
-    body: await file.arrayBuffer(),
-    headers: {
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
-      "Cache-Control": "31536000",
-      "Content-Type": file.type,
-      "x-upsert": "false",
-    },
-    method: "POST",
-  });
+  const fileBody = await file.arrayBuffer();
 
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
-    throw new Error(payload?.message ?? payload?.error ?? "Не удалось загрузить файл в Supabase Storage");
+  try {
+    await withServerRequestTimeout(mediaUploadTimeoutMs, async (signal) => {
+      const response = await fetch(uploadUrl, {
+        body: fileBody,
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Cache-Control": "31536000",
+          "Content-Type": file.type,
+          "x-upsert": "false",
+        },
+        method: "POST",
+        signal,
+      });
+
+      if (!response.ok) {
+        await response.text().catch(() => null);
+        throw new Error("Storage upload failed");
+      }
+    });
+  } catch {
+    // The provider response is not user-facing and can contain infrastructure
+    // details. Keep both timeouts and upstream failures safe to retry.
+    throw new Error("Не удалось загрузить файл. Повторите попытку.");
   }
 
   return {
