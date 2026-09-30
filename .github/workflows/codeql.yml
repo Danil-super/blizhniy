@@ -1,0 +1,51 @@
+name: CodeQL
+
+on:
+  # The production deployment calls this workflow, so a direct push to main
+  # cannot reach the VPS before CodeQL completes successfully.
+  workflow_call:
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Re-check the default branch even when no pull request is open.
+    - cron: "23 4 * * 4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        with:
+          languages: ${{ matrix.language }}
+          # JavaScript/TypeScript analysis does not need an application build.
+          build-mode: none
+          # Keep the default suite and add the wider security ruleset.
+          queries: +security-extended
+
+      - name: Analyze code
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        with:
+          category: /language:${{ matrix.language }}
