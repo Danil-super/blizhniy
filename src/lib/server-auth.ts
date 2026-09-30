@@ -1,4 +1,4 @@
-import { buildSupabaseRestUrl, getSupabaseRestConfig } from "@/lib/supabase-rest";
+import { getSupabaseRestConfig, supabaseRest } from "@/lib/supabase-rest";
 
 type UserRoleRow = {
   role: string;
@@ -12,6 +12,12 @@ type SupabaseAuthUser = {
 type ProfileAccessRow = {
   is_blocked?: boolean | null;
 };
+
+// Authentication and authorization are a fail-closed boundary. Keep the
+// database calls short and do not retry them: a delayed permission check must
+// not tie up an application request or accidentally grant access.
+const serverAuthTimeoutMs = 3000;
+const serverAuthAttempts = 1;
 
 function getSupabaseServerConfig() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -37,22 +43,17 @@ async function userCanAccessApi(userId: string) {
     return process.env.NODE_ENV !== "production";
   }
 
-  const response = await fetch(buildSupabaseRestUrl(`/rest/v1/profiles?select=is_blocked&id=eq.${encodeURIComponent(userId)}&limit=1`), {
-    headers: {
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
-    },
-    cache: "no-store",
-  });
+  try {
+    const data = await supabaseRest<ProfileAccessRow[]>(
+      `/rest/v1/profiles?select=is_blocked&id=eq.${encodeURIComponent(userId)}&limit=1`,
+      { attempts: serverAuthAttempts, timeoutMs: serverAuthTimeoutMs },
+    );
+    const profile: ProfileAccessRow | undefined = data?.[0];
 
-  if (!response.ok) {
+    return profile !== undefined && profile.is_blocked !== true;
+  } catch {
     return false;
   }
-
-  const data = (await response.json().catch(() => null)) as ProfileAccessRow[] | null;
-  const profile: ProfileAccessRow | undefined = data?.[0];
-
-  return profile !== undefined && profile.is_blocked !== true;
 }
 
 // A verified Supabase session is enough for data-subject requests, including
@@ -65,41 +66,22 @@ export async function getVerifiedRequestUser(request: Request) {
     return null;
   }
 
-  let response: Response | undefined;
+  try {
+    const user = await supabaseRest<SupabaseAuthUser>("/auth/v1/user", {
+      attempts: serverAuthAttempts,
+      headers: { Authorization: `Bearer ${token}` },
+      timeoutMs: serverAuthTimeoutMs,
+      useServiceRole: false,
+    });
 
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    try {
-      response = await fetch(buildSupabaseRestUrl("/auth/v1/user"), {
-        headers: {
-          apikey: supabaseAnonKey,
-          Authorization: `Bearer ${token}`,
-        },
-        cache: "no-store",
-      });
-
-      if (response.status < 500 || attempt === 3) {
-        break;
-      }
-    } catch (error) {
-      if (attempt === 3) {
-        throw error;
-      }
+    if (!user?.id) {
+      return null;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, attempt * 300));
-  }
-
-  if (!response?.ok) {
+    return { user };
+  } catch {
     return null;
   }
-
-  const user = (await response.json().catch(() => null)) as SupabaseAuthUser | null;
-
-  if (!user?.id) {
-    return null;
-  }
-
-  return { user };
 }
 
 export async function getAuthenticatedRequestUser(request: Request) {
@@ -129,21 +111,16 @@ export async function isAdminRequest(request: Request) {
     return false;
   }
 
-  const response = await fetch(buildSupabaseRestUrl(`/rest/v1/user_roles?select=role&user_id=eq.${encodeURIComponent(auth.user.id)}`), {
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-    },
-    cache: "no-store",
-  });
+  try {
+    const data = await supabaseRest<UserRoleRow[]>(
+      `/rest/v1/user_roles?select=role&user_id=eq.${encodeURIComponent(auth.user.id)}`,
+      { attempts: serverAuthAttempts, timeoutMs: serverAuthTimeoutMs },
+    );
 
-  if (!response.ok) {
+    return data.some((item) => item.role === "admin");
+  } catch {
     return false;
   }
-
-  const data = (await response.json().catch(() => null)) as UserRoleRow[] | null;
-
-  return data?.some((item) => item.role === "admin") ?? false;
 }
 
 export function isDemoAdminBypassEnabled() {
