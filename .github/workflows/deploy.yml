@@ -26,8 +26,15 @@ jobs:
       security-events: write
       actions: read
 
+  codeql:
+    uses: ./.github/workflows/codeql.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
   deploy:
-    needs: [validate, security]
+    needs: [validate, security, codeql]
     runs-on: ubuntu-latest
 
     steps:
