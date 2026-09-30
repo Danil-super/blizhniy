@@ -32,6 +32,8 @@ test("CodeQL covers TypeScript changes on pull requests, production releases and
   assert.match(codeql, /queries: \+security-extended/);
   assert.match(codeql, /github\/codeql-action\/init@[0-9a-f]{40}/);
   assert.match(codeql, /github\/codeql-action\/analyze@[0-9a-f]{40}/);
+  assert.match(codeql, /output: codeql-results/);
+  assert.match(codeql, /Block high-severity CodeQL findings[\s\S]*check-codeql-report\.mjs codeql-results/);
 });
 
 test("dependency, secrets and static-analysis failures remain release blockers", () => {
