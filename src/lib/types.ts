@@ -205,6 +205,7 @@ export type Payment = {
   confirmationUrl?: string;
   createdAt: string;
   paidAt?: string;
+  targetAppliedAt?: string;
 };
 
 export type FairApplication = {

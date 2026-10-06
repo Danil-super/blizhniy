@@ -50,6 +50,8 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Dependency Review evaluates all changed dependency scopes. This audit blocks
+      # high and critical vulnerabilities in dependencies shipped to production.
       - name: Audit production npm dependencies for high and critical vulnerabilities
         run: npm audit --omit=dev --audit-level=high
 

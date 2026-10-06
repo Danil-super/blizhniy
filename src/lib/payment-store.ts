@@ -14,6 +14,7 @@ type PaymentRow = {
   created_at: string;
   id: string;
   paid_at?: string | null;
+  target_applied_at?: string | null;
   provider: Payment["provider"];
   provider_payment_id?: string | null;
   status: Payment["status"] | "refunded";
@@ -167,6 +168,7 @@ export async function mapStoredPayment(row: PaymentRow, context?: PaymentMapping
     providerPaymentId: row.provider_payment_id ?? undefined,
     createdAt: row.created_at.slice(0, 10),
     paidAt: row.paid_at?.slice(0, 10),
+    targetAppliedAt: row.target_applied_at ?? undefined,
   };
 }
 
@@ -305,6 +307,7 @@ export async function updateStoredPayment(payment: Payment) {
     prefer: "return=minimal",
     body: {
       paid_at: payment.status === "succeeded" ? new Date().toISOString() : payment.paidAt ?? null,
+      target_applied_at: payment.targetAppliedAt ?? null,
       provider: payment.provider,
       provider_payment_id: payment.providerPaymentId ?? null,
       status: payment.status,
