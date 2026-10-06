@@ -257,14 +257,21 @@ async function applySucceededPaymentOnce(payment: Payment): Promise<PaymentResul
   // Apply the entitlement before recording the terminal payment status. If the
   // target update fails, a later verified webhook can safely retry it instead
   // of leaving a successful payment permanently detached from its publication.
-  const nextStatus = canStorePayment(payment)
-    ? await markStoredPaymentTargetSucceeded(payment)
-    : shouldAllowMockPayments()
-      ? markPaymentTargetSucceeded(payment)
-      : undefined;
+  // The marker also makes subsequent verified webhooks a no-op.
+  let nextStatus: PaymentResult["nextStatus"] | undefined;
 
-  if (!nextStatus) {
-    throw new Error("Stored payment target is required before confirming payment");
+  if (!payment.targetAppliedAt) {
+    nextStatus = canStorePayment(payment)
+      ? await markStoredPaymentTargetSucceeded(payment)
+      : shouldAllowMockPayments()
+        ? markPaymentTargetSucceeded(payment)
+        : undefined;
+
+    if (!nextStatus) {
+      throw new Error("Stored payment target is required before confirming payment");
+    }
+
+    payment.targetAppliedAt = new Date().toISOString();
   }
 
   await updateStoredPayment(payment);
