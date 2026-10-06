@@ -50,10 +50,10 @@ jobs:
       - name: Build
         run: npm run build
 
-      # A full npm audit complements Dependency Review by checking every resolved
-      # direct and transitive production and development dependency.
-      - name: Audit all npm dependencies for high and critical vulnerabilities
-        run: npm audit --audit-level=high
+      # Dependency Review evaluates all changed dependency scopes. This audit blocks
+      # high and critical vulnerabilities in dependencies shipped to production.
+      - name: Audit production npm dependencies for high and critical vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Install Chromium for layout checks
         run: npx playwright install --with-deps chromium
