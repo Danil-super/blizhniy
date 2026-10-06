@@ -42,7 +42,7 @@ test("dependency, secrets and static-analysis failures remain release blockers",
   const dependencyReview = read(".github/workflows/dependency-review.yml");
   const dependabot = read(".github/dependabot.yml");
 
-  assert.match(ci, /npm audit --omit=dev --audit-level=high/);
+  assert.match(ci, /npm audit --audit-level=high/);
   assert.match(security, /fetch-depth: 0/);
   assert.match(security, /Scan secrets with Gitleaks/);
   assert.match(security, /Scan code with Semgrep/);
