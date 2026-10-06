@@ -50,9 +50,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Dependency Review requires GitHub Code Security for private, personal
-      # repositories. npm audit is an executable PR gate here and covers direct
-      # and transitive production and development dependencies.
+      # A full npm audit complements Dependency Review by checking every resolved
+      # direct and transitive production and development dependency.
       - name: Audit all npm dependencies for high and critical vulnerabilities
         run: npm audit --audit-level=high
 
