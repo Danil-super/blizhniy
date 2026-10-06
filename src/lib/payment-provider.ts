@@ -381,7 +381,7 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
       const concurrentPayment = await findActiveStoredPaymentForTarget({
         targetId: input.targetId,
         targetType,
-    userId: input.userId,
+        userId: input.userId,
       });
 
       if (!concurrentPayment || concurrentPayment.provider !== "yookassa") {
@@ -525,8 +525,7 @@ export async function confirmPayment(paymentOrId: Payment | string, options?: Co
   }
 
   if (payment.provider === "yookassa") {
-
-if (!payment.providerPaymentId) {
+    if (!payment.providerPaymentId) {
       throw new Error("YooKassa payment id is missing");
     }
 
@@ -584,7 +583,7 @@ export async function processYooKassaNotification(payload: YooKassaNotificationP
     return { processed: false, reason: "payment_mismatch" as const };
   }
 
-const verifiedYooKassaPayment = await fetchYooKassaPayment(yookassaPayment.id);
+  const verifiedYooKassaPayment = await fetchYooKassaPayment(yookassaPayment.id);
 
   applyYooKassaPaymentState(payment, verifiedYooKassaPayment);
 
