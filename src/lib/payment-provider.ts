@@ -461,7 +461,8 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
         type: "redirect",
         return_url: returnUrl,
       },
-      description: resolveTargetTitle(tariff, input.targetTitle).slice(0, 128),
+      description: targetTitle.slice(0, 128),
+      ...(receipt ? { receipt } : {}),
       metadata: {
         localPaymentId,
         targetId: input.targetId,
