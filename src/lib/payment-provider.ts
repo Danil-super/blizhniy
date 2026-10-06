@@ -39,6 +39,7 @@ type YooKassaNotificationPayload = {
 };
 
 export type CreatePaymentInput = {
+  customerEmail?: string;
   tariffId: string;
   targetId?: string;
   targetType?: PaymentTargetType;
@@ -96,6 +97,53 @@ function createPaymentId() {
 
 function createMockPaymentId() {
   return `pay-mock-${Date.now().toString(36)}`;
+}
+
+function getReceiptVatCode() {
+  if (process.env.YOOKASSA_RECEIPTS_ENABLED?.trim() !== "true") {
+    return undefined;
+  }
+
+  const rawVatCode = process.env.YOOKASSA_RECEIPT_VAT_CODE?.trim() ?? "";
+  const vatCode = Number(rawVatCode);
+
+  if (!Number.isInteger(vatCode) || vatCode < 1 || vatCode > 12) {
+    throw new Error("YOOKASSA_RECEIPT_VAT_CODE must be an integer from 1 to 12 when receipts are enabled");
+  }
+
+  return vatCode;
+}
+
+function buildYooKassaReceipt(input: CreatePaymentInput, tariff: Tariff, targetTitle: string) {
+  const vatCode = getReceiptVatCode();
+
+  if (vatCode === undefined) {
+    return undefined;
+  }
+
+  const email = input.customerEmail?.trim().toLowerCase() ?? "";
+
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 254) {
+    throw new Error("A customer email is required to send the YooKassa receipt");
+  }
+
+  return {
+    customer: { email },
+    internet: true,
+    items: [
+      {
+        amount: {
+          currency: "RUB",
+          value: tariff.price.toFixed(2),
+        },
+        description: `Услуга размещения: ${targetTitle}`.slice(0, 128),
+        payment_mode: "full_payment",
+        payment_subject: "service",
+        quantity: 1,
+        vat_code: vatCode,
+      },
+    ],
+  };
 }
 
 function todayIsoDate() {
@@ -309,6 +357,8 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
 
   const auth = Buffer.from(shopId + ":" + secretKey).toString("base64");
   const targetType = validatePaymentTargetTypeForTariff(tariff, input.targetType);
+  const targetTitle = resolveTargetTitle(tariff, input.targetTitle);
+  const receipt = buildYooKassaReceipt(input, tariff, targetTitle);
   let activePayment = await findActiveStoredPaymentForTarget({
     targetId: input.targetId,
     targetType,
@@ -350,7 +400,7 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
       id: localPaymentId,
       targetType,
       targetId: input.targetId,
-      targetTitle: resolveTargetTitle(tariff, input.targetTitle),
+      targetTitle,
       tariffId: tariff.id,
       amount: tariff.price,
       status: "created",
@@ -429,7 +479,7 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
     id: localPaymentId,
     targetType,
     targetId: input.targetId,
-    targetTitle: resolveTargetTitle(tariff, input.targetTitle),
+    targetTitle,
     tariffId: tariff.id,
     amount: tariff.price,
     status: yookassaStatusToPaymentStatus(payload.status, payload.paid),
