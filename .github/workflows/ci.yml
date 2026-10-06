@@ -50,8 +50,11 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Audit production npm dependencies for high and critical vulnerabilities
-        run: npm audit --omit=dev --audit-level=high
+      # Dependency Review requires GitHub Code Security for private, personal
+      # repositories. npm audit is an executable PR gate here and covers direct
+      # and transitive production and development dependencies.
+      - name: Audit all npm dependencies for high and critical vulnerabilities
+        run: npm audit --audit-level=high
 
       - name: Install Chromium for layout checks
         run: npx playwright install --with-deps chromium
