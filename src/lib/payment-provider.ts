@@ -305,7 +305,6 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
   let activePayment = await findActiveStoredPaymentForTarget({
     targetId: input.targetId,
     targetType,
-    tariffId: tariff.id,
     userId: input.userId,
   });
 
@@ -375,8 +374,7 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
       const concurrentPayment = await findActiveStoredPaymentForTarget({
         targetId: input.targetId,
         targetType,
-        tariffId: tariff.id,
-        userId: input.userId,
+    userId: input.userId,
       });
 
       if (!concurrentPayment || concurrentPayment.provider !== "yookassa") {
@@ -435,10 +433,10 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
     ...(yookassaStatusToPaymentStatus(payload.status, payload.paid) === "succeeded" ? { paidAt: todayIsoDate() } : {}),
   };
 
-  await updateStoredPayment(payment);
-
   if (payment.status === "succeeded") {
     await applySucceededPayment(payment);
+  } else {
+    await updateStoredPayment(payment);
   }
 
   return payment;
