@@ -123,7 +123,7 @@ function buildYooKassaReceipt(input: CreatePaymentInput, tariff: Tariff, targetT
 
   const email = input.customerEmail?.trim().toLowerCase() ?? "";
 
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 254) {
+  if (!/^[^\s@]+@[^\s@]+\\.[^\s@]+$/.test(email) || email.length > 254) {
     throw new Error("A customer email is required to send the YooKassa receipt");
   }
 
