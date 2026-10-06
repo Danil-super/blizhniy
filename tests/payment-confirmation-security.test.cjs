@@ -147,7 +147,7 @@ test('a production return flag never bypasses the authoritative provider status'
 });
 
 
-function loadPaymentCreator() {
+function loadPaymentCreator(receiptEnv = {}) {
   const counters = { events: [], request: undefined, stored: [] };
   const tariff = {
     id: '44444444-4444-4444-8444-444444444444',
@@ -212,7 +212,15 @@ function loadPaymentCreator() {
         json: async () => ({ id: 'yoo-created-123', status: 'pending', paid: false, confirmation: { confirmation_url: 'https://pay.example.test' } }),
       };
     },
-    { env: { NODE_ENV: 'production', PAYMENT_PROVIDER: 'yookassa', YOOKASSA_SHOP_ID: 'shop', YOOKASSA_SECRET_KEY: 'live_secret' } },
+    {
+      env: {
+        NODE_ENV: 'production',
+        PAYMENT_PROVIDER: 'yookassa',
+        YOOKASSA_SHOP_ID: 'shop',
+        YOOKASSA_SECRET_KEY: 'live_secret',
+        ...receiptEnv,
+      },
+    },
   );
   return { provider: module.exports, counters, tariff };
 }
@@ -232,4 +240,57 @@ test('a YooKassa checkout is persisted before the provider request and uses its 
   assert.equal(counters.request.headers['Idempotence-Key'], counters.stored[0].id);
   assert.equal(payment.id, counters.stored[0].id);
   assert.equal(payment.status, 'pending');
+});
+
+
+test('adds a YooKassa service receipt using the authenticated customer email', async () => {
+  const { provider, counters, tariff } = loadPaymentCreator({
+    YOOKASSA_RECEIPTS_ENABLED: 'true',
+    YOOKASSA_RECEIPT_VAT_CODE: '1',
+  });
+
+  await provider.createPayment({
+    customerEmail: 'buyer@example.test',
+    tariffId: tariff.id,
+    targetType: 'listing',
+    targetId: '22222222-2222-4222-8222-222222222222',
+    targetTitle: 'Продам велосипед',
+    userId: '11111111-1111-4111-8111-111111111111',
+  });
+
+  const body = JSON.parse(counters.request.body);
+  assert.deepEqual(body.receipt, {
+    customer: { email: 'buyer@example.test' },
+    internet: true,
+    items: [
+      {
+        amount: { currency: 'RUB', value: '300.00' },
+        description: 'Услуга размещения: Продам велосипед',
+        payment_mode: 'full_payment',
+        payment_subject: 'service',
+        quantity: 1,
+        vat_code: 1,
+      },
+    ],
+  });
+});
+
+test('fails closed when a YooKassa receipt is enabled but the customer email is missing', async () => {
+  const { provider, counters, tariff } = loadPaymentCreator({
+    YOOKASSA_RECEIPTS_ENABLED: 'true',
+    YOOKASSA_RECEIPT_VAT_CODE: '1',
+  });
+
+  await assert.rejects(
+    () =>
+      provider.createPayment({
+        tariffId: tariff.id,
+        targetType: 'listing',
+        targetId: '22222222-2222-4222-8222-222222222222',
+        targetTitle: 'Объявление',
+        userId: '11111111-1111-4111-8111-111111111111',
+      }),
+    /customer email/,
+  );
+  assert.deepEqual(counters.events, []);
 });
