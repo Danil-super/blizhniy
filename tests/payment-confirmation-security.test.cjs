@@ -145,3 +145,91 @@ test('a production return flag never bypasses the authoritative provider status'
   assert.deepEqual(counters.targetUpdates, []);
   assert.equal(counters.fetches.length, 1);
 });
+
+
+function loadPaymentCreator() {
+  const counters = { events: [], request: undefined, stored: [] };
+  const tariff = {
+    id: '44444444-4444-4444-8444-444444444444',
+    action: 'listing_publication',
+    name: 'Публикация объявления',
+    price: 300,
+    active: true,
+  };
+  const stubs = {
+    '@/lib/mock-store': {
+      listMockPayments: () => [],
+      markPaymentTargetSucceeded: () => { throw new Error('mock publication must not run'); },
+    },
+    '@/lib/payment-store': {
+      canStorePayment: () => true,
+      createStoredPayment: async (input) => {
+        counters.events.push('stored');
+        counters.stored.push(input);
+        return {
+          id: input.id,
+          targetType: input.targetType,
+          targetId: input.targetId,
+          targetTitle: input.targetTitle,
+          tariffId: input.tariff.id,
+          amount: input.amount,
+          status: input.status,
+          provider: input.provider,
+          createdAt: '2026-10-06',
+        };
+      },
+      findActiveStoredPaymentForTarget: async () => undefined,
+      findStoredPaymentByProvider: async () => undefined,
+      getStoredPayment: async () => undefined,
+      listStoredPayments: async () => [],
+      markStoredPaymentTargetSucceeded: async () => 'published',
+      updateStoredPayment: async () => undefined,
+    },
+    '@/lib/runtime-mode': { shouldAllowMockPayments: () => false },
+    '@/lib/site-url': { getPublicSiteUrl: () => 'https://example.test' },
+    '@/lib/supabase-rest': { isSupabaseRestConfigured: () => true },
+    '@/lib/tariff-store': { getActiveStoredTariffById: async (id) => id === tariff.id ? tariff : undefined },
+  };
+  const filename = path.join(__dirname, '../src/lib/payment-provider.ts');
+  const js = typescript.transpileModule(fs.readFileSync(filename, 'utf8'), {
+    compilerOptions: { module: typescript.ModuleKind.CommonJS, target: typescript.ScriptTarget.ES2022 },
+    fileName: filename,
+  }).outputText;
+  const module = { exports: {} };
+  new Function('require', 'module', 'exports', 'fetch', 'process', js)(
+    (name) => {
+      if (!(name in stubs)) throw new Error(`Unexpected dependency ${name}`);
+      return stubs[name];
+    },
+    module,
+    module.exports,
+    async (_url, init) => {
+      counters.events.push('fetch');
+      counters.request = init;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ id: 'yoo-created-123', status: 'pending', paid: false, confirmation: { confirmation_url: 'https://pay.example.test' } }),
+      };
+    },
+    { env: { NODE_ENV: 'production', PAYMENT_PROVIDER: 'yookassa', YOOKASSA_SHOP_ID: 'shop', YOOKASSA_SECRET_KEY: 'live_secret' } },
+  );
+  return { provider: module.exports, counters, tariff };
+}
+
+test('a YooKassa checkout is persisted before the provider request and uses its local idempotence key', async () => {
+  const { provider, counters, tariff } = loadPaymentCreator();
+  const payment = await provider.createPayment({
+    tariffId: tariff.id,
+    targetType: 'listing',
+    targetId: '22222222-2222-4222-8222-222222222222',
+    targetTitle: 'Объявление',
+    userId: '11111111-1111-4111-8111-111111111111',
+  });
+
+  assert.deepEqual(counters.events, ['stored', 'fetch']);
+  assert.equal(counters.stored.length, 1);
+  assert.equal(counters.request.headers['Idempotence-Key'], counters.stored[0].id);
+  assert.equal(payment.id, counters.stored[0].id);
+  assert.equal(payment.status, 'pending');
+});
