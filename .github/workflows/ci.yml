@@ -36,6 +36,40 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Prepare OpenSSH regression prerequisites
+        run: |
+          set -euo pipefail
+          if ! command -v ssh >/dev/null || ! command -v ssh-keygen >/dev/null || ! test -x /usr/sbin/sshd; then
+            # Install only test tools, without starting a system SSH service or
+            # socket. Preserve a runner's existing service policy, including links.
+            policy_file=/usr/sbin/policy-rc.d
+            policy_directory="$(mktemp -d "$RUNNER_TEMP/blizhniy-service-policy.XXXXXX")"
+            policy_backup="$policy_directory/policy-rc.d"
+            had_policy=0
+            if sudo test -e "$policy_file" || sudo test -L "$policy_file"; then
+              sudo mv -- "$policy_file" "$policy_backup"
+              had_policy=1
+            fi
+            restore_service_policy() {
+              local status=$?
+              sudo rm -f -- "$policy_file"
+              if [[ "$had_policy" == 1 ]]; then
+                sudo mv -- "$policy_backup" "$policy_file"
+              fi
+              return "$status"
+            }
+            trap restore_service_policy EXIT
+            printf '#!/bin/sh\nexit 101\n' > "$policy_directory/deny-service-start"
+            sudo install -m 0755 "$policy_directory/deny-service-start" "$policy_file"
+            sudo apt-get update
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-client openssh-server
+          fi
+          sudo install -d -m 0755 /run/sshd
+          command -v ssh >/dev/null
+          command -v ssh-keygen >/dev/null
+          test -x /usr/sbin/sshd
+          test -d /run/sshd
+
       - name: Run application and security regression tests
         run: node --experimental-strip-types --test tests/*.test.mjs tests/*.test.cjs scripts/test-*.mjs
 
