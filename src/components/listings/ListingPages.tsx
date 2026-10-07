@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import {
@@ -40,6 +41,7 @@ import { getPublicCategories, getPublicCategoriesWithListingScope } from "@/lib/
 import { listStoredListingsForCategory } from "@/lib/listing-store";
 import { getPublicTariffs } from "@/lib/tariff-store";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
+import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
 import type { BookingAvailability } from "@/lib/booking-availability";
 import type { BookingDetails, DeliveryOptions, DeliveryServiceId, Listing as StoreListing } from "@/lib/types";
 import { BookingCalculator } from "./BookingCalculator";
@@ -1945,7 +1947,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
   async function publishWithoutPaymentAction(formData: FormData) {
     "use server";
 
-    const captchaVerified = await verifyTurnstileFormData(formData);
+    const captchaVerified = await verifyTurnstileFormData(formData, getTrustedProxyIp(await headers()));
 
     if (!captchaVerified) {
       redirect(`/razmestit/obyavlenie?admin=1&error=${encodeURIComponent(TURNSTILE_ERROR_MESSAGE)}`);

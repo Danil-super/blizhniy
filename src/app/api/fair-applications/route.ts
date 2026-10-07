@@ -7,6 +7,7 @@ import { getAuthenticatedRequestUser, isAdminRequest } from "@/lib/server-auth";
 import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
 import { isSupabaseRestConfigured } from "@/lib/supabase-rest";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileToken } from "@/lib/turnstile";
+import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
 
 type CreateFairApplicationBody = {
   participantName?: string;
@@ -18,7 +19,7 @@ type CreateFairApplicationBody = {
   phone?: string;
   email?: string;
   comment?: string;
-  captchaToken?: string;
+  captchaToken?: unknown;
   skipPayment?: boolean;
 };
 
@@ -49,15 +50,6 @@ function cleanPhotos(value?: string[]) {
   }
 
   return value.map((item) => item.trim()).filter((item) => item && item.length <= 500).slice(0, 10);
-}
-
-function getRemoteIp(request: Request) {
-  return (
-    request.headers.get("cf-connecting-ip") ??
-    request.headers.get("x-real-ip") ??
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    undefined
-  );
 }
 
 export async function GET() {
@@ -127,7 +119,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Создать заявку без оплаты может только администратор" }, { status: 403 });
   }
 
-  const captchaVerified = await verifyTurnstileToken(cleanText(body.captchaToken), getRemoteIp(request));
+  const captchaVerified = await verifyTurnstileToken(body.captchaToken, getTrustedProxyIp(request.headers));
 
   if (!captchaVerified) {
     return NextResponse.json({ error: TURNSTILE_ERROR_MESSAGE }, { status: 400 });
