@@ -1,0 +1,69 @@
+# Зависимости и граница установки
+
+Проверено 07.10.2026. Повторный разбор открытых advisory: **14.10.2026**, либо раньше при появлении исправлений, изменении сборочного контура или входных данных. Владелец решения по остаточному риску — сопровождающий проекта. Эти изменения не являются разрешением коммерческого запуска или подтверждением безопасности всего приложения.
+
+## Что изменено
+
+Корень проекта использует npm и единственный `package-lock.json`; CI использует Node.js 22 и `npm ci`. `package.json`, major-версии Next.js/ESLint/Tailwind и существующие overrides не изменены. Leaf-зависимости обновлены внутри объявленных диапазонов:
+
+| Зависимость | Было → стало | Основание |
+| --- | --- | --- |
+| Browserslist | 4.28.2 → 4.29.3 | Исправления ограничения кэша и обработки custom statistics доступны с 4.28.7; текущая 4.x включает последующие исправления. |
+| baseline-browser-mapping | 2.10.32 → 2.11.27 | Начиная с 2.11.0 неверные параметры больше не вызывают `process.exit()`. |
+| brace-expansion | 1.1.18 → 1.1.21; 5.0.9 → 5.0.12 | Совместимые ветки исправляют рекурсию, неконтролируемое расширение и квадратичную обработку диапазонов. Это **другой пакет**, не `braces` ниже. |
+| postcss-selector-parser | 6.1.2 → 6.1.4 | 6.1.3 исправляет рекурсивную сериализацию AST; 6.1.4 содержит дополнительное исправление сериализации. Advisory квадратичной обработки **остаётся**. |
+
+Источники Browserslist: [ограничение кэша](https://github.com/advisories/GHSA-c83g-rgw3-j3cx), [custom statistics](https://github.com/advisories/GHSA-73wf-gq98-2v4g), [4.28.7](https://github.com/browserslist/browserslist/releases/tag/4.28.7), [4.29.3](https://github.com/browserslist/browserslist/releases/tag/4.29.3). Источники baseline: [advisory](https://github.com/advisories/GHSA-w5vr-8v7q-w6rv), [2.11.0](https://github.com/web-platform-dx/baseline-browser-mapping/releases/tag/v2.11.0), [2.11.27](https://github.com/web-platform-dx/baseline-browser-mapping/releases/tag/v2.11.27).
+
+Источники brace-expansion: [рекурсия](https://github.com/advisories/GHSA-6j4f-fj2g-mc7p), [расширение](https://github.com/advisories/GHSA-qhr7-859c-m2p7), [обработка диапазонов](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr). Источники парсера: [рекурсивная сериализация](https://github.com/advisories/GHSA-w9m9-85wc-3x92), [6.1.3](https://github.com/postcss/postcss-selector-parser/releases/tag/6.1.3), [6.1.4](https://github.com/postcss/postcss-selector-parser/releases/tag/6.1.4).
+
+Обновление Browserslist также обновляет совместимые browser-data leaf-зависимости: `caniuse-lite` 1.0.30001815, `electron-to-chromium` 1.5.449, `node-releases` 2.0.57 и `update-browserslist-db` 1.3.3. `caniuse-lite` используется и production-графом, поэтому не все изменения lockfile помечены `dev`. Версии framework/runtime-пакетов не менялись; `node-releases` требует Node.js ≥18, что совместимо с Node.js 22 проекта. Изменение optional-метаданных Sharp в lockfile не меняет его версию 0.35.5.
+
+Полный `npm audit`: **11 пакетов (9 high, 2 moderate) → 9 пакетов (7 high, 2 moderate)**. Это число пакетов, включая транзитивные meta-advisory, а не число независимых уязвимостей. После обновления остаются два исходных advisory ниже. `npm audit --omit=dev` сообщает **0**. Полный audit остаётся незелёным; production gate и Dependency Review в CI не ослаблены. Отсутствие известных advisory не доказывает отсутствие вредоносного кода или новых уязвимостей.
+
+## Открытые advisory: достижимость и ограничения
+
+### `braces` 3.0.3 — HIGH, GHSA-vfj7-8cjw-p6xm
+
+[Первичный advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) указывает затронутые версии ≤3.0.3 и **отсутствие исправленного релиза**. Глубоко вложенная brace-структура может исчерпать стек при рекурсивной обработке AST. Обновление `brace-expansion` не исправляет этот пакет.
+
+Реальный путь сборки: `tailwind.config.ts` → `tailwindcss/lib/lib/content.js` → `fast-glob` → `micromatch.braces(..., {expand: true})` → `braces`. В текущем конфиге content задан репозиторием: `./src/**/*.{js,ts,jsx,tsx,mdx}`. Инструментированный запуск настоящего Tailwind с этим конфигом и текущими исходниками подтвердил вызов `braces`. В dev/watch существует дополнительный путь `chokidar` → `braces.expand()`.
+
+`eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob` также попадает в meta-advisory. Его glob-вызов в `get-root-dirs.js` условен: нужен `settings.next.rootDir`; текущий `eslint.config.mjs` не задаёт этот параметр. Это контрдоказательство для одного lint-пути, но не исключение реального Tailwind-пути.
+
+Непосредственного импорта этих парсеров из HTTP/application-кода `src` или `scripts` не найдено. В проверенной конфигурации вход — исходники/имена файлов и настройки сборки, а не параметр публичного HTTP-запроса. Однако автор недоверенного PR или иной участник, способный влиять на сборочные входы, остаётся потенциальным источником DoS. Сборка с ограниченным временем CI и без production-секретов уменьшает последствия, **не устраняет уязвимость**.
+
+Безопасное совместимое обновление сейчас недоступно. Предложения npm перейти на Tailwind 4 или изменить major `eslint-config-next` не применены автоматически. Нужен отдельный проверенный upstream fix/backport либо согласованное обновление/замена потребителей; до этого advisory остаётся открытым.
+
+### `postcss-selector-parser` 6.1.4 — MODERATE, GHSA-rj75-hqrm-r3gf
+
+[Первичный advisory](https://github.com/advisories/GHSA-rj75-hqrm-r3gf) классифицирует квадратичную обработку плоских селекторов как **moderate** (CVSS 5.9), затрагивает версии <7.1.6 и исправлен в 7.1.6. Защита глубины AST сама по себе не предотвращает этот сценарий. Не следует путать его с исправленной LOW-уязвимостью сериализации AST.
+
+Реальный путь: `postcss.config.mjs` → Tailwind/PostCSS → `tailwindcss/lib/util/prefixSelector.js`, `expandApplyAtRules.js` и другие преобразования селекторов → `postcss-selector-parser`; `postcss-nested/index.js` также вызывает парсер. Инструментированный запуск настоящего Tailwind подтвердил вызовы парсера на текущих исходниках.
+
+Tailwind 3.4.19 требует `postcss-selector-parser ^6.1.2`, а `postcss-nested` 6.2.0 — `^6.1.1`. Исправленная 7.1.6 находится **вне обоих диапазонов**. Принудительный major override не добавлен: совместимость AST/API не доказана. 6.1.4 устраняет старый отдельный advisory, но не данный CPU-DoS.
+
+Проверенный вход — CSS/генерируемые классы из исходников сборки. Прямой request → selector parser путь не обнаружен; это ограничение доказательств, а не полное устранение. Вредоносный CSS из PR либо будущий импорт внешних стилей/генерация CSS из пользовательского ввода меняет угрозу и требует немедленного повторного разбора. До совместимого upstream исправления или отдельно проверенной миграции риск сборки остаётся открытым.
+
+## Политика установки
+
+Проектная `.npmrc` задаёт `ignore-scripts=true`: обычные `npm install`/`npm ci` не запускают lifecycle-скрипты зависимостей или корневые install-hooks. Согласно [официальной документации npm 9](https://docs.npmjs.com/cli/v9/using-npm/config/#ignore-scripts), явные `npm run build`, `npm run dev`, `npm run lint` и другие выбранные команды выполняют предназначенный script, но не автоматические pre/post-hooks. Та же семантика документирована для [npm 10](https://docs.npmjs.com/cli/v10/using-npm/config/#ignore-scripts).
+
+Это default-deny граница **установки**, не sandbox: явная сборка всё равно выполняет установленный код и достигает открытых парсеров выше. CLI/env могут переопределить настройку; установка вне корня проекта не защищена этой `.npmrc`. Не устанавливайте реальные зависимости с глобальным `--ignore-scripts=false`. Если будущий пакет требует install-hook, сначала проверить точную версию и код hook в отдельном контуре и согласовать узкое решение, не отключая политику для всего графа. При обновлении npm проверить семантику и повторить регрессионные тесты.
+
+`tests/npm-install-policy.test.mjs` устанавливает только локальный синтетический tarball в собственный временный каталог, offline, с пустыми user/global npm-конфигами. Реальная установка доказывает блокировку `preinstall`/`install`/`postinstall` у root и dependency; явный `npm run build` работает без `prebuild`/`postbuild`. Отрицательный контроль разрешает lifecycle **только у этого безопасного fixture**, чтобы доказать, что hooks действительно могли бы исполниться.
+
+Чистый `npm ci` с проектной политикой проверен на Node.js 22/npm 9.2.0. Sharp 0.35.5 загружает установленный optional prebuilt-бинарник и выполняет синтетическое PNG-кодирование без install-hook. Это проверка текущей Linux-архитектуры, не гарантия для иных OS/архитектур. Полная сборка и регрессионные тесты обязательны после изменений lockfile; для CI не требуется включать lifecycle-скрипты.
+
+Команды повторной проверки (в изолированном окружении без реальных ключей):
+
+```bash
+npm ci
+node --experimental-strip-types --test tests/*.test.mjs tests/*.test.cjs scripts/test-*.mjs
+npm run lint
+npm run build
+npm audit --omit=dev
+npm audit # ожидаемо ненулевой exit code, пока два advisory выше открыты
+```
+
+Не применять `npm audit fix --force` и не подменять полный audit production-only результатом. На следующем разборе проверить новые релизы/advisory, реальные входы CSS/glob и совместимость исправлений; подтверждение нулевого production audit не закрывает риски build/dev-графа.
