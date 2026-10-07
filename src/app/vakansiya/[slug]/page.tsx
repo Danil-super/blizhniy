@@ -100,16 +100,22 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
                   <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.description}</p>
                 </div>
               </section>
-              <section className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
-                  <h2 className="text-lg font-bold text-[#060b27]">Требования</h2>
-                  <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.requirements}</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
-                  <h2 className="text-lg font-bold text-[#060b27]">Обязанности</h2>
-                  <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.responsibilities}</p>
-                </div>
-              </section>
+              {(vacancy.requirements || vacancy.responsibilities) ? (
+                <section className="grid gap-4 md:grid-cols-2">
+                  {vacancy.requirements ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
+                      <h2 className="text-lg font-bold text-[#060b27]">Требования</h2>
+                      <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.requirements}</p>
+                    </div>
+                  ) : null}
+                  {vacancy.responsibilities ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
+                      <h2 className="text-lg font-bold text-[#060b27]">Обязанности</h2>
+                      <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.responsibilities}</p>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
               {vacancy.conditions ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
                   <h2 className="text-lg font-bold text-[#060b27]">Условия</h2>

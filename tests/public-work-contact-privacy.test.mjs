@@ -122,6 +122,28 @@ function assertNoContacts(value) {
   assert.doesNotMatch(JSON.stringify(value) ?? "", /79995550123|private-contact|private_contact|Private contact person/);
 }
 
+for (const [requirements, responsibilities] of [
+  [undefined, undefined],
+  ["Опыт работы", undefined],
+  [undefined, "Помощь клиентам"],
+  ["Опыт работы", "Помощь клиентам"],
+]) {
+  test(`stored vacancy omits empty optional sections (${Boolean(requirements)}, ${Boolean(responsibilities)})`, async () => {
+    const runtime = harness(async () => [{ ...row(true), requirements, responsibilities }]);
+    const page = runtime.load("src/app/vakansiya/[slug]/page.tsx");
+    const tree = await page.default({ params: Promise.resolve({ slug: publicationId }) });
+    const headings = [];
+    function inspect(node) {
+      if (!node || typeof node !== "object") return;
+      if (node.type === "h2") headings.push(node.props.children);
+      for (const child of Object.values(node)) inspect(child);
+    }
+    inspect(tree);
+    assert.equal(headings.includes("Требования"), Boolean(requirements));
+    assert.equal(headings.includes("Обязанности"), Boolean(responsibilities));
+  });
+}
+
 function assertLocation(value, exact) {
   assert.equal(value.showExactAddress, exact);
   assert.equal(value.address, exact ? "Synthetic Street, 18" : undefined);
