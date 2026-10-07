@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createPayment } from "@/lib/payment-provider";
+import { createPayment, validatePaymentCreationPrerequisites } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
 import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
@@ -143,6 +143,13 @@ export async function POST(request: Request) {
       status: isDraft ? "draft" : "pending_payment",
       title,
     };
+    if (tariffId) {
+      try {
+        validatePaymentCreationPrerequisites({ customerEmail: auth.user.email });
+      } catch {
+        return NextResponse.json({ error: "Оплата сейчас недоступна. Данные не сохранены. Попробуйте позже." }, { status: 503 });
+      }
+    }
     const reusableRequest = tariffId ? await findReusableStoredWorkRequestForPayment(workRequestInput) : undefined;
     const workRequest = reusableRequest
       ? await updateStoredWorkRequestForUser(reusableRequest.id, auth.user.id, workRequestInput)

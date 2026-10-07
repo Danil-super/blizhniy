@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CapitalizedTextarea } from "@/components/CapitalizedTextarea";
 import { BrandName } from "@/components/BrandName";
@@ -11,8 +12,7 @@ import { fairCategories } from "@/lib/data";
 import { ValidatedInput } from "@/components/ValidatedInput";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, withPublicationHistory, type DemoPublication } from "@/lib/demo-publications";
-import { confirmClientPayment } from "@/lib/client-payment-flow";
-import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
+import { submitFairApplicationCheckout, type SavedFairApplication } from "@/lib/client-fair-application-flow";
 
 type SubmitState = "idle" | "loading" | "error";
 const clientFallbackContentEnabled = shouldShowClientFallbackContent();
@@ -91,6 +91,7 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
   const [message, setMessage] = useState("");
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
   const [captchaToken, setCaptchaToken] = useState("");
+  const savedApplication = useRef<SavedFairApplication | undefined>(undefined);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -104,7 +105,7 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
       return;
     }
 
-    if (!form.reportValidity()) {
+    if (!savedApplication.current && !form.reportValidity()) {
       return;
     }
 
@@ -113,41 +114,16 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
     setMessage("");
 
     try {
-      const identity = await resolveAuthenticatedClientUserIdentity();
-
-      if (!identity.accessToken) {
-        throw new Error("Сессия входа устарела. Выйдите и войдите снова, затем повторите отправку заявки.");
-      }
-
-      const productPhotos = await uploadFairPhotos(data, identity.accessToken);
-      const response = await fetch("/api/fair-applications", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${identity.accessToken}`,
-        },
-        body: JSON.stringify({
-          participantName: data.get("participantName"),
-          city: data.get("city"),
-          category: data.get("category"),
-          description: data.get("description"),
-          productPhotos,
-          videoUrl: data.get("videoUrl"),
-          phone: data.get("phone"),
-          email: data.get("email"),
-          comment: data.get("comment"),
-          captchaToken,
-          skipPayment: adminMode,
-        }),
+      const outcome = await submitFairApplicationCheckout({
+        adminMode,
+        captchaToken,
+        data,
+        savedApplication: savedApplication.current,
+        onSaved: (application) => { savedApplication.current = application; },
+        uploadPhotos: uploadFairPhotos,
       });
-
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Не удалось создать заявку");
-      }
-
-      const applicationId = typeof payload.application?.id === "string" ? payload.application.id : `demo-fairApplication-${Date.now().toString(36)}`;
+      const identity = outcome.identity;
+      const applicationId = savedApplication.current!.id;
       const publication: DemoPublication = withPublicationHistory({
         id: applicationId,
         type: "fairApplication",
@@ -167,22 +143,11 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
         writeFairApplicationPublication(publication);
       }
 
-      if (adminMode) {
-        router.push("/cabinet/fair-applications");
+      if (outcome.external) {
+        window.location.href = outcome.destination;
         return;
       }
-
-      if (typeof payload.payment?.id !== "string") {
-        throw new Error("Не удалось создать платеж по заявке.");
-      }
-
-      if (typeof payload.payment.confirmationUrl === "string" && payload.payment.confirmationUrl) {
-        window.location.href = payload.payment.confirmationUrl;
-        return;
-      }
-
-      await confirmClientPayment(payload.payment.id);
-      router.push("/cabinet/fair-applications");
+      router.push(outcome.destination);
     } catch (error) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "Не удалось отправить заявку");
@@ -254,10 +219,11 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
         resetKey={captchaResetKey}
         onVerify={setCaptchaToken}
       />
-      <button type="submit" disabled={state === "loading" || !captchaToken} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#d92d20] px-5 text-sm font-bold text-white transition hover:bg-[#b42318] disabled:cursor-not-allowed disabled:bg-slate-300 sm:h-12 sm:w-fit sm:px-7 sm:text-base">
-        {state === "loading" ? (adminMode ? "Создаем заявку..." : "Создаем и оплачиваем...") : adminMode ? "Создать заявку без оплаты" : "Создать заявку и оплатить"}
+      <button type="submit" disabled={state === "loading" || (!savedApplication.current && !captchaToken)} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[#d92d20] px-5 py-2 text-sm font-bold text-white transition hover:bg-[#b42318] disabled:cursor-not-allowed disabled:bg-slate-300 sm:min-h-12 sm:w-fit sm:px-7 sm:text-base">
+        {state === "loading" ? (adminMode ? "Создаем заявку..." : "Подготавливаем оплату...") : savedApplication.current ? "Продолжить оплату сохранённой заявки" : adminMode ? "Создать заявку без оплаты" : "Создать заявку и оплатить"}
       </button>
-      {state === "error" ? <p className="text-sm font-semibold text-rose-600">{message}</p> : null}
+      {state === "error" ? <p role="status" aria-live="polite" className="text-sm font-semibold text-rose-600">{message}</p> : null}
+      {savedApplication.current ? <Link href="/cabinet/fair-applications" className="inline-flex min-h-11 w-fit items-center rounded-lg text-sm font-bold text-[#0875d1] underline focus-visible:outline focus-visible:outline-2">Открыть сохранённые заявки в кабинете</Link> : null}
     </form>
   );
 }

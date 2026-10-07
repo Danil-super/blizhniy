@@ -60,7 +60,7 @@ function makeHarness({ environment, fetchImpl } = {}) {
         return application;
       },
     },
-    "@/lib/payment-provider": { createPayment: async () => ({ id: "synthetic-payment" }) },
+    "@/lib/payment-provider": { validatePaymentCreationPrerequisites: () => {}, createPayment: async () => ({ id: "synthetic-payment" }) },
   };
   function load(path) {
     if (cache.has(path)) return cache.get(path).exports;

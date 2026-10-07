@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createStoredApplication, ensureVacancyCanReceiveApplication, ensureWorkRequestCanReceiveApplication } from "@/lib/application-store";
-import { createPayment } from "@/lib/payment-provider";
+import { createStoredApplication, ensureVacancyCanReceiveApplication, ensureWorkRequestCanReceiveApplication, findStoredApplicationForApplicant, findStoredWorkRequestApplicationForApplicant } from "@/lib/application-store";
+import { createPayment, validatePaymentCreationPrerequisites } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { getActiveStoredSpecialistProfileForUser, getSpecialistProfileCompleteness } from "@/lib/specialist-profile-store";
 import { isSupabaseServiceRoleConfigured, isUuid } from "@/lib/supabase-rest";
@@ -75,6 +75,19 @@ export async function POST(request: Request) {
       ? await ensureWorkRequestCanReceiveApplication(workRequestId, auth.user.id)
       : await ensureVacancyCanReceiveApplication(vacancyId, auth.user.id);
     const targetKind = workRequestId ? "заказ" : "вакансию";
+    const existing = workRequestId
+      ? await findStoredWorkRequestApplicationForApplicant(workRequestId, auth.user.id)
+      : await findStoredApplicationForApplicant(vacancyId, auth.user.id);
+
+    if (existing?.paymentId && existing.paymentStatus === "succeeded") {
+      return NextResponse.json({ application: existing }, { status: 201 });
+    }
+
+    try {
+      validatePaymentCreationPrerequisites({ customerEmail: auth.user.email });
+    } catch {
+      return NextResponse.json({ error: "Оплата сейчас недоступна. Данные не сохранены. Попробуйте позже." }, { status: 503 });
+    }
     const application = await createStoredApplication({
       applicantUserId: auth.user.id,
       message: cleanString(body?.message).slice(0, 700),

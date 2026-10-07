@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createPayment } from "@/lib/payment-provider";
+import { createPayment, validatePaymentCreationPrerequisites } from "@/lib/payment-provider";
 import { createStoredFairApplication, listStoredFairApplications, markStoredFairApplicationPaid } from "@/lib/fair-application-store";
 import { createFairApplication, listFairApplications } from "@/lib/mock-store";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
@@ -125,6 +125,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: TURNSTILE_ERROR_MESSAGE }, { status: 400 });
   }
 
+  if (body.skipPayment !== true) {
+    try {
+      validatePaymentCreationPrerequisites({ customerEmail: auth.user.email });
+    } catch {
+      return NextResponse.json({ error: "Оплата сейчас недоступна. Данные не сохранены. Попробуйте позже." }, { status: 503 });
+    }
+  }
+
   const applicationInput = {
     participantName,
     city,
@@ -153,14 +161,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ application }, { status: 201 });
   }
 
-  const payment = await createPayment({
-    customerEmail: auth.user.email,
-    tariffId: "fair-participation",
-    targetId: application.id,
-    targetType: "fair_application",
-    targetTitle: `Заявка на ярмарку: ${application.participantName}`,
-    userId: auth.user.id,
-  });
+  try {
+    const payment = await createPayment({
+      customerEmail: auth.user.email,
+      tariffId: "fair-participation",
+      targetId: application.id,
+      targetType: "fair_application",
+      targetTitle: `Заявка на ярмарку: ${application.participantName}`,
+      userId: auth.user.id,
+    });
 
-  return NextResponse.json({ application, payment }, { status: 201 });
+    return NextResponse.json({ application, payment }, { status: 201 });
+  } catch {
+    // A timeout/5xx is an unknown charge result, not proof that payment failed.
+    // Keep the saved target and let owner-bound checkout reuse its durable intent.
+    return NextResponse.json({
+      application,
+      paymentError: "Заявка сохранена и ожидает оплаты. Не создавайте её повторно: продолжите оплату сохранённой заявки.",
+    }, { status: 201 });
+  }
 }
