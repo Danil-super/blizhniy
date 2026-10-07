@@ -46,9 +46,9 @@ begin
     -- Historical NULL remains unknown; ordinary metadata/stale provider PATCH
     -- must not invent today's date for already-settled legacy financial rows.
     new.paid_at := old.paid_at;
-  elsif new.status = 'succeeded' then
-    new.paid_at := coalesce(new.paid_at, pg_catalog.statement_timestamp());
   end if;
+  -- A first genuine financial success may lack the provider's optional capture
+  -- time. Keep NULL unknown; only an explicit verified timestamp may anchor it.
   if old.purchased_duration_days is not null then
     new.purchased_duration_days := old.purchased_duration_days;
   end if;

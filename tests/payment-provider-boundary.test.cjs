@@ -94,7 +94,12 @@ function loadProvider({ payment = localPayment(), active, tariff: tariffChanges,
       getStoredPayment: async id => id === current.id ? current : undefined,
       listStoredPayments: async () => [],
       updateStoredPayment: async value => { counters.updates.push(clone(value)); return value; },
-      markStoredPaymentTargetSucceeded: async value => { counters.targets.push(clone(value)); return 'published'; },
+      applyStoredPaymentFulfillment: async value => {
+        if (!value.targetAppliedAt) counters.targets.push(clone(value));
+        value.targetAppliedAt ??= '2026-10-07T12:01:00.000Z';
+        value.fulfillmentStatus = 'applied';
+        return { payment: value, nextStatus: 'published' };
+      },
     },
     '@/lib/runtime-mode': { shouldAllowMockPayments: () => !production },
     '@/lib/site-url': { getPublicSiteUrl: () => 'https://example.test' },
@@ -518,12 +523,13 @@ test('a database uniqueness race reuses the winner snapshot and original price',
   assert.equal(JSON.parse(fixture.counters.requests[0].init.body).receipt.items[0].amount.value, '199.99');
 });
 
-test('live merchant responses and the explicit local development test-return path are preserved', async () => {
+test('live merchant responses and development test returns both require actual provider truth', async () => {
   const live = loadProvider({ secret: 'live_synthetic_not_a_credential', fetched: yooPayment({ test: false }) });
   assert.equal((await live.provider.confirmPayment(localId)).payment.status, 'pending');
   const development = loadProvider({ production: false });
-  assert.equal((await development.provider.confirmPayment(localId, { trustSuccessfulReturn: true })).payment.status, 'succeeded');
-  assert.deepEqual(development.counters.requests, []);
+  assert.equal((await development.provider.confirmPayment(localId, { trustSuccessfulReturn: true })).payment.status, 'pending');
+  assert.equal(development.counters.requests.length, 1);
+  assert.deepEqual(development.counters.targets, []);
 });
 
 test('notification metadata cannot replace the independently fetched payment bindings', async () => {

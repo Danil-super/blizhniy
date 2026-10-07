@@ -1,12 +1,12 @@
 import { listMockPayments, markPaymentTargetSucceeded } from "@/lib/mock-store";
 import {
   canStorePayment,
+  applyStoredPaymentFulfillment,
   createStoredPayment,
   findActiveStoredPaymentForTarget,
   findStoredPaymentByProvider,
   getStoredPayment,
   listStoredPayments,
-  markStoredPaymentTargetSucceeded,
   updateStoredPayment,
 } from "@/lib/payment-store";
 import { shouldAllowMockPayments } from "@/lib/runtime-mode";
@@ -47,7 +47,7 @@ export type CreatePaymentInput = {
 
 export type PaymentResult = {
   payment: Payment;
-  nextStatus: "active" | "paid" | "published" | "sent";
+  nextStatus?: "active" | "paid" | "published" | "sent";
   notification: {
     subject: string;
     body: string;
@@ -112,7 +112,7 @@ function getReceiptVatCode() {
   return vatCode;
 }
 
-function getYooKassaReceiptCustomer(input: CreatePaymentInput) {
+function getYooKassaReceiptCustomer(input: Pick<CreatePaymentInput, "customerEmail">) {
   const vatCode = getReceiptVatCode();
 
   if (vatCode === undefined) {
@@ -168,7 +168,16 @@ export function getPaymentProviderName() {
 }
 
 export function canForceSucceedYooKassaReturn() {
-  return process.env.NODE_ENV !== "production" && (process.env.YOOKASSA_SECRET_KEY?.trim().startsWith("test_") ?? false);
+  // Kept for old consumers; a browser return is never proof of settlement.
+  return false;
+}
+
+export function validatePaymentCreationPrerequisites(input: { customerEmail?: string }): void {
+  if (getPaymentProviderName() !== "yookassa") return;
+  if (!process.env.YOOKASSA_SHOP_ID?.trim() || !process.env.YOOKASSA_SECRET_KEY?.trim()) {
+    throw new Error("YooKassa credentials are not configured");
+  }
+  getYooKassaReceiptCustomer(input);
 }
 
 export async function listPayments() {
@@ -460,82 +469,80 @@ function applyYooKassaPaymentState(payment: Payment, yookassaPayment: YooKassaPa
   payment.confirmationUrl = yookassaPayment.confirmation?.confirmation_url ?? payment.confirmationUrl;
 
   if (payment.status === "succeeded") {
-    payment.paidAt = payment.paidAt ?? new Date().toISOString();
-  } else {
-    payment.paidAt = undefined;
+    payment.paidAt = payment.paidAt ?? yookassaPayment.capturedAt;
   }
 
   return payment;
 }
 
 function createPendingPaymentResult(payment: Payment): PaymentResult {
+  const financiallySucceeded = payment.status === "succeeded";
+  const blocked = financiallySucceeded && payment.fulfillmentStatus === "blocked";
   return {
     payment,
-    nextStatus: payment.targetType === "application" ? "sent" : payment.targetType === "ad_marquee" ? "paid" : "published",
     notification: {
-      subject: "Оплата ожидает подтверждения",
-      body: `${payment.targetTitle}: ЮKassa еще не подтвердила успешную оплату.`,
+      subject: payment.status === "refunded" ? "Оплата возвращена" : payment.status === "failed" ? "Оплата не завершена"
+        : blocked ? "Размещение требует проверки" : financiallySucceeded ? "Оплата подтверждена" : "Оплата ожидает подтверждения",
+      body: `${payment.targetTitle}: ${blocked ? "оплата подтверждена, но размещение не применено. Обратитесь в поддержку."
+        : financiallySucceeded ? "размещение ожидает подтверждения сервера."
+        : payment.status === "refunded" ? "платеж возвращен." : payment.status === "failed" ? "платеж не завершен."
+        : "ЮKassa еще не подтвердила успешную оплату."}`,
     },
   };
 }
 
-function canTrustYooKassaReturn(payment: Payment, options?: ConfirmPaymentOptions) {
-  return Boolean(
-    options?.trustSuccessfulReturn &&
-      canForceSucceedYooKassaReturn() &&
-      payment.provider === "yookassa" &&
-      (payment.status === "created" || payment.status === "pending"),
-  );
-}
-
 function succeededPaymentResult(payment: Payment, nextStatus?: PaymentResult["nextStatus"]): PaymentResult {
-  const resolvedNextStatus =
-    nextStatus ?? (payment.targetType === "application" ? "sent" : payment.targetType === "ad_marquee" ? "paid" : "published");
-
+  if (payment.status !== "succeeded" || payment.fulfillmentStatus !== "applied") return createPendingPaymentResult(payment);
   return {
     payment,
-    nextStatus: resolvedNextStatus,
+    ...(nextStatus ? { nextStatus } : {}),
     notification: {
       subject: "Оплата прошла",
-      body: `${payment.targetTitle}: статус изменен на ${resolvedNextStatus}.`,
+      body: `${payment.targetTitle}: размещение подтверждено сервером.`,
     },
   };
 }
 
 async function applySucceededPaymentOnce(payment: Payment): Promise<PaymentResult> {
-  payment.status = "succeeded";
-  payment.paidAt = payment.paidAt ?? new Date().toISOString();
-
-  // Apply the entitlement before recording the terminal payment status. If the
-  // target update fails, a later verified webhook can safely retry it instead
-  // of leaving a successful payment permanently detached from its publication.
-  // The marker also makes subsequent verified webhooks a no-op.
-  let nextStatus: PaymentResult["nextStatus"] | undefined;
-
-  if (!payment.targetAppliedAt) {
-    nextStatus = canStorePayment(payment)
-      ? await markStoredPaymentTargetSucceeded(payment)
-      : shouldAllowMockPayments()
-        ? markPaymentTargetSucceeded(payment)
-        : undefined;
-
-    if (!nextStatus) {
-      throw new Error("Stored payment target is required before confirming payment");
+  if (payment.provider === "mock") {
+    if (!shouldAllowMockPayments() || isSupabaseRestConfigured()) {
+      throw new Error("Stored mock payment settlement is disabled; use the isolated in-memory demo");
     }
-
-    payment.targetAppliedAt = new Date().toISOString();
+    // Explicitly synthetic, nonproduction, no database or financial writes.
+    payment.status = "succeeded";
+    payment.paidAt ??= new Date().toISOString();
+    const nextStatus = payment.targetAppliedAt ? undefined : markPaymentTargetSucceeded(payment);
+    payment.targetAppliedAt ??= new Date().toISOString();
+    payment.fulfillmentStatus = "applied";
+    payment.fulfillmentReason = undefined;
+    return succeededPaymentResult(payment, nextStatus);
   }
-
+  if (!canStorePayment(payment)) throw new Error("Stored payment is required before confirming payment");
+  // Verified finance commits separately FIRST. Never manufacture a capture
+  // anchor/target marker. The returned DB row may already be refunded/blocked.
   await updateStoredPayment(payment);
-
-  return succeededPaymentResult(payment, nextStatus);
+  if (payment.status !== "succeeded") return createPendingPaymentResult(payment);
+  try {
+    const fulfilled = await applyStoredPaymentFulfillment(payment);
+    return succeededPaymentResult(payment, fulfilled.nextStatus);
+  } catch {
+    // A response can be lost after commit. Re-read durable truth; unresolved
+    // financial success remains pending, never falsely failed or published.
+    try {
+      const stored = await getStoredPayment(payment.id);
+      if (stored) Object.assign(payment, stored, { targetTitle: payment.targetTitle });
+    } catch { /* A later verified webhook retries unresolved fulfillment. */ }
+    return succeededPaymentResult(payment);
+  }
 }
 
 async function applySucceededPayment(payment: Payment): Promise<PaymentResult> {
   const existing = pendingSucceededPaymentApplications.get(payment.id);
 
   if (existing) {
-    return existing;
+    const result = await existing;
+    Object.assign(payment, result.payment);
+    return { ...result, payment };
   }
 
   const applying = applySucceededPaymentOnce(payment).finally(() => {
@@ -757,6 +764,7 @@ async function resolvePaymentForConfirmation(paymentId: string) {
 }
 
 export async function confirmPayment(paymentOrId: Payment | string, options?: ConfirmPaymentOptions): Promise<PaymentResult> {
+  void options; // Backward-compatible argument; never trust a browser success flag.
   const payment = typeof paymentOrId === "string" ? await resolvePaymentForConfirmation(paymentOrId) : paymentOrId;
 
   if (!payment) {
@@ -766,13 +774,6 @@ export async function confirmPayment(paymentOrId: Payment | string, options?: Co
   if (payment.provider === "yookassa") {
     if (!payment.providerPaymentId) {
       throw new Error("YooKassa payment id is missing");
-    }
-
-    if (canTrustYooKassaReturn(payment, options)) {
-      payment.status = "succeeded";
-      payment.paidAt = payment.paidAt ?? new Date().toISOString();
-
-      return applySucceededPayment(payment);
     }
 
     const yookassaPayment = await fetchYooKassaPayment(payment);

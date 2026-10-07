@@ -317,11 +317,11 @@ test("fulfillment outcome enforces a non-NULL bounded blocked reason and valid m
   assert.equal((await storedPayment()).fulfillment_status, "pending");
 });
 
-test("first genuine financial transition records paid_at but historical NULL success remains unknown", async () => {
+test("first genuine financial transition preserves an explicit verified paid_at but historical NULL success remains unknown", async () => {
   const current = await payment("listing", { status: "pending", paidAt: null });
-  await sql(`update public.payments set status = 'succeeded' where id = '${current.id}';`, true);
+  await sql(`update public.payments set status = 'succeeded', paid_at = '2026-10-07T10:22:33.123456Z' where id = '${current.id}';`, true);
   const settled = await storedPayment(current.id);
-  assert.ok(settled.paid_at);
+  assert.equal(settled.paid_at, "2026-10-07T10:22:33.123456+00:00");
   await sql(`update public.payments set status = 'pending', paid_at = clock_timestamp() + interval '1 day' where id = '${current.id}';`, true);
   assert.equal((await storedPayment(current.id)).paid_at, settled.paid_at);
   const legacy = await payment("listing", { id: id(101), paidAt: null });
@@ -329,6 +329,21 @@ test("first genuine financial transition records paid_at but historical NULL suc
   assert.equal((await storedPayment(legacy.id)).paid_at, null);
   await sql(`update public.payments set paid_at = clock_timestamp() where id = '${legacy.id}';`, true);
   assert.equal((await storedPayment(legacy.id)).paid_at, null, "ordinary PATCH cannot invent a historical financial timestamp");
+});
+
+test("first succeeded state without verified capture time stays NULL and blocks without target writes or later ordinary repair", async () => {
+  const current = await payment("listing", { status: "pending", paidAt: null });
+  await sql(`update public.payments set status = 'succeeded' where id = '${current.id}';`, true);
+  assert.equal((await storedPayment(current.id)).paid_at, null);
+  const outcome = await rpc(current.id, current.providerId);
+  assert.equal(outcome.financial_status, "succeeded");
+  assert.equal(outcome.fulfillment_status, "blocked");
+  assert.equal(outcome.fulfillment_reason, "payment_missing_paid_at");
+  assert.equal(await effectCount("listing"), 0);
+  await sql(`update public.payments set paid_at = '2026-10-07T10:22:33Z', fulfillment_status = 'pending', fulfillment_reason = null where id = '${current.id}';`, true);
+  assert.equal((await storedPayment(current.id)).paid_at, null);
+  assert.equal((await rpc(current.id, current.providerId)).fulfillment_reason, "payment_missing_paid_at");
+  assert.equal(await effectCount("listing"), 0);
 });
 
 test("terminal and already-paid targets fail closed and blocked outcome cannot be reset by replay", async () => {

@@ -33,9 +33,11 @@ function loadPaymentProvider({ production = true, payment, providerResponse, con
     findStoredPaymentByProvider: async (id) => id === storedPayment.providerPaymentId ? storedPayment : undefined,
     getStoredPayment: async (id) => id === storedPayment.id ? storedPayment : undefined,
     listStoredPayments: async () => [],
-    markStoredPaymentTargetSucceeded: async (value) => {
-      counters.targetUpdates.push(value.id);
-      return 'published';
+    applyStoredPaymentFulfillment: async (value) => {
+      if (!value.targetAppliedAt) counters.targetUpdates.push(value.id);
+      value.targetAppliedAt ??= '2026-10-07T12:01:00.000Z';
+      value.fulfillmentStatus = 'applied';
+      return { payment: value, nextStatus: 'published' };
     },
     updateStoredPayment: async (value) => {
       counters.storedUpdates.push(value.status);
@@ -187,7 +189,7 @@ function loadPaymentCreator(receiptEnv = {}) {
       findStoredPaymentByProvider: async () => undefined,
       getStoredPayment: async () => undefined,
       listStoredPayments: async () => [],
-      markStoredPaymentTargetSucceeded: async () => 'published',
+      applyStoredPaymentFulfillment: async payment => ({ payment, nextStatus: 'published' }),
       updateStoredPayment: async payment => payment,
     },
     '@/lib/runtime-mode': { shouldAllowMockPayments: () => false },

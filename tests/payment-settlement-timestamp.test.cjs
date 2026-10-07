@@ -65,6 +65,27 @@ test('mapping a stored settlement preserves its timestamp precision', async () =
   assert.equal((await store.mapStoredPayment(row(), context)).paidAt, originalPaidAt);
 });
 
+test('mapping preserves original created_at and purchased fulfillment facts without a tariff fallback', async () => {
+  const { store } = loadPaymentStore();
+  const context = { applicationTitlesById: new Map(), fairApplicationTitlesById: new Map(), tariffActionsById: new Map() };
+  const result = await store.mapStoredPayment(row({ purchased_duration_days: 9, fulfillment_status: 'blocked', fulfillment_reason: 'target_not_eligible' }), context);
+  assert.equal(result.createdAt, '2026-09-01T12:00:00.000Z');
+  assert.equal(result.purchasedDurationDays, 9);
+  assert.equal(result.fulfillmentStatus, 'blocked');
+  assert.equal(result.fulfillmentReason, 'target_not_eligible');
+  assert.equal(result.tariffId, '');
+});
+
+test('financial save never invents a capture time or writes the fulfillment marker', async () => {
+  const { store, requests } = loadPaymentStore(row({ paid_at: null, target_applied_at: null, purchased_duration_days: null, fulfillment_status: 'pending' }));
+  const result = await store.updateStoredPayment(payment({ paidAt: undefined, targetAppliedAt: '2099-01-01T00:00:00Z' }));
+  assert.equal(requests[0].body.paid_at, null);
+  assert.equal(Object.hasOwn(requests[0].body, 'target_applied_at'), false);
+  assert.equal(result.paidAt, undefined);
+  assert.equal(result.purchasedDurationDays, null);
+  assert.equal(result.fulfillmentStatus, 'pending');
+});
+
 test('replaying a successful payment does not send a new paid_at timestamp', async () => {
   const { store, requests } = loadPaymentStore(row());
   const result = await store.updateStoredPayment(payment());

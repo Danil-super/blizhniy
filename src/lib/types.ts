@@ -191,6 +191,12 @@ export type Tariff = {
   active: boolean;
 };
 
+export type PaymentFulfillmentReason =
+  | "payment_owner_missing" | "unsupported_target_type" | "payment_missing_paid_at"
+  | "duration_missing" | "target_missing" | "target_owner_mismatch"
+  | "target_not_eligible" | "entitlement_expired" | "parent_missing"
+  | "parent_not_eligible" | "target_changed";
+
 export type Payment = {
   id: string;
   userId?: string;
@@ -206,6 +212,9 @@ export type Payment = {
   createdAt: string;
   paidAt?: string;
   targetAppliedAt?: string;
+  purchasedDurationDays?: number | null;
+  fulfillmentStatus?: "pending" | "applied" | "blocked";
+  fulfillmentReason?: PaymentFulfillmentReason;
 };
 
 export type FairApplication = {

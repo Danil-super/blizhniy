@@ -1,10 +1,13 @@
-# Atomic fulfillment: SQL prerequisite, not deploy-ready
+# Atomic fulfillment: server integration, not deploy-ready
 
-This slice adds database invariants and an isolated PostgreSQL 17 contract test.
-It does **not** integrate checkout, webhook, sync, refunds, expiry reads, or the
-marquee queue. Existing TypeScript settlement paths still need replacement;
-passing these tests does not mean the production payment findings are resolved.
-Do not deploy this migration independently of the prerequisites below.
+The original SQL checkpoint added database invariants and isolated PostgreSQL17
+tests. The follow-up now integrates server checkout duration snapshots, verified
+financial persistence, the service-only RPC, confirm/webhook, and cabinet listing
+sync. It removes legacy payment dispatchers and browser-return success shortcuts.
+Expiry readers, marquee queue activation, refunds/reconciliation and operational
+manual-review UX remain separate prerequisites. Passing this slice is not a
+claim that all payment findings are resolved. Do not deploy independently of
+the prerequisites below.
 
 ## Preconditions for a later rollout
 
@@ -19,6 +22,10 @@ Do not deploy this migration independently of the prerequisites below.
    association. Persist genuine financial success in its own committed short
    operation with the verified settlement timestamp. The RPC deliberately does
    not fetch a provider or turn a pending financial payment into succeeded.
+   Existing trusted `paid_at` wins; otherwise use only the validated optional
+   provider `captured_at`. Missing capture stays NULL even on a first financial
+   success; neither the SQL trigger nor TypeScript fills arrival time or
+   `created_at`. PostgreSQL's returned timestamp precision is authoritative.
 3. Audit legacy pending/succeeded rows before their first fulfillment. Duration
    and settlement time are nullable historical unknowns, not current tariff
    lookups. A duration may be established from an existing paid window, or an
@@ -38,11 +45,44 @@ Do not deploy this migration independently of the prerequisites below.
    implement marquee queue activation separately. Queue code must honor the
    persisted purchased duration and existing start/end dates. Do not acquire
    queue locks inside settlement. The mock/demo path requires a separate
-   explicit implementation; this RPC accepts YooKassa only.
+   explicit implementation; this RPC accepts YooKassa only. Stored mock
+   settlement fails safely before financial success or target writes. Only the
+   explicit nonproduction, storage-free in-memory demo creates synthetic dates
+   and markers. Real and development test-shop browser returns both require
+   the authoritative provider GET; the old argument is ignored, not settlement
+   evidence. The admin-only free fair waiver on a just-created owned target is
+   a separate authorized workflow, not a successful payment.
 6. Review migration ordering, privileges, historical data and application
    notifications against the deployment schema. Exercise integration and
    operational manual-review handling before rollout. No production SQL or
    deployment is performed by the test command below.
+
+## Server outcome and retry contract
+
+`Payment` exposes the original full `createdAt`, nullable purchased duration,
+fulfillmentStatus and a bounded optional fulfillmentReason. Unknown outcome is
+pending, never published. Verified financial success commits before the RPC;
+the financial PATCH never supplies a fulfillment marker. The returned database
+state, including refunded, historical NULL and sticky blocked, wins over a
+stale process snapshot. In-process coalescing is only an optimization; independent
+workers depend on the database lock and immutable marker.
+
+Only successful **and applied** outcomes can return the RPC's actual nextStatus.
+Early returns/replays or a reread of only payment metadata cannot assert a current
+target status. Blocked/pending successes never report publication or a failed
+charge. A failed RPC attempts a read of durable truth (its response may have
+been lost after commit); otherwise success remains pending. The webhook returns
+503 for unresolved success so the genuine provider retries, but acknowledges
+durable applied/blocked with200. Financial-save errors never invoke fulfillment.
+The service-only call supplies only persisted payment ID and expected provider
+ID, never HTTP owner/target/duration/time. Cabinet sync uses that same verified
+path for unsettled Yoo payments and skips applied/blocked outcomes.
+
+The pure server `validatePaymentCreationPrerequisites({customerEmail})` export
+checks existing provider/merchant/receipt requirements without store/fetch/tariff
+or charge side effects. A separate route slice must call it before saving an
+unpaid checkout target; draft, already-paid and admin-waiver paths are preserved.
+No vendor parsing, transport budget or original-amount rules are relaxed here.
 
 ## RPC contract
 
@@ -131,8 +171,37 @@ The migration extends the existing private monotonic UPDATE guard rather
 than creating a competing trigger. It preserves succeeded/refunded financial
 state, once-known paid_at and duration, historical markers and terminal
 fulfillment outcomes. A first pending-to-succeeded financial transition may
-record a timestamp; metadata updates of an already-settled historical NULL
-must never invent one.
+record an explicitly verified timestamp, not statement/arrival time. A missing
+first-success anchor stays NULL, as do metadata updates of an already-settled
+historical NULL.
+
+## Synthetic backend verification
+
+The real transpiled-source adapter tests run store, provider, routes, tariffs,
+and target modules with only REST/provider HTTP/auth/framework boundaries
+replaced. They cover the six server snapshots and RPC targets, deferred
+financial commit, refund/sticky NULL/blocked truth, lost/outage RPC responses,
+webhook retry versus terminal ACK, confirm/cabinet bypass removal, verified
+development returns, and the distinct admin waiver/in-memory demo controls.
+The adapter fake is not evidence of SQL locking: those guarantees use the
+separate real PostgreSQL suite below.
+
+```sh
+node --test --test-reporter=spec tests/payment-fulfillment-server.test.mjs tests/payment-settlement-timestamp.test.cjs tests/payment-confirm-route-binding.test.mjs
+node --test --test-reporter=spec tests/payment-provider-boundary.test.cjs tests/payment-confirmation-security.test.cjs tests/payment-receipt-route-email.test.cjs
+```
+
+Backend checkpoint: 35 adapter tests plus9 timestamp/route regressions, and181
+inherited boundary/receipt tests pass. The real PostgreSQL follow-up passes57
+tests, including explicit capture-date preservation and first-success NULL.
+RED demonstrated the original dispatcher/date/snapshot behavior and two
+browser-return pending/failed overrides; the new real-PG NULL test failed on
+the previous first-success `statement_timestamp()` fill. Actual on-disk source
+mutation experiments killed capture-to-today, webhook503-to200, omitted four
+duration snapshots (application/fair controls stayed green), omitted financial
+await with a deferred response, and SQL first-success-now mutations. All source
+was restored before final verification. No production credentials, database,
+provider requests, migrations, commits or deployment are part of these tests.
 
 ## Isolated real PostgreSQL tests
 

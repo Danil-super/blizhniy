@@ -88,7 +88,7 @@ test("an unknown return id never falls back to account B's latest pending paymen
   assert.deepEqual(counters.confirmCalls, []);
 });
 
-test("development test-return fallback records the complete settlement instant", async () => {
+test("development return delegates to central provider truth without a second target or financial write", async () => {
   const instant = "2026-10-07T18:27:45.123Z";
   class FixedDate extends Date {
     constructor(...args) { super(...(args.length ? args : [instant])); }
@@ -103,18 +103,19 @@ test("development test-return fallback records the complete settlement instant",
     { params: Promise.resolve({ paymentId: storedPayment.id }) },
   );
   assert.equal(response.status, 200);
-  assert.equal(response.body.payment.paidAt, instant);
-  assert.equal(counters.targetWrites[0].paidAt, instant);
-  assert.equal(counters.paymentWrites[0].paidAt, instant);
+  assert.equal(response.body.payment.status, "pending");
+  assert.equal(response.body.payment.paidAt, undefined);
+  assert.deepEqual(counters.targetWrites, []);
+  assert.deepEqual(counters.paymentWrites, []);
   assert.equal(storedPayment.paidAt, undefined);
   assert.equal(storedPayment.status, "pending");
 });
 
-test("development test-return fallback preserves an existing complete settlement instant", async () => {
+test("development return cannot override a financially failed provider result even with an existing capture date", async () => {
   const paidAt = "2026-09-01T12:34:56.789Z";
   const storedPayment = {
     id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", userId: "account-b",
-    provider: "yookassa", status: "pending", targetType: "listing", targetTitle: "Synthetic replay", paidAt,
+    provider: "yookassa", status: "failed", targetType: "listing", targetTitle: "Synthetic replay", paidAt,
   };
   const { route, counters } = loadConfirmRoute({ storedPayment, forceAllowed: true });
   const response = await route.POST(
@@ -122,5 +123,7 @@ test("development test-return fallback preserves an existing complete settlement
     { params: Promise.resolve({ paymentId: storedPayment.id }) },
   );
   assert.equal(response.body.payment.paidAt, paidAt);
-  assert.equal(counters.paymentWrites[0].paidAt, paidAt);
+  assert.equal(response.body.payment.status, "failed");
+  assert.deepEqual(counters.paymentWrites, []);
+  assert.deepEqual(counters.targetWrites, []);
 });
