@@ -4,10 +4,10 @@ import { after, before, test } from 'node:test';
 import { supabaseRest } from '../src/lib/supabase-rest.ts';
 
 let server;
-let calls = 0;
+const calls = new Map();
 before(async () => {
   server = http.createServer((req, res) => {
-    calls++;
+    calls.set(req.url, (calls.get(req.url) ?? 0) + 1);
     if (req.url === '/headers') return; // never returns headers
     if (req.url === '/body') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -47,9 +47,11 @@ test('a stalled body response is aborted', async () => {
 });
 
 test('mutating requests are not automatically retried after server error', async () => {
-  const beforeCalls = calls;
+  const beforeCalls = calls.get('/write') ?? 0;
+  const concurrentRead = supabaseRest('/ok');
   await assert.rejects(supabaseRest('/write', { method: 'POST', body: { x: 1 } }), /temporarily unavailable/);
-  assert.equal(calls - beforeCalls, 1);
+  assert.deepEqual(await concurrentRead, []);
+  assert.equal((calls.get('/write') ?? 0) - beforeCalls, 1);
 });
 
 test('successful database read still returns the payload', async () => {
