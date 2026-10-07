@@ -39,7 +39,7 @@ function fixture(entry, { receipts = true, authenticated = true, email = payerEm
     '@/lib/mock-store': { listMockPayments: () => [], markPaymentTargetSucceeded: () => { throw new Error('Unexpected mock payment'); } },
     '@/lib/payment-store': {
       canStorePayment: input => Boolean(input.targetId),
-      createStoredPayment: async input => { storedPayments.push(input); return { ...input, createdAt: '2026-10-07' }; },
+      createStoredPayment: async input => { storedPayments.push(input); return { ...input, tariffId: input.tariff.id, createdAt: '2026-10-07' }; },
       findActiveStoredPaymentForTarget: async () => undefined,
       findStoredPaymentByProvider: async () => undefined,
       getStoredPayment: async () => undefined,
@@ -56,7 +56,11 @@ function fixture(entry, { receipts = true, authenticated = true, email = payerEm
     fetch: async (url, init) => {
       assert.equal(url, 'https://api.yookassa.ru/v3/payments');
       providerRequests.push(JSON.parse(init.body));
-      return new Response(JSON.stringify({ id: 'synthetic-provider-id', status: 'pending', paid: false, test: true, confirmation: { confirmation_url: 'https://example.test/synthetic-checkout' } }), { status: 200 });
+      return new Response(JSON.stringify({
+        id: '2b3f5e11-000f-5000-8000-123456789abc', status: 'pending', paid: false, test: true,
+        amount: { value: '300.00', currency: 'RUB' },
+        confirmation: { type: 'redirect', confirmation_url: 'https://yoomoney.ru/checkout/payments/v2/contract?orderId=synthetic' },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     },
   });
   const createTarget = async input => {

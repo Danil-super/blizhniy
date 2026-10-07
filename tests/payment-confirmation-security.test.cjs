@@ -5,7 +5,7 @@ const path = require('node:path');
 const typescript = require('typescript');
 
 const paymentId = '11111111-1111-4111-8111-111111111111';
-const providerPaymentId = 'yoo-verified-123';
+const providerPaymentId = '2b3f5e11-000f-5000-8000-123456789abc';
 
 function loadPaymentProvider({ production = true, payment, providerResponse, configured = true } = {}) {
   const counters = { fetches: [], storedUpdates: [], targetUpdates: [] };
@@ -21,7 +21,11 @@ function loadPaymentProvider({ production = true, payment, providerResponse, con
     providerPaymentId,
     createdAt: '2026-09-27',
   };
-  const liveStatus = providerResponse ?? { id: providerPaymentId, status: 'pending', paid: false };
+  const liveStatus = {
+    id: providerPaymentId, status: 'pending', paid: false, test: true,
+    ...(providerResponse?.status === 'succeeded' ? { captured_at: '2026-10-07T12:00:00.000Z' } : {}),
+    amount: { value: '300.00', currency: 'RUB' }, ...providerResponse,
+  };
   const store = {
     canStorePayment: () => configured,
     createStoredPayment: async () => { throw new Error('unexpected payment creation'); },
@@ -63,7 +67,7 @@ function loadPaymentProvider({ production = true, payment, providerResponse, con
     return stubs[name];
   }, module, module.exports, async (url) => {
     counters.fetches.push(url);
-    return { ok: true, status: 200, json: async () => liveStatus };
+    return new Response(JSON.stringify(liveStatus), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }, {
     env: { NODE_ENV: production ? 'production' : 'test', PAYMENT_PROVIDER: 'yookassa', YOOKASSA_SHOP_ID: 'shop', YOOKASSA_SECRET_KEY: 'test_secret' },
   });
@@ -168,6 +172,7 @@ function loadPaymentCreator(receiptEnv = {}) {
         counters.stored.push(input);
         return {
           id: input.id,
+          userId: input.userId,
           targetType: input.targetType,
           targetId: input.targetId,
           targetTitle: input.targetTitle,
@@ -183,7 +188,7 @@ function loadPaymentCreator(receiptEnv = {}) {
       getStoredPayment: async () => undefined,
       listStoredPayments: async () => [],
       markStoredPaymentTargetSucceeded: async () => 'published',
-      updateStoredPayment: async () => undefined,
+      updateStoredPayment: async payment => payment,
     },
     '@/lib/runtime-mode': { shouldAllowMockPayments: () => false },
     '@/lib/site-url': { getPublicSiteUrl: () => 'https://example.test' },
@@ -206,11 +211,11 @@ function loadPaymentCreator(receiptEnv = {}) {
     async (_url, init) => {
       counters.events.push('fetch');
       counters.request = init;
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ id: 'yoo-created-123', status: 'pending', paid: false, confirmation: { confirmation_url: 'https://pay.example.test' } }),
-      };
+      return new Response(JSON.stringify({
+        id: '2b3f5e22-000f-5000-8000-123456789abc', status: 'pending', paid: false, test: false,
+        amount: { value: '300.00', currency: 'RUB' },
+        confirmation: { type: 'redirect', confirmation_url: 'https://yoomoney.ru/checkout/payments/v2/contract?orderId=synthetic' },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     },
     {
       env: {
