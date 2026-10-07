@@ -240,7 +240,7 @@ export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequest
       const images = await readLocalImageReferences(formData);
 
       if (nextStatus.trim().toLowerCase() !== "черновик" && !phone && !messengerUrl) {
-        setMessage("Укажите телефон или мессенджер, чтобы исполнитель мог связаться по заказу.");
+        setMessage("Укажите телефон или мессенджер для связи по заказу. Контакты не показываются публично.");
         return;
       }
 
@@ -361,6 +361,7 @@ export function WorkRequestEditClient({ initialRequest, requestId }: WorkRequest
             <Field name="phone" label="Телефон" defaultValue={request.phone} />
             <Field name="messengerUrl" label="Telegram / WhatsApp" defaultValue={request.messengerUrl} maxLength={120} />
           </div>
+          <p className="text-sm leading-6 text-slate-600">Контакты не показываются публично. После отклика вы сможете выбрать исполнителя и связаться с ним.</p>
           <input type="hidden" name="status" value={request.status} />
           <TextAreaField name="description" label="Описание задачи" defaultValue={request.description} minLength={30} maxLength={1800} required />
           <PhotoField label="Фото к заказу" description="Можно оставить текущие фото, удалить лишние или добавить новые. Фото необязательны." defaultPhotos={request.images ?? []} maxPhotos={6} autoOpenCropper={false} />

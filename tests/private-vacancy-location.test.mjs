@@ -16,6 +16,7 @@ function section(start, end) {
 }
 
 const selectedSource = [
+  section('const vacancySelect =', '\nfunction normalizeLookupText('),
   section('function publicVacancy(', '\nasync function findCity('),
   section('export async function getStoredVacancyById(', '\nexport async function getStoredVacancyForUser('),
   section('export async function listStoredVacancies(', '\nexport async function listStoredVacanciesForAdmin('),
@@ -42,7 +43,6 @@ function harness(showExactAddress) {
     encodeURIComponent,
     isSupabaseRestConfigured: () => true,
     isUuid: () => true,
-    vacancySelect: 'id,address,latitude,longitude,show_exact_address',
     mapVacancy: (row) => ({ ...row }),
     supabaseRest: async (path) => { paths.push(path); return [raw]; },
   });

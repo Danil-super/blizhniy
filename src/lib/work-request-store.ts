@@ -83,10 +83,16 @@ const legacyWorkRequestSelect =
   "id,author_id,title,description,specialist_category_id,region_id,city_id,district,address,latitude,longitude,show_exact_address,budget,photo_path,contact_phone,messenger_url,status,created_at,published_at,cities(slug,name),profiles(display_name),specialist_categories(slug,name)";
 const workRequestSelect =
   "id,author_id,title,description,specialist_category_id,region_id,city_id,district,address,latitude,longitude,show_exact_address,budget,photo_path,contact_phone,messenger_url,status,created_at,published_at,work_request_images(storage_path,sort_order),cities(slug,name),profiles(display_name),specialist_categories(slug,name)";
+const publicLegacyWorkRequestSelect =
+  "id,title,description,district,address,latitude,longitude,show_exact_address,budget,photo_path,status,created_at,published_at,cities(slug,name),profiles(display_name),specialist_categories(slug,name)";
+const publicWorkRequestSelect =
+  "id,title,description,district,address,latitude,longitude,show_exact_address,budget,photo_path,status,created_at,published_at,work_request_images(storage_path,sort_order),cities(slug,name),profiles(display_name),specialist_categories(slug,name)";
 
-async function fetchWorkRequestRows(querySuffix: string) {
+async function fetchWorkRequestRows(querySuffix: string, publicOnly = false) {
+  const select = publicOnly ? publicWorkRequestSelect : workRequestSelect;
+  const legacySelect = publicOnly ? publicLegacyWorkRequestSelect : legacyWorkRequestSelect;
   try {
-    return await supabaseRest<WorkRequestRow[]>(`/rest/v1/work_requests?select=${workRequestSelect}${querySuffix}`);
+    return await supabaseRest<WorkRequestRow[]>(`/rest/v1/work_requests?select=${select}${querySuffix}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
 
@@ -94,7 +100,7 @@ async function fetchWorkRequestRows(querySuffix: string) {
       throw error;
     }
 
-    return supabaseRest<WorkRequestRow[]>(`/rest/v1/work_requests?select=${legacyWorkRequestSelect}${querySuffix}`);
+    return supabaseRest<WorkRequestRow[]>(`/rest/v1/work_requests?select=${legacySelect}${querySuffix}`);
   }
 }
 
@@ -172,7 +178,24 @@ function mapWorkRequest(row: WorkRequestRow): WorkRequest {
 }
 
 function publicWorkRequest(request: WorkRequest): WorkRequest {
-  return request.showExactAddress ? request : { ...request, address: undefined, lat: undefined, lng: undefined };
+  return {
+    id: request.id,
+    author: request.author,
+    title: request.title,
+    description: request.description,
+    profession: request.profession,
+    city: request.city,
+    district: request.district,
+    address: request.showExactAddress ? request.address : undefined,
+    lat: request.showExactAddress ? request.lat : undefined,
+    lng: request.showExactAddress ? request.lng : undefined,
+    showExactAddress: request.showExactAddress,
+    budget: request.budget,
+    images: request.images,
+    status: request.status,
+    createdAt: request.createdAt,
+    publishedAt: request.publishedAt,
+  };
 }
 
 async function findCity(city: string) {
@@ -415,7 +438,7 @@ export async function getStoredWorkRequestById(requestId: string, options: { pub
 
   try {
     const publicFilter = options.publicOnly ? "&status=eq.published" : "";
-    const rows = await fetchWorkRequestRows(`&id=eq.${encodeURIComponent(requestId)}${publicFilter}&limit=1`);
+    const rows = await fetchWorkRequestRows(`&id=eq.${encodeURIComponent(requestId)}${publicFilter}&limit=1`, options.publicOnly);
 
     const request = rows[0] ? mapWorkRequest(rows[0]) : undefined;
 
@@ -435,7 +458,7 @@ export async function listStoredWorkRequests(limit = 24, offset = 0) {
   const pageOffset = Math.max(0, Math.floor(offset));
 
   try {
-    const rows = await fetchWorkRequestRows(`&status=eq.published&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${pageOffset}`);
+    const rows = await fetchWorkRequestRows(`&status=eq.published&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${pageOffset}`, true);
 
     return rows.map(mapWorkRequest).map(publicWorkRequest);
   } catch (error) {
@@ -476,16 +499,16 @@ export async function listStoredWorkRequestsForUser(userId: string) {
 
 export function listWorkRequestsWithStored(storedRequests: WorkRequest[]) {
   if (!shouldShowFallbackContent()) {
-    return storedRequests;
+    return storedRequests.map(publicWorkRequest);
   }
 
   if (!storedRequests.length) {
-    return demoWorkRequests;
+    return demoWorkRequests.map(publicWorkRequest);
   }
 
   const storedIds = new Set(storedRequests.map((request) => request.id));
 
-  return [...storedRequests, ...demoWorkRequests.filter((request) => !storedIds.has(request.id))];
+  return [...storedRequests, ...demoWorkRequests.filter((request) => !storedIds.has(request.id))].map(publicWorkRequest);
 }
 
 export async function getStoredWorkRequestForUser(requestId: string, userId: string) {

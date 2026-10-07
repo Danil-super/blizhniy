@@ -165,7 +165,7 @@ export function VacancyDetailClient({ vacancyId }: { vacancyId: string }) {
             </section>
             {hasPoint ? (
               <div className="hidden lg:block">
-                <LocationMap location={{ ...vacancy, showExactAddress: Boolean(vacancy.showExactAddress), hasMapPoint: hasPoint }} exactLabel="Для вакансий можно показывать точный адрес" />
+                <LocationMap location={{ city: vacancy.city, district: undefined, address: vacancy.address, lat: vacancy.lat, lng: vacancy.lng, showExactAddress: Boolean(vacancy.showExactAddress), hasMapPoint: hasPoint }} exactLabel="Для вакансий можно показывать точный адрес" />
               </div>
             ) : placeLabel !== vacancy.city ? (
               <section className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:block">

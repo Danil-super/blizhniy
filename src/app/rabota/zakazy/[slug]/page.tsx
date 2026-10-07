@@ -12,7 +12,7 @@ import { listWorkRequests } from "@/lib/mock-store";
 import { formatPublicationDateTime } from "@/lib/publication-time";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isUuid } from "@/lib/supabase-rest";
-import { getStoredWorkRequestById } from "@/lib/work-request-store";
+import { getStoredWorkRequestById, listWorkRequestsWithStored } from "@/lib/work-request-store";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -20,7 +20,7 @@ type PageProps = {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const request = (await getStoredWorkRequestById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listWorkRequests().find((item) => item.id === slug) : undefined);
+  const request = (await getStoredWorkRequestById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listWorkRequestsWithStored(listWorkRequests()).find((item) => item.id === slug) : undefined);
 
   return {
     title: request ? `${request.title} — заказ` : "Заказ",
@@ -39,7 +39,7 @@ function locationLabel(request: { address?: string; city: string; district?: str
 
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
-  const request = (await getStoredWorkRequestById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listWorkRequests().find((item) => item.id === slug) : undefined);
+  const request = (await getStoredWorkRequestById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listWorkRequestsWithStored(listWorkRequests()).find((item) => item.id === slug) : undefined);
 
   if (!request) {
     notFound();
@@ -114,7 +114,7 @@ export default async function Page({ params }: PageProps) {
               </section>
               {hasPoint ? (
                 <div className="hidden lg:block">
-                  <LocationMap location={{ ...request, showExactAddress: Boolean(request.showExactAddress), hasMapPoint: hasPoint }} exactLabel="Точный адрес заказа показывается только если заказчик разрешил" />
+                  <LocationMap location={{ city: request.city, district: request.district, address: request.address, lat: request.lat, lng: request.lng, showExactAddress: Boolean(request.showExactAddress), hasMapPoint: hasPoint }} exactLabel="Точный адрес заказа показывается только если заказчик разрешил" />
                 </div>
               ) : placeLabel !== request.city ? (
                 <section className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:block">

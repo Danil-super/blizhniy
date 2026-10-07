@@ -141,7 +141,7 @@ export function WorkRequestDetailClient({ requestId }: { requestId: string }) {
               </section>
               {hasPoint ? (
                 <div className="hidden lg:block">
-                  <LocationMap location={{ ...request, showExactAddress: Boolean(request.showExactAddress), hasMapPoint: hasPoint }} exactLabel="Точный адрес заказа показывается только если заказчик разрешил" />
+                  <LocationMap location={{ city: request.city, district: undefined, address: request.address, lat: request.lat, lng: request.lng, showExactAddress: Boolean(request.showExactAddress), hasMapPoint: hasPoint }} exactLabel="Точный адрес заказа показывается только если заказчик разрешил" />
                 </div>
               ) : placeLabel !== request.city ? (
                 <section className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:block">
