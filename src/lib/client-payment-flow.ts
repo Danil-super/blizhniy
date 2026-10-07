@@ -7,6 +7,7 @@ import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
 import { captureClientUserOperation } from "@/lib/client-user-profile";
+import { getPaymentConfirmationOutcome, paymentConfirmationNotification, shouldRetryPaymentConfirmation } from "@/lib/payment-confirmation-outcome";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import type { JobVacancy, Listing, ListingKind, Payment } from "@/lib/types";
 
@@ -16,6 +17,8 @@ type ConfirmPaymentPayload = {
     id?: string;
     provider?: Payment["provider"];
     status?: Payment["status"];
+    fulfillmentStatus?: "pending" | "applied" | "blocked";
+    fulfillmentReason?: string;
     targetId?: string;
     targetTitle?: string;
     targetType?: string;
@@ -463,7 +466,7 @@ async function findMatchingServerListing(draft: DemoPublication) {
 export function syncPaidPublication(confirmPayload: ConfirmPaymentPayload) {
   const targetId = confirmPayload.payment?.targetId;
 
-  if (!targetId || confirmPayload.nextStatus !== "published" || confirmPayload.payment?.status !== "succeeded") {
+  if (!targetId || confirmPayload.nextStatus !== "published" || getPaymentConfirmationOutcome(confirmPayload).kind !== "applied") {
     return;
   }
 
@@ -518,7 +521,7 @@ async function requestPaymentConfirmation(paymentId: string, options?: ClientPay
 }
 
 function shouldRetryPendingConfirmation(payload: (ConfirmPaymentPayload & { error?: string }) | null, responseOk: boolean) {
-  return responseOk && payload?.payment?.status !== "succeeded";
+  return shouldRetryPaymentConfirmation(payload, responseOk);
 }
 
 function wait(ms: number) {
@@ -550,31 +553,11 @@ export async function confirmClientPayment(paymentId: string, options?: ClientPa
 
   await boundOptions.assertCurrentSession?.();
 
-  if (payload.payment?.status === "succeeded") {
+  if (getPaymentConfirmationOutcome(payload).kind === "applied") {
     syncPaidPublication(payload);
-    if (options?.notify !== false) {
-      await addCurrentUserNotification({
-        category: "payment",
-        title: "Оплата прошла",
-        message: payload.payment.targetTitle
-          ? `${payload.payment.targetTitle}: публикация активирована.`
-          : "Платеж подтвержден, публикация активирована.",
-        tone: "success",
-        dedupeKey: `payment:${payload.payment.id ?? paymentId}:succeeded`,
-      }, origin);
-    }
-  } else {
-    if (options?.notify !== false) {
-      await addCurrentUserNotification({
-        category: "payment",
-        title: "Платеж ожидает подтверждения",
-        message: payload.payment?.targetTitle
-          ? `${payload.payment.targetTitle}: банк или ЮKassa еще не прислали финальный статус.`
-          : "Платеж создан, ожидаем финальный статус от платежного провайдера.",
-        tone: "warning",
-        dedupeKey: `payment:${payload.payment?.id ?? paymentId}:pending`,
-      }, origin);
-    }
+  }
+  if (options?.notify !== false) {
+    await addCurrentUserNotification(paymentConfirmationNotification(payload, paymentId), origin);
   }
 
   await boundOptions.assertCurrentSession?.();
