@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPayableAdMarqueePlacementForUser } from "@/lib/ad-marquee-store";
 import { getStoredApplicationForPayment } from "@/lib/application-store";
+import { getStoredFairApplicationForPayment } from "@/lib/fair-application-store";
 import { getStoredListingForUser, markStoredListingPendingPaymentForUser } from "@/lib/listing-store";
 import { createPayment, listPayments, validatePaymentTargetTypeForTariff } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isAdminRequest, isSupabaseServerConfigured } from "@/lib/server-auth";
@@ -206,6 +207,20 @@ export async function POST(request: Request) {
       }
 
       targetTitle = `Бегущая строка: ${placement.text}`;
+    }
+
+    if (targetType === "fair_application") {
+      if (!body.targetId || !isUuid(body.targetId)) {
+        return NextResponse.json({ error: "Сначала сохраните заявку на ярмарку, затем оплатите участие" }, { status: 400 });
+      }
+
+      const application = await getStoredFairApplicationForPayment(body.targetId, auth.user.id);
+
+      if (!application) {
+        return NextResponse.json({ error: "Заявка не найдена, не ожидает оплаты или принадлежит другому пользователю" }, { status: 404 });
+      }
+
+      targetTitle = `Заявка на ярмарку: ${application.participantName}`;
     }
 
     const payment = await createPayment({
