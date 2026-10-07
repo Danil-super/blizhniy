@@ -41,6 +41,12 @@ test("payment confirmation uses the payment id from the return URL without share
     "@/lib/cabinet-data-cache": { markCabinetDataChanged() {} },
     "@/lib/client-media-store": { getStoredMediaFile: async () => undefined },
     "@/lib/client-runtime-mode": { shouldShowClientFallbackContent: () => false },
+    "@/lib/client-user-profile": {
+      captureClientUserOperation: async () => ({
+        identity: { ownerKey: "local-user" },
+        assertCurrentSession: async () => {},
+      }),
+    },
     "@/lib/demo-publications": {
       demoPublicationsUpdatedEvent: "demo-publications-updated",
       readStoredDemoPublications: () => null,

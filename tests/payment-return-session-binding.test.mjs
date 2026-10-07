@@ -168,6 +168,11 @@ function loadClientPaymentFlow({ fetchImpl, getSession }) {
     "@/lib/cabinet-data-cache": { markCabinetDataChanged() {} },
     "@/lib/client-media-store": { getStoredMediaFile: async () => undefined },
     "@/lib/client-runtime-mode": { shouldShowClientFallbackContent: () => false },
+    "@/lib/client-user-profile": {
+      captureClientUserOperation() {
+        throw new Error("the return flow must keep its supplied origin, not capture a new account");
+      },
+    },
     "@/lib/demo-publications": {
       demoPublicationsUpdatedEvent: "demo-publications-updated",
       readStoredDemoPublications: () => null,
