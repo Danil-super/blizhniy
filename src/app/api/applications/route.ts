@@ -100,6 +100,7 @@ export async function POST(request: Request) {
     const payment = canReusePayment
       ? undefined
       : await createPayment({
+          customerEmail: auth.user.email,
           tariffId: cleanString(body?.tariffId) || "job-response",
           targetId: application.id,
           targetTitle: `Отклик ${specialist.name} на ${targetKind} ${target.title}`,

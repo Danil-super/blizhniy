@@ -166,6 +166,7 @@ export async function POST(request: Request) {
     }
 
     const payment = await createPayment({
+      customerEmail: auth.user.email,
       tariffId,
       targetId: listing.id,
       targetTitle: title,

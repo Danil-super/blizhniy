@@ -156,6 +156,7 @@ export async function POST(request: Request) {
 
     if (tariffId) {
       payment = await createPayment({
+        customerEmail: auth.user.email,
         tariffId,
         targetId: workRequest.id,
         targetTitle: title,

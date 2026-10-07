@@ -154,6 +154,7 @@ export async function POST(request: Request) {
   }
 
   const payment = await createPayment({
+    customerEmail: auth.user.email,
     tariffId: "fair-participation",
     targetId: application.id,
     targetType: "fair_application",
