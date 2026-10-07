@@ -361,7 +361,7 @@ export function NotificationBell() {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="relative inline-flex h-9 w-9 items-center justify-center overflow-visible rounded-full border border-emerald-200 bg-emerald-50 text-[#2f8f12] shadow-sm transition hover:border-emerald-300 hover:bg-white active:scale-95"
+        className="relative inline-flex h-11 w-11 items-center justify-center overflow-visible rounded-full border border-emerald-200 bg-emerald-50 text-[#2f8f12] shadow-sm transition hover:border-emerald-300 hover:bg-white active:scale-95"
         aria-label="Уведомления"
         aria-expanded={open}
       >

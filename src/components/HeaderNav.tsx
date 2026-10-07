@@ -74,7 +74,7 @@ export function HeaderNav() {
                 key={href}
                 href={href}
                 onClick={() => setOpen(false)}
-                className="flex min-h-10 items-center justify-between gap-3 rounded-xl px-2.5 text-sm font-bold text-slate-800 transition hover:bg-emerald-50 hover:text-[#2f8f12]"
+                className="flex min-h-11 items-center justify-between gap-3 rounded-xl px-2.5 text-sm font-bold text-slate-800 transition hover:bg-emerald-50 hover:text-[#2f8f12]"
               >
                 <span>{label}</span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
@@ -86,7 +86,7 @@ export function HeaderNav() {
 
       <div className="hidden min-w-0 flex-wrap items-center justify-center gap-7 text-slate-700 lg:flex">
         {links.map(([label, href]) => (
-          <Link key={href} href={href} className="whitespace-nowrap font-semibold transition hover:text-[#2f8f12]">
+          <Link key={href} href={href} className="inline-flex min-h-11 items-center whitespace-nowrap font-semibold transition hover:text-[#2f8f12]">
             {label}
           </Link>
         ))}
