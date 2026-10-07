@@ -167,7 +167,7 @@ export async function mapStoredPayment(row: PaymentRow, context?: PaymentMapping
     provider: row.provider,
     providerPaymentId: row.provider_payment_id ?? undefined,
     createdAt: row.created_at.slice(0, 10),
-    paidAt: row.paid_at?.slice(0, 10),
+    paidAt: row.paid_at ?? undefined,
     targetAppliedAt: row.target_applied_at ?? undefined,
   };
 }
@@ -302,17 +302,30 @@ export async function updateStoredPayment(payment: Payment) {
     return payment;
   }
 
-  await supabaseRest(`/rest/v1/payments?id=eq.${encodeURIComponent(payment.id)}`, {
+  // The database trigger preserves committed settlement state even when this
+  // request loaded an older snapshot. Always use the returned authoritative row.
+  const rows = await supabaseRest<PaymentRow[]>(`/rest/v1/payments?select=*&id=eq.${encodeURIComponent(payment.id)}`, {
     method: "PATCH",
-    prefer: "return=minimal",
+    prefer: "return=representation",
     body: {
-      paid_at: payment.status === "succeeded" ? new Date().toISOString() : payment.paidAt ?? null,
+      paid_at: payment.paidAt ?? (payment.status === "succeeded" ? new Date().toISOString() : null),
       target_applied_at: payment.targetAppliedAt ?? null,
       provider: payment.provider,
       provider_payment_id: payment.providerPaymentId ?? null,
       status: payment.status,
     },
   });
+
+  const stored = rows[0];
+  if (!stored) {
+    throw new Error("Stored payment was not found during update");
+  }
+
+  payment.status = stored.status;
+  payment.paidAt = stored.paid_at ?? undefined;
+  payment.targetAppliedAt = stored.target_applied_at ?? undefined;
+  payment.provider = stored.provider;
+  payment.providerPaymentId = stored.provider_payment_id ?? undefined;
 
   return payment;
 }

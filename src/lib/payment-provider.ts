@@ -256,7 +256,7 @@ function applyYooKassaPaymentState(payment: Payment, yookassaPayment: YooKassaPa
   payment.confirmationUrl = yookassaPayment.confirmation?.confirmation_url ?? payment.confirmationUrl;
 
   if (payment.status === "succeeded") {
-    payment.paidAt = payment.paidAt ?? todayIsoDate();
+    payment.paidAt = payment.paidAt ?? new Date().toISOString();
   } else {
     payment.paidAt = undefined;
   }
@@ -300,7 +300,7 @@ function succeededPaymentResult(payment: Payment, nextStatus?: PaymentResult["ne
 
 async function applySucceededPaymentOnce(payment: Payment): Promise<PaymentResult> {
   payment.status = "succeeded";
-  payment.paidAt = payment.paidAt ?? todayIsoDate();
+  payment.paidAt = payment.paidAt ?? new Date().toISOString();
 
   // Apply the entitlement before recording the terminal payment status. If the
   // target update fails, a later verified webhook can safely retry it instead
@@ -488,7 +488,7 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
     providerPaymentId: payload.id,
     confirmationUrl: payload.confirmation?.confirmation_url,
     createdAt: activePayment?.createdAt ?? todayIsoDate(),
-    ...(yookassaStatusToPaymentStatus(payload.status, payload.paid) === "succeeded" ? { paidAt: todayIsoDate() } : {}),
+    ...(yookassaStatusToPaymentStatus(payload.status, payload.paid) === "succeeded" ? { paidAt: new Date().toISOString() } : {}),
   };
 
   if (payment.status === "succeeded") {
@@ -582,7 +582,7 @@ export async function confirmPayment(paymentOrId: Payment | string, options?: Co
 
     if (canTrustYooKassaReturn(payment, options)) {
       payment.status = "succeeded";
-      payment.paidAt = payment.paidAt ?? todayIsoDate();
+      payment.paidAt = payment.paidAt ?? new Date().toISOString();
 
       return applySucceededPayment(payment);
     }
@@ -591,8 +591,11 @@ export async function confirmPayment(paymentOrId: Payment | string, options?: Co
     applyYooKassaPaymentState(payment, yookassaPayment);
 
     if (payment.status !== "succeeded") {
-      await updateStoredPayment(payment);
-      return createPendingPaymentResult(payment);
+      const persisted = await updateStoredPayment(payment);
+      if (persisted.status === "succeeded") {
+        return applySucceededPayment(persisted);
+      }
+      return createPendingPaymentResult(persisted);
     }
 
     return applySucceededPayment(payment);
@@ -639,8 +642,11 @@ export async function processYooKassaNotification(payload: YooKassaNotificationP
   applyYooKassaPaymentState(payment, verifiedYooKassaPayment);
 
   if (payment.status !== "succeeded") {
-    await updateStoredPayment(payment);
-    return { processed: true, result: createPendingPaymentResult(payment) };
+    const persisted = await updateStoredPayment(payment);
+    if (persisted.status === "succeeded") {
+      return { processed: true, result: await applySucceededPayment(persisted) };
+    }
+    return { processed: true, result: createPendingPaymentResult(persisted) };
   }
 
   return { processed: true, result: await applySucceededPayment(payment) };

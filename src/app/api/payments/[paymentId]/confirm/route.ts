@@ -16,7 +16,7 @@ function canTrustSuccessfulReturnInThisEnvironment() {
 async function forceSucceededTestPayment(payment: Payment) {
   const paidPayment: Payment = {
     ...payment,
-    paidAt: payment.paidAt ?? new Date().toISOString().slice(0, 10),
+    paidAt: payment.paidAt ?? new Date().toISOString(),
     status: "succeeded",
   };
   const nextStatus = await markStoredPaymentTargetSucceeded(paidPayment);
