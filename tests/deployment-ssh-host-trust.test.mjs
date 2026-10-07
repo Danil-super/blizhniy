@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { createServer } from 'node:net';
+import { createConnection, createServer } from 'node:net';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir, userInfo } from 'node:os';
@@ -294,6 +294,47 @@ function syntheticKey(file) {
   const pinFile = `${file}.pin.pub`; writeFileSync(pinFile, publicKey + '\n'); return pinFile;
 }
 
+test('loopback readiness observes a listening socket without binding the sshd-owned port', async () => {
+  const ts = require('typescript');
+  const { EventEmitter } = require('node:events');
+  const source = readFileSync(new URL(import.meta.url), 'utf8');
+  const ast = ts.createSourceFile('actual-ssh-test.mjs', source, ts.ScriptTarget.Latest, true);
+  const actualTest = ast.statements.find(node => ts.isExpressionStatement(node)
+    && ts.isCallExpression(node.expression) && node.expression.expression.getText(ast) === 'test'
+    && ts.isStringLiteral(node.expression.arguments[0])
+    && node.expression.arguments[0].text.startsWith('real loopback OpenSSH'));
+  assert.ok(actualTest, 'inspect the actual sshd test, not a copied readiness algorithm');
+  let callback;
+  const visit = node => {
+    if (!callback && ts.isNewExpression(node) && node.expression.getText(ast) === 'Promise') callback = node.arguments[0];
+    if (!callback) ts.forEachChild(node, visit);
+  };
+  visit(actualTest.expression.arguments[1]);
+  assert.ok(callback, 'the actual startup callback must exist');
+  let bindings = 0, connections = 0, destroyed = 0;
+  await new Promise((resolve, reject) => {
+    new Function('server', 'serverErrors', 'port', 'createServer', 'createConnection', 'setTimeout', 'resolve', 'reject',
+      `(${callback.getText(ast)})(resolve, reject);`)(
+      { exitCode: null }, '', 12345,
+      () => { bindings += 1; assert.fail('A readiness probe must not compete with sshd for its listening port'); },
+      options => {
+        assert.deepEqual(options, { host: '127.0.0.1', port: 12345 });
+        const socket = new EventEmitter();
+        socket.setTimeout = () => socket;
+        socket.destroy = () => { destroyed += 1; };
+        const attempt = ++connections;
+        queueMicrotask(() => attempt === 1
+          ? socket.emit('error', Object.assign(new Error('Synthetic not-yet-listening'), { code: 'ECONNREFUSED' }))
+          : socket.emit('connect'));
+        return socket;
+      }, setTimeout, resolve, reject,
+    );
+  });
+  assert.equal(bindings, 0);
+  assert.equal(connections, 2, 'refusal is retried, then a real client-connect event proves readiness');
+  assert.equal(destroyed, 2, 'both short-lived probes release their socket');
+});
+
 test('real loopback OpenSSH accepts its pinned synthetic host and rejects a mismatching or missing key', async () => {
   const root = temporary('ssh-real-host-pin-'); let server;
   try {
@@ -308,8 +349,22 @@ test('real loopback OpenSSH accepts its pinned synthetic host and rejects a mism
       const deadline = Date.now() + 5000;
       const attempt = () => {
         if (server.exitCode !== null) return reject(new Error(serverErrors || 'loopback sshd exited'));
-        const probe = createServer(); probe.once('error', error => { if (error.code === 'EADDRINUSE') resolve(); else reject(error); });
-        probe.listen(port, '127.0.0.1', () => { probe.close(); if (Date.now() > deadline) reject(new Error(serverErrors || 'loopback sshd startup timed out')); else setTimeout(attempt, 30); });
+        // Observe sshd as a client. Binding a competing probe to this port can
+        // make sshd itself fail with EADDRINUSE before its first listen.
+        const probe = createConnection({ host: '127.0.0.1', port });
+        let finished = false;
+        const retry = error => {
+          if (finished) return;
+          finished = true; probe.destroy();
+          if (server.exitCode !== null) return reject(new Error(serverErrors || 'loopback sshd exited'));
+          if (error && !['ECONNREFUSED', 'ECONNRESET'].includes(error.code)) return reject(error);
+          if (Date.now() > deadline) reject(new Error(serverErrors || 'loopback sshd startup timed out'));
+          else setTimeout(attempt, 30);
+        };
+        probe.setTimeout(250);
+        probe.once('error', retry);
+        probe.once('timeout', () => retry());
+        probe.once('connect', () => { if (!finished) { finished = true; probe.destroy(); resolve(); } });
       }; attempt();
     });
     const trust = path.join(root, 'trusted'); assert.equal(setup('127.0.0.1', port, trust, hostPin).status, 0);
