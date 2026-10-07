@@ -1167,6 +1167,8 @@ function listingCategoryName(listing: StoreListing) {
 }
 
 export function toDemoListing(listing: StoreListing): DemoListing {
+  const categoryName = listingCategoryName(listing);
+
   return {
     viewId: listing.id,
     slug: listing.slug,
@@ -1175,8 +1177,8 @@ export function toDemoListing(listing: StoreListing): DemoListing {
     title: listing.title,
     kind: listing.kind,
     categorySlug: listing.categorySlug,
-    categoryName: listingCategoryName(listing),
-    subcategorySlug: slugifySubcategory(listing.subcategory),
+    categoryName,
+    subcategorySlug: listing.subcategory === categoryName ? "" : slugifySubcategory(listing.subcategory),
     subcategoryName: listing.subcategory,
     city: listing.city,
     district: listing.district ?? "",
@@ -1681,7 +1683,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
           <Breadcrumbs
             items={[
               { label: listing.categoryName, href: `/katalog/${listing.categorySlug}` },
-              { label: listing.subcategoryName, href: `/katalog/${listing.categorySlug}/${listing.subcategorySlug}` },
+              ...(listing.subcategorySlug ? [{ label: listing.subcategoryName, href: `/katalog/${listing.categorySlug}/${listing.subcategorySlug}` }] : []),
               { label: listing.title },
             ]}
           />
@@ -1720,10 +1722,12 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
                   <dt className="text-sm font-bold text-slate-500">Категория</dt>
                   <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{listing.categoryName}</dd>
                 </div>
-                <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
-                  <dt className="text-sm font-bold text-slate-500">Подкатегория</dt>
-                  <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{listing.subcategoryName}</dd>
-                </div>
+                {listing.subcategorySlug ? (
+                  <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
+                    <dt className="text-sm font-bold text-slate-500">Подкатегория</dt>
+                    <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{listing.subcategoryName}</dd>
+                  </div>
+                ) : null}
                 <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                   <dt className="text-sm font-bold text-slate-500">Размещено</dt>
                   <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{formatPublicationDateTime(listing.publishedAt)}</dd>

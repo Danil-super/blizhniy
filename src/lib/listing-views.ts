@@ -80,7 +80,7 @@ export function getListingExtraViews(listingId: string) {
   return readCounts()[listingId] ?? 0;
 }
 
-function getBaseViews(listingId: string, initialViews?: number) {
+export function getBaseViews(listingId: string, initialViews?: number) {
   if (typeof initialViews === "number" && Number.isFinite(initialViews)) {
     return Math.max(0, Math.floor(initialViews));
   }

@@ -102,9 +102,11 @@ function mapPublicCategoryRows(rows: CategoryRow[]): PublicCategoryWithListingSc
     .filter((row) => !row.parent_id)
     .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0) || left.name.localeCompare(right.name, "ru"))
     .map((row) => ({
-      children: [...(activeChildrenByParentId.get(row.id) ?? [])]
-        .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0) || left.name.localeCompare(right.name, "ru"))
-        .map((child) => child.name),
+      children: Array.from(new Set(
+        [...(activeChildrenByParentId.get(row.id) ?? [])]
+          .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0) || left.name.localeCompare(right.name, "ru"))
+          .map((child) => child.name),
+      )),
       // Listing queries historically include a public root and all of its
       // direct children. Keep that scope separate from the visible child list
       // so resolving it here does not alter catalog results.

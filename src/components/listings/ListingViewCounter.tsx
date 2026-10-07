@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import lottie, { type AnimationItem } from "lottie-web";
-import { getListingTotalViews, listingViewCountsUpdatedEvent } from "@/lib/listing-views";
+import { getBaseViews, getListingTotalViews, listingViewCountsUpdatedEvent } from "@/lib/listing-views";
 import eyesAnimation from "../../../eyes.json";
 
 export function ListingViewCounter({ initialViews, listingId }: { initialViews?: number; listingId: string }) {
-  const [views, setViews] = useState(() => getListingTotalViews(listingId, initialViews));
+  const [views, setViews] = useState(() => getBaseViews(listingId, initialViews));
   const iconRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {

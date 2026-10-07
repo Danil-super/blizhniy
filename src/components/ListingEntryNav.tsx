@@ -47,7 +47,7 @@ export function ListingEntryNav({ activeKind }: { activeKind?: ListingKind }) {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Объявления</p>
-            <h2 className="mt-1 text-xl font-bold text-[#060b27]">Что хотите сделать?</h2>
+            <h1 className="mt-1 text-xl font-bold text-[#060b27]">Что хотите сделать?</h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
               Выберите тип объявления: продать, купить или отдать бесплатно.
             </p>

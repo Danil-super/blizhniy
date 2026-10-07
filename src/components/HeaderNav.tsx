@@ -15,6 +15,7 @@ export function HeaderNav() {
   const { state } = useAuthState();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   const links = state === "admin" ? [["Админка", "/admin"], ...publicLinks] : publicLinks;
 
   useEffect(() => {
@@ -28,10 +29,27 @@ export function HeaderNav() {
     return () => document.removeEventListener("mousedown", handleDocumentClick);
   }, []);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        toggleRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [open]);
+
   return (
     <nav className="relative flex min-w-0 flex-1 items-center justify-start gap-2 overflow-visible text-sm md:justify-center md:gap-4" aria-label="Основная навигация">
       <div className="relative lg:hidden" ref={menuRef}>
         <button
+          ref={toggleRef}
           type="button"
           onClick={() => setOpen((current) => !current)}
           className="inline-flex h-11 w-11 appearance-none items-center justify-center rounded-full border-0 bg-transparent p-0 text-slate-700 transition active:scale-95"
