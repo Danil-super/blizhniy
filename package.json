@@ -7,7 +7,9 @@
     "build": "node node_modules/next/dist/bin/next build",
     "start": "node node_modules/next/dist/bin/next start",
     "lint": "node node_modules/eslint/bin/eslint.js . --ignore-pattern 'vendor/postcss-selector-parser/**'",
-    "seed:production": "node scripts/seed-production-data.mjs"
+    "seed:production": "node scripts/seed-production-data.mjs",
+    "db:local": "node scripts/local-payment-db.mjs",
+    "test:payments:local": "node --test tests/local-payment-db-postgres.mjs tests/payment-lifecycle-integration-postgres.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
