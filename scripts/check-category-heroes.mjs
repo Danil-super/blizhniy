@@ -130,6 +130,11 @@ try {
         const hero = page.locator(`[data-category-theme="${scenario.slug}"]`);
         await hero.locator("picture img").waitFor();
         await hero.locator("picture img").evaluate((img) => img.decode());
+        // Trial clicks scroll off-screen actions into view and check real
+        // actionability without navigating or submitting anything.
+        for (const action of await hero.locator("[data-hero-actions] a:visible").all()) {
+          await action.click({ trial: true });
+        }
         const layout = await hero.evaluate((section) => {
           const img = section.querySelector("picture img");
           const content = section.querySelector("h1").parentElement.parentElement;
@@ -221,6 +226,9 @@ try {
           if (!img.complete) await new Promise((resolve) => img.addEventListener("load", resolve, { once: true }));
           await img.decode().catch(() => undefined);
         });
+        for (const action of await hero.locator("[data-hero-actions] a:visible").all()) {
+          await action.click({ trial: true });
+        }
         const layout = await hero.evaluate((section) => {
           const frame = section.getBoundingClientRect();
           const title = section.querySelector("h1");
