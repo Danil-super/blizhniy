@@ -257,6 +257,7 @@ function mapListing(row: ListingRow): Listing {
     kind,
     categorySlug,
     subcategory: categoryInfo.subcategory,
+    isSubcategory: row.categories ? Boolean(row.categories.parent_id) : undefined,
     author: row.profiles?.display_name ?? "Пользователь",
     title: row.title,
     description: row.description,

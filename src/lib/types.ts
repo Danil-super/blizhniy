@@ -67,6 +67,8 @@ export type Listing = {
   kind: ListingKind;
   categorySlug: string;
   subcategory: string;
+  /** DB parent presence; omitted when category metadata is unavailable. */
+  isSubcategory?: boolean;
   author: string;
   title: string;
   description: string;

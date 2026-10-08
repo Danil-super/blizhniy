@@ -1172,6 +1172,7 @@ function listingCategoryName(listing: StoreListing) {
 
 export function toDemoListing(listing: StoreListing): DemoListing {
   const categoryName = listingCategoryName(listing);
+  const isSubcategory = listing.isSubcategory ?? listing.subcategory !== categoryName;
 
   return {
     viewId: listing.id,
@@ -1182,7 +1183,7 @@ export function toDemoListing(listing: StoreListing): DemoListing {
     kind: listing.kind,
     categorySlug: listing.categorySlug,
     categoryName,
-    subcategorySlug: listing.subcategory === categoryName ? "" : slugifySubcategory(listing.subcategory),
+    subcategorySlug: isSubcategory ? slugifySubcategory(listing.subcategory) : "",
     subcategoryName: listing.subcategory,
     city: listing.city,
     district: listing.district ?? "",

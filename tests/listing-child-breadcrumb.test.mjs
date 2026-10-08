@@ -10,12 +10,15 @@ const require = createRequire(import.meta.url);
 const ts = require("typescript");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
+const { renderToReadableStream } = require("react-dom/server.edge");
 const root = fileURLToPath(new URL("../", import.meta.url));
 
 // Execute the complete presentation module and all application dependencies.
 // Only Next request/router/host-element edges are adapted for Node SSR.
-function harness() {
+function harness({ taxonomy, rows = [] } = {}) {
   const modules = new Map();
+  const calls = [];
+  const violations = [];
   const framework = {
     "next/link": { __esModule: true, default: ({ children, ...props }) => React.createElement("a", props, children) },
     "next/image": { __esModule: true, default: (props) => React.createElement("img", Object.fromEntries(Object.entries(props).filter(([key]) => !["fill", "priority", "unoptimized"].includes(key)))) },
@@ -31,8 +34,43 @@ function harness() {
   };
   const context = vm.createContext({
     console, Error, URL, URLSearchParams, Headers, Response, AbortController, setTimeout, clearTimeout,
-    process: { env: { NODE_ENV: "production", ENABLE_DEMO_CONTENT: "false" } },
-    fetch: () => { throw new Error("Breadcrumb regression must never use network"); },
+    process: { env: { NODE_ENV: "production", ENABLE_DEMO_CONTENT: "false", ...(taxonomy ? { NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:1", SUPABASE_SERVICE_ROLE_KEY: "synthetic-test-only" } : {}) } },
+    fetch: async (input, options) => {
+      try {
+        assert.ok(taxonomy, "Default breadcrumb regression permits no network");
+        const url = new URL(input);
+        assert.equal(url.origin, "http://127.0.0.1:1");
+        assert.equal(options.method, "GET");
+        assert.equal(options.cache, "no-store");
+        assert.ok(url.searchParams.get("select"));
+        calls.push(url);
+        if (url.pathname === "/rest/v1/ad_marquee_placements") {
+          assert.equal(url.searchParams.get("select"), "*");
+          assert.equal(url.searchParams.get("status"), "eq.active");
+          assert.equal(url.searchParams.get("ends_at"), "gt.now()");
+          assert.equal(url.searchParams.get("order"), "sort_order.asc,starts_at.asc");
+          assert.equal([...url.searchParams].length, 4);
+          return Response.json([]);
+        }
+        let values;
+        if (url.pathname === "/rest/v1/categories") values = taxonomy;
+        else { assert.equal(url.pathname, "/rest/v1/listings"); values = rows; }
+        for (const [key, filter] of url.searchParams) {
+          if (["select", "order", "limit", "offset"].includes(key)) continue;
+          if (filter.startsWith("eq.")) values = values.filter((row) => String(row[key]) === filter.slice(3));
+          else if (filter.startsWith("in.(") && filter.endsWith(")")) values = values.filter((row) => filter.slice(4, -1).split(",").includes(row[key]));
+          else if (filter.startsWith("gt.") && key === "expires_at") values = values.filter((row) => Date.parse(row[key]) > Date.parse(filter.slice(3)));
+          else if (filter === "is.null") values = values.filter((row) => row[key] == null);
+          else throw new Error(`Unsupported synthetic filter ${key}=${filter}`);
+        }
+        values = values.slice(Number(url.searchParams.get("offset") ?? 0));
+        if (url.searchParams.has("limit")) values = values.slice(0, Number(url.searchParams.get("limit")));
+        return Response.json(values);
+      } catch (error) {
+        violations.push(error.message);
+        throw error;
+      }
+    },
   });
   function load(filename) {
     const path = resolve(root, filename);
@@ -57,7 +95,7 @@ function harness() {
     }, module, module.exports);
     return module.exports;
   }
-  return { load, modules };
+  return { load, modules, calls, violations };
 }
 
 const runtime = harness();
@@ -131,4 +169,55 @@ test("healthy route control: dedicated routes still reject an unsupported slug",
   }
   assert.ok(runtime.modules.has(resolve(root, "src/components/listings/ListingCard.tsx")));
   assert.ok(runtime.modules.has(resolve(root, "src/lib/data.ts")));
+});
+
+function sameNameGraph(isChild) {
+  const rootCategory = { id: "33333333-3333-4333-8333-333333333333", slug: "raznoe", name: "Разное", parent_id: null, active: true, sort_order: 0 };
+  const child = { id: "44444444-4444-4444-8444-444444444444", slug: "raznoe-raznoe", name: "Разное", parent_id: rootCategory.id, active: true, sort_order: 0 };
+  const category = isChild ? child : rootCategory;
+  const row = {
+    id: "00001399-1111-4111-8111-000000005017", author_id: "22222222-2222-4222-8222-222222222222", category_id: category.id,
+    title: "Same-name category graph sentinel", description: "Synthetic graph only", listing_type: "sell", price: 100,
+    status: "published", is_paid: true, created_at: "2026-10-01T00:00:00Z", published_at: "2026-10-01T00:00:00Z", expires_at: "2099-10-01T00:00:00Z",
+    categories: category, cities: { name: "Краснодар", slug: "krasnodar" }, profiles: { display_name: "Synthetic seller" }, listing_images: [], view_count: 7,
+    show_exact_address: false, address: "Private same-name street", latitude: 45.123456, longitude: 38.987654,
+  };
+  return { runtime: harness({ taxonomy: [rootCategory, child], rows: [row] }), row };
+}
+
+for (const isChild of [true, false]) {
+  test(`actual store→presentation→category page preserves same-name ${isChild ? "child" : "root"} identity`, async () => {
+    const { runtime, row } = sameNameGraph(isChild);
+    const store = runtime.load("src/lib/listing-store.ts");
+    const ui = runtime.load("src/components/listings/ListingPages.tsx");
+    const value = await store.getStoredListingById(row.id, { publicOnly: true });
+    const presented = ui.toDemoListing(value);
+    assert.equal(presented.subcategorySlug, isChild ? "raznoe" : "");
+    const detail = renderToStaticMarkup(ui.ListingDetailPage({ slug: row.id, listingOverride: presented }));
+    const nav = detail.match(/<nav\b[^>]*aria-label="Хлебные крошки"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
+    assert.ok(nav);
+    assert.equal(nav.includes('href="/katalog/raznoe/raznoe"'), isChild);
+    const rootHTML = await new Response(await renderToReadableStream(await ui.CategoryListingsPage({ categorySlug: "raznoe" }))).text();
+    assert.ok(rootHTML.includes(`href="/obyavlenie/${row.id}"`), "Both kinds remain visible in the root category");
+    const childHTML = await new Response(await renderToReadableStream(await ui.CategoryListingsPage({ categorySlug: "raznoe", subcategorySlug: "raznoe" }))).text();
+    assert.equal(childHTML.includes(`href="/obyavlenie/${row.id}"`), isChild, "Only the actual child belongs to the child page");
+    for (const html of [detail, rootHTML, childHTML]) assert.doesNotMatch(html, /Private same-name street|45\.123456|38\.987654/);
+    assert.ok(runtime.modules.has(resolve(root, "src/lib/supabase-rest.ts")));
+    assert.ok(runtime.modules.has(resolve(root, "src/lib/category-store.ts")));
+    assert.ok(runtime.calls.length > 0);
+    assert.equal(runtime.violations.length, 0, runtime.violations.join("\n"));
+    assert.equal(value.isSubcategory, isChild, "DTO must carry DB parent presence, not infer from display-name equality");
+  });
+}
+
+test("legacy presentation without DB identity retains its previous root/child contract", () => {
+  const root = presentation.toDemoListing(stored("raznoe", "Разное"));
+  assert.equal(root.subcategorySlug, "");
+  const child = presentation.toDemoListing(stored("elektronika", "Смартфоны"));
+  assert.equal(child.subcategorySlug, "smartfony");
+});
+
+test("explicit DB child identity also wins when a non-static parent label is unavailable", () => {
+  const value = presentation.toDemoListing({ ...stored("custom-root", "Custom child"), isSubcategory: true });
+  assert.equal(value.subcategorySlug, "custom-child");
 });
