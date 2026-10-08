@@ -2,8 +2,10 @@
 
 import {
   readCabinetProfile,
-  resolveClientUserIdentity,
+  captureClientUserOperation,
   type CabinetProfile,
+  type ClientUserIdentity,
+  type ClientUserOperation,
 } from "@/lib/client-user-profile";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
@@ -35,6 +37,7 @@ export const siteNotificationsEventName = "blizhniy-site-notifications-updated";
 const storagePrefix = "blizhniy-site-notifications:";
 const notificationMemory = new Map<string, SiteNotification[]>();
 let authCleanupInitialized = false;
+const optionalProfileTimeoutMs = 1500;
 
 export function siteNotificationsStorageKey(ownerKey: string) {
   return `${storagePrefix}${ownerKey || "local-user"}`;
@@ -142,12 +145,35 @@ export function addSiteNotification(ownerKey: string, profile: CabinetProfile, i
   return nextNotification;
 }
 
-export async function addCurrentUserNotification(input: AddSiteNotificationInput) {
+async function readOptionalNotificationProfile(identity: ClientUserIdentity) {
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
   try {
-    const identity = await resolveClientUserIdentity();
-    const profile = await readCabinetProfile(identity);
-    if ((await resolveClientUserIdentity()).ownerKey !== identity.ownerKey) return null;
-    return addSiteNotification(identity.ownerKey, profile, input);
+    return await Promise.race([
+      readCabinetProfile(identity, { signal: controller.signal }),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          // Abort fetch/body/migration transport as well as bounding the wait.
+          // The race also fails closed if a transport ignores cancellation.
+          controller.abort();
+          reject(new Error("Optional notification profile timed out."));
+        }, optionalProfileTimeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
+
+/** Async callers pass the origin captured before their request, never a late owner. */
+export async function addCurrentUserNotification(input: AddSiteNotificationInput, origin?: ClientUserOperation) {
+  try {
+    const operation = origin ?? await captureClientUserOperation();
+    await operation.assertCurrentSession();
+    const profile = await readOptionalNotificationProfile(operation.identity);
+    await operation.assertCurrentSession();
+    return addSiteNotification(operation.identity.ownerKey, profile, input);
   } catch {
     // Notifications are optional; a failing profile request must not produce
     // an unhandled promise rejection or write to the wrong account's key.

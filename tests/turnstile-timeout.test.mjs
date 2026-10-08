@@ -23,6 +23,16 @@ function loadTurnstile({ environment = {}, withServerRequestTimeout }) {
         return { TURNSTILE_ERROR_MESSAGE: "Проверка не пройдена" };
       }
 
+      if (id === "@/lib/trusted-proxy-ip") {
+        const helper = { exports: {} };
+        const helperSource = readFileSync(new URL("../src/lib/trusted-proxy-ip.ts", import.meta.url), "utf8");
+        const helperJs = ts.transpileModule(helperSource, {
+          compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+        }).outputText;
+        new Function("require", "module", "exports", helperJs)(require, helper, helper.exports);
+        return helper.exports;
+      }
+
       throw new Error(`Unexpected dependency: ${id}`);
     },
     module,

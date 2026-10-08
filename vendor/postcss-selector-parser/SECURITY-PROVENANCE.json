@@ -1,0 +1,262 @@
+{
+  "package": "postcss-selector-parser",
+  "version": "6.1.4",
+  "scope": "Project-local security backport, not an upstream release",
+  "upstream": {
+    "tarball": "https://registry.npmjs.org/postcss-selector-parser/-/postcss-selector-parser-6.1.4.tgz",
+    "integrity": "sha512-bIoJLOmjCO1S9XdY/DcnR5hJxvrDir1PbGChrzXG3vw0/FOliy/fA3dmdhQ441kah4gKv+TwckGzex6wNS5cnQ==",
+    "tarballSha256": "d0e20cd70b1be34f5f45d256986e6a372c35cc6a4643046b0de35035cfc61d66",
+    "license": "LICENSE-MIT",
+    "publishedFileCount": 37,
+    "unmodifiedPublishedFileCount": 35
+  },
+  "patch": {
+    "advisory": "GHSA-rj75-hqrm-r3gf",
+    "commit": "62b191792df0a0bc56062e5a875bc74aae2a51cd",
+    "url": "https://github.com/postcss/postcss-selector-parser/commit/62b191792df0a0bc56062e5a875bc74aae2a51cd",
+    "sourceFile": "src/parser.js",
+    "vendoredFile": "dist/parser.js",
+    "hunks": [
+      "uniqs: Set-based first-occurrence deduplication",
+      "splitWord: Set membership for Sass interpolation indexes",
+      "splitWord: Set membership for class and ID indexes"
+    ],
+    "excludedChanges": "No selector Container iteration or other v7 API changes"
+  },
+  "metadataException": {
+    "file": "package.json",
+    "removedEntry": "scripts.prepare",
+    "reason": "npm 9.2.0 / pacote 15.0.7 attempted the original prepare during local-directory acquisition despite ignore-scripts=true; it failed with exit127 because del-cli was absent. The published artifact already contains compiled dist; absent-src rebuilding must not execute. Version, other scripts, dependencies and license unchanged."
+  },
+  "lintException": "Only compiled vendor/postcss-selector-parser/** is excluded; project source and regression test stay in the lint scope.",
+  "auditLimit": "Actual fresh full npm audit still reports the selector advisory and postcss-nested meta-advisory by unchanged version 6.1.4; it does not analyze the local source patch. npm audit may omit file: sources in other graphs, and their omission is not fix evidence. Source hashes, regression tests and actual consumer resolution establish this local backport.",
+  "baseline": {
+    "node": "22.23.1",
+    "npm": "9.2.0",
+    "test": "tests/selector-parser-backport.test.mjs",
+    "source": "https://github.com/postcss/postcss-selector-parser/blob/62b191792df0a0bc56062e5a875bc74aae2a51cd/src/__tests__/complexity.mjs",
+    "atoms": [
+      {
+        "atom": ".a",
+        "size": 60000,
+        "hostileMs": 2834.19504,
+        "controlMs": 100.464507,
+        "ratio": 28.210908754073717
+      },
+      {
+        "atom": "#a",
+        "size": 60000,
+        "hostileMs": 2966.321829,
+        "controlMs": 245.927089,
+        "ratio": 12.061793766037706
+      },
+      {
+        "atom": "#{a}",
+        "size": 60000,
+        "hostileMs": 1540.899109,
+        "controlMs": 94.086,
+        "ratio": 16.377559987670853
+      }
+    ],
+    "legitimateControlsPassed": 3,
+    "complexityFailures": 3
+  },
+  "verification": {
+    "projectGates": {
+      "nativeNodeTests": { "passed": 611, "failed": 0, "skipped": 0 },
+      "actualNextBuild": { "version": "15.5.27", "staticPages": 58, "exit": 0 },
+      "lint": { "exit": 0, "errors": 0, "existingWarnings": 1, "warningFile": "tests/checkout-prerequisites.test.cjs:30" },
+      "types": { "command": "tsc --noEmit --incremental false", "exit": 0 },
+      "scope": "Isolated local validation with no live app, provider or production calls; no CI/install policy change"
+    },
+    "complexityGate": "Each healthy case requires hostile/control ratio <2 for 60000 atoms, fastest of three runs, in a bounded 25-second child with normal AST startup controls.",
+    "healthyRatiosAfterFrozenInstall": {
+      ".a": 0.2789388597457578,
+      "#a": 0.2888147825403697,
+      "#{a}": 0.08758954431276209
+    },
+    "inMemoryRollbackControls": "Three single-hunk rollback cases intentionally assert ratio >=2 and pass as degradation controls; they are not assertion-killed mutants.",
+    "onDiskMutation": {
+      "hunk": "uniqs deduplication only, installed node_modules copy",
+      "gate": "Unchanged healthy published flat-class complexity regression",
+      "exit": 1,
+      "failure": "Complexity ratio assertion, not fixture, startup or source-hash failure",
+      "hostileMs": 1504.589924,
+      "controlMs": 94.736667,
+      "ratio": 15.881811885993415,
+      "normalAstControlsPassed": true,
+      "restoredParserSha256": "fbc108e74e76772305736f3e33e22aa51d31abd1884ac9d66f14a59eb4e699a3"
+    },
+    "freshAudit": {
+      "production": { "total": 0 },
+      "full": { "total": 9, "high": 7, "moderate": 2 },
+      "selectorStillReportedByVersion": true,
+      "bracesAdvisoryStillOpen": true
+    },
+    "frozenInstall": {
+      "command": "npm ci --ignore-scripts --offline --no-audit --no-fund",
+      "packages": 387,
+      "manifestSha256BeforeAndAfter": "3670c672e4cd00c3f893566610ff2efa1e039a1be7a0b66d37301ba027ea22d2",
+      "lockSha256BeforeAndAfter": "16ddee5d82cf370ce942ec27e7de01b1ef837e4f3eb26cf7015f4cfe1bdbc16b",
+      "lifecycleRunsInInstallLog": 0,
+      "selectorTestsPassedAfterInstall": 13,
+      "selectorTestsSkipped": 0,
+      "resolvedConsumers": [
+        "root",
+        "tailwindcss 3.4.19 (^6.1.2)",
+        "postcss-nested 6.2.0 (^6.1.1)"
+      ],
+      "runtimeSource": "One copied node_modules/postcss-selector-parser; all 37 original-package files match vendor bytes, with no nested registry copy"
+    }
+  },
+  "files": {
+    "API.md": {
+      "upstreamSha256": "dc1cdd7cda75f178fe4033909a263d73a9a3e4d0ec078838556d8bca08ada15d",
+      "vendoredSha256": "dc1cdd7cda75f178fe4033909a263d73a9a3e4d0ec078838556d8bca08ada15d"
+    },
+    "CHANGELOG.md": {
+      "upstreamSha256": "81063899f85f8f1f6b668c3d4fa93c6535ea5e8bbe58350fda8f5c817bb7624a",
+      "vendoredSha256": "81063899f85f8f1f6b668c3d4fa93c6535ea5e8bbe58350fda8f5c817bb7624a"
+    },
+    "dist/index.js": {
+      "upstreamSha256": "e018289b5005993cb461adecb242be81bcb25b085d17adec223adebbab31609b",
+      "vendoredSha256": "e018289b5005993cb461adecb242be81bcb25b085d17adec223adebbab31609b"
+    },
+    "dist/parser.js": {
+      "upstreamSha256": "0e99653c57b1e037e4391e3c50f5f07a022c3b85ae5477026335d149fb1f18d3",
+      "vendoredSha256": "fbc108e74e76772305736f3e33e22aa51d31abd1884ac9d66f14a59eb4e699a3"
+    },
+    "dist/processor.js": {
+      "upstreamSha256": "c8aca8730ecde6cfc6b65f5d55bb1367e8091197d8e80f073bf837e0bdb0b142",
+      "vendoredSha256": "c8aca8730ecde6cfc6b65f5d55bb1367e8091197d8e80f073bf837e0bdb0b142"
+    },
+    "dist/selectors/attribute.js": {
+      "upstreamSha256": "8e867e0a0560732b17f7a9629908eca76ae6e2426440f17a5f0affc26658fa38",
+      "vendoredSha256": "8e867e0a0560732b17f7a9629908eca76ae6e2426440f17a5f0affc26658fa38"
+    },
+    "dist/selectors/className.js": {
+      "upstreamSha256": "d76fd7e7d841c8b636698e062e76f3792e7ada8ffa81640c7dc6cfe0617e8c62",
+      "vendoredSha256": "d76fd7e7d841c8b636698e062e76f3792e7ada8ffa81640c7dc6cfe0617e8c62"
+    },
+    "dist/selectors/combinator.js": {
+      "upstreamSha256": "c9581cdf8e5e53b049cb4e15a6156f510638d11e4168742923b964ad2b16e343",
+      "vendoredSha256": "c9581cdf8e5e53b049cb4e15a6156f510638d11e4168742923b964ad2b16e343"
+    },
+    "dist/selectors/comment.js": {
+      "upstreamSha256": "d9748240e97342d7d9016c02b8f125cc6b090dd7890795f184dd5e0f172f9b75",
+      "vendoredSha256": "d9748240e97342d7d9016c02b8f125cc6b090dd7890795f184dd5e0f172f9b75"
+    },
+    "dist/selectors/constructors.js": {
+      "upstreamSha256": "df10494a8dfc7f79d1e25508ff35dcdb95fd7bfd51c3fc8f5e4d3e58d47b1997",
+      "vendoredSha256": "df10494a8dfc7f79d1e25508ff35dcdb95fd7bfd51c3fc8f5e4d3e58d47b1997"
+    },
+    "dist/selectors/container.js": {
+      "upstreamSha256": "1d60fc97b2d56505dd9b6b60b1dc8a4139dffc705f7f08ed8f9c05a108b5b4e9",
+      "vendoredSha256": "1d60fc97b2d56505dd9b6b60b1dc8a4139dffc705f7f08ed8f9c05a108b5b4e9"
+    },
+    "dist/selectors/guards.js": {
+      "upstreamSha256": "c54603d297bcfb5079637e7644bccd99ddd01b66bd19ea2b67ff00cdb2d693d4",
+      "vendoredSha256": "c54603d297bcfb5079637e7644bccd99ddd01b66bd19ea2b67ff00cdb2d693d4"
+    },
+    "dist/selectors/id.js": {
+      "upstreamSha256": "fa93b50b85019dfff0c3a48b36c7a17240e0bd9424e40ddc0c7e6ac6ba230a24",
+      "vendoredSha256": "fa93b50b85019dfff0c3a48b36c7a17240e0bd9424e40ddc0c7e6ac6ba230a24"
+    },
+    "dist/selectors/index.js": {
+      "upstreamSha256": "f5cd41186cf69d040c5f84ca1690842ef815b315f60973b88cdf8b3ff14c5302",
+      "vendoredSha256": "f5cd41186cf69d040c5f84ca1690842ef815b315f60973b88cdf8b3ff14c5302"
+    },
+    "dist/selectors/namespace.js": {
+      "upstreamSha256": "8f89351768936c2b9c19c142e08c3b31b2fc015db123b909f3d376d4a68751b7",
+      "vendoredSha256": "8f89351768936c2b9c19c142e08c3b31b2fc015db123b909f3d376d4a68751b7"
+    },
+    "dist/selectors/nesting.js": {
+      "upstreamSha256": "cc5a20579f7848ecf8650fbfde5f3cce0781e91a74a8de2146e519907a0a9be4",
+      "vendoredSha256": "cc5a20579f7848ecf8650fbfde5f3cce0781e91a74a8de2146e519907a0a9be4"
+    },
+    "dist/selectors/node.js": {
+      "upstreamSha256": "1ce02d8c51761e3a8596c54d90adf315717e99c893fbc26bf61a5b31ee79eee2",
+      "vendoredSha256": "1ce02d8c51761e3a8596c54d90adf315717e99c893fbc26bf61a5b31ee79eee2"
+    },
+    "dist/selectors/pseudo.js": {
+      "upstreamSha256": "d5b1a37e6feae658bc7ea9d4848bce913334df97376cad4697cbc94f79753d11",
+      "vendoredSha256": "d5b1a37e6feae658bc7ea9d4848bce913334df97376cad4697cbc94f79753d11"
+    },
+    "dist/selectors/root.js": {
+      "upstreamSha256": "71675417fa1506c282c8d2e99bb92bd7f3c93d574b2598f8617c1e892130c776",
+      "vendoredSha256": "71675417fa1506c282c8d2e99bb92bd7f3c93d574b2598f8617c1e892130c776"
+    },
+    "dist/selectors/selector.js": {
+      "upstreamSha256": "8850e3f09f58749c51baf119c31e3059f35ee108e99881b39ebaaacc8867b76c",
+      "vendoredSha256": "8850e3f09f58749c51baf119c31e3059f35ee108e99881b39ebaaacc8867b76c"
+    },
+    "dist/selectors/string.js": {
+      "upstreamSha256": "05a11719b72ece634c16f49cd3167066969b2a83e673d32db536a0b41b0c18cf",
+      "vendoredSha256": "05a11719b72ece634c16f49cd3167066969b2a83e673d32db536a0b41b0c18cf"
+    },
+    "dist/selectors/tag.js": {
+      "upstreamSha256": "1e4bd06c79d8078ef2318e382f29febc87bf071aa2246d7a792e4ea4f628bb82",
+      "vendoredSha256": "1e4bd06c79d8078ef2318e382f29febc87bf071aa2246d7a792e4ea4f628bb82"
+    },
+    "dist/selectors/types.js": {
+      "upstreamSha256": "a8b1e8f2d3496e4c35f420649fc843066a08794b1c845d0fa4ffe7e76b295732",
+      "vendoredSha256": "a8b1e8f2d3496e4c35f420649fc843066a08794b1c845d0fa4ffe7e76b295732"
+    },
+    "dist/selectors/universal.js": {
+      "upstreamSha256": "5e198ca95bd881bfbdf18dec7813ef1bff4dc61277cbdee6b7883b422da15a2a",
+      "vendoredSha256": "5e198ca95bd881bfbdf18dec7813ef1bff4dc61277cbdee6b7883b422da15a2a"
+    },
+    "dist/sortAscending.js": {
+      "upstreamSha256": "e0ab6d0c0199b9f58dd6e85a0c47beb6ca9d2f58572e05e5b05e7dde8a2c2d90",
+      "vendoredSha256": "e0ab6d0c0199b9f58dd6e85a0c47beb6ca9d2f58572e05e5b05e7dde8a2c2d90"
+    },
+    "dist/tokenize.js": {
+      "upstreamSha256": "05deb73ea8312889832ac1a3b6adb7c3c621f2a9a9222751f6b495dc80540817",
+      "vendoredSha256": "05deb73ea8312889832ac1a3b6adb7c3c621f2a9a9222751f6b495dc80540817"
+    },
+    "dist/tokenTypes.js": {
+      "upstreamSha256": "58d6c1b756717dc8e9f1ebd0d5327ef4727ec05dc0911fb7cc9e82d2ebdd458c",
+      "vendoredSha256": "58d6c1b756717dc8e9f1ebd0d5327ef4727ec05dc0911fb7cc9e82d2ebdd458c"
+    },
+    "dist/util/ensureObject.js": {
+      "upstreamSha256": "5aeaa559248b7ec536bfafc90c8115d89602c13aa060c016217cb80f64267922",
+      "vendoredSha256": "5aeaa559248b7ec536bfafc90c8115d89602c13aa060c016217cb80f64267922"
+    },
+    "dist/util/getProp.js": {
+      "upstreamSha256": "25fcaca0a0a2b58001ff4d48d84a34f5968e44634d0c8570eaa5a24619b2791c",
+      "vendoredSha256": "25fcaca0a0a2b58001ff4d48d84a34f5968e44634d0c8570eaa5a24619b2791c"
+    },
+    "dist/util/index.js": {
+      "upstreamSha256": "6dd4d66728b7d43d4797c62da09df11c645d9096f78e84325bcdd7e5e2daacac",
+      "vendoredSha256": "6dd4d66728b7d43d4797c62da09df11c645d9096f78e84325bcdd7e5e2daacac"
+    },
+    "dist/util/maxNestingDepth.js": {
+      "upstreamSha256": "fe4d16ec0d0c6331ba14c5255b68cd3a4ebbd76aabbf898958814158f47c42bd",
+      "vendoredSha256": "fe4d16ec0d0c6331ba14c5255b68cd3a4ebbd76aabbf898958814158f47c42bd"
+    },
+    "dist/util/stripComments.js": {
+      "upstreamSha256": "df7f5214ab78f15e5a95dfbf1c869c51ccf1871155958480e15edaaa77d61b69",
+      "vendoredSha256": "df7f5214ab78f15e5a95dfbf1c869c51ccf1871155958480e15edaaa77d61b69"
+    },
+    "dist/util/unesc.js": {
+      "upstreamSha256": "58d8e130f5f4b4944cfdfee39df8648eb69f6f2d18d0bb7172d4798e60b8a28a",
+      "vendoredSha256": "58d8e130f5f4b4944cfdfee39df8648eb69f6f2d18d0bb7172d4798e60b8a28a"
+    },
+    "LICENSE-MIT": {
+      "upstreamSha256": "2998094b38f7ace25f141fb36f334d8338f65a1812978d618b1161f4d77ae10e",
+      "vendoredSha256": "2998094b38f7ace25f141fb36f334d8338f65a1812978d618b1161f4d77ae10e"
+    },
+    "package.json": {
+      "upstreamSha256": "de6b31f6ab9ee9f3cf2a0fad6e9411b4541246fe8e721894008256fcb3142192",
+      "vendoredSha256": "0e0f219840bc29f1d48c49756ad1fb074e8541700f422b12d43b44b3a3a42cc2"
+    },
+    "postcss-selector-parser.d.ts": {
+      "upstreamSha256": "e7f53de8e6bf7f82981cc74ec050bd3bbdde56e164661f0658a73f9f274d4453",
+      "vendoredSha256": "e7f53de8e6bf7f82981cc74ec050bd3bbdde56e164661f0658a73f9f274d4453"
+    },
+    "README.md": {
+      "upstreamSha256": "392552f310da0d6953b2007655eb4327d3ea3825de338e6527ed8932869fe803",
+      "vendoredSha256": "392552f310da0d6953b2007655eb4327d3ea3825de338e6527ed8932869fe803"
+    }
+  }
+}

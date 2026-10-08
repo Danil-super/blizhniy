@@ -1,4 +1,4 @@
-import { categories, region } from "@/lib/data";
+import { region } from "@/lib/data";
 import { formatBookingPrice } from "@/lib/booking-details";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { effectivePublicationStatus } from "@/lib/publication-time";
@@ -38,6 +38,7 @@ type ListingRow = {
   categories?: {
     name: string;
     parent_id?: string | null;
+    parent?: { id: string; slug: string };
     slug: string;
   } | null;
   cities?: {
@@ -114,18 +115,49 @@ const listingSelect =
 const listingSelectWithViewCount =
   "id,author_id,listing_type,title,description,booking,price,district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,status,is_paid,view_count,created_at,published_at,expires_at,listing_images(storage_path,sort_order),categories(slug,name,parent_id),cities(slug,name),profiles(display_name)";
 
-async function fetchListingRows(querySuffix: string) {
+async function withCategoryParents(rows: ListingRow[]) {
+  const parentIds = [...new Set(rows.map((row) => row.categories?.parent_id).filter((id): id is string => Boolean(id && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))))];
+
+  if (!parentIds.length) return rows;
+
+  const parentsById = new Map<string, { id: string; slug: string }>();
+
+  // Resolve the stored FK, not a display name shared by unrelated categories.
+  // Fixed batches bound the URL without truncating large owner/admin results.
+  for (let offset = 0; offset < parentIds.length; offset += 100) {
+    const ids = parentIds.slice(offset, offset + 100);
+    try {
+      const parents = await supabaseRest<Array<{ id: string; slug: string }>>(
+        `/rest/v1/categories?select=id,slug&id=in.(${ids.map(encodeURIComponent).join(",")})&limit=${ids.length}`,
+        { attempts: 1 },
+      );
+      for (const parent of parents) parentsById.set(parent.id, parent);
+    } catch (error) {
+      // Keep successfully loaded listings readable; unresolved parents retain
+      // their stored child slug rather than guessing an unrelated root.
+      console.error("Failed to load listing category parents from Supabase", error);
+    }
+  }
+
+  return rows.map((row) => row.categories?.parent_id
+    ? { ...row, categories: { ...row.categories, parent: parentsById.get(row.categories.parent_id) } }
+    : row);
+}
+
+async function fetchListingRows(querySuffix: string, includeViewCount = true) {
+  let rows: ListingRow[];
   try {
-    return await supabaseRest<ListingRow[]>(`/rest/v1/listings?select=${listingSelectWithViewCount}${querySuffix}`);
+    rows = await supabaseRest<ListingRow[]>(`/rest/v1/listings?select=${includeViewCount ? listingSelectWithViewCount : listingSelect}${querySuffix}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
 
-    if (!message.includes("view_count")) {
+    if (!includeViewCount || !message.includes("view_count")) {
       throw error;
     }
 
-    return supabaseRest<ListingRow[]>(`/rest/v1/listings?select=${listingSelect}${querySuffix}`);
+    rows = await supabaseRest<ListingRow[]>(`/rest/v1/listings?select=${listingSelect}${querySuffix}`);
   }
+  return withCategoryParents(rows);
 }
 
 function toNumber(value: ListingRow["latitude"]) {
@@ -197,7 +229,7 @@ function resolveCategoryInfo(row: ListingRow) {
   }
 
   if (storedCategory.parent_id) {
-    const parent = categories.find((category) => category.children.includes(storedCategory.name));
+    const parent = storedCategory.parent?.id === storedCategory.parent_id ? storedCategory.parent : undefined;
 
     return {
       categorySlug: parent?.slug ?? storedCategory.slug,
@@ -225,6 +257,7 @@ function mapListing(row: ListingRow): Listing {
     kind,
     categorySlug,
     subcategory: categoryInfo.subcategory,
+    isSubcategory: row.categories ? Boolean(row.categories.parent_id) : undefined,
     author: row.profiles?.display_name ?? "Пользователь",
     title: row.title,
     description: row.description,
@@ -245,7 +278,7 @@ function mapListing(row: ListingRow): Listing {
     paid: row.is_paid,
     viewCount: Math.max(0, Math.floor(Number(row.view_count ?? 0) || 0)),
     publishedAt,
-    expiresAt: isoDate(row.expires_at) || addDaysIsoDate(publishedAt, 30),
+    expiresAt: row.expires_at ?? undefined,
   };
 }
 
@@ -402,7 +435,7 @@ export async function createStoredListing(input: CreateStoredListingInput) {
 
   await insertListingImages(listing.id, input.mediaPaths);
 
-  return listingWithMediaFallback((await getStoredListingById(listing.id)) ?? mapListing(listing), input.mediaPaths);
+  return listingWithMediaFallback((await getStoredListingById(listing.id)) ?? mapListing((await withCategoryParents([listing]))[0]), input.mediaPaths);
 }
 
 function listingMatchesReusableInput(listing: Listing, input: CreateStoredListingInput) {
@@ -435,8 +468,9 @@ export async function findReusableStoredListingForPayment(input: CreateStoredLis
     return undefined;
   }
 
-  const rows = await supabaseRest<ListingRow[]>(
-    `/rest/v1/listings?select=${listingSelect}&author_id=eq.${encodeURIComponent(input.authorId)}&title=eq.${encodeURIComponent(title)}&status=in.(draft,pending_payment)&order=created_at.desc&limit=20`,
+  const rows = await fetchListingRows(
+    `&author_id=eq.${encodeURIComponent(input.authorId)}&title=eq.${encodeURIComponent(title)}&status=in.(draft,pending_payment)&order=created_at.desc&limit=20`,
+    false,
   );
   const listings = rows.map(mapListing);
 
@@ -454,8 +488,9 @@ export async function findReusableStoredDraftListing(input: CreateStoredListingI
     return undefined;
   }
 
-  const rows = await supabaseRest<ListingRow[]>(
-    `/rest/v1/listings?select=${listingSelect}&author_id=eq.${encodeURIComponent(input.authorId)}&title=eq.${encodeURIComponent(title)}&status=eq.draft&order=created_at.desc&limit=20`,
+  const rows = await fetchListingRows(
+    `&author_id=eq.${encodeURIComponent(input.authorId)}&title=eq.${encodeURIComponent(title)}&status=eq.draft&order=created_at.desc&limit=20`,
+    false,
   );
 
   return rows.map(mapListing).find((listing) => listingMatchesReusableInput(listing, input));
@@ -502,7 +537,7 @@ export async function updateStoredListingForUser(listingId: string, userId: stri
 
   await replaceListingImages(listingId, input.mediaPaths);
 
-  return listingWithMediaFallback((await getStoredListingById(listingId)) ?? mapListing(rows[0]), input.mediaPaths);
+  return listingWithMediaFallback((await getStoredListingById(listingId)) ?? mapListing((await withCategoryParents([rows[0]]))[0]), input.mediaPaths);
 }
 
 async function storedListingBody(input: CreateStoredListingInput, status: PublicationStatus, options: StoreListingBodyOptions = {}) {
@@ -575,7 +610,7 @@ export async function saveStoredListingForUser(
     await replaceListingImages(listingId, input.mediaPaths);
   }
 
-  return listingWithMediaFallback((await getStoredListingById(listingId)) ?? mapListing(rows[0]), input.mediaPaths);
+  return listingWithMediaFallback((await getStoredListingById(listingId)) ?? mapListing((await withCategoryParents([rows[0]]))[0]), input.mediaPaths);
 }
 
 export async function markStoredListingPaid(listingId: string) {
@@ -874,43 +909,14 @@ export async function markStoredListingSoldForUser(listingId: string, userId: st
 }
 
 export async function restoreStoredListingForUser(listingId: string, userId: string) {
-  if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
+  if (!isSupabaseRestConfigured() || !isUuid(listingId) || !isUuid(userId)) {
     return false;
   }
 
-  const now = new Date().toISOString();
-  // Restoring a sold or archived listing must keep the already paid publication window.
-  const restoreBody = {
-    published_at: now,
-    status: "published",
-  };
+  const rows = await supabaseRest<Array<Pick<ListingRow, "id">>>(
+    "/rest/v1/rpc/restore_listing_within_paid_window",
+    { method: "POST", body: { p_listing_id: listingId, p_owner_id: userId } },
+  );
 
-  async function patchRestorableListing(statusFilter: string) {
-    return supabaseRest<Array<Pick<ListingRow, "id">>>(
-      `/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&is_paid=eq.true&expires_at=gt.${encodeURIComponent(now)}&${statusFilter}`,
-      {
-        method: "PATCH",
-        prefer: "return=representation",
-        body: restoreBody,
-      },
-    );
-  }
-
-  let rows: Array<Pick<ListingRow, "id">> = [];
-
-  try {
-    rows = await patchRestorableListing("status=eq.sold");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-
-    if (!message.includes("publication_status") || !message.includes("sold")) {
-      throw error;
-    }
-  }
-
-  if (!rows[0]?.id) {
-    rows = await patchRestorableListing("status=in.(archived,expired)");
-  }
-
-  return Boolean(rows[0]?.id);
+  return rows[0]?.id === listingId;
 }

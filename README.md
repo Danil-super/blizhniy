@@ -46,6 +46,8 @@ npm install
 npm run dev
 ```
 
+Установка по умолчанию блокирует lifecycle-скрипты зависимостей (`ignore-scripts=true`); явные `npm run dev`, `lint` и `build` работают. Политика, совместимые обновления и **два оставшихся advisory для сборки** описаны в [docs/dependency-security.md](docs/dependency-security.md).
+
 После запуска основные страницы доступны по адресам:
 
 - главная: `http://localhost:3000`

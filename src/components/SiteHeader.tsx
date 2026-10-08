@@ -10,7 +10,7 @@ export function SiteHeader() {
         <div className="flex min-h-10 items-center gap-2 sm:gap-3 md:min-h-14 md:gap-5">
           <Link
             href="/"
-            className="flex min-w-0 shrink-0 items-center text-2xl font-black italic leading-none tracking-normal text-[#198b2f] sm:text-[2.1rem] md:text-[2.35rem]"
+            className="flex min-h-11 min-w-0 shrink-0 items-center text-2xl font-black italic leading-none tracking-normal text-[#198b2f] sm:text-[2.1rem] md:text-[2.35rem]"
             aria-label="БЛИЖНИЙ, главная"
           >
             БЛИЖНИЙ

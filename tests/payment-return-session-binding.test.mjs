@@ -30,6 +30,17 @@ async function flushPromises() {
   }
 }
 
+function loadPaymentOutcomes() {
+  const source = readFileSync(new URL("../src/lib/payment-confirmation-outcome.ts", import.meta.url), "utf8");
+  const js = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const module = { exports: {} };
+  // Actual pure application module, not a replacement outcome implementation.
+  vm.runInNewContext(js, { module, exports: module.exports });
+  return module.exports;
+}
+
 function loadReturnHelpers() {
   const source = readFileSync(new URL("../src/components/payments/PaymentReturnClient.tsx", import.meta.url), "utf8");
   const js = ts.transpileModule(source, {
@@ -53,6 +64,7 @@ function loadReturnHelpers() {
       if (id === "react/jsx-runtime") return { jsx() {}, jsxs() {} };
       if (id === "lucide-react") return { CheckCircle2: "CheckCircle2", Loader2: "Loader2" };
       if (id === "@/lib/client-payment-flow") return { confirmClientPayment() {} };
+      if (id === "@/lib/payment-confirmation-outcome") return loadPaymentOutcomes();
       if (id === "@/lib/client-user-profile") return { readCabinetProfile() {} };
       if (id === "@/lib/site-notifications") return { addSiteNotification() {} };
       if (id === "@/lib/supabase-browser") return { getSupabaseBrowserClient() {}, isSupabaseBrowserConfigured() {} };
@@ -134,6 +146,7 @@ function makePaymentReturnComponentHarness() {
         };
       }
       if (id === "@/lib/client-user-profile") return { readCabinetProfile: async () => ({ notifyPayments: true }) };
+      if (id === "@/lib/payment-confirmation-outcome") return loadPaymentOutcomes();
       if (id === "@/lib/site-notifications") return { addSiteNotification() {} };
       if (id === "@/lib/supabase-browser") return { getSupabaseBrowserClient: () => supabase, isSupabaseBrowserConfigured: () => true };
       throw new Error(`Unexpected module: ${id}`);
@@ -168,6 +181,11 @@ function loadClientPaymentFlow({ fetchImpl, getSession }) {
     "@/lib/cabinet-data-cache": { markCabinetDataChanged() {} },
     "@/lib/client-media-store": { getStoredMediaFile: async () => undefined },
     "@/lib/client-runtime-mode": { shouldShowClientFallbackContent: () => false },
+    "@/lib/client-user-profile": {
+      captureClientUserOperation() {
+        throw new Error("the return flow must keep its supplied origin, not capture a new account");
+      },
+    },
     "@/lib/demo-publications": {
       demoPublicationsUpdatedEvent: "demo-publications-updated",
       readStoredDemoPublications: () => null,
@@ -176,6 +194,7 @@ function loadClientPaymentFlow({ fetchImpl, getSession }) {
     },
     "@/lib/listing-price": { normalizeListingPrice: (value) => value ?? "" },
     "@/lib/site-notifications": { addCurrentUserNotification: async () => undefined },
+    "@/lib/payment-confirmation-outcome": loadPaymentOutcomes(),
     "@/lib/supabase-browser": {
       getSupabaseBrowserClient: () => ({ auth: { getSession } }),
       isSupabaseBrowserConfigured: () => true,

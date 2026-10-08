@@ -52,13 +52,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
+          SSH_DIRECTORY="$RUNNER_TEMP/blizhniy-ssh"
+          bash scripts/setup-deployment-ssh.sh "$VPS_HOST" "$VPS_PORT" "$SSH_DIRECTORY"
+          printf '%s\n' "$VPS_SSH_KEY" > "$SSH_DIRECTORY/deploy_key"
+          chmod 600 "$SSH_DIRECTORY/deploy_key"
 
-          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-
-          SSH_OPTS="-o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa"
+          SSH_OPTS=(
+            -F "$SSH_DIRECTORY/ssh_config"
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=$SSH_DIRECTORY/known_hosts"
+            -o GlobalKnownHostsFile=/dev/null
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=8
+            -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes
+            -o KexAlgorithms=+diffie-hellman-group14-sha256
+            -o PubkeyAcceptedAlgorithms=+ssh-rsa
+          )
 
           retry() {
             local attempt
@@ -74,15 +82,13 @@ jobs:
             return 1
           }
 
-          retry ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
-
           RUN_TOKEN="${{ github.run_id }}-${{ github.run_attempt }}"
           ARCHIVE_NAME="blizhniy-${RUN_TOKEN}.tar.gz"
-          LOCAL_ARCHIVE="/tmp/${ARCHIVE_NAME}"
+          LOCAL_ARCHIVE="$RUNNER_TEMP/${ARCHIVE_NAME}"
           REMOTE_ARCHIVE="/tmp/${ARCHIVE_NAME}"
-          LOCAL_SCRIPT="/tmp/blizhniy-deploy-${RUN_TOKEN}.sh"
+          LOCAL_SCRIPT="$RUNNER_TEMP/blizhniy-deploy-${RUN_TOKEN}.sh"
           REMOTE_SCRIPT="/tmp/blizhniy-deploy-${RUN_TOKEN}.sh"
-          LOCAL_RUNNER="/tmp/blizhniy-deploy-runner-${RUN_TOKEN}.sh"
+          LOCAL_RUNNER="$RUNNER_TEMP/blizhniy-deploy-runner-${RUN_TOKEN}.sh"
           REMOTE_RUNNER="/tmp/blizhniy-deploy-runner-${RUN_TOKEN}.sh"
           REMOTE_LOG="/tmp/blizhniy-deploy-${RUN_TOKEN}.log"
           REMOTE_STATUS="/tmp/blizhniy-deploy-${RUN_TOKEN}.status"
@@ -132,26 +138,26 @@ jobs:
             printf 'exit "$status"\n'
           } > "$LOCAL_RUNNER"
 
-          retry scp $SSH_OPTS -i ~/.ssh/deploy_key -P "$VPS_PORT" "$LOCAL_ARCHIVE" "$LOCAL_SCRIPT" "$LOCAL_RUNNER" "$VPS_USER@$VPS_HOST:/tmp/"
-          retry scp $SSH_OPTS -i ~/.ssh/deploy_key -P "$VPS_PORT" scripts/deploy-watchdog.sh "$VPS_USER@$VPS_HOST:$REMOTE_WATCHDOG"
+          retry scp "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -P "$VPS_PORT" "$LOCAL_ARCHIVE" "$LOCAL_SCRIPT" "$LOCAL_RUNNER" "$VPS_USER@$VPS_HOST:/tmp/"
+          retry scp "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -P "$VPS_PORT" scripts/deploy-watchdog.sh "$VPS_USER@$VPS_HOST:$REMOTE_WATCHDOG"
 
-          retry ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "rm -f '$REMOTE_LOG' '$REMOTE_STATUS' '$REMOTE_RESULT' '$REMOTE_CONFIRMED' '$REMOTE_ABORT'; chmod +x '$REMOTE_RUNNER'; nohup bash '$REMOTE_RUNNER' > '$REMOTE_LOG' 2>&1 < /dev/null &"
+          retry ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "rm -f '$REMOTE_LOG' '$REMOTE_STATUS' '$REMOTE_RESULT' '$REMOTE_CONFIRMED' '$REMOTE_ABORT'; chmod +x '$REMOTE_RUNNER'; nohup bash '$REMOTE_RUNNER' > '$REMOTE_LOG' 2>&1 < /dev/null &"
 
           for poll_attempt in $(seq 1 80); do
-            if ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "test -f '$REMOTE_STATUS'"; then
-              retry ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "tail -n 200 '$REMOTE_LOG' || true"
-              DEPLOY_STATUS="$(retry ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cat '$REMOTE_STATUS'")"
+            if ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "test -f '$REMOTE_STATUS'"; then
+              retry ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "tail -n 200 '$REMOTE_LOG' || true"
+              DEPLOY_STATUS="$(retry ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cat '$REMOTE_STATUS'")"
               exit "$DEPLOY_STATUS"
             fi
 
             if (( poll_attempt % 8 == 0 )); then
-              retry ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "tail -n 80 '$REMOTE_LOG' || true" || true
+              retry ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "tail -n 80 '$REMOTE_LOG' || true" || true
             fi
 
             sleep 15
           done
 
-          retry ssh $SSH_OPTS -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "tail -n 200 '$REMOTE_LOG' || true" || true
+          retry ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "tail -n 200 '$REMOTE_LOG' || true" || true
           echo "Deploy timed out while waiting for remote status file."
           exit 124
 
@@ -203,11 +209,22 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           set -euo pipefail
+          SSH_DIRECTORY="$RUNNER_TEMP/blizhniy-ssh"
+          SSH_OPTS=(
+            -F "$SSH_DIRECTORY/ssh_config"
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=$SSH_DIRECTORY/known_hosts"
+            -o GlobalKnownHostsFile=/dev/null
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=8
+            -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes
+            -o KexAlgorithms=+diffie-hellman-group14-sha256
+            -o PubkeyAcceptedAlgorithms=+ssh-rsa
+          )
           remote_confirm="/tmp/blizhniy-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.confirmed"
           remote_result="/tmp/blizhniy-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.result"
-          ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "touch '$remote_confirm'"
+          ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "touch '$remote_confirm'"
           for attempt in $(seq 1 30); do
-            result="$(ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cat '$remote_result' 2>/dev/null || true")"
+            result="$(ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cat '$remote_result' 2>/dev/null || true")"
             if [[ "$result" == "confirmed" ]]; then
               exit 0
             fi
@@ -229,20 +246,31 @@ jobs:
           APP_DIR: ${{ secrets.APP_DIR }}
         run: |
           set -euo pipefail
+          SSH_DIRECTORY="$RUNNER_TEMP/blizhniy-ssh"
+          SSH_OPTS=(
+            -F "$SSH_DIRECTORY/ssh_config"
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=$SSH_DIRECTORY/known_hosts"
+            -o GlobalKnownHostsFile=/dev/null
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=8
+            -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes
+            -o KexAlgorithms=+diffie-hellman-group14-sha256
+            -o PubkeyAcceptedAlgorithms=+ssh-rsa
+          )
           # The server runner holds the release lock and owns rollback. If SSH
           # is unavailable, its 30-minute confirmation lease still expires.
           remote_abort="/tmp/blizhniy-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.abort"
           remote_result="/tmp/blizhniy-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.result"
-          if [[ ! -f ~/.ssh/deploy_key ]]; then
+          if [[ ! -f "$SSH_DIRECTORY/deploy_key" ]]; then
             echo "Deploy never initialized its SSH key; no release switch was attempted."
             exit 0
           fi
-          ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "touch '$remote_abort'" || {
+          ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "touch '$remote_abort'" || {
             echo "Could not signal remote runner. Outcome unknown until its lease expires; inspect VPS release status." >&2
             exit 1
           }
           for attempt in $(seq 1 60); do
-            result="$(ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30 -o IPQoS=none -o Compression=yes -o KexAlgorithms=+diffie-hellman-group14-sha256 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cat '$remote_result' 2>/dev/null || true")" || true
+            result="$(ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cat '$remote_result' 2>/dev/null || true")" || true
             if [[ "$result" == "rolled_back" || "$result" == "deploy_failed" || "$result" == "lock_busy" ]]; then
               echo "Remote release result: $result"
               exit 0

@@ -32,6 +32,14 @@ export async function POST(request: Request) {
     // are checked against YooKassa's API before any payment is applied.
     const result = await processYooKassaNotification(payload as Parameters<typeof processYooKassaNotification>[0]);
 
+    const payment = result.result?.payment;
+    if (result.processed && payment?.status === "succeeded"
+      && payment.fulfillmentStatus !== "applied" && payment.fulfillmentStatus !== "blocked") {
+      // Finance was committed but fulfillment is unresolved. A 2xx would lose
+      // YooKassa's genuine retry; terminal durable blocked/applied is safe to ACK.
+      return NextResponse.json({ ok: false, error: "Payment fulfillment is pending" }, { status: 503 });
+    }
+
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "YooKassa webhook processing failed";

@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock3, Loader2 } from "lucide-react";
 import { confirmClientPayment } from "@/lib/client-payment-flow";
 import { readCabinetProfile } from "@/lib/client-user-profile";
 import { addSiteNotification, type AddSiteNotificationInput } from "@/lib/site-notifications";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
+import { getPaymentConfirmationOutcome, paymentConfirmationNotification, type PaymentConfirmationOutcome } from "@/lib/payment-confirmation-outcome";
 
 type PaymentReturnClientProps = {
   paymentId: string;
@@ -112,33 +113,6 @@ export async function addBoundPaymentNotification<Profile>(
   return writeNotification(origin.userId, profile, input);
 }
 
-function paymentNotificationInput(
-  payload: { payment?: { id?: string; status?: string; targetTitle?: string } },
-  paymentId: string,
-): AddSiteNotificationInput {
-  if (payload.payment?.status === "succeeded") {
-    return {
-      category: "payment",
-      title: "Оплата прошла",
-      message: payload.payment.targetTitle
-        ? `${payload.payment.targetTitle}: публикация активирована.`
-        : "Платеж подтвержден, публикация активирована.",
-      tone: "success",
-      dedupeKey: `payment:${payload.payment.id ?? paymentId}:succeeded`,
-    };
-  }
-
-  return {
-    category: "payment",
-    title: "Платеж ожидает подтверждения",
-    message: payload.payment?.targetTitle
-      ? `${payload.payment.targetTitle}: банк или ЮKassa еще не прислали финальный статус.`
-      : "Платеж создан, ожидаем финальный статус от платежного провайдера.",
-    tone: "warning",
-    dedupeKey: `payment:${payload.payment?.id ?? paymentId}:pending`,
-  };
-}
-
 function cabinetHrefForPayment(targetType?: string) {
   if (targetType === "listing") {
     return "/cabinet/obyavleniya";
@@ -175,13 +149,16 @@ export function PaymentReturnClient({ paymentId }: PaymentReturnClientProps) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [returnHref, setReturnHref] = useState("/cabinet");
-  const [confirmed, setConfirmed] = useState(false);
+  const [outcome, setOutcome] = useState<PaymentConfirmationOutcome | null>(null);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let active = true;
     let origin: AuthenticatedPaymentSession | null = null;
     let sessionChanged = false;
     let unsubscribe = () => {};
+    setError("");
+    setOutcome(null);
 
     const applyConfirmation = async (
       payload: Awaited<ReturnType<typeof confirmClientPayment>>,
@@ -196,12 +173,11 @@ export function PaymentReturnClient({ paymentId }: PaymentReturnClientProps) {
       const nextHref = cabinetHrefForPayment(payload.payment?.targetType);
       setReturnHref(nextHref);
 
-      if (payload.payment?.status !== "succeeded") {
-        setError("Платеж еще ожидает подтверждения от ЮKassa. Публикация обновится автоматически после финального статуса.");
+      const nextOutcome = getPaymentConfirmationOutcome(payload);
+      setOutcome(nextOutcome);
+      if (nextOutcome.kind !== "applied") {
         return;
       }
-
-      setConfirmed(true);
       window.setTimeout(() => {
         if (!active) {
           return;
@@ -249,7 +225,7 @@ export function PaymentReturnClient({ paymentId }: PaymentReturnClientProps) {
       sessionChanged = true;
 
       if (active) {
-        setConfirmed(false);
+        setOutcome(null);
         setReturnHref("/cabinet");
         setError(sessionChangedError);
       }
@@ -290,7 +266,7 @@ export function PaymentReturnClient({ paymentId }: PaymentReturnClientProps) {
           ownerKey: session.userId,
         }),
         addSiteNotification,
-        paymentNotificationInput(payload, paymentId),
+        paymentConfirmationNotification(payload, paymentId),
         // The component can unmount after its redirect, but a stable A session
         // may still finish this optional write. Fresh session checks inside the
         // helper still prevent it from landing in B's notification list.
@@ -304,27 +280,34 @@ export function PaymentReturnClient({ paymentId }: PaymentReturnClientProps) {
       active = false;
       unsubscribe();
     };
-  }, [paymentId, router]);
+  }, [paymentId, retry, router]);
 
   return (
     <main className="page-container flex min-h-[70vh] items-center justify-center py-10">
       <section className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-6 text-center shadow-card">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-[#0875d1]">
-          {confirmed ? <CheckCircle2 className="h-6 w-6" /> : <Loader2 className="h-6 w-6 animate-spin" />}
+        <div role="status" aria-live="polite" aria-busy={!outcome && !error}>
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-[#0875d1]" aria-hidden="true">
+            {outcome?.kind === "applied" ? <CheckCircle2 className="h-6 w-6" />
+              : error || outcome?.tone === "danger" || outcome?.kind === "blocked" ? <AlertCircle className="h-6 w-6" />
+              : outcome ? <Clock3 className="h-6 w-6" /> : <Loader2 className="h-6 w-6 animate-spin" />}
+          </div>
+          <h1 className="mt-4 text-xl font-bold text-[#060b27]">{error ? "Не удалось проверить платеж" : outcome?.title ?? "Проверяем платеж"}</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            {outcome?.message ?? (error ? "Проверьте платеж в своем кабинете или повторите проверку." : "Пожалуйста, подождите: получаем статус платежа и услуги.")}
+          </p>
         </div>
-        <h1 className="mt-4 text-xl font-bold text-[#060b27]">{confirmed ? "Платеж подтвержден" : "Проверяем платеж"}</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          {confirmed
-            ? "Статус заказа обновлен. Сейчас откроем нужный раздел кабинета."
-            : "Пожалуйста, подождите: обновляем статус заказа и связанной публикации."}
-        </p>
         {error ? (
-          <>
-            <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>
-            <Link href={returnHref} className="mt-4 inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white">
-              Открыть кабинет
-            </Link>
-          </>
+          <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>
+        ) : null}
+        {error || outcome?.canRetry ? (
+          <button type="button" onClick={() => setRetry((value) => value + 1)} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-5 text-sm font-bold text-[#0875d1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0875d1]">
+            Проверить статус еще раз
+          </button>
+        ) : null}
+        {error || outcome ? (
+          <Link href={returnHref} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0875d1]">
+            Открыть кабинет
+          </Link>
         ) : null}
       </section>
     </main>

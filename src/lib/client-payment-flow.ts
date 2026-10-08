@@ -6,6 +6,8 @@ import { getStoredMediaFile } from "@/lib/client-media-store";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
+import { captureClientUserOperation } from "@/lib/client-user-profile";
+import { getPaymentConfirmationOutcome, paymentConfirmationNotification, shouldRetryPaymentConfirmation } from "@/lib/payment-confirmation-outcome";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import type { JobVacancy, Listing, ListingKind, Payment } from "@/lib/types";
 
@@ -15,6 +17,8 @@ type ConfirmPaymentPayload = {
     id?: string;
     provider?: Payment["provider"];
     status?: Payment["status"];
+    fulfillmentStatus?: "pending" | "applied" | "blocked";
+    fulfillmentReason?: string;
     targetId?: string;
     targetTitle?: string;
     targetType?: string;
@@ -462,7 +466,7 @@ async function findMatchingServerListing(draft: DemoPublication) {
 export function syncPaidPublication(confirmPayload: ConfirmPaymentPayload) {
   const targetId = confirmPayload.payment?.targetId;
 
-  if (!targetId || confirmPayload.nextStatus !== "published" || confirmPayload.payment?.status !== "succeeded") {
+  if (!targetId || confirmPayload.nextStatus !== "published" || getPaymentConfirmationOutcome(confirmPayload).kind !== "applied") {
     return;
   }
 
@@ -517,7 +521,7 @@ async function requestPaymentConfirmation(paymentId: string, options?: ClientPay
 }
 
 function shouldRetryPendingConfirmation(payload: (ConfirmPaymentPayload & { error?: string }) | null, responseOk: boolean) {
-  return responseOk && payload?.payment?.status !== "succeeded";
+  return shouldRetryPaymentConfirmation(payload, responseOk);
 }
 
 function wait(ms: number) {
@@ -525,46 +529,38 @@ function wait(ms: number) {
 }
 
 export async function confirmClientPayment(paymentId: string, options?: ClientPaymentConfirmationOptions) {
-  let { payload, response } = await requestPaymentConfirmation(paymentId, options);
+  // PaymentReturn supplies its own owner-bound checks and suppresses this
+  // notifier. Other callers capture an origin before their first Auth await.
+  const origin = options?.assertCurrentSession && options.notify === false ? undefined : await captureClientUserOperation();
+  const boundOptions: ClientPaymentConfirmationOptions = {
+    ...options,
+    authorizationToken: options?.authorizationToken ?? origin?.identity.accessToken,
+    assertCurrentSession: async () => {
+      await options?.assertCurrentSession?.();
+      await origin?.assertCurrentSession();
+    },
+  };
+  let { payload, response } = await requestPaymentConfirmation(paymentId, boundOptions);
 
   for (let attempt = 1; attempt < confirmationRetryAttempts && shouldRetryPendingConfirmation(payload, response.ok); attempt += 1) {
     await wait(confirmationRetryDelayMs);
-    ({ payload, response } = await requestPaymentConfirmation(paymentId, options));
+    ({ payload, response } = await requestPaymentConfirmation(paymentId, boundOptions));
   }
 
   if (!response.ok || !payload) {
     throw new Error(payload?.error ?? "Не удалось подтвердить платеж.");
   }
 
-  await options?.assertCurrentSession?.();
+  await boundOptions.assertCurrentSession?.();
 
-  if (payload.payment?.status === "succeeded") {
+  if (getPaymentConfirmationOutcome(payload).kind === "applied") {
     syncPaidPublication(payload);
-    if (options?.notify !== false) {
-      void addCurrentUserNotification({
-        category: "payment",
-        title: "Оплата прошла",
-        message: payload.payment.targetTitle
-          ? `${payload.payment.targetTitle}: публикация активирована.`
-          : "Платеж подтвержден, публикация активирована.",
-        tone: "success",
-        dedupeKey: `payment:${payload.payment.id ?? paymentId}:succeeded`,
-      });
-    }
-  } else {
-    if (options?.notify !== false) {
-      void addCurrentUserNotification({
-        category: "payment",
-        title: "Платеж ожидает подтверждения",
-        message: payload.payment?.targetTitle
-          ? `${payload.payment.targetTitle}: банк или ЮKassa еще не прислали финальный статус.`
-          : "Платеж создан, ожидаем финальный статус от платежного провайдера.",
-        tone: "warning",
-        dedupeKey: `payment:${payload.payment?.id ?? paymentId}:pending`,
-      });
-    }
+  }
+  if (options?.notify !== false) {
+    await addCurrentUserNotification(paymentConfirmationNotification(payload, paymentId), origin);
   }
 
+  await boundOptions.assertCurrentSession?.();
   return payload;
 }
 
@@ -581,24 +577,27 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 export async function createClientPayment(input: CreatePaymentInput): Promise<CreatedPaymentPayload> {
+  const origin = await captureClientUserOperation();
   const paymentInput = {
     tariffId: input.tariffId,
     targetId: input.targetId,
     targetTitle: input.targetTitle,
     targetType: input.targetType,
   };
+  await origin.assertCurrentSession();
   const response = await fetch("/api/payments", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    headers: { "Content-Type": "application/json", ...(origin.identity.accessToken ? { Authorization: `Bearer ${origin.identity.accessToken}` } : {}) },
     body: JSON.stringify(paymentInput),
   });
   const payload = (await response.json().catch(() => null)) as { error?: string; payment?: CreatedPaymentPayload } | null;
+  await origin.assertCurrentSession();
 
   if (!response.ok || !payload?.payment?.id) {
     throw new Error(payload?.error ?? "Не удалось создать платеж.");
   }
 
-  void addCurrentUserNotification({
+  await addCurrentUserNotification({
     category: "payment",
     title: "Платеж создан",
     message: payload.payment.confirmationUrl
@@ -608,8 +607,9 @@ export async function createClientPayment(input: CreatePaymentInput): Promise<Cr
     actionHref: payload.payment.confirmationUrl,
     actionLabel: payload.payment.confirmationUrl ? "Перейти к оплате" : undefined,
     dedupeKey: `payment:${payload.payment.id}:created`,
-  });
+  }, origin);
 
+  await origin.assertCurrentSession();
   return payload.payment;
 }
 

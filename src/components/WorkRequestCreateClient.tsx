@@ -189,7 +189,7 @@ export function WorkRequestCreateClient() {
     const messengerUrl = readValue(formData, "messengerUrl");
 
     if (mode === "publish" && !phone && !messengerUrl) {
-      setMessage("Укажите телефон или мессенджер, чтобы исполнитель мог связаться по заказу.");
+      setMessage("Укажите телефон или мессенджер для связи по заказу. Контакты не показываются публично.");
       return;
     }
 
@@ -276,11 +276,12 @@ export function WorkRequestCreateClient() {
             <Field name="phone" label="Телефон" placeholder="+7-(999)-999-99-99" />
             <Field name="messengerUrl" label="Telegram / WhatsApp" placeholder="@username или ссылка" maxLength={120} />
           </div>
+          <p className="text-sm leading-6 text-slate-600">Контакты не показываются публично. После отклика вы сможете выбрать исполнителя и связаться с ним.</p>
           <TextAreaField name="description" label="Описание задачи" placeholder="Опишите объем работ, сроки, важные условия и пожелания к исполнителю." minLength={30} maxLength={1800} required />
           <PhotoField label="Фото к заказу" description="Можно добавить фото объекта, поломки или места работ. Это необязательно." maxPhotos={6} autoOpenCropper={false} />
           <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold leading-5 text-slate-700">
             <input name="placementRightConfirmed" type="checkbox" className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-[#0875d1]" />
-            <span>Подтверждаю, что заказ реальный, данные указаны корректно, а исполнитель сможет связаться со мной.</span>
+            <span>Подтверждаю, что заказ реальный, данные указаны корректно и я смогу связаться с выбранным исполнителем.</span>
           </label>
           <LegalConsentCheckbox name="publicOfferAccepted" paymentConsent errorMessage="Примите условия публичной оферты, чтобы перейти к оплате">
             Я принимаю условия <LegalLink href="/legal/offer">Публичной оферты</LegalLink> и понимаю, что оплачиваю услугу размещения заказа на сайте <BrandName />.

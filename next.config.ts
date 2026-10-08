@@ -142,6 +142,11 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
+        source: "/krasnodar/rabota/specialisty/klassifikator",
+        destination: "/rabota/specialisty",
+        permanent: true,
+      },
+      {
         source: "/krasnodar/rabota/specialisty/:path*",
         destination: "/rabota/specialisty/:path*",
         permanent: true,

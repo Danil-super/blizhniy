@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import {
@@ -28,18 +29,21 @@ import { ValidatedInput } from "@/components/ValidatedInput";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { formatBookingPrice, validateBookingDetailsForPublication } from "@/lib/booking-details";
 import { categories as fallbackCategories, cities } from "@/lib/data";
+import { instrumentSubcategories } from "@/lib/instrument-subcategories";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { createListing, getListingStatusOverride, listListings } from "@/lib/mock-store";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { formatPublicationDateTime } from "@/lib/publication-time";
+import { posudaSubcategories } from "@/lib/posuda-subcategories";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
 import { getPublicCategories, getPublicCategoriesWithListingScope } from "@/lib/category-store";
 import { listStoredListingsForCategory } from "@/lib/listing-store";
 import { getPublicTariffs } from "@/lib/tariff-store";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
+import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
 import type { BookingAvailability } from "@/lib/booking-availability";
 import type { BookingDetails, DeliveryOptions, DeliveryServiceId, Listing as StoreListing } from "@/lib/types";
 import { BookingCalculator } from "./BookingCalculator";
@@ -1167,6 +1171,9 @@ function listingCategoryName(listing: StoreListing) {
 }
 
 export function toDemoListing(listing: StoreListing): DemoListing {
+  const categoryName = listingCategoryName(listing);
+  const isSubcategory = listing.isSubcategory ?? listing.subcategory !== categoryName;
+
   return {
     viewId: listing.id,
     slug: listing.slug,
@@ -1175,8 +1182,8 @@ export function toDemoListing(listing: StoreListing): DemoListing {
     title: listing.title,
     kind: listing.kind,
     categorySlug: listing.categorySlug,
-    categoryName: listingCategoryName(listing),
-    subcategorySlug: slugifySubcategory(listing.subcategory),
+    categoryName,
+    subcategorySlug: isSubcategory ? slugifySubcategory(listing.subcategory) : "",
     subcategoryName: listing.subcategory,
     city: listing.city,
     district: listing.district ?? "",
@@ -1219,6 +1226,10 @@ export function findListingBySlug(slug?: string) {
 }
 
 export function slugifySubcategory(name: string) {
+  const dedicated = instrumentSubcategories.find((item) => item.name === name)
+    ?? posudaSubcategories.find((item) => item.name === name);
+  if (dedicated) return dedicated.slug;
+
   const map: Record<string, string> = {
     "Товары времен СССР": "tovary-vremen-sssr",
     "Картины и живопись": "kartiny-i-zhivopis",
@@ -1681,7 +1692,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
           <Breadcrumbs
             items={[
               { label: listing.categoryName, href: `/katalog/${listing.categorySlug}` },
-              { label: listing.subcategoryName, href: `/katalog/${listing.categorySlug}/${listing.subcategorySlug}` },
+              ...(listing.subcategorySlug ? [{ label: listing.subcategoryName, href: `/katalog/${listing.categorySlug}/${listing.subcategorySlug}` }] : []),
               { label: listing.title },
             ]}
           />
@@ -1720,10 +1731,12 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
                   <dt className="text-sm font-bold text-slate-500">Категория</dt>
                   <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{listing.categoryName}</dd>
                 </div>
-                <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
-                  <dt className="text-sm font-bold text-slate-500">Подкатегория</dt>
-                  <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{listing.subcategoryName}</dd>
-                </div>
+                {listing.subcategorySlug ? (
+                  <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
+                    <dt className="text-sm font-bold text-slate-500">Подкатегория</dt>
+                    <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{listing.subcategoryName}</dd>
+                  </div>
+                ) : null}
                 <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                   <dt className="text-sm font-bold text-slate-500">Размещено</dt>
                   <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{formatPublicationDateTime(listing.publishedAt)}</dd>
@@ -1941,7 +1954,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
   async function publishWithoutPaymentAction(formData: FormData) {
     "use server";
 
-    const captchaVerified = await verifyTurnstileFormData(formData);
+    const captchaVerified = await verifyTurnstileFormData(formData, getTrustedProxyIp(await headers()));
 
     if (!captchaVerified) {
       redirect(`/razmestit/obyavlenie?admin=1&error=${encodeURIComponent(TURNSTILE_ERROR_MESSAGE)}`);

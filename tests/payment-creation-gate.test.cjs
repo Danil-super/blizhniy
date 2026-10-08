@@ -4,17 +4,25 @@ const fs = require('node:fs');
 const path = require('node:path');
 const typescript = require('typescript');
 
-function loadPaymentsRoute() {
+function loadPaymentsRoute({ payableFairApplication } = {}) {
   const paymentsCreated = [];
+  const fairLookups = [];
   const listingId = '22222222-2222-4222-8222-222222222222';
   const tariffs = {
     'specialist-publication': { id: 'specialist-publication', action: 'specialist_publication', name: 'Анкета специалиста' },
     'listing-publication': { id: 'listing-publication', action: 'listing_publication', name: 'Объявление' },
+    'fair-participation': { id: 'fair-participation', action: 'fair_participation', name: 'Ярмарка' },
   };
   const stubs = {
     'next/server': { NextResponse: { json: (body, options = {}) => ({ body, status: options.status ?? 200 }) } },
     '@/lib/ad-marquee-store': { getPayableAdMarqueePlacementForUser: async () => undefined },
     '@/lib/application-store': { getStoredApplicationForPayment: async () => undefined },
+    '@/lib/fair-application-store': {
+      getStoredFairApplicationForPayment: async (id, userId) => {
+        fairLookups.push({ id, userId });
+        return payableFairApplication;
+      },
+    },
     '@/lib/listing-store': {
       getStoredListingForUser: async (id) => id === listingId ? { id, title: 'Тестовое объявление', status: 'pending_payment' } : undefined,
       markStoredListingPendingPaymentForUser: async () => { throw new Error('unexpected listing mutation'); },
@@ -26,7 +34,7 @@ function loadPaymentsRoute() {
       },
       listPayments: async () => [],
       validatePaymentTargetTypeForTariff: (tariff, requestedType) => {
-        const expected = tariff.action === 'specialist_publication' ? 'specialist' : 'listing';
+        const expected = { specialist_publication: 'specialist', fair_participation: 'fair_application', listing_publication: 'listing' }[tariff.action];
         if (requestedType && requestedType !== expected) throw new Error('Tariff and target type differ');
         return expected;
       },
@@ -58,7 +66,7 @@ function loadPaymentsRoute() {
     if (!(name in stubs)) throw new Error(`Unexpected dependency ${name}`);
     return stubs[name];
   }, module, module.exports);
-  return { POST: module.exports.POST, listingId, paymentsCreated };
+  return { POST: module.exports.POST, listingId, paymentsCreated, fairLookups };
 }
 
 function paymentRequest(body) {
@@ -93,4 +101,34 @@ test('listing publication remains payable, and tariff type forgery cannot reach 
   assert.equal(paymentsCreated.length, 1);
   assert.equal(paymentsCreated[0].targetType, 'listing');
   assert.equal(paymentsCreated[0].targetId, listingId);
+});
+
+test('fair checkout rejects a missing or malformed target before creating a payment', async () => {
+  const { POST, paymentsCreated, fairLookups } = loadPaymentsRoute();
+  for (const targetId of [undefined, 'not-a-uuid']) {
+    const response = await POST(paymentRequest({ tariffId: 'fair-participation', targetId }));
+    assert.equal(response.status, 400);
+  }
+  assert.deepEqual(paymentsCreated, []);
+  assert.deepEqual(fairLookups, []);
+});
+
+test('fair checkout cannot charge for another owner or an ineligible application', async () => {
+  const { POST, paymentsCreated, fairLookups, listingId } = loadPaymentsRoute();
+  const response = await POST(paymentRequest({ tariffId: 'fair-participation', targetId: listingId }));
+  assert.equal(response.status, 404);
+  assert.deepEqual(paymentsCreated, []);
+  assert.deepEqual(fairLookups, [{ id: listingId, userId: '11111111-1111-4111-8111-111111111111' }]);
+});
+
+test('fair checkout binds the verified owner and uses the stored participant title', async () => {
+  const targetId = '22222222-2222-4222-8222-222222222222';
+  const { POST, paymentsCreated } = loadPaymentsRoute({ payableFairApplication: { id: targetId, participantName: 'Участник ярмарки' } });
+  const response = await POST(paymentRequest({ tariffId: 'fair-participation', targetId, targetTitle: 'Поддельное название' }));
+  assert.equal(response.status, 201);
+  assert.equal(paymentsCreated.length, 1);
+  assert.equal(paymentsCreated[0].targetType, 'fair_application');
+  assert.equal(paymentsCreated[0].targetId, targetId);
+  assert.equal(paymentsCreated[0].userId, '11111111-1111-4111-8111-111111111111');
+  assert.equal(paymentsCreated[0].targetTitle, 'Заявка на ярмарку: Участник ярмарки');
 });

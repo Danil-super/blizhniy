@@ -34,7 +34,16 @@ test("all catalogue subcategory slugs are stable latin URLs and legacy slugs red
   assert.ok(slugFunction);
 
   const exports = {};
-  vm.runInNewContext(compile(slugFunction), { exports });
+  function dedicatedData(path) {
+    const exports = {};
+    vm.runInNewContext(compile(readFileSync(new URL(`../${path}`, import.meta.url), "utf8")), { exports });
+    return exports;
+  }
+  vm.runInNewContext(compile(slugFunction), {
+    exports,
+    instrumentSubcategories: dedicatedData("src/lib/instrument-subcategories.ts").instrumentSubcategories,
+    posudaSubcategories: dedicatedData("src/lib/posuda-subcategories.ts").posudaSubcategories,
+  });
 
   const expectedSlugs = {
     "Уход и косметика": "uhod-i-kosmetika",

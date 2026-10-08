@@ -14,13 +14,13 @@ import { formatPublicationDateTime } from "@/lib/publication-time";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isUuid } from "@/lib/supabase-rest";
 import type { JobVacancy } from "@/lib/types";
-import { getStoredVacancyById } from "@/lib/vacancy-store";
+import { getStoredVacancyById, listVacanciesWithStored } from "@/lib/vacancy-store";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const vacancy = (await getStoredVacancyById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listVacancies().find((item) => item.id === slug) : undefined);
+  const vacancy = (await getStoredVacancyById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listVacanciesWithStored(listVacancies()).find((item) => item.id === slug) : undefined);
 
   return {
     title: vacancy ? `${vacancy.title} — вакансия` : "Вакансия",
@@ -41,7 +41,7 @@ function vacancyLocationLabel(vacancy: JobVacancy) {
 
 export default async function VacancyDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const vacancy = (await getStoredVacancyById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listVacancies().find((item) => item.id === slug) : undefined);
+  const vacancy = (await getStoredVacancyById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listVacanciesWithStored(listVacancies()).find((item) => item.id === slug) : undefined);
 
   if (!vacancy) {
     notFound();
@@ -100,16 +100,22 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
                   <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.description}</p>
                 </div>
               </section>
-              <section className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
-                  <h2 className="text-lg font-bold text-[#060b27]">Требования</h2>
-                  <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.requirements}</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
-                  <h2 className="text-lg font-bold text-[#060b27]">Обязанности</h2>
-                  <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.responsibilities}</p>
-                </div>
-              </section>
+              {(vacancy.requirements || vacancy.responsibilities) ? (
+                <section className="grid gap-4 md:grid-cols-2">
+                  {vacancy.requirements ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
+                      <h2 className="text-lg font-bold text-[#060b27]">Требования</h2>
+                      <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.requirements}</p>
+                    </div>
+                  ) : null}
+                  {vacancy.responsibilities ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
+                      <h2 className="text-lg font-bold text-[#060b27]">Обязанности</h2>
+                      <p className="mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{vacancy.responsibilities}</p>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
               {vacancy.conditions ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-card sm:p-5">
                   <h2 className="text-lg font-bold text-[#060b27]">Условия</h2>
@@ -143,7 +149,7 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
             </section>
             {hasPoint ? (
               <div className="hidden lg:block">
-                <LocationMap location={{ ...vacancy, showExactAddress: Boolean(vacancy.showExactAddress), hasMapPoint: hasPoint }} exactLabel="Для вакансий организаций можно показывать точный адрес" />
+                <LocationMap location={{ city: vacancy.city, district: vacancy.district, address: vacancy.address, lat: vacancy.lat, lng: vacancy.lng, showExactAddress: Boolean(vacancy.showExactAddress), hasMapPoint: hasPoint }} exactLabel="Для вакансий организаций можно показывать точный адрес" />
               </div>
             ) : placeLabel !== vacancy.city ? (
               <section className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:block">

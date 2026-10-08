@@ -34,9 +34,11 @@ import type { Application, FairApplication, JobVacancy, Listing, Payment, Specia
 import {
   type CabinetProfile,
   createDefaultCabinetProfile,
+  captureClientUserOperation,
   readCabinetProfile,
   resolveClientUserIdentity,
   type ClientUserIdentity,
+  type ClientUserOperation,
   writeCabinetProfile,
 } from "@/lib/client-user-profile";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
@@ -1298,10 +1300,12 @@ function publicationPlaceLabel(item: DemoPublication) {
 }
 
 async function markListingSold(currentItem: DemoPublication, reason: SoldReason) {
+  const origin = await captureClientUserOperation();
   if (isUuid(currentItem.id)) {
-    await requestServerListingAction(currentItem.id, "sold");
+    await requestServerListingAction(currentItem.id, "sold", origin);
   }
 
+  await origin.assertCurrentSession();
   const storedItems = readStoredPublications();
   const soldAt = new Date().toISOString();
   let updatedLocalItem = false;
@@ -1349,7 +1353,7 @@ async function markListingSold(currentItem: DemoPublication, reason: SoldReason)
 
   writeStoredPublications(nextItems);
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
-  void addCurrentUserNotification({
+  await addCurrentUserNotification({
     category: "publication",
     title: "Объявление снято",
     message: `${currentItem.title}: ${soldReasonLabels[reason]}`,
@@ -1357,29 +1361,34 @@ async function markListingSold(currentItem: DemoPublication, reason: SoldReason)
     actionHref: "/cabinet/obyavleniya",
     actionLabel: "Мои объявления",
     dedupeKey: `publication:${currentItem.id}:sold`,
-  });
+  }, origin);
+  await origin.assertCurrentSession();
 }
 
-async function requestServerVacancyAction(itemId: string, action: "archive" | "restore") {
+async function requestServerVacancyAction(itemId: string, action: "archive" | "restore", origin: ClientUserOperation) {
+  await origin.assertCurrentSession();
   const response = await fetch("/api/cabinet/vacancies", {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    headers: { "Content-Type": "application/json", ...(origin.identity.accessToken ? { Authorization: `Bearer ${origin.identity.accessToken}` } : {}) },
     body: JSON.stringify({ action, id: itemId }),
   });
   const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+  await origin.assertCurrentSession();
 
   if (!response.ok) {
     throw new Error(payload?.error ?? "Не удалось изменить вакансию.");
   }
 }
 
-async function requestServerWorkRequestAction(itemId: string, action: "archive" | "restore") {
+async function requestServerWorkRequestAction(itemId: string, action: "archive" | "restore", origin: ClientUserOperation) {
+  await origin.assertCurrentSession();
   const response = await fetch("/api/cabinet/work-requests", {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    headers: { "Content-Type": "application/json", ...(origin.identity.accessToken ? { Authorization: `Bearer ${origin.identity.accessToken}` } : {}) },
     body: JSON.stringify({ action, id: itemId }),
   });
   const payload = (await response.json().catch(() => null)) as { error?: string; workRequest?: WorkRequest } | null;
+  await origin.assertCurrentSession();
 
   if (!response.ok || !payload?.workRequest) {
     throw new Error(payload?.error ?? "Не удалось изменить заказ.");
@@ -1387,18 +1396,20 @@ async function requestServerWorkRequestAction(itemId: string, action: "archive" 
 }
 
 async function unpublishPaidPublication(currentItem: DemoPublication) {
+  const origin = await captureClientUserOperation();
   if (!canUseDemoPublicationsStorage() && !isUuid(currentItem.id)) {
     throw new Error("Снять с публикации можно только запись, сохраненную на сервере.");
   }
 
   if (currentItem.type === "vacancy" && isUuid(currentItem.id)) {
-    await requestServerVacancyAction(currentItem.id, "archive");
+    await requestServerVacancyAction(currentItem.id, "archive", origin);
   } else if (currentItem.type === "workRequest" && isUuid(currentItem.id)) {
-    await requestServerWorkRequestAction(currentItem.id, "archive");
+    await requestServerWorkRequestAction(currentItem.id, "archive", origin);
   } else if (!canUseDemoPublicationsStorage()) {
     throw new Error("Управляйте этой публикацией в ее разделе кабинета.");
   }
 
+  await origin.assertCurrentSession();
   const itemId = currentItem.id;
   const nextItems = readStoredPublications().map((item) => {
     if (item.id !== itemId || !getPublicationPaymentConfig(item)) {
@@ -1419,7 +1430,7 @@ async function unpublishPaidPublication(currentItem: DemoPublication) {
   });
 
   writeStoredPublications(nextItems);
-  void addCurrentUserNotification({
+  await addCurrentUserNotification({
     category: "publication",
     title: "Размещение скрыто",
     message: `${currentItem.title}: публикация снята из публичной выдачи. Вернуть можно без повторной оплаты.`,
@@ -1427,24 +1438,27 @@ async function unpublishPaidPublication(currentItem: DemoPublication) {
     actionHref: getCabinetHrefByType(currentItem.type),
     actionLabel: "Открыть раздел",
     dedupeKey: `publication:${itemId}:unpublished`,
-  });
+  }, origin);
+  await origin.assertCurrentSession();
 }
 
 async function restorePaidPublication(currentItem: DemoPublication) {
+  const origin = await captureClientUserOperation();
   if (!canUseDemoPublicationsStorage() && !isUuid(currentItem.id)) {
     throw new Error("Вернуть в публикацию можно только запись, сохраненную на сервере.");
   }
 
   if (currentItem.type === "vacancy" && isUuid(currentItem.id)) {
-    await requestServerVacancyAction(currentItem.id, "restore");
+    await requestServerVacancyAction(currentItem.id, "restore", origin);
   } else if (currentItem.type === "workRequest" && isUuid(currentItem.id)) {
-    await requestServerWorkRequestAction(currentItem.id, "restore");
+    await requestServerWorkRequestAction(currentItem.id, "restore", origin);
   } else if (currentItem.type === "listing" && isUuid(currentItem.id)) {
-    await requestServerListingAction(currentItem.id, "restore");
+    await requestServerListingAction(currentItem.id, "restore", origin);
   } else if (!canUseDemoPublicationsStorage()) {
     throw new Error("Управляйте этой публикацией в ее разделе кабинета.");
   }
 
+  await origin.assertCurrentSession();
   const itemId = currentItem.id;
   const nextItems = readStoredPublications().map((item) => {
     if (item.id !== itemId || !getPublicationPaymentConfig(item)) {
@@ -1465,7 +1479,7 @@ async function restorePaidPublication(currentItem: DemoPublication) {
   });
 
   writeStoredPublications(nextItems);
-  void addCurrentUserNotification({
+  await addCurrentUserNotification({
     category: "publication",
     title: "Размещение снова опубликовано",
     message: `${currentItem.title}: публикация снова видна пользователям, повторная оплата не нужна.`,
@@ -1473,16 +1487,19 @@ async function restorePaidPublication(currentItem: DemoPublication) {
     actionHref: getItemHref(currentItem),
     actionLabel: "Посмотреть",
     dedupeKey: `publication:${itemId}:restored`,
-  });
+  }, origin);
+  await origin.assertCurrentSession();
 }
 
-async function requestServerListingAction(itemId: string, action: "restore" | "sold") {
+async function requestServerListingAction(itemId: string, action: "restore" | "sold", origin: ClientUserOperation) {
+  await origin.assertCurrentSession();
   const response = await fetch("/api/cabinet/listings", {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    headers: { "Content-Type": "application/json", ...(origin.identity.accessToken ? { Authorization: `Bearer ${origin.identity.accessToken}` } : {}) },
     body: JSON.stringify({ action, id: itemId }),
   });
   const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+  await origin.assertCurrentSession();
 
   if (!response.ok) {
     throw new Error(payload?.error ?? "Не удалось изменить объявление.");
@@ -1490,17 +1507,20 @@ async function requestServerListingAction(itemId: string, action: "restore" | "s
 }
 
 async function deletePublication(item: DemoPublication) {
+  const origin = await captureClientUserOperation();
   if (!canUseDemoPublicationsStorage() && (!isUuid(item.id) || item.type === "specialist" || item.type === "fairApplication")) {
     throw new Error("Удаление этой публикации недоступно в общем списке кабинета.");
   }
 
+  await origin.assertCurrentSession();
   if (item.type === "listing" && isUuid(item.id)) {
     const response = await fetch("/api/cabinet/listings", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+      headers: { "Content-Type": "application/json", ...(origin.identity.accessToken ? { Authorization: `Bearer ${origin.identity.accessToken}` } : {}) },
       body: JSON.stringify({ id: item.id }),
     });
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    await origin.assertCurrentSession();
 
     if (!response.ok) {
       throw new Error(payload?.error ?? "Не удалось удалить объявление.");
@@ -1510,10 +1530,11 @@ async function deletePublication(item: DemoPublication) {
   if (item.type === "vacancy" && isUuid(item.id)) {
     const response = await fetch("/api/cabinet/vacancies", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+      headers: { "Content-Type": "application/json", ...(origin.identity.accessToken ? { Authorization: `Bearer ${origin.identity.accessToken}` } : {}) },
       body: JSON.stringify({ id: item.id }),
     });
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    await origin.assertCurrentSession();
 
     if (!response.ok) {
       throw new Error(payload?.error ?? "Не удалось удалить вакансию.");
@@ -1523,10 +1544,11 @@ async function deletePublication(item: DemoPublication) {
   if (item.type === "workRequest" && isUuid(item.id)) {
     const response = await fetch("/api/cabinet/work-requests", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+      headers: { "Content-Type": "application/json", ...(origin.identity.accessToken ? { Authorization: `Bearer ${origin.identity.accessToken}` } : {}) },
       body: JSON.stringify({ id: item.id }),
     });
     const payload = (await response.json().catch(() => null)) as { deleted?: boolean; error?: string } | null;
+    await origin.assertCurrentSession();
 
     if (!response.ok || payload?.deleted !== true) {
       throw new Error(payload?.error ?? "Не удалось удалить заказ.");
@@ -1535,7 +1557,7 @@ async function deletePublication(item: DemoPublication) {
 
   writeStoredPublications(readStoredPublications().filter((storedItem) => storedItem.id !== item.id));
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
-  void addCurrentUserNotification({
+  await addCurrentUserNotification({
     category: "publication",
     title: "Публикация удалена",
     message: `${item.title}: запись удалена из личного кабинета.`,
@@ -1543,14 +1565,17 @@ async function deletePublication(item: DemoPublication) {
     actionHref: getCabinetHrefByType(item.type),
     actionLabel: "Открыть раздел",
     dedupeKey: `publication:${item.id}:deleted`,
-  });
+  }, origin);
+  await origin.assertCurrentSession();
 }
 
 async function restoreSoldListing(currentItem: DemoPublication) {
+  const origin = await captureClientUserOperation();
   if (isUuid(currentItem.id)) {
-    await requestServerListingAction(currentItem.id, "restore");
+    await requestServerListingAction(currentItem.id, "restore", origin);
   }
 
+  await origin.assertCurrentSession();
   const storedItems = readStoredPublications();
   let updatedLocalItem = false;
   const restoredAt = new Date().toISOString();
@@ -1587,7 +1612,7 @@ async function restoreSoldListing(currentItem: DemoPublication) {
 
   writeStoredPublications(nextItems);
   window.dispatchEvent(new Event(demoPublicationsUpdatedEvent));
-  void addCurrentUserNotification({
+  await addCurrentUserNotification({
     category: "publication",
     title: "Объявление снова опубликовано",
     message: `${currentItem.title}: объявление вернулось в публичную выдачу.`,
@@ -1595,7 +1620,8 @@ async function restoreSoldListing(currentItem: DemoPublication) {
     actionHref: getItemHref(currentItem),
     actionLabel: "Посмотреть",
     dedupeKey: `publication:${currentItem.id}:sold-restored`,
-  });
+  }, origin);
+  await origin.assertCurrentSession();
 }
 
 async function createPublicationPayment(item: DemoPublication) {
@@ -2624,6 +2650,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
     setMessage("");
 
     try {
+      const origin = await captureClientUserOperation(identity.ownerKey);
       const nextProfile = {
         ...form,
         name: sanitizePersonName(form.name).trim(),
@@ -2656,9 +2683,10 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
         }),
       );
 
+      await origin.assertCurrentSession();
       const saved = await saveCabinetProfile(identity.ownerKey, nextProfile);
-      setForm(saved);
-      void addCurrentUserNotification({
+      await origin.assertCurrentSession();
+      await addCurrentUserNotification({
         category: "system",
         title: "Настройки уведомлений сохранены",
         message: "Категории событий и каналы доставки обновлены для вашего кабинета.",
@@ -2666,11 +2694,15 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
         actionHref: "/cabinet",
         actionLabel: "Открыть кабинет",
         dedupeKey: "profile:notification-settings",
-      });
+      }, origin);
+      await origin.assertCurrentSession();
+      setForm(saved);
       setMessage(updates.email
         ? "Настройки сохранены. Если для смены email отправлено письмо, подтвердите новый адрес по ссылке."
         : "Настройки сохранены.");
-      window.setTimeout(onClose, 450);
+      window.setTimeout(() => {
+        void origin.assertCurrentSession().then(onClose).catch(() => {});
+      }, 450);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось сохранить настройки.");
     } finally {

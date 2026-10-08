@@ -1,0 +1,9 @@
+# Direct public ingress, not behind a CDN or another load balancer.
+# See captcha-boundary.md before installing. This is not the live configuration.
+example.com {
+    reverse_proxy 127.0.0.1:3000 {
+        header_up X-Real-IP {remote_host}
+        header_up -CF-Connecting-IP
+        header_up X-Forwarded-For {remote_host}
+    }
+}

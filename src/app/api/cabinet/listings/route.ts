@@ -8,7 +8,7 @@ import {
   saveStoredListingForUser,
 } from "@/lib/listing-store";
 import { confirmPayment } from "@/lib/payment-provider";
-import { listStoredPaymentsForUser, markStoredPaymentTargetSucceeded } from "@/lib/payment-store";
+import { listStoredPaymentsForUser } from "@/lib/payment-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { formatBookingPrice, sanitizeBookingDetails, validateBookingDetailsForPublication } from "@/lib/booking-details";
 import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
@@ -94,13 +94,13 @@ function hasValidMessenger(value: string) {
 async function syncPendingListingPayments(userId: string) {
   const payments = await listStoredPaymentsForUser(userId);
   const pendingListingPayments = payments.filter(
-    (payment) => payment.targetType === "listing" && payment.provider === "yookassa" && (payment.status === "created" || payment.status === "pending"),
+    (payment) => payment.targetType === "listing" && payment.provider === "yookassa"
+      && (payment.status === "created" || payment.status === "pending"
+        || payment.status === "succeeded" && payment.fulfillmentStatus !== "applied" && payment.fulfillmentStatus !== "blocked"),
   );
-  const succeededListingPayments = payments.filter((payment) => payment.targetType === "listing" && payment.status === "succeeded");
 
   await Promise.allSettled([
     ...pendingListingPayments.map((payment) => confirmPayment(payment)),
-    ...succeededListingPayments.map((payment) => markStoredPaymentTargetSucceeded(payment)),
   ]);
 }
 

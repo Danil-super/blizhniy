@@ -100,6 +100,8 @@ type StoreVacancyBodyOptions = {
 
 const vacancySelect =
   "id,author_id,employer_type,organization_name,logo_path,title,inn,ogrn,ogrnip,contact_person,website,specialist_category_id,region_id,city_id,district,address,latitude,longitude,show_exact_address,description,requirements,responsibilities,conditions,salary,schedule,work_format,contact_phone,messenger_url,email,placement_right_confirmed,status,is_paid,created_at,published_at,expires_at,vacancy_images(storage_path,sort_order),cities(slug,name),specialist_categories(slug,name)";
+const publicVacancySelect =
+  "id,employer_type,organization_name,logo_path,title,inn,ogrn,ogrnip,district,address,latitude,longitude,show_exact_address,description,requirements,responsibilities,conditions,salary,schedule,work_format,placement_right_confirmed,status,created_at,published_at,vacancy_images(storage_path,sort_order),cities(slug,name),specialist_categories(slug,name)";
 
 function normalizeLookupText(value?: string) {
   return value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
@@ -262,12 +264,40 @@ function mapVacancyWithEffectiveStatus(row: VacancyRow): JobVacancy {
   return { ...mapVacancy(row), status: effectivePublicationStatus(row.status, row.expires_at) };
 }
 
-// Raw vacancy rows may contain a private location. Strip it before a public
-// page serializes the value into HTML or a React Server Components response.
+// Public DTOs use an allowlist so contacts (including nested fallback fields)
+// never reach HTML or React Server Components, even with an opted-in location.
 function publicVacancy(vacancy: JobVacancy): JobVacancy {
-  return vacancy.showExactAddress
-    ? vacancy
-    : { ...vacancy, address: undefined, lat: undefined, lng: undefined, hasMapPoint: false };
+  return {
+    id: vacancy.id,
+    employerType: vacancy.employerType,
+    organization: vacancy.organization,
+    inn: vacancy.inn,
+    ogrn: vacancy.ogrn,
+    ogrnip: vacancy.ogrnip,
+    title: vacancy.title,
+    profession: vacancy.profession,
+    city: vacancy.city,
+    district: vacancy.district,
+    address: vacancy.showExactAddress ? vacancy.address : undefined,
+    lat: vacancy.showExactAddress ? vacancy.lat : undefined,
+    lng: vacancy.showExactAddress ? vacancy.lng : undefined,
+    hasMapPoint: vacancy.showExactAddress ? vacancy.hasMapPoint : false,
+    showExactAddress: vacancy.showExactAddress,
+    salary: vacancy.salary,
+    logoText: vacancy.logoText,
+    logoTone: vacancy.logoTone,
+    images: vacancy.images,
+    schedule: vacancy.schedule,
+    workFormat: vacancy.workFormat,
+    description: vacancy.description,
+    requirements: vacancy.requirements,
+    responsibilities: vacancy.responsibilities,
+    conditions: vacancy.conditions,
+    placementRightConfirmed: vacancy.placementRightConfirmed,
+    status: vacancy.status,
+    createdAt: vacancy.createdAt,
+    publishedAt: vacancy.publishedAt,
+  };
 }
 
 async function findCity(city: string) {
@@ -486,8 +516,9 @@ export async function getStoredVacancyById(vacancyId: string, options: { publicO
 
   try {
     const statusFilter = options.publicOnly ? `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}` : "";
+    const select = options.publicOnly ? publicVacancySelect : vacancySelect;
     const rows = await supabaseRest<VacancyRow[]>(
-      `/rest/v1/vacancies?select=${vacancySelect}&id=eq.${encodeURIComponent(vacancyId)}${statusFilter}&limit=1`,
+      `/rest/v1/vacancies?select=${select}&id=eq.${encodeURIComponent(vacancyId)}${statusFilter}&limit=1`,
     );
 
     return rows[0] ? (options.publicOnly ? publicVacancy(mapVacancy(rows[0])) : mapVacancy(rows[0])) : undefined;
@@ -519,7 +550,7 @@ export async function listStoredVacancies(limit = 24, offset = 0) {
 
   try {
     const rows = await supabaseRest<VacancyRow[]>(
-      `/rest/v1/vacancies?select=${vacancySelect}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${pageOffset}`,
+      `/rest/v1/vacancies?select=${publicVacancySelect}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${pageOffset}`,
     );
 
     return rows.map(mapVacancy).map(publicVacancy);
@@ -598,24 +629,16 @@ export async function archiveStoredVacancyForUser(vacancyId: string, userId: str
 }
 
 export async function restoreStoredVacancyForUser(vacancyId: string, userId: string) {
-  if (!isSupabaseRestConfigured() || !isUuid(vacancyId)) {
+  if (!isSupabaseRestConfigured() || !isUuid(vacancyId) || !isUuid(userId)) {
     return false;
   }
 
-  const now = new Date().toISOString();
   const rows = await supabaseRest<Array<Pick<VacancyRow, "id">>>(
-    `/rest/v1/vacancies?select=id&id=eq.${encodeURIComponent(vacancyId)}&author_id=eq.${encodeURIComponent(userId)}&is_paid=eq.true&expires_at=gt.${encodeURIComponent(now)}&status=eq.archived`,
-    {
-      method: "PATCH",
-      prefer: "return=representation",
-      body: {
-        published_at: now,
-        status: "published",
-      },
-    },
+    "/rest/v1/rpc/restore_vacancy_within_paid_window",
+    { method: "POST", body: { p_vacancy_id: vacancyId, p_owner_id: userId } },
   );
 
-  return Boolean(rows[0]?.id);
+  return rows[0]?.id === vacancyId;
 }
 
 export async function deleteStoredVacancyForUser(vacancyId: string, userId: string) {
@@ -673,10 +696,10 @@ export async function markStoredVacancyPaid(vacancyId: string) {
 
 export function listVacanciesWithStored(storedVacancies: JobVacancy[]) {
   if (!shouldShowFallbackContent()) {
-    return storedVacancies;
+    return storedVacancies.map(publicVacancy);
   }
 
   const storedIds = new Set(storedVacancies.map((vacancy) => vacancy.id));
 
-  return [...storedVacancies, ...demoVacancies.filter((vacancy) => !storedIds.has(vacancy.id))];
+  return [...storedVacancies, ...demoVacancies.filter((vacancy) => !storedIds.has(vacancy.id))].map(publicVacancy);
 }

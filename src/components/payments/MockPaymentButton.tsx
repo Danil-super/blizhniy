@@ -5,8 +5,9 @@ import { BackLink } from "@/components/BackLink";
 import { BrandName } from "@/components/BrandName";
 import { LegalLink } from "@/components/LegalConsentCheckbox";
 import { confirmClientPayment, createClientPayment } from "@/lib/client-payment-flow";
+import { getPaymentConfirmationOutcome } from "@/lib/payment-confirmation-outcome";
 
-type PaymentState = "idle" | "loading" | "success" | "error";
+type PaymentState = "idle" | "loading" | "success" | "error" | "settled";
 
 type MockPaymentButtonProps = {
   paymentId?: string;
@@ -18,6 +19,7 @@ export function MockPaymentButton({ paymentId, tariffId, returnHref }: MockPayme
   const [state, setState] = useState<PaymentState>("idle");
   const [message, setMessage] = useState("Заказ сформирован. Нажмите кнопку, чтобы перейти к оплате.");
   const [acceptedOffer, setAcceptedOffer] = useState(false);
+  const [activePaymentId, setActivePaymentId] = useState(paymentId);
 
   async function handlePayment() {
     if (!acceptedOffer) {
@@ -30,7 +32,7 @@ export function MockPaymentButton({ paymentId, tariffId, returnHref }: MockPayme
     setMessage("Создаем заказ и проводим оплату...");
 
     try {
-      let payableId = paymentId;
+      let payableId = activePaymentId;
 
       if (!payableId) {
         const payment = await createClientPayment({ tariffId });
@@ -41,12 +43,14 @@ export function MockPaymentButton({ paymentId, tariffId, returnHref }: MockPayme
         }
 
         payableId = payment.id;
+        setActivePaymentId(payableId);
       }
 
       const confirmPayload = await confirmClientPayment(payableId);
 
-      setState("success");
-      setMessage(confirmPayload.nextStatus === "sent" ? "Оплата прошла. Отклик отправлен работодателю." : "Оплата прошла. Заявка опубликована.");
+      const outcome = getPaymentConfirmationOutcome(confirmPayload);
+      setState(outcome.kind === "applied" ? "success" : outcome.canRetry ? "idle" : "settled");
+      setMessage(outcome.message);
     } catch (error) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "Оплата не прошла");
@@ -69,12 +73,12 @@ export function MockPaymentButton({ paymentId, tariffId, returnHref }: MockPayme
       <button
         type="button"
         onClick={handlePayment}
-        disabled={state === "loading" || state === "success"}
+        disabled={state === "loading" || state === "success" || state === "settled"}
         className="inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#0aa337] font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-not-allowed disabled:bg-slate-300"
       >
-        {state === "loading" ? "Проводим оплату..." : state === "success" ? "Оплата прошла" : "Оплатить"}
+        {state === "loading" ? "Проверяем платеж..." : state === "success" ? "Платеж подтвержден" : state === "settled" ? "Статус проверен" : activePaymentId ? "Проверить статус" : "Оплатить"}
       </button>
-      <p className={state === "error" ? "text-sm font-semibold text-rose-600" : "text-sm leading-6 text-slate-600"}>{message}</p>
+      <p role="status" aria-live="polite" className={state === "error" ? "text-sm font-semibold text-rose-600" : "text-sm leading-6 text-slate-600"}>{message}</p>
       {state === "success" ? (
         <BackLink fallbackHref={returnHref} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-white font-bold text-[#0aa337]">
           Вернуться в историю

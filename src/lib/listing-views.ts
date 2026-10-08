@@ -1,6 +1,10 @@
+export function isStoredListingViewId(seed: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(seed);
+}
+
 export function getDemoListingViews(seed: string) {
   if (
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(seed) ||
+    isStoredListingViewId(seed) ||
     seed.startsWith("demo-listing-") ||
     seed.startsWith("listing-") ||
     seed.startsWith("vacancy-") ||
@@ -80,7 +84,7 @@ export function getListingExtraViews(listingId: string) {
   return readCounts()[listingId] ?? 0;
 }
 
-function getBaseViews(listingId: string, initialViews?: number) {
+export function getBaseViews(listingId: string, initialViews?: number) {
   if (typeof initialViews === "number" && Number.isFinite(initialViews)) {
     return Math.max(0, Math.floor(initialViews));
   }

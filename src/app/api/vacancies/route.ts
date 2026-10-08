@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createPayment } from "@/lib/payment-provider";
+import { createPayment, validatePaymentCreationPrerequisites } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
 import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
@@ -214,6 +214,13 @@ export async function POST(request: Request) {
       website: cleanString(body.website) || undefined,
       workFormat: cleanString(body.workFormat) || undefined,
     };
+    if (tariffId) {
+      try {
+        validatePaymentCreationPrerequisites({ customerEmail: auth.user.email });
+      } catch {
+        return NextResponse.json({ error: "Оплата сейчас недоступна. Данные не сохранены. Попробуйте позже." }, { status: 503 });
+      }
+    }
     const reusableVacancy = tariffId ? await findReusableStoredVacancyForPayment(vacancyInput) : undefined;
     const vacancy = reusableVacancy
       ? await updateStoredVacancyForUser(reusableVacancy.id, auth.user.id, vacancyInput)
@@ -227,6 +234,7 @@ export async function POST(request: Request) {
 
     if (tariffId) {
       payment = await createPayment({
+        customerEmail: auth.user.email,
         tariffId,
         targetId: vacancy.id,
         targetTitle: title,

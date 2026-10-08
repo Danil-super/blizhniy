@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { listAdMarqueePlacementsForAdmin, updateAdMarqueePlacementForAdmin } from "@/lib/ad-marquee-store";
+import { AdMarqueeTransitionConflictError, listAdMarqueePlacementsForAdmin, updateAdMarqueePlacementForAdmin } from "@/lib/ad-marquee-store";
 import { isAdminRequest, isDemoAdminBypassEnabled, isSupabaseServerConfigured } from "@/lib/server-auth";
+import { isUuid } from "@/lib/supabase-rest";
 
 type UpdateAdMarqueeBody = {
   adminComment?: string;
@@ -51,7 +52,10 @@ export async function PATCH(request: Request) {
   const body = (await request.json().catch(() => null)) as UpdateAdMarqueeBody | null;
   const status = body?.status;
 
-  if (!body?.id || !status || !["pending_payment", "rejected", "archived"].includes(status)) {
+  if (typeof body?.id !== "string" || !isUuid(body.id)
+    || !status || !["pending_payment", "rejected", "archived"].includes(status)
+    || (body.adminComment !== undefined && (typeof body.adminComment !== "string" || body.adminComment.length > 2000))
+    || (body.sortOrder !== undefined && (!Number.isInteger(body.sortOrder) || body.sortOrder < -2147483648 || body.sortOrder > 2147483647))) {
     return NextResponse.json({ error: "Invalid ad marquee update payload" }, { status: 400 });
   }
 
@@ -59,7 +63,7 @@ export async function PATCH(request: Request) {
     const placement = await updateAdMarqueePlacementForAdmin({
       adminComment: body.adminComment,
       id: body.id,
-      sortOrder: Number.isFinite(body.sortOrder) ? Number(body.sortOrder) : 0,
+      sortOrder: body.sortOrder ?? 0,
       status,
     });
 
@@ -69,6 +73,9 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ placement, placements: await listAdMarqueePlacementsForAdmin() });
   } catch (error) {
+    if (error instanceof AdMarqueeTransitionConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to update ad marquee placement" }, { status: 400 });
   }
 }

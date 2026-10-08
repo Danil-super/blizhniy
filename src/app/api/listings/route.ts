@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createStoredListing, findReusableStoredListingForPayment, updateStoredListingForUser } from "@/lib/listing-store";
-import { createPayment } from "@/lib/payment-provider";
+import { createPayment, validatePaymentCreationPrerequisites } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
 import { formatBookingPrice, sanitizeBookingDetails, validateBookingDetailsForPublication } from "@/lib/booking-details";
@@ -155,6 +155,11 @@ export async function POST(request: Request) {
       subcategory: cleanString(body.subcategory) || undefined,
       title,
     };
+    try {
+      validatePaymentCreationPrerequisites({ customerEmail: auth.user.email });
+    } catch {
+      return NextResponse.json({ error: "Оплата сейчас недоступна. Данные не сохранены. Попробуйте позже." }, { status: 503 });
+    }
     const reusableListing = await findReusableStoredListingForPayment(listingInput);
 
     const listing = reusableListing
@@ -166,6 +171,7 @@ export async function POST(request: Request) {
     }
 
     const payment = await createPayment({
+      customerEmail: auth.user.email,
       tariffId,
       targetId: listing.id,
       targetTitle: title,

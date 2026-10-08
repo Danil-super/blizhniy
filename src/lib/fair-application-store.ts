@@ -1,6 +1,6 @@
 import { fairApplications as demoFairApplications } from "@/lib/data";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
-import { isSupabaseRestConfigured, supabaseRest } from "@/lib/supabase-rest";
+import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { FairApplication, PublicationStatus } from "@/lib/types";
 
 type FairApplicationRow = {
@@ -191,6 +191,18 @@ export async function listStoredFairApplicationsForUser(userId: string) {
   );
 
   return mapRows(rows);
+}
+
+export async function getStoredFairApplicationForPayment(applicationId: string, userId: string) {
+  if (!isSupabaseRestConfigured() || !isUuid(applicationId) || !isUuid(userId)) {
+    return undefined;
+  }
+
+  const rows = await supabaseRest<Array<Pick<FairApplicationRow, "id" | "participant_name">>>(
+    `/rest/v1/fair_applications?select=id,participant_name&id=eq.${encodeURIComponent(applicationId)}&user_id=eq.${encodeURIComponent(userId)}&status=eq.pending_payment&payment_status=neq.succeeded&limit=1`,
+  );
+
+  return rows[0] ? { id: rows[0].id, participantName: rows[0].participant_name } : undefined;
 }
 
 export async function createStoredFairApplication(input: CreateStoredFairApplicationInput) {

@@ -30,7 +30,7 @@ export default async function Page() {
       <SiteHeader />
       <HomeHero />
       <div className="bg-[var(--category-page)]" style={categoryPageStyle("rabota")}>
-        <CanonicalWorkPage specialists={specialists} vacancies={vacancies} workRequests={workRequests.length ? workRequests : shouldShowFallbackContent() ? listWorkRequests() : []} />
+        <CanonicalWorkPage specialists={specialists} vacancies={vacancies} workRequests={workRequests.length ? workRequests : shouldShowFallbackContent() ? listWorkRequestsWithStored(listWorkRequests()) : []} />
       </div>
     </>
   );

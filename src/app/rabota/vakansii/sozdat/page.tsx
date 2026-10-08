@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { BrandName } from "@/components/BrandName";
 import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
@@ -13,6 +14,7 @@ import { ListingLocationFields } from "@/components/listings/ListingFormControls
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
+import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
 
 type PageProps = {
   searchParams?: Promise<{ admin?: string; error?: string }>;
@@ -76,7 +78,7 @@ export default async function CreateVacancyPage({ searchParams }: PageProps) {
   async function publishVacancyWithoutPaymentAction(formData: FormData) {
     "use server";
 
-    const captchaVerified = await verifyTurnstileFormData(formData);
+    const captchaVerified = await verifyTurnstileFormData(formData, getTrustedProxyIp(await headers()));
 
     if (!captchaVerified) {
       redirect(`/rabota/vakansii/sozdat?admin=1&error=${encodeURIComponent(TURNSTILE_ERROR_MESSAGE)}`);

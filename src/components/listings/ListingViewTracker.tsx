@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
-import { emitListingViewsUpdated, incrementListingViews } from "@/lib/listing-views";
+import { emitListingViewsUpdated, incrementListingViews, isStoredListingViewId } from "@/lib/listing-views";
 
 async function getAccessToken() {
   try {
@@ -19,6 +19,13 @@ export function ListingViewTracker({ initialViews, listingId }: { initialViews?:
     let cancelled = false;
 
     async function trackView() {
+      // Vacancy/request/specialist and demo keys have no listing-table row.
+      // Keep their existing browser-local counts without a doomed API request.
+      if (!isStoredListingViewId(listingId)) {
+        emitListingViewsUpdated(listingId, incrementListingViews(listingId, initialViews));
+        return;
+      }
+
       try {
         const token = await getAccessToken();
         const response = await fetch(`/api/listings/${encodeURIComponent(listingId)}/views`, {

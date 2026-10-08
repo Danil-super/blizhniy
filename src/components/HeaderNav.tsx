@@ -15,6 +15,7 @@ export function HeaderNav() {
   const { state } = useAuthState();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   const links = state === "admin" ? [["Админка", "/admin"], ...publicLinks] : publicLinks;
 
   useEffect(() => {
@@ -28,10 +29,27 @@ export function HeaderNav() {
     return () => document.removeEventListener("mousedown", handleDocumentClick);
   }, []);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        toggleRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [open]);
+
   return (
     <nav className="relative flex min-w-0 flex-1 items-center justify-start gap-2 overflow-visible text-sm md:justify-center md:gap-4" aria-label="Основная навигация">
       <div className="relative lg:hidden" ref={menuRef}>
         <button
+          ref={toggleRef}
           type="button"
           onClick={() => setOpen((current) => !current)}
           className="inline-flex h-11 w-11 appearance-none items-center justify-center rounded-full border-0 bg-transparent p-0 text-slate-700 transition active:scale-95"
@@ -56,7 +74,7 @@ export function HeaderNav() {
                 key={href}
                 href={href}
                 onClick={() => setOpen(false)}
-                className="flex min-h-10 items-center justify-between gap-3 rounded-xl px-2.5 text-sm font-bold text-slate-800 transition hover:bg-emerald-50 hover:text-[#2f8f12]"
+                className="flex min-h-11 items-center justify-between gap-3 rounded-xl px-2.5 text-sm font-bold text-slate-800 transition hover:bg-emerald-50 hover:text-[#2f8f12]"
               >
                 <span>{label}</span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
@@ -68,7 +86,7 @@ export function HeaderNav() {
 
       <div className="hidden min-w-0 flex-wrap items-center justify-center gap-7 text-slate-700 lg:flex">
         {links.map(([label, href]) => (
-          <Link key={href} href={href} className="whitespace-nowrap font-semibold transition hover:text-[#2f8f12]">
+          <Link key={href} href={href} className="inline-flex min-h-11 items-center whitespace-nowrap font-semibold transition hover:text-[#2f8f12]">
             {label}
           </Link>
         ))}
