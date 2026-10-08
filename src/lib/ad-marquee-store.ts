@@ -108,16 +108,71 @@ function normalizeHref(value?: string) {
   return parsed.toString();
 }
 
-export async function refreshAdMarqueeQueue() {
+export async function refreshAdMarqueeQueue(options: { timeoutMs?: number } = {}) {
   if (!isSupabaseRestConfigured()) {
     return [];
   }
 
+  const timeoutMs = Math.floor(Math.min(options.timeoutMs ?? 8000, 8000));
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("Ad marquee queue deadline exceeded");
   return supabaseRest<Array<Pick<AdMarqueePlacementRow, "id">>>("/rest/v1/rpc/reconcile_ad_marquee_queue", {
     method: "POST",
     body: {},
-    timeoutMs: 8000,
+    timeoutMs,
+    attempts: 1,
+    useServiceRole: true,
   });
+}
+
+/** Post-commit only. Unknown transport/current state is not an activation claim. */
+export async function reconcilePaidAdMarqueePlacement(
+  input: { id: string; userId: string; paymentId: string },
+  deadlineAt = performance.now() + 8000,
+): Promise<"active" | "paid" | undefined> {
+  if (!isSupabaseRestConfigured() || ![input.id, input.userId, input.paymentId].every(isUuid)) return undefined;
+  const deadline = Math.min(deadlineAt, performance.now() + 8000);
+  const remaining = () => {
+    const timeoutMs = Math.floor(deadline - performance.now());
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("Ad marquee queue deadline exceeded");
+    return timeoutMs;
+  };
+  async function readCommittedState(): Promise<"active" | "paid" | undefined> {
+    const active = await refreshAdMarqueeQueue({ timeoutMs: remaining() });
+    remaining(); // Includes response-body consumption, not just receipt of headers.
+    if (!Array.isArray(active) || active.length > maxActiveAdMarqueePlacements
+      || active.some((row) => !row || !isUuid(row.id))) throw new Error("Invalid committed ad marquee queue result");
+
+    type QueuePlacementRow = Pick<AdMarqueePlacementRow, "id" | "user_id" | "payment_id" | "payment_status" | "status" | "starts_at" | "ends_at">;
+    const rows = await supabaseRest<QueuePlacementRow[]>(
+      `/rest/v1/ad_marquee_placements?select=id,user_id,payment_id,payment_status,status,starts_at,ends_at`
+        + `&id=eq.${encodeURIComponent(input.id)}&user_id=eq.${encodeURIComponent(input.userId)}`
+        + `&payment_id=eq.${encodeURIComponent(input.paymentId)}&payment_status=eq.succeeded`
+        + "&or=(status.eq.paid,and(status.eq.active,starts_at.lte.now,ends_at.gt.now))&limit=1",
+      { attempts: 1, timeoutMs: remaining(), useServiceRole: true },
+    );
+    remaining(); // A successful but late read must not escape the shared deadline.
+    if (!Array.isArray(rows) || rows.length !== 1) return undefined;
+    const row = rows[0];
+    if (!row || row.id !== input.id || row.user_id !== input.userId || row.payment_id !== input.paymentId
+      || row.payment_status !== "succeeded") return undefined;
+    const committedActive = active.some((item) => item.id === row.id);
+    if (row.status === "paid" && !committedActive && row.starts_at == null && row.ends_at == null) return "paid";
+    if (row.status === "active" && committedActive && typeof row.starts_at === "string" && typeof row.ends_at === "string"
+      && Number.isFinite(Date.parse(row.starts_at)) && Date.parse(row.ends_at) > Date.parse(row.starts_at)) return "active";
+    return undefined;
+  }
+  // REST transport timers abort their requests. This independent caller deadline
+  // also bounds an uncooperative body; late completion cannot start another GET
+  // because readCommittedState checks the same deadline after every await.
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error("Ad marquee queue deadline exceeded")), remaining());
+  });
+  try {
+    return await Promise.race([readCommittedState(), expired]);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function listActiveAdMarqueePlacements(options: { refresh?: boolean; timeoutMs?: number } = {}) {

@@ -21,10 +21,10 @@ function load(relative, stubs, mutate = (source) => source) {
   return module.exports;
 }
 
-function storeHarness({ configured = true, result = { placement: baseRow, changed: true, outcome: 'updated' }, queueError } = {}) {
+function storeHarness({ configured = true, result = { placement: baseRow, changed: true, outcome: 'updated' }, queueError,
+  active = [{ id: 'active-id' }], placementRows = [] } = {}) {
   const calls = [];
   const notices = [];
-  const active = [{ id: 'active-id' }];
   const store = load('src/lib/ad-marquee-store.ts', {
     '@/lib/ad-marquee': { defaultAdMarqueeMessages: [] },
     '@/lib/notification-store': { createStoredNotification: async (notice) => { notices.push(notice); } },
@@ -39,6 +39,7 @@ function storeHarness({ configured = true, result = { placement: baseRow, change
           return active;
         }
         if (url === '/rest/v1/rpc/moderate_ad_marquee_placement') return result;
+        if (url.includes('payment_id=eq.')) return placementRows;
         if (options.method === 'PATCH') return [baseRow];
         if (url.includes('status=eq.paid')) return [{ id: placementId }];
         return [];
@@ -55,6 +56,35 @@ test('queue refresh delegates one atomic transaction and returns its committed a
   assert.equal(calls[0].url, '/rest/v1/rpc/reconcile_ad_marquee_queue');
   assert.equal(calls[0].options.method, 'POST');
   assert.deepEqual(calls[0].options.body, {});
+});
+
+test('post-payment current-state read is narrow, owner/payment-bound and single-attempt', async () => {
+  const userId = '33333333-3333-4333-8333-333333333333';
+  const paymentId = '11111111-1111-4111-8111-111111111111';
+  const { store, calls } = storeHarness({ active: [], placementRows: [{ id: placementId, user_id: userId,
+    payment_id: paymentId, payment_status: 'succeeded', status: 'paid', starts_at: null, ends_at: null }] });
+  assert.equal(await store.reconcilePaidAdMarqueePlacement({ id: placementId, userId, paymentId }), 'paid');
+  assert.equal(calls.length, 2);
+  const query = new URL(`https://fixture.invalid${calls[1].url}`).searchParams;
+  assert.equal(query.get('id'), `eq.${placementId}`);
+  assert.equal(query.get('user_id'), `eq.${userId}`);
+  assert.equal(query.get('payment_id'), `eq.${paymentId}`);
+  assert.equal(query.get('payment_status'), 'eq.succeeded');
+  assert.equal(query.get('or'), '(status.eq.paid,and(status.eq.active,starts_at.lte.now,ends_at.gt.now))');
+  assert.equal(query.get('limit'), '1');
+  assert.doesNotMatch(query.get('select'), /\*|text|href|admin_comment/);
+  for (const call of calls) {
+    assert.equal(call.options.attempts, 1);
+    assert.equal(call.options.useServiceRole, true);
+    assert.ok(call.options.timeoutMs > 0 && call.options.timeoutMs <= 8000);
+  }
+});
+
+test('post-payment read refuses malformed bindings or expired deadline before any queue write', async () => {
+  const { store, calls } = storeHarness();
+  assert.equal(await store.reconcilePaidAdMarqueePlacement({ id: placementId, userId: 'bad', paymentId: placementId }), undefined);
+  await assert.rejects(store.reconcilePaidAdMarqueePlacement({ id: placementId, userId: placementId, paymentId: placementId }, performance.now()), /deadline/);
+  assert.deepEqual(calls, []);
 });
 
 test('queue refresh without configuration is a no-write empty result', async () => {
