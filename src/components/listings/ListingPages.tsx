@@ -29,12 +29,14 @@ import { ValidatedInput } from "@/components/ValidatedInput";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { formatBookingPrice, validateBookingDetailsForPublication } from "@/lib/booking-details";
 import { categories as fallbackCategories, cities } from "@/lib/data";
+import { instrumentSubcategories } from "@/lib/instrument-subcategories";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { createListing, getListingStatusOverride, listListings } from "@/lib/mock-store";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { formatPublicationDateTime } from "@/lib/publication-time";
+import { posudaSubcategories } from "@/lib/posuda-subcategories";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
 import { getPublicCategories, getPublicCategoriesWithListingScope } from "@/lib/category-store";
@@ -1223,6 +1225,10 @@ export function findListingBySlug(slug?: string) {
 }
 
 export function slugifySubcategory(name: string) {
+  const dedicated = instrumentSubcategories.find((item) => item.name === name)
+    ?? posudaSubcategories.find((item) => item.name === name);
+  if (dedicated) return dedicated.slug;
+
   const map: Record<string, string> = {
     "Товары времен СССР": "tovary-vremen-sssr",
     "Картины и живопись": "kartiny-i-zhivopis",

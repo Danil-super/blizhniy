@@ -66,6 +66,8 @@ function listingPresentation() {
   return load(code, {}, {
     ...Object.fromEntries(componentNames.map((name) => [name, name])),
     fallbackCategories: [{ slug: 'sad-i-rasteniya', name: 'Сад и огород', children: ['Саженцы'] }],
+    instrumentSubcategories: load(source('src/lib/instrument-subcategories.ts')).instrumentSubcategories,
+    posudaSubcategories: load(source('src/lib/posuda-subcategories.ts')).posudaSubcategories,
     hasListingMapPoint: () => false,
     listingSellerStats: () => ({ registeredSince: '', listingCount: 1, soldCount: 0 }),
     normalizeMessengerHref: () => undefined,
