@@ -681,19 +681,54 @@ function wireFilters(url, fields, alias = 't') {
   }
   return { params, where: clauses.length ? clauses.join(' and ') : 'true', limit: url.searchParams.has('limit') ? 'limit 1' : '' };
 }
-function actualRest() {
+function queueRequest(request) {
+  assert.equal(request.useServiceRole, true); assert.equal(request.attempts, 1);
+  assert.ok(Number.isInteger(request.timeoutMs) && request.timeoutMs > 0 && request.timeoutMs <= 8000);
+}
+function actualRest(observed = { queue: [], reads: [] }) {
   return async (resource, request = {}, state) => {
     const url = new URL(resource, 'http://fixture.invalid'), method = request.method ?? 'GET', b = request.body;
     if (url.pathname.startsWith('/rest/v1/rpc/')) {
       assert.equal(method, 'POST'); assert.equal(request.useServiceRole, true);
       if (url.pathname.endsWith('/apply_payment_fulfillment')) return json(`with args as (${arg})
         select json_agg(r) from args,lateral public.apply_payment_fulfillment((p->>'p_payment_id')::uuid,p->>'p_expected_provider_payment_id') r;`, b);
+      if (url.pathname === '/rest/v1/rpc/reconcile_ad_marquee_queue') {
+        assert.equal(url.search, ''); assert.deepEqual(b, {}); queueRequest(request);
+        // A separate SQL connection must see durable finance/fulfillment BEFORE
+        // the actual queue RPC. It is not part of the payment/target transaction.
+        const committed = await row('payments', state.row.id);
+        assert.equal(committed.status, 'succeeded'); assert.equal(committed.fulfillment_status, 'applied');
+        assert.ok(committed.target_applied_at);
+        const call = { payment: committed, timeoutMs: request.timeoutMs }; observed.queue.push(call);
+        try { return await json(`set application_name='module-event-queue'; ${queueSql}`); }
+        catch (error) { call.error = error.message; throw error; }
+      }
       const params = { payment: b.p_payment_id, owner: b.p_user_id, type: b.p_target_type, target: b.p_target_id,
         merchant: b.p_merchant_shop_id, isTest: b.p_is_test, key: b.p_tariff_key, amount: b.p_amount,
         duration: b.p_purchased_duration_days, body: b.p_request_body };
       if (url.pathname.endsWith('/prepare_yookassa_checkout_intent')) return json(prepareSql, params);
       if (url.pathname.endsWith('/authorize_yookassa_checkout_attempt')) return json(authorizeSql, params);
       assert.fail(`Unsupported actual RPC boundary ${url.pathname}`);
+    }
+    if (url.pathname === '/rest/v1/ad_marquee_placements') {
+      assert.equal(method, 'GET'); queueRequest(request);
+      assert.deepEqual([...url.searchParams.keys()].sort(), ['select','id','user_id','payment_id','payment_status','or','limit'].sort());
+      assert.equal(url.searchParams.get('select'), 'id,user_id,payment_id,payment_status,status,starts_at,ends_at');
+      assert.equal(url.searchParams.get('payment_status'), 'eq.succeeded'); assert.equal(url.searchParams.get('limit'), '1');
+      assert.equal(url.searchParams.get('or'), '(status.eq.paid,and(status.eq.active,starts_at.lte.now,ends_at.gt.now))');
+      const params = {};
+      for (const key of ['id','user_id','payment_id']) {
+        const value = url.searchParams.get(key); assert.match(value, /^eq\.[a-f0-9-]{36}$/); params[key] = value.slice(3);
+      }
+      observed.reads.push({ params, timeoutMs: request.timeoutMs });
+      // Exact wire predicates only, not copied queue eligibility. The timestamp
+      // literal is converted by PostgreSQL in this fresh GET statement.
+      return json(`with args as (${arg}) select coalesce(json_agg(r),'[]') from (
+        select t.id,t.user_id,t.payment_id,t.payment_status,t.status,t.starts_at,t.ends_at
+        from public.ad_marquee_placements t cross join args
+        where t.id=(p->>'id')::uuid and t.user_id=(p->>'user_id')::uuid and t.payment_id=(p->>'payment_id')::uuid
+          and t.payment_status='succeeded' and (t.status='paid' or (t.status='active'
+            and t.starts_at<='now'::timestamptz and t.ends_at>'now'::timestamptz)) limit 1) r;`, params);
     }
     let rows;
     if (url.pathname === '/rest/v1/payments' && method === 'POST') rows = await json(`with args as (${arg}), changed as (
@@ -729,8 +764,9 @@ function actualRest() {
 for (const kind of Object.keys(targetKinds)) test(`whole actual provider/store graph with combined SQL and safe payment DTO: ${kind}`, async () => {
   const spec = targetKinds[kind], target = await createTarget(kind), payment = id(100), provider = id(500), payer = spec.parent ? other : owner;
   const email = 'module-payer@example.invalid', beforeEffects = await effects(target);
+  const observed = { queue: [], reads: [] };
   let committedAtPost, capturedAt, privateSnapshot;
-  const h = harness({ clock: { Date, performance, now: () => Date.now(), setTimeout, clearTimeout }, rest: actualRest(),
+  const h = harness({ clock: { Date, performance, now: () => Date.now(), setTimeout, clearTimeout }, rest: actualRest(observed),
     vendor: async (entry) => {
       privateSnapshot = await intent(payment); // Independent real transaction at the external boundary.
       const originalBody = JSON.parse(privateSnapshot.request_body);
@@ -750,17 +786,95 @@ for (const kind of Object.keys(targetKinds)) test(`whole actual provider/store g
   assert.equal((await row(spec.table, target)).status, 'pending_payment');
   const result = await graph.provider.confirmPayment(payment);
   assert.equal(result.payment.status, 'succeeded'); assert.equal(result.payment.fulfillmentStatus, 'applied');
-  assert.equal(result.nextStatus, kind === 'marquee' ? 'paid' : spec.parent ? 'sent' : 'published');
+  assert.equal(result.nextStatus, kind === 'marquee' ? 'active' : spec.parent ? 'sent' : 'published');
   assert.equal(await sql(`select paid_at='${capturedAt}'::timestamptz from public.payments where id='${payment}';`), 't');
-  assert.equal((await effects(target)).length, beforeEffects.length + 1);
+  assert.equal((await effects(target)).length, beforeEffects.length + (kind === 'marquee' ? 2 : 1));
+  assert.equal(observed.queue.length, kind === 'marquee' ? 1 : 0); assert.equal(observed.reads.length, observed.queue.length);
+  if (kind === 'marquee') {
+    assert.equal((await row(spec.table, target)).status, 'active');
+    assert.equal(await sql(`select t.ends_at=t.starts_at+p.purchased_duration_days*interval '24 hours'
+      from public.ad_marquee_placements t join public.payments p on p.id=t.payment_id where t.id='${target}';`), 't');
+    assert.ok(observed.reads[0].timeoutMs < observed.queue[0].timeoutMs);
+  }
   assert.deepEqual(await intent(payment), committedAtPost);
   const publicDto = JSON.stringify([created, result.payment, await graph.store.getStoredPayment(payment), await graph.store.listStoredPaymentsForUser(payer)]);
   for (const secret of [email, 'request_body', 'requestBody', 'request_sha256', 'merchant_shop_id', 'first_attempt_authorized_at', 'receipt']) assert.equal(publicDto.includes(secret), false);
   const immutableTarget = await row(spec.table, target), marker = await row('payments', payment);
   const replay = await h.server({}, { paymentId: payment }).provider.confirmPayment(payment);
-  assert.equal(replay.payment.fulfillmentStatus, 'applied'); assert.equal(replay.nextStatus, undefined);
+  assert.equal(replay.payment.fulfillmentStatus, 'applied'); assert.equal(replay.nextStatus, kind === 'marquee' ? 'active' : undefined);
+  assert.equal(observed.queue.length, kind === 'marquee' ? 2 : 0); assert.equal(observed.reads.length, observed.queue.length);
+  assert.equal((await effects(target)).length, beforeEffects.length + (kind === 'marquee' ? 2 : 1));
   assert.deepEqual(await row(spec.table, target), immutableTarget); assert.deepEqual(await row('payments', payment), marker);
   assert.deepEqual(await intent(payment), committedAtPost);
+});
+
+async function moduleMarqueeCheckout() {
+  const target = await createTarget('marquee'), payment = id(100), provider = id(500);
+  const observed = { queue: [], reads: [] }, beforeEffects = await effects(target);
+  const h = harness({ clock: { Date, performance, now: () => Date.now(), setTimeout, clearTimeout }, rest: actualRest(observed),
+    vendor: async entry => {
+      const original = await intent(payment), body = JSON.parse(original.request_body);
+      if (entry.method === 'POST') { assert.equal(entry.body, original.request_body); assert.equal(entry.key, payment); }
+      const capture = entry.method === 'GET' ? await sql("select to_char(clock_timestamp(),'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"');") : undefined;
+      return new Response(JSON.stringify({ id: provider, status: capture ? 'succeeded' : 'pending', paid: Boolean(capture), test: true,
+        amount: body.amount, metadata: body.metadata, ...(capture ? { captured_at: capture } : {}),
+        confirmation: { type: 'redirect', confirmation_url: `https://yoomoney.ru/checkout?orderId=${provider}` } }));
+    } });
+  const graph = h.server({}, { paymentId: payment });
+  const created = await graph.provider.createPayment({ tariffId: 'ad-marquee', targetType: 'ad_marquee', targetId: target,
+    userId: owner, targetTitle: 'Synthetic event marquee', customerEmail: 'event-payer@example.invalid' });
+  assert.equal(created.status, 'pending'); assert.equal(created.providerPaymentId, provider);
+  return { target, payment, observed, beforeEffects, h, graph, originalIntent: await intent(payment) };
+}
+
+test('actual marquee event with five occupied slots preserves paid waiting state and every established interval on replay', async () => {
+  for (let n = 0; n < 5; n++) {
+    const target = await createTarget('marquee', 20 + n), p = await newPayment('ad_marquee', target, 200 + n, owner, 'ad_marquee');
+    assert.equal((await complete(p)).applied_now, true);
+  }
+  assert.equal((await reconcile()).length, 5);
+  const occupiedSql = `select json_agg(t order by id) from public.ad_marquee_placements t where id<> '${id(10)}';`;
+  const occupied = await json(occupiedSql), c = await moduleMarqueeCheckout();
+  const result = await c.graph.provider.confirmPayment(c.payment);
+  assert.equal(result.payment.status, 'succeeded'); assert.equal(result.payment.fulfillmentStatus, 'applied'); assert.equal(result.nextStatus, 'paid');
+  const target = await row('ad_marquee_placements', c.target), financial = await row('payments', c.payment);
+  assert.equal(target.status, 'paid'); assert.equal(target.starts_at, null); assert.equal(target.ends_at, null);
+  assert.equal((await effects(c.target)).length, c.beforeEffects.length + 1);
+  const replay = await c.h.server({}, { paymentId: c.payment }).provider.confirmPayment(c.payment);
+  assert.equal(replay.nextStatus, 'paid'); assert.equal(c.observed.queue.length, 2); assert.equal(c.observed.reads.length, 2);
+  assert.deepEqual(await row('ad_marquee_placements', c.target), target); assert.deepEqual(await row('payments', c.payment), financial);
+  assert.deepEqual(await json(occupiedSql), occupied); assert.deepEqual(await intent(c.payment), c.originalIntent);
+  assert.equal((await effects(c.target)).length, c.beforeEffects.length + 1);
+  assert.equal(c.h.state.providerRequests.filter(entry => entry.method === 'POST').length, 1);
+});
+
+test('actual marquee event advisory-lock timeout leaves queue unknown but durable finance safe; retry activates once', async () => {
+  const c = await moduleMarqueeCheckout(), blocker = connection('module-event-blocker');
+  try {
+    await blocker.start(); await blocker.command('select pg_advisory_xact_lock(1112295754,1);');
+    const confirming = c.graph.provider.confirmPayment(c.payment);
+    await waitForLock('module-event-queue'); // Actual blocked RPC backend, not a sleep/proxy promise.
+    const unknown = await confirming;
+    assert.equal(unknown.payment.status, 'succeeded'); assert.equal(unknown.payment.fulfillmentStatus, 'applied'); assert.equal(unknown.nextStatus, undefined);
+    const outcome = c.graph.load('src/lib/payment-confirmation-outcome.ts').getPaymentConfirmationOutcome(unknown);
+    assert.equal(outcome.kind, 'queue_pending'); assert.equal(outcome.tone, 'warning'); assert.equal(outcome.canRetry, true);
+    assert.match(c.observed.queue[0].error, /canceling statement due to lock timeout/); assert.equal(c.observed.reads.length, 0);
+    const paid = await row('ad_marquee_placements', c.target), financial = await row('payments', c.payment);
+    assert.equal(paid.status, 'paid'); assert.equal(paid.starts_at, null); assert.equal(paid.ends_at, null);
+    assert.equal((await effects(c.target)).length, c.beforeEffects.length + 1);
+    assert.deepEqual(await intent(c.payment), c.originalIntent);
+    await blocker.command('commit;');
+    const repaired = await c.h.server({}, { paymentId: c.payment }).provider.confirmPayment(c.payment);
+    assert.equal(repaired.nextStatus, 'active');
+    const active = await row('ad_marquee_placements', c.target);
+    assert.equal(active.status, 'active'); assert.ok(active.starts_at); assert.ok(active.ends_at);
+    assert.equal((await effects(c.target)).length, c.beforeEffects.length + 2);
+    const replay = await c.h.server({}, { paymentId: c.payment }).provider.confirmPayment(c.payment);
+    assert.equal(replay.nextStatus, 'active'); assert.equal(c.observed.queue.length, 3); assert.equal(c.observed.reads.length, 2);
+    assert.deepEqual(await row('ad_marquee_placements', c.target), active); assert.deepEqual(await row('payments', c.payment), financial);
+    assert.deepEqual(await intent(c.payment), c.originalIntent); assert.equal((await effects(c.target)).length, c.beforeEffects.length + 2);
+    assert.equal(c.h.state.providerRequests.filter(entry => entry.method === 'POST').length, 1);
+  } finally { await blocker.close(); }
 });
 
 test('two independent actual preparers cannot replace the winning body after parent/intent locks serialize', async () => {
