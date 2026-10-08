@@ -89,7 +89,7 @@ export type Listing = {
   paid: boolean;
   viewCount?: number;
   publishedAt: string;
-  expiresAt: string;
+  expiresAt?: string;
 };
 
 export type JobVacancy = {

@@ -629,24 +629,16 @@ export async function archiveStoredVacancyForUser(vacancyId: string, userId: str
 }
 
 export async function restoreStoredVacancyForUser(vacancyId: string, userId: string) {
-  if (!isSupabaseRestConfigured() || !isUuid(vacancyId)) {
+  if (!isSupabaseRestConfigured() || !isUuid(vacancyId) || !isUuid(userId)) {
     return false;
   }
 
-  const now = new Date().toISOString();
   const rows = await supabaseRest<Array<Pick<VacancyRow, "id">>>(
-    `/rest/v1/vacancies?select=id&id=eq.${encodeURIComponent(vacancyId)}&author_id=eq.${encodeURIComponent(userId)}&is_paid=eq.true&expires_at=gt.${encodeURIComponent(now)}&status=eq.archived`,
-    {
-      method: "PATCH",
-      prefer: "return=representation",
-      body: {
-        published_at: now,
-        status: "published",
-      },
-    },
+    "/rest/v1/rpc/restore_vacancy_within_paid_window",
+    { method: "POST", body: { p_vacancy_id: vacancyId, p_owner_id: userId } },
   );
 
-  return Boolean(rows[0]?.id);
+  return rows[0]?.id === vacancyId;
 }
 
 export async function deleteStoredVacancyForUser(vacancyId: string, userId: string) {

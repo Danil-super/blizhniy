@@ -245,7 +245,7 @@ function mapListing(row: ListingRow): Listing {
     paid: row.is_paid,
     viewCount: Math.max(0, Math.floor(Number(row.view_count ?? 0) || 0)),
     publishedAt,
-    expiresAt: isoDate(row.expires_at) || addDaysIsoDate(publishedAt, 30),
+    expiresAt: row.expires_at ?? undefined,
   };
 }
 
@@ -874,43 +874,14 @@ export async function markStoredListingSoldForUser(listingId: string, userId: st
 }
 
 export async function restoreStoredListingForUser(listingId: string, userId: string) {
-  if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
+  if (!isSupabaseRestConfigured() || !isUuid(listingId) || !isUuid(userId)) {
     return false;
   }
 
-  const now = new Date().toISOString();
-  // Restoring a sold or archived listing must keep the already paid publication window.
-  const restoreBody = {
-    published_at: now,
-    status: "published",
-  };
+  const rows = await supabaseRest<Array<Pick<ListingRow, "id">>>(
+    "/rest/v1/rpc/restore_listing_within_paid_window",
+    { method: "POST", body: { p_listing_id: listingId, p_owner_id: userId } },
+  );
 
-  async function patchRestorableListing(statusFilter: string) {
-    return supabaseRest<Array<Pick<ListingRow, "id">>>(
-      `/rest/v1/listings?select=id&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&is_paid=eq.true&expires_at=gt.${encodeURIComponent(now)}&${statusFilter}`,
-      {
-        method: "PATCH",
-        prefer: "return=representation",
-        body: restoreBody,
-      },
-    );
-  }
-
-  let rows: Array<Pick<ListingRow, "id">> = [];
-
-  try {
-    rows = await patchRestorableListing("status=eq.sold");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-
-    if (!message.includes("publication_status") || !message.includes("sold")) {
-      throw error;
-    }
-  }
-
-  if (!rows[0]?.id) {
-    rows = await patchRestorableListing("status=in.(archived,expired)");
-  }
-
-  return Boolean(rows[0]?.id);
+  return rows[0]?.id === listingId;
 }

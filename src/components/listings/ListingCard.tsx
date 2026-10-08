@@ -41,7 +41,7 @@ export type DemoListing = {
   viewCount?: number;
   createdAt: string;
   publishedAt: string;
-  expiresAt: string;
+  expiresAt?: string;
   imageTone: "blue" | "green" | "rose" | "amber" | "violet";
 };
 
