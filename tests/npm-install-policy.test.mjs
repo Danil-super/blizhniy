@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import test from "node:test";
@@ -59,6 +59,32 @@ test("ordinary npm ci applies repository policy and blocks dependency and root i
   for (const event of lifecycleEvents) {
     assert.equal(existsSync(join(fixture.installedDependency, `${event}.marker`)), false, `Dependency ${event} must not run`);
     assert.equal(existsSync(join(fixture.root, `${event}.marker`)), false, `Root ${event} must not run`);
+  }
+});
+
+test("ordinary npm ci packs local directories consistently with the locked vendor dependency", (context) => {
+  const fixture = createFixture(context);
+  assert.equal(fixture.npm(["config", "get", "install-links"]).trim(), "true",
+    "Local file dependencies must use the packed layout recorded in the lockfile");
+  const manifestPath = join(fixture.root, "dependency", "package.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  // A packed dependency must not resolve its author's build-only dependencies.
+  // This deliberately nonexistent fixture package can never be fetched offline.
+  manifest.devDependencies = { "synthetic-uninstalled-build-tool": "99.0.0" };
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  writeFileSync(join(fixture.root, "package.json"), JSON.stringify({
+    name: "synthetic-local-directory-consumer", version: "1.0.0", private: true,
+    dependencies: { "synthetic-install-dependency": "file:./dependency" },
+  }));
+  fixture.npm(["install", "--package-lock-only", "--install-links=true"]);
+  const locked = JSON.parse(readFileSync(join(fixture.root, "package-lock.json"), "utf8"));
+  assert.equal(locked.packages["node_modules/synthetic-install-dependency"].link, undefined);
+  assert.equal(locked.packages["dependency"], undefined);
+  fixture.npm(["ci"]);
+  assert.equal(lstatSync(fixture.installedDependency).isSymbolicLink(), false);
+  assert.equal(existsSync(join(fixture.root, "node_modules", "synthetic-uninstalled-build-tool")), false);
+  for (const event of lifecycleEvents) {
+    assert.equal(existsSync(join(fixture.installedDependency, `${event}.marker`)), false);
   }
 });
 
