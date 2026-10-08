@@ -26,6 +26,21 @@ truthful state; do not blindly confirm or report cabinet success. Valid admin
 waived-payment submissions still navigate to the fair cabinet after a real
 saved ID is returned.
 
+A transport `TypeError` is displayed as a localized uncertain-response message:
+check saved applications in the cabinet before submitting again. A lost response
+does not establish that creation failed or that a payment succeeded. The message
+does not invent a saved ID, erase a previously acknowledged owner-bound ID, or
+change the saved-target retry/link controls. Ordinary server validation errors
+retain their actionable message. This UI guidance is not server-side creation
+idempotency and does not recover an unacknowledged ID across a page reload.
+
+The focused suite includes upload, initial-creation and saved-payment transport
+failures plus a server-validation control. Their pre-fix execution produced
+three assertion failures with nineteen healthy controls; all twenty-two pass
+after the catch change. Inverting the actual on-disk `TypeError` condition kills
+all four new cases while the valid admin-save control passes; exact restoration
+returns the component to its verified source bytes.
+
 ## Focused behavioral regression
 
 `tests/fair-checkout-recovery.test.cjs` transpiles and executes the complete

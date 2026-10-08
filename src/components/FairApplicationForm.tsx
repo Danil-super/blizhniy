@@ -150,7 +150,9 @@ export function FairApplicationForm({ adminMode = false }: { adminMode?: boolean
       router.push(outcome.destination);
     } catch (error) {
       setState("error");
-      setMessage(error instanceof Error ? error.message : "Не удалось отправить заявку");
+      setMessage(error instanceof TypeError
+        ? "Не удалось получить ответ сервера. Проверьте сохранённые заявки в кабинете перед повторной отправкой."
+        : error instanceof Error ? error.message : "Не удалось отправить заявку");
       setCaptchaToken("");
       setCaptchaResetKey((value) => value + 1);
     }

@@ -97,7 +97,7 @@ function harness({ adminMode = false, onFetch, onSession, onFormRead } = {}) {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX }, fileName: filename,
     }).outputText;
     vm.runInNewContext(compiled, {
-      module, exports: module.exports, process: { env: { NODE_ENV: 'production' } }, Error, Promise, URL, File, Event, FormData: SyntheticFormData,
+      module, exports: module.exports, process: { env: { NODE_ENV: 'production' } }, Error, TypeError, Promise, URL, File, Event, FormData: SyntheticFormData,
       AbortController, AbortSignal, setTimeout, clearTimeout, window: browser, fetch: fakeFetch,
       require(id) {
         if (id === 'react') return react;
@@ -255,4 +255,39 @@ test('fair valid admin save retains cabinet navigation without payment creation 
   await h.submit(); assert.equal(h.count('/api/fair-applications'), 1);
   assert.equal(h.count('/api/payments'), 0); assert.equal(h.confirmations().length, 0);
   assert.deepEqual(h.destinations, [{ destination: '/cabinet/fair-applications', external: false }]);
+});
+
+for (const phase of ['upload', 'create', 'saved-payment']) test(`fair ${phase} transport failure displays uncertain outcome guidance without inventing saved or paid truth`, async () => {
+  const target = phase === 'upload' ? '/api/uploads/media' : phase === 'create' ? '/api/fair-applications' : '/api/payments';
+  const h = harness({ onFetch: entry => {
+    if (entry.path === target) throw new TypeError('Failed to fetch');
+    if (phase === 'saved-payment' && entry.path === '/api/fair-applications') return response(savedWithoutPayment, 201);
+  } });
+  if (phase === 'saved-payment') await h.submit();
+  await h.submit();
+  assert.equal(h.destinations.length, 0);
+  assert.equal(h.confirmations().length, 0);
+  assert.equal(h.storageWrites.length, 0);
+  assert.match(h.errorText(), /Не удалось получить ответ сервера/);
+  assert.match(h.errorText(), /Проверьте сохранённые заявки в кабинете перед повторной отправкой/);
+  assert.doesNotMatch(h.errorText(), /Failed to fetch|оплата прошла|оплачено/i);
+  const savedLink = find(h.render(), node => node.props?.href === '/cabinet/fair-applications');
+  assert.equal(Boolean(savedLink), phase === 'saved-payment', 'only an acknowledged saved application enables the saved-target link');
+  const button = find(h.render(), node => node.type === 'button' && node.props.type === 'submit');
+  assert.equal(button.props.children, phase === 'saved-payment' ? 'Продолжить оплату сохранённой заявки' : 'Создать заявку и оплатить');
+  if (phase === 'saved-payment') {
+    assert.equal(h.count('/api/uploads/media'), 1);
+    assert.equal(h.count('/api/fair-applications'), 1);
+    assert.equal(h.count('/api/payments'), 1);
+    assert.equal(h.requests.at(-1).body.targetId, applicationId);
+  }
+});
+
+test('fair rejected server validation keeps its actionable message rather than describing a network outage', async () => {
+  const message = 'Проверьте описание заявки и согласие с условиями.';
+  const h = harness({ onFetch: entry => entry.path === '/api/fair-applications' ? response({ error: message }, 400) : undefined });
+  await h.submit();
+  assert.equal(h.errorText(), message);
+  assert.equal(h.destinations.length, 0);
+  assert.equal(h.count('/api/payments'), 0);
 });
