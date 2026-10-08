@@ -67,6 +67,22 @@ function harness(options = {}) {
       return [{ ...state.checkoutIntent, remaining_ms: 3_600_000,
         decision: state.row.provider_payment_id ? "recover" : "post", provider_payment_id: state.row.provider_payment_id }];
     }
+    // These historical wire fixtures intentionally model a FULL queue. Real
+    // activation/capacity lives in PG tests; do not fake another fulfillment.
+    if (path === "/rest/v1/rpc/reconcile_ad_marquee_queue") {
+      assert.equal(state.row.status, "succeeded");
+      assert.equal(state.row.fulfillment_status, "applied");
+      assert.equal(optionsRest.attempts, 1);
+      return [];
+    }
+    if (path.startsWith("/rest/v1/ad_marquee_placements") && path.includes("payment_id=eq.")) {
+      const query = new URL(`https://fixture.invalid${path}`).searchParams;
+      assert.equal(query.get("id"), `eq.${state.row.target_id}`);
+      assert.equal(query.get("user_id"), `eq.${state.row.user_id}`);
+      assert.equal(query.get("payment_id"), `eq.${state.row.id}`);
+      return [{ id: state.row.target_id, user_id: state.row.user_id, payment_id: state.row.id,
+        payment_status: "succeeded", status: "paid", starts_at: null, ends_at: null }];
+    }
     if (path.startsWith("/rest/v1/rpc/")) {
       assert.equal(path, "/rest/v1/rpc/apply_payment_fulfillment");
       assert.equal(state.row.status, "succeeded", "RPC may only follow persisted verified financial success");

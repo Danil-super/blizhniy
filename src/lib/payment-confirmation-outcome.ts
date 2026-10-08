@@ -13,7 +13,7 @@ export type PaymentConfirmationPayload = {
 };
 
 export type PaymentConfirmationOutcome = {
-  kind: "pending" | "applied" | "fulfillment_pending" | "blocked" | "failed" | "refunded" | "unavailable";
+  kind: "pending" | "applied" | "queue_pending" | "fulfillment_pending" | "blocked" | "failed" | "refunded" | "unavailable";
   title: string;
   message: string;
   tone: "success" | "warning" | "danger";
@@ -46,6 +46,12 @@ export function getPaymentConfirmationOutcome(payload: PaymentConfirmationPayloa
       return {
         kind: "fulfillment_pending", title: "Услуга ожидает применения", tone: "warning", canRetry: true,
         message: "Оплата подтверждена. Применение услуги еще не подтверждено. Проверьте статус позже; повторно оплачивать не нужно.",
+      };
+    }
+    if (payment.targetType === "ad_marquee" && payload.nextStatus !== "active" && payload.nextStatus !== "paid") {
+      return {
+        kind: "queue_pending", title: "Статус рекламы требует проверки", tone: "warning", canRetry: true,
+        message: "Оплата подтверждена. Статус активации очереди пока не подтвержден. Проверьте статус позже; повторно оплачивать не нужно.",
       };
     }
     return {

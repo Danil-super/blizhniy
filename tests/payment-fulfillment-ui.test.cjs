@@ -151,6 +151,32 @@ test('return applied control confirms the applied service and only then schedule
   assert.deepEqual(h.redirects, ['/cabinet/obyavleniya']);
 });
 
+test('marquee applied finance with unknown queue has warning/manual retry and no applied redirect', async () => {
+  const value = { ...payload('succeeded', 'applied', 'ad_marquee'), nextStatus: undefined };
+  const h = harness({ componentPayload: value });
+  const outcome = h.load('src/lib/payment-confirmation-outcome.ts').getPaymentConfirmationOutcome(value);
+  assert.equal(outcome.kind, 'queue_pending');
+  assert.equal(outcome.tone, 'warning');
+  assert.equal(outcome.canRetry, true);
+  const html = await h.mountReturn();
+  assert.match(html, /Проверить статус еще раз/);
+  assert.match(html, /повторно оплачивать не нужно/i);
+  assert.match(html, /role="status"/);
+  assert.equal(h.timers.length, 0);
+  assert.deepEqual(h.redirects, []);
+  assert.equal(value.payment.fulfillmentStatus, 'applied');
+});
+
+for (const nextStatus of ['active', 'paid']) test(`confirmed marquee ${nextStatus} retains ordinary applied result`, async () => {
+  const value = { ...payload('succeeded', 'applied', 'ad_marquee'), nextStatus };
+  const h = harness({ componentPayload: value });
+  const outcome = h.load('src/lib/payment-confirmation-outcome.ts').getPaymentConfirmationOutcome(value);
+  assert.equal(outcome.kind, 'applied');
+  const html = await h.mountReturn();
+  assert.equal(h.timers.length, 1);
+  if (nextStatus === 'paid') assert.match(html, /ожидает активации в очереди/);
+});
+
 for (const [status, fulfillment] of [['pending', undefined], ['failed', undefined], ['refunded', 'applied'], ['succeeded', 'blocked'], ['succeeded', 'pending']]) {
   test(`pay button does not announce publication for ${status}/${fulfillment ?? 'unknown'}`, async () => {
     const h = harness({ componentPayload: payload(status, fulfillment) });

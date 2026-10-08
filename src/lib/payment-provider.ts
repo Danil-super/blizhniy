@@ -523,7 +523,11 @@ function succeededPaymentResult(payment: Payment, nextStatus?: PaymentResult["ne
     ...(nextStatus ? { nextStatus } : {}),
     notification: {
       subject: "Оплата прошла",
-      body: `${payment.targetTitle}: размещение подтверждено сервером.`,
+      body: `${payment.targetTitle}: ${payment.targetType === "ad_marquee"
+        ? nextStatus === "active" ? "активация рекламы подтверждена сервером."
+          : nextStatus === "paid" ? "реклама оплачена и ожидает активации в очереди."
+          : "оплата подтверждена; статус активации очереди пока не подтвержден. Повторно оплачивать не нужно."
+        : "размещение подтверждено сервером."}`,
     },
   };
 }
@@ -547,9 +551,10 @@ async function applySucceededPaymentOnce(payment: Payment): Promise<PaymentResul
   // anchor/target marker. The returned DB row may already be refunded/blocked.
   await updateStoredPayment(payment);
   if (payment.status !== "succeeded") return createPendingPaymentResult(payment);
+  let nextStatus: PaymentResult["nextStatus"];
   try {
     const fulfilled = await applyStoredPaymentFulfillment(payment);
-    return succeededPaymentResult(payment, fulfilled.nextStatus);
+    nextStatus = fulfilled.nextStatus;
   } catch {
     // A response can be lost after commit. Re-read durable truth; unresolved
     // financial success remains pending, never falsely failed or published.
@@ -557,8 +562,24 @@ async function applySucceededPaymentOnce(payment: Payment): Promise<PaymentResul
       const stored = await getStoredPayment(payment.id);
       if (stored) Object.assign(payment, stored, { targetTitle: payment.targetTitle });
     } catch { /* A later verified webhook retries unresolved fulfillment. */ }
-    return succeededPaymentResult(payment);
   }
+  if (payment.provider === "yookassa" && payment.targetType === "ad_marquee"
+    && payment.status === "succeeded" && payment.fulfillmentStatus === "applied") {
+    // Both financial and fulfillment transactions have finished. Never acquire
+    // the queue global lock from either payment/placement transaction.
+    nextStatus = undefined;
+    const deadlineAt = performance.now() + 8000;
+    try {
+      const { reconcilePaidAdMarqueePlacement } = await import("@/lib/ad-marquee-store");
+      if (payment.targetAppliedAt && payment.targetId && payment.userId) {
+        nextStatus = await reconcilePaidAdMarqueePlacement({ id: payment.targetId, userId: payment.userId, paymentId: payment.id }, deadlineAt);
+      }
+    } catch {
+      // Queue delivery is unknown, not failed finance/unresolved fulfillment.
+      // Manual confirmation or a separately operated reconciler can repair it.
+    }
+  }
+  return succeededPaymentResult(payment, nextStatus);
 }
 
 async function applySucceededPayment(payment: Payment): Promise<PaymentResult> {

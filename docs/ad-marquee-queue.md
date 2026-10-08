@@ -55,6 +55,103 @@ Financial fulfillment retains **payment → placement** order and never requests
 the queue global lock. Never call either queue RPC from a transaction that
 already holds a payment or placement lock.
 
+## Post-payment event trigger and delivery limits
+
+The YooKassa settlement path now reconciles the queue after both financial and
+fulfillment requests have completed successfully (or a lost fulfillment response
+has been recovered from durable `succeeded/applied` truth). It also reconciles on
+verified applied replay. Only genuine YooKassa ad-marquee payments qualify;
+pending, refunded, blocked, unresolved fulfillment, other targets and the isolated
+mock flow do not launch the payment queue trigger. SQL fulfillment still marks
+the placement `paid` and never acquires the global queue lock itself.
+
+The extra operation has one shared, exclusive eight-second monotonic deadline,
+anchored before lazy module loading; queue response-body consumption and the
+subsequent narrow placement read consume that same budget. Each HTTP request has
+exactly one attempt and receives only its
+remaining budget. Transport timers abort their requests; a separate caller timer
+also bounds a body that ignores abort. Every completion checks the same deadline,
+so late work cannot launch another read or extend the caller's wait.
+
+The placement GET is service-only, limited to one row and bound to placement ID,
+verified payment owner and payment ID. It projects only binding/status/window
+fields, requires succeeded placement payment status and uses the database clock
+to exclude active windows that have not started or have already ended. `active`
+requires agreement between the committed queue IDs and the current bound row;
+`paid` requires a bound waiting row with no interval. Empty, malformed, changed,
+archived, refunded, inconsistent or late responses cannot claim activation.
+
+This new nested OR filter uses timestamp special input `now` without parentheses,
+not an unquoted SQL-looking `now()`. The official PostgREST logical-value parser
+treats an unquoted closing parenthesis as a group delimiter; parentheses in this
+position can close the AND early. This is a parser-source conclusion, not an
+executed PostgREST binary test. The initial hypothesis that PostgreSQL itself
+rejects the scalar literal was disproved: a disposable cached PG17, `--network
+none`/tmpfs probe accepted both `'now'::timestamptz` and `'now()'::timestamptz`.
+No failing scalar cast is claimed as RED, and the pre-existing homepage scalar
+`ends_at=gt.now()` remains unchanged. See [PostgREST special timestamp inputs](https://docs.postgrest.org/en/stable/how-tos/working-with-postgresql-data-types.html)
+and [the actual logical-value parser](https://github.com/PostgREST/postgrest/blob/v13.0.7/src/PostgREST/ApiRequest/QueryParams.hs#L784).
+
+A queue failure is **not** failed finance or unresolved financial fulfillment.
+The payment remains `succeeded/applied`, with its original amount, settlement
+anchor and applied marker unchanged. The response omits unconfirmed `nextStatus`
+and uses the warning outcome `queue_pending`: manual status retry and a cabinet
+link, no automatic applied-result redirect, and no suggestion to pay again. A
+webhook with durable applied fulfillment remains ACK 200; queue delivery failure
+does not manufacture the fulfillment-pending 503 contract. Confirmed `paid` with
+five occupied slots is legitimate waiting, not a queue error.
+
+This event trigger does **not** provide periodic expiry or eventual repair when
+no payment, owner/admin read or moderation event occurs. The homepage intentionally
+remains read-only. A separately approved, installed and monitored bounded queue
+worker/timer is still required to expire complete windows and activate subsequent
+eligible paid rows without user navigation, and to recover unknown queue delivery.
+This slice installs no scheduler, adds no grant/secret/migration and does not assume
+that the existing publication-expiry role may execute the queue RPC. No production
+timer inventory, migration, provider call or deployment was performed here.
+
+### Event-trigger regression evidence
+
+At unchanged local baseline `44fe03d`, the new whole-module HTTP-boundary suite
+had 19 assertion failures and five healthy negative controls passing (24 cases).
+The separate actual PaymentReturnClient/outcome reproduction failed because an
+unknown queue was incorrectly `applied`; three confirmed active/paid controls
+passed. The existing focused store/server/UI suite was 68/68 green. Initial
+missing Node globals and webhook-envelope errors were test-adapter setup errors,
+corrected before recording behavioral RED.
+
+On the isolated `44fe03d`-based worker snapshot, the final focused suite is
+103/103 and native Node22 full isolated suite 657/657,
+with no canceled/skipped tests. Two further meaningful RED assertions proved that
+abort alone did not bound an uncooperative response body; the caller deadline
+made both green. The new suite executes complete actual provider, payment store,
+queue store, REST transport, outcome and webhook modules recursively. Only HTTP,
+framework/auth boundaries and clocks are synthetic. Its 0/4/5 occupied-slot and
+window responses are explicit wire fixtures, **not** a real SQL capacity or expiry
+proof. The separately owned combined PostgreSQL integration suite must establish
+those transaction/lock properties against the actual migrations.
+
+Four actual on-disk `apply_patch` mutations were rejected by assertion failures:
+missing payment trigger (0 queue calls instead of 1), pre-commit trigger (1 instead
+of 0 at the fulfillment barrier), unconfirmed active status (`active` instead of
+unknown) and extended read budget (8000ms instead of the unspent 2000ms). Each was
+restored exactly before subsequent verification; no mutation remains in source.
+
+Final-filter verification also passed TypeScript `--noEmit --incremental false`,
+root ESLint (exit 0; one pre-existing unused-variable warning in the untouched
+checkout-prerequisites test), `git diff --check` and a matched Next15.5.27
+production build (58/58 static pages). The build used a clean environment with
+Supabase/merchant credentials unset, telemetry disabled and an inherited read-only
+fetch guard allowing only an unused loopback origin; no blocked/outbound request
+was observed. This is offline build/unit evidence, not live merchant, Supabase,
+PostgREST-binary or exhaustive browser assurance.
+
+Focused command with Node22:
+
+```sh
+node --test tests/payment-marquee-queue-trigger.test.cjs tests/ad-marquee-queue-store.test.cjs tests/payment-fulfillment-server.test.mjs tests/payment-fulfillment-ui.test.cjs
+```
+
 ## Write boundary and rollout
 
 Migration `20260927084703` already intentionally revokes browser table writes.
