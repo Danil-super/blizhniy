@@ -1,10 +1,10 @@
 # Зависимости и граница установки
 
-Проверено 07.10.2026. Повторный разбор открытых advisory: **14.10.2026**, либо раньше при появлении исправлений, изменении сборочного контура или входных данных. Владелец решения по остаточному риску — сопровождающий проекта. Эти изменения не являются разрешением коммерческого запуска или подтверждением безопасности всего приложения.
+Проверено 08.10.2026. Повторный разбор открытых advisory: **14.10.2026**, либо раньше при появлении исправлений, изменении сборочного контура или входных данных. Владелец решения по остаточному риску — сопровождающий проекта. Эти изменения не являются разрешением коммерческого запуска или подтверждением безопасности всего приложения.
 
 ## Что изменено
 
-Корень проекта использует npm и единственный `package-lock.json`; CI использует Node.js 22 и `npm ci`. `package.json`, major-версии Next.js/ESLint/Tailwind и существующие overrides не изменены. Leaf-зависимости обновлены внутри объявленных диапазонов:
+Корень проекта использует npm и единственный `package-lock.json`; CI использует Node.js 22 и `npm ci`. Major-версии Next.js/ESLint/Tailwind и существующие overrides не изменены. В `package.json` минимальная версия Next.js и соответствующего `eslint-config-next` поднята с `^15.5.24` до `^15.5.27`; остальные диапазоны сохранены. Обновления:
 
 | Зависимость | Было → стало | Основание |
 | --- | --- | --- |
@@ -12,14 +12,23 @@
 | baseline-browser-mapping | 2.10.32 → 2.11.27 | Начиная с 2.11.0 неверные параметры больше не вызывают `process.exit()`. |
 | brace-expansion | 1.1.18 → 1.1.21; 5.0.9 → 5.0.12 | Совместимые ветки исправляют рекурсию, неконтролируемое расширение и квадратичную обработку диапазонов. Это **другой пакет**, не `braces` ниже. |
 | postcss-selector-parser | 6.1.2 → 6.1.4 | 6.1.3 исправляет рекурсивную сериализацию AST; 6.1.4 содержит дополнительное исправление сериализации. Advisory квадратичной обработки **остаётся**. |
+| Next.js и eslint-config-next | 15.5.24 → 15.5.27 | Официальное security-обновление ветки 15.5; связанные `@next/env`, `@next/eslint-plugin-next` и восемь платформенных SWC-пакетов обновлены до той же версии. |
 
 Источники Browserslist: [ограничение кэша](https://github.com/advisories/GHSA-c83g-rgw3-j3cx), [custom statistics](https://github.com/advisories/GHSA-73wf-gq98-2v4g), [4.28.7](https://github.com/browserslist/browserslist/releases/tag/4.28.7), [4.29.3](https://github.com/browserslist/browserslist/releases/tag/4.29.3). Источники baseline: [advisory](https://github.com/advisories/GHSA-w5vr-8v7q-w6rv), [2.11.0](https://github.com/web-platform-dx/baseline-browser-mapping/releases/tag/v2.11.0), [2.11.27](https://github.com/web-platform-dx/baseline-browser-mapping/releases/tag/v2.11.27).
 
 Источники brace-expansion: [рекурсия](https://github.com/advisories/GHSA-6j4f-fj2g-mc7p), [расширение](https://github.com/advisories/GHSA-qhr7-859c-m2p7), [обработка диапазонов](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr). Источники парсера: [рекурсивная сериализация](https://github.com/advisories/GHSA-w9m9-85wc-3x92), [6.1.3](https://github.com/postcss/postcss-selector-parser/releases/tag/6.1.3), [6.1.4](https://github.com/postcss/postcss-selector-parser/releases/tag/6.1.4).
 
-Обновление Browserslist также обновляет совместимые browser-data leaf-зависимости: `caniuse-lite` 1.0.30001815, `electron-to-chromium` 1.5.449, `node-releases` 2.0.57 и `update-browserslist-db` 1.3.3. `caniuse-lite` используется и production-графом, поэтому не все изменения lockfile помечены `dev`. Версии framework/runtime-пакетов не менялись; `node-releases` требует Node.js ≥18, что совместимо с Node.js 22 проекта. Изменение optional-метаданных Sharp в lockfile не меняет его версию 0.35.5.
+Обновление Browserslist также обновляет совместимые browser-data leaf-зависимости: `caniuse-lite` 1.0.30001815, `electron-to-chromium` 1.5.449, `node-releases` 2.0.57 и `update-browserslist-db` 1.3.3. `caniuse-lite` используется и production-графом, поэтому не все изменения lockfile помечены `dev`. `node-releases` требует Node.js ≥18, что совместимо с Node.js 22 проекта. Отдельное обновление Next.js меняет только 12 пакетов его семейства и объявления корневого пакета в lockfile, без добавления или удаления зависимостей. Optional-диапазон Sharp в Next.js поднят с `^0.34.3 || ^0.35.3` до `^0.34.3 || ^0.35.4`; существующий override и версия Sharp 0.35.5 сохранены.
 
-Полный `npm audit`: **11 пакетов (9 high, 2 moderate) → 9 пакетов (7 high, 2 moderate)**. Это число пакетов, включая транзитивные meta-advisory, а не число независимых уязвимостей. После обновления остаются два исходных advisory ниже. `npm audit --omit=dev` сообщает **0**. Полный audit остаётся незелёным; production gate и Dependency Review в CI не ослаблены. Отсутствие известных advisory не доказывает отсутствие вредоносного кода или новых уязвимостей.
+Первый этап обновления leaf-зависимостей снизил полный `npm audit` с **11 пакетов (9 high, 2 moderate) до 9 пакетов (7 high, 2 moderate)**. Свежая проверка 08.10.2026 обнаружила ещё два advisory установленного Next.js 15.5.24: полный audit стал **10 пакетов (7 high, 3 moderate)**, production audit — **1 moderate-пакет**. После обновления Next.js до 15.5.27 полный audit вновь сообщает **9 пакетов (7 high, 2 moderate)**, а `npm audit --omit=dev` — **0**. Это число пакетов, включая транзитивные meta-advisory, а не число независимых уязвимостей. Два исходных build/dev advisory ниже остаются открытыми. Полный audit остаётся незелёным; production gate и Dependency Review в CI не ослаблены. Отсутствие известных advisory не доказывает отсутствие вредоносного кода или новых уязвимостей.
+
+### Next.js 15.5.27: граница проверки
+
+[Официальный релиз 15.5.27](https://github.com/vercel/next.js/releases/tag/v15.5.27) включает исправления [GHSA-4jqv-mc3x-m676](https://github.com/vercel/next.js/security/advisories/GHSA-4jqv-mc3x-m676) и [GHSA-mcj8-r9mp-w47p](https://github.com/vercel/next.js/security/advisories/GHSA-mcj8-r9mp-w47p), а также отдельное исправление metadata image routes. Публикация и точные версии проверены в официальном npm registry; lockfile содержит HTTPS-адреса и integrity для всех обновлённых пакетов.
+
+Первый cache-poisoning advisory требует Pages Router и SSG/ISR; второй — корневой catch-all вместе с SSG/ISR. В проверенной конфигурации приложение использует `src/app`, каталогов `pages`/`src/pages` и корневого catch-all нет. Это контрдоказательство достижимости этих конкретных сценариев в текущем приложении; эксплуатация HTTP-пути проекта не заявляется. Обновление сохраняет поддерживаемую ветку 15.5 и устраняет известные затронутые версии из production-графа.
+
+Проверка исправления использует реальный установленный модуль `next/dist/server/lib/match-next-data-pathname` и [официальный patch чувствительности служебного маршрута к регистру](https://github.com/vercel/next.js/commit/785f4c2397f25690edf02b5a9f1cd7deaa1abb6d): штатный `/_next/data/build-id/index.json` распознаётся на обеих версиях, три варианта регистра отклоняются только на 15.5.27. Результат — RED на 15.5.24 и GREEN на 15.5.27; это ограниченная regression-проверка upstream matcher, а не воспроизведение HTTP-эксплуатации проекта. В отдельном worktree на Node.js 22.23.1 пройдены **583/583 теста без пропусков**, реальная `next build` (**58/58 страниц**), `npm run lint` и отдельный `tsc --noEmit --incremental false`. Lint сохраняет прежнее предупреждение о неиспользуемой переменной в `tests/checkout-prerequisites.test.cjs`. Установка выполнена с `ignore-scripts=true`, native Sharp 0.35.5 успешно кодирует PNG без lifecycle hooks; install policy и CI не изменены.
 
 ## Открытые advisory: достижимость и ограничения
 
