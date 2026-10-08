@@ -6,7 +6,7 @@
     "dev": "node node_modules/next/dist/bin/next dev",
     "build": "node node_modules/next/dist/bin/next build",
     "start": "node node_modules/next/dist/bin/next start",
-    "lint": "node node_modules/eslint/bin/eslint.js .",
+    "lint": "node node_modules/eslint/bin/eslint.js . --ignore-pattern 'vendor/postcss-selector-parser/**'",
     "seed:production": "node scripts/seed-production-data.mjs"
   },
   "dependencies": {
@@ -27,6 +27,7 @@
     "eslint-config-next": "^15.5.27",
     "playwright": "^1.61.0",
     "postcss": "^8.5.23",
+    "postcss-selector-parser": "file:vendor/postcss-selector-parser",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2"
   },
