@@ -29,6 +29,7 @@ function execute(relative, dependencies, lexical = {}) {
 function fixture(entry, { config = {}, email = payerEmail, authenticated = true, admin = false, paid = false, providerFailure = false } = {}) {
   const [routeName, targetType, action, body] = entry;
   const writes = [], payments = [], requests = [], waiver = [];
+  let checkoutBody;
   const tariff = { id: body.tariffId || (routeName === 'applications' ? 'job-response' : 'fair-participation'), action, price: 300, durationDays: 30, active: true };
   const env = { NODE_ENV: 'production', PAYMENT_PROVIDER: 'yookassa', YOOKASSA_SHOP_ID: 'synthetic-shop', YOOKASSA_SECRET_KEY: 'test_synthetic_not_a_credential', YOOKASSA_RECEIPTS_ENABLED: 'true', YOOKASSA_RECEIPT_VAT_CODE: '1', ...config };
   const provider = execute('src/lib/payment-provider.ts', {
@@ -36,6 +37,8 @@ function fixture(entry, { config = {}, email = payerEmail, authenticated = true,
     '@/lib/payment-store': {
       canStorePayment: value => Boolean(value.targetId),
       createStoredPayment: async input => { payments.push(input); return { ...input, tariffId: input.tariff.id, createdAt: '2026-10-07T12:00:00.000Z' }; },
+      prepareStoredYooKassaCheckoutIntent: async (_payment, body) => { checkoutBody = body; return { decision: 'post', requestBody: body, remainingMs: 3_600_000 }; },
+      authorizeStoredYooKassaCheckoutAttempt: async () => ({ decision: 'post', requestBody: checkoutBody, remainingMs: 3_600_000 }),
       findActiveStoredPaymentForTarget: async () => undefined,
       findStoredPaymentByProvider: async () => undefined,
       getStoredPayment: async () => undefined,

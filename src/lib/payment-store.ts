@@ -56,6 +56,116 @@ type StoredPaymentInput = {
   userId?: string;
 };
 
+type CheckoutAuthorizationRow = {
+  payment_id: string;
+  user_id?: string | null;
+  target_type?: Payment["targetType"];
+  target_id?: string;
+  amount?: number | string;
+  purchased_duration_days?: number | null;
+  tariff_key?: string;
+  merchant_shop_id?: string;
+  is_test?: boolean;
+  request_body?: string | null;
+  request_sha256?: string | null;
+  first_attempt_authorized_at?: string | null;
+  remaining_ms?: number | string | null;
+  provider_payment_id?: string | null;
+  financial_status?: Payment["status"];
+  decision: "post" | "recover" | "legacy_recover" | "manual";
+};
+
+export type StoredYooKassaCheckoutAuthorization = {
+  decision: "post" | "recover" | "legacy_recover";
+  requestBody?: string;
+  remainingMs?: number;
+  providerPaymentId?: string;
+  tariffKey?: string;
+};
+
+type CheckoutMerchant = { shopId: string; isTest: boolean };
+
+function checkoutVerificationError() {
+  // Database/parser/receipt errors must not expose the persisted PII/body.
+  return new Error("YooKassa checkout snapshot requires manual verification");
+}
+
+function checkoutBindings(payment: Payment, merchant: CheckoutMerchant) {
+  if (!isSupabaseServiceRoleConfigured() || !isUuid(payment.id) || payment.provider !== "yookassa" ||
+      !payment.targetId || !isUuid(payment.targetId) || !/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId)) {
+    throw checkoutVerificationError();
+  }
+  return { p_payment_id: payment.id, p_user_id: payment.userId ?? null,
+    p_target_type: payment.targetType, p_target_id: payment.targetId,
+    p_merchant_shop_id: merchant.shopId, p_is_test: merchant.isTest };
+}
+
+async function decodeCheckoutAuthorization(
+  row: CheckoutAuthorizationRow | undefined, payment: Payment, merchant: CheckoutMerchant, started: number,
+): Promise<StoredYooKassaCheckoutAuthorization> {
+  if (!row || row.payment_id !== payment.id || row.decision === "manual" ||
+      !["post", "recover", "legacy_recover"].includes(row.decision) ||
+      (payment.providerPaymentId && row.provider_payment_id !== payment.providerPaymentId)) {
+    throw checkoutVerificationError();
+  }
+  const providerPaymentId = row.provider_payment_id ?? undefined;
+  if (row.decision === "legacy_recover") {
+    // Explicit historical GET-only exception. Never manufacture provenance.
+    if (!providerPaymentId || row.request_body) throw checkoutVerificationError();
+    return { decision: row.decision, providerPaymentId };
+  }
+  if (row.user_id !== payment.userId || row.target_type !== payment.targetType || row.target_id !== payment.targetId ||
+      Number(row.amount) !== payment.amount || (row.purchased_duration_days ?? null) !== (payment.purchasedDurationDays ?? null) ||
+      row.merchant_shop_id !== merchant.shopId || row.is_test !== merchant.isTest ||
+      typeof row.tariff_key !== "string" || !row.tariff_key || row.tariff_key.length > 128 ||
+      typeof row.first_attempt_authorized_at !== "string" || !Number.isFinite(Date.parse(row.first_attempt_authorized_at)) ||
+      typeof row.request_body !== "string" || typeof row.request_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(row.request_sha256)) {
+    throw checkoutVerificationError();
+  }
+  const bytes = new TextEncoder().encode(row.request_body);
+  if (bytes.byteLength > 16 * 1024) throw checkoutVerificationError();
+  const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
+    .map((value) => value.toString(16).padStart(2, "0")).join("");
+  if (digest !== row.request_sha256) throw checkoutVerificationError();
+  const remainingMs = Number(row.remaining_ms) - Math.max(0, performance.now() - started);
+  if (row.decision === "post" && (!Number.isFinite(remainingMs) || remainingMs <= 0 || providerPaymentId)) {
+    throw checkoutVerificationError();
+  }
+  if (row.decision === "recover" && !providerPaymentId) throw checkoutVerificationError();
+  return { decision: row.decision, providerPaymentId, requestBody: row.request_body,
+    remainingMs, tariffKey: row.tariff_key };
+}
+
+export async function authorizeStoredYooKassaCheckoutAttempt(payment: Payment, merchant: CheckoutMerchant) {
+  const started = performance.now();
+  try {
+    const rows = await supabaseRest<CheckoutAuthorizationRow[]>("/rest/v1/rpc/authorize_yookassa_checkout_attempt", {
+      method: "POST", attempts: 1, useServiceRole: true, body: checkoutBindings(payment, merchant),
+    });
+    return await decodeCheckoutAuthorization(rows[0], payment, merchant, started);
+  } catch {
+    throw checkoutVerificationError();
+  }
+}
+
+export async function prepareStoredYooKassaCheckoutIntent(payment: Payment, requestBody: string, merchant: CheckoutMerchant) {
+  const started = performance.now();
+  try {
+    if (!payment.userId || !isUuid(payment.userId) || new TextEncoder().encode(requestBody).byteLength > 16 * 1024) {
+      throw checkoutVerificationError();
+    }
+    const rows = await supabaseRest<CheckoutAuthorizationRow[]>("/rest/v1/rpc/prepare_yookassa_checkout_intent", {
+      method: "POST", attempts: 1, useServiceRole: true,
+      body: { ...checkoutBindings(payment, merchant), p_tariff_key: payment.tariffId,
+        p_amount: payment.amount, p_purchased_duration_days: payment.purchasedDurationDays ?? null,
+        p_request_body: requestBody },
+    });
+    return await decodeCheckoutAuthorization(rows[0], payment, merchant, started);
+  } catch {
+    throw checkoutVerificationError();
+  }
+}
+
 export function canStorePayment(input: { targetId?: string }) {
   return isSupabaseRestConfigured() && Boolean(input.targetId);
 }

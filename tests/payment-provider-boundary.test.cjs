@@ -73,16 +73,34 @@ function jsonResponse(payload, status = 200, headers = {}) {
   return new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json', ...headers } });
 }
 
-function loadProvider({ payment = localPayment(), active, tariff: tariffChanges, fetched, fetchImplementation, production = true, secret = 'test_synthetic_not_a_credential', receiptEnabled = false, storedSnapshot, createError, findActiveImplementation } = {}) {
+// Explicit new-intent fixture bytes, not a production reconstruction of old UNKNOWN rows.
+function originalCheckoutFixture(amount = '199.99') {
+  return JSON.stringify({ amount: { value: amount, currency: 'RUB' }, capture: true,
+    confirmation: { type: 'redirect', return_url: `https://example.test/oplata/${localId}` },
+    description: createInput.targetTitle,
+    receipt: { customer: { email: createInput.customerEmail }, internet: true, items: [{
+      description: `Услуга размещения: ${createInput.targetTitle}`, quantity: 1, amount: { value: amount, currency: 'RUB' },
+      vat_code: 1, payment_mode: 'full_payment', payment_subject: 'service',
+    }] }, metadata: { localPaymentId: localId, targetId, targetType: 'listing', tariffId: createInput.tariffId } });
+}
+
+function loadProvider({ payment = localPayment(), active, tariff: tariffChanges, fetched, fetchImplementation, production = true, secret = 'test_synthetic_not_a_credential', receiptEnabled = false, storedSnapshot, createError, findActiveImplementation, snapshotBody } = {}) {
   const clock = syntheticClock();
   const counters = { requests: [], updates: [], targets: [], creations: [], logs: [] };
   const tariff = { id: 'listing-publication', name: 'Синтетический тариф', action: 'listing_publication', price: 300, durationDays: 30, active: true, ...tariffChanges };
   const current = clone(payment);
   const activePayment = active && clone(active);
+  let checkoutBody = snapshotBody;
   const stubs = {
     '@/lib/mock-store': { listMockPayments: () => [], markPaymentTargetSucceeded: () => { throw new Error('Unexpected mock fulfillment'); } },
     '@/lib/payment-store': {
       canStorePayment: input => Boolean(input.targetId),
+      prepareStoredYooKassaCheckoutIntent: async (_payment, body) => { checkoutBody = body; return { decision: 'post', requestBody: body, remainingMs: 3_600_000 }; },
+      authorizeStoredYooKassaCheckoutAttempt: async payment => {
+        if (payment.providerPaymentId) return { decision: 'legacy_recover', providerPaymentId: payment.providerPaymentId };
+        assert.ok(checkoutBody, 'UNKNOWN fixture requires an explicit complete original snapshot');
+        return { decision: 'post', requestBody: checkoutBody, remainingMs: 3_600_000 };
+      },
       createStoredPayment: async input => {
         counters.creations.push(clone(input));
         if (createError) throw createError;
@@ -295,7 +313,7 @@ test('a newly persisted representation owns the provider charge, receipt and ret
 
 test('a retry after a tariff price change uses the existing original amount and owner', async () => {
   const fixture = loadProvider({ active: localPayment({ status: 'created', providerPaymentId: undefined, amount: 199.99 }),
-    tariff: { price: 900 }, receiptEnabled: true, fetched: yooPayment({ amount: { value: '199.99', currency: 'RUB' } }) });
+    snapshotBody: originalCheckoutFixture(), tariff: { price: 900 }, receiptEnabled: true, fetched: yooPayment({ amount: { value: '199.99', currency: 'RUB' } }) });
   const payment = await fixture.provider.createPayment(createInput);
   const body = JSON.parse(fixture.counters.requests[0].init.body);
   assert.equal(body.amount.value, '199.99');
@@ -305,11 +323,12 @@ test('a retry after a tariff price change uses the existing original amount and 
   assert.deepEqual(fixture.counters.creations, []);
 });
 
-test('a retry with a known provider ID cannot accept a different POST payment ID', async () => {
+test('a known provider ID without URL is GET-only even if a hypothetical POST would return another ID', async () => {
   const fixture = loadProvider({ active: localPayment(), fetchImplementation: (_url, init) =>
     jsonResponse(yooPayment(init.method === 'POST' ? { id: otherProviderId } : { confirmation: undefined })) });
-  await assert.rejects(() => fixture.provider.createPayment(createInput), /YooKassa.*ID/i);
-  assert.equal(fixture.counters.requests.length, 2);
+  assert.equal((await fixture.provider.createPayment(createInput)).providerPaymentId, providerId);
+  assert.equal(fixture.counters.requests.length, 1);
+  assert.equal(fixture.counters.requests[0].init.method, undefined);
   assert.equal(fixture.counters.updates.length, 1, 'Only the independently verified GET can be persisted');
   assert.deepEqual(fixture.counters.targets, []);
 });
@@ -451,35 +470,32 @@ test('an idempotent POST retry uses identical body and key after an uncertain se
   assert.equal(fixture.clock.timers.size, 0);
 });
 
-test('an active GET and fallback POST share three actual attempts, not three each', async () => {
-  const fixture = loadProvider({ active: localPayment(), fetchImplementation: (_url, init) => init.method === 'POST' ? jsonResponse({ id: otherProviderId }, 500) : jsonResponse(yooPayment({ confirmation: undefined })) });
+test('known-ID recovery shares three actual GET attempts and never falls through to POST', async () => {
+  const fixture = loadProvider({ active: localPayment(), fetchImplementation: () => jsonResponse({ id: otherProviderId }, 500) });
   const rejected = assert.rejects(fixture.provider.createPayment(createInput), /YooKassa.*HTTP 500/);
   await fixture.clock.advance(1500);
   await rejected;
   assert.equal(fixture.counters.requests.length, 3);
-  assert.deepEqual(fixture.counters.requests.map(request => request.init.method ?? 'GET'), ['GET', 'POST', 'POST']);
-  assert.equal(fixture.counters.requests[1].init.body, fixture.counters.requests[2].init.body);
-  assert.equal(fixture.counters.requests[1].init.headers['Idempotence-Key'], localId);
+  assert.deepEqual(fixture.counters.requests.map(request => request.init.method ?? 'GET'), ['GET', 'GET', 'GET']);
   assert.equal(fixture.clock.timers.size, 0);
 });
 
-test('slow GET and a stalled POST body share the same total deadline', async () => {
+test('slow GET headers and its stalled body share the same total deadline without fallback POST', async () => {
   let clock;
   let canceled = 0;
-  const fixture = loadProvider({ active: localPayment(), fetchImplementation: (_url, init) => init.method === 'POST'
-    ? new Response(new ReadableStream({ cancel() { canceled++; } }))
-    : new Promise(resolve => clock.setTimeout(() => resolve(jsonResponse(yooPayment({ confirmation: undefined }))), 25_000)) });
+  const fixture = loadProvider({ active: localPayment(), fetchImplementation: () =>
+    new Promise(resolve => clock.setTimeout(() => resolve(new Response(new ReadableStream({ cancel() { canceled++; } }))), 25_000)) });
   clock = fixture.clock;
   const outcome = fixture.provider.createPayment(createInput);
   const settled = observeSettlement(outcome);
   const rejected = assert.rejects(outcome, /YooKassa.*timed out/);
   await clock.advance(25_000);
-  assert.equal(fixture.counters.requests.length, 2);
+  assert.equal(fixture.counters.requests.length, 1);
   await clock.advance(10_000);
-  assert.equal(settled(), true, 'A fallback POST must not receive a fresh deadline');
+  assert.equal(settled(), true, 'The GET body must not receive a fresh deadline');
   await rejected;
   assert.equal(canceled, 1);
-  assert.equal(fixture.counters.requests[0].init.signal, fixture.counters.requests[1].init.signal);
+  assert.equal(fixture.counters.requests[0].init.signal.aborted, true);
   assert.equal(clock.timers.size, 0);
 });
 
@@ -514,6 +530,7 @@ test('in-process concurrent creation shares one durable key and one provider ope
 test('a database uniqueness race reuses the winner snapshot and original price', async () => {
   let lookups = 0;
   const fixture = loadProvider({ receiptEnabled: true, createError: new Error('synthetic unique violation'),
+    snapshotBody: originalCheckoutFixture(),
     findActiveImplementation: () => ++lookups === 1 ? undefined : localPayment({ status: 'created', providerPaymentId: undefined, amount: 199.99 }),
     fetched: yooPayment({ amount: { value: '199.99', currency: 'RUB' } }) });
   const payment = await fixture.provider.createPayment(createInput);

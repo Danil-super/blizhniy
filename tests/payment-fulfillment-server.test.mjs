@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import { webcrypto } from "node:crypto";
+import { createHash, webcrypto } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -32,7 +32,7 @@ function fixtureRow(overrides = {}) {
 // provider HTTP and framework/authentication edges are replaced. This adapter
 // fake does NOT replace the separate real-PG locking/transaction contract suite.
 function harness(options = {}) {
-  const state = { row: options.row === null ? null : fixtureRow(options.row), requests: [], providerFetches: [], effects: 0, notices: 0 };
+  const state = { row: options.row === null ? null : fixtureRow(options.row), checkoutIntent: null, requests: [], providerFetches: [], effects: 0, notices: 0 };
   const production = options.production !== false;
   const configured = options.configured !== false;
   const globals = { setTimeout, clearTimeout };
@@ -45,6 +45,28 @@ function harness(options = {}) {
     const optionsCopy = clone(optionsRest);
     state.requests.push({ path, ...optionsCopy });
     const method = optionsRest.method ?? "GET";
+    // Wire adapters only. Historical known-ID fixtures deliberately have no
+    // fabricated ledger; the separate PG17 suite proves these actual RPCs.
+    if (path === "/rest/v1/rpc/prepare_yookassa_checkout_intent") {
+      const p = optionsRest.body;
+      assert.equal(p.p_payment_id, state.row.id);
+      assert.equal(p.p_user_id, state.row.user_id);
+      assert.equal(Number(p.p_amount), Number(state.row.amount));
+      state.checkoutIntent = { payment_id: state.row.id, user_id: state.row.user_id, target_type: state.row.target_type,
+        target_id: state.row.target_id, tariff_id: state.row.tariff_id, tariff_key: p.p_tariff_key,
+        amount: state.row.amount, purchased_duration_days: state.row.purchased_duration_days,
+        merchant_shop_id: p.p_merchant_shop_id, is_test: p.p_is_test, request_body: p.p_request_body,
+        request_sha256: createHash("sha256").update(p.p_request_body).digest("hex"), first_attempt_authorized_at: new Date().toISOString() };
+      return [{ ...state.checkoutIntent, remaining_ms: 3_600_000, decision: "post", provider_payment_id: null }];
+    }
+    if (path === "/rest/v1/rpc/authorize_yookassa_checkout_attempt") {
+      if (!state.checkoutIntent) return [{ payment_id: state.row.id, decision: state.row.provider_payment_id ? "legacy_recover" : "manual",
+        provider_payment_id: state.row.provider_payment_id }];
+      assert.equal(optionsRest.body.p_merchant_shop_id, state.checkoutIntent.merchant_shop_id);
+      assert.equal(optionsRest.body.p_is_test, state.checkoutIntent.is_test);
+      return [{ ...state.checkoutIntent, remaining_ms: 3_600_000,
+        decision: state.row.provider_payment_id ? "recover" : "post", provider_payment_id: state.row.provider_payment_id }];
+    }
     if (path.startsWith("/rest/v1/rpc/")) {
       assert.equal(path, "/rest/v1/rpc/apply_payment_fulfillment");
       assert.equal(state.row.status, "succeeded", "RPC may only follow persisted verified financial success");
@@ -183,8 +205,8 @@ for (const type of Object.keys(actions)) {
     assert.equal(replay.payment.targetAppliedAt, appliedAt);
     assert.equal(h.state.effects, 1);
     assert.equal(h.state.notices, Number(type === "application"));
-    assert.ok(h.state.requests.find((request) => request.path.includes("/rpc/")).useServiceRole);
-    assert.equal(h.state.requests.find((request) => request.path.includes("/rpc/")).attempts, 1);
+    assert.ok(h.state.requests.find((request) => request.path.includes("/rpc/apply_payment_fulfillment")).useServiceRole);
+    assert.equal(h.state.requests.find((request) => request.path.includes("/rpc/apply_payment_fulfillment")).attempts, 1);
   });
 }
 
@@ -227,7 +249,7 @@ test("authoritative refund prevents RPC even if a stale provider snapshot says s
   const result = await confirm(h);
   assert.equal(result.payment.status, "refunded");
   assert.equal(result.nextStatus, undefined);
-  assert.equal(h.state.requests.some((request) => request.path.includes("/rpc/")), false);
+  assert.equal(h.state.requests.some((request) => request.path.includes("/rpc/apply_payment_fulfillment")), false);
   assert.equal(h.state.effects, 0);
 });
 
@@ -270,7 +292,7 @@ test("a lost RPC response re-reads committed outcome instead of treating payment
 test("financial persistence failure prevents every entitlement write", async () => {
   const h = harness({ onFinancial: () => { throw new Error("synthetic save failure"); } });
   await assert.rejects(confirm(h), /synthetic save failure/);
-  assert.equal(h.state.requests.some((request) => request.path.includes("/rpc/")), false);
+  assert.equal(h.state.requests.some((request) => request.path.includes("/rpc/apply_payment_fulfillment")), false);
   assert.equal(h.state.effects, 0);
 });
 
@@ -284,7 +306,7 @@ test("a deferred financial response must resolve before RPC or any target write"
   await observed;
   try {
     assert.equal(h.state.row.status, "pending");
-    assert.equal(h.state.requests.some((request) => request.path.includes("/rpc/")), false);
+    assert.equal(h.state.requests.some((request) => request.path.includes("/rpc/apply_payment_fulfillment")), false);
     assert.equal(h.state.effects, 0);
   } finally { release(); }
   const result = await pending;
@@ -330,7 +352,7 @@ test("independent provider module instances rely on the durable RPC, not a proce
   const results = await Promise.all([a.confirmPayment(paymentId), b.confirmPayment(paymentId)]);
   assert.ok(results.every((result) => result.payment.fulfillmentStatus === "applied"));
   assert.equal(h.state.effects, 1);
-  assert.equal(h.state.requests.filter((request) => request.path.includes("/rpc/")).length, 2);
+  assert.equal(h.state.requests.filter((request) => request.path.includes("/rpc/apply_payment_fulfillment")).length, 2);
 });
 
 for (const production of [true, false]) {
@@ -341,7 +363,7 @@ for (const production of [true, false]) {
     assert.equal(result.payment.paidAt, undefined);
     assert.equal(result.nextStatus, undefined);
     assert.equal(h.state.providerFetches.length, 1);
-    assert.equal(h.state.requests.some((request) => request.path.includes("/rpc/")), false);
+    assert.equal(h.state.requests.some((request) => request.path.includes("/rpc/apply_payment_fulfillment")), false);
   });
 }
 

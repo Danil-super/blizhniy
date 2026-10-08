@@ -29,6 +29,7 @@ function loadPaymentProvider({ production = true, payment, providerResponse, con
   const store = {
     canStorePayment: () => configured,
     createStoredPayment: async () => { throw new Error('unexpected payment creation'); },
+    authorizeStoredYooKassaCheckoutAttempt: async payment => ({ decision: 'legacy_recover', providerPaymentId: payment.providerPaymentId }),
     findActiveStoredPaymentForTarget: async () => undefined,
     findStoredPaymentByProvider: async (id) => id === storedPayment.providerPaymentId ? storedPayment : undefined,
     getStoredPayment: async (id) => id === storedPayment.id ? storedPayment : undefined,
@@ -155,6 +156,7 @@ test('a production return flag never bypasses the authoritative provider status'
 
 function loadPaymentCreator(receiptEnv = {}) {
   const counters = { events: [], request: undefined, stored: [] };
+  let checkoutBody;
   const tariff = {
     id: '44444444-4444-4444-8444-444444444444',
     action: 'listing_publication',
@@ -169,6 +171,8 @@ function loadPaymentCreator(receiptEnv = {}) {
     },
     '@/lib/payment-store': {
       canStorePayment: () => true,
+      prepareStoredYooKassaCheckoutIntent: async (_payment, body) => { checkoutBody = body; return { decision: 'post', requestBody: body, remainingMs: 3_600_000 }; },
+      authorizeStoredYooKassaCheckoutAttempt: async () => ({ decision: 'post', requestBody: checkoutBody, remainingMs: 3_600_000 }),
       createStoredPayment: async (input) => {
         counters.events.push('stored');
         counters.stored.push(input);

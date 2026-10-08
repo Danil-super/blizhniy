@@ -2,11 +2,13 @@ import { listMockPayments, markPaymentTargetSucceeded } from "@/lib/mock-store";
 import {
   canStorePayment,
   applyStoredPaymentFulfillment,
+  authorizeStoredYooKassaCheckoutAttempt,
   createStoredPayment,
   findActiveStoredPaymentForTarget,
   findStoredPaymentByProvider,
   getStoredPayment,
   listStoredPayments,
+  prepareStoredYooKassaCheckoutIntent,
   updateStoredPayment,
 } from "@/lib/payment-store";
 import { shouldAllowMockPayments } from "@/lib/runtime-mode";
@@ -323,11 +325,24 @@ type YooKassaRequestBudget = {
   controller: AbortController;
   expired: Promise<never>;
   start: () => void;
+  limit: (remainingMs: number) => void;
 };
 
 async function withYooKassaRequestBudget<T>(request: (budget: YooKassaRequestBudget) => Promise<T>) {
   const controller = new AbortController();
   let deadline: ReturnType<typeof setTimeout> | undefined;
+  let deadlineAt = Infinity;
+  function limit(remainingMs: number) {
+    if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+      controller.abort(new YooKassaBoundaryError("YooKassa checkout requires manual verification"));
+      controller.signal.throwIfAborted();
+    }
+    const candidate = performance.now() + remainingMs;
+    if (candidate >= deadlineAt) return; // Never extend an existing budget.
+    deadlineAt = candidate;
+    clearTimeout(deadline);
+    deadline = setTimeout(() => controller.abort(new YooKassaBoundaryError("YooKassa request timed out")), remainingMs);
+  }
   const expired = new Promise<never>((_, reject) => {
     controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true });
   });
@@ -336,9 +351,8 @@ async function withYooKassaRequestBudget<T>(request: (budget: YooKassaRequestBud
   void expired.catch(() => undefined);
   const budget: YooKassaRequestBudget = {
     attempts: 0, controller, expired,
-    start: () => {
-      deadline ??= setTimeout(() => controller.abort(new YooKassaBoundaryError("YooKassa request timed out")), YOOKASSA_REQUEST_BUDGET_MS);
-    },
+    start: () => { if (!deadline) limit(YOOKASSA_REQUEST_BUDGET_MS); },
+    limit,
   };
 
   try {
@@ -391,13 +405,18 @@ function yooKassaHttpError(response: Response, payload: unknown) {
   return new YooKassaBoundaryError(`YooKassa request failed (HTTP ${response.status}${errorId ? `; error id ${errorId}` : ""})`);
 }
 
-async function fetchYooKassaJson(url: string, init: RequestInit, budget?: YooKassaRequestBudget): Promise<{ payload: unknown; response: Response }> {
-  if (!budget) return withYooKassaRequestBudget((shared) => fetchYooKassaJson(url, init, shared));
+async function fetchYooKassaJson(
+  url: string, init: RequestInit, budget?: YooKassaRequestBudget,
+  beforeAttempt?: (budget: YooKassaRequestBudget) => Promise<void>,
+): Promise<{ payload: unknown; response: Response }> {
+  if (!budget) return withYooKassaRequestBudget((shared) => fetchYooKassaJson(url, init, shared, beforeAttempt));
   budget.start();
 
   for (let attempt = 1; attempt <= YOOKASSA_MAX_ATTEMPTS; attempt += 1) {
     budget.controller.signal.throwIfAborted();
     if (budget.attempts >= YOOKASSA_MAX_ATTEMPTS) throw new YooKassaBoundaryError("YooKassa request attempt budget exhausted");
+    if (beforeAttempt) await Promise.race([beforeAttempt(budget), budget.expired]);
+    budget.controller.signal.throwIfAborted();
     budget.attempts += 1;
     try {
       // One deadline covers headers, decoded body and backoff, not each attempt.
@@ -441,7 +460,13 @@ async function fetchYooKassaPayment(payment: Payment, budget?: YooKassaRequestBu
     headers: {
       Authorization: `Basic ${auth}`,
     },
-  }, budget);
+  }, budget, async () => {
+    const authorization = await authorizeStoredYooKassaCheckoutAttempt(payment, { shopId, isTest: secretKey.startsWith("test_") });
+    if (!["recover", "legacy_recover"].includes(authorization.decision) || authorization.providerPaymentId !== providerPaymentId) {
+      throw new YooKassaBoundaryError("YooKassa checkout requires manual verification");
+    }
+    if (authorization.tariffKey) payment.tariffId = authorization.tariffKey;
+  });
 
   return validateYooKassaPayment(payload, payment, secretKey);
 }
@@ -569,8 +594,7 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
   const auth = Buffer.from(shopId + ":" + secretKey).toString("base64");
   const targetType = validatePaymentTargetTypeForTariff(tariff, input.targetType);
   const targetTitle = resolveTargetTitle(tariff, input.targetTitle);
-  // Validate receipt prerequisites before creating the durable local operation.
-  const receiptCustomer = getYooKassaReceiptCustomer(input);
+  const merchant = { shopId, isTest: secretKey.startsWith("test_") };
   let activePayment = await findActiveStoredPaymentForTarget({
     targetId: input.targetId,
     targetType,
@@ -583,24 +607,10 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
 
   if (activePayment) validateStoredCheckout(activePayment, input, targetType);
 
-  if (activePayment?.providerPaymentId) {
-    const yookassaPayment = await fetchYooKassaPayment(activePayment, budget);
-
-    applyYooKassaPaymentState(activePayment, yookassaPayment);
-
-    if (activePayment.status === "succeeded") {
-      await applySucceededPayment(activePayment);
-      return activePayment;
-    }
-
-    await updateStoredPayment(activePayment);
-
-    if (activePayment.confirmationUrl) {
-      return activePayment;
-    }
-  }
-
   if (!activePayment) {
+    // Current receipt prerequisites belong to a fresh intent only. A complete
+    // replay owns its original receipt even after configuration/email changes.
+    const receiptCustomer = getYooKassaReceiptCustomer(input);
     storedAmountKopecks(tariff.price);
     const pendingPayment: Payment = {
       id: createPaymentId(),
@@ -615,6 +625,7 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
       createdAt: todayIsoDate(),
     };
 
+    let createdHere = false;
     try {
       const storedPayment = await createStoredPayment({
         amount: pendingPayment.amount,
@@ -632,6 +643,7 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
         throw new Error("YooKassa payment could not be persisted locally");
       }
       activePayment = { ...storedPayment, targetTitle };
+      createdHere = storedPayment.id === pendingPayment.id;
     } catch (error) {
       // The database-level unique index may have been won by another server
       // instance. Reuse its stable local idempotence key instead of starting a
@@ -648,12 +660,39 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
 
       activePayment = concurrentPayment;
     }
+    validateStoredCheckout(activePayment, input, targetType);
+    if (createdHere) {
+      const receipt = buildYooKassaReceipt(receiptCustomer, activePayment.amount, targetTitle);
+      const requestBody = JSON.stringify({
+        amount: { value: formatStoredAmount(activePayment.amount), currency: "RUB" }, capture: true,
+        confirmation: { type: "redirect", return_url: getPublicBaseUrl() + "/oplata/" + activePayment.id },
+        description: targetTitle.slice(0, 128), ...(receipt ? { receipt } : {}),
+        metadata: { localPaymentId: activePayment.id, targetId: activePayment.targetId,
+          targetType: activePayment.targetType, tariffId: activePayment.tariffId },
+      });
+      // This commit precedes all vendor I/O. If the response is lost, a later
+      // call may read the committed snapshot; it must not invent a replacement.
+      await prepareStoredYooKassaCheckoutIntent(activePayment, requestBody, merchant);
+    }
   }
 
   validateStoredCheckout(activePayment, input, targetType);
+  const authorization = await authorizeStoredYooKassaCheckoutAttempt(activePayment, merchant);
+  if (authorization.tariffKey) activePayment.tariffId = authorization.tariffKey;
+  if (authorization.providerPaymentId) {
+    activePayment.providerPaymentId = authorization.providerPaymentId;
+    const yookassaPayment = await fetchYooKassaPayment(activePayment, budget);
+    applyYooKassaPaymentState(activePayment, yookassaPayment);
+    if (activePayment.status === "succeeded") await applySucceededPayment(activePayment);
+    else await updateStoredPayment(activePayment);
+    // Missing confirmation URL, cancellation and stale GET responses are not
+    // permission to create another remote operation.
+    return activePayment;
+  }
+  if (authorization.decision !== "post" || !authorization.requestBody) {
+    throw new YooKassaBoundaryError("YooKassa checkout requires manual verification");
+  }
   const localPaymentId = activePayment.id;
-  const receipt = buildYooKassaReceipt(receiptCustomer, activePayment.amount, targetTitle);
-  const returnUrl = getPublicBaseUrl() + "/oplata/" + localPaymentId;
   const { payload: rawPayload } = await fetchYooKassaJson("https://api.yookassa.ru/v3/payments", {
     method: "POST",
     headers: {
@@ -661,26 +700,14 @@ async function createYooKassaPaymentOnce(input: CreatePaymentInput, tariff: Tari
       "Content-Type": "application/json",
       "Idempotence-Key": localPaymentId,
     },
-    body: JSON.stringify({
-      amount: {
-        value: formatStoredAmount(activePayment.amount),
-        currency: "RUB",
-      },
-      capture: true,
-      confirmation: {
-        type: "redirect",
-        return_url: returnUrl,
-      },
-      description: targetTitle.slice(0, 128),
-      ...(receipt ? { receipt } : {}),
-      metadata: {
-        localPaymentId,
-        targetId: activePayment.targetId,
-        targetType: activePayment.targetType,
-        tariffId: activePayment.tariffId,
-      },
-    }),
-  }, budget);
+    body: authorization.requestBody,
+  }, budget, async (shared) => {
+    const permitted = await authorizeStoredYooKassaCheckoutAttempt(activePayment, merchant);
+    if (permitted.decision !== "post" || permitted.requestBody !== authorization.requestBody || permitted.remainingMs === undefined) {
+      throw new YooKassaBoundaryError("YooKassa checkout requires manual verification");
+    }
+    shared.limit(permitted.remainingMs);
+  });
 
   const payment = activePayment;
   const payload = validateYooKassaPayment(rawPayload, payment, secretKey);

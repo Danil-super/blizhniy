@@ -34,12 +34,15 @@ function fixture(entry, { receipts = true, authenticated = true, email = payerEm
   const providerRequests = [];
   const targetWrites = [];
   const storedPayments = [];
+  let checkoutBody;
   const tariff = { id: entry.body.tariffId || (entry.route === 'applications' ? 'job-response' : 'fair-participation'), name: 'Синтетический тариф', action: entry.action, price: 300, durationDays: 30, active: true };
   const provider = loadSource('src/lib/payment-provider.ts', {
     '@/lib/mock-store': { listMockPayments: () => [], markPaymentTargetSucceeded: () => { throw new Error('Unexpected mock payment'); } },
     '@/lib/payment-store': {
       canStorePayment: input => Boolean(input.targetId),
       createStoredPayment: async input => { storedPayments.push(input); return { ...input, tariffId: input.tariff.id, createdAt: '2026-10-07' }; },
+      prepareStoredYooKassaCheckoutIntent: async (_payment, body) => { checkoutBody = body; return { decision: 'post', requestBody: body, remainingMs: 3_600_000 }; },
+      authorizeStoredYooKassaCheckoutAttempt: async () => ({ decision: 'post', requestBody: checkoutBody, remainingMs: 3_600_000 }),
       findActiveStoredPaymentForTarget: async () => undefined,
       findStoredPaymentByProvider: async () => undefined,
       getStoredPayment: async () => undefined,
