@@ -1,7 +1,6 @@
 import { defaultAdMarqueeMessages } from "@/lib/ad-marquee";
 import { createStoredNotification } from "@/lib/notification-store";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
-import { getPublicTariffs } from "@/lib/tariff-store";
 
 export const maxActiveAdMarqueePlacements = 5;
 
@@ -56,6 +55,19 @@ type UpdateAdMarqueePlacementInput = {
   status: "pending_payment" | "rejected" | "archived";
 };
 
+type AdMarqueeModerationResult = {
+  placement: AdMarqueePlacementRow | null;
+  changed: boolean;
+  outcome: "updated" | "unchanged" | "not_found" | "conflict";
+};
+
+export class AdMarqueeTransitionConflictError extends Error {
+  constructor() {
+    super("Состояние размещения изменилось: этот переход больше недоступен");
+    this.name = "AdMarqueeTransitionConflictError";
+  }
+}
+
 function mapPlacement(row: AdMarqueePlacementRow): AdMarqueePlacement {
   return {
     id: row.id,
@@ -96,65 +108,16 @@ function normalizeHref(value?: string) {
   return parsed.toString();
 }
 
-async function getAdMarqueeDurationDays() {
-  const tariff = (await getPublicTariffs()).find((item) => item.action === "ad_marquee");
-  return tariff?.durationDays && tariff.durationDays > 0 ? tariff.durationDays : 7;
-}
-
-async function expireFinishedPlacements() {
-  await supabaseRest("/rest/v1/ad_marquee_placements?status=eq.active&ends_at=lt.now()", {
-    method: "PATCH",
-    prefer: "return=minimal",
-    body: {
-      status: "expired",
-      updated_at: new Date().toISOString(),
-    },
-  });
-}
-
 export async function refreshAdMarqueeQueue() {
   if (!isSupabaseRestConfigured()) {
     return [];
   }
 
-  await expireFinishedPlacements();
-
-  const activeRows = await supabaseRest<Array<Pick<AdMarqueePlacementRow, "id">>>(
-    "/rest/v1/ad_marquee_placements?select=id&status=eq.active&ends_at=gt.now()",
-  );
-  const slots = Math.max(0, maxActiveAdMarqueePlacements - activeRows.length);
-
-  if (slots <= 0) {
-    return activeRows;
-  }
-
-  const queuedRows = await supabaseRest<Array<Pick<AdMarqueePlacementRow, "id">>>(
-    `/rest/v1/ad_marquee_placements?select=id&status=eq.paid&order=sort_order.asc,paid_at.asc,created_at.asc&limit=${slots}`,
-  );
-
-  if (!queuedRows.length) {
-    return activeRows;
-  }
-
-  const now = new Date();
-  const endsAt = new Date(now.getTime() + (await getAdMarqueeDurationDays()) * 24 * 60 * 60 * 1000).toISOString();
-
-  await Promise.all(
-    queuedRows.map((row) =>
-      supabaseRest(`/rest/v1/ad_marquee_placements?id=eq.${encodeURIComponent(row.id)}`, {
-        method: "PATCH",
-        prefer: "return=minimal",
-        body: {
-          ends_at: endsAt,
-          starts_at: now.toISOString(),
-          status: "active",
-          updated_at: now.toISOString(),
-        },
-      }),
-    ),
-  );
-
-  return [...activeRows, ...queuedRows];
+  return supabaseRest<Array<Pick<AdMarqueePlacementRow, "id">>>("/rest/v1/rpc/reconcile_ad_marquee_queue", {
+    method: "POST",
+    body: {},
+    timeoutMs: 8000,
+  });
 }
 
 export async function listActiveAdMarqueePlacements(options: { refresh?: boolean; timeoutMs?: number } = {}) {
@@ -247,58 +210,31 @@ export async function getPayableAdMarqueePlacementForUser(id: string, userId: st
   return rows[0] ? mapPlacement(rows[0]) : undefined;
 }
 
-export async function markStoredAdMarqueePlacementPaid(id: string, paymentId?: string) {
-  if (!isUuid(id)) {
-    return undefined;
-  }
-
-  const paidAt = new Date().toISOString();
-  const rows = await supabaseRest<AdMarqueePlacementRow[]>(`/rest/v1/ad_marquee_placements?select=*&id=eq.${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    prefer: "return=representation",
-    body: {
-      paid_at: paidAt,
-      payment_id: paymentId ?? null,
-      payment_status: "succeeded",
-      status: "paid",
-      updated_at: paidAt,
-    },
-  });
-
-  await refreshAdMarqueeQueue();
-
-  const updatedRows = await supabaseRest<AdMarqueePlacementRow[]>(
-    `/rest/v1/ad_marquee_placements?select=*&id=eq.${encodeURIComponent(id)}&limit=1`,
-  );
-
-  return updatedRows[0] ? mapPlacement(updatedRows[0]) : rows[0] ? mapPlacement(rows[0]) : undefined;
-}
-
 export async function updateAdMarqueePlacementForAdmin(input: UpdateAdMarqueePlacementInput) {
   if (!isUuid(input.id)) {
     return undefined;
   }
 
-  const now = new Date().toISOString();
-  const body: Partial<AdMarqueePlacementRow> = {
-    admin_comment: input.adminComment?.trim() || null,
-    sort_order: input.sortOrder ?? 0,
-    status: input.status,
-    updated_at: now,
-  };
-
-  if (input.status === "pending_payment") {
-    body.approved_at = now;
-  }
-
-  const rows = await supabaseRest<AdMarqueePlacementRow[]>(`/rest/v1/ad_marquee_placements?select=*&id=eq.${encodeURIComponent(input.id)}`, {
-    method: "PATCH",
-    prefer: "return=representation",
-    body,
+  const result = await supabaseRest<AdMarqueeModerationResult>("/rest/v1/rpc/moderate_ad_marquee_placement", {
+    method: "POST",
+    body: {
+      p_id: input.id,
+      p_status: input.status,
+      p_sort_order: input.sortOrder ?? 0,
+      p_admin_comment: input.adminComment?.trim() || null,
+    },
+    timeoutMs: 8000,
   });
-  const placement = rows[0] ? mapPlacement(rows[0]) : undefined;
 
-  if (placement?.userId && input.status === "pending_payment") {
+  if (result.outcome === "conflict") {
+    throw new AdMarqueeTransitionConflictError();
+  }
+  if (!result.placement) {
+    return undefined;
+  }
+  const placement = mapPlacement(result.placement);
+
+  if (result.changed && placement.userId && input.status === "pending_payment") {
     await createStoredNotification({
       body: "Администратор одобрил текст для бегущей строки. Теперь можно оплатить размещение.",
       event: `ad_marquee_approved:${placement.id}`,
@@ -307,7 +243,7 @@ export async function updateAdMarqueePlacementForAdmin(input: UpdateAdMarqueePla
     });
   }
 
-  if (placement?.userId && input.status === "rejected") {
+  if (result.changed && placement.userId && input.status === "rejected") {
     await createStoredNotification({
       body: input.adminComment?.trim() || "Администратор отклонил текст для бегущей строки. Отправьте новую заявку с другим текстом.",
       event: `ad_marquee_rejected:${placement.id}`,
@@ -316,6 +252,7 @@ export async function updateAdMarqueePlacementForAdmin(input: UpdateAdMarqueePla
     });
   }
 
+  // Moderation has committed. Never reconcile from inside its target lock.
   await refreshAdMarqueeQueue();
 
   return placement;
