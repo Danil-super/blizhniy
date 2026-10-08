@@ -431,8 +431,10 @@ export async function ensureVacancyCanReceiveApplication(vacancyId: string, appl
   }
 
   const rows = await supabaseRest<Array<{ author_id: string }>>(
-    `/rest/v1/vacancies?select=author_id&id=eq.${encodeURIComponent(vacancyId)}&status=eq.published&limit=1`,
+    `/rest/v1/vacancies?select=author_id&id=eq.${encodeURIComponent(vacancyId)}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&limit=1`,
   );
+
+  if (!rows[0]) throw new Error("Вакансия не найдена или снята с публикации.");
 
   if (rows[0]?.author_id === applicantUserId) {
     throw new Error("Нельзя откликнуться на собственную вакансию.");
@@ -442,15 +444,17 @@ export async function ensureVacancyCanReceiveApplication(vacancyId: string, appl
 }
 
 export async function ensureWorkRequestCanReceiveApplication(workRequestId: string, applicantUserId: string) {
-  const workRequest = await getStoredWorkRequestById(workRequestId);
+  const workRequest = await getStoredWorkRequestById(workRequestId, { publicOnly: true });
 
   if (!workRequest || workRequest.status !== "published") {
     throw new Error("Заказ не найден или снят с публикации.");
   }
 
   const rows = await supabaseRest<Array<{ author_id: string }>>(
-    `/rest/v1/work_requests?select=author_id&id=eq.${encodeURIComponent(workRequestId)}&status=eq.published&limit=1`,
+    `/rest/v1/work_requests?select=author_id&id=eq.${encodeURIComponent(workRequestId)}&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&limit=1`,
   );
+
+  if (!rows[0]) throw new Error("Заказ не найден или снят с публикации.");
 
   if (rows[0]?.author_id === applicantUserId) {
     throw new Error("Нельзя откликнуться на собственный заказ.");

@@ -48,7 +48,11 @@ test('an archived work request with an exact address does not expose its details
   assert.equal(privateValue.address, raw.address);
   assert.equal(privateValue.lat, raw.lat);
   assert.equal(await storeExports.getStoredWorkRequestById(raw.id, { publicOnly: true }), undefined);
-  assert.match(requests[1], /&status=eq\.published&limit=1/);
+  const publicFilters = new URL(`https://offline.invalid/?${requests[1]}`).searchParams;
+  assert.equal(publicFilters.get("status"), "eq.published");
+  assert.equal(publicFilters.get("is_paid"), "eq.true");
+  assert.ok(publicFilters.get("expires_at")?.startsWith("gt."));
+  assert.equal(publicFilters.get("limit"), "1");
 
   const pageExports = {};
   const pageJs = ts.transpileModule(pageSource, {
