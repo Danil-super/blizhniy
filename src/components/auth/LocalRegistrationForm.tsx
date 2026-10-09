@@ -135,7 +135,7 @@ function ConfirmationForm() {
   return <>
     <h1 className="text-2xl font-bold text-brand-ink">Подтверждение email</h1>
     <p className="mt-3 text-sm leading-6 text-slate-600">Открытие письма не подтверждает аккаунт автоматически. Для подтверждения нажмите кнопку ниже.</p>
-    <p role="status" className="mt-5 text-sm leading-6 text-slate-700">{confirmed ? "Email подтверждён. Вход будет подключён следующим этапом." : !ready ? "Подготавливаем ссылку…" : busy ? "Подтверждаем…" : ""}</p>
+    <p role="status" className="mt-5 text-sm leading-6 text-slate-700">{confirmed ? "Email подтверждён. Теперь можно войти на HTTPS-стенде." : !ready ? "Подготавливаем ссылку…" : busy ? "Подтверждаем…" : ""}</p>
     {issue && <p ref={alert} tabIndex={-1} role="alert" className="mt-5 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{issue}</p>}
     {!confirmed && token && <button type="button" disabled={busy} onClick={confirm} className={`${buttonStyle} mt-6 w-full`}>{busy ? "Подождите…" : "Подтвердить email"}</button>}
     <Link href="/auth/local" prefetch={false} className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline">Регистрация и повторное письмо</Link>

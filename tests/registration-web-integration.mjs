@@ -171,6 +171,8 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
       assert.equal((await db.query("select email_verified_at from app.users where email='browser-new@example.invalid'")).rows[0].email_verified_at, null, "page load/scanner cannot confirm");
       await confirm.click();
       await page.getByRole("status").filter({ hasText: "Email подтверждён" }).waitFor();
+      assert.equal(await page.getByRole("status").filter({ hasText: "Email подтверждён" }).textContent(), "Email подтверждён. Теперь можно войти на HTTPS-стенде.");
+      assert.equal(await page.getByRole("link", { name: "Вход в аккаунт", exact: true }).getAttribute("href"), "/auth/local/login");
       await page.screenshot({ path: "/tmp/blizhniy-registration-confirmed.png", fullPage: true });
       const user = (await db.query("select id, email_verified_at from app.users where email='browser-new@example.invalid'")).rows[0];
       assert.ok(user.email_verified_at);
