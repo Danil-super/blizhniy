@@ -28,6 +28,23 @@ Node.js 22. Передайте серверу все `BLIZHNIY_DB_*` из `.env.
 
 `loginForDataSubject` выдаёт только ограниченный scope для удаления/экспорта своих данных, включая заблокированный аккаунт без прежней сессии. `resolveDataSubjectSession` разрешён только соответствующим ownership-checked handlers. Он не заменяет обычный guard; такой токен никогда не даёт доступа к обычному API.
 
+## Регистрация и подтверждение
+
+`src/lib/registration.ts` предоставляет серверный `RegistrationStore`. Пока это внутренний repository, не HTTP API. Он использует тот же scrypt и PostgreSQL-клиент, без нового провайдера/SDK.
+
+- `register(input)` принимает ровно `email`, `password`, `acceptedAgreement: true`, `acknowledgedPrivacy: true`, `agreementVersion`, `privacyVersion`. Версии обязаны совпасть с `registration-legal.ts`; неизвестные поля (включая роль/время/подтверждение) отклоняются. Email приводится к lower/trim по существующему identity-контракту; provider-specific преобразований адреса нет. Пароль не изменяется.
+- Один transaction создаёт неподтверждённого `user`, обе отметки документов и ссылку. Повторная регистрация возвращает внутренний `null`, не изменяя существующие данные. Будущий HTTP-ответ должен быть одинаковым для нового/существующего адреса и не возвращать mail payload.
+- `EmailConfirmation` содержит email, plaintext токен и срок **только для серверного почтового транспорта**; его запрещено писать в логи/API JSON. В PostgreSQL только SHA-256 случайного 256-битного токена, срок 1 час, email и credential version.
+- `confirmEmail(token)` атомарно удаляет действительный токен и подтверждает аккаунт; 12 одновременных обращений дают одного победителя. Порядок блокировок — пользователь, затем токен. Проверка `clock_timestamp()` после user lock не допускает подтверждение ссылкой, истёкшей во время ожидания. Смена email/пароля, блокировка, другой purpose или replay отклоняются. Автоматического входа нет.
+- `resendConfirmation(email, password)` требует исходный пароль неподтверждённого незаблокированного аккаунта; KDF вне transaction, затем повторная проверка credential version под lock. Старый токен заменяется атомарно; сбой сохраняет прежнюю ссылку и не меняет legal records. Забытый пароль не восстанавливается этой операцией.
+- `pruneConfirmations()` удаляет неактивные токены. `prunePendingRegistrations()` делает пригодными к очистке неподтверждённые аккаунты старше 24 часов, до 100 за запуск, с каскадным удалением legal/token records. До запуска пользователей обязательны maintenance schedule, контроль backlog и описание срока с учётом интервала задачи; автоматического runner сейчас нет.
+
+`0002-registration.sql` применяется после `0001`, транзакционно и однократно. `0002-registration.down.sql` отказывается удалять непустые добавленные таблицы, сохраняет identity и не использует CASCADE. Runtime grants должны давать INSERT/SELECT, но не UPDATE legal records; прямое редактирование отметок не является пользовательским сценарием. Public grants отозваны. Юридические отметки означают принятие соглашения и ознакомление с политикой, **не** согласие на рекламу/обмен ПД.
+
+Следующий этап — same-origin POST, CSRF/origin, общий rate limit и исключительно локальный почтовый транспорт; затем независимая от Supabase форма и реальный браузер. Обычный GET ссылки не должен потреблять токен (почтовые сканеры), полный URL нельзя логировать. Этот этап пока не реализован и не опубликован.
+
+Основания: [OWASP email verification](https://cheatsheetseries.owasp.org/cheatsheets/Email_Validation_and_Verification_Cheat_Sheet.html), [OWASP single-use tokens](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html), [PostgreSQL row locks](https://www.postgresql.org/docs/18/sql-select.html#SQL-FOR-UPDATE-SHARE).
+
 ## Схема и откат
 
 `database/migrations/0001-identity.sql` создаёт пустые `app.users`/`app.sessions`, ограничения и триггер, без Supabase Auth/Storage и без seed-аккаунтов. Все операции в одной транзакции с lock/statement timeout. Это одноразовая миграция: повторный запуск отказывает, не перезаписывая существующие таблицы. Общие PUBLIC-права отозваны; разделение migration/runtime ролей и точные grants обязательны перед production.
@@ -36,8 +53,8 @@ Migration credentials должны иметь CREATE на целевой БД д
 
 `0001-identity.down.sql` блокирует обе таблицы и отказывается удалять непустые данные; без CASCADE. Для базы с аккаунтами rollback — возврат совместимого приложения или отдельная согласованная миграция, не сброс данных. Удалённая Timeweb пока не изменена; SQL применяется только интеграционным тестом к собственному локальному контейнеру. Автомиграции при старте сайта нет.
 
-Полная проверка: `npm run test:postgres:local` включает identity, безопасный up/down, конкурентную смену пароля, права и ограниченные сессии; `node --experimental-strip-types --test tests/identity.test.mjs` проверяет примитивы и отказ при недоступности БД. Тесты только с синтетическими данными; никакие существующие аккаунты не переносятся.
+Полная проверка: `npm run test:postgres:local` включает identity/registration, безопасный up/down, конкурентную смену пароля, одноразовое подтверждение/TTL после lock, права, ограниченные сессии и очистку; `node --experimental-strip-types --test tests/identity.test.mjs` проверяет примитивы и отказ при недоступности БД. Тесты только с синтетическими данными; никакие существующие аккаунты не переносятся. Не запускайте отдельный tsc параллельно Next build: сборка пересоздаёт `.next/types`; проверка типов выполняется после неё.
 
-Следующий этап — регистрация, отметки документов и подтверждение email. Старые `auth.users`, REST/RLS/Auth/Storage интеграции не переносятся слепо; см. [план](../tasks/plan.md) и [задачи](../tasks/todo.md).
+Следующий этап — HTTP-защиты, локальный почтовый transport и новая форма регистрации с браузерной проверкой. Старые `auth.users`, REST/RLS/Auth/Storage интеграции не переносятся слепо; см. [план](../tasks/plan.md) и [задачи](../tasks/todo.md).
 
 Основание: [параметры запросов](https://node-postgres.com/features/queries), [TLS](https://node-postgres.com/features/ssl), [транзакции](https://node-postgres.com/features/transactions), [подключение Timeweb](https://timeweb.cloud/docs/dbaas/postgresql/connect-to-database).

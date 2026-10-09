@@ -87,13 +87,16 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
       try { await assert.rejects(wrong.query("select 1"), { message: "PostgreSQL operation failed", code: "28P01" }); }
       finally { await wrong.close(); }
     });
-    const { testIdentity } = await import("./identity-integration.mjs");
-    await testIdentity(suite, db, async (filename) => {
-      if (!["0001-identity.sql", "0001-identity.down.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
+    const applyMigration = async (filename) => {
+      if (!["0001-identity.sql", "0001-identity.down.sql", "0002-registration.sql", "0002-registration.down.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
       const source = fileURLToPath(new URL(`../database/migrations/${filename}`, import.meta.url));
       await docker(["cp", source, `${id}:/tmp/blizhniy-identity.sql`]);
       await docker(["exec", id, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "blizhniy_test", "-f", "/tmp/blizhniy-identity.sql"]);
-    });
+    };
+    const { testIdentity } = await import("./identity-integration.mjs");
+    await testIdentity(suite, db, applyMigration);
+    const { testRegistration } = await import("./registration-integration.mjs");
+    await testRegistration(suite, db, applyMigration);
     const cert = join(certificates, "server.crt");
     const key = join(certificates, "server.key");
     const installCertificate = async (subjectAltName) => {

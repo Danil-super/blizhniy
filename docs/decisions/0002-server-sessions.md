@@ -23,3 +23,13 @@ JWT требует дополнительного state для немедлен�
 Каждая проверка сессии обращается к БД и отказывает при её недоступности. Ограничение KDF не заменяет общий серверный rate limit и CAPTCHA. Прежде чем публиковать Auth, нужны HttpOnly/Secure/SameSite cookies, CSRF/origin, email-confirm/recovery, общий limiter, аудит без секретов и production runtime-права. Старые маршруты остаются нетронутыми до проверки замены.
 
 Основание: [Node.js scrypt](https://nodejs.org/docs/latest-v22.x/api/crypto.html#cryptoscryptpassword-salt-keylen-options-callback), [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [OWASP session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html). Проверки и статус — [tasks/todo.md](../../tasks/todo.md).
+
+## Уточнение: регистрация и подтверждение
+
+Pending account, отметки двух документов и подтверждение создаются одной транзакцией. Дубликат email не является reset: не меняем его пароль, legal records или токен. Это исключает перехват аккаунта повторной регистрацией. Повторное письмо требует исходный пароль; забытый пароль восстанавливается отдельным потоком, а не заменой данных регистрации.
+
+Подтверждение — отдельная таблица с хешем случайного токена, email/auth_version и сроком 1 час. В отличие от stateless signed URL, это позволяет атомарно потребить ссылку и отозвать прежнюю при resend. Ссылка не выдаёт сессию: после подтверждения нужен обычный вход. Порядок user → token совпадает с login/resend, а срок проверяется после lock по `clock_timestamp()`, не по времени начала transaction.
+
+Agreement acceptance и privacy review — разные записи, не универсальное согласие на обработку/рекламу/передачу третьим сторонам. Время/версию фиксирует сервер, неизвестные поля запрещены. Хранить IP/user-agent ради этих отметок сейчас не нужно. Для неподтверждённых аккаунтов установлен порог очистки 24 часа; удаление каскадное, до 100 записей за вызов с SKIP LOCKED. Maintenance schedule перед запуском обязателен, иначе порог сам по себе ничего не удаляет.
+
+Эти операции проверены только на локальном PostgreSQL; почтовый transport, HTTP-защиты и новая форма ещё не подключены. Основание: [OWASP email verification](https://cheatsheetseries.owasp.org/cheatsheets/Email_Validation_and_Verification_Cheat_Sheet.html).
