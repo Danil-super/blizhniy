@@ -48,7 +48,7 @@ export function getReferenceData() {
     categories: exports.categories, professions: exports.professions, tariffs: exports.tariffs }));
 }
 
-function seedPayload() {
+export function getLocalReferencePayload() {
   const seed = getReferenceData();
   const alphabet = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя';
   const latin = ['a','b','v','g','d','e','e','zh','z','i','y','k','l','m','n','o','p','r','s','t','u','f','h','ts','ch','sh','shch','','y','','e','yu','ya'];
@@ -74,7 +74,7 @@ function bootstrapFingerprint() {
     for (const match of source.matchAll(/^\\ir (.+)$/gm)) visit(new URL(match[1], pathToFileURL(resolved)));
   };
   visit(`${root}/supabase/local-payment-bootstrap.sql`);
-  return hash.update(seedPayload()).digest('hex');
+  return hash.update(getLocalReferencePayload()).digest('hex');
 }
 
 export function createLocalPaymentDb(scope = 'dev') {
@@ -147,7 +147,7 @@ export function createLocalPaymentDb(scope = 'dev') {
     }
     if (fresh) {
       await psql(metadata.Id, '\\ir /work/supabase/local-payment-bootstrap.sql', {
-        local_reference: Buffer.from(seedPayload()).toString('base64'), local_fingerprint: fingerprint,
+        local_reference: Buffer.from(getLocalReferencePayload()).toString('base64'), local_fingerprint: fingerprint,
       });
     }
     const state = await status();

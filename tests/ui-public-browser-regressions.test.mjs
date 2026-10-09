@@ -49,7 +49,7 @@ function findElement(element, predicate) {
 }
 
 test('UI classifier legacy URL resolves to the existing catalog before a wildcard can intercept it', async () => {
-  const config = load(source('next.config.ts')).default;
+  const config = load(source('next.config.ts'), {}, { process: { env: {} } }).default;
   const redirects = await config.redirects();
   const rule = redirects.find((redirect) => getPathMatch(redirect.source)('/krasnodar/rabota/specialisty/klassifikator'));
   assert.ok(rule);
@@ -248,6 +248,7 @@ function authFormPresentation() {
     '@/lib/supabase-browser': { isSupabaseBrowserConfigured: () => false },
     '@/lib/turnstile-shared': { TURNSTILE_ERROR_MESSAGE: 'Captcha error' },
     '@/lib/registration-legal': { REGISTRATION_LEGAL_VERSIONS: {} },
+    '@/lib/local-development': load(source('src/lib/local-development.ts'), {}, { process: { env: {} } }),
   }, { process: { env: {} } }).AuthForm;
 }
 

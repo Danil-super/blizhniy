@@ -1,6 +1,9 @@
 .env
 .env*.local
 .next/
+.next-local/
+supabase/.temp/
+supabase/.branches/
 node_modules/
 npm-debug.log*
 yarn-debug.log*

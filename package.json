@@ -9,6 +9,9 @@
     "lint": "node node_modules/eslint/bin/eslint.js . --ignore-pattern 'vendor/postcss-selector-parser/**'",
     "seed:production": "node scripts/seed-production-data.mjs",
     "db:local": "node scripts/local-payment-db.mjs",
+    "supabase:local": "node scripts/local-supabase.mjs",
+    "dev:local": "node scripts/local-supabase.mjs dev",
+    "test:app:local": "node --test tests/local-supabase-integration.mjs",
     "test:payments:local": "node --test tests/local-payment-db-postgres.mjs tests/payment-lifecycle-integration-postgres.mjs"
   },
   "dependencies": {
