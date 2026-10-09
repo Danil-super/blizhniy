@@ -30,10 +30,10 @@ Node.js 22. Передайте серверу все `BLIZHNIY_DB_*` из `.env.
 
 ## Регистрация и подтверждение
 
-`src/lib/registration.ts` предоставляет серверный `RegistrationStore`. Пока это внутренний repository, не HTTP API. Он использует тот же scrypt и PostgreSQL-клиент, без нового провайдера/SDK.
+`src/lib/registration.ts` предоставляет серверный `RegistrationStore`. Его вызывает только явно включаемый локальный HTTP-handler, описанный ниже. Он использует тот же scrypt и PostgreSQL-клиент, без нового провайдера/SDK.
 
 - `register(input)` принимает ровно `email`, `password`, `acceptedAgreement: true`, `acknowledgedPrivacy: true`, `agreementVersion`, `privacyVersion`. Версии обязаны совпасть с `registration-legal.ts`; неизвестные поля (включая роль/время/подтверждение) отклоняются. Email приводится к lower/trim по существующему identity-контракту; provider-specific преобразований адреса нет. Пароль не изменяется.
-- Один transaction создаёт неподтверждённого `user`, обе отметки документов и ссылку. Повторная регистрация возвращает внутренний `null`, не изменяя существующие данные. Будущий HTTP-ответ должен быть одинаковым для нового/существующего адреса и не возвращать mail payload.
+- Один transaction создаёт неподтверждённого `user`, обе отметки документов и ссылку. Повторная регистрация возвращает внутренний `null`, не изменяя существующие данные. Локальный HTTP-ответ одинаков для нового/существующего адреса и не возвращает mail payload.
 - `EmailConfirmation` содержит email, plaintext токен и срок **только для серверного почтового транспорта**; его запрещено писать в логи/API JSON. В PostgreSQL только SHA-256 случайного 256-битного токена, срок 1 час, email и credential version.
 - `confirmEmail(token)` атомарно удаляет действительный токен и подтверждает аккаунт; 12 одновременных обращений дают одного победителя. Порядок блокировок — пользователь, затем токен. Проверка `clock_timestamp()` после user lock не допускает подтверждение ссылкой, истёкшей во время ожидания. Смена email/пароля, блокировка, другой purpose или replay отклоняются. Автоматического входа нет.
 - `resendConfirmation(email, password)` требует исходный пароль неподтверждённого незаблокированного аккаунта; KDF вне transaction, затем повторная проверка credential version под lock. Старый токен заменяется атомарно; сбой сохраняет прежнюю ссылку и не меняет legal records. Забытый пароль не восстанавливается этой операцией.
@@ -52,11 +52,13 @@ Node.js 22. Передайте серверу все `BLIZHNIY_DB_*` из `.env.
 - Общий PostgreSQL limiter: фиксированное окно 15 минут, 60 запросов всего + 5 на canonical email, HMAC вместо plaintext. Счётчики не сбрасываются при рестарте; отказ БД — 503, лимит — 429/Retry-After 900. Это консервативная **локальная**, не production per-IP политика; production требует trusted proxy/per-IP и общих resource limits.
 - Почтовый transport — только loopback capture HTTP, не SMTP. Ссылка `${origin}/auth/local/confirm#token=...`; фрагмент не попадает в access log/Referer. Письмо не уходит реальным получателям. Нулевой envelope при дубликате/неверном resend проходит тот же capture-вызов, чтобы не создавать раннюю ветку по наличию аккаунта. Capture authenticated HMAC-derived bearer, redirects запрещены, deadline 2 с, ожидается 204. Сбой логируется без payload, ответ остаётся 202; pending account можно подтвердить после password-gated resend.
 
-Opt-in integration runner запускает свою PostgreSQL, свой Next.js на динамическом loopback-порту и свой in-memory capture без SMTP-forwarder/публичного inbox API. `.env`/реальные SMTP ключи не читаются; данные синтетические, процессы и контейнер только собственные. Не используем legacy Supabase Mailpit.
+Opt-in integration runner запускает свою PostgreSQL, свой Next.js на динамическом loopback-порту, Chromium и свой in-memory capture без SMTP-forwarder/публичного inbox API. `.env`/реальные SMTP ключи не читаются; данные синтетические, процессы и контейнер только собственные. Не используем legacy Supabase Mailpit. Нужен установленный Playwright Chromium; runner не скачивает браузер автоматически. Нельзя запускать одновременно с Next build: оба обновляют `.next`.
+
+Форма `/auth/local` доступна только при той же проверенной локальной конфигурации; иначе 404. Старый `/auth` не изменён. `/auth/local/confirm` читает токен из fragment и удаляет его из URL; query token не принимается. Открытие ссылки не делает POST: подтверждение только по кнопке. Повторное открытие в той же вкладке не сохраняет прежний успех, токен не пишется в localStorage/sessionStorage. Письма доступны только внутри тестового capture, не в публичном inbox; это проверочный стенд, а не готовый почтовый сервис.
 
 Наблюдаемость локального этапа: structured `local_auth_request` (requestId, entryPoint=http, allowlisted operation/status/code, durationMs) и `local_auth_mail_failed` с тем же ID; ID передаётся capture. Нет URL/body/email/IP/token/password в логах. Вопросы: какой guard отказывает, растёт ли 429/503, сработал ли capture, какова latency? Эти события дают request counts/error counts и распределение latency для локальной диагностики; полноценные production metrics/traces/alerts — ещё задача 11.
 
-Следующий этап — независимая от Supabase форма и реальный браузер. Нельзя включать этот локальный режим на публичном сервере вместо российского SMTP/production Auth.
+Следующий этап — HTTP login/logout, защищённые cookies, серверные guards и одноразовое восстановление пароля. Нельзя включать этот локальный режим на публичном сервере вместо российского SMTP/production Auth.
 
 Основания: [OWASP email verification](https://cheatsheetseries.owasp.org/cheatsheets/Email_Validation_and_Verification_Cheat_Sheet.html), [OWASP single-use tokens](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html), [PostgreSQL row locks](https://www.postgresql.org/docs/18/sql-select.html#SQL-FOR-UPDATE-SHARE).
 
@@ -70,6 +72,6 @@ Migration credentials должны иметь CREATE на целевой БД д
 
 Полная проверка: `npm run test:postgres:local` включает identity/registration, безопасный up/down, конкурентную смену пароля, одноразовое подтверждение/TTL после lock, права, ограниченные сессии и очистку; `node --experimental-strip-types --test tests/identity.test.mjs` проверяет примитивы и отказ при недоступности БД. Тесты только с синтетическими данными; никакие существующие аккаунты не переносятся. Не запускайте отдельный tsc параллельно Next build: сборка пересоздаёт `.next/types`; проверка типов выполняется после неё.
 
-Следующий этап — HTTP-защиты, локальный почтовый transport и новая форма регистрации с браузерной проверкой. Старые `auth.users`, REST/RLS/Auth/Storage интеграции не переносятся слепо; см. [план](../tasks/plan.md) и [задачи](../tasks/todo.md).
+Старые `auth.users`, REST/RLS/Auth/Storage интеграции не переносятся слепо; см. [план](../tasks/plan.md) и [задачи](../tasks/todo.md). До достижения контрольных точек production остаётся неизменённым.
 
 Основание: [параметры запросов](https://node-postgres.com/features/queries), [TLS](https://node-postgres.com/features/ssl), [транзакции](https://node-postgres.com/features/transactions), [подключение Timeweb](https://timeweb.cloud/docs/dbaas/postgresql/connect-to-database).

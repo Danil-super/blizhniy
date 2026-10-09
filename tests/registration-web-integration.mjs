@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
+import { chromium } from "playwright";
 
 // This fixture has no SMTP forwarder, external credentials or public inbox API.
 export async function testRegistrationWeb(suite, db, dbEnv) {
@@ -58,6 +59,7 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
       headers: { "Content-Type": "application/json", Origin: origin, "X-Blizhniy-Request": "1", ...extraHeaders }, body: JSON.stringify(body) });
     return { status: response.status, body: await response.json(), headers: response.headers };
   };
+  let browser;
   try {
     const deadline = Date.now() + 60000;
     for (;;) {
@@ -97,9 +99,116 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
       assert.equal((await db.query("select count(*)::integer as count from app.sessions where user_id=$1", [user.id])).rows[0].count, 0);
       assert.equal(output.includes(token), false, "application logs never contain the token");
     });
+    await suite.test("real browser signup → local captured mail → explicit confirmation → replay, with only same-origin requests", async () => {
+      browser = await chromium.launch({ headless: true });
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const foreignRequests = [];
+      const consoleErrors = [];
+      await context.route("**/*", (route) => {
+        const url = new URL(route.request().url());
+        if (["http:", "https:"].includes(url.protocol) && url.origin !== origin) {
+          foreignRequests.push(url.hostname); return route.abort();
+        }
+        return route.continue();
+      });
+      const page = await context.newPage();
+      page.setDefaultTimeout(10000);
+      page.on("pageerror", () => consoleErrors.push({ type: "pageerror" }));
+      page.on("console", (message) => { if (["error", "warning"].includes(message.type())) consoleErrors.push({ type: message.type(), text: message.text() }); });
+      await page.goto(`${origin}/auth/local`);
+      await page.getByLabel("Email", { exact: true }).fill("browser-new@example.invalid");
+      await page.getByLabel("Пароль", { exact: true }).fill(password);
+      await page.getByLabel("Повторите пароль", { exact: true }).fill(password);
+      await page.getByLabel(/Принимаю пользовательское соглашение/).check();
+      await page.getByLabel(/Ознакомлен с политикой/).check();
+      await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
+      await page.getByRole("status").filter({ hasText: "Если запрос подходит" }).waitFor();
+      const captured = messages.find((mail) => mail.to === "browser-new@example.invalid");
+      assert.ok(captured, "synthetic message captured locally");
+      const link = captured.text.match(/http:\/\/127\.0\.0\.1:\d+\/auth\/local\/confirm#token=[a-f0-9]{64}/)[0];
+      assert.ok(link.startsWith(origin + "/auth/local/confirm#"));
+      const token = new URL(link).hash.slice(7);
+      await page.goto(link);
+      const confirm = page.getByRole("button", { name: "Подтвердить email", exact: true });
+      await confirm.waitFor();
+      assert.equal(page.url(), `${origin}/auth/local/confirm`, "token removed from browser history URL");
+      assert.equal((await db.query("select email_verified_at from app.users where email='browser-new@example.invalid'")).rows[0].email_verified_at, null, "page load/scanner cannot confirm");
+      await confirm.click();
+      await page.getByRole("status").filter({ hasText: "Email подтверждён" }).waitFor();
+      await page.screenshot({ path: "/tmp/blizhniy-registration-confirmed.png", fullPage: true });
+      const user = (await db.query("select id, email_verified_at from app.users where email='browser-new@example.invalid'")).rows[0];
+      assert.ok(user.email_verified_at);
+      assert.equal((await db.query("select count(*)::integer as count from app.sessions where user_id=$1", [user.id])).rows[0].count, 0);
+      assert.deepEqual(consoleErrors, [], "successful flow has a clean browser console");
+      await page.goto(link);
+      await page.getByRole("button", { name: "Подтвердить email", exact: true }).click();
+      await page.getByRole("alert").filter({ hasText: "Ссылка недействительна" }).waitFor();
+      assert.equal(output.includes(token), false);
+      assert.deepEqual(foreignRequests, []);
+      // Negative HTTP replay is intentional; Chromium emits a corresponding 400 resource error.
+      assert.ok(consoleErrors.every((entry) => entry.type === "error" && /server responded with a status of 400/.test(entry.text)), "only the deliberate replay 400 resource error is allowed");
+      await context.close();
+    });
+    await suite.test("a confirmation response cannot overwrite a newer link opened in the same tab", async () => {
+      assert.equal((await post("register", { ...signup, email: "browser-race@example.invalid" })).status, 202);
+      const captured = messages.find((mail) => mail.to === "browser-race@example.invalid");
+      const link = captured.text.match(/http:\/\/127\.0\.0\.1:\d+\/auth\/local\/confirm#token=[a-f0-9]{64}/)[0];
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      page.setDefaultTimeout(10000);
+      let release;
+      let started;
+      const held = new Promise((resolve) => { release = resolve; });
+      const received = new Promise((resolve) => { started = resolve; });
+      await page.route("**/api/account/confirm", async (route) => {
+        const response = await route.fetch();
+        started();
+        await held;
+        await route.fulfill({ response });
+      });
+      try {
+        await page.goto(link);
+        await page.getByRole("button", { name: "Подтвердить email", exact: true }).click();
+        await received;
+        await page.evaluate(() => { window.location.hash = "token=" + "f".repeat(64); });
+        await page.waitForFunction(() => window.location.hash === "");
+        release();
+        await page.getByRole("button", { name: "Подтвердить email", exact: true }).waitFor();
+        await page.waitForFunction(() => document.querySelector('button[type="button"]')?.disabled === false);
+        assert.equal(await page.getByRole("status").filter({ hasText: "Email подтверждён" }).count(), 0, "old response is not confirmation of the new link");
+        assert.equal(await page.getByRole("button", { name: "Подтвердить email", exact: true }).count(), 1);
+      } finally { release(); await context.close(); }
+    });
+    await suite.test("registration is labelled, keyboard-accessible and fits 320/768/1024/1440 screens", async () => {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      page.setDefaultTimeout(10000);
+      for (const width of [320, 768, 1024, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`${origin}/auth/local`);
+        await page.getByLabel("Email", { exact: true }).waitFor();
+        assert.equal(await page.getByRole("heading", { level: 1 }).count(), 1);
+        assert.match(await page.locator("main").ariaSnapshot(), /textbox "Email"/);
+        assert.equal(await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).evaluate((element) => getComputedStyle(element).backgroundColor), "rgb(8, 117, 209)", "primary action uses the existing brand-blue token, not white text on a transparent background");
+        assert.equal(await page.locator('a[href="/legal/agreement"]').count() >= 1, true);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+        await page.getByLabel("Email", { exact: true }).focus();
+        await page.keyboard.press("Tab");
+        assert.equal(await page.getByLabel("Пароль", { exact: true }).evaluate((element) => element === document.activeElement), true);
+        const primary = page.getByRole("button", { name: "Зарегистрироваться", exact: true });
+        await primary.scrollIntoViewIfNeeded();
+        assert.equal(await primary.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return box.height >= 44 && element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+        }), true, "primary touch target is not obscured by fixed mobile navigation");
+        if (width === 320 || width === 1440) await page.screenshot({ path: `/tmp/blizhniy-registration-${width}.png`, fullPage: true });
+      }
+      await context.close();
+    });
     assert.equal(output.includes(signup.email), false, "no email in app logs");
     assert.equal(output.includes(password), false, "no password in app logs");
   } finally {
+    if (browser) await browser.close();
     if (app.exitCode === null) {
       process.kill(-app.pid, "SIGTERM");
       await Promise.race([once(app, "exit"), new Promise((resolve) => setTimeout(resolve, 3000))]);
