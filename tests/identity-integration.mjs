@@ -60,6 +60,34 @@ export async function testIdentity(suite, db, applyMigration) {
     assert.equal((await store.resolveSession(other.token)).id, secondId);
     session = await store.login("first@example.invalid", password);
   });
+  await suite.test("account switching and re-login replace only the presented app session atomically", async () => {
+    const previous = await store.login("first@example.invalid", password);
+    const limited = await store.loginForDataSubject("first@example.invalid", password);
+    assert.equal(await store.login("second@example.invalid", nextPassword, previous.token), null);
+    assert.equal((await store.resolveSession(previous.token)).id, firstId, "failed switch keeps the original login");
+    const replacement = await store.login("second@example.invalid", password, previous.token);
+    assert.notEqual(replacement.token, previous.token);
+    assert.equal(await store.resolveSession(previous.token), null, "old account token is revoked, not just hidden by the new cookie");
+    assert.equal((await store.resolveSession(replacement.token)).id, secondId);
+    const rotated = await store.login("second@example.invalid", password, replacement.token);
+    assert.notEqual(rotated.token, replacement.token);
+    assert.equal(await store.resolveSession(replacement.token), null);
+    const app = await store.login("first@example.invalid", password, limited.token);
+    assert.equal((await store.resolveDataSubjectSession(limited.token)).id, firstId, "app switching does not consume a data-subject session");
+    await Promise.all([store.revokeSession(rotated.token), store.revokeSession(limited.token), store.revokeSession(app.token)]);
+  });
+  await suite.test("failed replacement insertion rolls back revocation of the old browser session", async () => {
+    const previous = await store.login("first@example.invalid", password);
+    const failing = new IdentityStore({ query: db.query.bind(db), transaction: (operation) => db.transaction((tx) => operation({
+      query: async (sql, params) => {
+        if (sql.startsWith("insert into app.sessions")) throw new Error("synthetic session insert failure");
+        return tx.query(sql, params);
+      },
+    })) });
+    await assert.rejects(failing.login("second@example.invalid", password, previous.token));
+    assert.equal((await store.resolveSession(previous.token)).id, firstId);
+    await store.revokeSession(previous.token);
+  });
   await suite.test("blocked account is denied ordinary access but retains data-subject verification", async () => {
     await db.query("update app.users set is_blocked=true where id=$1", [firstId]);
     assert.equal(await store.resolveSession(session.token), null);

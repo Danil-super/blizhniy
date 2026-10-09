@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createServer as netServer } from "node:net";
-import { spawn } from "node:child_process";
-import { createHmac, randomBytes } from "node:crypto";
+import { execFile, spawn } from "node:child_process";
+import { createHash, createHmac, randomBytes, X509Certificate } from "node:crypto";
 import { once } from "node:events";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { request as httpsRequest } from "node:https";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
 import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
 import { chromium } from "playwright";
+import { hashSessionToken, IdentityStore } from "../src/lib/identity.ts";
 
 // This fixture has no SMTP forwarder, external credentials or public inbox API.
 export async function testRegistrationWeb(suite, db, dbEnv) {
@@ -38,7 +44,35 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
   await once(probe, "listening");
   const port = probe.address().port;
   await new Promise((resolve) => probe.close(resolve));
-  const origin = `http://127.0.0.1:${port}`;
+  const origin = `https://127.0.0.1:${port}`;
+  const certificates = await mkdtemp(join(tmpdir(), "blizhniy-auth-tls-"));
+  const keyPath = join(certificates, "server.key");
+  const certPath = join(certificates, "server.crt");
+  let ca;
+  try {
+    await promisify(execFile)("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+      "-subj", "/CN=blizhniy-auth-test", "-addext", "subjectAltName=IP:127.0.0.1", "-addext", "basicConstraints=critical,CA:TRUE",
+      "-keyout", keyPath, "-out", certPath], { timeout: 10000 });
+    ca = await readFile(certPath);
+  } catch {
+    mailServer.closeAllConnections();
+    await new Promise((resolve) => mailServer.close(resolve));
+    await rm(certificates, { recursive: true });
+    throw new Error("Could not prepare owned local TLS fixture");
+  }
+  const certificatePin = createHash("sha256").update(new X509Certificate(ca).publicKey.export({ type: "spki", format: "der" })).digest("base64");
+  const fetchLocal = (path, options = {}) => new Promise((resolve, reject) => {
+    const request = httpsRequest(origin + path, { method: options.method ?? "GET", headers: options.headers,
+      ca, servername: "", signal: AbortSignal.timeout(20000) }, (reply) => {
+      const chunks = [];
+      reply.on("data", (chunk) => chunks.push(chunk));
+      reply.on("end", () => resolve(new Response(Buffer.concat(chunks), { status: reply.statusCode,
+        headers: Object.fromEntries(Object.entries(reply.headers).filter(([, value]) => value !== undefined).map(([name, value]) => [name, Array.isArray(value) ? value.join(", ") : value])) })));
+      reply.on("error", reject);
+    });
+    request.on("error", reject);
+    request.end(options.body);
+  });
   const processEnv = { PATH: process.env.PATH, LANG: "C.UTF-8", ...dbEnv, NODE_ENV: "development",
     __NEXT_PROCESSED_ENV: "true", NEXT_TELEMETRY_DISABLED: "1", NEXT_PUBLIC_SITE_URL: origin,
     NEXT_PUBLIC_SUPABASE_URL: "", NEXT_PUBLIC_SUPABASE_ANON_KEY: "", SUPABASE_SERVICE_ROLE_KEY: "",
@@ -46,7 +80,8 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
     BLIZHNIY_AUTH_MODE: "local", BLIZHNIY_AUTH_ORIGIN: origin, BLIZHNIY_AUTH_RATE_SECRET: secret,
     BLIZHNIY_LOCAL_MAIL_URL: `http://127.0.0.1:${mailServer.address().port}/messages` };
   let output = "";
-  const app = spawn(process.execPath, ["node_modules/next/dist/bin/next", "dev", "--hostname", "127.0.0.1", "--port", String(port)], {
+  const app = spawn(process.execPath, ["node_modules/next/dist/bin/next", "dev", "--hostname", "127.0.0.1", "--port", String(port),
+    "--experimental-https", "--experimental-https-key", keyPath, "--experimental-https-cert", certPath], {
     cwd: new URL("..", import.meta.url), env: processEnv, stdio: ["ignore", "pipe", "pipe"], detached: true,
   });
   const capture = (chunk) => { output = (output + chunk.toString()).slice(-128000); };
@@ -55,7 +90,7 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
   const signup = { email: "http-first@example.invalid", password, acceptedAgreement: true, acknowledgedPrivacy: true,
     agreementVersion: REGISTRATION_LEGAL_VERSIONS.agreement, privacyVersion: REGISTRATION_LEGAL_VERSIONS.privacy };
   const post = async (action, body, extraHeaders = {}, query = "") => {
-    const response = await fetch(`${origin}/api/account/${action}${query}`, { method: "POST", signal: AbortSignal.timeout(20000),
+    const response = await fetchLocal(`/api/account/${action}${query}`, { method: "POST",
       headers: { "Content-Type": "application/json", Origin: origin, "X-Blizhniy-Request": "1", ...extraHeaders }, body: JSON.stringify(body) });
     return { status: response.status, body: await response.json(), headers: response.headers };
   };
@@ -65,7 +100,7 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
     for (;;) {
       assert.equal(app.exitCode, null, "local app remains running");
       try {
-        const response = await fetch(`${origin}/api/account/unknown`, { signal: AbortSignal.timeout(3000) });
+        const response = await fetchLocal("/api/account/unknown");
         if (response.status === 404) break;
       } catch { /* Wait only for this newly spawned app. */ }
       assert.ok(Date.now() < deadline, "local app started before deadline");
@@ -91,7 +126,7 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
     });
     await suite.test("mail scanner GET does not confirm; explicit POST is single-use and cannot create a session", async () => {
       const token = messages[0].text.match(/#token=([a-f0-9]{64})/)[1];
-      assert.equal((await fetch(`${origin}/api/account/confirm`)).status, 405);
+      assert.equal((await fetchLocal("/api/account/confirm")).status, 405);
       assert.equal((await post("confirm", { token })).status, 200);
       assert.equal((await post("confirm", { token })).status, 400);
       const user = (await db.query("select id, email_verified_at from app.users where email=$1", [signup.email])).rows[0];
@@ -100,7 +135,8 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
       assert.equal(output.includes(token), false, "application logs never contain the token");
     });
     await suite.test("real browser signup → local captured mail → explicit confirmation → replay, with only same-origin requests", async () => {
-      browser = await chromium.launch({ headless: true });
+      // Trust only this fixture's generated public key, never disable certificate checks globally.
+      browser = await chromium.launch({ headless: true, args: [`--ignore-certificate-errors-spki-list=${certificatePin}`] });
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const foreignRequests = [];
       const consoleErrors = [];
@@ -125,7 +161,7 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
       await page.getByRole("status").filter({ hasText: "Если запрос подходит" }).waitFor();
       const captured = messages.find((mail) => mail.to === "browser-new@example.invalid");
       assert.ok(captured, "synthetic message captured locally");
-      const link = captured.text.match(/http:\/\/127\.0\.0\.1:\d+\/auth\/local\/confirm#token=[a-f0-9]{64}/)[0];
+      const link = captured.text.match(/https:\/\/127\.0\.0\.1:\d+\/auth\/local\/confirm#token=[a-f0-9]{64}/)[0];
       assert.ok(link.startsWith(origin + "/auth/local/confirm#"));
       const token = new URL(link).hash.slice(7);
       await page.goto(link);
@@ -152,7 +188,7 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
     await suite.test("a confirmation response cannot overwrite a newer link opened in the same tab", async () => {
       assert.equal((await post("register", { ...signup, email: "browser-race@example.invalid" })).status, 202);
       const captured = messages.find((mail) => mail.to === "browser-race@example.invalid");
-      const link = captured.text.match(/http:\/\/127\.0\.0\.1:\d+\/auth\/local\/confirm#token=[a-f0-9]{64}/)[0];
+      const link = captured.text.match(/https:\/\/127\.0\.0\.1:\d+\/auth\/local\/confirm#token=[a-f0-9]{64}/)[0];
       const context = await browser.newContext();
       const page = await context.newPage();
       page.setDefaultTimeout(10000);
@@ -161,10 +197,11 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
       const held = new Promise((resolve) => { release = resolve; });
       const received = new Promise((resolve) => { started = resolve; });
       await page.route("**/api/account/confirm", async (route) => {
-        const response = await route.fetch();
+        const request = route.request();
+        const response = await fetchLocal("/api/account/confirm", { method: "POST", headers: await request.allHeaders(), body: request.postData() });
         started();
         await held;
-        await route.fulfill({ response });
+        await route.fulfill({ status: response.status, headers: Object.fromEntries(response.headers), body: await response.text() });
       });
       try {
         await page.goto(link);
@@ -205,6 +242,104 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
       }
       await context.close();
     });
+    const cookieName = "__Host-blizhniy_session";
+    const seedUser = async (email) => (await db.query(`insert into app.users (email, password_hash, email_verified_at)
+      select $1, password_hash, now() from app.users where email='browser-new@example.invalid' returning id`, [email])).rows[0].id;
+    const cookieFrom = (response) => response.headers.get("set-cookie").split(";")[0];
+    await suite.test("HTTP cookie login switches accounts, reads live authority and revokes logout tokens", async () => {
+      await seedUser("http-session-a@example.invalid");
+      const secondId = await seedUser("http-session-b@example.invalid");
+      const first = await post("login", { email: "http-session-a@example.invalid", password });
+      assert.equal(first.status, 200);
+      assert.deepEqual(Object.keys(first.body).sort(), ["status", "user"]);
+      const firstCookie = cookieFrom(first);
+      assert.match(first.headers.get("set-cookie"), /HttpOnly; Secure; SameSite=Lax/);
+      assert.equal((await post("session", {}, { cookie: firstCookie })).body.user.email, "http-session-a@example.invalid");
+      assert.equal((await post("login", { email: "http-session-b@example.invalid", password: "Wrong synthetic passphrase 2026!" }, { cookie: firstCookie })).status, 401);
+      assert.equal((await post("session", {}, { cookie: firstCookie })).status, 200);
+      const second = await post("login", { email: "http-session-b@example.invalid", password }, { cookie: firstCookie });
+      assert.equal(second.status, 200);
+      const secondCookie = cookieFrom(second);
+      assert.notEqual(firstCookie, secondCookie);
+      assert.equal((await post("session", {}, { cookie: firstCookie })).status, 401);
+      assert.equal((await post("session", {}, { cookie: secondCookie })).body.user.id, secondId);
+      await db.query("update app.users set role='admin' where id=$1", [secondId]);
+      assert.equal((await post("session", {}, { cookie: secondCookie })).body.user.role, "admin");
+      await db.query("update app.users set is_blocked=true where id=$1", [secondId]);
+      assert.equal((await post("session", {}, { cookie: secondCookie })).status, 401);
+      const logout = await post("logout", {}, { cookie: secondCookie });
+      assert.equal(logout.status, 200, "blocked users can still log out");
+      assert.match(logout.headers.get("set-cookie"), /Max-Age=0/);
+      assert.equal((await post("session", {}, { cookie: secondCookie })).status, 401);
+      assert.equal((await post("logout", {})).status, 200);
+      for (const cookie of [firstCookie, secondCookie]) assert.equal(output.includes(cookie.slice(cookie.indexOf("=")+1)), false, "no cookie token in server logs");
+    });
+    await suite.test("HTTP guard denies stale, limited, duplicated and forged authority and refuses cross-origin logout", async () => {
+      const id = await seedUser("http-session-guard@example.invalid");
+      const store = new IdentityStore(db);
+      const limited = await store.loginForDataSubject("http-session-guard@example.invalid", password);
+      assert.equal((await post("session", {}, { cookie: `${cookieName}=${limited.token}` })).status, 401);
+      const session = await store.login("http-session-guard@example.invalid", password);
+      const cookie = `${cookieName}=${session.token}`;
+      assert.equal((await post("logout", {}, { cookie, Origin: "https://attacker.invalid" })).status, 403);
+      assert.equal((await post("session", {}, { cookie })).status, 200, "CSRF logout did not revoke the session");
+      assert.equal((await post("session", {}, { cookie: `${cookie}; ${cookie}` })).status, 401);
+      assert.equal((await post("session", {}, { cookie: `${cookieName}=${hashSessionToken(session.token)}` })).status, 401);
+      assert.equal((await post("session", {}, { authorization: `Bearer ${session.token}` })).status, 401);
+      assert.equal((await post("session", { token: session.token })).status, 422);
+      assert.equal((await post("session", {}, { cookie }, "?token=synthetic")).status, 400);
+      assert.equal((await post("login", { email: "http-session-guard@example.invalid", password, role: "admin" })).status, 422);
+      assert.equal((await db.query("select role from app.users where id=$1", [id])).rows[0].role, "user");
+      await db.query("update app.sessions set created_at=now()-interval '9 hours', expires_at=now()-interval '1 hour', last_seen_at=now()-interval '2 hours' where token_hash=$1", [hashSessionToken(session.token)]);
+      assert.equal((await post("session", {}, { cookie })).status, 401);
+      for (const email of ["pending@example.invalid", "unknown-login@example.invalid"]) {
+        const response = await post("login", { email, password });
+        assert.equal(response.status, 401);
+        assert.deepEqual(response.body, { error: { code: "INVALID_CREDENTIALS" } });
+        assert.equal(response.headers.get("set-cookie"), null);
+      }
+      await store.revokeSession(limited.token);
+      await store.revokeSession(session.token);
+    });
+    await suite.test("Chromium automatically sends the protected cookie across reload, account switch and logout", async () => {
+      const firstId = await seedUser("browser-session-a@example.invalid");
+      const secondId = await seedUser("browser-session-b@example.invalid");
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      page.setDefaultTimeout(10000);
+      const errors = [];
+      page.on("pageerror", () => errors.push("pageerror"));
+      page.on("console", (message) => { if (["error", "warning"].includes(message.type())) errors.push(message.text()); });
+      // Test-owned probe, not the future login UI. No script ever reads cookie/storage credentials.
+      await page.route(`${origin}/auth/local/session-probe`, (route) => route.fulfill({ contentType: "text/html", body: `<!doctype html><html lang="ru"><title>Cookie probe</title>
+        <button data-action="login" data-account="a">Login A</button><button data-action="login" data-account="b">Login B</button>
+        <button data-action="session">Session</button><button data-action="logout">Logout</button><pre role="status"></pre>
+        <script>document.addEventListener('click',async event=>{const action=event.target.dataset.action;if(!action)return;
+        document.querySelector('pre').textContent='pending';const body=action==='login'?{email:'browser-session-'+event.target.dataset.account+'@example.invalid',password:${JSON.stringify(password)}}:{};
+        const response=await fetch('/api/account/'+action,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1'},body:JSON.stringify(body)});
+        document.querySelector('pre').textContent=JSON.stringify({status:response.status,body:await response.json()});});</script></html>` }));
+      const click = async (name) => {
+        await page.getByRole("button", { name, exact: true }).click();
+        await page.waitForFunction(() => document.querySelector("pre").textContent.startsWith("{"));
+        return JSON.parse(await page.getByRole("status").textContent());
+      };
+      try {
+        await page.goto(`${origin}/auth/local/session-probe`);
+        assert.equal((await click("Login A")).status, 200);
+        const metadata = (await context.cookies(origin)).filter((cookie) => cookie.name === cookieName).map(({ name, httpOnly, secure, sameSite, path }) => ({ name, httpOnly, secure, sameSite, path }));
+        assert.deepEqual(metadata, [{ name: cookieName, httpOnly: true, secure: true, sameSite: "Lax", path: "/" }]);
+        assert.equal((await click("Session")).body.user.id, firstId, "renderer sends Secure cookie on the permitted loopback origin");
+        await page.reload();
+        assert.equal((await click("Session")).body.user.id, firstId);
+        assert.equal((await click("Login B")).body.user.id, secondId);
+        assert.equal((await click("Session")).body.user.id, secondId);
+        assert.equal((await db.query("select count(*)::integer as count from app.sessions where user_id=$1", [firstId])).rows[0].count, 0);
+        assert.equal((await click("Logout")).status, 200);
+        assert.equal((await context.cookies(origin)).some((cookie) => cookie.name === cookieName), false);
+        assert.equal((await db.query("select count(*)::integer as count from app.sessions where user_id=$1", [secondId])).rows[0].count, 0);
+        assert.deepEqual(errors, [], "positive cookie lifecycle has a clean console");
+      } finally { await context.close(); }
+    });
     assert.equal(output.includes(signup.email), false, "no email in app logs");
     assert.equal(output.includes(password), false, "no password in app logs");
   } finally {
@@ -216,5 +351,6 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
     }
     mailServer.closeAllConnections();
     await new Promise((resolve) => mailServer.close(resolve));
+    await rm(certificates, { recursive: true });
   }
 }

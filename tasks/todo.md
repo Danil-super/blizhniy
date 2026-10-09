@@ -97,11 +97,23 @@
 
 Зависит от 3. Файлы: auth handlers, общий серверный guard, клиентский auth adapter и тесты (разбить по действиям).
 
-- [ ] HttpOnly cookies, origin/CSRF и общий лимит попыток; токены не читаются из localStorage.
+- [x] HttpOnly cookies, origin/CSRF и общий лимит попыток; токены не читаются из localStorage.
 - [ ] Выход и смена аккаунта очищают прежний кабинет; сброс пароля отзывается/одноразовый.
 - [ ] Проверены два аккаунта, блокировка и администрация без клиентского повышения роли.
 
 Проверка: unit/API/browser login → logout → другой аккаунт, recovery и попытки подмены.
+
+4a — HTTP login/session/logout и общий app-scope guard реализованы локально. Токен — только host-only `__Host-blizhniy_session`, HttpOnly/Secure/SameSite=Lax/Path=/, без Domain, срок не более остатка 8 ч. Каждый lookup читает актуальную роль/блокировку/версию и сроки из БД; Bearer/body/query, malformed и duplicate cookie не являются авторизацией. Login принимает только email/password, shared limiter работает до KDF; неизвестный/неподтверждённый/заблокированный аккаунт и неверный пароль получают один 401. Logout доступен после блокировки/credential rate denial; ошибка БД не считается успешным выходом.
+
+Успешная смена аккаунта/повторный вход отзывают только прежнюю предъявленную app-сессию **в той же транзакции**. Неверный пароль и fault injection при вставке новой сессии сохраняют прежний вход; data-subject token не отзывается этой операцией. Один существующий PostgreSQL pool обслуживает регистрацию, identity и limiter; новых SQL-миграций и npm-зависимостей нет.
+
+Браузерный тест обнаружил, что на прежнем HTTP/127.0.0.1 стенде Chromium не сохраняет `__Host-` cookie. Проверены официальный cookie-контракт и Next CLI; добавлен отдельный малый инкремент конфигурации HTTPS (2 предметных файла), затем cookie boundary/тесты (5 предметных файлов). Cookie-действия на HTTP теперь отказывают до создания пула, Secure не ослаблен. Тестовый Next HTTPS использует собственный односуточный сертификат с SAN 127.0.0.1, Node проверяет CA/имя, браузер допускает только его SPKI; нет глобального trust/отключения TLS. Свои временные ключи и процессы удаляются.
+
+Предметные проверки 4a: 9 новых HTTP unit-сценариев и отдельная HTTPS-конфигурация; SQL-переключение/rotation/rollback; настоящий HTTP guard против replay/expired/limited/forged/duplicated/CSRF и изменения role/block. Chromium через test-owned cookie probe (не будущую форму входа) проходит login → reload → account switch → logout без ошибок консоли; токен не читается JavaScript. Интеграция PostgreSQL/Next/Chromium — **58/58**. Удаление проверки duplicate cookie воспроизводимо ломает unit-тест; проверка восстановлена. Structured request events содержат operation/status/code/duration/requestId, без credentials/PII, generic 503 проверен через fault injection.
+
+Итоговые проверки 4a: native **810/810**, PostgreSQL/Next/Chromium **58/58**, tsc/lint/build успешны; одно прежнее lint warning, новых зависимостей нет, production npm audit — 0 уязвимостей. Собственная production-сборка отдельными loopback-процессами возвращает 404 для всех шести account-действий при пустом mode и generic 503 при попытке включить local mode, без DB-конфигурации; auth-страницы не открываются. Рабочие процессы не затронуты.
+
+Задача 4 целиком **не завершена**: следующая часть — реальная форма входа и клиентское состояние/очистка кабинета, затем recovery с одноразовым токеном и отзывом сессий. Контрольная точка A остаётся открытой; production и Timeweb не изменялись.
 
 ## Контрольная точка A
 

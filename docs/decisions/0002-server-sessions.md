@@ -9,7 +9,7 @@
 ## Решение
 
 - Встроенный async scrypt Node.js 22: N=131072, r=8, p=1, свежая 16-байтная соль. Не более двух вычислений одновременно на процесс, без очереди. Новые пароли 15–128 Unicode-символов, без изменения пробелов/нормализации; malformed Unicode и NUL отклоняются.
-- Сессия — случайный токен 32 байта. PostgreSQL хранит только SHA-256 токена, владельца, scope, версию учётных данных и сроки; plaintext токен выдаётся исключительно будущему серверному cookie-handler.
+- Сессия — случайный токен 32 байта. PostgreSQL хранит только SHA-256 токена, владельца, scope, версию учётных данных и сроки; plaintext токен выдаётся исключительно серверному cookie-handler.
 - Абсолютный срок 8 часов, простой 30 минут. Роли и блокировка читаются из БД на каждом запросе. JWT/localStorage и browser-to-DB доступ не используются.
 - Подтверждение email обязательно перед выдачей сессии. Выдача блокирует строку пользователя и повторно проверяет hash/version после KDF, выполненного вне транзакции. Триггер повышает auth_version при смене пароля/почты или снятии подтверждения, запрещая оживление старых сессий.
 - Обычный scope — `app`. Отдельный `data-subject` допускает заблокированного владельца только к будущим ownership-checked запросам удаления/экспорта; обычный resolver не принимает такой токен даже после снятия блокировки.
@@ -32,4 +32,14 @@ Pending account, отметки двух документов и подтвер�
 
 Agreement acceptance и privacy review — разные записи, не универсальное согласие на обработку/рекламу/передачу третьим сторонам. Время/версию фиксирует сервер, неизвестные поля запрещены. Хранить IP/user-agent ради этих отметок сейчас не нужно. Для неподтверждённых аккаунтов установлен порог очистки 24 часа; удаление каскадное, до 100 записей за вызов с SKIP LOCKED. Maintenance schedule перед запуском обязателен, иначе порог сам по себе ничего не удаляет.
 
-Эти операции проверены только на локальном PostgreSQL; почтовый transport, HTTP-защиты и новая форма ещё не подключены. Основание: [OWASP email verification](https://cheatsheetseries.owasp.org/cheatsheets/Email_Validation_and_Verification_Cheat_Sheet.html).
+Эти операции проверены только на локальном PostgreSQL; HTTP-защиты, новая registration-форма и loopback capture подключены только при явном локальном режиме. Реального SMTP/production-переключения нет. Основание: [OWASP email verification](https://cheatsheetseries.owasp.org/cheatsheets/Email_Validation_and_Verification_Cheat_Sheet.html).
+
+## Уточнение: cookie boundary и смена аккаунта
+
+Локальные login/session/logout требуют HTTPS и только одну `__Host-blizhniy_session` cookie: Secure, HttpOnly, SameSite=Lax, Path=/, без Domain. Токен не дублируется в JSON/Bearer/localStorage. Prefix защищает от Domain/path shadowing в поддерживающих браузерах; duplicate и malformed cookie отклоняются независимо от browser policy. Точный Origin/Host, JSON/custom header и ограничения тела действуют и на logout/session. Короткий абсолютный срок проверяет БД, cookie его не продлевает.
+
+При успешном входе старая app-сессия браузера отзывается вместе с созданием новой в одном commit. Одна замена cookie без отзыва позволила бы продолжать использовать старый токен; отдельная операция отзыва теряла бы прежний вход при неудачной вставке. Неуспешная проверка пароля ничего не отзывает. Предъявленный токен другого scope не удаляется этой операцией. Login не является безопасной автоматической retry-операцией после неизвестного commit; клиент проверяет текущую сессию.
+
+Общий credential limiter не применяется к session/logout: исчерпание попыток или блокировка не должны лишать пользователя возможности выйти. Это не отменяет будущие production ограничения запросов/пула на доверенном proxy. При сбое DB logout отвечает 503 и не изображает успешный отзыв. HTTP API использует один pool с registration; resource guards дополнительно обязаны проверить владельца/роль.
+
+Проверка Chromium показала отказ `__Host-` cookie на прежнем HTTP-стенде. Поэтому runner перешёл на собственный HTTPS с короткоживущим SAN-сертификатом; Node доверяет только его CA, Chromium — только его SPKI. Cookie Secure не отключается даже локально. Основания: [cookie prefixes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie#cookie_prefixes), [Next.js development HTTPS](https://nextjs.org/docs/app/api-reference/cli/next#using-https-during-development).

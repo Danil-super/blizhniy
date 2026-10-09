@@ -91,8 +91,8 @@ export class IdentityStore {
     this.db = db;
   }
 
-  login(email: string, password: string): Promise<IssuedSession | null> {
-    return this.authenticate(email, password, "app");
+  login(email: string, password: string, previousToken?: string): Promise<IssuedSession | null> {
+    return this.authenticate(email, password, "app", previousToken);
   }
 
   // Allows a blocked user to request deletion/export even without an old session.
@@ -100,7 +100,7 @@ export class IdentityStore {
     return this.authenticate(email, password, "data-subject");
   }
 
-  private async authenticate(email: string, password: string, scope: "app" | "data-subject"): Promise<IssuedSession | null> {
+  private async authenticate(email: string, password: string, scope: "app" | "data-subject", previousToken?: string): Promise<IssuedSession | null> {
     if (typeof email !== "string" || email.length > 254) return null;
     const canonicalEmail = email.trim().toLowerCase();
     const credential = (await this.db.query<CredentialRow>(
@@ -116,6 +116,9 @@ export class IdentityStore {
       )).rows[0];
       if (!current || (current.isBlocked && scope === "app") || !current.emailVerifiedAt || current.email !== canonicalEmail ||
           current.passwordHash !== credential.passwordHash || current.authVersion !== credential.authVersion) return null;
+      const previousHash = previousToken === undefined ? null : hashSessionToken(previousToken);
+      // A successful browser account switch must revoke its old app token in the same commit.
+      if (previousHash && scope === "app") await tx.query("delete from app.sessions where token_hash=$1 and scope='app'", [previousHash]);
       const token = generateSessionToken();
       const { rows: [session] } = await tx.query<{ expiresAt: Date }>(
         'insert into app.sessions (token_hash, user_id, auth_version, scope) values ($1, $2, $3, $4) returning expires_at as "expiresAt"',
