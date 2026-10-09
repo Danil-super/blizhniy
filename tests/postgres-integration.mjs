@@ -10,6 +10,7 @@ import { rootCertificates } from "node:tls";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { createPostgresDatabase } from "../src/lib/postgres.ts";
+import { AuthRateLimiter } from "../src/lib/auth-http.ts";
 
 const run = promisify(execFile);
 const image = "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
@@ -88,7 +89,8 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
       finally { await wrong.close(); }
     });
     const applyMigration = async (filename) => {
-      if (!["0001-identity.sql", "0001-identity.down.sql", "0002-registration.sql", "0002-registration.down.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
+      if (!["0001-identity.sql", "0001-identity.down.sql", "0002-registration.sql", "0002-registration.down.sql",
+        "0003-auth-rate-limits.sql", "0003-auth-rate-limits.down.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
       const source = fileURLToPath(new URL(`../database/migrations/${filename}`, import.meta.url));
       await docker(["cp", source, `${id}:/tmp/blizhniy-identity.sql`]);
       await docker(["exec", id, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "blizhniy_test", "-f", "/tmp/blizhniy-identity.sql"]);
@@ -97,6 +99,36 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
     await testIdentity(suite, db, applyMigration);
     const { testRegistration } = await import("./registration-integration.mjs");
     await testRegistration(suite, db, applyMigration);
+    await suite.test("shared auth limiter migration up/down, concurrent instances and no plaintext PII", async () => {
+      await applyMigration("0003-auth-rate-limits.sql");
+      await applyMigration("0003-auth-rate-limits.down.sql");
+      await applyMigration("0003-auth-rate-limits.sql");
+      const secret = randomBytes(32).toString("hex");
+      const first = new AuthRateLimiter(db, secret);
+      const second = new AuthRateLimiter(db, secret);
+      const results = await Promise.all(Array.from({ length: 12 }, (_, i) =>
+        (i % 2 ? first : second).allow(i % 2 ? "limiter@example.invalid" : " LIMITER@example.invalid ")));
+      assert.equal(results.filter(Boolean).length, 5);
+      const counters = (await db.query("select key_hash, attempts from app.auth_rate_limits")).rows;
+      assert.equal(counters.length, 2);
+      assert.ok(counters.every((row) => /^[a-f0-9]{64}$/.test(row.key_hash)));
+      assert.deepEqual(counters.map((row) => row.attempts).sort((a,b) => a-b), [6, 12]);
+      await assert.rejects(applyMigration("0003-auth-rate-limits.down.sql"));
+      await assert.rejects(applyMigration("0003-auth-rate-limits.sql"));
+      const further = await Promise.all(Array.from({ length: 60 }, () => second.allow()));
+      assert.equal(further.filter(Boolean).length, 48);
+      assert.equal(await new AuthRateLimiter(db, secret).allow(), false, "process restart does not reset counters");
+      // Expire only this test's synthetic counters; cleanup never touches user accounts.
+      await db.query("update app.auth_rate_limits set window_start=window_start-interval '25 hours'");
+      assert.equal(await first.prune(), 2);
+      assert.equal(await second.allow("limiter@example.invalid"), true);
+      await db.query("create role rate_test_anonymous nologin");
+      await assert.rejects(db.transaction(async (tx) => {
+        await tx.query("set local role rate_test_anonymous");
+        await tx.query("select * from app.auth_rate_limits");
+      }), { code: "42501" });
+      await db.query("drop role rate_test_anonymous");
+    });
     const cert = join(certificates, "server.crt");
     const key = join(certificates, "server.key");
     const installCertificate = async (subjectAltName) => {
