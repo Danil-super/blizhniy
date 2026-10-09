@@ -31,7 +31,7 @@ export class AuthRequestError extends Error {
   }
 }
 
-export function authJson(body: unknown, status: number, headers?: HeadersInit): Response {
+export function authJson(body: unknown, status: number, headers?: Record<string, string>): Response {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'", ...headers } });
 }
@@ -40,7 +40,9 @@ export function authJson(body: unknown, status: number, headers?: HeadersInit): 
 export async function readAuthJson(request: Request, config: LocalAuthConfig, deadlineMs = 2000): Promise<unknown> {
   if (request.method !== "POST") throw new AuthRequestError(405, "METHOD_NOT_ALLOWED");
   const url = new URL(request.url);
-  if (url.origin !== config.origin || request.headers.get("origin") !== config.origin ||
+  // NextURL normalizes 127.0.0.1 to localhost. Trust configured target + actual Host, not that normalized URL or Forwarded headers.
+  if (request.headers.get("host") !== new URL(config.origin).host) throw new AuthRequestError(403, "FORBIDDEN_TARGET");
+  if (request.headers.get("origin") !== config.origin ||
       request.headers.get("x-blizhniy-request") !== "1" ||
       (request.headers.has("sec-fetch-site") && request.headers.get("sec-fetch-site") !== "same-origin")) {
     throw new AuthRequestError(403, "FORBIDDEN_ORIGIN");

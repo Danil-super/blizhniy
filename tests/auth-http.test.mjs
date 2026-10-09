@@ -6,7 +6,7 @@ const env = { NODE_ENV: "test", BLIZHNIY_AUTH_MODE: "local", BLIZHNIY_DB_HOST: "
   BLIZHNIY_AUTH_ORIGIN: "http://127.0.0.1:3037", BLIZHNIY_LOCAL_MAIL_URL: "http://127.0.0.1:3038/messages", BLIZHNIY_AUTH_RATE_SECRET: "s".repeat(64) };
 const config = readLocalAuthConfig(env);
 function request(body = {}, headers = {}, url = config.origin + "/api/account/register", method = "POST") {
-  return new Request(url, { method, headers: { origin: config.origin, "content-type": "application/json", "x-blizhniy-request": "1", ...headers },
+  return new Request(url, { method, headers: { host: new URL(url).host, origin: config.origin, "content-type": "application/json", "x-blizhniy-request": "1", ...headers },
     ...(method === "GET" ? {} : { body: JSON.stringify(body) }) });
 }
 
@@ -36,16 +36,21 @@ test("same-origin JSON POST with the explicit request header passes; cross-site,
 test("invalid JSON and oversized/truncated body fail without echoing the payload", async () => {
   await assert.rejects(readAuthJson(request({ value: "a".repeat(4096) }), config), { status: 413 });
   const bad = new Request(config.origin + "/api/account/register", { method: "POST", headers: {
-    origin: config.origin, "x-blizhniy-request": "1", "content-type": "application/json" }, body: "{private-invalid-input" });
+    host: new URL(config.origin).host, origin: config.origin, "x-blizhniy-request": "1", "content-type": "application/json" }, body: "{private-invalid-input" });
   await assert.rejects(readAuthJson(bad, config), { status: 400, message: "Invalid request" });
   await assert.rejects(readAuthJson(request({}, { "content-length": "9000" }), config), { status: 413 });
 });
 test("body reading has a deadline and does not trust content-length to cap bytes", async () => {
-  const headers = { origin: config.origin, "x-blizhniy-request": "1", "content-type": "application/json" };
+  const headers = { host: new URL(config.origin).host, origin: config.origin, "x-blizhniy-request": "1", "content-type": "application/json" };
   const body = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode("{")); } });
   const hanging = new Request(config.origin + "/api/account/register", { method: "POST", headers, body, duplex: "half" });
   await assert.rejects(readAuthJson(hanging, config, 25), { status: 408 });
   await assert.rejects(readAuthJson(request({ value: "a".repeat(4096) }, { "content-length": "2" }), config), { status: 413 });
+});
+test("Next's localhost-normalized URL does not override the explicitly configured Origin/actual Host", async () => {
+  const url = config.origin.replace("127.0.0.1", "localhost") + "/api/account/register";
+  assert.deepEqual(await readAuthJson(request({ valid: true }, { host: new URL(config.origin).host }, url), config), { valid: true });
+  await assert.rejects(readAuthJson(request({}, { host: "foreign.invalid", "x-forwarded-host": new URL(config.origin).host }, url), config), { status: 403 });
 });
 test("responses never expose cookies/tokens; no-store, no-referrer and anti-sniff headers are present", async () => {
   const response = authJson({ status: "accepted" }, 202);
