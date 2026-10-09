@@ -9,6 +9,8 @@
     "lint": "node node_modules/eslint/bin/eslint.js . --ignore-pattern 'vendor/postcss-selector-parser/**'",
     "seed:production": "node scripts/seed-production-data.mjs",
     "db:local": "node scripts/local-payment-db.mjs",
+    "db:check": "node --experimental-strip-types scripts/check-postgres.mjs",
+    "test:postgres:local": "node --experimental-strip-types --test tests/postgres-integration.mjs",
     "supabase:local": "node scripts/local-supabase.mjs",
     "dev:local": "node scripts/local-supabase.mjs dev",
     "test:app:local": "node --test tests/local-supabase-integration.mjs",
@@ -19,12 +21,14 @@
     "lottie-web": "^5.13.0",
     "lucide-react": "^0.468.0",
     "next": "^15.5.27",
+    "pg": "8.23.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@types/node": "^22.10.2",
+    "@types/pg": "8.23.1",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "autoprefixer": "^10.4.20",
