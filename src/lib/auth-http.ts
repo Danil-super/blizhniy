@@ -14,8 +14,9 @@ export function readLocalAuthConfig(env: NodeJS.ProcessEnv = process.env): Local
   try {
     const app = new URL(origin);
     const mail = new URL(mailUrl);
+    if (!["http:", "https:"].includes(app.protocol) || mail.protocol !== "http:") return invalid();
     for (const url of [app, mail]) {
-      if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || Number(url.port) < 1024 ||
+      if (url.hostname !== "127.0.0.1" || Number(url.port) < 1024 ||
           url.username || url.password || url.search || url.hash) return invalid();
     }
     if (origin !== app.origin || mailUrl !== `${mail.origin}/messages` || !/^[a-zA-Z0-9_-]{32,128}$/.test(rateSecret)) return invalid();

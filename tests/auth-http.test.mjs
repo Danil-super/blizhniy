@@ -33,6 +33,16 @@ test("same-origin JSON POST with the explicit request header passes; cross-site,
   await assert.rejects(readAuthJson(request({}, {}, "http://127.0.0.1:4044/api/account/register"), config), { status: 403 });
   await assert.rejects(readAuthJson(request({}, {}, undefined, "GET"), config), { status: 405 });
 });
+test("local HTTPS origin is explicit and protected by the same exact Origin and Host checks", async () => {
+  const secure = readLocalAuthConfig({ ...env, BLIZHNIY_AUTH_ORIGIN: "https://127.0.0.1:3037" });
+  const headers = { host: "127.0.0.1:3037", origin: secure.origin, "content-type": "application/json", "x-blizhniy-request": "1" };
+  assert.deepEqual(await readAuthJson(new Request(secure.origin + "/api/account/login", { method: "POST", headers, body: "{}" }), secure), {});
+  await assert.rejects(readAuthJson(new Request(secure.origin + "/api/account/login", { method: "POST", headers: { ...headers, origin: env.BLIZHNIY_AUTH_ORIGIN }, body: "{}" }), secure), { status: 403 });
+  for (const origin of ["https://localhost:3037", "https://foreign.invalid:3037", "https://127.0.0.1:3037/", "ftp://127.0.0.1:3037"]) {
+    assert.throws(() => readLocalAuthConfig({ ...env, BLIZHNIY_AUTH_ORIGIN: origin }));
+  }
+  assert.throws(() => readLocalAuthConfig({ ...env, BLIZHNIY_AUTH_ORIGIN: secure.origin, NODE_ENV: "production" }));
+});
 test("invalid JSON and oversized/truncated body fail without echoing the payload", async () => {
   await assert.rejects(readAuthJson(request({ value: "a".repeat(4096) }), config), { status: 413 });
   const bad = new Request(config.origin + "/api/account/register", { method: "POST", headers: {
