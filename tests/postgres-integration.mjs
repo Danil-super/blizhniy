@@ -22,7 +22,7 @@ const docker = async (args) => (await run("docker", ["--host", "unix:///var/run/
   env: dockerEnv, timeout: 20000, maxBuffer: 1024 * 1024,
 })).stdout.trim();
 
-test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", { timeout: 60000 }, async (suite) => {
+test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", { timeout: 180000 }, async (suite) => {
   let id;
   let db;
   const certificates = mkdtempSync(join(tmpdir(), "blizhniy-pg-tls-test-"));
@@ -129,6 +129,8 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
       }), { code: "42501" });
       await db.query("drop role rate_test_anonymous");
     });
+    const { testRegistrationWeb } = await import("./registration-web-integration.mjs");
+    await testRegistrationWeb(suite, db, env);
     const cert = join(certificates, "server.crt");
     const key = join(certificates, "server.key");
     const installCertificate = async (subjectAltName) => {

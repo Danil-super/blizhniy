@@ -1,6 +1,6 @@
 # PostgreSQL: серверный контур перехода
 
-Новый серверный модуль `src/lib/postgres.ts` не зависит от Supabase и пока не подключён к маршрутам сайта. Он предоставляет параметризованный `query`, транзакцию на одном соединении и `close`. Создавайте один экземпляр на процесс, не на HTTP-запрос. Транзакционные запросы нужно `await` внутри callback; внешние платёжные вызовы не держат транзакцию открытой.
+Новый серверный модуль `src/lib/postgres.ts` не зависит от Supabase. К нему подключён только явно включаемый локальный registration API; действующие маршруты сайта используют прежний backend. Он предоставляет параметризованный `query`, транзакцию на одном соединении и `close`. Создавайте один экземпляр на процесс, не на HTTP-запрос. Транзакционные запросы нужно `await` внутри callback; внешние платёжные вызовы не держат транзакцию открытой.
 
 ## Конфигурация и диагностика
 
@@ -41,7 +41,22 @@ Node.js 22. Передайте серверу все `BLIZHNIY_DB_*` из `.env.
 
 `0002-registration.sql` применяется после `0001`, транзакционно и однократно. `0002-registration.down.sql` отказывается удалять непустые добавленные таблицы, сохраняет identity и не использует CASCADE. Runtime grants должны давать INSERT/SELECT, но не UPDATE legal records; прямое редактирование отметок не является пользовательским сценарием. Public grants отозваны. Юридические отметки означают принятие соглашения и ознакомление с политикой, **не** согласие на рекламу/обмен ПД.
 
-Следующий этап — same-origin POST, CSRF/origin, общий rate limit и исключительно локальный почтовый транспорт; затем независимая от Supabase форма и реальный браузер. Обычный GET ссылки не должен потреблять токен (почтовые сканеры), полный URL нельзя логировать. Этот этап пока не реализован и не опубликован.
+## Локальный HTTP и перехват писем
+
+Только `BLIZHNIY_AUTH_MODE=local` при development/test, явной loopback PostgreSQL и SSL disable. Origin — строго `http://127.0.0.1:<port>`; mail URL — строго `http://127.0.0.1:<port>/messages`, порт ≥1024. Секрет limiter — случайные 32+ символов вне Git. Пустой mode отключает маршруты (404), неверная/production-конфигурация отказывает (503) до создания пула. Пул/registry один на процесс; менять конфигурацию нужно перезапуском. Dev-сервер обязательно слушает **127.0.0.1**, не 0.0.0.0.
+
+- `POST /api/account/register`: прежний strict registration input, только synthetic `*.invalid`; новый/существующий адрес получает одинаковый `202 {status:"accepted"}` без mail token/user id/email. Не считается безопасным повторением доставки письма: после неопределённого commit/недоставки используйте password-gated resend, не замену пароля через signup.
+- `POST /api/account/resend`: ровно email/password, такой же 202 независимо от результата проверки аккаунта.
+- `POST /api/account/confirm`: ровно `{token}`, 200 `{status:"confirmed"}` или 400 INVALID_CONFIRMATION; неверный shape — 422. Сессия/cookie не выдаётся. GET любого существующего действия — 405 без потребления токена; неизвестное действие — 404.
+- Все POST требуют точный Origin, фактический Host из конфигурации, `X-Blizhniy-Request: 1`, JSON, отсутствие query и cross-site Fetch Metadata. Не используем клиентские Forwarded headers для определения целевого Origin. **NextURL нормализует 127.0.0.1 в localhost**, поэтому именно Host + настроенный Origin, не внутренний URL.hostname, являются проверяемой границей. Body ≤4096 байт (считаем реальные байты, не только Content-Length), deadline 2 с. Ответы no-store/no-referrer/nosniff.
+- Общий PostgreSQL limiter: фиксированное окно 15 минут, 60 запросов всего + 5 на canonical email, HMAC вместо plaintext. Счётчики не сбрасываются при рестарте; отказ БД — 503, лимит — 429/Retry-After 900. Это консервативная **локальная**, не production per-IP политика; production требует trusted proxy/per-IP и общих resource limits.
+- Почтовый transport — только loopback capture HTTP, не SMTP. Ссылка `${origin}/auth/local/confirm#token=...`; фрагмент не попадает в access log/Referer. Письмо не уходит реальным получателям. Нулевой envelope при дубликате/неверном resend проходит тот же capture-вызов, чтобы не создавать раннюю ветку по наличию аккаунта. Capture authenticated HMAC-derived bearer, redirects запрещены, deadline 2 с, ожидается 204. Сбой логируется без payload, ответ остаётся 202; pending account можно подтвердить после password-gated resend.
+
+Opt-in integration runner запускает свою PostgreSQL, свой Next.js на динамическом loopback-порту и свой in-memory capture без SMTP-forwarder/публичного inbox API. `.env`/реальные SMTP ключи не читаются; данные синтетические, процессы и контейнер только собственные. Не используем legacy Supabase Mailpit.
+
+Наблюдаемость локального этапа: structured `local_auth_request` (requestId, entryPoint=http, allowlisted operation/status/code, durationMs) и `local_auth_mail_failed` с тем же ID; ID передаётся capture. Нет URL/body/email/IP/token/password в логах. Вопросы: какой guard отказывает, растёт ли 429/503, сработал ли capture, какова latency? Эти события дают request counts/error counts и распределение latency для локальной диагностики; полноценные production metrics/traces/alerts — ещё задача 11.
+
+Следующий этап — независимая от Supabase форма и реальный браузер. Нельзя включать этот локальный режим на публичном сервере вместо российского SMTP/production Auth.
 
 Основания: [OWASP email verification](https://cheatsheetseries.owasp.org/cheatsheets/Email_Validation_and_Verification_Cheat_Sheet.html), [OWASP single-use tokens](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html), [PostgreSQL row locks](https://www.postgresql.org/docs/18/sql-select.html#SQL-FOR-UPDATE-SHARE).
 
