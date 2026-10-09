@@ -1,0 +1,86 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { test } from "node:test";
+import vm from "node:vm";
+
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
+const user = { id: "12345678-1234-4321-8765-123456789abc", email: "owner@example.invalid", role: "user", isBlocked: false };
+function setup(payload, status = 200, failure = false) {
+  const calls = [];
+  const exports = {};
+  const source = readFileSync(new URL("../src/lib/local-account.ts", import.meta.url), "utf8");
+  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
+    exports, AbortSignal, fetch: async (url, init) => {
+      calls.push({ url, init });
+      if (failure) throw new Error("sensitive transport failure");
+      return Response.json(payload, { status });
+    }, require: () => { throw new Error("Unexpected browser adapter import"); },
+  });
+  return { api: exports.localAccount, calls, source };
+}
+test("account adapter sends only same-origin JSON and never trims password or persists credentials", async () => {
+  const app = setup({ status: "authenticated", user });
+  assert.deepEqual(JSON.parse(JSON.stringify(await app.api.login(user.email, "  Synthetic passphrase 2026!  "))), user);
+  const [{ url, init }] = app.calls;
+  assert.equal(url, "/api/account/login");
+  assert.equal(init.method, "POST");
+  assert.equal(init.credentials, "same-origin");
+  assert.equal(init.cache, "no-store");
+  assert.equal(init.redirect, "error", "credential-bearing POST must never follow a redirect");
+  assert.deepEqual(JSON.parse(init.body), { email: user.email, password: "  Synthetic passphrase 2026!  " });
+  assert.equal(init.headers["X-Blizhniy-Request"], "1");
+  assert.equal(init.headers["Content-Type"], "application/json");
+  assert.ok(init.signal);
+  assert.doesNotMatch(app.source, /supabase|localStorage|sessionStorage|document\.cookie|node:crypto/i);
+});
+test("only the specific unauthenticated session response means anonymous", async () => {
+  assert.equal(await setup({ error: { code: "UNAUTHENTICATED" } }, 401).api.session(), null);
+  const app = setup({ user });
+  assert.deepEqual(JSON.parse(JSON.stringify(await app.api.session())), user);
+  assert.deepEqual(JSON.parse(app.calls[0].init.body), {});
+  for (const [body, status] of [[{ error: { code: "INVALID_CREDENTIALS" } }, 401], [{ error: { code: "UNAUTHENTICATED" } }, 503], [{ error: { code: "AUTH_UNAVAILABLE" } }, 503], [null, 200]]) {
+    await assert.rejects(setup(body, status).api.session(), (error) => error.code !== "UNAUTHENTICATED");
+  }
+});
+test("untrusted user payloads cannot create a signed-in view or inject secrets", async () => {
+  for (const change of [{ id: "not-a-uuid" }, { email: "x" }, { role: "superadmin" }, { isBlocked: true }, { token: "not-for-browser-state" }, { passwordHash: "not-for-browser-state" }]) {
+    await assert.rejects(setup({ user: { ...user, ...change } }).api.session(), { code: "AUTH_UNAVAILABLE" });
+  }
+  await assert.rejects(setup({ status: "authenticated", user, token: "not-for-browser-state" }).api.login(user.email, "Synthetic passphrase 2026!"), { code: "AUTH_UNAVAILABLE" });
+});
+test("finite errors survive but transport failures and arbitrary server messages are generic", async () => {
+  for (const [code, status] of [["INVALID_CREDENTIALS", 401], ["RATE_LIMITED", 429], ["HTTPS_REQUIRED", 503]]) {
+    await assert.rejects(setup({ error: { code } }, status).api.login(user.email, "Synthetic passphrase 2026!"), { code });
+  }
+  for (const app of [setup({ error: { code: "sensitive database error" } }, 503), setup({}, 200, true)]) {
+    await assert.rejects(app.api.login(user.email, "Synthetic passphrase 2026!"), { code: "AUTH_UNAVAILABLE" });
+  }
+  for (const code of ["INVALID_CREDENTIALS", "INVALID_INPUT", "RATE_LIMITED", "SYNTHETIC_EMAIL_REQUIRED"]) {
+    await assert.rejects(setup({ error: { code } }, 503).api.login(user.email, "Synthetic passphrase 2026!"), { code: "AUTH_UNAVAILABLE" });
+  }
+});
+test("logout is successful only for the exact successful response; no automatic retry", async () => {
+  const app = setup({ status: "logged_out" });
+  await app.api.logout();
+  assert.equal(app.calls.length, 1);
+  assert.equal(app.calls[0].url, "/api/account/logout");
+  for (const payload of [{ status: "authenticated" }, { status: "logged_out", token: "not-for-browser-state" }]) {
+    await assert.rejects(setup(payload).api.logout(), { code: "AUTH_UNAVAILABLE" });
+  }
+  const failed = setup({ error: { code: "AUTH_UNAVAILABLE" } }, 503);
+  await assert.rejects(failed.api.logout(), { code: "AUTH_UNAVAILABLE" });
+  assert.equal(failed.calls.length, 1);
+});
+test("server rendering the account form never reads a session or includes a previous identity", () => {
+  const source = readFileSync(new URL("../src/components/auth/LocalAccountForm.tsx", import.meta.url), "utf8");
+  const exports = {};
+  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
+    exports, require: (name) => name === "@/lib/local-account" ? { localAccount: new Proxy({}, { get: () => { throw new Error("Session read during SSR"); } }) } : require(name),
+  });
+  const html = require("react-dom/server").renderToStaticMarkup(require("react").createElement(exports.LocalAccountForm));
+  assert.match(html, /Проверяем сессию/);
+  assert.doesNotMatch(html, /owner@example|type="password"|Администратор/);
+  assert.doesNotMatch(source, /supabase|localStorage|sessionStorage|document\.cookie/i);
+});

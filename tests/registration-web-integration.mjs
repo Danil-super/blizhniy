@@ -340,6 +340,172 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
         assert.deepEqual(errors, [], "positive cookie lifecycle has a clean console");
       } finally { await context.close(); }
     });
+    await suite.test("real login form restores sessions, hides the previous account and logs out without external requests", async () => {
+      const firstId = await seedUser("ui-account-a@example.invalid");
+      const secondId = await seedUser("ui-account-b@example.invalid");
+      const context = await browser.newContext();
+      const foreign = [];
+      const errors = [];
+      await context.route("**/*", (route) => {
+        if (new URL(route.request().url()).origin !== origin) { foreign.push("foreign"); return route.abort(); }
+        return route.continue();
+      });
+      const page = await context.newPage();
+      page.setDefaultTimeout(10000);
+      page.on("pageerror", () => errors.push("pageerror"));
+      page.on("console", (message) => { if (["error", "warning"].includes(message.type())) errors.push(message.type() + ":" + message.text()); });
+      const login = async (email, value = password) => {
+        await page.getByLabel("Email", { exact: true }).fill(email);
+        await page.getByLabel("Пароль", { exact: true }).fill(value);
+        await page.getByRole("button", { name: "Войти", exact: true }).click();
+      };
+      try {
+        await page.goto(`${origin}/auth/local/login`);
+        await login("ui-account-a@example.invalid");
+        await page.getByRole("heading", { name: "Локальный аккаунт", exact: true }).waitFor();
+        await page.getByText("ui-account-a@example.invalid", { exact: true }).waitFor();
+        assert.equal(await page.locator('input[type="password"]').count(), 0);
+        await page.reload();
+        await page.getByText("ui-account-a@example.invalid", { exact: true }).waitFor();
+        await page.getByRole("button", { name: "Сменить аккаунт", exact: true }).click();
+        await page.getByRole("heading", { name: "Смена аккаунта", exact: true }).waitFor();
+        assert.equal(await page.getByText("ui-account-a@example.invalid", { exact: true }).count(), 0);
+        await login("ui-account-b@example.invalid", "Wrong synthetic passphrase 2026!");
+        await page.getByRole("alert").filter({ hasText: "Неверный email или пароль" }).waitFor();
+        assert.equal(await page.getByRole("alert").filter({ hasText: "Неверный email или пароль" }).evaluate((element) => element === document.activeElement), true);
+        assert.equal((await db.query("select count(*)::integer as count from app.sessions where user_id=$1", [firstId])).rows[0].count, 1);
+        assert.equal(await page.getByText("ui-account-a@example.invalid", { exact: true }).count(), 0);
+        await login("ui-account-b@example.invalid");
+        await page.getByText("ui-account-b@example.invalid", { exact: true }).waitFor();
+        assert.equal((await db.query("select count(*)::integer as count from app.sessions where user_id=$1", [firstId])).rows[0].count, 0);
+        await page.getByRole("button", { name: "Выйти", exact: true }).click();
+        await page.getByLabel("Email", { exact: true }).waitFor();
+        assert.equal((await db.query("select count(*)::integer as count from app.sessions where user_id=$1", [secondId])).rows[0].count, 0);
+        await page.reload();
+        await page.getByLabel("Email", { exact: true }).waitFor();
+        assert.deepEqual(foreign, []);
+        assert.ok(errors.every((entry) => /^error:.*server responded with a status of 401/.test(entry)), "only intentional anonymous/wrong-password 401 resource errors");
+      } finally { await context.close(); }
+    });
+    await suite.test("other tabs invalidate account views and a held old lookup cannot restore the previous user", async () => {
+      await seedUser("ui-tabs-a@example.invalid");
+      await seedUser("ui-tabs-b@example.invalid");
+      const context = await browser.newContext();
+      const first = await context.newPage();
+      const second = await context.newPage();
+      first.setDefaultTimeout(10000); second.setDefaultTimeout(10000);
+      let release;
+      let started;
+      let fulfilled;
+      const held = new Promise((resolve) => { release = resolve; });
+      const received = new Promise((resolve) => { started = resolve; });
+      const delivered = new Promise((resolve) => { fulfilled = resolve; });
+      try {
+        await first.goto(`${origin}/auth/local/login`);
+        await first.getByLabel("Email", { exact: true }).fill("ui-tabs-a@example.invalid");
+        await first.getByLabel("Пароль", { exact: true }).fill(password);
+        await first.getByRole("button", { name: "Войти", exact: true }).click();
+        await first.getByText("ui-tabs-a@example.invalid", { exact: true }).waitFor();
+        await second.goto(`${origin}/auth/local/login`);
+        await second.getByText("ui-tabs-a@example.invalid", { exact: true }).waitFor();
+        let intercept = true;
+        await first.route("**/api/account/session", async (route) => {
+          if (!intercept) return route.continue();
+          intercept = false;
+          const request = route.request();
+          const response = await fetchLocal("/api/account/session", { method: "POST", headers: await request.allHeaders(), body: request.postData() });
+          const body = await response.text();
+          assert.equal(JSON.parse(body).user.email, "ui-tabs-a@example.invalid");
+          started(); await held;
+          await route.fulfill({ status: response.status, headers: Object.fromEntries(response.headers), body });
+          fulfilled();
+        });
+        await first.getByRole("button", { name: "Проверить сессию", exact: true }).click();
+        await received;
+        assert.equal(await first.getByText("ui-tabs-a@example.invalid", { exact: true }).count(), 0);
+        await second.getByRole("button", { name: "Сменить аккаунт", exact: true }).click();
+        await second.getByLabel("Email", { exact: true }).fill("ui-tabs-b@example.invalid");
+        await second.getByLabel("Пароль", { exact: true }).fill(password);
+        await second.getByRole("button", { name: "Войти", exact: true }).click();
+        await second.getByText("ui-tabs-b@example.invalid", { exact: true }).waitFor();
+        await first.getByText("ui-tabs-b@example.invalid", { exact: true }).waitFor();
+        const oldResponse = first.waitForResponse((response) => response.url().endsWith("/api/account/session"));
+        release(); await delivered; await (await oldResponse).finished();
+        await first.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        assert.equal(await first.getByText("ui-tabs-a@example.invalid", { exact: true }).count(), 0, "late A must not overwrite B");
+        await first.getByText("ui-tabs-b@example.invalid", { exact: true }).waitFor();
+        await second.getByRole("button", { name: "Выйти", exact: true }).click();
+        await first.getByLabel("Email", { exact: true }).waitFor();
+        assert.equal(await first.getByText("ui-tabs-b@example.invalid", { exact: true }).count(), 0);
+      } finally { release(); await context.close(); }
+    });
+    await suite.test("unknown login/logout results hide identity until rechecked; role and block are not cached", async () => {
+      const id = await seedUser("ui-fault@example.invalid");
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      page.setDefaultTimeout(10000);
+      try {
+        await page.goto(`${origin}/auth/local/login`);
+        await page.route("**/api/account/login", async (route) => {
+          const request = route.request();
+          const response = await fetchLocal("/api/account/login", { method: "POST", headers: await request.allHeaders(), body: request.postData() });
+          assert.equal(response.status, 200);
+          // Simulate an intermediary failure after commit and cookie delivery, not a password failure.
+          await route.fulfill({ status: 503, headers: { "content-type": "application/json", "set-cookie": response.headers.get("set-cookie") }, body: JSON.stringify({ error: { code: "AUTH_UNAVAILABLE" } }) });
+        });
+        await page.getByLabel("Email", { exact: true }).fill("ui-fault@example.invalid");
+        await page.getByLabel("Пароль", { exact: true }).fill(password);
+        await page.getByRole("button", { name: "Войти", exact: true }).click();
+        await page.getByRole("alert").filter({ hasText: "успешный вход или выход не подтверждён" }).waitFor();
+        assert.equal(await page.getByText("ui-fault@example.invalid", { exact: true }).count(), 0);
+        await page.getByRole("button", { name: "Проверить сессию", exact: true }).click();
+        await page.getByText("ui-fault@example.invalid", { exact: true }).waitFor();
+        await page.route("**/api/account/logout", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "AUTH_UNAVAILABLE" } }) }));
+        await page.getByRole("button", { name: "Выйти", exact: true }).click();
+        await page.getByRole("alert").filter({ hasText: "успешный вход или выход не подтверждён" }).waitFor();
+        assert.equal(await page.getByLabel("Email", { exact: true }).count(), 0, "network error is not a successful anonymous view");
+        assert.equal(await page.getByText("ui-fault@example.invalid", { exact: true }).count(), 0);
+        assert.equal((await db.query("select count(*)::integer as count from app.sessions where user_id=$1", [id])).rows[0].count, 1);
+        await db.query("update app.users set role='admin' where id=$1", [id]);
+        await page.getByRole("button", { name: "Проверить сессию", exact: true }).click();
+        await page.getByText(/Администратор · права проверяет сервер/).waitFor();
+        await db.query("update app.users set is_blocked=true where id=$1", [id]);
+        await page.getByRole("button", { name: "Проверить сессию", exact: true }).click();
+        await page.getByLabel("Email", { exact: true }).waitFor();
+        assert.equal(await page.getByText(/Администратор · права проверяет сервер/).count(), 0);
+      } finally { await context.close(); }
+    });
+    await suite.test("login and active account fit mobile/desktop, expose labels, keyboard focus and unobscured touch targets", async () => {
+      await seedUser("ui-layout@example.invalid");
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      page.setDefaultTimeout(10000);
+      try {
+        for (const width of [320, 768, 1024, 1440]) {
+          await page.setViewportSize({ width, height: 900 });
+          await page.goto(`${origin}/auth/local/login`);
+          await page.getByLabel("Email", { exact: true }).waitFor();
+          assert.equal(await page.getByRole("heading", { level: 1 }).count(), 1);
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+          await page.getByLabel("Email", { exact: true }).focus(); await page.keyboard.press("Tab");
+          assert.equal(await page.getByLabel("Пароль", { exact: true }).evaluate((element) => element === document.activeElement), true);
+          const button = page.getByRole("button", { name: "Войти", exact: true });
+          assert.equal(await button.evaluate((element) => getComputedStyle(element).backgroundColor), "rgb(8, 117, 209)");
+          await button.scrollIntoViewIfNeeded();
+          assert.equal(await button.evaluate((element) => { const box = element.getBoundingClientRect(); return box.height >= 44 && element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)); }), true);
+          if (width === 320 || width === 1440) await page.screenshot({ path: `/tmp/blizhniy-account-login-${width}.png`, fullPage: true });
+        }
+        await page.getByLabel("Email", { exact: true }).fill("ui-layout@example.invalid");
+        await page.getByLabel("Пароль", { exact: true }).fill(password);
+        await page.getByRole("button", { name: "Войти", exact: true }).click();
+        await page.getByText("ui-layout@example.invalid", { exact: true }).waitFor();
+        for (const width of [320, 1440]) {
+          await page.setViewportSize({ width, height: 900 });
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+          await page.screenshot({ path: `/tmp/blizhniy-account-active-${width}.png`, fullPage: true });
+        }
+      } finally { await context.close(); }
+    });
     assert.equal(output.includes(signup.email), false, "no email in app logs");
     assert.equal(output.includes(password), false, "no password in app logs");
   } finally {
