@@ -1,5 +1,7 @@
 .env
 .env*.local
+*.pem
+*.key
 .next/
 .next-local/
 supabase/.temp/

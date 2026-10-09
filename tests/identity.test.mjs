@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
-import { hashPassword, verifyPassword, generateSessionToken, hashSessionToken } from "../src/lib/identity.ts";
+import { hashPassword, verifyPassword, generateSessionToken, hashSessionToken, IdentityStore } from "../src/lib/identity.ts";
 
 const password = "  Тестовая фраза 2026!  ";
 
@@ -55,11 +55,26 @@ test("malformed session tokens are rejected before database access", () => {
   }
 });
 
+test("invalid tokens cannot make database calls, including logout and data-subject verification", async () => {
+  const store = new IdentityStore({ query() { throw new Error("Unexpected database call"); } });
+  assert.equal(await store.resolveSession("malformed"), null);
+  assert.equal(await store.resolveDataSubjectSession("malformed"), null);
+  await store.revokeSession("malformed");
+});
+
+test("a database outage is propagated; it never grants access or falls back to demo auth", async () => {
+  const error = new Error("Database unavailable");
+  const store = new IdentityStore({ query: async () => { throw error; } });
+  await assert.rejects(store.resolveSession("a".repeat(64)), (actual) => actual === error);
+  await assert.rejects(store.login("first@example.invalid", password), (actual) => actual === error);
+});
+
 test("identity primitives refuse browser execution", async () => {
   globalThis.window = {};
   try {
     assert.throws(() => generateSessionToken(), /server-only/);
     assert.throws(() => hashSessionToken("a".repeat(64)), /server-only/);
+    assert.throws(() => new IdentityStore({}), /server-only/);
     await assert.rejects(hashPassword(password), /server-only/);
     await assert.rejects(verifyPassword(password, "broken"), /server-only/);
   } finally { delete globalThis.window; }

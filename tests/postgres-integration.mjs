@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { rootCertificates } from "node:tls";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { createPostgresDatabase } from "../src/lib/postgres.ts";
 
 const run = promisify(execFile);
@@ -85,6 +86,13 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
       const wrong = createPostgresDatabase({ ...env, BLIZHNIY_DB_PASSWORD: "synthetic-wrong-password" });
       try { await assert.rejects(wrong.query("select 1"), { message: "PostgreSQL operation failed", code: "28P01" }); }
       finally { await wrong.close(); }
+    });
+    const { testIdentity } = await import("./identity-integration.mjs");
+    await testIdentity(suite, db, async (filename) => {
+      if (!["0001-identity.sql", "0001-identity.down.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
+      const source = fileURLToPath(new URL(`../database/migrations/${filename}`, import.meta.url));
+      await docker(["cp", source, `${id}:/tmp/blizhniy-identity.sql`]);
+      await docker(["exec", id, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "blizhniy_test", "-f", "/tmp/blizhniy-identity.sql"]);
     });
     const cert = join(certificates, "server.crt");
     const key = join(certificates, "server.key");
