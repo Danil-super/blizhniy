@@ -2,6 +2,7 @@ import { fstatSync, lstatSync, readFileSync, readdirSync, realpathSync } from "n
 import { isAbsolute, resolve } from "node:path";
 import { createLocalMediaFileStore } from "../src/lib/media-files.ts";
 import { decodeFileWrite, FILE_WRITE_MAX_BYTES } from "../src/lib/media-file-protocol.ts";
+import { decodeFileInspection, encodeFileObservation, FILE_INSPECT_REQUEST_BYTES } from "../src/lib/media-file-inspection-protocol.ts";
 
 const same = (a, b) => a.dev === b.dev && a.ino === b.ino;
 export function assertFileFence(root) {
@@ -23,11 +24,19 @@ export function assertFileFence(root) {
   return directory;
 }
 
-export async function runFileWorker(createStore = createLocalMediaFileStore) {
+export async function runFileWorker(createStore = createLocalMediaFileStore, mode = "write") {
+  if (!["write", "inspect"].includes(mode)) throw new Error("File operation unavailable");
   const root = process.argv[2], proof = assertFileFence(root);
   const chunks = []; let size = 0;
   for await (const chunk of process.stdin) {
-    size += chunk.length; if (size > FILE_WRITE_MAX_BYTES || chunks.length >= 256) throw new Error("File write unavailable"); chunks.push(chunk);
+    size += chunk.length; if (size > (mode === "write" ? FILE_WRITE_MAX_BYTES : FILE_INSPECT_REQUEST_BYTES) || chunks.length >= 256) throw new Error("File operation unavailable"); chunks.push(chunk);
+  }
+  if (mode === "inspect") {
+    const { record, attemptId } = decodeFileInspection(Buffer.concat(chunks, size));
+    if (!same(proof, assertFileFence(root))) throw new Error("File fence unavailable");
+    const observation = await (await createStore(root, proof)).inspect(record, attemptId);
+    if (!same(proof, assertFileFence(root))) throw new Error("File fence unavailable");
+    return encodeFileObservation(observation);
   }
   const { record, bytes, attemptId } = decodeFileWrite(Buffer.concat(chunks, size));
   if (!same(proof, assertFileFence(root))) throw new Error("File fence unavailable");

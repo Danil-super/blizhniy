@@ -2,10 +2,11 @@ import { spawn } from "node:child_process";
 import { constants, type BigIntStats } from "node:fs";
 import { open, realpath, type FileHandle } from "node:fs/promises";
 import { isAbsolute, resolve, join } from "node:path";
-import type { MediaFileRecord } from "./media-files";
+import type { MediaFileRecord, MediaFileObservation } from "./media-files";
 import { encodeFileWrite } from "./media-file-protocol.ts";
+import { encodeFileInspection, decodeFileObservation, FILE_INSPECT_REPLY_BYTES } from "./media-file-inspection-protocol.ts";
 
-type WorkerCode = "INVALID_MEDIA_FILE_WRITE" | "MEDIA_FILE_WORKER_BUSY" | "MEDIA_FILE_WORKER_UNAVAILABLE";
+type WorkerCode = "INVALID_MEDIA_FILE_WRITE" | "INVALID_MEDIA_FILE_INSPECTION" | "MEDIA_FILE_WORKER_BUSY" | "MEDIA_FILE_WORKER_UNAVAILABLE";
 export class MediaFileWorkerError extends Error {
   readonly code: WorkerCode;
   constructor(code: WorkerCode) { super("Media file worker failed"); this.name = "MediaFileWorkerError"; this.code = code; }
@@ -40,7 +41,7 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
     } catch { try { await close(lock); } finally { await close(directory); } throw unavailable(); }
   };
   const initial = await acquireDescriptors(); try { await close(initial.lock); } finally { await close(initial.directory); }
-  const execute = async (frame: Buffer, signal?: AbortSignal): Promise<void> => {
+  const execute = async (frame: Buffer, mode: "write" | "inspect", signal?: AbortSignal): Promise<Buffer> => {
       check();
       if (signal?.aborted) throw unavailable();
       if (state.busy) throw new MediaFileWorkerError("MEDIA_FILE_WORKER_BUSY");
@@ -48,16 +49,16 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
       try {
         handles = await acquireDescriptors(); if (signal?.aborted) throw unavailable();
         const child = spawn("/usr/bin/flock", ["--no-fork", "--exclusive", "--nonblock", "--conflict-exit-code=73", "/proc/self/fd/3",
-          process.execPath, "--experimental-strip-types", "--no-warnings", "--max-old-space-size=64", join(appDirectory, "scripts/media-file-worker.mjs"), rootDirectory,
+          process.execPath, "--experimental-strip-types", "--no-warnings", "--max-old-space-size=64", join(appDirectory, "scripts/media-file-worker.mjs"), rootDirectory, mode,
         ], { env: { NODE_ENV: "test", LANG: "C", UV_THREADPOOL_SIZE: "2" }, shell: false, stdio: ["pipe", "pipe", "ignore", handles.lock.fd, handles.directory.fd] });
         // Extra inherited FDs select Node's general overload; fd 0/1 are fixed pipes above.
         const stdin = child.stdin!, stdout = child.stdout!;
-        await new Promise<void>((accept, reject) => {
+        return await new Promise<Buffer>((accept, reject) => {
           let reply = Buffer.alloc(0), stopping = false, finished = false, exited = false;
           let stopDeadline: ReturnType<typeof setTimeout> | undefined;
           const finish = (error?: MediaFileWorkerError) => {
             if (finished) return; finished = true; clearTimeout(deadline); clearTimeout(stopDeadline); signal?.removeEventListener("abort", stop);
-            stdin.destroy(); stdout.destroy(); if (error) reject(error); else accept();
+            stdin.destroy(); stdout.destroy(); if (error) reject(error); else accept(reply);
           };
           const stop = () => {
             if (finished || stopping) return; stopping = true;
@@ -71,11 +72,17 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
           child.on("error", () => { if (child.pid) stop(); });
           stdin.on("error", () => { /* EPIPE can mean immediate lock conflict; wait for close. */ });
           stdout.on("error", stop);
-          stdout.on("data", (chunk: Buffer) => { if (finished || stopping) return; if (reply.length + chunk.length > 1) { stop(); return; } reply = Buffer.concat([reply, chunk]); });
+          stdout.on("data", (chunk: Buffer) => { if (finished || stopping) return; if (reply.length + chunk.length > (mode === "write" ? 1 : FILE_INSPECT_REPLY_BYTES)) { stop(); return; } reply = Buffer.concat([reply, chunk]); });
           child.on("close", code => {
             if (finished) return;
             if (!stopping && code === 73 && reply.length === 0) { finish(new MediaFileWorkerError("MEDIA_FILE_WORKER_BUSY")); return; }
-            if (!stopping && code === 0 && reply.length === 1 && reply[0] === 0) { finish(); return; }
+            if (!stopping && code === 0) {
+              try {
+                if (mode === "inspect") decodeFileObservation(reply);
+                else if (reply.length !== 1 || reply[0] !== 0) throw unavailable();
+                finish(); return;
+              } catch { /* Invalid reply is UNKNOWN, not successful observation. */ }
+            }
             state.disabled = true; finish(unavailable());
           });
           if (signal?.aborted) stop();
@@ -88,7 +95,13 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
     async write(record: MediaFileRecord, bytes: Uint8Array, attemptId: string, signal?: AbortSignal): Promise<void> {
       check(); let frame: Buffer;
       try { frame = encodeFileWrite(record, bytes, attemptId); } catch { throw new MediaFileWorkerError("INVALID_MEDIA_FILE_WRITE"); }
-      await execute(frame, signal);
+      await execute(frame, "write", signal);
+    },
+    /** Local read-only snapshot, not a SQL reconciliation or cleanup capability. */
+    async inspect(record: MediaFileRecord, attemptId: string, signal?: AbortSignal): Promise<MediaFileObservation> {
+      check(); let frame: Buffer;
+      try { frame = encodeFileInspection(record, attemptId); } catch { throw new MediaFileWorkerError("INVALID_MEDIA_FILE_INSPECTION"); }
+      return decodeFileObservation(await execute(frame, "inspect", signal));
     },
   };
 }

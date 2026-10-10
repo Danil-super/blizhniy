@@ -7,6 +7,7 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { fileWorkerModule } from "./media-file-worker-module.mjs";
+import { encodeFileObservation } from "../src/lib/media-file-inspection-protocol.ts";
 
 const bytes = Buffer.from("524946460400000057454250", "hex");
 const metadata = () => ({ id: randomUUID(), mimeType: "image/webp", width: 1, height: 1, size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") });
@@ -70,4 +71,25 @@ test("browser, non-Linux and unsupported Node cannot spawn even with a private r
   for (const options of [{ browser: true }, { process: { platform: "darwin" } }, { process: { versions: { node: "20.20.2" } } }]) {
     await assert.rejects(fixture(t, options), { code: "MEDIA_FILE_WORKER_UNAVAILABLE" });
   }
+});
+test("inspection shares writer capacity and releases a validated report only after close", async t => {
+  const app = await fixture(t), observation = { final: "complete", temporary: "absent", linked: false }; let resolved = false;
+  const pending = app.worker.inspect(metadata(), randomUUID()).then(report => { resolved = true; return report; }); await app.started;
+  await assert.rejects(app.worker.write(metadata(), bytes, randomUUID()), { code: "MEDIA_FILE_WORKER_BUSY" });
+  const frame = encodeFileObservation(observation); app.child.stdout.write(frame.subarray(0, 2)); app.child.stdout.write(frame.subarray(2));
+  app.child.emit("exit", 0); await Promise.resolve(); assert.equal(resolved, false);
+  app.child.emit("close", 0); assert.deepEqual(await pending, observation); assert.equal(app.timers.size, 0);
+  assert.equal(Buffer.concat(app.input).length, 116); assert.equal(app.calls[0].args.at(-1), "inspect");
+});
+test("exit zero with truncated, invalid or contradictory inspection report is UNKNOWN and latches", async t => {
+  for (const frame of [Buffer.from([0]), Buffer.from("BFO1\x04\x00\x00", "binary"), Buffer.from("BFO1\x01\x00\x01", "binary")]) {
+    const app = await fixture(t), pending = app.worker.inspect(metadata(), randomUUID()), failure = fail(pending); await app.started;
+    app.child.stdout.write(frame); app.child.emit("close", 0); await failure; await fail(app.restart());
+  }
+});
+test("inspection overflow kills once and cannot return partial evidence before close", async t => {
+  const app = await fixture(t); let finished = false;
+  const failure = fail(app.worker.inspect(metadata(), randomUUID())).then(() => { finished = true; }); await app.started;
+  app.child.stdout.write(Buffer.alloc(8)); await Promise.resolve(); assert.equal(finished, false); assert.deepEqual(app.calls.filter(call => call === "SIGKILL"), ["SIGKILL"]);
+  app.child.emit("close", null, "SIGKILL"); await failure; await fail(app.restart());
 });

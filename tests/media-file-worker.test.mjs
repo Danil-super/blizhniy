@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { fileWorkerModule } from "./media-file-worker-module.mjs";
+import { encodeFileInspection } from "../src/lib/media-file-inspection-protocol.ts";
 
 const { createLocalMediaFileWorker } = await import("../src/lib/media-file-worker.ts");
 const { createLocalMediaFileStore } = await import("../src/lib/media-files.ts");
@@ -41,6 +42,7 @@ test("a separate live process holds the same inode lock: conflict starts no FS a
   try {
     await new Promise((resolve, reject) => { child.stdout.once("data", chunk => chunk.toString() === "locked" ? resolve() : reject(new Error("Unexpected fixture reply"))); child.once("error", reject); child.once("close", () => reject(new Error("Lock holder closed"))); });
     await failure(worker.write(metadata, bytes, randomUUID()), "MEDIA_FILE_WORKER_BUSY");
+    await failure(worker.inspect(metadata, randomUUID()), "MEDIA_FILE_WORKER_BUSY");
     assert.deepEqual(await fs.readdir(root), [".writer.lock"]);
   } finally { clearTimeout(guard); if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); await ended; }
   await worker.write(metadata, bytes, randomUUID());
@@ -61,6 +63,7 @@ test("replacement of a proven lock inode refuses I/O instead of splitting the fe
   await fs.rename(path.join(root, ".writer.lock"), path.join(root, "previous-lock"));
   await fs.writeFile(path.join(root, ".writer.lock"), "", { flag: "wx", mode: 0o600 });
   await failure(worker.write(record(), bytes, randomUUID()));
+  await failure(worker.inspect(record(), randomUUID()));
   assert.deepEqual((await fs.readdir(root)).sort(), [".writer.lock", "previous-lock"]);
 });
 test("invalid input and pre-aborted jobs cannot create files", async t => {
@@ -134,13 +137,15 @@ test("invoking the entry without its kernel lock cannot perform file effects", a
   const { encodeFileWrite } = await import("../src/lib/media-file-protocol.ts");
   const lock = await fs.open(path.join(root, ".writer.lock"), "r"), directory = await fs.open(root, "r");
   try {
-    const child = spawn(process.execPath, ["--experimental-strip-types", "--no-warnings", path.join(appRoot, "scripts/media-file-worker.mjs"), root], {
-      env: { NODE_ENV: "test" }, stdio: ["pipe", "pipe", "ignore", lock.fd, directory.fd],
-    });
-    const chunks = []; child.stdout.on("data", chunk => chunks.push(chunk)); child.stdin.on("error", () => {});
-    const finished = new Promise((resolve, reject) => { child.once("error", reject); child.once("close", resolve); });
-    child.stdin.end(encodeFileWrite(metadata, bytes, randomUUID())); assert.equal(await finished, 1);
-    assert.deepEqual(Buffer.concat(chunks), Buffer.from([1])); assert.deepEqual(await fs.readdir(root), [".writer.lock"]);
+    for (const mode of ["write", "inspect"]) {
+      const child = spawn(process.execPath, ["--experimental-strip-types", "--no-warnings", path.join(appRoot, "scripts/media-file-worker.mjs"), root, mode], {
+        env: { NODE_ENV: "test" }, stdio: ["pipe", "pipe", "ignore", lock.fd, directory.fd],
+      });
+      const chunks = []; child.stdout.on("data", chunk => chunks.push(chunk)); child.stdin.on("error", () => {});
+      const finished = new Promise((resolve, reject) => { child.once("error", reject); child.once("close", resolve); });
+      child.stdin.end(mode === "write" ? encodeFileWrite(metadata, bytes, randomUUID()) : encodeFileInspection(metadata, randomUUID())); assert.equal(await finished, 1);
+      assert.deepEqual(Buffer.concat(chunks), Buffer.from([1])); assert.deepEqual(await fs.readdir(root), [".writer.lock"]);
+    }
   } finally { await lock.close(); await directory.close(); }
 });
 test("root replacement cannot redirect an already configured writer", async t => {

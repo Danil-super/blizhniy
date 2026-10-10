@@ -44,7 +44,7 @@ test("private files persist across store restart with exact bytes and mode, with
   assert.equal(info.mode & 0o7777, 0o600); assert.equal(info.nlink, 1);
   const restarted = await module().createLocalMediaFileStore(root);
   assert.deepEqual(await restarted.read(metadata), bytes);
-  assert.deepEqual(Object.keys(restarted).sort(), ["read", "write"]);
+  assert.deepEqual(Object.keys(restarted).sort(), ["inspect", "read", "write"]);
 });
 test("competing writes publish one complete object and never overwrite a prior object", async t => {
   const { root, store } = await fixture(t), metadata = record();

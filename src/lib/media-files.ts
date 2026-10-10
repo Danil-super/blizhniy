@@ -5,6 +5,8 @@ import { isAbsolute, resolve } from "node:path";
 import { encodeMediaReply, MEDIA_MAX_OUTPUT_BYTES } from "./media-worker-protocol.ts";
 
 export type MediaFileRecord = { id: string; mimeType: "image/webp"; width: number; height: number; size: number; sha256: string };
+export type MediaFileStatus = "absent" | "complete" | "incomplete" | "unsafe";
+export type MediaFileObservation = { final: MediaFileStatus; temporary: MediaFileStatus; linked: boolean };
 type FileErrorCode = "INVALID_MEDIA_FILE" | "MEDIA_FILE_EXISTS" | "MEDIA_FILE_UNAVAILABLE";
 export class MediaFileError extends Error {
   readonly code: FileErrorCode;
@@ -48,6 +50,48 @@ export async function createLocalMediaFileStore(rootDirectory: string, expectedR
   };
   await withRoot(async () => undefined);
   return {
+    /** Snapshot of two known names, NOT ownership, durability or permission to delete/release. */
+    async inspect(input: MediaFileRecord, attemptId: string): Promise<MediaFileObservation> {
+      checkRuntime(); const record = snapshotRecord(input);
+      if (typeof attemptId !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(attemptId)) throw new MediaFileError("INVALID_MEDIA_FILE");
+      return withRoot(async (_directory, anchored) => {
+        const paths = [`${anchored}/${record.id}.webp`, `${anchored}/.pending-${attemptId}`];
+        const stat = async (path: string) => {
+          try { return await lstat(path, { bigint: true }); }
+          catch (error) { if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return null; throw error; }
+        };
+        const before = await Promise.all(paths.map(stat));
+        const stable = (a: BigIntStats | null, b: BigIntStats | null) => a === null ? b === null : b !== null && sameInode(a, b) &&
+          a.size === b.size && a.mode === b.mode && a.uid === b.uid && a.nlink === b.nlink && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+        // Two links are explainable only when BOTH known names reference this private inode.
+        const paired = before[0] !== null && before[1] !== null && privateFile(before[0]) && privateFile(before[1]) &&
+          sameInode(before[0], before[1]) && before[0].nlink === BigInt(2) && before[1].nlink === BigInt(2);
+        const inspect = async (path: string, initial: BigIntStats | null): Promise<MediaFileStatus> => {
+          if (!initial) return "absent";
+          if (!privateFile(initial) || initial.nlink !== BigInt(paired ? 2 : 1) || initial.size > BigInt(record.size)) return "unsafe";
+          let file: FileHandle | undefined;
+          try {
+            file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+            if (!stable(initial, await file.stat({ bigint: true }))) throw unavailable();
+            // Incomplete does not assert valid content or provenance. Nothing is deleted.
+            if (initial.size < BigInt(record.size)) return "incomplete";
+            const bytes = Buffer.alloc(record.size + 1); let length = 0;
+            while (length < bytes.length) {
+              const { bytesRead } = await file.read(bytes, length, bytes.length - length, length);
+              if (!bytesRead) break; length += bytesRead;
+            }
+            if (length !== record.size || !stable(initial, await file.stat({ bigint: true }))) throw unavailable();
+            try { encodeMediaReply({ ...record, bytes: bytes.subarray(0, length) }); }
+            catch { return "unsafe"; }
+            return "complete";
+          } finally { await file?.close().catch(() => { disabled = true; throw unavailable(); }); }
+        };
+        const final = await inspect(paths[0], before[0]), temporary = await inspect(paths[1], before[1]);
+        const after = await Promise.all(paths.map(stat));
+        if (before.some((info, index) => !stable(info, after[index]))) throw unavailable();
+        return { final, temporary, linked: paired && final !== "unsafe" && temporary !== "unsafe" };
+      });
+    },
     async write(input: MediaFileRecord, source: Uint8Array, attemptId?: string): Promise<void> {
       checkRuntime(); const record = snapshotRecord(input);
       if (attemptId !== undefined && (typeof attemptId !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(attemptId))) throw new MediaFileError("INVALID_MEDIA_FILE");
