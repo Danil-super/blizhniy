@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import sharp from "sharp";
 
 type MediaImageCode = "INVALID_IMAGE" | "IMAGE_TOO_LARGE" | "UNSUPPORTED_IMAGE" | "MEDIA_BUSY" | "MEDIA_UNAVAILABLE";
 const messages: Record<MediaImageCode, string> = {
@@ -71,6 +70,7 @@ export async function normalizeMediaImage(input: Uint8Array, claimedType: string
     const bytes = Buffer.from(input);
     const format = detectFormat(bytes);
     if (!format || claimedType !== `image/${format}`) throw new MediaImageError("UNSUPPORTED_IMAGE");
+    const { default: sharp } = await import("sharp");
     const decoder = sharp(bytes, {
       failOn: "warning", limitInputPixels: MAX_PIXELS, limitInputChannels: 4,
       unlimited: false, sequentialRead: true,
