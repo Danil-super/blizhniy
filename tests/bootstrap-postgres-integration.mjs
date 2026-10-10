@@ -75,12 +75,12 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
       await guard.query("drop view public.foreign_view;create schema foreign_namespace");
       await assert.rejects(bootstrapPostgres(guard,"127.0.0.1:bootstrap_guard"), /foreign or untracked/);
     });
-    await suite.test("first bootstrap installs six migrations and no user/payment records", async () => {
-      assert.deepEqual(await bootstrapPostgres(client,target), {applied:6,users:0,categories:105,tariffs:7,cities:26,professions:14});
+    await suite.test("first bootstrap installs seven migrations and no user/payment records", async () => {
+      assert.deepEqual(await bootstrapPostgres(client,target), {applied:7,users:0,categories:105,tariffs:7,cities:26,professions:14});
       const recorded=(await client.query("select name,sha256 from blizhniy_meta.migrations order by name")).rows;
       assert.deepEqual(recorded,getBootstrapPlan().map(({name,sha256})=>({name,sha256})));
       assert.equal((await client.query("select count(*)::integer as n from app.categories where parent_id is null")).rows[0].n,18);
-      assert.equal((await tables()).length,14);
+      assert.equal((await tables()).length,15);
       assert.ok((await tables()).every(x=>["app","blizhniy_meta"].includes(x.schemaname)));
       assert.equal((await client.query("select count(*)::integer as n from app.sessions")).rows[0].n,0);
     });
@@ -148,12 +148,13 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
       await client.query("rollback");
       assert.equal((await client.query("select count(*)::integer as n from app.categories")).rows[0].n,105);
       await client.query("delete from app.categories;delete from app.cities;delete from app.regions;delete from app.specialist_categories;delete from app.tariffs");
+      await client.query(readFileSync(new URL("../database/migrations/0007-media-write-attempts.down.sql",import.meta.url),"utf8"));
       await client.query(readFileSync(new URL("../database/migrations/0006-media-reservations.down.sql",import.meta.url),"utf8"));
       await client.query(down);
       assert.equal((await client.query("select to_regclass('app.tariffs') is null as absent")).rows[0].absent,true);
       // Reconcile only this isolated fixture's journal in the same operator-owned environment.
-      await client.query("delete from blizhniy_meta.migrations where name in ('0005-reference-catalog.sql','0006-media-reservations.sql')");
-      assert.equal((await bootstrapPostgres(client,target)).applied,2);
+      await client.query("delete from blizhniy_meta.migrations where name in ('0005-reference-catalog.sql','0006-media-reservations.sql','0007-media-write-attempts.sql')");
+      assert.equal((await bootstrapPostgres(client,target)).applied,3);
     });
   } finally {
     if(runtime)await runtime.close();

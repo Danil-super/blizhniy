@@ -4,6 +4,8 @@ import type { PostgresDatabase, PostgresQueries } from "./postgres";
 
 type ImageMetadata = Omit<MediaFileRecord, "id">;
 export type MediaReservation = MediaFileRecord & { state: "pending" | "ready" };
+export type MediaWriteClaim = { attemptId: string; record: MediaFileRecord };
+export type MediaWriteAttempt = { attemptId: string; claimedAt: Date };
 type ErrorCode = "INVALID_MEDIA_METADATA" | "MEDIA_ACCESS_DENIED" | "MEDIA_NOT_FOUND" | "MEDIA_INTENT_CONFLICT" | "MEDIA_IN_PROGRESS" | "MEDIA_QUOTA_EXCEEDED" | "MEDIA_METADATA_UNAVAILABLE";
 export class MediaMetadataError extends Error {
   constructor(readonly code: ErrorCode) { super("Media metadata operation failed"); this.name = "MediaMetadataError"; }
@@ -59,6 +61,29 @@ export class MediaMetadataRepository {
     this.assertLocal(); const intent = identifier(intentId);
     return this.owned(token, async (tx, ownerId) => {
       const { rows: [row] } = await tx.query<MediaReservation>(`select ${columns} from app.media_objects where owner_id=$1 and intent_id=$2`, [ownerId, intent]);
+      return row ?? null;
+    });
+  }
+  /** One-time committed claim; readback/expiry never authorizes another writer. Not OS fencing. */
+  async claimWrite(token: string, fileId: string, input: unknown): Promise<MediaWriteClaim> {
+    this.assertLocal(); const id = identifier(fileId), image = imageMetadata(input);
+    return this.owned(token, async (tx, ownerId) => {
+      const { rows: [row] } = await tx.query<MediaReservation>(`select ${columns} from app.media_objects where id=$1 and owner_id=$2 for update`, [id, ownerId]);
+      if (!row) throw new MediaMetadataError("MEDIA_NOT_FOUND");
+      if (row.mimeType !== image.mimeType || row.width !== image.width || row.height !== image.height || row.size !== image.size || row.sha256 !== image.sha256) throw new MediaMetadataError("MEDIA_INTENT_CONFLICT");
+      if (row.state !== "pending") throw new MediaMetadataError("MEDIA_IN_PROGRESS");
+      const { rows: [attempt] } = await tx.query<{ attemptId: string }>(`insert into app.media_write_attempts(media_id) values($1)
+        on conflict(media_id) do nothing returning id as "attemptId"`, [id]);
+      if (!attempt) throw new MediaMetadataError("MEDIA_IN_PROGRESS");
+      return { attemptId: attempt.attemptId, record: fileRecord(row) };
+    });
+  }
+  /** Owner-only observation, not a resumed write capability. */
+  async getWriteAttempt(token: string, fileId: string): Promise<MediaWriteAttempt | null> {
+    this.assertLocal(); const id = identifier(fileId);
+    return this.owned(token, async (tx, ownerId) => {
+      const { rows: [row] } = await tx.query<MediaWriteAttempt>(`select a.id as "attemptId",a.claimed_at as "claimedAt"
+        from app.media_objects m join app.media_write_attempts a on a.media_id=m.id where m.id=$1 and m.owner_id=$2`, [id, ownerId]);
       return row ?? null;
     });
   }

@@ -6,8 +6,8 @@ import { getBootstrapPlan, getReferenceSeed, bootstrapPostgres } from "../script
 
 test("plain PostgreSQL bootstrap includes only approved migrations and reference exports", () => {
   const plan = getBootstrapPlan();
-  assert.equal(plan.length, 6);
-  assert.equal(plan.at(-1).name, "0006-media-reservations.sql");
+  assert.equal(plan.length, 7);
+  assert.equal(plan.at(-1).name, "0007-media-write-attempts.sql");
   for (const migration of plan) {
     assert.match(migration.sha256, /^[a-f0-9]{64}$/);
     assert.doesNotMatch(migration.sql, /^\s*(?:begin|commit);/im);
@@ -46,7 +46,7 @@ test("operator requires explicit mode and never loads production dotenv or conne
   });
   const plan = run(["--plan"]);
   assert.equal(plan.status, 0);
-  assert.match(plan.stdout, /0006-media-reservations/);
+  assert.match(plan.stdout, /0007-media-write-attempts/);
   for (const args of [[], ["--apply"], ["--plan", "extra"], ["--apply", "wrong", "extra"]]) {
     const result = run(args);
     assert.equal(result.status, 1);

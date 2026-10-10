@@ -9,6 +9,7 @@ import sharp from "sharp";
 import { hashPassword, hashSessionToken } from "../src/lib/identity.ts";
 import { loadMediaModule } from "./media-module.mjs";
 import { waitForLock } from "./admin-authorization-integration.mjs";
+import { testMediaWrites } from "./media-write-integration.mjs";
 
 const { MediaMetadataRepository } = loadMediaModule("media-metadata");
 const { createLocalMediaFileStore } = loadMediaModule("media-files");
@@ -20,6 +21,8 @@ export async function testMediaMetadata(suite, db, operator) {
   let users = [], rolesCreated = false;
   const down = readFileSync(new URL("../database/migrations/0006-media-reservations.down.sql", import.meta.url), "utf8");
   const up = readFileSync(new URL("../database/migrations/0006-media-reservations.sql", import.meta.url), "utf8");
+  const downAttempts = readFileSync(new URL("../database/migrations/0007-media-write-attempts.down.sql", import.meta.url), "utf8");
+  const upAttempts = readFileSync(new URL("../database/migrations/0007-media-write-attempts.sql", import.meta.url), "utf8");
   try {
     const hash = await hashPassword("Synthetic media SQL passphrase 2026!");
     users = (await db.query(`insert into app.users(email,password_hash,role,email_verified_at) values
@@ -173,7 +176,8 @@ export async function testMediaMetadata(suite, db, operator) {
         grant update(auth_version) on app.users to media_fixture_runtime;
         grant select on app.sessions,app.media_objects to media_fixture_runtime;
         grant update(last_seen_at) on app.sessions to media_fixture_runtime;
-        grant insert(owner_id,intent_id,mime_type,width,height,size,sha256),update(state,ready_at) on app.media_objects to media_fixture_runtime`);
+        grant insert(owner_id,intent_id,mime_type,width,height,size,sha256),update(state,ready_at) on app.media_objects to media_fixture_runtime;
+        grant select,insert(media_id) on app.media_write_attempts to media_fixture_runtime`);
       const limitedDb = { transaction: work => db.transaction(async tx => { await tx.query("set local role media_fixture_runtime"); return work(tx); }) };
       for (const sql of ["select password_hash from app.users", "update app.users set role='admin'", "update app.media_storage_budget set charged_bytes=0", "delete from app.media_objects", "truncate app.media_objects", "create table app.runtime_ddl(id int)", "select app.charge_media_reservation()", "update app.media_objects set owner_id=gen_random_uuid()", "insert into app.media_objects(id) values(gen_random_uuid())"]) {
         await assert.rejects(limitedDb.transaction(tx => tx.query(sql)), { code: "42501" });
@@ -192,13 +196,15 @@ export async function testMediaMetadata(suite, db, operator) {
       assert.equal(security.prosecdef, true); assert.equal(security.rolsuper, false); assert.deepEqual(security.proconfig, ["search_path=pg_catalog, pg_temp"]);
       await consistent();
     });
+    await testMediaWrites(suite, db, operator, { repo, store, root, token, otherToken, adminToken, image, bytes, ready });
     await suite.test("media: down refuses reservations and unmatched charges; only empty owned fixture can roll back", async () => {
       await assert.rejects(operator.query(down), /Refusing/); await operator.query("rollback");
       await consistent();
       // Destructive reset is restricted to this test's throwaway DB, never an application operation.
-      await operator.query("truncate app.media_objects");
+      await operator.query("truncate app.media_write_attempts,app.media_objects");
       await assert.rejects(operator.query(down), /Refusing/); await operator.query("rollback");
       await operator.query("update app.media_storage_budget set charged_bytes=0,charged_objects=0");
+      await operator.query(downAttempts);
       // A concurrent reservation must become visible BEFORE down decides it is safe.
       let release, inserted;
       const releaseBarrier = new Promise(resolve => { release = resolve; });
@@ -218,7 +224,7 @@ export async function testMediaMetadata(suite, db, operator) {
       await operator.query("truncate app.media_objects;update app.media_storage_budget set charged_bytes=0,charged_objects=0");
       await operator.query(down);
       assert.equal((await operator.query("select to_regclass('app.media_objects') is null as absent")).rows[0].absent, true);
-      await operator.query(up); await consistent();
+      await operator.query(up); await operator.query(upAttempts); await consistent();
     });
   } finally {
     try {
@@ -227,7 +233,11 @@ export async function testMediaMetadata(suite, db, operator) {
         if ((await operator.query("select to_regprocedure('app.charge_media_reservation()') is not null as present")).rows[0].present) await operator.query("alter function app.charge_media_reservation() owner to postgres");
         await operator.query("drop owned by media_fixture_runtime,media_fixture_budget_owner;drop role media_fixture_runtime;drop role media_fixture_budget_owner");
       }
-      if ((await operator.query("select to_regclass('app.media_objects') is not null as present")).rows[0].present) await operator.query("truncate app.media_objects;update app.media_storage_budget set charged_bytes=0,charged_objects=0");
+      if ((await operator.query("select to_regclass('app.media_objects') is not null as present")).rows[0].present) {
+        const attemptsPresent = (await operator.query("select to_regclass('app.media_write_attempts') is not null as present")).rows[0].present;
+        await operator.query(attemptsPresent ? "truncate app.media_write_attempts,app.media_objects" : "truncate app.media_objects");
+        await operator.query("update app.media_storage_budget set charged_bytes=0,charged_objects=0");
+      }
       if (users.length) await db.query("delete from app.users where id=any($1::uuid[])", [users.map(user => user.id)]);
     } finally {
       const proof = await fs.lstat(root, { bigint: true });

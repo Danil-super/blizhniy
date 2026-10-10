@@ -47,15 +47,16 @@ export async function createLocalMediaFileStore(rootDirectory: string) {
   };
   await withRoot(async () => undefined);
   return {
-    async write(input: MediaFileRecord, source: Uint8Array): Promise<void> {
+    async write(input: MediaFileRecord, source: Uint8Array, attemptId?: string): Promise<void> {
       checkRuntime(); const record = snapshotRecord(input);
+      if (attemptId !== undefined && (typeof attemptId !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(attemptId))) throw new MediaFileError("INVALID_MEDIA_FILE");
       let bytes: Buffer;
       try {
         if (!(source instanceof Uint8Array) || source.byteLength !== record.size) throw new Error();
         bytes = Buffer.from(source); encodeMediaReply({ ...record, bytes });
       } catch { throw new MediaFileError("INVALID_MEDIA_FILE"); }
       return withRoot(async (directory, anchored) => {
-        const temporary = `${anchored}/.pending-${randomUUID()}`, destination = `${anchored}/${record.id}.webp`;
+        const temporary = `${anchored}/.pending-${attemptId ?? randomUUID()}`, destination = `${anchored}/${record.id}.webp`;
         let file: FileHandle | undefined, owned: BigIntStats | undefined, published = false, temporaryExists = false;
         const removeOwnedTemporary = async () => {
           if (!temporaryExists) return;

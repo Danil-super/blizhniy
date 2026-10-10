@@ -54,6 +54,33 @@ test("competing writes publish one complete object and never overwrite a prior o
   await failure(store.write(metadata, bytes), "MEDIA_FILE_EXISTS");
   assert.deepEqual(await store.read(metadata), bytes); assert.deepEqual(await fs.readdir(root), [metadata.id + ".webp"]);
 });
+test("journaled attempts use their exact temporary UUID and never delete a pre-existing attempt leaf", async t => {
+  const attempt = randomUUID(); let entered, release;
+  const started = new Promise(resolve => { entered = resolve; }), barrier = new Promise(resolve => { release = resolve; });
+  const { root, store } = await fixture(t, { fs: { open: async (...args) => {
+    const file = await fs.open(...args);
+    if (String(args[0]).endsWith(`/.pending-${attempt}`)) {
+      const write = file.writeFile.bind(file);
+      file.writeFile = async bytes => { entered(); await barrier; return write(bytes); };
+    }
+    return file;
+  } } });
+  const metadata = record(), pending = store.write(metadata, bytes, attempt);
+  // If the implementation ignores attempt, race against completion rather than hang at a missing barrier.
+  try { await Promise.race([started, pending]); assert.deepEqual(await fs.readdir(root), [`.pending-${attempt}`]); }
+  finally { release(); await pending; }
+  assert.deepEqual(await fs.readdir(root), [`${metadata.id}.webp`]);
+  const foreign = path.join(root, `.pending-${attempt}`); await fs.writeFile(foreign, "synthetic existing evidence", { mode: 0o600 });
+  await failure(store.write(record(), bytes, attempt));
+  assert.equal(await fs.readFile(foreign, "utf8"), "synthetic existing evidence");
+});
+test("attempt identifiers cannot become paths and are validated before any leaf is created", async t => {
+  const { root, store } = await fixture(t);
+  for (const attempt of ["../outside", "", null, "00000000-0000-0000-0000-000000000000", randomUUID().toUpperCase()]) {
+    await failure(store.write(record(), bytes, attempt), "INVALID_MEDIA_FILE");
+  }
+  assert.deepEqual(await fs.readdir(root), []);
+});
 test("record paths, MIME, dimensions, size and digest are rejected before any object is created", async t => {
   const { root, store } = await fixture(t);
   const mutations = [{ id: "../outside" }, { id: "/etc/passwd" }, { id: "00000000-0000-0000-0000-000000000000" }, { id: record().id.toUpperCase() },

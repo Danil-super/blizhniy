@@ -63,3 +63,17 @@ test("production and browser cannot enable this local repository", () => {
     assert.throws(() => new (loadMediaModule("media-metadata", environment).MediaMetadataRepository)({}, {}), error => error.code === "MEDIA_METADATA_UNAVAILABLE");
   }
 });
+test("a write claim validates metadata against the locked owned reservation and stores only its ID", async () => {
+  const row = { ...metadata, id: randomUUID(), state: "pending" }, app = fixture(row);
+  const claim = await app.repository.claimWrite(token, row.id, metadata);
+  assert.equal(claim.record.id, row.id);
+  const insert = app.calls.find(call => call.sql.startsWith("insert into app.media_write_attempts"));
+  assert.deepEqual(Array.from(insert.values), [row.id]); assert.ok(!insert.sql.includes(row.id));
+  assert.equal(app.readCount(), 0);
+});
+test("a foreign, ready, mismatching or already claimed record cannot grant another write", async () => {
+  await fail(fixture(null).repository.claimWrite(token, randomUUID(), metadata), "MEDIA_NOT_FOUND");
+  await fail(fixture({ ...metadata, id: randomUUID(), state: "ready" }).repository.claimWrite(token, randomUUID(), metadata), "MEDIA_IN_PROGRESS");
+  await fail(fixture().repository.claimWrite(token, randomUUID(), { ...metadata, sha256: "b".repeat(64) }), "MEDIA_INTENT_CONFLICT");
+  await fail(fixture(undefined, { conflict: true }).repository.claimWrite(token, randomUUID(), metadata), "MEDIA_IN_PROGRESS");
+});
