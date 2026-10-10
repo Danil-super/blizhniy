@@ -40,10 +40,8 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
     } catch { try { await close(lock); } finally { await close(directory); } throw unavailable(); }
   };
   const initial = await acquireDescriptors(); try { await close(initial.lock); } finally { await close(initial.directory); }
-  return {
-    async write(record: MediaFileRecord, bytes: Uint8Array, attemptId: string, signal?: AbortSignal): Promise<void> {
-      check(); let frame: Buffer;
-      try { frame = encodeFileWrite(record, bytes, attemptId); } catch { throw new MediaFileWorkerError("INVALID_MEDIA_FILE_WRITE"); }
+  const execute = async (frame: Buffer, signal?: AbortSignal): Promise<void> => {
+      check();
       if (signal?.aborted) throw unavailable();
       if (state.busy) throw new MediaFileWorkerError("MEDIA_FILE_WORKER_BUSY");
       state.busy = true; let handles: Awaited<ReturnType<typeof acquireDescriptors>> | undefined;
@@ -85,6 +83,12 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
         });
       } catch (error) { if (error instanceof MediaFileWorkerError) throw error; throw unavailable(); }
       finally { try { await close(handles?.lock); } finally { try { await close(handles?.directory); } finally { state.busy = false; } } }
+  };
+  return {
+    async write(record: MediaFileRecord, bytes: Uint8Array, attemptId: string, signal?: AbortSignal): Promise<void> {
+      check(); let frame: Buffer;
+      try { frame = encodeFileWrite(record, bytes, attemptId); } catch { throw new MediaFileWorkerError("INVALID_MEDIA_FILE_WRITE"); }
+      await execute(frame, signal);
     },
   };
 }
