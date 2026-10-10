@@ -30,6 +30,16 @@ export async function testStagingProvision(suite, administrator, config) {
       assert.equal((await runtime.query('select count(*)::integer as n from app.categories')).rows[0].n, 105);
       assert.equal((await verifyStagingRuntime(runtime)).restricted, true);
     });
+    await suite.test('reference-only runtime with residual function EXECUTE is rejected', async () => {
+      const owner = new pg.Client({ ...config, database: staging.database });
+      try {
+        await owner.connect();
+        await owner.query(`grant execute on function app.charge_media_reservation() to ${staging.runtime}`);
+        try { await assert.rejects(verifyStagingRuntime(runtime), /execute application functions/); }
+        finally { await owner.query(`revoke execute on function app.charge_media_reservation() from ${staging.runtime}`); }
+      } finally { await owner.end(); }
+      assert.equal((await verifyStagingRuntime(runtime)).restricted, true);
+    });
     await suite.test('a runtime with revoked schema access is not reported as usable', async () => {
       const owner = new pg.Client({ ...config, database: staging.database });
       try {

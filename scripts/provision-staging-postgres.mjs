@@ -52,6 +52,10 @@ export async function verifyStagingRuntime(client) {
   const { rows: [role] } = await client.query(`select rolcreatedb,rolcreaterole,rolsuper,rolreplication,rolbypassrls,
     pg_has_role(current_user,$1,'MEMBER') as owner_member from pg_roles where rolname=current_user`, [staging.owner]);
   if (!role || Object.values(role).some(Boolean)) throw new Error('Staging runtime has elevated rights');
+  // Cloud privilege editors may leave EXECUTE grants after table access is removed.
+  const executable = await client.query(`select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname in ('app','blizhniy_meta') and has_function_privilege(current_user,p.oid,'EXECUTE') limit 1`);
+  if (executable.rowCount) throw new Error('Staging runtime can execute application functions');
   for (const sql of [
     'create table public.staging_permission_probe(id integer)',
     'create schema staging_permission_probe',
