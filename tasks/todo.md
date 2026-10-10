@@ -192,6 +192,10 @@
 
 Проверка: API/SQL/browser upload; traversal, symlink, чужой UUID, неверные байты, заполнение квоты, restart/release.
 
+6a — локальная подготовка изображения до записи: `media-image.ts`, реальные decoder tests. JPEG/PNG/WebP/static GIF, strict MIME/signature, полное декодирование, 10 МиБ/24 MP, WebP ≤2048 px/2 МиБ, autoOrient и удаление EXIF/GPS/XMP/ICC/IPTC. Animated GIF/WebP/APNG отклоняются. Одно вычисление на экземпляр модуля без очереди, generic ошибки и finally release. Sharp 0.35.5 объявлен прямой dependency без смены package graph; lifecycle по-прежнему запрещён. Нет HTTP, файлов, SQL/migrations, server writes, push/deploy или замены текущей загрузки. Перед upload нужен отдельный ограниченный native worker на том же VPS; затем filesystem/metadata/quota/ownership. Пункты этапа 6 остаются открытыми.
+
+Проверки 6a: focused **13/13**, полный native **893/893**, без пропусков; build/tsc/lint успешны, только прежнее checkout unused warning. Отдельный чистый offline npm 10 ci с запрещённым lifecycle проходит все **13/13** на собственных native dependencies; lockfile не переписывается. RED до создания модуля; mutation инверсии pages guard ломает animation test, после восстановления SHA-256 совпал. Code Graph обновлён. Production audit **0**, полный — прежние **9 (7 high, 2 moderate)**, review 14.10.2026 сохранён. Нет browser/HTTP upload и проверки filesystem/БД: это не завершение этапа 6.
+
 ## 7. Объявления и кабинет
 
 Зависит от 5, 6. Файлы: listing repository, draft/cabinet handlers и тесты; публичное чтение отдельным инкрементом.
