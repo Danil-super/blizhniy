@@ -11,6 +11,7 @@
     "check:types": "node node_modules/typescript/bin/tsc --noEmit",
     "check:fast": "npm run check:floor && npm run check:types && npm run lint",
     "test": "node --experimental-strip-types --test tests/*.test.mjs tests/*.test.cjs scripts/test-*.mjs",
+    "test:coverage:native": "node scripts/run-native-coverage.mjs",
     "seed:production": "node scripts/seed-production-data.mjs",
     "db:local": "node scripts/local-payment-db.mjs",
     "db:check": "node --experimental-strip-types scripts/check-postgres.mjs",
