@@ -7,6 +7,8 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 import pg from "pg";
 import { bootstrapPostgres, getBootstrapPlan } from "../scripts/bootstrap-postgres.mjs";
+import { createPostgresDatabase } from "../src/lib/postgres.ts";
+import { testCatalog } from "./catalog-integration.mjs";
 
 const run = promisify(execFile);
 const image = "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
@@ -19,7 +21,7 @@ const docker = async args => (await run("docker", ["--host", "unix:///var/run/do
 })).stdout.trim();
 
 test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and guarded repeats", { timeout: 120000 }, async suite => {
-  let id, client;
+  let id, client, runtime;
   const otherClients = [];
   try {
     id = await docker(["run", "--detach", "--pull", "never", "--name", name, "--label", `${label}=${name}`,
@@ -39,6 +41,9 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     client = new pg.Client(config); await client.connect();
+    runtime = createPostgresDatabase({ NODE_ENV: "test", BLIZHNIY_DB_HOST: config.host,
+      BLIZHNIY_DB_PORT: String(config.port), BLIZHNIY_DB_NAME: config.database,
+      BLIZHNIY_DB_USER: config.user, BLIZHNIY_DB_PASSWORD: password, BLIZHNIY_DB_SSL_MODE: "disable" });
     const target = "127.0.0.1:blizhniy_test";
     const tables = async () => (await client.query("select schemaname,tablename from pg_tables where schemaname not like 'pg_%' and schemaname<>'information_schema' order by 1,2")).rows;
 
@@ -75,6 +80,7 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
       assert.ok((await tables()).every(x=>["app","blizhniy_meta"].includes(x.schemaname)));
       assert.equal((await client.query("select count(*)::integer as n from app.sessions")).rows[0].n,0);
     });
+    await testCatalog(suite, runtime);
     await suite.test("repeat preserves IDs, changed price/name/duration and disabled categories", async () => {
       const before=(await client.query("select id from app.categories order by id")).rows;
       await client.query("update app.tariffs set price=321.45,name='Edited reference tariff',duration_days=45,active=false where action='listing_publication'");
@@ -137,6 +143,7 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
       assert.equal((await bootstrapPostgres(client,target)).applied,1);
     });
   } finally {
+    if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));
     if(client)await client.end();
     if(id){

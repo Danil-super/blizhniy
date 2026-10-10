@@ -30,6 +30,18 @@ node --experimental-strip-types --test tests/bootstrap-postgres-integration.mjs
 
 10.10.2026 в Timeweb применены 0001–0005: 105 категорий (18 корневых), 26 городов, 14 специализаций и 7 тарифов, 0 аккаунтов; повторное чтение подтвердило журнал и TLS. С VPS проверен PostgreSQL TLS handshake с CA и проверкой DNS-имени (`Verify return code: 0`); приватная сеть этим не подтверждается. Это подготовка новой БД, **не переключение сайта**. `gen_user` использован только оператором для подготовки среды разработки; пароль до пользовательского production меняется. У него нет CREATEROLE. Отдельную ограниченную runtime-учётную запись нужно создать через [панель Timeweb](https://timeweb.cloud/docs/dbaas/postgresql/users-and-privileges), затем выдать права только нужным таблицам; owner/migration credentials не подключать к HTTP runtime.
 
+## Чтение каталога
+
+`PostgresCatalogRepository` получает существующий `PostgresQueries`, не создаёт пул и не читает окружение. Он работает только на сервере; HTTP-маршруты и страницы ещё используют старое хранилище до общего cutover публикаций. Файлы новой схемы и установленный журнал не изменяются.
+
+- `getPublicCategories()` — прежний `Category[]`: slug, name, уникальные имена активных прямых детей; без ID/флагов/других столбцов.
+- `getPublicCategoriesWithListingScope()` — активные корневые категории и отдельно scope из ID корня и всех прямых детей, включая скрытые. Общий чистый mapper `category-contract.ts` используется также прежним store, чтобы правила отображения не расходились.
+- `getPublicCategoryWithListingScope(slug)` — тот же контракт для активного корня, один параметризованный SQL/snapshot. Неизвестный, скрытый корень или slug подкатегории возвращает `undefined`; неверный формат/длина slug — `CatalogInputError` до SQL.
+
+Пустая БД даёт пустой список, ошибка чтения передаётся вызывающему коду; скрытого fallback к Supabase/seed/demo и retry нет. Полный список справочника читается одним запросом, без N+1; это существующий контракт меню, не список публикаций. Права достаточно ограничить `USAGE app` и `SELECT app.categories`, без доступа к identity и без записи. До включения runtime роль создаётся отдельно через панель.
+
+Проверка: `node --experimental-strip-types --test tests/postgres-catalog.test.mjs`; SQL/ограниченные права проверяются внутри `tests/bootstrap-postgres-integration.mjs` на собственном локальном PostgreSQL 18.6. Его тестовые категории откатываются, роль удаляется; удалённая БД не используется.
+
 ## Проверка без рабочей БД
 
 - `node --experimental-strip-types --test tests/postgres.test.mjs` — unit/отрицательные проверки.

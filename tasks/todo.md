@@ -157,6 +157,10 @@
 
 Разрешённая владельцем установка в Timeweb выполнена: **5 миграций, 12 таблиц, 105 категорий, 26 городов, 14 специализаций, 7 тарифов, 0 аккаунтов**. Повторное READ ONLY подтвердило журнал и TLS. С VPS проверен PostgreSQL handshake с verify CA/hostname (0/OK), не доступность private network. Старый backend/данные не менялись, приложение не переключено. `gen_user` не имеет CREATEROLE: runtime-пользователь через панель и table-scoped grants остаются отдельным операционным шагом; пароль разрешён владельцем для разработки, не записан в Git/файлы окружения/журналы. Следующий этап 5b — PostgreSQL-репозитории чтения категорий/тарифов и переход их потребителей без fallback к Supabase; администрирование/идентификация ещё не завершены.
 
+5b — реализовано чтение категорий в `PostgresCatalogRepository`: совместимый public/scope контракт, lookup активного root за один параметризованный SQL, пустой результат без fallback, неверный slug отклоняется до SQL. Чистый mapper вынесен в `category-contract.ts` и используется прежним store без изменения правил; HTTP/страницы и установленная Timeweb схема не переключены. Каталог проверен на настоящем PostgreSQL 18.6: clean seed IDs, hidden scope, уникальные подписи/сортировка, root-only lookup и SELECT-only роль без доступа к identity/записи. Следующий подэтап — тарифы; общий checkbox публичного чтения пока открыт.
+
+Проверки категорий 5b: native **836/836**, SQL bootstrap+catalog **15/15**, без пропусков; build/tsc/lint успешны (только прежнее warning). Mutation инверсии slug validation ломает три теста, восстановленный файл снова GREEN. Извлечение mapper отдельно от нового repository, без новых зависимостей и production-конфигурации.
+
 ## 6. Фотографии на VPS
 
 Зависит от 4. Файлы: media repository, upload handler, file-serving boundary и focused тесты.
