@@ -38,6 +38,13 @@ export class CatalogAdministration {
     if (typeof window !== "undefined") throw new Error("Category administration is server-only");
   }
 
+  listCategoryRows(token: string): Promise<CategoryRow[]> {
+    return withAdminTransaction(this.db, token, async tx => {
+      const { rows } = await tx.query<CategoryRow>("select id,parent_id,slug,name,sort_order,active from app.categories order by sort_order,id");
+      return rows;
+    });
+  }
+
   async updateCategory(token: string, input: unknown): Promise<CategoryRow | undefined> {
     const value = edit(input);
     return withAdminTransaction(this.db, token, async tx => {

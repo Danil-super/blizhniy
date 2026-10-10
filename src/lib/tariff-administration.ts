@@ -1,5 +1,7 @@
 import { withAdminTransaction } from "./admin-authorization";
 import type { PostgresDatabase } from "./postgres";
+import { PostgresTariffRepository } from "./postgres-tariffs";
+import type { Tariff } from "./types";
 
 export class TariffEditInputError extends Error {
   constructor() { super("Invalid tariff edit"); this.name = "TariffEditInputError"; }
@@ -44,6 +46,10 @@ function edit(input: unknown) {
 export class TariffAdministration {
   constructor(private readonly db: Pick<PostgresDatabase, "transaction">) {
     if (typeof window !== "undefined") throw new Error("Tariff administration is server-only");
+  }
+
+  listTariffs(token: string): Promise<Tariff[]> {
+    return withAdminTransaction(this.db, token, tx => new PostgresTariffRepository(tx).getStoredTariffs());
   }
 
   async updateTariff(token: string, input: unknown): Promise<boolean> {

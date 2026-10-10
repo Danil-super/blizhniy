@@ -15,6 +15,16 @@ export async function testReferenceAdministration(suite, db, operator, fixture) 
   const roots = (await categoryRows()).filter(row => row.parent_id === null);
   const initialTariffs = await tariffRows();
 
+  await suite.test("admin-only lists include hidden references without leaking identity columns", async () => {
+    const listed = await catalog.listCategoryRows(fixture.adminToken);
+    assert.deepEqual(listed.toSorted((a,b) => a.id.localeCompare(b.id)), await categoryRows());
+    const saved = await tariffs.listTariffs(fixture.adminToken);
+    assert.deepEqual(saved.toSorted((a,b) => a.id.localeCompare(b.id)), initialTariffs.map(row => ({ id: row.id, action: row.action,
+      name: row.name, price: Number(row.price), durationDays: row.duration_days, active: row.active })));
+    await assert.rejects(catalog.listCategoryRows(fixture.userToken), /Admin access required/);
+    await assert.rejects(tariffs.listTariffs(fixture.userToken), /Admin access required/);
+  });
+
   await suite.test("ordinary users cannot edit category, order or price", async () => {
     const before = await categoryRows();
     await assert.rejects(catalog.updateCategory(fixture.userToken, { id: roots[0].id, active: false }), /Admin access required/);
