@@ -5,13 +5,14 @@ import * as identity from "../src/lib/identity.ts";
 const ts = createRequire(import.meta.url)("typescript");
 const modules = new Map();
 export function loadAdminModule(name) {
-  if (!["admin-authorization", "catalog-administration", "tariff-administration", "account-cookie", "postgres-tariffs"].includes(name)) throw new Error("Unapproved admin test module");
+  if (!["app-session-transaction", "admin-authorization", "catalog-administration", "tariff-administration", "account-cookie", "postgres-tariffs"].includes(name)) throw new Error("Unapproved admin test module");
   if (modules.has(name)) return modules.get(name);
   const exports = {};
   const source = readFileSync(new URL(`../src/lib/${name}.ts`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   new Function("require", "exports", compiled)(path => {
     if (path === "./identity") return identity;
+    if (path === "./app-session-transaction") return loadAdminModule("app-session-transaction");
     if (path === "./admin-authorization") return loadAdminModule("admin-authorization");
     if (path === "./postgres-tariffs") return loadAdminModule("postgres-tariffs");
     throw new Error("Unapproved admin test import");
