@@ -7,6 +7,8 @@ BRANCH="${BRANCH:-main}"
 COMMIT_SHA="${COMMIT_SHA:-}"
 SOURCE_ARCHIVE="${SOURCE_ARCHIVE:-}"
 SOURCE_DIR="${SOURCE_DIR:-}"
+PREBUILT_RELEASE="${PREBUILT_RELEASE:-false}"
+SOURCE_ARCHIVE_SHA256="${SOURCE_ARCHIVE_SHA256:-}"
 APP_NAME="${APP_NAME:-blizhniy}"
 PORT="${PORT:-3000}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${PORT}/api/health}"
@@ -94,6 +96,23 @@ on_deploy_error() {
 
 trap on_deploy_error ERR
 
+if [[ "$PREBUILT_RELEASE" != false && "$PREBUILT_RELEASE" != true ]]; then
+  log "invalid prebuilt release mode"
+  exit 1
+fi
+if [[ "$PREBUILT_RELEASE" == true ]]; then
+  if [[ -z "$SOURCE_ARCHIVE" || ! -f "$SOURCE_ARCHIVE" || ! "$SOURCE_ARCHIVE_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+    log "prebuilt release requires an archive and trusted SHA256"
+    exit 1
+  fi
+  if [[ "$(node --version)" != v22.* ]]; then
+    log "prebuilt release requires Node.js 22 on deployment PATH"
+    exit 1
+  fi
+  printf '%s  %s\n' "$SOURCE_ARCHIVE_SHA256" "$SOURCE_ARCHIVE" | sha256sum --check --status
+  umask 077
+fi
+
 mkdir -p "$RELEASES_DIR"
 PREVIOUS_RELEASE="$(current_release || true)"
 
@@ -107,7 +126,7 @@ fi
 if [[ -n "$SOURCE_ARCHIVE" ]]; then
   log "extracting ${SOURCE_ARCHIVE} into ${RELEASE_DIR}"
   mkdir -p "$RELEASE_DIR"
-  tar -xzf "$SOURCE_ARCHIVE" -C "$RELEASE_DIR"
+  tar --no-same-owner --no-same-permissions -xzf "$SOURCE_ARCHIVE" -C "$RELEASE_DIR"
 elif [[ -n "$SOURCE_DIR" ]]; then
   log "copying ${SOURCE_DIR} into ${RELEASE_DIR}"
   mkdir -p "$RELEASE_DIR"
@@ -124,14 +143,26 @@ fi
 
 copy_env_files "$PREVIOUS_RELEASE"
 
-log "installing dependencies"
-npm --prefix "$RELEASE_DIR" ci --prefer-online --no-audit --no-fund
+if [[ "$PREBUILT_RELEASE" == true ]]; then
+  test -f "${RELEASE_DIR}/server.js"
+  test -f "${RELEASE_DIR}/.next/BUILD_ID"
+  test -f "${RELEASE_DIR}/ecosystem.config.cjs"
+  test -f "${RELEASE_DIR}/scripts/check-auth-captcha-env.cjs"
+  export BLIZHNIY_NODE_PATH="$(command -v node)"
+else
+  log "installing dependencies"
+  npm --prefix "$RELEASE_DIR" ci --prefer-online --no-audit --no-fund
+fi
 
 log "checking Auth CAPTCHA configuration"
 NODE_ENV=production node "$RELEASE_DIR/scripts/check-auth-captcha-env.cjs" "$RELEASE_DIR"
 
-log "building release"
-npm --prefix "$RELEASE_DIR" run build
+if [[ "$PREBUILT_RELEASE" == true ]]; then
+  log "using verified prebuilt release; no install or build on VPS"
+else
+  log "building release"
+  npm --prefix "$RELEASE_DIR" run build
+fi
 
 log "starting ${APP_NAME} from ${RELEASE_DIR}"
 mkdir -p "${RELEASE_DIR}/.pm2"

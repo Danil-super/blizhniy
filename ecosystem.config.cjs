@@ -1,9 +1,12 @@
+const standalone = require("node:fs").existsSync(`${__dirname}/server.js`);
+
 module.exports = {
   apps: [
     {
       name: "blizhniy",
-      script: "node_modules/next/dist/bin/next",
-      args: "start -H 127.0.0.1 -p 3000",
+      script: standalone ? "server.js" : "node_modules/next/dist/bin/next",
+      args: standalone ? "" : "start -H 127.0.0.1 -p 3000",
+      interpreter: process.env.BLIZHNIY_NODE_PATH || process.execPath,
       instances: 1,
       exec_mode: "fork",
       cwd: __dirname,
@@ -12,6 +15,8 @@ module.exports = {
       merge_logs: true,
       env: {
         NODE_ENV: "production",
+        HOSTNAME: "127.0.0.1",
+        PORT: "3000",
       },
     },
   ],
