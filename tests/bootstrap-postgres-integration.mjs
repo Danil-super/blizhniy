@@ -10,6 +10,7 @@ import { bootstrapPostgres, getBootstrapPlan } from "../scripts/bootstrap-postgr
 import { createPostgresDatabase } from "../src/lib/postgres.ts";
 import { testCatalog } from "./catalog-integration.mjs";
 import { testTariffs } from "./tariffs-integration.mjs";
+import { createAdminFixture, testAdminAuthorization } from "./admin-authorization-integration.mjs";
 
 const run = promisify(execFile);
 const image = "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
@@ -83,6 +84,9 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     });
     await testCatalog(suite, runtime);
     await testTariffs(suite, runtime);
+    const adminFixture = await createAdminFixture(runtime);
+    try { await testAdminAuthorization(suite, runtime, client, adminFixture); }
+    finally { await adminFixture.cleanup(); }
     await suite.test("repeat preserves IDs, changed price/name/duration and disabled categories", async () => {
       const before=(await client.query("select id from app.categories order by id")).rows;
       await client.query("update app.tariffs set price=321.45,name='Edited reference tariff',duration_days=45,active=false where action='listing_publication'");
