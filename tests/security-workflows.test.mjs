@@ -36,6 +36,23 @@ test("CodeQL covers TypeScript changes on pull requests, production releases and
   assert.match(codeql, /Block high-severity CodeQL findings[\s\S]*check-codeql-report\.mjs codeql-results/);
 });
 
+test("CodeQL analysis and its local security gate do not depend on optional report delivery", () => {
+  const codeql = read(".github/workflows/codeql.yml");
+  const analysis = codeql.slice(codeql.indexOf("- name: Analyze code"), codeql.indexOf("- name: Block high-severity CodeQL findings"));
+  assert.match(analysis, /upload: never/);
+  assert.doesNotMatch(analysis, /continue-on-error|skip-queries/);
+
+  const gate = codeql.slice(codeql.indexOf("- name: Block high-severity CodeQL findings"), codeql.indexOf("- name: Publish CodeQL results to GitHub Security"));
+  assert.match(gate, /run: node scripts\/check-codeql-report\.mjs codeql-results/);
+  assert.doesNotMatch(gate, /continue-on-error|if:/);
+
+  const delivery = codeql.slice(codeql.indexOf("- name: Publish CodeQL results to GitHub Security"), codeql.indexOf("- name: Upload CodeQL SARIF report"));
+  assert.match(delivery, /vars\.ENABLE_CODE_SCANNING_UPLOAD == 'true'/);
+  assert.match(delivery, /continue-on-error: true/);
+  assert.match(delivery, /uses: github\/codeql-action\/upload-sarif@[0-9a-f]{40}/);
+  assert.match(delivery, /sarif_file: codeql-results/);
+});
+
 test("dependency, secrets and static-analysis failures remain release blockers", () => {
   const ci = read(".github/workflows/ci.yml");
   const security = read(".github/workflows/security-checks.yml");

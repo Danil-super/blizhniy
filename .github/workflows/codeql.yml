@@ -51,9 +51,20 @@ jobs:
         with:
           category: /language:${{ matrix.language }}
           output: codeql-results
+          # Keep analysis fail-closed even when GitHub Code Scanning is disabled.
+          # The local SARIF gate below is authoritative; delivery is separate.
+          upload: never
 
       - name: Block high-severity CodeQL findings
         run: node scripts/check-codeql-report.mjs codeql-results
+
+      - name: Publish CodeQL results to GitHub Security
+        if: ${{ vars.ENABLE_CODE_SCANNING_UPLOAD == 'true' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        with:
+          sarif_file: codeql-results
+          category: /language:${{ matrix.language }}
 
       - name: Upload CodeQL SARIF report
         if: always()
