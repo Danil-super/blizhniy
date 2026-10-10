@@ -38,8 +38,8 @@ export function authJson(body: unknown, status: number, headers?: Record<string,
 }
 
 /** Reject simple/cross-origin requests before reading the bounded body. No Referer fallback. */
-export async function readAuthJson(request: Request, config: LocalAuthConfig, deadlineMs = 2000): Promise<unknown> {
-  if (request.method !== "POST") throw new AuthRequestError(405, "METHOD_NOT_ALLOWED");
+export async function readAuthJson(request: Request, config: LocalAuthConfig, deadlineMs = 2000, method: "POST" | "PATCH" = "POST"): Promise<unknown> {
+  if (request.method !== method) throw new AuthRequestError(405, "METHOD_NOT_ALLOWED");
   const url = new URL(request.url);
   // NextURL normalizes 127.0.0.1 to localhost. Trust configured target + actual Host, not that normalized URL or Forwarded headers.
   if (request.headers.get("host") !== new URL(config.origin).host) throw new AuthRequestError(403, "FORBIDDEN_TARGET");

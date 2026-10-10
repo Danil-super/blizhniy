@@ -149,7 +149,8 @@
 - [x] Репозитории публичного чтения категорий/тарифов возвращают прежний контракт, фильтры параметризованы.
 - [ ] HTTP/страницы подключены к новым репозиториям после миграции зависимых публикаций; смешивания новых/старых category IDs нет.
 - [x] Серверные операции редактирования проверяют администратора в той же транзакции; повторный bootstrap не перезаписывает ручные тарифы.
-- [ ] Подключить guarded операции к HTTP/админке с cookie/origin/лимитами после готовности identity; локальный backend не считать включённой админкой.
+- [x] Локальный HTTPS API справочников подключён к guarded операциям: cookie/origin/bounded JSON/отдельный shared limiter, без production/demo bypass.
+- [ ] Подключить отдельный локальный экран администрирования; API не считать готовой production-админкой или переключением старых страниц.
 
 Проверка: isolated SQL, API и страницы каталога; повторная инициализация не теряет изменения.
 
@@ -172,6 +173,10 @@
 5d — backend `withAdminTransaction`, `CatalogAdministration`, `TariffAdministration`: настоящая новая identity, без доверия caller role и demo bypass. Права/сессия проверяются под user → session locks в одной транзакции с записью; срок после ожидания целевой строки проверяется повторно, изменения откатываются при отказе. Патчи строгие, стабильные category ID/slug/parent и tariff ID/action неизменны; цена передаётся decimal text без округления дробных копеек, null duration отличается от отсутствующего поля. Полный порядок корневых категорий сохраняется одним UPDATE; partial/duplicate/child/unknown order отклоняется. HTTP/UI и новые роли на Timeweb не подключены; удалённых записей/настроек/автодеплоя нет. Далее — HTTP/админка и media/publications, не прямое переключение действующих страниц.
 
 Проверки 5d: native **861/861**, изолированная PostgreSQL 18.6 **31/31**, без пропусков; build/tsc/lint успешны, только прежнее unused warning. Ограниченная column-scoped роль редактирует справочники, но не читает password_hash/не меняет role/не выполняет DELETE/DDL. Конкурентные reorder двух разных администраторов сохраняют ровно один полный порядок. Сессия, истёкшая под tariff lock, откатывает цену; демоция/отзыв, выигравшие lock, запрещают работу. Sparse array сначала воспроизведён RED, затем отклоняется до SQL. Mutation инверсии admin-role/full-order условий и разрешения третьего десятичного знака ломает соответствующие тесты; файлы восстановлены с исходными SHA-256. Проверка backend, не browser/HTTP/admin UI cutover.
+
+5e — `/api/admin/local/[resource]` для admin-only чтения, category/tariff patches и полного порядка корней. Общие cookie parser и lazy PG pool выделены отдельно от feature, прежнее account поведение сохранено. POST-only reader по умолчанию, явный PATCH только для admin handler; никаких GET/query credentials или reset. AuthRateLimiter с HMAC namespace local-admin не расходует лимиты входа, persistent SQL counters, generic failure до guarded записи. Structured события связываются с ответом по X-Request-ID, без body/URL/PII. Next privacy rules проверены реальным HTTP. Новые migration/schema changes, dependencies, remote users/roles и deploy отсутствуют; GUI и public cutover не выполнены.
+
+Проверки 5e: native **872/872**, bootstrap/reference SQL **32/32**, полный PostgreSQL/Next HTTPS/Chromium **88/88**, без пропусков. Build/tsc/lint успешны, только прежнее checkout warning. Negative cases: обычный user/blocked/demoted/stale/revoked/limited-scope session, CSRF, duplicate cookie, query token, fractional kopeks, protected fields, неполный порядок. Лимит проверен 60 действительными HTTPS admin запросами и 429, без расхода auth quota; error event найден по response request ID. Ошибка OPTIONS теста воспроизведена на минимальном Node HTTP: тело без framing даёт пустой 400 до route; исправлен только fixture запрос без ненужного тела, приложение не ослаблено. Mutation cookie-count и admin-limit condition ломает тесты; исходники восстановлены с прежними SHA-256. Production smoke и ограничения audit — см. backend/dependency docs. Следующий шаг — локальный UI администрирования, затем media/publications.
 
 ## 6. Фотографии на VPS
 

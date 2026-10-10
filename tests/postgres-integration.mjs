@@ -91,7 +91,7 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
     const applyMigration = async (filename) => {
       if (!["0001-identity.sql", "0001-identity.down.sql", "0002-registration.sql", "0002-registration.down.sql",
         "0003-auth-rate-limits.sql", "0003-auth-rate-limits.down.sql", "0004-password-recovery.sql",
-        "0004-password-recovery.down.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
+        "0004-password-recovery.down.sql", "0005-reference-catalog.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
       const source = fileURLToPath(new URL(`../database/migrations/${filename}`, import.meta.url));
       await docker(["cp", source, `${id}:/tmp/blizhniy-identity.sql`]);
       await docker(["exec", id, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "blizhniy_test", "-f", "/tmp/blizhniy-identity.sql"]);
@@ -132,6 +132,7 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
       }), { code: "42501" });
       await db.query("drop role rate_test_anonymous");
     });
+    await applyMigration("0005-reference-catalog.sql");
     const { testRegistrationWeb } = await import("./registration-web-integration.mjs");
     await testRegistrationWeb(suite, db, env);
     const cert = join(certificates, "server.crt");

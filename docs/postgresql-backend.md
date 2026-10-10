@@ -60,7 +60,7 @@ Unit-проверки: `node --experimental-strip-types --test tests/postgres-ta
 
 ## Администрирование справочников: серверные операции
 
-`CatalogAdministration` и `TariffAdministration` используют существующий `PostgresDatabase.transaction`; это внутренние операции, **не подключённые HTTP-маршруты или готовая админка**. Новых зависимостей, migration/seed reset и удалённых аккаунтов нет. Действующие страницы и рабочая БД пока не переключены.
+`CatalogAdministration` и `TariffAdministration` используют существующий `PostgresDatabase.transaction`; операции подключены только к явно включаемому локальному API ниже, **не к действующей админке**. Новых зависимостей, migration/seed reset и удалённых аккаунтов нет. Действующие страницы и рабочая БД пока не переключены.
 
 `withAdminTransaction(db, token, work)` принимает только случайный app-session token, не объект пользователя/роль из браузера. В одной транзакции блокирует пользователя, проверяет подтверждение/блокировку/актуальную admin-роль, затем блокирует сессию и проверяет scope, auth_version, абсолютный срок и простой. Порядок user → session согласован со входом/восстановлением пароля. После SQL-операций снова проверяет срок по `clock_timestamp()`: истечение во время ожидания справочника откатывает запись. Ошибки полномочий — одинаковый `AdminAccessError`, без информации об аккаунте; ошибка БД не превращается в успешный ответ. Никакого demo bypass или автоматического retry после COMMIT uncertainty. Callback только для ожидаемых SQL-операций, без внешних вызовов.
 
@@ -70,7 +70,33 @@ Unit-проверки: `node --experimental-strip-types --test tests/postgres-ta
 
 Минимальные права именно этого контура: `USAGE app`; SELECT на справочники, UPDATE только name/sort_order/active у categories и name/price/active/duration_days у tariffs; у users SELECT(id,role,is_blocked,email_verified_at,auth_version), UPDATE(auth_version); у sessions SELECT(token_hash,user_id,auth_version,scope,expires_at,last_seen_at), UPDATE(last_seen_at). UPDATE одного столбца users нужен для FOR UPDATE, а не для повышения роли ([PostgreSQL SELECT privileges](https://www.postgresql.org/docs/18/sql-select.html)). Эти grants **не применены на Timeweb** и не заменяют права остальных identity-операций; общий runtime создаётся отдельно без DDL/role management. Владелец БД не используется в HTTP.
 
-Проверки: native `tests/admin-authorization.test.mjs` и `tests/reference-administration.test.mjs`, реальный SQL в `tests/bootstrap-postgres-integration.mjs`. Изолированные synthetic accounts, настоящие identity sessions, демоция/отзыв под lock, expiry во время записи, rollback, конкурентные полные порядки двух администраторов и column-scoped роль с отказом чтения паролей/повышения ролей/DELETE/DDL. Fixture удаляет только свои аккаунты/роли/контейнер; Timeweb и реальные пользователи не используются. Перед будущими HTTP handlers обязательны прежние cookie/origin/body/resource-limit границы; этот backend guard их не заменяет.
+Проверки: native `tests/admin-authorization.test.mjs` и `tests/reference-administration.test.mjs`, реальный SQL в `tests/bootstrap-postgres-integration.mjs`. Изолированные synthetic accounts, настоящие identity sessions, демоция/отзыв под lock, expiry во время записи, rollback, конкурентные полные порядки двух администраторов и column-scoped роль с отказом чтения паролей/повышения ролей/DELETE/DDL. `listCategoryRows(token)` возвращает плоский справочник, включая скрытые строки, только id/parent_id/slug/name/sort_order/active; `listTariffs(token)` переиспользует canonical `PostgresTariffRepository` и возвращает `Tariff[]`. Оба чтения проверяют администратора и обновляют last_seen в той же транзакции. Fixture удаляет только свои аккаунты/роли/контейнер; Timeweb и реальные пользователи не используются. Backend guard не заменяет HTTP boundary.
+
+## Локальный API администрирования
+
+`/api/admin/local/[resource]` использует тот же `BLIZHNIY_AUTH_MODE=local` и строгую loopback development/test конфигурацию, что account API; origin обязательно HTTPS. При пустом mode — 404; попытка включить local mode в production — generic 503 до пула. `ENABLE_DEMO_ADMIN_BYPASS` не даёт доступа. Старые `/api/admin/categories`, `/api/admin/tariffs` и UI не переключены; новая схема и старые IDs не смешиваются.
+
+| Метод и путь | Вход JSON | Успех |
+| --- | --- | --- |
+| POST `/api/admin/local/categories` | ровно `{}` | 200 `{categories: CategoryRow[]}` |
+| PATCH `/api/admin/local/categories` | строгий category patch выше | 200 `{category: CategoryRow}`, неизвестный ID — 404 |
+| PATCH `/api/admin/local/category-order` | ровно `{ids: string[]}`, полный порядок корней | 200 `{status:"saved"}` |
+| POST `/api/admin/local/tariffs` | ровно `{}` | 200 `{tariffs: Tariff[]}` |
+| PATCH `/api/admin/local/tariffs` | строгий tariff patch выше | 200 `{status:"saved"}`, неизвестный ID — 404 |
+
+Чтение намеренно использует POST, как локальный account/session: сохраняем одинаковую проверку exact Origin и bounded JSON, не вводим ослабленный GET fallback. GET/HEAD/OPTIONS/PUT/DELETE запрещены (405); POST для category-order тоже запрещён. Нет create/delete/reset endpoint и автоматического создания admin-аккаунта. Это полный управляемый справочник, не пагинированные пользовательские публикации.
+
+Все допустимые запросы требуют actual Host из конфигурации, exact Origin, `X-Blizhniy-Request: 1`, JSON, отсутствие query и cross-site Fetch Metadata. Тело ≤4096 фактических байт, deadline 2 с, затем ровно одна canonical `__Host-blizhniy_session` cookie; Bearer/body/query/duplicate cookie не являются авторизацией. HTTP-лимит тела строже внутреннего лимита 1000 IDs: для нынешних 18 корней достаточно, увеличение лимита требует отдельного решения. PATCH явно разрешён общему reader только этим handler; account API остаётся POST-only. Защита использует несколько слоёв, не одну SameSite cookie ([OWASP CSRF](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)).
+
+Нет cookie — 401 UNAUTHENTICATED до пула; предъявленная сессия без актуальных admin-полномочий — одинаковый 403 ADMIN_REQUIRED; invalid edit — 422 INVALID_INPUT; неизвестный ресурс/ID — 404 NOT_FOUND; сбой БД/неопределённый commit — 503 ADMIN_UNAVAILABLE. Body/origin/method errors сохраняют код общей HTTP-границы. Все application-ответы no-store/no-referrer/nosniff, с X-Request-ID, без Set-Cookie и credential fields. Срок cookie не продлевается. Запись не повторять автоматически после timeout/503: результат может быть неизвестен; отдельно перечитать актуальный справочник после восстановления доступа.
+
+Account и admin handlers используют `getLocalDatabase()` из `local-database.ts`: один lazy PostgreSQL pool на процесс, максимум 5 соединений, ничего при импорте. `account-cookie.ts` — единый strict parser. Изменение конфигурации требует рестарта, не подмены runtime во время запроса.
+
+Admin limiter использует существующую SQL-таблицу и AuthRateLimiter с отдельным HMAC-derived secret namespace `local-admin`; 60 запросов всего за фиксированные 15 минут, без per-email счётчика и без PII в ключах. Счётчик общий для процессов и сохраняется при рестарте; admin traffic не расходует login quota. Проверяется до guarded операций; отказ — 429 с Retry-After 900, сбой SQL — generic 503 без записи справочника. Это **локальная** политика, не готовый production per-IP/per-user rate control.
+
+Наблюдаемость: `local_admin_request` содержит только requestId, entryPoint=http, конечный набор operation/status/code, durationMs. Вопросы диагностики: что отклоняет запросы, растёт ли 429/503, какова задержка? Ответ связывается с событием по X-Request-ID. Нет URL, body, email, user ID, session token/hash, DB message или цены в логах. Next development access logging исключает `/api/admin/local`, а последний header rule сохраняет no-referrer; rejection query token проверен через настоящий Next HTTPS. Это не durable audit trail/production metrics/alerts.
+
+Проверки: `tests/local-admin-http.test.mjs`, SQL list/guard в bootstrap fixture, HTTP в `tests/local-admin-web-integration.mjs`, запускаемом `npm run test:postgres:local`. Последний runner также проверяет прежний account/recovery UI в Chromium; новых admin-экранов пока нет. Только собственные localhost PostgreSQL/HTTPS Next/mail capture и synthetic accounts; реальные серверы не используются. Отдельный production smoke с включённым demo bypass проверяет default-off 404 и forced-local 503. Полный dependency audit не зелёный — ограничения и дата повторного разбора в [dependency-security.md](dependency-security.md).
 
 ## Аккаунты и сессии
 
