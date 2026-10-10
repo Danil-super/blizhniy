@@ -13,6 +13,7 @@ import { testTariffs } from "./tariffs-integration.mjs";
 import { createAdminFixture, testAdminAuthorization } from "./admin-authorization-integration.mjs";
 import { testReferenceAdministration } from "./reference-administration-integration.mjs";
 import { testMediaMetadata } from "./media-metadata-integration.mjs";
+import { testStagingProvision } from "./staging-provision-integration.mjs";
 
 const run = promisify(execFile);
 const image = "postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
@@ -45,6 +46,7 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     client = new pg.Client(config); await client.connect();
+    await testStagingProvision(suite, client, config);
     runtime = createPostgresDatabase({ NODE_ENV: "test", BLIZHNIY_DB_HOST: config.host,
       BLIZHNIY_DB_PORT: String(config.port), BLIZHNIY_DB_NAME: config.database,
       BLIZHNIY_DB_USER: config.user, BLIZHNIY_DB_PASSWORD: password, BLIZHNIY_DB_SSL_MODE: "disable" });
