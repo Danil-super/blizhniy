@@ -7,7 +7,7 @@ import { readPostgresConfig, PostgresError } from "../src/lib/postgres.ts";
 import { region, cities, categories, professions, tariffs } from "../src/lib/data.ts";
 
 const names = ["0001-identity.sql", "0002-registration.sql", "0003-auth-rate-limits.sql",
-  "0004-password-recovery.sql", "0005-reference-catalog.sql"];
+  "0004-password-recovery.sql", "0005-reference-catalog.sql", "0006-media-reservations.sql"];
 
 export function getBootstrapPlan() {
   return names.map(name => {

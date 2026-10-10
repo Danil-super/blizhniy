@@ -6,12 +6,18 @@ import { getBootstrapPlan, getReferenceSeed, bootstrapPostgres } from "../script
 
 test("plain PostgreSQL bootstrap includes only approved migrations and reference exports", () => {
   const plan = getBootstrapPlan();
-  assert.equal(plan.length, 5);
-  assert.equal(plan.at(-1).name, "0005-reference-catalog.sql");
+  assert.equal(plan.length, 6);
+  assert.equal(plan.at(-1).name, "0006-media-reservations.sql");
   for (const migration of plan) {
     assert.match(migration.sha256, /^[a-f0-9]{64}$/);
     assert.doesNotMatch(migration.sql, /^\s*(?:begin|commit);/im);
-    assert.doesNotMatch(migration.sql, /auth\.uid|security definer|create extension/i);
+    assert.doesNotMatch(migration.sql, /auth\.uid|create extension/i);
+    if (migration.name !== "0006-media-reservations.sql") assert.doesNotMatch(migration.sql, /security definer/i);
+    else {
+      assert.equal((migration.sql.match(/security definer/gi) ?? []).length, 1);
+      assert.match(migration.sql, /create function app\.charge_media_reservation\(\) returns trigger\s+language plpgsql security definer set search_path = pg_catalog,pg_temp/);
+      assert.match(migration.sql, /revoke all on function app\.charge_media_reservation\(\) from public/);
+    }
   }
   const seed = getReferenceSeed();
   assert.deepEqual(Object.keys(seed).sort(), ["categories", "cities", "professions", "regions", "tariffs"]);
@@ -40,7 +46,7 @@ test("operator requires explicit mode and never loads production dotenv or conne
   });
   const plan = run(["--plan"]);
   assert.equal(plan.status, 0);
-  assert.match(plan.stdout, /0005-reference-catalog/);
+  assert.match(plan.stdout, /0006-media-reservations/);
   for (const args of [[], ["--apply"], ["--plan", "extra"], ["--apply", "wrong", "extra"]]) {
     const result = run(args);
     assert.equal(result.status, 1);

@@ -22,7 +22,7 @@ node --experimental-strip-types scripts/bootstrap-postgres.mjs --apply 17e86f80f
 node --experimental-strip-types --test tests/bootstrap-postgres-integration.mjs
 ```
 
-`--plan` не подключается к БД. `--apply` требует точного подтверждения host/database, PostgreSQL 18 и проверенной конфигурации TLS. Первая установка отказывается работать поверх посторонних таблиц, представлений, последовательностей, функций или схем; объекты расширений не принимаются за пользовательские отношения/функции. Пять фиксированных миграций, журнал SHA-256 и reference seed выполняются в одной транзакции под advisory lock. Ошибка откатывает всю установку, неизвестный результат COMMIT не повторяется автоматически.
+`--plan` не подключается к БД. `--apply` требует точного подтверждения host/database, PostgreSQL 18 и проверенной конфигурации TLS. Первая установка отказывается работать поверх посторонних таблиц, представлений, последовательностей, функций или схем; объекты расширений не принимаются за пользовательские отношения/функции. Шесть фиксированных миграций, журнал SHA-256 и reference seed выполняются в одной транзакции под advisory lock. Ошибка откатывает всю установку, неизвестный результат COMMIT не повторяется автоматически. Локальная 0006 пока **не применена на Timeweb**; перед следующим удалённым `--apply` проверить отдельный план ниже, а не считать команду прежним пятишаговым bootstrap.
 
 Повтор сверяет непрерывный журнал `blizhniy_meta.migrations` с исходниками; изменённая миграция или пропуск — ошибка, не попытка автоматического исправления. Seed добавляет недостающие справочники через `ON CONFLICT DO NOTHING`, сохраняя ID, ручные названия, цены, сроки и флаги активности. В payload только регион/города/категории/специализации/тарифы из проверенных reference exports: никаких demo-аккаунтов, объявлений, фотографий и платежей.
 
@@ -169,6 +169,30 @@ Cleanup касается **только временного файла данн
 **Перед upload остаются обязательными:** PG-метаданные/сессия/ownership, атомарная общая квота 5 ГБ с учётом pending и неизвестных исходов, ограничение количества/параллельности jobs, crash-safe reservation/reconciliation и доказуемая очистка после рестарта, TTL/удаление/export и независимая копия в РФ, HTTP/приватная выдача, production worker sandbox/установка на VPS. Текущий примитив сам не ограничивает суммарный объём и не решает сироты после kill/power loss; поэтому этап 6 и его checklist остаются открытыми. Ни серверы, ни рабочая БД, ни действующая загрузка не менялись.
 
 Основание файловых API/флагов: [Node.js 22 fs](https://raw.githubusercontent.com/nodejs/node/v22.23.1/doc/api/fs.md).
+
+## Фотографии: локальные SQL-метаданные и резерв квоты (6d)
+
+`MediaMetadataRepository` из `src/lib/media-metadata.ts` связывает уже существующий файловый reader с PostgreSQL. Constructor и каждый вызов разрешены только в `development|test`, без browser, HTTP, нового env-переключателя, внешних запросов или подключения к действующему upload. БД и файловый reader передаются доверенным серверным кодом; raw input изображения здесь не декодируется.
+
+- `reserve(token,intentId,imageMetadata)` принимает только MIME/width/height/size/SHA-256 нормализованного WebP и UUIDv4 intent; owner/ID/state/path/лишние поля запрещены. Владелец берётся из guarded app identity; ID генерируется в БД. Snapshot до await. Возвращает `pending`; тот же pending intent даёт `MEDIA_IN_PROGRESS`, изменённые metadata — `MEDIA_INTENT_CONFLICT`, ready повтор возвращает тот же объект.
+- `getByIntent(token,intentId)` — owner-scoped readback при неизвестном исходе записи; no retry. `null` не является разрешением немедленно запускать ещё один FS writer: reservation не заменяет fencing/claim.
+- `complete(token,id)` блокирует owned record, читает и проверяет конечный файл через FS layer, затем переводит pending в ready. Ошибка FS оставляет pending. Повтор ready также проверяет файл; окончательная проверка срока сессии после работы может откатить изменение.
+- `readOwned(token,id)` выдаёт проверенные bytes только для owned ready внутри той же live-session transaction. Чужой/неизвестный/pending ID даёт null без обращения к FS; роль admin не обходит owner filter. Expiry после чтения не возвращает bytes вызывающему коду.
+
+`0006-media-reservations.sql` добавляет две пустые таблицы: `app.media_objects` с immutable owner/intent/metadata и `app.media_storage_budget`. Общий атомарный SQL-лимит — 5 000 000 000 байтов + 10 000 объектов; все pending/ready, в том числе старые и с неизвестным исходом, занимают место. После успешного INSERT AFTER-trigger делает условный UPDATE одной budget-строки. Конкуренция разных процессов/владельцев сериализуется в PostgreSQL; пропущенный ON CONFLICT не учитывается повторно. Это **учёт SQL reservations**, не уже подключённый контроль всего диска VPS или всех временных файлов. Прямой вызов файлового write остаётся внутренним примитивом, ещё не upload workflow.
+
+Budget-trigger — единственный SECURITY DEFINER в новом манифесте, fixed `pg_catalog,pg_temp` и fully-qualified table; PUBLIC execute/table privileges отозваны. Runtime не получает budget UPDATE/DELETE/TRUNCATE/DDL или владение схемой/функциями. Ограниченная тестовая роль имеет только нужные SELECT/INSERT/UPDATE столбцы; identity FOR UPDATE требует UPDATE authority, в fixture используется monotonic `users.auth_version`, а не разрешение менять role/password/id. Тест проверяет trigger с non-superuser owner и чужим search_path/temp shadow table. Это серверный доверенный SQL runtime, **не RLS для пользовательских SQL-подключений**.
+
+Owner FK RESTRICT сохраняет доказательство при попытке удаления аккаунта; DELETE media запрещён даже оператору обычным DML до отдельного cleanup-контракта. TTL, освобождение квоты, list/delete/export, writer lease, temp-file journal/fencing и crash reconciliation **не реализованы этим этапом**. До их проверки нельзя подключать повторяемый HTTP upload. Обоснование — [ADR-003](decisions/0003-media-reservations.md).
+
+Проверки: `tests/media-metadata.test.mjs` (границы/ошибки/local guard), `tests/media-metadata-integration.mjs` вызывается только существующим opt-in `tests/bootstrap-postgres-integration.mjs`. Настоящие PostgreSQL 18.6 и private FS с синтетическим WebP: owner/admin isolation, reserve→file→ready→read/restart, pending/ready повторы, unknown COMMIT, quota races/object limit/old pending, stale/expired/revoked sessions, expiry after FS, column grants, immutable records, guarded down и конкурентный INSERT во время down. Подмена только потерянного ответа и role boundary; expiry устанавливается собственным fixture SQL после настоящей FS-проверки, без коротких таймеров. SQL-движок и bytes файлов настоящие. Контейнер/root проверяются по ownership перед очисткой; удалённая БД не используется.
+
+План удалённого применения 0006 (пока не выполнялся):
+
+1. Зафиксировать совместимый commit, остановить только будущий media writer, сделать и проверить независимую копию БД. READ ONLY сверить TLS, цель и журнал 0001–0005; 0006 не должна быть внесена вручную или существовать вне журнала.
+2. Проверить `--plan`, migration credentials и функцию budget-owner (не HTTP credentials). Явный `--apply HOST:DATABASE` установит только отсутствующую 0006 при совпадающем прежнем журнале и не перезапишет справочники.
+3. READ ONLY сверить SHA-256, две пустые таблицы/нулевой budget, ограничения и отсутствие PUBLIC прав. Отдельной runtime-роли дать только проверенные grants; не переносить владельца/широкие операторские полномочия в приложение.
+4. Upload и production metadata guard остаются выключенными. Для rollback вернуть совместимое приложение; down допустим только после остановки writers и доказанной пустоты обоих хранилищ. Down берёт ACCESS EXCLUSIVE **до** проверки; заполненные reservations/ненулевой budget отклоняются. Не удалять данные и журнал, чтобы добиться «успешного» отката. Изолированный fixture вправе очищать свои синтетические строки, рабочая БД — нет.
 
 ## Аккаунты и сессии
 
