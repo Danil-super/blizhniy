@@ -1,6 +1,6 @@
 # PostgreSQL: серверный контур перехода
 
-Новый серверный модуль `src/lib/postgres.ts` не зависит от Supabase. К нему подключён только явно включаемый локальный account API; действующие маршруты сайта используют прежний backend. Он предоставляет параметризованный `query`, транзакцию на одном соединении и `close`. Создавайте один экземпляр на процесс, не на HTTP-запрос. Транзакционные запросы нужно `await` внутри callback; внешние платёжные вызовы не держат транзакцию открытой.
+Новый серверный модуль `src/lib/postgres.ts` не зависит от Supabase. К нему подключены только явно включаемые локальные account API и API администрирования справочников; действующие маршруты сайта используют прежний backend. Он предоставляет параметризованный `query`, транзакцию на одном соединении и `close`. Создавайте один экземпляр на процесс, не на HTTP-запрос. Транзакционные запросы нужно `await` внутри callback; внешние платёжные вызовы не держат транзакцию открытой.
 
 ## Конфигурация и диагностика
 
@@ -96,7 +96,19 @@ Admin limiter использует существующую SQL-таблицу �
 
 Наблюдаемость: `local_admin_request` содержит только requestId, entryPoint=http, конечный набор operation/status/code, durationMs. Вопросы диагностики: что отклоняет запросы, растёт ли 429/503, какова задержка? Ответ связывается с событием по X-Request-ID. Нет URL, body, email, user ID, session token/hash, DB message или цены в логах. Next development access logging исключает `/api/admin/local`, а последний header rule сохраняет no-referrer; rejection query token проверен через настоящий Next HTTPS. Это не durable audit trail/production metrics/alerts.
 
-Проверки: `tests/local-admin-http.test.mjs`, SQL list/guard в bootstrap fixture, HTTP в `tests/local-admin-web-integration.mjs`, запускаемом `npm run test:postgres:local`. Последний runner также проверяет прежний account/recovery UI в Chromium; новых admin-экранов пока нет. Только собственные localhost PostgreSQL/HTTPS Next/mail capture и synthetic accounts; реальные серверы не используются. Отдельный production smoke с включённым demo bypass проверяет default-off 404 и forced-local 503. Полный dependency audit не зелёный — ограничения и дата повторного разбора в [dependency-security.md](dependency-security.md).
+Проверки: `tests/local-admin-http.test.mjs`, SQL list/guard в bootstrap fixture, HTTP в `tests/local-admin-web-integration.mjs`, запускаемом `npm run test:postgres:local`. Последний runner также проверяет account/recovery UI и отдельный локальный экран справочников в Chromium. Только собственные localhost PostgreSQL/HTTPS Next/mail capture и synthetic accounts; реальные серверы не используются. Отдельный production smoke с включённым demo bypass проверяет default-off 404 и forced-local 503. Полный dependency audit не зелёный — ограничения и дата повторного разбора в [dependency-security.md](dependency-security.md).
+
+## Локальный экран справочников
+
+`/auth/local/admin` открывается только с той же валидной local development/test конфигурацией и HTTPS origin; production, пустой режим и неверная конфигурация дают 404. Ссылка находится в локальной форме аккаунта. Используются существующие цвета, поля и интервалы проекта: на узком экране формы идут одной колонкой, с md — двумя. Это отдельный экран, не переключение старого `/admin` или публичного каталога. Метаданные запрещают индексацию; существующее правило `/auth/local/:path*` сохраняет no-referrer.
+
+Экран не получает session token, не читает browser storage и не доверяет показанной ранее роли: оба справочника запрашиваются через guarded API. Редактируются только существующие name/active/price/durationDays/sortOrder; ID, slug, action и parent не меняются. Цена вводится десятичной строкой с точкой или запятой, до двух знаков, без округления; пустая цена недопустима, 0 допустим. Пустой срок — явный null, иначе целые 1–3650 дней. UI-проверка помогает пользователю, но не заменяет серверную валидацию. Полный порядок корней (включая скрытые) меняется кнопками ↑/↓, затем отдельным сохранением; это черновик, не optimistic SQL write.
+
+Во время проверки или записи редакторы скрыты; busy ref блокирует повторное сохранение. После подтверждённой записи выполняется чтение актуальных данных, не подстановка введённой цены. После сетевого/неизвестного ответа показано предупреждение о неизвестном результате, редакторы скрыты до перечитывания; PATCH не повторяется автоматически. 401/403, отсутствие справочника, invalid input и rate limit имеют отдельные сообщения без raw server errors. Пустой справочник объясняется текстом и не восстанавливается из seed.
+
+Возврат на вкладку, focus, persisted pageshow и сообщение `changed` из существующего локального auth BroadcastChannel сбрасывают данные и несохранённые черновики. Сообщение не содержит identity/credentials и само не даёт прав: запускается новое серверное чтение. Счётчик версии игнорирует старые ответы после logout/смены контекста; ошибки не оставляют ранее загруженные редакторы. Фоновый polling и автоматическое повышение роли отсутствуют. Администратора заранее назначает оператор отдельно; UI/API не создают admin-аккаунт.
+
+Проверки клиентского адаптера и SSR — `tests/local-reference-admin*.test.mjs`. `tests/local-reference-admin-ui-web.mjs` проверяет реальные SQL-записи через UI, обычного пользователя/демоцию/logout, поздний list response после logout, неизвестный результат PATCH без retry, keyboard reorder, состояние пустоты/429 (для этих двух состояний HTTP response подменяется только в браузерном fixture). Скриншоты и DOM проверены на 320/768/1024/1440; существующий axe-core проверяет WCAG A/AA внутри main, не весь прежний сайт. Chromium изолирован, внешние HTTP-запросы запрещены. Новых пакетов, миграций и прав на Timeweb нет.
 
 ## Аккаунты и сессии
 

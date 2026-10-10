@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 import { IdentityStore, hashSessionToken } from "../src/lib/identity.ts";
 
 /** Reuses the owned PG + real HTTPS Next server. No remote database or real recipients. */
-export async function testLocalAdminWeb(suite, db, { post, fetchLocal, origin, seedUser, password, readOutput, rateSecret }) {
+export async function testLocalAdminWeb(suite, db, { post, fetchLocal, origin, seedUser, password, readOutput, rateSecret, browser }) {
   const email = "web-admin@example.invalid";
   const id = await seedUser(email);
   await db.query("update app.users set role='admin' where id=$1", [id]);
@@ -124,4 +124,6 @@ export async function testLocalAdminWeb(suite, db, { post, fetchLocal, origin, s
     assert.equal(event.code, "RATE_LIMITED");
     assert.equal(event.status, 429);
   });
+  const { testLocalReferenceAdminUi } = await import("./local-reference-admin-ui-web.mjs");
+  await testLocalReferenceAdminUi(suite, db, { browser, origin, seedUser, password, fetchLocal });
 }

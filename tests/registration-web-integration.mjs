@@ -517,7 +517,7 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
     const { testPasswordRecoveryWeb } = await import("./password-recovery-web-integration.mjs");
     await testPasswordRecoveryWeb(suite, db, { post, fetchLocal, origin, messages, mailState, seedUser, password, readOutput: () => output });
     const { testLocalAdminWeb } = await import("./local-admin-web-integration.mjs");
-    await testLocalAdminWeb(suite, db, { post, fetchLocal, origin, seedUser, password, readOutput: () => output, rateSecret: secret });
+    await testLocalAdminWeb(suite, db, { post, fetchLocal, origin, seedUser, password, readOutput: () => output, rateSecret: secret, browser });
     assert.equal(output.includes(signup.email), false, "no email in app logs");
     assert.equal(output.includes(password), false, "no password in app logs");
   } finally {
