@@ -42,6 +42,16 @@ node --experimental-strip-types --test tests/bootstrap-postgres-integration.mjs
 
 Проверка: `node --experimental-strip-types --test tests/postgres-catalog.test.mjs`; SQL/ограниченные права проверяются внутри `tests/bootstrap-postgres-integration.mjs` на собственном локальном PostgreSQL 18.6. Его тестовые категории откатываются, роль удаляется; удалённая БД не используется.
 
+## Чтение тарифов
+
+`PostgresTariffRepository` получает тот же `PostgresQueries` без собственного пула/окружения. Методы `getStoredTariffs()` и `getPublicTariffs()` сохраняют контракт `Tariff[]`, включая поле `active` и неактивные строки, как прежний store. Lookup `getStoredTariffById(id)` возвращает сохранённую запись, `getActiveStoredTariffById(id)` — только активную. Неизвестный ID даёт `undefined`, неправильный формат/длина — `TariffInputError` до SQL; ID и active-only параметризованы.
+
+ID берётся из БД, не восстанавливается по action/static seed. Цена `numeric(12,2)` явно читается как текст и проверяется перед преобразованием в прежний UI-тип `number`; срок `NULL` сохраняется. Это представление для совместимости, **не арифметика оплаты**: checkout/fulfillment будут хранить точный серверный снимок отдельно. Сортировка выполняется по квалифицированному числовому столбцу `app.tariffs.price`, затем ID: простое `ORDER BY price` после cast сортировало бы текстовый результат ([PostgreSQL ORDER BY](https://www.postgresql.org/docs/18/queries-order.html)).
+
+Чтения не кэшируют старую цену, не восстанавливают пустую таблицу, не перезаписывают ручные настройки и не вызывают Supabase. Ошибка передаётся вызывающему коду, без retry. Runtime достаточно `USAGE app` и `SELECT app.tariffs`; запись и identity не нужны. HTTP-потребители тарифов/оплаты пока не переключены.
+
+Unit-проверки: `node --experimental-strip-types --test tests/postgres-tariffs.test.mjs`; реальный SQL/active-only/цены/SELECT-only роль — `tests/bootstrap-postgres-integration.mjs`. Новые модули также проверены на Timeweb в **READ ONLY + TLS**: 105 категорий/7 тарифов, цены по числовому возрастанию, 5 записей журнала/0 аккаунтов. Это операторская проверка, не установка owner credentials в приложении.
+
 ## Проверка без рабочей БД
 
 - `node --experimental-strip-types --test tests/postgres.test.mjs` — unit/отрицательные проверки.
