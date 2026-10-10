@@ -65,6 +65,8 @@ Read-only подготовка L02: VPS Node20.20.2, доступно около
 
 ### Что уже доказано, а что нет
 
+L01b.1: добавлен воспроизводимый Node22 direct-import coverage runner, отдельно от общего suite. Первый замер 88/88: 9/337 runtime-кандидатов, строки 716/760=94,21% только в измеренной группе; 328 источников явно остаются неизмеренными. Report JSON не использует текст TAP или атрибуцию VM fixtures. Доказательства и границы — docs/native-coverage.md. L01b не закрыт: changed-line ≥80% gate, общий scope, performance/accessibility baseline ещё не включены.
+
 | Область | Проверенный результат | Что ещё блокирует запуск |
 | --- | --- | --- |
 | Публикация кода | main и активный VPS — `86e43c7`; [CI/deploy](https://github.com/Danil-super/blizhniy/actions/runs/38061600124) завершён, watchdog подтвердил релиз | Доставка кода не включает новый backend автоматически |
