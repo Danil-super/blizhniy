@@ -18,6 +18,7 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
   const secret = randomBytes(32).toString("hex");
   const authorization = `Bearer ${createHmac("sha256", secret).update("local-mail-capture").digest("hex")}`;
   const messages = [];
+  const mailState = { fail: false, envelopes: 0 };
   const mailServer = createServer(async (request, response) => {
     if (request.url !== "/messages" || request.method !== "POST" || request.headers.authorization !== authorization) {
       response.writeHead(403).end(); return;
@@ -29,9 +30,14 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
         if (Buffer.byteLength(body) > 4096) throw new Error("Capture body limit");
       }
       const { mail } = JSON.parse(body);
+      mailState.envelopes++;
+      if (mailState.fail) { response.writeHead(503).end(); return; }
       if (mail) {
         assert.match(mail.to, /\.invalid$/);
-        assert.match(mail.text, /\/auth\/local\/confirm#token=[a-f0-9]{64}/);
+        assert.equal(request.headers["x-blizhniy-entry-point"], mail.subject.includes("восстановление") ? "worker" : "http");
+        assert.match(request.headers["x-request-id"], /^[a-f0-9-]{36}$/);
+        if (mail.subject.includes("пароль изменён")) assert.doesNotMatch(mail.text, /#token=|passphrase/);
+        else assert.match(mail.text, /\/auth\/local\/(?:confirm|reset)#token=[a-f0-9]{64}/);
         messages.push(mail);
       }
       response.writeHead(204).end();
@@ -508,6 +514,8 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
         }
       } finally { await context.close(); }
     });
+    const { testPasswordRecoveryWeb } = await import("./password-recovery-web-integration.mjs");
+    await testPasswordRecoveryWeb(suite, db, { post, fetchLocal, origin, messages, mailState, seedUser, password, readOutput: () => output });
     assert.equal(output.includes(signup.email), false, "no email in app logs");
     assert.equal(output.includes(password), false, "no password in app logs");
   } finally {

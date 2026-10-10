@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Rejected query credentials must not enter Next's development access log; structured auth events remain.
+  logging: { incomingRequests: { ignore: [/^\/(?:api\/account|auth\/local)(?:\/|\?|$)/] } },
   distDir: process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_LOCAL_DEVELOPMENT === "true"
     ? ".next-local"
     : ".next",
@@ -45,6 +47,11 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // Next config headers override route response headers: put auth-specific privacy rules last.
+      ...["/api/account/:path*", "/auth/local/:path*"].map((source) => ({
+        source,
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      })),
     ];
   },
   async redirects() {
