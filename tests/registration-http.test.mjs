@@ -5,6 +5,7 @@ import { test } from "node:test";
 import vm from "node:vm";
 import * as boundary from "../src/lib/auth-http.ts";
 import * as crypto from "node:crypto";
+import { loadAdminModule } from "./admin-module.mjs";
 
 const ts = createRequire(import.meta.url)("typescript");
 const environment = { NODE_ENV: "test", BLIZHNIY_AUTH_MODE: "local", BLIZHNIY_DB_HOST: "127.0.0.1", BLIZHNIY_DB_SSL_MODE: "disable",
@@ -20,7 +21,8 @@ function setup(changes = {}, options = {}) {
     "node:crypto": crypto,
     "./auth-http": { ...boundary, readLocalAuthConfig: () => boundary.readLocalAuthConfig({ ...environment, ...changes }),
       AuthRateLimiter: class { async allow(email) { calls.limits.push(email); if (options.databaseError) throw new Error("sensitive database error"); return !options.limited; } } },
-    "./postgres": { createPostgresDatabase: () => { calls.database++; return {}; } },
+    "./local-database": { getLocalDatabase: () => { calls.database++; return {}; } },
+    "./account-cookie": loadAdminModule("account-cookie"),
     "./registration": { RegistrationStore: class { constructor() { return store; } }, RegistrationInputError: InputError },
     "./password-recovery": { RecoveryInputError: InputError, PasswordRecoveryStore: class {
       async requestRecovery(email) { calls.recover.push(email); if (options.recoveryWork) return options.recoveryWork(email); return options.recovery ?? null; }

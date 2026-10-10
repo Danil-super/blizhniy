@@ -1,7 +1,8 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { AuthRateLimiter, AuthRequestError, authJson, readAuthJson, readLocalAuthConfig } from "./auth-http";
 import type { LocalAuthConfig } from "./auth-http";
-import { createPostgresDatabase } from "./postgres";
+import { getLocalDatabase } from "./local-database";
+import { accountSessionCookieName as sessionCookieName, readAccountSessionToken as cookieToken } from "./account-cookie";
 import { RegistrationInputError, RegistrationStore } from "./registration";
 import type { EmailConfirmation } from "./registration";
 import { IdentityStore } from "./identity";
@@ -12,11 +13,10 @@ import type { PasswordRecovery, PasswordResetReceipt } from "./password-recovery
 type Runtime = { store: RegistrationStore; identity: IdentityStore; limiter: AuthRateLimiter; recovery: PasswordRecoveryStore; activeRecoveries: number };
 const processState = globalThis as typeof globalThis & { blizhniyRegistrationRuntime?: Runtime };
 const actions = new Set(["register", "resend", "confirm", "login", "session", "logout", "recover", "reset"]);
-const sessionCookieName = "__Host-blizhniy_session";
 
 function runtime(config: LocalAuthConfig): Runtime {
   if (!processState.blizhniyRegistrationRuntime) {
-    const db = createPostgresDatabase();
+    const db = getLocalDatabase();
     processState.blizhniyRegistrationRuntime = { store: new RegistrationStore(db), identity: new IdentityStore(db),
       limiter: new AuthRateLimiter(db, config.rateSecret), recovery: new PasswordRecoveryStore(db), activeRecoveries: 0 };
   }
@@ -33,15 +33,6 @@ function localEmail(input: unknown): string {
     throw new AuthRequestError(422, "SYNTHETIC_EMAIL_REQUIRED");
   }
   return input.trim().toLowerCase();
-}
-
-function cookieToken(request: Request): string | null {
-  const header = request.headers.get("cookie") ?? "";
-  if (header.length > 4096) return null;
-  const matches = header.split(";").map((part) => part.trim()).filter((part) => part.startsWith(`${sessionCookieName}=`));
-  if (matches.length !== 1) return null;
-  const token = matches[0].slice(sessionCookieName.length+1);
-  return /^[a-f0-9]{64}$/.test(token) ? token : null;
 }
 
 function sessionCookie(token: string, maxAge: number): string {

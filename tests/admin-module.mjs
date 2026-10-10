@@ -5,7 +5,7 @@ import * as identity from "../src/lib/identity.ts";
 const ts = createRequire(import.meta.url)("typescript");
 const modules = new Map();
 export function loadAdminModule(name) {
-  if (!["admin-authorization", "catalog-administration", "tariff-administration"].includes(name)) throw new Error("Unapproved admin test module");
+  if (!["admin-authorization", "catalog-administration", "tariff-administration", "account-cookie"].includes(name)) throw new Error("Unapproved admin test module");
   if (modules.has(name)) return modules.get(name);
   const exports = {};
   const source = readFileSync(new URL(`../src/lib/${name}.ts`, import.meta.url), "utf8");
