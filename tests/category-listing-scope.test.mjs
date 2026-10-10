@@ -1,24 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import test from 'node:test';
-import vm from 'node:vm';
-
-const ts = createRequire(import.meta.url)('typescript');
-const source = readFileSync(new URL('../src/lib/category-store.ts', import.meta.url), 'utf8');
-const start = source.indexOf('type CategoryRow =');
-const end = source.indexOf('\nfunction withRequiredFallbackCategories', start);
-assert.ok(start >= 0 && end > start, 'public category mapper should be present');
-const mapper = `${source.slice(start, end)}\nexports.mapPublicCategoryRows = mapPublicCategoryRows;`;
-
-function mapPublicCategoryRows(rows) {
-  const exports = {};
-  const js = ts.transpileModule(mapper, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
-  vm.runInNewContext(js, { exports, Map });
-  return exports.mapPublicCategoryRows(rows);
-}
+import { mapPublicCategoryRows } from '../src/lib/category-contract.ts';
 
 test('public category scope preserves parent and every direct child ID while visible children stay public', () => {
   const categories = mapPublicCategoryRows([

@@ -226,7 +226,7 @@ test('UI view-counter synchronizes local views after hydration and listens for l
 });
 
 test('UI public category child labels are unique while all listing scope IDs remain intact', () => {
-  const code = `${functionsFrom('src/lib/category-store.ts', ['mapPublicCategoryRows'])}\nexports.mapPublicCategoryRows = mapPublicCategoryRows;`;
+  const code = `${functionsFrom('src/lib/category-contract.ts', ['mapPublicCategoryRows'])}\nexports.mapPublicCategoryRows = mapPublicCategoryRows;`;
   const { mapPublicCategoryRows } = load(code);
   const [category] = mapPublicCategoryRows([
     { id: 'root', name: 'Красота и здоровье', slug: 'krasota-i-zdorovie', active: true },
