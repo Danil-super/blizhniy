@@ -1,11 +1,13 @@
 import { AppSessionAccessError, withAppSessionTransaction } from "./app-session-transaction";
-import type { MediaFileRecord } from "./media-files";
+import type { MediaFileRecord, MediaFileObservation } from "./media-files";
+import type { createLocalMediaFileWorker } from "./media-file-worker";
 import type { PostgresDatabase, PostgresQueries } from "./postgres";
 
 type ImageMetadata = Omit<MediaFileRecord, "id">;
 export type MediaReservation = MediaFileRecord & { state: "pending" | "ready" };
 export type MediaWriteClaim = { attemptId: string; record: MediaFileRecord };
 export type MediaWriteAttempt = { attemptId: string; claimedAt: Date };
+export type MediaWriteObservation = { state: MediaReservation["state"]; files: MediaFileObservation };
 type ErrorCode = "INVALID_MEDIA_METADATA" | "MEDIA_ACCESS_DENIED" | "MEDIA_NOT_FOUND" | "MEDIA_INTENT_CONFLICT" | "MEDIA_IN_PROGRESS" | "MEDIA_QUOTA_EXCEEDED" | "MEDIA_METADATA_UNAVAILABLE";
 export class MediaMetadataError extends Error {
   constructor(readonly code: ErrorCode) { super("Media metadata operation failed"); this.name = "MediaMetadataError"; }
@@ -86,6 +88,23 @@ export class MediaMetadataRepository {
         from app.media_objects m join app.media_write_attempts a on a.media_id=m.id where m.id=$1 and m.owner_id=$2`, [id, ownerId]);
       return row ?? null;
     });
+  }
+  /** Current owner-only snapshot under the OS fence. Never authorizes cleanup/replay. */
+  async observeWrite(token: string, fileId: string, worker: Pick<Awaited<ReturnType<typeof createLocalMediaFileWorker>>, "observe">, signal?: AbortSignal): Promise<MediaWriteObservation> {
+    this.assertLocal(); const id = identifier(fileId);
+    try {
+      return await worker.observe(inspect => this.owned(token, async (tx, ownerId) => {
+        const { rows: [row] } = await tx.query<MediaReservation>(`select ${columns} from app.media_objects where id=$1 and owner_id=$2 for update`, [id, ownerId]);
+        if (!row) throw new MediaMetadataError("MEDIA_NOT_FOUND");
+        const { rows: [attempt] } = await tx.query<{ attemptId: string }>(`select id as "attemptId" from app.media_write_attempts where media_id=$1`, [id]);
+        if (!attempt) throw new MediaMetadataError("MEDIA_NOT_FOUND");
+        return { state: row.state, files: await inspect(fileRecord(row), attempt.attemptId) };
+      }), signal);
+    } catch (error) {
+      if (error instanceof MediaMetadataError) throw error;
+      if (error && typeof error === "object" && "code" in error && error.code === "MEDIA_FILE_WORKER_BUSY") throw new MediaMetadataError("MEDIA_IN_PROGRESS");
+      throw new MediaMetadataError("MEDIA_METADATA_UNAVAILABLE");
+    }
   }
   async complete(token: string, fileId: string): Promise<MediaReservation> {
     this.assertLocal(); const id = identifier(fileId);

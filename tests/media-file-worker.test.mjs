@@ -137,7 +137,7 @@ test("invoking the entry without its kernel lock cannot perform file effects", a
   const { encodeFileWrite } = await import("../src/lib/media-file-protocol.ts");
   const lock = await fs.open(path.join(root, ".writer.lock"), "r"), directory = await fs.open(root, "r");
   try {
-    for (const mode of ["write", "inspect"]) {
+    for (const mode of ["write", "inspect", "observe"]) {
       const child = spawn(process.execPath, ["--experimental-strip-types", "--no-warnings", path.join(appRoot, "scripts/media-file-worker.mjs"), root, mode], {
         env: { NODE_ENV: "test" }, stdio: ["pipe", "pipe", "ignore", lock.fd, directory.fd],
       });

@@ -25,8 +25,26 @@ export function assertFileFence(root) {
 }
 
 export async function runFileWorker(createStore = createLocalMediaFileStore, mode = "write") {
-  if (!["write", "inspect"].includes(mode)) throw new Error("File operation unavailable");
+  if (!["write", "inspect", "observe"].includes(mode)) throw new Error("File operation unavailable");
   const root = process.argv[2], proof = assertFileFence(root);
+  if (mode === "observe") {
+    process.stdout.write(Buffer.from([82])); // READY only after this process proves its kernel fence.
+    let frame = Buffer.alloc(0), observed = false, chunks = 0;
+    for await (const chunk of process.stdin) {
+      if (++chunks > 256 || observed || frame.length + chunk.length > FILE_INSPECT_REQUEST_BYTES) throw new Error("File observation unavailable");
+      frame = Buffer.concat([frame, chunk]);
+      if (frame.length === FILE_INSPECT_REQUEST_BYTES) {
+        const { record, attemptId } = decodeFileInspection(frame);
+        if (!same(proof, assertFileFence(root))) throw new Error("File fence unavailable");
+        const report = await (await createStore(root, proof)).inspect(record, attemptId);
+        if (!same(proof, assertFileFence(root))) throw new Error("File fence unavailable");
+        observed = true; process.stdout.write(encodeFileObservation(report));
+      }
+    }
+    // EOF is sent only after the parent's guarded transaction has settled.
+    if ((frame.length !== 0 && !observed) || !same(proof, assertFileFence(root))) throw new Error("File observation unavailable");
+    return Buffer.from([68]); // DONE, including denied/no-request observations.
+  }
   const chunks = []; let size = 0;
   for await (const chunk of process.stdin) {
     size += chunk.length; if (size > (mode === "write" ? FILE_WRITE_MAX_BYTES : FILE_INSPECT_REQUEST_BYTES) || chunks.length >= 256) throw new Error("File operation unavailable"); chunks.push(chunk);

@@ -26,6 +26,8 @@ File store проверяет только `<media UUID>.webp` и `.pending-<att
 
 ## Последствия
 
+Удерживаемый guarded SQL вариант теперь реализован в [ADR-007](0007-media-guarded-observation.md); исходный low-level inspect из этого ADR по-прежнему не заменяет его и не разрешает очистку.
+
 Это **не** повторная проверка актуального SQL состояния под fence и **не** power-loss durability proof. Следующий 6e3b должен удерживать этот же fence при owner/session-guarded SQL lookup и наблюдении, включая повторную проверку сессии после работы. Возвращённый снимок 6e3a нельзя использовать для самостоятельного cleanup/release. Порядок блокировок и протокол удержания child до завершения guarded transaction нужно проверить отдельно; HTTP, endpoint выдачи и production sandbox остаются вне этого решения.
 
 Проверки охватывают настоящую Linux FS/flock: absence, complete/incomplete/empty, оба hardlink, чужие ссылки, права, symlink, directory, oversize, corruption и сохранность файлов. Fault adapters моделируют только I/O/namespace и события supervisor; реальные writer-crash тесты ADR-005 остаются обязательными. Схема/права PostgreSQL не меняются, новых dependencies нет.

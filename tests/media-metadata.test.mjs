@@ -77,3 +77,15 @@ test("a foreign, ready, mismatching or already claimed record cannot grant anoth
   await fail(fixture().repository.claimWrite(token, randomUUID(), { ...metadata, sha256: "b".repeat(64) }), "MEDIA_INTENT_CONFLICT");
   await fail(fixture(undefined, { conflict: true }).repository.claimWrite(token, randomUUID(), metadata), "MEDIA_IN_PROGRESS");
 });
+test("observation validates identifiers before its fence and maps busy/unknown errors without a SQL retry", async () => {
+  const app = fixture(); let attempts = 0;
+  const busy = { observe: async () => { attempts++; throw Object.assign(new Error("Private diagnostics"), { code: "MEDIA_FILE_WORKER_BUSY" }); } };
+  await fail(app.repository.observeWrite(token, "../outside", busy), "INVALID_MEDIA_METADATA"); assert.equal(attempts, 0);
+  await fail(app.repository.observeWrite(token, randomUUID(), busy), "MEDIA_IN_PROGRESS"); assert.equal(attempts, 1); assert.equal(app.transactionCount(), 0);
+  await fail(app.repository.observeWrite(token, randomUUID(), { observe: async () => { throw new Error("Private worker diagnostics"); } }), "MEDIA_METADATA_UNAVAILABLE");
+});
+test("missing observation never invokes a reader or requests bytes inside its guarded fence", async () => {
+  const app = fixture(null); let inspections = 0;
+  await fail(app.repository.observeWrite(token, randomUUID(), { observe: work => work(async () => { inspections++; }) }), "MEDIA_NOT_FOUND");
+  assert.equal(inspections, 0); assert.equal(app.readCount(), 0); assert.equal(app.transactionCount(), 1);
+});

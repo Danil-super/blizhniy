@@ -93,3 +93,48 @@ test("inspection overflow kills once and cannot return partial evidence before c
   app.child.stdout.write(Buffer.alloc(8)); await Promise.resolve(); assert.equal(finished, false); assert.deepEqual(app.calls.filter(call => call === "SIGKILL"), ["SIGKILL"]);
   app.child.emit("close", null, "SIGKILL"); await failure; await fail(app.restart());
 });
+test("observation callback starts only after READY, keeps stdin open through work, and waits for DONE and close", async t => {
+  const app = await fixture(t), report = { final: "complete", temporary: "absent", linked: false }; let entered = false, inspected, release;
+  const observed = new Promise(resolve => { inspected = resolve; }), held = new Promise(resolve => { release = resolve; });
+  const pending = app.worker.observe(async inspect => { entered = true; const result = await inspect(metadata(), randomUUID()); inspected(); await held; return result; });
+  await app.started; assert.equal(entered, false); assert.equal(app.input.length, 0);
+  app.child.stdout.write(Buffer.from([82]));
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(entered, true); assert.equal(Buffer.concat(app.input).length, 116); assert.equal(app.child.stdin.writableEnded, false);
+  app.child.stdout.write(encodeFileObservation(report)); await observed;
+  assert.equal(app.child.stdin.writableEnded, false); await assert.rejects(app.worker.inspect(metadata(), randomUUID()), { code: "MEDIA_FILE_WORKER_BUSY" });
+  release(); await new Promise(resolve => setImmediate(resolve)); assert.equal(app.child.stdin.writableEnded, true);
+  app.child.stdout.write(Buffer.from([68])); let returned = false; pending.then(() => { returned = true; }); await Promise.resolve(); assert.equal(returned, false);
+  app.child.emit("close", 0); assert.deepEqual(await pending, report);
+});
+test("denied observation performs no FS request and preserves the error only after a clean child close", async t => {
+  const app = await fixture(t), denied = new Error("Owner denied"); let returned = false;
+  const pending = app.worker.observe(async () => { throw denied; }); const rejected = assert.rejects(pending, error => error === denied).then(() => { returned = true; });
+  await app.started; app.child.stdout.write(Buffer.from([82])); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(app.input.length, 0); assert.equal(app.child.stdin.writableEnded, true); assert.equal(returned, false);
+  app.child.stdout.write(Buffer.from([68])); app.child.emit("close", 0); await rejected; assert.equal(app.timers.size, 0);
+  await app.restart();
+});
+test("OS conflict never starts the observation's SQL callback", async t => {
+  const app = await fixture(t); let entered = false;
+  const pending = app.worker.observe(async () => { entered = true; }); const rejected = assert.rejects(pending, { code: "MEDIA_FILE_WORKER_BUSY" });
+  await app.started; app.child.emit("close", 73); await rejected; assert.equal(entered, false); assert.equal(app.input.length, 0);
+});
+test("READY followed immediately by cancellation never starts a late SQL callback", async t => {
+  const app = await fixture(t), abort = new AbortController(); let entered = false;
+  const pending = app.worker.observe(async () => { entered = true; }, abort.signal), rejected = fail(pending);
+  await app.started; app.child.stdout.write(Buffer.from([82])); abort.abort(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(entered, false); app.child.emit("close", null, "SIGKILL"); await rejected;
+});
+test("premature DONE cannot stand in for a fence held until the SQL callback has finished", async t => {
+  const app = await fixture(t); let entered = false;
+  const pending = app.worker.observe(async () => { entered = true; }), rejected = fail(pending);
+  await app.started; app.child.stdout.write(Buffer.from([82, 68])); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(entered, false); assert.ok(app.calls.includes("SIGKILL")); app.child.emit("close", null, "SIGKILL"); await rejected;
+});
+test("a detached inspection is refused without returning evidence or leaking an unhandled rejection", async t => {
+  const app = await fixture(t);
+  const pending = app.worker.observe(async inspect => { void inspect(metadata(), randomUUID()); return "detached"; }), rejected = fail(pending);
+  await app.started; app.child.stdout.write(Buffer.from([82])); await new Promise(resolve => setImmediate(resolve));
+  assert.ok(app.calls.includes("SIGKILL")); app.child.emit("close", null, "SIGKILL"); await rejected;
+  await new Promise(resolve => setImmediate(resolve));
+});

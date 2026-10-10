@@ -6,11 +6,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { fileWorkerModule } from "./media-file-worker-module.mjs";
 import { loadMediaModule } from "./media-module.mjs";
+import { testMediaObservations } from "./media-observation-integration.mjs";
 
 const { LocalMediaWriter } = loadMediaModule("media-write");
 const appRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const fail = promise => assert.rejects(promise, error => error.code === "MEDIA_WRITE_UNAVAILABLE" && !error.cause);
-export async function testFencedMediaWrites(suite, db, { repo, root, token, image, bytes }) {
+export async function testFencedMediaWrites(suite, db, { repo, root, token, otherToken, adminToken, image, bytes }) {
   await fs.writeFile(path.join(root, ".writer.lock"), "", { flag: "wx", mode: 0o600 });
   await suite.test("file process + PG: committed owner claim, OS-fenced write, ready and private read", async () => {
     const pending = await repo.reserve(token, randomUUID(), image);
@@ -49,4 +50,5 @@ export async function testFencedMediaWrites(suite, db, { repo, root, token, imag
       assert.equal((await fs.lstat(path.join(root, `.pending-${claim.attemptId}`))).ino, partial.ino);
     } finally { abort.abort(); if (child && child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); await rejected; }
   });
+  await testMediaObservations(suite, db, { repo, root, token, otherToken, adminToken, image, bytes });
 }
