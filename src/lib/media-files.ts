@@ -2,15 +2,16 @@ import { randomUUID } from "node:crypto";
 import { constants, type BigIntStats } from "node:fs";
 import { open, realpath, link, lstat, unlink, type FileHandle } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
-import { encodeMediaReply, MEDIA_MAX_OUTPUT_BYTES } from "./media-worker-protocol";
+import { encodeMediaReply, MEDIA_MAX_OUTPUT_BYTES } from "./media-worker-protocol.ts";
 
 export type MediaFileRecord = { id: string; mimeType: "image/webp"; width: number; height: number; size: number; sha256: string };
 type FileErrorCode = "INVALID_MEDIA_FILE" | "MEDIA_FILE_EXISTS" | "MEDIA_FILE_UNAVAILABLE";
 export class MediaFileError extends Error {
-  constructor(readonly code: FileErrorCode) { super("Media file operation failed"); this.name = "MediaFileError"; }
+  readonly code: FileErrorCode;
+  constructor(code: FileErrorCode) { super("Media file operation failed"); this.name = "MediaFileError"; this.code = code; }
 }
 const unavailable = () => new MediaFileError("MEDIA_FILE_UNAVAILABLE");
-const sameInode = (a: BigIntStats, b: BigIntStats) => a.dev === b.dev && a.ino === b.ino;
+const sameInode = (a: Pick<BigIntStats, "dev" | "ino">, b: BigIntStats) => a.dev === b.dev && a.ino === b.ino;
 
 function snapshotRecord(input: MediaFileRecord): MediaFileRecord {
   try {
@@ -25,7 +26,7 @@ function snapshotRecord(input: MediaFileRecord): MediaFileRecord {
 /** Local primitive, NOT authorization. Only a future guarded SQL reservation may supply records.
  * rootDirectory is pre-provisioned operator configuration outside releases/public; never an upload path.
  * The hierarchy and this UID must be trusted: this is not a sandbox against same-UID writers/root. */
-export async function createLocalMediaFileStore(rootDirectory: string) {
+export async function createLocalMediaFileStore(rootDirectory: string, expectedRoot?: Pick<BigIntStats, "dev" | "ino">) {
   let identity: BigIntStats | undefined, disabled = false;
   const checkRuntime = () => {
     if (typeof window !== "undefined" || process.platform !== "linux" || !["development", "test"].includes(process.env.NODE_ENV ?? "") ||
@@ -38,7 +39,7 @@ export async function createLocalMediaFileStore(rootDirectory: string) {
       directory = await open(rootDirectory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
       const info = await directory.stat({ bigint: true }), anchored = `/proc/self/fd/${directory.fd}`;
       if (!info.isDirectory() || info.uid !== BigInt(process.getuid!()) || (info.mode & BigInt(0o7777)) !== BigInt(0o700) ||
-          (identity && !sameInode(identity, info)) || await realpath(anchored) !== rootDirectory) throw unavailable();
+          (identity && !sameInode(identity, info)) || (expectedRoot && !sameInode(expectedRoot, info)) || await realpath(anchored) !== rootDirectory) throw unavailable();
       identity ??= info;
       // Flat leaves below the pinned descriptor; no caller-controlled intermediate directories.
       return await work(directory, anchored);

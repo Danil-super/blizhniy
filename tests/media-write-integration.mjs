@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadMediaModule } from "./media-module.mjs";
 import { waitForLock } from "./admin-authorization-integration.mjs";
+import { testFencedMediaWrites } from "./media-file-postgres-integration.mjs";
 
 const { MediaMetadataRepository } = loadMediaModule("media-metadata");
 const { LocalMediaWriter } = loadMediaModule("media-write");
@@ -121,6 +122,7 @@ export async function testMediaWrites(suite, db, operator, { repo, store, root, 
     await assert.rejects(operator.query("delete from app.media_write_attempts where id=$1", [claim.attemptId]), { code: "BL003" });
     await fail(limited.claimWrite(token, pending.id, image), "MEDIA_IN_PROGRESS");
   });
+  await testFencedMediaWrites(suite, db, { repo, root, token, image, bytes });
   await suite.test("media writer: guarded down refuses recorded and concurrently committed attempts; empty-only rehearsal preserves media", async () => {
     await assert.rejects(operator.query(down), /Refusing/); await operator.query("rollback");
     // Only this disposable fixture is reset. There is no application delete/reset method.

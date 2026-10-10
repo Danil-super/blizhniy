@@ -10,7 +10,7 @@ import { loadAdminModule } from "./admin-module.mjs";
 const ts = createRequire(import.meta.url)("typescript");
 export function loadMediaModule(name, environment = {}, fileSystem = fs) {
   if (!["media-metadata", "media-files", "media-write"].includes(name)) throw new Error("Unapproved media module");
-  const dependencies = { "./app-session-transaction": loadAdminModule("app-session-transaction"), "./media-worker-protocol": protocol,
+  const dependencies = { "./app-session-transaction": loadAdminModule("app-session-transaction"), "./media-worker-protocol": protocol, "./media-worker-protocol.ts": protocol,
     "node:fs": { constants }, "node:fs/promises": fileSystem, "node:crypto": crypto, "node:path": path };
   const exports = {};
   vm.runInNewContext(ts.transpileModule(readFileSync(new URL(`../src/lib/${name}.ts`, import.meta.url), "utf8"), {

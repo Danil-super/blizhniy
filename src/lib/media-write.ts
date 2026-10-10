@@ -24,7 +24,8 @@ function snapshot(input: unknown): NormalizedImage {
   } catch { throw new MediaWriteError("INVALID_MEDIA_WRITE"); }
 }
 
-/** Local one-shot workflow, NOT a crash-safe lease or cleanup/fencing mechanism. No HTTP/retry. */
+/** Local one-shot workflow. OS-fenced composition supplies media-file-worker, not the raw store.
+ * This orchestrator itself is not a cleanup lease or authorization for resetting attempts. No HTTP/retry. */
 export class LocalMediaWriter {
   constructor(private readonly repository: Pick<MediaMetadataRepository, "claimWrite" | "complete">,
     private readonly files: { write(record: MediaFileRecord, bytes: Uint8Array, attemptId: string): Promise<void> }) { assertLocal(); }
