@@ -180,6 +180,17 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     });
     const { testPrimaryAuthProvision } = await import("./primary-auth-provision-integration.mjs");
     await testPrimaryAuthProvision(suite, config, client);
+    await suite.test("explicit profile upgrade journals only the additive table and preserves the mail prefix", async () => {
+      const before = (await client.query("select name,sha256 from blizhniy_meta.migrations order by name")).rows;
+      assert.equal((await bootstrapPostgres(client, target, { includeProfiles: true })).applied, 1);
+      const journal = (await client.query("select name,sha256 from blizhniy_meta.migrations order by name")).rows;
+      assert.deepEqual(journal.slice(0,10), before);
+      assert.deepEqual(journal, getBootstrapPlan({ includeProfiles: true }).map(({ name, sha256 }) => ({ name, sha256 })));
+      assert.equal((await bootstrapPostgres(client, target, { includeProfiles: true })).applied, 0);
+      await assert.rejects(bootstrapPostgres(client, target, { includeMail: true }), /journal differs/);
+      assert.equal((await client.query("select count(*)::integer as n from app.cabinet_profiles")).rows[0].n, 0);
+      assert.equal((await client.query("select has_table_privilege('blizhniy_runtime','app.cabinet_profiles','SELECT') as allowed")).rows[0].allowed, false);
+    });
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));

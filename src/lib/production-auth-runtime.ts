@@ -83,3 +83,10 @@ export async function getProductionMailDelivery() {
   if (!mailer) throw new Error("Production mail unavailable");
   return { worker: new MailDeliveryWorker(state.db, state.cipher, renderProductionAuthMail), mailer };
 }
+
+/** Resource handlers reuse the verified Auth pool; they never accept caller-selected credentials. */
+export async function getProductionAccountDatabase(config: ProductionAuthConfig) {
+  const state = runtime(config);
+  await state.verified;
+  return { db: state.db, limiter: state.account.limiter };
+}

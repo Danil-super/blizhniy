@@ -39,7 +39,8 @@ export function authJson(body: unknown, status: number, headers?: Record<string,
 }
 
 /** Reject simple/cross-origin requests before reading the bounded body. No Referer fallback. */
-export async function readAuthJson(request: Request, config: Pick<LocalAuthConfig, "origin">, deadlineMs = 2000, method: "POST" | "PATCH" = "POST"): Promise<unknown> {
+export async function readAuthJson(request: Request, config: Pick<LocalAuthConfig, "origin">, deadlineMs = 2000, method: "POST" | "PATCH" | "PUT" = "POST", maxBytes = 4096): Promise<unknown> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 500000) throw new Error("Invalid JSON boundary limit");
   if (request.method !== method) throw new AuthRequestError(405, "METHOD_NOT_ALLOWED");
   const url = new URL(request.url);
   // NextURL normalizes 127.0.0.1 to localhost. Trust configured target + actual Host, not that normalized URL or Forwarded headers.
@@ -54,7 +55,7 @@ export async function readAuthJson(request: Request, config: Pick<LocalAuthConfi
     throw new AuthRequestError(415, "JSON_REQUIRED");
   }
   const length = request.headers.get("content-length");
-  if (length && (!/^\d+$/.test(length) || Number(length) > 4096)) throw new AuthRequestError(413, "BODY_TOO_LARGE");
+  if (length && (!/^\d+$/.test(length) || Number(length) > maxBytes)) throw new AuthRequestError(413, "BODY_TOO_LARGE");
   if (!request.body) throw new AuthRequestError(400, "INVALID_JSON");
   const reader = request.body.getReader();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -69,7 +70,7 @@ export async function readAuthJson(request: Request, config: Pick<LocalAuthConfi
           const { done, value } = await reader.read();
           if (done) { complete = true; return text + decoder.decode(); }
           size += value.byteLength;
-          if (size > 4096) throw new AuthRequestError(413, "BODY_TOO_LARGE");
+          if (size > maxBytes) throw new AuthRequestError(413, "BODY_TOO_LARGE");
           text += decoder.decode(value, { stream: true });
         }
       })(),

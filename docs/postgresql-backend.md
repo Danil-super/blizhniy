@@ -349,6 +349,23 @@ Opt-in integration runner запускает свою PostgreSQL, свой Next.
 
 Основания: [OWASP email verification](https://cheatsheetseries.owasp.org/cheatsheets/Email_Validation_and_Verification_Cheat_Sheet.html), [OWASP single-use tokens](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html), [PostgreSQL row locks](https://www.postgresql.org/docs/18/sql-select.html#SQL-FOR-UPDATE-SHARE).
 
+## Частный профиль PostgreSQL
+
+Серверное чтение/сохранение профиля реализовано под `BLIZHNIY_AUTH_MODE=postgres`, но существующий клиент кабинета ещё не подключён. Production-режим не включён, миграция0011 и новые права на Timeweb не применены. Новый endpoint отделён от legacy `/api/cabinet/profile`: тот не принимает новую cookie/ID и остаётся недоступным в PostgreSQL-режиме; legacy данные не импортируются в новую БД или из localStorage.
+
+- `POST /api/account/profile`: ровно `{expectedOwnerId}`, ответ200 `{exists,profile}`. POST выбран для той же строгой Origin/Host/custom-header границы, что и новая сессия; GET не поддерживается.
+- `PUT /api/account/profile`: ровно `{expectedOwnerId,profile}`, полная замена настроек с defaults для пропущенных полей, ответ200 `{profile}`. Поля профиля соответствуют `CabinetProfile`: имя/телефон/город, уведомления, организация и ограниченный JPG/PNG/WebP data URL аватара. Числа, boolean, длины/ИНН/ОГРН, UTF-8, base64 и сигнатура изображения проверяются; это не полноценное декодирование/очистка метаданных будущим media worker.
+- Авторитет — только одна корректная `__Host-blizhniy_session` cookie. `expectedOwnerId` не выбирает пользователя: он сравнивается с владельцем живой app-сессии и отказывает409 `SESSION_CHANGED`, чтобы позднее сохранение A не попало в B. Сессия проверяется внутри транзакции с порядком блокировок user → session → profile и повторной проверкой срока перед commit.
+- `email`, `phoneVerified`, `verifiedPhone` из формы не сохраняются. Email читается из текущего `app.users`; подтверждение телефона всегдаfalse, пока нет отдельного процесса проверки. ID, роль/блокировка, credential/session данные не являются допустимыми полями профиля. Подтверждённый email нельзя поменять этим endpoint.
+- Общий существующий production session-бюджет применяется до операций с профилем. Auth/read JSON остаётся4096байт; только PUT профиля имеет отдельный предел500000байт, чтение потока ограничено2секундами и не доверяет Content-Length. Нет автоматического повторения PUT после неизвестного результата; требуется чтение актуального профиля.
+- Отказы resource-handler:400/413/415/422 для входа,401 для отсутствующей/непригодной сессии,403 для Origin/Host/ingress,409 для переключённого владельца,429 с Retry-After900,503 для хранилища/конфигурации. Новый endpoint отдаёт ошибки `{error:{code}}`; POST/PUT без opt-in404, GET405. Все ответы no-store/no-referrer; requestId/operation/status/code/duration журналируются без ID владельца, контактов, аватара, cookie или исключения БД.
+
+Миграция `0011-cabinet-profiles.sql` создаёт `app.cabinet_profiles`: один JSONB-профиль на `app.users.id`, foreign key с cascade при удалении аккаунта, ограничение размера и запрет хранения авторитетных полей, без PUBLIC-доступа. PK используется и для lookup, и для атомарного [UPSERT](https://www.postgresql.org/docs/18/sql-insert.html). Down отказывает на непустой таблице; безопасный откат приложения оставляет данные.
+
+`node --experimental-strip-types scripts/bootstrap-postgres.mjs --plan-account` показывает отдельный11-миграционный план, сохраняя прежние SHA-256. `--plan` по-прежнему7, `--plan-mail`10; apply-account требует явную цель и проверенный журнал. **Не применять на primary до обновления операторского provisioner**: текущий `provisionPrimaryAuth` допускает только10-миграционный mail journal и пока не выдаёт прав на профили. Будущие права — SELECT/INSERT на эту таблицу, UPDATE только profile/updated_at; без новых DDL, ролей или права менять user_id. Runtime использует уже проверенный Auth pool, не owner credentials; отсутствие таблицы/прав отказывает, не включает legacy fallback.
+
+Следующий этап: подключение существующих редакторов профиля к cookie-клиенту, проверка смены аккаунта в браузере, затем явная подготовка schema/runtime на Timeweb вместе с mail worker. Этот серверный инкремент не закрывает L06 или весь перенос кабинета.
+
 ## Схема и откат
 
 `database/migrations/0001-identity.sql` создаёт пустые `app.users`/`app.sessions`, ограничения и триггер, без Supabase Auth/Storage и без seed-аккаунтов. Все операции в одной транзакции с lock/statement timeout. Это одноразовая миграция: повторный запуск отказывает, не перезаписывая существующие таблицы. Общие PUBLIC-права отозваны; разделение migration/runtime ролей и точные grants обязательны перед production.

@@ -39,6 +39,16 @@ test("bootstrap rejects an unconfirmed target before any SQL", async () => {
   }
 });
 
+test("profile bootstrap is separately requested, keeps earlier hashes and cannot silently expand the mail plan", () => {
+  const mail = getBootstrapPlan({ includeMail: true });
+  const account = getBootstrapPlan({ includeProfiles: true });
+  assert.equal(account.length, 11);
+  assert.deepEqual(account.slice(0,10), mail);
+  assert.equal(account.at(-1).name, "0011-cabinet-profiles.sql");
+  assert.match(account.at(-1).sql, /revoke all on app\.cabinet_profiles from public/);
+  assert.throws(() => getBootstrapPlan({ includeProfiles: "true" }), /Invalid/);
+});
+
 test("mail bootstrap is a separate explicit plan, preserves the base prefix and includes the production rate schema", () => {
   const base = getBootstrapPlan();
   const mail = getBootstrapPlan({ includeMail: true });

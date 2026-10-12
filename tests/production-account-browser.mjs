@@ -9,6 +9,7 @@ import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
+import { request as httpRequest } from "node:http";
 import { test } from "node:test";
 import { chromium } from "playwright";
 
@@ -68,6 +69,37 @@ test("primary account browser forms use the new cookie API without remote traffi
         assert.equal(response.status, 503);
         assert.match(response.headers.get("cache-control"), /no-store/);
         assert.deepEqual(await response.json(), { error: "Профиль временно недоступен." });
+      }
+    });
+    await suite.test("separate PostgreSQL profile route rejects old bearer authority and invalid writes before pool/key access", async () => {
+      const headers = { host: new URL(env.BLIZHNIY_AUTH_ORIGIN).host, origin: env.BLIZHNIY_AUTH_ORIGIN,
+        "x-blizhniy-request": "1", "x-real-ip": "192.0.2.44", "content-type": "application/json",
+        authorization: "Bearer synthetic-old-session" };
+      const owner = "12345678-1234-4321-8765-123456789abc";
+      for (const [method, body, status, code] of [["GET", null, 405, "METHOD_NOT_ALLOWED"],
+        ["POST", { expectedOwnerId: owner }, 401, "UNAUTHENTICATED"],
+        ["PUT", { expectedOwnerId: owner, profile: { role: "admin" } }, 422, "INVALID_INPUT"]]) {
+        // Node fetch ignores a supplied Host. This owned transport must exercise the exact ingress boundary.
+        const response = await new Promise((resolve, reject) => {
+          const outgoing = httpRequest(`${origin}/api/account/profile`, { method, headers }, incoming => {
+            let text = "";
+            incoming.setEncoding("utf8");
+            incoming.on("data", chunk => {
+              text += chunk;
+              if (text.length > 16384) incoming.destroy(new Error("Owned profile response exceeds fixture cap"));
+            });
+            incoming.on("error", reject);
+            incoming.on("end", () => resolve({ status: incoming.statusCode,
+              headers: { get: key => incoming.headers[key] ?? null }, json: async () => JSON.parse(text) }));
+          });
+          outgoing.on("error", reject);
+          outgoing.setTimeout(2000, () => outgoing.destroy(new Error("Owned profile request timed out")));
+          outgoing.end(body ? JSON.stringify(body) : undefined);
+        });
+        assert.equal(response.status, status);
+        assert.deepEqual(await response.json(), { error: { code } });
+        assert.equal(response.headers.get("cache-control"), "no-store");
+        assert.equal(response.headers.get("referrer-policy"), "no-referrer");
       }
     });
     browser = await chromium.launch({ headless: true });
