@@ -282,6 +282,9 @@ test('UI signed-out publication gate retains one main h1 when rendering the shar
   const { PublicationAuthGate } = load(source('src/components/auth/PublicationAuthGate.tsx'), {
     '@/components/auth/AuthForm': { AuthForm: authFormPresentation() },
     '@/components/auth/useAuthState': { useAuthState: () => ({ state: 'signed-out' }) },
+    '@/components/auth/AccountAuthProvider': { usePrimaryAccountAuth: () => null },
+    '@/components/auth/LocalAccountForm': { LocalAccountForm: () => { throw new Error('Legacy gate must not mount primary form'); } },
+    'next/link': { default: ({ children }) => React.createElement('a', null, children) },
   });
   const markup = renderToString(React.createElement(PublicationAuthGate, { title: 'Войдите для размещения' }));
   assert.equal((markup.match(/<h1(?:\s|>)/g) ?? []).length, 1);

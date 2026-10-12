@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
 
-export type AuthState = "loading" | "signed-out" | "signed-in" | "admin";
+export type AuthState = "loading" | "signed-out" | "signed-in" | "admin" | "unavailable";
 
 export type AuthStateSnapshot = {
   state: AuthState;
@@ -153,9 +154,12 @@ function ensureAuthStateInitialized() {
 }
 
 export function useAuthState() {
+  const primary = usePrimaryAccountAuth();
+  const useLegacy = primary === null;
   const [snapshot, setSnapshot] = useState<AuthStateSnapshot>(cachedSnapshot);
 
   useEffect(() => {
+    if (!useLegacy) return;
     ensureAuthStateInitialized();
     listeners.add(setSnapshot);
     setSnapshot(cachedSnapshot);
@@ -163,7 +167,7 @@ export function useAuthState() {
     return () => {
       listeners.delete(setSnapshot);
     };
-  }, []);
+  }, [useLegacy]);
 
-  return snapshot;
+  return primary ?? snapshot;
 }

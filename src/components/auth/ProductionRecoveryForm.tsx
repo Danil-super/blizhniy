@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
+import { notifyAccountSessionChange } from "@/lib/local-account";
 
 const inputStyle = "mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-brand-ink focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue";
 const invalidLink = "Ссылка недействительна или устарела. Запросите новое письмо восстановления.";
@@ -53,6 +54,7 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
     if (mode === "reset" && password !== repeat) { setIssue("Пароли не совпадают."); return; }
     const current = version.current;
     busyRef.current = true; setBusy(true);
+    if (mode === "reset") notifyAccountSessionChange(true);
     try {
       const response = await fetch(`/api/account/${mode}`, { method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error",
         signal: AbortSignal.timeout(10000), headers: { "Content-Type": "application/json", "X-Blizhniy-Request": "1" },
@@ -60,13 +62,11 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
       const payload = await response.json();
       if (!response.ok) throw new Error(typeof payload?.error?.code === "string" ? payload.error.code : "AUTH_UNAVAILABLE");
       if (response.status !== (mode === "recover" ? 202 : 200) || Object.keys(payload).length !== 1 || payload.status !== (mode === "recover" ? "accepted" : "password_reset")) throw new Error("AUTH_UNAVAILABLE");
-      if (mode === "reset" && typeof BroadcastChannel !== "undefined") {
-        const channel = new BroadcastChannel("blizhniy-account-auth"); channel.postMessage({ type: "changed" }); channel.close();
-      }
       if (mounted.current && current === version.current) { setDone(true); setToken(null); setPassword(""); setRepeat(""); }
     } catch (error) {
       if (mounted.current && current === version.current) setIssue(error instanceof Error && Object.hasOwn(issues, error.message) ? issues[error.message] : "Результат запроса не подтверждён. Проверьте входящие или вход в аккаунт; при необходимости запросите новое письмо.");
     } finally {
+      if (mode === "reset") notifyAccountSessionChange(false);
       busyRef.current = false;
       if (mounted.current) { setBusy(false); setCaptchaToken(""); setCaptchaVersion(value => value + 1); }
     }

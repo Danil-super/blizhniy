@@ -5,6 +5,9 @@ import { createClient } from "@supabase/supabase-js";
 let browserClient: ReturnType<typeof createClient> | null = null;
 
 export function getSupabaseBrowserConfig() {
+  if (typeof document !== "undefined" && document.querySelector('meta[name="blizhniy-auth-backend"]')?.getAttribute("content") !== "legacy") {
+    return { supabaseAnonKey: undefined, supabaseUrl: undefined };
+  }
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 

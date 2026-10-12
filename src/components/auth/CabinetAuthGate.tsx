@@ -19,6 +19,10 @@ export function CabinetAuthGate({ children }: { children: ReactNode }) {
     );
   }
 
+  if (state === "unavailable") return <div role="alert" className="rounded-xl border border-slate-200 bg-white p-6 text-slate-700 shadow-card">
+    Не удалось проверить вход. <Link href="/auth" className="font-semibold text-brand-blue underline">Проверить сессию</Link>
+  </div>;
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
       <h2 className="text-xl font-bold text-[#060b27]">Нужно войти</h2>

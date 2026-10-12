@@ -62,3 +62,20 @@ function accountClient(production: boolean) { return {
 
 export const localAccount = accountClient(false);
 export const productionAccount = accountClient(true);
+
+export function openAccountAuthChannel(): BroadcastChannel | null {
+  try { return typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel("blizhniy-account-auth"); }
+  catch { return null; } // Restricted browsers still recheck on focus/visibility/bfcache.
+}
+
+/** Invalidation only: messages carry no identity and cannot grant access. */
+export function notifyAccountSessionChange(changing: boolean) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(changing ? "blizhniy-account-changing" : "blizhniy-account-changed"));
+  if (!changing) {
+    const channel = openAccountAuthChannel();
+    try { channel?.postMessage({ type: "changed" }); }
+    catch { return; } // Same-tab invalidation above has already happened; focus is the cross-tab fallback.
+    finally { channel?.close(); }
+  }
+}

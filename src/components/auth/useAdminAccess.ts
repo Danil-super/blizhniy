@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
+import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
 
 export type AdminAccessState = "loading" | "admin" | "signed-out" | "forbidden" | "error";
 
@@ -15,10 +16,13 @@ type AuthStateResponse = {
 };
 
 export function useAdminAccess() {
+  const primary = usePrimaryAccountAuth();
+  const useLegacy = primary === null;
   const [state, setState] = useState<AdminAccessState>("loading");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
+    if (!useLegacy) return;
     let active = true;
     const supabase = isSupabaseBrowserConfigured() ? getSupabaseBrowserClient() : null;
 
@@ -130,7 +134,11 @@ export function useAdminAccess() {
       active = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [useLegacy]);
 
+  if (primary) {
+    const state: AdminAccessState = primary.state === "signed-in" ? "forbidden" : primary.state === "unavailable" ? "error" : primary.state;
+    return { state, message: state === "error" ? "Не удалось проверить сессию. Попробуйте войти снова." : "" };
+  }
   return { state, message };
 }

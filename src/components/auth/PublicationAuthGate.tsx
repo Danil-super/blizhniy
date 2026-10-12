@@ -3,6 +3,9 @@
 import { Fragment, ReactNode, useEffect, useState } from "react";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { useAuthState } from "@/components/auth/useAuthState";
+import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
+import { LocalAccountForm } from "@/components/auth/LocalAccountForm";
+import Link from "next/link";
 
 type PublicationAuthGateProps = {
   children: ReactNode;
@@ -11,6 +14,7 @@ type PublicationAuthGateProps = {
 
 export function PublicationAuthGate({ children, title = "Войдите, чтобы разместить публикацию" }: PublicationAuthGateProps) {
   const { state, userId } = useAuthState();
+  const primary = usePrimaryAccountAuth();
   const [returnHref, setReturnHref] = useState("/cabinet");
 
   useEffect(() => {
@@ -20,6 +24,10 @@ export function PublicationAuthGate({ children, title = "Войдите, что�
   if ((state === "signed-in" || state === "admin") && userId) {
     return <Fragment key={userId}>{children}</Fragment>;
   }
+
+  if (state === "unavailable") return <main className="page-container py-10"><div role="alert" className="rounded-xl border border-slate-200 bg-white p-6 text-slate-700 shadow-card">
+    Не удалось проверить вход. <Link href="/auth" className="font-semibold text-brand-blue underline">Проверить сессию</Link>
+  </div></main>;
 
   if (state === "loading" || state === "signed-in" || state === "admin") {
     return (
@@ -40,12 +48,12 @@ export function PublicationAuthGate({ children, title = "Войдите, что�
             Размещать объявления, вакансии, заказы и заявки могут только зарегистрированные пользователи. После входа вы вернетесь к этой форме.
           </p>
         </div>
-        <AuthForm
+        {primary ? <LocalAccountForm production headingLevel="h2" /> : <AuthForm
           initialMessage="Зарегистрируйтесь или войдите, чтобы продолжить размещение."
           returnHref={returnHref}
           successLinkLabel="Вернуться к размещению"
           successMessage="Готово, возвращаю к размещению..."
-        />
+        />}
       </section>
     </main>
   );

@@ -73,8 +73,8 @@ test("primary account browser forms use the new cookie API without remote traffi
     browser = await chromium.launch({ headless: true });
     const run = (name, fn) => suite.test(name, async () => {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-      const calls = [], foreign = [], errors = [];
-      const state = { active: null, override: null };
+      const calls = [], sessionReads = [], foreign = [], errors = [];
+      const state = { active: null, override: null, sessionReads };
       await context.route("**/*", async route => {
         const request = route.request(), url = new URL(request.url());
         if (url.href === "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit") return route.fulfill({ contentType: "application/javascript", body: captchaScript });
@@ -83,6 +83,8 @@ test("primary account browser forms use the new cookie API without remote traffi
         const action = url.pathname.split("/").at(-1), body = request.postDataJSON();
         assert.equal(request.method(), "POST"); assert.equal(request.headers()["x-blizhniy-request"], "1");
         assert.equal(url.search, ""); calls.push({ action, body });
+        // Credential assertions stay separate from the new shared session reads; neither is ignored.
+        if (action === "session") { assert.deepEqual(body, {}); sessionReads.push(calls.pop()); }
         if (state.override) return state.override(route, action, body);
         if (action === "session") return route.fulfill({ status: state.active ? 200 : 401, json: state.active ? { user: state.active } : { error: { code: "UNAUTHENTICATED" } } });
         if (action === "login") { state.active = user(body.email); return route.fulfill({ json: { status: "authenticated", user: state.active } }); }
@@ -103,6 +105,64 @@ test("primary account browser forms use the new cookie API without remote traffi
       await page.getByRole("button", { name: "Войти", exact: true }).click();
       await page.getByText(email, { exact: true }).waitFor();
     };
+    await run("shared mobile navigation follows cookie login and cross-tab logout without legacy SDK traffic", async ({ page, context, state }) => {
+      await page.setViewportSize({ width: 320, height: 900 });
+      await page.goto(`${origin}/auth`);
+      const navigation = page.getByRole("navigation", { name: "Мобильная навигация" });
+      await navigation.getByRole("link", { name: "Вход", exact: true }).waitFor();
+      await login(page);
+      await navigation.getByRole("link", { name: "Профиль", exact: true }).waitFor();
+      assert.equal(await navigation.getByRole("link", { name: "Профиль", exact: true }).getAttribute("href"), "/cabinet");
+      const second = await context.newPage(); await second.goto(`${origin}/auth`);
+      await second.getByText("owner@example.invalid", { exact: true }).waitFor();
+      await second.getByRole("button", { name: "Выйти", exact: true }).click();
+      await navigation.getByRole("link", { name: "Вход", exact: true }).waitFor();
+      assert.ok(state.sessionReads.length >= 2, "navigation is based on separately verified cookie state");
+    });
+    await run("unavailable cookie lookup shows a cabinet error, never an old identity or legacy login form", async ({ page, state }) => {
+      state.override = route => route.fulfill({ status: 503, json: { error: { code: "AUTH_UNAVAILABLE" } } });
+      await page.goto(`${origin}/cabinet`);
+      await page.getByRole("alert").filter({ hasText: "Не удалось проверить вход" }).waitFor();
+      assert.equal(await page.getByText("Нужно войти", { exact: true }).count(), 0);
+      assert.equal(await page.getByText("owner@example.invalid", { exact: true }).count(), 0);
+    });
+    await run("cabinet logout uses the cookie API and keeps an unknown-outcome warning until a confirmed retry", async ({ page, state, calls }) => {
+      await login(page); await page.goto(`${origin}/cabinet`);
+      const logout = page.getByRole("button", { name: "Выйти", exact: true });
+      await logout.waitFor();
+      state.override = (route, action) => route.fulfill(action === "logout"
+        ? { status: 503, json: { error: { code: "AUTH_UNAVAILABLE" } } }
+        : { json: { user: state.active } });
+      await logout.click();
+      await page.getByRole("alert").filter({ hasText: "Выход не подтверждён" }).waitFor();
+      assert.equal(page.url(), `${origin}/cabinet`);
+      assert.equal(calls.filter(item => item.action === "logout").length, 1);
+      state.override = null;
+      await page.getByRole("button", { name: "Выйти", exact: true }).click();
+      await page.waitForURL(`${origin}/auth`);
+      await page.getByLabel("Email", { exact: true }).waitFor();
+      assert.equal(calls.filter(item => item.action === "logout").length, 2);
+    });
+    await run("blocked BroadcastChannel creation still allows same-tab state changes and focus-based cross-tab recheck", async ({ page, context, state }) => {
+      await context.addInitScript(() => {
+        Object.defineProperty(window, "BroadcastChannel", { value: class { constructor() { throw new DOMException("Synthetic restriction", "SecurityError"); } } });
+      });
+      await page.setViewportSize({ width: 320, height: 900 });
+      await login(page);
+      const navigation = page.getByRole("navigation", { name: "Мобильная навигация" });
+      await navigation.getByRole("link", { name: "Профиль", exact: true }).waitFor();
+      const second = await context.newPage(); await second.goto(`${origin}/auth`); await second.bringToFront();
+      await second.getByText("owner@example.invalid", { exact: true }).waitFor();
+      await second.getByRole("button", { name: "Выйти", exact: true }).click();
+      await second.getByLabel("Email", { exact: true }).waitFor();
+      await page.bringToFront();
+      const beforeFocus = state.sessionReads.length;
+      // Headless tab activation does not guarantee an OS window-focus event; deliver that lifecycle stimulus explicitly.
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await navigation.getByRole("link", { name: "Вход", exact: true }).waitFor();
+      assert.ok(state.sessionReads.length > beforeFocus, "fallback focus causes a new server session check");
+      assert.equal(await page.getByText("owner@example.invalid", { exact: true }).count(), 0);
+    });
     await run("registration validates repeated password, sends legal versions and CAPTCHA, and resend uses the smaller contract", async ({ page, calls }) => {
       await page.goto(`${origin}/auth/register`);
       await page.getByLabel("Email", { exact: true }).fill("owner@example.invalid");
@@ -171,7 +231,10 @@ test("primary account browser forms use the new cookie API without remote traffi
       let release, finished;
       const held = new Promise(resolve => { release = resolve; });
       const delivered = new Promise(resolve => { finished = resolve; });
-      state.override = async route => { await held; try { await route.fulfill({ json: { status: "password_reset" } }); } finally { finished(); } };
+      state.override = async (route, action) => {
+        if (action === "session") return route.fulfill({ status: 401, json: { error: { code: "UNAUTHENTICATED" } } });
+        await held; try { await route.fulfill({ json: { status: "password_reset" } }); } finally { finished(); }
+      };
       await page.goto(`${origin}/auth/reset#token=${"d".repeat(64)}`);
       await page.getByLabel("Новый пароль", { exact: true }).fill(password); await page.getByLabel("Повторите пароль", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Сохранить новый пароль", exact: true }).click();

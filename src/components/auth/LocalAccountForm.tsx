@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { LocalAccountError, localAccount, productionAccount } from "@/lib/local-account";
+import { LocalAccountError, localAccount, productionAccount, notifyAccountSessionChange, openAccountAuthChannel } from "@/lib/local-account";
 import type { LocalAccountUser } from "@/lib/local-account";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 
@@ -19,7 +19,8 @@ const errors: Record<string, string> = {
   CAPTCHA_REQUIRED: "Повторите проверку безопасности и отправьте форму ещё раз.",
 };
 
-export function LocalAccountForm({ production = false }: { production?: boolean } = {}) {
+export function LocalAccountForm({ production = false, headingLevel = "h1" }: { production?: boolean; headingLevel?: "h1" | "h2" } = {}) {
+  const Heading = headingLevel;
   const account = production ? productionAccount : localAccount;
   const [view, setView] = useState<View>({ kind: "checking" });
   const [email, setEmail] = useState("");
@@ -53,8 +54,8 @@ export function LocalAccountForm({ production = false }: { production?: boolean 
     const visibility = () => { if (document.visibilityState === "visible") void reconcile(); };
     const pageshow = (event: PageTransitionEvent) => { if (event.persisted) void reconcile(); };
     if (typeof BroadcastChannel !== "undefined") {
-      channel.current = new BroadcastChannel(production ? "blizhniy-account-auth" : "blizhniy-local-auth");
-      channel.current.onmessage = (event: MessageEvent<unknown>) => {
+      channel.current = production ? openAccountAuthChannel() : new BroadcastChannel("blizhniy-local-auth");
+      if (channel.current) channel.current.onmessage = (event: MessageEvent<unknown>) => {
         if (event.data && typeof event.data === "object" && "type" in event.data && event.data.type === "changed") void reconcile();
       };
     }
@@ -76,6 +77,7 @@ export function LocalAccountForm({ production = false }: { production?: boolean 
     const previousForm = view.kind === "switch" ? "switch" : "anonymous";
     const current = ++version.current;
     busyRef.current = true; setBusy(true); clearIdentity();
+    if (production) notifyAccountSessionChange(true);
     let completed = false;
     try {
       if (action === "login") await account.login(email, password, captchaToken);
@@ -89,7 +91,8 @@ export function LocalAccountForm({ production = false }: { production?: boolean 
       }
     } finally {
       // No identity or credential is broadcast or persisted. Unknown commits also invalidate other tabs.
-      channel.current?.postMessage({ type: "changed" });
+      if (production) notifyAccountSessionChange(false);
+      else channel.current?.postMessage({ type: "changed" });
       busyRef.current = false;
       setCaptchaToken("");
       if (mounted.current) {
@@ -107,7 +110,7 @@ export function LocalAccountForm({ production = false }: { production?: boolean 
   }
   const form = view.kind === "anonymous" || view.kind === "switch";
   return <div aria-busy={busy || view.kind === "checking"}>
-    <h1 className="text-2xl font-bold text-brand-ink">{view.kind === "active" ? production ? "Ваш аккаунт" : "Локальный аккаунт" : view.kind === "switch" ? "Смена аккаунта" : "Вход"}</h1>
+    <Heading className="text-2xl font-bold text-brand-ink">{view.kind === "active" ? production ? "Ваш аккаунт" : "Локальный аккаунт" : view.kind === "switch" ? "Смена аккаунта" : "Вход"}</Heading>
     <p role="status" className="mt-3 text-sm leading-6 text-slate-600">{busy ? "Обрабатываем запрос…" : view.kind === "checking" ? "Проверяем сессию…" : form ? production ? "Войдите с email и паролем. Email должен быть подтверждён." : "Вход только для подтверждённого тестового аккаунта .invalid." : ""}</p>
     {issue && <p ref={alert} tabIndex={-1} role="alert" className="mt-5 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{issue}</p>}
     {view.kind === "active" && <div className="mt-6 space-y-4">

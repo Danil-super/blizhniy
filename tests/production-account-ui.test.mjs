@@ -15,6 +15,7 @@ function load(path, deps, globals = {}) {
   return exports;
 }
 const dependencies = {
+  "@/lib/local-account": load("src/lib/local-account.ts", {}),
   "next/link": { default: ({ children, href, className }) => React.createElement("a", { href, className }, children) },
   "@/lib/registration-legal": { REGISTRATION_LEGAL_VERSIONS: { agreement: "test-version", privacy: "test-version" } },
   "@/components/TurnstileWidget": { TurnstileWidget: (props) => React.createElement("div", { "data-provider-required": String(props.requireProvider) }) },
@@ -74,4 +75,59 @@ test("primary pages are opt-in, configuration failures never fall back or reveal
   assert.match(failed, /Сервис аккаунтов временно недоступен/);
   assert.doesNotMatch(failed, /private configuration|Account form/);
   assert.equal(captured.length, 0);
+});
+
+test("shared root selects only a public backend marker after the request boundary and never serializes config secrets", async () => {
+  let release;
+  const connected = new Promise(resolve => { release = resolve; });
+  const environment = { BLIZHNIY_DB_PASSWORD: "synthetic-root-password", TURNSTILE_SECRET_KEY: "synthetic-root-captcha" };
+  const backends = [];
+  const { default: Root } = load("src/app/layout.tsx", {
+    "next/server": { connection: () => connected },
+    "@/lib/site-url": { getPublicSiteUrl: () => "https://example.invalid" },
+    "@/components/auth/AccountAuthProvider": { AccountAuthProvider: ({ backend, children }) => { backends.push(backend); return children; } },
+    "@/components/SiteFooter": { SiteFooter: () => null },
+    "@/components/MobileBottomNav": { MobileBottomNav: () => null },
+    "@/components/BookingLegacyStorageCleanup": { BookingLegacyStorageCleanup: () => null },
+    "./globals.css": {},
+  }, { process: { env: environment }, URL });
+  const pending = Root({ children: React.createElement("main", null, "Synthetic page") });
+  environment.BLIZHNIY_AUTH_MODE = "postgres"; release();
+  const html = renderToStaticMarkup(await pending);
+  assert.match(html, /name="blizhniy-auth-backend" content="postgres"/);
+  assert.deepEqual(backends, ["postgres"]);
+  for (const secret of [environment.BLIZHNIY_DB_PASSWORD, environment.TURNSTILE_SECRET_KEY]) assert.equal(html.includes(secret), false);
+  environment.BLIZHNIY_AUTH_MODE = "invalid";
+  assert.match(renderToStaticMarkup(await Root({ children: null })), /content="unavailable"/);
+});
+
+test("primary administrator UI state never queries legacy roles and errors stay fail-closed", () => {
+  for (const [state, expected] of [["loading", "loading"], ["admin", "admin"], ["signed-in", "forbidden"], ["signed-out", "signed-out"], ["unavailable", "error"]]) {
+    const effects = [];
+    const { useAdminAccess: readAdminSnapshot } = load("src/components/auth/useAdminAccess.ts", {
+      "react": { useState: initial => [initial, () => {}], useEffect: effect => effects.push(effect) },
+      "@/components/auth/AccountAuthProvider": { usePrimaryAccountAuth: () => ({ state, userId: state === "admin" ? "synthetic-admin" : null }) },
+      "@/lib/supabase-browser": {
+        isSupabaseBrowserConfigured: () => assert.fail("primary UI cannot consult legacy configuration"),
+        getSupabaseBrowserClient: () => assert.fail("primary UI cannot create a legacy client"),
+      },
+    });
+    const snapshot = readAdminSnapshot(); effects.forEach(effect => effect());
+    assert.equal(snapshot.state, expected);
+    assert.equal(Boolean(snapshot.message), state === "unavailable");
+  }
+});
+
+test("primary publication login retains one main h1 and does not render the legacy form", () => {
+  const { LocalAccountForm } = load("src/components/auth/LocalAccountForm.tsx", dependencies);
+  const { PublicationAuthGate } = load("src/components/auth/PublicationAuthGate.tsx", {
+    ...dependencies,
+    "@/components/auth/useAuthState": { useAuthState: () => ({ state: "signed-out", userId: null }) },
+    "@/components/auth/AccountAuthProvider": { usePrimaryAccountAuth: () => ({ state: "signed-out", userId: null }) },
+    "@/components/auth/LocalAccountForm": { LocalAccountForm },
+    "@/components/auth/AuthForm": { AuthForm: () => assert.fail("primary gate cannot render legacy Auth") },
+  });
+  const html = renderToStaticMarkup(React.createElement(PublicationAuthGate));
+  assert.equal((html.match(/<h1(?:\s|>)/g) ?? []).length, 1);
+  assert.match(html, /<h2[^>]*>Вход<\/h2>/);
 });

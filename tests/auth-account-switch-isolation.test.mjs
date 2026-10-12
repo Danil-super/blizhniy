@@ -39,7 +39,7 @@ function assertSnapshot(snapshot, expected, message) {
   assert.equal(snapshot.userId, expected.userId, message);
 }
 
-function makeAuthHookHarness() {
+function makeAuthHookHarness({ primary = null } = {}) {
   let authListener;
   let effectsStarted = false;
   let hookIndex = 0;
@@ -47,6 +47,7 @@ function makeAuthHookHarness() {
   const pendingEffects = [];
   const timers = [];
   const requests = [];
+  let legacyReads = 0;
 
   const react = {
     useState(initialValue) {
@@ -74,6 +75,7 @@ function makeAuthHookHarness() {
   const supabase = {
     auth: {
       getSession() {
+        legacyReads++;
         return Promise.resolve({ data: { session: session(a) } });
       },
       onAuthStateChange(callback) {
@@ -109,6 +111,7 @@ function makeAuthHookHarness() {
     require: (id) => {
       if (id === "react") return react;
       if (id === "@/lib/supabase-browser") return { getSupabaseBrowserClient: () => supabase };
+      if (id === "@/components/auth/AccountAuthProvider") return { usePrimaryAccountAuth: () => primary };
       throw new Error(`Unexpected module: ${id}`);
     },
   });
@@ -129,6 +132,7 @@ function makeAuthHookHarness() {
     },
     readSnapshot,
     requests,
+    legacyReads: () => legacyReads,
     runNextTimer() {
       const callback = timers.shift();
       assert.ok(callback, "an async role-resolution timer should be pending");
@@ -162,6 +166,14 @@ test("an A → B auth event synchronously hides A and stale A resolution cannot 
   assertSnapshot(h.readSnapshot(), { state: "signed-in", userId: "account-b" }, "the stale A response must not overwrite B");
 });
 
+test("the server-selected primary snapshot is used without starting any legacy session lookup", async () => {
+  const h = makeAuthHookHarness({ primary: { state: "admin", userId: "account-b" } });
+  await flushPromises();
+  assertSnapshot(h.readSnapshot(), { state: "admin", userId: "account-b" });
+  assert.equal(h.legacyReads(), 0);
+  assert.deepEqual(h.requests, []);
+});
+
 function loadGate(fileName, exportName) {
   const source = readFileSync(new URL(`../src/components/auth/${fileName}`, import.meta.url), "utf8");
   const js = ts.transpileModule(source, {
@@ -190,6 +202,8 @@ function loadGate(fileName, exportName) {
 
       if (id === "react") return { Fragment, useEffect() {}, useState: (initialValue) => [initialValue, () => {}] };
       if (id === "@/components/auth/useAuthState") return { useAuthState: () => authSnapshot };
+      if (id === "@/components/auth/AccountAuthProvider") return { usePrimaryAccountAuth: () => null };
+      if (id === "@/components/auth/LocalAccountForm") return { LocalAccountForm: "LocalAccountForm" };
       if (id === "next/link") return { default: "Link" };
       if (id === "@/components/auth/AuthForm") return { AuthForm: "AuthForm" };
       throw new Error(`Unexpected module: ${id}`);
