@@ -139,6 +139,8 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
       }), { code: "42501" });
       await db.query("drop role rate_test_anonymous");
     });
+    const { testProductionAuth } = await import("./production-auth-integration.mjs");
+    await testProductionAuth(suite, db);
     await applyMigration("0005-reference-catalog.sql");
     const { testRegistrationWeb } = await import("./registration-web-integration.mjs");
     await testRegistrationWeb(suite, db, env);
