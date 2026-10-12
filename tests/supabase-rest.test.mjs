@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { after, before, test } from 'node:test';
-import { supabaseRest } from '../src/lib/supabase-rest.ts';
+import { supabaseRest, getSupabaseRestConfig, isSupabaseRestConfigured, isSupabaseServiceRoleConfigured, buildSupabaseRestUrl } from '../src/lib/supabase-rest.ts';
 
 let server;
 const calls = new Map();
@@ -56,4 +56,40 @@ test('mutating requests are not automatically retried after server error', async
 
 test('successful database read still returns the payload', async () => {
   assert.deepEqual(await supabaseRest('/ok'), []);
+});
+
+test('explicit local auth mode preserves the existing isolated legacy test backend', async () => {
+  const previousMode = process.env.BLIZHNIY_AUTH_MODE;
+  try {
+    process.env.BLIZHNIY_AUTH_MODE = 'local';
+    assert.equal(isSupabaseServiceRoleConfigured(), true);
+    assert.deepEqual(await supabaseRest('/ok'), []);
+  } finally {
+    if (previousMode === undefined) delete process.env.BLIZHNIY_AUTH_MODE;
+    else process.env.BLIZHNIY_AUTH_MODE = previousMode;
+  }
+});
+
+test('PostgreSQL or invalid auth mode blocks legacy reads and writes before network access even with leftover keys', async () => {
+  const previousMode = process.env.BLIZHNIY_AUTH_MODE;
+  const count = () => [...calls.values()].reduce((sum, value) => sum + value, 0);
+  const beforeCalls = count();
+  try {
+    for (const mode of ['postgres', 'unknown', ' postgres', 'POSTGRES']) {
+      process.env.BLIZHNIY_AUTH_MODE = mode;
+      for (const serviceRole of [true, false]) {
+        assert.deepEqual(getSupabaseRestConfig(serviceRole), { key: undefined, supabaseUrl: undefined });
+        assert.equal(isSupabaseRestConfigured(serviceRole), false);
+      }
+      assert.equal(isSupabaseServiceRoleConfigured(), false);
+      assert.throws(() => buildSupabaseRestUrl('/ok'));
+      for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) {
+        await assert.rejects(supabaseRest('/ok', { method }));
+      }
+    }
+    assert.equal(count(), beforeCalls);
+  } finally {
+    if (previousMode === undefined) delete process.env.BLIZHNIY_AUTH_MODE;
+    else process.env.BLIZHNIY_AUTH_MODE = previousMode;
+  }
 });

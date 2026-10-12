@@ -2,6 +2,8 @@
 
 Статусы фиксируют только проверенный результат. Общие условия — [plan.md](plan.md); архитектурное решение — [ADR-001](../docs/decisions/0001-two-server-postgresql.md).
 
+Инкремент L06, 12.10.2026: подготовлена fail-closed серверная граница старого backend. В postgres/неизвестном режиме старый Bearer, новая cookie, оставшиеся Supabase-ключи и demo bypass не открывают legacy API/REST. Native1106/1106, production Next HTTP+Chromium8/8, build, types/lint и production dependency audit пройдены; policy mutation поймана. Browser fixture собран с synthetic legacy public URL/anon key, чтобы build-time inlining не скрывал остаточную конфигурацию. Code Graph не показал dependents server-auth; прямой поиск нашёл 26 API-файлов, поэтому отрицательный graph result не использован как доказательство безопасности. Новый режим/БД/worker не включены; L06 остаётся открытым — shared auth/предметный кабинет ещё нужно перенести. До публикации этого инкремента через SSH подтверждён symlink2151ab2 на VPS; его workflow38296736197 завершился success со всеми post-deploy checks. Прямые SSH/HTTPS подключения из локального окружения всё ещё периодически обрывались/истекали.
+
 Актуализация 10.10.2026: код до `86e43c7` опубликован в main и установлен на VPS, CI/deploy и подтверждение watchdog успешны. Предыдущие «локально / без push» записи ниже описывают доказательства отдельных инкрементов, не последнее состояние доставки. Новый backend остаётся production-off; Timeweb содержит только 0001–0005. Общая программа запуска L01–L30 в конце файла сохраняет незавершённые этапы 0–12.
 
 ## 0. План и инвентаризация — выполнено

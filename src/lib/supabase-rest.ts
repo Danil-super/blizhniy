@@ -13,7 +13,14 @@ type SupabaseRestOptions = {
 const DEFAULT_READ_TIMEOUT_MS = 8000;
 const DEFAULT_WRITE_TIMEOUT_MS = 20000;
 
+/** PostgreSQL identities must never fall back to the legacy data namespace. */
+export function isLegacySupabaseEnabled() {
+  const mode = process.env.BLIZHNIY_AUTH_MODE;
+  return !mode || mode === "local";
+}
+
 export function getSupabaseRestConfig(useServiceRole = true) {
+  if (!isLegacySupabaseEnabled()) return { key: undefined, supabaseUrl: undefined };
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
@@ -28,7 +35,7 @@ export function isSupabaseRestConfigured(useServiceRole = true) {
 }
 
 export function isSupabaseServiceRoleConfigured() {
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
+  return isSupabaseRestConfigured();
 }
 
 export function buildSupabaseRestUrl(path: string) {

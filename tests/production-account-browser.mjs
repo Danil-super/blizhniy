@@ -1,7 +1,8 @@
 // Browser contract test against the real production build. Account API/CAPTCHA are
 // isolated transport fixtures: no remote DB, provider, real account or email is used.
 // Build first with NEXT_PUBLIC_TURNSTILE_SITE_KEY=public-browser-fixture-key and
-// NEXT_PUBLIC_SUPABASE_URL='' NEXT_PUBLIC_SUPABASE_ANON_KEY=''.
+// NEXT_PUBLIC_SUPABASE_URL=https://legacy-fixture.example.invalid and
+// NEXT_PUBLIC_SUPABASE_ANON_KEY=synthetic-leftover-anon-key (no real legacy credentials).
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -33,7 +34,8 @@ test("primary account browser forms use the new cookie API without remote traffi
     BLIZHNIY_DB_CA_FILE: "/not-read-by-ui/root.crt", BLIZHNIY_AUTH_MAIL_KEY_FILE: "/not-read-by-ui/mail-key.bin",
     BLIZHNIY_AUTH_RATE_SECRET: "synthetic-ui-only-rate-secret-not-used-by-api",
     BLIZHNIY_MAIL_MODE: "timeweb", BLIZHNIY_SMTP_USER: "notifications@ближний-ру.рф", BLIZHNIY_SMTP_PASSWORD: "synthetic-ui-smtp-password",
-    TURNSTILE_SECRET_KEY: "synthetic-ui-captcha-secret", NEXT_PUBLIC_SUPABASE_URL: "", NEXT_PUBLIC_SUPABASE_ANON_KEY: "" };
+    TURNSTILE_SECRET_KEY: "synthetic-ui-captcha-secret", NEXT_PUBLIC_SUPABASE_URL: "https://legacy-fixture.example.invalid",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "synthetic-leftover-anon-key", SUPABASE_SERVICE_ROLE_KEY: "synthetic-leftover-service-key" };
   const app = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", String(port)],
     { cwd: new URL("..", import.meta.url), env, stdio: ["ignore", "pipe", "pipe"], detached: true });
   let output = "", browser;
@@ -55,6 +57,19 @@ test("primary account browser forms use the new cookie API without remote traffi
       assert.ok(Date.now() < deadline, "production fixture starts within deadline");
       await new Promise(resolve => setTimeout(resolve, 100));
     }
+    await suite.test("primary mode rejects legacy cabinet reads/writes with both old Bearer and new cookie despite leftover legacy keys", async () => {
+      const headers = { authorization: "Bearer synthetic-old-session", cookie: `__Host-blizhniy_session=${"a".repeat(64)}` };
+      const state = await fetch(`${origin}/api/auth/state`, { headers, signal: AbortSignal.timeout(2000) });
+      assert.equal(state.status, 200);
+      assert.deepEqual(await state.json(), { state: "signed-out" });
+      for (const method of ["GET", "PUT"]) {
+        const response = await fetch(`${origin}/api/cabinet/profile`, { method, headers: { ...headers, "content-type": "application/json" },
+          ...(method === "PUT" ? { body: JSON.stringify({ name: "Synthetic attempted crossover" }) } : {}), signal: AbortSignal.timeout(2000) });
+        assert.equal(response.status, 503);
+        assert.match(response.headers.get("cache-control"), /no-store/);
+        assert.deepEqual(await response.json(), { error: "Профиль временно недоступен." });
+      }
+    });
     browser = await chromium.launch({ headless: true });
     const run = (name, fn) => suite.test(name, async () => {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });

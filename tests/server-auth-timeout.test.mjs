@@ -28,6 +28,7 @@ function loadServerAuth({ environment = {}, supabaseRest }) {
       if (id === "@/lib/supabase-rest") {
         return {
           getSupabaseRestConfig: () => ({ key: environment.SUPABASE_SERVICE_ROLE_KEY ?? "" }),
+          isLegacySupabaseEnabled: () => !environment.BLIZHNIY_AUTH_MODE || environment.BLIZHNIY_AUTH_MODE === "local",
           supabaseRest,
         };
       }
@@ -155,4 +156,23 @@ test("blocked users never obtain an authenticated session", async () => {
   });
 
   assert.equal(await auth.getAuthenticatedRequestUser(requestWithToken()), null);
+});
+
+test("PostgreSQL and invalid auth modes cannot authorize legacy API requests or use demo bypass", async () => {
+  for (const mode of ["postgres", "unknown", " postgres", "POSTGRES"]) {
+    for (const nodeEnv of ["production", "development", "test"]) {
+      const calls = [];
+      const auth = loadServerAuth({
+        environment: { ...configuredEnvironment, BLIZHNIY_AUTH_MODE: mode, NODE_ENV: nodeEnv, ENABLE_DEMO_ADMIN_BYPASS: "true" },
+        supabaseRest: async path => { calls.push(path); return { id: "11111111-1111-4111-8111-111111111111" }; },
+      });
+      assert.equal(auth.isSupabaseServerConfigured(), false);
+      assert.equal(await auth.getVerifiedRequestUser(requestWithToken()), null);
+      assert.equal(await auth.getAuthenticatedRequestUser(requestWithToken()), null);
+      assert.equal(await auth.isAuthenticatedRequest(requestWithToken()), false);
+      assert.equal(await auth.isAdminRequest(requestWithToken()), false);
+      assert.equal(auth.isDemoAdminBypassEnabled(), false);
+      assert.deepEqual(calls, []);
+    }
+  }
 });

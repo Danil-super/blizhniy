@@ -263,6 +263,14 @@ Metadata/claim/budget не меняются, last_seen_at может обнов�
 
 Проверки 6e3b: **997/997** native, **61/61** собственных PG18 проверок; build 58 страниц, types/lint успешны, только прежнее checkout warning. Реальные FS/flock и PG: pending/ready без media mutations, owner/admin/unclaimed denial без inspection, expiry после реального отчёта с rollback, актуальное состояние после row-lock wait, kernel fence во время ожидания и после COMMIT, lost response без retry, прежние column-scoped права. Supervisor tests отдельно проверяют READY/work/EOF/DONE/close, premature DONE/cancel и detached-work refusal. Mutation отмены перед callback ломает regression, SHA-256 восстановлен. Серверы/схема/deploy не менялись.
 
+## Граница между новым Auth и старым серверным backend
+
+`BLIZHNIY_AUTH_MODE=postgres` отключает серверную Supabase-авторизацию и общий REST-адаптер **даже при оставшихся legacy URL/ключах**. Старый Bearer не даёт доступа к кабинетным/admin API; новый cookie также не переводится в Supabase identity. Неизвестное непустое значение режима закрывает legacy доступ, а не включает fallback. Демо-admin bypass в этих режимах запрещён и в development/test. Неизменённый режим и явный `local` сохраняют прежнее поведение локальных тестов.
+
+Это защитная граница перед переключением, не реализация PG-профиля/кабинета. Она не доказывает отсутствие всех прямых browser/Storage запросов: клиентские consumers и предметные repositories мигрируются отдельно. Новый режим пока не включён на VPS; включать его до готовности кабинета, runtime-ролей, mail delivery и end-to-end проверки нельзя. Для текущего off-инкремента откат — возврат к предыдущему source release; после фактического PG cutover нельзя откатывать к зарубежному backend.
+
+Проверки: `tests/server-auth-timeout.test.mjs` — все server authorization helpers/демо bypass без единого upstream вызова; `tests/supabase-rest.test.mjs` — GET/POST/PATCH/DELETE отказаны до сети при оставшихся ключах, local read сохранён. Политика проверена мутацией, временно разрешающей postgres: отрицательный тест падает.
+
 ## Аккаунты и сессии
 
 `withAppSessionTransaction` — общий серверный transaction guard для admin/media: user → session → resource locks, live app scope и повторная проверка времени после работы. Владелец берётся из заблокированной DB identity, не из payload. Admin wrapper сохраняет прежнюю проверку роли до session work и прежний `AdminAccessError`; обычная app-сессия не становится admin authority. Policy — статический код вызывающего сервера, не HTTP-опция.

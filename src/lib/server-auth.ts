@@ -1,4 +1,4 @@
-import { getSupabaseRestConfig, supabaseRest } from "@/lib/supabase-rest";
+import { getSupabaseRestConfig, isLegacySupabaseEnabled, supabaseRest } from "@/lib/supabase-rest";
 
 type UserRoleRow = {
   role: string;
@@ -20,6 +20,7 @@ const serverAuthTimeoutMs = 3000;
 const serverAuthAttempts = 1;
 
 function getSupabaseServerConfig() {
+  if (!isLegacySupabaseEnabled()) return { supabaseAnonKey: undefined, supabaseUrl: undefined };
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -124,5 +125,5 @@ export async function isAdminRequest(request: Request) {
 }
 
 export function isDemoAdminBypassEnabled() {
-  return process.env.NODE_ENV !== "production" && process.env.ENABLE_DEMO_ADMIN_BYPASS === "true";
+  return isLegacySupabaseEnabled() && process.env.NODE_ENV !== "production" && process.env.ENABLE_DEMO_ADMIN_BYPASS === "true";
 }
