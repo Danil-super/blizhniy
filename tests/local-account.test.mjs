@@ -18,7 +18,7 @@ function setup(payload, status = 200, failure = false) {
       return Response.json(payload, { status });
     }, require: () => { throw new Error("Unexpected browser adapter import"); },
   });
-  return { api: exports.localAccount, calls, source };
+  return { api: exports.localAccount, production: exports.productionAccount, calls, source };
 }
 test("account adapter sends only same-origin JSON and never trims password or persists credentials", async () => {
   const app = setup({ status: "authenticated", user });
@@ -77,10 +77,28 @@ test("server rendering the account form never reads a session or includes a prev
   const source = readFileSync(new URL("../src/components/auth/LocalAccountForm.tsx", import.meta.url), "utf8");
   const exports = {};
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
-    exports, require: (name) => name === "@/lib/local-account" ? { localAccount: new Proxy({}, { get: () => { throw new Error("Session read during SSR"); } }) } : require(name),
+    exports, require: (name) => name === "@/lib/local-account" ? { localAccount: new Proxy({}, { get: () => { throw new Error("Session read during SSR"); } }) } : name === "@/components/TurnstileWidget" ? { TurnstileWidget: () => null } : require(name),
   });
   const html = require("react-dom/server").renderToStaticMarkup(require("react").createElement(exports.LocalAccountForm));
   assert.match(html, /Проверяем сессию/);
   assert.doesNotMatch(html, /owner@example|type="password"|Администратор/);
   assert.doesNotMatch(source, /supabase|localStorage|sessionStorage|document\.cookie/i);
+});
+
+test("production cookie client accepts canonical public email, sends CAPTCHA only on login and never exposes a token", async () => {
+  const publicUser = { ...user, email: "notifications@xn----9sbphbgks4a4a.xn--p1ai" };
+  const app = setup({ status: "authenticated", user: publicUser });
+  assert.ok(app.production, "production adapter exists");
+  assert.deepEqual(JSON.parse(JSON.stringify(await app.production.login(publicUser.email, "  Synthetic passphrase 2026!  ", "fixture-captcha"))), publicUser);
+  assert.deepEqual(JSON.parse(app.calls[0].init.body), { email: publicUser.email, password: "  Synthetic passphrase 2026!  ", captchaToken: "fixture-captcha" });
+  assert.equal(app.calls[0].init.redirect, "error");
+  await assert.rejects(app.api.login(publicUser.email, "Synthetic passphrase 2026!"), { code: "AUTH_UNAVAILABLE" }, "local adapter remains synthetic-only");
+  for (const change of [{ email: "Name <owner@example.ru>" }, { email: "owner@example.ru\r\nBcc:x@example.ru" }, { email: "x" }, { token: "secret" }, { role: "superadmin" }, { isBlocked: true }]) {
+    await assert.rejects(setup({ user: { ...publicUser, ...change } }).production.session(), { code: "AUTH_UNAVAILABLE" });
+  }
+  assert.equal(await setup({ error: { code: "UNAUTHENTICATED" } }, 401).production.session(), null);
+  const session = setup({ user: publicUser });
+  await session.production.session();
+  assert.deepEqual(JSON.parse(session.calls[0].init.body), {});
+  await assert.rejects(setup({ error: { code: "CAPTCHA_REQUIRED" } }, 403).production.login(publicUser.email, "Synthetic passphrase 2026!", "bad"), { code: "CAPTCHA_REQUIRED" });
 });

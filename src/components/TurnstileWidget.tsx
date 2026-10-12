@@ -7,6 +7,7 @@ type TurnstileWidgetProps = {
   resetKey?: number | string;
   onVerify?: (token: string) => void;
   inline?: boolean;
+  requireProvider?: boolean;
 };
 
 type TurnstileApi = {
@@ -16,6 +17,9 @@ type TurnstileApi = {
       callback: (token: string) => void;
       sitekey: string;
       theme?: "light" | "dark" | "auto";
+      size?: "compact";
+      "expired-callback"?: () => void;
+      "error-callback"?: () => void;
     },
   ) => string;
   remove?: (widgetId: string) => void;
@@ -69,7 +73,7 @@ function loadTurnstileScript() {
   });
 }
 
-export function TurnstileWidget({ inline = false, name = "captchaToken", onVerify, resetKey }: TurnstileWidgetProps) {
+export function TurnstileWidget({ inline = false, name = "captchaToken", onVerify, resetKey, requireProvider = false }: TurnstileWidgetProps) {
   const [token, setToken] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -80,6 +84,10 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
     }
 
     let cancelled = false;
+    const publish = (value: string) => {
+      if (cancelled) return;
+      setToken(value); onVerify?.(value);
+    };
 
     setToken("");
     onVerify?.("");
@@ -99,15 +107,14 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
           widgetIdRef.current = window.turnstile.render(containerRef.current, {
             sitekey: turnstileSiteKey,
             theme: "light",
-            callback: (nextToken) => {
-              setToken(nextToken);
-              onVerify?.(nextToken);
-            },
+            size: requireProvider ? "compact" : undefined,
+            callback: publish,
+            "expired-callback": () => publish(""),
+            "error-callback": () => publish(""),
           });
         })
         .catch(() => {
-          setToken("");
-          onVerify?.("");
+          publish("");
         });
 
       return () => {
@@ -119,6 +126,8 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
       };
     }
 
+    if (requireProvider) return () => { cancelled = true; };
+
     const timerId = window.setTimeout(() => {
       const nextToken = createQuietToken();
       setToken(nextToken);
@@ -129,12 +138,13 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
       cancelled = true;
       window.clearTimeout(timerId);
     };
-  }, [onVerify, resetKey]);
+  }, [onVerify, resetKey, requireProvider]);
 
   return (
     <>
       <input type="hidden" name={name} value={token} />
       {turnstileSiteKey ? <div ref={containerRef} className={`${inline ? "" : "mt-3 "}min-h-[65px]`} /> : null}
+      {!turnstileSiteKey && requireProvider && <p role="alert" className="text-sm text-red-800">Проверка безопасности временно недоступна. Попробуйте позже.</p>}
       <input
         type="text"
         name="captchaWebsite"
