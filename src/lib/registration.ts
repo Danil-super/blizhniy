@@ -64,7 +64,7 @@ export class RegistrationStore {
     const passwordHash = await hashPassword(row.password);
     return this.db.transaction(async (tx) => {
       const { rows: [user] } = await tx.query<{ id: string; authVersion: string }>(`
-        insert into app.users (email, password_hash, role) values ($1, $2, 'user')
+        insert into app.users (email, password_hash) values ($1, $2)
         on conflict (email) do nothing returning id, auth_version as "authVersion"
       `, [row.email, passwordHash]);
       if (!user) return null;

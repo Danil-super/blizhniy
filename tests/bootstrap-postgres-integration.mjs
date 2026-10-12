@@ -158,6 +158,28 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
       await client.query("delete from blizhniy_meta.migrations where name in ('0005-reference-catalog.sql','0006-media-reservations.sql','0007-media-write-attempts.sql')");
       assert.equal((await bootstrapPostgres(client,target)).applied,3);
     });
+    await suite.test("mail opt-in failure rolls back the new queue, larger rate constraint and all three journal entries", async () => {
+      const before = await tables();
+      const query = client.query.bind(client);
+      client.query = (sql, values) => query(sql.startsWith("insert into app.cities") ? "select $1::jsonb,1/0" : sql, values);
+      try { await assert.rejects(bootstrapPostgres(client, target, { includeMail: true }), { code: "22012" }); }
+      finally { client.query = query; }
+      assert.deepEqual(await tables(), before);
+      assert.equal((await client.query("select count(*)::integer as n from blizhniy_meta.migrations")).rows[0].n, 7);
+      assert.equal((await client.query("select to_regclass('app.mail_outbox') is null as absent")).rows[0].absent, true);
+      assert.equal((await client.query("select count(*)::integer as n from pg_constraint where conname='auth_rate_limits_production_attempts_check'")).rows[0].n, 0);
+    });
+    await suite.test("explicit mail upgrade journals exact sources once and refuses an implicit downgrade", async () => {
+      assert.equal((await bootstrapPostgres(client, target, { includeMail: true })).applied, 3);
+      assert.deepEqual((await client.query("select name,sha256 from blizhniy_meta.migrations order by name")).rows,
+        getBootstrapPlan({ includeMail: true }).map(({ name, sha256 }) => ({ name, sha256 })));
+      await client.query("select state,claim_id,lease_until from app.mail_outbox limit 0");
+      assert.equal((await bootstrapPostgres(client, target, { includeMail: true })).applied, 0);
+      await assert.rejects(bootstrapPostgres(client, target), /journal differs/);
+      assert.equal((await client.query("select count(*)::integer as n from blizhniy_meta.migrations")).rows[0].n, 10);
+    });
+    const { testPrimaryAuthProvision } = await import("./primary-auth-provision-integration.mjs");
+    await testPrimaryAuthProvision(suite, config, client);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));

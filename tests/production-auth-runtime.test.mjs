@@ -19,7 +19,8 @@ function fixture(changes = {}) {
   const key = randomBytes(32);
   const role = { name: "blizhniy_runtime", rolsuper: false, rolcreatedb: false, rolcreaterole: false,
     rolreplication: false, rolbypassrls: false, schema_create: false, public_create: false,
-    database_create: false, temp_create: false, role_update: false, ...changes.role };
+    database_create: false, temp_create: false, role_update: false, role_insert: false, rate_schema_missing: false, ...changes.role };
+  if (changes.missingRateSchema) delete role.rate_schema_missing;
   const db = { query: async sql => {
     calls.queries.push(sql);
     if (sql.includes("from pg_roles")) return { rows: [role] };
@@ -79,7 +80,7 @@ test("production runtime verifies restricted role and delivery schema once, copi
 });
 test("wrong/elevated roles and missing delivery schema fail closed and never silently retry a failed startup", async () => {
   for (const changes of [{ role: { name: "gen_user" } }, { role: { rolsuper: true } },
-    { role: { rolcreaterole: true } }, { role: { role_update: true } }, { role: { temp_create: true } }, { missingSchema: true }]) {
+    { role: { rolcreaterole: true } }, { role: { role_update: true } }, { role: { role_insert: true } }, { role: { temp_create: true } }, { missingSchema: true }]) {
     const f = fixture(changes);
     assert.equal((await f.runtime.handleProductionAccountRequest(request(), "register")).status, 503);
     assert.equal(f.calls.close, 1);
@@ -88,6 +89,17 @@ test("wrong/elevated roles and missing delivery schema fail closed and never sil
     assert.equal(f.calls.queries.length, queries);
     assert.equal(f.calls.pools, 1);
     assert.equal(f.calls.mailers, 0);
+  }
+  delete globalThis.blizhniyProductionAuth;
+});
+
+test("production startup refuses the old small rate schema before accepting any account request", async () => {
+  for (const changes of [{ role: { rate_schema_missing: true } }, { missingRateSchema: true }]) {
+    const f = fixture(changes);
+    assert.equal((await f.runtime.handleProductionAccountRequest(request(), "register")).status, 503);
+    assert.equal(f.calls.close, 1);
+    assert.equal(f.calls.mailers, 0);
+    assert.match(f.calls.queries[0], /auth_rate_limits_production_attempts_check/);
   }
   delete globalThis.blizhniyProductionAuth;
 });

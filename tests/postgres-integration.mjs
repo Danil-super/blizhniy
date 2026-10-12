@@ -92,7 +92,8 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
       if (!["0001-identity.sql", "0001-identity.down.sql", "0002-registration.sql", "0002-registration.down.sql",
         "0003-auth-rate-limits.sql", "0003-auth-rate-limits.down.sql", "0004-password-recovery.sql",
         "0004-password-recovery.down.sql", "0005-reference-catalog.sql", "0008-mail-outbox.sql",
-        "0008-mail-outbox.down.sql", "0009-mail-delivery.sql", "0009-mail-delivery.down.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
+        "0008-mail-outbox.down.sql", "0009-mail-delivery.sql", "0009-mail-delivery.down.sql",
+        "0010-production-rate-limits.sql", "0010-production-rate-limits.down.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
       const source = fileURLToPath(new URL(`../database/migrations/${filename}`, import.meta.url));
       await docker(["cp", source, `${id}:/tmp/blizhniy-identity.sql`]);
       await docker(["exec", id, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "blizhniy_test", "-f", "/tmp/blizhniy-identity.sql"]);
@@ -139,6 +140,8 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
       }), { code: "42501" });
       await db.query("drop role rate_test_anonymous");
     });
+    const { testProductionRateSchema } = await import("./production-rate-integration.mjs");
+    await testProductionRateSchema(suite, db, applyMigration);
     const { testProductionAuth } = await import("./production-auth-integration.mjs");
     await testProductionAuth(suite, db);
     await applyMigration("0005-reference-catalog.sql");

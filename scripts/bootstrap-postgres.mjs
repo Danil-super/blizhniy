@@ -9,8 +9,10 @@ import { region, cities, categories, professions, tariffs } from "../src/lib/dat
 const names = ["0001-identity.sql", "0002-registration.sql", "0003-auth-rate-limits.sql",
   "0004-password-recovery.sql", "0005-reference-catalog.sql", "0006-media-reservations.sql", "0007-media-write-attempts.sql"];
 
-export function getBootstrapPlan() {
-  return names.map(name => {
+export function getBootstrapPlan({ includeMail = false } = {}) {
+  if (typeof includeMail !== "boolean") throw new Error("Invalid mail bootstrap option");
+  const approved = includeMail ? [...names, "0008-mail-outbox.sql", "0009-mail-delivery.sql", "0010-production-rate-limits.sql"] : names;
+  return approved.map(name => {
     const source = readFileSync(new URL(`../database/migrations/${name}`, import.meta.url), "utf8");
     if (!/^begin;$/m.test(source) || !/commit;\s*$/.test(source)) throw new Error("Invalid bootstrap migration");
     return { name, sha256: createHash("sha256").update(source).digest("hex"),
@@ -46,12 +48,12 @@ const seedStatements = [
 class BootstrapError extends Error {}
 
 /** Initialize an empty, explicitly confirmed PG18 target, or verify our own journal and seed missing references. */
-export async function bootstrapPostgres(client, confirmation) {
+export async function bootstrapPostgres(client, confirmation, options = {}) {
   const { host, database } = client.connectionParameters;
   if (typeof confirmation !== "string" || confirmation !== `${host}:${database}`) {
     throw new BootstrapError("Missing or mismatched target confirmation");
   }
-  const plan = getBootstrapPlan();
+  const plan = getBootstrapPlan(options);
   const seed = getReferenceSeed();
   let began = false;
   try {
@@ -101,16 +103,16 @@ export async function bootstrapPostgres(client, confirmation) {
 
 async function main() {
   const args = process.argv.slice(2);
-  if (args.length === 1 && args[0] === "--plan") {
-    console.log(JSON.stringify({ migrations: getBootstrapPlan().map(({name,sha256}) => ({name,sha256})),
+  if (args.length === 1 && ["--plan", "--plan-mail"].includes(args[0])) {
+    console.log(JSON.stringify({ migrations: getBootstrapPlan({ includeMail: args[0] === "--plan-mail" }).map(({name,sha256}) => ({name,sha256})),
       references: Object.fromEntries(Object.entries(getReferenceSeed()).map(([name,rows]) => [name,rows.length])) }, null, 2));
     return;
   }
-  if (args.length !== 2 || args[0] !== "--apply") throw new BootstrapError("Usage: bootstrap-postgres.mjs --plan | --apply HOST:DATABASE");
+  if (args.length !== 2 || !["--apply", "--apply-mail"].includes(args[0])) throw new BootstrapError("Usage: bootstrap-postgres.mjs --plan[|-mail] | --apply[|-mail] HOST:DATABASE");
   const config = readPostgresConfig();
   if (args[1] !== `${config.host}:${config.database}`) throw new BootstrapError("Missing or mismatched target confirmation");
   const client = new pg.Client({ ...config, application_name: "blizhniy-bootstrap" });
-  try { await client.connect(); console.log(JSON.stringify(await bootstrapPostgres(client, args[1]))); }
+  try { await client.connect(); console.log(JSON.stringify(await bootstrapPostgres(client, args[1], { includeMail: args[0] === "--apply-mail" }))); }
   finally { await client.end(); }
 }
 

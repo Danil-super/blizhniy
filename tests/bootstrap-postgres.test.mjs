@@ -39,6 +39,18 @@ test("bootstrap rejects an unconfirmed target before any SQL", async () => {
   }
 });
 
+test("mail bootstrap is a separate explicit plan, preserves the base prefix and includes the production rate schema", () => {
+  const base = getBootstrapPlan();
+  const mail = getBootstrapPlan({ includeMail: true });
+  assert.equal(base.length, 7);
+  assert.equal(mail.length, 10);
+  assert.deepEqual(mail.slice(0, 7), base);
+  assert.deepEqual(mail.slice(7).map(row => row.name), ["0008-mail-outbox.sql", "0009-mail-delivery.sql", "0010-production-rate-limits.sql"]);
+  assert.match(mail.at(-1).sql, /check\s*\(attempts between 1 and 2001\)/i);
+  assert.match(mail.at(-1).sql, /auth_rate_limits_production_attempts_check/);
+  assert.doesNotMatch(mail.at(-1).sql, /delete from|truncate|drop table/i);
+});
+
 test("operator requires explicit mode and never loads production dotenv or connects for a plan", () => {
   const script = fileURLToPath(new URL("../scripts/bootstrap-postgres.mjs", import.meta.url));
   const run = args => spawnSync(process.execPath, ["--experimental-strip-types", script, ...args], {
@@ -47,6 +59,10 @@ test("operator requires explicit mode and never loads production dotenv or conne
   const plan = run(["--plan"]);
   assert.equal(plan.status, 0);
   assert.match(plan.stdout, /0007-media-write-attempts/);
+  const mailPlan = run(["--plan-mail"]);
+  assert.equal(mailPlan.status, 0);
+  assert.equal(JSON.parse(mailPlan.stdout).migrations.length, 10);
+  assert.match(mailPlan.stdout, /0010-production-rate-limits/);
   for (const args of [[], ["--apply"], ["--plan", "extra"], ["--apply", "wrong", "extra"]]) {
     const result = run(args);
     assert.equal(result.status, 1);

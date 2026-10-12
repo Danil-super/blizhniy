@@ -1,6 +1,6 @@
 # PostgreSQL: серверный контур перехода
 
-Новый серверный модуль `src/lib/postgres.ts` не зависит от Supabase. К нему подключены только явно включаемые локальные account API и API администрирования справочников; действующие маршруты сайта используют прежний backend. Он предоставляет параметризованный `query`, транзакцию на одном соединении и `close`. Создавайте один экземпляр на процесс, не на HTTP-запрос. Транзакционные запросы нужно `await` внутри callback; внешние платёжные вызовы не держат транзакцию открытой.
+Новый серверный модуль `src/lib/postgres.ts` не зависит от Supabase. К нему подключены opt-in локальные account/admin API и отдельный production-safe account runtime, пока выключенный на VPS; остальные действующие маршруты сайта используют прежний backend. Он предоставляет параметризованный `query`, транзакцию на одном соединении и `close`. Создавайте один экземпляр на процесс, не на HTTP-запрос. Транзакционные запросы нужно `await` внутри callback; внешние платёжные вызовы не держат транзакцию открытой.
 
 ## Конфигурация и диагностика
 
@@ -29,6 +29,29 @@ node --experimental-strip-types --test tests/bootstrap-postgres-integration.mjs
 Миграция 0005 добавляет пять таблиц справочников, ограничения точной цены `numeric(12,2)`, FK-индексы и запрет доступа PUBLIC. Её down допустим только для пустых таблиц; заполненные справочники не удаляются автоматически. Для операторского rollback отдельно согласовать восстановление/состояние журнала; не запускать down против подключённого приложения.
 
 10.10.2026 в Timeweb применены 0001–0005: 105 категорий (18 корневых), 26 городов, 14 специализаций и 7 тарифов, 0 аккаунтов; повторное чтение подтвердило журнал и TLS. С VPS проверен PostgreSQL TLS handshake с CA и проверкой DNS-имени (`Verify return code: 0`); приватная сеть этим не подтверждается. Это подготовка новой БД, **не переключение сайта**. `gen_user` использован только оператором; пароль до пользовательского production меняется. Последняя read-only проверка уточнила прежнее наблюдение: CREATEDB/CREATEROLE=true, SUPERUSER=false. Создана отдельная staging БД с 0001–0007 и минимальными ролями, но последующие проверки выявили исчезновение CONNECT, schema USAGE и SELECT-grants: подробности и ограничения в [postgresql-staging.md](postgresql-staging.md). Настройки облачных пользователей/доступа сверяются с [панелью Timeweb](https://timeweb.cloud/docs/dbaas/postgresql/users-and-privileges); owner/migration credentials не подключать к HTTP runtime.
+
+## Отдельная подготовка primary Auth
+
+Базовый `--plan`/`--apply` сохраняет0001–0007. Почтовый вариант выбирается отдельно, без изменения прежних SQL/checksums:
+
+```bash
+node --experimental-strip-types scripts/bootstrap-postgres.mjs --plan-mail
+node --experimental-strip-types scripts/bootstrap-postgres.mjs --apply-mail 17e86f80f26733d39ef4b84d.twc1.net:default_db
+```
+
+Расширенный план содержит0001–0010. При журнале0001–0005 будут добавлены0006–0010; при0001–0007 — только0008–0010. Схема, journal и добавление недостающих references выполняются в одной операторской транзакции. До применения нужен свежий read-only preflight журнала/владельцев/числа аккаунтов и rollback-план. Команда не запускается приложением/CI. После десятишагового журнала семишаговый вариант намеренно отказывает, а не пытается понизить схему. Existing seed сохраняет ID/ручные правки; пользовательские данные из прежнего backend не импортируются.
+
+0010 исправляет несовместимость storage cap: исходная0003 допускает attempts≤61, но production budgets равны600/2000. Новый CHECK допускает1–2001; **request limits не изменены**. Runtime preflight требует validated production constraint. Down отказывает при attempts>61, ничего не удаляет/сбрасывает ради отката. Реальный PG тест воспроизводит прежний отказ на62-м запросе, затем проверяет новые границы и up/down.
+
+`scripts/provision-primary-auth.mjs` — операторский API `provisionPrimaryAuth(config, confirmation, credentialsFile, mode)`, не самозапускающийся CLI. В production разрешены только выбранный Timeweb hostname:5432/default_db/gen_user и проверенный TLS; loopback/blizhniy_test без TLS — только fixture-mode=test. Нужны имеющиеся CREATEROLE, grant options CREATE/CONNECT/TEMP, полный десятишаговый журнал и отсутствие blizhniy_runtime. Недостаток прав панели вызывает отказ, не повышение прав и не owner fallback в приложении.
+
+Пароль новой роли генерируется случайно и до DDL сохраняется эксклюзивно в owned0700/0600 вне Git, например `/etc/blizhniy/auth/runtime.json` (каталог заранее готовит оператор). Существующие credentials не вращаются. В DDL передаётся SCRAM verifier; результаты/ошибки не содержат plaintext credentials. Потерянный COMMIT/ошибка проверки требуют инспекции файла и роли, не автоматического повтора или удаления файла.
+
+Профиль blizhniy_runtime: LOGIN/connection limit10, без SUPERUSER/CREATEDB/CREATEROLE/REPLICATION/BYPASSRLS/владения/членства в операторе. CONNECT primary DB, USAGE app, SELECT Auth/очереди/пяти справочников. Users — INSERT(email,password_hash), UPDATE(password_hash,email_verified_at,auth_version), без INSERT/UPDATE role и DELETE; регистрация использует DB default=user. Sessions — INSERT/DELETE и UPDATE(last_seen_at); legal — INSERT; confirmation/recovery — INSERT/DELETE и UPDATE(token_hash) для row locks; rate — INSERT/DELETE и UPDATE(attempts); outbox — INSERT/DELETE и UPDATE только delivery/claim/backoff полей. Нет DDL/TEMP, изменения references, доступа к журналу/медиа или прямого EXECUTE app/meta функций. Админка и удаление/housekeeping аккаунтов этим профилем ещё не обслуживаются.
+
+PUBLIC-привилегии primary DB снимаются с сохранением CONNECT оператору. Будущий EXECUTE снимается для объектов текущего оператора в этой БД: per-schema REVOKE не отменяет глобальную выдачу PUBLIC. Проверено по [PostgreSQL18 row locking](https://www.postgresql.org/docs/18/sql-select.html) и [ALTER DEFAULT PRIVILEGES](https://www.postgresql.org/docs/18/sql-alterdefaultprivileges.html); отрицательный тест новой функции ловит ошибочную per-schema настройку.
+
+Проверки: native1103/1103; PG+HTTP+Chromium119/119; отдельный bootstrap/grants73/73; build/types/lint успешны (одно прежнее lint warning). Реальный локальный PG: login ограниченной роли, deny DDL/role insert/update/EXECUTE, signup→queue→тестовая доставка→confirm→login→recovery/reset, session revoke, запрет secret rotation при повторе. Это не доказательство managed-Timeweb operator rights, устойчивости control plane или настоящей SMTP-доставки. Remote primary migrations/роль/ключ/worker/environment в этом инкременте не менялись: свежий preflight не завершён из-за SSH timeout/закрытия подключения. HTTPS health отвечает200; CI deploy149a00d успешен, ручной symlink последним подтверждён для4acddfe.
 
 ## Чтение каталога
 
