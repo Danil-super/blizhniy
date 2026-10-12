@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { REGISTRATION_LEGAL_VERSIONS } from "@/lib/registration-legal";
 
 const inputStyle = "mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-brand-ink focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue";
@@ -13,25 +13,28 @@ const errors: Record<string, string> = {
   INVALID_INPUT: "Проверьте данные, пароль и отметки документов.",
   SYNTHETIC_EMAIL_REQUIRED: "На локальном стенде используйте тестовый адрес, заканчивающийся на .invalid.",
   AUTH_UNAVAILABLE: "Сервис временно недоступен. Попробуйте позже.",
+  CAPTCHA_REQUIRED: "Повторите проверку безопасности и отправьте форму ещё раз.",
 };
 
 async function submit(action: "register" | "resend" | "confirm", body: unknown): Promise<void> {
-  const response = await fetch(`/api/account/${action}`, { method: "POST", credentials: "same-origin", cache: "no-store",
+  const response = await fetch(`/api/account/${action}`, { method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error",
     signal: AbortSignal.timeout(10000), headers: { "Content-Type": "application/json", "X-Blizhniy-Request": "1" }, body: JSON.stringify(body) });
   const payload = await response.json();
   if (!response.ok) throw new Error(typeof payload?.error?.code === "string" ? payload.error.code : "AUTH_UNAVAILABLE");
-  if (payload?.status !== (action === "confirm" ? "confirmed" : "accepted")) throw new Error("AUTH_UNAVAILABLE");
+  if (response.status !== (action === "confirm" ? 200 : 202) || !payload || typeof payload !== "object" ||
+      Object.keys(payload).length !== 1 || payload.status !== (action === "confirm" ? "confirmed" : "accepted")) throw new Error("AUTH_UNAVAILABLE");
 }
 
 function readableError(error: unknown): string {
   return error instanceof Error ? errors[error.message] ?? "Не удалось связаться с сервисом. Повторите попытку." : errors.AUTH_UNAVAILABLE;
 }
 
-export function LocalRegistrationForm({ mode }: { mode: "register" | "confirm" }) {
-  return mode === "confirm" ? <ConfirmationForm /> : <RegistrationForm />;
+type RegistrationProps = { mode: "register" | "confirm"; production?: boolean; captcha?: ReactNode; captchaToken?: string; onCaptchaReset?: () => void };
+export function LocalRegistrationForm({ mode, production = false, ...captcha }: RegistrationProps) {
+  return mode === "confirm" ? <ConfirmationForm production={production} /> : <RegistrationForm production={production} {...captcha} />;
 }
 
-function RegistrationForm() {
+function RegistrationForm({ production, captcha, captchaToken = "", onCaptchaReset }: Omit<RegistrationProps, "mode">) {
   const [action, setAction] = useState<"register" | "resend">("register");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -52,24 +55,26 @@ function RegistrationForm() {
     if ([...password].length < 15 || [...password].length > 128) { setIssue("Пароль должен содержать от 15 до 128 символов."); return; }
     if (action === "register" && password !== repeat) { setIssue("Пароли не совпадают."); return; }
     if (action === "register" && (!agreement || !privacy)) { setIssue("Примите соглашение и подтвердите ознакомление с политикой."); return; }
+    if (production && !captchaToken) { setIssue(errors.CAPTCHA_REQUIRED); return; }
     busyRef.current = true; setBusy(true);
     try {
-      await submit(action, action === "register" ? { email, password, acceptedAgreement: agreement, acknowledgedPrivacy: privacy,
-        agreementVersion: REGISTRATION_LEGAL_VERSIONS.agreement, privacyVersion: REGISTRATION_LEGAL_VERSIONS.privacy } : { email, password });
-      setMessage("Если запрос подходит, письмо доступно в локальном перехватчике. Откройте ссылку и нажмите подтверждение. Реальные письма не отправляются.");
+      const body = action === "register" ? { email, password, acceptedAgreement: agreement, acknowledgedPrivacy: privacy,
+        agreementVersion: REGISTRATION_LEGAL_VERSIONS.agreement, privacyVersion: REGISTRATION_LEGAL_VERSIONS.privacy } : { email, password };
+      await submit(action, production ? { ...body, captchaToken } : body);
+      setMessage(production ? "Если запрос подходит, мы отправим письмо на ваш email. Проверьте входящие и папку «Спам». Откройте ссылку и подтвердите email." : "Если запрос подходит, письмо доступно в локальном перехватчике. Откройте ссылку и нажмите подтверждение. Реальные письма не отправляются.");
       setPassword(""); setRepeat("");
     } catch (error) { setIssue(readableError(error)); }
-    finally { busyRef.current = false; setBusy(false); }
+    finally { busyRef.current = false; setBusy(false); onCaptchaReset?.(); }
   }
 
   return <>
     <h1 className="text-2xl font-bold text-brand-ink">{action === "register" ? "Регистрация" : "Повторное письмо"}</h1>
-    <p className="mt-3 text-sm leading-6 text-slate-600">{action === "register" ? "Создайте тестовый аккаунт. Email и пароль сохраняются в локальной PostgreSQL." : "Введите email и исходный пароль неподтверждённого аккаунта. Это не восстановление забытого пароля."}</p>
+    <p className="mt-3 text-sm leading-6 text-slate-600">{action === "register" ? production ? "Создайте аккаунт. Для входа потребуется подтвердить email." : "Создайте тестовый аккаунт. Email и пароль сохраняются в локальной PostgreSQL." : "Введите email и исходный пароль неподтверждённого аккаунта. Это не восстановление забытого пароля."}</p>
     <form onSubmit={onSubmit} className="mt-6 space-y-5" aria-busy={busy}>
       <label className="block font-semibold text-brand-ink">Email
-        <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} className={inputStyle} placeholder="test@example.invalid" aria-describedby="local-email-help" />
+        <input type="email" autoComplete="email" required maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} className={inputStyle} placeholder={production ? "you@example.ru" : "test@example.invalid"} aria-describedby="local-email-help" />
       </label>
-      <p id="local-email-help" className="text-sm text-slate-600">Только тестовые адреса .invalid; без внешней отправки.</p>
+      <p id="local-email-help" className="text-sm text-slate-600">{production ? "Укажите действующий email для подтверждения и восстановления доступа." : "Только тестовые адреса .invalid; без внешней отправки."}</p>
       <label className="block font-semibold text-brand-ink">Пароль
         <input type="password" autoComplete={action === "register" ? "new-password" : "current-password"} required minLength={15} maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} className={inputStyle} aria-describedby="local-password-help" />
       </label>
@@ -89,15 +94,16 @@ function RegistrationForm() {
       </>}
       {issue && <p ref={alert} tabIndex={-1} role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{issue}</p>}
       <p role="status" className="text-sm leading-6 text-slate-700">{busy ? "Обрабатываем запрос…" : message}</p>
-      <button type="submit" disabled={busy} className={`${buttonStyle} w-full`}>{busy ? "Подождите…" : action === "register" ? "Зарегистрироваться" : "Отправить повторное письмо"}</button>
-      <button type="button" disabled={busy} onClick={() => { setAction(action === "register" ? "resend" : "register"); setIssue(""); setMessage(""); }} className="min-h-11 w-full rounded-xl px-3 text-sm font-semibold text-brand-blue underline focus-visible:outline focus-visible:outline-2">
+      {production && captcha}
+      <button type="submit" disabled={busy || (production && !captchaToken)} className={`${buttonStyle} w-full`}>{busy ? "Подождите…" : action === "register" ? "Зарегистрироваться" : "Отправить повторное письмо"}</button>
+      <button type="button" disabled={busy} onClick={() => { setAction(action === "register" ? "resend" : "register"); setIssue(""); setMessage(""); onCaptchaReset?.(); }} className="min-h-11 w-full rounded-xl px-3 text-sm font-semibold text-brand-blue underline focus-visible:outline focus-visible:outline-2">
         {action === "register" ? "Повторить письмо" : "Вернуться к регистрации"}
       </button>
     </form>
   </>;
 }
 
-function ConfirmationForm() {
+function ConfirmationForm({ production }: { production: boolean }) {
   const [token, setToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const initialized = useRef(false);
@@ -135,9 +141,9 @@ function ConfirmationForm() {
   return <>
     <h1 className="text-2xl font-bold text-brand-ink">Подтверждение email</h1>
     <p className="mt-3 text-sm leading-6 text-slate-600">Открытие письма не подтверждает аккаунт автоматически. Для подтверждения нажмите кнопку ниже.</p>
-    <p role="status" className="mt-5 text-sm leading-6 text-slate-700">{confirmed ? "Email подтверждён. Теперь можно войти на HTTPS-стенде." : !ready ? "Подготавливаем ссылку…" : busy ? "Подтверждаем…" : ""}</p>
+    <p role="status" className="mt-5 text-sm leading-6 text-slate-700">{confirmed ? production ? "Email подтверждён. Теперь можно войти в аккаунт." : "Email подтверждён. Теперь можно войти на HTTPS-стенде." : !ready ? "Подготавливаем ссылку…" : busy ? "Подтверждаем…" : ""}</p>
     {issue && <p ref={alert} tabIndex={-1} role="alert" className="mt-5 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{issue}</p>}
     {!confirmed && token && <button type="button" disabled={busy} onClick={confirm} className={`${buttonStyle} mt-6 w-full`}>{busy ? "Подождите…" : "Подтвердить email"}</button>}
-    <Link href="/auth/local" prefetch={false} className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline">Регистрация и повторное письмо</Link>
+    <Link href={production ? "/auth/register" : "/auth/local"} prefetch={false} className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline">Регистрация и повторное письмо</Link>
   </>;
 }
