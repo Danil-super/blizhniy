@@ -20,5 +20,5 @@ function load(name) {
   }, exports);
   return exports;
 }
-export const { RegistrationStore } = load("registration");
-export const { PasswordRecoveryStore } = load("password-recovery");
+export const { RegistrationStore, RegistrationInputError } = load("registration");
+export const { PasswordRecoveryStore, RecoveryInputError } = load("password-recovery");

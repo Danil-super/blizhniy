@@ -2,7 +2,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { AuthRateLimiter, AuthRequestError, authJson, readAuthJson, readLocalAuthConfig } from "./auth-http";
 import type { LocalAuthConfig } from "./auth-http";
 import { getLocalDatabase } from "./local-database";
-import { accountSessionCookieName as sessionCookieName, readAccountSessionToken as cookieToken } from "./account-cookie";
+import { createAccountSessionCookie as sessionCookie, readAccountSessionToken as cookieToken } from "./account-cookie";
 import { RegistrationInputError, RegistrationStore } from "./registration";
 import type { EmailConfirmation } from "./registration";
 import { IdentityStore } from "./identity";
@@ -33,14 +33,6 @@ function localEmail(input: unknown): string {
     throw new AuthRequestError(422, "SYNTHETIC_EMAIL_REQUIRED");
   }
   return input.trim().toLowerCase();
-}
-
-function sessionCookie(token: string, maxAge: number): string {
-  if (!Number.isInteger(maxAge) || maxAge < 0 || maxAge > 8*3600 || (maxAge > 0 && !/^[a-f0-9]{64}$/.test(token))) {
-    throw new Error("Invalid session cookie");
-  }
-  const expiry = maxAge === 0 ? new Date(0) : new Date(Date.now()+maxAge*1000);
-  return `${sessionCookieName}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}; Expires=${expiry.toUTCString()}`;
 }
 
 function accountView(user: IdentityUser): IdentityUser {

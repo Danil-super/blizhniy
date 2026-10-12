@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { isIP } from "node:net";
 import type { PostgresQueries } from "./postgres";
 
 export type LocalAuthConfig = { origin: string; mailUrl: string; rateSecret: string };
@@ -38,7 +39,7 @@ export function authJson(body: unknown, status: number, headers?: Record<string,
 }
 
 /** Reject simple/cross-origin requests before reading the bounded body. No Referer fallback. */
-export async function readAuthJson(request: Request, config: LocalAuthConfig, deadlineMs = 2000, method: "POST" | "PATCH" = "POST"): Promise<unknown> {
+export async function readAuthJson(request: Request, config: Pick<LocalAuthConfig, "origin">, deadlineMs = 2000, method: "POST" | "PATCH" = "POST"): Promise<unknown> {
   if (request.method !== method) throw new AuthRequestError(405, "METHOD_NOT_ALLOWED");
   const url = new URL(request.url);
   // NextURL normalizes 127.0.0.1 to localhost. Trust configured target + actual Host, not that normalized URL or Forwarded headers.
@@ -109,6 +110,15 @@ export class AuthRateLimiter {
     if (email !== undefined && (typeof email !== "string" || email.length > 254)) throw new Error("Invalid rate limit key");
     if (!await this.consume("auth:all", 60)) return false;
     return email === undefined || await this.consume(`auth:email:${email.trim().toLowerCase()}`, 5);
+  }
+
+  /** Separate shared production budgets. IP is canonicalized by the trusted-ingress boundary, not XFF/CF headers. */
+  async allowProduction(scope: "credential" | "session", ip: string, email?: string): Promise<boolean> {
+    if (!["credential", "session"].includes(scope) || !isIP(ip) ||
+        (email !== undefined && (typeof email !== "string" || email.length > 254))) throw new Error("Invalid production rate limit key");
+    if (!await this.consume(`production:${scope}:all`, scope === "session" ? 2000 : 600)) return false;
+    if (!await this.consume(`production:${scope}:ip:${ip}`, scope === "session" ? 300 : 20)) return false;
+    return email === undefined || await this.consume(`production:credential:email:${email}`, 5);
   }
 
   async prune(): Promise<number> {

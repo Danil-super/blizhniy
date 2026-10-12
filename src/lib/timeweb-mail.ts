@@ -36,6 +36,9 @@ function mailbox(input: unknown): string | null {
   return address.length <= 254 ? address : null;
 }
 
+// Shared server-side intake validation; callers canonicalize account local-parts before this boundary.
+export { mailbox as normalizeMailAddress };
+
 export function readTimewebMailConfig(env: NodeJS.ProcessEnv = process.env): TimewebMailConfig | null {
   assertServer();
   const mode = env.BLIZHNIY_MAIL_MODE;
