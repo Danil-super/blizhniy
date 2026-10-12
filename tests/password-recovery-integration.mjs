@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import * as identity from "../src/lib/identity.ts";
+import * as outbox from "../src/lib/mail-outbox.ts";
 
 const ts = createRequire(import.meta.url)("typescript");
 const exports = {};
@@ -10,6 +11,8 @@ new Function("require", "exports", ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText)((path) => {
   if (path === "./identity") return identity;
+  if (path === "./mail-outbox") return outbox;
+  if (path === "node:crypto") return createRequire(import.meta.url)("node:crypto");
   throw new Error("Unapproved password recovery import");
 }, exports);
 

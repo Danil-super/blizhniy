@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import * as identity from "../src/lib/identity.ts";
+import * as outbox from "../src/lib/mail-outbox.ts";
 import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
 
 // Use the repository's TypeScript test convention without changing runtime resolution.
@@ -12,6 +13,8 @@ const compiled = ts.transpileModule(readFileSync(new URL("../src/lib/registratio
 }).outputText;
 new Function("require", "exports", compiled)((path) => {
   if (path === "./identity") return identity;
+  if (path === "./mail-outbox") return outbox;
+  if (path === "node:crypto") return createRequire(import.meta.url)("node:crypto");
   if (path === "./registration-legal") return { REGISTRATION_LEGAL_VERSIONS };
   throw new Error("Unapproved registration test import");
 }, exports);

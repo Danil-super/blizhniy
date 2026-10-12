@@ -2,7 +2,7 @@
 
 ## Статус
 
-SMTP-адаптер, операторская проверка, зашифрованный outbox и серверная логика доставки реализованы. Регистрация и восстановление пока не используют этот адаптер: локальный capture-контур и действующая авторизация не переключены. Подключение producer/worker, его процесс и production-safe HTTP-граница — следующие инкременты L05–L07, не завершённая функциональность.
+SMTP-адаптер, операторская проверка, зашифрованный outbox, серверная логика доставки и атомарное создание заданий из регистрации/recovery реализованы. Новый queue-режим требует явного cipher в конструкторе store; действующие HTTP-фабрики его не передают. Локальный capture-контур и рабочая авторизация не переключены. Worker-процесс и production-safe HTTP-граница — следующие инкременты L05–L07, не завершённая функциональность.
 
 12.10.2026 новый модуль проверен на VPS через Node22.23.3: TLS/authentication успешны; SMTP принял одно техническое письмо на собственный ящик notifications. Владелец затем подтвердил доставку этого письма в интерфейсе почты. Сообщение не содержит пользовательских данных или одноразовых токенов. Проверка SMTP не переключала production-процесс, его environment или схему БД.
 
@@ -70,7 +70,17 @@ CLI принимает только абсолютный путь, провер�
 
 Проверено12.10.2026: native1072/1072 и isolated PostgreSQL+HTTP+Chromium110/110, без пропусков. Реальные SQL-сценарии: конкуренция, restart/backoff, stale-owner fencing, потеря worker до/после dispatch, source binding/corruption, expiry под user/token lock, budget5 и renderer faults. Временная инверсия SMTP retry policy обнаружена тестом и отменена. Сборку запускать отдельно от PG integration: его Next dev также изменяет `.next`.
 
-Следующий этап: атомарно подключать новую регистрацию/recovery, затем production-safe HTTP/формы, назначать минимальные runtime grants, устанавливать ключ и включать worker с расписанием cleanup и sanitized метриками/оповещением backlog/failed/unknown. Не снимать local-only guards, выдавая это за production Auth. Не считать смену подключения PostgreSQL завершением переноса всех API.
+## Атомарные Auth producers
+
+`RegistrationStore(db, cipher)` и `PasswordRecoveryStore(db, cipher)` включают durable enqueue явно. Вызов без cipher сохраняет прежний локальный capture-контракт и не обращается к таблице outbox. HTTP responses не менялись; внутренние email/token receipt нельзя отдавать публичным JSON или логировать.
+
+Регистрация и password-gated resend создают confirmation job на **том же tx**, что пользователь/документы/исходный token hash. Дубликат signup — no-op без письма. Recovery request сохраняет source hash и job атомарно; reset сохраняет смену пароля, отзыв сессий и `reset_notice` в одной транзакции. Недоступность SMTP не откатывает эти операции: сетевой вызов отделён worker-очередью; ошибка именно записи outbox откатывает все бизнес-изменения.
+
+Confirmation/recovery TTL копируется из созданной source строки, не вычисляется заново при enqueue/retry. Обычный pg decoder отбрасывает долю миллисекунды source timestamp; это может сократить срок менее чем на1 мс, но не продлить его. Notice получает время БД и TTL24 часа; токена в нём нет. После resend прежний ещё не отправленный job отменяется worker preflight, а не доставляется со старым токеном.
+
+Проверено: native1075/1075, PostgreSQL+HTTP+Chromium113/113 без пропусков; signup/resend → queue → тестовый транспорт → одноразовое подтверждение → настоящий password login. Queue fault injection на реальном PG доказал полный rollback signup/resend/recovery/reset: старые tokens, password/auth_version, документы и сессии сохранены. Normal reset отзывает сессии и создаёт только одно notice. Транспорт в этих сценариях **тестовый**, а не доказательство отправки настоящего registration email через Timeweb. RED→GREEN и временное удаление enqueue обнаружено тестом, изменение отменено. Новых зависимостей нет.
+
+Следующий этап: production-safe HTTP/формы и настоящий mail renderer, затем минимальные runtime grants, bootstrap миграций0008/0009, отдельный ключ и worker-процесс с расписанием cleanup и sanitized метриками/оповещением backlog/failed/unknown. Email intake должен заранее нормализовать IDN и отказать неподдерживаемые SMTP mailbox formats: нынешний локальный broad parser не является production SMTP validation. Не снимать local-only guards, выдавая это за production Auth. Не считать смену подключения PostgreSQL завершением переноса всех API.
 
 ## Официальные источники
 

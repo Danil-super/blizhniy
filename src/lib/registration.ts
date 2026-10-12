@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { enqueueAuthMail } from "./mail-outbox";
+import type { MailPayloadCipher } from "./mail-outbox";
 import { generateSessionToken, hashPassword, hashSessionToken, verifyPassword } from "./identity";
 import { REGISTRATION_LEGAL_VERSIONS } from "./registration-legal";
 import type { PostgresDatabase, PostgresQueries } from "./postgres";
@@ -46,10 +49,12 @@ const dummyHash = `scrypt$131072$8$1$${"0".repeat(32)}$${"0".repeat(128)}`;
 
 export class RegistrationStore {
   private readonly db: Pick<PostgresDatabase, "query" | "transaction">;
+  private readonly mailCipher: MailPayloadCipher | undefined;
 
-  constructor(db: Pick<PostgresDatabase, "query" | "transaction">) {
+  constructor(db: Pick<PostgresDatabase, "query" | "transaction">, mailCipher?: MailPayloadCipher) {
     if (typeof window !== "undefined") throw new Error("Registration is server-only");
     this.db = db;
+    this.mailCipher = mailCipher;
   }
 
   /** Creates only an ordinary pending account. A duplicate is a no-op, not password recovery. */
@@ -71,10 +76,13 @@ export class RegistrationStore {
 
   private async issueConfirmation(tx: PostgresQueries, userId: string, email: string, authVersion: string): Promise<EmailConfirmation> {
     const token = generateSessionToken();
-    const { rows: [row] } = await tx.query<{ expiresAt: Date }>(`
+    const { rows: [row] } = await tx.query<{ createdAt: Date; expiresAt: Date }>(`
       insert into app.email_confirmations (user_id, token_hash, email, auth_version)
-      values ($1, $2, $3, $4) returning expires_at as "expiresAt"
+      values ($1, $2, $3, $4) returning expires_at as "expiresAt",created_at as "createdAt"
     `, [userId, hashSessionToken(token), email, authVersion]);
+    // Queue insertion shares signup/resend's transaction; failure rolls back the source token too.
+    if (this.mailCipher) await enqueueAuthMail(tx, this.mailCipher,
+      { id: randomUUID(), userId, purpose: "confirm", createdAt: row.createdAt, expiresAt: row.expiresAt }, { email, token });
     return { email, token, expiresAt: row.expiresAt };
   }
 

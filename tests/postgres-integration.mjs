@@ -107,6 +107,8 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
     await testMailOutbox(suite, db, env, applyMigration);
     const { testMailDelivery } = await import("./mail-delivery-integration.mjs");
     await testMailDelivery(suite, db, env, applyMigration);
+    const { testAuthMailTransactions } = await import("./auth-mail-integration.mjs");
+    await testAuthMailTransactions(suite, db);
     await suite.test("shared auth limiter migration up/down, concurrent instances and no plaintext PII", async () => {
       await applyMigration("0003-auth-rate-limits.sql");
       await applyMigration("0003-auth-rate-limits.down.sql");
