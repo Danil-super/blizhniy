@@ -91,7 +91,8 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
     const applyMigration = async (filename) => {
       if (!["0001-identity.sql", "0001-identity.down.sql", "0002-registration.sql", "0002-registration.down.sql",
         "0003-auth-rate-limits.sql", "0003-auth-rate-limits.down.sql", "0004-password-recovery.sql",
-        "0004-password-recovery.down.sql", "0005-reference-catalog.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
+        "0004-password-recovery.down.sql", "0005-reference-catalog.sql", "0008-mail-outbox.sql",
+        "0008-mail-outbox.down.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
       const source = fileURLToPath(new URL(`../database/migrations/${filename}`, import.meta.url));
       await docker(["cp", source, `${id}:/tmp/blizhniy-identity.sql`]);
       await docker(["exec", id, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "blizhniy_test", "-f", "/tmp/blizhniy-identity.sql"]);
@@ -102,6 +103,8 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
     await testRegistration(suite, db, applyMigration);
     const { testPasswordRecovery } = await import("./password-recovery-integration.mjs");
     await testPasswordRecovery(suite, db, applyMigration);
+    const { testMailOutbox } = await import("./mail-outbox-integration.mjs");
+    await testMailOutbox(suite, db, env, applyMigration);
     await suite.test("shared auth limiter migration up/down, concurrent instances and no plaintext PII", async () => {
       await applyMigration("0003-auth-rate-limits.sql");
       await applyMigration("0003-auth-rate-limits.down.sql");
