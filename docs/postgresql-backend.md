@@ -18,11 +18,11 @@ Node.js 22. Передайте серверу все `BLIZHNIY_DB_*` из `.env.
 
 ```bash
 node --experimental-strip-types scripts/bootstrap-postgres.mjs --plan
-node --experimental-strip-types scripts/bootstrap-postgres.mjs --apply 17e86f80f26733d39ef4b84d.twc1.net:default_db
+node --experimental-strip-types scripts/bootstrap-postgres.mjs --plan-account
 node --experimental-strip-types --test tests/bootstrap-postgres-integration.mjs
 ```
 
-`--plan` не подключается к БД. `--apply` требует точного подтверждения host/database, PostgreSQL 18 и проверенной конфигурации TLS. Первая установка отказывается работать поверх посторонних таблиц, представлений, последовательностей, функций или схем; объекты расширений не принимаются за пользовательские отношения/функции. Семь фиксированных миграций, журнал SHA-256 и reference seed выполняются в одной транзакции под advisory lock. Ошибка откатывает всю установку, неизвестный результат COMMIT не повторяется автоматически. Локальные 0006–0007 пока **не применены на Timeweb**; перед следующим удалённым `--apply` проверить отдельный план ниже, а не считать команду прежним пятишаговым bootstrap.
+`--plan` не подключается к БД. `--apply` требует точного подтверждения host/database, PostgreSQL 18 и проверенной конфигурации TLS. Первая установка отказывается работать поверх посторонних таблиц, представлений, последовательностей, функций или схем; объекты расширений не принимаются за пользовательские отношения/функции. Семь фиксированных миграций, журнал SHA-256 и reference seed выполняются в одной транзакции под advisory lock. Ошибка откатывает всю установку, неизвестный результат COMMIT не повторяется автоматически. На `blizhniy_prod` уже применены0001–0011; обычный семишаговый `--apply` для неё запрещён проверкой журнала. `default_db` сохраняет прежние0001–0005 и не является production Auth target.
 
 Повтор сверяет непрерывный журнал `blizhniy_meta.migrations` с исходниками; изменённая миграция или пропуск — ошибка, не попытка автоматического исправления. Seed добавляет недостающие справочники через `ON CONFLICT DO NOTHING`, сохраняя ID, ручные названия, цены, сроки и флаги активности. В payload только регион/города/категории/специализации/тарифы из проверенных reference exports: никаких demo-аккаунтов, объявлений, фотографий и платежей.
 
@@ -36,14 +36,16 @@ node --experimental-strip-types --test tests/bootstrap-postgres-integration.mjs
 
 ```bash
 node --experimental-strip-types scripts/bootstrap-postgres.mjs --plan-mail
-node --experimental-strip-types scripts/bootstrap-postgres.mjs --apply-mail 17e86f80f26733d39ef4b84d.twc1.net:default_db
+node --experimental-strip-types scripts/bootstrap-postgres.mjs --apply-mail 17e86f80f26733d39ef4b84d.twc1.net:blizhniy_prod
 ```
 
 Расширенный план содержит0001–0010. При журнале0001–0005 будут добавлены0006–0010; при0001–0007 — только0008–0010. Схема, journal и добавление недостающих references выполняются в одной операторской транзакции. До применения нужен свежий read-only preflight журнала/владельцев/числа аккаунтов и rollback-план. Команда не запускается приложением/CI. После десятишагового журнала семишаговый вариант намеренно отказывает, а не пытается понизить схему. Existing seed сохраняет ID/ручные правки; пользовательские данные из прежнего backend не импортируются.
 
 0010 исправляет несовместимость storage cap: исходная0003 допускает attempts≤61, но production budgets равны600/2000. Новый CHECK допускает1–2001; **request limits не изменены**. Runtime preflight требует validated production constraint. Down отказывает при attempts>61, ничего не удаляет/сбрасывает ради отката. Реальный PG тест воспроизводит прежний отказ на62-м запросе, затем проверяет новые границы и up/down.
 
-`scripts/provision-primary-auth.mjs` — операторский API `provisionPrimaryAuth(config, confirmation, credentialsFile, mode)`, не самозапускающийся CLI. В production разрешены только выбранный Timeweb hostname:5432/default_db/gen_user и проверенный TLS; loopback/blizhniy_test без TLS — только fixture-mode=test. Нужны имеющиеся CREATEROLE, grant options CREATE/CONNECT/TEMP, полный десятишаговый журнал и отсутствие blizhniy_runtime. Недостаток прав панели вызывает отказ, не повышение прав и не owner fallback в приложении.
+`scripts/provision-primary-auth.mjs` — операторский API `provisionPrimaryAuth(config, confirmation, credentialsFile, mode)`, не самозапускающийся CLI. В production разрешены только выбранный Timeweb hostname:5432/blizhniy_prod/gen_user и проверенный TLS; loopback/blizhniy_test без TLS — только fixture-mode=test. Нужны имеющиеся CREATEROLE, grant options CREATE/CONNECT/TEMP, полный десятишаговый журнал и отсутствие blizhniy_runtime. Недостаток прав панели вызывает отказ, не повышение прав и не owner fallback в приложении.
+
+13.10.2026 подготовка выполнена на существующем российском сервере БД: создана `blizhniy_prod`, владелец `gen_user`. Причина: `default_db` принадлежит provider-role `postgres`; оператор не имеет CONNECT/CREATE/TEMP grant options и не может SET ROLE владельца. Проверки прав не ослаблены. Свежий read-only preflight подтвердил пять исходных hashes, отсутствие аккаунтов/сессий и полное совпадение бизнес-полей пяти справочников с seed. После создания через TEMPLATE template0 последовательно применены mail-план10 → ограниченный Auth runtime → account-план11 → column-scoped profile grants. Новые соединения runtime и отрицательные SQL-пробы прошли; 105 категорий, 26 городов, 14 профессий, 7 тарифов, 0 аккаунтов. `default_db` не менялась; staging также не использовалась для переноса. Пароль runtime сохранён вне Git. Приведённый `--apply-mail` описывает начальную последовательность: после0011 он намеренно отказывает, повторно роль не создавать. Рабочий HTTP Auth ещё не переключён; доменный end-to-end и перенос предметных API остаются обязательными.
 
 Пароль новой роли генерируется случайно и до DDL сохраняется эксклюзивно в owned0700/0600 вне Git, например `/etc/blizhniy/auth/runtime.json` (каталог заранее готовит оператор). Существующие credentials не вращаются. В DDL передаётся SCRAM verifier; результаты/ошибки не содержат plaintext credentials. Потерянный COMMIT/ошибка проверки требуют инспекции файла и роли, не автоматического повтора или удаления файла.
 

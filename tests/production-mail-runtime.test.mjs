@@ -15,7 +15,7 @@ test("real production mail runtime loads no key/pool until explicit valid config
   writeFileSync(keyFile, randomBytes(32), { mode: 0o600 }); writeFileSync(caFile, rootCertificates[0]);
   const env = { NODE_ENV: "production", BLIZHNIY_AUTH_MODE: "postgres",
     BLIZHNIY_AUTH_ORIGIN: "https://xn----9sbphbgks4a4a.xn--p1ai", BLIZHNIY_DB_HOST: "17e86f80f26733d39ef4b84d.twc1.net",
-    BLIZHNIY_DB_PORT: "5432", BLIZHNIY_DB_NAME: "default_db", BLIZHNIY_DB_USER: "blizhniy_runtime", BLIZHNIY_DB_PASSWORD: "synthetic-worker-password",
+    BLIZHNIY_DB_PORT: "5432", BLIZHNIY_DB_NAME: "blizhniy_prod", BLIZHNIY_DB_USER: "blizhniy_runtime", BLIZHNIY_DB_PASSWORD: "synthetic-worker-password",
     BLIZHNIY_DB_SSL_MODE: "verify-full", BLIZHNIY_DB_CA_FILE: caFile, BLIZHNIY_AUTH_MAIL_KEY_FILE: keyFile,
     BLIZHNIY_AUTH_RATE_SECRET: "r".repeat(64), TURNSTILE_SECRET_KEY: "t".repeat(40),
     BLIZHNIY_MAIL_MODE: "timeweb", BLIZHNIY_SMTP_USER: "notifications@xn----9sbphbgks4a4a.xn--p1ai", BLIZHNIY_SMTP_PASSWORD: "synthetic-smtp-password" };

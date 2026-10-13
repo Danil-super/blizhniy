@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { loadProductionAuth } from "./production-auth-module.mjs";
 const { readProductionAuthConfig, readMailEncryptionKey, renderProductionAuthMail, productionAuthOrigin } = loadProductionAuth("production-auth-config");
 const env = { NODE_ENV: "production", BLIZHNIY_AUTH_MODE: "postgres", BLIZHNIY_AUTH_ORIGIN: productionAuthOrigin,
-  BLIZHNIY_DB_HOST: "17e86f80f26733d39ef4b84d.twc1.net", BLIZHNIY_DB_PORT: "5432", BLIZHNIY_DB_NAME: "default_db",
+  BLIZHNIY_DB_HOST: "17e86f80f26733d39ef4b84d.twc1.net", BLIZHNIY_DB_PORT: "5432", BLIZHNIY_DB_NAME: "blizhniy_prod",
   BLIZHNIY_DB_USER: "blizhniy_runtime", BLIZHNIY_DB_PASSWORD: "synthetic-driver-password", BLIZHNIY_DB_SSL_MODE: "verify-full",
   BLIZHNIY_DB_CA_FILE: "/etc/blizhniy/auth/root.crt", BLIZHNIY_AUTH_RATE_SECRET: "r".repeat(64),
   BLIZHNIY_AUTH_MAIL_KEY_FILE: "/etc/blizhniy/auth/mail-key.bin", BLIZHNIY_MAIL_MODE: "timeweb",
@@ -20,7 +20,7 @@ test("production Auth is explicitly opted in to the approved Russian database, v
   assert.deepEqual(readProductionAuthConfig(env), { origin: productionAuthOrigin, rateSecret: env.BLIZHNIY_AUTH_RATE_SECRET,
     mailKeyFile: env.BLIZHNIY_AUTH_MAIL_KEY_FILE });
   for (const changes of [{ NODE_ENV: "development" }, { BLIZHNIY_AUTH_MODE: "unexpected" },
-    { BLIZHNIY_DB_HOST: "127.0.0.1" }, { BLIZHNIY_DB_HOST: "foreign.invalid" }, { BLIZHNIY_DB_NAME: "blizhniy_staging" },
+    { BLIZHNIY_DB_HOST: "127.0.0.1" }, { BLIZHNIY_DB_HOST: "foreign.invalid" }, { BLIZHNIY_DB_NAME: "blizhniy_staging" }, { BLIZHNIY_DB_NAME: "default_db" },
     { BLIZHNIY_DB_USER: "gen_user" }, { BLIZHNIY_DB_PORT: "5433" }, { BLIZHNIY_DB_SSL_MODE: "disable" },
     { BLIZHNIY_DB_PASSWORD: "" }, { BLIZHNIY_DB_CA_FILE: "relative.crt" }, { BLIZHNIY_AUTH_RATE_SECRET: "short" },
     { BLIZHNIY_AUTH_MAIL_KEY_FILE: "relative.key" }, { BLIZHNIY_MAIL_MODE: "" }, { BLIZHNIY_SMTP_PASSWORD: "" },

@@ -9,7 +9,7 @@ export function validatePrimaryAuthTarget(config, confirmation, mode = process.e
       Object.keys(config.ssl ?? {}).some(key => !["ca", "rejectUnauthorized"].includes(key))) throw new Error("Primary transport overrides refused");
   const local = mode === "test" && ["127.0.0.1", "::1"].includes(config.host) && config.database === "blizhniy_test" && config.ssl === false;
   const primary = mode === "production" && config.host === "17e86f80f26733d39ef4b84d.twc1.net" &&
-    Number(config.port) === 5432 && config.database === "default_db" && config.user === "gen_user" && config.ssl?.rejectUnauthorized === true;
+    Number(config.port) === 5432 && config.database === "blizhniy_prod" && config.user === "gen_user" && config.ssl?.rejectUnauthorized === true;
   if ((!local && !primary) || confirmation !== `${config.host}:${config.database}`) throw new Error("Unconfirmed primary Auth target");
 }
 

@@ -17,7 +17,7 @@ export function readProductionAuthConfig(env: NodeJS.ProcessEnv = process.env): 
   try {
     if (env.BLIZHNIY_AUTH_MODE !== "postgres" || env.NODE_ENV !== "production" ||
         env.BLIZHNIY_AUTH_ORIGIN !== productionAuthOrigin || env.BLIZHNIY_DB_HOST !== "17e86f80f26733d39ef4b84d.twc1.net" ||
-        env.BLIZHNIY_DB_PORT !== "5432" || env.BLIZHNIY_DB_NAME !== "default_db" || env.BLIZHNIY_DB_USER !== "blizhniy_runtime" ||
+        env.BLIZHNIY_DB_PORT !== "5432" || env.BLIZHNIY_DB_NAME !== "blizhniy_prod" || env.BLIZHNIY_DB_USER !== "blizhniy_runtime" ||
         !env.BLIZHNIY_DB_PASSWORD || env.BLIZHNIY_DB_SSL_MODE !== "verify-full" ||
         !env.BLIZHNIY_DB_CA_FILE || !isAbsolute(env.BLIZHNIY_DB_CA_FILE) ||
         !env.BLIZHNIY_AUTH_MAIL_KEY_FILE || !isAbsolute(env.BLIZHNIY_AUTH_MAIL_KEY_FILE) ||

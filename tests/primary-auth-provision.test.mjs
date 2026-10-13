@@ -3,11 +3,11 @@ import { test } from "node:test";
 import { validatePrimaryAuthTarget, provisionPrimaryAuth } from "../scripts/provision-primary-auth.mjs";
 import * as primary from "../scripts/provision-primary-auth.mjs";
 
-const config = { host: "17e86f80f26733d39ef4b84d.twc1.net", port: 5432, database: "default_db", user: "gen_user", ssl: { rejectUnauthorized: true } };
-const confirmation = `${config.host}:default_db`;
+const config = { host: "17e86f80f26733d39ef4b84d.twc1.net", port: 5432, database: "blizhniy_prod", user: "gen_user", ssl: { rejectUnauthorized: true } };
+const confirmation = `${config.host}:blizhniy_prod`;
 test("primary Auth provisioning is restricted to the confirmed RF target and verified TLS", () => {
   validatePrimaryAuthTarget(config, confirmation, "production");
-  for (const change of [{ host: "foreign.invalid" }, { database: "blizhniy_staging" }, { port: 5433 }, { ssl: false }, { ssl: { rejectUnauthorized: false } }, { user: "blizhniy_runtime" },
+  for (const change of [{ host: "foreign.invalid" }, { database: "blizhniy_staging" }, { database: "default_db" }, { port: 5433 }, { ssl: false }, { ssl: { rejectUnauthorized: false } }, { user: "blizhniy_runtime" },
     { connectionString: "postgresql://synthetic@foreign.invalid/default_db" }, { stream: () => assert.fail("transport hook must not execute") },
     { ssl: { rejectUnauthorized: true, checkServerIdentity: () => undefined } }]) {
     assert.throws(() => validatePrimaryAuthTarget({ ...config, ...change }, confirmation, "production"));

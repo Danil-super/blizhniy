@@ -2,6 +2,8 @@
 
 ## Статус
 
+Актуально13.10.2026: на существующем Timeweb PostgreSQL создана `blizhniy_prod` с0001–0011 и проверенной ограниченной ролью `blizhniy_runtime`. `default_db` сохранена без изменений. На VPS установлены runtime credentials/root CA, root-owned0600 `/etc/blizhniy/auth/candidate.env` и `/etc/blizhniy/mail-worker/worker.env`; одинаковые32-byte ключи под соответствующими UID/0700/0600. Оба env-файла имеют формат systemd EnvironmentFile, не shell/Next dotenv; backslash SMTP-пароля должен сохраняться при будущем подключении HTTP. Candidate env не подключён к PM2, timer выключен. Следующий gate — реальный worker `--check`, затем доменный signup/mail/confirm/reset до включения таймера и нового Auth. Ниже сохранены доказательства предыдущих инкрементов; их «не установлено» относится к моменту этих проверок, а не к текущему состоянию БД/файлов. Backlog alerts и весь перенос предметных API остаются открытыми.
+
 SMTP-адаптер, зашифрованный outbox, delivery engine и атомарные Auth producers реализованы. Отдельная production-safe HTTP-фабрика подключена к `/api/account/[action]` только при явном `BLIZHNIY_AUTH_MODE=postgres`; она передаёт cipher в stores. Формы входа, регистрации, подтверждения и восстановления также готовы под этим opt-in. На рабочем VPS этот режим **не включён**: кабинет/общие guards, минимальные роли, миграции0008–0010, ключ и worker-процесс ещё требуют подключения. Локальный capture-контур и действующая авторизация не переключены. Явный mail bootstrap и операторский профиль прав подготовлены и проверены локально: [primary Auth runbook](postgresql-backend.md#отдельная-подготовка-primary-auth).
 
 ## Первичные страницы аккаунта
