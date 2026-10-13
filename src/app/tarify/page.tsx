@@ -4,6 +4,7 @@ import { CreditCard, ShieldCheck } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { getPublicTariffs } from "@/lib/public-tariffs";
 import type { Tariff } from "@/lib/types";
+import { formatTariffPrice } from "@/lib/tariff-display";
 
 function tariffDetail(durationDays: number | null) {
   return durationDays ? `${durationDays} дней размещения` : "Разовое действие";
@@ -65,14 +66,14 @@ export default async function Page() {
                   <h2 className="text-xl font-bold text-[#060b27]">{tariff.name}</h2>
                   <CreditCard className="h-5 w-5 shrink-0 text-[#0875d1]" />
                 </div>
-                <p className="mt-4 text-2xl font-bold text-[#0875d1]">{tariff.price} ₽</p>
+                {tariff.active ? <p className="mt-4 text-2xl font-bold text-[#0875d1]">{formatTariffPrice(tariff)}</p> : null}
                 <p className="mt-2 text-sm leading-6 text-slate-600">{tariffDetail(tariff.durationDays)}</p>
                 {tariff.action === "specialist_publication" ? (
                   <p className="mt-2 text-sm font-semibold leading-6 text-amber-700">Публикация и оплата анкеты временно недоступны. Черновик можно сохранить.</p>
                 ) : null}
-                <Link href={cta.href} className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#0aa337] text-sm font-bold text-white">
+                {tariff.active ? <Link href={cta.href} className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#0aa337] text-sm font-bold text-white">
                   {cta.label}
-                </Link>
+                </Link> : <p role="status" className="mt-5 text-sm font-semibold leading-6 text-slate-700">Тариф временно недоступен</p>}
               </article>
             );
           })}

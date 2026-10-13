@@ -7,6 +7,7 @@ import { fairCategories } from "@/lib/data";
 import { listStoredFairApplications } from "@/lib/fair-application-store";
 import { publicMediaUrl } from "@/lib/storage-upload";
 import { getPublicTariffs } from "@/lib/public-tariffs";
+import { formatTariffPrice } from "@/lib/tariff-display";
 
 function nextFairDate(today = new Date()) {
   const year = today.getFullYear();
@@ -76,7 +77,7 @@ export async function FairHomePage() {
           <CalendarDays className="h-8 w-8 text-[#0875d1] sm:h-10 sm:w-10" />
           <h2 className="mt-3 text-xl font-bold text-[#060b27] sm:mt-4">Ближайшая ярмарка</h2>
           <p className="mt-2 text-xl font-bold text-[#0aa337] sm:text-2xl">{formatFairDate(fairDate)}</p>
-          <p className="mt-2 text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">Участие платное. Временный тариф: {fairTariff ? `${fairTariff.price} ₽` : "1000 ₽"}.</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">Тариф участия: {formatTariffPrice(fairTariff)}.</p>
         </aside>
       </section>
 
@@ -201,7 +202,7 @@ export async function FairApplicationFormPage({ adminMode = false }: { adminMode
           <p className="mt-2 text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7">
             После оплаты заявка получает статус «Заявка опубликована». Видео можно добавить ссылкой на внешний сервис.
           </p>
-          <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm font-bold text-slate-700">Тариф: {fairTariff ? `${fairTariff.price} ₽` : "1000 ₽"}</p>
+          <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm font-bold text-slate-700">Тариф: {formatTariffPrice(fairTariff)}</p>
         </aside>
       </section>
     </main>

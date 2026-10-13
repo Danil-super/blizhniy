@@ -42,6 +42,7 @@ import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/se
 import { getPublicCategories, getPublicCategoriesWithListingScope } from "@/lib/category-store";
 import { listStoredListingsForCategory } from "@/lib/listing-store";
 import { getPublicTariffs } from "@/lib/public-tariffs";
+import { formatTariffPrice, formatListingPublicationTerm } from "@/lib/tariff-display";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
 import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
 import type { BookingAvailability } from "@/lib/booking-availability";
@@ -2159,7 +2160,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
                 Публикация
               </div>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                {adminMode ? "В админ-режиме публикацию можно сохранить без оплаты для служебной проверки." : `После оплаты объявление будет опубликовано на ${tariff?.durationDays ?? 30} дней.`}
+                {adminMode ? "В админ-режиме публикацию можно сохранить без оплаты для служебной проверки." : formatListingPublicationTerm(tariff)}
               </p>
             </div>
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
@@ -2167,7 +2168,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
                 <CreditCard className="h-5 w-5 text-[#0875d1]" />
                 Оплата
               </div>
-              <p className="mt-2 text-sm leading-6 text-slate-700">{tariff?.name ?? "Размещение объявления"}: {tariff?.price ?? 199} ₽.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-700">{tariff?.name ?? "Размещение объявления"}: {formatTariffPrice(tariff)}.</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2 font-bold text-[#060b27]">

@@ -8,6 +8,7 @@ import { addSiteNotification, type AddSiteNotificationInput } from "@/lib/site-n
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import type { AdMarqueePlacement, AdMarqueePlacementStatus } from "@/lib/ad-marquee-store";
 import type { Tariff } from "@/lib/types";
+import { formatTariffPrice, formatTariffDuration } from "@/lib/tariff-display";
 
 type Payload = {
   error?: string;
@@ -464,11 +465,11 @@ export function AdMarqueePlacementClient({ tariff }: { tariff?: Tariff }) {
         <div className="mt-4 grid grid-cols-3 gap-2">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-bold text-slate-500">Цена</p>
-            <p className="mt-1 text-lg font-bold text-[#060b27]">{tariff ? `${tariff.price} ₽` : "—"}</p>
+            <p className="mt-1 text-lg font-bold text-[#060b27] [overflow-wrap:anywhere]">{formatTariffPrice(tariff)}</p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-bold text-slate-500">Срок</p>
-            <p className="mt-1 text-lg font-bold text-[#060b27]">{tariff?.durationDays ?? 7} дн.</p>
+            <p className="mt-1 text-lg font-bold text-[#060b27] [overflow-wrap:anywhere]">{formatTariffDuration(tariff)}</p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-bold text-slate-500">Слотов</p>

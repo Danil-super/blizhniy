@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import test from "node:test";
 import vm from "node:vm";
+import * as tariffDisplay from "../src/lib/tariff-display.ts";
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
@@ -52,6 +53,7 @@ function loadAdMarqueeHelpers() {
       if (id === "@/lib/client-user-profile") return { readCabinetProfile() {} };
       if (id === "@/lib/site-notifications") return { addSiteNotification() {} };
       if (id === "@/lib/supabase-browser") return { getSupabaseBrowserClient() {}, isSupabaseBrowserConfigured() {} };
+      if (id === "@/lib/tariff-display") return tariffDisplay;
       throw new Error(`Unexpected module: ${id}`);
     },
   });
@@ -65,6 +67,16 @@ const origin = {
   name: "Account A",
   userId: "account-a",
 };
+
+test("advertising presentation uses the stored tariff price and term without a seven-day fallback", () => {
+  assert.match(componentSource, /formatTariffPrice\(tariff\)/);
+  assert.match(componentSource, /formatTariffDuration\(tariff\)/);
+  assert.doesNotMatch(componentSource, /tariff\?\.durationDays\s*\?\?\s*7/);
+});
+
+test("advertising price and term can wrap long unavailable labels in narrow mobile columns", () => {
+  assert.equal((componentSource.match(/\[overflow-wrap:anywhere\]/g) ?? []).length, 2);
+});
 
 test("ad marquee does not send an A action with B's session", async () => {
   const { runBoundAdMarqueeRequest } = loadAdMarqueeHelpers();

@@ -123,6 +123,22 @@ function breadcrumbHtml(listing) {
   return nav;
 }
 
+test("actual listing form copy does not invent a price or duration when configured tariffs are empty", async () => {
+  const tree = await presentation.ListingFormPage({});
+  const paragraphs = [];
+  function collect(node) {
+    if (Array.isArray(node)) { for (const child of node) collect(child); return; }
+    if (!React.isValidElement(node)) return;
+    if (node.type === "p") paragraphs.push(renderToStaticMarkup(node));
+    else collect(node.props.children);
+  }
+  // Inspect declared copy only; do not bypass or execute the separate Auth gate.
+  collect(tree);
+  const html = paragraphs.join("");
+  assert.doesNotMatch(html, /199\s*₽|на 30 дней/);
+  assert.match(html, /временно недоступн/);
+});
+
 for (const [categorySlug, items] of [["instrumenty", instrumentData], ["posuda", posudaData]]) {
   for (const item of items) {
     test(`${categorySlug}/${item.slug}: actual mapper/rendered breadcrumb matches dedicated route data`, async () => {
