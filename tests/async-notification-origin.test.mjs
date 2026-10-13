@@ -145,7 +145,7 @@ function harness({ demo = false, configured = true } = {}) {
       const submit = settings?.body?.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "handleSubmit");
       assert.ok(submit, "extract the actual SettingsPanel callback, not a rewritten test implementation");
       source += `\nexport function __settingsSubmitForTest(identity, form, callbacks) {
-        const { setForm, setMessage, setSaving, onClose } = callbacks;
+        const { setForm, setMessage, setSaving, onClose, saveProfile } = callbacks;
         ${submit.getText(ast)}
         return handleSubmit;
       }`;

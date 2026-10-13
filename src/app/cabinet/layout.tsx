@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { CookieCabinetProfileProvider } from "@/components/cabinet/CookieCabinetProfileProvider";
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 export default function Layout({ children }: { children: ReactNode }) {
-  return children;
+  return <CookieCabinetProfileProvider>{children}</CookieCabinetProfileProvider>;
 }

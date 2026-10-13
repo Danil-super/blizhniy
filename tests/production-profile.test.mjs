@@ -1,11 +1,23 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loadProfileModule } from "./production-profile-module.mjs";
-const { parseProductionProfile, ProfileInputError, ProfileOwnerChangedError } = loadProfileModule("postgres-profile");
+const { parseProductionProfile, ProfileInputError, ProfileOwnerChangedError, PostgresProfileStore } = loadProfileModule("postgres-profile");
 const { createProductionProfileHandler } = loadProfileModule("production-profile-http");
 const origin = "https://xn----9sbphbgks4a4a.xn--p1ai";
 const owner = "11111111-1111-4111-8111-111111111111";
 const token = "a".repeat(64);
+
+test("a fresh profile has a valid generic name instead of copying an email prefix into the name field", async () => {
+  const db = { transaction: work => work({ query: async sql => {
+    if (sql.startsWith("select u.id")) return { rowCount: 1, rows: [{ id: owner, role: "user", isBlocked: false, verified: true, authVersion: "0" }] };
+    if (sql.startsWith("select email")) return { rowCount: 1, rows: [{ email: "owner-123@example.invalid" }] };
+    return { rowCount: 1, rows: [] };
+  } }) };
+  const result = await new PostgresProfileStore(db).read(token, owner);
+  assert.equal(result.profile.name, "Пользователь");
+  assert.equal(result.profile.email, "owner-123@example.invalid");
+  assert.equal(result.exists, false);
+});
 
 test("profile allowlist preserves user settings but cannot store identity or verification claims", () => {
   const result = parseProductionProfile({ name: "  Synthetic name  ", email: "attacker@example.invalid", phone: "+7 900 000-00-00",

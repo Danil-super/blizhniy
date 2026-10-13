@@ -43,11 +43,15 @@ import {
 } from "@/lib/client-user-profile";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { normalizeMessengerHref } from "@/lib/messenger-url";
+import { CabinetProfileFailure, useCookieCabinetProfile } from "./CookieCabinetProfileProvider";
 
 type UserCabinetState = {
   identity: ClientUserIdentity | null;
   profile: CabinetProfile | null;
   profileError?: string;
+  itemsError?: string;
+  saveProfile?: (profile: CabinetProfile) => Promise<CabinetProfile>;
+  reloadProfile?: () => void;
   items: DemoPublication[];
   loading: boolean;
 };
@@ -759,9 +763,12 @@ async function requestUserCabinetData(force = false): Promise<UserCabinetState> 
 }
 
 function useUserCabinetData(): UserCabinetState {
+  const cookie = useCookieCabinetProfile();
+  const useLegacy = cookie === null;
   const [state, setState] = useState<UserCabinetState>(emptyCabinetState);
 
   useEffect(() => {
+    if (!useLegacy) return;
     let active = true;
 
     function handleState(nextState: UserCabinetState) {
@@ -808,8 +815,12 @@ function useUserCabinetData(): UserCabinetState {
       window.removeEventListener(demoPublicationsUpdatedEvent, sync);
       window.removeEventListener("blizhniy-profile-updated", sync);
     };
-  }, []);
+  }, [useLegacy]);
 
+  if (cookie) return { identity: cookie.ownerId && cookie.profile ? { ownerKey: cookie.ownerId, name: cookie.profile.name, email: cookie.profile.email } : null,
+    profile: cookie.profile, profileError: cookie.error, items: [], loading: cookie.loading,
+    itemsError: "Публикации в новом кабинете пока недоступны: перенос этого раздела ещё не завершён.",
+    saveProfile: cookie.saveProfile, reloadProfile: cookie.reload };
   return state;
 }
 
@@ -2370,11 +2381,13 @@ function AvatarEditor({
   profile,
   onChange,
   onError,
+  saveProfile,
 }: {
   ownerKey: string;
   profile: CabinetProfile;
   onChange: (profile: CabinetProfile) => void;
   onError: (message: string) => void;
+  saveProfile?: (profile: CabinetProfile) => Promise<CabinetProfile>;
 }) {
   const [loading, setLoading] = useState(false);
   const [cropDraft, setCropDraft] = useState<AvatarCropDraft | null>(null);
@@ -2420,7 +2433,7 @@ function AvatarEditor({
   async function commitAvatarPatch(patch: Partial<CabinetProfile>) {
     const nextProfile = { ...profile, ...patch };
 
-    const saved = await saveCabinetProfile(ownerKey, nextProfile);
+    const saved = saveProfile ? await saveProfile(nextProfile) : await saveCabinetProfile(ownerKey, nextProfile);
     onChange(saved);
   }
 
@@ -2626,7 +2639,8 @@ function AvatarEditor({
   );
 }
 
-function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIdentity; profile: CabinetProfile; onClose: () => void }) {
+function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: ClientUserIdentity; profile: CabinetProfile; onClose: () => void;
+  saveProfile?: (profile: CabinetProfile) => Promise<CabinetProfile> }) {
   const [form, setForm] = useState(profile);
   const [verificationCode, setVerificationCode] = useState("");
   const [phoneVerificationOpen, setPhoneVerificationOpen] = useState(false);
@@ -2650,6 +2664,13 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
     setMessage("");
 
     try {
+      if (saveProfile) {
+        const nextProfile = { ...form, name: sanitizePersonName(form.name).trim(), phone: form.phone.trim(), city: form.city.trim(), email: identity.email };
+        if (!sortedCities.some(city => city.name === nextProfile.city)) throw new Error("Выберите город из списка.");
+        const saved = await saveProfile(nextProfile);
+        setForm(saved); setMessage("Настройки сохранены.");
+        return;
+      }
       const origin = await captureClientUserOperation(identity.ownerKey);
       const nextProfile = {
         ...form,
@@ -2711,6 +2732,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
   }
 
   async function handleStartPhoneVerification() {
+    if (saveProfile) { setMessage("SMS-подтверждение в новом контуре ещё не подключено."); return; }
     const phone = form.phone.trim();
     const e164Phone = toRussianPhoneE164(phone);
 
@@ -2741,6 +2763,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
   }
 
   async function handleVerifyPhoneCode() {
+    if (saveProfile) { setMessage("SMS-подтверждение в новом контуре ещё не подключено."); return; }
     const phone = form.phone.trim();
     const e164Phone = toRussianPhoneE164(phone);
     const token = verificationCode.replace(/\D/g, "");
@@ -2786,6 +2809,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
   }
 
   async function handlePasswordReset() {
+    if (saveProfile) { window.location.assign("/auth/recover"); return; }
     const email = form.email.trim().toLowerCase();
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -2826,8 +2850,8 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
         </button>
       </div>
       <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
-        <AvatarEditor ownerKey={identity.ownerKey} profile={form} onChange={setForm} onError={setMessage} />
-        <div className="grid grid-cols-2 items-start gap-x-3 gap-y-3 sm:gap-x-4 sm:gap-y-4">
+        <AvatarEditor ownerKey={identity.ownerKey} profile={form} onChange={setForm} onError={setMessage} saveProfile={saveProfile} />
+        <div className="grid grid-cols-1 items-start gap-x-3 gap-y-3 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-4">
           <label className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
             <span className="leading-4">Имя</span>
             <input
@@ -2879,6 +2903,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
             <ValidatedInput
               className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
               value={form.email}
+              readOnly={Boolean(saveProfile)}
               onChange={(event) => setForm({ ...form, email: event.target.value })}
               placeholder="mail@example.ru"
               validation="email"
@@ -2890,6 +2915,10 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
             <CitySearchSelect value={form.city} onChange={(city) => setForm({ ...form, city })} />
           </label>
         </div>
+        {saveProfile ? <div className="grid gap-2 text-sm text-slate-600">
+          <p>Email подтверждён при регистрации; смена адреса и SMS-подтверждение ещё подключаются.</p>
+          <Link href="/cabinet/organization" className="font-semibold text-brand-blue underline">Профиль организации</Link>
+        </div> : null}
         <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -2902,7 +2931,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
               disabled={sendingReset}
               className="inline-flex h-11 items-center justify-center rounded-lg border border-amber-300 bg-white px-4 text-sm font-bold text-amber-800 transition hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {sendingReset ? "Отправляем..." : "Отправить письмо"}
+              {sendingReset ? "Отправляем..." : saveProfile ? "Сменить пароль" : "Отправить письмо"}
             </button>
           </div>
         </section>
@@ -2951,7 +2980,7 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
           <button type="submit" disabled={saving} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white disabled:bg-slate-300">
             {saving ? "Сохраняем..." : "Сохранить настройки"}
           </button>
-          {message ? <p className="text-sm font-semibold text-slate-600">{message}</p> : null}
+          {message ? <p role="status" className="text-sm font-semibold text-slate-600">{message}</p> : null}
         </div>
         {phoneVerificationOpen ? (
           <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
@@ -3010,12 +3039,14 @@ function SettingsPanel({ identity, profile, onClose }: { identity: ClientUserIde
 
 export function CabinetProfileBar() {
   const { state: authState } = useAuthState();
-  const { identity, profile, profileError, loading } = useUserCabinetData();
+  const { identity, profile, profileError, loading, saveProfile, reloadProfile } = useUserCabinetData();
   const [open, setOpen] = useState(false);
 
   if (authState !== "signed-in" && authState !== "admin") {
     return null;
   }
+
+  if (!loading && profileError && !profile) return <CabinetProfileFailure message={profileError} reload={reloadProfile} />;
 
   if (loading || !identity || !profile) {
     return null;
@@ -3042,7 +3073,7 @@ export function CabinetProfileBar() {
             )}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold uppercase text-[#0aa337]">Пользователь</p>
+            <p className="text-sm font-bold uppercase text-[#0a7b2b]">Пользователь</p>
             <h2 className="truncate text-xl font-bold text-[#060b27]">{profile.name}</h2>
             <p className="truncate text-sm text-slate-500">{profile.email || "Email не указан"}</p>
             {profile.phone ? (
@@ -3058,17 +3089,19 @@ export function CabinetProfileBar() {
         </button>
       </div>
       {profileError ? <p role="alert" className="mt-3 text-sm font-semibold text-amber-700">{profileError}</p> : null}
-      {open && !profileError ? <SettingsPanel identity={identity} profile={profile} onClose={() => setOpen(false)} /> : null}
+      {open && !profileError ? <SettingsPanel key={identity.ownerKey} identity={identity} profile={profile} onClose={() => setOpen(false)} saveProfile={saveProfile} /> : null}
     </section>
   );
 }
 
 export function CabinetOverviewClient() {
-  const { profile, items, loading } = useUserCabinetData();
+  const { profile, items, loading, profileError, itemsError, reloadProfile } = useUserCabinetData();
   const listings = items.filter((item) => item.type === "listing");
   const vacancies = items.filter((item) => item.type === "vacancy");
   const orders = items.filter((item) => item.type === "workRequest");
 
+  if (!loading && profileError && !profile) return <CabinetProfileFailure message={profileError} reload={reloadProfile} />;
+  if (!loading && itemsError) return <CabinetProfileFailure message={itemsError} />;
   if (loading || !profile) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем кабинет...</div>;
   }
@@ -3096,13 +3129,14 @@ export function CabinetOverviewClient() {
 }
 
 export function CabinetPublicationsClient({ type }: { type: DemoPublicationType }) {
-  const { items, loading } = useUserCabinetData();
+  const { items, loading, itemsError } = useUserCabinetData();
   const visibleItems = useMemo(() => items.filter((item) => item.type === type), [items, type]);
 
   if (loading) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем раздел...</div>;
   }
 
+  if (itemsError) return <CabinetProfileFailure message={itemsError} />;
   return <PublicationList items={visibleItems} mode={type} />;
 }
 
@@ -3481,7 +3515,7 @@ export function CabinetPaymentsClient({ initialPayments = [] }: { initialPayment
 }
 
 export function CabinetOrganizationClient() {
-  const { identity, profile, profileError, loading } = useUserCabinetData();
+  const { identity, profile, profileError, loading, saveProfile, reloadProfile } = useUserCabinetData();
   const [form, setForm] = useState<CabinetProfile | null>(profile);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -3490,6 +3524,7 @@ export function CabinetOrganizationClient() {
     setForm(profile);
   }, [profile]);
 
+  if (!loading && profileError && !profile) return <CabinetProfileFailure message={profileError} reload={reloadProfile} />;
   if (loading || !identity || !profile || !form) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем профиль...</div>;
   }
@@ -3542,7 +3577,7 @@ export function CabinetOrganizationClient() {
     setMessage("");
 
     try {
-      const saved = await saveCabinetProfile(identity.ownerKey, nextProfile);
+      const saved = saveProfile ? await saveProfile(nextProfile) : await saveCabinetProfile(identity.ownerKey, nextProfile);
       setForm(saved);
       setMessage("Профиль организации сохранен.");
     } catch (error) {

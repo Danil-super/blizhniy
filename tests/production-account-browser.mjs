@@ -12,6 +12,7 @@ import { createServer } from "node:net";
 import { request as httpRequest } from "node:http";
 import { test } from "node:test";
 import { chromium } from "playwright";
+import { createDefaultCabinetProfile } from "../src/lib/cabinet-profile.ts";
 
 const captchaScript = `let sequence = 0; const widgets = new Map(); window.turnstile = {
   render(container, options) {
@@ -106,13 +107,29 @@ test("primary account browser forms use the new cookie API without remote traffi
     const run = (name, fn) => suite.test(name, async () => {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const calls = [], sessionReads = [], foreign = [], errors = [];
-      const state = { active: null, override: null, sessionReads };
+      const state = { active: null, override: null, sessionReads, profiles: new Map(), profileRequests: [], profileOverride: null };
       await context.route("**/*", async route => {
         const request = route.request(), url = new URL(request.url());
         if (url.href === "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit") return route.fulfill({ contentType: "application/javascript", body: captchaScript });
         if (["http:", "https:"].includes(url.protocol) && url.origin !== origin) { foreign.push(url.hostname); return route.abort(); }
         if (!url.pathname.startsWith("/api/account/")) return route.continue();
         const action = url.pathname.split("/").at(-1), body = request.postDataJSON();
+        if (action === "profile") {
+          assert.ok(["POST", "PUT"].includes(request.method()));
+          assert.equal(request.headers()["authorization"], undefined);
+          assert.equal(request.headers()["x-blizhniy-request"], "1");
+          state.profileRequests.push({ method: request.method(), body });
+          if (state.profileOverride) return state.profileOverride(route, body);
+          if (!state.active) return route.fulfill({ status: 401, json: { error: { code: "UNAUTHENTICATED" } } });
+          if (body.expectedOwnerId !== state.active.id) return route.fulfill({ status: 409, json: { error: { code: "SESSION_CHANGED" } } });
+          const stored = state.profiles.get(state.active.id) ?? createDefaultCabinetProfile({ name: "Синтетический", email: state.active.email });
+          if (request.method() === "PUT") {
+            const saved = { ...body.profile, email: state.active.email, phoneVerified: false, verifiedPhone: "" };
+            state.profiles.set(state.active.id, saved);
+            return route.fulfill({ json: { profile: saved } });
+          }
+          return route.fulfill({ json: { exists: state.profiles.has(state.active.id), profile: stored } });
+        }
         assert.equal(request.method(), "POST"); assert.equal(request.headers()["x-blizhniy-request"], "1");
         assert.equal(url.search, ""); calls.push({ action, body });
         // Credential assertions stay separate from the new shared session reads; neither is ignored.
@@ -130,13 +147,148 @@ test("primary account browser forms use the new cookie API without remote traffi
       try { await fn({ page, context, calls, state }); assert.deepEqual(foreign, []); assert.deepEqual(errors, []); }
       finally { await context.close(); }
     });
-    const login = async (page, email = "owner@example.invalid") => {
+    const login = async (page, email = "owner@example.invalid", switchAccount = false) => {
       await page.goto(`${origin}/auth`);
+      if (switchAccount) await page.getByRole("button", { name: "Сменить аккаунт", exact: true }).click();
       await page.getByLabel("Email", { exact: true }).fill(email);
       await page.getByLabel("Пароль", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Войти", exact: true }).click();
       await page.getByText(email, { exact: true }).waitFor();
     };
+    await run("existing cabinet settings save through owner-scoped cookie profile API without legacy requests", async ({ page, state }) => {
+      const legacy = [];
+      page.on("request", request => { if (new URL(request.url()).pathname.startsWith("/api/cabinet/")) legacy.push(request.url()); });
+      await login(page); await page.goto(`${origin}/cabinet`);
+      await page.getByRole("heading", { name: "Синтетический", exact: true }).waitFor();
+      await page.getByRole("button", { name: "Настройки", exact: true }).click();
+      await page.getByLabel("Имя", { exact: true }).fill("Изменённый");
+      await page.getByLabel("Брони и заказы", { exact: true }).uncheck();
+      assert.equal(await page.getByLabel("Email", { exact: true }).getAttribute("readonly"), "");
+      await page.getByRole("button", { name: "Сохранить настройки", exact: true }).click();
+      await page.getByText("Настройки сохранены.", { exact: true }).waitFor();
+      assert.equal(state.profileRequests.filter(row => row.method === "PUT").length, 1);
+      assert.equal(state.profiles.get(state.active.id).name, "Изменённый");
+      assert.equal(state.profiles.get(state.active.id).notifyBookings, false);
+      assert.deepEqual(legacy, []);
+      await page.reload();
+      await page.getByRole("heading", { name: "Изменённый", exact: true }).waitFor();
+      await page.setViewportSize({ width: 320, height: 900 });
+      await page.getByRole("button", { name: "Настройки", exact: true }).click();
+      const axe = await readFile(createRequire(import.meta.url).resolve("axe-core/axe.min.js"), "utf8");
+      await page.addScriptTag({ content: axe });
+      const violations = await page.evaluate(async () => (await window.axe.run(document.querySelector("main"), {
+        runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] },
+      })).violations.filter(item => ["serious", "critical"].includes(item.impact)).map(item => ({ id: item.id, targets: item.nodes.map(node => node.target) })));
+      assert.deepEqual(violations, [], "existing primary profile settings meet the main-region axe bar");
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await page.screenshot({ path: "/tmp/blizhniy-cookie-profile-settings-320.png", fullPage: true });
+      for (const width of [768, 1024, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `profile settings fit ${width}px`);
+      }
+      await page.getByRole("button", { name: "Сменить пароль", exact: true }).click();
+      await page.getByRole("heading", { name: "Восстановление доступа", exact: true }).waitFor();
+    });
+    await run("organization editor persists on the existing cabinet route using the same cookie-owned profile", async ({ page, state }) => {
+      await login(page); await page.goto(`${origin}/cabinet/organization`);
+      await page.getByLabel("Название организации или ИП", { exact: true }).fill("Синтетическая организация");
+      await page.getByLabel("ИНН", { exact: true }).fill("1234567890");
+      await page.getByRole("button", { name: "Сохранить профиль организации", exact: true }).click();
+      await page.getByText("Профиль организации сохранен.", { exact: true }).waitFor();
+      assert.equal(state.profiles.get(state.active.id).organizationName, "Синтетическая организация");
+      assert.equal(state.profileRequests.filter(row => row.method === "PUT").length, 1);
+      await page.reload();
+      assert.equal(await page.getByLabel("Название организации или ИП", { exact: true }).inputValue(), "Синтетическая организация");
+    });
+    await run("failed profile read blocks editors and explicitly reloads, without a default fake profile", async ({ page, state }) => {
+      state.profileOverride = route => route.fulfill({ status: 503, json: { error: { code: "PROFILE_UNAVAILABLE" } } });
+      await login(page); await page.goto(`${origin}/cabinet`);
+      await page.getByRole("alert").filter({ hasText: "Не удалось загрузить профиль" }).first().waitFor();
+      assert.equal(await page.getByRole("button", { name: "Настройки", exact: true }).count(), 0);
+      assert.equal(await page.getByRole("heading", { name: "Пользователь", exact: true }).count(), 0);
+      state.profileOverride = null;
+      await page.getByRole("button", { name: "Обновить профиль", exact: true }).first().click();
+      await page.getByRole("heading", { name: "Синтетический", exact: true }).waitFor();
+    });
+    await run("unknown profile write hides editors, sends one PUT and recovers the committed profile only by readback", async ({ page, state }) => {
+      await login(page); await page.goto(`${origin}/cabinet`);
+      await page.getByRole("button", { name: "Настройки", exact: true }).click();
+      await page.getByLabel("Имя", { exact: true }).fill("Сохранённый");
+      state.profileOverride = (route, body) => {
+        assert.equal(route.request().method(), "PUT");
+        state.profiles.set(body.expectedOwnerId, { ...body.profile, email: state.active.email, phoneVerified: false, verifiedPhone: "" });
+        return route.fulfill({ json: { status: "unrecognized-success" } });
+      };
+      await page.getByRole("button", { name: "Сохранить настройки", exact: true }).click();
+      await page.getByRole("alert").filter({ hasText: "Сохранение не подтверждено" }).first().waitFor();
+      assert.equal(state.profileRequests.filter(row => row.method === "PUT").length, 1);
+      assert.equal(await page.getByRole("button", { name: "Сохранить настройки", exact: true }).count(), 0);
+      state.profileOverride = null;
+      await page.getByRole("button", { name: "Обновить профиль", exact: true }).first().click();
+      await page.getByRole("heading", { name: "Сохранённый", exact: true }).waitFor();
+      assert.equal(state.profileRequests.filter(row => row.method === "PUT").length, 1);
+    });
+    await run("a held private profile for A cannot replace B after another tab changes account", async ({ page, context, state }) => {
+      const first = user("first@example.invalid"), second = user("second@example.invalid");
+      state.profiles.set(first.id, createDefaultCabinetProfile({ name: "Первый", email: first.email }));
+      state.profiles.set(second.id, createDefaultCabinetProfile({ name: "Второй", email: second.email }));
+      let release, started, completed;
+      const gate = new Promise(resolve => { release = resolve; });
+      const pending = new Promise(resolve => { started = resolve; });
+      const settled = new Promise(resolve => { completed = resolve; });
+      state.profileOverride = async (route, body) => {
+        const profile = state.profiles.get(body.expectedOwnerId);
+        if (body.expectedOwnerId === first.id) {
+          started(); await gate;
+          try { await route.fulfill({ json: { exists: true, profile } }); }
+          finally { completed(); }
+          return;
+        }
+        return route.fulfill({ json: { exists: true, profile } });
+      };
+      try {
+        await login(page, first.email); await page.goto(`${origin}/cabinet`); await pending;
+        const tab = await context.newPage(); tab.setDefaultTimeout(10000); await login(tab, second.email, true);
+        await page.getByRole("heading", { name: "Второй", exact: true }).waitFor();
+        release(); await settled;
+        await page.getByRole("heading", { name: "Второй", exact: true }).waitFor();
+        assert.equal(await page.getByRole("heading", { name: "Первый", exact: true }).count(), 0);
+        assert.equal(await page.getByText(first.email, { exact: true }).count(), 0);
+      } finally { release(); }
+    });
+    await run("late completion of A's profile save cannot publish into B's editor or create a second write", async ({ page, context, state }) => {
+      const first = user("first@example.invalid"), second = user("second@example.invalid");
+      state.profiles.set(first.id, createDefaultCabinetProfile({ name: "Первый", email: first.email }));
+      state.profiles.set(second.id, createDefaultCabinetProfile({ name: "Второй", email: second.email }));
+      await login(page, first.email); await page.goto(`${origin}/cabinet`);
+      await page.getByRole("button", { name: "Настройки", exact: true }).click();
+      await page.getByLabel("Имя", { exact: true }).fill("Изменённый первый");
+      let release, started, completed;
+      const gate = new Promise(resolve => { release = resolve; });
+      const pending = new Promise(resolve => { started = resolve; });
+      const settled = new Promise(resolve => { completed = resolve; });
+      state.profileOverride = async (route, body) => {
+        if (route.request().method() === "PUT") {
+          started(); await gate;
+          const profile = { ...body.profile, email: first.email, phoneVerified: false, verifiedPhone: "" };
+          state.profiles.set(body.expectedOwnerId, profile);
+          try { await route.fulfill({ json: { profile } }); }
+          finally { completed(); }
+          return;
+        }
+        return route.fulfill({ json: { exists: true, profile: state.profiles.get(body.expectedOwnerId) } });
+      };
+      try {
+        await page.getByRole("button", { name: "Сохранить настройки", exact: true }).click(); await pending;
+        const tab = await context.newPage(); tab.setDefaultTimeout(10000); await login(tab, second.email, true);
+        await page.getByRole("heading", { name: "Второй", exact: true }).waitFor();
+        release(); await settled;
+        await page.getByRole("heading", { name: "Второй", exact: true }).waitFor();
+        assert.equal(state.profiles.get(second.id).name, "Второй");
+        assert.equal(await page.getByRole("heading", { name: "Изменённый первый", exact: true }).count(), 0);
+        assert.equal(state.profileRequests.filter(row => row.method === "PUT").length, 1);
+      } finally { release(); }
+    });
     await run("shared mobile navigation follows cookie login and cross-tab logout without legacy SDK traffic", async ({ page, context, state }) => {
       await page.setViewportSize({ width: 320, height: 900 });
       await page.goto(`${origin}/auth`);

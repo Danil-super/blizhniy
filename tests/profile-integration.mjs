@@ -45,6 +45,7 @@ export async function testProfiles(suite, db, applyMigration) {
   await suite.test("two independent profile owners round-trip without copying email or phone-verification claims", async () => {
     const initial = await store.read(tokens[0], owners[0]);
     assert.equal(initial.exists, false);
+    assert.equal(initial.profile.name, "Пользователь");
     assert.equal(initial.profile.email, "profile-0@example.invalid");
     const profile = parseProductionProfile({ name: "Synthetic A", email: "forged@example.invalid", phoneVerified: true,
       verifiedPhone: "forged", phone: "+7 900 000-00-00", organizationName: "Synthetic company", notifyPayments: false });

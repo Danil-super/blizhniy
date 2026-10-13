@@ -32,6 +32,7 @@ import { CabinetShellActions } from "@/components/cabinet/CabinetShellActions";
 import {
   CabinetCapabilities,
   CabinetOverviewClient,
+  CabinetOrganizationClient,
   CabinetPaymentsClient,
   type CabinetResponseItem,
   type CabinetPaymentHistoryItem,
@@ -383,7 +384,7 @@ function NavPills({ items, activeHref }: { items: typeof cabinetNav; activeHref?
           <Link
             href={item.href}
             className={`inline-flex min-h-10 w-full max-w-full items-center justify-start gap-2 rounded-lg border px-3 py-2 text-xs font-bold leading-snug transition sm:min-h-11 sm:w-auto sm:min-w-[9.5rem] sm:flex-none sm:px-4 sm:text-sm ${
-              active ? "border-blue-200 bg-blue-50 text-[#0875d1] ring-1 ring-blue-100" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
+              active ? "border-blue-200 bg-blue-50 text-[#0664b3] ring-1 ring-blue-100" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
             }`}
             aria-current={active ? "page" : undefined}
             key={item.href}
@@ -609,6 +610,13 @@ export function CabinetVacanciesPage() {
       </CabinetAuthGate>
     </Shell>
   );
+}
+
+export function CabinetOrganizationPage() {
+  return <Shell title="Организация" description="Данные работодателя и организации в вашем частном профиле." eyebrow="Кабинет"
+    nav={cabinetNav} activeHref="/cabinet/organization" createHref={null}>
+    <CabinetAuthGate><CabinetOrganizationClient /></CabinetAuthGate>
+  </Shell>;
 }
 
 export function CabinetWorkRequestsPage() {

@@ -83,7 +83,7 @@ export class PostgresProfileStore {
       const email = await profileEmail(tx, user.id);
       const row = (await tx.query<{ profile: StoredCabinetProfile }>("select profile from app.cabinet_profiles where user_id=$1", [user.id])).rows[0];
       return { exists: Boolean(row), profile: row ? view(row.profile, email)
-        : createDefaultCabinetProfile({ name: email.split("@")[0] || "Пользователь", email }) };
+        : createDefaultCabinetProfile({ name: "Пользователь", email }) };
     });
   }
   async write(token: string, expectedOwnerId: string, profile: StoredCabinetProfile): Promise<{ profile: CabinetProfile }> {
