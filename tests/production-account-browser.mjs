@@ -72,6 +72,14 @@ test("primary account browser forms use the new cookie API without remote traffi
         assert.deepEqual(await response.json(), { error: "Профиль временно недоступен." });
       }
     });
+    await suite.test("a live process with invalid PostgreSQL configuration refuses database readiness without leaking details", async () => {
+      const health = await fetch(origin+"/api/health");
+      assert.equal(health.status, 200);
+      const readiness = await fetch(origin+"/api/ready");
+      assert.equal(readiness.status, 503);
+      assert.equal(readiness.headers.get("cache-control"), "no-store");
+      assert.deepEqual(await readiness.json(), { ok: false, service: "blizhniy" });
+    });
     await suite.test("separate PostgreSQL profile route rejects old bearer authority and invalid writes before pool/key access", async () => {
       const headers = { host: new URL(env.BLIZHNIY_AUTH_ORIGIN).host, origin: env.BLIZHNIY_AUTH_ORIGIN,
         "x-blizhniy-request": "1", "x-real-ip": "192.0.2.44", "content-type": "application/json",

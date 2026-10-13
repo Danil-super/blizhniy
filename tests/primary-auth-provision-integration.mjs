@@ -15,6 +15,7 @@ import { runAuthMailWorker } from "../scripts/auth-mail-worker-runtime.mjs";
 import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
 import { PostgresCatalogRepository } from "./catalog-module.mjs";
 import { PostgresTariffRepository } from "../src/lib/postgres-tariffs.ts";
+import { testRestrictedReadiness } from "./readiness-postgres-integration.mjs";
 
 export async function testPrimaryAuthProvision(suite, config, administrator) {
   const directory = mkdtempSync(join(tmpdir(), "blizhniy-primary-auth-fixture-"));
@@ -35,6 +36,7 @@ export async function testPrimaryAuthProvision(suite, config, administrator) {
       db = createPostgresDatabase({ NODE_ENV: "test", BLIZHNIY_DB_HOST: config.host, BLIZHNIY_DB_PORT: String(config.port),
         BLIZHNIY_DB_NAME: config.database, BLIZHNIY_DB_USER: credentials.user, BLIZHNIY_DB_PASSWORD: credentials.password, BLIZHNIY_DB_SSL_MODE: "disable" });
     });
+    await testRestrictedReadiness(suite, db);
     await suite.test("restricted primary role reads public reference projections without owner credentials or static tariff identities", async () => {
       const catalog = await new PostgresCatalogRepository(db).getPublicCategories();
       const tariffs = await new PostgresTariffRepository(db).getPublicTariffs();
