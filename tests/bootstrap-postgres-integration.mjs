@@ -178,8 +178,14 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
       await assert.rejects(bootstrapPostgres(client, target), /journal differs/);
       assert.equal((await client.query("select count(*)::integer as n from blizhniy_meta.migrations")).rows[0].n, 10);
     });
-    const { testPrimaryAuthProvision } = await import("./primary-auth-provision-integration.mjs");
-    await testPrimaryAuthProvision(suite, config, client);
+    const { testPrimaryAuthProvision, testPrimaryProfileGrants } = await import("./primary-auth-provision-integration.mjs");
+    const credentials = await testPrimaryAuthProvision(suite, config, client);
+    await suite.test("profile permissions cannot be enabled on the older mail-only schema", async () => {
+      const { provisionPrimaryProfiles } = await import("../scripts/provision-primary-auth.mjs");
+      await assert.rejects(provisionPrimaryProfiles(config, target, credentials, "test"), /preflight/);
+      assert.equal((await client.query("select count(*)::integer as n from blizhniy_meta.migrations")).rows[0].n, 10);
+      assert.equal((await client.query("select to_regclass('app.cabinet_profiles') is null as absent")).rows[0].absent, true);
+    });
     await suite.test("explicit profile upgrade journals only the additive table and preserves the mail prefix", async () => {
       const before = (await client.query("select name,sha256 from blizhniy_meta.migrations order by name")).rows;
       assert.equal((await bootstrapPostgres(client, target, { includeProfiles: true })).applied, 1);
@@ -191,6 +197,7 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
       assert.equal((await client.query("select count(*)::integer as n from app.cabinet_profiles")).rows[0].n, 0);
       assert.equal((await client.query("select has_table_privilege('blizhniy_runtime','app.cabinet_profiles','SELECT') as allowed")).rows[0].allowed, false);
     });
+    await testPrimaryProfileGrants(suite, config, client, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));

@@ -96,3 +96,83 @@ export async function provisionPrimaryAuth(config, confirmation, credentialsFile
     await runtime?.end(); await admin.end();
   }
 }
+
+export async function verifyPrimaryProfilesRuntime(client, operator) {
+  await verifyPrimaryAuthRuntime(client, operator);
+  const { rows: [row] } = await client.query(`select
+    has_table_privilege('app.cabinet_profiles','SELECT') as readable,
+    has_table_privilege('app.cabinet_profiles','INSERT') as insertable,
+    has_column_privilege('app.cabinet_profiles','profile','UPDATE') as profile_update,
+    has_column_privilege('app.cabinet_profiles','updated_at','UPDATE') as timestamp_update,
+    has_column_privilege('app.cabinet_profiles','user_id','UPDATE') as owner_update,
+    has_table_privilege('app.cabinet_profiles','DELETE') as deletable,
+    has_table_privilege('app.cabinet_profiles','TRUNCATE') as truncatable,
+    has_table_privilege('app.cabinet_profiles','REFERENCES') as referenceable,
+    has_table_privilege('app.cabinet_profiles','TRIGGER') as triggerable,
+    has_table_privilege('app.cabinet_profiles','MAINTAIN') as maintainable,
+    has_table_privilege('app.cabinet_profiles','SELECT WITH GRANT OPTION') as grant_select,
+    has_table_privilege('app.cabinet_profiles','INSERT WITH GRANT OPTION') as grant_insert,
+    has_column_privilege('app.cabinet_profiles','profile','UPDATE WITH GRANT OPTION') as grant_profile_update,
+    has_column_privilege('app.cabinet_profiles','updated_at','UPDATE WITH GRANT OPTION') as grant_timestamp_update,
+    (select relowner=(select oid from pg_roles where rolname=current_user) from pg_class where oid='app.cabinet_profiles'::regclass) as table_owner`);
+  if (!row || ["readable", "insertable", "profile_update", "timestamp_update"].some(key => row[key] !== true) ||
+      ["owner_update", "deletable", "truncatable", "referenceable", "triggerable", "maintainable", "grant_select", "grant_insert",
+        "grant_profile_update", "grant_timestamp_update", "table_owner"].some(key => row[key] !== false)) throw new Error("Invalid primary profile privileges");
+  await client.query("select user_id,profile,updated_at from app.cabinet_profiles limit 0");
+  for (const sql of ["update app.cabinet_profiles set user_id=user_id where false", "delete from app.cabinet_profiles where false"]) {
+    let denied = false;
+    await client.query("begin");
+    try { await client.query(sql); } catch (error) { if (error.code === "42501") denied = true; else throw error; }
+    finally { await client.query("rollback"); }
+    if (!denied) throw new Error("Primary profile permission probe unexpectedly succeeded");
+  }
+  return { restricted: true };
+}
+
+// Separate additive step after Auth provisioning and explicit migration 0011. Never rotates/adopts a login.
+export async function provisionPrimaryProfiles(config, confirmation, credentials, mode = process.env.NODE_ENV) {
+  validatePrimaryAuthTarget(config, confirmation, mode);
+  if (!credentials || Object.keys(credentials).some(key => !["host", "port", "database", "user", "password"].includes(key)) ||
+      credentials.host !== config.host || credentials.port !== config.port || credentials.database !== config.database ||
+      credentials.user !== "blizhniy_runtime" || typeof credentials.password !== "string" || !/^[a-f0-9]{64}$/.test(credentials.password)) {
+    throw new Error("Invalid primary runtime credentials");
+  }
+  const admin = new pg.Client({ ...config, connectionTimeoutMillis: 5000, application_name: "blizhniy-primary-profile-grants" });
+  const runtime = new pg.Client({ ...config, ...credentials, connectionTimeoutMillis: 5000, application_name: "blizhniy-primary-profile-verification" });
+  let phase = "preflight";
+  try {
+    await admin.connect(); await runtime.connect();
+    await verifyPrimaryAuthRuntime(runtime, config.user);
+    await admin.query("begin");
+    await admin.query("set local lock_timeout='3s'; set local statement_timeout='10s'");
+    await admin.query("select pg_advisory_xact_lock(187924,1)");
+    const journal = (await admin.query("select name,sha256 from blizhniy_meta.migrations order by name")).rows;
+    const plan = getBootstrapPlan({ includeProfiles: true });
+    if (journal.length !== plan.length || journal.some((row, i) => row.name !== plan[i].name || row.sha256 !== plan[i].sha256)) throw new Error("Primary migration journal mismatch");
+    const { rows: [row] } = await admin.query(`select
+      has_column_privilege('blizhniy_runtime','app.cabinet_profiles','user_id','UPDATE') as owner_update,
+      has_table_privilege('blizhniy_runtime','app.cabinet_profiles','DELETE') as deletable,
+      has_table_privilege('blizhniy_runtime','app.cabinet_profiles','TRUNCATE') as truncatable,
+      has_table_privilege('blizhniy_runtime','app.cabinet_profiles','REFERENCES') as referenceable,
+      has_table_privilege('blizhniy_runtime','app.cabinet_profiles','TRIGGER') as triggerable,
+      has_table_privilege('blizhniy_runtime','app.cabinet_profiles','MAINTAIN') as maintainable,
+      has_table_privilege('blizhniy_runtime','app.cabinet_profiles','SELECT WITH GRANT OPTION') as grant_select,
+      has_table_privilege('blizhniy_runtime','app.cabinet_profiles','INSERT WITH GRANT OPTION') as grant_insert,
+      has_column_privilege('blizhniy_runtime','app.cabinet_profiles','profile','UPDATE WITH GRANT OPTION') as grant_profile_update,
+      has_column_privilege('blizhniy_runtime','app.cabinet_profiles','updated_at','UPDATE WITH GRANT OPTION') as grant_timestamp_update,
+      (select relowner=(select oid from pg_roles where rolname='blizhniy_runtime') from pg_class where oid='app.cabinet_profiles'::regclass) as table_owner`);
+    if (!row || Object.values(row).some(value => value !== false)) throw new Error("Unexpected existing profile privileges");
+    phase = "grants";
+    await admin.query("grant select,insert on app.cabinet_profiles to blizhniy_runtime");
+    await admin.query("grant update(profile,updated_at) on app.cabinet_profiles to blizhniy_runtime");
+    await admin.query("commit");
+    phase = "verification";
+    await verifyPrimaryProfilesRuntime(runtime, config.user);
+    return { database: config.database, runtime: "blizhniy_runtime", profiles: true, restricted: true };
+  } catch (error) {
+    try { await admin.query("rollback"); } catch { /* Lost COMMIT response requires inspection, not automatic retry. */ }
+    const safe = new Error(`Primary profile grants failed during ${phase}; inspect target before retrying`);
+    if (typeof error.code === "string" && /^[0-9A-Z]{5}$/.test(error.code)) safe.code = error.code;
+    throw safe;
+  } finally { await runtime.end(); await admin.end(); }
+}
