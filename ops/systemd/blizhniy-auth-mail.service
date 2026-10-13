@@ -1,0 +1,33 @@
+[Unit]
+Description=Deliver a bounded batch of Blizhniy account mail
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/blizhniy/mail-worker/worker.env
+
+[Service]
+Type=oneshot
+User=blizhniy-mail
+Group=blizhniy-mail
+WorkingDirectory=/var/www/blizhniy
+Environment=NODE_ENV=production
+Environment=BLIZHNIY_MAIL_ENTRYPOINT=systemd
+EnvironmentFile=/etc/blizhniy/mail-worker/worker.env
+ExecStart=/opt/blizhniy-node22/bin/node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON /var/www/blizhniy/scripts/auth-mail-worker.mjs --run
+TimeoutStartSec=120
+TimeoutStopSec=45
+KillMode=control-group
+UMask=0077
+LimitCORE=0
+MemoryMax=256M
+MemorySwapMax=0
+CPUQuota=50%
+TasksMax=32
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+InaccessiblePaths=-/etc/blizhniy/auth -/etc/blizhniy/staging

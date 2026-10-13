@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll the Blizhniy account mail queue after each completed batch
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+Unit=blizhniy-auth-mail.service
+
+[Install]
+WantedBy=timers.target

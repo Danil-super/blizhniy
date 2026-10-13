@@ -5,6 +5,7 @@ import * as boundary from "../src/lib/auth-http.ts";
 import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
 import { RegistrationStore, PasswordRecoveryStore, RegistrationInputError, RecoveryInputError } from "./auth-mail-module.mjs";
 import * as identity from "../src/lib/identity.ts";
+import { verifyProductionAuthDatabase } from "../src/lib/production-auth-database.ts";
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
@@ -17,7 +18,8 @@ export function loadProductionAuth(name, extra = {}) {
   }).outputText)(path => {
     if (Object.hasOwn(extra, path)) return extra[path];
     if (["node:fs", "node:path", "node:crypto"].includes(path)) return require(path);
-    if (path === "./timeweb-mail") return mail;
+    if (["./timeweb-mail", "./timeweb-mail.ts"].includes(path)) return mail;
+    if (path === "./production-auth-database.ts") return { verifyProductionAuthDatabase };
     if (path === "./auth-http") return boundary;
     if (path === "./registration-legal") return { REGISTRATION_LEGAL_VERSIONS };
     if (path === "./registration") return { RegistrationStore, RegistrationInputError };

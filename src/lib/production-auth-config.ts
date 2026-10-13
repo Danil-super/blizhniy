@@ -1,6 +1,6 @@
 import { constants, openSync, fstatSync, readSync, closeSync, lstatSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute } from "node:path";
-import { readTimewebMailConfig } from "./timeweb-mail";
+import { readTimewebMailConfig } from "./timeweb-mail.ts";
 import type { AuthMailPayload, MailIntent } from "./mail-outbox";
 import type { TransactionalMail } from "./timeweb-mail";
 

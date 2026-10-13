@@ -8,15 +8,17 @@ import { provisionPrimaryAuth, verifyPrimaryAuthRuntime } from "../scripts/provi
 import { createPostgresDatabase } from "../src/lib/postgres.ts";
 import { RegistrationStore, PasswordRecoveryStore } from "./auth-mail-module.mjs";
 import { IdentityStore } from "../src/lib/identity.ts";
-import { MailPayloadCipher } from "../src/lib/mail-outbox.ts";
+import { MailPayloadCipher, pruneExpiredMail } from "../src/lib/mail-outbox.ts";
 import { MailDeliveryWorker } from "../src/lib/mail-delivery.ts";
+import { verifyProductionAuthDatabase } from "../src/lib/production-auth-database.ts";
+import { runAuthMailWorker } from "../scripts/auth-mail-worker-runtime.mjs";
 import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
 
 export async function testPrimaryAuthProvision(suite, config, administrator) {
   const directory = mkdtempSync(join(tmpdir(), "blizhniy-primary-auth-fixture-"));
   const file = join(directory, "runtime.json");
   const target = `${config.host}:${config.database}`;
-  let client, db, credentials;
+  let client, db, credentials, authCipher;
   try {
     await suite.test("primary profile creates a private credential and grants only the Auth/queue surface", async () => {
       assert.deepEqual(await provisionPrimaryAuth(config, target, file, "test"), { database: config.database, runtime: "blizhniy_runtime", restricted: true });
@@ -33,6 +35,7 @@ export async function testPrimaryAuthProvision(suite, config, administrator) {
     });
     await suite.test("real restricted-role signup, queued delivery, confirmation, login and password reset need no INSERT/UPDATE role permission", async () => {
       const cipher = new MailPayloadCipher(randomBytes(32));
+      authCipher = cipher;
       const registration = new RegistrationStore(db, cipher), identity = new IdentityStore(db), recovery = new PasswordRecoveryStore(db, cipher);
       const email = "primary-runtime@example.invalid", password = "Synthetic primary runtime passphrase!";
       const receipt = await registration.register({ email, password, acceptedAgreement: true, acknowledgedPrivacy: true,
@@ -54,6 +57,30 @@ export async function testPrimaryAuthProvision(suite, config, administrator) {
       assert.ok(await identity.login(email, "Replacement primary runtime passphrase!"));
       await assert.rejects(client.query("update app.users set role='admin' where email=$1", [email]), { code: "42501" });
       assert.equal((await client.query("select role from app.users where email=$1", [email])).rows[0].role, "user");
+    });
+    await suite.test("bounded scheduler runs the real queue with restricted PostgreSQL rights, logs only counts and releases its own pool", async () => {
+      const receipt = await new RegistrationStore(db, authCipher).register({ email: "scheduled-runtime@example.invalid", password: "Synthetic scheduler passphrase!",
+        acceptedAgreement: true, acknowledgedPrivacy: true, agreementVersion: REGISTRATION_LEGAL_VERSIONS.agreement,
+        privacyVersion: REGISTRATION_LEGAL_VERSIONS.privacy });
+      assert.ok(receipt);
+      const messages = [], events = [];
+      let closed = false, batch;
+      try {
+        const exitCode = await runAuthMailWorker({ mode: "run", entryPoint: "systemd", report: event => events.push(event), createRuntime: async () => {
+          batch = createPostgresDatabase({ NODE_ENV: "test", BLIZHNIY_DB_HOST: config.host, BLIZHNIY_DB_PORT: String(config.port),
+            BLIZHNIY_DB_NAME: config.database, BLIZHNIY_DB_USER: credentials.user, BLIZHNIY_DB_PASSWORD: credentials.password, BLIZHNIY_DB_SSL_MODE: "disable" });
+          await verifyProductionAuthDatabase(batch);
+          return { worker: new MailDeliveryWorker(batch, authCipher, (intent, payload) => ({ id: intent.id, to: payload.email, subject: "Owned scheduler fixture", text: payload.token ?? "Changed" })),
+            mailer: { verify: async () => true, send: async message => { messages.push(message); } }, prune: () => pruneExpiredMail(batch, 100),
+            close: async () => { await batch.close(); closed = true; } };
+        } });
+        assert.equal(exitCode, 0); assert.equal(closed, true);
+        assert.ok(messages.some(message => message.text === receipt.token));
+        assert.equal(events[0].status, "complete"); assert.equal(events[0].entryPoint, "systemd");
+        assert.equal(events[0].outcomes.accepted, 2);
+        for (const secret of [receipt.token, "scheduled-runtime@example.invalid", credentials.password]) assert.equal(JSON.stringify(events).includes(secret), false);
+        assert.equal(await new RegistrationStore(db, authCipher).confirmEmail(receipt.token), true);
+      } finally { if (batch && !closed) await batch.close(); }
     });
     await suite.test("future operator-owned functions do not silently inherit PUBLIC EXECUTE", async () => {
       await administrator.query("create function app.primary_future_permission_probe() returns integer language sql as 'select 1'");

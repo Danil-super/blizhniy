@@ -13,29 +13,10 @@ import { readProductionAuthConfig, readMailEncryptionKey, renderProductionAuthMa
 import type { ProductionAuthConfig } from "./production-auth-config";
 import { createProductionAccountHandler } from "./production-account-http";
 import type { ProductionAccountRuntime } from "./production-account-http";
+import { verifyProductionAuthDatabase } from "./production-auth-database.ts";
 
 type Runtime = { db: PostgresDatabase; cipher: MailPayloadCipher; account: ProductionAccountRuntime; verified: Promise<void> };
 const shared = globalThis as typeof globalThis & { blizhniyProductionAuth?: Runtime };
-
-async function verifyRuntimeRole(db: PostgresDatabase): Promise<void> {
-  const row = (await db.query<Record<string, unknown>>(`select current_user as name,
-    rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls,
-    has_schema_privilege('app','CREATE') as schema_create,
-    has_schema_privilege('public','CREATE') as public_create,
-    has_database_privilege(current_database(),'CREATE') as database_create,
-    has_database_privilege(current_database(),'TEMP') as temp_create,
-    has_column_privilege('app.users','role','UPDATE') as role_update,
-    has_column_privilege('app.users','role','INSERT') as role_insert,
-    not exists(select 1 from pg_constraint where conrelid='app.auth_rate_limits'::regclass
-      and conname='auth_rate_limits_production_attempts_check' and convalidated) as rate_schema_missing
-    from pg_roles where rolname=current_user`)).rows[0];
-  if (!row || row.name !== "blizhniy_runtime" || row.rate_schema_missing !== false || row.role_insert !== false ||
-      Object.entries(row).some(([key,value]) => key !== "name" && value !== false)) {
-    throw new Error("Invalid production runtime privileges");
-  }
-  // Fail before any account write if the required delivery schema/grants have not been applied.
-  await db.query("select state,claim_id,lease_until from app.mail_outbox limit 0");
-}
 
 function runtime(config: ProductionAuthConfig): Runtime {
   if (typeof window !== "undefined") throw new Error("Production auth is server-only");
@@ -50,7 +31,7 @@ function runtime(config: ProductionAuthConfig): Runtime {
     const account: ProductionAccountRuntime = { store: new RegistrationStore(db, cipher),
       recovery: new PasswordRecoveryStore(db, cipher), identity: new IdentityStore(db),
       limiter: new AuthRateLimiter(db, config.rateSecret), verifyCaptcha: verifyTurnstileToken };
-    const verified = verifyRuntimeRole(db).catch(async error => { await db.close(); throw error; });
+    const verified = verifyProductionAuthDatabase(db).catch(async error => { await db.close(); throw error; });
     shared.blizhniyProductionAuth = { db, cipher, account, verified };
   }
   return shared.blizhniyProductionAuth;
