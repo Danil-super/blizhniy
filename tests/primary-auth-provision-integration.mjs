@@ -13,6 +13,8 @@ import { MailDeliveryWorker } from "../src/lib/mail-delivery.ts";
 import { verifyProductionAuthDatabase } from "../src/lib/production-auth-database.ts";
 import { runAuthMailWorker } from "../scripts/auth-mail-worker-runtime.mjs";
 import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
+import { PostgresCatalogRepository } from "./catalog-module.mjs";
+import { PostgresTariffRepository } from "../src/lib/postgres-tariffs.ts";
 
 export async function testPrimaryAuthProvision(suite, config, administrator) {
   const directory = mkdtempSync(join(tmpdir(), "blizhniy-primary-auth-fixture-"));
@@ -32,6 +34,16 @@ export async function testPrimaryAuthProvision(suite, config, administrator) {
       await assert.rejects(client.query("select * from app.media_write_attempts limit 0"), { code: "42501" });
       db = createPostgresDatabase({ NODE_ENV: "test", BLIZHNIY_DB_HOST: config.host, BLIZHNIY_DB_PORT: String(config.port),
         BLIZHNIY_DB_NAME: config.database, BLIZHNIY_DB_USER: credentials.user, BLIZHNIY_DB_PASSWORD: credentials.password, BLIZHNIY_DB_SSL_MODE: "disable" });
+    });
+    await suite.test("restricted primary role reads public reference projections without owner credentials or static tariff identities", async () => {
+      const catalog = await new PostgresCatalogRepository(db).getPublicCategories();
+      const tariffs = await new PostgresTariffRepository(db).getPublicTariffs();
+      assert.equal(catalog.length, 18);
+      assert.ok(catalog.every(row => Object.keys(row).sort().join() === "children,name,slug"));
+      assert.equal(tariffs.length, 7);
+      const stored = (await client.query("select id,price::text from app.tariffs order by app.tariffs.price,id")).rows;
+      assert.deepEqual(tariffs.map(row => ({ id: row.id, price: row.price })), stored.map(row => ({ id: row.id, price: Number(row.price) })));
+      await assert.rejects(client.query("update app.tariffs set price=0 where false"), { code: "42501" });
     });
     await suite.test("real restricted-role signup, queued delivery, confirmation, login and password reset need no INSERT/UPDATE role permission", async () => {
       const cipher = new MailPayloadCipher(randomBytes(32));

@@ -1,7 +1,7 @@
 import { AdMarqueePlacementClient } from "@/components/AdMarqueePlacementClient";
 import { PublicationAuthGate } from "@/components/auth/PublicationAuthGate";
 import { SiteHeader } from "@/components/SiteHeader";
-import { getPublicTariffs } from "@/lib/tariff-store";
+import { getPublicTariffs } from "@/lib/public-tariffs";
 
 export const dynamic = "force-dynamic";
 

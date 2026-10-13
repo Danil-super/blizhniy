@@ -41,7 +41,7 @@ import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { sellerDisplayName, sellerProfileHref, sellerProfileKey } from "@/lib/seller-profile";
 import { getPublicCategories, getPublicCategoriesWithListingScope } from "@/lib/category-store";
 import { listStoredListingsForCategory } from "@/lib/listing-store";
-import { getPublicTariffs } from "@/lib/tariff-store";
+import { getPublicTariffs } from "@/lib/public-tariffs";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
 import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
 import type { BookingAvailability } from "@/lib/booking-availability";

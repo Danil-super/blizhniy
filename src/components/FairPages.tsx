@@ -6,7 +6,7 @@ import { LocationMap } from "@/components/LocationMap";
 import { fairCategories } from "@/lib/data";
 import { listStoredFairApplications } from "@/lib/fair-application-store";
 import { publicMediaUrl } from "@/lib/storage-upload";
-import { getPublicTariffs } from "@/lib/tariff-store";
+import { getPublicTariffs } from "@/lib/public-tariffs";
 
 function nextFairDate(today = new Date()) {
   const year = today.getFullYear();

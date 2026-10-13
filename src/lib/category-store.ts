@@ -1,9 +1,11 @@
+import "server-only";
 import { cache } from "react";
 import { categories as fallbackCategories } from "@/lib/data";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { Category } from "@/lib/types";
 import { mapPublicCategoryRows } from "./category-contract";
+import { getProductionReferenceRepositories } from "./production-reference-runtime";
 import type { CategoryRow, PublicCategoryWithListingScope } from "./category-contract";
 export type { PublicCategoryListingScope, PublicCategoryWithListingScope } from "./category-contract";
 
@@ -97,6 +99,9 @@ export async function listAdminCategories() {
 // The same categories are requested by generateMetadata, the page and nested
 // server components. Share one read within the render, never across requests.
 export const getPublicCategoriesWithListingScope = cache(async (): Promise<PublicCategoryWithListingScope[]> => {
+  const references = await getProductionReferenceRepositories();
+  if (references) return references.catalog.getPublicCategoriesWithListingScope();
+
   if (!isSupabaseRestConfigured()) {
     return shouldShowFallbackContent() ? fallbackCategories : [];
   }

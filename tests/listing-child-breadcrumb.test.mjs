@@ -20,6 +20,8 @@ function harness({ taxonomy, rows = [] } = {}) {
   const calls = [];
   const violations = [];
   const framework = {
+    // Next resolves this build-time marker internally; application modules remain real.
+    "server-only": {},
     "next/link": { __esModule: true, default: ({ children, ...props }) => React.createElement("a", props, children) },
     "next/image": { __esModule: true, default: (props) => React.createElement("img", Object.fromEntries(Object.entries(props).filter(([key]) => !["fill", "priority", "unoptimized"].includes(key)))) },
     "next/headers": { headers: async () => new Headers() },

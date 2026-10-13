@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CreditCard, ShieldCheck } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
-import { getPublicTariffs } from "@/lib/tariff-store";
+import { getPublicTariffs } from "@/lib/public-tariffs";
 import type { Tariff } from "@/lib/types";
 
 function tariffDetail(durationDays: number | null) {
