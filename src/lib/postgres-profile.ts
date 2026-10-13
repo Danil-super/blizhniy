@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createDefaultCabinetProfile, type CabinetProfile } from "./cabinet-profile";
 import { withAppSessionTransaction } from "./app-session-transaction";
 import type { PostgresDatabase, PostgresQueries } from "./postgres";
@@ -7,6 +8,9 @@ export class ProfileInputError extends Error {
 }
 export class ProfileOwnerChangedError extends Error {
   constructor() { super("Profile owner changed"); this.name = "ProfileOwnerChangedError"; }
+}
+export class ProfileConflictError extends Error {
+  constructor() { super("Profile content changed"); this.name = "ProfileConflictError"; }
 }
 export type StoredCabinetProfile = Omit<CabinetProfile, "email" | "phoneVerified" | "verifiedPhone">;
 const textLimits = { name: 120, phone: 40, city: 80, organizationName: 120, organizationInn: 12,
@@ -72,27 +76,37 @@ async function profileEmail(tx: PostgresQueries, userId: string): Promise<string
 function view(profile: StoredCabinetProfile, email: string): CabinetProfile {
   return { ...profile, email, phoneVerified: false, verifiedPhone: "" };
 }
+function profileRevision(profile: StoredCabinetProfile): string {
+  const entries = Object.entries(profile).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  return createHash("sha256").update(JSON.stringify(Object.fromEntries(entries))).digest("hex");
+}
 
 export class PostgresProfileStore {
   constructor(private readonly db: Pick<PostgresDatabase, "transaction">) {
     if (typeof window !== "undefined") throw new Error("Profile storage is server-only");
   }
-  async read(token: string, expectedOwnerId: string): Promise<{ exists: boolean; profile: CabinetProfile }> {
+  async read(token: string, expectedOwnerId: string): Promise<{ exists: boolean; profile: CabinetProfile; revision: string | null }> {
     return withAppSessionTransaction(this.db, token, async (tx, user) => {
       if (user.id !== expectedOwnerId) throw new ProfileOwnerChangedError();
       const email = await profileEmail(tx, user.id);
       const row = (await tx.query<{ profile: StoredCabinetProfile }>("select profile from app.cabinet_profiles where user_id=$1", [user.id])).rows[0];
-      return { exists: Boolean(row), profile: row ? view(row.profile, email)
+      return { exists: Boolean(row), revision: row ? profileRevision(row.profile) : null, profile: row ? view(row.profile, email)
         : createDefaultCabinetProfile({ name: "Пользователь", email }) };
     });
   }
-  async write(token: string, expectedOwnerId: string, profile: StoredCabinetProfile): Promise<{ profile: CabinetProfile }> {
+  async write(token: string, expectedOwnerId: string, profile: StoredCabinetProfile, expectedRevision: string | null): Promise<{ profile: CabinetProfile; revision: string }> {
     return withAppSessionTransaction(this.db, token, async (tx, user) => {
       if (user.id !== expectedOwnerId) throw new ProfileOwnerChangedError();
+      if (expectedRevision !== null && (typeof expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(expectedRevision))) throw new ProfileInputError();
       const email = await profileEmail(tx, user.id);
-      await tx.query(`insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)
-        on conflict(user_id) do update set profile=excluded.profile,updated_at=clock_timestamp()`, [user.id, JSON.stringify(profile)]);
-      return { profile: view(profile, email) };
+      const current = (await tx.query<{ profile: StoredCabinetProfile }>("select profile from app.cabinet_profiles where user_id=$1 for update", [user.id])).rows[0];
+      if ((current ? profileRevision(current.profile) : null) !== expectedRevision) throw new ProfileConflictError();
+      const saved = await tx.query(current
+        ? "update app.cabinet_profiles set profile=$2::jsonb,updated_at=clock_timestamp() where user_id=$1 returning user_id"
+        : "insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb) on conflict(user_id) do nothing returning user_id",
+      [user.id, JSON.stringify(profile)]);
+      if (saved.rowCount !== 1) throw new ProfileConflictError();
+      return { profile: view(profile, email), revision: profileRevision(profile) };
     });
   }
 }

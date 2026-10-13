@@ -30,7 +30,7 @@ export async function testProfiles(suite, db, applyMigration) {
     const request = (expectedOwnerId, token, method = "POST", profile) => new Request(origin+"/api/account/profile", {
       method, headers: { host: new URL(origin).host, origin, "x-blizhniy-request": "1", "content-type": "application/json",
         "x-real-ip": "192.0.2.71", cookie: `__Host-blizhniy_session=${token}` },
-      body: JSON.stringify({ expectedOwnerId, ...(profile ? { profile } : {}) }),
+      body: JSON.stringify({ expectedOwnerId, ...(profile ? { profile, expectedRevision: null } : {}) }),
     });
     const own = await handler(request(owners[0], tokens[0]));
     assert.equal(own.status, 200);
@@ -49,13 +49,13 @@ export async function testProfiles(suite, db, applyMigration) {
     assert.equal(initial.profile.email, "profile-0@example.invalid");
     const profile = parseProductionProfile({ name: "Synthetic A", email: "forged@example.invalid", phoneVerified: true,
       verifiedPhone: "forged", phone: "+7 900 000-00-00", organizationName: "Synthetic company", notifyPayments: false });
-    const saved = await store.write(tokens[0], owners[0], profile);
+    const saved = await store.write(tokens[0], owners[0], profile, initial.revision);
     assert.equal(saved.profile.name, "Synthetic A");
     assert.equal(saved.profile.email, "profile-0@example.invalid");
     assert.equal(saved.profile.phoneVerified, false);
     assert.equal(saved.profile.verifiedPhone, "");
     assert.equal((await store.read(tokens[1], owners[1])).exists, false);
-    await store.write(tokens[1], owners[1], parseProductionProfile({ name: "Synthetic B" }));
+    await store.write(tokens[1], owners[1], parseProductionProfile({ name: "Synthetic B" }), null);
     assert.equal((await store.read(tokens[0], owners[0])).profile.name, "Synthetic A");
     assert.equal((await store.read(tokens[1], owners[1])).profile.name, "Synthetic B");
     const stored = (await db.query("select profile from app.cabinet_profiles where user_id=$1", [owners[0]])).rows[0].profile;
@@ -83,13 +83,16 @@ export async function testProfiles(suite, db, applyMigration) {
     assert.equal((await db.query("select profile->>'name' as name from app.cabinet_profiles where user_id=$1", [owners[0]])).rows[0].name, "Synthetic A");
   });
   await suite.test("profile write rolls back when session expires after the resource operation", async () => {
+    const revision = (await store.read(tokens[1], owners[1])).revision;
     await db.query(`update app.sessions set created_at=clock_timestamp()-interval '1 hour',
       expires_at=clock_timestamp()+interval '500 milliseconds',last_seen_at=clock_timestamp() where token_hash=$1`, [hashSessionToken(tokens[1])]);
-    const delayed = new PostgresProfileStore({ transaction: operation => db.transaction(tx => operation({ query: async (sql, values) => {
+    const delayedStore = new PostgresProfileStore({ transaction: operation => db.transaction(tx => operation({ query: async (sql, values) => {
       const result = await tx.query(sql, values);
-      if (sql.includes("insert into app.cabinet_profiles")) await tx.query("select pg_sleep(0.6)");
+      if (/^(insert into|update) app\.cabinet_profiles/.test(sql)) await tx.query("select pg_sleep(0.6)");
       return result;
     } })) });
+    // Only adapt the explicit base-version argument; the real store and expiry assertion remain intact.
+    const delayed = { write: (token, owner, profile) => delayedStore.write(token, owner, profile, revision) };
     await assert.rejects(delayed.write(tokens[1], owners[1], parseProductionProfile({ name: "Must roll back" })), { name: "AppSessionAccessError" });
     assert.equal((await db.query("select profile->>'name' as name from app.cabinet_profiles where user_id=$1", [owners[1]])).rows[0].name, "Synthetic B");
   });

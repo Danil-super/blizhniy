@@ -13,6 +13,10 @@ import { request as httpRequest } from "node:http";
 import { test } from "node:test";
 import { chromium } from "playwright";
 import { createDefaultCabinetProfile } from "../src/lib/cabinet-profile.ts";
+import { createHash } from "node:crypto";
+
+// Opaque transport revision only; real canonical hashing/row locking are tested with PG.
+const fixtureRevision = profile => profile ? createHash("sha256").update(JSON.stringify(profile)).digest("hex") : null;
 
 const captchaScript = `let sequence = 0; const widgets = new Map(); window.turnstile = {
   render(container, options) {
@@ -132,11 +136,14 @@ test("primary account browser forms use the new cookie API without remote traffi
           if (body.expectedOwnerId !== state.active.id) return route.fulfill({ status: 409, json: { error: { code: "SESSION_CHANGED" } } });
           const stored = state.profiles.get(state.active.id) ?? createDefaultCabinetProfile({ name: "Синтетический", email: state.active.email });
           if (request.method() === "PUT") {
+            if (body.expectedRevision !== fixtureRevision(state.profiles.get(state.active.id))) {
+              return route.fulfill({ status: 409, json: { error: { code: "PROFILE_CHANGED" } } });
+            }
             const saved = { ...body.profile, email: state.active.email, phoneVerified: false, verifiedPhone: "" };
             state.profiles.set(state.active.id, saved);
-            return route.fulfill({ json: { profile: saved } });
+            return route.fulfill({ json: { profile: saved, revision: fixtureRevision(saved) } });
           }
-          return route.fulfill({ json: { exists: state.profiles.has(state.active.id), profile: stored } });
+          return route.fulfill({ json: { exists: state.profiles.has(state.active.id), profile: stored, revision: fixtureRevision(state.profiles.get(state.active.id)) } });
         }
         assert.equal(request.method(), "POST"); assert.equal(request.headers()["x-blizhniy-request"], "1");
         assert.equal(url.search, ""); calls.push({ action, body });
@@ -208,6 +215,43 @@ test("primary account browser forms use the new cookie API without remote traffi
       await page.reload();
       assert.equal(await page.getByLabel("Название организации или ИП", { exact: true }).inputValue(), "Синтетическая организация");
     });
+    await run("two tabs preserve a conflicting draft and never silently overwrite the saved organization", async ({ page, context, state }) => {
+      await login(page);
+      state.profiles.set(state.active.id, createDefaultCabinetProfile({ name: "Синтетический", email: state.active.email }));
+      await page.goto(`${origin}/cabinet/organization`);
+      const other = await context.newPage();
+      await other.goto(`${origin}/cabinet/organization`);
+      await page.getByLabel("Название организации или ИП", { exact: true }).fill("Сохранено в первой вкладке");
+      await other.getByLabel("Название организации или ИП", { exact: true }).fill("Несохранённый текст второй вкладки");
+      await page.getByRole("button", { name: "Сохранить профиль организации", exact: true }).click();
+      await page.getByText("Профиль организации сохранен.", { exact: true }).waitFor();
+      await other.getByRole("button", { name: "Сохранить профиль организации", exact: true }).click();
+      await other.getByRole("alert").filter({ hasText: "Профиль изменён в другой вкладке" }).first().waitFor();
+      assert.equal(await other.getByLabel("Название организации или ИП", { exact: true }).inputValue(), "Несохранённый текст второй вкладки");
+      assert.equal(state.profiles.get(state.active.id).organizationName, "Сохранено в первой вкладке");
+      const writes = () => state.profileRequests.filter(row => row.method === "PUT");
+      assert.equal(writes().length, 2);
+      assert.equal(writes()[0].body.expectedRevision, writes()[1].body.expectedRevision);
+      for (const width of [320, 768, 1024, 1440]) {
+        await other.setViewportSize({ width, height: 900 });
+        assert.equal(await other.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `conflict copy fits ${width}px`);
+      }
+      await other.screenshot({ path: "/tmp/blizhniy-profile-conflict-1440.png", fullPage: true });
+      const axe = await readFile(createRequire(import.meta.url).resolve("axe-core/axe.min.js"), "utf8");
+      await other.addScriptTag({ content: axe });
+      const violations = await other.evaluate(async () => (await window.axe.run(document.querySelector('[role="alert"]'), {
+        runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] },
+      })).violations.filter(item => ["serious", "critical"].includes(item.impact)).map(item => item.id));
+      assert.deepEqual(violations, []);
+      await other.getByRole("button", { name: "Сохранить профиль организации", exact: true }).click();
+      assert.equal(writes().length, 2, "conflict cannot retry even on another click");
+      await other.getByRole("button", { name: "Обновить профиль", exact: true }).first().focus();
+      await other.keyboard.press("Enter");
+      await other.getByLabel("Название организации или ИП", { exact: true }).waitFor();
+      await other.waitForFunction(() => [...document.querySelectorAll("input")].some(input => input.value === "Сохранено в первой вкладке"));
+      assert.equal(await other.getByLabel("Название организации или ИП", { exact: true }).inputValue(), "Сохранено в первой вкладке");
+      assert.equal(writes().length, 2, "readback is not a retry");
+    });
     await run("failed profile read blocks editors and explicitly reloads, without a default fake profile", async ({ page, state }) => {
       state.profileOverride = route => route.fulfill({ status: 503, json: { error: { code: "PROFILE_UNAVAILABLE" } } });
       await login(page); await page.goto(`${origin}/cabinet`);
@@ -248,11 +292,11 @@ test("primary account browser forms use the new cookie API without remote traffi
         const profile = state.profiles.get(body.expectedOwnerId);
         if (body.expectedOwnerId === first.id) {
           started(); await gate;
-          try { await route.fulfill({ json: { exists: true, profile } }); }
+          try { await route.fulfill({ json: { exists: true, profile, revision: fixtureRevision(profile) } }); }
           finally { completed(); }
           return;
         }
-        return route.fulfill({ json: { exists: true, profile } });
+        return route.fulfill({ json: { exists: true, profile, revision: fixtureRevision(profile) } });
       };
       try {
         await login(page, first.email); await page.goto(`${origin}/cabinet`); await pending;
@@ -280,11 +324,12 @@ test("primary account browser forms use the new cookie API without remote traffi
           started(); await gate;
           const profile = { ...body.profile, email: first.email, phoneVerified: false, verifiedPhone: "" };
           state.profiles.set(body.expectedOwnerId, profile);
-          try { await route.fulfill({ json: { profile } }); }
+          try { await route.fulfill({ json: { profile, revision: fixtureRevision(profile) } }); }
           finally { completed(); }
           return;
         }
-        return route.fulfill({ json: { exists: true, profile: state.profiles.get(body.expectedOwnerId) } });
+        const current = state.profiles.get(body.expectedOwnerId);
+        return route.fulfill({ json: { exists: true, profile: current, revision: fixtureRevision(current) } });
       };
       try {
         await page.getByRole("button", { name: "Сохранить настройки", exact: true }).click(); await pending;

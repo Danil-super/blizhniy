@@ -190,13 +190,35 @@ export async function testPrimaryProfileGrants(suite, config, administrator, cre
       assert.ok(session);
       const store = new PostgresProfileStore(db);
       assert.equal((await store.read(session.token, session.user.id)).exists, false);
-      await store.write(session.token, session.user.id, parseProductionProfile({ name: "Restricted profile", organizationName: "Synthetic company" }));
-      await store.write(session.token, session.user.id, parseProductionProfile({ name: "Updated restricted profile" }));
+      const saved = await store.write(session.token, session.user.id, parseProductionProfile({ name: "Restricted profile", organizationName: "Synthetic company" }), null);
+      await store.write(session.token, session.user.id, parseProductionProfile({ name: "Updated restricted profile" }), saved.revision);
       assert.equal((await store.read(session.token, session.user.id)).profile.name, "Updated restricted profile");
       await assert.rejects(client.query("update app.cabinet_profiles set user_id=user_id where false"), { code: "42501" });
       await assert.rejects(client.query("delete from app.cabinet_profiles where false"), { code: "42501" });
       await assert.rejects(client.query("truncate app.cabinet_profiles"), { code: "42501" });
       assert.equal((await store.read(session.token, session.user.id)).profile.name, "Updated restricted profile");
+    });
+    await suite.test("two restricted-role writes from one profile base cannot silently overwrite each other", async () => {
+      const { loadProfileModule } = await import("./production-profile-module.mjs");
+      const { PostgresProfileStore, ProfileConflictError, parseProductionProfile } = loadProfileModule("postgres-profile");
+      for (const [email, password, exists] of [
+        ["primary-runtime@example.invalid", "Replacement primary runtime passphrase!", true],
+        ["scheduled-runtime@example.invalid", "Synthetic scheduler passphrase!", false],
+      ]) {
+        const session = await new IdentityStore(db).login(email, password);
+        assert.ok(session);
+        const store = new PostgresProfileStore(db), base = await store.read(session.token, session.user.id);
+        assert.equal(base.exists, exists);
+        const outcomes = await Promise.allSettled(["Concurrent A", "Concurrent B"].map(name =>
+          store.write(session.token, session.user.id, parseProductionProfile({ name }), base.revision)));
+        assert.equal(outcomes.filter(row => row.status === "fulfilled").length, 1);
+        const rejected = outcomes.find(row => row.status === "rejected");
+        assert.ok(rejected.reason instanceof ProfileConflictError);
+        const winner = outcomes.find(row => row.status === "fulfilled").value;
+        const actual = await store.read(session.token, session.user.id);
+        assert.equal(actual.revision, winner.revision);
+        assert.equal(actual.profile.name, winner.profile.name);
+      }
     });
   } finally { await db?.close(); await client?.end(); }
 }

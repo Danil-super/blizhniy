@@ -6,7 +6,7 @@ import type { CabinetProfile } from "@/lib/cabinet-profile";
 import { CookieProfileError, productionProfile } from "@/lib/client-postgres-profile";
 import { notifyAccountSessionChange } from "@/lib/local-account";
 
-type Snapshot = { ownerId: string | null; profile: CabinetProfile | null; error?: string; loading: boolean };
+type Snapshot = { ownerId: string | null; profile: CabinetProfile | null; revision?: string | null; conflict?: boolean; error?: string; loading: boolean };
 type Value = Snapshot & { saveProfile: (profile: CabinetProfile) => Promise<CabinetProfile>; reload: () => void };
 const Context = createContext<Value | null>(null);
 const empty: Snapshot = { ownerId: null, profile: null, loading: true };
@@ -21,8 +21,8 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
     const generation = ++version.current;
     const controller = new AbortController(); scope.current = controller;
     setSnapshot({ ...empty, ownerId: owner });
-    if (owner) void productionProfile.read(owner, { signal: controller.signal }).then(profile => {
-      if (generation === version.current && latestOwner.current === owner) setSnapshot({ ownerId: owner, profile, loading: false });
+    if (owner) void productionProfile.read(owner, { signal: controller.signal }).then(saved => {
+      if (generation === version.current && latestOwner.current === owner) setSnapshot({ ownerId: owner, ...saved, loading: false });
     }).catch(() => {
       if (generation === version.current && latestOwner.current === owner) setSnapshot({ ownerId: owner, profile: null,
         error: "Не удалось загрузить профиль. Проверьте сессию и обновите данные.", loading: false });
@@ -34,16 +34,20 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
     if (!owner || latestOwner.current !== owner || snapshot.ownerId !== owner || !snapshot.profile || snapshot.loading || snapshot.error) {
       throw new CookieProfileError("SESSION_CHANGED");
     }
+    if (snapshot.conflict) throw new CookieProfileError("PROFILE_CHANGED");
+    if (snapshot.revision === undefined) throw new CookieProfileError("UNKNOWN");
     if (pendingWrite.current) throw new Error("Сохранение профиля уже выполняется.");
     const generation = version.current, attempt = {};
     pendingWrite.current = attempt;
     try {
-      const saved = await productionProfile.write(owner, profile, { signal: scope.current?.signal });
+      const saved = await productionProfile.write(owner, profile, snapshot.revision, { signal: scope.current?.signal });
       if (generation !== version.current || latestOwner.current !== owner) throw new CookieProfileError("SESSION_CHANGED");
-      setSnapshot({ ownerId: owner, profile: saved, loading: false });
-      return saved;
+      setSnapshot({ ownerId: owner, ...saved, loading: false });
+      return saved.profile;
     } catch (error) {
-      if (generation === version.current && latestOwner.current === owner &&
+      if (generation === version.current && latestOwner.current === owner && error instanceof CookieProfileError && error.code === "PROFILE_CHANGED") {
+        setSnapshot({ ...snapshot, conflict: true });
+      } else if (generation === version.current && latestOwner.current === owner &&
           (!(error instanceof CookieProfileError) || !["INVALID_INPUT", "RATE_LIMITED"].includes(error.code))) {
         setSnapshot({ ownerId: owner, profile: null, loading: false,
           error: "Сохранение не подтверждено. Обновите профиль перед повторной попыткой." });
@@ -53,7 +57,11 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
   }
   // In-flight data is never displayed for a changed or unverified identity, even before effect cleanup.
   const visible = owner && snapshot.ownerId === owner ? snapshot : empty;
-  return <Context.Provider value={{ ...visible, saveProfile, reload: () => notifyAccountSessionChange(false) }}>{children}</Context.Provider>;
+  const reload = () => notifyAccountSessionChange(false);
+  return <Context.Provider value={{ ...visible, saveProfile, reload }}>
+    {visible.conflict ? <CabinetProfileFailure message="Профиль изменён в другой вкладке. Скопируйте несохранённые изменения и обновите профиль." reload={reload} /> : null}
+    {children}
+  </Context.Provider>;
 }
 
 export function CookieCabinetProfileProvider({ children }: { children: ReactNode }) {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loadProfileModule } from "./production-profile-module.mjs";
-const { parseProductionProfile, ProfileInputError, ProfileOwnerChangedError, PostgresProfileStore } = loadProfileModule("postgres-profile");
+const { parseProductionProfile, ProfileInputError, ProfileOwnerChangedError, ProfileConflictError, PostgresProfileStore } = loadProfileModule("postgres-profile");
 const { createProductionProfileHandler } = loadProfileModule("production-profile-http");
 const origin = "https://xn----9sbphbgks4a4a.xn--p1ai";
 const owner = "11111111-1111-4111-8111-111111111111";
@@ -54,7 +54,7 @@ test("organization description retains the existing multiline editing contract",
 function fixture(options = {}) {
   const calls = { factories: 0, reads: [], writes: [], limits: [], events: [] };
   const store = { read: async (...args) => { calls.reads.push(args); if (options.ownerChanged) throw new ProfileOwnerChangedError(); return { exists: false, profile: { name: "Synthetic" } }; },
-    write: async (...args) => { calls.writes.push(args); return { profile: { name: "Synthetic" } }; } };
+    write: async (...args) => { calls.writes.push(args); if (options.profileChanged) throw new ProfileConflictError(); return { profile: { name: "Synthetic" } }; } };
   const handle = createProductionProfileHandler({ origin }, () => {
     calls.factories++; if (options.outage) throw new Error("synthetic private failure");
     return { store, limiter: { allowProduction: async (...args) => { calls.limits.push(args); return !options.limited; } } };
@@ -91,13 +91,39 @@ test("profile read/write use only cookie authority, expected owner and bounded v
   const f = fixture();
   assert.equal((await f.handle(f.request())).status, 200);
   assert.deepEqual(f.calls.reads, [[token, owner]]);
-  const response = await f.handle(f.request({ expectedOwnerId: owner, profile: { name: "Synthetic" } }, {}, "PUT"));
+  const response = await f.handle(f.request({ expectedOwnerId: owner, expectedRevision: null, profile: { name: "Synthetic" } }, {}, "PUT"));
   assert.equal(response.status, 200);
   assert.deepEqual(f.calls.writes[0].slice(0,2), [token, owner]);
   assert.equal(f.calls.writes[0][2].name, "Synthetic");
   assert.deepEqual(f.calls.limits, [["session", "192.0.2.1"], ["session", "192.0.2.1"]]);
   assert.equal(JSON.stringify(f.calls.events).includes(token), false);
   assert.equal(JSON.stringify(f.calls.events).includes(owner), false);
+});
+
+test("profile write requires a bounded explicit content revision and passes it to storage", async () => {
+  for (const expectedRevision of [null, "b".repeat(64)]) {
+    const f = fixture();
+    const response = await f.handle(f.request({ expectedOwnerId: owner, expectedRevision, profile: { name: "Synthetic" } }, {}, "PUT"));
+    assert.equal(response.status, 200);
+    assert.equal(f.calls.writes[0][3], expectedRevision);
+  }
+  for (const invalid of [undefined, 12, {}, "", "b".repeat(65), "B".repeat(64)]) {
+    const f = fixture();
+    const response = await f.handle(f.request({ expectedOwnerId: owner, expectedRevision: invalid, profile: { name: "Synthetic" } }, {}, "PUT"));
+    assert.equal(response.status, 422);
+    assert.equal(f.calls.factories, 0);
+  }
+});
+
+test("profile content conflict is a typed sanitized 409, not a session error or storage outage", async () => {
+  const f = fixture({ profileChanged: true });
+  const revision = "b".repeat(64);
+  const response = await f.handle(f.request({ expectedOwnerId: owner, expectedRevision: revision, profile: { name: "Synthetic" } }, {}, "PUT"));
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: { code: "PROFILE_CHANGED" } });
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(f.calls.writes.length, 1);
+  assert.equal(JSON.stringify(f.calls.events).includes(revision), false);
 });
 test("profile rate denial and storage failure never report success or expose raw causes", async () => {
   const limited = fixture({ limited: true });
