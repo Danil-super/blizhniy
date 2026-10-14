@@ -198,6 +198,8 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
       assert.equal((await client.query("select has_table_privilege('blizhniy_runtime','app.cabinet_profiles','SELECT') as allowed")).rows[0].allowed, false);
     });
     await testPrimaryProfileGrants(suite, config, client, credentials);
+    const { testListingSchema } = await import("./listing-schema-integration.mjs");
+    await testListingSchema(suite, client, config, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));

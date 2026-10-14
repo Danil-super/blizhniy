@@ -19,6 +19,7 @@ Node.js 22. Передайте серверу все `BLIZHNIY_DB_*` из `.env.
 ```bash
 node --experimental-strip-types scripts/bootstrap-postgres.mjs --plan
 node --experimental-strip-types scripts/bootstrap-postgres.mjs --plan-account
+node --experimental-strip-types scripts/bootstrap-postgres.mjs --plan-listings
 node --experimental-strip-types --test tests/bootstrap-postgres-integration.mjs
 ```
 
@@ -31,6 +32,8 @@ node --experimental-strip-types --test tests/bootstrap-postgres-integration.mjs
 10.10.2026 в Timeweb применены 0001–0005: 105 категорий (18 корневых), 26 городов, 14 специализаций и 7 тарифов, 0 аккаунтов; повторное чтение подтвердило журнал и TLS. С VPS проверен PostgreSQL TLS handshake с CA и проверкой DNS-имени (`Verify return code: 0`); приватная сеть этим не подтверждается. Это подготовка новой БД, **не переключение сайта**. `gen_user` использован только оператором; пароль до пользовательского production меняется. Последняя read-only проверка уточнила прежнее наблюдение: CREATEDB/CREATEROLE=true, SUPERUSER=false. Создана отдельная staging БД с 0001–0007 и минимальными ролями, но последующие проверки выявили исчезновение CONNECT, schema USAGE и SELECT-grants: подробности и ограничения в [postgresql-staging.md](postgresql-staging.md). Настройки облачных пользователей/доступа сверяются с [панелью Timeweb](https://timeweb.cloud/docs/dbaas/postgresql/users-and-privileges); owner/migration credentials не подключать к HTTP runtime.
 
 ## Отдельная подготовка primary Auth
+
+Подготовка хранения объявлений выбирается отдельно: `--plan-listings` содержит0001–0012; `--apply-listings HOST:DATABASE` добавляет только отсутствующий проверенный suffix. Она не выдаёт runtime grants и не переключает приложение. Прежние default/mail/account планы не расширяются. Контракт и ограничения: [ADR-008](decisions/0008-listing-storage.md).
 
 Базовый `--plan`/`--apply` сохраняет0001–0007. Почтовый вариант выбирается отдельно, без изменения прежних SQL/checksums:
 
