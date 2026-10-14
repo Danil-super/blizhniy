@@ -5,6 +5,8 @@ import { hashSessionToken } from "../src/lib/identity.ts";
 import { ListingDraftInputError } from "../src/lib/listing-draft-contract.ts";
 import { PostgresListingDraftStore, ListingDraftAccessError, ListingDraftConflictError } from "./listing-draft-module.mjs";
 import { loadAdminModule } from "./admin-module.mjs";
+import { AuthRateLimiter } from "../src/lib/auth-http.ts";
+import { createProductionListingDraftHandler } from "./listing-draft-http-module.mjs";
 const { AppSessionAccessError } = loadAdminModule("app-session-transaction");
 
 // Only the owned PG18 fixture supplies config/credentials. No operator files or remote DB access.
@@ -152,6 +154,53 @@ export async function testListingDrafts(suite, operator, config, credentials) {
     await suite.test("a new pool and store can read the committed draft without in-memory state", async () => {
       await db.close();db = createPostgresDatabase(env);store = new PostgresListingDraftStore(db);
       assert.deepEqual(await store.read(ownerToken, owner.id, draft.id), draft);
+    });
+    const origin = "https://app.example.invalid";
+    const request = (token, userId, id, method = "POST", extra = {}) => new Request(origin+"/api/account/listing-drafts", {
+      method, headers: { host: new URL(origin).host, origin, "x-blizhniy-request": "1", "x-real-ip": "192.0.2.2",
+        "content-type": "application/json", cookie: `__Host-blizhniy_session=${token}` },
+      body: JSON.stringify({ expectedOwnerId: userId, listingId: id, ...extra }),
+    });
+    const limiter = new AuthRateLimiter(db, "synthetic-draft-rate-key-"+"x".repeat(32));
+    const handle = createProductionListingDraftHandler({ origin }, () => ({ store, limiter }), () => {});
+    await suite.test("real draft HTTP, cookie guard, restricted PG and shared limiter persist a read/update", async () => {
+      let response = await handle(request(ownerToken, owner.id, draft.id));
+      assert.equal(response.status, 200);assert.deepEqual(await response.json(), draft);
+      response = await handle(request(ownerToken, owner.id, draft.id, "PUT", {
+        expectedRevision: draft.revision, draft: { ...draft.draft, title: "HTTP saved draft" },
+      }));
+      assert.equal(response.status, 200);draft = await response.json();assert.equal(draft.revision, "5");
+      assert.equal((await operator.query("select title from app.listings where id=$1", [draft.id])).rows[0].title, "HTTP saved draft");
+      assert.deepEqual(await (await handle(request(ownerToken, owner.id, draft.id))).json(), draft);
+      assert.equal(JSON.stringify(draft).includes("synthetic-private"), false);
+    });
+    await suite.test("real HTTP hides foreign/nonexistent IDs and rejects stale account/revision and revoked sessions", async () => {
+      for (const req of [request(otherToken, other.id, draft.id), request(adminToken, admin.id, draft.id),
+        request(ownerToken, owner.id, randomUUID()), request(ownerToken, other.id, draft.id)]) {
+        const response = await handle(req);assert.equal(response.status, 404);
+        assert.deepEqual(await response.json(), { error: { code: "DRAFT_NOT_FOUND" } });
+      }
+      const conflict = await handle(request(ownerToken, owner.id, draft.id, "PUT", {
+        expectedRevision: "4", draft: { kind: "prodam", title: "Stale HTTP write" },
+      }));
+      assert.equal(conflict.status, 409);assert.deepEqual(await conflict.json(), { error: { code: "DRAFT_CHANGED" } });
+      const revoked = await session(owner.id);await operator.query("delete from app.sessions where token_hash=$1", [hashSessionToken(revoked)]);
+      assert.equal((await handle(request(revoked, owner.id, draft.id))).status, 401);
+      assert.deepEqual(await store.read(ownerToken, owner.id, draft.id), draft);
+    });
+    await suite.test("HTTP reports unknown post-commit outcome as 503 and readback finds only one applied update", async () => {
+      let attempts = 0;
+      const uncertain = new PostgresListingDraftStore({ transaction: async work => {
+        attempts++;await db.transaction(work);throw new Error("Synthetic lost commit acknowledgement");
+      } });
+      const uncertainHandle = createProductionListingDraftHandler({ origin }, () => ({ store: uncertain, limiter }), () => {});
+      const response = await uncertainHandle(request(ownerToken, owner.id, draft.id, "PUT", {
+        expectedRevision: draft.revision, draft: { ...draft.draft, title: "Unknown HTTP result" },
+      }));
+      assert.equal(response.status, 503);assert.deepEqual(await response.json(), { error: { code: "DRAFT_UNAVAILABLE" } });
+      assert.equal(attempts, 1);
+      draft = await (await handle(request(ownerToken, owner.id, draft.id))).json();
+      assert.equal(draft.revision, "6");assert.equal(draft.draft.title, "Unknown HTTP result");
     });
   } finally {
     await db.close();
