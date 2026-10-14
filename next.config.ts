@@ -2,6 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Opt-in trusted-builder binding. Source deploys retain Next's default build ID.
+  async generateBuildId() {
+    const commit = process.env.BLIZHNIY_BUILD_COMMIT;
+    if (commit === undefined) return null;
+    if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error("Invalid prebuilt build commit");
+    return commit;
+  },
   reactStrictMode: true,
   poweredByHeader: false,
   // Rejected query credentials must not enter Next's development access log; structured auth events remain.
