@@ -200,6 +200,8 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testPrimaryProfileGrants(suite, config, client, credentials);
     const { testListingSchema } = await import("./listing-schema-integration.mjs");
     await testListingSchema(suite, client, config, credentials);
+    const { testListingDrafts } = await import("./listing-drafts-integration.mjs");
+    await testListingDrafts(suite, client, config, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));

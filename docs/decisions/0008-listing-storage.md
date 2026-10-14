@@ -26,6 +26,8 @@
 
 ## Последствия и откат
 
+Следующий repository-only инкремент использует эту схему для owner-private draft core и SQL bigint CAS, не меняя её. Контракт, ограниченные поля и ещё не подключённые HTTP/UI/grants: [listing-drafts.md](../listing-drafts.md).
+
 Schema-only release безопасен для старого приложения: оно не обращается к новой таблице. Down берёт ACCESS EXCLUSIVE lock с deadline и **отказывает на непустой таблице**, без CASCADE или удаления пользовательских строк. После появления данных откатывать приложение, сохраняя additive schema; восстановление/изменение migration journal согласовывается отдельно. Удаление пользователей/файлов и retention до запуска остаются открытыми L21/L22.
 
 Проверки: `tests/listing-schema-plan.test.mjs` и owned loopback `tests/bootstrap-postgres-integration.mjs` / `tests/listing-schema-integration.mjs`: additive/repeat/down, FK, частичный draft, денежные/географические/date/length границы, deny runtime/PUBLIC, индексы и owner cascade. Mutation paid-condition должна ломать published-consistency тест. Никаких настоящих аккаунтов/писем/платежей в этих fixtures.
