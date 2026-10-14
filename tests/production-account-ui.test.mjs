@@ -81,12 +81,15 @@ test("shared root selects public backend and CAPTCHA settings after the request 
   let release;
   const connected = new Promise(resolve => { release = resolve; });
   const environment = { BLIZHNIY_DB_PASSWORD: "synthetic-root-password", TURNSTILE_SECRET_KEY: "synthetic-root-captcha",
-    NEXT_PUBLIC_TURNSTILE_SITE_KEY: "synthetic-before-request-key" };
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY: "synthetic-before-request-key", NEXT_PUBLIC_SUPABASE_URL: "https://synthetic-legacy.invalid",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "synthetic-legacy-anon", SUPABASE_SERVICE_ROLE_KEY: "synthetic-private-service-key",
+    NEXT_PUBLIC_2GIS_API_KEY: 'synthetic-map-"<key>' };
   const backends = [];
   const { default: Root } = load("src/app/layout.tsx", {
     "next/server": { connection: () => connected },
     "@/lib/site-url": { getPublicSiteUrl: () => "https://example.invalid" },
     "@/lib/turnstile-public-config": load("src/lib/turnstile-public-config.ts", {}, { process: { env: environment } }),
+    "@/lib/public-runtime-config": load("src/lib/public-runtime-config.ts", {}, { process: { env: environment } }),
     "@/components/auth/AccountAuthProvider": { AccountAuthProvider: ({ backend, children }) => { backends.push(backend); return children; } },
     "@/components/SiteFooter": { SiteFooter: () => null },
     "@/components/MobileBottomNav": { MobileBottomNav: () => null },
@@ -101,9 +104,19 @@ test("shared root selects public backend and CAPTCHA settings after the request 
   assert.match(html, /name="blizhniy-turnstile-site-key" content="synthetic-root-site-key"/);
   assert.equal(html.includes("synthetic-before-request-key"), false);
   assert.deepEqual(backends, ["postgres"]);
+  assert.match(html, /name="blizhniy-legacy-url" content=""/);
+  assert.match(html, /name="blizhniy-legacy-anon-key" content=""/);
+  assert.match(html, /name="blizhniy-dgis-key" content="synthetic-map-&quot;&lt;key&gt;"/);
+  assert.equal(html.includes(environment.NEXT_PUBLIC_SUPABASE_ANON_KEY), false);
+  assert.equal(html.includes(environment.SUPABASE_SERVICE_ROLE_KEY), false);
   for (const secret of [environment.BLIZHNIY_DB_PASSWORD, environment.TURNSTILE_SECRET_KEY]) assert.equal(html.includes(secret), false);
   environment.BLIZHNIY_AUTH_MODE = "invalid";
   assert.match(renderToStaticMarkup(await Root({ children: null })), /content="unavailable"/);
+  delete environment.BLIZHNIY_AUTH_MODE;
+  const legacy = renderToStaticMarkup(await Root({ children: null }));
+  assert.match(legacy, /name="blizhniy-legacy-url" content="https:\/\/synthetic-legacy.invalid"/);
+  assert.match(legacy, /name="blizhniy-legacy-anon-key" content="synthetic-legacy-anon"/);
+  assert.equal(legacy.includes(environment.SUPABASE_SERVICE_ROLE_KEY), false);
 });
 
 test("primary administrator UI state never queries legacy roles and errors stay fail-closed", () => {

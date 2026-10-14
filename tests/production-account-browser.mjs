@@ -69,6 +69,9 @@ test("primary account browser forms use the new cookie API without remote traffi
     const initialHtml = await (await fetch(`${origin}/auth/register`, { signal: AbortSignal.timeout(2000) })).text();
     assert.ok(initialHtml.includes('<meta name="blizhniy-turnstile-site-key" content="synthetic-runtime-only-public-site-key"'),
       "public site key is serialized from runtime configuration into the response head");
+    assert.ok(initialHtml.includes('<meta name="blizhniy-legacy-url" content=""'));
+    assert.ok(initialHtml.includes('<meta name="blizhniy-legacy-anon-key" content=""'));
+    assert.equal(initialHtml.includes(env.NEXT_PUBLIC_SUPABASE_ANON_KEY), false, "legacy key is not serialized in PostgreSQL mode");
     await suite.test("primary mode rejects legacy cabinet reads/writes with both old Bearer and new cookie despite leftover legacy keys", async () => {
       const headers = { authorization: "Bearer synthetic-old-session", cookie: `__Host-blizhniy_session=${"a".repeat(64)}` };
       const state = await fetch(`${origin}/api/auth/state`, { headers, signal: AbortSignal.timeout(2000) });

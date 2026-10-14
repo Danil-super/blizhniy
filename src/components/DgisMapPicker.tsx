@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapPin, Navigation, Search, X } from "lucide-react";
 import { capitalizeFirstTextLetter } from "@/lib/text-format";
+import { getPublicRuntimeSetting } from "@/lib/public-runtime-config";
 
 type DgisMapPickerProps = {
   defaultAddress?: string;
@@ -69,7 +70,7 @@ const resolvingAddressLabel = "Определяем адрес...";
 const coordsPattern = /^-?\d+(?:[.,]\d+)?\s*,\s*-?\d+(?:[.,]\d+)?$/;
 
 function apiKey() {
-  return process.env.NEXT_PUBLIC_2GIS_API_KEY?.trim() ?? "";
+  return getPublicRuntimeSetting("dgis-key") ?? "";
 }
 
 function loadMapGl() {
@@ -355,7 +356,7 @@ export function DgisMapPicker({
     }
 
     if (!apiKey()) {
-      setStatus("Для поиска адреса добавьте NEXT_PUBLIC_2GIS_API_KEY и пересоберите проект.");
+      setStatus("Для поиска адреса настройте ключ 2ГИС на сервере и обновите страницу.");
       return;
     }
 

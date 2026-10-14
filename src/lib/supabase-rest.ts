@@ -21,9 +21,10 @@ export function isLegacySupabaseEnabled() {
 
 export function getSupabaseRestConfig(useServiceRole = true) {
   if (!isLegacySupabaseEnabled()) return { key: undefined, supabaseUrl: undefined };
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const env = process.env;
+  const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
   const key = useServiceRole ? serviceRoleKey : anonKey;
 
   return { key, supabaseUrl };

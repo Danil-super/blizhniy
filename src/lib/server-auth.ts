@@ -21,8 +21,9 @@ const serverAuthAttempts = 1;
 
 function getSupabaseServerConfig() {
   if (!isLegacySupabaseEnabled()) return { supabaseAnonKey: undefined, supabaseUrl: undefined };
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const env = process.env;
+  const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   return { supabaseAnonKey, supabaseUrl };
 }
@@ -37,7 +38,8 @@ function getBearerToken(request: Request) {
 }
 
 async function userCanAccessApi(userId: string) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const env = process.env;
+  const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
   if (!supabaseUrl || !serviceRoleKey) {

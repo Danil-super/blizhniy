@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@supabase/supabase-js";
+import { getPublicRuntimeSetting } from "@/lib/public-runtime-config";
 
 let browserClient: ReturnType<typeof createClient> | null = null;
 
@@ -8,8 +9,8 @@ export function getSupabaseBrowserConfig() {
   if (typeof document !== "undefined" && document.querySelector('meta[name="blizhniy-auth-backend"]')?.getAttribute("content") !== "legacy") {
     return { supabaseAnonKey: undefined, supabaseUrl: undefined };
   }
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = getPublicRuntimeSetting("legacy-url");
+  const supabaseAnonKey = getPublicRuntimeSetting("legacy-anon-key");
 
   return { supabaseAnonKey, supabaseUrl };
 }

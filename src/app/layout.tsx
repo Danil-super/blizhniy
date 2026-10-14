@@ -6,6 +6,7 @@ import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { BookingLegacyStorageCleanup } from "@/components/BookingLegacyStorageCleanup";
 import { getPublicSiteUrl } from "@/lib/site-url";
 import { getTurnstileSiteKey } from "@/lib/turnstile-public-config";
+import { getPublicRuntimeSetting } from "@/lib/public-runtime-config";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -32,6 +33,9 @@ export default async function RootLayout({
       <head>
         <meta name="blizhniy-auth-backend" content={backend} />
         <meta name="blizhniy-turnstile-site-key" content={getTurnstileSiteKey() ?? ""} />
+        <meta name="blizhniy-legacy-url" content={backend === "legacy" ? getPublicRuntimeSetting("legacy-url") ?? "" : ""} />
+        <meta name="blizhniy-legacy-anon-key" content={backend === "legacy" ? getPublicRuntimeSetting("legacy-anon-key") ?? "" : ""} />
+        <meta name="blizhniy-dgis-key" content={getPublicRuntimeSetting("dgis-key") ?? ""} />
       </head>
       <body className="antialiased">
         <AccountAuthProvider backend={backend}>
