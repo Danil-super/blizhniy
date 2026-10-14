@@ -77,14 +77,16 @@ test("primary pages are opt-in, configuration failures never fall back or reveal
   assert.equal(captured.length, 0);
 });
 
-test("shared root selects only a public backend marker after the request boundary and never serializes config secrets", async () => {
+test("shared root selects public backend and CAPTCHA settings after the request boundary and never serializes config secrets", async () => {
   let release;
   const connected = new Promise(resolve => { release = resolve; });
-  const environment = { BLIZHNIY_DB_PASSWORD: "synthetic-root-password", TURNSTILE_SECRET_KEY: "synthetic-root-captcha" };
+  const environment = { BLIZHNIY_DB_PASSWORD: "synthetic-root-password", TURNSTILE_SECRET_KEY: "synthetic-root-captcha",
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY: "synthetic-before-request-key" };
   const backends = [];
   const { default: Root } = load("src/app/layout.tsx", {
     "next/server": { connection: () => connected },
     "@/lib/site-url": { getPublicSiteUrl: () => "https://example.invalid" },
+    "@/lib/turnstile-public-config": load("src/lib/turnstile-public-config.ts", {}, { process: { env: environment } }),
     "@/components/auth/AccountAuthProvider": { AccountAuthProvider: ({ backend, children }) => { backends.push(backend); return children; } },
     "@/components/SiteFooter": { SiteFooter: () => null },
     "@/components/MobileBottomNav": { MobileBottomNav: () => null },
@@ -92,9 +94,12 @@ test("shared root selects only a public backend marker after the request boundar
     "./globals.css": {},
   }, { process: { env: environment }, URL });
   const pending = Root({ children: React.createElement("main", null, "Synthetic page") });
-  environment.BLIZHNIY_AUTH_MODE = "postgres"; release();
+  environment.BLIZHNIY_AUTH_MODE = "postgres";
+  environment.NEXT_PUBLIC_TURNSTILE_SITE_KEY = "synthetic-root-site-key"; release();
   const html = renderToStaticMarkup(await pending);
   assert.match(html, /name="blizhniy-auth-backend" content="postgres"/);
+  assert.match(html, /name="blizhniy-turnstile-site-key" content="synthetic-root-site-key"/);
+  assert.equal(html.includes("synthetic-before-request-key"), false);
   assert.deepEqual(backends, ["postgres"]);
   for (const secret of [environment.BLIZHNIY_DB_PASSWORD, environment.TURNSTILE_SECRET_KEY]) assert.equal(html.includes(secret), false);
   environment.BLIZHNIY_AUTH_MODE = "invalid";

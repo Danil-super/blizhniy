@@ -9,6 +9,7 @@ import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/sup
 import { TURNSTILE_ERROR_MESSAGE } from "@/lib/turnstile-shared";
 import { REGISTRATION_LEGAL_VERSIONS } from "@/lib/registration-legal";
 import { isLocalDevelopmentEnvironment } from "@/lib/local-development";
+import { getTurnstileSiteKey } from "@/lib/turnstile-public-config";
 
 type AuthMode = "login" | "register";
 type AuthState = "idle" | "loading" | "success" | "error";
@@ -153,7 +154,7 @@ export function AuthForm({
 }: AuthFormProps = {}) {
   const router = useRouter();
   const supabaseConfigured = isSupabaseBrowserConfigured();
-  const turnstileConfigured = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim()) || isLocalDevelopmentEnvironment();
+  const turnstileConfigured = Boolean(getTurnstileSiteKey()) || isLocalDevelopmentEnvironment();
   const [mode, setMode] = useState<AuthMode>("register");
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [email, setEmail] = useState("");

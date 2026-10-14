@@ -5,6 +5,7 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { BookingLegacyStorageCleanup } from "@/components/BookingLegacyStorageCleanup";
 import { getPublicSiteUrl } from "@/lib/site-url";
+import { getTurnstileSiteKey } from "@/lib/turnstile-public-config";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,7 +29,10 @@ export default async function RootLayout({
   const backend = !mode || mode === "local" ? "legacy" : mode === "postgres" ? "postgres" : "unavailable";
   return (
     <html lang="ru">
-      <head><meta name="blizhniy-auth-backend" content={backend} /></head>
+      <head>
+        <meta name="blizhniy-auth-backend" content={backend} />
+        <meta name="blizhniy-turnstile-site-key" content={getTurnstileSiteKey() ?? ""} />
+      </head>
       <body className="antialiased">
         <AccountAuthProvider backend={backend}>
         <BookingLegacyStorageCleanup />

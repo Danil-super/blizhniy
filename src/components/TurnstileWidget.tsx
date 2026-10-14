@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getTurnstileSiteKey } from "@/lib/turnstile-public-config";
 
 type TurnstileWidgetProps = {
   name?: string;
@@ -34,7 +35,6 @@ declare global {
 const quietTokenReadyDelayMs = 450;
 const turnstileScriptId = "cloudflare-turnstile-script";
 const turnstileScriptSrc = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
 
 function createQuietToken() {
   const randomValue =
@@ -74,6 +74,7 @@ function loadTurnstileScript() {
 }
 
 export function TurnstileWidget({ inline = false, name = "captchaToken", onVerify, resetKey, requireProvider = false }: TurnstileWidgetProps) {
+  const turnstileSiteKey = getTurnstileSiteKey();
   const [token, setToken] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -138,7 +139,7 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
       cancelled = true;
       window.clearTimeout(timerId);
     };
-  }, [onVerify, resetKey, requireProvider]);
+  }, [onVerify, resetKey, requireProvider, turnstileSiteKey]);
 
   return (
     <>

@@ -4,6 +4,16 @@
 
 Пакет собирается на совместимом Linux x86_64/glibc/Node22 без production DB/password/SMTP/payment secrets. Public build-time настройки должны соответствовать целевому сайту: runtime env не переписывает уже встроенные `NEXT_PUBLIC_*` значения. Не передавать закрытые настройки в GitHub. Next standalone не включает public/static автоматически: [официальная документация Next15](https://nextjs.org/docs/15/app/api-reference/config/next-config-js/output).
 
+## Runtime CAPTCHA — подготовка 14.10.2026
+
+Для CAPTCHA устраняется build-time зависимость: `getTurnstileSiteKey` читает только `NEXT_PUBLIC_TURNSTILE_SITE_KEY` через dynamic lookup на сервере после существующего request boundary. RootLayout отдаёт публичный ключ в React-escaped `meta[name="blizhniy-turnstile-site-key"]`. Браузер читает только этот элемент; пустой/отсутствующий meta означает отсутствие настройки, без fallback к встроенному значению. Widget и legacy AuthForm используют один getter; required-provider/expiry/error/stale-callback и серверная CAPTCHA-проверка не ослабляются. Это публичная настройка, не авторизация: изменение meta не отменяет проверку токена на сервере. Secret key/DB/SMTP/mail key не сериализуются. Смена настройки требует актуального документа страницы; это не обещание горячей ротации без reload/restart.
+
+Основание: Next15 документирует [build-time inlining и dynamic lookup](https://nextjs.org/docs/15/app/guides/environment-variables#bundling-environment-variables-for-the-browser), а `connection()` оставляет чтение серверных переменных на runtime. Не используется несовместимый со standalone `runtimeConfig`.
+
+Проверено: сборка с **пустым** публичным CAPTCHA key, затем отдельный production Next process с синтетическим runtime key. Настоящий Chromium видит этот ключ в ответе и в аргументе provider render; все21 HTTP/browser проверка успешны, provider/account API изолированы transport fixtures. Это не живая проверка Cloudflare/SMTP/PG и не включение нового аккаунта на VPS. Native1204/1204 и focused21/21; первоначальные private-config/heading/CAPTCHA assertions сохранены, adapters загружают реальный getter. Браузер проверяет mobile/desktop, main-region axe и keyboard; screenshot просмотрен. Это не общий WCAG/нагрузочный допуск.
+
+**CI/source deploy пока не переключаются.** Остаются legacy browser SDK и другие public build settings, clean package/commit+lockfile manifest и проверка установки/отката готового артефакта. Не отправлять реальные закрытые настройки в builder и не применять пакет, у которого browser settings расходятся с VPS.
+
 После успешных quality/security gates и `npm run build` упаковка выполняется в собственной временной папке, не в новой копии репозитория:
 
 ```bash

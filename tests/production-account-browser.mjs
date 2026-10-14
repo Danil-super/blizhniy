@@ -1,6 +1,7 @@
 // Browser contract test against the real production build. Account API/CAPTCHA are
 // isolated transport fixtures: no remote DB, provider, real account or email is used.
-// Build first with NEXT_PUBLIC_TURNSTILE_SITE_KEY=public-browser-fixture-key and
+// Public CAPTCHA configuration is supplied at server startup, not at build time.
+// Build first with no NEXT_PUBLIC_TURNSTILE_SITE_KEY and
 // NEXT_PUBLIC_SUPABASE_URL=https://legacy-fixture.example.invalid and
 // NEXT_PUBLIC_SUPABASE_ANON_KEY=synthetic-leftover-anon-key (no real legacy credentials).
 import assert from "node:assert/strict";
@@ -21,7 +22,8 @@ const fixtureRevision = profile => profile ? createHash("sha256").update(JSON.st
 const captchaScript = `let sequence = 0; const widgets = new Map(); window.turnstile = {
   render(container, options) {
     const button = document.createElement('button'); button.type = 'button';
-    button.textContent = 'Fixture: expire CAPTCHA'; button.onclick = () => options['expired-callback']();
+    button.textContent = 'Fixture: expire CAPTCHA'; button.dataset.fixtureSitekey = options.sitekey;
+    button.onclick = () => options['expired-callback']();
     container.appendChild(button); queueMicrotask(() => options.callback('fixture-captcha'));
     const id = 'fixture-widget-' + ++sequence; widgets.set(id, container); return id;
   }, remove(id) { widgets.get(id)?.replaceChildren(); widgets.delete(id); }
@@ -40,7 +42,8 @@ test("primary account browser forms use the new cookie API without remote traffi
     BLIZHNIY_DB_CA_FILE: "/not-read-by-ui/root.crt", BLIZHNIY_AUTH_MAIL_KEY_FILE: "/not-read-by-ui/mail-key.bin",
     BLIZHNIY_AUTH_RATE_SECRET: "synthetic-ui-only-rate-secret-not-used-by-api",
     BLIZHNIY_MAIL_MODE: "timeweb", BLIZHNIY_SMTP_USER: "notifications@ближний-ру.рф", BLIZHNIY_SMTP_PASSWORD: "synthetic-ui-smtp-password",
-    TURNSTILE_SECRET_KEY: "synthetic-ui-captcha-secret", NEXT_PUBLIC_SUPABASE_URL: "https://legacy-fixture.example.invalid",
+    TURNSTILE_SECRET_KEY: "synthetic-ui-captcha-secret", NEXT_PUBLIC_TURNSTILE_SITE_KEY: "synthetic-runtime-only-public-site-key",
+    NEXT_PUBLIC_SUPABASE_URL: "https://legacy-fixture.example.invalid",
     NEXT_PUBLIC_SUPABASE_ANON_KEY: "synthetic-leftover-anon-key", SUPABASE_SERVICE_ROLE_KEY: "synthetic-leftover-service-key" };
   const app = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", String(port)],
     { cwd: new URL("..", import.meta.url), env, stdio: ["ignore", "pipe", "pipe"], detached: true });
@@ -63,6 +66,9 @@ test("primary account browser forms use the new cookie API without remote traffi
       assert.ok(Date.now() < deadline, "production fixture starts within deadline");
       await new Promise(resolve => setTimeout(resolve, 100));
     }
+    const initialHtml = await (await fetch(`${origin}/auth/register`, { signal: AbortSignal.timeout(2000) })).text();
+    assert.ok(initialHtml.includes('<meta name="blizhniy-turnstile-site-key" content="synthetic-runtime-only-public-site-key"'),
+      "public site key is serialized from runtime configuration into the response head");
     await suite.test("primary mode rejects legacy cabinet reads/writes with both old Bearer and new cookie despite leftover legacy keys", async () => {
       const headers = { authorization: "Bearer synthetic-old-session", cookie: `__Host-blizhniy_session=${"a".repeat(64)}` };
       const state = await fetch(`${origin}/api/auth/state`, { headers, signal: AbortSignal.timeout(2000) });
@@ -165,6 +171,7 @@ test("primary account browser forms use the new cookie API without remote traffi
     const login = async (page, email = "owner@example.invalid", switchAccount = false) => {
       await page.goto(`${origin}/auth`);
       if (switchAccount) await page.getByRole("button", { name: "Сменить аккаунт", exact: true }).click();
+      await page.locator('[data-fixture-sitekey="synthetic-runtime-only-public-site-key"]').waitFor();
       await page.getByLabel("Email", { exact: true }).fill(email);
       await page.getByLabel("Пароль", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Войти", exact: true }).click();

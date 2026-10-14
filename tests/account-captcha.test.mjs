@@ -14,9 +14,18 @@ function widget(siteKey) {
   const hooks = { useState: () => ["", () => {}], useRef: (value) => { const ref = { current: value }; refs.push(ref); return ref; },
     useEffect: (fn) => effects.push(fn) };
   const exports = {};
+  const config = {};
+  const document = { querySelector: selector => selector === 'meta[name="blizhniy-turnstile-site-key"]'
+    ? { getAttribute: () => siteKey } : null };
+  const configCode = readFileSync(new URL("../src/lib/turnstile-public-config.ts", import.meta.url), "utf8");
+  vm.runInNewContext(ts.transpileModule(configCode, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
+    { exports: config, document });
   const code = readFileSync(new URL("../src/components/TurnstileWidget.tsx", import.meta.url), "utf8");
   vm.runInNewContext(ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText,
-    { exports, window, process: { env: { NEXT_PUBLIC_TURNSTILE_SITE_KEY: siteKey } }, require: (name) => name === "react" ? hooks : require(name) });
+    { exports, window, document, process: { env: { NEXT_PUBLIC_TURNSTILE_SITE_KEY: siteKey } }, require: (name) => {
+      if (name === "@/lib/turnstile-public-config") return config;
+      return name === "react" ? hooks : require(name);
+    } });
   exports.TurnstileWidget({ requireProvider: true, onVerify: (value) => values.push(value) });
   refs[0].current = {};
   return { effects, timers, values, removed, options: () => options };

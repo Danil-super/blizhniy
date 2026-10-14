@@ -247,6 +247,7 @@ function authFormPresentation() {
     '@/components/TurnstileWidget': { TurnstileWidget: () => null },
     '@/lib/supabase-browser': { isSupabaseBrowserConfigured: () => false },
     '@/lib/turnstile-shared': { TURNSTILE_ERROR_MESSAGE: 'Captcha error' },
+    '@/lib/turnstile-public-config': load(source('src/lib/turnstile-public-config.ts'), {}, { process: { env: {} } }),
     '@/lib/registration-legal': { REGISTRATION_LEGAL_VERSIONS: {} },
     '@/lib/local-development': load(source('src/lib/local-development.ts'), {}, { process: { env: {} } }),
   }, { process: { env: {} } }).AuthForm;
