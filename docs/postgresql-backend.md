@@ -35,6 +35,8 @@ node --experimental-strip-types --test tests/bootstrap-postgres-integration.mjs
 
 Подготовка хранения объявлений выбирается отдельно: `--plan-listings` содержит0001–0012; `--apply-listings HOST:DATABASE` добавляет только отсутствующий проверенный suffix. Она не выдаёт runtime grants и не переключает приложение. Прежние default/mail/account планы не расширяются. Контракт и ограничения: [ADR-008](decisions/0008-listing-storage.md).
 
+На 14.10.2026 в `blizhniy_prod` установлен точный journal0001–0012, таблица listings пустая; runtime доступа к ней пока не имеет. Старые 7/10/11-шаговые apply варианты против этой БД намеренно отказывают, а не понижают схему. Отдельная согласованная операция восстановила минимальные права `gen_user`, необходимые для чтения журнала/reference seed и создания FK/таблицы; права приложения/других получателей и reference rows проверены без изменения. Owner credentials остаются только у оператора, не в HTTP/worker. Исчезновение прежних ACL не объяснено, periodic re-grant не используется. Владелец PostgreSQL может лишиться обычных прав и затем восстановить их без superuser: [официальная модель privileges](https://www.postgresql.org/docs/18/ddl-priv.html).
+
 Базовый `--plan`/`--apply` сохраняет0001–0007. Почтовый вариант выбирается отдельно, без изменения прежних SQL/checksums:
 
 ```bash
