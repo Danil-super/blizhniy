@@ -5,6 +5,7 @@ import {hashSessionToken} from "../src/lib/identity.ts";
 import {ListingDraftInputError} from "../src/lib/listing-draft-contract.ts";
 import {AuthRateLimiter} from "../src/lib/auth-http.ts";
 import {createProductionListingPhotoHandler} from "./listing-photo-http-module.mjs";
+import {testListingForm} from './listing-form-integration.mjs';
 import {PostgresListingPhotoStore} from "./listing-photo-module.mjs";
 import {PostgresListingDraftStore,ListingDraftAccessError,ListingDraftConflictError} from "./listing-draft-module.mjs";
 import {loadAdminModule} from "./admin-module.mjs";
@@ -137,5 +138,6 @@ export async function testListingPhotos(suite,operator,config,credentials){
       const recovered=await readback.json();assert.equal(BigInt(recovered.revision),BigInt(saved.revision)+1n);assert.deepEqual(recovered.photos,[]);
       for(const value of [token,owner.id,draft.id,a,b])assert.equal(JSON.stringify(events).includes(value),false);
     });
+    await testListingForm(suite,operator,db,{owner,other,token,otherToken,a,foreign,pending});
   }finally{await db.close();}
 }
