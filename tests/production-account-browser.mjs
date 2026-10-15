@@ -128,13 +128,43 @@ test("primary account browser forms use the new cookie API without remote traffi
     const run = (name, fn) => suite.test(name, async () => {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const calls = [], sessionReads = [], foreign = [], errors = [];
-      const state = { active: null, override: null, sessionReads, profiles: new Map(), profileRequests: [], profileOverride: null };
+      const state = { active: null, override: null, sessionReads, profiles: new Map(), profileRequests: [], profileOverride: null,
+        drafts: new Map(), draftRequests: [], draftLoseWrite: false, draftLoseCreate: false, draftOverride: null };
       await context.route("**/*", async route => {
         const request = route.request(), url = new URL(request.url());
         if (url.href === "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit") return route.fulfill({ contentType: "application/javascript", body: captchaScript });
         if (["http:", "https:"].includes(url.protocol) && url.origin !== origin) { foreign.push(url.hostname); return route.abort(); }
         if (!url.pathname.startsWith("/api/account/")) return route.continue();
         const action = url.pathname.split("/").at(-1), body = request.postDataJSON();
+        if (url.pathname.startsWith("/api/account/listing-drafts")) {
+          const collection = url.pathname.endsWith("/collection"), method = request.method();
+          assert.ok(["POST", "PUT"].includes(method));assert.equal(request.headers().authorization, undefined);
+          assert.equal(request.headers()["x-blizhniy-request"], "1");assert.equal(url.search, "");
+          state.draftRequests.push({ collection, method, body });
+          if (state.draftOverride) return state.draftOverride(route, body, collection, method);
+          if (!state.active) return route.fulfill({ status: 401, json: { error: { code: "UNAUTHENTICATED" } } });
+          if (body.expectedOwnerId !== state.active.id) return route.fulfill({ status: 404, json: { error: { code: "DRAFT_NOT_FOUND" } } });
+          const owner = state.active.id;
+          const drafts = state.drafts.get(owner) ?? new Map();state.drafts.set(owner, drafts);
+          if (collection && method === "POST") return route.fulfill({ json: { items: [...drafts.values()].map(saved => ({ id: saved.id,
+            revision: saved.revision, kind: saved.draft.kind, title: saved.draft.title, price: saved.draft.price })), nextCursor: null } });
+          if (collection) {
+            const hex = createHash("sha256").update(owner+body.creationKey).digest("hex");
+            const id = `${hex.slice(0,8)}-${hex.slice(8,12)}-8${hex.slice(13,16)}-8${hex.slice(17,20)}-${hex.slice(20,32)}`;
+            if (!drafts.has(id)) drafts.set(id, { id, revision: "1", draft: { kind: "prodam", title: "", description: "", categoryId: null, cityId: null, price: null } });
+            if (state.draftLoseCreate) { state.draftLoseCreate = false;return route.abort(); }
+            return route.fulfill({ json: drafts.get(id) });
+          }
+          const saved = drafts.get(body.listingId);
+          if (!saved) return route.fulfill({ status: 404, json: { error: { code: "DRAFT_NOT_FOUND" } } });
+          if (method === "PUT") {
+            if (body.expectedRevision !== saved.revision) return route.fulfill({ status: 409, json: { error: { code: "DRAFT_CHANGED" } } });
+            const next = { id: saved.id, revision: String(BigInt(saved.revision)+BigInt(1)), draft: body.draft };drafts.set(saved.id, next);
+            if (state.draftLoseWrite) { state.draftLoseWrite = false;return route.abort(); }
+            return route.fulfill({ json: next });
+          }
+          return route.fulfill({ json: saved });
+        }
         if (action === "profile") {
           assert.ok(["POST", "PUT"].includes(request.method()));
           assert.equal(request.headers()["authorization"], undefined);
@@ -180,6 +210,151 @@ test("primary account browser forms use the new cookie API without remote traffi
       await page.getByRole("button", { name: "Войти", exact: true }).click();
       await page.getByText(email, { exact: true }).waitFor();
     };
+    await run("private draft editor creates, saves and recovers an unknown write without losing local text or repeating the write", async ({ page, state }) => {
+      await login(page);
+      const response = await page.goto(origin+"/cabinet/chernoviki");assert.equal(response.status(), 200);
+      await page.getByText("Черновиков пока нет.", { exact: true }).waitFor();
+      await page.getByRole("button", { name: "Новый черновик", exact: true }).click();
+      await page.getByLabel("Название", { exact: true }).fill("Синтетический черновик");
+      await page.getByLabel("Описание", { exact: true }).fill("Сохранённое описание");
+      await page.getByLabel("Цена, ₽", { exact: true }).fill("12,30");
+      await page.getByRole("button", { name: "Сохранить черновик", exact: true }).click();
+      await page.getByText("Черновик сохранён.", { exact: true }).waitFor();
+      const id = [...state.drafts.get(state.active.id).keys()][0];
+      assert.equal(state.drafts.get(state.active.id).get(id).draft.price, "12.30");
+      await page.getByLabel("Описание", { exact: true }).fill("Не терять эти правки");state.draftLoseWrite = true;
+      const before = state.draftRequests.filter(item => !item.collection && item.method === "PUT").length;
+      await page.getByRole("button", { name: "Сохранить черновик", exact: true }).click();
+      await page.getByRole("button", { name: "Проверить сохранённую версию", exact: true }).waitFor();
+      assert.equal(await page.getByLabel("Описание", { exact: true }).inputValue(), "Не терять эти правки");
+      assert.equal(await page.getByRole("button", { name: "Сохранить черновик", exact: true }).isDisabled(), true);
+      assert.equal(state.draftRequests.filter(item => !item.collection && item.method === "PUT").length, before+1);
+      await page.getByRole("button", { name: "Проверить сохранённую версию", exact: true }).click();
+      await page.getByRole("button", { name: "Принять сохранённую версию", exact: true }).click();
+      assert.equal(await page.getByLabel("Описание", { exact: true }).inputValue(), "Не терять эти правки");
+      assert.equal(state.draftRequests.filter(item => !item.collection && item.method === "PUT").length, before+1);
+      await page.screenshot({ path: "/tmp/blizhniy-draft-editor.png", fullPage: true });
+    });
+    await run("cabinet links to private drafts; unavailable identity has an explicit retry rather than an endless loading state", async ({ page, state }) => {
+      await login(page);await page.goto(origin+"/cabinet");
+      await page.getByRole("link", { name: "Черновики объявлений", exact: true }).click();
+      await page.waitForURL(origin+"/cabinet/chernoviki");
+      assert.equal(new URL(page.url()).pathname, "/cabinet/chernoviki");
+      await page.getByText("Черновиков пока нет.", { exact: true }).waitFor();
+      state.override = route => route.fulfill({ status: 503, json: { error: { code: "AUTH_UNAVAILABLE" } } });
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await page.getByRole("alert").filter({ hasText: "Не удалось проверить вход." }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "Новый черновик", exact: true }).count(), 0);
+      state.override = null;
+      await page.getByRole("button", { name: "Повторить проверку входа", exact: true }).click();
+      await page.getByRole("button", { name: "Новый черновик", exact: true }).waitFor();
+    });
+    await run("lost blank creation reuses one intent; draft editor supports keyboard, mobile layout and accessible fields", async ({ page, state }) => {
+      await login(page);await page.goto(origin+"/cabinet/chernoviki");
+      await page.getByText("Черновиков пока нет.", { exact: true }).waitFor();state.draftLoseCreate = true;
+      await page.getByRole("button", { name: "Новый черновик", exact: true }).click();
+      const retry = page.getByRole("button", { name: "Проверить создание", exact: true });
+      await retry.click();
+      await page.getByLabel("Название", { exact: true }).waitFor();
+      await page.getByLabel("Название", { exact: true }).focus();await page.keyboard.type("Клавиатура");
+      assert.equal(await page.getByLabel("Название", { exact: true }).inputValue(), "Клавиатура");
+      const creates = state.draftRequests.filter(row => row.collection && row.method === "PUT");
+      assert.equal(creates.length, 2);assert.equal(creates[0].body.creationKey, creates[1].body.creationKey);
+      assert.equal(state.drafts.get(state.active.id).size, 1);
+      const axe = await readFile(createRequire(import.meta.url).resolve("axe-core/axe.min.js"), "utf8");
+      await page.addScriptTag({ content: axe });
+      for (const width of [320, 768, 1024, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `draft editor fits ${width}px`);
+        if (width === 320 || width === 1440) {
+          const violations = await page.evaluate(async () => (await window.axe.run(document.querySelector("main"), {
+            runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] },
+          })).violations.filter(item => ["serious", "critical"].includes(item.impact)).map(item => ({ id: item.id, targets: item.nodes.map(node => node.target) })));
+          assert.deepEqual(violations, [], `draft main-region axe at ${width}px`);
+        }
+      }
+      await page.getByLabel("Название", { exact: true }).fill("Несохранённый текст");
+      page.once("dialog", dialog => dialog.dismiss());
+      await page.getByRole("link", { name: "Личный кабинет", exact: true }).click();
+      assert.equal(new URL(page.url()).pathname, "/cabinet/chernoviki");
+      assert.equal(await page.getByLabel("Название", { exact: true }).inputValue(), "Несохранённый текст");
+    });
+    await run("two draft tabs resolve a revision conflict explicitly and preserve all local edits until that choice", async ({ page, context, state }) => {
+      await login(page);await page.goto(origin+"/cabinet/chernoviki");
+      await page.getByRole("button", { name: "Новый черновик", exact: true }).click();
+      await page.getByLabel("Название", { exact: true }).fill("Первая версия");
+      await page.getByRole("button", { name: "Сохранить черновик", exact: true }).click();
+      await page.getByText("Черновик сохранён.", { exact: true }).waitFor();
+      const other = await context.newPage();await other.goto(origin+"/cabinet/chernoviki");
+      await other.getByRole("button", { name: "Первая версия", exact: true }).click();
+      await other.getByLabel("Описание", { exact: true }).fill("Мои правки второй вкладки");
+      await page.getByLabel("Описание", { exact: true }).fill("Сохранено первой вкладкой");
+      await page.getByRole("button", { name: "Сохранить черновик", exact: true }).click();
+      await page.getByText("Черновик сохранён.", { exact: true }).waitFor();
+      await other.getByRole("button", { name: "Сохранить черновик", exact: true }).click();
+      await other.getByRole("button", { name: "Проверить сохранённую версию", exact: true }).waitFor();
+      assert.equal(await other.getByLabel("Описание", { exact: true }).inputValue(), "Мои правки второй вкладки");
+      await other.getByRole("button", { name: "Проверить сохранённую версию", exact: true }).click();
+      await other.getByRole("region", { name: "Сохранённая версия", exact: true }).getByText("Сохранено первой вкладкой", { exact: true }).waitFor();
+      await other.getByRole("button", { name: "Продолжить с моими правками", exact: true }).click();
+      assert.equal(await other.getByLabel("Описание", { exact: true }).inputValue(), "Мои правки второй вкладки");
+      await other.getByRole("button", { name: "Сохранить черновик", exact: true }).click();
+      await other.getByText("Черновик сохранён.", { exact: true }).waitFor();
+      const writes = state.draftRequests.filter(row => !row.collection && row.method === "PUT");
+      assert.equal(writes.length, 4);assert.equal(writes[1].body.expectedRevision, writes[2].body.expectedRevision);
+      assert.equal(BigInt(writes[3].body.expectedRevision), BigInt(writes[2].body.expectedRevision)+1n);
+      assert.equal([...state.drafts.get(state.active.id).values()][0].draft.description, "Мои правки второй вкладки");
+    });
+    await run("temporary account recheck hides draft data but restores the same owner's unsaved buffer", async ({ page, state }) => {
+      await login(page);await page.goto(origin+"/cabinet/chernoviki");
+      await page.getByRole("button", { name: "Новый черновик", exact: true }).click();
+      await page.getByLabel("Название", { exact: true }).fill("Локальные правки владельца");
+      let release, started;
+      const gate = new Promise(resolve => { release = resolve; });
+      const pending = new Promise(resolve => { started = resolve; });
+      state.override = async (route, action) => {
+        assert.equal(action, "session");started();await gate;return route.fulfill({ json: { user: state.active } });
+      };
+      try {
+        await page.evaluate(() => window.dispatchEvent(new Event("focus")));await pending;
+        await page.getByText("Проверяем доступ к черновикам…", { exact: true }).waitFor();
+        assert.equal(await page.getByLabel("Название", { exact: true }).count(), 0);
+        assert.equal((await page.locator("main").textContent()).includes("Локальные правки владельца"), false);
+        state.override = null;release();
+        await page.getByLabel("Название", { exact: true }).waitFor();
+        assert.equal(await page.getByLabel("Название", { exact: true }).inputValue(), "Локальные правки владельца");
+      } finally { release(); }
+    });
+    await run("late draft save cannot expose the previous owner's text after another tab switches account", async ({ page, context, state }) => {
+      const first = user("first@example.invalid"), second = user("second@example.invalid");
+      await login(page, first.email);await page.goto(origin+"/cabinet/chernoviki");
+      await page.getByRole("button", { name: "Новый черновик", exact: true }).click();
+      await page.getByLabel("Название", { exact: true }).fill("Частный текст первого владельца");
+      let release, started, completed;
+      const gate = new Promise(resolve => { release = resolve; });
+      const pending = new Promise(resolve => { started = resolve; });
+      const settled = new Promise(resolve => { completed = resolve; });
+      state.draftOverride = async (route, body, collection, method) => {
+        if (!collection && method === "PUT") {
+          started();await gate;
+          const saved = { id: body.listingId, revision: "2", draft: body.draft };state.drafts.get(first.id).set(saved.id, saved);
+          try { await route.fulfill({ json: saved }); } finally { completed(); }
+          return;
+        }
+        assert.equal(body.expectedOwnerId, second.id);assert.equal(collection, true);assert.equal(method, "POST");
+        return route.fulfill({ json: { items: [], nextCursor: null } });
+      };
+      try {
+        await page.getByRole("button", { name: "Сохранить черновик", exact: true }).click();await pending;
+        const other = await context.newPage();await login(other, second.email, true);
+        await page.getByText("Черновиков пока нет.", { exact: true }).waitFor();
+        release();await settled;
+        assert.equal(await page.getByLabel("Название", { exact: true }).count(), 0);
+        assert.equal((await page.locator("main").textContent()).includes("Частный текст первого владельца"), false);
+        assert.equal(state.draftRequests.filter(row => !row.collection && row.method === "PUT").length, 1);
+        assert.equal(state.drafts.has(second.id), false, "old completion never writes under the new owner");
+      } finally { release(); }
+    });
     await run("existing cabinet settings save through owner-scoped cookie profile API without legacy requests", async ({ page, state }) => {
       const legacy = [];
       page.on("request", request => { if (new URL(request.url()).pathname.startsWith("/api/cabinet/")) legacy.push(request.url()); });
