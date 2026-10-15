@@ -11,6 +11,7 @@ import {PrivateDraftDetails} from './PrivateDraftDetails';
 import {usePrivateListingForm} from './usePrivateListingForm';
 import {PrivateListingFormEditor} from './PrivateListingFormEditor';
 import {PrivateDraftPublicationCheck} from './PrivateDraftPublicationCheck';
+import {PrivateDraftModeration} from './PrivateDraftModeration';
 
 export function PrivateDraftWorkspace({ owner, visible }: { owner: string; visible: boolean }) {
   const [page, setPage] = useState<ListingDraftPage | null>(null), [editor, setEditor] = useState<DraftEditorState | null>(null);
@@ -122,6 +123,8 @@ export function PrivateDraftWorkspace({ owner, visible }: { owner: string; visib
     {editor&&!full.editor&&<PrivateDraftDetails owner={owner} id={editor.saved.id} revision={editor.saved.revision}
       disabled={working||photos.uncertain||dirty||editor.blocked} onEdit={full.open}/>}
     {editor&&!full.editor&&<PrivateDraftPublicationCheck owner={owner} id={editor.saved.id} revision={editor.saved.revision}
+      disabled={working||photos.uncertain||dirty||editor.blocked}/>}
+    {editor&&!full.editor&&<PrivateDraftModeration key={`${owner}:${editor.saved.id}:${editor.saved.revision}`} owner={owner} id={editor.saved.id} revision={editor.saved.revision}
       disabled={working||photos.uncertain||dirty||editor.blocked}/>}
     {!full.editor&&full.message&&<p className="mt-3" role="status">{full.message}</p>}
     {full.editor&&<PrivateListingFormEditor edit={full} onClose={()=>{if(full.close()){setEditor(null);setMessage(null);setRefresh(value=>value+1);}}}/>}

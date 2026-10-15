@@ -21,6 +21,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
    catch(error){assert.ok(error.cause?.code==='ECONNREFUSED'||error.name==='TimeoutError');}assert.ok(Date.now()<deadline,'owned app starts');await new Promise(resolve=>setTimeout(resolve,100));}
   browser=await chromium.launch({headless:true});const context=await browser.newContext(),page=await context.newPage(),errors=[],foreign=[],writes=[],intents=[];
   page.setDefaultTimeout(12000);page.on('pageerror',()=>errors.push('pageerror'));let saved=null,lose=false,sessionGate=null,active=owner;const inspections=[];let failInspection=false;
+  let moderation={id:null,revision:null,state:'not_submitted',note:null},loseSubmission=false,submissions=0;
   const pixels=await sharp({create:{width:80,height:40,channels:3,background:'red'}}).png().toBuffer();
   await context.route('**/*',async route=>{
    const request=route.request(),url=new URL(request.url());if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){foreign.push(url.host);return route.abort();}
@@ -31,6 +32,11 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
    if(url.pathname==='/api/account/profile'){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');return route.fulfill({json:{exists:false,profile:createDefaultCabinetProfile({name:'Технический',email:'fixture@example.invalid'}),revision:null}});}
    if(active!==owner){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');assert.ok(url.pathname.endsWith('/collection'));return route.fulfill({json:{items:[],nextCursor:null}});}
    const body=request.postDataJSON();assert.equal(body.expectedOwnerId,owner);
+   if(url.pathname==='/api/account/listing-moderation'){
+    assert.deepEqual(Object.keys(body).sort(),['expectedOwnerId','expectedRevision','listingId']);assert.equal(body.expectedRevision,saved.revision);
+    if(request.method()==='PUT'){submissions++;moderation={id:'42345678-1234-4321-8765-123456789abc',revision:saved.revision,state:'pending',note:null};if(loseSubmission){loseSubmission=false;return route.abort();}}
+    return route.fulfill({json:moderation.revision&&moderation.revision!==saved.revision?{...moderation,state:'outdated'}:moderation});
+   }
    if(url.pathname==='/api/account/listing-publication'){
     inspections.push(body);assert.equal(request.method(),'POST');assert.equal(body.expectedRevision,saved.revision);
     if(failInspection)return route.fulfill({status:503,json:{error:{code:'PUBLICATION_CHECK_UNAVAILABLE'}}});
@@ -71,6 +77,22 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   await page.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();await page.waitForURL(origin+'/cabinet/obyavleniya');
   assert.equal(writes.length,1);assert.equal(intents.length,1);assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
   await page.getByRole('button',{name:'Полная форма',exact:true}).click();
+  await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).waitFor();loseSubmission=true;
+  await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).click();
+  await page.getByText('Ответ не получен. Проверьте статус отправки перед повторным действием.',{exact:true}).waitFor();
+  assert.equal(submissions,1);assert.equal(await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).isDisabled(),true);
+  await page.getByRole('button',{name:'Обновить статус модерации',exact:true}).click();await page.getByText('На модерации',{exact:true}).waitFor();assert.equal(submissions,1);
+  moderation={...moderation,state:'approved'};await page.getByRole('button',{name:'Обновить статус модерации',exact:true}).click();
+  await page.getByText('Одобрено модератором',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Оплатить',exact:true}).count(),0);
+  await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
+  for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
+   const violations=await page.evaluate(async()=>{const result=await window.axe.run(document.querySelector('section[aria-label="Модерация объявления"]'));return result.violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id);});assert.deepEqual(violations,[]);
+  }
+  await page.getByRole('button',{name:'Обновить статус модерации',exact:true}).focus();await page.keyboard.press('Space');
+  await page.getByText('Одобрено модератором',{exact:true}).waitFor();assert.equal(submissions,1);
+  await page.getByRole('region',{name:'Модерация объявления',exact:true}).screenshot({path:'/tmp/blizhniy-moderation-owner-browser.png'});
+  await page.getByLabel('Название',{exact:true}).fill('Несохранённый текст');assert.equal(await page.getByText('Одобрено модератором',{exact:true}).count(),0);
+  await page.getByLabel('Название',{exact:true}).fill('Полная форма');
   await page.getByRole('button',{name:'Проверить перед публикацией',exact:true}).click();
   await page.getByText('199,99 ₽',{exact:true}).waitFor();assert.equal(inspections.length,1);assert.equal(writes.length,1);
   assert.ok(await page.getByText('Это проверка данных, а не публикация или платёж.',{exact:true}).count());
