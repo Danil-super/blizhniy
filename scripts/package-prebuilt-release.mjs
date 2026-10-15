@@ -45,7 +45,7 @@ export function packagePrebuiltRelease({ source, output, commit }) {
   // Require the exact tracked lockfile, not a silently rewritten dependency graph.
   const trackedLockfile = spawnSync("git", ["show", `${commit}:package-lock.json`], { cwd: root, timeout: 10000, maxBuffer: 4 * 1024 * 1024 });
   if (trackedLockfile.status !== 0 || !lockfile.equals(trackedLockfile.stdout)) throw new Error("Prebuilt lockfile does not match commit");
-  for (const file of [".next/standalone/server.js", ".next/standalone/node_modules/@next/env/package.json", "ecosystem.config.cjs", "scripts/check-auth-captcha-env.cjs"]) {
+  for (const file of [".next/standalone/server.js", ".next/standalone/node_modules/@next/env/package.json", "ecosystem.config.cjs", "scripts/check-auth-captcha-env.cjs", "scripts/web-runtime.cjs"]) {
     if (!publicFile(join(root, file)) || !statSync(join(root, file)).isFile()) throw new Error("Prebuilt required input is missing");
   }
   const temporary = mkdtempSync(join(tmpdir(), "blizhniy-prebuilt-package-"));
@@ -57,6 +57,7 @@ export function packagePrebuiltRelease({ source, output, commit }) {
     copy(".next/static", ".next/static");
     copy("ecosystem.config.cjs", "ecosystem.config.cjs");
     copy("scripts/check-auth-captcha-env.cjs", "scripts/check-auth-captcha-env.cjs");
+    copy("scripts/web-runtime.cjs", "scripts/web-runtime.cjs");
     copy("package-lock.json", "package-lock.json");
     writeFileSync(join(stage, "release-manifest.json"), JSON.stringify({ format: 1, commit, buildId: commit,
       lockfileSha256: digest(lockfile), node: process.version, platform: process.platform, arch: process.arch,

@@ -14,6 +14,7 @@ function fixture(run) {
     ".gitignore": ".next/\n",
     "package-lock.json": '{"lockfileVersion":3}', "ecosystem.config.cjs": "module.exports = {};",
     "scripts/check-auth-captcha-env.cjs": "// synthetic guard",
+    "scripts/web-runtime.cjs": "// synthetic runtime guard",
     "public/icon.svg": "synthetic-static", ".next/static/chunk.js": "synthetic-browser-chunk",
     ".next/standalone/server.js": "// synthetic server", ".next/standalone/.next/BUILD_ID": "placeholder",
     ".next/standalone/node_modules/@next/env/package.json": '{"name":"@next/env"}',
@@ -46,6 +47,7 @@ test("standalone package includes static assets and manifest but excludes enviro
   assert.equal(readFileSync(join(unpack, "server.js"), "utf8"), "// synthetic server");
   assert.equal(readFileSync(join(unpack, "public/icon.svg"), "utf8"), "synthetic-static");
   assert.equal(readFileSync(join(unpack, ".next/static/chunk.js"), "utf8"), "synthetic-browser-chunk");
+  assert.equal(readFileSync(join(unpack, "scripts/web-runtime.cjs"), "utf8"), "// synthetic runtime guard");
   const manifest = JSON.parse(readFileSync(join(unpack, "release-manifest.json"), "utf8"));
   assert.equal(manifest.commit, commit);
   assert.equal(manifest.lockfileSha256, createHash("sha256").update(readFileSync(join(source, "package-lock.json"))).digest("hex"));

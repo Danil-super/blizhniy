@@ -164,6 +164,9 @@ else
   npm --prefix "$RELEASE_DIR" run build
 fi
 
+log "preparing managed web runtime permissions"
+node "$RELEASE_DIR/scripts/web-runtime.cjs" --prepare "$RELEASE_DIR"
+
 log "starting ${APP_NAME} from ${RELEASE_DIR}"
 mkdir -p "${RELEASE_DIR}/.pm2"
 SERVICE_REPLACED=true

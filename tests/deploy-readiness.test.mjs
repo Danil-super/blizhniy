@@ -8,7 +8,7 @@ import test from 'node:test';
 
 const deployScript = path.resolve('scripts/deploy-release.sh');
 
-function runDeploy(ready, prebuilt = false, checksumValid = true) {
+function runDeploy(ready, prebuilt = false, checksumValid = true, runtimeFailure = false) {
   const root = mkdtempSync(path.join(tmpdir(), 'deploy-readiness-'));
   try {
     const bin = path.join(root, 'bin');
@@ -26,6 +26,7 @@ function runDeploy(ready, prebuilt = false, checksumValid = true) {
       writeFileSync(path.join(bin, cmd), `#!/usr/bin/env bash
 printf '%s %s\\n' '${cmd}' "$*" >> "$COMMAND_LOG"
 if [[ '${cmd}' == node && "$1" == --version ]]; then printf 'v22.23.3\\n'; fi
+if [[ '${cmd}' == node && "$1" == *'/scripts/web-runtime.cjs' && "$RUNTIME_FAILURE" == true ]]; then exit 1; fi
 exit 0
 `, { mode: 0o755 });
     }
@@ -61,6 +62,7 @@ exit 0
         PROBE_LOG: probeLog,
         COMMAND_LOG: commandLog,
         READY_MODE: ready ? 'up' : 'down',
+        RUNTIME_FAILURE: String(runtimeFailure),
         PATH: `${bin}:${process.env.PATH}`,
       },
     });
@@ -80,6 +82,11 @@ test('an available process with unavailable database does not get promoted', () 
   assert.match(probes, /\/api\/health/);
   assert.match(probes, /\/api\/ready/);
   assert.doesNotMatch(result.stdout, /promoting release/);
+});
+
+test('failed managed-runtime preparation keeps the old process and release untouched', () => {
+  const { result, activeRelease, previous, commands } = runDeploy(true, false, true, true);
+  assert.notEqual(result.status, 0); assert.equal(activeRelease, previous); assert.doesNotMatch(commands, /pm2 /);
 });
 
 test('a ready process promotes only after both probes succeed', () => {
