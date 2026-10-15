@@ -5,6 +5,7 @@ import {parseListingFormDraft,type ListingFormDraft,type ListingFormSnapshot} fr
 import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';
 import type {ListingDraftPhoto} from './listing-photo-contract';
+import {checkListingPublication,type PublicationTariffRow} from './listing-publication-check';
 const kinds={sell:'prodam',buy:'kuplyu',free:'otdam-darom',rent:'arenda'} as const;
 const dbKinds={prodam:'sell',kuplyu:'buy','otdam-darom':'free',arenda:'rent'} as const;
 type Row=ListingFormDraft&{id:string;revision:string;listingType:keyof typeof kinds};
@@ -31,6 +32,17 @@ export class PostgresListingFormStore{
  }
  read(token:string,owner:string,listingId:unknown){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
   if(user.id!==owner)throw new ListingDraftAccessError();return this.snapshot(tx,owner,parseListingDraftId(listingId));
+ });}
+ checkPublication(token:string,owner:string,listingId:unknown,expectedRevision:unknown){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
+  if(user.id!==owner)throw new ListingDraftAccessError();const id=parseListingDraftId(listingId),revision=parseListingDraftRevision(expectedRevision);
+  const current=(await tx.query<{revision:string}>("select revision::text as revision from app.listings where id=$1 and author_id=$2 and status='draft' for update",[id,owner])).rows[0];
+  if(!current)throw new ListingDraftAccessError();if(current.revision!==revision)throw new ListingDraftConflictError();
+  const snapshot=await this.snapshot(tx,owner,id);
+  const category=(await tx.query<{active:boolean}>(`select (c.active and (c.parent_id is null or parent.active is true)) as active
+   from app.listings l join app.categories c on c.id=l.category_id left join app.categories parent on parent.id=c.parent_id where l.id=$1`,[id])).rows[0];
+  const offer=(await tx.query<PublicationTariffRow>(`select id,action,name,price::text as amount,duration_days as "durationDays",active
+   from app.tariffs where action='listing_publication' limit 1`)).rows[0]??null;
+  return checkListingPublication(snapshot,category?.active===true,offer);
  });}
  async update(token:string,owner:string,listingId:unknown,expectedRevision:unknown,input:unknown){
   try{return await withAppSessionTransaction(this.db,token,async(tx,user)=>{

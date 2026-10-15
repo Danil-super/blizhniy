@@ -20,7 +20,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   const deadline=Date.now()+20000;for(;;){assert.equal(app.exitCode,null);try{if((await fetch(origin+'/api/health',{signal:AbortSignal.timeout(1000)})).ok)break;}
    catch(error){assert.ok(error.cause?.code==='ECONNREFUSED'||error.name==='TimeoutError');}assert.ok(Date.now()<deadline,'owned app starts');await new Promise(resolve=>setTimeout(resolve,100));}
   browser=await chromium.launch({headless:true});const context=await browser.newContext(),page=await context.newPage(),errors=[],foreign=[],writes=[],intents=[];
-  page.setDefaultTimeout(12000);page.on('pageerror',()=>errors.push('pageerror'));let saved=null,lose=false,sessionGate=null,active=owner;
+  page.setDefaultTimeout(12000);page.on('pageerror',()=>errors.push('pageerror'));let saved=null,lose=false,sessionGate=null,active=owner;const inspections=[];let failInspection=false;
   const pixels=await sharp({create:{width:80,height:40,channels:3,background:'red'}}).png().toBuffer();
   await context.route('**/*',async route=>{
    const request=route.request(),url=new URL(request.url());if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){foreign.push(url.host);return route.abort();}
@@ -31,6 +31,11 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
    if(url.pathname==='/api/account/profile'){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');return route.fulfill({json:{exists:false,profile:createDefaultCabinetProfile({name:'Технический',email:'fixture@example.invalid'}),revision:null}});}
    if(active!==owner){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');assert.ok(url.pathname.endsWith('/collection'));return route.fulfill({json:{items:[],nextCursor:null}});}
    const body=request.postDataJSON();assert.equal(body.expectedOwnerId,owner);
+   if(url.pathname==='/api/account/listing-publication'){
+    inspections.push(body);assert.equal(request.method(),'POST');assert.equal(body.expectedRevision,saved.revision);
+    if(failInspection)return route.fulfill({status:503,json:{error:{code:'PUBLICATION_CHECK_UNAVAILABLE'}}});
+    return route.fulfill({json:{listingId:id,revision:saved.revision,checksPassed:true,issues:[],tariff:{id:'listing-standard',name:'Объявление',amount:'199.99',currency:'RUB',durationDays:30}}});
+   }
    if(url.pathname.endsWith('/collection'))return route.fulfill({json:request.method()==='POST'?{items:saved?[{id,revision:saved.revision,kind:saved.form.kind,title:saved.form.title,price:saved.form.price}]:[],nextCursor:null}:{id,revision:'1',draft:{kind:'prodam',title:'',description:'',price:null,categoryId:null,cityId:null}}});
    if(url.pathname==='/api/account/listing-drafts')return route.fulfill({json:{id,revision:saved.revision,draft:{kind:saved.form.kind,title:saved.form.title,description:saved.form.description,price:saved.form.price,categoryId:null,cityId:null}}});
    if(url.pathname==='/api/account/listing-photos')return route.fulfill({json:{id,revision:saved.revision,photos:saved.photos}});
@@ -66,6 +71,21 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   await page.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();await page.waitForURL(origin+'/cabinet/obyavleniya');
   assert.equal(writes.length,1);assert.equal(intents.length,1);assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
   await page.getByRole('button',{name:'Полная форма',exact:true}).click();
+  await page.getByRole('button',{name:'Проверить перед публикацией',exact:true}).click();
+  await page.getByText('199,99 ₽',{exact:true}).waitFor();assert.equal(inspections.length,1);assert.equal(writes.length,1);
+  assert.ok(await page.getByText('Это проверка данных, а не публикация или платёж.',{exact:true}).count());
+  await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
+  for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
+   const violations=await page.evaluate(async()=>{const result=await window.axe.run(document.querySelector('section[aria-label="Проверка перед публикацией"]'));return result.violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id);});assert.deepEqual(violations,[]);
+  }
+  await page.getByRole('region',{name:'Проверка перед публикацией',exact:true}).screenshot({path:'/tmp/blizhniy-publication-check-browser.png'});
+  const keyboardCheck=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/account/listing-publication');
+  await page.getByRole('button',{name:'Проверить перед публикацией',exact:true}).focus();await page.keyboard.press('Space');await keyboardCheck;await page.getByText('199,99 ₽',{exact:true}).waitFor();
+  failInspection=true;await page.getByRole('button',{name:'Проверить перед публикацией',exact:true}).click();
+  await page.getByText('Не удалось проверить объявление. Повторите проверку позже.',{exact:true}).waitFor();assert.equal(await page.getByText('199,99 ₽',{exact:true}).count(),0);
+  failInspection=false;await page.getByRole('button',{name:'Проверить перед публикацией',exact:true}).click();await page.getByText('199,99 ₽',{exact:true}).waitFor();
+  await page.getByLabel('Название',{exact:true}).fill('Несохранённое изменение');assert.equal(await page.getByRole('button',{name:'Проверить перед публикацией',exact:true}).isDisabled(),true);
+  assert.equal(await page.getByText('199,99 ₽',{exact:true}).count(),0);await page.getByLabel('Название',{exact:true}).fill('Полная форма');
   await page.getByText('Категория, место и контакты из полной формы',{exact:true}).click();
   await page.getByRole('button',{name:'Изменить дополнительные поля',exact:true}).click();
   await page.getByRole('heading',{name:'Дополнительные поля черновика',exact:true}).waitFor();

@@ -40,4 +40,28 @@ export async function testListingForm(suite,operator,db,{owner,other,token,other
   await assert.rejects(uncertain.update(token,owner.id,draft.id,current.revision,form),/Synthetic lost/);assert.equal(attempts,1);
   assert.equal((await store.read(token,owner.id,draft.id)).revision,'4');assert.deepEqual((await store.read(token,owner.id,draft.id)).form,form);
  });
+ await suite.test('publication inspection is owner/session/revision guarded, leaves the draft unpaid and uses the actual current tariff',async()=>{
+  const before=await store.read(token,owner.id,draft.id),report=await store.checkPublication(token,owner.id,draft.id,before.revision);
+  assert.equal(report.checksPassed,true);assert.equal(report.tariff.currency,'RUB');assert.equal(typeof report.tariff.amount,'string');
+  assert.deepEqual(await store.read(token,owner.id,draft.id),before);
+  assert.deepEqual((await operator.query('select status,is_paid,published_at from app.listings where id=$1',[draft.id])).rows[0],{status:'draft',is_paid:false,published_at:null});
+  await assert.rejects(store.checkPublication(otherToken,other.id,draft.id,before.revision),ListingDraftAccessError);
+  await assert.rejects(store.checkPublication(otherToken,owner.id,draft.id,before.revision),ListingDraftAccessError);
+  await assert.rejects(store.checkPublication(token,owner.id,draft.id,'1'),ListingDraftConflictError);
+  const offer=(await operator.query("select id,price,active from app.tariffs where action='listing_publication'")).rows[0];
+  try{
+   await operator.query('update app.tariffs set price=199.99 where id=$1',[offer.id]);
+   assert.equal((await store.checkPublication(token,owner.id,draft.id,before.revision)).tariff.amount,'199.99');
+   await operator.query('update app.tariffs set active=false where id=$1',[offer.id]);
+   const unavailable=await store.checkPublication(token,owner.id,draft.id,before.revision);assert.equal(unavailable.tariff,null);assert.equal(unavailable.checksPassed,false);
+  }finally{await operator.query('update app.tariffs set price=$2,active=$3 where id=$1',[offer.id,offer.price,offer.active]);}
+  const category=(await operator.query('select c.id,c.active,c.parent_id as "parentId",parent.active as "parentActive" from app.listings l join app.categories c on c.id=l.category_id left join app.categories parent on parent.id=c.parent_id where l.id=$1',[draft.id])).rows[0];
+  try{await operator.query('update app.categories set active=false where id=$1',[category.id]);
+   assert.ok((await store.checkPublication(token,owner.id,draft.id,before.revision)).issues.some(issue=>issue.field==='category'));
+  }finally{await operator.query('update app.categories set active=$2 where id=$1',[category.id,category.active]);}
+  assert.ok(category.parentId);
+  try{await operator.query('update app.categories set active=false where id=$1',[category.parentId]);
+   assert.ok((await store.checkPublication(token,owner.id,draft.id,before.revision)).issues.some(issue=>issue.field==='category'));
+  }finally{await operator.query('update app.categories set active=$2 where id=$1',[category.parentId,category.parentActive]);}
+ });
 }
