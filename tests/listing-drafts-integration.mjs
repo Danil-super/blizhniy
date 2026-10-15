@@ -202,6 +202,75 @@ export async function testListingDrafts(suite, operator, config, credentials) {
       draft = await (await handle(request(ownerToken, owner.id, draft.id))).json();
       assert.equal(draft.revision, "6");assert.equal(draft.draft.title, "Unknown HTTP result");
     });
+    await suite.test("stable empty creation needs only explicit ID insert privilege and preserves every existing column restriction", async () => {
+      await operator.query("grant insert(id),select(updated_at) on app.listings to blizhniy_runtime");
+      for (const sql of ["update app.listings set id=id where false", "update app.listings set author_id=author_id where false",
+        "update app.listings set status='published' where false", "delete from app.listings where false", "select contact_phone from app.listings limit 0"]) {
+        await assert.rejects(db.query(sql), { code: "42501" });
+      }
+    });
+    await suite.test("one stable creation key survives concurrent requests, lost acknowledgement and edits without creating or overwriting another draft", async () => {
+      const key = randomUUID(), secondSession = await session(owner.id);
+      const results = await Promise.all([store.createEmpty(ownerToken, owner.id, key), store.createEmpty(secondSession, owner.id, key.toUpperCase())]);
+      assert.deepEqual(results[0], results[1]);
+      const first = results[0];assert.match(first.id, /^[a-f0-9]{8}-[a-f0-9]{4}-8[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+      assert.equal(first.revision, "1");assert.equal(first.draft.title, "");
+      const saved = await store.update(ownerToken, owner.id, first.id, first.revision, { kind: "arenda", title: "Keep my edited text", price: "12.34" });
+      assert.deepEqual(await store.createEmpty(ownerToken, owner.id, key), saved);
+      assert.equal((await operator.query("select count(*)::integer as n from app.listings where id=$1", [first.id])).rows[0].n, 1);
+      const lostKey = randomUUID(), unknown = new Error("Synthetic post-commit loss");let attempts = 0;
+      const uncertain = new PostgresListingDraftStore({ transaction: async work => { attempts++;await db.transaction(work);throw unknown; } });
+      const before = (await operator.query("select count(*)::integer as n from app.listings where author_id=$1", [owner.id])).rows[0].n;
+      await assert.rejects(uncertain.createEmpty(ownerToken, owner.id, lostKey), error => error === unknown);
+      assert.equal(attempts, 1);
+      const recovered = await store.createEmpty(ownerToken, owner.id, lostKey);
+      assert.equal((await operator.query("select count(*)::integer as n from app.listings where author_id=$1", [owner.id])).rows[0].n, before+1);
+      assert.deepEqual(await store.read(ownerToken, owner.id, recovered.id), recovered);
+      const foreign = await store.createEmpty(otherToken, other.id, key);assert.notEqual(foreign.id, first.id);
+      await operator.query("update app.listings set status='archived' where id=$1", [first.id]);
+      await assert.rejects(store.createEmpty(ownerToken, owner.id, key), ListingDraftAccessError);
+      assert.equal((await operator.query("select count(*)::integer as n from app.listings where id=$1", [first.id])).rows[0].n, 1);
+    });
+    await suite.test("owner keyset pages preserve microseconds and equal-time UUID ties without exposing other owners or private extras", async () => {
+      const pageOwner = (await operator.query("insert into app.users(email,password_hash,email_verified_at) values($1,$2,now()) returning id",
+        [`page-${randomBytes(6).toString("hex")}@example.invalid`, hash])).rows[0];users.push(pageOwner);
+      const pageToken = await session(pageOwner.id);
+      await operator.query(`insert into app.listings(author_id,listing_type,title,description,contact_phone,updated_at)
+        select $1,'sell','Synthetic page '||i,'synthetic-private-description','synthetic-private-phone',
+          timestamptz '2030-01-01 00:00:00.123456+00'+(i/3)*interval '1 microsecond' from generate_series(1,45) i`, [pageOwner.id]);
+      let cursor = null;const items = [];
+      do {
+        const page = await store.list(pageToken, pageOwner.id, cursor);
+        assert.ok(page.items.length > 0 && page.items.length <= 20);
+        assert.equal(JSON.stringify(page).includes("synthetic-private"), false);
+        for (const item of page.items) assert.deepEqual(Object.keys(item).sort(), ["id", "kind", "price", "revision", "title"]);
+        items.push(...page.items);cursor = page.nextCursor;
+        if (cursor) assert.match(cursor.updatedAt, /^2030-01-01T00:00:00\.1234\d{2}Z$/);
+        assert.ok(items.length <= 45);
+      } while (cursor);
+      assert.equal(items.length, 45);assert.equal(new Set(items.map(item => item.id)).size, 45);
+      const expected = (await operator.query("select id from app.listings where author_id=$1 order by updated_at desc,id desc", [pageOwner.id])).rows.map(row => row.id);
+      assert.deepEqual(items.map(item => item.id), expected);
+      await assert.rejects(store.list(pageToken, owner.id, null), ListingDraftAccessError);
+      await assert.rejects(store.createEmpty(pageToken, owner.id, randomUUID()), ListingDraftAccessError);
+      const stale = await session(pageOwner.id);await operator.query("delete from app.sessions where token_hash=$1", [hashSessionToken(stale)]);
+      await assert.rejects(store.list(stale, pageOwner.id, null), AppSessionAccessError);
+      await assert.rejects(store.createEmpty(stale, pageOwner.id, randomUUID()), AppSessionAccessError);
+    });
+    await suite.test("collection HTTP composes real cookie authorization, shared limiter, SQL creation and list without accepting initial content", async () => {
+      const collection = createProductionListingDraftHandler({ origin, collection: true }, () => ({ store, limiter }), () => {});
+      const call = async (token, body, method) => collection(new Request(origin+"/api/account/listing-drafts/collection", {
+        method, headers: request(token, owner.id, draft.id).headers, body: JSON.stringify(body),
+      }));
+      const key = randomUUID(), body = { expectedOwnerId: owner.id, creationKey: key };
+      const created = await call(ownerToken, body, "PUT");assert.equal(created.status, 200);
+      const initial = await created.json();assert.equal(initial.draft.title, "");
+      const duplicate = await call(ownerToken, body, "PUT");assert.equal(duplicate.status, 200);assert.deepEqual(await duplicate.json(), initial);
+      const list = await call(ownerToken, { expectedOwnerId: owner.id, cursor: null }, "POST");assert.equal(list.status, 200);
+      assert.ok((await list.json()).items.some(item => item.id === initial.id));
+      const switched = await call(otherToken, body, "PUT");assert.equal(switched.status, 404);
+      const invalid = await call(ownerToken, { ...body, draft: { title: "not accepted here" } }, "PUT");assert.equal(invalid.status, 422);
+    });
   } finally {
     await db.close();
     await operator.query("delete from app.users where id=any($1::uuid[])", [users.map(u => u.id)]);

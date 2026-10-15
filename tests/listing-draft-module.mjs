@@ -9,6 +9,7 @@ const exports = {};
 new Function("require", "exports", ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText)(path => {
+  if (path === "node:crypto") return createRequire(import.meta.url)(path);
   if (path === "./listing-draft-contract") return contract;
   if (path === "./app-session-transaction") return loadAdminModule("app-session-transaction");
   throw new Error("Unapproved listing draft fixture import");

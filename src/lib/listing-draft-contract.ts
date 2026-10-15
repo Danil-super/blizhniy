@@ -13,6 +13,23 @@ export type ListingDraftInput = {
   price: string | null;
 };
 export type ListingDraftSnapshot = { id: string; revision: string; draft: ListingDraftInput };
+export type ListingDraftCursor = { id: string; updatedAt: string };
+export type ListingDraftSummary = { id: string; revision: string; kind: ListingKind; title: string; price: string | null };
+export type ListingDraftPage = { items: ListingDraftSummary[]; nextCursor: ListingDraftCursor | null };
+
+export function parseListingDraftCursor(value: unknown): ListingDraftCursor | null {
+  if (value === null) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new ListingDraftInputError();
+  if (![Object.prototype, null].includes(Object.getPrototypeOf(value))) throw new ListingDraftInputError();
+  const input = value as Record<string, unknown>;
+  if (Reflect.ownKeys(input).length !== 2 || !Object.hasOwn(input, "id") || !Object.hasOwn(input, "updatedAt")) throw new ListingDraftInputError();
+  const stamp = input.updatedAt;
+  if (typeof stamp !== "string" || stamp.startsWith("0000-") || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(stamp)) throw new ListingDraftInputError();
+  const parsed = new Date(stamp);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 19) !== stamp.slice(0, 19)) throw new ListingDraftInputError();
+  // Date validates the calendar only; never use its truncated millisecond value as the cursor.
+  return { id: parseListingDraftId(input.id), updatedAt: stamp };
+}
 
 export function parseListingDraftId(value: unknown): string {
   if (typeof value !== "string" || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value)) throw new ListingDraftInputError();

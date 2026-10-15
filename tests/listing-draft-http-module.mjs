@@ -25,10 +25,10 @@ new Function("require", "exports", ts.transpileModule(
 }, exports);
 export const { createProductionListingDraftHandler } = exports;
 
-export function loadDraftRoute(handleProductionListingDraftRequest) {
+export function loadDraftRoute(handleProductionListingDraftRequest, collection = false) {
   const route = {};
   new Function("require", "exports", ts.transpileModule(
-    readFileSync(new URL("../src/app/api/account/listing-drafts/route.ts", import.meta.url), "utf8"),
+    readFileSync(new URL(collection ? "../src/app/api/account/listing-drafts/collection/route.ts" : "../src/app/api/account/listing-drafts/route.ts", import.meta.url), "utf8"),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
   ).outputText)(path => {
     if (path === "@/lib/auth-http") return boundary;
