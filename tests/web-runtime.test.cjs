@@ -43,7 +43,8 @@ test('malformed, widened or non-root configuration fails closed instead of silen
   for (const change of [a => a.state.body = '{', a => a.state.body = JSON.stringify({ version: 1, user: 'root', nodePath: binary }),
     a => a.entries.get(config).mode = 0o644, a => a.entries.get(config).uid = 994, a => a.entries.get(config).nlink = 2,
     a => a.entries.get('/etc/blizhniy').mode = 0o777, a => a.state.caller = 994, a => a.state.uid = 0,
-    a => a.state.version = 'v20.20.2\n', a => a.entries.get(binary).mode = 0o777]) {
+    a => a.state.version = 'v20.20.2\n', a => a.entries.get(binary).mode = 0o777,
+    a => a.entries.get('/opt/blizhniy-node22/bin').uid = 1000, a => a.entries.get(binary).uid = 1000]) {
     const app = fixture(); change(app); denied(() => app.getWebRuntime()); assert.deepEqual(app.changes, []);
   }
 });

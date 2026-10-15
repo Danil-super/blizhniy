@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, mkdtempSync, writeFileSync, rmSync, realpathSync, symlinkSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,6 +24,18 @@ test('production sandbox check refuses direct invocation outside its actual cgro
   });
   assert.equal(run.status, 1); assert.deepEqual(JSON.parse(run.stdout), { event: 'media_sandbox_check', status: 'unavailable' });
   assert.doesNotMatch(run.stderr, /Error:|\/home\/|password|stack/);
+});
+test('invocation through the production symlink executes the guard instead of exiting successfully without checking', () => {
+  const root = mkdtempSync(join(tmpdir(), 'blizhniy-media-entry-'));
+  try {
+    const entry = join(root, 'check.mjs'); symlinkSync(realpathSync('scripts/media-sandbox-check.mjs'), entry);
+    for (const flags of [[], ['--preserve-symlinks-main']]) {
+      const run = spawnSync(process.execPath, ['--experimental-strip-types', ...flags, entry, '--check'], {
+        encoding: 'utf8', timeout: 5000, env: { PATH: process.env.PATH, NODE_ENV: 'production' },
+      });
+      assert.equal(run.status, 1); assert.deepEqual(JSON.parse(run.stdout), { event: 'media_sandbox_check', status: 'unavailable' });
+    }
+  } finally { rmSync(root, { recursive: true }); }
 });
 test('media proof unit separates the decoder identity, files and network and has no scheduler or credentials', () => {
   const unit = readFileSync('ops/systemd/blizhniy-media-check.service', 'utf8');

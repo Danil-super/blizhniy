@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const membership = /^0::\/(?:[a-zA-Z0-9_.@:-]+\/)*blizhniy-media-check\.service\n?$/;
 const unavailable = () => new Error('Photo sandbox unavailable');
@@ -27,7 +27,7 @@ async function check() {
   if (image.width !== 40 || image.height !== 80 || image.size > 2097152 || metadata.format !== 'webp' || metadata.exif || metadata.icc || metadata.xmp || metadata.iptc) throw unavailable();
   process.stdout.write(JSON.stringify({ event: 'media_sandbox_check', status: 'ok', node: process.version, uid: process.getuid(), width: image.width, height: image.height }) + '\n');
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) {
   try { await check(); }
   catch { process.stdout.write(JSON.stringify({ event: 'media_sandbox_check', status: 'unavailable' }) + '\n'); process.exitCode = 1; }
 }

@@ -27,3 +27,11 @@ Decoder proof — отдельный `blizhniy-media` и manual oneshot `blizhni
 Проверки: native `web-runtime.test.cjs`, `media-sandbox-check.test.mjs`, дополненные deploy-readiness/package-prebuilt tests; реальные Linux permissions/Node22/PM2 identity и systemd cgroup proof проверяются оператором отдельно от fake FS/identity unit fixtures. Нулевой production audit не закрывает прежний полный9 build/dev advisory.
 
 Основание PM2 interpreter: [официальная конфигурация](https://pm2.keymetrics.io/docs/usage/application-declaration/); UID/GID дополнительно проверены в установленном `/usr/lib/node_modules/pm2/lib/God/ForkMode.js` до применения. Systemd unit проверяется настоящим `systemd-analyze verify`, а ограничения — kernel readback, не только текстом шаблона.
+
+## Проверка на VPS15.10.2026
+
+Прежний Node22 bundle сохранил archive UID1000 в bin и executable; operator guard остановил preflight до смены процесса. Весь установленный tree побайтно совпал с официальным `node-v22.23.3-linux-x64.tar.xz`, SHA256 архива `df450af89261115ef9f9e3830c3eeb2cc9213b63c720b1af623cb5dcbe2e02de`, SHA256 node `fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48`. После metadata checkpoint владелец5866 entries исправлен на root; tree/bytes не менялись. Это не ослабление root-owned проверки. Дополнительно native fixture явно отказывает archive-owned bin/executable.
+
+Затем actual Next probe на127.0.0.1:3201 под994:985 прошёл health/ready200, env hashes совпали. Основной PM2 `blizhniy` на5466f14 переключён на22.23.3/994:985: `/proc` подтвердил UID/GID/interpreter, отсутствие root supplementary groups и effective capabilities, публичный ready200/TLS verify0. PM2 dump сохранён; private rollback metadata и прежний build cache сохранены. БД, Auth-mode, SSH и другой бот не переключались.
+
+Первый manual media oneshot завершился0 **без** `media_sandbox_check` JSON. Это не засчитано как proof: entrypoint сравнивал canonical import.meta с symlink argv и пропускал исполнение. Сценарий воспроизведён на VPS: symlink CLI exit0 без вывода, physical CLI вне sandbox exit1/unavailable. Исправление канонизирует оба пути; новый subprocess test проверяет symlink также с `--preserve-symlinks-main`. После публикации нужно повторить unit и получить явный `status:ok` из actual child; один systemd Result=success не доказывает проверку cgroup/пикселей.
