@@ -139,5 +139,7 @@ export async function testListingPhotos(suite,operator,config,credentials){
       for(const value of [token,owner.id,draft.id,a,b])assert.equal(JSON.stringify(events).includes(value),false);
     });
     await testListingForm(suite,operator,db,{owner,other,token,otherToken,a,foreign,pending});
+    const {testListingModeration}=await import('./listing-moderation-integration.mjs');
+    await testListingModeration(suite,operator,db,config,{owner,other,admin,token,otherToken,adminToken,session,a});
   }finally{await db.close();}
 }
