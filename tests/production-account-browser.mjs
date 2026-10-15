@@ -15,6 +15,7 @@ import { test } from "node:test";
 import { chromium } from "playwright";
 import { createDefaultCabinetProfile } from "../src/lib/cabinet-profile.ts";
 import { createHash } from "node:crypto";
+import sharp from 'sharp';
 
 // Opaque transport revision only; real canonical hashing/row locking are tested with PG.
 const fixtureRevision = profile => profile ? createHash("sha256").update(JSON.stringify(profile)).digest("hex") : null;
@@ -149,13 +150,34 @@ test("primary account browser forms use the new cookie API without remote traffi
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const calls = [], sessionReads = [], foreign = [], errors = [];
       const state = { active: null, override: null, sessionReads, profiles: new Map(), profileRequests: [], profileOverride: null,
-        drafts: new Map(), draftRequests: [], draftLoseWrite: false, draftLoseCreate: false, draftOverride: null };
+        drafts: new Map(), draftRequests: [], draftLoseWrite: false, draftLoseCreate: false, draftOverride: null,
+        photos:new Map(),mediaRequests:[],photoLoseWrite:false };
+      const pixels=await sharp({create:{width:16,height:9,channels:3,background:'red'}}).webp().toBuffer();
       await context.route("**/*", async route => {
         const request = route.request(), url = new URL(request.url());
         if (url.href === "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit") return route.fulfill({ contentType: "application/javascript", body: captchaScript });
         if (["http:", "https:"].includes(url.protocol) && url.origin !== origin) { foreign.push(url.hostname); return route.abort(); }
         if (!url.pathname.startsWith("/api/account/")) return route.continue();
-        const action = url.pathname.split("/").at(-1), body = request.postDataJSON();
+        const action = url.pathname.split("/").at(-1), body = request.headers()['content-type']?.startsWith('application/json')?request.postDataJSON():null;
+        if(url.pathname==='/api/account/media'||url.pathname==='/api/account/media/read'){
+          state.mediaRequests.push({path:url.pathname,method:request.method(),headers:request.headers(),body});
+          if(!state.active)return route.fulfill({status:401,json:{error:{code:'UNAUTHENTICATED'}}});
+          if(url.pathname.endsWith('/read'))return route.fulfill({contentType:'image/webp',body:pixels});
+          const id=request.headers()['x-blizhniy-intent'];
+          return route.fulfill({json:{id,mimeType:'image/webp',width:16,height:9,size:pixels.length}});
+        }
+        if(url.pathname==='/api/account/listing-photos'){
+          if(!state.active||body.expectedOwnerId!==state.active.id)return route.fulfill({status:404,json:{error:{code:'DRAFT_NOT_FOUND'}}});
+          const draft=state.drafts.get(state.active.id)?.get(body.listingId);
+          if(!draft)return route.fulfill({status:404,json:{error:{code:'DRAFT_NOT_FOUND'}}});
+          if(request.method()==='PUT'){
+            if(body.expectedRevision!==draft.revision)return route.fulfill({status:409,json:{error:{code:'DRAFT_CHANGED'}}});
+            draft.revision=String(BigInt(draft.revision)+1n);
+            state.photos.set(draft.id,body.photoIds.map(id=>({id,mimeType:'image/webp',width:16,height:9,size:pixels.length})));
+            if(state.photoLoseWrite){state.photoLoseWrite=false;return route.abort();}
+          }
+          return route.fulfill({json:{id:draft.id,revision:draft.revision,photos:state.photos.get(draft.id)??[]}});
+        }
         if (url.pathname.startsWith("/api/account/listing-drafts")) {
           const collection = url.pathname.endsWith("/collection"), method = request.method();
           assert.ok(["POST", "PUT"].includes(method));assert.equal(request.headers().authorization, undefined);
@@ -230,6 +252,33 @@ test("primary account browser forms use the new cookie API without remote traffi
       await page.getByRole("button", { name: "Войти", exact: true }).click();
       await page.getByText(email, { exact: true }).waitFor();
     };
+    await run('private draft photos upload once, survive reload, preserve core edits and recover a lost association acknowledgement',async({page,state})=>{
+      await login(page);await page.goto(origin+'/cabinet/obyavleniya');
+      await page.getByRole('button',{name:'Новый черновик',exact:true}).click();
+      await page.getByLabel('Название',{exact:true}).fill('Черновик с фото');
+      await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
+      await page.getByText('Черновик сохранён.',{exact:true}).waitFor();
+      await page.getByLabel('Описание',{exact:true}).fill('Текст после загрузки фото');
+      await page.getByLabel('Добавить фотографию',{exact:true}).setInputFiles({name:'fixture.png',mimeType:'image/png',buffer:Buffer.from('synthetic-upload')});
+      await page.getByRole('button',{name:'Загрузить и сохранить фото',exact:true}).click();
+      await page.getByText('Фотографии сохранены.',{exact:true}).waitFor();
+      await page.getByRole('img',{name:'Фотография черновика'}).waitFor();
+      assert.equal(state.mediaRequests.filter(row=>row.path==='/api/account/media').length,1);
+      assert.equal(await page.getByLabel('Описание',{exact:true}).inputValue(),'Текст после загрузки фото');
+      await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
+      await page.getByText('Черновик сохранён.',{exact:true}).waitFor();
+      await page.reload();await page.getByRole('button',{name:'Черновик с фото',exact:true}).click();
+      await page.getByRole('img',{name:'Фотография черновика'}).waitFor();
+      assert.equal(await page.getByLabel('Описание',{exact:true}).inputValue(),'Текст после загрузки фото');
+      state.photoLoseWrite=true;
+      await page.getByRole('button',{name:'Убрать фото 1',exact:true}).click();
+      await page.getByRole('button',{name:'Проверить сохранённую версию',exact:true}).waitFor();
+      assert.equal(await page.getByRole('button',{name:'Сохранить черновик',exact:true}).isDisabled(),true);
+      await page.getByRole('button',{name:'Проверить сохранённую версию',exact:true}).click();
+      await page.getByRole('button',{name:'Принять сохранённую версию',exact:true}).click();
+      await page.getByRole('img',{name:'Фотография черновика'}).waitFor({state:'detached'});
+      assert.equal(state.mediaRequests.filter(row=>row.path==='/api/account/media').length,1);
+    });
     await run("ordinary cabinet and listing pages expose real owner drafts without legacy requests", async ({ page, state }) => {
       await login(page);
       await page.goto(origin+"/cabinet");

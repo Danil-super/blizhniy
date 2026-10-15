@@ -1,4 +1,5 @@
 import { AppSessionAccessError, withAppSessionTransaction } from "./app-session-transaction";
+import { assertMediaRuntime } from "./media-runtime-policy.ts";
 import type { MediaFileRecord, MediaFileObservation } from "./media-files";
 import type { createLocalMediaFileWorker } from "./media-file-worker";
 import type { PostgresDatabase, PostgresQueries } from "./postgres";
@@ -29,11 +30,12 @@ function imageMetadata(input: unknown): ImageMetadata {
 }
 const fileRecord = (row: MediaReservation): MediaFileRecord => ({ id: row.id, mimeType: row.mimeType, width: row.width, height: row.height, size: row.size, sha256: row.sha256 });
 
-/** Local SQL/FS boundary only. A reservation is NOT a filesystem writer claim/lease. No HTTP or retries. */
+/** Guarded SQL/FS boundary. Production requires explicit root-managed policy. No HTTP or retries. */
 export class MediaMetadataRepository {
   constructor(private readonly db: Pick<PostgresDatabase, "transaction">, private readonly files: { read(record: MediaFileRecord): Promise<Buffer> }) { this.assertLocal(); }
   private assertLocal(): void {
-    if (typeof window !== "undefined" || !["development", "test"].includes(process.env.NODE_ENV ?? "")) throw new MediaMetadataError("MEDIA_METADATA_UNAVAILABLE");
+    if (typeof window !== "undefined") throw new MediaMetadataError("MEDIA_METADATA_UNAVAILABLE");
+    try { assertMediaRuntime(process); } catch { throw new MediaMetadataError("MEDIA_METADATA_UNAVAILABLE"); }
   }
   private async owned<T>(token: string, work: (tx: PostgresQueries, ownerId: string) => Promise<T>): Promise<T> {
     this.assertLocal();

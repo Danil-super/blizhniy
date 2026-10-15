@@ -3,18 +3,24 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const membership = /^0::\/(?:[a-zA-Z0-9_.@:-]+\/)*blizhniy-media-check\.service\n?$/;
+const socketMembership = /^0::\/(?:[a-zA-Z0-9_.@:\\-]+\/)*blizhniy-media@[a-zA-Z0-9_.:\\-]+\.service\n?$/;
 const unavailable = () => new Error('Photo sandbox unavailable');
-export function assertPhotoSandbox({ uid, gid, node, env, status, cgroup, limits }) {
+export function photoSandboxCgroupRoot(cgroup, unitKind = 'check') {
+  const valid = unitKind === 'check' ? membership : unitKind === 'socket' ? socketMembership : null;
+  if (!valid?.test(cgroup) || cgroup.includes('..')) throw unavailable();
+  return '/sys/fs/cgroup' + cgroup.trim().slice(3);
+}
+export function assertPhotoSandbox({ uid, gid, node, env, status, cgroup, limits, unitKind = 'check' }) {
+  photoSandboxCgroupRoot(cgroup, unitKind);
   if (!Number.isInteger(uid) || uid <= 0 || !Number.isInteger(gid) || gid <= 0 || !/^22\.(?:1[89]|[2-9]\d)\.\d+$/.test(node) ||
-      env.NODE_ENV !== 'production' || Object.keys(env).some(key => /^(?:PG|DATABASE|POSTGRES|SMTP|SUPABASE|NODE_OPTIONS)|SECRET|TOKEN|CREDENTIAL/i.test(key)) ||
-      !/^NoNewPrivs:\s+1$/m.test(status) || !/^CapEff:\s+0+$/m.test(status) || !/^CapAmb:\s+0+$/m.test(status) || !membership.test(cgroup) ||
+      env.NODE_ENV !== 'production' || Object.keys(env).some(key => /^(?:PG|DATABASE|POSTGRES|SMTP|SUPABASE|BLIZHNIY_|NODE_OPTIONS)|SECRET|TOKEN|CREDENTIAL|PASSWORD/i.test(key)) ||
+      !/^NoNewPrivs:\s+1$/m.test(status) || !/^CapEff:\s+0+$/m.test(status) || !/^CapAmb:\s+0+$/m.test(status) ||
       limits.memory.trim() !== '536870912' || limits.swap.trim() !== '0' || limits.tasks.trim() !== '32' || limits.cpu.trim() !== '100000 100000') throw unavailable();
 }
 async function check() {
   if (process.argv.length !== 3 || process.argv[2] !== '--check' || process.platform !== 'linux') throw unavailable();
   const cgroup = await readFile('/proc/self/cgroup', 'utf8');
-  if (!membership.test(cgroup)) throw unavailable();
-  const root = '/sys/fs/cgroup' + cgroup.trim().slice(3);
+  const root = photoSandboxCgroupRoot(cgroup);
   const [memory, swap, tasks, cpu, status] = await Promise.all(['memory.max', 'memory.swap.max', 'pids.max', 'cpu.max']
     .map(name => readFile(root + '/' + name, 'utf8')).concat(readFile('/proc/self/status', 'utf8')));
   assertPhotoSandbox({ uid: process.getuid(), gid: process.getgid(), node: process.versions.node, env: process.env, status, cgroup, limits: { memory, swap, tasks, cpu } });

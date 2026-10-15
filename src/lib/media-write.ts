@@ -2,6 +2,7 @@ import type { MediaMetadataRepository, MediaReservation } from "./media-metadata
 import type { MediaFileRecord } from "./media-files";
 import type { NormalizedImage } from "./media-image";
 import { encodeMediaReply, MEDIA_MAX_OUTPUT_BYTES } from "./media-worker-protocol";
+import { assertMediaRuntime } from "./media-runtime-policy.ts";
 
 const metadataErrors = ["MEDIA_ACCESS_DENIED", "MEDIA_NOT_FOUND", "MEDIA_INTENT_CONFLICT", "MEDIA_IN_PROGRESS"] as const;
 type WriteErrorCode = (typeof metadataErrors)[number] | "INVALID_MEDIA_WRITE" | "MEDIA_WRITE_UNAVAILABLE";
@@ -9,7 +10,8 @@ export class MediaWriteError extends Error {
   constructor(readonly code: WriteErrorCode) { super("Media write operation failed"); this.name = "MediaWriteError"; }
 }
 function assertLocal(): void {
-  if (typeof window !== "undefined" || process.platform !== "linux" || !["development", "test"].includes(process.env.NODE_ENV ?? "")) throw new MediaWriteError("MEDIA_WRITE_UNAVAILABLE");
+  if (typeof window !== "undefined" || process.platform !== "linux") throw new MediaWriteError("MEDIA_WRITE_UNAVAILABLE");
+  try { assertMediaRuntime(process); } catch { throw new MediaWriteError("MEDIA_WRITE_UNAVAILABLE"); }
 }
 function snapshot(input: unknown): NormalizedImage {
   try {

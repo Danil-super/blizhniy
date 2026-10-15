@@ -1,0 +1,17 @@
+[Unit]
+Description=BLIZHNIY private image decoder socket
+
+[Socket]
+ListenStream=/run/blizhniy-media/decoder.sock
+SocketUser=blizhniy-web
+SocketGroup=blizhniy-web
+SocketMode=0600
+DirectoryMode=0755
+Accept=yes
+MaxConnections=1
+MaxConnectionsPerSource=1
+Backlog=1
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

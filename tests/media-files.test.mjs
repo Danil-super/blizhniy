@@ -9,11 +9,13 @@ import { test } from "node:test";
 import vm from "node:vm";
 import sharp from "sharp";
 import * as protocol from "../src/lib/media-worker-protocol.ts";
+import * as policy from "../src/lib/media-runtime-policy.ts";
 
 const require = createRequire(import.meta.url), ts = require("typescript");
 function module(overrides = {}) {
   const exports = {};
   const dependencies = { "node:fs": { constants }, "node:fs/promises": { ...fs, ...overrides.fs }, "node:crypto": { randomUUID, ...overrides.crypto }, "node:path": path, "./media-worker-protocol.ts": protocol };
+  dependencies["./media-runtime-policy.ts"] = policy;
   vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../src/lib/media-files.ts", import.meta.url), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText, { exports, Buffer, Uint8Array, Error, process: { platform: "linux", getuid: process.getuid, env: { NODE_ENV: "test" }, ...overrides.process },

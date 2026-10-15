@@ -1,0 +1,46 @@
+[Unit]
+Description=BLIZHNIY isolated one-image decoder
+CollectMode=inactive-or-failed
+
+[Service]
+Type=exec
+User=blizhniy-media
+Group=blizhniy-media
+WorkingDirectory=/var/www/blizhniy
+ExecStart=/opt/blizhniy-node22/bin/node --experimental-strip-types --no-warnings --max-old-space-size=128 /var/www/blizhniy/scripts/media-production-worker.mjs
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+Environment=NODE_ENV=production
+Environment=UV_THREADPOOL_SIZE=2
+Environment=VIPS_CONCURRENCY=1
+MemoryMax=512M
+MemorySwapMax=0
+CPUQuota=100%
+TasksMax=32
+RuntimeMaxSec=8
+TimeoutStartSec=2
+TimeoutStopSec=1
+KillMode=control-group
+KillSignal=SIGKILL
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+ProtectProc=invisible
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+InaccessiblePaths=-/etc/blizhniy -/var/lib/blizhniy-web -/etc/blizhniy-media-runtime.json
+InaccessiblePaths=-/var/www/blizhniy/.env -/var/www/blizhniy/.env.local -/var/www/blizhniy/.env.production -/var/www/blizhniy/.env.production.local
+LimitCORE=0
+LimitNOFILE=256
+UMask=0077

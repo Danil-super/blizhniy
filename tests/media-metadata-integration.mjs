@@ -172,7 +172,7 @@ export async function testMediaMetadata(suite, db, operator) {
         grant select,update on app.media_storage_budget to media_fixture_budget_owner;
         alter function app.charge_media_reservation() owner to media_fixture_budget_owner;
         revoke create on schema app from media_fixture_budget_owner;
-        grant select(id,role,is_blocked,email_verified_at,auth_version) on app.users to media_fixture_runtime;
+        grant select(id,email,role,is_blocked,email_verified_at,auth_version) on app.users to media_fixture_runtime;
         grant update(auth_version) on app.users to media_fixture_runtime;
         grant select on app.sessions,app.media_objects to media_fixture_runtime;
         grant update(last_seen_at) on app.sessions to media_fixture_runtime;

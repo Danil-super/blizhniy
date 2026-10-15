@@ -9,6 +9,11 @@ import { loadMediaModule } from "./media-module.mjs";
 import { testMediaObservations } from "./media-observation-integration.mjs";
 import { normalizeMediaImage } from "../src/lib/media-image.ts";
 import sharp from "sharp";
+import {createServer} from 'node:net';
+import {once} from 'node:events';
+import {createMediaSocketClient} from '../src/lib/media-socket.ts';
+import {createProductionMediaHandler} from '../src/lib/production-media-http.ts';
+import {IdentityStore} from '../src/lib/identity.ts';
 
 const { LocalMediaWriter } = loadMediaModule("media-write");
 const { LocalMediaUpload } = loadMediaModule("media-upload");
@@ -75,6 +80,38 @@ export async function testFencedMediaWrites(suite, db, { repo, root, token, othe
     assert.equal((await upload.upload(token, intent, bytes, "image/webp")).id, saved.id);
     assert.equal(writes, 1);
     assert.equal((await db.query("select count(*)::integer as n from app.media_write_attempts where media_id=$1", [saved.id])).rows[0].n, 1);
+  });
+  await suite.test('actual private HTTP + restricted PG + socket decoder + fenced files: upload, replay, private read and cross-owner denial',async()=>{
+    const socketRoot=await fs.mkdtemp(path.join((await import('node:os')).tmpdir(),'blizhniy-http-media-')),socketPath=path.join(socketRoot,'decoder.sock');
+    const children=new Set(),sockets=new Set();
+    const server=createServer({allowHalfOpen:true},socket=>{
+      sockets.add(socket);socket.on('error',()=>{});socket.on('close',()=>sockets.delete(socket));
+      const child=spawn(process.execPath,['--experimental-strip-types','--no-warnings','tests/media-socket-stdio-fixture.mjs'],{env:{NODE_ENV:'test'},stdio:[socket,socket,'ignore']});
+      children.add(child);child.once('close',()=>{children.delete(child);socket.destroy();});
+    });
+    server.listen(socketPath);await once(server,'listening');
+    try{
+      const limitedDb={transaction:work=>db.transaction(async tx=>{await tx.query('set local role media_fixture_runtime');return work(tx);})};
+      const limited=new MediaMetadataRepository(limitedDb,await createLocalMediaFileStore(root));
+      const pipeline=new LocalMediaUpload(limited,createMediaSocketClient(socketPath,()=>{}),new LocalMediaWriter(limited,await fileWorkerModule().createLocalMediaFileWorker(appRoot,root)));
+      const identity=new IdentityStore({...limitedDb,query:(sql,params)=>limitedDb.transaction(tx=>tx.query(sql,params))}),user=await identity.resolveSession(token),other=await identity.resolveSession(otherToken);
+      const handler=createProductionMediaHandler({origin:'https://media.example.invalid'},()=>({identity,limiter:{allowProduction:async()=>true},upload:pipeline,repository:limited}),()=>{});
+      const headers={'Host':'media.example.invalid','Origin':'https://media.example.invalid','X-Blizhniy-Request':'1','X-Real-IP':'192.0.2.8',Cookie:`__Host-blizhniy_session=${token}`};
+      const intent=randomUUID(),source=await sharp({create:{width:80,height:40,channels:3,background:'blue'}}).withMetadata({orientation:6}).jpeg().toBuffer();
+      const request=()=>new Request('https://media.example.invalid/api/account/media',{method:'POST',headers:{...headers,'Content-Type':'image/jpeg','X-Blizhniy-Owner':user.id,'X-Blizhniy-Intent':intent},body:source});
+      const response=await handler(request(),'upload');assert.equal(response.status,200);const saved=await response.json();assert.equal(saved.width,40);assert.equal(saved.height,80);
+      assert.deepEqual(await (await handler(request(),'upload')).json(),saved);
+      const read=(owner,credential)=>new Request('https://media.example.invalid/api/account/media/read',{method:'POST',headers:{...headers,Cookie:`__Host-blizhniy_session=${credential}`,'Content-Type':'application/json'},body:JSON.stringify({expectedOwnerId:owner,fileId:saved.id})});
+      const privateReply=await handler(read(user.id,token),'read');assert.equal(privateReply.status,200);assert.match(privateReply.headers.get('cache-control'),/no-store/);
+      const metadata=await sharp(Buffer.from(await privateReply.arrayBuffer())).metadata();assert.equal(metadata.format,'webp');assert.equal(metadata.exif,undefined);
+      assert.equal((await handler(read(other.id,otherToken),'read')).status,404);
+      assert.equal((await handler(read(other.id,token),'read')).status,409);
+      assert.equal((await handler(read(user.id,'0'.repeat(64)),'read')).status,401);
+      assert.equal((await db.query('select count(*)::int as n from app.media_write_attempts where media_id=$1',[saved.id])).rows[0].n,1);
+    }finally{
+      for(const child of children)child.kill('SIGKILL');for(const socket of sockets)socket.destroy();
+      await new Promise(resolve=>server.close(resolve));await fs.rm(socketRoot,{recursive:true});
+    }
   });
   await suite.test("upload + PG: two callers past authentication cannot race into two reservations or writes", { timeout: 15000 }, async () => {
     const normalized = await normalizeMediaImage(bytes, "image/webp"), worker = await fileWorkerModule().createLocalMediaFileWorker(appRoot, root);

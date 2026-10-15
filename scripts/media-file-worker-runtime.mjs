@@ -3,10 +3,12 @@ import { isAbsolute, resolve } from "node:path";
 import { createLocalMediaFileStore } from "../src/lib/media-files.ts";
 import { decodeFileWrite, FILE_WRITE_MAX_BYTES } from "../src/lib/media-file-protocol.ts";
 import { decodeFileInspection, encodeFileObservation, FILE_INSPECT_REQUEST_BYTES } from "../src/lib/media-file-inspection-protocol.ts";
+import { assertMediaRuntime } from "../src/lib/media-runtime-policy.ts";
 
 const same = (a, b) => a.dev === b.dev && a.ino === b.ino;
 export function assertFileFence(root) {
-  if (process.platform !== "linux" || process.env.NODE_ENV !== "test" || Number(process.versions.node.split(".")[0]) !== 22 ||
+  assertMediaRuntime(process,root);
+  if (process.platform !== "linux" || Number(process.versions.node.split(".")[0]) !== 22 ||
       typeof root !== "string" || !isAbsolute(root) || resolve(root) !== root || root === "/") throw new Error("File fence unavailable");
   const directory = fstatSync(4, { bigint: true }), lock = fstatSync(3, { bigint: true });
   if (!directory.isDirectory() || directory.uid !== BigInt(process.getuid()) || (directory.mode & BigInt(0o7777)) !== BigInt(0o700) || realpathSync("/proc/self/fd/4") !== root ||

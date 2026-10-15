@@ -2,6 +2,7 @@ import type { MediaMetadataRepository, MediaReservation } from "./media-metadata
 import type { LocalMediaWriter } from "./media-write";
 import type { createLocalMediaWorker } from "./media-worker";
 import { decodeMediaReply, encodeMediaReply, MEDIA_INPUT_TYPES, MEDIA_MAX_INPUT_BYTES, MEDIA_MAX_OUTPUT_BYTES } from "./media-worker-protocol";
+import { assertMediaRuntime } from "./media-runtime-policy.ts";
 
 export type UploadedMedia = Pick<MediaReservation, "id" | "mimeType" | "width" | "height" | "size">;
 const publicErrors = ["MEDIA_ACCESS_DENIED", "MEDIA_INTENT_CONFLICT", "MEDIA_IN_PROGRESS", "MEDIA_QUOTA_EXCEEDED",
@@ -11,14 +12,15 @@ export class MediaUploadError extends Error {
   constructor(readonly code: UploadErrorCode) { super("Media upload operation failed"); this.name = "MediaUploadError"; }
 }
 function assertLocal(): void {
-  if (typeof window !== "undefined" || process.platform !== "linux" || !["development", "test"].includes(process.env.NODE_ENV ?? "")) throw new MediaUploadError("MEDIA_UPLOAD_UNAVAILABLE");
+  if (typeof window !== "undefined" || process.platform !== "linux") throw new MediaUploadError("MEDIA_UPLOAD_UNAVAILABLE");
+  try { assertMediaRuntime(process); } catch { throw new MediaUploadError("MEDIA_UPLOAD_UNAVAILABLE"); }
 }
 function checkAbort(signal?: AbortSignal): void {
   if (signal?.aborted) throw new MediaUploadError("MEDIA_UPLOAD_UNAVAILABLE");
 }
 const result = ({ id, mimeType, width, height, size }: MediaReservation): UploadedMedia => ({ id, mimeType, width, height, size });
 
-/** Local composition only: supply the constrained decoder and OS-fenced one-shot writer.
+/** Guarded composition: supply the constrained decoder and OS-fenced one-shot writer.
  * No HTTP, public paths, cleanup, resumed claims or automatic retries. */
 export class LocalMediaUpload {
   constructor(private readonly repository: Pick<MediaMetadataRepository, "getByIntent" | "reserve" | "readOwned">,

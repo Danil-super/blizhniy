@@ -3,6 +3,7 @@ import { constants, type BigIntStats } from "node:fs";
 import { open, realpath, link, lstat, unlink, type FileHandle } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { encodeMediaReply, MEDIA_MAX_OUTPUT_BYTES } from "./media-worker-protocol.ts";
+import { assertMediaRuntime } from "./media-runtime-policy.ts";
 
 export type MediaFileRecord = { id: string; mimeType: "image/webp"; width: number; height: number; size: number; sha256: string };
 export type MediaFileStatus = "absent" | "complete" | "incomplete" | "unsafe";
@@ -31,7 +32,8 @@ function snapshotRecord(input: MediaFileRecord): MediaFileRecord {
 export async function createLocalMediaFileStore(rootDirectory: string, expectedRoot?: Pick<BigIntStats, "dev" | "ino">) {
   let identity: BigIntStats | undefined, disabled = false;
   const checkRuntime = () => {
-    if (typeof window !== "undefined" || process.platform !== "linux" || !["development", "test"].includes(process.env.NODE_ENV ?? "") ||
+    try { assertMediaRuntime(process, rootDirectory); } catch { throw unavailable(); }
+    if (typeof window !== "undefined" || process.platform !== "linux" ||
         typeof rootDirectory !== "string" || !isAbsolute(rootDirectory) || resolve(rootDirectory) !== rootDirectory || rootDirectory === "/" || disabled) throw unavailable();
   };
   const privateFile = (info: BigIntStats) => info.isFile() && info.uid === BigInt(process.getuid!()) && (info.mode & BigInt(0o7777)) === BigInt(0o600);

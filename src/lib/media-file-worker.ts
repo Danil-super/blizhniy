@@ -5,6 +5,7 @@ import { isAbsolute, resolve, join } from "node:path";
 import type { MediaFileRecord, MediaFileObservation } from "./media-files";
 import { encodeFileWrite } from "./media-file-protocol.ts";
 import { encodeFileInspection, decodeFileObservation, FILE_INSPECT_REPLY_BYTES } from "./media-file-inspection-protocol.ts";
+import { assertMediaRuntime } from "./media-runtime-policy.ts";
 
 type WorkerCode = "INVALID_MEDIA_FILE_WRITE" | "INVALID_MEDIA_FILE_INSPECTION" | "MEDIA_FILE_WORKER_BUSY" | "MEDIA_FILE_WORKER_UNAVAILABLE";
 export class MediaFileWorkerError extends Error {
@@ -22,8 +23,9 @@ type ObservationJob<T> = { mode: "observe"; work: (inspect: MediaFileInspector) 
 /** Trusted local configuration only. No SQL authority, retry, cleanup or production upload. */
 export async function createLocalMediaFileWorker(appDirectory: string, rootDirectory: string) {
   const check = () => {
+    try { assertMediaRuntime(process, rootDirectory, appDirectory); } catch { throw unavailable(); }
     if (typeof window !== "undefined" || process.platform !== "linux" || Number(process.versions.node.split(".")[0]) !== 22 ||
-        !["development", "test"].includes(process.env.NODE_ENV ?? "") || state.disabled ||
+        state.disabled ||
         [appDirectory, rootDirectory].some(value => typeof value !== "string" || !isAbsolute(value) || resolve(value) !== value || value === "/")) throw unavailable();
   };
   let rootIdentity: BigIntStats | undefined, lockIdentity: BigIntStats | undefined;
@@ -57,7 +59,9 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
         handles = await acquireDescriptors(); if (signal?.aborted) throw unavailable();
         const child = spawn("/usr/bin/flock", ["--no-fork", "--exclusive", "--nonblock", "--conflict-exit-code=73", "/proc/self/fd/3",
           process.execPath, "--experimental-strip-types", "--no-warnings", "--max-old-space-size=64", join(appDirectory, "scripts/media-file-worker.mjs"), rootDirectory, mode,
-        ], { env: { NODE_ENV: "test", LANG: "C", UV_THREADPOOL_SIZE: "2" }, shell: false, stdio: ["pipe", "pipe", "ignore", handles.lock.fd, handles.directory.fd] });
+        ], { env: { NODE_ENV: process.env.NODE_ENV === "production" ? "production" : "test", LANG: "C", UV_THREADPOOL_SIZE: "2",
+          ...(process.env.NODE_ENV === "production" ? { BLIZHNIY_AUTH_MODE: "postgres" } : {}) },
+          shell: false, stdio: ["pipe", "pipe", "ignore", handles.lock.fd, handles.directory.fd] });
         // Extra inherited FDs select Node's general overload; fd 0/1 are fixed pipes above.
         const stdin = child.stdin!, stdout = child.stdout!;
         return await new Promise<unknown>((accept, reject) => {

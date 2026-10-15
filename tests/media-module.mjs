@@ -6,11 +6,13 @@ import { createRequire } from "node:module";
 import vm from "node:vm";
 import * as protocol from "../src/lib/media-worker-protocol.ts";
 import { loadAdminModule } from "./admin-module.mjs";
+import * as policy from "../src/lib/media-runtime-policy.ts";
 
 const ts = createRequire(import.meta.url)("typescript");
 export function loadMediaModule(name, environment = {}, fileSystem = fs) {
   if (!["media-metadata", "media-files", "media-write", "media-upload"].includes(name)) throw new Error("Unapproved media module");
   const dependencies = { "./app-session-transaction": loadAdminModule("app-session-transaction"), "./media-worker-protocol": protocol, "./media-worker-protocol.ts": protocol,
+    "./media-runtime-policy.ts": policy,
     "node:fs": { constants }, "node:fs/promises": fileSystem, "node:crypto": crypto, "node:path": path };
   const exports = {};
   vm.runInNewContext(ts.transpileModule(readFileSync(new URL(`../src/lib/${name}.ts`, import.meta.url), "utf8"), {
