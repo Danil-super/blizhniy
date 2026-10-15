@@ -21,6 +21,8 @@ import {
   type DemoPublicationType,
 } from "@/lib/demo-publications";
 import { useAuthState } from "@/components/auth/useAuthState";
+import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
+import { PrivateDraftsPanel } from "@/components/listings/PrivateDraftsPage";
 import { LegalLink } from "@/components/LegalConsentCheckbox";
 import { ListingShareButton } from "@/components/listings/ListingShareButton";
 import { StoredMediaImage, StoredMediaVideo } from "@/components/StoredMedia";
@@ -3095,12 +3097,14 @@ export function CabinetProfileBar() {
 }
 
 export function CabinetOverviewClient() {
+  const primaryAccount = usePrimaryAccountAuth();
   const { profile, items, loading, profileError, itemsError, reloadProfile } = useUserCabinetData();
   const listings = items.filter((item) => item.type === "listing");
   const vacancies = items.filter((item) => item.type === "vacancy");
   const orders = items.filter((item) => item.type === "workRequest");
 
   if (!loading && profileError && !profile) return <CabinetProfileFailure message={profileError} reload={reloadProfile} />;
+  if (primaryAccount) return <PrivateDraftsPanel />;
   if (!loading && itemsError) return <CabinetProfileFailure message={itemsError} />;
   if (loading || !profile) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем кабинет...</div>;
@@ -3129,9 +3133,11 @@ export function CabinetOverviewClient() {
 }
 
 export function CabinetPublicationsClient({ type }: { type: DemoPublicationType }) {
+  const primaryAccount = usePrimaryAccountAuth();
   const { items, loading, itemsError } = useUserCabinetData();
   const visibleItems = useMemo(() => items.filter((item) => item.type === type), [items, type]);
 
+  if (primaryAccount && type === "listing") return <PrivateDraftsPanel />;
   if (loading) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем раздел...</div>;
   }

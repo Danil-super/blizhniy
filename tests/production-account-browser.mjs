@@ -230,6 +230,20 @@ test("primary account browser forms use the new cookie API without remote traffi
       await page.getByRole("button", { name: "Войти", exact: true }).click();
       await page.getByText(email, { exact: true }).waitFor();
     };
+    await run("ordinary cabinet and listing pages expose real owner drafts without legacy requests", async ({ page, state }) => {
+      await login(page);
+      await page.goto(origin+"/cabinet");
+      await page.getByText("Черновиков пока нет.", { exact: true }).waitFor();
+      await page.goto(origin+"/cabinet/obyavleniya");
+      await page.getByRole("button", { name: "Новый черновик", exact: true }).click();
+      await page.getByLabel("Название", { exact: true }).fill("Черновик из обычного кабинета");
+      await page.getByRole("button", { name: "Сохранить черновик", exact: true }).click();
+      await page.getByText("Черновик сохранён.", { exact: true }).waitFor();
+      assert.equal(state.drafts.get(state.active.id).size, 1);
+      await page.reload();
+      await page.getByRole("button", { name: "Черновик из обычного кабинета", exact: true }).click();
+      assert.equal(await page.getByLabel("Название", { exact: true }).inputValue(), "Черновик из обычного кабинета");
+    });
     await run("private draft editor creates, saves and recovers an unknown write without losing local text or repeating the write", async ({ page, state }) => {
       await login(page);
       const response = await page.goto(origin+"/cabinet/chernoviki");assert.equal(response.status(), 200);

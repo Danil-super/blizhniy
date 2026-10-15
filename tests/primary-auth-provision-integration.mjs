@@ -36,6 +36,27 @@ export async function testPrimaryAuthProvision(suite, config, administrator) {
       db = createPostgresDatabase({ NODE_ENV: "test", BLIZHNIY_DB_HOST: config.host, BLIZHNIY_DB_PORT: String(config.port),
         BLIZHNIY_DB_NAME: config.database, BLIZHNIY_DB_USER: credentials.user, BLIZHNIY_DB_PASSWORD: credentials.password, BLIZHNIY_DB_SSL_MODE: "disable" });
     });
+    await suite.test("startup refuses an identity owner whose revoked UPDATE breaks foreign-key checks despite readable tables", async () => {
+      const owner = "blizhniy_fk_probe_owner";
+      await administrator.query(`create role ${owner} nologin nosuperuser nocreatedb nocreaterole`);
+      try {
+        await administrator.query(`grant usage,create on schema app to ${owner}`);
+        await administrator.query(`alter table app.users owner to ${owner}`);
+        await administrator.query(`revoke update on app.users from ${owner}`);
+        assert.equal((await client.query("select has_table_privilege('app.users','SELECT') as readable")).rows[0].readable, true);
+        const before = (await client.query("select count(*)::int as count from app.users")).rows[0].count;
+        await assert.rejects(new RegistrationStore(db).register({ email: "revoked-owner@example.invalid", password: "Synthetic revoked owner passphrase!",
+          acceptedAgreement: true, acknowledgedPrivacy: true, agreementVersion: REGISTRATION_LEGAL_VERSIONS.agreement,
+          privacyVersion: REGISTRATION_LEGAL_VERSIONS.privacy }), { code: "42501" });
+        assert.equal((await client.query("select count(*)::int as count from app.users")).rows[0].count, before);
+        await assert.rejects(verifyProductionAuthDatabase(db), /Invalid production runtime privileges/);
+      } finally {
+        await administrator.query(`alter table app.users owner to ${administrator.escapeIdentifier(config.user)}`);
+        await administrator.query(`revoke usage,create on schema app from ${owner}`);
+        await administrator.query(`drop role ${owner}`);
+      }
+      await verifyProductionAuthDatabase(db);
+    });
     await testRestrictedReadiness(suite, db);
     await suite.test("restricted primary role reads public reference projections without owner credentials or static tariff identities", async () => {
       const catalog = await new PostgresCatalogRepository(db).getPublicCategories();

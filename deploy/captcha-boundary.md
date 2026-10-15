@@ -1,6 +1,10 @@
 # CAPTCHA trust boundary and rollout
 
-This change is source-only. The live Caddy/PM2 configuration has not been changed.
+As of 2026-10-15, the direct VPS Caddy upstream uses the header overwrites below,
+after validating and reloading its configuration. The previous configuration is
+backed up outside Git. The Next process is bound to loopback and runs as the
+dedicated web user. Production account confirmation/session/profile and owned
+draft writes have exercised this ingress; a socket peer is not a caller header.
 Both ingress configuration and the loopback binding are required; the application
 cannot authenticate a proxy merely by seeing an `X-Real-IP` HTTP header.
 

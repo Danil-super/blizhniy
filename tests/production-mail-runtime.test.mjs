@@ -21,7 +21,8 @@ test("real production mail runtime loads no key/pool until explicit valid config
     BLIZHNIY_MAIL_MODE: "timeweb", BLIZHNIY_SMTP_USER: "notifications@xn----9sbphbgks4a4a.xn--p1ai", BLIZHNIY_SMTP_PASSWORD: "synthetic-smtp-password" };
   const Pool = pg.Pool, calls = { pools: 0, closed: 0, sql: [] };
   const role = { name: "blizhniy_runtime", rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolreplication: false, rolbypassrls: false,
-    schema_create: false, public_create: false, database_create: false, temp_create: false, role_update: false, role_insert: false, rate_schema_missing: false };
+    schema_create: false, public_create: false, database_create: false, temp_create: false, role_update: false, role_insert: false, rate_schema_missing: false,
+    identity_owner_permissions_missing: false };
   let change = {}, missingSchema = false;
   pg.Pool = class {
     constructor(config) { calls.pools++; assert.equal(config.user, "blizhniy_runtime"); assert.equal(config.ssl.rejectUnauthorized, true); }
@@ -46,7 +47,7 @@ test("real production mail runtime loads no key/pool until explicit valid config
     assert.ok(runtime.worker instanceof MailDeliveryWorker); assert.equal(typeof runtime.prune, "function");
     assert.equal(calls.pools, 1); assert.equal(calls.sql.length, 2); assert.equal(calls.closed, 0);
     assert.equal(typeof runtime.mailer.send, "function"); await runtime.close(); assert.equal(calls.closed, 1);
-    for (const alteration of [{ name: "gen_user" }, { role_update: true }, { rolsuper: true }, { rate_schema_missing: true }]) {
+    for (const alteration of [{ name: "gen_user" }, { role_update: true }, { rolsuper: true }, { rate_schema_missing: true }, { identity_owner_permissions_missing: true }]) {
       change = alteration;
       const before = calls.closed;
       await assert.rejects(createProductionMailRuntime(env), { message: "Production mail unavailable" });

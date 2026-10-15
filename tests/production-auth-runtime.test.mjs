@@ -19,8 +19,10 @@ function fixture(changes = {}) {
   const key = randomBytes(32);
   const role = { name: "blizhniy_runtime", rolsuper: false, rolcreatedb: false, rolcreaterole: false,
     rolreplication: false, rolbypassrls: false, schema_create: false, public_create: false,
-    database_create: false, temp_create: false, role_update: false, role_insert: false, rate_schema_missing: false, ...changes.role };
+    database_create: false, temp_create: false, role_update: false, role_insert: false, rate_schema_missing: false,
+    identity_owner_permissions_missing: false, ...changes.role };
   if (changes.missingRateSchema) delete role.rate_schema_missing;
+  if (changes.missingOwnerPermissions) delete role.identity_owner_permissions_missing;
   const db = { query: async sql => {
     calls.queries.push(sql);
     if (sql.includes("from pg_roles")) return { rows: [role] };
@@ -100,6 +102,16 @@ test("production startup refuses the old small rate schema before accepting any 
     assert.equal(f.calls.close, 1);
     assert.equal(f.calls.mailers, 0);
     assert.match(f.calls.queries[0], /auth_rate_limits_production_attempts_check/);
+  }
+  delete globalThis.blizhniyProductionAuth;
+});
+
+test("production startup refuses missing owner lock privileges or an incomplete owner privilege probe", async () => {
+  for (const changes of [{ role: { identity_owner_permissions_missing: true } }, { missingOwnerPermissions: true }]) {
+    const f = fixture(changes);
+    assert.equal((await f.runtime.handleProductionAccountRequest(request(), "register")).status, 503);
+    assert.equal(f.calls.close, 1);
+    assert.equal(f.calls.mailers, 0);
   }
   delete globalThis.blizhniyProductionAuth;
 });
