@@ -9,11 +9,12 @@ import { region, cities, categories, professions, tariffs } from "../src/lib/dat
 const names = ["0001-identity.sql", "0002-registration.sql", "0003-auth-rate-limits.sql",
   "0004-password-recovery.sql", "0005-reference-catalog.sql", "0006-media-reservations.sql", "0007-media-write-attempts.sql"];
 
-export function getBootstrapPlan({ includeMail = false, includeProfiles = false, includeListings = false } = {}) {
-  if ([includeMail, includeProfiles, includeListings].some(value => typeof value !== "boolean")) throw new Error("Invalid bootstrap option");
+export function getBootstrapPlan({ includeMail = false, includeProfiles = false, includeListings = false, includeListingPhotos = false } = {}) {
+  if ([includeMail, includeProfiles, includeListings, includeListingPhotos].some(value => typeof value !== "boolean")) throw new Error("Invalid bootstrap option");
   const mail = [...names, "0008-mail-outbox.sql", "0009-mail-delivery.sql", "0010-production-rate-limits.sql"];
   const account = [...mail, "0011-cabinet-profiles.sql"];
-  const approved = includeListings ? [...account, "0012-listings.sql"] : includeProfiles ? account : includeMail ? mail : names;
+  const listings = [...account, "0012-listings.sql"];
+  const approved = includeListingPhotos ? [...listings, "0013-listing-photos.sql"] : includeListings ? listings : includeProfiles ? account : includeMail ? mail : names;
   return approved.map(name => {
     const source = readFileSync(new URL(`../database/migrations/${name}`, import.meta.url), "utf8");
     if (!/^begin;$/m.test(source) || !/commit;\s*$/.test(source)) throw new Error("Invalid bootstrap migration");
@@ -105,16 +106,16 @@ export async function bootstrapPostgres(client, confirmation, options = {}) {
 
 async function main() {
   const args = process.argv.slice(2);
-  if (args.length === 1 && ["--plan", "--plan-mail", "--plan-account", "--plan-listings"].includes(args[0])) {
-    console.log(JSON.stringify({ migrations: getBootstrapPlan({ includeMail: args[0] === "--plan-mail", includeProfiles: args[0] === "--plan-account", includeListings: args[0] === "--plan-listings" }).map(({name,sha256}) => ({name,sha256})),
+  if (args.length === 1 && ["--plan", "--plan-mail", "--plan-account", "--plan-listings", "--plan-listing-photos"].includes(args[0])) {
+    console.log(JSON.stringify({ migrations: getBootstrapPlan({ includeMail: args[0] === "--plan-mail", includeProfiles: args[0] === "--plan-account", includeListings: args[0] === "--plan-listings", includeListingPhotos: args[0] === "--plan-listing-photos" }).map(({name,sha256}) => ({name,sha256})),
       references: Object.fromEntries(Object.entries(getReferenceSeed()).map(([name,rows]) => [name,rows.length])) }, null, 2));
     return;
   }
-  if (args.length !== 2 || !["--apply", "--apply-mail", "--apply-account", "--apply-listings"].includes(args[0])) throw new BootstrapError("Usage: bootstrap-postgres.mjs --plan[|-mail|-account|-listings] | --apply[|-mail|-account|-listings] HOST:DATABASE");
+  if (args.length !== 2 || !["--apply", "--apply-mail", "--apply-account", "--apply-listings", "--apply-listing-photos"].includes(args[0])) throw new BootstrapError("Usage: bootstrap-postgres.mjs --plan[|-mail|-account|-listings|-listing-photos] | --apply[|-mail|-account|-listings|-listing-photos] HOST:DATABASE");
   const config = readPostgresConfig();
   if (args[1] !== `${config.host}:${config.database}`) throw new BootstrapError("Missing or mismatched target confirmation");
   const client = new pg.Client({ ...config, application_name: "blizhniy-bootstrap" });
-  try { await client.connect(); console.log(JSON.stringify(await bootstrapPostgres(client, args[1], { includeMail: args[0] === "--apply-mail", includeProfiles: args[0] === "--apply-account", includeListings: args[0] === "--apply-listings" }))); }
+  try { await client.connect(); console.log(JSON.stringify(await bootstrapPostgres(client, args[1], { includeMail: args[0] === "--apply-mail", includeProfiles: args[0] === "--apply-account", includeListings: args[0] === "--apply-listings", includeListingPhotos: args[0] === "--apply-listing-photos" }))); }
   finally { await client.end(); }
 }
 

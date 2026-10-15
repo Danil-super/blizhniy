@@ -202,6 +202,10 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testListingSchema(suite, client, config, credentials);
     const { testListingDrafts } = await import("./listing-drafts-integration.mjs");
     await testListingDrafts(suite, client, config, credentials);
+    const { testListingPhotoSchema } = await import("./listing-photo-schema-integration.mjs");
+    await testListingPhotoSchema(suite, client, config, credentials);
+    const { testListingPhotos } = await import("./listing-photos-integration.mjs");
+    await testListingPhotos(suite, client, config, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));
