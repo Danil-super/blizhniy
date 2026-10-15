@@ -204,6 +204,7 @@ function loadGate(fileName, exportName) {
       if (id === "@/components/auth/useAuthState") return { useAuthState: () => authSnapshot };
       if (id === "@/components/auth/AccountAuthProvider") return { usePrimaryAccountAuth: () => null };
       if (id === "@/components/auth/LocalAccountForm") return { LocalAccountForm: "LocalAccountForm" };
+      if(id==='@/lib/local-account')return{notifyAccountSessionChange:()=>assert.fail('Render-only gate test must not refresh a session')};
       if (id === "next/link") return { default: "Link" };
       if (id === "@/components/auth/AuthForm") return { AuthForm: "AuthForm" };
       throw new Error(`Unexpected module: ${id}`);

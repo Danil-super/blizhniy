@@ -653,6 +653,7 @@ export function ListingKindAndCategoryFields({
         <span className="text-xs font-bold text-slate-700 sm:text-sm">Категория</span>
         <span className="mt-1 block sm:mt-2">
           <input type="hidden" name="category" value={categorySlug} />
+          <input type="hidden" name="subcategoryName" value={selectedSubcategoryName} />
           <DropdownSelect
             value={categoryOptionValue}
             onValueChange={handleCategoryChange}

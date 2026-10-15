@@ -2033,7 +2033,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
   return (
     <>
       <SiteHeader />
-      <PublicationAuthGate title={editing ? "Войдите, чтобы редактировать объявление" : "Войдите, чтобы создать объявление"}>
+      <PublicationAuthGate preserveDraftDuringRecheck title={editing ? "Войдите, чтобы редактировать объявление" : "Войдите, чтобы создать объявление"}>
         <main className="page-container py-10">
           <Breadcrumbs items={[{ label: editing ? "Редактирование объявления" : "Создание объявления" }]} />
           <BackLink fallbackHref="/cabinet/obyavleniya" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">

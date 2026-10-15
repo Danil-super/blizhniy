@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
+import {PrimaryListingFormButton} from '@/components/listings/PrimaryListingFormButton';
 import { ArrowRight } from "lucide-react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { createStoredListingPublication } from "@/lib/client-listing-flow";
@@ -500,7 +502,13 @@ async function createSupabaseVacancy(formData: FormData, options: { accessToken:
   return result;
 }
 
-export function AdminDemoPublishButton({
+export function AdminDemoPublishButton(props:AdminDemoPublishButtonProps){
+  const primary=usePrimaryAccountAuth();
+  if(primary&&props.publicationType==='listing')return <PrimaryListingFormButton draft={isDraftStatus(props.status??'Опубликовано')} label={props.label} returnHref={props.returnHref} className={props.buttonClassName}/>;
+  return <LegacyPublicationButton {...props}/>;
+}
+
+function LegacyPublicationButton({
   buttonClassName,
   captchaAfterButton = false,
   label,

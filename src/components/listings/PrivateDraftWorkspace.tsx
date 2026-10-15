@@ -7,6 +7,7 @@ import { PrivateDraftEditor, draftFields, draftIsDirty, draftButton, type DraftE
 import { useDraftLeaveGuard } from "./useDraftLeaveGuard";
 import {usePrivateDraftPhotos} from './usePrivateDraftPhotos';
 import {PrivateDraftPhotos} from './PrivateDraftPhotos';
+import {PrivateDraftDetails} from './PrivateDraftDetails';
 
 export function PrivateDraftWorkspace({ owner, visible }: { owner: string; visible: boolean }) {
   const [page, setPage] = useState<ListingDraftPage | null>(null), [editor, setEditor] = useState<DraftEditorState | null>(null);
@@ -113,5 +114,6 @@ export function PrivateDraftWorkspace({ owner, visible }: { owner: string; visib
       setEditor(current => current ? { ...current, fields: { ...current.fields, ...fields } } : null);
     }} />}
     {editor&&<PrivateDraftPhotos owner={owner} photos={photos} disabled={!!busy||editor.blocked}/>}
+    {editor&&<PrivateDraftDetails owner={owner} id={editor.saved.id} revision={editor.saved.revision}/>}
   </div>;
 }
