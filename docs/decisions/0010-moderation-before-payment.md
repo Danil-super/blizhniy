@@ -1,6 +1,6 @@
 # ADR-010: Модерация до оплаты объявления
 
-Статус: порядок принят владельцем 15.10.2026; подключение интерфейса и оплаты не завершено.
+Статус: порядок принят владельцем 15.10.2026; интерфейс владельца подключён, интерфейс модератора и оплата не завершены.
 
 ## Контекст
 
@@ -24,6 +24,14 @@
 
 `node --experimental-strip-types --test tests/listing-moderation-plan.test.mjs` проверяет операторский plan без соединения. `node --experimental-strip-types --test tests/bootstrap-postgres-integration.mjs` поднимает собственный loopback PostgreSQL18 и проверяет migration/down, restricted grants, ownership, роли, CAS, конкуренцию, устаревание, отказ и unknown commit. Нужен Node22 и доступ к существующему Docker socket; remote env тесты не читают.
 
-Миграция `0014-listing-moderation.sql` включается только явным `--plan-listing-moderation` / `--apply-listing-moderation HOST:DATABASE`. Предыдущие 13 migrations не меняются. Никаких runtime grants в миграции: оператор отдельно выдаёт SELECT, INSERT и UPDATE только state/decision_note/decided_at/decided_by. DELETE/TRUNCATE/изменение listing_id/revision/даты отправки и paid/status по-прежнему запрещены runtime.
+Миграция `0014-listing-moderation.sql` включается только явным `--plan-listing-moderation` / `--apply-listing-moderation HOST:DATABASE`. Предыдущие 13 migrations не меняются. Никаких runtime grants в миграции: оператор отдельно выдаёт SELECT, INSERT только listing_id/revision и UPDATE только state/decision_note/decided_at/decided_by. DELETE/TRUNCATE/изменение listing_id/revision/даты отправки, явная вставка approved и paid/status по-прежнему запрещены runtime.
 
 Down работает только на пустой таблице, непустая история блокирует удаление. Безопасный operational rollback — код предыдущей версии с сохранением новой таблицы, Auth и российских данных; не возврат к Supabase. Schema/grants применяются отдельно от HTTP и deploy, после проверки exact journal и целевой БД. Существующие записи не импортируются и не одобряются автоматически.
+
+## Приватная отправка из кабинета
+
+`/api/account/listing-moderation`: POST читает статус, PUT отправляет сохранённую версию. Оба принимают ровно `{expectedOwnerId,listingId,expectedRevision}`; цена, роль, решение, поля формы и paid/status отклоняются. Cookie/Host/Origin/custom header/Sec-Fetch/ingress/body4096/2s/SQL session limiter и no-store переиспользованы.401/404/409/422/429 и generic503; audit не содержит аккаунты, тексты, причины отказа или IDs. Этот маршрут не позволяет принять решение администратора.
+
+Клиент читает bounded4096-byte DTO: `{id,revision,state,note}`, состояния not_submitted/pending/approved/rejected/outdated. После неизвестного исхода PUT только явная проверка статуса; автоматического retry нет. Переотправка той же отклонённой версии недоступна; новое редактирование делает прежнее решение outdated. Dirty/blocked/identity-change уничтожают видимый старый статус; нет browser storage или bearer-токенов. Обычный кабинет показывает отсутствие опубликованного размещения и неподключённую оплату явно.
+
+Для этого owner-only HTTP инкремента на рабочем runtime достаточно SELECT и INSERT(listing_id,revision); UPDATE решения не требуется и не выдаётся до проверенного подключения административного интерфейса. Назначение конкретного пользователя администратором требует выбора владельца. Приватный API не открывает произвольный доступ к другим объявлениям или фото.

@@ -6,6 +6,8 @@ import {formModule} from './listing-form-module.mjs';
 import {PostgresListingDraftStore,ListingDraftAccessError,ListingDraftConflictError} from './listing-draft-module.mjs';
 import {loadAdminModule} from './admin-module.mjs';
 import {moderationModule} from './listing-moderation-module.mjs';
+import {createProductionListingModerationHandler} from './listing-moderation-http-module.mjs';
+import {AuthRateLimiter} from '../src/lib/auth-http.ts';
 const {PostgresListingModerationStore,ListingModerationInputError}=moderationModule;
 const {AdminAccessError}=loadAdminModule('admin-authorization');
 export async function testListingModeration(suite,operator,db,config,{owner,other,admin,token,otherToken,adminToken,session,a}){
@@ -21,7 +23,7 @@ export async function testListingModeration(suite,operator,db,config,{owner,othe
   assert.deepEqual((await operator.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows,prior);
   assert.equal((await bootstrapPostgres(operator,target,{includeListingModeration:true})).applied,1);
   assert.equal((await bootstrapPostgres(operator,target,{includeListingModeration:true})).applied,0);
-  await operator.query('grant select,insert,update(state,decision_note,decided_at,decided_by) on app.listing_moderation to blizhniy_runtime');
+  await operator.query('grant select,insert(listing_id,revision),update(state,decision_note,decided_at,decided_by) on app.listing_moderation to blizhniy_runtime');
   for(const sql of ['delete from app.listing_moderation where false','truncate app.listing_moderation','update app.listing_moderation set revision=1 where false',"update app.listings set is_paid=true where false"])
    await assert.rejects(db.query(sql),{code:'42501'});
  });
@@ -113,5 +115,19 @@ export async function testListingModeration(suite,operator,db,config,{owner,othe
   try{await assert.rejects(operator.query(down),/Refusing to remove nonempty listing moderation/);}finally{await operator.query('rollback');}
   assert.equal((await operator.query("select exists(select 1 from pg_class c,lateral aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a where c.oid='app.listing_moderation'::regclass and a.grantee=0) as allowed")).rows[0].allowed,false);
   assert.ok((await operator.query('select count(*)::int as n from app.listing_moderation')).rows[0].n>=3);
+ });
+ await suite.test('owner HTTP uses real cookie transaction, limited SQL and safe private readback',async()=>{
+  const origin='https://app.example.invalid',events=[],limiter=new AuthRateLimiter(db,'m'.repeat(64));
+  const handle=createProductionListingModerationHandler({origin},()=>({store,limiter}),event=>events.push(event));
+  const body={expectedOwnerId:owner.id,listingId:saved.id,expectedRevision:saved.revision};
+  const request=(data=body,credential=token,method='POST')=>new Request(origin+'/api/account/listing-moderation',{method,headers:{host:'app.example.invalid',origin,'x-blizhniy-request':'1','x-real-ip':'192.0.2.66','content-type':'application/json',cookie:'__Host-blizhniy_session='+credential},body:JSON.stringify(data)});
+  assert.equal((await handle(request(body,token,'PUT'))).status,200);
+  assert.equal((await (await handle(request())).json()).state,'pending');
+  assert.equal((await handle(request({...body,expectedOwnerId:other.id},otherToken))).status,404);
+  assert.equal((await handle(request({...body,expectedOwnerId:owner.id},otherToken))).status,404);
+  assert.equal((await handle(request({...body,expectedRevision:'1'},token,'PUT'))).status,409);
+  assert.equal((await handle(request({...body,state:'approved'},token,'PUT'))).status,422);
+  for(const value of [token,owner.id,saved.id])assert.equal(JSON.stringify(events).includes(value),false);
+  await assert.rejects(db.query("insert into app.listing_moderation(listing_id,revision,state) values($1,$2,'approved')",[saved.id,'900000']),{code:'42501'});
  });
 }
