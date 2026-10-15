@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import {randomBytes,randomUUID} from "node:crypto";
 import {createPostgresDatabase} from "../src/lib/postgres.ts";
 import {hashSessionToken} from "../src/lib/identity.ts";
+import {ListingDraftInputError} from "../src/lib/listing-draft-contract.ts";
+import {AuthRateLimiter} from "../src/lib/auth-http.ts";
+import {createProductionListingPhotoHandler} from "./listing-photo-http-module.mjs";
 import {PostgresListingPhotoStore} from "./listing-photo-module.mjs";
 import {PostgresListingDraftStore,ListingDraftAccessError,ListingDraftConflictError} from "./listing-draft-module.mjs";
 import {loadAdminModule} from "./admin-module.mjs";
@@ -99,6 +102,40 @@ export async function testListingPhotos(suite,operator,config,credentials){
       await assert.rejects(uncertain.replace(token,owner.id,draft.id,saved.revision,[]),error=>error===unknown);assert.equal(attempts,1);
       await db.close();db=createPostgresDatabase(env);store=new PostgresListingPhotoStore(db);
       const recovered=await store.read(token,owner.id,draft.id);assert.equal(recovered.revision,"4");assert.deepEqual(recovered.photos,[]);
+    });
+    await suite.test("photo association enforces the existing 160 MiB aggregate bound on server metadata without trusting client sizes",async()=>{
+      const ids=(await operator.query(`insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256)
+        select $1,gen_random_uuid(),'image/webp',2048,2048,2097152,$2 from generate_series(1,81) returning id`,[owner.id,"b".repeat(64)])).rows.map(row=>row.id);
+      await operator.query("update app.media_objects set state='ready',ready_at=clock_timestamp() where id=any($1::uuid[])",[ids]);
+      const current=await store.read(token,owner.id,draft.id);
+      const exact=await store.replace(token,owner.id,draft.id,current.revision,ids.slice(0,80));assert.equal(exact.photos.length,80);
+      await assert.rejects(store.replace(token,owner.id,draft.id,exact.revision,ids),ListingDraftInputError);
+      assert.deepEqual(await store.read(token,owner.id,draft.id),exact);
+      await store.replace(token,owner.id,draft.id,exact.revision,[]);
+    });
+    await suite.test("photo HTTP composes real cookie authorization, shared limiter, restricted SQL and readback after an unknown write",async()=>{
+      const origin="https://app.example.invalid",events=[],limiter=new AuthRateLimiter(db,"s".repeat(64));
+      const handle=createProductionListingPhotoHandler({origin},()=>({store,limiter}),event=>events.push(event));
+      const request=(credential,body,method="POST")=>new Request(origin+"/api/account/listing-photos",{
+        method,headers:{host:new URL(origin).host,origin,"x-blizhniy-request":"1","x-real-ip":"192.0.2.44","content-type":"application/json",cookie:`__Host-blizhniy_session=${credential}`},body:JSON.stringify(body),
+      });
+      const body={expectedOwnerId:owner.id,listingId:draft.id};
+      const initial=await store.read(token,owner.id,draft.id);
+      const savedResponse=await handle(request(token,{...body,expectedRevision:initial.revision,photoIds:[b,a]},"PUT"));
+      assert.equal(savedResponse.status,200);const saved=await savedResponse.json();assert.deepEqual(saved.photos.map(row=>row.id),[b,a]);
+      const conflict=await handle(request(token,{...body,expectedRevision:initial.revision,photoIds:[]},"PUT"));assert.equal(conflict.status,409);
+      for(const [credential,expectedOwnerId] of [[otherToken,owner.id],[otherToken,other.id],[adminToken,admin.id]]){
+        const denied=await handle(request(credential,{...body,expectedOwnerId}));assert.equal(denied.status,404);assert.deepEqual(await denied.json(),{error:{code:"DRAFT_NOT_FOUND"}});
+      }
+      const revoked=await session(owner.id);await operator.query("delete from app.sessions where token_hash=$1",[hashSessionToken(revoked)]);
+      assert.equal((await handle(request(revoked,body))).status,401);
+      let attempts=0;const uncertain=new PostgresListingPhotoStore({transaction:async work=>{attempts++;await db.transaction(work);throw new Error("Synthetic lost HTTP write acknowledgement");}});
+      const unknown=createProductionListingPhotoHandler({origin},()=>({store:uncertain,limiter}),event=>events.push(event));
+      const failed=await unknown(request(token,{...body,expectedRevision:saved.revision,photoIds:[]},"PUT"));
+      assert.equal(failed.status,503);assert.deepEqual(await failed.json(),{error:{code:"PHOTOS_UNAVAILABLE"}});assert.equal(attempts,1);
+      const readback=await handle(request(token,body));assert.equal(readback.status,200);
+      const recovered=await readback.json();assert.equal(BigInt(recovered.revision),BigInt(saved.revision)+1n);assert.deepEqual(recovered.photos,[]);
+      for(const value of [token,owner.id,draft.id,a,b])assert.equal(JSON.stringify(events).includes(value),false);
     });
   }finally{await db.close();}
 }

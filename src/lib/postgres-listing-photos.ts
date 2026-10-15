@@ -1,5 +1,6 @@
 import {withAppSessionTransaction} from "./app-session-transaction";
-import {parseListingDraftId,parseListingDraftRevision} from "./listing-draft-contract";
+import {ListingDraftInputError,parseListingDraftId,parseListingDraftRevision} from "./listing-draft-contract";
+import {maxListingMediaTotalSize} from "./media-limits.ts";
 import {parseListingPhotoIds,type ListingDraftPhoto,type ListingDraftPhotos} from "./listing-photo-contract";
 import {ListingDraftAccessError,ListingDraftConflictError} from "./postgres-listing-drafts";
 import type {PostgresDatabase} from "./postgres";
@@ -19,7 +20,7 @@ export class PostgresListingPhotoStore{
       if(!row)throw new ListingDraftAccessError();
       const photos=(await tx.query<ListingDraftPhoto & {permitted:boolean}>(`select ${columns},(m.owner_id=$2 and m.state='ready') as permitted
         from app.listing_photos p join app.media_objects m on m.id=p.media_id where p.listing_id=$1 order by p.position limit 10001`,[id,user.id])).rows;
-      if(photos.length>10000||photos.some(row=>row.permitted!==true))throw new ListingDraftAccessError();
+      if(photos.length>10000||photos.some(row=>row.permitted!==true)||photos.reduce((sum,row)=>sum+row.size,0)>maxListingMediaTotalSize)throw new ListingDraftAccessError();
       return{id,revision:row.revision,photos:photos.map(photo)};
     });
   }
@@ -34,6 +35,7 @@ export class PostgresListingPhotoStore{
       const available=ids.length?(await tx.query<ListingDraftPhoto>(`select ${columns} from app.media_objects m
         where m.owner_id=$1 and m.state='ready' and m.id=any($2::uuid[])`,[user.id,ids])).rows:[];
       if(available.length!==ids.length)throw new ListingDraftAccessError();
+      if(available.reduce((sum,row)=>sum+row.size,0)>maxListingMediaTotalSize)throw new ListingDraftInputError();
       const byId=new Map(available.map(row=>[row.id,row]));
       const photos=ids.map(id=>{const row=byId.get(id);if(!row)throw new ListingDraftAccessError();return photo(row);});
       await tx.query("delete from app.listing_photos where listing_id=$1",[id]);

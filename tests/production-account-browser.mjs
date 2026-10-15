@@ -124,6 +124,26 @@ test("primary account browser forms use the new cookie API without remote traffi
         assert.equal(response.headers.get("referrer-policy"), "no-referrer");
       }
     });
+    await suite.test("actual photo association endpoint rejects bearer authority and privileged input before private runtime access",async()=>{
+      const headers={host:new URL(env.BLIZHNIY_AUTH_ORIGIN).host,origin:env.BLIZHNIY_AUTH_ORIGIN,
+        "x-blizhniy-request":"1","x-real-ip":"192.0.2.44","content-type":"application/json",authorization:"Bearer synthetic-old-session"};
+      const owner="12345678-1234-4321-8765-123456789abc",id="22345678-1234-4321-8765-123456789abc";
+      for(const [method,body,status,code] of [["GET",null,405,"METHOD_NOT_ALLOWED"],
+        ["POST",{expectedOwnerId:owner,listingId:id},401,"UNAUTHENTICATED"],
+        ["PUT",{expectedOwnerId:owner,listingId:id,expectedRevision:"1",photoIds:[],paid:true},422,"INVALID_INPUT"]]){
+        const response=await new Promise((resolve,reject)=>{
+          const outgoing=httpRequest(origin+"/api/account/listing-photos",{method,headers},incoming=>{
+            let text="";incoming.setEncoding("utf8");
+            incoming.on("data",chunk=>{text+=chunk;if(text.length>16384)incoming.destroy(new Error("Owned photo response exceeds fixture cap"));});
+            incoming.on("error",reject);incoming.on("end",()=>resolve({status:incoming.statusCode,headers:incoming.headers,json:JSON.parse(text)}));
+          });
+          outgoing.on("error",reject);outgoing.setTimeout(2000,()=>outgoing.destroy(new Error("Owned photo request timed out")));
+          outgoing.end(body?JSON.stringify(body):undefined);
+        });
+        assert.equal(response.status,status);assert.deepEqual(response.json,{error:{code}});
+        assert.equal(response.headers["cache-control"],"no-store");assert.equal(response.headers["referrer-policy"],"no-referrer");
+      }
+    });
     browser = await chromium.launch({ headless: true });
     const run = (name, fn) => suite.test(name, async () => {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
