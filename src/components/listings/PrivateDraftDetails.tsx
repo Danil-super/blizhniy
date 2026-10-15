@@ -2,7 +2,8 @@
 import {useEffect,useState} from 'react';
 import {productionListingForm} from '@/lib/client-listing-form';
 import type {ListingFormSnapshot} from '@/lib/listing-form-contract';
-export function PrivateDraftDetails({owner,id,revision}:{owner:string;id:string;revision:string}){
+import {draftButton} from './PrivateDraftEditor';
+export function PrivateDraftDetails({owner,id,revision,onEdit,disabled}:{owner:string;id:string;revision:string;onEdit:()=>void;disabled:boolean}){
  const [open,setOpen]=useState(false),[view,setView]=useState<ListingFormSnapshot|null>(null),[error,setError]=useState(false),[refresh,setRefresh]=useState(0);
  useEffect(()=>{
   const controller=new AbortController();let active=true;setView(null);setError(false);
@@ -22,5 +23,6 @@ export function PrivateDraftDetails({owner,id,revision}:{owner:string;id:string;
    {form.booking&&<><dt>Параметры аренды</dt><dd><pre className="whitespace-pre-wrap break-words text-sm">{JSON.stringify(form.booking,null,2)}</pre></dd></>}
   </dl>}
   {form&&<p className="mt-3 text-sm text-slate-600">Эти поля видны только владельцу черновика. Сохранение текста и фотографий не удаляет их.</p>}
+  {form&&<button type="button" className={`${draftButton} mt-3`} disabled={disabled} onClick={onEdit}>Изменить дополнительные поля</button>}
  </details>;
 }

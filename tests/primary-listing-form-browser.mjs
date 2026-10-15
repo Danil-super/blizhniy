@@ -1,9 +1,10 @@
 // Real built placement form; only provider/SQL transports are owned synthetic fixtures.
 import assert from 'node:assert/strict';import {test} from 'node:test';import {spawn} from 'node:child_process';
-import {once} from 'node:events';import {createServer} from 'node:net';import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {once} from 'node:events';import {createServer} from 'node:net';import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';import {join} from 'node:path';import {rootCertificates} from 'node:tls';import {randomBytes} from 'node:crypto';
 import {chromium} from 'playwright';import sharp from 'sharp';
 import {parseListingFormDraft} from '../src/lib/listing-form-contract.ts';
+import {createDefaultCabinetProfile} from '../src/lib/cabinet-profile.ts';
 test('ordinary placement form saves all existing fields/photos with cookie API and preserves input through account rechecks', {timeout:90000},async()=>{
  const directory=await mkdtemp(join(tmpdir(),'blizhniy-form-browser-'));let app,browser;
  try{
@@ -27,11 +28,17 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
    assert.equal(request.headers().authorization,undefined);
    if(url.pathname.endsWith('/session')){if(sessionGate)await sessionGate;return route.fulfill({json:{user:{id:active,email:'fixture@example.invalid',role:'user',isBlocked:false}}});}
    if(url.pathname==='/api/account/media'){const mediaId=request.headers()['x-blizhniy-intent'];intents.push(mediaId);return route.fulfill({json:{id:mediaId,mimeType:'image/webp',width:80,height:40,size:12}});}
+   if(url.pathname==='/api/account/profile'){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');return route.fulfill({json:{exists:false,profile:createDefaultCabinetProfile({name:'Технический',email:'fixture@example.invalid'}),revision:null}});}
+   if(active!==owner){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');assert.ok(url.pathname.endsWith('/collection'));return route.fulfill({json:{items:[],nextCursor:null}});}
    const body=request.postDataJSON();assert.equal(body.expectedOwnerId,owner);
-   if(url.pathname.endsWith('/collection'))return route.fulfill({json:{id,revision:'1',draft:{kind:'prodam',title:'',description:'',price:null,categoryId:null,cityId:null}}});
+   if(url.pathname.endsWith('/collection'))return route.fulfill({json:request.method()==='POST'?{items:saved?[{id,revision:saved.revision,kind:saved.form.kind,title:saved.form.title,price:saved.form.price}]:[],nextCursor:null}:{id,revision:'1',draft:{kind:'prodam',title:'',description:'',price:null,categoryId:null,cityId:null}}});
+   if(url.pathname==='/api/account/listing-drafts')return route.fulfill({json:{id,revision:saved.revision,draft:{kind:saved.form.kind,title:saved.form.title,description:saved.form.description,price:saved.form.price,categoryId:null,cityId:null}}});
+   if(url.pathname==='/api/account/listing-photos')return route.fulfill({json:{id,revision:saved.revision,photos:saved.photos}});
+   if(url.pathname==='/api/account/media/read')return route.fulfill({contentType:'image/png',body:pixels});
    if(url.pathname==='/api/account/listing-form'){
     if(request.method()==='POST')return route.fulfill({json:saved});
-    writes.push(body);saved={id,revision:'2',form:parseListingFormDraft(body.form),photos:body.form.photoIds.map(id=>({id,mimeType:'image/webp',width:80,height:40,size:12}))};
+    writes.push(body);if(saved&&body.expectedRevision!==saved.revision)return route.fulfill({status:409,json:{error:{code:'DRAFT_CHANGED'}}});
+    saved={id,revision:String(BigInt(saved?.revision??'1')+1n),form:parseListingFormDraft(body.form),photos:body.form.photoIds.map(id=>({id,mimeType:'image/webp',width:80,height:40,size:12}))};
     if(lose){lose=false;return route.abort();}return route.fulfill({json:saved});
    }
    return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
@@ -58,6 +65,62 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   await page.screenshot({path:'/tmp/blizhniy-full-form-browser.png',fullPage:true});
   await page.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();await page.waitForURL(origin+'/cabinet/obyavleniya');
   assert.equal(writes.length,1);assert.equal(intents.length,1);assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
+  await page.getByRole('button',{name:'Полная форма',exact:true}).click();
+  await page.getByText('Категория, место и контакты из полной формы',{exact:true}).click();
+  await page.getByRole('button',{name:'Изменить дополнительные поля',exact:true}).click();
+  await page.getByRole('heading',{name:'Дополнительные поля черновика',exact:true}).waitFor();
+  await page.getByLabel('Телефон для связи',{exact:true}).fill('+79991112233');
+  await page.getByLabel('Город',{exact:true}).fill('Сочи');
+  await page.getByLabel('Режим бронирования',{exact:true}).selectOption('stay');
+  await page.getByLabel('Будни, ₽/сутки',{exact:true}).fill('1250,50');
+  await page.getByLabel('Правила и ограничения',{exact:true}).fill('Без шума');
+  sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  await page.getByText('Проверяем доступ к черновикам…',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('Телефон для связи',{exact:true}).count(),0);
+  release();sessionGate=null;await page.getByLabel('Телефон для связи',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('Телефон для связи',{exact:true}).inputValue(),'+79991112233');
+  await page.getByLabel('Широта',{exact:true}).fill('invalid');
+  await page.getByRole('button',{name:'Сохранить дополнительные поля',exact:true}).click();
+  await page.getByText(/Проверьте поля: координаты задаются парой/).waitFor();assert.equal(writes.length,1);
+  await page.getByLabel('Широта',{exact:true}).fill('');
+  lose=true;await page.getByRole('button',{name:'Сохранить дополнительные поля',exact:true}).click();
+  await page.getByRole('button',{name:'Сверить дополнительные поля',exact:true}).click();
+  await page.getByText('Дополнительные поля сохранены.',{exact:true}).waitFor();
+  assert.equal(writes.length,2);assert.equal(saved.form.cityName,'Сочи');assert.equal(saved.form.booking.priceWeekday,1250.5);
+  assert.equal(saved.form.title,'Полная форма');assert.equal(saved.form.photoIds.length,1);
+  // Concurrent text/photo changes must survive the explicit keep-my-extra-fields choice.
+  await page.getByLabel('Район',{exact:true}).fill('Мой район');
+  page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name:'Закрыть дополнительные поля',exact:true}).click();
+  assert.equal(await page.getByLabel('Район',{exact:true}).inputValue(),'Мой район');
+  saved={...saved,revision:'9007199254740993',form:{...saved.form,title:'Другая вкладка',district:'Серверный район',photoIds:[]},photos:[]};
+  await page.getByRole('button',{name:'Сохранить дополнительные поля',exact:true}).click();
+  await page.getByRole('button',{name:'Сверить дополнительные поля',exact:true}).click();
+  await page.getByRole('region',{name:'Сохранённые дополнительные поля',exact:true}).getByText(/Серверный район/).waitFor();
+  await page.getByRole('button',{name:'Оставить мои дополнительные правки',exact:true}).click();
+  await page.getByRole('button',{name:'Сохранить дополнительные поля',exact:true}).click();
+  await page.getByText('Дополнительные поля сохранены.',{exact:true}).waitFor();
+  assert.equal(saved.form.title,'Другая вкладка');assert.equal(saved.form.district,'Мой район');assert.deepEqual(saved.form.photoIds,[]);
+  assert.equal(writes.at(-1).expectedRevision,'9007199254740993');
+  const axe=await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'),'utf8');await page.addScriptTag({content:axe});
+  for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
+   const violations=await page.evaluate(async()=>{const result=await window.axe.run(document.querySelector('section[aria-labelledby="extra-fields-heading"]'));return result.violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id);});
+   assert.deepEqual(violations,[]);
+  }
+  await page.getByLabel('Город',{exact:true}).focus();await page.keyboard.press('Tab');assert.equal(await page.getByLabel('Район',{exact:true}).evaluate(node=>document.activeElement===node),true);
+  await page.screenshot({path:'/tmp/blizhniy-extra-fields-browser.png',fullPage:true});
+  assert.equal(await page.getByText('Не удалось загрузить профиль. Проверьте сессию и обновите данные.',{exact:true}).count(),0);
+  active='32345678-1234-4321-8765-123456789abc';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  await page.getByText('Черновиков пока нет.',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('Телефон для связи',{exact:true}).count(),0);
+  assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
+  active=owner;
+  await page.goto(origin+'/cabinet');await page.getByRole('button',{name:'Другая вкладка',exact:true}).click();
+  await page.getByText('Категория, место и контакты из полной формы',{exact:true}).click();await page.getByRole('button',{name:'Изменить дополнительные поля',exact:true}).click();
+  await page.getByLabel('Район',{exact:true}).fill('Буфер обзора');
+  sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  await page.getByText('Проверяем доступ к черновикам…',{exact:true}).waitFor();assert.equal(await page.getByLabel('Район',{exact:true}).count(),0);
+  release();sessionGate=null;await page.getByLabel('Район',{exact:true}).waitFor();assert.equal(await page.getByLabel('Район',{exact:true}).inputValue(),'Буфер обзора');
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Закрыть дополнительные поля',exact:true}).click();
   await page.goto(origin+'/razmestit/obyavlenie');await page.locator('input[name="title"]').fill('Буфер предыдущего владельца');
   active='32345678-1234-4321-8765-123456789abc';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await page.waitForFunction(()=>document.querySelector('input[name="title"]')?.value==='');

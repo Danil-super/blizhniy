@@ -8,6 +8,8 @@ import { useDraftLeaveGuard } from "./useDraftLeaveGuard";
 import {usePrivateDraftPhotos} from './usePrivateDraftPhotos';
 import {PrivateDraftPhotos} from './PrivateDraftPhotos';
 import {PrivateDraftDetails} from './PrivateDraftDetails';
+import {usePrivateListingForm} from './usePrivateListingForm';
+import {PrivateListingFormEditor} from './PrivateListingFormEditor';
 
 export function PrivateDraftWorkspace({ owner, visible }: { owner: string; visible: boolean }) {
   const [page, setPage] = useState<ListingDraftPage | null>(null), [editor, setEditor] = useState<DraftEditorState | null>(null);
@@ -20,7 +22,8 @@ export function PrivateDraftWorkspace({ owner, visible }: { owner: string; visib
   },[]);
   const photoConflict=useCallback((id:string)=>{setEditor(current=>current?.saved.id===id?{...current,blocked:true,remote:null}:current);},[]);
   const photos=usePrivateDraftPhotos(owner,editor?.saved.id,editor?.saved.revision,photoRevision,photoConflict);
-  const working=!!busy||photos.busy;
+  const full=usePrivateListingForm(owner,editor?.saved.id);
+  const working=!!busy||photos.busy||full.busy;
   useDraftLeaveGuard(dirty || !!editor?.blocked || photos.uncertain || creationKey.current !== null);
   const run = useCallback(async <T,>(label: string, work: (options: { signal?: AbortSignal }) => Promise<T>, apply: (value: T) => void,
     failed?: (error: ListingDraftClientError) => void) => {
@@ -93,27 +96,31 @@ export function PrivateDraftWorkspace({ owner, visible }: { owner: string; visib
   if (!visible) return null;
   return <div>
     <div className="mt-5 flex flex-wrap gap-3">
-      <button type="button" className={`${draftButton} bg-[#0875d1] text-white`} disabled={working || photos.uncertain || dirty || !!editor?.blocked} onClick={create}>
+      <button type="button" className={`${draftButton} bg-[#0875d1] text-white`} disabled={working || !!full.editor || photos.uncertain || dirty || !!editor?.blocked} onClick={create}>
         {creationKey.current ? "Проверить создание" : "Новый черновик"}
       </button>
-      <button type="button" className={draftButton} disabled={working} onClick={() => { setMessage(null);setRefresh(value => value+1); }}>Обновить список</button>
+      <button type="button" className={draftButton} disabled={working||!!full.editor} onClick={() => { setMessage(null);setRefresh(value => value+1); }}>Обновить список</button>
     </div>
     {busy && <p className="mt-4" role="status">{busy}</p>}
+    {full.busy&&!full.editor&&<p className="mt-4" role="status">Загружаем дополнительные поля…</p>}
     {message && <p className="mt-4 rounded-lg border border-slate-300 bg-white p-3" role="status">{message}</p>}
     {page && <section className="mt-6" aria-label="Ваши черновики">
       <h2 className="text-xl font-bold">Ваши черновики</h2>
       {page.items.length === 0 ? <p className="mt-3">Черновиков пока нет.</p> : <ul className="mt-3 divide-y divide-slate-200">
         {page.items.map(item => <li key={item.id}><button type="button" className="min-h-11 w-full break-words px-2 py-3 text-left font-semibold underline underline-offset-4 disabled:opacity-50"
-          disabled={working || photos.uncertain || dirty || !!editor?.blocked || creationKey.current !== null} onClick={() => open(item.id)}>{item.title || "Без названия"}</button></li>)}
+          disabled={working || !!full.editor || photos.uncertain || dirty || !!editor?.blocked || creationKey.current !== null} onClick={() => open(item.id)}>{item.title || "Без названия"}</button></li>)}
       </ul>}
-      {page.nextCursor && <button type="button" className={`${draftButton} mt-3`} disabled={working} onClick={() => {
+      {page.nextCursor && <button type="button" className={`${draftButton} mt-3`} disabled={working||!!full.editor} onClick={() => {
         void run("Загружаем следующую страницу…", options => productionDrafts.list(owner, page.nextCursor, options), setPage);
       }}>Следующая страница</button>}
     </section>}
-    {editor && <PrivateDraftEditor editor={editor} busy={working} onAction={action} onChange={fields => {
+    {editor && !full.editor && <PrivateDraftEditor editor={editor} busy={working} onAction={action} onChange={fields => {
       setEditor(current => current ? { ...current, fields: { ...current.fields, ...fields } } : null);
     }} />}
-    {editor&&<PrivateDraftPhotos owner={owner} photos={photos} disabled={!!busy||editor.blocked}/>}
-    {editor&&<PrivateDraftDetails owner={owner} id={editor.saved.id} revision={editor.saved.revision}/>}
+    {editor&&!full.editor&&<PrivateDraftPhotos owner={owner} photos={photos} disabled={!!busy||full.busy||editor.blocked}/>}
+    {editor&&!full.editor&&<PrivateDraftDetails owner={owner} id={editor.saved.id} revision={editor.saved.revision}
+      disabled={working||photos.uncertain||dirty||editor.blocked} onEdit={full.open}/>}
+    {!full.editor&&full.message&&<p className="mt-3" role="status">{full.message}</p>}
+    {full.editor&&<PrivateListingFormEditor edit={full} onClose={()=>{if(full.close()){setEditor(null);setMessage(null);setRefresh(value=>value+1);}}}/>}
   </div>;
 }

@@ -28,6 +28,7 @@ import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminUsersClient } from "@/components/admin/AdminUsersClient";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
+import { CabinetDraftWorkspace } from "@/components/listings/CabinetDraftWorkspace";
 import { CabinetShellActions } from "@/components/cabinet/CabinetShellActions";
 import {
   CabinetCapabilities,
@@ -577,17 +578,15 @@ export function AuthPage() {
 }
 
 export function CabinetPage() {
+  const footer = <>
+    <div className="mt-8"><CabinetCapabilities /></div>
+    <div className="mt-8 border-t border-slate-200 pt-5 text-sm">
+      <Link href="/cabinet/udalit-akkaunt" className="font-semibold text-[#0875d1] underline">Запросить удаление аккаунта</Link>
+    </div>
+  </>;
   return (
     <Shell title="Личный кабинет" description="Панель пользователя для публикаций, откликов и рабочих разделов." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet">
-      <CabinetAuthGate>
-        <CabinetOverviewClient />
-        <div className="mt-8">
-          <CabinetCapabilities />
-        </div>
-        <div className="mt-8 border-t border-slate-200 pt-5 text-sm">
-          <Link href="/cabinet/udalit-akkaunt" className="font-semibold text-[#0875d1] underline">Запросить удаление аккаунта</Link>
-        </div>
-      </CabinetAuthGate>
+      <CabinetDraftWorkspace footer={footer}><CabinetOverviewClient /></CabinetDraftWorkspace>
     </Shell>
   );
 }
@@ -595,9 +594,7 @@ export function CabinetPage() {
 export function CabinetListingsPage() {
   return (
     <Shell title="Мои объявления" description="Статусы публикаций, просмотры и быстрые действия по объявлениям пользователя." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/obyavleniya" createHref="/razmestit/obyavlenie" createLabel="Создать объявление">
-      <CabinetAuthGate>
-        <CabinetPublicationsClient type="listing" />
-      </CabinetAuthGate>
+      <CabinetDraftWorkspace><CabinetPublicationsClient type="listing" /></CabinetDraftWorkspace>
     </Shell>
   );
 }
