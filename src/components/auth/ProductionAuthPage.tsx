@@ -21,6 +21,10 @@ export function ProductionAuthPage({ mode }: { mode: ProductionAuthView }) {
           mode === "register" || mode === "confirm" ? <ProductionRegistrationForm mode={mode} /> :
           <ProductionRecoveryForm mode={mode} />}
       </div>
+      <p className="mt-4 text-xs leading-5 text-slate-600">
+        Для входа используется защищённый cookie сессии.{" "}
+        <Link href="/legal/privacy" prefetch={false} className="text-brand-blue underline underline-offset-2">Политика конфиденциальности</Link>.
+      </p>
       <nav aria-label="Авторизация" className="mt-5 flex flex-wrap items-center gap-x-3 border-t border-slate-100 pt-3">
         {mode === "register" ? <>
           <span className="text-sm text-slate-600">Уже есть аккаунт?</span>

@@ -17,6 +17,7 @@ import { createDefaultCabinetProfile } from "../src/lib/cabinet-profile.ts";
 import { createHash } from "node:crypto";
 import sharp from 'sharp';
 import { testRegistrationResendScenarios } from "./registration-resend-browser-cases.mjs";
+import { testLoginFocusScenarios } from "./login-focus-browser-cases.mjs";
 
 // Opaque transport revision only; real canonical hashing/row locking are tested with PG.
 const fixtureRevision = profile => profile ? createHash("sha256").update(JSON.stringify(profile)).digest("hex") : null;
@@ -939,6 +940,7 @@ test("primary account browser forms use the new cookie API without remote traffi
       await page.screenshot({ path: "/tmp/blizhniy-production-registration.png", fullPage: true });
     });
     await testRegistrationResendScenarios({ run, origin, password });
+    await testLoginFocusScenarios({ run, origin, password });
     assert.equal(output.includes("fixture-captcha"), false);
   } finally {
     await browser?.close();

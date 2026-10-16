@@ -31,30 +31,61 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
   const [issue, setIssue] = useState("");
   const [busy, setBusy] = useState(false);
   const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaRevision, setCaptchaRevision] = useState(0);
+  const viewRef = useRef<View>({ kind: "checking" });
   const mounted = useRef(false);
   const version = useRef(0);
   const busyRef = useRef(false);
   const pendingCheck = useRef(false);
+  const backgroundCheck = useRef<number | null>(null);
+  const verificationCheck = useRef<number | null>(null);
   const channel = useRef<BroadcastChannel | null>(null);
   const alert = useRef<HTMLParagraphElement>(null);
-  const clearIdentity = useCallback(() => { setView({ kind: "checking" }); setEmail(""); setPassword(""); setIssue(""); }, []);
-  const reconcile = useCallback(async () => {
+  const show = useCallback((next: View) => { viewRef.current = next; setView(next); }, []);
+  const clearIdentity = useCallback(() => { show({ kind: "checking" }); setEmail(""); setPassword(""); setIssue(""); }, [show]);
+  const reconcile = useCallback(async (background = false, expectedOwnerId?: string) => {
+    // Lifecycle events must not cancel an in-flight credential request. An explicit
+    // authority change still invalidates it and hides the previous identity.
+    if (busyRef.current) {
+      pendingCheck.current = true;
+      if (!background) { version.current += 1; clearIdentity(); }
+      return;
+    }
+    // Unknown commits require explicit recovery. Focus must not dismiss their
+    // warning or supersede the cookie verification of a successful login.
+    if (background && (viewRef.current.kind === "unavailable" || verificationCheck.current === version.current)) return;
+    const preserveForm = background && ["anonymous", "switch"].includes(viewRef.current.kind);
+    if (preserveForm && backgroundCheck.current === version.current) return;
     const current = ++version.current;
-    clearIdentity();
-    if (busyRef.current) { pendingCheck.current = true; return; }
+    if (expectedOwnerId) verificationCheck.current = current;
+    if (preserveForm) backgroundCheck.current = current;
+    else clearIdentity();
     try {
       const user = await account.session();
-      if (mounted.current && current === version.current) setView(user ? { kind: "active", user } : { kind: "anonymous" });
+      if (mounted.current && current === version.current) {
+        if (expectedOwnerId && user?.id !== expectedOwnerId) {
+          show({ kind: "unavailable" });
+          setIssue("Не удалось сохранить сессию входа. Разрешите необходимые cookie для этого сайта и проверьте сессию ещё раз.");
+        } else if (user) {
+          setEmail(""); setPassword(""); setIssue(""); show({ kind: "active", user });
+        } else if (!preserveForm) show({ kind: "anonymous" });
+      }
     } catch {
-      if (mounted.current && current === version.current) { setView({ kind: "unavailable" }); setIssue(unavailable); }
+      if (mounted.current && current === version.current) {
+        if (preserveForm) setIssue(previous => previous || "Не удалось обновить состояние сессии. Введённые данные сохранены; можно повторить вход.");
+        else { show({ kind: "unavailable" }); setIssue(unavailable); }
+      }
+    } finally {
+      if (backgroundCheck.current === current) backgroundCheck.current = null;
+      if (verificationCheck.current === current) verificationCheck.current = null;
     }
-  }, [clearIdentity, account]);
+  }, [clearIdentity, show, account]);
 
   useEffect(() => {
     mounted.current = true;
     void reconcile();
-    const focus = () => { void reconcile(); };
-    const visibility = () => { if (document.visibilityState === "visible") void reconcile(); };
+    const focus = () => { void reconcile(true); };
+    const visibility = () => { if (document.visibilityState === "visible") void reconcile(true); };
     const pageshow = (event: PageTransitionEvent) => { if (event.persisted) void reconcile(); };
     if (typeof BroadcastChannel !== "undefined") {
       channel.current = production ? openAccountAuthChannel() : new BroadcastChannel("blizhniy-local-auth");
@@ -79,17 +110,19 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
     if (busyRef.current) return;
     const previousForm = view.kind === "switch" ? "switch" : "anonymous";
     const current = ++version.current;
-    busyRef.current = true; setBusy(true); clearIdentity();
+    busyRef.current = true; setBusy(true); setIssue("");
+    if (action === "logout") clearIdentity();
     if (production) notifyAccountSessionChange(true);
     let completed = false;
+    let expectedOwnerId: string | undefined;
     try {
-      if (action === "login") await account.login(email, password, captchaToken);
+      if (action === "login") expectedOwnerId = (await account.login(email, password, captchaToken)).id;
       else await account.logout();
       completed = true;
     } catch (error) {
       if (mounted.current && current === version.current) {
         const message = error instanceof LocalAccountError ? errors[error.code] : undefined;
-        setView({ kind: action === "login" && message ? previousForm : "unavailable" });
+        show({ kind: action === "login" && message ? previousForm : "unavailable" });
         setIssue(message ?? unavailable);
       }
     } finally {
@@ -99,8 +132,14 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
       busyRef.current = false;
       setCaptchaToken("");
       if (mounted.current) {
+        setPassword(""); setCaptchaRevision(value => value + 1);
         setBusy(false);
-        if (completed || pendingCheck.current) { pendingCheck.current = false; void reconcile(); }
+        const superseded = current !== version.current;
+        const deferredBackgroundCheck = pendingCheck.current && viewRef.current.kind !== "unavailable";
+        pendingCheck.current = false;
+        if (completed || superseded || deferredBackgroundCheck) {
+          void reconcile(!completed && !superseded, superseded ? undefined : expectedOwnerId);
+        }
       }
     }
   }
@@ -122,16 +161,18 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
       <p className="break-all font-semibold text-brand-ink">{view.user.email}</p>
       <p className="text-sm text-slate-600">{view.user.role === "admin" ? "Администратор" : "Пользователь"} · права проверяет сервер.</p>
       {production && <Link href="/cabinet" prefetch={false} className={`${buttonStyle} flex justify-center`}>Личный кабинет</Link>}
-      <button type="button" className={`${secondaryStyle} w-full`} onClick={() => { version.current += 1; clearIdentity(); setView({ kind: "switch" }); }}>Сменить аккаунт</button>
+      <button type="button" className={`${secondaryStyle} w-full`} onClick={() => { version.current += 1; clearIdentity(); show({ kind: "switch" }); }}>Сменить аккаунт</button>
     </div>}
     {form && <form onSubmit={onSubmit} className="mt-4 space-y-3">
+      <fieldset disabled={busy} className="space-y-3">
       <label className="block font-semibold text-brand-ink">Email
         <input type="email" required autoComplete="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} className={inputStyle} placeholder={production ? "you@example.ru" : "test@example.invalid"} />
       </label>
       <PasswordField label="Пароль" value={password} onChange={setPassword} autoComplete="current-password" minLength={PASSWORD_MIN_LENGTH} />
-      {production && <div className="-mx-3 flex justify-center sm:mx-0"><TurnstileWidget requireProvider size={headingLevel === "h1" ? "normal" : "compact"} inline onVerify={setCaptchaToken} /></div>}
+      {production && <div className="-mx-3 flex justify-center sm:mx-0"><TurnstileWidget requireProvider size={headingLevel === "h1" ? "normal" : "compact"} inline resetKey={captchaRevision} onVerify={setCaptchaToken} /></div>}
       <button type="submit" disabled={busy || (production && !captchaToken)} className={`${buttonStyle} w-full`}>Войти</button>
       {view.kind === "switch" && <button type="button" disabled={busy} onClick={() => { void reconcile(); }} className={`${secondaryStyle} w-full`}>Отменить смену аккаунта</button>}
+      </fieldset>
     </form>}
     {(view.kind === "active" || view.kind === "unavailable") && <div className="mt-5 flex flex-wrap gap-3">
       <button type="button" disabled={busy} onClick={() => { void reconcile(); }} className={`${secondaryStyle} flex-1`}>Проверить сессию</button>
