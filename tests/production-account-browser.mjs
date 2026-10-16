@@ -22,10 +22,15 @@ const fixtureRevision = profile => profile ? createHash("sha256").update(JSON.st
 
 const captchaScript = `let sequence = 0; const widgets = new Map(); window.turnstile = {
   render(container, options) {
+    const frame = document.createElement('div'); frame.dataset.fixtureWidget = 'captcha';
+    frame.dataset.fixtureSize = options.size ?? 'default';
+    frame.style.width = options.size === 'normal' ? '300px' : '150px';
+    frame.style.height = options.size === 'normal' ? '65px' : '140px';
+    frame.style.border = '1px solid #cbd5e1';
     const button = document.createElement('button'); button.type = 'button';
     button.textContent = 'Fixture: expire CAPTCHA'; button.dataset.fixtureSitekey = options.sitekey;
     button.onclick = () => options['expired-callback']();
-    container.appendChild(button); queueMicrotask(() => options.callback('fixture-captcha'));
+    frame.appendChild(button); container.appendChild(frame); queueMicrotask(() => options.callback('fixture-captcha'));
     const id = 'fixture-widget-' + ++sequence; widgets.set(id, container); return id;
   }, remove(id) { widgets.get(id)?.replaceChildren(); widgets.delete(id); }
 };`;
@@ -670,6 +675,7 @@ test("primary account browser forms use the new cookie API without remote traffi
     });
     await run("registration validates repeated password, sends legal versions and CAPTCHA, and resend uses the smaller contract", async ({ page, calls }) => {
       await page.goto(`${origin}/auth/register`);
+      await page.getByLabel("Имя", { exact: true }).fill("  Синтетический  ");
       await page.getByLabel("Email", { exact: true }).fill("owner@example.invalid");
       await page.getByLabel("Пароль", { exact: true }).fill(password);
       await page.getByLabel("Повторите пароль", { exact: true }).fill("A different synthetic passphrase!");
@@ -679,13 +685,99 @@ test("primary account browser forms use the new cookie API without remote traffi
       await page.getByLabel("Повторите пароль", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
       await page.getByRole("status").filter({ hasText: "мы отправим письмо" }).waitFor();
-      assert.deepEqual(Object.keys(calls[0].body).sort(), ["email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());
+      await page.getByRole("heading", { name: "Проверьте почту", exact: true }).waitFor();
+      assert.deepEqual(Object.keys(calls[0].body).sort(), ["name", "email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());
+      assert.equal(calls[0].body.name, "Синтетический");
       assert.equal(calls[0].body.password, password); assert.equal(calls[0].body.captchaToken, "fixture-captcha");
+      assert.equal(calls[0].body.acceptedAgreement, true);assert.equal(calls[0].body.acknowledgedPrivacy, true);
+      assert.equal(await page.locator("main form").count(), 0, "accepted registration is a separate completion screen, not cleared fields");
+      assert.equal(await page.locator('main input[type="password"]').count(), 0);
+      await page.getByText("owner@example.invalid", { exact: true }).waitFor();
+      assert.equal(await page.getByRole("link", { name: "Перейти к входу", exact: true }).getAttribute("href"), "/auth");
+      assert.equal(calls.length, 1, "success does not silently resubmit registration");
       await page.getByRole("button", { name: "Повторить письмо", exact: true }).click();
+      assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "owner@example.invalid");
+      assert.equal(await page.getByLabel("Пароль", { exact: true }).inputValue(), "", "resend asks for the original password again");
+      assert.equal(await page.getByLabel("Имя", { exact: true }).count(), 0);
+      assert.equal(await page.getByLabel("Повторите пароль", { exact: true }).count(), 0);
+      assert.equal(await page.getByRole("checkbox").count(), 0, "resend is not a second registration form");
       await page.getByLabel("Пароль", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Отправить повторное письмо", exact: true }).click();
       await page.getByRole("status").filter({ hasText: "мы отправим письмо" }).waitFor();
       assert.deepEqual(calls[1], { action: "resend", body: { email: "owner@example.invalid", password, captchaToken: "fixture-captcha" } });
+    });
+    const completeRegistration = async (page, candidate, name = "Синтетический") => {
+      await page.goto(`${origin}/auth/register`);
+      await page.getByLabel("Имя", { exact: true }).fill(name);
+      await page.getByLabel("Email", { exact: true }).fill("owner@example.invalid");
+      await page.getByLabel("Пароль", { exact: true }).fill(candidate);
+      await page.getByLabel("Повторите пароль", { exact: true }).fill(candidate);
+      await page.getByRole("checkbox").nth(0).check();await page.getByRole("checkbox").nth(1).check();
+      await page.locator('[data-fixture-sitekey="synthetic-runtime-only-public-site-key"]').waitFor();
+    };
+    await run("registration requires a real name and rejects whitespace without creating an account", async ({ page, calls }) => {
+      await completeRegistration(page, password, "");
+      assert.equal(await page.getByLabel("Имя", { exact: true }).getAttribute("required"), "");
+      await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
+      assert.equal(calls.length, 0);
+      await page.getByLabel("Имя", { exact: true }).fill("   ");
+      await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
+      await page.getByRole("alert").filter({ hasText: /имя/i }).waitFor();
+      assert.equal(calls.length, 0);
+      assert.equal(await page.getByLabel("Пароль", { exact: true }).inputValue(), password);
+    });
+    await run("registration counts password code points and accepts 8 through 128 without trimming", async ({ page, calls }) => {
+      for (const candidate of ["12345678", "😀".repeat(8), "😀".repeat(128), " 123456 "]) {
+        const before = calls.length;
+        await completeRegistration(page, candidate);
+        await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
+        await page.getByRole("heading", { name: "Проверьте почту", exact: true }).waitFor();
+        assert.equal(calls.length, before + 1);
+        assert.equal(calls.at(-1).body.password, candidate, "all accepted Unicode code points and edge spaces are preserved");
+      }
+      for (const candidate of ["😀".repeat(7), "x".repeat(129)]) {
+        const before = calls.length;
+        await completeRegistration(page, candidate);
+        await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
+        await page.getByRole("alert").filter({ hasText: /8.*128/ }).waitFor();
+        assert.equal(calls.length, before, "invalid password never reaches registration transport");
+        assert.equal(await page.getByLabel("Пароль", { exact: true }).inputValue(), candidate);
+      }
+      await completeRegistration(page, "1234567");
+      await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
+      assert.equal(calls.filter(call => call.body.password === "1234567").length, 0);
+      assert.equal(await page.getByLabel("Пароль", { exact: true }).inputValue(), "1234567");
+    });
+    await run("registration reveals each password independently with accessible non-submit controls", async ({ page, calls }) => {
+      await completeRegistration(page, password);
+      const first = page.getByLabel("Пароль", { exact: true }), repeat = page.getByLabel("Повторите пароль", { exact: true });
+      assert.equal(await first.getAttribute("type"), "password");assert.equal(await repeat.getAttribute("type"), "password");
+      const show = page.getByRole("button", { name: "Показать пароль", exact: true });
+      assert.equal(await show.getAttribute("type"), "button");await show.focus();await page.keyboard.press("Enter");
+      assert.equal(await first.getAttribute("type"), "text");assert.equal(await first.inputValue(), password);
+      assert.equal(await repeat.getAttribute("type"), "password");
+      await page.getByRole("button", { name: "Показать повтор пароля", exact: true }).click();
+      assert.equal(await repeat.getAttribute("type"), "text");assert.equal(await repeat.inputValue(), password);
+      await page.getByRole("button", { name: "Скрыть пароль", exact: true }).click();
+      await page.getByRole("button", { name: "Скрыть повтор пароля", exact: true }).click();
+      assert.equal(await first.getAttribute("type"), "password");assert.equal(await repeat.getAttribute("type"), "password");
+      assert.equal(calls.length, 0, "visibility controls cannot accidentally register an account");
+    });
+    await run("an unknown registration outcome preserves every field and never auto-repeats the write", async ({ page, calls, state }) => {
+      state.override = (route, action) => action === "session"
+        ? route.fulfill({ status: 401, json: { error: { code: "UNAUTHENTICATED" } } }) : route.abort();
+      await completeRegistration(page, password);
+      await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
+      await page.getByRole("alert").filter({ hasText: "Результат запроса не подтверждён" }).waitFor();
+      assert.equal(await page.getByLabel("Имя", { exact: true }).inputValue(), "Синтетический");
+      assert.equal(await page.getByLabel("Email", { exact: true }).inputValue(), "owner@example.invalid");
+      assert.equal(await page.getByLabel("Пароль", { exact: true }).inputValue(), password);
+      assert.equal(await page.getByLabel("Повторите пароль", { exact: true }).inputValue(), password);
+      assert.equal(await page.getByRole("checkbox").nth(0).isChecked(), true);assert.equal(await page.getByRole("checkbox").nth(1).isChecked(), true);
+      await page.locator('[data-fixture-sitekey="synthetic-runtime-only-public-site-key"]').waitFor();
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      assert.deepEqual(calls.map(call => call.action), ["register"]);
+      assert.equal(await page.getByRole("heading", { name: "Проверьте почту", exact: true }).count(), 0, "unknown outcome is not presented as a confirmed success");
     });
     await run("confirmation removes a fragment without a GET mutation and rejects query-only links", async ({ page, calls }) => {
       await page.goto(`${origin}/auth/confirm#token=${"a".repeat(64)}`);
@@ -694,6 +786,8 @@ test("primary account browser forms use the new cookie API without remote traffi
       await page.getByRole("button", { name: "Подтвердить email", exact: true }).click();
       await page.getByRole("status").filter({ hasText: "Email подтверждён" }).waitFor();
       assert.deepEqual(calls, [{ action: "confirm", body: { token: "a".repeat(64) } }]);
+      assert.equal(await page.getByRole("button", { name: "Подтвердить email", exact: true }).count(), 0);
+      assert.equal(await page.getByRole("link", { name: "Перейти к входу", exact: true }).getAttribute("href"), "/auth");
       await page.goto(`${origin}/auth/confirm?token=${"b".repeat(64)}`);
       await page.getByRole("alert").filter({ hasText: "Ссылка недействительна" }).waitFor();
       assert.equal(await page.getByRole("button", { name: "Подтвердить email", exact: true }).count(), 0);
@@ -702,6 +796,7 @@ test("primary account browser forms use the new cookie API without remote traffi
     await run("cookie-account login, cross-tab logout and unavailable commits never leave an old identity visible", async ({ page, context, calls, state }) => {
       await login(page);
       assert.equal(calls.find(item => item.action === "login").body.captchaToken, "fixture-captcha");
+      assert.equal(await page.getByRole("link", { name: "Личный кабинет", exact: true }).getAttribute("href"), "/cabinet");
       const second = await context.newPage(); await second.goto(`${origin}/auth`);
       await second.getByText("owner@example.invalid", { exact: true }).waitFor();
       await second.getByRole("button", { name: "Выйти", exact: true }).click();
@@ -764,9 +859,22 @@ test("primary account browser forms use the new cookie API without remote traffi
           if (path.includes("/confirm")) await page.getByRole("button", { name: "Подтвердить email", exact: true }).waitFor();
           else if (path.includes("/reset")) await page.getByLabel("Новый пароль", { exact: true }).waitFor();
           else await page.getByLabel("Email", { exact: true }).waitFor();
+          if (!path.includes("/confirm")) {
+            const captcha = page.locator('[data-fixture-widget="captcha"]');await captcha.waitFor();
+            assert.equal(await captcha.getAttribute("data-fixture-size"), "normal", "auth explicitly requests the rectangular provider widget");
+            const rect = await captcha.boundingBox();assert.equal(rect.width, 300);assert.equal(rect.height, 65);
+          }
           assert.equal(await page.locator("main h1").count(), 1);
           const dimensions = await page.evaluate(() => ({ content: document.documentElement.scrollWidth, viewport: document.documentElement.clientWidth }));
           assert.ok(dimensions.content <= dimensions.viewport, `no overflow at ${width}, ${path.split("#")[0]}`);
+          const primary = page.locator('main button[type="submit"]');
+          if (await primary.count()) {
+            await primary.scrollIntoViewIfNeeded();
+            assert.equal(await primary.evaluate(element => {
+              const box = element.getBoundingClientRect();
+              return box.height >= 44 && element.contains(document.elementFromPoint(box.x + box.width/2, box.y + box.height/2));
+            }), true, `account submit target is not covered by mobile navigation at ${width}, ${path.split("#")[0]}`);
+          }
           if (width === 320 || width === 1440) {
             await page.addScriptTag({ content: axe });
             const violations = await page.evaluate(async () => (await window.axe.run(document.querySelector("main"), {

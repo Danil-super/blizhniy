@@ -16,12 +16,19 @@ test("password hash uses the approved scrypt cost and a fresh salt", async () =>
   assert.equal(await verifyPassword("Неправильный пароль!", first), false);
 });
 
-for (const invalid of ["", "short password", " ".repeat(16), "a".repeat(129), "a".repeat(15) + "\0", "a".repeat(15) + "\ud800", null]) {
+// Owner requested an 8-character minimum; retain all other rejection cases.
+for (const invalid of ["", "short", " ".repeat(16), "a".repeat(129), "a".repeat(15) + "\0", "a".repeat(15) + "\ud800", null]) {
   test("invalid password is rejected without including the input in its error", async () => {
     await assert.rejects(hashPassword(invalid), { message: "Invalid password" });
     assert.equal(await verifyPassword(invalid, "broken"), false);
   });
 }
+test('8-character passwords are hashed and verified with the same scrypt cost', async () => {
+  const hash = await hashPassword('Abc123!?');
+  assert.match(hash, /^scrypt\$131072\$8\$1\$/);
+  assert.equal(await verifyPassword('Abc123!?', hash), true);
+  assert.equal(await verifyPassword('Abc123!X', hash), false);
+});
 
 test("tampered/expensive hash parameters and malformed encoding fail closed", async () => {
   for (const encoded of ["", null, "broken", "scrypt$999999999$8$1$" + "a".repeat(32) + "$" + "b".repeat(128),

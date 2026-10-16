@@ -9,6 +9,7 @@ type TurnstileWidgetProps = {
   onVerify?: (token: string) => void;
   inline?: boolean;
   requireProvider?: boolean;
+  size?: "normal" | "compact" | "flexible";
 };
 
 type TurnstileApi = {
@@ -18,7 +19,7 @@ type TurnstileApi = {
       callback: (token: string) => void;
       sitekey: string;
       theme?: "light" | "dark" | "auto";
-      size?: "compact";
+      size?: "normal" | "compact" | "flexible";
       "expired-callback"?: () => void;
       "error-callback"?: () => void;
     },
@@ -73,7 +74,7 @@ function loadTurnstileScript() {
   });
 }
 
-export function TurnstileWidget({ inline = false, name = "captchaToken", onVerify, resetKey, requireProvider = false }: TurnstileWidgetProps) {
+export function TurnstileWidget({ inline = false, name = "captchaToken", onVerify, resetKey, requireProvider = false, size }: TurnstileWidgetProps) {
   const turnstileSiteKey = getTurnstileSiteKey();
   const [token, setToken] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -108,7 +109,7 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
           widgetIdRef.current = window.turnstile.render(containerRef.current, {
             sitekey: turnstileSiteKey,
             theme: "light",
-            size: requireProvider ? "compact" : undefined,
+            size: size ?? (requireProvider ? "compact" : undefined),
             callback: publish,
             "expired-callback": () => publish(""),
             "error-callback": () => publish(""),
@@ -139,7 +140,7 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
       cancelled = true;
       window.clearTimeout(timerId);
     };
-  }, [onVerify, resetKey, requireProvider, turnstileSiteKey]);
+  }, [onVerify, resetKey, requireProvider, turnstileSiteKey, size]);
 
   return (
     <>

@@ -3,6 +3,9 @@ import { randomBytes } from "node:crypto";
 import { hashSessionToken } from "../src/lib/identity.ts";
 import { AuthRateLimiter } from "../src/lib/auth-http.ts";
 import { loadProfileModule } from "./production-profile-module.mjs";
+import { RegistrationStore } from './auth-mail-module.mjs';
+import { IdentityStore } from '../src/lib/identity.ts';
+import { REGISTRATION_LEGAL_VERSIONS } from '../src/lib/registration-legal.ts';
 const { PostgresProfileStore, ProfileOwnerChangedError, parseProductionProfile } = loadProfileModule("postgres-profile");
 const { createProductionProfileHandler } = loadProfileModule("production-profile-http");
 
@@ -102,5 +105,32 @@ export async function testProfiles(suite, db, applyMigration) {
     try { await assert.rejects(db.transaction(async tx => { await tx.query("set local role profile_test_anonymous");
       await tx.query("select profile from app.cabinet_profiles"); }), { code: "42501" }); }
     finally { await db.query("drop role profile_test_anonymous"); }
+  });
+  await suite.test('named registration is atomic, duplicate-safe and reaches the private profile only after confirmation/login', async () => {
+    const registration = new RegistrationStore(db);
+    const identity = new IdentityStore(db);
+    const input = { name: '  Тестовое имя  ', email: 'named-registration@example.invalid', password: 'Abc123!?',
+      acceptedAgreement: true, acknowledgedPrivacy: true, agreementVersion: REGISTRATION_LEGAL_VERSIONS.agreement,
+      privacyVersion: REGISTRATION_LEGAL_VERSIONS.privacy };
+    const confirmation = await registration.register(input);
+    assert.ok(confirmation);
+    const user = (await db.query('select id from app.users where email=$1', [input.email])).rows[0];
+    assert.equal(await identity.login(input.email, input.password), null);
+    const saved = (await db.query('select profile from app.cabinet_profiles where user_id=$1', [user.id])).rows[0].profile;
+    assert.equal(saved.name, 'Тестовое имя');
+    for (const key of ['email', 'password', 'role', 'phoneVerified', 'verifiedPhone']) assert.equal(Object.hasOwn(saved, key), false);
+    assert.equal(await registration.register({ ...input, name: 'Must not replace' }), null);
+    assert.deepEqual((await db.query('select profile from app.cabinet_profiles where user_id=$1', [user.id])).rows[0].profile, saved);
+    assert.equal(await registration.confirmEmail(confirmation.token), true);
+    const session = await identity.login(input.email, input.password);
+    assert.ok(session);
+    assert.equal((await store.read(session.token, user.id)).profile.name, 'Тестовое имя');
+    await identity.revokeSession(session.token);
+    const broken = new RegistrationStore({ transaction: work => db.transaction(tx => work({ query: async (sql, values) => {
+      if (sql.includes('insert into app.cabinet_profiles')) throw new Error('Synthetic profile insert failure');
+      return tx.query(sql, values);
+    } })) });
+    await assert.rejects(broken.register({ ...input, email: 'named-rollback@example.invalid' }), /Synthetic profile insert failure/);
+    assert.equal((await db.query("select count(*)::int as n from app.users where email='named-rollback@example.invalid'")).rows[0].n, 0);
   });
 }

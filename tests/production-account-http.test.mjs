@@ -67,6 +67,19 @@ test("malformed payloads, role injection and SMTP-incompatible addresses never r
     assert.equal(f.calls.factories, 0);
   }
 });
+test('registration accepts a bounded name without widening credential or privilege contracts', async () => {
+  const f = fixture();
+  assert.equal((await f.handle(f.request({ ...signup, name: '  Анна  ' }), 'register')).status, 202);
+  assert.equal(f.calls.register[0].name, 'Анна');
+  for (const name of ['', '   ', 'x'.repeat(121), 'Имя\nФамилия', { role: 'admin' }]) {
+    const invalid = fixture();
+    assert.equal((await invalid.handle(invalid.request({ ...signup, name }), 'register')).status, 422);
+    assert.equal(invalid.calls.factories, 0);
+  }
+  const resend = fixture();
+  assert.equal((await resend.handle(resend.request({ ...credentials, name: 'Анна' }), 'resend')).status, 422);
+  assert.equal(resend.calls.factories, 0);
+});
 test("shared rate denial runs before CAPTCHA/KDF; CAPTCHA outage and nonboolean result fail closed", async () => {
   const limited = fixture({ limited: true });
   assert.equal((await limited.handle(limited.request(signup), "register")).status, 429);

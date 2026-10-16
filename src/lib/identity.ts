@@ -1,5 +1,6 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import type { PostgresDatabase } from "./postgres";
+import { isValidAccountPassword } from "./account-validation.ts";
 
 const hashPrefix = "scrypt$131072$8$1$";
 const hashPattern = /^scrypt\$131072\$8\$1\$([a-f0-9]{32})\$([a-f0-9]{128})$/;
@@ -7,12 +8,6 @@ let activeHashes = 0;
 
 function assertServer(): void {
   if (typeof window !== "undefined") throw new Error("Identity is server-only");
-}
-
-function validPassword(password: string): boolean {
-  return typeof password === "string" && password.length <= 256 && password.isWellFormed() &&
-    !password.includes("\0") && password.trim().length > 0 &&
-    [...password].length >= 15 && [...password].length <= 128;
 }
 
 async function derivePassword(password: string, salt: Buffer): Promise<Buffer> {
@@ -31,7 +26,7 @@ async function derivePassword(password: string, salt: Buffer): Promise<Buffer> {
 
 export async function hashPassword(password: string): Promise<string> {
   assertServer();
-  if (!validPassword(password)) throw new Error("Invalid password");
+  if (!isValidAccountPassword(password)) throw new Error("Invalid password");
   const salt = randomBytes(16);
   const key = await derivePassword(password, salt);
   try { return `${hashPrefix}${salt.toString("hex")}$${key.toString("hex")}`; }
@@ -40,7 +35,7 @@ export async function hashPassword(password: string): Promise<string> {
 
 export async function verifyPassword(password: string, encoded: string): Promise<boolean> {
   assertServer();
-  if (!validPassword(password) || typeof encoded !== "string" || encoded.length > 256) return false;
+  if (!isValidAccountPassword(password) || typeof encoded !== "string" || encoded.length > 256) return false;
   const parts = hashPattern.exec(encoded);
   if (!parts) return false;
   const key = await derivePassword(password, Buffer.from(parts[1], "hex"));

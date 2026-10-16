@@ -4,6 +4,8 @@ import { createRequire } from "node:module";
 import * as identity from "../src/lib/identity.ts";
 import * as outbox from "../src/lib/mail-outbox.ts";
 import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
+import * as validation from '../src/lib/account-validation.ts';
+import * as profile from '../src/lib/cabinet-profile.ts';
 
 // Use the repository's TypeScript test convention without changing runtime resolution.
 const ts = createRequire(import.meta.url)("typescript");
@@ -13,6 +15,8 @@ const compiled = ts.transpileModule(readFileSync(new URL("../src/lib/registratio
 }).outputText;
 new Function("require", "exports", compiled)((path) => {
   if (path === "./identity") return identity;
+  if (path === './account-validation.ts') return validation;
+  if (path === './cabinet-profile') return profile;
   if (path === "./mail-outbox") return outbox;
   if (path === "node:crypto") return createRequire(import.meta.url)("node:crypto");
   if (path === "./registration-legal") return { REGISTRATION_LEGAL_VERSIONS };

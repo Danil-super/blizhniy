@@ -4,6 +4,8 @@ import { createRequire } from "node:module";
 import { test } from "node:test";
 import vm from "node:vm";
 import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
+import * as validation from '../src/lib/account-validation.ts';
+import { PasswordField } from './password-field-module.mjs';
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
@@ -14,6 +16,8 @@ vm.runInNewContext(ts.transpileModule(source, { compilerOptions: {
 } }).outputText, { exports, require: (name) => {
   if (name === "react" || name === "react/jsx-runtime" || name === "next/link") return require(name);
   if (name === "@/lib/registration-legal") return { REGISTRATION_LEGAL_VERSIONS };
+  if (name === '@/lib/account-validation') return validation;
+  if (name === './PasswordField') return { PasswordField };
   throw new Error("Unapproved UI import");
 } });
 
@@ -24,7 +28,10 @@ test("new form has no Supabase/captcha/third-party client or token persistence a
   assert.equal((html.match(/type="checkbox"/g) ?? []).length, 2);
   assert.match(html, /href="\/legal\/agreement"/);
   assert.match(html, /href="\/legal\/privacy"/);
-  assert.match(html, /minLength="15"/i);
+  assert.match(html, /minLength="8"/i);
+  assert.match(html, /autoComplete="given-name"/i);
+  assert.match(html, /Показать пароль/);
+  assert.match(html, /Показать повтор пароля/);
   assert.match(html, /maxLength="256"/i);
   assert.match(html, /autoComplete="new-password"/i);
   assert.match(html, /role="status"/);

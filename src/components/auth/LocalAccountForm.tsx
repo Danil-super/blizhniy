@@ -5,9 +5,12 @@ import type { FormEvent } from "react";
 import { LocalAccountError, localAccount, productionAccount, notifyAccountSessionChange, openAccountAuthChannel } from "@/lib/local-account";
 import type { LocalAccountUser } from "@/lib/local-account";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
+import Link from "next/link";
+import { isValidAccountPassword, PASSWORD_MIN_LENGTH } from "@/lib/account-validation";
+import { PasswordField } from "./PasswordField";
 
 type View = { kind: "checking" | "anonymous" | "switch" | "unavailable" } | { kind: "active"; user: LocalAccountUser };
-const buttonStyle = "min-h-11 rounded-xl bg-brand-blue px-5 py-3 font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue disabled:cursor-wait disabled:opacity-60";
+const buttonStyle = "min-h-11 scroll-mb-28 rounded-xl bg-brand-blue px-5 py-3 font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue disabled:cursor-wait disabled:opacity-60";
 const secondaryStyle = "min-h-11 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-brand-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-blue disabled:opacity-60";
 const inputStyle = "mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-brand-ink focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue";
 const unavailable = "Не удалось подтвердить состояние сессии. Проверьте сессию ещё раз; успешный вход или выход не подтверждён.";
@@ -104,7 +107,7 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busyRef.current) return;
-    if ([...password].length < 15 || [...password].length > 128) { setIssue("Пароль должен содержать от 15 до 128 символов."); return; }
+    if (!isValidAccountPassword(password)) { setIssue("Пароль должен содержать от 8 до 128 символов."); return; }
     if (production && !captchaToken) { setIssue(errors.CAPTCHA_REQUIRED); return; }
     void mutate("login");
   }
@@ -116,16 +119,15 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
     {view.kind === "active" && <div className="mt-6 space-y-4">
       <p className="break-all font-semibold text-brand-ink">{view.user.email}</p>
       <p className="text-sm text-slate-600">{view.user.role === "admin" ? "Администратор" : "Пользователь"} · права проверяет сервер.</p>
-      <button type="button" className={`${buttonStyle} w-full`} onClick={() => { version.current += 1; clearIdentity(); setView({ kind: "switch" }); }}>Сменить аккаунт</button>
+      {production && <Link href="/cabinet" prefetch={false} className={`${buttonStyle} flex justify-center`}>Личный кабинет</Link>}
+      <button type="button" className={`${secondaryStyle} w-full`} onClick={() => { version.current += 1; clearIdentity(); setView({ kind: "switch" }); }}>Сменить аккаунт</button>
     </div>}
-    {form && <form onSubmit={onSubmit} className="mt-6 space-y-5">
+    {form && <form onSubmit={onSubmit} className="mt-4 space-y-3">
       <label className="block font-semibold text-brand-ink">Email
         <input type="email" required autoComplete="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} className={inputStyle} placeholder={production ? "you@example.ru" : "test@example.invalid"} />
       </label>
-      <label className="block font-semibold text-brand-ink">Пароль
-        <input type="password" required autoComplete="current-password" minLength={15} maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} className={inputStyle} />
-      </label>
-      {production && <TurnstileWidget requireProvider onVerify={setCaptchaToken} />}
+      <PasswordField label="Пароль" value={password} onChange={setPassword} autoComplete="current-password" minLength={PASSWORD_MIN_LENGTH} />
+      {production && <div className="-mx-3 flex justify-center sm:mx-0"><TurnstileWidget requireProvider size={headingLevel === "h1" ? "normal" : "compact"} inline onVerify={setCaptchaToken} /></div>}
       <button type="submit" disabled={busy || (production && !captchaToken)} className={`${buttonStyle} w-full`}>Войти</button>
       {view.kind === "switch" && <button type="button" disabled={busy} onClick={() => { void reconcile(); }} className={`${secondaryStyle} w-full`}>Отменить смену аккаунта</button>}
     </form>}

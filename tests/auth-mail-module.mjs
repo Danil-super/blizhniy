@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import * as identity from "../src/lib/identity.ts";
 import * as outbox from "../src/lib/mail-outbox.ts";
 import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
+import * as validation from '../src/lib/account-validation.ts';
+import * as profile from '../src/lib/cabinet-profile.ts';
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
@@ -13,6 +15,8 @@ function load(name) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText)(path => {
     if (path === "./identity") return identity;
+    if (path === './account-validation.ts') return validation;
+    if (path === './cabinet-profile') return profile;
     if (path === "./mail-outbox") return outbox;
     if (path === "./registration-legal") return { REGISTRATION_LEGAL_VERSIONS };
     if (path === "node:crypto") return require("node:crypto");

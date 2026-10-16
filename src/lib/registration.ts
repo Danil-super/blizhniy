@@ -4,8 +4,12 @@ import type { MailPayloadCipher } from "./mail-outbox";
 import { generateSessionToken, hashPassword, hashSessionToken, verifyPassword } from "./identity";
 import { REGISTRATION_LEGAL_VERSIONS } from "./registration-legal";
 import type { PostgresDatabase, PostgresQueries } from "./postgres";
+import { normalizeRegistrationName } from "./account-validation.ts";
+import { createDefaultCabinetProfile } from "./cabinet-profile";
 
 export type RegistrationInput = {
+  // Optional only for already-open pre-upgrade forms. New forms require a name.
+  name?: string;
   email: string;
   password: string;
   acceptedAgreement: true;
@@ -32,13 +36,15 @@ function parseInput(input: unknown): RegistrationInput {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new RegistrationInputError();
   const row = input as Record<string, unknown>;
   const keys = ["email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion"];
+  if (Object.hasOwn(row, "name")) keys.push("name");
+  const name = Object.hasOwn(row, "name") ? normalizeRegistrationName(row.name) : undefined;
   const email = canonicalEmail(row.email);
   if (Object.keys(row).length !== keys.length || Object.keys(row).some((key) => !keys.includes(key)) ||
-      !email || typeof row.password !== "string" || row.acceptedAgreement !== true || row.acknowledgedPrivacy !== true ||
+      !email || name === null || typeof row.password !== "string" || row.acceptedAgreement !== true || row.acknowledgedPrivacy !== true ||
       row.agreementVersion !== REGISTRATION_LEGAL_VERSIONS.agreement || row.privacyVersion !== REGISTRATION_LEGAL_VERSIONS.privacy) {
     throw new RegistrationInputError();
   }
-  return { email, password: row.password, acceptedAgreement: true, acknowledgedPrivacy: true,
+  return { ...(name ? { name } : {}), email, password: row.password, acceptedAgreement: true, acknowledgedPrivacy: true,
     agreementVersion: REGISTRATION_LEGAL_VERSIONS.agreement, privacyVersion: REGISTRATION_LEGAL_VERSIONS.privacy };
 }
 
@@ -68,6 +74,11 @@ export class RegistrationStore {
         on conflict (email) do nothing returning id, auth_version as "authVersion"
       `, [row.email, passwordHash]);
       if (!user) return null;
+      if (row.name) {
+        const profile = createDefaultCabinetProfile({ name: row.name, email: "" });
+        const stored = Object.fromEntries(Object.entries(profile).filter(([key]) => !["email", "phoneVerified", "verifiedPhone"].includes(key)));
+        await tx.query("insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)", [user.id, JSON.stringify(stored)]);
+      }
       await tx.query(`insert into app.registration_legal (user_id, document, version)
         values ($1, 'agreement', $2), ($1, 'privacy', $3)`, [user.id, row.agreementVersion, row.privacyVersion]);
       return this.issueConfirmation(tx, user.id, row.email, user.authVersion);

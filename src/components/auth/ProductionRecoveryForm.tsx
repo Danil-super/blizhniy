@@ -4,12 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { notifyAccountSessionChange } from "@/lib/local-account";
+import { isValidAccountPassword, PASSWORD_MIN_LENGTH } from "@/lib/account-validation";
+import { PasswordField } from "./PasswordField";
+import Link from "next/link";
 
 const inputStyle = "mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-brand-ink focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue";
 const invalidLink = "Ссылка недействительна или устарела. Запросите новое письмо восстановления.";
 const issues: Record<string, string> = {
   INVALID_RECOVERY: invalidLink,
-  INVALID_INPUT: "Проверьте email и пароль: пароль должен содержать от 15 до 128 символов.",
+  INVALID_INPUT: "Проверьте email и пароль: пароль должен содержать от 8 до 128 символов.",
   CAPTCHA_REQUIRED: "Повторите проверку безопасности.",
   RATE_LIMITED: "Слишком много попыток. Подождите 15 минут и попробуйте снова.",
 };
@@ -50,7 +53,7 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
     event.preventDefault();
     if (busyRef.current || !captchaToken || (mode === "reset" && !token)) return;
     setIssue("");
-    if (mode === "reset" && ([...password].length < 15 || [...password].length > 128)) { setIssue(issues.INVALID_INPUT); return; }
+    if (mode === "reset" && !isValidAccountPassword(password)) { setIssue(issues.INVALID_INPUT); return; }
     if (mode === "reset" && password !== repeat) { setIssue("Пароли не совпадают."); return; }
     const current = version.current;
     busyRef.current = true; setBusy(true);
@@ -76,20 +79,17 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
     <h1 className="text-2xl font-bold text-brand-ink">{mode === "recover" ? "Восстановление доступа" : "Новый пароль"}</h1>
     <p role="status" className="mt-3 text-sm leading-6 text-slate-600">{!ready ? "Подготавливаем ссылку…" : busy ? "Обрабатываем запрос…" : done ? mode === "recover" ? "Если аккаунт подтверждён, мы отправим письмо восстановления. Проверьте входящие и папку «Спам»." : "Пароль изменён. Предыдущие сессии закрыты. Войдите с новым паролем." : mode === "recover" ? "Введите email, указанный при регистрации." : "Открытие ссылки не меняет пароль. Задайте новый пароль и отправьте форму."}</p>
     {issue && <p ref={alert} role="alert" tabIndex={-1} className="mt-5 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{issue}</p>}
-    {!done && ready && (mode === "recover" || token) && <form onSubmit={submit} aria-busy={busy} className="mt-6 space-y-5">
+    {done && mode === "reset" && <Link href="/auth" prefetch={false} className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline">Перейти к входу</Link>}
+    {!done && ready && (mode === "recover" || token) && <form key={token ?? mode} onSubmit={submit} aria-busy={busy} className="mt-4 space-y-3">
       {mode === "recover" ? <label className="block font-semibold text-brand-ink">Email
         <input type="email" required autoComplete="email" maxLength={254} value={email} onChange={event => setEmail(event.target.value)} className={inputStyle} />
       </label> : <>
-        <label className="block font-semibold text-brand-ink">Новый пароль
-          <input type="password" required autoComplete="new-password" minLength={15} maxLength={256} value={password} onChange={event => setPassword(event.target.value)} aria-describedby="reset-password-help" className={inputStyle} />
-        </label>
-        <p id="reset-password-help" className="text-sm text-slate-600">15–128 символов. Пробелы сохраняются без изменения.</p>
-        <label className="block font-semibold text-brand-ink">Повторите пароль
-          <input type="password" required autoComplete="new-password" maxLength={256} value={repeat} onChange={event => setRepeat(event.target.value)} className={inputStyle} />
-        </label>
+        <PasswordField label="Новый пароль" value={password} onChange={setPassword} autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} describedBy="reset-password-help" />
+        <p id="reset-password-help" className="text-xs leading-5 text-slate-600">8–128 символов. Надёжнее — длинная фраза от 15 символов. Пробелы сохраняются.</p>
+        <PasswordField label="Повторите пароль" value={repeat} onChange={setRepeat} autoComplete="new-password" toggleLabel="повтор пароля" />
       </>}
-      <TurnstileWidget requireProvider onVerify={setCaptchaToken} resetKey={captchaVersion} />
-      <button type="submit" disabled={busy || !captchaToken} className="min-h-11 w-full rounded-xl bg-brand-blue px-5 py-3 font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue disabled:cursor-wait disabled:opacity-60">{mode === "recover" ? "Отправить письмо восстановления" : "Сохранить новый пароль"}</button>
+      <div className="-mx-3 flex justify-center sm:mx-0"><TurnstileWidget requireProvider size="normal" inline onVerify={setCaptchaToken} resetKey={captchaVersion} /></div>
+      <button type="submit" disabled={busy || !captchaToken} className="min-h-11 w-full scroll-mb-28 rounded-xl bg-brand-blue px-5 py-3 font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue disabled:cursor-wait disabled:opacity-60">{mode === "recover" ? "Отправить письмо восстановления" : "Сохранить новый пароль"}</button>
     </form>}
   </>;
 }

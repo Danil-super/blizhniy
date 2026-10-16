@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { test } from "node:test";
 import vm from "node:vm";
+import * as validation from '../src/lib/account-validation.ts';
+import { PasswordField } from './password-field-module.mjs';
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
@@ -77,7 +79,7 @@ test("server rendering the account form never reads a session or includes a prev
   const source = readFileSync(new URL("../src/components/auth/LocalAccountForm.tsx", import.meta.url), "utf8");
   const exports = {};
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
-    exports, require: (name) => name === "@/lib/local-account" ? { localAccount: new Proxy({}, { get: () => { throw new Error("Session read during SSR"); } }) } : name === "@/components/TurnstileWidget" ? { TurnstileWidget: () => null } : require(name),
+    exports, require: (name) => name === '@/lib/account-validation' ? validation : name === './PasswordField' ? { PasswordField } : name === "@/lib/local-account" ? { localAccount: new Proxy({}, { get: () => { throw new Error("Session read during SSR"); } }) } : name === "@/components/TurnstileWidget" ? { TurnstileWidget: () => null } : require(name),
   });
   const html = require("react-dom/server").renderToStaticMarkup(require("react").createElement(exports.LocalAccountForm));
   assert.match(html, /Проверяем сессию/);

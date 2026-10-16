@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { test } from "node:test";
 import vm from "node:vm";
+import * as validation from '../src/lib/account-validation.ts';
+import { PasswordField } from './password-field-module.mjs';
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript"), React = require("react");
@@ -15,6 +17,8 @@ function load(path, deps, globals = {}) {
   return exports;
 }
 const dependencies = {
+  '@/lib/account-validation': validation,
+  './PasswordField': { PasswordField },
   "@/lib/local-account": load("src/lib/local-account.ts", {}),
   "next/link": { default: ({ children, href, className }) => React.createElement("a", { href, className }, children) },
   "@/lib/registration-legal": { REGISTRATION_LEGAL_VERSIONS: { agreement: "test-version", privacy: "test-version" } },

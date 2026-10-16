@@ -12,6 +12,7 @@ import type { IdentityStore, IdentityUser } from "./identity";
 import { REGISTRATION_LEGAL_VERSIONS } from "./registration-legal";
 import { productionAuthOrigin } from "./production-auth-config";
 import type { ProductionAuthConfig } from "./production-auth-config";
+import { normalizeRegistrationName } from "./account-validation.ts";
 
 export type ProductionAccountRuntime = {
   store: Pick<RegistrationStore, "register" | "resendConfirmation" | "confirmEmail">;
@@ -31,7 +32,7 @@ type Action = keyof typeof inputKeys;
 function parseBody(action: Action, input: unknown): Record<string, unknown> {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new AuthRequestError(422, "INVALID_INPUT");
   const row = input as Record<string, unknown>;
-  const keys: readonly string[] = inputKeys[action];
+  const keys: readonly string[] = action === "register" && Object.hasOwn(row, "name") ? [...inputKeys.register, "name"] : inputKeys[action];
   if (Object.keys(row).length !== keys.length || keys.some(key => !Object.hasOwn(row, key))) throw new AuthRequestError(422, "INVALID_INPUT");
   if (keys.includes("captchaToken") && (typeof row.captchaToken !== "string" || !row.captchaToken.trim() || row.captchaToken.length > 2048)) {
     throw new AuthRequestError(422, "INVALID_INPUT");
@@ -41,6 +42,11 @@ function parseBody(action: Action, input: unknown): Record<string, unknown> {
   if (action === "register" && (row.acceptedAgreement !== true || row.acknowledgedPrivacy !== true ||
       row.agreementVersion !== REGISTRATION_LEGAL_VERSIONS.agreement || row.privacyVersion !== REGISTRATION_LEGAL_VERSIONS.privacy)) {
     throw new AuthRequestError(422, "INVALID_INPUT");
+  }
+  if (action === "register" && Object.hasOwn(row, "name")) {
+    const name = normalizeRegistrationName(row.name);
+    if (!name) throw new AuthRequestError(422, "INVALID_INPUT");
+    row.name = name;
   }
   if (keys.includes("email")) {
     const email = typeof row.email === "string" && row.email.length <= 254 && row.email.isWellFormed()

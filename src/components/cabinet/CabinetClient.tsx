@@ -3055,7 +3055,7 @@ export function CabinetProfileBar() {
   }
 
   return (
-    <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:mt-5 sm:p-5">
+    <section id="cabinet-profile" tabIndex={-1} className="mt-4 scroll-mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:mt-5 sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-50 text-lg font-bold text-[#0875d1]">

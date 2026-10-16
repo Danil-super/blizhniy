@@ -586,7 +586,7 @@ export function CabinetPage() {
   </>;
   return (
     <Shell title="Личный кабинет" description="Панель пользователя для публикаций, откликов и рабочих разделов." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet">
-      <CabinetDraftWorkspace footer={footer}><CabinetOverviewClient /></CabinetDraftWorkspace>
+      <CabinetDraftWorkspace overview footer={footer}><CabinetOverviewClient /></CabinetDraftWorkspace>
     </Shell>
   );
 }

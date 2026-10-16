@@ -158,13 +158,17 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
       page.on("pageerror", () => consoleErrors.push({ type: "pageerror" }));
       page.on("console", (message) => { if (["error", "warning"].includes(message.type())) consoleErrors.push({ type: message.type(), text: message.text() }); });
       await page.goto(`${origin}/auth/local`);
+      await page.getByLabel('Имя', { exact: true }).fill('Тестовое имя');
       await page.getByLabel("Email", { exact: true }).fill("browser-new@example.invalid");
       await page.getByLabel("Пароль", { exact: true }).fill(password);
       await page.getByLabel("Повторите пароль", { exact: true }).fill(password);
       await page.getByLabel(/Принимаю пользовательское соглашение/).check();
       await page.getByLabel(/Ознакомлен с политикой/).check();
       await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
-      await page.getByRole("status").filter({ hasText: "Если запрос подходит" }).waitFor();
+      await page.getByRole('heading', { name: 'Проверьте почту', exact: true }).waitFor();
+      assert.equal(await page.locator('input[type="password"]').count(), 0);
+      const savedName = (await db.query("select p.profile->>'name' as name from app.cabinet_profiles p join app.users u on u.id=p.user_id where u.email=$1", ['browser-new@example.invalid'])).rows[0];
+      assert.equal(savedName.name, 'Тестовое имя');
       const captured = messages.find((mail) => mail.to === "browser-new@example.invalid");
       assert.ok(captured, "synthetic message captured locally");
       const link = captured.text.match(/https:\/\/127\.0\.0\.1:\d+\/auth\/local\/confirm#token=[a-f0-9]{64}/)[0];

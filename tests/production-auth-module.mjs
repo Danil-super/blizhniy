@@ -5,6 +5,7 @@ import * as boundary from "../src/lib/auth-http.ts";
 import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
 import { RegistrationStore, PasswordRecoveryStore, RegistrationInputError, RecoveryInputError } from "./auth-mail-module.mjs";
 import * as identity from "../src/lib/identity.ts";
+import * as validation from '../src/lib/account-validation.ts';
 import { verifyProductionAuthDatabase } from "../src/lib/production-auth-database.ts";
 
 const require = createRequire(import.meta.url);
@@ -25,6 +26,7 @@ export function loadProductionAuth(name, extra = {}) {
     if (path === "./registration") return { RegistrationStore, RegistrationInputError };
     if (path === "./password-recovery") return { PasswordRecoveryStore, RecoveryInputError };
     if (path === "./identity") return identity;
+    if (path === './account-validation.ts') return validation;
     throw new Error("Unapproved production auth import");
   }, exports);
   return exports;
