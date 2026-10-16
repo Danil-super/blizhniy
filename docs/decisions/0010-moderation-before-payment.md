@@ -1,6 +1,6 @@
 # ADR-010: Модерация до оплаты объявления
 
-Статус: порядок принят владельцем 15.10.2026; интерфейс владельца подключён, интерфейс модератора и оплата не завершены.
+Статус: порядок принят владельцем 15.10.2026; интерфейсы владельца и модератора реализованы. Оплата и публикация не подключены; установка и положительный рабочий admin-сценарий фиксируются отдельно.
 
 ## Контекст
 
@@ -35,3 +35,19 @@ Down работает только на пустой таблице, непус�
 Клиент читает bounded4096-byte DTO: `{id,revision,state,note}`, состояния not_submitted/pending/approved/rejected/outdated. После неизвестного исхода PUT только явная проверка статуса; автоматического retry нет. Переотправка той же отклонённой версии недоступна; новое редактирование делает прежнее решение outdated. Dirty/blocked/identity-change уничтожают видимый старый статус; нет browser storage или bearer-токенов. Обычный кабинет показывает отсутствие опубликованного размещения и неподключённую оплату явно.
 
 Для этого owner-only HTTP инкремента на рабочем runtime достаточно SELECT и INSERT(listing_id,revision); UPDATE решения не требуется и не выдаётся до проверенного подключения административного интерфейса. Назначение конкретного пользователя администратором требует выбора владельца. Приватный API не открывает произвольный доступ к другим объявлениям или фото.
+
+## Административная проверка
+
+В PostgreSQL-mode `/admin/obyavleniya` использует новую очередь без bearer/legacy fallback. `/api/admin/listing-moderation`: POST `{expectedAdminId,action:"list",after}` возвращает до20 текущих pending запросов и UUID cursor; POST `{expectedAdminId,action:"inspect",requestId}` — проверяемую форму, решение и отчёт о заполненности; POST `{expectedAdminId,action:"photo",requestId,fileId}` — один приватный WebP. PUT принимает только `{expectedAdminId,requestId,state,note}` с approved/null либо rejected/непустой причиной. Тело≤8192/2s, остальные CSRF/ingress/cookie/SQL-limiter границы общие с кабинетом; ошибки401/403/404/409/422/429/generic503 и no-store. Audit не содержит IDs, контакты, форму, фото, причину или SQL-подробности.
+
+Каждый внешний вызов передаёт expectedAdminId в ту же защищённую app-session transaction: чужая учётная запись, demotion, блокировка и истечение сессии не дают чтения/решения. Queue упорядочена submitted_at/id без потери SQL-микросекунд, исключает свои объявления, устаревшие версии и недоступных владельцев. Непустой cursor не конструирует SQL из пользовательских строк. Переотправка решения после неизвестного ответа не выполняется автоматически; тот же requestId можно перечитать, согласованный идентичный replay сервером допустим, противоположный — конфликт.
+
+Фото читается только после current-review/actor/owned-ready-photo проверки в транзакции. Запрошенный UUID обязан входить в текущую ordered association; даже свой, но не прикреплённый файл недоступен. Сервер получает размер и hash из БД, затем использует существующее descriptor-pinned приватное хранилище с проверкой файла. Ответ содержит только bounded≤2MiB image/webp, без пути/hash/owner. Используется прежний общий лимит4 private image reads вместе с кабинетом; отдельной увеличивающей лимит очереди нет. Новых uploads, публичных URL, декодирования в web-процессе или изменений media root/worker/fence не добавляется.
+
+UI открывает одно фото за раз, отзывает Blob URL при закрытии/смене scope, не загружает все10000 фото одновременно. Буфер причины отказа остаётся только в памяти той же admin identity/request; при session recheck DOM не содержит приватных данных, после подтверждения того же администратора ввод восстанавливается. Выход/другой аккаунт/снятие роли уничтожают прежний workspace. Переключение проверки с несохранённой причиной требует подтверждения. Подпись textarea связана через htmlFor/id и не включает введённый текст в accessible name.
+
+Перед включением решений оператор отдельно выдаёт runtime только `UPDATE(state,decision_note,decided_at,decided_by)` на app.listing_moderation. Не выдаются UPDATE id/listing_id/revision/submitted_at, INSERT state, DELETE/TRUNCATE или UPDATE listing paid/status. Для preview используются уже существующие права чтения metadata/sha256 приватного media runtime, а не новый публичный grant. Назначение конкретного подтверждённого аккаунта администратором выполнено по отдельному выбору владельца, с отзывом старых сессий; персональный адрес не хранится в Git.
+
+Проверки: `node --experimental-strip-types --test tests/admin-listing-moderation-http.test.mjs tests/client-admin-listing-moderation.test.mjs`, полный owned PostgreSQL suite и после `npm run build` — `node --experimental-strip-types --test tests/admin-listing-moderation-browser.mjs tests/primary-listing-form-browser.mjs`. Browser проверяет actual Next render с изолированным synthetic API, фото, сохранность причины при recheck, unknown decision→readback без второго PUT, отказ, одобрение новой версии, identity change, keyboard/axe и4 ширины. Это не выдаётся за уже выполненный положительный вход реального администратора на production.
+
+Откат административного кода к2500087 сохраняет14 migrations, запросы, решения, российский Auth и файлы. Непустую таблицу не удаляют, legacy Auth не включают, права владельца аккаунта не снимают автоматически. Платёжный intent/fulfillment, публичная выдача и полный launch остаются отдельными этапами.
