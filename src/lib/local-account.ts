@@ -69,13 +69,15 @@ export function openAccountAuthChannel(): BroadcastChannel | null {
 }
 
 /** Invalidation only: messages carry no identity and cannot grant access. */
-export function notifyAccountSessionChange(changing: boolean) {
+export function notifyAccountSessionChange(changing: boolean, publisher?: BroadcastChannel | null) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(changing ? "blizhniy-account-changing" : "blizhniy-account-changed"));
   if (!changing) {
-    const channel = openAccountAuthChannel();
+    // Reuse a form's listener for publishing: BroadcastChannel excludes the sending object,
+    // whereas a new object would invalidate that same form and erase known login errors.
+    const channel = publisher ?? openAccountAuthChannel();
     try { channel?.postMessage({ type: "changed" }); }
     catch { return; } // Same-tab invalidation above has already happened; focus is the cross-tab fallback.
-    finally { channel?.close(); }
+    finally { if (!publisher) channel?.close(); }
   }
 }

@@ -3,11 +3,11 @@ import { domainToASCII } from "node:url";
 import type { KeyObject } from "node:crypto";
 import type { PostgresQueries } from "./postgres";
 
-export type MailPurpose = "confirm" | "recover" | "reset_notice";
+export type MailPurpose = "confirm" | "recover" | "reset_notice" | "confirm_notice";
 export type MailIntent = { id: string; userId: string; purpose: MailPurpose; createdAt: Date; expiresAt: Date };
 export type AuthMailPayload = { email: string; token: string | null };
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
-const lifetimes = { confirm: 3600000, recover: 1800000, reset_notice: 86400000 };
+const lifetimes = { confirm: 3600000, recover: 1800000, reset_notice: 86400000, confirm_notice: 86400000 };
 
 function assertServer(): void {
   if (typeof window !== "undefined") throw new Error("Mail outbox requires a server-only runtime");
@@ -34,7 +34,7 @@ function validatePayload(input: unknown, purpose: MailPurpose): AuthMailPayload 
       !/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(email) ||
       domainToASCII(email.split("@")[1]) !== email.split("@")[1] ||
       email.startsWith(".") || email.split("@")[0].endsWith(".") || email.split("@")[0].includes("..") ||
-      (purpose === "reset_notice" ? token !== null : typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token))) return invalid();
+      (purpose === "reset_notice" || purpose === "confirm_notice" ? token !== null : typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token))) return invalid();
   return { email, token: token as string | null };
 }
 

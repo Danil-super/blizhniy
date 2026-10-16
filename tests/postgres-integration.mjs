@@ -94,7 +94,8 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
         "0004-password-recovery.down.sql", "0005-reference-catalog.sql", "0008-mail-outbox.sql",
         "0008-mail-outbox.down.sql", "0009-mail-delivery.sql", "0009-mail-delivery.down.sql",
         "0010-production-rate-limits.sql", "0010-production-rate-limits.down.sql",
-        "0011-cabinet-profiles.sql", "0011-cabinet-profiles.down.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
+        "0011-cabinet-profiles.sql", "0011-cabinet-profiles.down.sql",
+        "0015-confirmation-notice.sql", "0015-confirmation-notice.down.sql"].includes(filename)) throw new Error("Unapproved migration fixture");
       const source = fileURLToPath(new URL(`../database/migrations/${filename}`, import.meta.url));
       await docker(["cp", source, `${id}:/tmp/blizhniy-identity.sql`]);
       await docker(["exec", id, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "blizhniy_test", "-f", "/tmp/blizhniy-identity.sql"]);
@@ -111,6 +112,8 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
     await testMailDelivery(suite, db, env, applyMigration);
     const { testAuthMailTransactions } = await import("./auth-mail-integration.mjs");
     await testAuthMailTransactions(suite, db);
+    const { testConfirmationNotice } = await import("./confirmation-notice-integration.mjs");
+    await testConfirmationNotice(suite, db, applyMigration);
     await suite.test("shared auth limiter migration up/down, concurrent instances and no plaintext PII", async () => {
       await applyMigration("0003-auth-rate-limits.sql");
       await applyMigration("0003-auth-rate-limits.down.sql");

@@ -12,7 +12,7 @@ const buttonStyle = "min-h-12 scroll-mb-28 rounded-xl bg-brand-blue px-5 py-3 fo
 type Field = "name" | "email" | "password" | "repeat" | "agreement" | "privacy";
 const errors: Record<string, string> = {
   RATE_LIMITED: "Слишком много попыток. Подождите 15 минут и попробуйте снова.",
-  INVALID_CONFIRMATION: "Ссылка недействительна или срок её действия истёк. Запросите новое письмо.",
+  INVALID_CONFIRMATION: "Ссылка недействительна: уже использована, заменена новой или срок её действия истёк. Если почта уже подтверждена, просто войдите. Иначе запросите новое письмо с исходным паролем.",
   INVALID_INPUT: "Проверьте данные, пароль и отметки документов.",
   SYNTHETIC_EMAIL_REQUIRED: "На локальном стенде используйте тестовый адрес, заканчивающийся на .invalid.",
   AUTH_UNAVAILABLE: "Сервис временно недоступен. Попробуйте позже.",
@@ -126,7 +126,7 @@ function RegistrationForm({ production, captcha, captchaToken = "", onCaptchaRes
       <li>Нажмите «Подтвердить email» на открывшейся странице.</li>
       <li>Войдите с вашим email и паролем.</li>
     </ol>
-    <p className="mt-3 text-sm leading-6 text-slate-600">Если аккаунт уже существует, войдите или восстановите пароль. Повторная регистрация не меняет его данные.</p>
+    <p className="mt-3 text-sm leading-6 text-slate-600">Если почта уже подтверждена, повторное письмо не отправляется — перейдите к входу. Если аккаунт уже существует, повторная регистрация не меняет его данные. Забыли пароль? <Link href={production ? "/auth/recover" : "/auth/local/recover"} prefetch={false} className="font-semibold text-brand-blue underline">Восстановить доступ</Link>.</p>
     <Link href={production ? "/auth" : "/auth/local/login"} prefetch={false} className={`${buttonStyle} mt-5 flex justify-center`}>Перейти к входу</Link>
     <div className="mt-2 flex flex-wrap gap-x-4">
       <button type="button" onClick={() => changeAction("resend")} className="min-h-11 text-sm font-semibold text-brand-blue underline">Повторить письмо</button>
@@ -215,15 +215,28 @@ function ConfirmationForm({ production }: { production: boolean }) {
       await submit("confirm", { token });
       if (submittedVersion === linkVersion.current) { setConfirmed(true); setToken(null); }
     }
-    catch (error) { if (submittedVersion === linkVersion.current) setIssue(readableError(error)); }
+    catch (error) {
+      if (submittedVersion === linkVersion.current) {
+        setIssue(readableError(error));
+        if (error instanceof Error && error.message === "INVALID_CONFIRMATION") setToken(null);
+      }
+    }
     finally { busyRef.current = false; setBusy(false); }
   }
   return <>
     <h1 className="text-2xl font-bold text-brand-ink">Подтверждение email</h1>
-    <p className="mt-3 text-sm leading-6 text-slate-600">Открытие письма не подтверждает аккаунт автоматически. Для подтверждения нажмите кнопку ниже.</p>
+    <p className="mt-3 text-sm leading-6 text-slate-600">{issue
+      ? "Ссылка подтверждения используется один раз. Выберите дальнейшее действие ниже."
+      : "Открытие письма не подтверждает аккаунт автоматически. Для подтверждения нажмите кнопку ниже."}</p>
     <p role="status" className="mt-5 text-sm leading-6 text-slate-700">{confirmed ? production ? "Email подтверждён. Теперь можно войти в аккаунт." : "Email подтверждён. Теперь можно войти на HTTPS-стенде." : !ready ? "Подготавливаем ссылку…" : busy ? "Подтверждаем…" : ""}</p>
     {issue && <p ref={alert} tabIndex={-1} role="alert" className="mt-5 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{issue}</p>}
-    {issue && <Link href={production ? "/auth/register#resend" : "/auth/local#resend"} prefetch={false} className={`${buttonStyle} mt-5 flex justify-center`}>Запросить новое письмо</Link>}
+    {issue && <div className="mt-5 space-y-2">
+      <Link href={production ? "/auth" : "/auth/local/login"} prefetch={false} className={`${buttonStyle} flex justify-center`}>Перейти к входу</Link>
+      <div className="flex flex-wrap gap-x-4">
+        <Link href={production ? "/auth/register#resend" : "/auth/local#resend"} prefetch={false} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline">Запросить новое письмо</Link>
+        <Link href={production ? "/auth/recover" : "/auth/local/recover"} prefetch={false} className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline">Восстановить доступ</Link>
+      </div>
+    </div>}
     {!confirmed && token && <button type="button" disabled={busy} onClick={confirm} className={`${buttonStyle} mt-6 w-full`}>{busy ? "Подождите…" : "Подтвердить email"}</button>}
     {confirmed && <Link href={production ? "/auth" : "/auth/local/login"} prefetch={false} className={`${buttonStyle} mt-5 flex justify-center`}>Перейти к входу</Link>}
     <Link href={production ? "/auth/register" : "/auth/local"} prefetch={false} className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline">Вернуться к регистрации</Link>

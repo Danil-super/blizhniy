@@ -9,7 +9,7 @@ import { RegistrationStore } from "./registration";
 import { PasswordRecoveryStore } from "./password-recovery";
 import { IdentityStore } from "./identity";
 import { verifyTurnstileToken } from "./turnstile";
-import { readProductionAuthConfig, readMailEncryptionKey, renderProductionAuthMail } from "./production-auth-config";
+import { readProductionAuthConfig, readMailEncryptionKey, renderProductionAuthMail, readConfirmationNoticeEnabled } from "./production-auth-config";
 import type { ProductionAuthConfig } from "./production-auth-config";
 import { createProductionAccountHandler } from "./production-account-http";
 import type { ProductionAccountRuntime } from "./production-account-http";
@@ -21,6 +21,7 @@ const shared = globalThis as typeof globalThis & { blizhniyProductionAuth?: Runt
 function runtime(config: ProductionAuthConfig): Runtime {
   if (typeof window !== "undefined") throw new Error("Production auth is server-only");
   if (!shared.blizhniyProductionAuth) {
+    const confirmationNotice = readConfirmationNoticeEnabled();
     const key = readMailEncryptionKey(config.mailKeyFile);
     let cipher: MailPayloadCipher;
     try {
@@ -28,7 +29,7 @@ function runtime(config: ProductionAuthConfig): Runtime {
       cipher = new MailPayloadCipher(key);
     } finally { key.fill(0); }
     const db = createPostgresDatabase();
-    const account: ProductionAccountRuntime = { store: new RegistrationStore(db, cipher),
+    const account: ProductionAccountRuntime = { store: new RegistrationStore(db, cipher, { confirmationNotice }),
       recovery: new PasswordRecoveryStore(db, cipher), identity: new IdentityStore(db),
       limiter: new AuthRateLimiter(db, config.rateSecret), verifyCaptcha: verifyTurnstileToken };
     const verified = verifyProductionAuthDatabase(db).catch(async error => { await db.close(); throw error; });

@@ -56,11 +56,15 @@ const dummyHash = `scrypt$131072$8$1$${"0".repeat(32)}$${"0".repeat(128)}`;
 export class RegistrationStore {
   private readonly db: Pick<PostgresDatabase, "query" | "transaction">;
   private readonly mailCipher: MailPayloadCipher | undefined;
+  private readonly confirmationNotice: boolean;
 
-  constructor(db: Pick<PostgresDatabase, "query" | "transaction">, mailCipher?: MailPayloadCipher) {
+  constructor(db: Pick<PostgresDatabase, "query" | "transaction">, mailCipher?: MailPayloadCipher,
+    options: { confirmationNotice?: boolean } = {}) {
     if (typeof window !== "undefined") throw new Error("Registration is server-only");
+    if (options.confirmationNotice && !mailCipher) throw new Error("Confirmation notice requires encrypted outbox");
     this.db = db;
     this.mailCipher = mailCipher;
+    this.confirmationNotice = options.confirmationNotice === true;
   }
 
   /** Creates only an ordinary pending account. A duplicate is a no-op, not password recovery. */
@@ -130,6 +134,11 @@ export class RegistrationStore {
         returning user_id`, [tokenHash, user.id, user.email, user.authVersion]);
       if (consumed.rowCount !== 1) return false;
       await tx.query("update app.users set email_verified_at=clock_timestamp() where id=$1", [user.id]);
+      if (this.confirmationNotice && this.mailCipher) {
+        const { rows: [clock] } = await tx.query<{ createdAt: Date }>('select clock_timestamp() as "createdAt"');
+        await enqueueAuthMail(tx, this.mailCipher, { id: randomUUID(), userId: user.id, purpose: "confirm_notice",
+          createdAt: clock.createdAt, expiresAt: new Date(clock.createdAt.getTime() + 86400000) }, { email: user.email, token: null });
+      }
       return true;
     });
   }

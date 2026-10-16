@@ -94,7 +94,7 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
       }
     } finally {
       // No identity or credential is broadcast or persisted. Unknown commits also invalidate other tabs.
-      if (production) notifyAccountSessionChange(false);
+      if (production) notifyAccountSessionChange(false, channel.current);
       else channel.current?.postMessage({ type: "changed" });
       busyRef.current = false;
       setCaptchaToken("");
@@ -116,6 +116,8 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
     <Heading className="text-2xl font-bold text-brand-ink">{view.kind === "active" ? production ? "Ваш аккаунт" : "Локальный аккаунт" : view.kind === "switch" ? "Смена аккаунта" : "Вход"}</Heading>
     <p role="status" className="mt-3 text-sm leading-6 text-slate-600">{busy ? "Обрабатываем запрос…" : view.kind === "checking" ? "Проверяем сессию…" : form ? production ? "Войдите с email и паролем. Email должен быть подтверждён." : "Вход только для подтверждённого тестового аккаунта .invalid." : ""}</p>
     {issue && <p ref={alert} tabIndex={-1} role="alert" className="mt-5 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{issue}</p>}
+    {form && issue === errors.INVALID_CREDENTIALS && <Link href={production ? "/auth/register#resend" : "/auth/local#resend"} prefetch={false}
+      className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline">Не подтвердили почту? Запросить письмо</Link>}
     {view.kind === "active" && <div className="mt-6 space-y-4">
       <p className="break-all font-semibold text-brand-ink">{view.user.email}</p>
       <p className="text-sm text-slate-600">{view.user.role === "admin" ? "Администратор" : "Пользователь"} · права проверяет сервер.</p>

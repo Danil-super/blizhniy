@@ -82,7 +82,8 @@ export class MailDeliveryWorker {
       try { payload = this.cipher.open(intent, row.payload, row.key_id); }
       catch { return cancel("failed", "INVALID_PAYLOAD"); }
       if (payload.email !== user.email) return cancel("cancelled", "STALE");
-      if (row.purpose !== "reset_notice") {
+      if (row.purpose === "confirm_notice" && (!user.email_verified_at || user.is_blocked)) return cancel("cancelled", "STALE");
+      if (row.purpose === "confirm" || row.purpose === "recover") {
         if (row.purpose === "confirm" ? user.email_verified_at || user.is_blocked : !user.email_verified_at) {
           return cancel("cancelled", "STALE");
         }

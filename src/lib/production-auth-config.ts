@@ -10,6 +10,15 @@ function assertServer(): void {
   if (typeof window !== "undefined") throw new Error("Production auth is server-only");
 }
 
+/** Producer opt-in: enable only after the schema and all delivery readers support notices. */
+export function readConfirmationNoticeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  assertServer();
+  const value = env.BLIZHNIY_AUTH_CONFIRMATION_NOTICE;
+  if (value === undefined || value === "disabled") return false;
+  if (value === "enabled") return true;
+  throw new Error("Invalid confirmation notice configuration");
+}
+
 /** Separate from local mode: approved host/database/role only, no capture or legacy fallback. */
 export function readProductionAuthConfig(env: NodeJS.ProcessEnv = process.env): ProductionAuthConfig | null {
   assertServer();
@@ -60,6 +69,8 @@ export function readMailEncryptionKey(file: string): Buffer {
 /** Trusted renderer for authenticated outbox payloads; token fragments never enter request URLs. */
 export function renderProductionAuthMail(intent: MailIntent, payload: AuthMailPayload): TransactionalMail {
   assertServer();
+  if (intent.purpose === "confirm_notice") return { id: intent.id, to: payload.email, subject: "БЛИЖНИЙ: почта подтверждена",
+    text: `Почта подтверждена. Ваш аккаунт готов к входу на сайт БЛИЖНИЙ:\n${productionAuthOrigin}/auth\nЭто информационное уведомление; повторно подтверждать email не нужно.` };
   if (intent.purpose === "reset_notice") return { id: intent.id, to: payload.email, subject: "БЛИЖНИЙ: пароль изменён",
     text: "Пароль изменён. Все прежние сессии отозваны. Если это сделали не вы, восстановите доступ на сайте БЛИЖНИЙ и обратитесь в поддержку." };
   const confirming = intent.purpose === "confirm";
