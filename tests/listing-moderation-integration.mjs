@@ -8,6 +8,8 @@ import {loadAdminModule} from './admin-module.mjs';
 import {moderationModule} from './listing-moderation-module.mjs';
 import {createProductionListingModerationHandler} from './listing-moderation-http-module.mjs';
 import {AuthRateLimiter} from '../src/lib/auth-http.ts';
+import {createAdminListingModerationHandler} from './admin-listing-moderation-http-module.mjs';
+import {IdentityStore} from '../src/lib/identity.ts';
 const {PostgresListingModerationStore,ListingModerationInputError}=moderationModule;
 const {AdminAccessError}=loadAdminModule('admin-authorization');
 export async function testListingModeration(suite,operator,db,config,{owner,other,admin,token,otherToken,adminToken,session,a}){
@@ -129,5 +131,50 @@ export async function testListingModeration(suite,operator,db,config,{owner,othe
   assert.equal((await handle(request({...body,state:'approved'},token,'PUT'))).status,422);
   for(const value of [token,owner.id,saved.id])assert.equal(JSON.stringify(events).includes(value),false);
   await assert.rejects(db.query("insert into app.listing_moderation(listing_id,revision,state) values($1,$2,'approved')",[saved.id,'900000']),{code:'42501'});
+ });
+ await suite.test('admin requests bind the expected account, not just any administrator cookie',async()=>{
+  const review=await store.read(token,owner.id,saved.id,saved.revision);
+  await assert.rejects(store.inspect(adminToken,review.id,other.id),AdminAccessError);
+  await assert.rejects(store.list(adminToken,null,other.id),AdminAccessError);
+  await assert.rejects(store.decide(adminToken,review.id,'approved',null,other.id),AdminAccessError);
+  assert.equal((await store.inspect(adminToken,review.id,admin.id)).snapshot.id,saved.id);
+ });
+ await suite.test('admin image preview authorizes current review and exact photo before any file read',async()=>{
+  const review=await store.read(token,owner.id,saved.id,saved.revision);let reads=0;
+  const preview=new PostgresListingModerationStore(db,{read:async record=>{reads++;assert.equal(record.id,a);assert.equal(record.mimeType,'image/webp');return Buffer.alloc(record.size);}});
+  await operator.query('grant select(sha256) on app.media_objects to blizhniy_runtime');
+  await assert.rejects(preview.readPhoto(token,review.id,a,owner.id),AdminAccessError);
+  await assert.rejects(preview.readPhoto(adminToken,review.id,a,other.id),AdminAccessError);
+  await assert.rejects(preview.readPhoto(adminToken,review.id,randomUUID(),admin.id),ListingDraftAccessError);assert.equal(reads,0);
+  const unlinked=(await operator.query("select id from app.media_objects where owner_id=$1 and state='ready' and id<>$2 limit 1",[owner.id,a])).rows[0].id;
+  await assert.rejects(preview.readPhoto(adminToken,review.id,unlinked,admin.id),ListingDraftAccessError);assert.equal(reads,0);
+  const photo=await preview.readPhoto(adminToken,review.id,a,admin.id);assert.equal(photo.record.id,a);assert.equal(photo.bytes.length,12);assert.equal(reads,1);
+  saved=await forms.update(token,owner.id,saved.id,saved.revision,{...saved.form,title:'Новая версия после просмотра'});
+  await assert.rejects(preview.readPhoto(adminToken,review.id,a,admin.id),ListingDraftConflictError);assert.equal(reads,1);
+ });
+ await suite.test('moderation queue excludes self-owned admin submissions and paginates every current request once',async()=>{
+  const own=(await operator.query('select id from app.listings where author_id=$1',[admin.id])).rows.map(row=>row.id);
+  const queue=await store.list(adminToken,null,admin.id);assert.equal(queue.items.some(item=>own.includes(item.listingId)),false);
+  const drafts=(await operator.query(`insert into app.listings(author_id,listing_type,title,description,category_id,city_id,contact_phone)
+   select $1,'sell','Проверка очереди','Синтетическое описание',category_id,city_id,'+79990000000' from app.listings cross join generate_series(1,25) where id=$2 returning id`,[owner.id,saved.id])).rows.map(row=>row.id);
+  await operator.query('insert into app.listing_moderation(listing_id,revision) select id,revision from app.listings where id=any($1::uuid[])',[drafts]);
+  const expected=(await operator.query(`select m.id from app.listing_moderation m join app.listings l on l.id=m.listing_id and l.revision=m.revision
+   where m.state='pending' and l.status='draft' and l.author_id<>$1 order by m.submitted_at,m.id`,[admin.id])).rows.map(row=>row.id);
+  let cursor=null;const found=[];for(let n=0;n<5;n++){const page=await store.list(adminToken,cursor,admin.id);assert.ok(page.items.length<=20);found.push(...page.items.map(item=>item.id));cursor=page.nextCursor;if(!cursor)break;}
+  assert.equal(cursor,null);assert.deepEqual(found,expected);assert.equal(new Set(found).size,found.length);
+ });
+ await suite.test('admin HTTP composes real role/CAS authorization and private photos without publication or paid writes',async()=>{
+  const review=await store.submit(token,owner.id,saved.id,saved.revision),origin='https://app.example.invalid',events=[];
+  const preview=new PostgresListingModerationStore(db,{read:async record=>Buffer.alloc(record.size)});
+  const handle=createAdminListingModerationHandler({origin},()=>({store:preview,identity:new IdentityStore(db),limiter:new AuthRateLimiter(db,'n'.repeat(64))}),event=>events.push(event));
+  const request=(body,credential=adminToken,expectedAdminId=admin.id,method='POST')=>new Request(origin+'/api/admin/listing-moderation',{method,
+   headers:{host:'app.example.invalid',origin,'x-blizhniy-request':'1','x-real-ip':'192.0.2.77','content-type':'application/json',cookie:'__Host-blizhniy_session='+credential},body:JSON.stringify({expectedAdminId,...body})});
+  assert.equal((await handle(request({action:'inspect',requestId:review.id},token,owner.id))).status,403);
+  assert.equal((await handle(request({action:'inspect',requestId:review.id},adminToken,other.id))).status,403);
+  const detail=await handle(request({action:'inspect',requestId:review.id}));assert.equal(detail.status,200);assert.equal((await detail.json()).snapshot.id,saved.id);
+  const photo=await handle(request({action:'photo',requestId:review.id,fileId:a}));assert.equal(photo.status,200);assert.equal((await photo.arrayBuffer()).byteLength,12);
+  const accepted=await handle(request({requestId:review.id,state:'approved',note:null},adminToken,admin.id,'PUT'));assert.equal(accepted.status,200);assert.equal((await accepted.json()).state,'approved');
+  assert.deepEqual((await operator.query('select status,is_paid,published_at,expires_at from app.listings where id=$1',[saved.id])).rows[0],{status:'draft',is_paid:false,published_at:null,expires_at:null});
+  for(const value of [token,adminToken,owner.id,saved.id,a])assert.equal(JSON.stringify(events).includes(value),false);
  });
 }

@@ -34,7 +34,13 @@ async function createRuntime(config: ProductionAuthConfig) {
   const files = await createLocalMediaFileStore(policy.root), writer = await createLocalMediaFileWorker(policy.app, policy.root);
   const repository = new MediaMetadataRepository(db, files);
   const upload = new LocalMediaUpload(repository, createMediaSocketClient(policy.socket, validateSocket), new LocalMediaWriter(repository, writer));
-  return { identity: new IdentityStore(db), limiter, upload, repository };
+  return { identity: new IdentityStore(db), limiter, upload, repository, files };
+}
+
+/** Trusted server composition only. The calling repository must authorize the exact resource first. */
+export async function getProductionMediaFileReader(config: ProductionAuthConfig) {
+  const state = await (shared.blizhniyProductionMedia ??= createRuntime(config));
+  return { read: state.files.read };
 }
 
 /** No import-time files/connections, migrations or grants. Operator opt-in and restart only. */

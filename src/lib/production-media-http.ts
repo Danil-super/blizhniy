@@ -15,6 +15,8 @@ type Runtime = { identity: Pick<IdentityStore, "resolveSession">; limiter: Pick<
 type Event = { event: "media_request"; requestId: string; operation: string; status: number; durationMs: number; code?: string };
 const shared = globalThis as typeof globalThis & { blizhniyMediaAdmission?: { upload: boolean; reads: number } };
 const admission = shared.blizhniyMediaAdmission ??= { upload: false, reads: 0 };
+/** All private image readers share this existing budget; adding an admin path must not multiply it. */
+export const productionMediaAdmission = admission;
 
 function uploadBoundary(request: Request, origin: string) {
   if (request.method !== "POST") throw new AuthRequestError(405, "METHOD_NOT_ALLOWED");
