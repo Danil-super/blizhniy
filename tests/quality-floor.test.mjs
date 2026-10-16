@@ -92,3 +92,28 @@ test('floor fails closed for missing base, invalid arguments and non-git directo
   assert.equal(run(['--base', '--help']).status, 2);
   assert.equal(run(undefined, tmpdir()).status, 2);
 });
+
+const registrationAssertionPairs = [
+  ['tests/local-registration-ui.test.mjs', '  assert.match(html, /minLength="15"/i);', '  assert.match(html, /minLength="8"/i);'],
+  ['tests/production-account-browser.mjs',
+    '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());',
+    '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["name", "email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());'],
+];
+for (const [file, before, after] of registrationAssertionPairs) {
+  test(`floor permits only the exact reviewed registration replacement in ${file}`, t => {
+    const { put, git, run } = fixture(t);
+    put(file, before+'\n'); git('add', '.'); git('commit', '-qm', 'registration assertion baseline');
+    put(file, after+'\n');
+    assert.equal(run(['--base', 'HEAD']).status, 0);
+    // Deleting the replacement, altering it, or moving it to another file is not approved.
+    for (const replacement of ['', after.replace('assert.', 'assert.ok(true); // assert.'), after+'\n'+after]) {
+      put(file, replacement+'\n');
+      assert.equal(run(['--base', 'HEAD']).status, 1);
+    }
+    put(file, '\n'); put('tests/foreign.test.mjs', after+'\n');
+    assert.equal(run(['--base', 'HEAD']).status, 1);
+    put('tests/foreign.test.mjs', '\n'); put(file, after+'\n');
+    put('tests/example.test.mjs', '\n');
+    assert.equal(run(['--base', 'HEAD']).status, 1, 'an approved pair cannot conceal another removed assertion');
+  });
+}

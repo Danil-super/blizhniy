@@ -69,9 +69,22 @@ for (const { file, text } of added) {
   if (isConstraints(file) && /^\| *(?:W|E)\d+ *\|/.test(text)) flag('new-exception', file);
 }
 for (const file of deleted) if (isTest(file)) flag('test-deleted', file);
+// Exact registration-policy replacements reviewed by the owner, 2026-10-16.
+// Not a general assertion allowlist: both exact lines must occur once in this diff,
+// in the same specified file. Every other removal still blocks the release.
+const registrationAssertionPairs = [
+  ['tests/local-registration-ui.test.mjs', '  assert.match(html, /minLength="15"/i);', '  assert.match(html, /minLength="8"/i);'],
+  ['tests/production-account-browser.mjs',
+    '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());',
+    '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["name", "email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());'],
+];
+const reviewedReplacement = (file, text) => registrationAssertionPairs.some(([path, before, after]) =>
+  file === path && text === before &&
+  removed.filter(line => line.file === path && line.text === before).length === 1 &&
+  added.filter(line => line.file === path && line.text === after).length === 1);
 for (const { file, text } of removed) {
   if (isCode(file) && isTest(file) && !deleted.includes(file) && /\b(?:expect|assert|should)\b/.test(stripStrings(text))) {
-    flag('assertion-removed', file);
+    if (!reviewedReplacement(file, text)) flag('assertion-removed', file);
   }
 }
 
