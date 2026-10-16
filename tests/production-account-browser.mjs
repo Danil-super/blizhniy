@@ -19,6 +19,8 @@ import sharp from 'sharp';
 import { testRegistrationResendScenarios } from "./registration-resend-browser-cases.mjs";
 import { testLoginFocusScenarios } from "./login-focus-browser-cases.mjs";
 import { testEmbeddedLoginScenarios } from "./embedded-login-browser-cases.mjs";
+import { testRememberedCaptchaScenarios } from './remembered-captcha-browser-cases.mjs';
+import { issueBrowserProof } from '../src/lib/account-browser-proof.ts';
 
 // Opaque transport revision only; real canonical hashing/row locking are tested with PG.
 const fixtureRevision = profile => profile ? createHash("sha256").update(JSON.stringify(profile)).digest("hex") : null;
@@ -45,7 +47,7 @@ test("primary account browser forms use the new cookie API without remote traffi
   const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
   const origin = `http://127.0.0.1:${port}`;
   const env = { PATH: process.env.PATH, LANG: "C.UTF-8", NODE_ENV: "production", __NEXT_PROCESSED_ENV: "true", NEXT_TELEMETRY_DISABLED: "1",
-    BLIZHNIY_AUTH_MODE: "postgres", BLIZHNIY_AUTH_ORIGIN: "https://xn----9sbphbgks4a4a.xn--p1ai",
+    BLIZHNIY_AUTH_MODE: "postgres", BLIZHNIY_AUTH_REMEMBERED_CAPTCHA: 'enabled', BLIZHNIY_AUTH_ORIGIN: "https://xn----9sbphbgks4a4a.xn--p1ai",
     BLIZHNIY_DB_HOST: "17e86f80f26733d39ef4b84d.twc1.net", BLIZHNIY_DB_PORT: "5432", BLIZHNIY_DB_NAME: "blizhniy_prod",
     BLIZHNIY_DB_USER: "blizhniy_runtime", BLIZHNIY_DB_PASSWORD: "synthetic-ui-db-password", BLIZHNIY_DB_SSL_MODE: "verify-full",
     BLIZHNIY_DB_CA_FILE: "/not-read-by-ui/root.crt", BLIZHNIY_AUTH_MAIL_KEY_FILE: "/not-read-by-ui/mail-key.bin",
@@ -250,6 +252,29 @@ test("primary account browser forms use the new cookie API without remote traffi
       page.on("pageerror", () => errors.push("pageerror"));
       try { await fn({ page, context, calls, state }); assert.deepEqual(foreign, []); assert.deepEqual(errors, []); }
       finally { await context.close(); }
+    });
+    await testRememberedCaptchaScenarios({ run, origin, password });
+    await run('a signed HttpOnly human proof survives full document navigation without rendering CAPTCHA or serializing its token', async ({ page, context, calls }) => {
+      const agent = await page.evaluate(() => navigator.userAgent);
+      const ip = '192.0.2.44';
+      const proof = issueBrowserProof(env.BLIZHNIY_AUTH_RATE_SECRET, ip, agent);
+      const token = proof.cookie.split(';', 1)[0].split('=')[1];
+      await context.setExtraHTTPHeaders({ 'x-real-ip': ip });
+      await context.addCookies([{ name: '__Host-blizhniy_human', value: token, url: origin.replace('http:', 'https:') + '/', secure: true, httpOnly: true, sameSite: 'Lax' }]);
+      for (const path of ['/auth', '/auth/register', '/auth/recover']) {
+        const response = await page.goto(origin + path);
+        const html = await response.text();
+        assert.equal(html.includes(token), false, 'only the expiry hint is serialized, never the cookie');
+        await page.getByLabel('Email', { exact: true }).waitFor();
+        assert.equal(await page.locator('[data-fixture-widget="captcha"]').count(), 0);
+      }
+      await page.getByLabel('Email', { exact: true }).fill('owner@example.invalid');
+      await page.getByRole('button', { name: 'Отправить письмо восстановления', exact: true }).click();
+      await page.getByRole('status').filter({ hasText: 'Если аккаунт подтверждён' }).waitFor();
+      assert.deepEqual(calls, [{ action: 'recover', body: { email: 'owner@example.invalid', captchaToken: '' } }]);
+      await context.setExtraHTTPHeaders({ 'x-real-ip': '192.0.2.45' });
+      await page.goto(origin + '/auth/recover');
+      await page.locator('[data-fixture-widget="captcha"]').waitFor();
     });
     const login = async (page, email = "owner@example.invalid", switchAccount = false) => {
       await page.goto(`${origin}/auth`);

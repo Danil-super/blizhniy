@@ -8,6 +8,7 @@ import { TurnstileWidget } from "@/components/TurnstileWidget";
 import Link from "next/link";
 import { isValidAccountPassword, PASSWORD_MIN_LENGTH } from "@/lib/account-validation";
 import { PasswordField } from "./PasswordField";
+import { useAccountCaptcha } from "./AccountCaptchaProvider";
 
 type View = { kind: "checking" | "anonymous" | "switch" | "unavailable" } | { kind: "active"; user: LocalAccountUser };
 const buttonStyle = "min-h-11 scroll-mb-28 rounded-xl bg-brand-blue px-5 py-3 font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue disabled:cursor-wait disabled:opacity-60";
@@ -16,7 +17,7 @@ const inputStyle = "mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-w
 const unavailable = "Не удалось подтвердить состояние сессии. Проверьте сессию ещё раз; успешный вход или выход не подтверждён.";
 const errors: Record<string, string> = {
   INVALID_CREDENTIALS: "Неверный email или пароль, либо аккаунт ещё не подтверждён.",
-  RATE_LIMITED: "Слишком много попыток. Подождите 15 минут и попробуйте снова.",
+  RATE_LIMITED: "Слишком много попыток входа. Повторите вход через 15 минут или восстановите пароль — восстановление доступно отдельно.",
   INVALID_INPUT: "Проверьте email и пароль.",
   SYNTHETIC_EMAIL_REQUIRED: "На локальном стенде используйте адрес, заканчивающийся на .invalid.",
   CAPTCHA_REQUIRED: "Повторите проверку безопасности и отправьте форму ещё раз.",
@@ -25,6 +26,7 @@ const errors: Record<string, string> = {
 export function LocalAccountForm({ production = false, headingLevel = "h1" }: { production?: boolean; headingLevel?: "h1" | "h2" } = {}) {
   const Heading = headingLevel;
   const account = production ? productionAccount : localAccount;
+  const rememberedCaptcha = useAccountCaptcha();
   const [view, setView] = useState<View>({ kind: "checking" });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -147,7 +149,7 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
     event.preventDefault();
     if (busyRef.current) return;
     if (!isValidAccountPassword(password)) { setIssue("Пароль должен содержать от 8 до 128 символов."); return; }
-    if (production && !captchaToken) { setIssue(errors.CAPTCHA_REQUIRED); return; }
+    if (production && !rememberedCaptcha && !captchaToken) { setIssue(errors.CAPTCHA_REQUIRED); return; }
     void mutate("login");
   }
   const form = view.kind === "anonymous" || view.kind === "switch";
@@ -169,8 +171,8 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
         <input type="email" required autoComplete="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} className={inputStyle} placeholder={production ? "you@example.ru" : "test@example.invalid"} />
       </label>
       <PasswordField label="Пароль" value={password} onChange={setPassword} autoComplete="current-password" minLength={PASSWORD_MIN_LENGTH} />
-      {production && <div className="-mx-3 flex justify-center sm:mx-0"><TurnstileWidget requireProvider size={headingLevel === "h1" ? "normal" : "compact"} inline resetKey={captchaRevision} onVerify={setCaptchaToken} /></div>}
-      <button type="submit" disabled={busy || (production && !captchaToken)} className={`${buttonStyle} w-full`}>Войти</button>
+      {production && !rememberedCaptcha && <div className="-mx-3 flex justify-center sm:mx-0"><TurnstileWidget requireProvider manualRetry size="normal" inline resetKey={captchaRevision} onVerify={setCaptchaToken} /></div>}
+      <button type="submit" disabled={busy || (production && !rememberedCaptcha && !captchaToken)} className={`${buttonStyle} w-full`}>Войти</button>
       {view.kind === "switch" && <button type="button" disabled={busy} onClick={() => { void reconcile(); }} className={`${secondaryStyle} w-full`}>Отменить смену аккаунта</button>}
       </fieldset>
     </form>}

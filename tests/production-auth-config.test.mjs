@@ -30,6 +30,13 @@ test("production Auth is explicitly opted in to the approved Russian database, v
     assert.throws(() => readProductionAuthConfig({ ...env, ...changes }), /Invalid production auth configuration/);
   }
 });
+test("remembered CAPTCHA is an explicit opt-in and invalid feature settings fail closed", () => {
+  assert.equal(readProductionAuthConfig({ ...env, BLIZHNIY_AUTH_REMEMBERED_CAPTCHA: 'disabled' }).rememberedCaptcha, undefined);
+  assert.equal(readProductionAuthConfig({ ...env, BLIZHNIY_AUTH_REMEMBERED_CAPTCHA: 'enabled' }).rememberedCaptcha, true);
+  for (const value of ['', 'true', 'unexpected']) {
+    assert.throws(() => readProductionAuthConfig({ ...env, BLIZHNIY_AUTH_REMEMBERED_CAPTCHA: value }), /Invalid production auth configuration/);
+  }
+});
 test("mail key reader requires an exact private owned regular 32-byte file and does not follow symlinks", () => {
   const directory = mkdtempSync(join(tmpdir(), "blizhniy-auth-key-test-"));
   const file = join(directory, "key.bin");

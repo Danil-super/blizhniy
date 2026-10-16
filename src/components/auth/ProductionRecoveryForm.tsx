@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
-import { notifyAccountSessionChange } from "@/lib/local-account";
+import { notifyAccountSessionChange, consumeAccountCaptchaResponse } from "@/lib/local-account";
 import { isValidAccountPassword, PASSWORD_MIN_LENGTH } from "@/lib/account-validation";
 import { PasswordField } from "./PasswordField";
 import Link from "next/link";
+import { useAccountCaptcha } from "./AccountCaptchaProvider";
 
 const inputStyle = "mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-brand-ink focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue";
 const invalidLink = "Ссылка недействительна или устарела. Запросите новое письмо восстановления.";
@@ -18,6 +19,7 @@ const issues: Record<string, string> = {
 };
 
 export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) {
+  const remembered = useAccountCaptcha();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [repeat, setRepeat] = useState("");
@@ -51,7 +53,7 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busyRef.current || !captchaToken || (mode === "reset" && !token)) return;
+    if (busyRef.current || (!remembered && !captchaToken) || (mode === "reset" && !token)) return;
     setIssue("");
     if (mode === "reset" && !isValidAccountPassword(password)) { setIssue(issues.INVALID_INPUT); return; }
     if (mode === "reset" && password !== repeat) { setIssue("Пароли не совпадают."); return; }
@@ -62,6 +64,7 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
       const response = await fetch(`/api/account/${mode}`, { method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error",
         signal: AbortSignal.timeout(10000), headers: { "Content-Type": "application/json", "X-Blizhniy-Request": "1" },
         body: JSON.stringify(mode === "recover" ? { email, captchaToken } : { token, password, captchaToken }) });
+      consumeAccountCaptchaResponse(response);
       const payload = await response.json();
       if (!response.ok) throw new Error(typeof payload?.error?.code === "string" ? payload.error.code : "AUTH_UNAVAILABLE");
       if (response.status !== (mode === "recover" ? 202 : 200) || Object.keys(payload).length !== 1 || payload.status !== (mode === "recover" ? "accepted" : "password_reset")) throw new Error("AUTH_UNAVAILABLE");
@@ -88,8 +91,8 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
         <p id="reset-password-help" className="text-xs leading-5 text-slate-600">8–128 символов. Надёжнее — длинная фраза от 15 символов. Пробелы сохраняются.</p>
         <PasswordField label="Повторите пароль" value={repeat} onChange={setRepeat} autoComplete="new-password" toggleLabel="повтор пароля" />
       </>}
-      <div className="-mx-3 flex justify-center sm:mx-0"><TurnstileWidget requireProvider size="normal" inline onVerify={setCaptchaToken} resetKey={captchaVersion} /></div>
-      <button type="submit" disabled={busy || !captchaToken} className="min-h-11 w-full scroll-mb-28 rounded-xl bg-brand-blue px-5 py-3 font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue disabled:cursor-wait disabled:opacity-60">{mode === "recover" ? "Отправить письмо восстановления" : "Сохранить новый пароль"}</button>
+      {!remembered && <div className="-mx-3 flex justify-center sm:mx-0"><TurnstileWidget requireProvider manualRetry size="normal" inline onVerify={setCaptchaToken} resetKey={captchaVersion} /></div>}
+      <button type="submit" disabled={busy || (!remembered && !captchaToken)} className="min-h-11 w-full scroll-mb-28 rounded-xl bg-brand-blue px-5 py-3 font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue disabled:cursor-wait disabled:opacity-60">{mode === "recover" ? "Отправить письмо восстановления" : "Сохранить новый пароль"}</button>
     </form>}
   </>;
 }

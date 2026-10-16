@@ -10,6 +10,7 @@ type TurnstileWidgetProps = {
   inline?: boolean;
   requireProvider?: boolean;
   size?: "normal" | "compact" | "flexible";
+  manualRetry?: boolean;
 };
 
 type TurnstileApi = {
@@ -22,6 +23,10 @@ type TurnstileApi = {
       size?: "normal" | "compact" | "flexible";
       "expired-callback"?: () => void;
       "error-callback"?: () => void;
+      "timeout-callback"?: () => void;
+      retry?: "never";
+      "refresh-expired"?: "manual";
+      "refresh-timeout"?: "manual";
     },
   ) => string;
   remove?: (widgetId: string) => void;
@@ -44,6 +49,7 @@ function createQuietToken() {
   return `quiet:${Date.now()}:${randomValue}`;
 }
 
+let scriptPromise: Promise<void> | undefined;
 function loadTurnstileScript() {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("Turnstile script can only be loaded in the browser"));
@@ -53,30 +59,37 @@ function loadTurnstileScript() {
     return Promise.resolve();
   }
 
+  if (scriptPromise) return scriptPromise;
   const existingScript = document.getElementById(turnstileScriptId) as HTMLScriptElement | null;
-
-  if (existingScript) {
-    return new Promise<void>((resolve, reject) => {
-      existingScript.addEventListener("load", () => resolve(), { once: true });
-      existingScript.addEventListener("error", () => reject(new Error("Turnstile script failed to load")), { once: true });
-    });
-  }
-
-  return new Promise<void>((resolve, reject) => {
-    const script = document.createElement("script");
+  const script = existingScript ?? document.createElement("script");
+  scriptPromise = new Promise<void>((resolve, reject) => {
+    const finish = (failed: boolean) => {
+      window.clearTimeout(timer);
+      script.removeEventListener("load", loaded);
+      script.removeEventListener("error", failedLoad);
+      if (failed || !window.turnstile) {
+        script.remove(); reject(new Error("Turnstile script failed to load"));
+      } else resolve();
+    };
+    const loaded = () => finish(false);
+    const failedLoad = () => finish(true);
+    const timer = window.setTimeout(failedLoad, 12000);
     script.id = turnstileScriptId;
     script.src = turnstileScriptSrc;
     script.async = true;
     script.defer = true;
-    script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener("error", () => reject(new Error("Turnstile script failed to load")), { once: true });
-    document.head.appendChild(script);
-  });
+    script.addEventListener("load", loaded, { once: true });
+    script.addEventListener("error", failedLoad, { once: true });
+    if (!existingScript) document.head.appendChild(script);
+  }).catch(error => { scriptPromise = undefined; throw error; });
+  return scriptPromise;
 }
 
-export function TurnstileWidget({ inline = false, name = "captchaToken", onVerify, resetKey, requireProvider = false, size }: TurnstileWidgetProps) {
+export function TurnstileWidget({ inline = false, name = "captchaToken", onVerify, resetKey, requireProvider = false, size, manualRetry = false }: TurnstileWidgetProps) {
   const turnstileSiteKey = getTurnstileSiteKey();
   const [token, setToken] = useState("");
+  const [failure, setFailure] = useState(false);
+  const [retryVersion, setRetryVersion] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
 
@@ -92,7 +105,9 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
     };
 
     setToken("");
+    setFailure(false);
     onVerify?.("");
+    const failed = () => { if (!cancelled) { publish(""); setFailure(true); } };
 
     if (turnstileSiteKey) {
       loadTurnstileScript()
@@ -110,13 +125,15 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
             sitekey: turnstileSiteKey,
             theme: "light",
             size: size ?? (requireProvider ? "compact" : undefined),
-            callback: publish,
-            "expired-callback": () => publish(""),
-            "error-callback": () => publish(""),
+            ...(manualRetry ? { retry: "never" as const, "refresh-expired": "manual" as const, "refresh-timeout": "manual" as const } : {}),
+            callback: value => { if (!cancelled) setFailure(false); publish(value); },
+            "expired-callback": manualRetry ? failed : () => publish(""),
+            "error-callback": manualRetry ? failed : () => publish(""),
+            "timeout-callback": manualRetry ? failed : undefined,
           });
         })
         .catch(() => {
-          publish("");
+          failed();
         });
 
       return () => {
@@ -140,12 +157,16 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
       cancelled = true;
       window.clearTimeout(timerId);
     };
-  }, [onVerify, resetKey, requireProvider, turnstileSiteKey, size]);
+  }, [onVerify, resetKey, requireProvider, turnstileSiteKey, size, manualRetry, retryVersion]);
 
   return (
     <>
       <input type="hidden" name={name} value={token} />
       {turnstileSiteKey ? <div ref={containerRef} className={`${inline ? "" : "mt-3 "}min-h-[65px]`} /> : null}
+      {manualRetry && failure && <div className="text-sm text-red-800" role="alert">
+        <p>Проверка не завершена или срок истёк. Введённые данные сохранены.</p>
+        <button type="button" className="min-h-11 font-semibold text-brand-blue underline" onClick={() => setRetryVersion(value => value + 1)}>Повторить проверку</button>
+      </div>}
       {!turnstileSiteKey && requireProvider && <p role="alert" className="text-sm text-red-800">Проверка безопасности временно недоступна. Попробуйте позже.</p>}
       <input
         type="text"

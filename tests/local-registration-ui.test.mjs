@@ -6,6 +6,7 @@ import vm from "node:vm";
 import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
 import * as validation from '../src/lib/account-validation.ts';
 import { PasswordField } from './password-field-module.mjs';
+import * as accountClient from '../src/lib/local-account.ts';
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
@@ -18,6 +19,7 @@ vm.runInNewContext(ts.transpileModule(source, { compilerOptions: {
   if (name === "@/lib/registration-legal") return { REGISTRATION_LEGAL_VERSIONS };
   if (name === '@/lib/account-validation') return validation;
   if (name === './PasswordField') return { PasswordField };
+  if (name === '@/lib/local-account') return accountClient;
   throw new Error("Unapproved UI import");
 } });
 

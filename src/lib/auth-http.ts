@@ -3,6 +3,8 @@ import { isIP } from "node:net";
 import type { PostgresQueries } from "./postgres";
 
 export type LocalAuthConfig = { origin: string; mailUrl: string; rateSecret: string };
+export type CredentialAction = "login" | "register" | "resend" | "recover" | "reset";
+const credentialActions = ["login", "register", "resend", "recover", "reset"];
 
 export function readLocalAuthConfig(env: NodeJS.ProcessEnv = process.env): LocalAuthConfig | null {
   if (!env.BLIZHNIY_AUTH_MODE) return null;
@@ -120,6 +122,21 @@ export class AuthRateLimiter {
     if (!await this.consume(`production:${scope}:all`, scope === "session" ? 2000 : 600)) return false;
     if (!await this.consume(`production:${scope}:ip:${ip}`, scope === "session" ? 300 : 20)) return false;
     return email === undefined || await this.consume(`production:credential:email:${email}`, 5);
+  }
+
+  /** Bound provider traffic before CAPTCHA, without spending the account's email budget. */
+  async allowProductionAttempt(action: CredentialAction, ip: string): Promise<boolean> {
+    if (!credentialActions.includes(action) || !isIP(ip)) throw new Error("Invalid production rate limit key");
+    return await this.consume("production:credential:all", 600) &&
+      await this.consume(`production:credential:${action}:ip:${ip}`, 20);
+  }
+
+  /** Charge only verified human attempts; login cannot lock the recovery channel. */
+  async allowProductionEmail(action: CredentialAction, email: string): Promise<boolean> {
+    if (!credentialActions.includes(action) || typeof email !== "string" || !email || email.length > 254) {
+      throw new Error("Invalid production rate limit key");
+    }
+    return this.consume(`production:credential:${action}:email:${email}`, 5);
   }
 
   async prune(): Promise<number> {

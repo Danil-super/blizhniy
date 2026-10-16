@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
+import { headers } from "next/headers";
+import { AccountCaptchaProvider } from "@/components/auth/AccountCaptchaProvider";
+import { readBrowserProof } from "@/lib/account-browser-proof";
+import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
 import { AccountAuthProvider } from "@/components/auth/AccountAuthProvider";
 import { SiteFooter } from "@/components/SiteFooter";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
@@ -28,6 +32,10 @@ export default async function RootLayout({
   await connection();
   const mode = process.env.BLIZHNIY_AUTH_MODE;
   const backend = !mode || mode === "local" ? "legacy" : mode === "postgres" ? "postgres" : "unavailable";
+  const incoming = await headers();
+  const ip = getTrustedProxyIp(incoming);
+  const proofExpiry = backend === "postgres" && process.env.BLIZHNIY_AUTH_REMEMBERED_CAPTCHA === "enabled" && ip
+    ? readBrowserProof(incoming, process.env.BLIZHNIY_AUTH_RATE_SECRET ?? "", ip) : 0;
   return (
     <html lang="ru">
       <head>
@@ -39,10 +47,12 @@ export default async function RootLayout({
       </head>
       <body className="antialiased">
         <AccountAuthProvider backend={backend}>
+        <AccountCaptchaProvider expiresAt={proofExpiry}>
         <BookingLegacyStorageCleanup />
         <div className="app-shell">{children}</div>
         <MobileBottomNav />
         <SiteFooter />
+        </AccountCaptchaProvider>
         </AccountAuthProvider>
       </body>
     </html>

@@ -7,6 +7,15 @@ export class LocalAccountError extends Error {
   constructor(code: string) { super("Local account request failed"); this.name = "LocalAccountError"; this.code = Object.hasOwn(errorStatuses, code) ? code : "AUTH_UNAVAILABLE"; }
 }
 
+/** Display hint only. The HttpOnly proof remains unreadable and is verified by the server. */
+export function consumeAccountCaptchaResponse(response: Response): void {
+  const value = response.headers?.get("X-Blizhniy-Human-Proof");
+  if (typeof window === "undefined" || !value || !/^\d{1,16}$/.test(value)) return;
+  const expiresAt = Number(value);
+  if (!Number.isSafeInteger(expiresAt) || (expiresAt !== 0 && (expiresAt <= Date.now() || expiresAt > Date.now() + 900000))) return;
+  window.dispatchEvent(new CustomEvent("blizhniy-human-proof", { detail: { expiresAt } }));
+}
+
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new LocalAccountError("AUTH_UNAVAILABLE");
   return value as Record<string, unknown>;
@@ -23,6 +32,7 @@ async function request(action: "login" | "session" | "logout", body: unknown): P
   try {
     const response = await fetch(`/api/account/${action}`, { method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error",
       signal: AbortSignal.timeout(10000), headers: { "Content-Type": "application/json", "X-Blizhniy-Request": "1" }, body: JSON.stringify(body) });
+    consumeAccountCaptchaResponse(response);
     const payload = object(await response.json());
     if (!response.ok) {
       const error = object(payload.error);

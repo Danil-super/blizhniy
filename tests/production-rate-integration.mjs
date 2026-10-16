@@ -31,6 +31,17 @@ export async function testProductionRateSchema(suite, db, applyMigration) {
       assert.equal(await f.second.allowProduction("session", "192.0.2.50"), false, "failed rollback neither drops the new schema nor resets a counter");
     } finally { await f.clear(); }
   });
+  await suite.test('real PG keeps human-verified login and recovery email/IP counters independent across instances', async () => {
+    const f = owned();
+    try {
+      for (let i = 0; i < 5; i++) assert.equal(await f.first.allowProductionEmail('login', 'owner@example.invalid'), true);
+      assert.equal(await f.second.allowProductionEmail('login', 'owner@example.invalid'), false);
+      assert.equal(await f.second.allowProductionEmail('recover', 'owner@example.invalid'), true);
+      for (let i = 0; i < 20; i++) assert.equal(await f.first.allowProductionAttempt('login', '192.0.2.90'), true);
+      assert.equal(await f.second.allowProductionAttempt('login', '192.0.2.90'), false);
+      assert.equal(await f.second.allowProductionAttempt('recover', '192.0.2.90'), true);
+    } finally { await f.clear(); }
+  });
   await suite.test("real shared PG counters enforce production global budgets of 600 and 2000, without constraint errors or PII", async () => {
     for (const [scope, budget] of [["credential", 600], ["session", 2000]]) {
       const f = owned();

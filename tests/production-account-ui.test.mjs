@@ -5,6 +5,9 @@ import { test } from "node:test";
 import vm from "node:vm";
 import * as validation from '../src/lib/account-validation.ts';
 import { PasswordField } from './password-field-module.mjs';
+import * as captchaProvider from './account-captcha-provider-module.mjs';
+import * as browserProof from '../src/lib/account-browser-proof.ts';
+import * as trustedProxy from '../src/lib/trusted-proxy-ip.ts';
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript"), React = require("react");
@@ -17,6 +20,7 @@ function load(path, deps, globals = {}) {
   return exports;
 }
 const dependencies = {
+  './AccountCaptchaProvider': captchaProvider,
   '@/lib/account-validation': validation,
   './PasswordField': { PasswordField },
   "@/lib/local-account": load("src/lib/local-account.ts", {}),
@@ -93,6 +97,10 @@ test("shared root selects public backend and CAPTCHA settings after the request 
   const backends = [];
   const { default: Root } = load("src/app/layout.tsx", {
     "next/server": { connection: () => connected },
+    'next/headers': { headers: async () => new Headers() },
+    '@/components/auth/AccountCaptchaProvider': captchaProvider,
+    '@/lib/account-browser-proof': browserProof,
+    '@/lib/trusted-proxy-ip': trustedProxy,
     "@/lib/site-url": { getPublicSiteUrl: () => "https://example.invalid" },
     "@/lib/turnstile-public-config": load("src/lib/turnstile-public-config.ts", {}, { process: { env: environment } }),
     "@/lib/public-runtime-config": load("src/lib/public-runtime-config.ts", {}, { process: { env: environment } }),

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { AuthRequestError, authJson, readAuthJson } from "./auth-http";
 import type { AuthRateLimiter } from "./auth-http";
+import type { CredentialAction } from "./auth-http";
+import { issueBrowserProof, readBrowserProof, clearBrowserProofCookie } from "./account-browser-proof.ts";
 import { createAccountSessionCookie, readAccountSessionToken } from "./account-cookie";
 import { getTrustedProxyIp } from "./trusted-proxy-ip";
 import { normalizeMailAddress } from "./timeweb-mail";
@@ -18,7 +20,7 @@ export type ProductionAccountRuntime = {
   store: Pick<RegistrationStore, "register" | "resendConfirmation" | "confirmEmail">;
   recovery: Pick<PasswordRecoveryStore, "requestRecovery" | "resetPassword">;
   identity: Pick<IdentityStore, "login" | "resolveSession" | "revokeSession">;
-  limiter: Pick<AuthRateLimiter, "allowProduction">;
+  limiter: Pick<AuthRateLimiter, "allowProduction" | "allowProductionAttempt" | "allowProductionEmail">;
   verifyCaptcha: (token: unknown, ip: string) => Promise<boolean>;
 };
 type AuthEvent = { event: "account_request"; requestId: string; operation: string; status: number; durationMs: number; code?: string };
@@ -29,12 +31,12 @@ const inputKeys = {
 };
 type Action = keyof typeof inputKeys;
 
-function parseBody(action: Action, input: unknown): Record<string, unknown> {
+function parseBody(action: Action, input: unknown, remembered = false): Record<string, unknown> {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new AuthRequestError(422, "INVALID_INPUT");
   const row = input as Record<string, unknown>;
   const keys: readonly string[] = action === "register" && Object.hasOwn(row, "name") ? [...inputKeys.register, "name"] : inputKeys[action];
   if (Object.keys(row).length !== keys.length || keys.some(key => !Object.hasOwn(row, key))) throw new AuthRequestError(422, "INVALID_INPUT");
-  if (keys.includes("captchaToken") && (typeof row.captchaToken !== "string" || !row.captchaToken.trim() || row.captchaToken.length > 2048)) {
+  if (keys.includes("captchaToken") && (typeof row.captchaToken !== "string" || (!remembered && !row.captchaToken.trim()) || row.captchaToken.length > 2048)) {
     throw new AuthRequestError(422, "INVALID_INPUT");
   }
   if (keys.includes("password") && (typeof row.password !== "string" || row.password.length > 256)) throw new AuthRequestError(422, "INVALID_INPUT");
@@ -70,14 +72,23 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
     const start = Date.now();
     let status = 503;
     let code: string | undefined;
+    let proofCookie: string | undefined;
+    let proofExpiry: number | undefined;
+    let proofBoundary = false;
     const respond = (body: unknown, nextStatus: number, headers?: Record<string, string>) => {
       status = nextStatus;
-      return authJson(body, status, { "X-Request-ID": requestId, ...headers });
+      const response = authJson(body, status, { "X-Request-ID": requestId, ...headers });
+      if (proofBoundary && (nextStatus === 429 || code === "CAPTCHA_REQUIRED")) {
+        proofCookie = clearBrowserProofCookie(); proofExpiry = 0;
+      }
+      if (proofCookie) response.headers.append("Set-Cookie", proofCookie);
+      if (proofExpiry !== undefined) response.headers.set("X-Blizhniy-Human-Proof", String(proofExpiry));
+      return response;
     };
     try {
       if (!Object.hasOwn(inputKeys, operation)) return respond({ error: { code: "NOT_FOUND" } }, 404);
       const action = operation as Action;
-      const input = parseBody(action, await readAuthJson(request, config));
+      const input = parseBody(action, await readAuthJson(request, config), config.rememberedCaptcha);
       const ip = getTrustedProxyIp(request.headers);
       if (!ip) throw new AuthRequestError(403, "UNTRUSTED_INGRESS");
       const presented = readAccountSessionToken(request);
@@ -89,12 +100,28 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
         return respond({ status: "logged_out" }, 200, { "Set-Cookie": createAccountSessionCookie("", 0) });
       }
       const email = typeof input.email === "string" ? input.email : undefined;
-      if (!await state.limiter.allowProduction(action === "session" ? "session" : "credential", ip, email)) {
+      const credential = Object.hasOwn(input, "captchaToken");
+      proofBoundary = Boolean(config.rememberedCaptcha && credential);
+      const allowed = proofBoundary
+        ? await state.limiter.allowProductionAttempt(action as CredentialAction, ip)
+        : await state.limiter.allowProduction(action === "session" ? "session" : "credential", ip, email);
+      if (!allowed) {
         code = "RATE_LIMITED";
         return respond({ error: { code } }, 429, { "Retry-After": "900" });
       }
-      if (Object.hasOwn(input, "captchaToken") && await state.verifyCaptcha(input.captchaToken, ip) !== true) {
-        throw new AuthRequestError(403, "CAPTCHA_REQUIRED");
+      if (credential) {
+        proofExpiry = proofBoundary ? readBrowserProof(request.headers, config.rateSecret, ip) || undefined : undefined;
+        if (!proofExpiry) {
+          if (!input.captchaToken || await state.verifyCaptcha(input.captchaToken, ip) !== true) throw new AuthRequestError(403, "CAPTCHA_REQUIRED");
+          if (proofBoundary) {
+            const issued = issueBrowserProof(config.rateSecret, ip, request.headers.get("user-agent") ?? "");
+            proofCookie = issued.cookie; proofExpiry = issued.expiresAt;
+          }
+        }
+        if (proofBoundary && email && !await state.limiter.allowProductionEmail(action as CredentialAction, email)) {
+          code = "RATE_LIMITED";
+          return respond({ error: { code } }, 429, { "Retry-After": "900" });
+        }
       }
       if (action === "session") {
         const user = await state.identity.resolveSession(presented!);

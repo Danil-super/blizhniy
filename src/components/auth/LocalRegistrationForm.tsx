@@ -6,6 +6,7 @@ import type { FormEvent, ReactNode } from "react";
 import { REGISTRATION_LEGAL_VERSIONS } from "@/lib/registration-legal";
 import { isValidAccountPassword, normalizeRegistrationName, PASSWORD_MIN_LENGTH } from "@/lib/account-validation";
 import { PasswordField } from "./PasswordField";
+import { consumeAccountCaptchaResponse } from "@/lib/local-account";
 
 const inputStyle = "mt-1.5 min-h-12 w-full rounded-xl border bg-slate-50/50 px-3.5 py-2.5 text-base text-brand-ink transition-colors hover:border-slate-400 focus:border-brand-blue focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-blue/20";
 const buttonStyle = "min-h-12 scroll-mb-28 rounded-xl bg-brand-blue px-5 py-3 font-semibold text-white transition-colors hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue disabled:cursor-not-allowed disabled:opacity-60";
@@ -22,6 +23,7 @@ const errors: Record<string, string> = {
 async function submit(action: "register" | "resend" | "confirm", body: unknown): Promise<void> {
   const response = await fetch(`/api/account/${action}`, { method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error",
     signal: AbortSignal.timeout(10000), headers: { "Content-Type": "application/json", "X-Blizhniy-Request": "1" }, body: JSON.stringify(body) });
+  consumeAccountCaptchaResponse(response);
   const payload = await response.json();
   if (!response.ok) throw new Error(typeof payload?.error?.code === "string" ? payload.error.code : "AUTH_UNAVAILABLE");
   if (response.status !== (action === "confirm" ? 200 : 202) || !payload || typeof payload !== "object" ||
@@ -32,12 +34,12 @@ function readableError(error: unknown): string {
   return error instanceof Error ? errors[error.message] ?? "Не удалось связаться с сервисом. Повторите попытку." : errors.AUTH_UNAVAILABLE;
 }
 
-type RegistrationProps = { mode: "register" | "confirm"; production?: boolean; captcha?: ReactNode; captchaToken?: string; onCaptchaReset?: () => void };
+type RegistrationProps = { mode: "register" | "confirm"; production?: boolean; captcha?: ReactNode; captchaToken?: string; captchaReady?: boolean; onCaptchaReset?: () => void };
 export function LocalRegistrationForm({ mode, production = false, ...captcha }: RegistrationProps) {
   return mode === "confirm" ? <ConfirmationForm production={production} /> : <RegistrationForm production={production} {...captcha} />;
 }
 
-function RegistrationForm({ production, captcha, captchaToken = "", onCaptchaReset }: Omit<RegistrationProps, "mode">) {
+function RegistrationForm({ production, captcha, captchaToken = "", captchaReady = Boolean(captchaToken), onCaptchaReset }: Omit<RegistrationProps, "mode">) {
   const id = useId();
   const [action, setAction] = useState<"register" | "resend">("register");
   const [name, setName] = useState("");
@@ -94,7 +96,7 @@ function RegistrationForm({ production, captcha, captchaToken = "", onCaptchaRes
     validationIssue.current = Boolean(invalid);
     if (invalid) { setIssue(fieldErrors[invalid]); return; }
     const normalizedName = normalizeRegistrationName(name);
-    if (production && !captchaToken) { setIssue(errors.CAPTCHA_REQUIRED); return; }
+    if (production && !captchaReady) { setIssue(errors.CAPTCHA_REQUIRED); return; }
     busyRef.current = true; setBusy(true);
     try {
       const body = action === "register" ? { name: normalizedName, email, password, acceptedAgreement: agreement, acknowledgedPrivacy: privacy,
@@ -176,7 +178,7 @@ function RegistrationForm({ production, captcha, captchaToken = "", onCaptchaRes
       {issue && <p ref={alert} tabIndex={-1} role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{issue}</p>}
       <p role="status" className={busy ? "text-sm leading-5 text-slate-700" : "sr-only"}>{busy ? "Обрабатываем запрос…" : ""}</p>
       {production && captcha}
-      <button type="submit" disabled={busy || (production && !captchaToken)} className={`${buttonStyle} w-full`}>{busy ? "Подождите…" : action === "register" ? "Зарегистрироваться" : "Отправить повторное письмо"}</button>
+      <button type="submit" disabled={busy || (production && !captchaReady)} className={`${buttonStyle} w-full`}>{busy ? "Подождите…" : action === "register" ? "Зарегистрироваться" : "Отправить повторное письмо"}</button>
       {action === "resend" && <button type="button" disabled={busy} onClick={() => changeAction("register")} className="min-h-11 w-full rounded-xl px-3 text-sm font-semibold text-brand-blue underline focus-visible:outline focus-visible:outline-2">Вернуться к регистрации</button>}
       </fieldset>
     </form>

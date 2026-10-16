@@ -6,6 +6,7 @@ import { REGISTRATION_LEGAL_VERSIONS } from "../src/lib/registration-legal.ts";
 import { RegistrationStore, PasswordRecoveryStore, RegistrationInputError, RecoveryInputError } from "./auth-mail-module.mjs";
 import * as identity from "../src/lib/identity.ts";
 import * as validation from '../src/lib/account-validation.ts';
+import * as browserProof from '../src/lib/account-browser-proof.ts';
 import { verifyProductionAuthDatabase } from "../src/lib/production-auth-database.ts";
 
 const require = createRequire(import.meta.url);
@@ -27,6 +28,7 @@ export function loadProductionAuth(name, extra = {}) {
     if (path === "./password-recovery") return { PasswordRecoveryStore, RecoveryInputError };
     if (path === "./identity") return identity;
     if (path === './account-validation.ts') return validation;
+    if (path === './account-browser-proof.ts') return browserProof;
     throw new Error("Unapproved production auth import");
   }, exports);
   return exports;

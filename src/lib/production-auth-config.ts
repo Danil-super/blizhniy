@@ -5,7 +5,7 @@ import type { AuthMailPayload, MailIntent } from "./mail-outbox";
 import type { TransactionalMail } from "./timeweb-mail";
 
 export const productionAuthOrigin = "https://xn----9sbphbgks4a4a.xn--p1ai";
-export type ProductionAuthConfig = { origin: string; rateSecret: string; mailKeyFile: string };
+export type ProductionAuthConfig = { origin: string; rateSecret: string; mailKeyFile: string; rememberedCaptcha?: true };
 function assertServer(): void {
   if (typeof window !== "undefined") throw new Error("Production auth is server-only");
 }
@@ -34,7 +34,10 @@ export function readProductionAuthConfig(env: NodeJS.ProcessEnv = process.env): 
         !/^[a-zA-Z0-9_-]{20,256}$/.test(env.TURNSTILE_SECRET_KEY ?? "") ||
         env.BLIZHNIY_LOCAL_MAIL_URL || Object.keys(env).some(key => key.startsWith("PG")) ||
         !readTimewebMailConfig(env)) throw new Error();
-    return { origin: productionAuthOrigin, rateSecret: env.BLIZHNIY_AUTH_RATE_SECRET!, mailKeyFile: env.BLIZHNIY_AUTH_MAIL_KEY_FILE };
+    const remembered = env.BLIZHNIY_AUTH_REMEMBERED_CAPTCHA;
+    if (remembered !== undefined && remembered !== "enabled" && remembered !== "disabled") throw new Error();
+    return { origin: productionAuthOrigin, rateSecret: env.BLIZHNIY_AUTH_RATE_SECRET!, mailKeyFile: env.BLIZHNIY_AUTH_MAIL_KEY_FILE,
+      ...(remembered === "enabled" ? { rememberedCaptcha: true as const } : {}) };
   } catch { throw new Error("Invalid production auth configuration"); }
 }
 
