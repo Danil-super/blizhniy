@@ -62,3 +62,43 @@ test("stop invalidates pending responses and the same store can restart after St
   assert.deepEqual(state.read(), { state: "signed-in", userId: "B" });
   assert.equal(observed.some(snapshot => snapshot.userId === "A"), false);
 });
+
+test("a confirmed anonymous view stays anonymous during a background check and its network failure", async () => {
+  const pending = deferred(); let calls = 0;
+  const state = createAccountSessionState(() => ++calls === 1 ? Promise.resolve(null) : pending.promise);
+  await state.refresh();
+  const checking = state.refresh();
+  assert.deepEqual(state.read(), { state: "signed-out", userId: null }, "no anonymous form unmount on focus");
+  pending.reject(new Error("Synthetic network failure")); await checking;
+  assert.deepEqual(state.read(), { state: "signed-out", userId: null }, "no private identity exists to retain on failed anonymous refresh");
+});
+
+test("an anonymous credential change keeps the form mounted but cannot grant identity before verified readback", async () => {
+  const pending = deferred(); let calls = 0;
+  const state = createAccountSessionState(() => ++calls === 1 ? Promise.resolve(null) : pending.promise);
+  await state.refresh(); state.beginChange();
+  assert.deepEqual(state.read(), { state: "signed-out", userId: null });
+  await state.refresh();
+  assert.equal(calls, 1, "the mutation fence still prevents premature session reads");
+  const completion = state.endChange();
+  assert.equal(calls, 2);
+  assert.deepEqual(state.read(), { state: "signed-out", userId: null });
+  pending.resolve(user("B")); await completion;
+  assert.deepEqual(state.read(), { state: "signed-in", userId: "B" });
+});
+
+test("initially unknown failure is unavailable and an old anonymous response cannot erase a newer verified account", async () => {
+  const old = deferred(); let calls = 0;
+  const state = createAccountSessionState(async () => {
+    calls++;
+    if (calls === 1) throw new Error("Synthetic initial failure");
+    if (calls === 2) return null;
+    if (calls === 3) return old.promise;
+    return user("B");
+  });
+  await state.refresh();
+  assert.deepEqual(state.read(), { state: "unavailable", userId: null });
+  await state.refresh(); const previous = state.refresh(); await state.refresh();
+  old.resolve(null); await previous;
+  assert.deepEqual(state.read(), { state: "signed-in", userId: "B" });
+});

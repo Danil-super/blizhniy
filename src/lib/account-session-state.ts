@@ -16,21 +16,24 @@ export function createAccountSessionState(session: () => Promise<LocalAccountUse
   }
   async function refresh() {
     const current = ++version;
-    publish("loading");
+    // Anonymous UI holds no private identity. Publishing loading here would
+    // unmount an embedded login form on focus or during its own submission.
+    const anonymous = snapshot.state === "signed-out";
+    if (!anonymous) publish("loading");
     if (changing) return;
     try {
       const user = await session();
       if (user && (user.isBlocked !== false || !["user", "admin"].includes(user.role))) throw new Error("Invalid session view");
       if (current === version) publish(user ? user.role === "admin" ? "admin" : "signed-in" : "signed-out", user?.id ?? null);
     } catch {
-      if (current === version) publish("unavailable");
+      if (current === version && !anonymous) publish("unavailable");
     }
   }
   return {
     read: () => snapshot,
     subscribe(listener: (value: AccountAuthSnapshot) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     refresh,
-    beginChange() { changing++; version++; publish("loading"); },
+    beginChange() { changing++; version++; if (snapshot.state !== "signed-out") publish("loading"); },
     async endChange() { if (changing) changing--; await refresh(); },
     stop() { version++; changing = 0; listeners.clear(); snapshot = { state: "loading", userId: null }; },
   };
