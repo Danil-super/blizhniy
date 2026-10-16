@@ -72,6 +72,8 @@ test("primary pages are opt-in, configuration failures never fall back or reveal
   const html = renderToStaticMarkup(React.createElement(page({ BLIZHNIY_AUTH_MODE: "postgres" }), { mode: "register" }));
   assert.deepEqual(JSON.parse(JSON.stringify(captured)), [{ mode: "register" }]);
   assert.doesNotMatch(html, /must-stay-server-side|\/private\/key/);
+  assert.doesNotMatch(html, /href="\/auth\/register"/);
+  assert.match(html, /Уже есть аккаунт/);
   captured.length = 0;
   const failed = renderToStaticMarkup(React.createElement(page({ BLIZHNIY_AUTH_MODE: "postgres" }, {
     readProductionAuthConfig: () => { throw new Error("private configuration failure"); },

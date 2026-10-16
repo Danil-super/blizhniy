@@ -673,6 +673,55 @@ test("primary account browser forms use the new cookie API without remote traffi
       assert.ok(state.sessionReads.length > beforeFocus, "fallback focus causes a new server session check");
       assert.equal(await page.getByText("owner@example.invalid", { exact: true }).count(), 0);
     });
+    await run("registration is focused, vertically stacked and validates each field accessibly before sending", async ({ page, calls }) => {
+      await page.goto(`${origin}/auth/register`);
+      assert.equal(await page.getByRole("button", { name: "Повторить письмо", exact: true }).count(), 0);
+      assert.equal(await page.getByRole("navigation", { name: "Авторизация" }).getByRole("link", { name: "Регистрация", exact: true }).count(), 0);
+      assert.equal(await page.getByText("8–128 символов.", { exact: false }).count(), 0);
+      for (const width of [320, 768, 1024, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        const first = await page.getByLabel("Пароль", { exact: true }).boundingBox();
+        const repeat = await page.getByLabel("Повторите пароль", { exact: true }).boundingBox();
+        assert.ok(repeat.y > first.y + first.height, `password fields stack at ${width}`);
+        assert.equal(first.x, repeat.x); assert.equal(first.width, repeat.width);
+      }
+      for (const [label, invalid, valid] of [["Имя", "   ", "Анна"], ["Email", "wrong-address", "owner@example.invalid"],
+        ["Пароль", "short", password], ["Повторите пароль", "does not match", password]]) {
+        const field = page.getByLabel(label, { exact: true });
+        await field.fill(invalid); await field.blur();
+        assert.equal(await field.getAttribute("aria-invalid"), "true", `${label} is marked invalid`);
+        const description = await field.getAttribute("aria-describedby");
+        assert.ok(description);
+        assert.ok(await page.locator(`[id="${description.split(" ").at(-1)}"]`).isVisible());
+        await field.fill(valid);
+        assert.notEqual(await field.getAttribute("aria-invalid"), "true", `${label} clears after correction`);
+      }
+      await page.getByLabel("Пароль", { exact: true }).fill("Another synthetic password");
+      assert.equal(await page.getByLabel("Повторите пароль", { exact: true }).getAttribute("aria-invalid"), "true", "changing the original revalidates the repeat");
+      await page.getByLabel("Пароль", { exact: true }).fill(password);
+      await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
+      await page.locator("main").getByRole("alert").waitFor();
+      assert.equal(calls.length, 0, "missing consents prevent transport");
+      assert.equal(await page.getByRole("checkbox").nth(0).getAttribute("aria-invalid"), "true");
+      assert.equal(await page.getByRole("checkbox").nth(0).evaluate(element => document.activeElement === element), true, "submission focuses the first invalid control");
+      await page.getByRole("checkbox").nth(0).check(); await page.getByRole("checkbox").nth(1).check();
+      assert.notEqual(await page.getByRole("checkbox").nth(0).getAttribute("aria-invalid"), "true");
+      await page.screenshot({ path: "/tmp/blizhniy-registration-design-1440.png", fullPage: true });
+      await page.setViewportSize({ width: 390, height: 900 });
+      await page.screenshot({ path: "/tmp/blizhniy-registration-design-390.png", fullPage: true });
+    });
+    await run("an expired confirmation offers password-gated resend without another registration", async ({ page, calls }) => {
+      await page.goto(`${origin}/auth/confirm`);
+      await page.getByRole("link", { name: "Запросить новое письмо", exact: true }).click();
+      await page.getByRole("heading", { name: "Повторное письмо", exact: true }).waitFor();
+      assert.equal(await page.getByLabel("Имя", { exact: true }).count(), 0);
+      assert.equal(await page.getByRole("checkbox").count(), 0);
+      await page.getByLabel("Email", { exact: true }).fill("owner@example.invalid");
+      await page.getByLabel("Пароль", { exact: true }).fill(password);
+      await page.getByRole("button", { name: "Отправить повторное письмо", exact: true }).click();
+      await page.getByRole("heading", { name: "Проверьте почту", exact: true }).waitFor();
+      assert.deepEqual(calls, [{ action: "resend", body: { email: "owner@example.invalid", password, captchaToken: "fixture-captcha" } }]);
+    });
     await run("registration validates repeated password, sends legal versions and CAPTCHA, and resend uses the smaller contract", async ({ page, calls }) => {
       await page.goto(`${origin}/auth/register`);
       await page.getByLabel("Имя", { exact: true }).fill("  Синтетический  ");

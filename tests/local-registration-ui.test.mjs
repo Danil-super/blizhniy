@@ -44,3 +44,21 @@ test("confirmation waits for explicit interaction and does not accept query-stri
   assert.doesNotMatch(source, /window\.location\.search|submit\("confirm"[^]*?\}, \[\]\)/);
   assert.match(source, /window\.history\.replaceState/);
 });
+
+test("initial registration stays single-column without premature resend or the removed password lecture", () => {
+  const html = require("react-dom/server").renderToStaticMarkup(exports.LocalRegistrationForm({ mode: "register" }));
+  assert.doesNotMatch(html, /sm:grid-cols-2|Надёжнее|Пробелы сохраняются|8–128 символов/);
+  assert.doesNotMatch(html, />Повторить письмо<|>Вернуться к регистрации</);
+  assert.match(html, /noValidate=""/i);
+});
+
+test("password inline errors are programmatically associated with the input", () => {
+  const html = require("react-dom/server").renderToStaticMarkup(require("react").createElement(PasswordField, {
+    label: "Пароль", value: "short", onChange: () => {}, autoComplete: "new-password", error: "Не менее 8 символов.",
+  }));
+  assert.match(html, /aria-invalid="true"/);
+  const errorId = html.match(/aria-describedby="([^"]+)"/)?.[1];
+  assert.ok(errorId);
+  assert.ok(html.includes(`id="${errorId}"`));
+  assert.match(html, /Не менее 8 символов/);
+});
