@@ -21,6 +21,7 @@ import { testLoginFocusScenarios } from "./login-focus-browser-cases.mjs";
 import { testEmbeddedLoginScenarios } from "./embedded-login-browser-cases.mjs";
 import { testRememberedCaptchaScenarios } from './remembered-captcha-browser-cases.mjs';
 import { issueBrowserProof } from '../src/lib/account-browser-proof.ts';
+import { testResetValidationScenarios } from './reset-validation-browser-cases.mjs';
 
 // Opaque transport revision only; real canonical hashing/row locking are tested with PG.
 const fixtureRevision = profile => profile ? createHash("sha256").update(JSON.stringify(profile)).digest("hex") : null;
@@ -253,6 +254,7 @@ test("primary account browser forms use the new cookie API without remote traffi
       try { await fn({ page, context, calls, state }); assert.deepEqual(foreign, []); assert.deepEqual(errors, []); }
       finally { await context.close(); }
     });
+    await testResetValidationScenarios({ run, origin, password });
     await testRememberedCaptchaScenarios({ run, origin, password });
     await run('a signed HttpOnly human proof survives full document navigation without rendering CAPTCHA or serializing its token', async ({ page, context, calls }) => {
       const agent = await page.evaluate(() => navigator.userAgent);

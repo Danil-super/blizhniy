@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { notifyAccountSessionChange, consumeAccountCaptchaResponse } from "@/lib/local-account";
-import { isValidAccountPassword, PASSWORD_MIN_LENGTH } from "@/lib/account-validation";
+import { isValidAccountPassword, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from "@/lib/account-validation";
 import { PasswordField } from "./PasswordField";
 import Link from "next/link";
 import { useAccountCaptcha } from "./AccountCaptchaProvider";
@@ -19,6 +19,7 @@ const issues: Record<string, string> = {
 };
 
 export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) {
+  const captchaHintId = useId();
   const remembered = useAccountCaptcha();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,8 +31,21 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
   const [issue, setIssue] = useState("");
   const [captchaToken, setCaptchaToken] = useState("");
   const [captchaVersion, setCaptchaVersion] = useState(0);
+  const [touched, setTouched] = useState({ password: false, repeat: false });
+  const [attempted, setAttempted] = useState(false);
   const mounted = useRef(false), initialized = useRef(false), version = useRef(0), busyRef = useRef(false);
   const alert = useRef<HTMLParagraphElement>(null);
+  const form = useRef<HTMLFormElement>(null);
+  const validationIssue = useRef(false);
+  const humanReady = remembered || Boolean(captchaToken);
+  const passwordIssue = !password ? "Введите новый пароль." : [...password].length < PASSWORD_MIN_LENGTH ? "Не менее 8 символов."
+    : [...password].length > PASSWORD_MAX_LENGTH ? "Не более 128 символов."
+    : !isValidAccountPassword(password) ? "Пароль не должен состоять только из пробелов или содержать недопустимые символы." : "";
+  const repeatIssue = !repeat ? "Повторите новый пароль." : repeat !== password ? "Пароли не совпадают." : "";
+  const edit = (field: "password" | "repeat", value: string) => {
+    if (field === "password") setPassword(value); else setRepeat(value);
+    if (validationIssue.current) { validationIssue.current = false; setIssue(""); }
+  };
   useEffect(() => {
     mounted.current = true;
     const invalidate = () => { version.current++; };
@@ -42,6 +56,7 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
       const valid = Boolean(value && /^[a-f0-9]{64}$/.test(value));
       setToken(valid ? value : null); setIssue(valid ? "" : invalidLink); setReady(true); setDone(false);
       setPassword(""); setRepeat(""); setCaptchaToken(""); setCaptchaVersion(value => value + 1);
+      setTouched({ password: false, repeat: false }); setAttempted(false); validationIssue.current = false;
     };
     if (mode === "reset") {
       if (!initialized.current) { initialized.current = true; readLink(); }
@@ -49,14 +64,22 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
     }
     return () => { mounted.current = false; invalidate(); window.removeEventListener("hashchange", readLink); };
   }, [mode]);
-  useEffect(() => { if (issue) alert.current?.focus(); }, [issue]);
+  useEffect(() => {
+    if (!issue) return;
+    if (validationIssue.current) form.current?.querySelector<HTMLInputElement>('input[aria-invalid="true"]')?.focus();
+    else alert.current?.focus();
+  }, [issue, attempted]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busyRef.current || (!remembered && !captchaToken) || (mode === "reset" && !token)) return;
+    if (busyRef.current || (mode === "reset" && !token)) return;
     setIssue("");
-    if (mode === "reset" && !isValidAccountPassword(password)) { setIssue(issues.INVALID_INPUT); return; }
-    if (mode === "reset" && password !== repeat) { setIssue("Пароли не совпадают."); return; }
+    setAttempted(true);
+    if (mode === "reset" && (passwordIssue || repeatIssue)) {
+      validationIssue.current = true; setIssue(passwordIssue || repeatIssue); return;
+    }
+    validationIssue.current = false;
+    if (!humanReady) { setIssue(issues.CAPTCHA_REQUIRED); return; }
     const current = version.current;
     busyRef.current = true; setBusy(true);
     if (mode === "reset") notifyAccountSessionChange(true);
@@ -83,16 +106,18 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
     <p role="status" className="mt-3 text-sm leading-6 text-slate-600">{!ready ? "Подготавливаем ссылку…" : busy ? "Обрабатываем запрос…" : done ? mode === "recover" ? "Если аккаунт подтверждён, мы отправим письмо восстановления. Проверьте входящие и папку «Спам»." : "Пароль изменён. Предыдущие сессии закрыты. Войдите с новым паролем." : mode === "recover" ? "Введите email, указанный при регистрации." : "Открытие ссылки не меняет пароль. Задайте новый пароль и отправьте форму."}</p>
     {issue && <p ref={alert} role="alert" tabIndex={-1} className="mt-5 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{issue}</p>}
     {done && mode === "reset" && <Link href="/auth" prefetch={false} className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline">Перейти к входу</Link>}
-    {!done && ready && (mode === "recover" || token) && <form key={token ?? mode} onSubmit={submit} aria-busy={busy} className="mt-4 space-y-3">
+    {!done && ready && (mode === "recover" || token) && <form ref={form} key={token ?? mode} noValidate={mode === "reset"} onSubmit={submit} aria-busy={busy} className="mt-4 space-y-3">
       {mode === "recover" ? <label className="block font-semibold text-brand-ink">Email
         <input type="email" required autoComplete="email" maxLength={254} value={email} onChange={event => setEmail(event.target.value)} className={inputStyle} />
       </label> : <>
-        <PasswordField label="Новый пароль" value={password} onChange={setPassword} autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} describedBy="reset-password-help" />
-        <p id="reset-password-help" className="text-xs leading-5 text-slate-600">8–128 символов. Надёжнее — длинная фраза от 15 символов. Пробелы сохраняются.</p>
-        <PasswordField label="Повторите пароль" value={repeat} onChange={setRepeat} autoComplete="new-password" toggleLabel="повтор пароля" />
+        <PasswordField label="Новый пароль" value={password} onChange={value => edit("password", value)} autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH}
+          error={touched.password || attempted ? passwordIssue : undefined} onBlur={() => setTouched(previous => ({ ...previous, password: true }))} />
+        <PasswordField label="Повторите пароль" value={repeat} onChange={value => edit("repeat", value)} autoComplete="new-password" toggleLabel="повтор пароля"
+          error={touched.repeat || attempted ? repeatIssue : undefined} onBlur={() => setTouched(previous => ({ ...previous, repeat: true }))} />
       </>}
+      {!humanReady && <p id={captchaHintId} role="status" className="text-sm leading-5 text-slate-600">Кнопка станет доступна после проверки безопасности. Если блок проверки не появился, нажмите «Повторить проверку».</p>}
       {!remembered && <div className="-mx-3 flex justify-center sm:mx-0"><TurnstileWidget requireProvider manualRetry size="normal" inline onVerify={setCaptchaToken} resetKey={captchaVersion} /></div>}
-      <button type="submit" disabled={busy || (!remembered && !captchaToken)} className="min-h-11 w-full scroll-mb-28 rounded-xl bg-brand-blue px-5 py-3 font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue disabled:cursor-wait disabled:opacity-60">{mode === "recover" ? "Отправить письмо восстановления" : "Сохранить новый пароль"}</button>
+      <button type="submit" disabled={busy || !humanReady} aria-describedby={!humanReady ? captchaHintId : undefined} className="min-h-11 w-full scroll-mb-28 rounded-xl bg-brand-blue px-5 py-3 font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue disabled:cursor-not-allowed disabled:opacity-60">{mode === "recover" ? "Отправить письмо восстановления" : "Сохранить новый пароль"}</button>
     </form>}
   </>;
 }

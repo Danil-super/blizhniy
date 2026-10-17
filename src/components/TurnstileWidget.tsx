@@ -99,6 +99,8 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
     }
 
     let cancelled = false;
+    let challengeTimer: number | undefined;
+    const clearChallengeTimer = () => { if (challengeTimer !== undefined) window.clearTimeout(challengeTimer); };
     const publish = (value: string) => {
       if (cancelled) return;
       setToken(value); onVerify?.(value);
@@ -107,14 +109,14 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
     setToken("");
     setFailure(false);
     onVerify?.("");
-    const failed = () => { if (!cancelled) { publish(""); setFailure(true); } };
+    const failed = () => { if (!cancelled) { clearChallengeTimer(); publish(""); setFailure(true); } };
 
     if (turnstileSiteKey) {
+      if (manualRetry) challengeTimer = window.setTimeout(failed, 30000);
       loadTurnstileScript()
         .then(() => {
-          if (cancelled || !window.turnstile || !containerRef.current) {
-            return;
-          }
+          if (cancelled) return;
+          if (!window.turnstile || !containerRef.current) { failed(); return; }
 
           if (widgetIdRef.current && window.turnstile.remove) {
             window.turnstile.remove(widgetIdRef.current);
@@ -126,7 +128,7 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
             theme: "light",
             size: size ?? (requireProvider ? "compact" : undefined),
             ...(manualRetry ? { retry: "never" as const, "refresh-expired": "manual" as const, "refresh-timeout": "manual" as const } : {}),
-            callback: value => { if (!cancelled) setFailure(false); publish(value); },
+            callback: value => { if (!cancelled) { clearChallengeTimer(); setFailure(false); } publish(value); },
             "expired-callback": manualRetry ? failed : () => publish(""),
             "error-callback": manualRetry ? failed : () => publish(""),
             "timeout-callback": manualRetry ? failed : undefined,
@@ -138,6 +140,7 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
 
       return () => {
         cancelled = true;
+        clearChallengeTimer();
         if (widgetIdRef.current && window.turnstile?.remove) {
           window.turnstile.remove(widgetIdRef.current);
           widgetIdRef.current = null;
@@ -162,10 +165,12 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
   return (
     <>
       <input type="hidden" name={name} value={token} />
-      {turnstileSiteKey ? <div ref={containerRef} className={`${inline ? "" : "mt-3 "}min-h-[65px]`} /> : null}
-      {manualRetry && failure && <div className="text-sm text-red-800" role="alert">
-        <p>Проверка не завершена или срок истёк. Введённые данные сохранены.</p>
-        <button type="button" className="min-h-11 font-semibold text-brand-blue underline" onClick={() => setRetryVersion(value => value + 1)}>Повторить проверку</button>
+      {turnstileSiteKey && <div className={`${inline ? "" : "mt-3 "}min-w-0 max-w-full`}>
+        <div ref={containerRef} className="min-h-[65px]" />
+        {manualRetry && !token && <div className="mt-2 max-w-xs text-sm leading-5" role={failure ? "alert" : "status"}>
+          <p className={failure ? "text-red-800" : "text-slate-600"}>{failure ? "Проверка не завершена или срок истёк. Введённые данные сохранены." : "Ожидаем проверку безопасности."}</p>
+          <button type="button" className="min-h-11 font-semibold text-brand-blue underline" onClick={() => setRetryVersion(value => value + 1)}>Повторить проверку</button>
+        </div>}
       </div>}
       {!turnstileSiteKey && requireProvider && <p role="alert" className="text-sm text-red-800">Проверка безопасности временно недоступна. Попробуйте позже.</p>}
       <input
