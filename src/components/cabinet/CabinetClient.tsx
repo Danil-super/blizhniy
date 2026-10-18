@@ -1,5 +1,6 @@
 "use client";
 import {WorkPublicationsPanel} from '@/components/work/WorkPublicationsPanel';
+import {ServicePublicationsPanel} from '@/components/services/ServicePublicationsPanel';
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -3147,6 +3148,7 @@ export function CabinetPublicationsClient({ type }: { type: DemoPublicationType 
 
   if (primaryAccount && type === "listing") return <PrivateDraftsPanel />;
   if (primaryAccount && (type === "vacancy" || type === "workRequest")) return <WorkPublicationsPanel kind={type}/>;
+  if (primaryAccount && type === "fairApplication") return <ServicePublicationsPanel kind="fair"/>;
   if (loading) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем раздел...</div>;
   }
@@ -3903,6 +3905,11 @@ function ProfessionSelect({ options, value, onChange }: { onChange: (value: stri
 }
 
 export function CabinetSpecialistClient() {
+  const primaryAccount=usePrimaryAccountAuth();
+  return primaryAccount?<ServicePublicationsPanel kind="specialist"/>:<LegacyCabinetSpecialistClient/>;
+}
+
+function LegacyCabinetSpecialistClient() {
   const { identity, profile, loading: profileLoading } = useUserCabinetData();
   const [specialist, setSpecialist] = useState<SpecialistProfile | null>(null);
   const [completeness, setCompleteness] = useState<SpecialistCompletenessPayload>({ complete: false, missing: [] });

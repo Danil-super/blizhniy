@@ -29,6 +29,7 @@ import { AdminUsersClient } from "@/components/admin/AdminUsersClient";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
 import { CabinetDraftWorkspace } from "@/components/listings/CabinetDraftWorkspace";
+import { CabinetPublicationWorkspace } from '@/components/cabinet/CabinetPublicationWorkspace';
 import { CabinetShellActions } from "@/components/cabinet/CabinetShellActions";
 import {
   CabinetCapabilities,
@@ -602,9 +603,9 @@ export function CabinetListingsPage() {
 export function CabinetVacanciesPage() {
   return (
     <Shell title="Мои вакансии" description="Список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/vakansii" createHref="/rabota/vakansii/sozdat" createLabel="Разместить вакансию">
-      <CabinetAuthGate>
+      <CabinetPublicationWorkspace>
         <CabinetPublicationsClient type="vacancy" />
-      </CabinetAuthGate>
+      </CabinetPublicationWorkspace>
     </Shell>
   );
 }
@@ -619,9 +620,9 @@ export function CabinetOrganizationPage() {
 export function CabinetWorkRequestsPage() {
   return (
     <Shell title="Мои заказы исполнителям" description="Задачи, которые пользователь размещает для специалистов и исполнителей." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/zakazy" createHref="/rabota/zakazy/sozdat" createLabel="Разместить заказ">
-      <CabinetAuthGate>
+      <CabinetPublicationWorkspace>
         <CabinetPublicationsClient type="workRequest" />
-      </CabinetAuthGate>
+      </CabinetPublicationWorkspace>
     </Shell>
   );
 }
@@ -629,9 +630,7 @@ export function CabinetWorkRequestsPage() {
 export function CabinetSpecialistPage() {
   return (
     <Shell title="Анкета специалиста" description="Единая анкета исполнителя для платных откликов и публичного каталога." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/specialist" createHref={null}>
-      <CabinetAuthGate>
-        <CabinetSpecialistClient />
-      </CabinetAuthGate>
+      <CabinetPublicationWorkspace><CabinetSpecialistClient /></CabinetPublicationWorkspace>
     </Shell>
   );
 }
@@ -663,9 +662,9 @@ export function CabinetPaymentsPage() {
 export function CabinetFairApplicationsPage() {
   return (
     <Shell title="Заявки на ярмарку" description="Заявки пользователя на участие в Ярмарке мастеров, статусы оплаты и публикации." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/fair-applications" createHref="/yarmarka-masterov/zayavka" createLabel="Подать заявку">
-      <CabinetAuthGate>
+      <CabinetPublicationWorkspace>
         <CabinetPublicationsClient type="fairApplication" />
-      </CabinetAuthGate>
+      </CabinetPublicationWorkspace>
     </Shell>
   );
 }
