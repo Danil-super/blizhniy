@@ -15,6 +15,7 @@ import { normalizeListingPrice } from "@/lib/listing-price";
 import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
 import { TURNSTILE_ERROR_MESSAGE, verifyTurnstileFormData } from "@/lib/turnstile";
 import { getTrustedProxyIp } from "@/lib/trusted-proxy-ip";
+import {PrimaryWorkPublicationCreate} from '@/components/work/PrimaryWorkPublicationCreate';
 
 type PageProps = {
   searchParams?: Promise<{ admin?: string; error?: string }>;
@@ -72,6 +73,7 @@ async function readPhotoDataUrls(formData: FormData) {
 }
 
 export default async function CreateVacancyPage({ searchParams }: PageProps) {
+  if(process.env.BLIZHNIY_AUTH_MODE==='postgres')return <><SiteHeader/><PublicationAuthGate title="Войдите, чтобы разместить вакансию" preserveDraftDuringRecheck><PrimaryWorkPublicationCreate kind="vacancy"/></PublicationAuthGate></>;
   const params = searchParams ? await searchParams : undefined;
   const adminMode = params?.admin === "1" && isDemoAdminBypassEnabled();
 

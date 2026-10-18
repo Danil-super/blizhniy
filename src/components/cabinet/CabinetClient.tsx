@@ -1,4 +1,5 @@
 "use client";
+import {WorkPublicationsPanel} from '@/components/work/WorkPublicationsPanel';
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -3145,6 +3146,7 @@ export function CabinetPublicationsClient({ type }: { type: DemoPublicationType 
   const visibleItems = useMemo(() => items.filter((item) => item.type === type), [items, type]);
 
   if (primaryAccount && type === "listing") return <PrivateDraftsPanel />;
+  if (primaryAccount && (type === "vacancy" || type === "workRequest")) return <WorkPublicationsPanel kind={type}/>;
   if (loading) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем раздел...</div>;
   }
