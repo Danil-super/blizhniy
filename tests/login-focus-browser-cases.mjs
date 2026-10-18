@@ -21,6 +21,32 @@ const lifecycle = page => page.evaluate(() => {
 const waitCaptcha = page => page.locator('[data-fixture-widget="captcha"]').waitFor();
 
 export async function testLoginFocusScenarios({ run, origin, password }) {
+  await run("standalone login opens home after verification, replaces login history and retains cabinet navigation", async ({ page, calls }) => {
+    await page.setViewportSize({ width: 320, height: 900 });
+    await page.goto(origin + "/auth/recover");
+    await page.locator('main a[href="/auth"]').click();
+    await page.getByRole("heading", { name: "Вход", exact: true }).waitFor();
+    await waitCaptcha(page);
+    await page.getByLabel("Email", { exact: true }).fill("owner@example.invalid");
+    await page.getByLabel("Пароль", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Войти", exact: true }).click();
+    await page.waitForURL(origin + "/");
+    await page.getByRole("heading", { name: /Все нужное рядом/ }).waitFor();
+    await page.getByRole("navigation", { name: "Мобильная навигация" }).getByRole("link", { name: "Профиль", exact: true }).waitFor();
+    assert.equal(await page.getByRole("heading", { name: "Ваш аккаунт", exact: true }).count(), 0);
+    assert.equal(calls.filter(row => row.action === "login").length, 1);
+    await page.screenshot({ path: "/tmp/blizhniy-login-home-320.png", fullPage: true });
+    await page.goBack();
+    await page.waitForURL(origin + "/auth/recover");
+    // Revisiting /auth is an explicit account-management action, not a new login.
+    await page.goto(origin + "/auth");
+    await page.getByText("owner@example.invalid", { exact: true }).waitFor();
+    assert.equal(await page.getByText(/права проверяет сервер/).count(), 0);
+    await page.locator('main a[href="/cabinet"]').click();
+    await page.waitForURL(origin + "/cabinet");
+    await page.getByRole("heading", { name: "Синтетический", exact: true }).waitFor();
+  });
+
   await run("anonymous login survives tab activation and repeated lifecycle checks without clearing fields or remounting CAPTCHA", async ({ page, context, calls, state }) => {
     await page.goto(origin + "/auth");await waitCaptcha(page);
     await page.getByLabel("Email", { exact: true }).fill("owner@example.invalid");
@@ -79,6 +105,7 @@ export async function testLoginFocusScenarios({ run, origin, password }) {
       assert.equal(await page.locator('main a[href="/auth/register#resend"]').first().isVisible(), true);
       sessionGate.resolve();await Promise.all(pending);await render(page);
       assert.equal(await alert.isVisible(), true, "an anonymous session response cannot turn a failed login into an unexplained form refresh");
+      assert.equal(page.url(), origin + "/auth", "a rejected login cannot navigate home");
       assert.deepEqual(calls, [{ action: "login", body: { email: "owner@example.invalid", password, captchaToken: "fixture-captcha" } }]);
     } finally { loginGate.resolve();sessionGate.resolve();await Promise.allSettled(pending); }
   });
@@ -104,7 +131,10 @@ export async function testLoginFocusScenarios({ run, origin, password }) {
       await page.getByRole("button", { name: "Войти", exact: true }).click();await loginStarted.promise;
       holdSessions = true;await lifecycle(page);loginGate.resolve();await sessionStarted.promise;await render(page);
       assert.equal(await page.getByText(owner.email, { exact: true }).count(), 0, "unverified login result cannot publish an account identity");
+      assert.equal(page.url(), origin + "/auth", "login response alone is not a verified cookie session");
       sessionGate.resolve();await Promise.all(pending);
+      await page.waitForURL(origin + "/");
+      await page.goto(origin + "/auth");
       await page.getByRole("heading", { name: "Ваш аккаунт", exact: true }).waitFor();
       await page.getByText(owner.email, { exact: true }).waitFor();
       assert.equal(await page.getByRole("link", { name: "Личный кабинет", exact: true }).isVisible(), true);
@@ -191,6 +221,26 @@ export async function testLoginFocusScenarios({ run, origin, password }) {
     assert.equal(await page.getByLabel("Пароль", { exact: true }).count(), 0);
     assert.equal(await page.getByRole("button", { name: "Проверить сессию", exact: true }).isVisible(), true);
     assert.equal(calls.length, 1, "cookie failure does not automatically retry a credential request");
+    assert.equal(page.url(), origin + "/auth", "a missing cookie cannot navigate home");
+  });
+
+  await run("a different cookie owner cannot complete standalone login or trigger navigation", async ({ page, calls, state }) => {
+    const owner = identity(false), other = identity(true);
+    let submitted = false;
+    state.override = (route, action) => {
+      if (action === "session") return route.fulfill(submitted ? { json: { user: other } } : anonymous);
+      assert.equal(action, "login");submitted = true;
+      return route.fulfill({ json: { status: "authenticated", user: owner } });
+    };
+    await page.goto(origin + "/auth");await waitCaptcha(page);
+    await page.getByLabel("Email", { exact: true }).fill(owner.email);
+    await page.getByLabel("Пароль", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Войти", exact: true }).click();
+    await page.getByRole("alert").filter({ hasText: "Не удалось сохранить сессию входа" }).waitFor();
+    assert.equal(page.url(), origin + "/auth");
+    assert.equal(await page.getByText(other.email, { exact: true }).count(), 0);
+    assert.equal(await page.getByText(owner.email, { exact: true }).count(), 0);
+    assert.equal(calls.length, 1);
   });
 
   await run("account screens explain the necessary session cookie with a privacy link and no consent blocker", async ({ page, calls }) => {
@@ -263,6 +313,7 @@ export async function testLoginFocusScenarios({ run, origin, password }) {
         assert.equal(await page.getByRole("button", { name: "Выйти", exact: true }).isVisible(), true);
         assert.equal(await page.getByRole("link", { name: "Личный кабинет", exact: true }).count(), 0);
         assert.equal(await page.getByLabel("Пароль", { exact: true }).count(), 0);
+        assert.equal(page.url(), origin + "/auth", "an unknown login outcome cannot navigate home");
         assert.deepEqual(calls.slice(before), [{ action: "login", body: { email: "owner@example.invalid", password, captchaToken: "fixture-captcha" } }],
           "unknown commits require explicit recovery, never an automatic credential retry");
       } finally { gate.resolve();await Promise.allSettled(pending); }

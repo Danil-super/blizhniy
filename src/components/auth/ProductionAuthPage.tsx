@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { readProductionAuthConfig } from "@/lib/production-auth-config";
 import { ProductionRegistrationForm } from "./ProductionRegistrationForm";
-import { LocalAccountForm } from "./LocalAccountForm";
+import { ProductionLoginForm } from "./ProductionLoginForm";
 import { ProductionRecoveryForm } from "./ProductionRecoveryForm";
 
 export type ProductionAuthView = "login" | "register" | "confirm" | "recover" | "reset";
@@ -17,7 +17,7 @@ export function ProductionAuthPage({ mode }: { mode: ProductionAuthView }) {
       <Link href="/" prefetch={false} aria-label="БЛИЖНИЙ — на главную" className="inline-flex min-h-11 items-center text-xl font-black italic tracking-tight text-[#198b2f]">БЛИЖНИЙ</Link>
       <div className="mt-3">
         {!available ? <><h1 className="text-2xl font-bold text-brand-ink">Аккаунт</h1><p role="alert" className="mt-3 text-sm text-slate-700">Сервис аккаунтов временно недоступен. Попробуйте позже.</p></> :
-          mode === "login" ? <LocalAccountForm production /> :
+          mode === "login" ? <ProductionLoginForm /> :
           mode === "register" || mode === "confirm" ? <ProductionRegistrationForm mode={mode} /> :
           <ProductionRecoveryForm mode={mode} />}
       </div>

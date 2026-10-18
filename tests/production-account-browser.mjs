@@ -7,14 +7,17 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { rootCertificates } from "node:tls";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { request as httpRequest } from "node:http";
 import { test } from "node:test";
 import { chromium } from "playwright";
 import { createDefaultCabinetProfile } from "../src/lib/cabinet-profile.ts";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import sharp from 'sharp';
 import { testRegistrationResendScenarios } from "./registration-resend-browser-cases.mjs";
 import { testLoginFocusScenarios } from "./login-focus-browser-cases.mjs";
@@ -57,11 +60,15 @@ test("primary account browser forms use the new cookie API without remote traffi
     TURNSTILE_SECRET_KEY: "synthetic-ui-captcha-secret", NEXT_PUBLIC_TURNSTILE_SITE_KEY: "synthetic-runtime-only-public-site-key",
     NEXT_PUBLIC_SUPABASE_URL: "https://legacy-fixture.example.invalid",
     NEXT_PUBLIC_SUPABASE_ANON_KEY: "synthetic-leftover-anon-key", SUPABASE_SERVICE_ROLE_KEY: "synthetic-leftover-service-key" };
-  const app = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", String(port)],
-    { cwd: new URL("..", import.meta.url), env, stdio: ["ignore", "pipe", "pipe"], detached: true });
-  let output = "", browser;
-  app.stdout.on("data", data => { output = (output + data).slice(-64000); });
-  app.stderr.on("data", data => { output = (output + data).slice(-64000); });
+  let output = "", browser, directory;
+  function startApp(environment, preload = []) {
+    const child = spawn(process.execPath, [...preload, "node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", String(port)],
+      { cwd: new URL("..", import.meta.url), env: environment, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    child.stdout.on("data", data => { output = (output + data).slice(-64000); });
+    child.stderr.on("data", data => { output = (output + data).slice(-64000); });
+    return child;
+  }
+  let app = startApp(env);
   try {
     const deadline = Date.now() + 20000;
     for (;;) {
@@ -156,6 +163,24 @@ test("primary account browser forms use the new cookie API without remote traffi
         assert.equal(response.headers["cache-control"],"no-store");assert.equal(response.headers["referrer-policy"],"no-referrer");
       }
     });
+    // Keep the preceding real invalid-runtime/readiness probes unchanged. The
+    // positive navigation scenarios also render the actual home catalog, so
+    // restart with the existing isolated SQL fixture (no production connection).
+    process.kill(-app.pid, "SIGTERM");await once(app, "exit");
+    directory = await mkdtemp(join(tmpdir(), "blizhniy-login-browser-"));
+    const key = join(directory, "key"), ca = join(directory, "ca");
+    await writeFile(key, randomBytes(32), { mode: 0o600 });
+    await writeFile(ca, rootCertificates[0], { mode: 0o600 });
+    app = startApp({ ...env, BLIZHNIY_DB_CA_FILE: ca, BLIZHNIY_AUTH_MAIL_KEY_FILE: key },
+      ["--experimental-strip-types", "--require", "./tests/listing-form-browser-pg.cjs"]);
+    const restartDeadline = Date.now() + 20000;
+    for (;;) {
+      assert.equal(app.exitCode, null, "owned positive browser process is running");
+      try { if ((await fetch(origin + "/api/health", { signal: AbortSignal.timeout(1000) })).ok) break; }
+      catch (error) { assert.ok(error.cause?.code === "ECONNREFUSED" || error.name === "TimeoutError"); }
+      assert.ok(Date.now() < restartDeadline, "positive browser process starts within deadline");
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
     browser = await chromium.launch({ headless: true });
     const run = (name, fn) => suite.test(name, async () => {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -285,6 +310,10 @@ test("primary account browser forms use the new cookie API without remote traffi
       await page.getByLabel("Email", { exact: true }).fill(email);
       await page.getByLabel("Пароль", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Войти", exact: true }).click();
+      await page.waitForURL(`${origin}/`);
+      // The following scenarios inspect account management after a real login.
+      // Revisit it explicitly; successful standalone login now finishes at home.
+      await page.goto(`${origin}/auth`);
       await page.getByText(email, { exact: true }).waitFor();
     };
     await run('private draft photos upload once, survive reload, preserve core edits and recover a lost association acknowledgement',async({page,state})=>{
@@ -974,5 +1003,9 @@ test("primary account browser forms use the new cookie API without remote traffi
   } finally {
     await browser?.close();
     if (app.exitCode === null) { process.kill(-app.pid, "SIGTERM"); await once(app, "exit"); }
+    if (directory) {
+      assert.ok(directory.startsWith(join(tmpdir(), "blizhniy-login-browser-")));
+      await rm(directory, { recursive: true, force: true });
+    }
   }
 });

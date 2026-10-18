@@ -68,6 +68,7 @@ test("primary pages are opt-in, configuration failures never fall back or reveal
     "@/lib/production-auth-config": { readProductionAuthConfig: () => ({ origin: "https://example.invalid", rateSecret: "must-stay-server-side", mailKeyFile: "/private/key" }) },
     "./ProductionRegistrationForm": { ProductionRegistrationForm: form },
     "./LocalAccountForm": { LocalAccountForm: form }, "./ProductionRecoveryForm": { ProductionRecoveryForm: form },
+    "./ProductionLoginForm": { ProductionLoginForm: form },
   };
   const page = (env, config = deps["@/lib/production-auth-config"]) => load("src/components/auth/ProductionAuthPage.tsx", {
     ...deps, "@/lib/production-auth-config": config,

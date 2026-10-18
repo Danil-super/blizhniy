@@ -21,6 +21,15 @@ const fill = async (page, origin, password) => {
 // This is the actual publication route, including its outer account gate. The
 // standalone /auth screen cannot catch a parent unmounting the login component.
 export async function testEmbeddedLoginScenarios({ run, origin, password }) {
+  await run("successful embedded login stays on the publication route and makes the order form available", async ({ page, calls }) => {
+    await fill(page, origin, password);
+    await page.getByRole("button", { name: "Войти", exact: true }).click();
+    await page.getByLabel("Название заказа", { exact: true }).waitFor();
+    assert.equal(page.url(), origin + "/rabota/zakazy/sozdat");
+    assert.equal(calls.filter(row => row.action === "login").length, 1);
+    assert.equal(await page.getByLabel("Email", { exact: true }).count(), 0);
+  });
+
   await run("embedded anonymous login retains controls and CAPTCHA when its outer publication gate rechecks session on focus", async ({ page, calls, state }) => {
     await fill(page, origin, password);
     const email = await page.getByLabel("Email", { exact: true }).elementHandle();

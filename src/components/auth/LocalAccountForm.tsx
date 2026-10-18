@@ -23,7 +23,9 @@ const errors: Record<string, string> = {
   CAPTCHA_REQUIRED: "Повторите проверку безопасности и отправьте форму ещё раз.",
 };
 
-export function LocalAccountForm({ production = false, headingLevel = "h1" }: { production?: boolean; headingLevel?: "h1" | "h2" } = {}) {
+export function LocalAccountForm({ production = false, headingLevel = "h1", onLoginVerified }: {
+  production?: boolean; headingLevel?: "h1" | "h2"; onLoginVerified?: () => void;
+} = {}) {
   const Heading = headingLevel;
   const account = production ? productionAccount : localAccount;
   const rememberedCaptcha = useAccountCaptcha();
@@ -70,6 +72,7 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
           setIssue("Не удалось сохранить сессию входа. Разрешите необходимые cookie для этого сайта и проверьте сессию ещё раз.");
         } else if (user) {
           setEmail(""); setPassword(""); setIssue(""); show({ kind: "active", user });
+          if (expectedOwnerId) onLoginVerified?.();
         } else if (!preserveForm) show({ kind: "anonymous" });
       }
     } catch {
@@ -81,7 +84,7 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
       if (backgroundCheck.current === current) backgroundCheck.current = null;
       if (verificationCheck.current === current) verificationCheck.current = null;
     }
-  }, [clearIdentity, show, account]);
+  }, [clearIdentity, show, account, onLoginVerified]);
 
   useEffect(() => {
     mounted.current = true;
@@ -161,7 +164,7 @@ export function LocalAccountForm({ production = false, headingLevel = "h1" }: { 
       className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline">Не подтвердили почту? Запросить письмо</Link>}
     {view.kind === "active" && <div className="mt-6 space-y-4">
       <p className="break-all font-semibold text-brand-ink">{view.user.email}</p>
-      <p className="text-sm text-slate-600">{view.user.role === "admin" ? "Администратор" : "Пользователь"} · права проверяет сервер.</p>
+      <p className="text-sm text-slate-600">{view.user.role === "admin" ? "Администратор" : "Пользователь"}</p>
       {production && <Link href="/cabinet" prefetch={false} className={`${buttonStyle} flex justify-center`}>Личный кабинет</Link>}
       <button type="button" className={`${secondaryStyle} w-full`} onClick={() => { version.current += 1; clearIdentity(); show({ kind: "switch" }); }}>Сменить аккаунт</button>
     </div>}
