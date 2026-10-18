@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';import {randomBytes,randomUUID} from 'node:crypto';
 import {createPostgresDatabase} from '../src/lib/postgres.ts';import {hashSessionToken} from '../src/lib/identity.ts';
 import * as contract from '../src/lib/service-publication-contract.ts';import {workPublicationModule} from './work-publication-module.mjs';
+import {createRequire} from 'node:module';import * as http from '../src/lib/auth-http.ts';import * as cookie from '../src/lib/account-cookie.ts';import * as proxy from '../src/lib/trusted-proxy-ip.ts';
+import * as drafts from '../src/lib/listing-draft-contract.ts';import {loadAdminModule} from './admin-module.mjs';
 const {PostgresServicePublicationStore,ServicePublicationAccessError,ServicePublicationConflictError}=workPublicationModule('postgres-service-publications',{'./service-publication-contract.ts':contract});
 export async function testServicePublications(suite,admin,config,credentials){
  assert.equal(config.host,'127.0.0.1');const db=createPostgresDatabase({NODE_ENV:'test',BLIZHNIY_DB_HOST:config.host,BLIZHNIY_DB_PORT:String(config.port),BLIZHNIY_DB_NAME:config.database,
@@ -62,6 +64,18 @@ export async function testServicePublications(suite,admin,config,credentials){
    const first=await store.list(token,owner,'marquee',null),second=await store.list(token,owner,'marquee',first.nextCursor),all=[...first.items,...second.items];
    assert.equal(first.items.length,20);assert.equal(all.length,27);assert.equal(new Set(all.map(item=>item.id)).size,27);assert.match(first.nextCursor.updatedAt,/\.\d{6}Z$/);assert.equal(second.nextCursor,null);
    for(const item of all)assert.equal(Object.hasOwn(item,'form'),false);
+  });
+  await suite.test('service HTTP composes real cookie authorization, restricted SQL and stable readback rather than trusting caller ownership',async()=>{
+   const {createProductionServicePublicationHandler}=workPublicationModule('production-service-publication-http',{
+    'node:crypto':createRequire(import.meta.url)('node:crypto'),'./auth-http':http,'./account-cookie':cookie,'./trusted-proxy-ip':proxy,
+    './app-session-transaction':loadAdminModule('app-session-transaction'),'./postgres-service-publications':{PostgresServicePublicationStore,ServicePublicationAccessError,ServicePublicationConflictError},
+    './service-publication-contract.ts':contract,'./listing-draft-contract.ts':drafts});
+   const events=[],origin='https://owned-service.example.invalid',handle=createProductionServicePublicationHandler({origin},()=>({store,limiter:{allowProduction:async()=>true}}),event=>events.push(event));
+   const key=randomUUID(),form=contract.parseServicePublicationForm('fair',{title:'Заявка через настоящий HTTP',category:'Посуда',comment:'Приватное пожелание'});
+   const request=(body,method='POST')=>new Request(origin+'/api/account/service-publications',{method,headers:{host:'owned-service.example.invalid',origin,'x-real-ip':'192.0.2.5','x-blizhniy-request':'1','content-type':'application/json',cookie:'__Host-blizhniy_session='+token},body:JSON.stringify(body)});
+   const create={action:'create',kind:'fair',expectedOwnerId:owner,creationKey:key,form};const response=await handle(request(create,'PUT'));assert.equal(response.status,200);const row=await response.json();assert.deepEqual(row.form,form);
+   const read=await handle(request({action:'intent',kind:'fair',expectedOwnerId:owner,creationKey:key}));assert.equal(read.status,200);assert.deepEqual(await read.json(),row);
+   assert.equal((await handle(request({...create,expectedOwnerId:other},'PUT'))).status,404);assert.equal(JSON.stringify(events).includes('Приватное пожелание'),false);
   });
  }finally{await db.close();}
 }
