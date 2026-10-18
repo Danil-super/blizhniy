@@ -839,7 +839,7 @@ export function ListingPhotoUploader() {
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <input ref={inputRef} className="sr-only" type="file" accept="image/*" name="photos" multiple onChange={handleFiles} />
+      <input ref={inputRef} className="sr-only" type="file" accept="image/*" name="photos" aria-label="Фотографии объявления" multiple onChange={handleFiles} />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <Camera className="h-5 w-5 shrink-0 text-[#0875d1]" />

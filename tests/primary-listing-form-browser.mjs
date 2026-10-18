@@ -152,7 +152,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   await page.screenshot({path:'/tmp/blizhniy-extra-fields-browser.png',fullPage:true});
   assert.equal(await page.getByText('Не удалось загрузить профиль. Проверьте сессию и обновите данные.',{exact:true}).count(),0);
   active='32345678-1234-4321-8765-123456789abc';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await page.getByText('Черновиков пока нет.',{exact:true}).waitFor();
+  await page.getByText('Объявлений пока нет.',{exact:true}).waitFor();
   assert.equal(await page.getByLabel('Телефон для связи',{exact:true}).count(),0);
   assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
   active=owner;
@@ -168,5 +168,59 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   await page.waitForFunction(()=>document.querySelector('input[name="title"]')?.value==='');
   assert.equal(await page.locator('input[name="photos"]').evaluate(input=>input.files.length),0);
   assert.equal(await page.getByText('Буфер предыдущего владельца',{exact:true}).count(),0);
+  // Initial placement goes to moderation, never to the retired checkout action.
+  active=owner;saved=null;moderation={id:null,revision:null,state:'not_submitted',note:null};
+  const beforeInitialWrites=writes.length,beforeInitialSubmissions=submissions;
+  await page.goto(origin+'/razmestit/obyavlenie');
+  assert.equal(await page.getByRole('button',{name:'Создать и оплатить',exact:true}).count(),0);
+  await page.locator('input[name="placementRightsAccepted"]').check();
+  await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'Название для публикации'}).waitFor();
+  assert.equal(writes.length,beforeInitialWrites);assert.equal(submissions,beforeInitialSubmissions);
+  await page.locator('input[name="title"]').fill('Сразу на модерацию');
+  await page.locator('textarea[name="description"]').fill('Описание для модератора');
+  await page.getByRole('button',{name:'Выбрать',exact:true}).click();
+  await page.getByRole('option',{name:'Краснодар, Краснодарский край',exact:true}).click();
+  await page.locator('input[name="phone"]').fill('+79990000000');
+  loseSubmission=true;
+  await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).click();
+  await page.getByRole('button',{name:'Проверить отправку',exact:true}).waitFor();
+  assert.equal(writes.length,beforeInitialWrites+1);assert.equal(submissions,beforeInitialSubmissions+1);
+  const focusedSession=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/account/session');
+  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await focusedSession;
+  await page.getByRole('button',{name:'Проверить отправку',exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Сохранить черновик',exact:true}).isDisabled(),true);
+  assert.equal(await page.locator('input[name="title"]').isDisabled(),true);
+  await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
+  for(const width of [320,768,1024,1440]){
+   await page.setViewportSize({width,height:900});
+   assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
+   assert.deepEqual(await page.evaluate(async()=>{const result=await window.axe.run(document.querySelector('form'));return result.violations.filter(row=>['serious','critical'].includes(row.impact)).map(row=>({id:row.id,targets:row.nodes.map(node=>node.target)}));}),[]);
+   if(width===320){await page.getByRole('button',{name:'Проверить отправку',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:'/tmp/blizhniy-initial-moderation-320.png'});}
+  }
+  await page.getByRole('button',{name:'Проверить отправку',exact:true}).scrollIntoViewIfNeeded();
+  await page.screenshot({path:'/tmp/blizhniy-initial-moderation-unknown.png'});
+  await page.getByRole('button',{name:'Проверить отправку',exact:true}).focus();await page.keyboard.press('Space');
+  await page.waitForURL(origin+'/cabinet/obyavleniya');
+  await page.getByRole('button',{name:'Сразу на модерацию',exact:true}).click();
+  await page.getByText('На модерации',{exact:true}).waitFor();
+  assert.equal(writes.length,beforeInitialWrites+1);assert.equal(submissions,beforeInitialSubmissions+1);
+  // A readback of a lost form save never implicitly submits it for moderation.
+  saved=null;moderation={id:null,revision:null,state:'not_submitted',note:null};lose=true;
+  await page.goto(origin+'/razmestit/obyavlenie');
+  await page.locator('input[name="title"]').fill('Проверка сохранения перед отправкой');
+  await page.locator('textarea[name="description"]').fill('Форма сохраняется без дубликатов');
+  await page.getByRole('button',{name:'Выбрать',exact:true}).click();
+  await page.getByRole('option',{name:'Краснодар, Краснодарский край',exact:true}).click();
+  await page.locator('input[name="phone"]').fill('+79990000000');
+  await page.locator('input[name="placementRightsAccepted"]').check();
+  await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).click();
+  await page.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();
+  await page.getByText('Форма сохранена. Нажмите «Отправить на модерацию», чтобы продолжить.',{exact:true}).waitFor();
+  assert.equal(submissions,beforeInitialSubmissions+1);assert.equal(writes.length,beforeInitialWrites+2);
+  await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).click();
+  await page.waitForURL(origin+'/cabinet/obyavleniya');
+  assert.equal(submissions,beforeInitialSubmissions+2);assert.equal(writes.length,beforeInitialWrites+2);
+  assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
  }finally{await browser?.close();if(app&&app.exitCode===null){process.kill(-app.pid,'SIGTERM');await once(app,'exit');}await rm(directory,{recursive:true});}
 });
