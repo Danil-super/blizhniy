@@ -26,6 +26,8 @@ import {
 } from "@/lib/client-user-profile";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
+import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
+import { PrimaryNotificationBell } from "@/components/PrimaryNotificationBell";
 
 function readJsonArray<T>(key: string): T[] {
   try {
@@ -113,6 +115,10 @@ function notificationToneClassName(notification: SiteNotification) {
 }
 
 export function NotificationBell() {
+  return usePrimaryAccountAuth() ? <PrimaryNotificationBell /> : <LegacyNotificationBell />;
+}
+
+function LegacyNotificationBell() {
   const { state: authState } = useAuthState();
   const [open, setOpen] = useState(false);
   const [siteNotifications, setSiteNotifications] = useState<SiteNotification[]>([]);

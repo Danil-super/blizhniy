@@ -26,7 +26,8 @@ export function renderHeader(state = 'signed-in', compact = true, actionsOnly = 
     }).outputText;
     const resolveLocal = value => {
       const base = value.startsWith('@/') ? path.join(root, 'src', value.slice(2)) : path.resolve(path.dirname(filename), value);
-      const resolved = ['.tsx', '.ts', '/index.ts', '/index.tsx'].map(suffix => base + suffix).find(existsSync);
+      const candidates = /\.tsx?$/.test(base) ? [base] : ['.tsx', '.ts', '/index.ts', '/index.tsx'].map(suffix => base + suffix);
+      const resolved = candidates.find(existsSync);
       if (!resolved) throw new Error(`Missing actual header dependency ${value}`);
       return load(resolved);
     };
