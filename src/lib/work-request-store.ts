@@ -432,6 +432,11 @@ export async function updateStoredWorkRequestForUser(requestId: string, userId: 
 }
 
 export async function getStoredWorkRequestById(requestId: string, options: { publicOnly?: boolean } = {}) {
+  if(typeof process!=='undefined'&&process.env.BLIZHNIY_AUTH_MODE==='postgres'){
+    if(!options.publicOnly)return undefined;
+    const {getProductionPublicWorkStore}=await import('./production-public-work-runtime');
+    return (await getProductionPublicWorkStore()).read('workRequest',requestId);
+  }
   if (!isSupabaseRestConfigured() || !isUuid(requestId)) {
     return undefined;
   }
@@ -451,6 +456,10 @@ export async function getStoredWorkRequestById(requestId: string, options: { pub
 }
 
 export async function listStoredWorkRequests(limit = 24, offset = 0) {
+  if(typeof process!=='undefined'&&process.env.BLIZHNIY_AUTH_MODE==='postgres'){
+    const {getProductionPublicWorkStore}=await import('./production-public-work-runtime');
+    return (await getProductionPublicWorkStore()).list('workRequest',limit,offset);
+  }
   if (!isSupabaseRestConfigured()) {
     return [];
   }

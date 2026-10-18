@@ -510,6 +510,11 @@ export async function saveStoredVacancyForUser(
 }
 
 export async function getStoredVacancyById(vacancyId: string, options: { publicOnly?: boolean } = {}) {
+  if(typeof process!=='undefined'&&process.env.BLIZHNIY_AUTH_MODE==='postgres'){
+    if(!options.publicOnly)return undefined;
+    const {getProductionPublicWorkStore}=await import('./production-public-work-runtime');
+    return (await getProductionPublicWorkStore()).read('vacancy',vacancyId);
+  }
   if (!isSupabaseRestConfigured() || !isUuid(vacancyId)) {
     return undefined;
   }
@@ -541,6 +546,10 @@ export async function getStoredVacancyForUser(vacancyId: string, userId: string)
 }
 
 export async function listStoredVacancies(limit = 24, offset = 0) {
+  if(typeof process!=='undefined'&&process.env.BLIZHNIY_AUTH_MODE==='postgres'){
+    const {getProductionPublicWorkStore}=await import('./production-public-work-runtime');
+    return (await getProductionPublicWorkStore()).list('vacancy',limit,offset);
+  }
   if (!isSupabaseRestConfigured()) {
     return [];
   }
