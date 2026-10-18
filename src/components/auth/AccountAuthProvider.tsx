@@ -25,6 +25,7 @@ function PrimaryAccountAuth({ children, available }: { children: ReactNode; avai
       if (event.data && typeof event.data === "object" && event.data.type === "changed") refresh();
     };
     window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
     window.addEventListener("pageshow", pageshow);
     window.addEventListener("blizhniy-account-changing", begin);
     window.addEventListener("blizhniy-account-changed", end);
@@ -33,6 +34,7 @@ function PrimaryAccountAuth({ children, available }: { children: ReactNode; avai
     return () => {
       unsubscribe(); store.stop(); channel?.close();
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
       window.removeEventListener("pageshow", pageshow);
       window.removeEventListener("blizhniy-account-changing", begin);
       window.removeEventListener("blizhniy-account-changed", end);

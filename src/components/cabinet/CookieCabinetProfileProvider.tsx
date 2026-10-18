@@ -7,7 +7,8 @@ import { CookieProfileError, productionProfile } from "@/lib/client-postgres-pro
 import { notifyAccountSessionChange } from "@/lib/local-account";
 
 type Snapshot = { ownerId: string | null; profile: CabinetProfile | null; revision?: string | null; conflict?: boolean; error?: string; loading: boolean };
-type Value = Snapshot & { saveProfile: (profile: CabinetProfile) => Promise<CabinetProfile>; reload: () => void };
+type Value = Snapshot & { saveProfile: (profile: CabinetProfile) => Promise<CabinetProfile>; reload: () => void;
+  settingsDraft: CabinetProfile | null; setSettingsDraft: (profile: CabinetProfile) => void; clearSettingsDraft: () => void };
 const Context = createContext<Value | null>(null);
 const empty: Snapshot = { ownerId: null, profile: null, loading: true };
 export function useCookieCabinetProfile() { return useContext(Context); }
@@ -17,6 +18,10 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
   const latestOwner = useRef(owner); latestOwner.current = owner;
   const version = useRef(0), pendingWrite = useRef<object | null>(null), scope = useRef<AbortController | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot>(empty);
+  // Unsaved settings belong to this owner, not to the temporary form DOM. Never
+  // persist private input in browser storage or carry it through a real logout.
+  const [settings, setSettings] = useState<{ owner: string; profile: CabinetProfile } | null>(null);
+  if (settings && (auth.state === "signed-out" || (owner && owner !== settings.owner))) setSettings(null);
   useEffect(() => {
     const generation = ++version.current;
     const controller = new AbortController(); scope.current = controller;
@@ -58,7 +63,10 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
   // In-flight data is never displayed for a changed or unverified identity, even before effect cleanup.
   const visible = owner && snapshot.ownerId === owner ? snapshot : empty;
   const reload = () => notifyAccountSessionChange(false);
-  return <Context.Provider value={{ ...visible, saveProfile, reload }}>
+  return <Context.Provider value={{ ...visible, saveProfile, reload,
+    settingsDraft: owner && settings?.owner === owner ? settings.profile : null,
+    setSettingsDraft: profile => { if (owner && latestOwner.current === owner) setSettings({ owner, profile }); },
+    clearSettingsDraft: () => setSettings(null) }}>
     {visible.conflict ? <CabinetProfileFailure message="Профиль изменён в другой вкладке. Скопируйте несохранённые изменения и обновите профиль." reload={reload} /> : null}
     {children}
   </Context.Provider>;

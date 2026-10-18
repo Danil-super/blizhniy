@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ListingDraftClientError, productionDrafts } from "@/lib/client-listing-drafts";
 import { parseListingDraft, type ListingDraftPage } from "@/lib/listing-draft-contract";
@@ -13,7 +14,7 @@ import {PrivateListingFormEditor} from './PrivateListingFormEditor';
 import {PrivateDraftPublicationCheck} from './PrivateDraftPublicationCheck';
 import {PrivateDraftModeration} from './PrivateDraftModeration';
 
-export function PrivateDraftWorkspace({ owner, visible }: { owner: string; visible: boolean }) {
+export function PrivateDraftWorkspace({ owner, visible, listing = false }: { owner: string; visible: boolean; listing?: boolean }) {
   const [page, setPage] = useState<ListingDraftPage | null>(null), [editor, setEditor] = useState<DraftEditorState | null>(null);
   const [busy, setBusy] = useState<string | null>("Загружаем черновики…"), [message, setMessage] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
@@ -98,17 +99,17 @@ export function PrivateDraftWorkspace({ owner, visible }: { owner: string; visib
   if (!visible) return null;
   return <div>
     <div className="mt-5 flex flex-wrap gap-3">
-      <button type="button" className={`${draftButton} bg-[#0875d1] text-white`} disabled={working || !!full.editor || photos.uncertain || dirty || !!editor?.blocked} onClick={create}>
+      {listing ? <Link href="/razmestit/obyavlenie" className={`${draftButton} inline-flex items-center bg-[#0875d1] text-white`}>Создать объявление</Link> : <button type="button" className={`${draftButton} bg-[#0875d1] text-white`} disabled={working || !!full.editor || photos.uncertain || dirty || !!editor?.blocked} onClick={create}>
         {creationKey.current ? "Проверить создание" : "Новый черновик"}
-      </button>
+      </button>}
       <button type="button" className={draftButton} disabled={working||!!full.editor} onClick={() => { setMessage(null);setRefresh(value => value+1); }}>Обновить список</button>
     </div>
     {busy && <p className="mt-4" role="status">{busy}</p>}
     {full.busy&&!full.editor&&<p className="mt-4" role="status">Загружаем дополнительные поля…</p>}
     {message && <p className="mt-4 rounded-lg border border-slate-300 bg-white p-3" role="status">{message}</p>}
-    {page && <section className="mt-6" aria-label="Ваши черновики">
-      <h2 className="text-xl font-bold">Ваши черновики</h2>
-      {page.items.length === 0 ? <p className="mt-3">Черновиков пока нет.</p> : <ul className="mt-3 divide-y divide-slate-200">
+    {page && <section className="mt-6" aria-label={listing ? "Сохранённые объявления" : "Ваши черновики"}>
+      <h2 className="text-xl font-bold">{listing ? "Сохранённые объявления" : "Ваши черновики"}</h2>
+      {page.items.length === 0 ? <p className="mt-3">{listing ? "Объявлений пока нет." : "Черновиков пока нет."}</p> : <ul className="mt-3 divide-y divide-slate-200">
         {page.items.map(item => <li key={item.id}><button type="button" className="min-h-11 w-full break-words px-2 py-3 text-left font-semibold underline underline-offset-4 disabled:opacity-50"
           disabled={working || !!full.editor || photos.uncertain || dirty || !!editor?.blocked || creationKey.current !== null} onClick={() => open(item.id)}>{item.title || "Без названия"}</button></li>)}
       </ul>}

@@ -25,6 +25,8 @@ import { testEmbeddedLoginScenarios } from "./embedded-login-browser-cases.mjs";
 import { testRememberedCaptchaScenarios } from './remembered-captcha-browser-cases.mjs';
 import { issueBrowserProof } from '../src/lib/account-browser-proof.ts';
 import { testResetValidationScenarios } from './reset-validation-browser-cases.mjs';
+import { testCabinetOfflineScenarios } from './cabinet-offline-browser-cases.mjs';
+import { testCabinetEntryScenarios } from './cabinet-entry-browser-cases.mjs';
 
 // Opaque transport revision only; real canonical hashing/row locking are tested with PG.
 const fixtureRevision = profile => profile ? createHash("sha256").update(JSON.stringify(profile)).digest("hex") : null;
@@ -317,7 +319,7 @@ test("primary account browser forms use the new cookie API without remote traffi
       await page.getByText(email, { exact: true }).waitFor();
     };
     await run('private draft photos upload once, survive reload, preserve core edits and recover a lost association acknowledgement',async({page,state})=>{
-      await login(page);await page.goto(origin+'/cabinet/obyavleniya');
+      await login(page);await page.goto(origin+'/cabinet/chernoviki');
       await page.getByRole('button',{name:'Новый черновик',exact:true}).click();
       await page.getByLabel('Название',{exact:true}).fill('Черновик с фото');
       await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
@@ -346,13 +348,16 @@ test("primary account browser forms use the new cookie API without remote traffi
     await run("ordinary cabinet and listing pages expose real owner drafts without legacy requests", async ({ page, state }) => {
       await login(page);
       await page.goto(origin+"/cabinet");
-      await page.getByText("Черновиков пока нет.", { exact: true }).waitFor();
-      await page.goto(origin+"/cabinet/obyavleniya");
+      await page.getByText("Объявлений пока нет.", { exact: true }).waitFor();
+      // Exercise the retained low-level editor separately; ordinary cabinet
+      // creation now opens the complete listing form (covered below).
+      await page.goto(origin+"/cabinet/chernoviki");
       await page.getByRole("button", { name: "Новый черновик", exact: true }).click();
       await page.getByLabel("Название", { exact: true }).fill("Черновик из обычного кабинета");
       await page.getByRole("button", { name: "Сохранить черновик", exact: true }).click();
       await page.getByText("Черновик сохранён.", { exact: true }).waitFor();
       assert.equal(state.drafts.get(state.active.id).size, 1);
+      await page.goto(origin+"/cabinet/obyavleniya");
       await page.reload();
       await page.getByRole("button", { name: "Черновик из обычного кабинета", exact: true }).click();
       assert.equal(await page.getByLabel("Название", { exact: true }).inputValue(), "Черновик из обычного кабинета");
@@ -999,6 +1004,8 @@ test("primary account browser forms use the new cookie API without remote traffi
     await testRegistrationResendScenarios({ run, origin, password });
     await testLoginFocusScenarios({ run, origin, password });
     await testEmbeddedLoginScenarios({ run, origin, password });
+    await testCabinetOfflineScenarios({ run, origin });
+    await testCabinetEntryScenarios({ run, origin });
     assert.equal(output.includes("fixture-captcha"), false);
   } finally {
     await browser?.close();

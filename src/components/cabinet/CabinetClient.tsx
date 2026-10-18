@@ -2643,7 +2643,10 @@ function AvatarEditor({
 
 function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: ClientUserIdentity; profile: CabinetProfile; onClose: () => void;
   saveProfile?: (profile: CabinetProfile) => Promise<CabinetProfile> }) {
-  const [form, setForm] = useState(profile);
+  const cookie = useCookieCabinetProfile();
+  const [localForm, setLocalForm] = useState(profile);
+  const form = cookie ? cookie.settingsDraft ?? profile : localForm;
+  const setForm = (next: CabinetProfile) => { if (cookie) cookie.setSettingsDraft(next); else setLocalForm(next); };
   const [verificationCode, setVerificationCode] = useState("");
   const [phoneVerificationOpen, setPhoneVerificationOpen] = useState(false);
   const [message, setMessage] = useState("");
@@ -2847,7 +2850,7 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
           <h2 className="text-xl font-bold text-[#060b27]">Настройки аккаунта</h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">Публичное имя, контакты, email для входа и уведомления кабинета.</p>
         </div>
-        <button type="button" onClick={onClose} className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700">
+        <button type="button" onClick={() => { cookie?.clearSettingsDraft(); onClose(); }} className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700">
           Закрыть
         </button>
       </div>
@@ -2874,7 +2877,7 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
                 {!form.phone ? "не указан" : phoneIsVerified ? "подтвержден" : "не подтвержден"}
               </span>
             </span>
-            <div className="grid grid-cols-[minmax(0,1fr)_2.75rem] gap-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <ValidatedInput
                 className="h-11 min-w-0 rounded-lg border border-slate-300 px-2 text-sm font-normal outline-none focus:border-[#0875d1] sm:px-3 sm:text-base"
                 value={form.phone}
@@ -2891,14 +2894,18 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
               <button
                 type="button"
                 onClick={phoneIsVerified ? undefined : handleStartPhoneVerification}
-                disabled={phoneIsVerified || sendingPhoneCode || !phoneCanBeVerified}
-                className={phoneIsVerified ? "inline-flex h-11 w-11 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-[#0a8f32]" : "inline-flex h-11 w-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-[#0875d1] transition hover:border-blue-300 disabled:cursor-not-allowed disabled:opacity-45"}
+                disabled={Boolean(saveProfile) || phoneIsVerified || sendingPhoneCode || !phoneCanBeVerified}
+                aria-describedby={saveProfile ? "phone-verification-availability" : undefined}
+                className={phoneIsVerified ? "inline-flex h-11 min-w-11 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[#0a8f32]" : "inline-flex h-11 min-w-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-[#0875d1] transition hover:border-blue-300 disabled:cursor-not-allowed disabled:opacity-45"}
                 title={phoneIsVerified ? "Телефон подтвержден" : "Подтвердить номер"}
                 aria-label={phoneIsVerified ? "Телефон подтвержден" : "Подтвердить номер"}
               >
-                <Check className="h-5 w-5" />
+                {saveProfile ? <span className="text-xs">Подтвердить</span> : <Check className="h-5 w-5" />}
               </button>
             </div>
+            {saveProfile ? <span id="phone-verification-availability" className="text-xs font-normal leading-5 text-slate-600">
+              Подтверждение по SMS пока недоступно: сервис отправки ещё не подключён. Номер можно сохранить без подтверждения.
+            </span> : null}
           </label>
           <label className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
             <span className="leading-4">Email</span>
@@ -3075,7 +3082,7 @@ export function CabinetProfileBar() {
             )}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold uppercase text-[#0a7b2b]">Пользователь</p>
+            <p className="text-sm font-bold uppercase text-[#0a7b2b]">Ваш профиль</p>
             <h2 className="truncate text-xl font-bold text-[#060b27]">{profile.name}</h2>
             <p className="truncate text-sm text-slate-500">{profile.email || "Email не указан"}</p>
             {profile.phone ? (

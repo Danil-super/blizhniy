@@ -8,5 +8,5 @@ import {CabinetStart} from '@/components/cabinet/CabinetStart';
 export function CabinetDraftWorkspace({children,footer,overview=false}:{children:ReactNode;footer?:ReactNode;overview?:boolean}){
  const primary=usePrimaryAccountAuth();
  const signedIn=primary?.state==='signed-in'||primary?.state==='admin';
- return primary?<>{overview&&signedIn?<CabinetStart/>:null}<PrivateDraftsPanel/>{signedIn?footer:null}</>:<CabinetAuthGate>{children}{footer}</CabinetAuthGate>;
+ return primary?<>{overview&&signedIn?<CabinetStart/>:null}<PrivateDraftsPanel listing/>{signedIn?footer:null}</>:<CabinetAuthGate>{children}{footer}</CabinetAuthGate>;
 }
