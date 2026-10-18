@@ -9,15 +9,16 @@ import { region, cities, categories, professions, tariffs } from "../src/lib/dat
 const names = ["0001-identity.sql", "0002-registration.sql", "0003-auth-rate-limits.sql",
   "0004-password-recovery.sql", "0005-reference-catalog.sql", "0006-media-reservations.sql", "0007-media-write-attempts.sql"];
 
-export function getBootstrapPlan({ includeMail = false, includeProfiles = false, includeListings = false, includeListingPhotos = false, includeListingModeration = false, includeConfirmationNotice = false, includeWorkPublications = false } = {}) {
-  if ([includeMail, includeProfiles, includeListings, includeListingPhotos, includeListingModeration, includeConfirmationNotice, includeWorkPublications].some(value => typeof value !== "boolean")) throw new Error("Invalid bootstrap option");
+export function getBootstrapPlan({ includeMail = false, includeProfiles = false, includeListings = false, includeListingPhotos = false, includeListingModeration = false, includeConfirmationNotice = false, includeWorkPublications = false, includeServicePublications = false } = {}) {
+  if ([includeMail, includeProfiles, includeListings, includeListingPhotos, includeListingModeration, includeConfirmationNotice, includeWorkPublications, includeServicePublications].some(value => typeof value !== "boolean")) throw new Error("Invalid bootstrap option");
   const mail = [...names, "0008-mail-outbox.sql", "0009-mail-delivery.sql", "0010-production-rate-limits.sql"];
   const account = [...mail, "0011-cabinet-profiles.sql"];
   const listings = [...account, "0012-listings.sql"];
   const photos = [...listings, "0013-listing-photos.sql"];
   const moderation = [...photos, "0014-listing-moderation.sql"];
   const notice = [...moderation, "0015-confirmation-notice.sql"];
-  const approved = includeWorkPublications ? [...notice, "0016-work-publications.sql"] : includeConfirmationNotice ? notice : includeListingModeration ? moderation : includeListingPhotos ? photos : includeListings ? listings : includeProfiles ? account : includeMail ? mail : names;
+  const work = [...notice, "0016-work-publications.sql"];
+  const approved = includeServicePublications ? [...work, "0017-service-publications.sql"] : includeWorkPublications ? work : includeConfirmationNotice ? notice : includeListingModeration ? moderation : includeListingPhotos ? photos : includeListings ? listings : includeProfiles ? account : includeMail ? mail : names;
   return approved.map(name => {
     const source = readFileSync(new URL(`../database/migrations/${name}`, import.meta.url), "utf8");
     if (!/^begin;$/m.test(source) || !/commit;\s*$/.test(source)) throw new Error("Invalid bootstrap migration");
@@ -109,16 +110,16 @@ export async function bootstrapPostgres(client, confirmation, options = {}) {
 
 async function main() {
   const args = process.argv.slice(2);
-  if (args.length === 1 && ["--plan", "--plan-mail", "--plan-account", "--plan-listings", "--plan-listing-photos", "--plan-listing-moderation", "--plan-confirmation-notice", "--plan-work-publications"].includes(args[0])) {
-    console.log(JSON.stringify({ migrations: getBootstrapPlan({ includeMail: args[0] === "--plan-mail", includeProfiles: args[0] === "--plan-account", includeListings: args[0] === "--plan-listings", includeListingPhotos: args[0] === "--plan-listing-photos", includeListingModeration: args[0] === "--plan-listing-moderation", includeConfirmationNotice: args[0] === "--plan-confirmation-notice", includeWorkPublications: args[0] === "--plan-work-publications" }).map(({name,sha256}) => ({name,sha256})),
+  if (args.length === 1 && ["--plan", "--plan-mail", "--plan-account", "--plan-listings", "--plan-listing-photos", "--plan-listing-moderation", "--plan-confirmation-notice", "--plan-work-publications", "--plan-service-publications"].includes(args[0])) {
+    console.log(JSON.stringify({ migrations: getBootstrapPlan({ includeMail: args[0] === "--plan-mail", includeProfiles: args[0] === "--plan-account", includeListings: args[0] === "--plan-listings", includeListingPhotos: args[0] === "--plan-listing-photos", includeListingModeration: args[0] === "--plan-listing-moderation", includeConfirmationNotice: args[0] === "--plan-confirmation-notice", includeWorkPublications: args[0] === "--plan-work-publications", includeServicePublications: args[0] === "--plan-service-publications" }).map(({name,sha256}) => ({name,sha256})),
       references: Object.fromEntries(Object.entries(getReferenceSeed()).map(([name,rows]) => [name,rows.length])) }, null, 2));
     return;
   }
-  if (args.length !== 2 || !["--apply", "--apply-mail", "--apply-account", "--apply-listings", "--apply-listing-photos", "--apply-listing-moderation", "--apply-confirmation-notice", "--apply-work-publications"].includes(args[0])) throw new BootstrapError("Usage: bootstrap-postgres.mjs --plan[|-mail|-account|-listings|-listing-photos|-listing-moderation|-confirmation-notice|-work-publications] | --apply[|-mail|-account|-listings|-listing-photos|-listing-moderation|-confirmation-notice|-work-publications] HOST:DATABASE");
+  if (args.length !== 2 || !["--apply", "--apply-mail", "--apply-account", "--apply-listings", "--apply-listing-photos", "--apply-listing-moderation", "--apply-confirmation-notice", "--apply-work-publications", "--apply-service-publications"].includes(args[0])) throw new BootstrapError("Usage: bootstrap-postgres.mjs --plan[|-mail|-account|-listings|-listing-photos|-listing-moderation|-confirmation-notice|-work-publications|-service-publications] | --apply[|-mail|-account|-listings|-listing-photos|-listing-moderation|-confirmation-notice|-work-publications|-service-publications] HOST:DATABASE");
   const config = readPostgresConfig();
   if (args[1] !== `${config.host}:${config.database}`) throw new BootstrapError("Missing or mismatched target confirmation");
   const client = new pg.Client({ ...config, application_name: "blizhniy-bootstrap" });
-  try { await client.connect(); console.log(JSON.stringify(await bootstrapPostgres(client, args[1], { includeMail: args[0] === "--apply-mail", includeProfiles: args[0] === "--apply-account", includeListings: args[0] === "--apply-listings", includeListingPhotos: args[0] === "--apply-listing-photos", includeListingModeration: args[0] === "--apply-listing-moderation", includeConfirmationNotice: args[0] === "--apply-confirmation-notice", includeWorkPublications: args[0] === "--apply-work-publications" }))); }
+  try { await client.connect(); console.log(JSON.stringify(await bootstrapPostgres(client, args[1], { includeMail: args[0] === "--apply-mail", includeProfiles: args[0] === "--apply-account", includeListings: args[0] === "--apply-listings", includeListingPhotos: args[0] === "--apply-listing-photos", includeListingModeration: args[0] === "--apply-listing-moderation", includeConfirmationNotice: args[0] === "--apply-confirmation-notice", includeWorkPublications: args[0] === "--apply-work-publications", includeServicePublications: args[0] === "--apply-service-publications" }))); }
   finally { await client.end(); }
 }
 
