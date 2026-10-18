@@ -164,7 +164,7 @@ export function FormPhotoUploader({
                 {label}
                 {required ? <span className="text-rose-600"> *</span> : null}
               </span>
-              <span className="mt-1 block text-xs leading-5 text-slate-500 sm:text-sm sm:leading-6">
+              <span className="mt-1 block text-xs leading-5 text-slate-600 sm:text-sm sm:leading-6">
                 {description} {formPhotoLimitText()}
               </span>
             </span>
