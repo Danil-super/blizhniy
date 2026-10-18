@@ -232,6 +232,8 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testInteractionGrants(suite, client, config, credentials);
     const { testNotificationInbox } = await import("./notification-inbox-integration.mjs");
     await testNotificationInbox(suite, client, config, credentials);
+    const { testApplications } = await import("./applications-integration.mjs");
+    await testApplications(suite, client, config, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));
