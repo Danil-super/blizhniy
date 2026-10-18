@@ -214,6 +214,8 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testWorkPublications(suite, client, config, credentials);
     const { testWorkModeration } = await import("./work-moderation-integration.mjs");
     await testWorkModeration(suite, client, config, credentials);
+    const { testPublicWorkStore } = await import("./public-work-store-integration.mjs");
+    await testPublicWorkStore(suite, client, config, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));
