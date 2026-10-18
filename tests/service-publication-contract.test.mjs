@@ -32,3 +32,8 @@ test('public service forms explicitly exclude contacts, private comments and uns
  const fair=publicServicePublicationForm(parseServicePublicationForm('fair',{...common,comment:'Скрытый комментарий'}));
  for(const form of [specialist,fair]){const wire=JSON.stringify(form);for(const secret of ['+79990000000','private@example.invalid','private_fixture','Частный адрес','Скрытый комментарий'])assert.equal(wire.includes(secret),false);assert.equal(Object.hasOwn(form,'contactPhone'),false);assert.equal(form.latitude,null);}
 });
+test('specialist review retains the existing minimum work price of 100 rubles using exact cents',()=>{
+ const base={title:'Мастер',description:'Описание специалиста длиной больше двадцати символов.',cityName:'Краснодар',professionName:'Сантехник',skills:'Ремонт',email:'fixture@example.invalid',placementRightConfirmed:true};
+ for(const price of ['0.01','99.99'])assert.ok(checkServicePublicationForm(parseServicePublicationForm('specialist',{...base,price})).some(message=>message.includes('100')));
+ assert.deepEqual(checkServicePublicationForm(parseServicePublicationForm('specialist',{...base,price:'100.00'})),[]);
+});

@@ -49,7 +49,7 @@ export function checkServicePublicationForm(form:ServicePublicationForm):string[
  if(!phone&&!form.email&&!form.messengerUrl)issues.push('Укажите телефон, email или мессенджер.');
  if(phone&&(!/^[+\d\s().-]+$/.test(phone)||!(digits?.length===10||(digits?.length===11&&/^[78]/.test(digits)))))issues.push('Проверьте номер телефона.');
  if(form.kind==='specialist'){
-  if(!form.professionName)issues.push('Выберите профессию.');if(!form.price||form.price==='0.00')issues.push('Укажите стоимость работ.');
+  if(!form.professionName)issues.push('Выберите профессию.');if(!form.price||BigInt(form.price.replace('.',''))<BigInt(10000))issues.push('Укажите стоимость работ от 100 ₽.');
   if(!form.skills||form.skills.length<3)issues.push('Опишите навыки от 3 символов.');
  }else{
   if(!form.category||!fairCategories.includes(form.category))issues.push('Выберите категорию ярмарки.');
