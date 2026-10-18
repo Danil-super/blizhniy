@@ -640,9 +640,9 @@ export function CabinetResponsesPage() {
 
   return (
     <Shell title="Мои отклики" description="Отклики на вакансии со статусами оплаты, отправки и просмотра работодателем." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/otkliki" createHref="/rabota/vakansii" createLabel="Найти вакансию">
-      <CabinetAuthGate>
+      <CabinetPublicationWorkspace>
         <CabinetResponsesClient responses={responses} />
-      </CabinetAuthGate>
+      </CabinetPublicationWorkspace>
     </Shell>
   );
 }

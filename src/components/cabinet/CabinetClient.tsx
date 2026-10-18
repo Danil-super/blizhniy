@@ -1,6 +1,7 @@
 "use client";
 import {WorkPublicationsPanel} from '@/components/work/WorkPublicationsPanel';
 import {ServicePublicationsPanel} from '@/components/services/ServicePublicationsPanel';
+import {ApplicationsPanel} from '@/components/applications/ApplicationsPanel';
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -3158,6 +3159,10 @@ export function CabinetPublicationsClient({ type }: { type: DemoPublicationType 
 }
 
 export function CabinetResponsesClient({ responses = [] }: { responses?: CabinetResponseItem[] }) {
+  return usePrimaryAccountAuth() ? <ApplicationsPanel /> : <LegacyCabinetResponsesClient responses={responses} />;
+}
+
+function LegacyCabinetResponsesClient({ responses = [] }: { responses?: CabinetResponseItem[] }) {
   const [serverResponses, setServerResponses] = useState<CabinetResponseItem[] | null>(null);
   const [loadingResponses, setLoadingResponses] = useState(true);
   const [payingResponseId, setPayingResponseId] = useState("");
