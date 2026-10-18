@@ -226,6 +226,10 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testServiceModeration(suite, client, config, credentials);
     const { testPublicServiceStore } = await import("./public-service-store-integration.mjs");
     await testPublicServiceStore(suite, client, config, credentials);
+    const { testInteractionsSchema } = await import("./interactions-schema-integration.mjs");
+    await testInteractionsSchema(suite, client, config, credentials);
+    const { testInteractionGrants } = await import("./interactions-grants-integration.mjs");
+    await testInteractionGrants(suite, client, config, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));
