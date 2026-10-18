@@ -1,8 +1,8 @@
-import { defaultAdMarqueeMessages } from "@/lib/ad-marquee";
+import { defaultAdMarqueeMessages, maxActiveAdMarqueePlacements } from "@/lib/ad-marquee";
 import { createStoredNotification } from "@/lib/notification-store";
 import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 
-export const maxActiveAdMarqueePlacements = 5;
+export { maxActiveAdMarqueePlacements } from "@/lib/ad-marquee";
 
 export type AdMarqueePlacementStatus = "pending_review" | "pending_payment" | "paid" | "active" | "rejected" | "expired" | "archived";
 
@@ -193,6 +193,11 @@ export async function listActiveAdMarqueePlacements(options: { refresh?: boolean
 }
 
 export async function getActiveAdMarqueeMessages() {
+  if(process.env.BLIZHNIY_AUTH_MODE==='postgres'){
+    const {getProductionPublicServiceStore}=await import('./production-public-service-runtime');
+    const placements=await (await getProductionPublicServiceStore()).list('marquee',5,0);
+    return placements.length?placements.map(placement=>placement.text):defaultAdMarqueeMessages;
+  }
   const placements = await listActiveAdMarqueePlacements({ refresh: false, timeoutMs: 300 }).catch((error) => {
     if (error && typeof error === "object" && "digest" in error && error.digest === "DYNAMIC_SERVER_USAGE") {
       throw error;

@@ -366,6 +366,10 @@ export async function getActiveStoredSpecialistProfileForUser(userId: string) {
 }
 
 export async function listStoredSpecialistProfiles(limit = 24, offset = 0) {
+  if(process.env.BLIZHNIY_AUTH_MODE==='postgres'){
+    const {getProductionPublicServiceStore}=await import('./production-public-service-runtime');
+    return (await getProductionPublicServiceStore()).list('specialist',limit,offset);
+  }
   if (!isSupabaseRestConfigured()) {
     return [];
   }
@@ -392,6 +396,10 @@ export async function listStoredSpecialistProfilesForAdmin(limit = 200) {
 }
 
 export async function getStoredSpecialistProfileById(profileId: string) {
+  if(process.env.BLIZHNIY_AUTH_MODE==='postgres'){
+    const {getProductionPublicServiceStore}=await import('./production-public-service-runtime');
+    return (await getProductionPublicServiceStore()).read('specialist',profileId);
+  }
   if (!isSupabaseRestConfigured() || !isUuid(profileId)) {
     return undefined;
   }

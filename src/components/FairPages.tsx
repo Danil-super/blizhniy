@@ -32,6 +32,7 @@ function formatFairDate(date: Date) {
 }
 
 function fairPhotoUrl(photo: string) {
+  if(/^\/api\/service-publications\/[0-9a-f-]{36}\/photos\/[0-9a-f-]{36}$/.test(photo))return photo;
   if (photo.startsWith("http://") || photo.startsWith("https://") || photo.startsWith("blob:")) {
     return photo;
   }

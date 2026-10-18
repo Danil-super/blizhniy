@@ -53,6 +53,7 @@ function cleanPhotos(value?: string[]) {
 }
 
 export async function GET() {
+  if(process.env.BLIZHNIY_AUTH_MODE==='postgres')return NextResponse.json({applications:await listStoredFairApplications('published')});
   const applications = isSupabaseRestConfigured()
     ? await listStoredFairApplications("published")
     : shouldShowFallbackContent()

@@ -26,7 +26,7 @@ function storeHarness({ configured = true, result = { placement: baseRow, change
   const calls = [];
   const notices = [];
   const store = load('src/lib/ad-marquee-store.ts', {
-    '@/lib/ad-marquee': { defaultAdMarqueeMessages: [] },
+    '@/lib/ad-marquee': { defaultAdMarqueeMessages: [], maxActiveAdMarqueePlacements: 5 },
     '@/lib/notification-store': { createStoredNotification: async (notice) => { notices.push(notice); } },
     '@/lib/tariff-store': { getPublicTariffs: async () => { throw new Error('Current tariff is not a purchased snapshot'); } },
     '@/lib/supabase-rest': {
@@ -105,7 +105,7 @@ test('two source-level refreshes cannot reuse a stale last-slot count to activat
   let releaseFirstActivation;
   const firstActivation = new Promise((resolve) => { releaseFirstActivation = resolve; });
   const store = load('src/lib/ad-marquee-store.ts', {
-    '@/lib/ad-marquee': { defaultAdMarqueeMessages: [] },
+    '@/lib/ad-marquee': { defaultAdMarqueeMessages: [], maxActiveAdMarqueePlacements: 5 },
     '@/lib/notification-store': { createStoredNotification: async () => {} },
     '@/lib/tariff-store': { getPublicTariffs: async () => [{ action: 'ad_marquee', durationDays: 7 }] },
     '@/lib/supabase-rest': { isUuid: () => true, isSupabaseRestConfigured: () => true,

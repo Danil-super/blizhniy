@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Loader2, Megaphone, XCircle } from "lucide-react";
-import { maxActiveAdMarqueePlacements, type AdMarqueePlacement, type AdMarqueePlacementStatus } from "@/lib/ad-marquee-store";
+import { maxActiveAdMarqueePlacements } from "@/lib/ad-marquee";
+import type { AdMarqueePlacement, AdMarqueePlacementStatus } from "@/lib/ad-marquee-store";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 
 type Payload = {

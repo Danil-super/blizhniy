@@ -1,3 +1,5 @@
+export const maxActiveAdMarqueePlacements = 5;
+
 export const defaultAdMarqueeMessages = [
   "Объявления, работа и услуги рядом",
   "Первый регион запуска — Краснодарский край",

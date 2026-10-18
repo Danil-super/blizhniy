@@ -148,6 +148,11 @@ async function findCityId(cityName: string) {
 }
 
 export async function listStoredFairApplications(status?: PublicationStatus, options: { limit?: number; offset?: number } = {}) {
+  if(process.env.BLIZHNIY_AUTH_MODE==='postgres'){
+    if(status&&status!=='published')return [];
+    const {getProductionPublicServiceStore}=await import('./production-public-service-runtime');
+    return (await getProductionPublicServiceStore()).list('fair',options.limit??1000,options.offset??0);
+  }
   if (!isSupabaseRestConfigured()) {
     return shouldShowFallbackContent() ? demoFairApplications.filter((application) => !status || application.status === status).map(publicFairApplication) : [];
   }
