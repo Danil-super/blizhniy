@@ -15,6 +15,7 @@ export function checkListingFormContent(form:ListingFormDraft,categoryActive:boo
  const digits=form.contactPhone?.replace(/\D/g,'');
  if((!form.contactPhone&&!form.messengerUrl)||(form.contactPhone&&!(digits?.length===10||(digits?.length===11&&/^[78]/.test(digits)))))issue('contact','Укажите корректный российский телефон или мессенджер; исправьте заполненный телефон.');
  if(form.kind==='arenda')for(const message of validateBookingDetailsForPublication(form.booking??undefined))issue('booking',message);
+ if(form.kind!=='arenda'&&form.booking!==null)issue('booking','Бронирование доступно только для объявления об аренде. Уберите его настройки перед публикацией.');
  return issues;
 }
 export function checkListingPublication(snapshot:ListingFormSnapshot,categoryActive:boolean,offer:PublicationTariffRow|null):ListingPublicationCheck{
