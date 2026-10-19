@@ -31,6 +31,8 @@ function loadSubmissionHelper() {
       if (id === "@/components/LegalConsentCheckbox") return { LegalLink: "LegalLink" };
       if (id === "@/components/auth/useAuthState") return { useAuthState() {} };
       if (id === "@/lib/supabase-browser") return { getSupabaseBrowserClient() {} };
+      if (id === "@/components/auth/AccountAuthProvider") return { usePrimaryAccountAuth: () => null };
+      if (id === "@/components/applications/PrimaryApplicationComposer") return { PrimaryApplicationComposer: "primary" };
       throw new Error(`Unexpected module: ${id}`);
     },
   });
@@ -92,6 +94,8 @@ function makeButtonHarness() {
       if (id === "@/components/LegalConsentCheckbox") return { LegalLink: "LegalLink" };
       if (id === "@/components/auth/useAuthState") return { useAuthState: () => authSnapshot };
       if (id === "@/lib/supabase-browser") return { getSupabaseBrowserClient() {} };
+      if (id === "@/components/auth/AccountAuthProvider") return { usePrimaryAccountAuth: () => null };
+      if (id === "@/components/applications/PrimaryApplicationComposer") return { PrimaryApplicationComposer: "primary" };
       throw new Error(`Unexpected module: ${id}`);
     },
   });
@@ -100,7 +104,8 @@ function makeButtonHarness() {
     render(snapshot) {
       authSnapshot = snapshot;
       stateIndex = 0;
-      return module.exports.VacancyApplicationButton({ vacancyId: "11111111-1111-4111-8111-111111111111", vacancyTitle: "Тест" });
+      const dispatched = module.exports.VacancyApplicationButton({ vacancyId: "11111111-1111-4111-8111-111111111111", vacancyTitle: "Тест" });
+      return dispatched.type(dispatched.props);
     },
     stateSlots,
   };
