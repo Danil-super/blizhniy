@@ -9,8 +9,8 @@ import { region, cities, categories, professions, tariffs } from "../src/lib/dat
 const names = ["0001-identity.sql", "0002-registration.sql", "0003-auth-rate-limits.sql",
   "0004-password-recovery.sql", "0005-reference-catalog.sql", "0006-media-reservations.sql", "0007-media-write-attempts.sql"];
 
-export function getBootstrapPlan({ includeMail = false, includeProfiles = false, includeListings = false, includeListingPhotos = false, includeListingModeration = false, includeConfirmationNotice = false, includeWorkPublications = false, includeServicePublications = false, includeInteractions = false, includePaymentIntents = false, includePaymentOrders = false, includePaymentVerification = false, includePaymentFulfillment = false } = {}) {
-  if ([includeMail, includeProfiles, includeListings, includeListingPhotos, includeListingModeration, includeConfirmationNotice, includeWorkPublications, includeServicePublications, includeInteractions, includePaymentIntents, includePaymentOrders, includePaymentVerification, includePaymentFulfillment].some(value => typeof value !== "boolean")) throw new Error("Invalid bootstrap option");
+export function getBootstrapPlan({ includeMail = false, includeProfiles = false, includeListings = false, includeListingPhotos = false, includeListingModeration = false, includeConfirmationNotice = false, includeWorkPublications = false, includeServicePublications = false, includeInteractions = false, includePaymentIntents = false, includePaymentOrders = false, includePaymentVerification = false, includePaymentFulfillment = false, includePaymentReconciliation = false } = {}) {
+  if ([includeMail, includeProfiles, includeListings, includeListingPhotos, includeListingModeration, includeConfirmationNotice, includeWorkPublications, includeServicePublications, includeInteractions, includePaymentIntents, includePaymentOrders, includePaymentVerification, includePaymentFulfillment, includePaymentReconciliation].some(value => typeof value !== "boolean")) throw new Error("Invalid bootstrap option");
   const mail = [...names, "0008-mail-outbox.sql", "0009-mail-delivery.sql", "0010-production-rate-limits.sql"];
   const account = [...mail, "0011-cabinet-profiles.sql"];
   const listings = [...account, "0012-listings.sql"];
@@ -23,7 +23,8 @@ export function getBootstrapPlan({ includeMail = false, includeProfiles = false,
   const paymentIntents = [...interactions, "0019-payment-intents.sql"];
   const paymentOrders = [...paymentIntents, "0020-payment-orders.sql"];
   const paymentVerification = [...paymentOrders, "0021-payment-verification.sql"];
-  const approved = includePaymentFulfillment ? [...paymentVerification, "0022-listing-payment-fulfillment.sql"] : includePaymentVerification ? paymentVerification : includePaymentOrders ? paymentOrders : includePaymentIntents ? paymentIntents : includeInteractions ? interactions : includeServicePublications ? services : includeWorkPublications ? work : includeConfirmationNotice ? notice : includeListingModeration ? moderation : includeListingPhotos ? photos : includeListings ? listings : includeProfiles ? account : includeMail ? mail : names;
+  const fulfillment = [...paymentVerification, "0022-listing-payment-fulfillment.sql"];
+  const approved = includePaymentReconciliation ? [...fulfillment, "0023-payment-reconciliation.sql"] : includePaymentFulfillment ? fulfillment : includePaymentVerification ? paymentVerification : includePaymentOrders ? paymentOrders : includePaymentIntents ? paymentIntents : includeInteractions ? interactions : includeServicePublications ? services : includeWorkPublications ? work : includeConfirmationNotice ? notice : includeListingModeration ? moderation : includeListingPhotos ? photos : includeListings ? listings : includeProfiles ? account : includeMail ? mail : names;
   return approved.map(name => {
     const source = readFileSync(new URL(`../database/migrations/${name}`, import.meta.url), "utf8");
     if (!/^begin;$/m.test(source) || !/commit;\s*$/.test(source)) throw new Error("Invalid bootstrap migration");
