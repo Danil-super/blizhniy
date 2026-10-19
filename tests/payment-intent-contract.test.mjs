@@ -39,3 +39,14 @@ test('a corrupted database snapshot hash is rejected before it can become a disp
  const tx={query:async sql=>sql.startsWith('insert')?{rows:[],rowCount:1}:{rows:[{...binding,requestBody,sha256:'0'.repeat(64)}],rowCount:1}};
  await assert.rejects(store.persistInTransaction(tx,{...binding,requestBody}),PaymentIntentError);
 });
+test('trusted known-payment read validates the original bytes and refuses absent links before recovery',async()=>{
+ const {createHash}=await import('node:crypto');
+ const store=new PostgresPaymentIntentStore({transaction:async()=>{throw Error('Not used');}});
+ const row={...binding,requestBody,sha256:createHash('sha256').update(requestBody).digest('hex')};
+ const providerId='20000000-0000-4000-8000-000000000001';
+ const tx=(snapshot,link)=>({query:async sql=>({rows:sql.includes('payment_provider_links')?(link?[{id:link}]:[]):snapshot?[snapshot]:[],rowCount:1})});
+ assert.deepEqual(await store.lockKnownInTransaction(tx(row,providerId),binding.id),{...binding,requestBody,providerPaymentId:providerId});
+ for(const [snapshot,link] of [[undefined,providerId],[row,undefined],[row,'../../me'],[{...row,sha256:'0'.repeat(64)},providerId]])
+  await assert.rejects(store.lockKnownInTransaction(tx(snapshot,link),binding.id),PaymentIntentError);
+ await assert.rejects(store.lockKnownInTransaction(tx(row,providerId),'wrong'),PaymentIntentError);
+});

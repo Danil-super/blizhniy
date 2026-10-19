@@ -242,6 +242,8 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testPaymentIntents(suite, client, config, credentials);
     const { testListingCheckout } = await import("./listing-checkout-integration.mjs");
     await testListingCheckout(suite, client, config, credentials);
+    const { testPaymentVerification } = await import("./payment-verification-integration.mjs");
+    await testPaymentVerification(suite, client, config, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));

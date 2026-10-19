@@ -68,6 +68,16 @@ export type PaymentDispatch={decision:'post';requestBody:string;remainingMs:numb
 export class PostgresPaymentIntentStore{
  private readonly db:Pick<PostgresDatabase,'transaction'>;
  constructor(db:Pick<PostgresDatabase,'transaction'>){if(typeof window!=='undefined')fail();this.db=db;}
+ /** Trusted worker only. Locks the canonical intent, verifies stored bytes and requires an immutable provider link. */
+ async lockKnownInTransaction(tx:PostgresQueries,id:string):Promise<PaymentIntent&{providerPaymentId:string}>{
+  if(!uuid(id))fail();
+  const row=(await tx.query<Row>(`select ${columns} from app.payment_checkout_intents where id=$1 for update`,[id])).rows[0];
+  if(!row)fail();
+  const intent=decode(row,row);
+  const link=(await tx.query<{id:string}>('select provider_payment_id as id from app.payment_provider_links where intent_id=$1',[id])).rows[0];
+  if(!link||!uuid(link.id))fail();
+  return {...intent,providerPaymentId:link.id};
+ }
  async persistInTransaction(tx:PostgresQueries,input:unknown):Promise<PaymentIntent>{
   const intent=parsePaymentIntent(input);
   await tx.query(`insert into app.payment_checkout_intents(id,owner_id,target_type,target_id,target_revision,tariff_id,amount,duration_days,merchant_shop_id,is_test,request_body)
