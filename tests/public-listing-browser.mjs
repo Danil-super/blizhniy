@@ -24,9 +24,8 @@ test('ordinary Russian public pages render the primary DTO without hidden/privat
   await context.route('**/*',async route=>{const request=route.request(),url=new URL(request.url());if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){foreign.push(url.host);return route.abort();}
    if(url.pathname==='/api/account/session')return route.fulfill({status:401,json:{error:{code:'UNAUTHENTICATED'}}});
    if(/^\/api\/listings\/[a-f0-9-]+\/photos\/[a-f0-9-]+$/.test(url.pathname))return route.fulfill({contentType:'image/webp',body:pixels});
-   // View counting and the primary booking form are independent remaining migrations, not proved by this page fixture.
+   // View counting remains a separate migration; anonymous cards must not call booking operations.
    if(/^\/api\/listings\/[a-f0-9-]+\/views$/.test(url.pathname))return route.fulfill({json:{views:2}});
-   if(/^\/api\/listings\/[a-f0-9-]+\/bookings$/.test(url.pathname))return route.fulfill({json:{availability:[]}});
    if(url.pathname.startsWith('/api/')&&url.pathname!=='/api/health'){legacy.push(url.pathname);return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});}return route.continue();
   });
   page.on('pageerror',error=>errors.push(error.message));page.on('console',event=>{if(['warning','error'].includes(event.type())&&!event.text().startsWith('Failed to load resource:'))errors.push(event.text());});
