@@ -30,6 +30,7 @@ import { AuthForm } from "@/components/auth/AuthForm";
 import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
 import { CabinetDraftWorkspace } from "@/components/listings/CabinetDraftWorkspace";
 import { CabinetPublicationWorkspace } from '@/components/cabinet/CabinetPublicationWorkspace';
+import {BookingsPanel} from '@/components/bookings/BookingsPanel';
 import { CabinetShellActions } from "@/components/cabinet/CabinetShellActions";
 import {
   CabinetCapabilities,
@@ -130,6 +131,7 @@ const cabinetNav = [
   { href: "/cabinet/zakazy", label: "Заказы", icon: ClipboardList },
   { href: "/cabinet/specialist", label: "Анкета", icon: CircleUserRound },
   { href: "/cabinet/otkliki", label: "Отклики", icon: MessageSquare },
+  { href: "/cabinet/bronirovaniya", label: "Бронирования", icon: ClipboardList },
   { href: "/cabinet/fair-applications", label: "Ярмарка", icon: Store },
 ];
 
@@ -645,6 +647,12 @@ export function CabinetResponsesPage() {
       </CabinetPublicationWorkspace>
     </Shell>
   );
+}
+
+export function CabinetBookingsPage(){
+ return <Shell title="Бронирования" description="Ваши поездки и заявки гостей: даты, условия и ответы владельцев." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/bronirovaniya" createHref={null}>
+  <CabinetPublicationWorkspace><BookingsPanel/></CabinetPublicationWorkspace>
+ </Shell>;
 }
 
 export function CabinetPaymentsPage() {
