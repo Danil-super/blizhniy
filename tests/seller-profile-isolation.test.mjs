@@ -40,6 +40,7 @@ test("seller profile fetches only owner's paid, unexpired rows across pagination
   const exports = {};
   vm.runInNewContext(transpile(`${publicListingSource}\n${sellerReaderSource}`), {
     exports,
+    process: { env: {} },
     Date,
     encodeURIComponent,
     isSupabaseRestConfigured: () => true,
@@ -69,6 +70,7 @@ test("seller profile redacts hidden location and retains explicitly public locat
   const exports = {};
   vm.runInNewContext(transpile(`${publicListingSource}\n${sellerReaderSource}`), {
     exports,
+    process: { env: {} },
     Date,
     encodeURIComponent,
     isSupabaseRestConfigured: () => true,

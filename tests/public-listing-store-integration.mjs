@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';import {createPostgresDatabase} from '../src/lib/postgres.ts';
 import {formModule} from './listing-form-module.mjs';import {bookingDetails} from './listing-publication-check-module.mjs';import {grantBookingPublicationRead} from '../scripts/grant-booking-read.mjs';
 import {grantPublicListingMetadataRead} from '../scripts/grant-public-listing-read.mjs';
+import {createRequire} from 'node:module';import * as http from '../src/lib/auth-http.ts';import * as proxy from '../src/lib/trusted-proxy-ip.ts';
 const projection=formModule('public-listings',{'./booking-details':bookingDetails}),eligibility=formModule('listing-public-eligibility');
 export async function testPublicListingStore(suite,admin,config,credentials){
  assert.equal(config.host,'127.0.0.1');const {PostgresPublicListingStore}=formModule('postgres-public-listings',{'./public-listings':projection,'./listing-public-eligibility':eligibility});
@@ -62,6 +63,12 @@ export async function testPublicListingStore(suite,admin,config,credentials){
    await admin.query("update app.media_objects set state='ready',ready_at=clock_timestamp() where id=$1",[second]);await admin.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,1)',[id,second]);
    assert.deepEqual((await store.read(id)).images,[`/api/listings/${id}/photos/${media}`,`/api/listings/${id}/photos/${second}`]);
    assert.deepEqual((await store.list({ownerId:owner,kind:'prodam'}))[0].images,[`/api/listings/${id}/photos/${media}`]);
+   const admission={reads:0},events=[],policy=formModule('production-public-work-photo-http',{'node:crypto':createRequire(import.meta.url)('node:crypto'),'./auth-http':http,'./trusted-proxy-ip':proxy,'./production-media-http':{productionMediaAdmission:admission}});
+   let reads=0,withdraw=false;const handler=policy.createProductionPublicWorkPhotoHandler({origin:'https://example.invalid'},()=>({store,files:{read:async record=>{assert.equal(record.id,media);reads++;if(withdraw)await admin.query("update app.listings set status='archived' where id=$1",[id]);return Buffer.alloc(12);}}}),event=>events.push(event));
+   const request=()=>new Request(`https://example.invalid/api/listings/${id}/photos/${media}`,{headers:{host:'example.invalid','x-real-ip':'127.0.0.1'}});
+   const delivered=await handler(request(),id,media);assert.equal(delivered.status,200);assert.equal(delivered.headers.get('cache-control'),'no-store');assert.equal((await delivered.arrayBuffer()).byteLength,12);
+   assert.equal((await handler(request(),ids[1],media)).status,404);assert.equal(reads,1);
+   withdraw=true;assert.equal((await handler(request(),id,media)).status,404);assert.equal(reads,2);assert.equal(admission.reads,0);assert.equal(JSON.stringify(events).includes(owner),false);
    await admin.query("update app.listings set status='archived' where id=$1",[id]);assert.equal(await store.photoRecord(id,media),undefined);
   });
  }finally{await admin.query('revoke select(created_at,view_count,is_paid,published_at,expires_at) on app.listings from blizhniy_runtime');await db.close();}

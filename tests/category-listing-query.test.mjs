@@ -17,6 +17,7 @@ function createReader(taxonomy) {
   }).outputText;
   vm.runInNewContext(js, {
     exports,
+    process: { env: {} }, // This fixture intentionally exercises the unchanged legacy branch.
     console,
     Date,
     encodeURIComponent,

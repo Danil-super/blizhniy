@@ -656,6 +656,11 @@ export async function markStoredListingPaid(listingId: string) {
 }
 
 export async function getStoredListingById(listingId: string, options: { publicOnly?: boolean } = {}) {
+  if (process.env.BLIZHNIY_AUTH_MODE === 'postgres') {
+    if (options.publicOnly !== true) return undefined;
+    const {getProductionPublicListingStore} = await import('./production-public-listing-runtime');
+    return (await getProductionPublicListingStore()).read(listingId);
+  }
   if (!isSupabaseRestConfigured() || !isUuid(listingId)) {
     return undefined;
   }
@@ -706,6 +711,10 @@ export async function recordStoredListingView(listingId: string, viewerKey: stri
 }
 
 export async function listStoredListings(limit = 24, options: { kind?: ListingKind; offset?: number } = {}) {
+  if (process.env.BLIZHNIY_AUTH_MODE === 'postgres') {
+    const {getProductionPublicListingStore} = await import('./production-public-listing-runtime');
+    return (await getProductionPublicListingStore()).list({limit, kind: options.kind, offset: options.offset ?? 0});
+  }
   if (!isSupabaseRestConfigured()) {
     return [];
   }
@@ -727,6 +736,17 @@ export async function listStoredListings(limit = 24, options: { kind?: ListingKi
 }
 
 export async function listStoredListingsForSeller(ownerKey: string) {
+  if (process.env.BLIZHNIY_AUTH_MODE === 'postgres') {
+    if (!isUuid(ownerKey)) return [];
+    const {getProductionPublicListingStore} = await import('./production-public-listing-runtime');
+    const store = await getProductionPublicListingStore(), listings: Listing[] = [];
+    // Preserve this existing all-seller-items interface; each SQL read remains bounded.
+    for (let offset = 0; ; offset += 200) {
+      const rows = await store.list({ownerId: ownerKey, limit: 200, offset});
+      listings.push(...rows);
+      if (rows.length < 200) return listings;
+    }
+  }
   if (!isSupabaseRestConfigured() || !isUuid(ownerKey)) {
     return [];
   }
@@ -749,6 +769,11 @@ export async function listStoredListingsForCategory(
   categorySlug: string,
   options: { resolvedCategory?: ResolvedListingCategory; subcategoryName?: string; page?: number; pageSize?: number } = {},
 ) {
+  if (process.env.BLIZHNIY_AUTH_MODE === 'postgres') {
+    const {getProductionPublicListingStore} = await import('./production-public-listing-runtime');
+    const page = Math.max(1, Math.min(1000, Math.floor(options.page ?? 1))), pageSize = Math.max(1, Math.min(96, Math.floor(options.pageSize ?? 24)));
+    return (await getProductionPublicListingStore()).list({categorySlug, subcategoryName: options.subcategoryName, limit: pageSize + 1, offset: (page - 1) * pageSize});
+  }
   if (!isSupabaseRestConfigured()) {
     return [];
   }

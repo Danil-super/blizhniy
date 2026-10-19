@@ -83,6 +83,7 @@ test("listing pagination filters before offset and redacts hidden location", asy
   const exports = {};
   vm.runInNewContext(compile(`${redaction}\n${reader}`), {
     exports,
+    process: { env: {} },
     isSupabaseRestConfigured: () => true,
     dbTypeByListingKind: { prodam: "sell" },
     Date,

@@ -48,6 +48,7 @@ function harness(showExactAddress) {
   }).outputText;
   vm.runInNewContext(js, {
     exports,
+    process: { env: {} }, // Primary-mode privacy is tested against the real new projection separately.
     console,
     Date,
     encodeURIComponent,
