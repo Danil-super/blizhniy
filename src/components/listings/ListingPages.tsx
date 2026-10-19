@@ -1804,7 +1804,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
               profileHref={sellerProfileHref(listing)}
             />
             {hasMapPoint ? <LocationMap location={listing} exactLabel="Точный адрес частного лица по умолчанию не показывается" /> : null}
-            {listing.booking ? <BookingCalculator booking={listing.booking} initialRequests={bookingRequests} listingId={listing.slug} listingTitle={listing.title} /> : null}
+            {listing.booking ? <BookingCalculator booking={listing.booking} initialRequests={bookingRequests} listingId={listing.slug} listingTitle={listing.title} listingOwnerId={listing.ownerKey} /> : null}
             {showDeliveryUi ? <DeliveryInfoCard delivery={listing.delivery} /> : null}
           </aside>
           </div>

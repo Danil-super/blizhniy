@@ -22,6 +22,8 @@ import {
 import type { BookingAvailability } from "@/lib/booking-availability";
 import { siteNotificationsEventName } from "@/lib/site-notifications";
 import type { BookingDetails } from "@/lib/types";
+import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
+import {PrimaryBookingCalculator} from '@/components/bookings/PrimaryBookingCalculator';
 
 function toDate(value?: string) {
   if (!value) {
@@ -121,12 +123,12 @@ function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function resolveStayStartLimit(booking: BookingDetails) {
-  return maxDateKey(todayKey(), booking.availableFrom);
+function resolveStayStartLimit(booking: BookingDetails, today = todayKey()) {
+  return maxDateKey(today, booking.availableFrom);
 }
 
-function resolveStayEndLimit(booking: BookingDetails) {
-  const yearEnd = addBookingDays(todayKey(), MAX_BOOKING_LEAD_DAYS + 1)!;
+function resolveStayEndLimit(booking: BookingDetails, today = todayKey()) {
+  const yearEnd = addBookingDays(today, MAX_BOOKING_LEAD_DAYS + 1)!;
   const listingEnd = booking.availableTo ? addDaysKey(booking.availableTo, 1) : undefined;
   return listingEnd && listingEnd < yearEnd ? listingEnd : yearEnd;
 }
@@ -209,6 +211,7 @@ function resolveInitialStayEnd(startDate: string, booking?: BookingDetails) {
 
 function BookingCalendar({
   booking,
+  today = todayKey(),
   endDate,
   listingId,
   onDateClick,
@@ -217,6 +220,7 @@ function BookingCalendar({
   startDate,
 }: {
   booking: BookingDetails;
+  today?: string;
   endDate: string;
   listingId: string;
   onDateClick: (date: string) => void;
@@ -225,8 +229,8 @@ function BookingCalendar({
   startDate: string;
 }) {
   const blockedDates = new Set(booking.blockedDates ?? []);
-  const startLimit = resolveStayStartLimit(booking);
-  const endLimit = resolveStayEndLimit(booking);
+  const startLimit = resolveStayStartLimit(booking, today);
+  const endLimit = resolveStayEndLimit(booking, today);
   const availableFrom = toDate(startLimit);
   const availableTo = toDate(endLimit);
   const [visibleMonth, setVisibleMonth] = useState(availableFrom ?? new Date());
@@ -272,11 +276,16 @@ function BookingCalendar({
           const selected = selectedDates.has(key);
           const edge = key === startDate || key === endDate;
           const afterEndLimit = Boolean(availableTo && date > availableTo);
-          const lastBookableDay = addBookingDays(todayKey(), MAX_BOOKING_LEAD_DAYS)!;
+          const lastBookableDay = addBookingDays(today, MAX_BOOKING_LEAD_DAYS)!;
           const lastNight = booking.availableTo && booking.availableTo < lastBookableDay ? booking.availableTo : lastBookableDay;
           const startAfterLastNight = Boolean(!selectingEndDate && key > lastNight);
           const outOfRange = Boolean((availableFrom && date < availableFrom) || afterEndLimit || startAfterLastNight);
-          const disabled = blocked || outOfRange;
+          const choosingEnd = selectingEndDate && key > startDate;
+          const nights = choosingEnd ? bookingNightsCount(startDate, key) : undefined;
+          // Checkout is exclusive: an occupied/blocked day can end a free stay,
+          // but no occupied night, short stay or oversized range can be crossed.
+          const unavailablePeriod = choosingEnd && (!nights || nights < (booking.minNights ?? 1) || nights > MAX_BOOKING_NIGHTS || rangeHasUnavailableDates(startDate, key, booking, requests, listingId));
+          const disabled = outOfRange || (choosingEnd ? unavailablePeriod : blocked);
 
           return (
             <button
@@ -284,20 +293,21 @@ function BookingCalendar({
               type="button"
               onClick={() => onDateClick(key)}
               disabled={disabled}
+              aria-label={`${new Intl.DateTimeFormat('ru-RU', {day:'numeric',month:'long',year:'numeric'}).format(date)} — ${disabled ? 'недоступно' : choosingEnd ? 'дата выезда' : 'дата заезда'}`}
               className={`flex aspect-square items-center justify-center rounded-lg text-xs font-bold transition ${
-                blocked
+                disabled && blocked
                   ? "cursor-not-allowed bg-rose-100 text-rose-700 line-through"
                   : edge
                     ? "bg-[#0875d1] text-white"
                     : selected
-                      ? "bg-blue-100 text-[#0875d1]"
-                    : outOfRange
+                      ? "bg-blue-100 text-blue-800"
+                    : disabled
                       ? "cursor-not-allowed bg-slate-50 text-slate-300"
                       : isWeekend(date)
                         ? "bg-amber-50 text-amber-700 hover:ring-2 hover:ring-amber-200"
-                        : "bg-emerald-50 text-[#0a8f32] hover:ring-2 hover:ring-emerald-200"
+                        : "bg-emerald-50 text-emerald-800 hover:ring-2 hover:ring-emerald-200"
               }`}
-              title={requested ? "Есть активная заявка" : blocked ? "Забронировано" : selected ? "Выбрано" : outOfRange ? "Недоступно" : "Доступно"}
+              title={disabled ? "Недоступно" : choosingEnd ? "Можно выбрать дату выезда" : selected ? "Выбрано" : "Доступно"}
             >
               {date.getDate()}
             </button>
@@ -305,16 +315,22 @@ function BookingCalendar({
         })}
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] font-bold sm:gap-2 sm:text-xs">
-        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[#0a8f32]">доступно</span>
+        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-800">доступно</span>
         <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">выходной тариф</span>
         <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">занято / заявка</span>
-        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[#0875d1]">выбрано</span>
+        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-800">выбрано</span>
       </div>
     </div>
   );
 }
 
-export function BookingCalculator({
+type BookingCalculatorProps={booking?:BookingDetails;initialRequests?:BookingAvailability[];listingId?:string;listingTitle?:string;listingOwnerId?:string};
+export function BookingCalculator(props:BookingCalculatorProps){
+  const auth=usePrimaryAccountAuth();
+  if(auth)return props.booking?<PrimaryBookingCalculator auth={auth} booking={props.booking} listingId={props.listingId??'listing'} listingOwnerId={props.listingOwnerId} renderCalendar={value=><BookingCalendar {...value}/>}/>:null;
+  return <LegacyBookingCalculator {...props}/>;
+}
+function LegacyBookingCalculator({
   booking,
   initialRequests = [],
   listingId = "listing",

@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
   const storedListing = await getStoredListingById(slug, { publicOnly: true });
-  const bookingRequests = storedListing?.booking ? await listBookingAvailabilityForListing(slug) : [];
+  const bookingRequests = process.env.BLIZHNIY_AUTH_MODE !== 'postgres' && storedListing?.booking ? await listBookingAvailabilityForListing(slug) : [];
 
   return <ListingDetailPage bookingRequests={bookingRequests} slug={slug} listingOverride={storedListing ? toDemoListing(storedListing) : undefined} />;
 }

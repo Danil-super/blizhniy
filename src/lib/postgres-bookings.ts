@@ -3,6 +3,7 @@ import {parseBookingRequest,quoteBookingRequest,BookingRequestInputError,Booking
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,type ListingDraftCursor} from './listing-draft-contract.ts';
 import {parseListingFormDraft,type ListingFormDraft} from './listing-form-contract.ts';import {checkListingFormContent} from './listing-publication-check';
 import {maxListingMediaTotalSize} from './media-limits.ts';import {enqueueNotificationInTransaction} from './postgres-notification-inbox';
+import {publicListingSource,publicListingLive,publicListingPhotos} from './listing-public-eligibility';
 import type {PostgresDatabase,PostgresQueries} from './postgres';import type {BookingDetails} from './types';
 export class BookingAccessError extends Error{constructor(){super('Booking unavailable');this.name='BookingAccessError';}}
 export class BookingConflictError extends Error{constructor(){super('Booking changed');this.name='BookingConflictError';}}
@@ -15,14 +16,7 @@ export async function readBookableListing(tx:PostgresQueries,id:string):Promise<
   coalesce(parent.slug,c.slug) as "categorySlug",case when c.parent_id is not null then c.name end as "subcategoryName",city.name as "cityName",
   l.district,l.address,l.latitude::float8 as latitude,l.longitude::float8 as longitude,l.show_exact_address as "showExactAddress",l.contact_phone as "contactPhone",l.messenger_url as "messengerUrl",l.booking,
   to_char(clock_timestamp() at time zone 'Europe/Moscow','YYYY-MM-DD') as today
-  from app.listings l join app.users author on author.id=l.author_id and not author.is_blocked and author.email_verified_at is not null
-  join app.categories c on c.id=l.category_id and c.active left join app.categories parent on parent.id=c.parent_id
-  join app.cities city on city.id=l.city_id join app.listing_moderation review on review.listing_id=l.id and review.revision=l.revision and review.state='approved'
-  where l.id=$1 and l.listing_type='rent' and l.status='published' and l.is_paid and l.published_at<=clock_timestamp() and l.expires_at>clock_timestamp()
-  and (c.parent_id is null or parent.active is true)
-  and not exists(select 1 from app.listing_photos p left join app.media_objects m on m.id=p.media_id
-   where p.listing_id=l.id and (m.id is null or m.owner_id<>l.author_id or m.state<>'ready'))
-  and (select count(*)<=10000 and coalesce(sum(m.size),0)<=$2 from app.listing_photos p join app.media_objects m on m.id=p.media_id where p.listing_id=l.id)`,[id,maxListingMediaTotalSize])).rows[0];
+  ${publicListingSource} where l.id=$1 and l.listing_type='rent' and ${publicListingLive} and ${publicListingPhotos}`,[id,maxListingMediaTotalSize])).rows[0];
  if(!row)return null;
  try{const {id,author,revision,today,...fields}=row,form=parseListingFormDraft({...fields,kind:'arenda',photoIds:[]});
   if(!form.booking||checkListingFormContent(form,true).length)return null;return{id,author,revision,title:form.title,booking:form.booking,today};

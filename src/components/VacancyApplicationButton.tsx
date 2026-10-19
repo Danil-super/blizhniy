@@ -8,6 +8,8 @@ import { LegalLink } from "@/components/LegalConsentCheckbox";
 import { useAuthState } from "@/components/auth/useAuthState";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import type { SpecialistProfile } from "@/lib/types";
+import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
+import {PrimaryApplicationComposer} from '@/components/applications/PrimaryApplicationComposer';
 
 type VacancyApplicationButtonProps = {
   targetKind?: "vacancy" | "workRequest";
@@ -96,7 +98,12 @@ export async function submitBoundVacancyApplication<Result>(
   return result;
 }
 
-export function VacancyApplicationButton({ targetKind = "vacancy", targetId, targetTitle, vacancyId, vacancyTitle }: VacancyApplicationButtonProps) {
+export function VacancyApplicationButton(props:VacancyApplicationButtonProps){
+  const auth=usePrimaryAccountAuth();
+  if(auth)return <PrimaryApplicationComposer auth={auth} kind={props.targetKind??'vacancy'} targetId={(props.targetId??props.vacancyId??'').trim()}/>;
+  return <LegacyVacancyApplicationButton {...props}/>;
+}
+function LegacyVacancyApplicationButton({ targetKind = "vacancy", targetId, targetTitle, vacancyId, vacancyTitle }: VacancyApplicationButtonProps) {
   const { state, userId } = useAuthState();
   const mountedRef = useRef(true);
   const [specialistState, setSpecialistState] = useState<AccountBoundState<SpecialistProfile | null>>({ ownerId: null, value: null });

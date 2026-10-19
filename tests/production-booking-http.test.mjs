@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';import {test} from 'node:test';import {createRequire} from 'node:module';
 import * as http from '../src/lib/auth-http.ts';import * as cookie from '../src/lib/account-cookie.ts';import * as proxy from '../src/lib/trusted-proxy-ip.ts';
 import * as contract from '../src/lib/booking-request-contract.ts';import {formModule} from './listing-form-module.mjs';import {loadAdminModule} from './admin-module.mjs';
-const storage=formModule('postgres-bookings',{'./booking-request-contract.ts':contract,'./postgres-notification-inbox':{}});
+const storage=formModule('postgres-bookings',{'./booking-request-contract.ts':contract,'./postgres-notification-inbox':{},'./listing-public-eligibility':formModule('listing-public-eligibility')});
 const {createProductionBookingHandler}=formModule('production-booking-http',{'node:crypto':createRequire(import.meta.url)('node:crypto'),'./auth-http':http,'./account-cookie':cookie,'./trusted-proxy-ip':proxy,'./booking-request-contract.ts':contract,'./postgres-bookings':storage});
 const origin='https://bookings.example.invalid',owner='10000000-0000-4000-8000-000000000001',id='10000000-0000-4000-8000-000000000002',token='b'.repeat(64);
 const base={expectedOwnerId:owner},body={...base,action:'read',bookingId:id},input={listingId:id,creationKey:id,expectedListingRevision:'9007199254740993',mode:'stay',startDate:'2026-10-20',endDate:'2026-10-22',guests:2};

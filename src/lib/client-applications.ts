@@ -1,13 +1,14 @@
 "use client";
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,type ListingDraftCursor} from './listing-draft-contract.ts';
-import {parseApplicationKind} from './application-contract.ts';
+import {parseApplicationKind,parseApplicationCreate,type ApplicationCreateInput,type ApplicationKind} from './application-contract.ts';
 import type {ApplicationPage,ApplicationSnapshot,ApplicationSummary,ApplicationProfileSnapshot} from './postgres-applications';
 type Options={signal?:AbortSignal};type Mode='applicant'|'recipient';type Decision='viewed'|'selected'|'rejected';
+export type ApplicationPreview={target:{id:string;kind:ApplicationKind;title:string;revision:string};specialist:{id:string;revision:string;snapshot:ApplicationProfileSnapshot};existing:ApplicationSnapshot|null};
 export class ApplicationClientError extends Error{
  readonly code:string;
  constructor(code:string){super(code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='RATE_LIMITED'?'Слишком много запросов. Попробуйте позже.':
   code==='APPLICATION_NOT_FOUND'?'Отклик недоступен. Обновите список.':code==='APPLICATION_BUSY'?'Данные сейчас изменяются. Проверьте отклик и повторите действие.':
-  code==='APPLICATION_CHANGED'?'Отклик уже изменился. Проверьте его актуальное состояние.':'Не удалось подтвердить результат. Проверьте отклик перед повторным действием.');this.code=code;}
+  code==='APPLICATION_CHANGED'?'Отклик или публикация уже изменились. Обновите данные перед отправкой.':code==='SPECIALIST_REQUIRED'?'Для отклика нужна действующая опубликованная анкета специалиста.':code==='INVALID_INPUT'?'Проверьте сообщение: не более 3000 символов, без управляющих знаков.':'Не удалось подтвердить результат. Проверьте отклик перед повторным действием.');this.code=code;}
 }
 function exact(value:unknown,keys:string[]):Record<string,unknown>{
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).sort().join()!==[...keys].sort().join())throw Error();return value as Record<string,unknown>;
@@ -41,11 +42,14 @@ function summary(value:unknown,mode:Mode):ApplicationSummary{
  return{id,revision:parseListingDraftRevision(row.revision),view:mode,status:row.status as ApplicationSummary['status'],paid:row.paid as boolean,createdAt:stamp(id,row.createdAt),
   targetId:parseListingDraftId(row.targetId),kind:parseApplicationKind(row.kind),targetTitle:text(row.targetTitle,160),specialistName:text(row.specialistName,160)};
 }
+export function applicationMatchesInput(saved:ApplicationSnapshot,input:ApplicationCreateInput){
+ return saved.view==='applicant'&&saved.target.id===input.targetId&&saved.target.kind===input.kind&&saved.specialistId===input.specialistId&&saved.message===input.message;
+}
 export function createApplicationsClient(transport:typeof fetch){
- async function send(owner:string,action:'list'|'read'|'decide',input:Record<string,unknown>,options:Options={}):Promise<unknown>{
+ async function send(owner:string,action:'list'|'read'|'decide'|'preview'|'create'|'intent',input:Record<string,unknown>,options:Options={}):Promise<unknown>{
   try{
    options.signal?.throwIfAborted();const timeout=AbortSignal.timeout(15000),signal=options.signal?AbortSignal.any([timeout,options.signal]):timeout;
-   const response=await transport('/api/account/applications',{method:action==='decide'?'PUT':'POST',credentials:'same-origin',redirect:'error',cache:'no-store',signal,
+   const response=await transport('/api/account/applications',{method:action==='decide'||action==='create'?'PUT':'POST',credentials:'same-origin',redirect:'error',cache:'no-store',signal,
     headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1'},body:JSON.stringify({action,expectedOwnerId:parseListingDraftId(owner),...input})});
    if(!response.body)throw Error();const reader=response.body.getReader(),chunks:Uint8Array[]=[],decoder=new TextDecoder('utf-8',{fatal:true});let length=0,complete=false;
    try{for(;;){signal.throwIfAborted();const part=await reader.read();signal.throwIfAborted();if(part.done){complete=true;break;}length+=part.value.byteLength;
@@ -58,6 +62,23 @@ export function createApplicationsClient(transport:typeof fetch){
  }
  const checked=async<T>(work:()=>Promise<T>):Promise<T>=>{try{return await work();}catch(error){if(error instanceof ApplicationClientError)throw error;throw new ApplicationClientError('UNKNOWN');}};
  return{
+  preview:(owner:string,kindValue:ApplicationKind,value:string,options?:Options):Promise<ApplicationPreview>=>checked(async()=>{
+   const kind=parseApplicationKind(kindValue),id=parseListingDraftId(value),row=exact(await send(owner,'preview',{kind,targetId:id},options),['target','specialist','existing']);
+   const target=exact(row.target,['id','kind','title','revision']),specialist=exact(row.specialist,['id','revision','snapshot']);
+   if(parseListingDraftId(target.id)!==id||parseApplicationKind(target.kind)!==kind)throw Error();
+   const existing=row.existing===null?null:detail(row.existing,parseListingDraftId((row.existing as Record<string,unknown>)?.id));
+   if(existing&&(existing.view!=='applicant'||existing.target.id!==id||existing.target.kind!==kind))throw Error();
+   return{target:{id,kind,title:text(target.title,160),revision:parseListingDraftRevision(target.revision)},
+    specialist:{id:parseListingDraftId(specialist.id),revision:parseListingDraftRevision(specialist.revision),snapshot:snapshot(specialist.snapshot)},existing};
+  }),
+  create:(owner:string,value:ApplicationCreateInput,options?:Options):Promise<ApplicationSnapshot>=>checked(async()=>{
+   const input=parseApplicationCreate(value),row=await send(owner,'create',{input},options),saved=detail(row,parseListingDraftId((row as Record<string,unknown>)?.id));
+   if(!applicationMatchesInput(saved,input))throw Error();return saved;
+  }),
+  intent:(owner:string,value:string,options?:Options):Promise<ApplicationSnapshot|null>=>checked(async()=>{
+   const row=await send(owner,'intent',{creationKey:parseListingDraftId(value)},options);if(row===null)return null;
+   const saved=detail(row,parseListingDraftId((row as Record<string,unknown>)?.id));if(saved.view!=='applicant')throw Error();return saved;
+  }),
   list:(owner:string,mode:Mode,after:ListingDraftCursor|null,options?:Options):Promise<ApplicationPage>=>checked(async()=>{
    if(mode!=='applicant'&&mode!=='recipient')throw Error();const cursor=parseListingDraftCursor(after),row=exact(await send(owner,'list',{mode,after:cursor},options),['items','nextCursor']);
    if(!Array.isArray(row.items)||row.items.length>20)throw Error();const items=row.items.map(value=>summary(value,mode)),next=parseListingDraftCursor(row.nextCursor);let previous=cursor;
