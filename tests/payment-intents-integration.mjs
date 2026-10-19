@@ -62,7 +62,16 @@ export async function testPaymentIntents(suite,admin,config,credentials){
    const lostReply=new PostgresPaymentIntentStore({transaction:async work=>{await db.transaction(work);throw new Error('Synthetic lost commit response');}});
    await assert.rejects(lostReply.authorize(binding),/Synthetic lost commit/);
    assert.equal((await admin.query('select authorized_at::text as stamp from app.payment_dispatch_anchors where intent_id=$1',[binding.id])).rows[0].stamp,anchor);
+   // Estimates subtract different conservative round trips. Advance the real DB clock
+   // against the ORIGINAL anchor before comparing them; never follow a reset anchor.
+   const barrierDeadline=performance.now()+2000;
+   for(;;){
+    const {ready}=(await admin.query(`select floor(extract(epoch from ($1::timestamptz+interval '23 hours 55 minutes'-clock_timestamp()))*1000)<=$2::double precision as ready`,[anchor,decisions[0].remainingMs])).rows[0];
+    assert.ok(performance.now()<barrierDeadline,'Database clock must pass the original conservative estimate');
+    if(ready)break;
+   }
    const result=await store.authorize(binding);assert.equal(result.decision,'post');assert.ok(result.remainingMs<=decisions[0].remainingMs);
+   assert.equal((await admin.query('select authorized_at::text as stamp from app.payment_dispatch_anchors where intent_id=$1',[binding.id])).rows[0].stamp,anchor);
    for(const patch of [{ownerId:randomUUID()},{shopId:'other'},{isTest:false},{targetRevision:'1'}])await assert.rejects(store.authorize({...binding,...patch}),PaymentIntentError);
   });
   await suite.test('known provider ID permits GET recovery only, with immutable one-to-one merchant binding',async()=>{
