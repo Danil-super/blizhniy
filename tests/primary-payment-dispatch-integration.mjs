@@ -11,8 +11,9 @@ import * as periodModule from '../src/lib/payment-publication-period.ts';
 import {formModule} from './listing-form-module.mjs';
 import {listingCheckoutModule} from './listing-checkout-module.mjs';
 import {bookingDetails} from './listing-publication-check-module.mjs';
+import {createListingCheckoutHandler} from './listing-checkout-http-module.mjs';
 
-export async function testPrimaryPaymentDispatch(suite,admin,config){
+export async function testPrimaryPaymentDispatch(suite,admin,config,credentials){
  assert.equal(config.host,'127.0.0.1');
  const journalBefore=(await admin.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
  assert.equal(journalBefore.length,22);
@@ -125,7 +126,34 @@ export async function testPrimaryPaymentDispatch(suite,admin,config){
     await admin.query("insert into app.listing_moderation(listing_id,revision,state,decided_at) values($1,1,'approved',clock_timestamp())",[target]);
     const offer=(await admin.query("select id,price::text as amount,duration_days as duration from app.tariffs where action='listing_publication'")).rows[0];
     const checkout=new listingCheckoutModule.PostgresListingCheckoutStore(ownerDb,{...merchant,siteOrigin:'https://site.example.invalid',receiptVatCode:1});
-    const order=await checkout.prepare(token,owner,{listingId:target,expectedRevision:'1',creationKey:randomUUID(),expectedTariffId:offer.id,expectedAmount:offer.amount,expectedDurationDays:offer.duration});
+    const http=createListingCheckoutHandler({origin:'https://site.example.invalid'},()=>({store:checkout,limiter:{allowProduction:async()=>true}}),()=>{});
+    const accountRequest=(body,method='POST')=>new Request('https://site.example.invalid/api/account/listing-checkout',{method,headers:{host:'site.example.invalid',origin:'https://site.example.invalid','x-blizhniy-request':'1','x-real-ip':'192.0.2.4','content-type':'application/json',cookie:`__Host-blizhniy_session=${token}`},body:JSON.stringify({expectedOwnerId:owner,...body})});
+    const preparation={listingId:target,expectedRevision:'1',creationKey:randomUUID(),expectedTariffId:offer.id,expectedAmount:offer.amount,expectedDurationDays:offer.duration};
+    const prepared=await http(accountRequest(preparation,'PUT'));assert.equal(prepared.status,200);const order=await prepared.json();
+    const replay=await http(accountRequest(preparation,'PUT'));assert.equal(replay.status,200);assert.deepEqual(await replay.json(),order);
+    const recovered=await http(accountRequest({action:'intent',creationKey:preparation.creationKey}));assert.equal(recovered.status,200);assert.deepEqual(await recovered.json(),order);
+    assert.deepEqual(await checkout.readOrder(token,owner,order.id),{order,fulfillment:null});
+    const runtimeDb=new PostgresDatabase(new pg.Pool({...config,user:credentials.user,password:credentials.password,max:2}));
+    try{
+     const scoped=new listingCheckoutModule.PostgresListingCheckoutStore(runtimeDb,{...merchant,siteOrigin:'https://site.example.invalid',receiptVatCode:1});
+     await assert.rejects(scoped.readOrder(token,owner,order.id),{code:'42501'});
+     // Disposable DB only: three read columns, never receipt/finance/publication writes.
+     await admin.query('grant select(intent_id,published_at,expires_at) on app.payment_fulfillments to blizhniy_runtime');
+     assert.deepEqual(await scoped.readOrder(token,owner,order.id),{order,fulfillment:null});
+     for(const sql of ['select fulfilled_at from app.payment_fulfillments limit 0','insert into app.payment_fulfillments(intent_id,published_at,expires_at) select gen_random_uuid(),clock_timestamp(),clock_timestamp() where false',"update app.payment_orders set status='succeeded' where false"])
+      await assert.rejects(runtimeDb.query(sql),{code:'42501'});
+    }finally{await runtimeDb.close();}
+    assert.equal(await checkout.readOrder(token,owner,randomUUID()),null);
+    assert.equal(await new listingCheckoutModule.PostgresListingCheckoutStore(ownerDb,{...merchant,shopId:'wrong-shop',siteOrigin:'https://site.example.invalid',receiptVatCode:1}).readOrder(token,owner,order.id),null);
+    assert.equal(await new listingCheckoutModule.PostgresListingCheckoutStore(ownerDb,{...merchant,isTest:false,siteOrigin:'https://site.example.invalid',receiptVatCode:1}).readOrder(token,owner,order.id),null);
+    const foreignOwner=randomUUID(),foreignToken=randomBytes(32).toString('hex');
+    await admin.query('insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())',
+     [foreignOwner,`foreign-checkout-${foreignOwner}@example.invalid`,`scrypt$131072$8$1$${'a'.repeat(32)}$${'b'.repeat(128)}`]);
+    await admin.query("insert into app.sessions(token_hash,user_id,auth_version,scope,expires_at) select $1,id,auth_version,'app',clock_timestamp()+interval '7 hours' from app.users where id=$2",[hashSessionToken(foreignToken),foreignOwner]);
+    assert.equal(await checkout.readOrder(foreignToken,foreignOwner,order.id),null);
+    await assert.rejects(checkout.readOrder(token,randomUUID(),order.id));
+    const statusRequest=()=>accountRequest({action:'order',paymentId:order.id});
+    const initial=await http(statusRequest());assert.equal(initial.status,200);assert.deepEqual(await initial.json(),{order,fulfillment:null});
     const b={id:order.id,ownerId:owner,targetType:'listing',targetId:target,targetRevision:order.targetRevision,tariffId:order.tariffId,amount:order.amount,durationDays:order.durationDays,shopId:merchant.shopId,isTest:true};
     const original=(await admin.query('select request_body from app.payment_checkout_intents where id=$1',[order.id])).rows[0].request_body;
     assert.equal(JSON.parse(original).receipt.customer.email,email);
@@ -148,6 +176,9 @@ export async function testPrimaryPaymentDispatch(suite,admin,config){
     const verifier=new PostgresPaymentVerificationStore(ownerDb,merchant,fetcher);
     assert.equal((await verifier.reconcile(order.id)).orderStatus,'succeeded');
     const result=await fulfill.fulfill(order.id);assert.equal(result.state,'fulfilled');
+    const visible=await checkout.readOrder(token,owner,order.id);assert.equal(visible.order.status,'succeeded');
+    assert.deepEqual(visible.fulfillment,{publishedAt:result.period.publishedAt,expiresAt:result.period.expiresAt});
+    const complete=await http(statusRequest());assert.equal(complete.status,200);assert.deepEqual(await complete.json(),visible);
     const projection=formModule('public-listings',{'./booking-details':bookingDetails});
     const {PostgresPublicListingStore}=formModule('postgres-public-listings',{'./public-listings':projection,'./listing-public-eligibility':formModule('listing-public-eligibility')});
     assert.equal((await new PostgresPublicListingStore(admin).read(target)).id,target);
@@ -155,6 +186,8 @@ export async function testPrimaryPaymentDispatch(suite,admin,config){
     await dispatcher.dispatch(b);await verifier.reconcile(order.id);assert.deepEqual(await fulfill.fulfill(order.id),result);
     assert.deepEqual((await admin.query('select * from app.payment_fulfillments where intent_id=$1',[order.id])).rows,receipt);
     assert.deepEqual(methods,['POST','GET','GET','GET']);
+    await admin.query('delete from app.sessions where token_hash=$1',[hashSessionToken(token)]);
+    const revoked=await http(statusRequest());assert.equal(revoked.status,401);assert.deepEqual(await revoked.json(),{error:{code:'UNAUTHENTICATED'}});
    }finally{await ownerDb.close();}
   });
  }finally{await db.close();}

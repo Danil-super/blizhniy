@@ -8,6 +8,7 @@ import type {PostgresDatabase,PostgresQueries} from './postgres';
 
 export type ListingCheckoutConfig={shopId:string;isTest:boolean;siteOrigin:string;receiptVatCode:number|null};
 export type ListingPaymentOrder={id:string;creationKey:string;targetId:string;targetRevision:string;tariffId:string;amount:string;durationDays:number;status:'created'|'pending'|'succeeded'|'failed'|'refunded';createdAt:string};
+export type ListingPaymentSnapshot={order:ListingPaymentOrder;fulfillment:{publishedAt:string;expiresAt:string}|null};
 type OrderRow=ListingPaymentOrder&{targetType:string};
 type Offer={id:string;name:string;amount:string;currency:'RUB';durationDays:number};
 const columns=`o.id,o.creation_key as "creationKey",o.target_type as "targetType",o.target_id as "targetId",o.target_revision::text as "targetRevision",o.status,
@@ -58,6 +59,19 @@ export class PostgresListingCheckoutStore{
  async readIntent(token:string,owner:string,creationKey:unknown){
   const key=parseListingDraftId(creationKey);return this.owner(token,owner,async(tx,actor)=>{
    const row=await this.keyed(tx,actor,key);return row?display(row):null;
+  });
+ }
+ /** Historical execution receipt, not a claim that the target is still public. No provider I/O. */
+ async readOrder(token:string,owner:string,paymentId:unknown):Promise<ListingPaymentSnapshot|null>{
+  const id=parseListingDraftId(paymentId);return this.owner(token,owner,async(tx,actor)=>{
+   const row=(await tx.query<OrderRow&{publishedAt:string|null;expiresAt:string|null}>(`select ${columns},
+    to_char(f.published_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
+    to_char(f.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "expiresAt"
+    ${source} left join app.payment_fulfillments f on f.intent_id=o.id
+    where o.id=$1 and o.owner_id=$2 and o.target_type='listing' and i.merchant_shop_id=$3 and i.is_test=$4`,
+    [id,actor,this.config.shopId,this.config.isTest])).rows[0];
+   if(!row)return null;
+   return{order:display(row),fulfillment:row.publishedAt&&row.expiresAt?{publishedAt:row.publishedAt,expiresAt:row.expiresAt}:null};
   });
  }
  private async intent(tx:PostgresQueries,owner:string,id:string,input:ListingCheckoutInput,offer:Offer):Promise<PaymentIntent>{
