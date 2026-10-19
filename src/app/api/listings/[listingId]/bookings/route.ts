@@ -8,6 +8,10 @@ import {
 } from "@/lib/booking-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isSupabaseServiceRoleConfigured, isUuid } from "@/lib/supabase-rest";
+import {handleProductionBookingInventory} from '@/lib/production-booking-runtime';
+import {authJson} from '@/lib/auth-http';
+export const runtime='nodejs';
+export const dynamic='force-dynamic';
 
 type RouteContext = {
   params: Promise<{ listingId: string }>;
@@ -34,6 +38,7 @@ function cleanGuests(value: unknown) {
 
 export async function GET(request: Request, context: RouteContext) {
   const { listingId } = await context.params;
+  if(process.env.BLIZHNIY_AUTH_MODE==='postgres')return handleProductionBookingInventory(request,listingId);
 
   if (!isUuid(listingId)) {
     return NextResponse.json({ availability: [], requests: [] }, { headers: { "Cache-Control": "no-store" } });
@@ -59,6 +64,7 @@ export async function GET(request: Request, context: RouteContext) {
 }
 
 export async function POST(request: Request, context: RouteContext) {
+  if(process.env.BLIZHNIY_AUTH_MODE==='postgres')return authJson({error:{code:'USE_ACCOUNT_BOOKINGS'}},409);
   if (!isSupabaseServerConfigured() || !isSupabaseServiceRoleConfigured()) {
     return NextResponse.json({ error: "Server booking is not configured" }, { status: 503 });
   }
@@ -103,6 +109,7 @@ export async function POST(request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
+  if(process.env.BLIZHNIY_AUTH_MODE==='postgres')return authJson({error:{code:'USE_ACCOUNT_BOOKINGS'}},409);
   if (!isSupabaseServerConfigured() || !isSupabaseServiceRoleConfigured()) {
     return NextResponse.json({ error: "Server booking is not configured" }, { status: 503 });
   }
