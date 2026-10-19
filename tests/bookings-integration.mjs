@@ -4,7 +4,7 @@ import {formModule} from './listing-form-module.mjs';import {workPublicationModu
 import {grantBookingPublicationRead} from '../scripts/grant-booking-read.mjs';
 import * as http from '../src/lib/auth-http.ts';import * as cookie from '../src/lib/account-cookie.ts';import * as proxy from '../src/lib/trusted-proxy-ip.ts';
 const inbox=workPublicationModule('postgres-notification-inbox');
-const deps={'./booking-request-contract.ts':contract,'./booking-availability.ts':calendar,'./postgres-notification-inbox':inbox};
+const deps={'./booking-request-contract.ts':contract,'./booking-availability.ts':calendar,'./postgres-notification-inbox':inbox,'./listing-public-eligibility':formModule('listing-public-eligibility')};
 export async function testBookings(suite,admin,config,credentials){
  assert.equal(config.host,'127.0.0.1');const storage=formModule('postgres-bookings',deps),{PostgresBookingStore,PostgresBookingAvailabilityStore,readBookableListing}=storage;
  const db=createPostgresDatabase({NODE_ENV:'test',BLIZHNIY_DB_HOST:config.host,BLIZHNIY_DB_PORT:String(config.port),BLIZHNIY_DB_NAME:config.database,BLIZHNIY_DB_USER:credentials.user,BLIZHNIY_DB_PASSWORD:credentials.password,BLIZHNIY_DB_SSL_MODE:'disable'}),store=new PostgresBookingStore(db),users=[];
