@@ -46,6 +46,8 @@ function loadPaymentProvider({ production = true, payment, providerResponse, con
     },
   };
   const stubs = {
+    '@/lib/yookassa-payment-contract': require('./yookassa-contract-module.cjs'),
+    '@/lib/yookassa-transport': require('./yookassa-transport-module.cjs'),
     '@/lib/mock-store': {
       listMockPayments: () => [storedPayment],
       markPaymentTargetSucceeded: () => {
@@ -165,6 +167,8 @@ function loadPaymentCreator(receiptEnv = {}) {
     active: true,
   };
   const stubs = {
+    '@/lib/yookassa-payment-contract': require('./yookassa-contract-module.cjs'),
+    '@/lib/yookassa-transport': require('./yookassa-transport-module.cjs'),
     '@/lib/mock-store': {
       listMockPayments: () => [],
       markPaymentTargetSucceeded: () => { throw new Error('mock publication must not run'); },

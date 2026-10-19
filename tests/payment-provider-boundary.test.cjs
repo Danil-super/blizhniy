@@ -92,6 +92,8 @@ function loadProvider({ payment = localPayment(), active, tariff: tariffChanges,
   const activePayment = active && clone(active);
   let checkoutBody = snapshotBody;
   const stubs = {
+    '@/lib/yookassa-payment-contract': require('./yookassa-contract-module.cjs'),
+    '@/lib/yookassa-transport': require('./yookassa-transport-module.cjs'),
     '@/lib/mock-store': { listMockPayments: () => [], markPaymentTargetSucceeded: () => { throw new Error('Unexpected mock fulfillment'); } },
     '@/lib/payment-store': {
       canStorePayment: input => Boolean(input.targetId),

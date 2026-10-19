@@ -37,6 +37,8 @@ function fixture(entry, { receipts = true, authenticated = true, email = payerEm
   let checkoutBody;
   const tariff = { id: entry.body.tariffId || (entry.route === 'applications' ? 'job-response' : 'fair-participation'), name: 'Синтетический тариф', action: entry.action, price: 300, durationDays: 30, active: true };
   const provider = loadSource('src/lib/payment-provider.ts', {
+    '@/lib/yookassa-payment-contract': require('./yookassa-contract-module.cjs'),
+    '@/lib/yookassa-transport': require('./yookassa-transport-module.cjs'),
     '@/lib/mock-store': { listMockPayments: () => [], markPaymentTargetSucceeded: () => { throw new Error('Unexpected mock payment'); } },
     '@/lib/payment-store': {
       canStorePayment: input => Boolean(input.targetId),

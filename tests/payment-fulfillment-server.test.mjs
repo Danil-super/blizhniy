@@ -163,7 +163,7 @@ function harness(options = {}) {
       if (name === "next/server") return { NextResponse: { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) } };
       if (name === "next/cache") return { revalidatePath() {} };
       if (name.startsWith("@/")) return load(`src/${name.slice(2)}.ts`, cache);
-      if (name.startsWith(".")) return load(resolve(filename, "..", `${name}.ts`), cache);
+      if (name.startsWith(".")) return load(resolve(filename, "..", name.endsWith('.ts') ? name : `${name}.ts`), cache);
       return require(name);
     };
     new Function("require", "module", "exports", "fetch", "process", "globalThis", "crypto", js)(deps, module, module.exports, providerFetch, { env }, globals, webcrypto);

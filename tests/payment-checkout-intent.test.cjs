@@ -211,7 +211,7 @@ function harness(options = {}) {
           isUuid: value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value),
           supabaseRest: rest };
         if (name.startsWith('@/')) return load(`src/${name.slice(2)}.ts`);
-        if (name.startsWith('.')) return load(path.resolve(path.dirname(filename), `${name}.ts`));
+        if (name.startsWith('.')) return load(path.resolve(path.dirname(filename), name.endsWith('.ts') ? name : `${name}.ts`));
         return require(name);
       }
       new Function('require', 'module', 'exports', 'fetch', 'process', 'globalThis', 'crypto', 'Date', 'performance',

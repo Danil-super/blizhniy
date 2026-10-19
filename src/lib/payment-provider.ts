@@ -1,3 +1,5 @@
+import {createYooKassaTransport, type YooKassaRequestBudget} from "@/lib/yookassa-transport";
+import {YooKassaBoundaryError, rublesToKopecks, validateYooKassaPaymentObject, type YooKassaPaymentResponse, type YooKassaPaymentStatus} from "@/lib/yookassa-payment-contract";
 import { listMockPayments, markPaymentTargetSucceeded } from "@/lib/mock-store";
 import {
   canStorePayment,
@@ -17,22 +19,9 @@ import { isSupabaseRestConfigured } from "@/lib/supabase-rest";
 import { getActiveStoredTariffById } from "@/lib/tariff-store";
 import type { Payment, Tariff } from "@/lib/types";
 
-type PaymentTargetType = Payment["targetType"];
-type YooKassaPaymentStatus = "pending" | "waiting_for_capture" | "succeeded" | "canceled";
-type YooKassaPaymentResponse = {
-  amount: { value: string; currency: "RUB" };
-  capturedAt?: string;
-  confirmation?: {
-    type: "redirect";
-    confirmation_url: string;
-  };
-  id: string;
-  paid: boolean;
-  status: YooKassaPaymentStatus;
-  test: boolean;
-  metadata?: Record<string, string | null>;
-};
+const {withYooKassaRequestBudget,fetchYooKassaJson}=createYooKassaTransport({fetch,monotonicNow:()=>performance.now(),setTimeout,clearTimeout});
 
+type PaymentTargetType = Payment["targetType"];
 type YooKassaNotificationPayload = {
   event?: string;
   object?: YooKassaPaymentResponse;
@@ -194,29 +183,8 @@ export function getPayment(paymentId: string) {
   return shouldAllowMockPayments() ? listMockPayments().find((payment) => payment.id === paymentId) : undefined;
 }
 
-const YOOKASSA_REQUEST_BUDGET_MS = 35_000;
-const YOOKASSA_MAX_RESPONSE_BYTES = 64 * 1024;
-const YOOKASSA_MAX_ATTEMPTS = 3;
-
-class YooKassaBoundaryError extends Error {}
 
 const YOOKASSA_ID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function rublesToKopecks(value: string) {
-  if (!/^(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/.test(value)) {
-    throw new YooKassaBoundaryError("YooKassa payment amount is invalid");
-  }
-  const [rubles, fraction = ""] = value.split(".");
-  const kopecks = BigInt(rubles) * BigInt(100) + BigInt(fraction.padEnd(2, "0"));
-  if (kopecks <= BigInt(0) || kopecks > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new YooKassaBoundaryError("YooKassa payment amount is invalid");
-  }
-  return kopecks;
-}
 
 function storedAmountKopecks(amount: number) {
   if (typeof amount !== "number" || !Number.isFinite(amount)) {
@@ -238,208 +206,10 @@ function validateStoredCheckout(payment: Payment, input: CreatePaymentInput, tar
   storedAmountKopecks(payment.amount);
 }
 
-function validateConfirmationUrl(value: unknown) {
-  if (typeof value !== "string" || value.length > 2048 || /[\u0000-\u0020\u007f\s\\]/.test(value)) {
-    throw new YooKassaBoundaryError("YooKassa confirmation URL is invalid");
-  }
-  let url: URL;
-  try { url = new URL(value); } catch { throw new YooKassaBoundaryError("YooKassa confirmation URL is invalid"); }
-  // This is our hosted-checkout policy, not an exhaustive list of vendor/partner flows.
-  if (url.protocol !== "https:" || url.username || url.password || url.port ||
-      !["yoomoney.ru", "yookassa.ru"].includes(url.hostname)) {
-    throw new YooKassaBoundaryError("YooKassa confirmation URL is not approved for hosted checkout");
-  }
-  return value;
-}
-
-function validateCaptureTime(value: unknown, status: YooKassaPaymentStatus) {
-  if (typeof value !== "string" || value.length > 30 || status !== "succeeded") {
-    throw new YooKassaBoundaryError("YooKassa capture time is invalid");
-  }
-  const parts = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$/.exec(value);
-  const timestamp = Date.parse(value);
-  if (!parts || parts[0].length !== value.length || !Number.isFinite(timestamp) ||
-      new Date(timestamp).toISOString() !== `${parts[1]}.${(parts[2] ?? "").padEnd(3, "0").slice(0, 3)}Z`) {
-    throw new YooKassaBoundaryError("YooKassa capture time is invalid");
-  }
-  const nanosPerMillisecond = BigInt(1_000_000);
-  const captureNanos = BigInt(timestamp) * nanosPerMillisecond + BigInt((parts[2] ?? "").padEnd(9, "0").slice(3));
-  if (captureNanos > BigInt(Date.now() + 5 * 60_000) * nanosPerMillisecond) {
-    throw new YooKassaBoundaryError("YooKassa capture time is invalid");
-  }
-  // Keep full vendor precision. Missing captured_at is optional, not an invitation
-  // to substitute order creation or verification-arrival time as settlement time.
-  return value;
-}
-
 function validateYooKassaPayment(payload: unknown, payment: Payment, secretKey: string): YooKassaPaymentResponse {
-  // Validate the consumed contract only; unused provider PII is neither retained nor trusted.
-  // Source: https://yookassa.ru/developers/api/yookassa-openapi-specification.yaml
-  if (!isObject(payload) || typeof payload.id !== "string" || !YOOKASSA_ID_PATTERN.test(payload.id) ||
-      (payment.providerPaymentId !== undefined && payload.id !== payment.providerPaymentId)) {
-    throw new YooKassaBoundaryError("YooKassa payment ID does not match the local payment");
-  }
-  if (!isObject(payload.amount) || payload.amount.currency !== "RUB" || typeof payload.amount.value !== "string" ||
-      !/^(?:0|[1-9]\d{0,13})\.\d{2}$/.test(payload.amount.value) ||
-      rublesToKopecks(payload.amount.value) !== storedAmountKopecks(payment.amount)) {
-    throw new YooKassaBoundaryError("YooKassa payment amount does not match the local payment");
-  }
-  const status = payload.status;
-  if ((status !== "pending" && status !== "waiting_for_capture" && status !== "succeeded" && status !== "canceled") ||
-      typeof payload.paid !== "boolean" || payload.paid !== (status === "succeeded" || status === "waiting_for_capture")) {
-    throw new YooKassaBoundaryError("YooKassa payment status and paid flag are inconsistent");
-  }
-  if (typeof payload.test !== "boolean" || payload.test !== secretKey.startsWith("test_")) {
-    throw new YooKassaBoundaryError("YooKassa payment mode does not match the configured merchant");
-  }
-  const capturedAt = payload.captured_at === undefined ? undefined : validateCaptureTime(payload.captured_at, status);
-  let metadata: Record<string, string | null> | undefined;
-  if (payload.metadata !== undefined) {
-    if (!isObject(payload.metadata) || Object.keys(payload.metadata).length > 16 ||
-        Object.entries(payload.metadata).some(([key, value]) => key.length > 32 ||
-          (value !== null && (typeof value !== "string" || value.length > 512)))) {
-      throw new YooKassaBoundaryError("YooKassa payment metadata is invalid");
-    }
-    const bindings = { localPaymentId: payment.id, targetId: payment.targetId, targetType: payment.targetType, tariffId: payment.tariffId };
-    for (const [key, expected] of Object.entries(bindings)) {
-      if (Object.hasOwn(payload.metadata, key) && payload.metadata[key] !== expected) {
-        throw new YooKassaBoundaryError("YooKassa payment metadata does not match the local payment");
-      }
-    }
-    metadata = payload.metadata as Record<string, string | null>;
-  }
-  let confirmation: YooKassaPaymentResponse["confirmation"];
-  if (payload.confirmation !== undefined) {
-    if (!isObject(payload.confirmation) || payload.confirmation.type !== "redirect") {
-      throw new YooKassaBoundaryError("YooKassa confirmation type is invalid");
-    }
-    confirmation = { type: "redirect", confirmation_url: validateConfirmationUrl(payload.confirmation.confirmation_url) };
-  }
-  if (!confirmation && payment.confirmationUrl !== undefined) validateConfirmationUrl(payment.confirmationUrl);
-  return { id: payload.id, amount: { value: payload.amount.value, currency: "RUB" }, status,
-    paid: payload.paid, test: payload.test, capturedAt, metadata, confirmation };
-}
-
-type YooKassaRequestBudget = {
-  attempts: number;
-  controller: AbortController;
-  expired: Promise<never>;
-  start: () => void;
-  limit: (remainingMs: number) => void;
-};
-
-async function withYooKassaRequestBudget<T>(request: (budget: YooKassaRequestBudget) => Promise<T>) {
-  const controller = new AbortController();
-  let deadline: ReturnType<typeof setTimeout> | undefined;
-  let deadlineAt = Infinity;
-  function limit(remainingMs: number) {
-    if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
-      controller.abort(new YooKassaBoundaryError("YooKassa checkout requires manual verification"));
-      controller.signal.throwIfAborted();
-    }
-    const candidate = performance.now() + remainingMs;
-    if (candidate >= deadlineAt) return; // Never extend an existing budget.
-    deadlineAt = candidate;
-    clearTimeout(deadline);
-    deadline = setTimeout(() => controller.abort(new YooKassaBoundaryError("YooKassa request timed out")), remainingMs);
-  }
-  const expired = new Promise<never>((_, reject) => {
-    controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true });
-  });
-  // The deadline can expire between remote requests while local storage awaits.
-  // The next remote operation still fails closed, without an unhandled rejection.
-  void expired.catch(() => undefined);
-  const budget: YooKassaRequestBudget = {
-    attempts: 0, controller, expired,
-    start: () => { if (!deadline) limit(YOOKASSA_REQUEST_BUDGET_MS); },
-    limit,
-  };
-
-  try {
-    return await request(budget);
-  } finally {
-    clearTimeout(deadline);
-  }
-}
-
-async function readYooKassaJson(response: Response, budget: YooKassaRequestBudget): Promise<unknown> {
-  const tooLarge = () => new YooKassaBoundaryError("YooKassa response is too large");
-  if (Number(response.headers.get("content-length")) > YOOKASSA_MAX_RESPONSE_BYTES) {
-    budget.controller.abort(tooLarge());
-    void response.body?.cancel().catch(() => undefined);
-    throw budget.controller.signal.reason;
-  }
-  const reader = response.body?.getReader();
-  if (!reader) return null;
-  const chunks: Uint8Array[] = [];
-  let bytes = 0;
-  let complete = false;
-
-  try {
-    for (;;) {
-      const { done, value } = await Promise.race([reader.read(), budget.expired]);
-      if (done) { complete = true; break; }
-      bytes += value.byteLength;
-      if (bytes > YOOKASSA_MAX_RESPONSE_BYTES) {
-        budget.controller.abort(tooLarge());
-        throw budget.controller.signal.reason;
-      }
-      chunks.push(value);
-    }
-    try {
-      return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks, bytes))) as unknown;
-    } catch {
-      if (!response.ok) return null;
-      throw new YooKassaBoundaryError("YooKassa returned invalid JSON");
-    }
-  } finally {
-    if (!complete) void reader.cancel().catch(() => undefined);
-    reader.releaseLock();
-  }
-}
-
-function yooKassaHttpError(response: Response, payload: unknown) {
-  const errorId = payload && typeof payload === "object" && "id" in payload && typeof payload.id === "string" &&
-    /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(payload.id) ? payload.id : undefined;
-  // Provider descriptions and transport error messages may contain sensitive data.
-  return new YooKassaBoundaryError(`YooKassa request failed (HTTP ${response.status}${errorId ? `; error id ${errorId}` : ""})`);
-}
-
-async function fetchYooKassaJson(
-  url: string, init: RequestInit, budget?: YooKassaRequestBudget,
-  beforeAttempt?: (budget: YooKassaRequestBudget) => Promise<void>,
-): Promise<{ payload: unknown; response: Response }> {
-  if (!budget) return withYooKassaRequestBudget((shared) => fetchYooKassaJson(url, init, shared, beforeAttempt));
-  budget.start();
-
-  for (let attempt = 1; attempt <= YOOKASSA_MAX_ATTEMPTS; attempt += 1) {
-    budget.controller.signal.throwIfAborted();
-    if (budget.attempts >= YOOKASSA_MAX_ATTEMPTS) throw new YooKassaBoundaryError("YooKassa request attempt budget exhausted");
-    if (beforeAttempt) await Promise.race([beforeAttempt(budget), budget.expired]);
-    budget.controller.signal.throwIfAborted();
-    budget.attempts += 1;
-    try {
-      // One deadline covers headers, decoded body and backoff, not each attempt.
-      // Source: https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch#canceling_a_request
-      const response = await Promise.race([fetch(url, { ...init, signal: budget.controller.signal, redirect: "error" }), budget.expired]);
-      const payload = await readYooKassaJson(response, budget);
-      if (response.status < 500 || budget.attempts === YOOKASSA_MAX_ATTEMPTS) {
-        if (!response.ok) throw yooKassaHttpError(response, payload);
-        return { payload, response };
-      }
-    } catch (error) {
-      if (error instanceof YooKassaBoundaryError) throw error;
-      if (budget.controller.signal.aborted) throw budget.controller.signal.reason;
-      if (budget.attempts === YOOKASSA_MAX_ATTEMPTS) throw new YooKassaBoundaryError("YooKassa request failed");
-    }
-    let backoff: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([new Promise<void>((resolve) => { backoff = setTimeout(resolve, attempt * 500); }), budget.expired]);
-    } finally {
-      clearTimeout(backoff);
-    }
-  }
-  throw new YooKassaBoundaryError("YooKassa request failed");
+  return validateYooKassaPaymentObject(payload, { id: payment.id, targetId: payment.targetId, targetType: payment.targetType,
+    tariffId: payment.tariffId, amount: formatStoredAmount(payment.amount), providerPaymentId: payment.providerPaymentId,
+    confirmationUrl: payment.confirmationUrl, isTest: secretKey.startsWith("test_") }, Date.now());
 }
 
 async function fetchYooKassaPayment(payment: Payment, budget?: YooKassaRequestBudget) {
