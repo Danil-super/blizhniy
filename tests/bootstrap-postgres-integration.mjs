@@ -238,6 +238,8 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testBookings(suite, client, config, credentials);
     const { testPublicListingStore } = await import("./public-listing-store-integration.mjs");
     await testPublicListingStore(suite, client, config, credentials);
+    const { testPaymentIntents } = await import("./payment-intents-integration.mjs");
+    await testPaymentIntents(suite, client, config, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));
