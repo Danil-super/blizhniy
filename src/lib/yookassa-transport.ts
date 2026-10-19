@@ -8,6 +8,7 @@ export type YooKassaRequestBudget = {
   expired: Promise<never>;
   start: () => void;
   limit: (remainingMs: number) => void;
+  check: () => void;
 };
 
 
@@ -38,6 +39,13 @@ async function withYooKassaRequestBudget<T>(request: (budget: YooKassaRequestBud
     attempts: 0, controller, expired,
     start: () => { if (!deadline) limit(YOOKASSA_REQUEST_BUDGET_MS); },
     limit,
+    check: () => {
+      const now = monotonicNow();
+      if (!Number.isFinite(now) || now >= deadlineAt) {
+        controller.abort(new YooKassaBoundaryError("YooKassa request timed out"));
+      }
+      controller.signal.throwIfAborted();
+    },
   };
 
   try {
@@ -63,7 +71,9 @@ async function readYooKassaJson(response: Response, budget: YooKassaRequestBudge
 
   try {
     for (;;) {
+      budget.check();
       const { done, value } = await Promise.race([reader.read(), budget.expired]);
+      budget.check();
       if (done) { complete = true; break; }
       bytes += value.byteLength;
       if (bytes > YOOKASSA_MAX_RESPONSE_BYTES || ++chunkCount > 2048) {
@@ -99,14 +109,15 @@ async function fetchYooKassaJson(
   budget.start();
 
   for (let attempt = 1; attempt <= YOOKASSA_MAX_ATTEMPTS; attempt += 1) {
-    budget.controller.signal.throwIfAborted();
+    budget.check();
     if (budget.attempts >= YOOKASSA_MAX_ATTEMPTS) throw new YooKassaBoundaryError("YooKassa request attempt budget exhausted");
     if (beforeAttempt) await Promise.race([beforeAttempt(budget), budget.expired]);
-    budget.controller.signal.throwIfAborted();
+    budget.check();
     budget.attempts += 1;
     try {
       // One deadline covers headers, decoded body and backoff, not each attempt.
       // Source: https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch#canceling_a_request
+      budget.check(); // Timers can be delayed by microtasks; check the clock before issuing side effects.
       const response = await Promise.race([fetch(url, { ...init, signal: budget.controller.signal, redirect: "error" }), budget.expired]);
       const payload = await readYooKassaJson(response, budget);
       if (response.status < 500 || budget.attempts === YOOKASSA_MAX_ATTEMPTS) {

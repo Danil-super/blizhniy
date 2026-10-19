@@ -2,7 +2,7 @@ import {
   assertPrimaryYooKassaBinding, validatePrimaryYooKassaPayment,
   YooKassaBoundaryError, type PrimaryYooKassaBinding,
 } from './yookassa-payment-contract.ts';
-import { createYooKassaTransport } from './yookassa-transport.ts';
+import { createYooKassaTransport, type YooKassaRequestBudget } from './yookassa-transport.ts';
 
 type Merchant = { shopId: string; isTest: boolean; secretKey: string };
 type KnownPayment = PrimaryYooKassaBinding & { providerPaymentId: string };
@@ -18,7 +18,7 @@ export function createPrimaryYooKassaReader(config: Merchant, fetcher: typeof fe
   }
   const transport = createYooKassaTransport({ fetch: fetcher, monotonicNow: () => performance.now(), setTimeout, clearTimeout });
   return {
-    async read(value: KnownPayment) {
+    async read(value: KnownPayment, budget?: YooKassaRequestBudget) {
       const expected = { ...value };
       assertPrimaryYooKassaBinding(expected, Date.now());
       if (!expected.providerPaymentId || expected.shopId !== merchant.shopId || expected.isTest !== merchant.isTest) {
@@ -27,7 +27,7 @@ export function createPrimaryYooKassaReader(config: Merchant, fetcher: typeof fe
       const authorization = `Basic ${Buffer.from(`${merchant.shopId}:${merchant.secretKey}`, 'utf8').toString('base64')}`;
       const { payload } = await transport.fetchYooKassaJson(`https://api.yookassa.ru/v3/payments/${expected.providerPaymentId}`, {
         method: 'GET', cache: 'no-store', headers: { Authorization: authorization },
-      });
+      }, budget);
       return validatePrimaryYooKassaPayment(payload, expected, Date.now());
     },
   };
