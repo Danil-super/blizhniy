@@ -266,6 +266,10 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testPrimaryTestPaymentProbe(suite, client, config);
     const { testAccountTestPayment } = await import("./account-test-payment-integration.mjs");
     await testAccountTestPayment(suite, client, config, credentials);
+    const { testAdminOverview } = await import("./admin-overview-integration.mjs");
+    await testAdminOverview(suite, client, config, credentials);
+    const { testListingContactMethod } = await import("./listing-contact-method-integration.mjs");
+    await testListingContactMethod(suite, client, config, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));

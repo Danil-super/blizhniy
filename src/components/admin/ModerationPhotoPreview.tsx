@@ -11,8 +11,8 @@ export function ModerationPhotoPreview({actor,requestId,photo,index,count}:{acto
   }).catch(error=>{if(active){setError(true);if(error instanceof AdminModerationClientError&&['ADMIN_REQUIRED','UNAUTHENTICATED'].includes(error.code)){notifyAccountSessionChange(true);notifyAccountSessionChange(false);}}});
   return()=>{active=false;controller.abort();if(objectUrl)URL.revokeObjectURL(objectUrl);};
  },[actor,requestId,photo.id]);
- return <div className="mt-3 min-w-0">
+ return <div className="mt-3 flex min-h-56 min-w-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-3 sm:min-h-80">
   {error?<p role="alert">Фотография недоступна. Перечитайте запрос перед решением.</p>:url?<Image src={url} unoptimized alt={`Фотография ${index+1} из ${count}`} width={photo.width} height={photo.height}
-   className="max-h-96 w-auto max-w-full rounded-lg object-contain" onError={()=>setError(true)}/>:<p role="status">Загружаем приватную фотографию…</p>}
+   className="h-56 w-full max-w-full rounded-lg object-contain sm:h-80" onError={()=>setError(true)}/>:<p role="status">Загружаем приватную фотографию…</p>}
  </div>;
 }

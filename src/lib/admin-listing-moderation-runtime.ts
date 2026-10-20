@@ -7,7 +7,7 @@ export async function handleAdminListingModerationRequest(request:Request){
   const config=readProductionAuthConfig();if(!config)return authJson({error:{code:'NOT_FOUND'}},404);
   return await createAdminListingModerationHandler(config,async()=>{
    const {db,limiter}=await getProductionAccountDatabase(config);
-   const store=new PostgresListingModerationStore(db,{read:async record=>(await getProductionMediaFileReader(config)).read(record)});
+   const store=new PostgresListingModerationStore(db,{read:async record=>(await getProductionMediaFileReader(config)).read(record)},{contactMethod:process.env.BLIZHNIY_LISTING_CONTACT_METHOD==='enabled'});
    return{store,limiter,identity:new IdentityStore(db)};
   })(request);
  }catch{return authJson({error:{code:'MODERATION_UNAVAILABLE'}},503);}

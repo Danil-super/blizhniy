@@ -7,6 +7,8 @@ import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/sup
 import type { AdMarqueePlacement } from "@/lib/ad-marquee-store";
 import type { Tariff, Payment } from "@/lib/types";
 import type { AdminUserRow } from "@/components/admin/AdminUsersClient";
+import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
+import { PrimaryAdminOverview } from "./PrimaryAdminOverview";
 
 type PublicationType = "fairApplications" | "listings" | "specialists" | "vacancies" | "workRequests";
 
@@ -119,6 +121,11 @@ function ActionLink({ children, href }: { children: ReactNode; href: string }) {
 }
 
 export function AdminOverviewClient() {
+  const primary = usePrimaryAccountAuth();
+  return primary === null ? <LegacyAdminOverview /> : <PrimaryAdminOverview />;
+}
+
+function LegacyAdminOverview() {
   const [overview, setOverview] = useState<OverviewData>(emptyOverview);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [warnings, setWarnings] = useState<string[]>([]);

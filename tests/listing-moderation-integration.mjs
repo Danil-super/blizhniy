@@ -95,7 +95,7 @@ export async function testListingModeration(suite,operator,db,config,{owner,othe
   try{assert.equal((await store.submit(token,owner.id,saved.id,saved.revision)).state,'pending');}
   finally{await operator.query('update app.tariffs set active=$2 where id=$1',[offer.id,offer.active]);}
  });
- await suite.test('blocked authors and self-owned admin listings cannot receive approval',async()=>{
+ await suite.test('blocked authors cannot receive approval; authorized self-review is audited and revoked admins are denied',async()=>{
   const request=await store.read(token,owner.id,saved.id,saved.revision);
   await operator.query('update app.users set is_blocked=true where id=$1',[owner.id]);
   try{await assert.rejects(store.inspect(adminToken,request.id),ListingDraftAccessError);await assert.rejects(store.decide(adminToken,request.id,'approved',null),ListingDraftAccessError);}
@@ -103,7 +103,15 @@ export async function testListingModeration(suite,operator,db,config,{owner,othe
   const own=await new PostgresListingDraftStore(db).createEmpty(adminToken,admin.id,randomUUID());
   const complete=await forms.update(adminToken,admin.id,own.id,'1',{...saved.form,photoIds:[]});
   const review=await store.submit(adminToken,admin.id,own.id,complete.revision);
+  assert.ok((await store.list(adminToken,null,admin.id)).items.some(item=>item.id===review.id));
+  assert.equal((await store.inspect(adminToken,review.id,admin.id)).snapshot.id,own.id);
+  assert.equal((await store.decide(adminToken,review.id,'approved',null)).state,'approved');
+  assert.equal((await operator.query('select decided_by from app.listing_moderation where id=$1',[review.id])).rows[0].decided_by,admin.id);
+  assert.deepEqual((await operator.query('select status,is_paid,published_at,expires_at from app.listings where id=$1',[own.id])).rows[0],{status:'draft',is_paid:false,published_at:null,expires_at:null});
+  await operator.query("update app.users set role='user' where id=$1",[admin.id]);
+  try{
   await assert.rejects(store.decide(adminToken,review.id,'approved',null),AdminAccessError);
+  }finally{await operator.query("update app.users set role='admin' where id=$1",[admin.id]);}
  });
  await suite.test('session expiring after insert rolls back the request, not only its HTTP response',async()=>{
   saved=await forms.update(token,owner.id,saved.id,saved.revision,{...saved.form,title:'Проверка истечения сессии'});
@@ -152,14 +160,14 @@ export async function testListingModeration(suite,operator,db,config,{owner,othe
   saved=await forms.update(token,owner.id,saved.id,saved.revision,{...saved.form,title:'Новая версия после просмотра'});
   await assert.rejects(preview.readPhoto(adminToken,review.id,a,admin.id),ListingDraftConflictError);assert.equal(reads,1);
  });
- await suite.test('moderation queue excludes self-owned admin submissions and paginates every current request once',async()=>{
+ await suite.test('moderation queue excludes decided requests and paginates all current requests including authorized self-review',async()=>{
   const own=(await operator.query('select id from app.listings where author_id=$1',[admin.id])).rows.map(row=>row.id);
   const queue=await store.list(adminToken,null,admin.id);assert.equal(queue.items.some(item=>own.includes(item.listingId)),false);
   const drafts=(await operator.query(`insert into app.listings(author_id,listing_type,title,description,category_id,city_id,contact_phone)
    select $1,'sell','Проверка очереди','Синтетическое описание',category_id,city_id,'+79990000000' from app.listings cross join generate_series(1,25) where id=$2 returning id`,[owner.id,saved.id])).rows.map(row=>row.id);
   await operator.query('insert into app.listing_moderation(listing_id,revision) select id,revision from app.listings where id=any($1::uuid[])',[drafts]);
   const expected=(await operator.query(`select m.id from app.listing_moderation m join app.listings l on l.id=m.listing_id and l.revision=m.revision
-   where m.state='pending' and l.status='draft' and l.author_id<>$1 order by m.submitted_at,m.id`,[admin.id])).rows.map(row=>row.id);
+   where m.state='pending' and l.status='draft' order by m.submitted_at,m.id`)).rows.map(row=>row.id);
   let cursor=null;const found=[];for(let n=0;n<5;n++){const page=await store.list(adminToken,cursor,admin.id);assert.ok(page.items.length<=20);found.push(...page.items.map(item=>item.id));cursor=page.nextCursor;if(!cursor)break;}
   assert.equal(cursor,null);assert.deepEqual(found,expected);assert.equal(new Set(found).size,found.length);
  });
