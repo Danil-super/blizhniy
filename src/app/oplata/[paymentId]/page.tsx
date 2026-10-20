@@ -9,5 +9,5 @@ export default async function Page({ params }: { params: Promise<{ paymentId: st
   const { paymentId } = await params;
 
   const mode = process.env.BLIZHNIY_AUTH_MODE;
-  return mode && mode !== "local" ? <PrimaryPaymentReturnClient paymentId={paymentId} /> : <PaymentReturnClient paymentId={paymentId} />;
+  return mode && mode !== "local" ? <PrimaryPaymentReturnClient paymentId={paymentId} testCheckout={process.env.BLIZHNIY_LISTING_PAYMENT==='account-test'} /> : <PaymentReturnClient paymentId={paymentId} />;
 }

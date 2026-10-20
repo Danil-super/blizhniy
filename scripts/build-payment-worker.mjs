@@ -8,7 +8,7 @@ import {getBootstrapPlan} from './postgres-migration-plan.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 export function buildPaymentWorker(destination){
  if(typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid worker destination');
- const program=ts.createProgram(['payment-reconciliation-worker.ts','postgres.ts'].map(name=>join(root,'src/lib',name)),{
+ const program=ts.createProgram(['payment-reconciliation-worker.ts','account-test-payment-verifier.ts','postgres.ts'].map(name=>join(root,'src/lib',name)),{
   target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,
   moduleResolution:ts.ModuleResolutionKind.Node10,strict:true,esModuleInterop:true,skipLibCheck:true,
   noEmitOnError:true,rewriteRelativeImportExtensions:true,rootDir:join(root,'src'),outDir:join(destination,'compiled'),

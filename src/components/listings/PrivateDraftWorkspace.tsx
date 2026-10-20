@@ -13,12 +13,17 @@ import {usePrivateListingForm} from './usePrivateListingForm';
 import {PrivateListingFormEditor} from './PrivateListingFormEditor';
 import {PrivateDraftPublicationCheck} from './PrivateDraftPublicationCheck';
 import {PrivateDraftModeration} from './PrivateDraftModeration';
+import type {ListingCheckoutAttempt} from './PrivateListingCheckout';
 
 export function PrivateDraftWorkspace({ owner, visible, listing = false }: { owner: string; visible: boolean; listing?: boolean }) {
   const [page, setPage] = useState<ListingDraftPage | null>(null), [editor, setEditor] = useState<DraftEditorState | null>(null);
   const [busy, setBusy] = useState<string | null>("Загружаем черновики…"), [message, setMessage] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
   const epoch = useRef(0), pending = useRef<object | null>(null), scope = useRef<AbortController | null>(null), creationKey = useRef<string | null>(null);
+  // This owner-keyed workspace survives session rechecks; its child DOM deliberately does not.
+  const checkouts=useRef(new Map<string,ListingCheckoutAttempt>());
+  const checkoutKey=editor?`${owner}:${editor.saved.id}`:null;
+  if(checkoutKey&&!checkouts.current.has(checkoutKey))checkouts.current.set(checkoutKey,{input:null,uncertain:false});
   const dirty = draftIsDirty(editor);
   const photoRevision=useCallback((id:string,before:string,after:string)=>{
     setEditor(current=>current?.saved.id===id&&current.saved.revision===before?{...current,saved:{...current.saved,revision:after}}:current);
@@ -126,6 +131,7 @@ export function PrivateDraftWorkspace({ owner, visible, listing = false }: { own
     {editor&&!full.editor&&<PrivateDraftPublicationCheck owner={owner} id={editor.saved.id} revision={editor.saved.revision}
       disabled={working||photos.uncertain||dirty||editor.blocked}/>}
     {editor&&!full.editor&&<PrivateDraftModeration key={`${owner}:${editor.saved.id}:${editor.saved.revision}`} owner={owner} id={editor.saved.id} revision={editor.saved.revision}
+      checkoutAttempt={checkouts.current.get(checkoutKey!)!}
       disabled={working||photos.uncertain||dirty||editor.blocked}/>}
     {!full.editor&&full.message&&<p className="mt-3" role="status">{full.message}</p>}
     {full.editor&&<PrivateListingFormEditor edit={full} onClose={()=>{if(full.close()){setEditor(null);setMessage(null);setRefresh(value=>value+1);}}}/>}

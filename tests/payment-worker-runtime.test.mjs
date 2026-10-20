@@ -50,3 +50,15 @@ test('factory uses verified canonical DB config, private max-two pool, immutable
   assert.equal(closed,2);
  }finally {rmSync(owned,{recursive:true,force:true});}
 });
+test('account TEST mode requires one owner and selects only the GET verifier, never the fulfillment worker',async()=>{
+ const {createPaymentWorkerRuntime}=await import('../scripts/payment-worker-runtime.mjs');
+ let configured,closed=0;
+ const owner='11111111-1111-4111-8111-111111111111';
+ const modules={readPostgresConfig:()=>({database:'blizhniy_prod'}),Pool:class{},PostgresDatabase:class{async close(){closed++;}},
+  createPaymentReconciliationWorker:()=>assert.fail('Account TEST cannot select a publication worker'),
+  createAccountTestPaymentVerifier:(_db,config)=>{configured=config;return{tick:async()=>({state:'idle'})};}};
+ await assert.rejects(createPaymentWorkerRuntime({...valid,BLIZHNIY_PAYMENT_WORKER:'account-test'},{loadModules:()=>assert.fail('Owner required before module loading')}));
+ const runtime=await createPaymentWorkerRuntime({...valid,BLIZHNIY_PAYMENT_WORKER:'account-test',BLIZHNIY_PAYMENT_TEST_USER_ID:owner},{loadModules:()=>modules});
+ assert.equal(configured.ownerId,owner);assert.equal(configured.isTest,true);assert.equal(Object.isFrozen(configured),true);
+ assert.deepEqual(await runtime.worker.tick(),{state:'idle'});await runtime.close();assert.equal(closed,1);
+});

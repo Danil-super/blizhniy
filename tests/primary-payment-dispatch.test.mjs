@@ -114,3 +114,18 @@ test('a conflicting concurrent provider link is never overwritten or silently ad
  }).dispatch(binding));
  assert.equal(calls,1);assert.equal(state.provider,otherId);
 });
+test('owner admission is rechecked before each POST attempt, and known-ID GET recovery does not require a new purchase admission',async()=>{
+ const {db,state}=fixture();let admissions=0,calls=0;
+ const dispatcher=createPrimaryPaymentDispatcher(db,merchant,async()=>{calls++;return Response.json({},{status:503});});
+ await assert.rejects(dispatcher.dispatch(binding,async()=>{if(++admissions===2)throw Error('Purchase admission revoked');}));
+ assert.equal(admissions,2);assert.equal(calls,1);assert.equal(state.provider,null);
+ state.provider=providerId;
+ const result=await createPrimaryPaymentDispatcher(db,merchant,async(_url,init)=>{assert.equal(init.method,'GET');return Response.json(payload());}).dispatch(binding,async()=>assert.fail('Known payment cannot start a new purchase'));
+ assert.equal(result.providerPaymentId,providerId);
+});
+test('a session revoked while final intent authorization waits cannot issue a POST after its stale admission',async()=>{
+ const {db,state}=fixture();let valid=true,calls=0;
+ state.afterCommit=number=>{if(number===2)valid=false;};
+ await assert.rejects(createPrimaryPaymentDispatcher(db,merchant,async()=>{calls++;return Response.json(payload());}).dispatch(binding,async()=>{if(!valid)throw Error('Revoked admission');}));
+ assert.equal(calls,0);assert.equal(state.provider,null);
+});

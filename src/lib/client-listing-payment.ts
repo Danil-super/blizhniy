@@ -44,3 +44,4 @@ export function createListingPaymentClient(transport:typeof fetch){return{
  },
 };}
 export const listingPayment=createListingPaymentClient((...args)=>fetch(...args));
+export {snapshot as parseListingPaymentSnapshot};

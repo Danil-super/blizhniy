@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';import {join} from 'node:path';import {rootCertif
 import {chromium} from 'playwright';import sharp from 'sharp';
 import {parseListingFormDraft} from '../src/lib/listing-form-contract.ts';
 import {createDefaultCabinetProfile} from '../src/lib/cabinet-profile.ts';
+import {testAccountCheckoutBrowser} from './account-test-checkout-browser-cases.mjs';
 test('ordinary placement form saves all existing fields/photos with cookie API and preserves input through account rechecks', {timeout:90000},async()=>{
  const directory=await mkdtemp(join(tmpdir(),'blizhniy-form-browser-'));let app,browser;
  try{
@@ -12,7 +13,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   const probe=createServer();probe.listen(0,'127.0.0.1');await once(probe,'listening');const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
   const origin=`http://127.0.0.1:${port}`,owner='12345678-1234-4321-8765-123456789abc',id='22345678-1234-4321-8765-123456789abc';
   const env={PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',BLIZHNIY_AUTH_MODE:'postgres',
-   BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_DB_HOST:'17e86f80f26733d39ef4b84d.twc1.net',BLIZHNIY_DB_PORT:'5432',BLIZHNIY_DB_NAME:'blizhniy_prod',BLIZHNIY_DB_USER:'blizhniy_runtime',
+   BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_LISTING_PAYMENT:'account-test',BLIZHNIY_DB_HOST:'17e86f80f26733d39ef4b84d.twc1.net',BLIZHNIY_DB_PORT:'5432',BLIZHNIY_DB_NAME:'blizhniy_prod',BLIZHNIY_DB_USER:'blizhniy_runtime',
    BLIZHNIY_DB_PASSWORD:'synthetic-ui-db-password',BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:ca,BLIZHNIY_AUTH_MAIL_KEY_FILE:key,BLIZHNIY_AUTH_RATE_SECRET:'synthetic-ui-only-rate-secret-not-used-by-api',
    BLIZHNIY_MAIL_MODE:'timeweb',BLIZHNIY_SMTP_USER:'notifications@ближний-ру.рф',BLIZHNIY_SMTP_PASSWORD:'synthetic-ui-smtp-password',TURNSTILE_SECRET_KEY:'synthetic-ui-captcha-secret',NEXT_PUBLIC_TURNSTILE_SITE_KEY:''};
   let output='';app=spawn(process.execPath,['--experimental-strip-types','--require','./tests/listing-form-browser-pg.cjs','node_modules/next/dist/bin/next','start','-H','127.0.0.1','-p',String(port)],{env,detached:true,stdio:['ignore','pipe','pipe']});
@@ -221,6 +222,9 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).click();
   await page.waitForURL(origin+'/cabinet/obyavleniya');
   assert.equal(submissions,beforeInitialSubmissions+2);assert.equal(writes.length,beforeInitialWrites+2);
+  assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
+  moderation={...moderation,state:'approved'};
+  await testAccountCheckoutBrowser({context,page,origin,owner,id,revision:saved.revision,title:saved.form.title});
   assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
  }finally{await browser?.close();if(app&&app.exitCode===null){process.kill(-app.pid,'SIGTERM');await once(app,'exit');}await rm(directory,{recursive:true});}
 });
