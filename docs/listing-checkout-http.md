@@ -1,5 +1,10 @@
 # Заказ объявления: cookie API и возврат с оплаты
 
+Текущий статус20.10: после согласия владельца применён точный column-scoped
+план TEST-подготовки; прежние права сайта и роли обработчика сохранены.
+[Cutover и границы](listing-checkout-cutover.md). Ниже — исходный локальный срез;
+его прежние production-off сведения не описывают текущий статус DDL/grants.
+
 Локальный срез L17 поверх [checkout](listing-checkout.md) и
 [dispatch/recovery](primary-payment-dispatch.md). Не установлен на VPS;
 production остаётся на `6fbcccf0604c`, схема0018. Финансовое внешнее ревью
