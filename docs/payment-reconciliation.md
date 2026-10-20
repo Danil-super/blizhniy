@@ -72,8 +72,10 @@ lease может истечь в отдельной транзакции. Без
 однократная запись публикации, а не обещание exactly-once доставки очереди.
 
 `createPaymentReconciliationWorker(...).tick()` — явный один шаг с результатом
-idle/lost/completed/deferred/blocked. Автозапуска, бесконечного poller, PM2/systemd
-установки или нового CLI с доступом к деньгам в этом срезе нет.
+idle/lost/completed/deferred/blocked. Следующий локальный
+[service-срез](payment-reconciliation-service.md) добавляет последовательный цикл
+и адаптер сигналов, но не production runtime factory, отдельную роль или установку.
+Автозапуска, PM2/systemd установки или нового CLI с доступом к деньгам нет.
 
 ## Выключатели, права и откат
 
@@ -139,8 +141,8 @@ merchant E2E. Lint:0 ошибок, прежнее unused-предупрежде�
 `tests/checkout-prerequisites.test.cjs:30` сохранено. Floor и staged secret
 scan проходят; SAST/dependency CI этим локальным срезом не объявляются пройденными.
 
-Остаются: admission/recovery dispatch без известного provider ID, постоянный
-ограниченный worker с preflight/наблюдением, настоящий изолированный TEST
+Остаются: admission/recovery dispatch без известного provider ID, production
+фабрика/роль/preflight и установка ограниченного worker, настоящий изолированный TEST
 магазин+callback E2E, история/кнопка оплаты и остальные услуги/возвраты.
 Новый финансовый режим нельзя включать до отложенного внешнего ревью,
 отдельного согласования DDL/прав/rollout и завершения перечисленных проверок.

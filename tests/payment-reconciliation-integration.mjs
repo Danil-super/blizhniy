@@ -6,6 +6,7 @@ import {PostgresPaymentReconciliationQueue} from '../src/lib/postgres-payment-re
 import * as verification from '../src/lib/postgres-payment-verification.ts';
 import * as intentModule from '../src/lib/postgres-payment-intents.ts';import * as period from '../src/lib/payment-publication-period.ts';
 import {createPrimaryPaymentWebhook} from '../src/lib/primary-payment-webhook.ts';import {formModule} from './listing-form-module.mjs';
+import {runPaymentReconciliationService} from '../scripts/payment-reconciliation-service.mjs';
 
 export async function testPaymentReconciliation(suite,admin,config){
  assert.equal(config.host,'127.0.0.1');const target=`${config.host}:${config.database}`,options={includePaymentReconciliation:true};
@@ -157,6 +158,60 @@ export async function testPaymentReconciliation(suite,admin,config){
    const receipt=(await admin.query('select * from app.payment_fulfillments where intent_id=$1',[f.b.id])).rows;assert.equal(receipt.length,1);
    assert.deepEqual(await createPaymentReconciliationWorker(db,{...merchant,secretKey:'test_synthetic_reconciliation'},fetcher).tick(),{state:'idle'});assert.deepEqual(methods,['GET']);
    assert.deepEqual((await admin.query('select * from app.payment_fulfillments where intent_id=$1',[f.b.id])).rows,receipt);
+  });
+  await suite.test('continuous service drains one actual payment on stop; restart handles only the remaining queue row and preserves the first receipt',async()=>{
+   const first=await publication(),second=await publication();await notification(first,queue);await notification(second,queue);
+   const fixtures=new Map([first,second].map(f=>[f.providerId,f]));
+   const capturedAt=(await admin.query(`select to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as value`)).rows[0].value;
+   const methods=[],runs=[];
+   for(let cycle=0;cycle<2;cycle++){
+    const controller=new AbortController(),events=[];let closed=0,preflight=0;
+    const serviceDb=new PostgresDatabase(new pg.Pool({...config,max:2}));
+    const result=await runPaymentReconciliationService({mode:'run',signal:controller.signal,entryPoint:'service',
+     createRuntime:async()=>({
+      preflight:async()=>{preflight++;await serviceDb.transaction(tx=>tx.query('select intent_id,state,claim_id,lease_until from app.payment_reconciliation_jobs limit 0'),{readOnly:true});},
+      worker:createPaymentReconciliationWorker(serviceDb,{...merchant,secretKey:'test_synthetic_reconciliation'},async(url,init)=>{
+       assert.equal(init.method,'GET');const f=fixtures.get(url.split('/').at(-1));assert.ok(f);methods.push(f.b.id);
+       // Stop while GET is in progress: the current real finance/publication transactions still drain.
+       controller.abort();return Response.json(response(f,'succeeded',capturedAt));
+      }),close:async()=>{closed++;await serviceDb.close();},
+     }),report:async event=>events.push(event),wait:async()=>assert.fail('No next admission after stop'),
+    });
+    assert.equal(result,0);assert.equal(preflight,1);assert.equal(closed,1);assert.equal(events.at(-1).status,'stopped');
+    assert.deepEqual(events.at(-1).outcomes,{completed:1});runs.push(events);
+    const paid=(await admin.query('select intent_id from app.payment_fulfillments where intent_id=any($1::uuid[])',[ [first.b.id,second.b.id] ])).rows;
+    assert.equal(paid.length,cycle+1);
+   }
+   assert.equal(new Set(methods).size,2);assert.equal(methods.length,2);assert.notEqual(runs[0][0].runId,runs[1][0].runId);
+   for(const f of [first,second])assert.equal((await row(f.b.id)).state,'completed');
+   const receipts=(await admin.query('select to_jsonb(f) as value from app.payment_fulfillments f where intent_id=any($1::uuid[]) order by intent_id',[[first.b.id,second.b.id]])).rows;
+   assert.equal(await queue.enqueue(first.providerId),true);assert.equal(await queue.enqueue(second.providerId),true);
+   assert.deepEqual(await createPaymentReconciliationWorker(db,{...merchant,secretKey:'test_synthetic_reconciliation'},async()=>assert.fail('Completed queue must not call merchant')).tick(),{state:'idle'});
+   assert.deepEqual((await admin.query('select to_jsonb(f) as value from app.payment_fulfillments f where intent_id=any($1::uuid[]) order by intent_id',[[first.b.id,second.b.id]])).rows,receipts);
+  });
+  await suite.test('service stops on an unknown claim COMMIT; a new service cannot steal its live lease and recovers after expiry',async()=>{
+   const f=await publication();await notification(f,queue);let lostCommits=0;const methods=[];
+   const capturedAt=(await admin.query(`select to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as value`)).rows[0].value;
+   const run=async uncertain=>{
+    const controller=new AbortController(),events=[];let closed=0;
+    const serviceDb=new PostgresDatabase(new pg.Pool({...config,max:2}));
+    const boundary=uncertain?{transaction:async work=>{await serviceDb.transaction(work);lostCommits++;throw Error('Synthetic lost service claim COMMIT');}}:serviceDb;
+    const code=await runPaymentReconciliationService({mode:'run',signal:controller.signal,
+     createRuntime:async()=>({preflight:async()=>{await serviceDb.query('select intent_id from app.payment_reconciliation_jobs limit 0');},
+      worker:createPaymentReconciliationWorker(boundary,{...merchant,secretKey:'test_synthetic_reconciliation'},async(_url,init)=>{methods.push(init.method);return Response.json(response(f,'succeeded',capturedAt));}),
+      close:async()=>{closed++;await serviceDb.close();},
+     }),report:async event=>{events.push(event);if(event.status==='tick')controller.abort();},
+     wait:async()=>assert.fail('Unknown claim does not retry inside process'),
+    });
+    assert.equal(closed,1);return{code,events};
+   };
+   const failed=await run(true);assert.equal(failed.code,1);assert.equal(failed.events.at(-1).failureStage,'delivery');
+   assert.equal(lostCommits,1);assert.equal((await row(f.b.id)).state,'processing');assert.equal((await row(f.b.id)).attempts,1);assert.deepEqual(methods,[]);
+   const waiting=await run(false);assert.equal(waiting.code,0);assert.deepEqual(waiting.events.at(-1).outcomes,{idle:1});assert.deepEqual(methods,[]);
+   await admin.query("update app.payment_reconciliation_jobs set lease_until=clock_timestamp()-interval '1 second' where intent_id=$1",[f.b.id]);
+   const recovered=await run(false);assert.equal(recovered.code,0);assert.deepEqual(recovered.events.at(-1).outcomes,{completed:1});
+   assert.deepEqual(methods,['GET']);assert.equal((await row(f.b.id)).attempts,2);assert.equal((await row(f.b.id)).state,'completed');
+   assert.equal((await admin.query('select count(*)::int as n from app.payment_fulfillments where intent_id=$1',[f.b.id])).rows[0].n,1);
   });
  }finally{await db.close();}
 }
