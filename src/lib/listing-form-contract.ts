@@ -4,7 +4,7 @@ import {normalizeMessengerHref} from './messenger-url.ts';
 import type {BookingDetails} from './types';
 export type ListingFormDraft={kind:ReturnType<typeof parseListingDraft>['kind'];title:string;description:string;price:string|null;
  categorySlug:string|null;subcategoryName:string|null;cityName:string|null;district:string|null;address:string|null;
- latitude:number|null;longitude:number|null;showExactAddress:boolean;contactPhone:string|null;messengerUrl:string|null;booking:BookingDetails|null;photoIds:string[]};
+ latitude:number|null;longitude:number|null;showExactAddress:boolean;contactPhone:string|null;messengerUrl:string|null;contactMethod?:'messenger';booking:BookingDetails|null;photoIds:string[]};
 export type ListingFormSnapshot={id:string;revision:string;form:ListingFormDraft;photos:ListingDraftPhoto[]};
 const invalid=()=>{throw new ListingDraftInputError();};
 function plain(value:unknown):Record<string,unknown>{
@@ -39,7 +39,7 @@ function booking(value:unknown):BookingDetails|null{
 }
 /** Full private draft only. References resolve against PostgreSQL inside the owner transaction. */
 export function parseListingFormDraft(value:unknown):ListingFormDraft{
- const row=plain(value),allowed=['kind','title','description','price','categorySlug','subcategoryName','cityName','district','address','latitude','longitude','showExactAddress','contactPhone','messengerUrl','booking','photoIds'];
+ const row=plain(value),allowed=['kind','title','description','price','categorySlug','subcategoryName','cityName','district','address','latitude','longitude','showExactAddress','contactPhone','messengerUrl','contactMethod','booking','photoIds'];
  if(Reflect.ownKeys(row).some(key=>typeof key!=='string'||!allowed.includes(key)))return invalid();
  const core=parseListingDraft({kind:row.kind,...(Object.hasOwn(row,'title')?{title:row.title}:{}),...(Object.hasOwn(row,'description')?{description:row.description}:{}),...(Object.hasOwn(row,'price')?{price:row.price}:{})});
  const categorySlug=text(row.categorySlug,150),subcategoryName=text(row.subcategoryName,160);
@@ -49,7 +49,8 @@ export function parseListingFormDraft(value:unknown):ListingFormDraft{
  const latitude=coordinate('latitude',90),longitude=coordinate('longitude',180),showExactAddress=row.showExactAddress??false;
  if(typeof showExactAddress!=='boolean'||(latitude===null)!==(longitude===null)||(showExactAddress&&latitude===null))return invalid();
  const messenger=text(row.messengerUrl,500),messengerUrl=messenger?normalizeMessengerHref(messenger):null;if(messenger&&!messengerUrl)return invalid();
+ if(row.contactMethod!==undefined&&row.contactMethod!=='phone'&&row.contactMethod!=='messenger')return invalid();
  return{kind:core.kind,title:core.title,description:core.description,price:core.price,categorySlug,subcategoryName,cityName:text(row.cityName,160),
   district:text(row.district,160),address:text(row.address,300),latitude,longitude,showExactAddress,contactPhone:text(row.contactPhone,40),messengerUrl:messengerUrl??null,
-  booking:booking(row.booking),photoIds:parseListingPhotoIds(row.photoIds??[])};
+  ...(row.contactMethod==='messenger'?{contactMethod:'messenger' as const}:{}),booking:booking(row.booking),photoIds:parseListingPhotoIds(row.photoIds??[])};
 }

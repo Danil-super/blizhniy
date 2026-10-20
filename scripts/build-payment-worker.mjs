@@ -25,7 +25,7 @@ export function buildPaymentWorker(destination){
  mkdirSync(join(destination,'scripts'));mkdirSync(join(destination,'database'));mkdirSync(join(destination,'database/migrations'));
  for(const name of ['payment-reconciliation-role.mjs','payment-reconciliation-service.mjs','postgres-migration-plan.mjs','payment-worker-runtime.mjs','payment-worker.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
- for(const {name} of getBootstrapPlan({includePaymentReconciliationRole:true}))
+ for(const {name} of getBootstrapPlan({includeListingContactMethod:true}))
   copyFileSync(join(root,'database/migrations',name),join(destination,'database/migrations',name));
  const manifest={version:1,typescript:ts.version,sources};
  writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});

@@ -62,7 +62,9 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw new Error('Invalid role');
    const journal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   if(journal.length!==plan.length||journal.some((item,index)=>item.name!==plan[index].name||item.sha256!==plan[index].sha256))throw new Error('Invalid journal');
+   // One independently approved additive extension only; never accept arbitrary journal prefixes.
+   const expectedJournal=journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
+   if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
    const schemas=(await tx.query(`select nspname as name,has_schema_privilege(oid,'USAGE') as usage,
     has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace
     where left(nspname,3)<>'pg_' and nspname<>'information_schema'`)).rows;
