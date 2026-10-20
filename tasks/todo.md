@@ -2,6 +2,18 @@
 
 Статусы фиксируют только проверенный результат. Общие условия — [plan.md](plan.md); архитектурное решение — [ADR-001](../docs/decisions/0001-two-server-postgresql.md).
 
+20.10.2026: после согласия владельца TEST-подготовка заказа установлена через
+PR109 в main284f0fe, workflow39390235338 полностью success. В БД выданы ровно40
+column privileges трёх таблиц; прежние права Auth/предметных разделов и worker
+сохранены. На VPS включены только prepare-only/test, остальные env fingerprints
+совпали, health/ready и публичный TLS успешны. Настоящие HTTPS/cookie/API/PG
+prepare→replay→recovery/readOrder и чужие401/404/null проверены: один created
+TEST-заказ, неоплаченный private draft, ни dispatch/provider/fulfillment/queue.
+Технические аккаунты заблокированы, сессии отозваны, историю не удаляли.
+Native1605/PG327 без skips, прежний lint warning сохранён. [Полный proof и откат](../docs/listing-checkout-cutover.md).
+Это не готовая оплата: кнопка отправки, admission, callback/постоянная служба,
+настоящий разрешённый sandbox E2E, остальные услуги и L17–L20 ещё открыты.
+
 20.10.2026: production0019–0024 применены с сохранением прежних hashes/прав HTTP;
 выделенный LOGIN прошёл TLS/preflight и запрет чтения credentials/sessions.
 PAYMENT-PG18-ADMIN-20261020 согласован владельцем, восемь опасных memberships
