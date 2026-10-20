@@ -1,9 +1,11 @@
 # Изолированная сборка и TEST-конфигурация обработчика
 
-Актуализация20.10: после согласия владельца production0019–0024 применены,
-роль создана NOLOGIN. Найдено ограничение automatic creator membership;
-startup contract не ослаблен, обработчик не включён. Текущий статус и реальные
-проверки — [production cutover](payment-schema-cutover.md). Ниже — исходный срез подготовки.
+Текущий результат20.10: production0019–0024 применены, выделенный LOGIN и
+точный preflight проверены. Собранный пакет c7ee7c4 установлен внутри прежнего
+release; настоящий non-root CLI `--check` прошёл на VPS под DynamicUser.
+Постоянный worker, новый callback и публичная оплата не включены; merchant
+не вызывался. [Production cutover](payment-schema-cutover.md) содержит proof,
+границы и откат. Ниже описаны реализация и исходная локальная подготовка.
 
 20.10.2026: локальная подготовка L17. Служба **не установлена**, новые production
 DDL/grants и merchant-запросы не выполнялись. Это не завершение полного переноса.
@@ -73,10 +75,10 @@ adapter проверяет CA, оставляет rejectUnauthorized=true и SQL
 
 ## Что ещё требуется перед включением
 
-Применение production0019–0024, отдельного логина и точечных grants — отдельный
-согласованный шаг, не побочный эффект deploy. Подготовить private environment,
-supervisor с ограниченными правами/ресурсами/restart delay и bounded shutdown,
-затем настоящий `--check` на VPS. Активировать TEST callback только после этого.
+Production0019–0024, отдельный логин/точечные grants и настоящий `--check` уже
+прошли согласованный шаг. Одноразовая проверка не заменяет постоянный supervisor:
+нужны private environment, restart delay, bounded shutdown и мониторинг.
+TEST callback пока не активирован.
 Отдельно закончить admission создания платежа с текущей сессией/владельцем/
 approved revision, затем провести разрешённый sandbox E2E и проверить повторный
 callback/restart/историю. TEST-флаг не создаёт row-level изоляцию финансовой роли.
