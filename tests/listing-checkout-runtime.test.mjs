@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';import {test} from 'node:test';
 import * as boundary from '../src/lib/auth-http.ts';import * as config from '../src/lib/listing-checkout-config.ts';import {formModule} from './listing-form-module.mjs';
 import {createListingCheckoutHandler} from './listing-checkout-http-module.mjs';
+import * as dispatchConfig from '../src/lib/account-test-payment-config.ts';
 test('disabled checkout never loads auth/database; explicit preparation uses only account store and fails closed',async()=>{
  const names=['BLIZHNIY_LISTING_CHECKOUT','BLIZHNIY_PAYMENT_SHOP_ID','BLIZHNIY_PAYMENT_MODE','BLIZHNIY_PAYMENT_RECEIPT_VAT'],before=Object.fromEntries(names.map(name=>[name,process.env[name]]));
  let authCalls=0,dbCalls=0;const calls=[];
  const {handleListingCheckoutRequest}=formModule('listing-checkout-runtime',{
   './auth-http':boundary,'./listing-checkout-config.ts':config,
+  './account-test-payment-config.ts':dispatchConfig,'./account-test-listing-payment':{createAccountTestListingPayment:()=>assert.fail('dispatch must be disabled')},
   './production-auth-config':{readProductionAuthConfig:()=>{authCalls++;return{origin:'https://site.example.invalid'};}},
   './production-auth-runtime':{getProductionAccountDatabase:async()=>{dbCalls++;throw Error('private startup failure');}},
   './postgres-listing-checkout':{PostgresListingCheckoutStore:class{constructor(){assert.fail('database verification must finish first');}}},

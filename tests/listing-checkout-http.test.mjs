@@ -41,3 +41,11 @@ test('checkout maps access/conflict failures and unknown COMMIT to generic no-st
  const handle=createListingCheckoutHandler({origin},()=>({limiter:{allowProduction:async()=>false},store:{prepare:async()=>assert.fail()}}),()=>{});
  const response=await handle(request());assert.equal(response.status,429);assert.equal(response.headers.get('retry-after'),'900');
 });
+test('account TEST actions require exact cookie input and remain disabled unless explicitly composed',async()=>{
+ const base={store:{},limiter:{allowProduction:async()=>true}};
+ const disabled=createListingCheckoutHandler({origin},()=>base,()=>{});
+ assert.equal((await disabled(request({expectedOwnerId:owner,action:'dispatch',paymentId:id},'POST'))).status,503);
+ let calls=0;const handle=createListingCheckoutHandler({origin},()=>({...base,payments:{dispatch:async(token,user,paymentId)=>{calls++;assert.equal(token,'a'.repeat(64));assert.equal(user,owner);assert.equal(paymentId,id);return{confirmationUrl:null,isTest:true};}}}),()=>{});
+ assert.equal((await handle(request({expectedOwnerId:owner,action:'dispatch',paymentId:id,status:'succeeded'},'POST'))).status,422);assert.equal(calls,0);
+ const response=await handle(request({expectedOwnerId:owner,action:'dispatch',paymentId:id},'POST'));assert.equal(response.status,200);assert.deepEqual(await response.json(),{confirmationUrl:null,isTest:true});assert.equal(calls,1);
+});

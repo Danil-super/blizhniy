@@ -21,7 +21,7 @@ export function createPrimaryPaymentDispatcher(db:Pick<PostgresDatabase,'transac
  const intents=new PostgresPaymentIntentStore(db);
  const transport=createYooKassaTransport({fetch:fetcher,monotonicNow:()=>performance.now(),setTimeout,clearTimeout});
  return{
-  async dispatch(value:PaymentIntentBinding):Promise<LinkedCheckout>{
+  async dispatch(value:PaymentIntentBinding,beforePost?:()=>Promise<void>):Promise<LinkedCheckout>{
    const expected={...value};
    assertPrimaryYooKassaBinding(expected,Date.now());
    if(expected.shopId!==merchant.shopId||expected.isTest!==merchant.isTest)throw new YooKassaBoundaryError('YooKassa original merchant binding does not match');
@@ -46,6 +46,9 @@ export function createPrimaryPaymentDispatcher(db:Pick<PostgresDatabase,'transac
       if(permitted.decision==='recover')throw new KnownPaymentDiscovered(permitted.providerId);
       if(permitted.requestBody!==original)throw new YooKassaBoundaryError('YooKassa original request changed');
       shared.limit(permitted.remainingMs-Math.max(0,performance.now()-checkingAt));
+      // Purchase admission follows the potentially blocking canonical intent lock.
+      // The transport then checks the shared deadline immediately before fetch.
+      if(beforePost)await beforePost();
      }));
     }catch(error){
      if(error instanceof KnownPaymentDiscovered)return linked(await reader.read({...expected,providerPaymentId:error.id},budget));

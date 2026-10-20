@@ -1,7 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {withAppSessionTransaction,AppSessionAccessError} from './app-session-transaction';
+import {ListingDraftAccessError} from './postgres-listing-drafts';
 import {PostgresListingFormStore} from './postgres-listing-form';
-import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentIntent} from './postgres-payment-intents';
+import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentIntent,type PaymentIntentBinding} from './postgres-payment-intents';
 import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-contract.ts';
 import {parseListingCheckout,ListingCheckoutConflictError,ListingCheckoutUnavailableError,type ListingCheckoutInput} from './listing-checkout-contract.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';
@@ -59,6 +60,33 @@ export class PostgresListingCheckoutStore{
  async readIntent(token:string,owner:string,creationKey:unknown){
   const key=parseListingDraftId(creationKey);return this.owner(token,owner,async(tx,actor)=>{
    const row=await this.keyed(tx,actor,key);return row?display(row):null;
+  });
+ }
+ /** Fresh session/owner authority for a saved intent; only a new POST requires current purchase eligibility.
+  * A known provider ID remains recoverable after edits or tariff changes, never a new purchase.
+  */
+ async authorizeDispatch(token:string,owner:string,paymentId:unknown,requireCurrent=false):Promise<PaymentIntentBinding>{
+  const id=parseListingDraftId(paymentId);
+  return this.owner(token,owner,async(tx,actor)=>{
+   const row=(await tx.query<PaymentIntent&{status:string}>(`select i.id,i.owner_id as "ownerId",i.target_type as "targetType",i.target_id as "targetId",
+    i.target_revision::text as "targetRevision",i.tariff_id as "tariffId",i.amount::text,i.duration_days as "durationDays",
+    i.merchant_shop_id as "shopId",i.is_test as "isTest",i.request_body as "requestBody",o.status
+    from app.payment_orders o join app.payment_checkout_intents i on i.id=o.id and i.owner_id=o.owner_id
+     and i.target_type=o.target_type and i.target_id=o.target_id and i.target_revision=o.target_revision
+    where o.id=$1 and o.owner_id=$2 and o.target_type='listing' and i.merchant_shop_id=$3 and i.is_test=$4`,
+   [id,actor,this.config.shopId,this.config.isTest])).rows[0];
+   if(!row)throw new ListingDraftAccessError();
+   const {status,...input}=row,intent=parsePaymentIntent(input);
+   if(requireCurrent){
+    const known=(await tx.query('select provider_payment_id from app.payment_provider_links where intent_id=$1',[id])).rowCount===1;
+    if(!known){
+     if(status!=='created'||!JSON.parse(intent.requestBody).receipt)throw new ListingCheckoutUnavailableError();
+     const offer=await this.inspected(tx,actor,intent.targetId,intent.targetRevision);
+     if(offer.id!==intent.tariffId||offer.amount!==intent.amount||offer.durationDays!==intent.durationDays)throw new ListingCheckoutConflictError();
+    }
+   }
+   return{id:intent.id,ownerId:intent.ownerId,targetType:intent.targetType,targetId:intent.targetId,targetRevision:intent.targetRevision,
+    tariffId:intent.tariffId,amount:intent.amount,durationDays:intent.durationDays,shopId:intent.shopId,isTest:intent.isTest};
   });
  }
  /** Historical execution receipt, not a claim that the target is still public. No provider I/O. */

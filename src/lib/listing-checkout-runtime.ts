@@ -4,6 +4,8 @@ import {getProductionAccountDatabase} from './production-auth-runtime';
 import {PostgresListingCheckoutStore} from './postgres-listing-checkout';
 import {readListingCheckoutConfig} from './listing-checkout-config.ts';
 import {createListingCheckoutHandler} from './listing-checkout-http';
+import {readAccountTestPaymentConfig} from './account-test-payment-config.ts';
+import {createAccountTestListingPayment} from './account-test-listing-payment';
 
 export async function handleListingCheckoutRequest(request:Request){
  try{
@@ -14,7 +16,8 @@ export async function handleListingCheckoutRequest(request:Request){
   if(!config)return authJson({error:{code:'CHECKOUT_DISABLED'}},503);
   return await createListingCheckoutHandler(auth,async()=>{
    const {db,limiter}=await getProductionAccountDatabase(auth);
-   return{store:new PostgresListingCheckoutStore(db,config),limiter};
+   const store=new PostgresListingCheckoutStore(db,config),dispatch=readAccountTestPaymentConfig(process.env,config);
+   return{store,limiter,payments:dispatch?createAccountTestListingPayment(db,store,dispatch):null};
   })(request);
  }catch{return authJson({error:{code:'CHECKOUT_UNAVAILABLE'}},503);}
 }

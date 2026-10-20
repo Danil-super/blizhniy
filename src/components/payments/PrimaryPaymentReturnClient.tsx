@@ -6,9 +6,10 @@ import {listingPayment,ListingPaymentClientError} from '@/lib/client-listing-pay
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import type {ListingPaymentSnapshot} from '@/lib/postgres-listing-checkout';
 import {ListingPaymentStatus} from './ListingPaymentStatus';
+import {TestPaymentLaunch} from './TestPaymentLaunch';
 
 const button='inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:opacity-60';
-function StatusReader({owner,paymentId,visible}:{owner:string;paymentId:string;visible:boolean}){
+function StatusReader({owner,paymentId,visible,testCheckout}:{owner:string;paymentId:string;visible:boolean;testCheckout:boolean}){
  const [snapshot,setSnapshot]=useState<ListingPaymentSnapshot|null>(null),[loaded,setLoaded]=useState(false),[error,setError]=useState<string|null>(null),[busy,setBusy]=useState(false),[retry,setRetry]=useState(0);
  useEffect(()=>{
   if(!visible)return;
@@ -25,11 +26,12 @@ function StatusReader({owner,paymentId,visible}:{owner:string;paymentId:string;v
   {busy&&<p role="status" className="mb-4 text-sm text-slate-700">Получаем статус заказа…</p>}
   {error&&<p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm leading-6 text-rose-800">{error}</p>}
   {snapshot&&<>{(error||busy)&&<p className="mb-3 text-sm text-slate-700">Последний полученный статус. Актуальность пока не подтверждена.</p>}<ListingPaymentStatus snapshot={snapshot}/></>}
+  {testCheckout&&snapshot&&(snapshot.order.status==='created'||snapshot.order.status==='pending')&&<TestPaymentLaunch owner={owner} paymentId={paymentId} visible={visible}/>}
   {loaded&&!snapshot&&!error&&!busy&&<p role="status" className="text-sm leading-6 text-slate-700">Платёж недоступен. Проверьте ссылку и убедитесь, что вошли в аккаунт, из которого оформляли заказ.</p>}
   <div className="mt-5 flex flex-wrap gap-3"><button type="button" className={button} disabled={busy} onClick={()=>setRetry(value=>value+1)}>Проверить статус</button><Link href="/cabinet/obyavleniya" className={button}>Мои объявления</Link></div>
  </div>;
 }
-export function PrimaryPaymentReturnClient({paymentId}:{paymentId:string}){
+export function PrimaryPaymentReturnClient({paymentId,testCheckout=false}:{paymentId:string;testCheckout?:boolean}){
  const auth=usePrimaryAccountAuth(),owner=auth&&(auth.state==='signed-in'||auth.state==='admin')?auth.userId:null;
  const [scope,setScope]=useState(owner);
  if(owner&&owner!==scope)setScope(owner);if(auth?.state==='signed-out'&&scope)setScope(null);
@@ -38,7 +40,7 @@ export function PrimaryPaymentReturnClient({paymentId}:{paymentId:string}){
   <section aria-label="Статус оплаты" className="w-full min-w-0 max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-card sm:p-6">
    <h1 className="mb-4 text-2xl font-bold text-slate-950">Оплата размещения</h1>
    {!visible&&<div role="status" className="text-sm leading-6 text-slate-700">{auth?.state==='signed-out'?<><p>Войдите в аккаунт, из которого оформляли заказ.</p><Link className={`${button} mt-4`} href={`/auth?returnTo=${encodeURIComponent(`/oplata/${paymentId}`)}`}>Войти и проверить оплату</Link></>:<><p>Проверяем доступ. Данные заказа временно скрыты.</p>{(!auth||auth.state==='unavailable')&&<button type="button" className={`${button} mt-4`} onClick={()=>notifyAccountSessionChange(false)}>Повторить проверку входа</button>}</>}</div>}
-   {scope&&<StatusReader key={`${scope}:${paymentId}`} owner={scope} paymentId={paymentId} visible={visible}/>}
+   {scope&&<StatusReader key={`${scope}:${paymentId}`} owner={scope} paymentId={paymentId} visible={visible} testCheckout={testCheckout}/>}
   </section>
  </main>;
 }
