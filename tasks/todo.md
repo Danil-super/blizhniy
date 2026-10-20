@@ -2,6 +2,19 @@
 
 Статусы фиксируют только проверенный результат. Общие условия — [plan.md](plan.md); архитектурное решение — [ADR-001](../docs/decisions/0001-two-server-postgresql.md).
 
+20.10.2026: по разрешению владельца начата [настоящая TEST-проверка ЮKassa](../docs/payment-provider-test.md)
+с российского VPS. Закрытый синтетический заказ199.00RUB принят провайдером,
+связан и подтверждён независимым GET как pending; повтор dispatch делает только
+GET/GET без второго POST. Выявлены реальные400 receipt/email, исходные заказы
+не переписывались/не удалялись. Новый операторский probe требует blocked
+technical owner без сессий, exact approved draft/receipt/merchant binding;
+никогда не вызывает fulfillment/queue. Публичная оплата и LIVE не включены,
+DDL/grants/Auth/SSH не менялись. Изолированный Chromium завершил оплату
+официальной тестовой картой; независимый GET в08:37:31UTC подтвердил succeeded
+в рабочем журнале, без публикации/fulfillment/queue. Native1610/PG330 без skips,
+build/types/lint без ошибок, прежние warning/audit риски не скрывались.
+Полный перенос/L17–L20 ещё не завершены.
+
 20.10.2026: после согласия владельца TEST-подготовка заказа установлена через
 PR109 в main284f0fe, workflow39390235338 полностью success. В БД выданы ровно40
 column privileges трёх таблиц; прежние права Auth/предметных разделов и worker
