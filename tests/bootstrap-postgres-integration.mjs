@@ -250,6 +250,8 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testPrimaryPaymentDispatch(suite, client, config, credentials);
     const { testPaymentReconciliation } = await import("./payment-reconciliation-integration.mjs");
     await testPaymentReconciliation(suite, client, config);
+    const { testPaymentReconciliationRole } = await import("./payment-reconciliation-role-integration.mjs");
+    await testPaymentReconciliationRole(suite, client, config, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));
