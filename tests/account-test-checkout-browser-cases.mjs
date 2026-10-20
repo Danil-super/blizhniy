@@ -44,5 +44,6 @@ export async function testAccountCheckoutBrowser({context,page,origin,owner,id,r
  await page.getByRole('button',{name:'Восстановить переход к оплате',exact:true}).click();await page.waitForURL('https://yoomoney.ru/checkout');
  assert.equal(calls.filter(call=>call.method==='PUT').length,1);assert.equal(calls.filter(call=>call.body.action==='dispatch').length,2);
  status='succeeded';await page.goto(origin+'/oplata/'+paymentId);await page.getByRole('heading',{name:'Оплата подтверждена',exact:true}).waitFor();
+ await page.getByText('TEST-платёж успешно проверен. Реальные деньги не списывались. Объявление не публикуется за тестовую оплату.',{exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Перейти в ЮKassa (TEST)',exact:true}).count(),0);assert.equal(calls.filter(call=>call.body.action==='dispatch').length,2);
 }

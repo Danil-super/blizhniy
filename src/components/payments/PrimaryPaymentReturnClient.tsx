@@ -25,7 +25,7 @@ function StatusReader({owner,paymentId,visible,testCheckout}:{owner:string;payme
  return <div hidden={!visible} inert={!visible} aria-busy={busy} className="min-w-0">
   {busy&&<p role="status" className="mb-4 text-sm text-slate-700">Получаем статус заказа…</p>}
   {error&&<p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm leading-6 text-rose-800">{error}</p>}
-  {snapshot&&<>{(error||busy)&&<p className="mb-3 text-sm text-slate-700">Последний полученный статус. Актуальность пока не подтверждена.</p>}<ListingPaymentStatus snapshot={snapshot}/></>}
+  {snapshot&&<>{(error||busy)&&<p className="mb-3 text-sm text-slate-700">Последний полученный статус. Актуальность пока не подтверждена.</p>}<ListingPaymentStatus snapshot={snapshot} testMode={testCheckout}/></>}
   {testCheckout&&snapshot&&(snapshot.order.status==='created'||snapshot.order.status==='pending')&&<TestPaymentLaunch owner={owner} paymentId={paymentId} visible={visible}/>}
   {loaded&&!snapshot&&!error&&!busy&&<p role="status" className="text-sm leading-6 text-slate-700">Платёж недоступен. Проверьте ссылку и убедитесь, что вошли в аккаунт, из которого оформляли заказ.</p>}
   <div className="mt-5 flex flex-wrap gap-3"><button type="button" className={button} disabled={busy} onClick={()=>setRetry(value=>value+1)}>Проверить статус</button><Link href="/cabinet/obyavleniya" className={button}>Мои объявления</Link></div>

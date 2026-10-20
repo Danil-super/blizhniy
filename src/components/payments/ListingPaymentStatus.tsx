@@ -1,12 +1,12 @@
 import type {ListingPaymentSnapshot} from '@/lib/postgres-listing-checkout';
 
-export function ListingPaymentStatus({snapshot}:{snapshot:ListingPaymentSnapshot}){
+export function ListingPaymentStatus({snapshot,testMode=false}:{snapshot:ListingPaymentSnapshot;testMode?:boolean}){
  const {order,fulfillment}=snapshot;
  let title:string,message:string;
  if(order.status==='refunded'){title='Средства возвращены';message='Возврат отмечен сервером. Актуальное состояние объявления можно посмотреть в кабинете.';}
  else if(order.status==='failed'){title='Платёж отменён';message='Этот платёж не завершён. Проверьте состояние объявления в кабинете перед новой оплатой.';}
  else if(fulfillment){title='Размещение выполнено';message='Оплата подтверждена, размещение выполнено. Текущее состояние объявления и срок публикации доступны в кабинете.';}
- else if(order.status==='succeeded'){title='Оплата подтверждена';message='Размещение ещё не подтверждено. Не оплачивайте повторно; проверьте статус позже.';}
+ else if(order.status==='succeeded'){title='Оплата подтверждена';message=testMode?'TEST-платёж успешно проверен. Реальные деньги не списывались. Объявление не публикуется за тестовую оплату.':'Размещение ещё не подтверждено. Не оплачивайте повторно; проверьте статус позже.';}
  else if(order.status==='pending'){title='Платёж обрабатывается';message='Окончательный ответ ещё не получен. Не создавайте новый платёж — проверьте этот заказ позже.';}
  else{title='Заказ подготовлен';message='Переход к оплате ещё не начат. Само создание заказа не означает списания денег.';}
  return <div role="status" aria-live="polite">
