@@ -1,32 +1,12 @@
 // Explicit operator command, never invoked by app startup or the deployment pipeline.
-import { createHash } from "node:crypto";
-import { readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { readPostgresConfig, PostgresError } from "../src/lib/postgres.ts";
 import { region, cities, categories, professions, tariffs } from "../src/lib/data.ts";
 
-const names = ["0001-identity.sql", "0002-registration.sql", "0003-auth-rate-limits.sql",
-  "0004-password-recovery.sql", "0005-reference-catalog.sql", "0006-media-reservations.sql", "0007-media-write-attempts.sql"];
-
-export function getBootstrapPlan({ includeMail = false, includeProfiles = false, includeListings = false, includeListingPhotos = false, includeListingModeration = false, includeConfirmationNotice = false, includeWorkPublications = false, includeServicePublications = false, includeInteractions = false } = {}) {
-  if ([includeMail, includeProfiles, includeListings, includeListingPhotos, includeListingModeration, includeConfirmationNotice, includeWorkPublications, includeServicePublications, includeInteractions].some(value => typeof value !== "boolean")) throw new Error("Invalid bootstrap option");
-  const mail = [...names, "0008-mail-outbox.sql", "0009-mail-delivery.sql", "0010-production-rate-limits.sql"];
-  const account = [...mail, "0011-cabinet-profiles.sql"];
-  const listings = [...account, "0012-listings.sql"];
-  const photos = [...listings, "0013-listing-photos.sql"];
-  const moderation = [...photos, "0014-listing-moderation.sql"];
-  const notice = [...moderation, "0015-confirmation-notice.sql"];
-  const work = [...notice, "0016-work-publications.sql"];
-  const services = [...work, "0017-service-publications.sql"];
-  const approved = includeInteractions ? [...services, "0018-interactions.sql"] : includeServicePublications ? services : includeWorkPublications ? work : includeConfirmationNotice ? notice : includeListingModeration ? moderation : includeListingPhotos ? photos : includeListings ? listings : includeProfiles ? account : includeMail ? mail : names;
-  return approved.map(name => {
-    const source = readFileSync(new URL(`../database/migrations/${name}`, import.meta.url), "utf8");
-    if (!/^begin;$/m.test(source) || !/commit;\s*$/.test(source)) throw new Error("Invalid bootstrap migration");
-    return { name, sha256: createHash("sha256").update(source).digest("hex"),
-      sql: source.replace(/^begin;\r?\n/m, "").replace(/commit;\s*$/, "") };
-  });
-}
+import {getBootstrapPlan} from './postgres-migration-plan.mjs';
+export {getBootstrapPlan} from './postgres-migration-plan.mjs';
 
 export function getReferenceSeed() {
   const alphabet = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя";
@@ -75,11 +55,11 @@ export async function bootstrapPostgres(client, confirmation, options = {}) {
     const { rows: [journal] } = await client.query("select to_regclass('blizhniy_meta.migrations') is not null as present");
     if (!journal.present) {
       const relations = await client.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
-        where n.nspname not like 'pg_%' and n.nspname<>'information_schema'
+        where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema'
         and not exists(select 1 from pg_depend d where d.classid='pg_class'::regclass and d.objid=c.oid and d.deptype='e') limit 1`);
-      const schemas = await client.query("select 1 from pg_namespace where nspname not like 'pg_%' and nspname not in ('public','information_schema') limit 1");
+      const schemas = await client.query("select 1 from pg_namespace where left(nspname,3)<>'pg_' and nspname not in ('public','information_schema') limit 1");
       const functions = await client.query(`select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-        where n.nspname not like 'pg_%' and n.nspname<>'information_schema'
+        where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema'
         and not exists(select 1 from pg_depend d where d.classid='pg_proc'::regclass and d.objid=p.oid and d.deptype='e') limit 1`);
       if (relations.rowCount || schemas.rowCount || functions.rowCount) throw new BootstrapError("Refusing to initialize a foreign or untracked database");
       await client.query(`create schema blizhniy_meta; revoke all on schema blizhniy_meta from public;

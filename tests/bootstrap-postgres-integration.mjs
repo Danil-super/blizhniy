@@ -77,6 +77,14 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
       await guard.query("drop view public.foreign_view;create schema foreign_namespace");
       await assert.rejects(bootstrapPostgres(guard,"127.0.0.1:bootstrap_guard"), /foreign or untracked/);
     });
+    await suite.test("a pg-prefixed user schema remains foreign and is never adopted as an empty database", async () => {
+      await client.query("create schema pgbackup_bootstrap_probe");
+      try {
+        await assert.rejects(bootstrapPostgres(client,target), /foreign or untracked/);
+        assert.equal((await client.query("select to_regnamespace('blizhniy_meta') is null as absent")).rows[0].absent,true);
+        assert.equal((await client.query("select to_regnamespace('pgbackup_bootstrap_probe') is not null as present")).rows[0].present,true);
+      }finally {await client.query("drop schema pgbackup_bootstrap_probe");}
+    });
     await suite.test("first bootstrap installs seven migrations and no user/payment records", async () => {
       assert.deepEqual(await bootstrapPostgres(client,target), {applied:7,users:0,categories:105,tariffs:7,cities:26,professions:14});
       const recorded=(await client.query("select name,sha256 from blizhniy_meta.migrations order by name")).rows;
@@ -238,6 +246,22 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testBookings(suite, client, config, credentials);
     const { testPublicListingStore } = await import("./public-listing-store-integration.mjs");
     await testPublicListingStore(suite, client, config, credentials);
+    const { testPaymentIntents } = await import("./payment-intents-integration.mjs");
+    await testPaymentIntents(suite, client, config, credentials);
+    const { testListingCheckout } = await import("./listing-checkout-integration.mjs");
+    await testListingCheckout(suite, client, config, credentials);
+    const { testPaymentVerification } = await import("./payment-verification-integration.mjs");
+    await testPaymentVerification(suite, client, config, credentials);
+    const { testListingPaymentFulfillment } = await import("./listing-payment-fulfillment-integration.mjs");
+    await testListingPaymentFulfillment(suite, client, config);
+    const { testPrimaryPaymentDispatch } = await import("./primary-payment-dispatch-integration.mjs");
+    await testPrimaryPaymentDispatch(suite, client, config, credentials);
+    const { testPaymentReconciliation } = await import("./payment-reconciliation-integration.mjs");
+    await testPaymentReconciliation(suite, client, config);
+    const { testPaymentReconciliationRole } = await import("./payment-reconciliation-role-integration.mjs");
+    await testPaymentReconciliationRole(suite, client, config, credentials);
+    const { testListingCheckoutPermissions } = await import("./listing-checkout-permissions-integration.mjs");
+    await testListingCheckoutPermissions(suite, client, config, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));

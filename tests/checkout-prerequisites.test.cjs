@@ -33,6 +33,8 @@ function fixture(entry, { config = {}, email = payerEmail, authenticated = true,
   const tariff = { id: body.tariffId || (routeName === 'applications' ? 'job-response' : 'fair-participation'), action, price: 300, durationDays: 30, active: true };
   const env = { NODE_ENV: 'production', PAYMENT_PROVIDER: 'yookassa', YOOKASSA_SHOP_ID: 'synthetic-shop', YOOKASSA_SECRET_KEY: 'test_synthetic_not_a_credential', YOOKASSA_RECEIPTS_ENABLED: 'true', YOOKASSA_RECEIPT_VAT_CODE: '1', ...config };
   const provider = execute('src/lib/payment-provider.ts', {
+    '@/lib/yookassa-payment-contract': require('./yookassa-contract-module.cjs'),
+    '@/lib/yookassa-transport': require('./yookassa-transport-module.cjs'),
     '@/lib/mock-store': { listMockPayments: () => [], markPaymentTargetSucceeded: () => { throw new Error('Unexpected demo publication'); } },
     '@/lib/payment-store': {
       canStorePayment: value => Boolean(value.targetId),

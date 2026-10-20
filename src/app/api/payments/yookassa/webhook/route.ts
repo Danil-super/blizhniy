@@ -5,6 +5,10 @@ import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const mode = process.env.BLIZHNIY_AUTH_MODE;
+  if (mode && mode !== "local") {
+    return NextResponse.json({ error: { code: "LEGACY_WEBHOOK_DISABLED" } }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
   if (!isSupabaseServiceRoleConfigured()) {
     return NextResponse.json({ ok: false, error: "Payment storage is unavailable" }, { status: 503 });
   }
