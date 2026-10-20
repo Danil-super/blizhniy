@@ -18,3 +18,12 @@ test('primary return page never mounts the legacy payment component in postgres 
  try{for(const mode of ['postgres','unknown','local','']){process.env.BLIZHNIY_AUTH_MODE=mode;assert.equal(renderToStaticMarkup(await Page({params:Promise.resolve({paymentId:'synthetic'})})),`<p>${!mode||mode==='local'?'legacy':'primary'}</p>`);}}
  finally{if(previous===undefined)delete process.env.BLIZHNIY_AUTH_MODE;else process.env.BLIZHNIY_AUTH_MODE=previous;}
 });
+test('TEST success explains that real money and production publication are not involved',()=>{
+ const {ListingPaymentStatus}=load('src/components/payments/ListingPaymentStatus.tsx',{});
+ const snapshot={order:{status:'succeeded',amount:'199.99',durationDays:30},fulfillment:null};
+ const testHtml=renderToStaticMarkup(React.createElement(ListingPaymentStatus,{snapshot,testMode:true}));
+ assert.match(testHtml,/TEST-платёж успешно проверен/);assert.match(testHtml,/Реальные деньги не списывались/);
+ assert.match(testHtml,/Объявление не публикуется за тестовую оплату/);assert.doesNotMatch(testHtml,/проверьте статус позже/);
+ const ordinaryHtml=renderToStaticMarkup(React.createElement(ListingPaymentStatus,{snapshot}));
+ assert.match(ordinaryHtml,/Размещение ещё не подтверждено/);assert.doesNotMatch(ordinaryHtml,/TEST-платёж/);
+});
