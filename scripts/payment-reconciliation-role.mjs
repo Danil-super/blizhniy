@@ -35,7 +35,8 @@ export function getPaymentReconciliationRolePlan(database) {
 }
 
 /** Read-only startup check for this dedicated financial role, never an owner-role fallback.
- * Requires the journal, exact effective column ACLs, no memberships/grant options, and active lock guards.
+ * Requires the journal, exact column ACLs, no worker memberships/grant options, and active lock guards.
+ * Approved managed-PG exception: bootstrap postgres -> gen_user ADMIN only, never INHERIT/SET.
  * It does not authenticate a merchant or turn TEST into database row-level isolation.
  */
 export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
@@ -47,7 +48,12 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
    const identity=(await tx.query(`select current_user as name,session_user as login,current_database() as database,
     current_setting('server_version_num')::integer as version,current_setting('transaction_read_only') as readonly,
     current_setting('session_replication_role') as replication,rolsuper,rolcreatedb,rolcreaterole,rolinherit,rolreplication,rolbypassrls,rolcanlogin,rolconnlimit,
-    exists(select 1 from pg_auth_members m where m.roleid=r.oid or m.member=r.oid) as membership,
+    exists(select 1 from pg_auth_members m where (m.roleid=r.oid or m.member=r.oid) and not (
+     m.roleid=r.oid and m.admin_option and not m.inherit_option and not m.set_option and
+     exists(select 1 from pg_roles issuer join pg_roles grantor on grantor.oid=m.grantor
+      where issuer.oid=m.member and issuer.rolname='gen_user' and issuer.rolcreaterole and not issuer.rolsuper
+       and grantor.rolname='postgres' and grantor.rolsuper)
+    )) as membership,
     has_database_privilege(current_database(),'CONNECT') as connect,
     has_database_privilege(current_database(),'CREATE,TEMP,CONNECT WITH GRANT OPTION') as database_extra,
     has_parameter_privilege('session_replication_role','SET,ALTER SYSTEM') as replication_override

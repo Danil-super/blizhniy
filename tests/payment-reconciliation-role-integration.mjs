@@ -47,6 +47,42 @@ export async function testPaymentReconciliationRole(suite,admin,config,credentia
    await assert.rejects(verifyPaymentReconciliationDatabase(ownerDb,{database:config.database}),{message:'Payment reconciliation database preflight failed'});
    await assert.rejects(verifyPaymentReconciliationDatabase(db,{database:'wrong_target'}),{message:'Payment reconciliation database preflight failed'});
   });
+  await suite.test('preflight accepts only the approved bootstrap-granted gen_user administrative membership and rejects every unsafe variant',async()=>{
+   await admin.query('create role gen_user nologin createrole nosuperuser; create role reconciliation_admin_probe nologin');
+   const original=`grant ${role} to gen_user with admin true,inherit false,set false`;
+   await admin.query(original);await check();
+   const changes=[
+    [`grant ${role} to gen_user with inherit true`,`grant ${role} to gen_user with inherit false`],
+    [`grant ${role} to gen_user with set true`,`grant ${role} to gen_user with set false`],
+    [`grant ${role} to gen_user with admin false`,original],
+    ['alter role gen_user nocreaterole','alter role gen_user createrole'],
+    ['alter role gen_user superuser','alter role gen_user nosuperuser'],
+    [`grant ${role} to reconciliation_admin_probe with admin true,inherit false,set false`,`revoke ${role} from reconciliation_admin_probe`],
+    [`grant reconciliation_admin_probe to ${role}`,`revoke reconciliation_admin_probe from ${role}`],
+    [`grant ${role} to gen_user with admin false,inherit false,set false granted by gen_user`,`revoke ${role} from gen_user granted by gen_user`],
+   ];
+   for(const [change,restore] of changes){
+    await admin.query(change);
+    try{await assert.rejects(check(),{message:'Payment reconciliation database preflight failed'});}
+    finally{await admin.query(restore);}
+    await check();
+   }
+   assert.equal((await admin.query("select count(*)::int as n from pg_auth_members where roleid=(select oid from pg_roles where rolname=$1)",[role])).rows[0].n,1);
+  });
+  await suite.test('SET membership rejection is causal: removing only its SQL condition admits the unsafe fixture',async()=>{
+   await admin.query(`grant ${role} to gen_user with set true`);
+   try{
+    await assert.rejects(check(),{message:'Payment reconciliation database preflight failed'});
+    let mutations=0;
+    const mutated={transaction:(work,options)=>db.transaction(tx=>work({query:(sql,values)=>{
+     const altered=sql.replace('not m.set_option','true');if(altered!==sql)mutations++;
+     return tx.query(altered,values);
+    }}),options)};
+    await assert.doesNotReject(verifyPaymentReconciliationDatabase(mutated,{database:config.database}));
+    assert.equal(mutations,1);
+   }finally{await admin.query(`grant ${role} to gen_user with set false`);}
+   await check();
+  });
   await suite.test('preflight inspects user schemas beginning with pg without hiding schema, column, table, sequence or function privileges',async()=>{
    await admin.query('create schema pgbackup_acl_probe; create table pgbackup_acl_probe.probe(id integer); create sequence pgbackup_acl_probe.counter; create function pgbackup_acl_probe.probe() returns integer language sql as $$ select 1 $$; revoke execute on function pgbackup_acl_probe.probe() from public');
    try {
