@@ -59,23 +59,23 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
    if(journal.length!==plan.length||journal.some((item,index)=>item.name!==plan[index].name||item.sha256!==plan[index].sha256))throw new Error('Invalid journal');
    const schemas=(await tx.query(`select nspname as name,has_schema_privilege(oid,'USAGE') as usage,
     has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace
-    where nspname not like 'pg_%' and nspname<>'information_schema'`)).rows;
+    where left(nspname,3)<>'pg_' and nspname<>'information_schema'`)).rows;
    if(!['app','blizhniy_meta'].every(name=>schemas.some(item=>item.name===name&&item.usage===true))||
     schemas.some(item=>item.extra!==false||(item.usage&&!['app','blizhniy_meta','public'].includes(item.name))))throw new Error('Invalid schema privileges');
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
     from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid
     cross join (values('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) as p(privilege)
-    where n.nspname not like 'pg_%' and n.nspname<>'information_schema' and c.relkind in ('r','p','v','m','f')
+    where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema' and c.relkind in ('r','p','v','m','f')
      and a.attnum>0 and not a.attisdropped and has_column_privilege(c.oid,a.attnum,p.privilege) limit 10001`)).rows;
    const expected=new Set(Object.entries(policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
    if(actual.length!==expected.size||actual.some(item=>item.grantable!==false||!expected.delete(item.key))||expected.size)throw new Error('Invalid column privileges');
    const dangerous=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
-    where n.nspname not like 'pg_%' and n.nspname<>'information_schema' and
+    where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema' and
      ((c.relkind in ('r','p','v','m','f') and has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN')) or
       (c.relkind='S' and has_sequence_privilege(c.oid,'USAGE,SELECT,UPDATE'))) limit 1`);
    const functions=await tx.query(`select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-    where n.nspname not like 'pg_%' and n.nspname<>'information_schema' and has_function_privilege(p.oid,'EXECUTE') limit 1`);
+    where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema' and has_function_privilege(p.oid,'EXECUTE') limit 1`);
    if(dangerous.rows.length||functions.rows.length)throw new Error('Invalid object privileges');
    const guardBody=plan.at(-1).sql.match(/as \$\$([\s\S]*?)\$\$;/)?.[1];
    if(!guardBody)throw new Error('Invalid guard source');

@@ -81,11 +81,11 @@ export async function bootstrapPostgres(client, confirmation, options = {}) {
     const { rows: [journal] } = await client.query("select to_regclass('blizhniy_meta.migrations') is not null as present");
     if (!journal.present) {
       const relations = await client.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
-        where n.nspname not like 'pg_%' and n.nspname<>'information_schema'
+        where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema'
         and not exists(select 1 from pg_depend d where d.classid='pg_class'::regclass and d.objid=c.oid and d.deptype='e') limit 1`);
-      const schemas = await client.query("select 1 from pg_namespace where nspname not like 'pg_%' and nspname not in ('public','information_schema') limit 1");
+      const schemas = await client.query("select 1 from pg_namespace where left(nspname,3)<>'pg_' and nspname not in ('public','information_schema') limit 1");
       const functions = await client.query(`select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-        where n.nspname not like 'pg_%' and n.nspname<>'information_schema'
+        where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema'
         and not exists(select 1 from pg_depend d where d.classid='pg_proc'::regclass and d.objid=p.oid and d.deptype='e') limit 1`);
       if (relations.rowCount || schemas.rowCount || functions.rowCount) throw new BootstrapError("Refusing to initialize a foreign or untracked database");
       await client.query(`create schema blizhniy_meta; revoke all on schema blizhniy_meta from public;

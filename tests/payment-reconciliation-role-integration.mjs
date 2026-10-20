@@ -47,6 +47,25 @@ export async function testPaymentReconciliationRole(suite,admin,config,credentia
    await admin.query('create role reconciliation_member_probe nologin');
    const originalHash=plan.journal[0].sha256;
    const restoreFunction=getBootstrapPlan(options).at(-1).sql.match(/create function app\.guard_reconciliation_locks\(\)[\s\S]*?\$\$;/)[0].replace('create function','create or replace function');
+  await suite.test('preflight inspects user schemas beginning with pg without hiding schema, column, table, sequence or function privileges',async()=>{
+   await admin.query('create schema pgbackup_acl_probe; create table pgbackup_acl_probe.probe(id integer); create sequence pgbackup_acl_probe.counter; create function pgbackup_acl_probe.probe() returns integer language sql as $$ select 1 $$; revoke execute on function pgbackup_acl_probe.probe() from public');
+   try {
+    await check();
+    const changes=[
+     [`grant usage,create on schema pgbackup_acl_probe to ${role}`,`revoke usage,create on schema pgbackup_acl_probe from ${role}`],
+     [`grant select(id) on pgbackup_acl_probe.probe to ${role}`,`revoke select(id) on pgbackup_acl_probe.probe from ${role}`],
+     [`grant delete on pgbackup_acl_probe.probe to ${role}`,`revoke delete on pgbackup_acl_probe.probe from ${role}`],
+     [`grant usage on sequence pgbackup_acl_probe.counter to ${role}`,`revoke usage on sequence pgbackup_acl_probe.counter from ${role}`],
+     [`grant execute on function pgbackup_acl_probe.probe() to ${role}`,`revoke execute on function pgbackup_acl_probe.probe() from ${role}`],
+    ];
+    for(const [change,restore] of changes) {
+     await admin.query(change);
+     try {await assert.rejects(check(),{message:'Payment reconciliation database preflight failed'});}
+     finally {await admin.query(restore);}
+     await check();
+    }
+   }finally {await admin.query('drop function pgbackup_acl_probe.probe(); drop sequence pgbackup_acl_probe.counter; drop table pgbackup_acl_probe.probe; drop schema pgbackup_acl_probe');}
+  });
    const changes=[
     [`grant select(email) on app.users to ${role}`,`revoke select(email) on app.users from ${role}`],
     [`grant update(role) on app.users to ${role}`,`revoke update(role) on app.users from ${role}`],
