@@ -58,17 +58,12 @@ function AdminNavPills({ activeHref }: { activeHref: string }) {
   );
 }
 
-export function AdminShell({
-  activeHref,
+type ShellProps={activeHref:string;children:ReactNode;description:string;title:string};
+function AdminFrame({
   children,
   description,
   title,
-}: {
-  activeHref: string;
-  children: ReactNode;
-  description: string;
-  title: string;
-}) {
+}: Omit<ShellProps,'activeHref'>) {
   return (
     <>
       <SiteHeader />
@@ -78,11 +73,18 @@ export function AdminShell({
           <h1 className="text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">{title}</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 [overflow-wrap:anywhere] sm:mt-3 sm:text-lg sm:leading-7">{description}</p>
         </div>
-        <AdminAuthGate>
-          <AdminNavPills activeHref={activeHref} />
-          <div className="mt-5 sm:mt-7">{children}</div>
-        </AdminAuthGate>
+        {children}
       </main>
     </>
   );
+}
+
+export function AdminShell(props:ShellProps){
+ return <AdminFrame {...props}><AdminAuthGate><AdminNavPills activeHref={props.activeHref}/><div className="mt-5 sm:mt-7">{props.children}</div></AdminAuthGate></AdminFrame>;
+}
+/** Primary workspaces keep their own actor-scoped state and remove private DOM during rechecks.
+ * Do not wrap their state in a gate that unmounts it on a transient session refresh.
+ */
+export function AdminWorkspaceShell(props:ShellProps){
+ return <AdminFrame {...props}><AdminAuthGate><AdminNavPills activeHref={props.activeHref}/></AdminAuthGate><div className="mt-5 sm:mt-7">{props.children}</div></AdminFrame>;
 }

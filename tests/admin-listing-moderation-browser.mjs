@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';import {test} from 'node:test';import {s
 import {createServer} from 'node:net';import {mkdtemp,writeFile,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {rootCertificates} from 'node:tls';import {randomBytes} from 'node:crypto';import {createRequire} from 'node:module';import {chromium} from 'playwright';import sharp from 'sharp';
 import {parseListingFormDraft} from '../src/lib/listing-form-contract.ts';
+import {testAdminOverviewBrowser} from './admin-overview-browser-cases.mjs';
 test('moderator reviews private photos, preserves a rejection reason through session recheck and resolves an unknown decision',{timeout:90000},async()=>{
  const directory=await mkdtemp(join(tmpdir(),'blizhniy-moderation-browser-'));let app,browser,page;
  try{
@@ -40,6 +41,7 @@ test('moderator reviews private photos, preserves a rejection reason through ses
   await page.getByRole('button',{name:'Отклонить с причиной',exact:true}).click();await page.getByText('Результат не подтверждён. Перечитайте запрос перед повторным решением.',{exact:true}).waitFor();
   assert.equal(writes.length,1);assert.equal(await page.getByRole('button',{name:'Одобрить для оплаты',exact:true}).isDisabled(),true);
   await page.getByRole('button',{name:'Сверить решение',exact:true}).click();await page.getByText('Отклонено: Исправьте фотографию',{exact:true}).waitFor();assert.equal(writes.length,1);
+  assert.equal(await page.getByRole('region',{name:'Очередь модерации'}).getByRole('button',{name:form.title,exact:true}).count(),0,'a read-back decided request must leave the pending queue');
   await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
   for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
    const violations=await page.evaluate(async()=>{const result=await window.axe.run(document.querySelector('section[aria-label="Проверка объявления модератором"]'));return result.violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id);});assert.deepEqual(violations,[]);
@@ -51,6 +53,7 @@ test('moderator reviews private photos, preserves a rejection reason through ses
   assert.equal(writes.length,2);assert.equal(writes[1].state,'approved');assert.equal(writes[1].note,null);assert.equal(await page.getByRole('button',{name:'Оплатить',exact:true}).count(),0);
   active='52345678-1234-4321-8765-123456789abc';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.getByText('Доступ администратора не подтверждён.',{exact:true}).waitFor();
   assert.equal(await page.getByText(form.description,{exact:true}).count(),0);assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
+  await testAdminOverviewBrowser({context,page,origin});assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
  }finally{
   await browser?.close();if(app?.pid){const closed=once(app,'exit');try{process.kill(-app.pid,'SIGTERM');}catch(error){assert.equal(error.code,'ESRCH');}await closed;}
   assert.ok(directory.startsWith(join(tmpdir(),'blizhniy-moderation-browser-')));await rm(directory,{recursive:true,force:true});

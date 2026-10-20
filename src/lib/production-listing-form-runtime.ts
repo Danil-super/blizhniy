@@ -9,7 +9,7 @@ export async function handleProductionListingFormRequest(request:Request){
   return await createProductionListingFormHandler(config,async()=>{
    const {db,limiter}=await getProductionAccountDatabase(config);
    await db.query('select district,address,latitude,longitude,show_exact_address,contact_phone,messenger_url,booking from app.listings limit 0');
-   return{store:new PostgresListingFormStore(db),limiter};
+   return{store:new PostgresListingFormStore(db,{contactMethod:process.env.BLIZHNIY_LISTING_CONTACT_METHOD==='enabled'}),limiter};
   })(request);
  }catch{return authJson({error:{code:'FORM_UNAVAILABLE'}},503);}
 }

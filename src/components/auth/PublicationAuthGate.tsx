@@ -12,14 +12,16 @@ type PublicationAuthGateProps = {
   children: ReactNode;
   title?: string;
   preserveDraftDuringRecheck?: boolean;
+  expectedOwnerId?:string;
 };
 
-function PrimaryDraftGate({children,title}:{children:ReactNode;title:string}){
+function PrimaryDraftGate({children,title,expectedOwnerId}:{children:ReactNode;title:string;expectedOwnerId?:string}){
   const auth=usePrimaryAccountAuth(),owner=auth?.state==='signed-in'||auth?.state==='admin'?auth.userId:null;
   const [scopeOwner,setScopeOwner]=useState(owner);
   if(owner&&owner!==scopeOwner)setScopeOwner(owner);
   if(auth?.state==='signed-out'&&scopeOwner)setScopeOwner(null);
   const visible=owner!==null&&owner===scopeOwner;
+  if(owner&&expectedOwnerId&&owner!==expectedOwnerId)return <main className="page-container py-10"><p role="alert">Аккаунт изменился. Откройте своё объявление из личного кабинета.</p><Link href="/cabinet/obyavleniya">Мои объявления</Link></main>;
   if(!scopeOwner)return <main className="page-container py-10"><section className="mx-auto max-w-2xl"><h1 className="mb-5 text-2xl font-bold">{title}</h1>
     {auth?.state==='signed-out'?<LocalAccountForm production headingLevel="h2"/>:<p role="status">Проверяем вход…</p>}</section></main>;
   return <>{!visible&&<div className="page-container py-6" role="status"><p>Проверяем вход. Заполненная форма скрыта до подтверждения аккаунта.</p>
@@ -27,7 +29,7 @@ function PrimaryDraftGate({children,title}:{children:ReactNode;title:string}){
     <div key={scopeOwner} hidden={!visible} inert={!visible}>{children}</div></>;
 }
 
-export function PublicationAuthGate({ children, title = "Войдите, чтобы разместить публикацию",preserveDraftDuringRecheck=false }: PublicationAuthGateProps) {
+export function PublicationAuthGate({ children, title = "Войдите, чтобы разместить публикацию",preserveDraftDuringRecheck=false,expectedOwnerId }: PublicationAuthGateProps) {
   const { state, userId } = useAuthState();
   const primary = usePrimaryAccountAuth();
   const [returnHref, setReturnHref] = useState("/cabinet");
@@ -36,7 +38,7 @@ export function PublicationAuthGate({ children, title = "Войдите, что�
     setReturnHref(`${window.location.pathname}${window.location.search}`);
   }, []);
 
-  if(primary&&preserveDraftDuringRecheck)return <PrimaryDraftGate title={title}>{children}</PrimaryDraftGate>;
+  if(primary&&preserveDraftDuringRecheck)return <PrimaryDraftGate title={title} expectedOwnerId={expectedOwnerId}>{children}</PrimaryDraftGate>;
 
   if ((state === "signed-in" || state === "admin") && userId) {
     return <Fragment key={userId}>{children}</Fragment>;

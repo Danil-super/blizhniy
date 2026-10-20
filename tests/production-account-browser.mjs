@@ -348,7 +348,7 @@ test("primary account browser forms use the new cookie API without remote traffi
     await run("ordinary cabinet and listing pages expose real owner drafts without legacy requests", async ({ page, state }) => {
       await login(page);
       await page.goto(origin+"/cabinet");
-      await page.getByText("Объявлений пока нет.", { exact: true }).waitFor();
+      await page.getByText("Вы ещё не создали объявлений.", { exact: true }).waitFor();
       // Exercise the retained low-level editor separately; ordinary cabinet
       // creation now opens the complete listing form (covered below).
       await page.goto(origin+"/cabinet/chernoviki");
@@ -359,8 +359,11 @@ test("primary account browser forms use the new cookie API without remote traffi
       assert.equal(state.drafts.get(state.active.id).size, 1);
       await page.goto(origin+"/cabinet/obyavleniya");
       await page.reload();
-      await page.getByRole("button", { name: "Черновик из обычного кабинета", exact: true }).click();
-      assert.equal(await page.getByLabel("Название", { exact: true }).inputValue(), "Черновик из обычного кабинета");
+      const listing = page.getByRole("link", { name: "Черновик из обычного кабинета", exact: true });
+      await listing.waitFor();
+      const id = [...state.drafts.get(state.active.id).keys()][0];
+      assert.equal(await listing.getAttribute("href"), `/razmestit/obyavlenie?draft=${id}`);
+      assert.equal(await page.getByLabel("Название", { exact: true }).count(), 0, "the ordinary cabinet lists cards without mounting another placement editor");
     });
     await run("private draft editor creates, saves and recovers an unknown write without losing local text or repeating the write", async ({ page, state }) => {
       await login(page);
@@ -389,17 +392,17 @@ test("primary account browser forms use the new cookie API without remote traffi
     });
     await run("cabinet links to private drafts; unavailable identity has an explicit retry rather than an endless loading state", async ({ page, state }) => {
       await login(page);await page.goto(origin+"/cabinet");
-      await page.getByRole("link", { name: "Черновики объявлений", exact: true }).click();
-      await page.waitForURL(origin+"/cabinet/chernoviki");
-      assert.equal(new URL(page.url()).pathname, "/cabinet/chernoviki");
-      await page.getByText("Черновиков пока нет.", { exact: true }).waitFor();
+      await page.getByRole("link", { name: "Мои объявления", exact: true }).first().click();
+      await page.waitForURL(origin+"/cabinet/obyavleniya");
+      assert.equal(new URL(page.url()).pathname, "/cabinet/obyavleniya");
+      await page.getByText("Вы ещё не создали объявлений.", { exact: true }).waitFor();
       state.override = route => route.fulfill({ status: 503, json: { error: { code: "AUTH_UNAVAILABLE" } } });
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await page.getByRole("alert").filter({ hasText: "Не удалось проверить вход." }).waitFor();
-      assert.equal(await page.getByRole("button", { name: "Новый черновик", exact: true }).count(), 0);
+      assert.equal(await page.getByRole("region", { name: "Мои объявления", exact: true }).getByRole("link", { name: "Создать объявление", exact: true }).count(), 0);
       state.override = null;
       await page.getByRole("button", { name: "Повторить проверку входа", exact: true }).click();
-      await page.getByRole("button", { name: "Новый черновик", exact: true }).waitFor();
+      await page.getByRole("region", { name: "Мои объявления", exact: true }).getByRole("link", { name: "Создать объявление", exact: true }).waitFor();
     });
     await run("lost blank creation reuses one intent; draft editor supports keyboard, mobile layout and accessible fields", async ({ page, state }) => {
       await login(page);await page.goto(origin+"/cabinet/chernoviki");

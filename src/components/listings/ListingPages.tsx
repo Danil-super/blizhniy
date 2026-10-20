@@ -58,6 +58,9 @@ import { ListingPagination } from "./ListingPagination";
 import { ListingSellerCard } from "./ListingSellerCard";
 import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewTracker } from "./ListingViewTracker";
+import {readServerListingDraft} from '@/lib/server-listing-draft';
+import {listingPlacementDefaults} from '@/lib/listing-placement-defaults';
+import {SavedListingPhotos} from './SavedListingPhotos';
 import { CatalogSeoContent } from "./CatalogSeoContent";
 
 const listingKinds: { slug: ListingKind; title: string; description: string }[] = [
@@ -1951,7 +1954,7 @@ function ListingDeliveryFields({ defaultCity, delivery }: { defaultCity?: string
   );
 }
 
-export async function ListingFormPage({ slug, adminMode = false, defaults, error }: { slug?: string; adminMode?: boolean; defaults?: ListingFormDefaults; error?: string }) {
+export async function ListingFormPage({ slug, adminMode = false, defaults, error,draftId }: { slug?: string; adminMode?: boolean; defaults?: ListingFormDefaults; error?: string;draftId?:string }) {
   async function publishWithoutPaymentAction(formData: FormData) {
     "use server";
 
@@ -2013,8 +2016,9 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
     redirect("/cabinet/obyavleniya");
   }
 
-  const editing = Boolean(slug);
-  const listing = findListingBySlug(slug);
+  const savedDraft=draftId?await readServerListingDraft(draftId):undefined;
+  const editing = Boolean(slug||savedDraft);
+  const listing = savedDraft?{...listingPlacementDefaults(savedDraft.snapshot),subcategorySlug:savedDraft.snapshot.form.subcategoryName?slugifySubcategory(savedDraft.snapshot.form.subcategoryName):''}:findListingBySlug(slug);
   const categories = await getPublicCategories();
   const tariff = (await getPublicTariffs()).find((item) => item.id === "listing-publication" || item.action === "listing_publication");
   const formDefaults = getListingFormDefaults(defaults);
@@ -2033,7 +2037,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
   return (
     <>
       <SiteHeader />
-      <PublicationAuthGate preserveDraftDuringRecheck title={editing ? "Войдите, чтобы редактировать объявление" : "Войдите, чтобы создать объявление"}>
+      <PublicationAuthGate preserveDraftDuringRecheck expectedOwnerId={savedDraft?.owner} title={editing ? "Войдите, чтобы редактировать объявление" : "Войдите, чтобы создать объявление"}>
         <main className="page-container py-10">
           <Breadcrumbs items={[{ label: editing ? "Редактирование объявления" : "Создание объявления" }]} />
           <BackLink fallbackHref="/cabinet/obyavleniya" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
@@ -2047,8 +2051,11 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
           {error ? <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p> : null}
 
           <form action={adminMode ? publishWithoutPaymentAction : undefined} className="listing-create-form mt-6 grid min-w-0 max-w-full gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            {savedDraft&&<input type="hidden" name="district" value={savedDraft.snapshot.form.district??''}/>}
             <div className="listing-create-primary-grid adaptive-field-grid">
               <ListingKindAndCategoryFields
+                preserveEmpty={!!savedDraft}
+                savedSubcategoryName={savedDraft?.snapshot.form.subcategoryName??undefined}
                 booking={listing?.booking}
                 categories={categories}
                 defaultCategorySlug={listing?.categorySlug ?? formDefaults.categorySlug}
@@ -2073,14 +2080,15 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
 
             <ListingLocationFields
               className="listing-create-location-fields"
-              defaultAddress={listing?.showExactAddress ? listing.address : undefined}
+              defaultAddress={savedDraft?listing?.address:listing?.showExactAddress ? listing.address : undefined}
               defaultCity={listing?.city}
-              defaultLat={listing?.showExactAddress && listing.hasMapPoint ? listing.lat : undefined}
-              defaultLng={listing?.showExactAddress && listing.hasMapPoint ? listing.lng : undefined}
+              defaultLat={savedDraft?listing?.lat:listing?.showExactAddress && listing.hasMapPoint ? listing.lat : undefined}
+              defaultLng={savedDraft?listing?.lng:listing?.showExactAddress && listing.hasMapPoint ? listing.lng : undefined}
+              defaultExact={savedDraft?.snapshot.form.showExactAddress}
               inlineControls
             />
 
-            {showDeliveryUi ? <ListingDeliveryFields delivery={listing?.delivery} defaultCity={listing?.city ?? "Краснодар"} /> : null}
+            {showDeliveryUi ? <ListingDeliveryFields delivery={listing&&'delivery' in listing?listing.delivery:undefined} defaultCity={listing?.city ?? "Краснодар"} /> : null}
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-lg font-bold text-[#060b27]">
@@ -2094,7 +2102,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
                 <Field label="Основной способ связи" compact size="md">
                   <SelectInput
                     name="contactMethod"
-                    defaultValue="phone"
+                    defaultValue={savedDraft?.snapshot.form.contactMethod??'phone'}
                     compact
                     options={[
                       { value: "phone", label: "Телефон" },
@@ -2108,7 +2116,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
               </div>
             </div>
 
-            <ListingPhotoUploader />
+            <ListingPhotoUploader savedPhotos={savedDraft?<SavedListingPhotos owner={savedDraft.owner} photos={savedDraft.snapshot.photos}/>:undefined}/>
 
             <div className="grid gap-3">
               <LegalConsentCheckbox name="placementRightsAccepted" errorMessage="Примите условия документов, чтобы продолжить">
@@ -2130,6 +2138,8 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
 
             <div className="flex flex-wrap items-start gap-3">
               <AdminDemoPublishButton
+                listingDraft={savedDraft?.snapshot}
+                listingOwnerId={savedDraft?.owner}
                 publicationType="listing"
                 returnHref="/cabinet/obyavleniya"
                 label="Сохранить черновик"
@@ -2142,6 +2152,8 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
                 <AdminDemoPublishButton publicationType="listing" returnHref="/cabinet/obyavleniya" label="Опубликовать без оплаты" />
               ) : (
                 <AdminDemoPublishButton
+                  listingDraft={savedDraft?.snapshot}
+                  listingOwnerId={savedDraft?.owner}
                   publicationType="listing"
                   returnHref="/cabinet/obyavleniya"
                   label="Создать и оплатить"

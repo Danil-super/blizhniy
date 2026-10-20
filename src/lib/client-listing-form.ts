@@ -11,8 +11,9 @@ export class ListingFormClientError extends Error{
 export function parseListingFormSnapshot(value:unknown,expectedId:string):ListingFormSnapshot{
  if(!value||typeof value!=='object'||Array.isArray(value))throw new ListingFormClientError('UNKNOWN');const row=value as ListingFormSnapshot;
  if(Object.keys(row).sort().join()!=='form,id,photos,revision'||row.id!==parseListingDraftId(expectedId)||!Array.isArray(row.photos)||row.photos.length>10000)throw new ListingFormClientError('UNKNOWN');
- if(!row.form||Object.keys(row.form).length!==16)throw new ListingFormClientError('UNKNOWN');
+ if(!row.form||![16,17].includes(Object.keys(row.form).length))throw new ListingFormClientError('UNKNOWN');
  const form=parseListingFormDraft(row.form),photos=row.photos.map(parseUploadedImage);
+ if(Object.keys(row.form).sort().join()!==Object.keys(form).sort().join())throw new ListingFormClientError('UNKNOWN');
  if(photos.map(item=>item.id).join()!==form.photoIds.join())throw new ListingFormClientError('UNKNOWN');
  return{id:row.id,revision:parseListingDraftRevision(row.revision),form,photos};
 }

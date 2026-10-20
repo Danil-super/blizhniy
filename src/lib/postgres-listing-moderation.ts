@@ -17,7 +17,7 @@ const publicState=({id,revision,state,note}:Row):ListingModerationState=>({id,re
 /** No listing/billing writes. Approval is meaningful only while its exact listing revision remains current. */
 export class PostgresListingModerationStore{
  private readonly forms:PostgresListingFormStore;
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly files?:{read(record:MediaFileRecord):Promise<Buffer>}){this.forms=new PostgresListingFormStore(db);}
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly files?:{read(record:MediaFileRecord):Promise<Buffer>},capabilities:{contactMethod?:boolean}={}){this.forms=new PostgresListingFormStore(db,capabilities);}
  private owner<T>(token:string,owner:string,work:(tx:PostgresQueries)=>Promise<T>){return withAppSessionTransaction(this.db,token,(tx,user)=>{
   if(user.id!==owner)throw new ListingDraftAccessError();return work(tx);
  });}
@@ -42,21 +42,21 @@ export class PostgresListingModerationStore{
   if(!request)return{id:null,revision:null,state:'not_submitted' as const,note:null};
   return{...publicState(request),state:request.revision===revision?request.state:'outdated' as const};
  });}
- private async review(tx:PostgresQueries,requestId:unknown,actor:string){
+ private async review(tx:PostgresQueries,requestId:unknown){
   const id=parseListingDraftId(requestId);
   const row=(await tx.query<Row&{owner:string}>(`select ${columns},l.author_id as owner from app.listing_moderation m
    join app.listings l on l.id=m.listing_id join app.users u on u.id=l.author_id
    where m.id=$1 and not u.is_blocked and u.email_verified_at is not null`,[id])).rows[0];
-  if(!row)throw new ListingDraftAccessError();if(row.owner===actor)throw new AdminAccessError();
+  if(!row)throw new ListingDraftAccessError();
   const {snapshot,check}=await this.forms.inspectInTransaction(tx,row.owner,row.listingId,row.revision);
   const request=(await tx.query<Row>(`select ${columns} from app.listing_moderation m where id=$1 for update`,[id])).rows[0];
   return{request,snapshot,check};
  }
- inspect(token:string,id:unknown,expectedAdminId?:string){return this.admin(token,async(tx,actor)=>{
-  const {request,snapshot,check}=await this.review(tx,id,actor);return{request:publicState(request),snapshot,check};
+ inspect(token:string,id:unknown,expectedAdminId?:string){return this.admin(token,async tx=>{
+  const {request,snapshot,check}=await this.review(tx,id);return{request:publicState(request),snapshot,check};
  },expectedAdminId);}
- readPhoto(token:string,requestId:unknown,fileId:unknown,expectedAdminId:string){return this.admin(token,async(tx,actor)=>{
-  const {snapshot}=await this.review(tx,requestId,actor),id=parseListingDraftId(fileId);
+ readPhoto(token:string,requestId:unknown,fileId:unknown,expectedAdminId:string){return this.admin(token,async tx=>{
+  const {snapshot}=await this.review(tx,requestId),id=parseListingDraftId(fileId);
   if(!snapshot.form.photoIds.includes(id))throw new ListingDraftAccessError();
   const record=(await tx.query<MediaFileRecord>(`select id,mime_type as "mimeType",width,height,size,sha256 from app.media_objects
    where id=$1 and state='ready' and owner_id=(select author_id from app.listings where id=$2)`,[id,snapshot.id])).rows[0];
@@ -66,7 +66,7 @@ export class PostgresListingModerationStore{
  async decide(token:string,id:unknown,state:unknown,note:unknown,expectedAdminId?:string){
   parseModerationDecision(state,note);
   return this.admin(token,async(tx,actor)=>{
-   const {request,check}=await this.review(tx,id,actor);
+   const {request,check}=await this.review(tx,id);
    if(state==='approved'&&check.issues.some(issue=>issue.field!=='tariff'))throw new ListingModerationInputError();
    if(request.state!=='pending'){
     if(request.state===state&&request.note===note)return publicState(request);throw new ListingDraftConflictError();
@@ -78,12 +78,12 @@ export class PostgresListingModerationStore{
  }
  list(token:string,after:unknown,expectedAdminId?:string){
   const cursor=after===null?null:parseListingDraftId(after);
-  return this.admin(token,async(tx,actor)=>{
+  return this.admin(token,async tx=>{
    const rows=(await tx.query<{id:string;listingId:string;revision:string;title:string}>(`select m.id,m.listing_id as "listingId",m.revision::text as revision,l.title
     from app.listing_moderation m join app.listings l on l.id=m.listing_id and l.revision=m.revision
     join app.users u on u.id=l.author_id and not u.is_blocked and u.email_verified_at is not null
-    where m.state='pending' and l.status='draft' and l.author_id<>$1 ${cursor?'and (m.submitted_at,m.id)>(select submitted_at,id from app.listing_moderation where id=$2::uuid)':''}
-    order by m.submitted_at,m.id limit 21`,cursor?[actor,cursor]:[actor])).rows;
+    where m.state='pending' and l.status='draft' ${cursor?'and (m.submitted_at,m.id)>(select submitted_at,id from app.listing_moderation where id=$1::uuid)':''}
+    order by m.submitted_at,m.id limit 21`,cursor?[cursor]:[])).rows;
    return{items:rows.slice(0,20),nextCursor:rows.length>20?rows[19].id:null};
   },expectedAdminId);
  }

@@ -58,16 +58,18 @@ export async function testCabinetOfflineScenarios({ run, origin }) {
     assert.deepEqual(calls, [], "focus and network recovery never log in, log out or submit credentials");
   });
 
-  await run("a transient session failure on the announcements tab retains the same owner's unsaved listing buffer", async ({ page, calls, state }) => {
+  await run("a transient session failure on the ordinary placement form retains the same owner's unsaved listing buffer", async ({ page, calls, state }) => {
     const owner = identity(false), id = "32345678-1234-4321-8765-123456789abc";
     state.active = owner;
     state.drafts.set(owner.id, new Map([[id, { id, revision: "1", draft: { kind: "prodam", title: "Черновик для проверки сети",
       description: "Сохранённое описание", categoryId: null, cityId: null, price: null } }]]));
     await page.goto(origin + "/cabinet/obyavleniya");
-    await page.getByRole("button", { name: "Черновик для проверки сети", exact: true }).click();
+    await page.getByRole("link", { name: "Черновик для проверки сети", exact: true }).waitFor();
+    await page.getByRole("link", { name: "Создать объявление", exact: true }).first().click();
+    await page.waitForURL(origin + "/razmestit/obyavlenie");
     await page.getByLabel("Название", { exact: true }).fill("Правки объявления до обрыва сети");
     await interruptSessionRead(page, origin, state);
-    assert.equal(page.url(), origin + "/cabinet/obyavleniya");
+    assert.equal(page.url(), origin + "/razmestit/obyavlenie");
     assert.equal(await page.getByText("Войдите в аккаунт, чтобы открыть свои черновики.", { exact: true }).count(), 0);
     state.override = null;
     await checkSession(page, origin);
