@@ -1,5 +1,5 @@
 // Trusted operator/runtime library only. Importing does not connect, create roles or grant privileges.
-import {getBootstrapPlan} from './bootstrap-postgres.mjs';
+import {getBootstrapPlan} from './postgres-migration-plan.mjs';
 
 const role='blizhniy_payment_reconciler';
 const locks=['users','payment_checkout_intents','categories','cities','media_objects','listing_moderation'];
