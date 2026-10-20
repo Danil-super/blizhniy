@@ -1,5 +1,5 @@
 import type { BookingDetails } from "@/lib/types";
-import { MAX_BOOKING_NIGHTS } from "@/lib/booking-availability";
+import { MAX_BOOKING_NIGHTS } from "./booking-availability";
 
 function formatRubles(value: number) {
   return new Intl.NumberFormat("ru-RU").format(value).replace(/\u00a0/g, " ") + " ₽";

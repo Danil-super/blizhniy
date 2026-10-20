@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {readFileSync} from 'node:fs';
+import {readFileSync,mkdtempSync,rmSync,symlinkSync} from 'node:fs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
 import pg from 'pg';
 import {bootstrapPostgres,getBootstrapPlan} from '../scripts/bootstrap-postgres.mjs';
 import {getPaymentReconciliationRolePlan,verifyPaymentReconciliationDatabase} from '../scripts/payment-reconciliation-role.mjs';
@@ -8,9 +12,7 @@ import {runPaymentReconciliationService} from '../scripts/payment-reconciliation
 import {PostgresDatabase} from '../src/lib/postgres.ts';
 import {PostgresPaymentReconciliationQueue} from '../src/lib/postgres-payment-reconciliation.ts';
 import * as intents from '../src/lib/postgres-payment-intents.ts';
-import * as verification from '../src/lib/postgres-payment-verification.ts';
-import * as period from '../src/lib/payment-publication-period.ts';
-import {formModule} from './listing-form-module.mjs';
+import {buildPaymentWorker} from '../scripts/build-payment-worker.mjs';
 
 export async function testPaymentReconciliationRole(suite,admin,config,credentials) {
  assert.equal(config.host,'127.0.0.1');assert.equal(config.database,'blizhniy_test');
@@ -31,11 +33,13 @@ export async function testPaymentReconciliationRole(suite,admin,config,credentia
  const db=new PostgresDatabase(new pg.Pool({...config,user:role,password,max:2,options:'-c search_path=pg_catalog,public',statement_timeout:8000}));
  const check=()=>verifyPaymentReconciliationDatabase(db,{database:config.database});
  const merchant={shopId:'restricted-reconciliation',isTest:true,secretKey:'test_synthetic_role_fixture'};
- const fulfill=formModule('postgres-listing-payment-fulfillment',{'./postgres-listing-form':formModule('postgres-listing-form'),'./postgres-payment-intents.ts':intents,'./payment-publication-period.ts':period});
- const {createPaymentReconciliationWorker}=formModule('payment-reconciliation-worker',{'./postgres-payment-reconciliation.ts':{PostgresPaymentReconciliationQueue},'./postgres-payment-verification.ts':verification,'./postgres-listing-payment-fulfillment':fulfill});
  const ownerDb=new PostgresDatabase(new pg.Pool({...config,max:2})),journal=new intents.PostgresPaymentIntentStore(ownerDb);
- let fixture;
+ let fixture,artifactDirectory;
  try {
+  artifactDirectory=mkdtempSync(join(tmpdir(),'blizhniy-worker-pg-'));
+  const artifact=join(artifactDirectory,'artifact');buildPaymentWorker(artifact);
+  symlinkSync(fileURLToPath(new URL('../node_modules',import.meta.url)),join(artifact,'node_modules'),'dir');
+  const {createPaymentReconciliationWorker}=createRequire(import.meta.url)(join(artifact,'compiled/lib/payment-reconciliation-worker.js'));
   await suite.test('actual dedicated login fails before its grants and passes only after the exact column-scoped plan',async()=>{
    await assert.rejects(check(),{message:'Payment reconciliation database preflight failed'});
    for(const sql of plan.grants)await admin.query(sql);
@@ -43,10 +47,6 @@ export async function testPaymentReconciliationRole(suite,admin,config,credentia
    await assert.rejects(verifyPaymentReconciliationDatabase(ownerDb,{database:config.database}),{message:'Payment reconciliation database preflight failed'});
    await assert.rejects(verifyPaymentReconciliationDatabase(db,{database:'wrong_target'}),{message:'Payment reconciliation database preflight failed'});
   });
-  await suite.test('preflight refuses extra rights, grant options, missing reads, memberships, replication override, trigger or function tampering and hash drift',async()=>{
-   await admin.query('create role reconciliation_member_probe nologin');
-   const originalHash=plan.journal[0].sha256;
-   const restoreFunction=getBootstrapPlan(options).at(-1).sql.match(/create function app\.guard_reconciliation_locks\(\)[\s\S]*?\$\$;/)[0].replace('create function','create or replace function');
   await suite.test('preflight inspects user schemas beginning with pg without hiding schema, column, table, sequence or function privileges',async()=>{
    await admin.query('create schema pgbackup_acl_probe; create table pgbackup_acl_probe.probe(id integer); create sequence pgbackup_acl_probe.counter; create function pgbackup_acl_probe.probe() returns integer language sql as $$ select 1 $$; revoke execute on function pgbackup_acl_probe.probe() from public');
    try {
@@ -66,6 +66,10 @@ export async function testPaymentReconciliationRole(suite,admin,config,credentia
     }
    }finally {await admin.query('drop function pgbackup_acl_probe.probe(); drop sequence pgbackup_acl_probe.counter; drop table pgbackup_acl_probe.probe; drop schema pgbackup_acl_probe');}
   });
+  await suite.test('preflight refuses extra rights, grant options, missing reads, memberships, replication override, trigger or function tampering and hash drift',async()=>{
+   await admin.query('create role reconciliation_member_probe nologin');
+   const originalHash=plan.journal[0].sha256;
+   const restoreFunction=getBootstrapPlan(options).at(-1).sql.match(/create function app\.guard_reconciliation_locks\(\)[\s\S]*?\$\$;/)[0].replace('create function','create or replace function');
    const changes=[
     [`grant select(email) on app.users to ${role}`,`revoke select(email) on app.users from ${role}`],
     [`grant update(role) on app.users to ${role}`,`revoke update(role) on app.users from ${role}`],
@@ -179,5 +183,5 @@ export async function testPaymentReconciliationRole(suite,admin,config,credentia
    for(const sql of plan.grants)await admin.query(sql);await check();
    assert.deepEqual((await admin.query('select to_jsonb(f) as value from app.payment_fulfillments f order by intent_id')).rows,receipts);
   });
- }finally {await db.close();await ownerDb.close();}
+ }finally {try {await db.close();await ownerDb.close();}finally {if(artifactDirectory)rmSync(artifactDirectory,{recursive:true,force:true});}}
 }
