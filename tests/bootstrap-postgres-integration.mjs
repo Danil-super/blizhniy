@@ -262,6 +262,8 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testPaymentReconciliationRole(suite, client, config, credentials);
     const { testListingCheckoutPermissions } = await import("./listing-checkout-permissions-integration.mjs");
     await testListingCheckoutPermissions(suite, client, config, credentials);
+    const { testPrimaryTestPaymentProbe } = await import("./primary-test-payment-probe-integration.mjs");
+    await testPrimaryTestPaymentProbe(suite, client, config);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));

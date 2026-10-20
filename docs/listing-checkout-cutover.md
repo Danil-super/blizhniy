@@ -2,7 +2,10 @@
 
 20.10.2026 владелец разрешил точечные права API и включение только
 `prepare-only`/`test`, без merchant-запросов, списаний или публикации.
-Это не разрешение LIVE, callback, постоянного worker или provider POST.
+Это исходное разрешение не включало LIVE, callback, постоянного worker или provider POST.
+Позже20.10 владелец разрешил отдельные TEST-запросы на технических данных:
+[проверка настоящего провайдера](payment-provider-test.md). Публичная отправка
+из формы сайта по-прежнему не включена.
 
 ## Права
 
@@ -36,14 +39,41 @@ SHA256 плана:31825d10ab549482a9f3e06496437467c118e0de19b5b275bb90dd9b9ab794
 полностью откатывает заказ; исходный ключ после восстановления работает.
 Проверенный down снимает40 прав, сохраняет историю, повторный up идемпотентен.
 Owned PostgreSQL327/327 и native1605/1605 без skips, types/lint без ошибок;
-прежнее lint-предупреждение не скрыто. Это ещё не production HTTP smoke.
+прежнее lint-предупреждение не скрыто. Рабочий HTTP-результат проверен отдельно ниже.
 
-API-код публикуется отдельно с обычными CI/security/CodeQL gates. После установки
-проверяются `prepare-only`, `BLIZHNIY_PAYMENT_MODE=test`, server-only shop ID и
-`BLIZHNIY_PAYMENT_RECEIPT_VAT=none`. Последнее касается только TEST-подготовки:
+API-код опубликован через [PR109](https://github.com/Danil-super/blizhniy/pull/109),
+без обхода protected main. Все девять PR checks успешны. Merge commit
+284f0fe62fa358b6ccfa27c4d351c6a35c621b9e установлен в
+`/var/www/blizhniy-releases/20261020080421-284f0fe62fa3`;
+[workflow39390235338](https://github.com/Danil-super/blizhniy/actions/runs/39390235338)
+успешно повторил CI/security/CodeQL, deploy и проверки установленного сайта.
+
+В08:12:36UTC20.10 включены только `prepare-only`, `BLIZHNIY_PAYMENT_MODE=test`,
+server-only shop ID и `BLIZHNIY_PAYMENT_RECEIPT_VAT=none`. Остальные parsed env
+значения совпали по fingerprint до/после; сохранена root-only резервная копия
+конфигурации на российском VPS. Перезапущен только сайт, health/ready успешны,
+гостевой запрос к API получает401, а не disabled503. SSH и другие службы не менялись.
+VAT=none касается только TEST-подготовки:
 фискализация/НДС для LIVE не выбраны и не объявляются решёнными.
-Нужны реальные health/ready и HTTP prepare/replay/readback/foreign-denial proofs;
-наличие GRANT само по себе не считается работающей оплатой.
+
+## Рабочий HTTP proof
+
+В08:13:29UTC20.10 проверены настоящий HTTPS ingress, cookie session, Node22 API
+и ограниченная runtime-роль рабочей БД. Два синтетических пользователя не имеют
+прав администратора; исходные экономические данные получены через preview.
+Подготовка, повтор PUT и recovery/readOrder вернули ровно один исходный заказ.
+Подмена владельца отказана401/404; чужое чтение возвращает null.
+Заказ остался created/TEST, объявление — неоплаченным draft без дат размещения.
+Dispatch anchor, provider link, verification, fulfillment и queue job не созданы.
+Ни merchant GET/POST, ни списаний или изменения финансового статуса не было.
+
+Сохранены один закрытый технический TEST-заказ и его приватный черновик:
+финансовая история не удаляется ради cleanup. Оба технических аккаунта
+заблокированы, две сессии отозваны. До операций вне Git сохранены UUID/key для
+сверки неизвестного исхода; пароли/сессионные токены в отчёт не записывались.
+Повторный read-only ACL/Auth probe в08:14:17UTC прошёл, права worker не изменены.
+Публичная главная HTTP200, TLS verify0. Это не provider sandbox E2E и не кнопка
+оплаты: UI отправки платежа, callback, постоянный worker и LIVE не включены.
 
 ## Откат
 
