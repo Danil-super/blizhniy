@@ -1,0 +1,378 @@
+diff --git a/tests/account-test-checkout-browser-cases.mjs b/tests/account-test-checkout-browser-cases.mjs
+index 1114883..28eadf6 100644
+--- a/tests/account-test-checkout-browser-cases.mjs
++++ b/tests/account-test-checkout-browser-cases.mjs
+@@ -1,13 +1,19 @@
+ import assert from 'node:assert/strict';import {createRequire} from 'node:module';
+ export async function testAccountCheckoutBrowser({context,page,origin,owner,id,revision,title}){
+- const paymentId='a2345678-1234-4321-8765-123456789abc',calls=[];let saved=null,losePrepare=true,loseDispatch=true,status='created';
++ const paymentId='a2345678-1234-4321-8765-123456789abc',calls=[];let saved=null,losePreview=true,losePrepare=true,loseDispatch=true,status='created';
+  await context.route('**/api/account/listing-checkout',async route=>{
+   const request=route.request(),body=request.postDataJSON();calls.push({method:request.method(),body});assert.equal(body.expectedOwnerId,owner);
+   if(request.method()==='PUT'){
++   assert.equal(body.listingId,id);assert.equal(body.expectedRevision,revision);assert.equal(body.expectedTariffId,'listing-standard');assert.equal(body.expectedAmount,'199.99');assert.equal(body.expectedDurationDays,30);
+    assert.equal(saved,null);saved={id:paymentId,creationKey:body.creationKey,targetId:id,targetRevision:revision,tariffId:body.expectedTariffId,amount:body.expectedAmount,durationDays:body.expectedDurationDays,status,createdAt:'2026-10-20T12:00:00.123456Z'};
+    if(losePrepare){losePrepare=false;return route.abort();}return route.fulfill({json:saved});
+   }
+-  if(body.action==='testPreview')return route.fulfill({json:{listingId:id,revision,tariff:{id:'listing-standard',name:'Размещение',amount:'199.99',currency:'RUB',durationDays:30},activePayment:null}});
++  if(body.action==='testPreview'){
++   assert.equal(request.method(),'POST');
++   assert.equal(body.listingId,id);assert.equal(body.expectedRevision,revision);
++   if(losePreview){losePreview=false;return route.fulfill({status:503,json:{error:{code:'CHECKOUT_UNAVAILABLE'}}});}
++   return route.fulfill({json:{listingId:id,revision,tariff:{id:'listing-standard',name:'Размещение',amount:'199.99',currency:'RUB',durationDays:30},activePayment:null}});
++  }
+   if(body.action==='intent'){assert.equal(body.creationKey,saved.creationKey);return route.fulfill({json:saved});}
+   if(body.action==='order'){assert.equal(body.paymentId,paymentId);return route.fulfill({json:{order:{...saved,status},fulfillment:null}});}
+   assert.equal(body.action,'dispatch');assert.equal(body.paymentId,paymentId);
+@@ -16,8 +22,13 @@ export async function testAccountCheckoutBrowser({context,page,origin,owner,id,r
+  });
+  // Synthetic approved external destination only. No real provider traffic from this regression test.
+  await context.route('https://yoomoney.ru/checkout',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html lang="ru"><title>TEST checkout</title><body><h1>Изолированный TEST checkout</h1></body></html>'}));
+- await page.getByRole('button',{name:title,exact:true}).click();await page.getByText('Одобрено модератором',{exact:true}).waitFor();assert.equal(calls.length,0);
+- await page.getByRole('button',{name:'Оплатить размещение',exact:true}).click();await page.getByRole('heading',{name:'Тестирование оплаты',exact:true}).waitFor();
++ const card=page.getByRole('link',{name:title,exact:true}).locator('xpath=ancestor::li[1]');
++ await card.getByRole('button',{name:'Статус и оплата',exact:true}).click();await page.getByText('Одобрено модератором',{exact:true}).waitFor();assert.equal(calls.length,0);
++ await page.getByRole('button',{name:'Оплатить размещение',exact:true}).click();await page.getByRole('region',{name:'Оплата объявления',exact:true}).getByRole('alert').waitFor();
++ assert.equal(await page.getByRole('heading',{name:'Тестирование оплаты',exact:true}).count(),0);assert.equal(calls.filter(call=>call.method==='PUT').length,0);
++ await page.getByRole('button',{name:'Оплатить размещение',exact:true}).focus();await page.keyboard.press('Space');await page.getByRole('heading',{name:'Тестирование оплаты',exact:true}).waitFor();
++ await page.getByText('TEST-заказ: 199,99 ₽ за 30 дн. Реальные деньги не списываются, публикация не выполняется.',{exact:true}).waitFor();
++ assert.equal(calls.filter(call=>call.body.action==='testPreview').length,2);
+  await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
+  for(const width of [320,768,1024,1440]){
+   await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
+diff --git a/tests/cabinet-offline-browser-cases.mjs b/tests/cabinet-offline-browser-cases.mjs
+index 9afe9e3..ed859a4 100644
+--- a/tests/cabinet-offline-browser-cases.mjs
++++ b/tests/cabinet-offline-browser-cases.mjs
+@@ -58,16 +58,18 @@ export async function testCabinetOfflineScenarios({ run, origin }) {
+     assert.deepEqual(calls, [], "focus and network recovery never log in, log out or submit credentials");
+   });
+ 
+-  await run("a transient session failure on the announcements tab retains the same owner's unsaved listing buffer", async ({ page, calls, state }) => {
++  await run("a transient session failure on the ordinary placement form retains the same owner's unsaved listing buffer", async ({ page, calls, state }) => {
+     const owner = identity(false), id = "32345678-1234-4321-8765-123456789abc";
+     state.active = owner;
+     state.drafts.set(owner.id, new Map([[id, { id, revision: "1", draft: { kind: "prodam", title: "Черновик для проверки сети",
+       description: "Сохранённое описание", categoryId: null, cityId: null, price: null } }]]));
+     await page.goto(origin + "/cabinet/obyavleniya");
+-    await page.getByRole("button", { name: "Черновик для проверки сети", exact: true }).click();
++    await page.getByRole("link", { name: "Черновик для проверки сети", exact: true }).waitFor();
++    await page.getByRole("link", { name: "Создать объявление", exact: true }).first().click();
++    await page.waitForURL(origin + "/razmestit/obyavlenie");
+     await page.getByLabel("Название", { exact: true }).fill("Правки объявления до обрыва сети");
+     await interruptSessionRead(page, origin, state);
+-    assert.equal(page.url(), origin + "/cabinet/obyavleniya");
++    assert.equal(page.url(), origin + "/razmestit/obyavlenie");
+     assert.equal(await page.getByText("Войдите в аккаунт, чтобы открыть свои черновики.", { exact: true }).count(), 0);
+     state.override = null;
+     await checkSession(page, origin);
+diff --git a/tests/primary-listing-form-browser.mjs b/tests/primary-listing-form-browser.mjs
+index 9d28f84..028e0d7 100644
+--- a/tests/primary-listing-form-browser.mjs
++++ b/tests/primary-listing-form-browser.mjs
+@@ -12,18 +12,22 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
+   const key=join(directory,'key'),ca=join(directory,'ca');await writeFile(key,randomBytes(32),{mode:0o600});await writeFile(ca,rootCertificates[0],{mode:0o600});
+   const probe=createServer();probe.listen(0,'127.0.0.1');await once(probe,'listening');const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
+   const origin=`http://127.0.0.1:${port}`,owner='12345678-1234-4321-8765-123456789abc',id='22345678-1234-4321-8765-123456789abc';
++  const fixture=join(directory,'draft.json');await writeFile(fixture,JSON.stringify({owner,active:owner,snapshot:null}),{mode:0o600});
+   const env={PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',BLIZHNIY_AUTH_MODE:'postgres',
+-   BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_LISTING_PAYMENT:'account-test',BLIZHNIY_DB_HOST:'17e86f80f26733d39ef4b84d.twc1.net',BLIZHNIY_DB_PORT:'5432',BLIZHNIY_DB_NAME:'blizhniy_prod',BLIZHNIY_DB_USER:'blizhniy_runtime',
++   BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_LISTING_PAYMENT:'account-test',BLIZHNIY_LISTING_CONTACT_METHOD:'enabled',BLIZHNIY_BROWSER_DRAFT_FIXTURE:fixture,BLIZHNIY_DB_HOST:'17e86f80f26733d39ef4b84d.twc1.net',BLIZHNIY_DB_PORT:'5432',BLIZHNIY_DB_NAME:'blizhniy_prod',BLIZHNIY_DB_USER:'blizhniy_runtime',
+    BLIZHNIY_DB_PASSWORD:'synthetic-ui-db-password',BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:ca,BLIZHNIY_AUTH_MAIL_KEY_FILE:key,BLIZHNIY_AUTH_RATE_SECRET:'synthetic-ui-only-rate-secret-not-used-by-api',
+    BLIZHNIY_MAIL_MODE:'timeweb',BLIZHNIY_SMTP_USER:'notifications@ближний-ру.рф',BLIZHNIY_SMTP_PASSWORD:'synthetic-ui-smtp-password',TURNSTILE_SECRET_KEY:'synthetic-ui-captcha-secret',NEXT_PUBLIC_TURNSTILE_SITE_KEY:''};
+-  let output='';app=spawn(process.execPath,['--experimental-strip-types','--require','./tests/listing-form-browser-pg.cjs','node_modules/next/dist/bin/next','start','-H','127.0.0.1','-p',String(port)],{env,detached:true,stdio:['ignore','pipe','pipe']});
++  let output='';app=spawn(process.execPath,['--experimental-strip-types','--require','./tests/listing-edit-browser-pg.cjs','node_modules/next/dist/bin/next','start','-H','127.0.0.1','-p',String(port)],{env,detached:true,stdio:['ignore','pipe','pipe']});
+   app.stdout.on('data',chunk=>{output=(output+chunk).slice(-16000);});app.stderr.on('data',chunk=>{output=(output+chunk).slice(-16000);});
+   const deadline=Date.now()+20000;for(;;){assert.equal(app.exitCode,null);try{if((await fetch(origin+'/api/health',{signal:AbortSignal.timeout(1000)})).ok)break;}
+    catch(error){assert.ok(error.cause?.code==='ECONNREFUSED'||error.name==='TimeoutError');}assert.ok(Date.now()<deadline,'owned app starts');await new Promise(resolve=>setTimeout(resolve,100));}
+   browser=await chromium.launch({headless:true});const context=await browser.newContext(),page=await context.newPage(),errors=[],foreign=[],writes=[],intents=[];
+-  page.setDefaultTimeout(12000);page.on('pageerror',()=>errors.push('pageerror'));let saved=null,lose=false,sessionGate=null,active=owner;const inspections=[];let failInspection=false;
++  await context.addCookies([{name:'__Host-blizhniy_session',value:'a'.repeat(64),url:origin.replace('http:','https:')+'/',secure:true,httpOnly:true,sameSite:'Lax'}]);
++  page.setDefaultTimeout(12000);page.on('pageerror',()=>errors.push('pageerror'));let saved=null,lose=false,sessionGate=null,active=owner,creates=0,rejectWrite=false;
++  const persist=()=>writeFile(fixture,JSON.stringify({owner,active,snapshot:saved}),{mode:0o600});
+   let moderation={id:null,revision:null,state:'not_submitted',note:null},loseSubmission=false,submissions=0;
+   const pixels=await sharp({create:{width:80,height:40,channels:3,background:'red'}}).png().toBuffer();
++  const webPixels=await sharp(pixels).webp().toBuffer();
+   await context.route('**/*',async route=>{
+    const request=route.request(),url=new URL(request.url());if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){foreign.push(url.host);return route.abort();}
+    if(!url.pathname.startsWith('/api/account/'))return route.continue();
+@@ -38,20 +42,20 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
+     if(request.method()==='PUT'){submissions++;moderation={id:'42345678-1234-4321-8765-123456789abc',revision:saved.revision,state:'pending',note:null};if(loseSubmission){loseSubmission=false;return route.abort();}}
+     return route.fulfill({json:moderation.revision&&moderation.revision!==saved.revision?{...moderation,state:'outdated'}:moderation});
+    }
+-   if(url.pathname==='/api/account/listing-publication'){
+-    inspections.push(body);assert.equal(request.method(),'POST');assert.equal(body.expectedRevision,saved.revision);
+-    if(failInspection)return route.fulfill({status:503,json:{error:{code:'PUBLICATION_CHECK_UNAVAILABLE'}}});
+-    return route.fulfill({json:{listingId:id,revision:saved.revision,checksPassed:true,issues:[],tariff:{id:'listing-standard',name:'Объявление',amount:'199.99',currency:'RUB',durationDays:30}}});
++   if(url.pathname.endsWith('/collection')){
++    if(request.method()==='POST')return route.fulfill({json:{items:saved?[{id,revision:saved.revision,kind:saved.form.kind,title:saved.form.title,price:saved.form.price}]:[],nextCursor:null}});
++    creates++;saved={id,revision:'1',form:parseListingFormDraft({kind:'prodam'}),photos:[]};await persist();
++    return route.fulfill({json:{id,revision:'1',draft:{kind:'prodam',title:'',description:'',price:null,categoryId:null,cityId:null}}});
+    }
+-   if(url.pathname.endsWith('/collection'))return route.fulfill({json:request.method()==='POST'?{items:saved?[{id,revision:saved.revision,kind:saved.form.kind,title:saved.form.title,price:saved.form.price}]:[],nextCursor:null}:{id,revision:'1',draft:{kind:'prodam',title:'',description:'',price:null,categoryId:null,cityId:null}}});
+    if(url.pathname==='/api/account/listing-drafts')return route.fulfill({json:{id,revision:saved.revision,draft:{kind:saved.form.kind,title:saved.form.title,description:saved.form.description,price:saved.form.price,categoryId:null,cityId:null}}});
+    if(url.pathname==='/api/account/listing-photos')return route.fulfill({json:{id,revision:saved.revision,photos:saved.photos}});
+-   if(url.pathname==='/api/account/media/read')return route.fulfill({contentType:'image/png',body:pixels});
++   if(url.pathname==='/api/account/media/read')return route.fulfill({contentType:'image/webp',body:webPixels});
+    if(url.pathname==='/api/account/listing-form'){
+     if(request.method()==='POST')return route.fulfill({json:saved});
+-    writes.push(body);if(saved&&body.expectedRevision!==saved.revision)return route.fulfill({status:409,json:{error:{code:'DRAFT_CHANGED'}}});
++    writes.push(body);if(rejectWrite){rejectWrite=false;return route.fulfill({status:422,json:{error:{code:'INVALID_INPUT'}}});}
++    if(saved&&body.expectedRevision!==saved.revision)return route.fulfill({status:409,json:{error:{code:'DRAFT_CHANGED'}}});
+     saved={id,revision:String(BigInt(saved?.revision??'1')+1n),form:parseListingFormDraft(body.form),photos:body.form.photoIds.map(id=>({id,mimeType:'image/webp',width:80,height:40,size:12}))};
+-    if(lose){lose=false;return route.abort();}return route.fulfill({json:saved});
++    await persist();if(lose){lose=false;return route.abort();}return route.fulfill({json:saved});
+    }
+    return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
+   });
+@@ -77,94 +81,113 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
+   await page.screenshot({path:'/tmp/blizhniy-full-form-browser.png',fullPage:true});
+   await page.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();await page.waitForURL(origin+'/cabinet/obyavleniya');
+   assert.equal(writes.length,1);assert.equal(intents.length,1);assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
+-  await page.getByRole('button',{name:'Полная форма',exact:true}).click();
+-  await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).waitFor();loseSubmission=true;
++  // The cabinet offers cards and status only: editing always reopens the original complete form.
++  const firstCard=page.getByRole('link',{name:'Полная форма',exact:true}).locator('xpath=ancestor::li[1]');
++  await firstCard.getByRole('button',{name:'Статус и оплата',exact:true}).click();
++  await page.getByText('Не отправлено на модерацию',{exact:true}).waitFor();
++  assert.equal(await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).count(),0);
++  assert.equal(await page.getByRole('button',{name:'Изменить дополнительные поля',exact:true}).count(),0);
++  const firstPhoto=saved.form.photoIds[0];
++  saved={...saved,form:parseListingFormDraft({...saved.form,kind:'arenda',price:'199.99',categorySlug:'otdyh',subcategoryName:'Турбазы',cityName:'Сочи',district:'Мой район',
++   address:'Улица 1',latitude:43.6,longitude:39.7,showExactAddress:false,contactMethod:'messenger',booking:{mode:'stay',priceWeekday:1250.5,extraGuestPrice:0,
++    availableFrom:'2026-01-01',availableTo:'2026-01-03',blockedDates:['2026-01-02'],rules:'Без шума'}})};await persist();
++  const editHref=await firstCard.getByRole('link',{name:'Редактировать',exact:true}).getAttribute('href');assert.equal(editHref,`/razmestit/obyavlenie?draft=${id}`);
++  const editResponse=await page.goto(origin+editHref);assert.equal(editResponse.status(),200);
++  assert.match(editResponse.headers()['cache-control']??'',/no-store|private/);
++  const editHtml=await editResponse.text();
++  for(const secret of [env.BLIZHNIY_DB_PASSWORD,env.BLIZHNIY_SMTP_PASSWORD,env.BLIZHNIY_AUTH_RATE_SECRET,'a'.repeat(64)])assert.equal(editHtml.includes(secret),false);
++  assert.equal(new URL(page.url()).searchParams.has('owner'),false);assert.equal(new URL(page.url()).searchParams.has('token'),false);
++  await page.getByRole('heading',{name:'Редактировать объявление',exact:true}).waitFor();
++  assert.equal(await page.getByRole('region',{name:'Оплата объявления',exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:'Оплатить размещение',exact:true}).count(),0);
++  assert.equal(await page.locator('input[name="title"]').inputValue(),'Полная форма');
++  assert.equal(await page.locator('input[name="price"]').inputValue(),'199.99');
++  assert.equal(await page.locator('textarea[name="description"]').inputValue(),'Не потерять описание');
++  assert.equal(await page.locator('input[name="contactMethod"]').inputValue(),'messenger');
++  assert.equal(await page.locator('input[name="district"]').inputValue(),'Мой район');
++  assert.equal(await page.locator('input[name="address"]').inputValue(),'Улица 1');
++  assert.equal(await page.locator('input[name="location"]').inputValue(),'Сочи, Краснодарский край');
++  assert.equal(await page.locator('input[name="bookingExtraGuestPrice"]').inputValue(),'0');
++  assert.equal(await page.locator('input[name="bookingAvailableFrom"]').inputValue(),'2026-01-01');
++  await page.locator('textarea[name="bookingIncluded"]').focus();await page.keyboard.press('Tab');assert.equal(await page.locator('textarea[name="bookingRules"]').evaluate(input=>document.activeElement===input),true);
++  await page.getByRole('img',{name:'Сохранённая фотография 1 из 1',exact:true}).waitFor();assert.equal(await page.getByRole('img',{name:'Сохранённая фотография 1 из 1',exact:true}).count(),1);
++  await page.locator('input[name="phone"]').fill('+79991112233');
++  await page.locator('input[name="photos"]').setInputFiles({name:'second.png',mimeType:'image/png',buffer:pixels});
++  sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
++  await page.getByText('Проверяем вход. Заполненная форма скрыта до подтверждения аккаунта.',{exact:true}).waitFor();
++  assert.equal(await page.locator('input[name="phone"]').isVisible(),false);
++  release();sessionGate=null;await page.locator('input[name="phone"]').waitFor();
++  assert.equal((await page.locator('input[name="phone"]').inputValue()).replace(/\D/g,''),'79991112233');
++  assert.equal(await page.locator('input[name="photos"]').evaluate(input=>input.files.length),1);
++  await page.locator('input[name="placementRightsAccepted"]').check();
++  await page.locator('input[name="lat"]').evaluate(input=>{input.value='invalid';});
++  await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
++  await page.locator('form.listing-create-form').getByRole('alert').waitFor();assert.equal(writes.length,1);
++  await page.locator('input[name="lat"]').evaluate(input=>{input.value='43.6';});
++  rejectWrite=true;await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
++  await page.getByRole('button',{name:'Вернуться к исправлению полей',exact:true}).click();
++  await page.getByText('Поля доступны для исправления. Изменения ещё не сохранены.',{exact:true}).waitFor();
++  assert.equal(await page.locator('input[name="title"]').isDisabled(),false);assert.equal(writes.length,2);assert.equal(intents.length,2);
++  await page.locator('input[name="title"]').fill('Исправленное объявление');lose=true;
++  await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
++  await page.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();await page.waitForURL(origin+'/cabinet/obyavleniya');
++  assert.equal(writes.length,3);assert.equal(creates,1);assert.equal(intents.length,2);
++  assert.equal(saved.form.cityName,'Сочи');assert.equal(saved.form.booking.priceWeekday,1250.5);assert.equal(saved.form.booking.extraGuestPrice,0);
++  assert.equal(saved.form.booking.availableFrom,'2026-01-01');assert.deepEqual(saved.form.booking.blockedDates,['2026-01-02']);
++  assert.equal(saved.form.price,'199.99');assert.equal(saved.form.contactMethod,'messenger');assert.equal(saved.form.district,'Мой район');
++  assert.equal(saved.form.address,'Улица 1');assert.equal(saved.form.latitude,43.6);assert.equal(saved.form.longitude,39.7);assert.equal(saved.form.showExactAddress,false);
++  assert.equal(saved.form.title,'Исправленное объявление');assert.equal(saved.form.photoIds.length,2);assert.equal(saved.form.photoIds[0],firstPhoto);
++  await page.getByRole('link',{name:'Исправленное объявление',exact:true}).click();
++  await page.locator('input[name="title"]').fill('Моя полная правка');await page.locator('input[name="placementRightsAccepted"]').check();
++  saved={...saved,revision:'9007199254740993',form:{...saved.form,title:'Другая вкладка',district:'Серверный район',photoIds:[]},photos:[]};await persist();
++  await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
++  await page.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();
++  await page.getByRole('region',{name:'Сохранённая форма',exact:true}).getByText(/Серверный район/).waitFor();
++  assert.equal(saved.form.title,'Другая вкладка');assert.equal(saved.form.district,'Серверный район');assert.deepEqual(saved.form.photoIds,[]);assert.equal(writes.length,4);
++  const axe=await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'),'utf8');await page.addScriptTag({content:axe});
++  for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
++   const violations=await page.evaluate(async()=>{const result=await window.axe.run(document.querySelector('form'));return result.violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>({id:item.id,nodes:item.nodes.map(node=>({target:node.target,failureSummary:node.failureSummary}))}));});
++   assert.deepEqual(violations,[]);
++  }
++  await page.getByRole('button',{name:'Сохранить мою исходную форму вместо показанной',exact:true}).focus();await page.keyboard.press('Space');
++  await page.waitForURL(origin+'/cabinet/obyavleniya');
++  assert.equal(saved.form.title,'Моя полная правка');assert.equal(saved.form.district,'Мой район');assert.equal(saved.form.photoIds.length,2);
++  assert.equal(writes.at(-1).expectedRevision,'9007199254740993');assert.equal(creates,1);
++  await page.getByRole('link',{name:'Моя полная правка',exact:true}).click();
++  await page.getByRole('heading',{name:'Редактировать объявление',exact:true}).waitFor();
++  assert.equal(await page.locator('input[name="kind"]').inputValue(),'arenda');
++  await page.locator('.listing-kind-field').getByRole('button').click();await page.getByRole('option',{name:'Продам',exact:true}).click();
++  assert.equal(await page.locator('input[name="price"]').inputValue(),'199.99');await page.locator('input[name="price"]').fill('1234.50');
++  await page.locator('input[name="placementRightsAccepted"]').check();loseSubmission=true;
+   await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).click();
+-  await page.getByText('Ответ не получен. Проверьте статус отправки перед повторным действием.',{exact:true}).waitFor();
+-  assert.equal(submissions,1);assert.equal(await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).isDisabled(),true);
+-  await page.getByRole('button',{name:'Обновить статус модерации',exact:true}).click();await page.getByText('На модерации',{exact:true}).waitFor();assert.equal(submissions,1);
++  await page.getByRole('button',{name:'Проверить отправку',exact:true}).waitFor();
++  assert.equal(submissions,1);assert.equal(saved.form.price,'1234.50');assert.equal(await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).isDisabled(),true);
++  await page.getByRole('button',{name:'Проверить отправку',exact:true}).focus();await page.keyboard.press('Space');await page.waitForURL(origin+'/cabinet/obyavleniya');
++  const moderatedCard=page.getByRole('link',{name:'Моя полная правка',exact:true}).locator('xpath=ancestor::li[1]');
++  await moderatedCard.getByRole('button',{name:'Статус и оплата',exact:true}).click();
++  await page.getByText('На модерации',{exact:true}).waitFor();assert.equal(submissions,1);
+   moderation={...moderation,state:'approved'};await page.getByRole('button',{name:'Обновить статус модерации',exact:true}).click();
+   await page.getByText('Одобрено модератором',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Оплатить',exact:true}).count(),0);
+-  await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
++  await page.addScriptTag({content:axe});
+   for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
+    const violations=await page.evaluate(async()=>{const result=await window.axe.run(document.querySelector('section[aria-label="Модерация объявления"]'));return result.violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id);});assert.deepEqual(violations,[]);
+   }
+   await page.getByRole('button',{name:'Обновить статус модерации',exact:true}).focus();await page.keyboard.press('Space');
+   await page.getByText('Одобрено модератором',{exact:true}).waitFor();assert.equal(submissions,1);
+   await page.getByRole('region',{name:'Модерация объявления',exact:true}).screenshot({path:'/tmp/blizhniy-moderation-owner-browser.png'});
+-  await page.getByLabel('Название',{exact:true}).fill('Несохранённый текст');assert.equal(await page.getByText('Одобрено модератором',{exact:true}).count(),0);
+-  await page.getByLabel('Название',{exact:true}).fill('Полная форма');
+-  await page.getByRole('button',{name:'Проверить перед публикацией',exact:true}).click();
+-  await page.getByText('199,99 ₽',{exact:true}).waitFor();assert.equal(inspections.length,1);assert.equal(writes.length,1);
+-  assert.ok(await page.getByText('Это проверка данных, а не публикация или платёж.',{exact:true}).count());
+-  await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
+-  for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
+-   const violations=await page.evaluate(async()=>{const result=await window.axe.run(document.querySelector('section[aria-label="Проверка перед публикацией"]'));return result.violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id);});assert.deepEqual(violations,[]);
+-  }
+-  await page.getByRole('region',{name:'Проверка перед публикацией',exact:true}).screenshot({path:'/tmp/blizhniy-publication-check-browser.png'});
+-  const keyboardCheck=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/account/listing-publication');
+-  await page.getByRole('button',{name:'Проверить перед публикацией',exact:true}).focus();await page.keyboard.press('Space');await keyboardCheck;await page.getByText('199,99 ₽',{exact:true}).waitFor();
+-  failInspection=true;await page.getByRole('button',{name:'Проверить перед публикацией',exact:true}).click();
+-  await page.getByText('Не удалось проверить объявление. Повторите проверку позже.',{exact:true}).waitFor();assert.equal(await page.getByText('199,99 ₽',{exact:true}).count(),0);
+-  failInspection=false;await page.getByRole('button',{name:'Проверить перед публикацией',exact:true}).click();await page.getByText('199,99 ₽',{exact:true}).waitFor();
+-  await page.getByLabel('Название',{exact:true}).fill('Несохранённое изменение');assert.equal(await page.getByRole('button',{name:'Проверить перед публикацией',exact:true}).isDisabled(),true);
+-  assert.equal(await page.getByText('199,99 ₽',{exact:true}).count(),0);await page.getByLabel('Название',{exact:true}).fill('Полная форма');
+-  await page.getByText('Категория, место и контакты из полной формы',{exact:true}).click();
+-  await page.getByRole('button',{name:'Изменить дополнительные поля',exact:true}).click();
+-  await page.getByRole('heading',{name:'Дополнительные поля черновика',exact:true}).waitFor();
+-  await page.getByLabel('Телефон для связи',{exact:true}).fill('+79991112233');
+-  await page.getByLabel('Город',{exact:true}).fill('Сочи');
+-  await page.getByLabel('Режим бронирования',{exact:true}).selectOption('stay');
+-  await page.getByLabel('Будни, ₽/сутки',{exact:true}).fill('1250,50');
+-  await page.getByLabel('Правила и ограничения',{exact:true}).fill('Без шума');
+-  sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+-  await page.getByText('Проверяем доступ к черновикам…',{exact:true}).waitFor();
+-  assert.equal(await page.getByLabel('Телефон для связи',{exact:true}).count(),0);
+-  release();sessionGate=null;await page.getByLabel('Телефон для связи',{exact:true}).waitFor();
+-  assert.equal(await page.getByLabel('Телефон для связи',{exact:true}).inputValue(),'+79991112233');
+-  await page.getByLabel('Широта',{exact:true}).fill('invalid');
+-  await page.getByRole('button',{name:'Сохранить дополнительные поля',exact:true}).click();
+-  await page.getByText(/Проверьте поля: координаты задаются парой/).waitFor();assert.equal(writes.length,1);
+-  await page.getByLabel('Широта',{exact:true}).fill('');
+-  lose=true;await page.getByRole('button',{name:'Сохранить дополнительные поля',exact:true}).click();
+-  await page.getByRole('button',{name:'Сверить дополнительные поля',exact:true}).click();
+-  await page.getByText('Дополнительные поля сохранены.',{exact:true}).waitFor();
+-  assert.equal(writes.length,2);assert.equal(saved.form.cityName,'Сочи');assert.equal(saved.form.booking.priceWeekday,1250.5);
+-  assert.equal(saved.form.title,'Полная форма');assert.equal(saved.form.photoIds.length,1);
+-  // Concurrent text/photo changes must survive the explicit keep-my-extra-fields choice.
+-  await page.getByLabel('Район',{exact:true}).fill('Мой район');
+-  page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name:'Закрыть дополнительные поля',exact:true}).click();
+-  assert.equal(await page.getByLabel('Район',{exact:true}).inputValue(),'Мой район');
+-  saved={...saved,revision:'9007199254740993',form:{...saved.form,title:'Другая вкладка',district:'Серверный район',photoIds:[]},photos:[]};
+-  await page.getByRole('button',{name:'Сохранить дополнительные поля',exact:true}).click();
+-  await page.getByRole('button',{name:'Сверить дополнительные поля',exact:true}).click();
+-  await page.getByRole('region',{name:'Сохранённые дополнительные поля',exact:true}).getByText(/Серверный район/).waitFor();
+-  await page.getByRole('button',{name:'Оставить мои дополнительные правки',exact:true}).click();
+-  await page.getByRole('button',{name:'Сохранить дополнительные поля',exact:true}).click();
+-  await page.getByText('Дополнительные поля сохранены.',{exact:true}).waitFor();
+-  assert.equal(saved.form.title,'Другая вкладка');assert.equal(saved.form.district,'Мой район');assert.deepEqual(saved.form.photoIds,[]);
+-  assert.equal(writes.at(-1).expectedRevision,'9007199254740993');
+-  const axe=await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'),'utf8');await page.addScriptTag({content:axe});
+-  for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
+-   const violations=await page.evaluate(async()=>{const result=await window.axe.run(document.querySelector('section[aria-labelledby="extra-fields-heading"]'));return result.violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id);});
+-   assert.deepEqual(violations,[]);
+-  }
+-  await page.getByLabel('Город',{exact:true}).focus();await page.keyboard.press('Tab');assert.equal(await page.getByLabel('Район',{exact:true}).evaluate(node=>document.activeElement===node),true);
+-  await page.screenshot({path:'/tmp/blizhniy-extra-fields-browser.png',fullPage:true});
+   assert.equal(await page.getByText('Не удалось загрузить профиль. Проверьте сессию и обновите данные.',{exact:true}).count(),0);
+-  active='32345678-1234-4321-8765-123456789abc';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+-  await page.getByText('Объявлений пока нет.',{exact:true}).waitFor();
+-  assert.equal(await page.getByLabel('Телефон для связи',{exact:true}).count(),0);
+-  assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
+-  active=owner;
+-  await page.goto(origin+'/cabinet');await page.getByRole('button',{name:'Другая вкладка',exact:true}).click();
+-  await page.getByText('Категория, место и контакты из полной формы',{exact:true}).click();await page.getByRole('button',{name:'Изменить дополнительные поля',exact:true}).click();
+-  await page.getByLabel('Район',{exact:true}).fill('Буфер обзора');
++  await moderatedCard.getByRole('link',{name:'Редактировать',exact:true}).click();
++  await page.locator('input[name="title"]').fill('Буфер обзора');
+   sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+-  await page.getByText('Проверяем доступ к черновикам…',{exact:true}).waitFor();assert.equal(await page.getByLabel('Район',{exact:true}).count(),0);
+-  release();sessionGate=null;await page.getByLabel('Район',{exact:true}).waitFor();assert.equal(await page.getByLabel('Район',{exact:true}).inputValue(),'Буфер обзора');
+-  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Закрыть дополнительные поля',exact:true}).click();
+-  await page.goto(origin+'/razmestit/obyavlenie');await page.locator('input[name="title"]').fill('Буфер предыдущего владельца');
++  await page.getByText('Проверяем вход. Заполненная форма скрыта до подтверждения аккаунта.',{exact:true}).waitFor();assert.equal(await page.locator('input[name="title"]').isVisible(),false);
++  release();sessionGate=null;await page.locator('input[name="title"]').waitFor();assert.equal(await page.locator('input[name="title"]').inputValue(),'Буфер обзора');
++  active='32345678-1234-4321-8765-123456789abc';await persist();await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
++  await page.getByText('Аккаунт изменился. Откройте своё объявление из личного кабинета.',{exact:true}).waitFor();
++  assert.equal(await page.locator('input[name="title"]').count(),0);assert.equal(await page.getByText('Буфер обзора',{exact:true}).count(),0);
++  const foreignDraft=await page.goto(origin+`/razmestit/obyavlenie?draft=${id}`);assert.equal(foreignDraft.status(),404);
++  assert.equal((await foreignDraft.text()).includes('Моя полная правка'),false);assert.equal(await page.locator('input[name="title"]').count(),0);
++  await page.goto(origin+'/cabinet/obyavleniya');await page.getByText('Вы ещё не создали объявлений.',{exact:true}).waitFor();
++  assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
++  active=owner;await persist();await page.goto(origin+'/razmestit/obyavlenie');await page.locator('input[name="title"]').fill('Буфер предыдущего владельца');
+   active='32345678-1234-4321-8765-123456789abc';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+   await page.waitForFunction(()=>document.querySelector('input[name="title"]')?.value==='');
+   assert.equal(await page.locator('input[name="photos"]').evaluate(input=>input.files.length),0);
+@@ -203,7 +226,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
+   await page.screenshot({path:'/tmp/blizhniy-initial-moderation-unknown.png'});
+   await page.getByRole('button',{name:'Проверить отправку',exact:true}).focus();await page.keyboard.press('Space');
+   await page.waitForURL(origin+'/cabinet/obyavleniya');
+-  await page.getByRole('button',{name:'Сразу на модерацию',exact:true}).click();
++  await page.getByRole('link',{name:'Сразу на модерацию',exact:true}).locator('xpath=ancestor::li[1]').getByRole('button',{name:'Статус и оплата',exact:true}).click();
+   await page.getByText('На модерации',{exact:true}).waitFor();
+   assert.equal(writes.length,beforeInitialWrites+1);assert.equal(submissions,beforeInitialSubmissions+1);
+   // A readback of a lost form save never implicitly submits it for moderation.
+diff --git a/tests/production-account-browser.mjs b/tests/production-account-browser.mjs
+index b135579..3925133 100644
+--- a/tests/production-account-browser.mjs
++++ b/tests/production-account-browser.mjs
+@@ -348,7 +348,7 @@ test("primary account browser forms use the new cookie API without remote traffi
+     await run("ordinary cabinet and listing pages expose real owner drafts without legacy requests", async ({ page, state }) => {
+       await login(page);
+       await page.goto(origin+"/cabinet");
+-      await page.getByText("Объявлений пока нет.", { exact: true }).waitFor();
++      await page.getByText("Вы ещё не создали объявлений.", { exact: true }).waitFor();
+       // Exercise the retained low-level editor separately; ordinary cabinet
+       // creation now opens the complete listing form (covered below).
+       await page.goto(origin+"/cabinet/chernoviki");
+@@ -359,8 +359,11 @@ test("primary account browser forms use the new cookie API without remote traffi
+       assert.equal(state.drafts.get(state.active.id).size, 1);
+       await page.goto(origin+"/cabinet/obyavleniya");
+       await page.reload();
+-      await page.getByRole("button", { name: "Черновик из обычного кабинета", exact: true }).click();
+-      assert.equal(await page.getByLabel("Название", { exact: true }).inputValue(), "Черновик из обычного кабинета");
++      const listing = page.getByRole("link", { name: "Черновик из обычного кабинета", exact: true });
++      await listing.waitFor();
++      const id = [...state.drafts.get(state.active.id).keys()][0];
++      assert.equal(await listing.getAttribute("href"), `/razmestit/obyavlenie?draft=${id}`);
++      assert.equal(await page.getByLabel("Название", { exact: true }).count(), 0, "the ordinary cabinet lists cards without mounting another placement editor");
+     });
+     await run("private draft editor creates, saves and recovers an unknown write without losing local text or repeating the write", async ({ page, state }) => {
+       await login(page);
+@@ -389,17 +392,17 @@ test("primary account browser forms use the new cookie API without remote traffi
+     });
+     await run("cabinet links to private drafts; unavailable identity has an explicit retry rather than an endless loading state", async ({ page, state }) => {
+       await login(page);await page.goto(origin+"/cabinet");
+-      await page.getByRole("link", { name: "Черновики объявлений", exact: true }).click();
+-      await page.waitForURL(origin+"/cabinet/chernoviki");
+-      assert.equal(new URL(page.url()).pathname, "/cabinet/chernoviki");
+-      await page.getByText("Черновиков пока нет.", { exact: true }).waitFor();
++      await page.getByRole("link", { name: "Мои объявления", exact: true }).first().click();
++      await page.waitForURL(origin+"/cabinet/obyavleniya");
++      assert.equal(new URL(page.url()).pathname, "/cabinet/obyavleniya");
++      await page.getByText("Вы ещё не создали объявлений.", { exact: true }).waitFor();
+       state.override = route => route.fulfill({ status: 503, json: { error: { code: "AUTH_UNAVAILABLE" } } });
+       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+       await page.getByRole("alert").filter({ hasText: "Не удалось проверить вход." }).waitFor();
+-      assert.equal(await page.getByRole("button", { name: "Новый черновик", exact: true }).count(), 0);
++      assert.equal(await page.getByRole("region", { name: "Мои объявления", exact: true }).getByRole("link", { name: "Создать объявление", exact: true }).count(), 0);
+       state.override = null;
+       await page.getByRole("button", { name: "Повторить проверку входа", exact: true }).click();
+-      await page.getByRole("button", { name: "Новый черновик", exact: true }).waitFor();
++      await page.getByRole("region", { name: "Мои объявления", exact: true }).getByRole("link", { name: "Создать объявление", exact: true }).waitFor();
+     });
+     await run("lost blank creation reuses one intent; draft editor supports keyboard, mobile layout and accessible fields", async ({ page, state }) => {
+       await login(page);await page.goto(origin+"/cabinet/chernoviki");

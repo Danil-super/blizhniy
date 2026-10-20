@@ -85,7 +85,7 @@ function readFutureDateList(formData: FormData, name: string) {
     .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item) && item >= today);
 }
 
-export function parseListingBookingFormData(formData: FormData, categorySlug: string, kind: ListingKind): BookingDetails | undefined {
+export function parseListingBookingFormData(formData: FormData, categorySlug: string, kind: ListingKind,options:{draft?:boolean}={}): BookingDetails | undefined {
   const subcategorySlug = readRawValue(formData, "subcategory");
 
   if (kind !== "arenda" || !isRentalSubcategorySlug(categorySlug, subcategorySlug)) {
@@ -93,13 +93,18 @@ export function parseListingBookingFormData(formData: FormData, categorySlug: st
   }
 
   const mode: BookingDetails["mode"] = readRawValue(formData, "bookingMode") === "tour" ? "tour" : "stay";
+  const money=(name:string)=>{
+    const raw=readRawValue(formData,name),value=Number(raw.replace(/\s/g,'').replace(',','.'));
+    return options.draft&&raw&&Number.isFinite(value)&&value>=0?value:readPositiveNumber(formData,name);
+  };
+  const date=options.draft?(value:string)=>value:normalizeFutureDate;
 
   if (mode === "tour") {
     return {
       mode,
-      pricePerPerson: readPositiveNumber(formData, "bookingPricePerPerson"),
+      pricePerPerson: money("bookingPricePerPerson"),
       maxGuests: readPositiveNumber(formData, "bookingMaxGuests"),
-      tourDate: normalizeFutureDate(readRawValue(formData, "tourDate")),
+      tourDate: date(readRawValue(formData, "tourDate")),
       tourTime: readRawValue(formData, "tourTime"),
       tourDuration: readRawValue(formData, "tourDuration"),
       tourDifficulty: readRawValue(formData, "tourDifficulty"),
@@ -109,19 +114,19 @@ export function parseListingBookingFormData(formData: FormData, categorySlug: st
     };
   }
 
-  const availableFrom = normalizeFutureDate(readRawValue(formData, "bookingAvailableFrom"));
+  const availableFrom = date(readRawValue(formData, "bookingAvailableFrom"));
 
   return {
     mode,
-    priceWeekday: readPositiveNumber(formData, "bookingPriceWeekday"),
-    priceWeekend: readPositiveNumber(formData, "bookingPriceWeekend"),
+    priceWeekday: money("bookingPriceWeekday"),
+    priceWeekend: money("bookingPriceWeekend"),
     minNights: readPositiveNumber(formData, "bookingMinNights"),
     includedGuests: readPositiveNumber(formData, "bookingIncludedGuests"),
     maxGuests: readPositiveNumber(formData, "bookingMaxGuests"),
-    extraGuestPrice: readPositiveNumber(formData, "bookingExtraGuestPrice"),
+    extraGuestPrice: money("bookingExtraGuestPrice"),
     availableFrom,
-    availableTo: normalizeEndDate(readRawValue(formData, "bookingAvailableTo"), availableFrom),
-    blockedDates: readFutureDateList(formData, "bookingBlockedDates"),
+    availableTo: options.draft?readRawValue(formData,"bookingAvailableTo"):normalizeEndDate(readRawValue(formData, "bookingAvailableTo"), availableFrom),
+    blockedDates: options.draft?readRawValue(formData,'bookingBlockedDates').split(/[\n,;]/).map(value=>value.trim()).filter(Boolean):readFutureDateList(formData, "bookingBlockedDates"),
     checkInTime: readRawValue(formData, "bookingCheckIn"),
     checkOutTime: readRawValue(formData, "bookingCheckOut"),
     included: readRawValue(formData, "bookingIncluded"),

@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 type PageProps = {
-  searchParams?: Promise<{ admin?: string; category?: string; error?: string; kind?: string; subcategory?: string }>;
+  searchParams?: Promise<{ admin?: string; category?: string; error?: string; kind?: string; subcategory?: string; draft?:string }>;
 };
 
 export default async function Page({ searchParams }: PageProps) {
@@ -24,6 +24,7 @@ export default async function Page({ searchParams }: PageProps) {
 
   return (
     <ListingFormPage
+      draftId={params?.draft}
       adminMode={adminMode}
       error={params?.error}
       defaults={{

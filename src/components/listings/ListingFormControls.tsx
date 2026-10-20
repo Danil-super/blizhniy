@@ -2,14 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Camera, ImagePlus, Trash2, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
 import { categories as fallbackCategories, cities, region } from "@/lib/data";
-import { extractListingPriceDigits, maxListingPriceDigits } from "@/lib/listing-price";
+import { extractListingPriceDigits } from "@/lib/listing-price";
 import { getRentalSubcategories, isRentalCategorySlug, isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { filterListingMediaFiles, listingMediaLimitText } from "@/lib/media-limits";
 import { hasMapCoordinates } from "@/lib/map-location";
@@ -200,6 +200,7 @@ export function ListingLocationFields({
   defaultLat,
   defaultLng,
   inlineControls = false,
+  defaultExact,
 }: {
   addressLegend?: string;
   className?: string;
@@ -210,10 +211,13 @@ export function ListingLocationFields({
   defaultLat?: number;
   defaultLng?: number;
   inlineControls?: boolean;
+  defaultExact?:boolean;
 }) {
-  const hasInitialPoint = Boolean(defaultAddress?.trim()) && hasMapCoordinates(defaultLat, defaultLng);
+  const coordinatePoint=hasMapCoordinates(defaultLat,defaultLng);
+  const hasInitialPoint = coordinatePoint&&(defaultExact!==undefined||Boolean(defaultAddress?.trim()));
   const addressGroupId = useId();
-  const [mode, setMode] = useState<"city" | "exact">(hasInitialPoint ? "exact" : "city");
+  const [mode, setMode] = useState<"city" | "exact">(hasInitialPoint&&defaultExact!==false ? "exact" : "city");
+  const [privatePoint,setPrivatePoint]=useState(defaultExact===false&&(!!defaultAddress||coordinatePoint));
   const [cityValue, setCityValue] = useState(formatCityValue(defaultCity));
   const [pointSelected, setPointSelected] = useState(hasInitialPoint);
   const optionClassName = (active: boolean) =>
@@ -229,6 +233,7 @@ export function ListingLocationFields({
           onChange={() => {
             setMode("city");
             setPointSelected(false);
+            setPrivatePoint(false);
           }}
           className="h-4 w-4 shrink-0 accent-[#0875d1]"
         />
@@ -264,22 +269,26 @@ export function ListingLocationFields({
         </fieldset>
       )}
       {mode === "city" ? (
+        <>
+        {privatePoint&&<><input type="hidden" name="privateMapPoint" value="1"/><input type="hidden" name="address" value={defaultAddress??''}/><input type="hidden" name="lat" value={defaultLat??''}/><input type="hidden" name="lng" value={defaultLng??''}/><p className="text-sm text-slate-500">Сохранённая точка на карте скрыта: на сайте будет указан только город.</p></>}
         <label className="block min-w-0">
           <span className="text-sm font-bold text-slate-700">{cityLabel}</span>
           <span className="mt-2 block">
             <DropdownSelect
               name={cityFieldName}
               value={cityValue}
-              onValueChange={setCityValue}
-              options={cityOptions}
+              onValueChange={value=>{if(value!==cityValue)setPrivatePoint(false);setCityValue(value);}}
+              options={cityValue&&!cityOptions.some(item=>item.value===cityValue)?[{value:cityValue,label:cityValue},...cityOptions]:cityOptions}
               placeholder="Выбрать"
               required
             />
           </span>
         </label>
+        </>
       ) : null}
       {mode === "exact" ? (
         <>
+          <input type="hidden" name={cityFieldName} value={cityValue}/>
           <YandexMapPicker defaultAddress={defaultAddress} defaultLat={defaultLat} defaultLng={defaultLng} onPointSelectedChange={setPointSelected} />
           <input
             className="pointer-events-none absolute h-px w-px -translate-x-[200vw] opacity-0"
@@ -428,10 +437,10 @@ function ListingPriceField({ defaultValue }: { defaultValue?: string }) {
       <span className="relative mt-1 block sm:mt-2">
         <input
           name="price"
-          defaultValue={extractListingPriceDigits(defaultValue)}
-          inputMode="numeric"
-          maxLength={maxListingPriceDigits}
-          pattern="[0-9]*"
+          defaultValue={defaultValue&&/^\d+(?:[.,]\d{1,2})?$/.test(defaultValue)?defaultValue:extractListingPriceDigits(defaultValue)}
+          inputMode="decimal"
+          maxLength={13}
+          pattern="[0-9]+([.,][0-9]{1,2})?"
           placeholder="12000"
           className="h-10 w-full rounded-lg border border-slate-300 px-3 pr-9 text-sm outline-none focus:border-[#0875d1] sm:h-12 sm:px-4 sm:pr-10 sm:text-base"
         />
@@ -456,7 +465,7 @@ export function ListingBookingFields({ booking, mode }: { booking?: BookingDetai
               : "Задайте период приема гостей, правила заезда и занятые даты. На странице объявления пользователь выберет заезд и выезд в календаре."}
           </p>
         </div>
-        <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#0875d1]">Аренда</span>
+        <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">Аренда</span>
       </div>
       <input type="hidden" name="bookingMode" value={mode} />
 
@@ -539,6 +548,8 @@ export function ListingKindAndCategoryFields({
   defaultKind = "prodam",
   defaultSubcategorySlug,
   booking,
+  preserveEmpty = false,
+  savedSubcategoryName,
 }: {
   categories?: Category[];
   defaultPrice?: string;
@@ -546,29 +557,35 @@ export function ListingKindAndCategoryFields({
   defaultKind?: ListingKind;
   defaultSubcategorySlug?: string;
   booking?: BookingDetails;
+  preserveEmpty?:boolean;
+  savedSubcategoryName?:string;
 }) {
-  const listingCategoryOptions = buildListingCategoryOptions(categories);
+  const storedCategory=preserveEmpty&&defaultCategorySlug&&!categories.some(item=>item.slug===defaultCategorySlug)?{id:defaultCategorySlug,slug:defaultCategorySlug,name:`Сохранённая категория: ${defaultCategorySlug}`,children:savedSubcategoryName?[savedSubcategoryName]:[]}:null;
+  const availableCategories=storedCategory?[storedCategory,...categories]:categories;
+  const listingCategoryOptions = buildListingCategoryOptions(availableCategories);
   const rentalCategories = categories.filter((category) => isRentalCategorySlug(category.slug));
-  const fallbackCategory = categories.find((category) => category.slug === defaultCategorySlug) ?? categories[0];
+  const fallbackCategory = availableCategories.find((category) => category.slug === defaultCategorySlug) ?? categories[0];
   const fallbackRentalCategory = rentalCategories[0] ?? fallbackCategory;
-  const initialCategory = defaultKind === "arenda" ? (isRentalCategorySlug(fallbackCategory?.slug ?? "") ? fallbackCategory : fallbackRentalCategory) : fallbackCategory;
+  const initialCategory = preserveEmpty?availableCategories.find(category=>category.slug===defaultCategorySlug):defaultKind === "arenda" ? (isRentalCategorySlug(fallbackCategory?.slug ?? "") ? fallbackCategory : fallbackRentalCategory) : fallbackCategory;
   const initialCategoryOption = getCategoryOptionForDefaults(listingCategoryOptions, initialCategory?.slug ?? "", defaultSubcategorySlug);
   const [categorySlug, setCategorySlug] = useState(initialCategory?.slug ?? "");
   const [categoryOptionValue, setCategoryOptionValue] = useState(initialCategoryOption?.value ?? initialCategory?.slug ?? "");
-  const selectedCategory = categories.find((category) => category.slug === categorySlug) ?? fallbackCategory;
-  const [kind, setKind] = useState<ListingKind>(initialCategoryOption?.preferredKind === "arenda" || defaultKind === "arenda" ? "arenda" : defaultKind);
-  const allSubcategories = orderSubcategoriesLikeCatalog(selectedCategory?.children ?? []);
-  const subcategories = kind === "arenda" ? getRentalSubcategories(categorySlug, allSubcategories) : allSubcategories;
+  const selectedCategory = availableCategories.find((category) => category.slug === categorySlug) ?? (preserveEmpty&&!categorySlug?undefined:fallbackCategory);
+  const [kind, setKind] = useState<ListingKind>(preserveEmpty?defaultKind:initialCategoryOption?.preferredKind === "arenda" || defaultKind === "arenda" ? "arenda" : defaultKind);
+  const sourceSubcategories=selectedCategory?.children??[];
+  const allSubcategories = orderSubcategoriesLikeCatalog(preserveEmpty&&categorySlug===defaultCategorySlug&&savedSubcategoryName&&!sourceSubcategories.includes(savedSubcategoryName)?[savedSubcategoryName,...sourceSubcategories]:sourceSubcategories);
+  const rentalSubcategories=kind==='arenda'?getRentalSubcategories(categorySlug,allSubcategories):allSubcategories;
+  const subcategories = preserveEmpty&&categorySlug===defaultCategorySlug&&savedSubcategoryName&&!rentalSubcategories.includes(savedSubcategoryName)?[savedSubcategoryName,...rentalSubcategories]:rentalSubcategories;
   const fallbackSubcategory = subcategories[0] ? slugifySubcategoryValue(subcategories[0]) : "";
   const initialSubcategory =
     defaultSubcategorySlug && subcategories.some((child) => slugifySubcategoryValue(child) === defaultSubcategorySlug)
       ? defaultSubcategorySlug
       : initialCategoryOption?.subcategorySlug && subcategories.some((child) => slugifySubcategoryValue(child) === initialCategoryOption.subcategorySlug)
         ? initialCategoryOption.subcategorySlug
-      : fallbackSubcategory;
+      : preserveEmpty&&!defaultSubcategorySlug?'':fallbackSubcategory;
   const [subcategorySlug, setSubcategorySlug] = useState(initialSubcategory);
-  const isRental = kind === "arenda" && isRentalCategorySlug(categorySlug);
-  const selectedSubcategoryName = subcategories.find((child) => slugifySubcategoryValue(child) === subcategorySlug) ?? subcategories[0] ?? "";
+  const isRental = kind === "arenda" && (isRentalCategorySlug(categorySlug)||preserveEmpty&&!!booking);
+  const selectedSubcategoryName = subcategories.find((child) => slugifySubcategoryValue(child) === subcategorySlug) ?? (preserveEmpty&&!subcategorySlug?'':subcategories[0]) ?? "";
   const bookingMode: BookingDetails["mode"] = selectedSubcategoryName === "Походы" ? "tour" : "stay";
 
   function setCategoryWithSubcategory(nextOption: ListingCategoryOption, nextKind = kind) {
@@ -681,7 +698,7 @@ export function ListingKindAndCategoryFields({
         </span>
       </label>
 
-      {isRental ? null : <ListingPriceField defaultValue={defaultPrice} />}
+      {isRental ? <input type="hidden" name="price" value={defaultPrice??''}/> : <ListingPriceField defaultValue={defaultPrice} />}
 
       {isRental ? (
         <div className="listing-booking-fields order-last col-span-full">
@@ -692,7 +709,7 @@ export function ListingKindAndCategoryFields({
   );
 }
 
-export function ListingPhotoUploader() {
+export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) {
   const [media, setMedia] = useState<PreviewMedia[]>([]);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("");
@@ -840,6 +857,7 @@ export function ListingPhotoUploader() {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <input ref={inputRef} className="sr-only" type="file" accept="image/*" name="photos" aria-label="Фотографии объявления" multiple onChange={handleFiles} />
+      {savedPhotos}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <Camera className="h-5 w-5 shrink-0 text-[#0875d1]" />

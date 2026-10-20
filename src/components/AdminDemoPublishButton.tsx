@@ -22,6 +22,8 @@ import { normalizeVacancyRequisites, validateVacancyRequisites } from "@/lib/vac
 import type { BookingDetails, ListingKind } from "@/lib/types";
 
 type AdminDemoPublishButtonProps = {
+  listingDraft?:import('@/lib/listing-form-contract').ListingFormSnapshot;
+  listingOwnerId?:string;
   publicationType: DemoPublicationType;
   returnHref: string;
   label: string;
@@ -504,7 +506,7 @@ async function createSupabaseVacancy(formData: FormData, options: { accessToken:
 
 export function AdminDemoPublishButton(props:AdminDemoPublishButtonProps){
   const primary=usePrimaryAccountAuth();
-  if(primary&&props.publicationType==='listing')return <PrimaryListingFormButton draft={isDraftStatus(props.status??'Опубликовано')} label={props.label} returnHref={props.returnHref} className={props.buttonClassName}/>;
+  if(primary&&props.publicationType==='listing')return <PrimaryListingFormButton draft={isDraftStatus(props.status??'Опубликовано')} label={props.label} returnHref={props.returnHref} className={props.buttonClassName} existing={props.listingDraft} expectedOwnerId={props.listingOwnerId}/>;
   return <LegacyPublicationButton {...props}/>;
 }
 
