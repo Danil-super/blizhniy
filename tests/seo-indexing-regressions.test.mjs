@@ -72,3 +72,18 @@ test('public animal category descriptions explain real content without leaking t
   assert.doesNotMatch(text,/провер[а-яё]*|контрол[а-яё]*|форма создания|тестов[а-яё]*/i);
  }
 });
+
+test('the exact www alias redirects every path to the HTTPS canonical host without matching other hosts',async()=>{
+ const {default:config}=load('next.config.ts'),redirects=await config.redirects();
+ const {matchHas}=require('next/dist/shared/lib/router/utils/prepare-destination');
+ const rule=redirects.find(item=>item.has?.some(condition=>condition.type==='host'));
+ assert.ok(rule,'www alias requires an explicit host redirect');
+ assert.equal(rule.source,'/:path*');
+ assert.equal(rule.destination,'https://xn----9sbphbgks4a4a.xn--p1ai/:path*');
+ assert.equal(rule.permanent,true);
+ const host='www.xn----9sbphbgks4a4a.xn--p1ai';
+ assert.ok(matchHas({headers:{host},cookies:{}},{},rule.has));
+ for(const other of ['xn----9sbphbgks4a4a.xn--p1ai','localhost','www.xn----9sbphbgks4a4a.xn--p1ai.evil.invalid','evilwww.xn----9sbphbgks4a4a.xn--p1ai']){
+  assert.equal(matchHas({headers:{host:other},cookies:{}},{},rule.has),false);
+ }
+});

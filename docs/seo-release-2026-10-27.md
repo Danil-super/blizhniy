@@ -5,6 +5,9 @@ listing-kind headings, two obsolete category addresses and a sitemap still using
 the retired publication backend. This release changes only public SEO behavior.
 
 - Add `/rekvizity` canonical and sitemap entry.
+- Redirect the exact `www` alias to the primary HTTPS host, retaining path/query.
+  Live URL Inspection identified the `www` requisites page as Google's canonical;
+  both hosts previously served HTTP 200. Preserve older path-redirect precedence.
 - Distinguish listing-kind titles, descriptions and H1 while retaining filtered canonicals.
 - Redirect two exact legacy category addresses with 308, including encoded Cyrillic.
 - Replace testing instructions in public animal category descriptions.
@@ -17,7 +20,8 @@ or environment. Deleted old publications retain 404 as confirmed by
 the owner. Existing noindex/robots exclusions remain. Pending local migration/UI
 changes in the main workspace are excluded from this branch.
 
-Validation: 1661 native tests, focused SEO tests, types, lint and Next build passed.
+Validation: 1662 native tests, 349 disposable PostgreSQL tests, focused SEO tests,
+types/lint, Next 15.5.28 build and actual HTTP checks of www/path/query redirects.
 The existing unused `targetType` lint warning remains. PR CI/security gates must
 pass before merge; deployment uses the existing health/readiness/watchdog rollback.
 After deployment check public canonical, redirects, sitemap and Search Console.

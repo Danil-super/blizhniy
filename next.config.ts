@@ -319,6 +319,12 @@ const nextConfig: NextConfig = {
         destination: "/:path*",
         permanent: true,
       },
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www\\.xn----9sbphbgks4a4a\\.xn--p1ai" }],
+        destination: "https://xn----9sbphbgks4a4a.xn--p1ai/:path*",
+        permanent: true,
+      },
     ];
   },
 };
