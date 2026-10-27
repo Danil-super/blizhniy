@@ -23,14 +23,23 @@ const checkKind=(kind:WorkPublicationKind)=>{if(kind!=='vacancy'&&kind!=='workRe
 /** Public eligibility is independent of owner/editor reads and never synthesizes legacy records. */
 export class PostgresPublicWorkStore{
  constructor(private readonly db:PostgresQueries){if(typeof window!=='undefined')throw Error('Public work storage is server-only');}
+ private async listRows(kind:WorkPublicationKind,limit:number,offset:number){
+  checkKind(kind);if(!Number.isSafeInteger(limit)||limit<1||limit>1000||!Number.isSafeInteger(offset)||offset<0||offset>1000000)throw new ListingDraftInputError();
+  const rows=(await this.db.query<PublicWorkRow>(`select ${columns} ${source} where ${live} and w.kind=$1
+   order by w.published_at desc,w.created_at desc,w.id desc limit $2 offset $3`,[kind,limit,offset])).rows;
+  return rows;
+ }
  list(kind:'vacancy',limit?:number,offset?:number):Promise<JobVacancy[]>;
  list(kind:'workRequest',limit?:number,offset?:number):Promise<WorkRequest[]>;
  list(kind:WorkPublicationKind,limit?:number,offset?:number):Promise<(JobVacancy|WorkRequest)[]>;
  async list(kind:WorkPublicationKind,limit=24,offset=0):Promise<(JobVacancy|WorkRequest)[]>{
-  checkKind(kind);if(!Number.isSafeInteger(limit)||limit<1||limit>1000||!Number.isSafeInteger(offset)||offset<0||offset>1000000)throw new ListingDraftInputError();
-  const rows=(await this.db.query<PublicWorkRow>(`select ${columns} ${source} where ${live} and w.kind=$1
-   order by w.published_at desc,w.created_at desc,w.id desc limit $2 offset $3`,[kind,limit,offset])).rows;
-  return rows.map(row=>mapPublicWorkPublication(row,Date.now())).filter((item):item is JobVacancy|WorkRequest=>item!==null);
+  return (await this.listRows(kind,limit,offset)).map(row=>mapPublicWorkPublication(row,Date.now())).filter((item):item is JobVacancy|WorkRequest=>item!==null);
+ }
+ async sitemapPage(kind:WorkPublicationKind,limit=100,offset=0){
+  const rows=await this.listRows(kind,limit,offset);
+  const entries=rows.map(row=>mapPublicWorkPublication(row,Date.now())).filter((item):item is JobVacancy|WorkRequest=>item!==null)
+   .map(({id,publishedAt})=>({id,publishedAt}));
+  return{entries,hasMore:rows.length===limit};
  }
  read(kind:'vacancy',publicationId:unknown):Promise<JobVacancy|undefined>;
  read(kind:'workRequest',publicationId:unknown):Promise<WorkRequest|undefined>;

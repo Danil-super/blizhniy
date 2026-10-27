@@ -144,7 +144,7 @@ test("sitemap spans batches, includes paid active URLs, and omits redirects and 
       },
     },
   };
-  vm.runInNewContext(compile(source), { exports, require: (id) => mockModules[id], Date, Promise, encodeURIComponent, Set, Array, Number });
+  vm.runInNewContext(compile(source), { exports, require: (id) => mockModules[id], process: { env: {} }, Date, Promise, encodeURIComponent, Set, Array, Number });
   const sitemap = await exports.default();
   const urls = sitemap.map((entry) => entry.url);
 

@@ -65,6 +65,16 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: "/katalog/sad-i-rasteniya-0",
+        destination: "/katalog/sad-i-rasteniya",
+        permanent: true,
+      },
+      {
+        source: encodeURI("/katalog/dlya-doma-i-dachi/для-дома-и-дачи"),
+        destination: "/katalog/dlya-doma-i-dachi",
+        permanent: true,
+      },
+      {
         source: "/krasnodar",
         destination: "/",
         permanent: true,
