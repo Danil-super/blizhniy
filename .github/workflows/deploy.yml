@@ -85,17 +85,25 @@ jobs:
           RUN_TOKEN="${{ github.run_id }}-${{ github.run_attempt }}"
           ARCHIVE_NAME="blizhniy-${RUN_TOKEN}.tar.gz"
           LOCAL_ARCHIVE="$RUNNER_TEMP/${ARCHIVE_NAME}"
-          REMOTE_ARCHIVE="/tmp/${ARCHIVE_NAME}"
+          # mktemp creates this directory atomically with owner-only access.
+          # Keep every executable, archive and watchdog signal inside it.
+          REMOTE_DIR="$(retry ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "mktemp -d /tmp/blizhniy-deploy-XXXXXXXXXXXX")"
+          if [[ ! "$REMOTE_DIR" =~ ^/tmp/blizhniy-deploy-[a-zA-Z0-9]{12}$ ]]; then
+            echo "Remote staging directory was not returned in the expected format." >&2
+            exit 1
+          fi
+          printf 'remote_dir=%s\n' "$REMOTE_DIR" >> "$GITHUB_OUTPUT"
+          REMOTE_ARCHIVE="$REMOTE_DIR/${ARCHIVE_NAME}"
           LOCAL_SCRIPT="$RUNNER_TEMP/blizhniy-deploy-${RUN_TOKEN}.sh"
-          REMOTE_SCRIPT="/tmp/blizhniy-deploy-${RUN_TOKEN}.sh"
+          REMOTE_SCRIPT="$REMOTE_DIR/blizhniy-deploy-${RUN_TOKEN}.sh"
           LOCAL_RUNNER="$RUNNER_TEMP/blizhniy-deploy-runner-${RUN_TOKEN}.sh"
-          REMOTE_RUNNER="/tmp/blizhniy-deploy-runner-${RUN_TOKEN}.sh"
-          REMOTE_LOG="/tmp/blizhniy-deploy-${RUN_TOKEN}.log"
-          REMOTE_STATUS="/tmp/blizhniy-deploy-${RUN_TOKEN}.status"
-          REMOTE_RESULT="/tmp/blizhniy-deploy-${RUN_TOKEN}.result"
-          REMOTE_CONFIRMED="/tmp/blizhniy-deploy-${RUN_TOKEN}.confirmed"
-          REMOTE_ABORT="/tmp/blizhniy-deploy-${RUN_TOKEN}.abort"
-          REMOTE_WATCHDOG="/tmp/blizhniy-deploy-watchdog-${RUN_TOKEN}.sh"
+          REMOTE_RUNNER="$REMOTE_DIR/blizhniy-deploy-runner-${RUN_TOKEN}.sh"
+          REMOTE_LOG="$REMOTE_DIR/deploy.log"
+          REMOTE_STATUS="$REMOTE_DIR/deploy.status"
+          REMOTE_RESULT="$REMOTE_DIR/deploy.result"
+          REMOTE_CONFIRMED="$REMOTE_DIR/deploy.confirmed"
+          REMOTE_ABORT="$REMOTE_DIR/deploy.abort"
+          REMOTE_WATCHDOG="$REMOTE_DIR/deploy-watchdog.sh"
 
           tar \
             --exclude=.git \
@@ -112,10 +120,9 @@ jobs:
 
           cat > "$LOCAL_SCRIPT" <<'EOF'
             set -euo pipefail
-            WORK_DIR="/tmp/blizhniy-deploy-${RUN_TOKEN}"
-            rm -rf "$WORK_DIR"
-            mkdir -p "$WORK_DIR"
-            tar -xzf "$SOURCE_ARCHIVE" -C "$WORK_DIR"
+            WORK_DIR="$REMOTE_DIR/source"
+            mkdir "$WORK_DIR"
+            tar --no-same-owner --no-same-permissions -xzf "$SOURCE_ARCHIVE" -C "$WORK_DIR"
             bash "$WORK_DIR/scripts/deploy-release.sh"
             rm -rf "$WORK_DIR" "$SOURCE_ARCHIVE" "$0" || true
           EOF
@@ -127,6 +134,7 @@ jobs:
             printf 'export SOURCE_ARCHIVE=%q\n' "$REMOTE_ARCHIVE"
             printf 'export COMMIT_SHA=%q\n' "${{ github.sha }}"
             printf 'export RUN_TOKEN=%q\n' "$RUN_TOKEN"
+            printf 'export REMOTE_DIR=%q\n' "$REMOTE_DIR"
             printf 'export REMOTE_SCRIPT=%q\n' "$REMOTE_SCRIPT"
             printf 'export REMOTE_STATUS=%q\n' "$REMOTE_STATUS"
             printf 'export REMOTE_RESULT=%q\n' "$REMOTE_RESULT"
@@ -138,7 +146,7 @@ jobs:
             printf 'exit "$status"\n'
           } > "$LOCAL_RUNNER"
 
-          retry scp "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -P "$VPS_PORT" "$LOCAL_ARCHIVE" "$LOCAL_SCRIPT" "$LOCAL_RUNNER" "$VPS_USER@$VPS_HOST:/tmp/"
+          retry scp "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -P "$VPS_PORT" "$LOCAL_ARCHIVE" "$LOCAL_SCRIPT" "$LOCAL_RUNNER" "$VPS_USER@$VPS_HOST:$REMOTE_DIR/"
           retry scp "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -P "$VPS_PORT" scripts/deploy-watchdog.sh "$VPS_USER@$VPS_HOST:$REMOTE_WATCHDOG"
 
           retry ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "rm -f '$REMOTE_LOG' '$REMOTE_STATUS' '$REMOTE_RESULT' '$REMOTE_CONFIRMED' '$REMOTE_ABORT'; chmod +x '$REMOTE_RUNNER'; nohup bash '$REMOTE_RUNNER' > '$REMOTE_LOG' 2>&1 < /dev/null &"
@@ -204,6 +212,7 @@ jobs:
 
       - name: Confirm deployed release
         env:
+          REMOTE_DIR: ${{ steps.ship.outputs.remote_dir }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
           VPS_USER: ${{ secrets.VPS_USER }}
@@ -220,8 +229,12 @@ jobs:
             -o KexAlgorithms=+diffie-hellman-group14-sha256
             -o PubkeyAcceptedAlgorithms=+ssh-rsa
           )
-          remote_confirm="/tmp/blizhniy-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.confirmed"
-          remote_result="/tmp/blizhniy-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.result"
+          if [[ ! "$REMOTE_DIR" =~ ^/tmp/blizhniy-deploy-[a-zA-Z0-9]{12}$ ]]; then
+            echo "Remote staging directory is missing or invalid." >&2
+            exit 1
+          fi
+          remote_confirm="$REMOTE_DIR/deploy.confirmed"
+          remote_result="$REMOTE_DIR/deploy.result"
           ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "touch '$remote_confirm'"
           for attempt in $(seq 1 30); do
             result="$(ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cat '$remote_result' 2>/dev/null || true")"
@@ -240,6 +253,7 @@ jobs:
       - name: Roll back release if a deployed check failed
         if: ${{ failure() }}
         env:
+          REMOTE_DIR: ${{ steps.ship.outputs.remote_dir }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
           VPS_USER: ${{ secrets.VPS_USER }}
@@ -259,12 +273,20 @@ jobs:
           )
           # The server runner holds the release lock and owns rollback. If SSH
           # is unavailable, its 30-minute confirmation lease still expires.
-          remote_abort="/tmp/blizhniy-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.abort"
-          remote_result="/tmp/blizhniy-deploy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.result"
           if [[ ! -f "$SSH_DIRECTORY/deploy_key" ]]; then
             echo "Deploy never initialized its SSH key; no release switch was attempted."
             exit 0
           fi
+          if [[ -z "$REMOTE_DIR" ]]; then
+            echo "Deploy never allocated remote staging; no release switch was attempted."
+            exit 0
+          fi
+          if [[ ! "$REMOTE_DIR" =~ ^/tmp/blizhniy-deploy-[a-zA-Z0-9]{12}$ ]]; then
+            echo "Remote staging directory is invalid; refusing to signal another path." >&2
+            exit 1
+          fi
+          remote_abort="$REMOTE_DIR/deploy.abort"
+          remote_result="$REMOTE_DIR/deploy.result"
           ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "touch '$remote_abort'" || {
             echo "Could not signal remote runner. Outcome unknown until its lease expires; inspect VPS release status." >&2
             exit 1

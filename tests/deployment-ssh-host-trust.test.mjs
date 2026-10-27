@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createConnection, createServer } from 'node:net';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir, userInfo } from 'node:os';
 import path from 'node:path';
@@ -238,6 +238,7 @@ fs.appendFileSync(process.env.SSH_CALL_LOG, JSON.stringify({tool,args,status:p.s
 if(p.status !== 0){process.stderr.write(p.stderr);process.exit(p.status||1);}
 const command=args.at(-1);
 if(command.includes('test -f') && process.env.SSH_SCENARIO === 'timeout')process.exit(1);
+if(command.includes('mktemp -d ')) process.stdout.write(process.env.SSH_REMOTE_DIR+'\\n');
 if(command.includes('cat ') && command.includes('.status')) process.stdout.write('0\\n');
 if(command.includes('cat ') && command.includes('.result')) process.stdout.write(process.env.SSH_SCENARIO === 'rollback' ? 'rolled_back\\n' : 'confirmed\\n');
 `;
@@ -257,10 +258,11 @@ test('parsed deployment and TLS workflow paths use the effective pinned policy f
     assert.ok(configure.run.includes('scripts/setup-deployment-ssh.sh'), 'TLS must establish repository-pinned trust');
     assert.match(tls.jobs.renew.steps[0].uses, /^actions\/checkout@[0-9a-f]{40}$/);
     const { bin, log } = workflowFixture(root);
-    const env = { PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: root, SSH_CALL_LOG: log, VPS_HOST: '217.149.30.35', VPS_PORT: '2222', VPS_USER: 'fixture-user', VPS_SSH_KEY: 'synthetic-client-key-only', APP_DIR: '/synthetic-app', GITHUB_RUN_ID: '12345', GITHUB_RUN_ATTEMPT: '1' };
-    const execute = (step, scenario = 'confirmed') => {
+    const remoteDir = '/tmp/blizhniy-deploy-aBcD12345678';
+    const env = { PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: root, GITHUB_OUTPUT: path.join(root, 'outputs'), SSH_REMOTE_DIR: remoteDir, REMOTE_DIR: remoteDir, SSH_CALL_LOG: log, VPS_HOST: '217.149.30.35', VPS_PORT: '2222', VPS_USER: 'fixture-user', VPS_SSH_KEY: 'synthetic-client-key-only', APP_DIR: '/synthetic-app', GITHUB_RUN_ID: '12345', GITHUB_RUN_ATTEMPT: '1' };
+    const execute = (step, scenario = 'confirmed', overrides = {}) => {
       const code = step.run.replace(/\$\{\{\s*github\.run_id\s*\}\}/g, '12345').replace(/\$\{\{\s*github\.run_attempt\s*\}\}/g, '1').replace(/\$\{\{\s*github\.sha\s*\}\}/g, 'a'.repeat(40));
-      return run('bash', ['-c', code], { ...env, SSH_SCENARIO: scenario });
+      return run('bash', ['-c', code], { ...env, SSH_SCENARIO: scenario, ...overrides });
     };
     assert.equal(execute(ship).status, 0);
     assert.equal(execute(ship, 'timeout').status, 124);
@@ -274,6 +276,17 @@ test('parsed deployment and TLS workflow paths use the effective pinned policy f
     assert.ok(calls.some(call => call.args.at(-1).includes('.confirmed')));
     assert.ok(calls.some(call => call.args.at(-1).includes('.abort')));
     assert.ok(calls.some(call => call.args.at(-1).includes('journalctl')));
+    assert.match(readFileSync(env.GITHUB_OUTPUT, 'utf8'), new RegExp(`remote_dir=${remoteDir}`));
+    for (const call of calls.filter(call => call.tool === 'scp')) {
+      assert.ok(call.args.at(-1).startsWith(`fixture-user@217.149.30.35:${remoteDir}/`), 'every uploaded artifact must stay in the private directory');
+    }
+    for (const call of calls.filter(call => /\.(?:confirmed|abort|status|result|log)/.test(call.args.at(-1)))) {
+      assert.ok(call.args.at(-1).includes(`${remoteDir}/`), 'all deployment signals and logs share the private directory');
+    }
+    const runner = readFileSync(path.join(root, 'blizhniy-deploy-runner-12345-1.sh'), 'utf8');
+    for (const name of ['SOURCE_ARCHIVE', 'REMOTE_SCRIPT', 'REMOTE_STATUS', 'REMOTE_RESULT', 'REMOTE_CONFIRMED', 'REMOTE_ABORT', 'REMOTE_DIR']) {
+      assert.match(runner, new RegExp(`export ${name}=${remoteDir}/?`));
+    }
     for (const call of calls) {
       assert.equal(call.status, 0);
       assertPolicy(call.policy, path.join(root, 'blizhniy-ssh'));
@@ -281,7 +294,78 @@ test('parsed deployment and TLS workflow paths use the effective pinned policy f
       assert.equal(call.policy.hostname, '217.149.30.35');
       assert.ok(call.args.includes('StrictHostKeyChecking=yes'), 'critical call must explicitly require strict checking');
     }
+    const confirm = deploy.jobs.deploy.steps.find(step => step.name === 'Confirm deployed release');
+    const rollback = deploy.jobs.deploy.steps.find(step => step.name === 'Roll back release if a deployed check failed');
+    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ steps.ship.outputs.remote_dir }}');
+    for (const invalid of ['', '/tmp/other-directory', `${remoteDir}\n/tmp/second`, `${remoteDir}'; touch /tmp/invalid`]) {
+      const before = readFileSync(log, 'utf8').trim().split('\n').length;
+      assert.equal(execute(ship, 'confirmed', { SSH_REMOTE_DIR: invalid }).status, 1);
+      assert.equal(execute(confirm, 'confirmed', { REMOTE_DIR: invalid }).status, 1);
+      assert.equal(execute(rollback, 'rollback', { REMOTE_DIR: invalid }).status, invalid ? 1 : 0);
+      const added = readFileSync(log, 'utf8').trim().split('\n').slice(before).map(line => JSON.parse(line));
+      assert.equal(added.length, 1, 'invalid paths cannot reach SCP, confirmation or abort');
+      assert.ok(added[0].args.at(-1).includes('mktemp -d '));
+    }
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('the deployed wrapper executes source only inside private staging and leaves a preplanted old path untouched', () => {
+  const root = temporary('deploy-wrapper-');
+  const token = path.basename(root);
+  const oldPath = `/tmp/blizhniy-deploy-${token}`;
+  try {
+    const ship = workflow('deploy').jobs.deploy.steps.find(step => step.id === 'ship');
+    const wrapper = ship.run.match(/cat > "\$LOCAL_SCRIPT" <<'EOF'\n([\s\S]*?)\n\s*EOF/);
+    assert.ok(wrapper);
+    const stage = path.join(root, 'private'); mkdirSync(stage, { mode: 0o700 });
+    const source = path.join(root, 'input'); mkdirSync(path.join(source, 'scripts'), { recursive: true });
+    const outside = path.join(root, 'outside'); mkdirSync(outside);
+    writeFileSync(path.join(outside, 'sentinel'), 'unchanged');
+    symlinkSync(outside, oldPath);
+    writeFileSync(path.join(source, 'scripts/deploy-release.sh'), 'printf "%s\\n" "$0" "$(umask)" > "$WRAPPER_TRACE"\n');
+    const archive = path.join(stage, 'source.tar.gz');
+    assert.equal(run('/usr/bin/tar', ['-czf', archive, '-C', source, '.']).status, 0);
+    const script = path.join(stage, 'deploy.sh'); writeFileSync(script, wrapper[1]);
+    const trace = path.join(root, 'trace');
+    const result = run('bash', ['-c', 'umask 022; bash "$WRAPPER_SCRIPT"'], {
+      WRAPPER_SCRIPT: script, WRAPPER_TRACE: trace, REMOTE_DIR: stage, SOURCE_ARCHIVE: archive, RUN_TOKEN: token,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(readFileSync(trace, 'utf8').trim().split('\n'), [`${stage}/source/scripts/deploy-release.sh`, '0022']);
+    assert.equal(existsSync(path.join(stage, 'source')), false);
+    assert.equal(existsSync(archive), false);
+    assert.equal(readlinkSync(oldPath), outside);
+    assert.equal(readFileSync(path.join(outside, 'sentinel'), 'utf8'), 'unchanged');
+    assert.equal(statSync(stage).mode & 0o777, 0o700);
+  } finally {
+    rmSync(oldPath, { force: true }); rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('remote staging allocation is atomic and private even with a permissive umask and hostile TMPDIR', () => {
+  const ship = workflow('deploy').jobs.deploy.steps.find(step => step.id === 'ship');
+  const allocation = ship.run.match(/"(mktemp -d \/tmp\/blizhniy-deploy-X+)"/);
+  assert.ok(allocation, 'allocate one random directory atomically before uploading anything');
+  const root = temporary('deploy-staging-attacker-');
+  const created = [];
+  try {
+    writeFileSync(path.join(root, 'sentinel'), 'unchanged');
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = run('bash', ['-c', `umask 000; ${allocation[1]}`], { TMPDIR: root });
+      assert.equal(result.status, 0, result.stderr);
+      const dir = result.stdout.trim(); created.push(dir);
+      assert.match(dir, /^\/tmp\/blizhniy-deploy-[A-Za-z0-9]{12}$/);
+      const info = statSync(dir);
+      assert.equal(info.mode & 0o777, 0o700);
+      assert.equal(info.uid, userInfo().uid);
+      assert.equal(path.dirname(dir), '/tmp');
+    }
+    assert.notEqual(created[0], created[1]);
+    assert.equal(readFileSync(path.join(root, 'sentinel'), 'utf8'), 'unchanged');
+  } finally {
+    for (const dir of created) rmSync(dir, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 async function reservePort() {
