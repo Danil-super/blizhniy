@@ -34,14 +34,23 @@ export class PostgresPublicListingStore{
   const row=(await this.db.query<Row>(`select ${columns()} ${source} where l.id=$1 and ${eligible} limit 1`,[id,maxListingMediaTotalSize])).rows[0];
   return row?this.project(row)??undefined:undefined;
  }
- async list(options:PublicListingQuery={}):Promise<Listing[]>{
+ private async listRows(options:PublicListingQuery){
   // Lists need only a cover; the detail read retains every attached photo for the gallery.
   const query=queryOptions(options),rows=(await this.db.query<Row>(`select ${columns(true)} ${source} where ${eligible}
    and ($1::text is null or l.listing_type=$1) and ($3::uuid is null or l.author_id=$3)
    and ($4::text is null or coalesce(parent.slug,c.slug)=$4)
    and ($5::text is null or c.parent_id is not null and c.name=$5)
    order by l.published_at desc,l.created_at desc,l.id desc limit $6 offset $7`,[query.kind,maxListingMediaTotalSize,query.ownerId,query.categorySlug,query.subcategoryName,query.limit,query.offset])).rows;
-  return rows.map(row=>this.project(row)).filter((row):row is Listing=>row!==null);
+  return rows;
+ }
+ async list(options:PublicListingQuery={}):Promise<Listing[]>{
+  return (await this.listRows(options)).map(row=>this.project(row)).filter((row):row is Listing=>row!==null);
+ }
+ async sitemapPage(limit=100,offset=0){
+  const rows=await this.listRows({limit,offset});
+  const entries=rows.map(row=>this.project(row)).filter((row):row is Listing=>row!==null)
+   .map(({id,publishedAt})=>({id,publishedAt}));
+  return{entries,hasMore:rows.length===limit};
  }
  async photoRecord(value:unknown,file:unknown):Promise<PublicListingPhoto|undefined>{
   let id:string,media:string;try{id=parseListingDraftId(value);media=parseListingDraftId(file);}catch{return undefined;}

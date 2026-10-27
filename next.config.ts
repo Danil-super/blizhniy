@@ -65,6 +65,16 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: "/katalog/sad-i-rasteniya-0",
+        destination: "/katalog/sad-i-rasteniya",
+        permanent: true,
+      },
+      {
+        source: encodeURI("/katalog/dlya-doma-i-dachi/для-дома-и-дачи"),
+        destination: "/katalog/dlya-doma-i-dachi",
+        permanent: true,
+      },
+      {
         source: "/krasnodar",
         destination: "/",
         permanent: true,
@@ -307,6 +317,12 @@ const nextConfig: NextConfig = {
       {
         source: "/blizhniy/:path*",
         destination: "/:path*",
+        permanent: true,
+      },
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www\\.xn----9sbphbgks4a4a\\.xn--p1ai" }],
+        destination: "https://xn----9sbphbgks4a4a.xn--p1ai/:path*",
         permanent: true,
       },
     ];
