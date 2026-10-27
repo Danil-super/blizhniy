@@ -12,8 +12,8 @@ the retired publication backend. This release changes only public SEO behavior.
   for listings, vacancies, orders and specialist catalogue records. Preserve SQL
   pagination across rejected DTOs; propagate failures without legacy fallback.
 
-No changes to auth, cabinet editing, payments, publication policy, schema, grants,
-environment or dependencies. Deleted old publications retain 404 as confirmed by
+No changes to auth, cabinet editing, payments, publication policy, schema, grants
+or environment. Deleted old publications retain 404 as confirmed by
 the owner. Existing noindex/robots exclusions remain. Pending local migration/UI
 changes in the main workspace are excluded from this branch.
 
@@ -22,3 +22,12 @@ The existing unused `targetType` lint warning remains. PR CI/security gates must
 pass before merge; deployment uses the existing health/readiness/watchdog rollback.
 After deployment check public canonical, redirects, sitemap and Search Console.
 Google indexing and its canonical selection require subsequent observation.
+
+## Required framework security patch
+
+The release audit found critical GHSA-2464-fhr4-w9xw and high
+GHSA-p3m5-59mp-jv5r in Next.js 15.5.27. Upgrade Next and its matching ESLint config
+to 15.5.28, the patched version confirmed by the upstream advisories and
+[release notes](https://github.com/vercel/next.js/releases/tag/v15.5.28).
+Production audit then reports no high/critical findings. One moderate Nodemailer
+finding remains outside this change; the audit gate is unchanged.
