@@ -12,6 +12,18 @@ const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { renderToReadableStream } = require("react-dom/server.edge");
 const root = fileURLToPath(new URL("../", import.meta.url));
+// Webpack resolves static image imports to metadata. Preserve that boundary in
+// the Node loader, using real source dimensions rather than compiling binaries.
+const staticImages = new Map();
+for (const component of ["CategoryGrid", "HomeIntro", "LogoMark"]) {
+  const path = resolve(root, "src/components", `${component}.tsx`);
+  for (const match of readFileSync(path, "utf8").matchAll(/from "([^"]+\.(?:webp|png))"/g)) {
+    const image = resolve(dirname(path), match[1]);
+    const metadata = await require("sharp")(image).metadata();
+    assert.ok(metadata.width > 0 && metadata.height > 0, `Invalid static image ${image}`);
+    staticImages.set(image, { src: image.slice(resolve(root, "public").length), width: metadata.width, height: metadata.height });
+  }
+}
 
 // Execute the complete presentation module and all application dependencies.
 // Only Next request/router/host-element edges are adapted for Node SSR.
@@ -23,7 +35,7 @@ function harness({ taxonomy, rows = [] } = {}) {
     // Next resolves this build-time marker internally; application modules remain real.
     "server-only": {},
     "next/link": { __esModule: true, default: ({ children, ...props }) => React.createElement("a", props, children) },
-    "next/image": { __esModule: true, default: (props) => React.createElement("img", Object.fromEntries(Object.entries(props).filter(([key]) => !["fill", "priority", "unoptimized"].includes(key)))) },
+    "next/image": { __esModule: true, getImageProps: require("next/image").getImageProps, default: (props) => React.createElement("img", Object.fromEntries(Object.entries(props).filter(([key]) => !["fill", "priority", "unoptimized"].includes(key)))) },
     "next/headers": { headers: async () => new Headers() },
     "next/navigation": {
       notFound: () => { throw new Error("NEXT_NOT_FOUND"); },
@@ -91,6 +103,7 @@ function harness({ taxonomy, rows = [] } = {}) {
       if (Object.hasOwn(framework, specifier)) return framework[specifier];
       if (!specifier.startsWith("@/") && !specifier.startsWith(".")) return require(specifier);
       const base = specifier.startsWith("@/") ? resolve(root, "src", specifier.slice(2)) : resolve(dirname(path), specifier);
+      if (staticImages.has(base)) return staticImages.get(base);
       const dependency = [base, `${base}.ts`, `${base}.tsx`, resolve(base, "index.ts")].find((candidate) => existsSync(candidate) && /\.(ts|tsx|json)$/.test(candidate));
       assert.ok(dependency, `Unresolved actual source dependency ${specifier}`);
       return load(dependency);

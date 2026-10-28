@@ -1,6 +1,6 @@
-/* eslint-disable @next/next/no-img-element */
-
 import Link from "next/link";
+import Image from "next/image";
+import type { StaticImageData } from "next/image";
 import type { ComponentType } from "react";
 import {
   ArrowRight,
@@ -24,6 +24,24 @@ import {
 } from "lucide-react";
 import { getPublicCategories } from "@/lib/category-store";
 import type { Category } from "@/lib/types";
+import animalsImage from "../../public/images/categories/animals.webp";
+import gardenImage from "../../public/images/categories/garden.webp";
+import kidsImage from "../../public/images/categories/kids.webp";
+import ritualImage from "../../public/images/categories/ritual.webp";
+import realEstateImage from "../../public/images/categories/real-estate.webp";
+import jobsImage from "../../public/images/categories/jobs.webp";
+import clothingImage from "../../public/images/categories/clothing.webp";
+import hobbyImage from "../../public/images/categories/hobby.webp";
+import autoImage from "../../public/images/categories/auto.webp";
+import businessImage from "../../public/images/categories/business-equipment.webp";
+import servicesImage from "../../public/images/categories/services.webp";
+import electronicsImage from "../../public/images/categories/electronics.webp";
+import homeImage from "../../public/images/categories/home-dacha.webp";
+import toolsImage from "../../public/images/categories/tools.webp";
+import dishesImage from "../../public/images/categories/dishes.webp";
+import exchangeFreeImage from "../../public/images/categories/exchange-free.webp";
+import beautyImage from "../../public/images/categories/beauty-health.webp";
+import otherImage from "../../public/images/categories/other.webp";
 
 function CandleIcon({ className }: { className?: string }) {
   return (
@@ -42,7 +60,7 @@ type CategoryTile = {
   label: string;
   href: string;
   icon: ComponentType<{ className?: string }>;
-  imageUrl: string;
+  imageUrl: StaticImageData;
   description: string;
   bullets: string[];
   tone: "blue" | "green";
@@ -53,24 +71,24 @@ type CategoryTile = {
 };
 
 const categoryImages = {
-  animals: "/images/categories/animals.webp",
-  garden: "/images/categories/garden.webp",
-  kids: "/images/categories/kids.webp",
-  ritual: "/images/categories/ritual.webp",
-  realEstate: "/images/categories/real-estate.webp",
-  jobs: "/images/categories/jobs.webp",
-  clothing: "/images/categories/clothing.webp",
-  hobby: "/images/categories/hobby.webp",
-  auto: "/images/categories/auto.webp",
-  business: "/images/categories/business-equipment.webp",
-  services: "/images/categories/services.png",
-  electronics: "/images/categories/electronics.webp",
-  home: "/images/categories/home-dacha.webp",
-  tools: "/images/categories/tools.webp",
-  dishes: "/images/categories/dishes.webp",
-  exchangeFree: "/images/categories/exchange-free.webp",
-  beauty: "/images/categories/beauty-health.webp",
-  other: "/images/categories/other.webp",
+  animals: animalsImage,
+  garden: gardenImage,
+  kids: kidsImage,
+  ritual: ritualImage,
+  realEstate: realEstateImage,
+  jobs: jobsImage,
+  clothing: clothingImage,
+  hobby: hobbyImage,
+  auto: autoImage,
+  business: businessImage,
+  services: servicesImage,
+  electronics: electronicsImage,
+  home: homeImage,
+  tools: toolsImage,
+  dishes: dishesImage,
+  exchangeFree: exchangeFreeImage,
+  beauty: beautyImage,
+  other: otherImage,
 };
 
 const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "href">> = {
@@ -298,13 +316,13 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
               data-category-card
               className={`group relative isolate block min-h-[320px] overflow-hidden rounded-[22px] border border-slate-200/90 bg-white shadow-[0_14px_42px_rgba(15,23,42,0.06)] ring-1 ring-white transition duration-300 [clip-path:inset(0_round_22px)] [transform:translateZ(0)] hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_24px_70px_rgba(15,23,42,0.12)] sm:min-h-[400px] sm:rounded-[26px] sm:[clip-path:inset(0_round_26px)] lg:min-h-[430px] xl:min-h-[440px] ${isLastOddCard ? "lg:col-span-2 lg:min-h-[540px]" : ""} ${tone.hover}`}
             >
-              <img
+              <Image
                 aria-hidden="true"
                 alt=""
                 className="absolute inset-y-0 right-0 h-full w-[124%] max-w-none rounded-[22px] object-cover brightness-[1.04] contrast-[1.12] saturate-[1.16] transition duration-500 [clip-path:inset(0_round_22px)] [transform:translateZ(0)] group-hover:scale-[1.02] sm:w-[108%] sm:rounded-[26px] sm:[clip-path:inset(0_round_26px)] lg:w-[104%]"
                 decoding="async"
-                fetchPriority={index < 2 || isLastOddCard ? "high" : "auto"}
-                loading={index < 2 || isLastOddCard ? "eager" : "lazy"}
+                sizes={isLastOddCard ? "(min-width: 1524px) 1500px, 124vw" : "(min-width: 1524px) 780px, (min-width: 1024px) 52vw, (min-width: 640px) 108vw, 124vw"}
+                loading="lazy"
                 src={category.imageUrl}
                 style={{ objectPosition: category.imagePosition ?? "right center" }}
               />
