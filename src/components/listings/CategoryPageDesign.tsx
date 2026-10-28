@@ -1,8 +1,13 @@
-import Image from "next/image";
+import Image, { getImageProps } from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { ArrowRight, ChevronRight, ClipboardList } from "lucide-react";
 import { SubcategoryShareButton } from "@/components/listings/SubcategoryShareButton";
+
+function optimizedCategoryPhoto(src: string, width = 1672, height = 941) {
+  const { props } = getImageProps({ src, width, height, alt: "", sizes: "100vw" });
+  return { src: props.src, srcSet: props.srcSet, sizes: props.sizes, loading: "eager" as const };
+}
 
 type CategoryVisual = {
   accent: string;
@@ -324,7 +329,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             className="h-full w-full object-cover object-[76%_center] lg:object-center"
             fetchPriority="high"
             height={941}
-            src="/images/categories/animals-category-hero.png"
+            {...optimizedCategoryPhoto("/images/categories/animals-category-hero.png")}
             width={1672}
           />
         </picture>
@@ -409,32 +414,16 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             className="h-full w-full object-cover object-[76%_center] lg:object-center"
             fetchPriority="high"
             height={941}
-            src="/images/categories/electronics-category-hero.png"
+            {...optimizedCategoryPhoto("/images/categories/electronics-category-hero.png")}
             width={1672}
           />
         </picture>
       ) : null}
       {isHomeAndDachaCategory ? (
-        <>
-          <Image
-            alt=""
-            aria-hidden="true"
-            className="object-cover object-[68%_center] lg:hidden"
-            fill
-            priority
-            sizes="100vw"
-            src="/images/categories/home-dacha-category-hero.png"
-          />
-          <Image
-            alt=""
-            aria-hidden="true"
-            className="absolute inset-0 hidden object-cover lg:block"
-            fill
-            priority
-            sizes="(min-width: 1280px) 1280px, 100vw"
-            src="/images/categories/home-dacha-category-hero-desktop-v1.webp"
-          />
-        </>
+        <picture className="pointer-events-none absolute inset-0">
+          <source media="(min-width: 1024px)" srcSet={optimizedCategoryPhoto("/images/categories/home-dacha-category-hero-desktop-v1.webp", 2172, 724).srcSet} sizes="100vw" />
+          <Image alt="" className="object-cover object-[68%_center] lg:object-center" fill loading="eager" fetchPriority="high" sizes="100vw" src="/images/categories/home-dacha-category-hero.png" />
+        </picture>
       ) : null}
       {isExchangeOrFreeCategory ? (
         <picture className="pointer-events-none absolute inset-0">
@@ -445,7 +434,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             className="h-full w-full object-cover object-[68%_center] lg:object-center"
             fetchPriority="high"
             height={941}
-            src="/images/categories/exchange-free-category-hero.png"
+            {...optimizedCategoryPhoto("/images/categories/exchange-free-category-hero.png")}
             width={1672}
           />
         </picture>
@@ -459,7 +448,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             className="h-full w-full object-cover object-[64%_center] sm:object-[66%_center] lg:object-center"
             fetchPriority="high"
             height={941}
-            src="/images/categories/real-estate-category-hero-v2.png"
+            {...optimizedCategoryPhoto("/images/categories/real-estate-category-hero-v2.png")}
             width={1672}
           />
         </picture>

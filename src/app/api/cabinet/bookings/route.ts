@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { updateStoredBookingRequestStatus } from "@/lib/booking-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
@@ -19,7 +20,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Войдите, чтобы ответить на заявку" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as UpdateBookingBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as UpdateBookingBody | null;
 
   if (!body?.requestId || !isUuid(body.requestId) || (body.status !== "accepted" && body.status !== "declined")) {
     return NextResponse.json({ error: "Некорректные параметры заявки" }, { status: 400 });

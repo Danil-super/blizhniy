@@ -1,3 +1,4 @@
+import { LegacyBodyError, readLegacyFormData } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { canUploadMediaToStorage, type UploadFolder, uploadMediaFile } from "@/lib/storage-upload";
@@ -29,10 +30,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы загрузить файлы" }, { status: 401 });
   }
 
-  const formData = await request.formData().catch(() => null);
-
-  if (!formData) {
-    return NextResponse.json({ error: "Некорректные данные загрузки" }, { status: 400 });
+  let formData: FormData;
+  try { formData = await readLegacyFormData(request); }
+  catch (error) {
+    const status = error instanceof LegacyBodyError ? error.status : 400;
+    return NextResponse.json({ error: status === 429 ? "Загрузка уже выполняется. Повторите позже." : "Некорректные данные или превышен лимит загрузки" }, { status });
   }
 
   const folder = String(formData.get("folder") ?? "");

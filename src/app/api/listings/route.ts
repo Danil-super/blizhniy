@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { createStoredListing, findReusableStoredListingForPayment, updateStoredListingForUser } from "@/lib/listing-store";
 import { createPayment, validatePaymentCreationPrerequisites } from "@/lib/payment-provider";
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы создать объявление" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as CreateListingBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as CreateListingBody | null;
 
   if (!body) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });

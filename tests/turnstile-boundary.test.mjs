@@ -73,6 +73,7 @@ function makeHarness({ environment, fetchImpl } = {}) {
     new Function("require", "module", "exports", "process", "fetch", "Date", "Map", "globalThis", js)(
       (id) => {
         if (Object.hasOwn(mocks, id)) return mocks[id];
+        if (id === "@/lib/legacy-request-body") return require("../src/lib/legacy-request-body.ts");
         if (id.startsWith("@/lib/")) return load(`src/lib/${id.slice(6)}.ts`);
         if (id.startsWith("node:")) return require(id);
         throw new Error(`Unexpected dependency: ${id}`);

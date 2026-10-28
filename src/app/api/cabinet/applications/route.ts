@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { getStoredApplicationOwner, listStoredApplicationsForUser, markStoredApplicationViewed, updateStoredApplicationDecision } from "@/lib/application-store";
 import { createStoredNotification } from "@/lib/notification-store";
@@ -50,7 +51,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы изменить отклик" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as PatchApplicationBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as PatchApplicationBody | null;
 
   if (!body?.action || !["view", "select", "reject"].includes(body.action) || !body.id) {
     return NextResponse.json({ error: "Некорректное действие" }, { status: 400 });

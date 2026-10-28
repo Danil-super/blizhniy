@@ -162,6 +162,7 @@ function harness(options = {}) {
       if (name === "@/lib/server-auth") return { isSupabaseServerConfigured: () => configured, getAuthenticatedRequestUser: async () => ({ user: { id: ownerId, email: "fixture@example.invalid" } }), isAdminRequest: async () => Boolean(options.admin) };
       if (name === "next/server") return { NextResponse: { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) } };
       if (name === "next/cache") return { revalidatePath() {} };
+      if (name === "@/lib/legacy-request-body") return require("../src/lib/legacy-request-body.ts");
       if (name.startsWith("@/")) return load(`src/${name.slice(2)}.ts`, cache);
       if (name.startsWith(".")) return load(resolve(filename, "..", name.endsWith('.ts') ? name : `${name}.ts`), cache);
       return require(name);
@@ -287,7 +288,7 @@ test("RPC outage preserves succeeded/pending, no entitlement claim, and webhook5
   assert.equal(result.payment.fulfillmentStatus, "pending");
   assert.equal(result.nextStatus, undefined);
   assert.equal(h.state.effects, 0);
-  const response = await h.load("src/app/api/payments/yookassa/webhook/route.ts").POST({ json: async () => ({ type: "notification", event: "payment.succeeded", object: { id: providerId } }) });
+  const response = await h.load("src/app/api/payments/yookassa/webhook/route.ts").POST(new Request("https://example.invalid/api/payments/yookassa/webhook", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "notification", event: "payment.succeeded", object: { id: providerId } }) }));
   assert.equal(response.status, 503);
   assert.equal(h.state.row.status, "succeeded");
 });
@@ -344,7 +345,7 @@ test("confirm route exposes succeeded/pending without publication while optional
 test("webhook acknowledges durable applied/blocked financial successes, never retries a blocked reset", async () => {
   for (const missingCapture of [false, true]) {
     const h = harness({ missingCapture });
-    const response = await h.load("src/app/api/payments/yookassa/webhook/route.ts").POST({ json: async () => ({ type: "notification", event: "payment.succeeded", object: { id: providerId } }) });
+    const response = await h.load("src/app/api/payments/yookassa/webhook/route.ts").POST(new Request("https://example.invalid/api/payments/yookassa/webhook", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "notification", event: "payment.succeeded", object: { id: providerId } }) }));
     assert.equal(response.status, 200);
     assert.equal(response.body.result.payment.status, "succeeded");
     assert.equal(response.body.result.payment.fulfillmentStatus, missingCapture ? "blocked" : "applied");
@@ -420,7 +421,7 @@ test("admin free fair waiver is distinct from settlement and bound to a just-cre
   for (const admin of [false, true]) {
     const h = harness({ admin });
     const body = { participantName: "Synthetic participant", city: "Synthetic city", category: "Synthetic category", description: "Synthetic isolated admin waiver description", phone: "+70000000000", email: "synthetic@example.invalid", skipPayment: true, captchaToken: "synthetic-valid-fixture", targetId: providerId, userId: providerId };
-    const response = await h.load("src/app/api/fair-applications/route.ts").POST({ json: async () => body, headers: new Headers({ "x-real-ip": "127.0.0.1" }) });
+    const response = await h.load("src/app/api/fair-applications/route.ts").POST(new Request("https://example.invalid/api/fair-applications", { method: "POST", headers: { "Content-Type": "application/json", "x-real-ip": "127.0.0.1" }, body: JSON.stringify(body) }));
     assert.equal(response.status, admin ? 201 : 403);
     assert.equal(h.state.providerFetches.length, 0);
     assert.equal(h.state.requests.some((request) => request.path.includes("/payments") || request.path.includes("/rpc/")), false);

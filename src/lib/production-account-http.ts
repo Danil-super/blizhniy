@@ -92,7 +92,12 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
       const ip = getTrustedProxyIp(request.headers);
       if (!ip) throw new AuthRequestError(403, "UNTRUSTED_INGRESS");
       const presented = readAccountSessionToken(request);
-      if (action === "session" && !presented) throw new AuthRequestError(401, "UNAUTHENTICATED");
+      // Optional UI discovery only. Resource authorization still resolves the HttpOnly cookie.
+      const anonymousView = action === "session" && request.headers.get("x-blizhniy-session-view") === "1";
+      if (action === "session" && !presented) {
+        if (anonymousView) return respond({ user: null }, 200);
+        throw new AuthRequestError(401, "UNAUTHENTICATED");
+      }
       if (action === "logout" && !presented) return respond({ status: "logged_out" }, 200, { "Set-Cookie": createAccountSessionCookie("", 0) });
       const state = await getRuntime();
       if (action === "logout") {
@@ -125,7 +130,10 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
       }
       if (action === "session") {
         const user = await state.identity.resolveSession(presented!);
-        if (!user || user.isBlocked) throw new AuthRequestError(401, "UNAUTHENTICATED");
+        if (!user || user.isBlocked) {
+          if (anonymousView) return respond({ user: null }, 200);
+          throw new AuthRequestError(401, "UNAUTHENTICATED");
+        }
         return respond({ user: view(user) }, 200);
       }
       if (action === "confirm") {

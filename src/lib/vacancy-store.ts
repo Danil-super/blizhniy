@@ -485,12 +485,12 @@ export async function saveStoredVacancyForUser(
 
   const body = (await storedVacancyBody(input, existingVacancy.status, options)) as Record<string, unknown>;
 
-  if (existingVacancy.status === "published") {
-    delete body.published_at;
-  }
+  // Content edits never grant payment or renew the publication date.
+  delete body.is_paid;
+  delete body.published_at;
 
   const rows = await supabaseRest<VacancyRow[]>(
-    `/rest/v1/vacancies?select=${vacancySelect}&id=eq.${encodeURIComponent(vacancyId)}&author_id=eq.${encodeURIComponent(userId)}`,
+    `/rest/v1/vacancies?select=${vacancySelect}&id=eq.${encodeURIComponent(vacancyId)}&author_id=eq.${encodeURIComponent(userId)}&status=eq.${encodeURIComponent(existingVacancy.status)}`,
     {
       method: "PATCH",
       prefer: "return=representation",

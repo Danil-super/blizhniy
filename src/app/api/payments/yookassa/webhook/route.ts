@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { processYooKassaNotification } from "@/lib/payment-provider";
 import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Payment storage is unavailable" }, { status: 503 });
   }
 
-  const payload = (await request.json().catch(() => null)) as unknown;
+  const payload = (await readLegacyJson(request).catch(() => null)) as unknown;
 
   if (
     !payload ||

@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { normalizeVacancyRequisites, validateVacancyRequisites } from "@/lib/vacancy-requisites";
@@ -115,7 +116,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы изменить вакансию" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as VacancyActionBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as VacancyActionBody | null;
 
   if (!body?.id) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
@@ -245,7 +246,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы удалить вакансию" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as Pick<VacancyActionBody, "id"> | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as Pick<VacancyActionBody, "id"> | null;
 
   if (!body?.id) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });

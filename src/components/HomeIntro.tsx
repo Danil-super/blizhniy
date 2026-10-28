@@ -1,20 +1,19 @@
 import Link from "next/link";
+import Image, { getImageProps } from "next/image";
 import { ArrowRight, BriefcaseBusiness, MapPinned, PlusCircle } from "lucide-react";
+import mobileHero from "../../public/images/categories/home-hero-main.webp";
+import desktopHero from "../../public/images/categories/home-hero-desktop.webp";
 
 export function HomeIntro() {
+  const { props: desktop } = getImageProps({ src: desktopHero, alt: "", sizes: "(min-width: 1524px) 1080px, 72vw" });
   return (
     <section className="page-container pb-3 pt-3 sm:pb-4 sm:pt-4 lg:pb-5" aria-label="Главный экран">
       <div className="relative isolate overflow-hidden rounded-[28px] border border-emerald-100/80 bg-[#fbfdf9] shadow-[0_22px_70px_rgba(15,23,42,0.08)] ring-1 ring-white">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 right-0 z-[1] hidden w-[72%] bg-cover bg-right bg-no-repeat [mask-image:linear-gradient(to_right,transparent_0%,black_45%,black_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_45%,black_100%)] lg:block"
-          style={{ backgroundImage: "url('/images/categories/home-hero-desktop.png')" }}
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-[1] bg-cover bg-[62%_center] bg-no-repeat lg:hidden"
-          style={{ backgroundImage: "url('/images/categories/home-hero-main.png')" }}
-        />
+        <picture className="pointer-events-none absolute inset-0 z-[1] lg:left-auto lg:w-[72%] lg:[mask-image:linear-gradient(to_right,transparent_0%,black_45%,black_100%)] lg:[-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_45%,black_100%)]">
+          <source media="(min-width: 1024px)" srcSet={desktop.srcSet} sizes={desktop.sizes} />
+          {/* Native picture selects one composition before scripts; text remains server-rendered. */}
+          <Image src={mobileHero} alt="" fill sizes="(max-width: 639px) 180vw, 100vw" loading="eager" fetchPriority="high" className="object-cover object-[62%_center] lg:object-right" />
+        </picture>
         <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-r from-white via-white/86 to-white/12 sm:via-white/80 lg:hidden" />
         <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-b from-white/22 via-transparent to-black/8 lg:hidden" />
         <div className="relative z-10 grid min-h-[360px] items-center gap-5 p-5 sm:min-h-[390px] sm:p-7 lg:min-h-[430px] lg:grid-cols-[minmax(0,0.84fr)_minmax(520px,1.16fr)] lg:p-10">
