@@ -12,6 +12,15 @@ type Runtime = { store: PostgresPhoneVerificationStore | null; limiter: Pick<Aut
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const statuses: Record<string, number> = { INVALID_ATTEMPT: 400, INVALID_INPUT: 422, PHONE_CONFLICT: 409, PROFILE_CHANGED: 409,
   REPLACEMENT_REQUIRED: 409, UNAVAILABLE: 503, RATE_LIMITED: 429, CANCELLED: 400, PHONE_REQUIRED: 403 };
+/** The fixed loopback Next listener sits behind Caddy, which overwrites X-Real-IP.
+ * Never derive the public authority from X-Forwarded-Host or a caller URL. */
+export function canonicalTelegramCallback(request: Request, configuredOrigin: string): Request {
+  const url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== 'https://127.0.0.1:3000' || url.pathname !== telegramPhoneCallbackPath || url.hash ||
+      request.headers.get('host') !== new URL(configuredOrigin).host || request.headers.get('x-forwarded-proto') !== 'https' || !getTrustedProxyIp(request.headers)) return request;
+  const target = new URL(configuredOrigin); target.pathname = url.pathname; target.search = url.search;
+  return new Request(target, { method: 'GET', headers: request.headers, signal: request.signal, redirect: 'error' });
+}
 export function createTelegramPhoneHandler(auth: { origin: string }, config: TelegramPhoneConfig | null, getRuntime: () => Promise<Runtime>) {
   return async (request: Request, action: 'status' | 'start' | 'review' | 'confirm' | 'unlink' | 'callback'): Promise<Response> => {
     const requestId = randomUUID();

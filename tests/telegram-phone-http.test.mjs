@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {createRequire} from 'node:module';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const {createTelegramPhoneHandler}=load('telegram-phone-http');const {PhoneVerificationError}=load('phone-verification-contract');
+const {canonicalTelegramCallback}=load('telegram-phone-http');
 const origin='https://example.invalid',owner='11111111-1111-4111-8111-111111111111',id='22222222-2222-4222-8222-222222222222',state='a'.repeat(64);
 const config={origin,clientId:'12345678',clientSecret:'synthetic-secret',callbackUrl:origin+'/api/account/phone/telegram/callback'};
 function request(action,body={expectedOwnerId:owner},headers={}){return new Request(origin+'/api/account/phone/'+action,{method:'POST',headers:{host:new URL(origin).host,origin,'content-type':'application/json','x-blizhniy-request':'1','x-real-ip':'127.0.0.1',cookie:'__Host-blizhniy_session='+'b'.repeat(64),...headers},body:JSON.stringify(body)});}
@@ -18,3 +19,24 @@ test('replayed/foreign state does not reach provider and cancellation never stag
 });
 test('phone uniqueness conflicts are neutral and do not reveal a different account',async()=>{const f=fixture({conflict:true});const r=await f.handle(request('confirm',{expectedOwnerId:owner,attemptId:id,expectedRevision:null,acceptReplacement:true}),'confirm');assert.equal(r.status,409);assert.deepEqual(await r.json(),{error:{code:'PHONE_CONFLICT'}});});
 test('callback rejects an unrelated Host before claiming state or contacting Telegram',async()=>{const f=fixture();const response=await f.handle(new Request(config.callbackUrl+'?code=code&state='+state,{headers:{host:'evil.invalid',cookie:'__Host-blizhniy_session='+'b'.repeat(64),'x-real-ip':'127.0.0.1'}}),'callback');assert.equal(response.headers.get('location'),'/cabinet/phone?error=invalid');assert.deepEqual(f.calls,[]);});
+
+test('production loopback callback preserves exact session/state checks behind the HTTPS ingress',async()=>{
+ const f=fixture(),input=new Request('https://127.0.0.1:3000/api/account/phone/telegram/callback?error=access_denied&state='+state,
+  {headers:{host:new URL(origin).host,'x-real-ip':'203.0.113.10','x-forwarded-proto':'https',cookie:'__Host-blizhniy_session='+'b'.repeat(64)}});
+ const request=canonicalTelegramCallback(input,origin);
+ assert.equal(new URL(request.url).origin,origin);assert.equal(request.headers.get('cookie'),input.headers.get('cookie'));
+ assert.equal((await f.handle(request,'callback')).headers.get('location'),'/cabinet/phone?error=cancelled');
+ assert.deepEqual(f.calls.map(call=>call[0]),['claim','finish']);
+});
+test('callback ingress does not canonicalize arbitrary URLs, forged host, forwarded lists or mutation requests',()=>{
+ const path='/api/account/phone/telegram/callback?state='+state;
+ const headers={host:new URL(origin).host,'x-real-ip':'203.0.113.10','x-forwarded-proto':'https'};
+ for(const [url,patch,method] of [
+  ['https://evil.invalid'+path,{},'GET'],['https://127.0.0.1:3046'+path,{},'GET'],
+  ['http://127.0.0.1:3000'+path,{},'GET'],['https://127.0.0.1:3000/api/account/phone/confirm',{},'GET'],
+  ['https://127.0.0.1:3000'+path,{host:'evil.invalid'},'GET'],['https://127.0.0.1:3000'+path,{'x-real-ip':'203.0.113.10, 192.0.2.1'},'GET'],
+  ['https://127.0.0.1:3000'+path,{'x-forwarded-proto':'http'},'GET'],['https://127.0.0.1:3000'+path,{},'POST'],
+ ]){
+  const request=new Request(url,{method,headers:{...headers,...patch}});assert.equal(canonicalTelegramCallback(request,origin),request);
+ }
+});

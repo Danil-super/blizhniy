@@ -3,11 +3,12 @@ import { readProductionAuthConfig } from './production-auth-config';
 import { getProductionAccountDatabase } from './production-auth-runtime';
 import { readTelegramPhoneConfig } from './telegram-phone-config.ts';
 import { createTelegramPhoneOidc } from './telegram-phone-oidc.ts';
-import { createTelegramPhoneHandler } from './telegram-phone-http.ts';
+import { canonicalTelegramCallback, createTelegramPhoneHandler } from './telegram-phone-http.ts';
 import { PostgresPhoneVerificationStore } from './postgres-phone-verification.ts';
 export async function handleTelegramPhoneRequest(request: Request, action: 'status' | 'start' | 'review' | 'confirm' | 'unlink' | 'callback') {
   try {
     const auth = readProductionAuthConfig(); if (!auth) return authJson({ error: { code: 'NOT_FOUND' } }, 404);
+    if (action === 'callback') request = canonicalTelegramCallback(request, auth.origin);
     const config = readTelegramPhoneConfig();
     return await createTelegramPhoneHandler(auth, config, async () => {
       const { db } = await getProductionAccountDatabase(auth);
