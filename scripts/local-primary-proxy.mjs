@@ -8,6 +8,8 @@ import {createRequire} from 'node:module';
 import pg from 'pg';
 import {stateDirectory,localPrimaryDatabaseConfig,docker} from './local-primary-fixture.mjs';
 import {validateLocalPrimaryContainer,localPrimaryUpstreamPort} from './local-primary-config.mjs';
+import {allowLocalPrimaryRequest} from './local-primary-origin.mjs';
+import {createTelegramPhoneOidc} from '../src/lib/telegram-phone-oidc.ts';
 const require=createRequire(import.meta.url);
 const {loadLocalPrimaryModule:load}=require('./local-primary-modules.cjs');
 const canonical='https://xn----9sbphbgks4a4a.xn--p1ai';
@@ -24,6 +26,17 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
  await load('production-auth-database').verifyProductionAuthDatabase(runtimeDb);
  const limiter=new(load('auth-http').AuthRateLimiter)(runtimeDb,state.rateSecret);
  const identity=new(load('identity').IdentityStore)(runtimeDb);
+ // Use the same backend handler with the canonical Request constructed below.
+ // Next's loopback transport URL is not the externally registered callback URL.
+ const phoneConfig=load('telegram-phone-config').readTelegramPhoneConfig();
+ const phoneCallback=phoneConfig?load('telegram-phone-http').createTelegramPhoneHandler({origin:canonical},phoneConfig,async()=>({
+  limiter,store:new(load('postgres-phone-verification').PostgresPhoneVerificationStore)(runtimeDb),
+  oidc:createTelegramPhoneOidc(phoneConfig),
+  policy:async()=>{
+   const row=(await runtimeDb.query('select available,required from app.phone_verification_policy where singleton')).rows[0];
+   if(!row)throw Error('Local phone policy unavailable');return row;
+  },
+ })):null;
  const files=await load('media-files').createLocalMediaFileStore(join(stateDirectory,'media'));
  const repository=new(load('media-metadata').MediaMetadataRepository)(runtimeDb,files);
  const writer=await load('media-file-worker').createLocalMediaFileWorker(state.project,join(stateDirectory,'media'));
@@ -59,10 +72,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
  const server=createServer({key:await readFile(join(stateDirectory,'tls-key.pem')),cert:await readFile(join(stateDirectory,'tls-cert.pem'))},async(req,res)=>{
   try{
    if(typeof req.url!=='string'||!req.url.startsWith('/')||req.url.startsWith('//')||/[\\\x00-\x20]/.test(req.url)){res.writeHead(400,{'cache-control':'no-store'});res.end('Invalid local path');return;}
-   const local=new URL(state.origin);
-   const callback=process.env.BLIZHNIY_TELEGRAM_PHONE==='enabled'&&req.method==='GET'&&new URL(req.url,state.origin).pathname==='/api/account/phone/telegram/callback';
-   const allowedOrigin=!req.headers.origin||req.headers.origin===state.origin||callback&&req.headers.origin==='https://oauth.telegram.org';
-   if(req.socket.remoteAddress!=='127.0.0.1'||req.headers.host!==local.host||!allowedOrigin||req.headers['sec-fetch-site']==='cross-site'&&!callback){
+   if(!allowLocalPrimaryRequest(req,state.origin,process.env.BLIZHNIY_TELEGRAM_PHONE==='enabled')){
     res.writeHead(403,{'content-type':'text/plain','cache-control':'no-store'});res.end('Local origin required');return;
    }
    const path=new URL(req.url,state.origin).pathname;
@@ -74,6 +84,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
    headers.set('cookie',(req.headers.cookie??'').split(';').filter(part=>!part.trim().startsWith('__Host-blizhniy_human=')).concat(proof.cookie.split(';')[0]).filter(Boolean).join('; '));
    if(req.headers.origin)headers.set('origin',canonical);
    const request=new Request(canonical+req.url,{method:req.method,headers,...(body?{body}:{}),redirect:'error'});
+   if(!response&&phoneCallback&&path==='/api/account/phone/telegram/callback')response=await phoneCallback(request,'callback');
    if(!response&&['/api/account/register','/api/account/resend','/api/account/recover'].includes(path)){
     const data=await request.clone().json();
     if(typeof data.email!=='string'||!data.email.endsWith('.invalid'))response=Response.json({error:{code:'SYNTHETIC_EMAIL_REQUIRED'}},{status:422});
