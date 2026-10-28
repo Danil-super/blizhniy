@@ -13,7 +13,7 @@ function host(filename,props,api){
   if(name==='react')return react;if(name==='react/jsx-runtime')return{jsx,jsxs:jsx,Fragment:({children})=>children};if(name==='next/link')return{__esModule:true,default:({children,...rest})=>jsx('a',{...rest,children})};
   if(name==='@/components/auth/AccountAuthProvider')return{usePrimaryAccountAuth:()=>({state:'signed-in',userId:owner})};if(name==='@/lib/local-account')return{notifyAccountSessionChange(){}};
   if(name==='@/lib/client-applications')return{productionApplications:actualApi,ApplicationClientError:ClientError};
-  if(name==='@/components/listings/ListingWorkflowProvider')return{useListingPostmoderation:()=>true};
+  if(name==='@/components/listings/ListingWorkflowProvider')return{useListingPostmoderation:()=>true,useLocalPaymentSimulation:()=>true};
   if(name==='./ApplicationCheckout')return{ApplicationCheckout:()=>null};
   if(name==='./ApplicationDetail')return{applicationButton:'button',applicationLabels:{pending_payment:'Ожидает оплаты',sent:'Отправлен',viewed:'Просмотрен'},applicationTargetHref:()=>'/target',ApplicationDetail:p=>jsx('detail',{...p,children:null})};
   if(name==='@/lib/application-contract')return{parseApplicationEdit(value){if(value.message.length>500||/[\u0000]|<[^>]+>/.test(value.message))throw Error('invalid');return{...value,message:value.message.trim()};}};

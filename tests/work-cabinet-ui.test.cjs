@@ -21,7 +21,7 @@ function load(file){
   if(name.endsWith('/ListingBadges'))return load('../listings/ListingBadges');
   if(name.endsWith('/PrivateDraftEditor'))return {draftButton:'min-h-11'};
   if(name.endsWith('/AccountAuthProvider'))return {usePrimaryAccountAuth:()=>({state:'signed-in',userId:owner})};
-  if(name.endsWith('/ListingWorkflowProvider'))return {useListingPostmoderation:()=>true};
+  if(name.endsWith('/ListingWorkflowProvider'))return {useListingPostmoderation:()=>true,useLocalPaymentSimulation:()=>true};
   if(name.endsWith('/local-account'))return {notifyAccountSessionChange(){}};
   if(name.endsWith('/client-work-publications'))return {productionWorkPublications:{}};
   if(name.endsWith('/client-work-cabinet'))return {workCabinet:{}};

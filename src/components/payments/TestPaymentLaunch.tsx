@@ -1,10 +1,10 @@
 "use client";
 import {useEffect,useRef,useState} from 'react';
 import {accountTestPayment} from '@/lib/client-account-test-payment';
-import {useListingPostmoderation} from '@/components/listings/ListingWorkflowProvider';
+import {useLocalPaymentSimulation} from '@/components/listings/ListingWorkflowProvider';
 import {vacancyPayment,workRequestPayment} from '@/lib/client-vacancy-payment';
 export function TestPaymentLaunch({owner,paymentId,visible,vacancy=false,workRequest=false}:{owner:string;paymentId:string;visible:boolean;vacancy?:boolean;workRequest?:boolean}){
- const localPreview=useListingPostmoderation();
+ const localPreview=useLocalPaymentSimulation();
  const [busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[message,setMessage]=useState<string|null>(null);
  const allowed=useRef(visible),locked=useRef(false),scope=useRef<AbortController|null>(null);allowed.current=visible;
  useEffect(()=>{const controller=new AbortController();scope.current=controller;locked.current=false;setBusy(false);return()=>controller.abort();},[visible]);

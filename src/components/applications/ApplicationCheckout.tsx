@@ -1,4 +1,5 @@
 "use client";
+import {useLocalPaymentSimulation} from '@/components/listings/ListingWorkflowProvider';
 import {useEffect,useRef,useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {applicationPayment,applicationPaymentMatchesInput,ApplicationPaymentClientError} from '@/lib/client-application-payment';
@@ -54,4 +55,4 @@ function CheckoutWorkspace({owner,id,revision,disabled=false,onLockChange,autoSt
   {error&&<p role="alert" className="mt-3 break-words text-sm text-rose-800">{error}</p>}
  </section>;
 }
-export function ApplicationCheckout(props:Props){return <CheckoutWorkspace key={`${props.owner}:${props.id}`} {...props}/>;}
+export function ApplicationCheckout(props:Props){const simulation=useLocalPaymentSimulation();if(!simulation)return <section className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4"><p className="text-sm text-slate-800">TEST-оплата откликов на этом сайте пока не включена. Отклик сохранён; получатель получит его после подключения и подтверждения оплаты.</p><button type="button" disabled className={`${applicationButton} mt-3 opacity-60`}>Оплатить отклик</button></section>;return <CheckoutWorkspace key={`${props.owner}:${props.id}`} {...props}/>;}

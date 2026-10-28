@@ -1,5 +1,7 @@
 // Opt-in isolated PostgreSQL fixture; never reads dotenv/private stand/remote DB.
 import assert from 'node:assert/strict';import test from 'node:test';
+import {getPaymentReconciliationRolePlan,verifyPaymentReconciliationDatabase} from '../scripts/payment-reconciliation-role.mjs';
+import {PostgresDatabase} from '../src/lib/postgres.ts';
 import {testPhonePayments} from './telegram-phone-payment-cases.mjs';
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {randomBytes,createHash} from 'node:crypto';
 import {readFile,readdir} from 'node:fs/promises';import {createRequire} from 'node:module';import pg from 'pg';
@@ -19,7 +21,7 @@ test('Telegram phone: real SQL uniqueness, sessions, RLS, replacement and public
   const until=Date.now()+20000;for(;;){try{await docker(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres','-d','blizhniy_test']);break;}catch{if(Date.now()>until)throw Error('Owned test DB not ready');await new Promise(r=>setTimeout(r,150));}}
   owner=new pg.Client(config);await owner.connect();await bootstrapPostgres(owner,'127.0.0.1:blizhniy_test');
   const applied=new Set(getBootstrapPlan().map(p=>p.name));const files=(await readdir(new URL('../database/migrations/',import.meta.url))).filter(f=>/^\d{4}-.+\.sql$/.test(f)&&!f.endsWith('.down.sql')&&!applied.has(f)).sort();
-  for(const file of files)await owner.query(await readFile(new URL('../database/migrations/'+file,import.meta.url),'utf8'));
+  for(const file of files){const source=await readFile(new URL('../database/migrations/'+file,import.meta.url),'utf8');await owner.query(source);await owner.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[file,createHash('sha256').update(source).digest('hex')]);}
   const runtimePassword=randomBytes(24).toString('hex');await owner.query(`create role blizhniy_runtime login nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls password '${runtimePassword}';grant usage on schema app to blizhniy_runtime;
    grant select on app.users,app.sessions,app.cabinet_profiles to blizhniy_runtime;grant update(auth_version) on app.users to blizhniy_runtime;grant update(last_seen_at) on app.sessions to blizhniy_runtime;
    grant insert(user_id,profile),update(profile,updated_at) on app.cabinet_profiles to blizhniy_runtime;`);
@@ -45,5 +47,15 @@ test('Telegram phone: real SQL uniqueness, sessions, RLS, replacement and public
   await suite.test('revocation blocks completion of a previously valid Telegram response',async()=>{const x=await stage(a,'+79991234571','revoked');await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[a.id]);await assert.rejects(store.review(a.token,a.id,x.id),{name:'AppSessionAccessError'});await clearAttempts();});
   await suite.test('new publications are guarded by SQL while old published rows remain available',async()=>{const category=(await owner.query('select id from app.categories where active limit 1')).rows[0].id,city=(await owner.query('select id from app.cities limit 1')).rows[0].id;const published=(await owner.query("insert into app.listings(author_id,listing_type,category_id,city_id,title,description,price,status,is_paid,published_at,expires_at) values($1,'sell',$2,$3,'Synthetic title','Synthetic description',100,'published',true,clock_timestamp(),clock_timestamp()+interval '30 days') returning id",[b.id,category,city])).rows[0].id;await owner.query('update app.phone_verification_policy set required=true');await owner.query("update app.listings set title='Still available' where id=$1",[published]);await owner.query("update app.listings set status='archived' where id=$1",[published]);await assert.rejects(owner.query("update app.listings set status='published' where id=$1",[published]),{code:'P7601'});const x=await stage(b,'+79991234572','publish-verified'),r=await store.review(b.token,b.id,x.id);await store.confirm(b.token,b.id,x.id,r.profileRevision,true);await owner.query("update app.listings set status='published' where id=$1",[published]);assert.equal((await owner.query('select status from app.listings where id=$1',[published])).rows[0].status,'published');});
   await testPhonePayments(suite,owner,config,load,b,store,stage);
+  await suite.test('exact financial worker preflight accepts only the complete cabinet suffix and its single new read privilege',async()=>{
+   await owner.query('revoke all on database blizhniy_test from public');
+   const plan=getPaymentReconciliationRolePlan(config.database,{cabinet:true}),password=randomBytes(24).toString('hex');await owner.query(plan.createRole);await owner.query(`alter role ${plan.role} login password '${password}'`);for(const sql of plan.grants)await owner.query(sql);
+   const workerDb=new PostgresDatabase(new pg.Pool({...config,user:plan.role,password,options:'-c search_path=pg_catalog,public',max:2,statement_timeout:8000}));
+   const check=()=>verifyPaymentReconciliationDatabase(workerDb,{database:config.database});
+   try{await check();await owner.query(`grant select(reason) on app.listing_blocks to ${plan.role}`);await assert.rejects(check(),/preflight failed/);await owner.query(`revoke select(reason) on app.listing_blocks from ${plan.role}`);await check();
+    const last=(await owner.query('select name,sha256 from blizhniy_meta.migrations order by name desc limit 1')).rows[0];await owner.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[last.name,'a'.repeat(64)]);await assert.rejects(check(),/preflight failed/);await owner.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[last.name,last.sha256]);await check();
+    await owner.query('delete from blizhniy_meta.migrations where name=$1',[last.name]);await assert.rejects(check(),/preflight failed/);await owner.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[last.name,last.sha256]);await check();
+   }finally{await workerDb.close();}
+  });
  }finally{if(db)await db.close();if(owner)await owner.end();if(container){const meta=JSON.parse(await docker(['inspect',container]))[0];assert.equal(meta.Config.Labels['blizhniy.telegram-test'],name);await docker(['rm','--force',container]);}}
 });

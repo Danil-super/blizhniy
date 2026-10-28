@@ -8,7 +8,8 @@ type Code='provider_pending'|'capture_required'|'processing_unavailable'|'public
 type Result={state:'idle'|'lost'|'completed'}|{state:'deferred'|'blocked';code:Code};
 /** Explicit one-job tick. No poller/startup hook, provider POST or caller-supplied financial snapshot. */
 export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'transaction'>,merchant:Merchant,fetcher:typeof fetch=globalThis.fetch){
- const queue=new PostgresPaymentReconciliationQueue(db,merchant),verification=new PostgresPaymentVerificationStore(db,merchant,fetcher),fulfillment=new PostgresListingPaymentFulfillmentStore(db,merchant);
+ const mode=process.env.BLIZHNIY_LISTING_WORKFLOW;if(mode!==undefined&&!['pre-moderation','postmoderation'].includes(mode))throw Error('Invalid worker publication mode');
+ const queue=new PostgresPaymentReconciliationQueue(db,merchant),verification=new PostgresPaymentVerificationStore(db,merchant,fetcher),fulfillment=new PostgresListingPaymentFulfillmentStore(db,merchant,{postmoderation:mode==='postmoderation'});
  return{async tick():Promise<Result>{
   // An unknown claim COMMIT is NOT retried: the persisted lease must expire first.
   const claim=await queue.claim();if(!claim)return{state:'idle'};if('exhausted' in claim)return{state:'blocked',code:'attempts_exhausted'};

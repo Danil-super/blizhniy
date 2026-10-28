@@ -3,7 +3,7 @@ import {useId,useRef,useState} from 'react';
 import {Field,PhotoField,TextAreaField} from '@/components/FormPanel';
 import {VacancyEmployerFields} from '@/components/VacancyEmployerFields';
 import {VacancyEmployerFlow} from './VacancyEmployerFlow';
-import {useListingPostmoderation} from '@/components/listings/ListingWorkflowProvider';
+import {useListingPostmoderation,useLocalPaymentSimulation} from '@/components/listings/ListingWorkflowProvider';
 import {ListingLocationFields} from '@/components/listings/ListingFormControls';
 import {LegalConsentCheckbox,LegalLink} from '@/components/LegalConsentCheckbox';
 import {professions} from '@/lib/data';
@@ -19,7 +19,7 @@ import {CabinetFormValidation} from '@/components/CabinetFormValidation';
 
 /** Existing form vocabulary, one owner-scoped save intent for both actions. */
 export function WorkPublicationForm({owner,kind,initial,onSaved,onDirtyChange}:{owner:string;kind:WorkPublicationKind;initial?:WorkPublicationSnapshot;onSaved?:(snapshot:WorkPublicationSnapshot)=>void;onDirtyChange?:(dirty:boolean)=>void}){
- const formRef=useRef<HTMLFormElement>(null),[dirty,setDirty]=useState(false),localPayment=useListingPostmoderation();
+ const formRef=useRef<HTMLFormElement>(null),[dirty,setDirty]=useState(false),localPayment=useListingPostmoderation(),simulation=useLocalPaymentSimulation();
  const professionList=useId();
  const save=useWorkPublicationSave(owner,kind,formRef,dirty,initial,onSaved),form=initial?.form,vacancy=form?.kind==='vacancy'?form:null;
  const paidEdit=initial?.paid===true;
@@ -56,9 +56,9 @@ export function WorkPublicationForm({owner,kind,initial,onSaved,onDirtyChange}:{
  const actions=<>
   <div className="flex flex-wrap gap-3">
    <button type="button" data-cabinet-save className={draftButton} disabled={save.busy||save.uncertain||save.lockedAction==='submit'} onClick={()=>void save.start(true)}>{save.busy?'Сохраняем…':paidEdit?'Сохранить изменения':'Сохранить черновик'}</button>
-   {(!initial||localPayment&&!initial.paid)&&<button type="submit" className={`${draftButton} bg-brand-blue text-white`} disabled={save.busy||save.uncertain||save.lockedAction==='draft'}>{save.busy?'Сохраняем…':localPayment?(kind==='workRequest'?'Оплатить':'Перейти к оплате'):'Отправить на модерацию'}</button>}
+   {(!initial||localPayment&&!initial.paid)&&<button type="submit" className={`${draftButton} bg-brand-blue text-white`} disabled={save.busy||save.uncertain||save.lockedAction==='draft'||localPayment&&!simulation}>{save.busy?'Сохраняем…':localPayment?(kind==='workRequest'?'Оплатить':'Перейти к оплате'):'Отправить на модерацию'}</button>}
   </div>
-  <p className="text-sm text-slate-600">{paidEdit?'Изменения сохранятся без повторной оплаты. Срок размещения не изменится.':localPayment?`Сначала сохраним данные и фотографии, затем откроем оплату. ${kind==='vacancy'?'Вакансия появится':'Заказ появится'} после подтверждения оплаты. На локальном стенде списаний нет.`:'Сначала бесплатная проверка модератором. Сохранение и отправка не списывают деньги и не публикуют материал.'}</p>
+  <p className="text-sm text-slate-600">{paidEdit?'Изменения сохранятся без повторной оплаты. Срок размещения не изменится.':localPayment?`Сначала сохраним данные и фотографии, затем откроем оплату. ${kind==='vacancy'?'Вакансия появится':'Заказ появится'} после подтверждения оплаты. ${simulation?'На локальном стенде списаний нет.':'TEST-оплата новых вакансий и заказов пока не включена.'}`:'Сначала бесплатная проверка модератором. Сохранение и отправка не списывают деньги и не публикуют материал.'}</p>
  </>;
  return <form ref={formRef} className="grid min-w-0 gap-4 [&_a]:text-blue-800 [&_.uppercase]:text-blue-800" aria-label={initial?'Редактирование публикации':kind==='vacancy'?'Создание вакансии':'Создание заказа'}
   onInput={()=>{setDirty(true);onDirtyChange?.(true);}} onChange={()=>{setDirty(true);onDirtyChange?.(true);}} onSubmit={event=>{event.preventDefault();void save.start(paidEdit||(!localPayment&&!!initial));}}>

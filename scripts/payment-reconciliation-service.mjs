@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 
-const codes=new Set(['provider_pending','capture_required','processing_unavailable','publication_blocked','attempts_exhausted']);
+const codes=new Set(['provider_pending','capture_required','processing_unavailable','publication_blocked','attempts_exhausted','phone_required']);
 const states=new Set(['idle','lost','completed','deferred','blocked']);
 const pause=(ms,signal)=>delay(ms,undefined,{signal});
 const stdoutReport=event=>new Promise((resolve,reject)=>{

@@ -1,4 +1,5 @@
 // Trusted operator/runtime library only. Importing does not connect, create roles or grant privileges.
+import {getCabinetMigrationPlan} from './cabinet-release-plan.mjs';
 import {getBootstrapPlan} from './postgres-migration-plan.mjs';
 
 const role='blizhniy_payment_reconciler';
@@ -21,16 +22,17 @@ const policy={
  'app.listing_moderation':{select:columns('id,listing_id,revision,state'),update:['id']},
  'blizhniy_meta.migrations':{select:['name','sha256']},
 };
+const cabinetPolicy={...policy,'app.listing_blocks':{select:['listing_id']}};
 const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
 function approved(){return getBootstrapPlan({includePaymentReconciliationRole:true});}
 
 /** Reviewable plan only. No executor, ambient credentials, password or automatic role adoption. */
-export function getPaymentReconciliationRolePlan(database) {
- if(!validDatabase(database))throw new Error('Invalid reconciliation database');
+export function getPaymentReconciliationRolePlan(database,{cabinet=false}={}) {
+ if(typeof cabinet!=='boolean'||!validDatabase(database))throw new Error('Invalid reconciliation database');
  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,
   journal:approved().map(({name,sha256})=>({name,sha256})),
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
-   ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`))],
+   ...Object.entries(cabinet?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`))],
  };
 }
 
@@ -62,8 +64,10 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw new Error('Invalid role');
    const journal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   // One independently approved additive extension only; never accept arbitrary journal prefixes.
-   const expectedJournal=journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
+   // Only complete known releases: 0024, 0025 or the exact reviewed 0032 suffix.
+   // Unknown intermediate versions and changed hashes remain fail-closed.
+   const cabinetJournal=[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan()];
+   const expectedJournal=journal.length===cabinetJournal.length?cabinetJournal:journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
    const schemas=(await tx.query(`select nspname as name,has_schema_privilege(oid,'USAGE') as usage,
     has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace
@@ -76,7 +80,7 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
     cross join (values('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) as p(privilege)
     where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema' and c.relkind in ('r','p','v','m','f')
      and a.attnum>0 and not a.attisdropped and has_column_privilege(c.oid,a.attnum,p.privilege) limit 10001`)).rows;
-   const expected=new Set(Object.entries(policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
+   const expected=new Set(Object.entries(journal.length===cabinetJournal.length?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
    if(actual.length!==expected.size||actual.some(item=>item.grantable!==false||!expected.delete(item.key))||expected.size)throw new Error('Invalid column privileges');
    const dangerous=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema' and

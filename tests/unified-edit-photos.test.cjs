@@ -37,7 +37,7 @@ function componentLoader(profile=null) {
       };
       if (name.endsWith('/useWorkPublicationSave')) return { useWorkPublicationSave: () => ({ active: false, done: false, busy: false, uncertain: false, start() {} }) };
       if (name.endsWith('/useServicePublicationSave')) return { useServicePublicationSave: () => ({ active: false, done: false, busy: false, uncertain: false, start() {} }) };
-      if (name.endsWith('/ListingWorkflowProvider')) return { useListingPostmoderation: () => true };
+      if (name.endsWith('/ListingWorkflowProvider')) return { useListingPostmoderation: () => true,useLocalPaymentSimulation:()=>true };
       if (name.endsWith('/AccountAuthProvider')) return { usePrimaryAccountAuth: () => ({ state: 'signed-in', userId: owner }) };
       if (name.endsWith('/CookieCabinetProfileProvider')) return { useCookieCabinetProfile: () => profile?{ownerId:owner,profile}:null };
       if (name === '@/components/VacancyEmployerFields') return { VacancyEmployerFields: ({ children }) => children };

@@ -3,7 +3,7 @@ function render(){
  const jsx=(type,props)=>({type,props}),exportsObject={};
  const dependencies={react:{useRef:()=>({current:null}),useState:value=>[value,()=>{}],useId:()=> 'profession'},
   'react/jsx-runtime':{jsx,jsxs:jsx},'@/components/FormPanel':{},'@/components/VacancyEmployerFields':{},'./VacancyEmployerFlow':{},
-  '@/components/listings/ListingWorkflowProvider':{useListingPostmoderation:()=>false},'@/components/listings/ListingFormControls':{},'@/components/LegalConsentCheckbox':{},
+  '@/components/listings/ListingWorkflowProvider':{useListingPostmoderation:()=>false,useLocalPaymentSimulation:()=>false},'@/components/listings/ListingFormControls':{},'@/components/LegalConsentCheckbox':{},
   '@/lib/data':{professions:[]},'@/components/listings/PrivateDraftEditor':{draftButton:'button'},'./WorkPublicationPhotos':{},'./WorkAmountField':{},
   './ProfessionSelect':{},'./VacancyTermsFields':{},
   '@/components/PublicationPhotoEditor':{},'@/components/CabinetFormValidation':{},

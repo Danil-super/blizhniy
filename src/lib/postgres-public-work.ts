@@ -37,8 +37,9 @@ export class PostgresPublicWorkStore{
  constructor(private readonly db:PostgresQueries,policy:{vacancyPostmoderation?:boolean}={}){
   if(typeof window!=='undefined')throw Error('Public work storage is server-only');
   if(policy.vacancyPostmoderation&&!readPostmoderationEnabled())throw Error('Local vacancy workflow unavailable');
-  this.source=policy.vacancyPostmoderation?localSource:source;
-   this.columns=columns+(policy.vacancyPostmoderation?', w.revision>eligibility.purchased_revision as "contentEdited"':'');
+  const simulation=process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled';
+  this.source=policy.vacancyPostmoderation&&simulation?localSource:source;
+   this.columns=columns+(policy.vacancyPostmoderation&&simulation?', w.revision>eligibility.purchased_revision as "contentEdited"':'');
    this.available=live+(policy.vacancyPostmoderation?" and (w.kind<>'workRequest' or not exists(select 1 from app.applications chosen where chosen.work_publication_id=w.id and chosen.status='selected' and chosen.is_paid and chosen.sent_at is not null))":'');
  }
  private async listRows(kind:WorkPublicationKind,limit:number,offset:number){

@@ -1,4 +1,5 @@
 "use client";
+import {useLocalPaymentSimulation} from '@/components/listings/ListingWorkflowProvider';
 import Link from 'next/link';
 import {useEffect,useRef,useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
@@ -47,11 +48,13 @@ function Reader({owner,paymentId,visible}:{owner:string;paymentId:string;visible
  </div>;
 }
 export function ApplicationPaymentReturnClient({paymentId}:{paymentId:string}){
+ const simulation=useLocalPaymentSimulation();
  const auth=usePrimaryAccountAuth(),owner=auth&&(auth.state==='signed-in'||auth.state==='admin')?auth.userId:null,[scope,setScope]=useState(owner);
  if(owner&&owner!==scope)setScope(owner);if(auth?.state==='signed-out'&&scope)setScope(null);const visible=!!owner&&owner===scope;
  return <main className="page-container flex min-h-[70vh] items-center justify-center py-8"><section aria-label="Оплата отклика" className="w-full min-w-0 max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-card sm:p-6">
   <h1 className="mb-4 text-2xl font-bold text-slate-950">Оплата отклика</h1>
+  {!simulation&&<p role="status" className="text-sm text-slate-700">TEST-оплата откликов на этом сайте пока не включена.</p>}
   {!visible&&<div role="status" className="text-sm text-slate-700">{auth?.state==='signed-out'?<><p>Войдите в аккаунт, из которого оформляли TEST-заказ.</p><Link className={`${button} mt-3`} href={`/auth?returnTo=${encodeURIComponent(`/oplata/${paymentId}?type=application`)}`}>Войти и проверить оплату</Link></>:<><p>Проверяем доступ. Данные заказа временно скрыты.</p>{(!auth||auth.state==='unavailable')&&<button type="button" className={`${button} mt-3`} onClick={()=>notifyAccountSessionChange(false)}>Повторить проверку входа</button>}</>}</div>}
-  {scope&&<Reader key={`${scope}:${paymentId}`} owner={scope} paymentId={paymentId} visible={visible}/>} 
+  {scope&&simulation&&<Reader key={`${scope}:${paymentId}`} owner={scope} paymentId={paymentId} visible={visible}/>}
  </section></main>;
 }

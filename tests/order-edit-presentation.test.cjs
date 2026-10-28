@@ -16,7 +16,7 @@ function formTree(initial, localPayment = true) {
     react: { useRef: () => ({ current: null }), useState: value => [value, () => {}], useId: () => 'profession' },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     '@/components/FormPanel': {}, '@/components/VacancyEmployerFields': {}, './VacancyEmployerFlow': {},
-    '@/components/listings/ListingWorkflowProvider': { useListingPostmoderation: () => localPayment },
+    '@/components/listings/ListingWorkflowProvider': { useListingPostmoderation: () => localPayment,useLocalPaymentSimulation:()=>localPayment },
     '@/components/listings/ListingFormControls': {}, '@/components/LegalConsentCheckbox': {},
     '@/lib/data': { professions: [] }, '@/components/listings/PrivateDraftEditor': { draftButton: 'button' },
     './WorkAmountField': { WorkAmountField: amount }, './ProfessionSelect': {},

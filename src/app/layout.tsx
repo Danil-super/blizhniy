@@ -54,7 +54,7 @@ export default async function RootLayout({
       </head>
       <body className="antialiased">
         <AccountAuthProvider backend={backend}>
-        <ListingWorkflowProvider postmoderation={postmoderation}>
+        <ListingWorkflowProvider postmoderation={postmoderation} localSimulation={postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'}>
         <AccountCaptchaProvider expiresAt={proofExpiry}>
         <PhonePlacementProvider>
         <BookingLegacyStorageCleanup />
