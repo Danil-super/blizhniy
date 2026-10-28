@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {phoneVerification,type PhoneStatus} from '@/lib/client-phone-verification';
 import {normalizeProfilePhone} from '@/lib/phone-verification-contract';
-export function PhoneVerificationButton({owner,returnTo='/cabinet',onVerified,displayedPhone}:{owner:string;returnTo?:string;onVerified?:()=>void|Promise<void>;displayedPhone?:string}){
+export function PhoneVerificationButton({owner,returnTo='/cabinet',onVerified,displayedPhone,compact=false}:{owner:string;returnTo?:string;onVerified?:()=>void|Promise<void>;displayedPhone?:string;compact?:boolean}){
  const [status,setStatus]=useState<PhoneStatus|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const attempt=useRef<string|null>(null),popup=useRef<Window|null>(null),currentOwner=useRef(owner);currentOwner.current=owner;
  const shownVerified=status?.verified&&(displayedPhone===undefined||normalizeProfilePhone(displayedPhone)===status.verifiedPhone);
@@ -25,10 +25,10 @@ export function PhoneVerificationButton({owner,returnTo='/cabinet',onVerified,di
   try{const result=await phoneVerification.start(owner,returnTo);if(currentOwner.current!==owner){opened.close();return;}attempt.current=result.attemptId;opened.location.replace(result.authorizationUrl);}
   catch(e){opened.close();if(currentOwner.current===owner){setBusy(false);setError(e instanceof Error?e.message:'Не удалось начать подтверждение.');}}
  }
- return <div className="min-w-0 space-y-2">
-  {shownVerified&&<p className="text-sm font-semibold text-emerald-700">Телефон подтверждён через Telegram</p>}
-  <button type="button" disabled={!status?.available||busy} onClick={()=>void start()} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:opacity-55">{busy?'Подтверждение открыто в отдельном окне…':shownVerified?'Подтвердить другой номер через Telegram':'Подтвердить номер через Telegram'}</button>
-  <p className="text-xs leading-5 text-slate-600">Получим номер, связанный с вашим Telegram-аккаунтом. Он не будет опубликован без вашего разрешения.</p>
+ return <div className="min-w-0 space-y-2 font-normal">
+  {shownVerified&&!compact&&<p className="text-sm font-semibold text-emerald-700">Телефон подтверждён через Telegram</p>}
+  <button type="button" disabled={!status?.available||busy} onClick={()=>void start()} className={compact?'inline-flex min-h-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-sky-800 transition hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:opacity-55':'inline-flex min-h-11 items-center justify-center rounded-lg border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:opacity-55'}>{busy?'Ожидаем подтверждение…':shownVerified?'Изменить номер':compact?'Подтвердить через Telegram':'Подтвердить номер через Telegram'}</button>
+  {!compact&&<p className="text-xs leading-5 text-slate-600">Получим номер, связанный с вашим Telegram-аккаунтом. Он не будет опубликован без вашего разрешения.</p>}
   {status&&!status.available&&<p role="status" className="text-xs leading-5 text-slate-600">Подтверждение через Telegram пока не настроено. Номер можно сохранить без подтверждения.</p>}
   {shownVerified&&<button type="button" disabled={busy} onClick={()=>void (async()=>{
    if(!window.confirm('Отвязать подтверждение Telegram? Новые размещения потребуют повторного подтверждения номера.'))return;

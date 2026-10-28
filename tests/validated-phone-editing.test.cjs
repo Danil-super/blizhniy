@@ -139,3 +139,27 @@ test('phone accepts an international-format paste after being cleared', () => {
   assert.equal(input.value(), '+7-(902)-345-67-89');
   assert.equal(input.changes.at(-1), '+7-(902)-345-67-89');
 });
+
+test('phone does not relabel a pasted foreign country code as a +7 number', () => {
+  for (const value of ['+44 7911 123456', ' +44 7911 123456 ', '\t+44 1234 5678']) {
+    const input = phoneInput('+7-(900)-123-45-67');
+    input.selectAll();
+    input.edit('insertFromPaste', value);
+    assert.equal(input.value(), value.trim());
+    assert.equal(input.value().startsWith('+7'), false);
+  }
+});
+
+test('ten pasted national digits retain a leading 7 or 8 instead of treating it as a country code', () => {
+  for (const digits of ['7123456789', '8123456789']) {
+    const input = phoneInput('');
+    input.edit('insertFromPaste', digits);
+    assert.equal(input.value().replace(/\D/g, ''), '7'+digits);
+  }
+});
+
+test('phone does not silently truncate an oversized pasted number into a valid phone', () => {
+  const input = phoneInput('');
+  input.edit('insertFromPaste', '+799912345678');
+  assert.equal(input.value(), '+799912345678');
+});

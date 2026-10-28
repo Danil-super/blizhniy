@@ -37,7 +37,16 @@ try{
  assert.equal(await disclosure.evaluate(element=>element.open),false);
  await disclosure.locator('summary').click();assert.equal(await disclosure.locator('input[type=checkbox]').count(),7);await disclosure.locator('summary').click();
  const name=settings.getByLabel('Имя',{exact:true});await name.fill('1');assert.equal(await name.evaluate(input=>input.checkValidity()),false);
- await name.fill('Данил');await settings.getByLabel('Телефон',{exact:true}).fill('+79991234567');
+ await name.fill('Данил');
+ const phone=settings.getByLabel('Телефон',{exact:true});
+ await phone.fill('999123456');assert.equal(await phone.evaluate(input=>input.checkValidity()),false,'Incomplete +7 phone is rejected');
+ await phone.fill('8 (999) 123-45-67');assert.equal(await phone.inputValue(),'+7-(999)-123-45-67');assert.equal(await phone.evaluate(input=>input.checkValidity()),true);
+ await phone.press('ControlOrMeta+A');await phone.press('Backspace');assert.equal(await phone.inputValue(),'','Subscriber digits can be cleared');
+ await phone.pressSequentially('9991234567');assert.equal(await phone.inputValue(),'+7-(999)-123-45-67');
+ for(let index=0;index<30;index++)await phone.press('Backspace');
+ assert.equal(await phone.inputValue(),'','Repeated Backspace cannot get stuck on mask punctuation');
+ await phone.fill('+44 7911 123456');assert.equal(await phone.evaluate(input=>input.checkValidity()),false,'Foreign country code is not relabelled as +7');
+ await phone.fill('+79991234567');
  await settings.locator('input[name=city]').locator('..').getByRole('button').click();await settings.getByRole('option',{name:'Армавир',exact:true}).click();
  const saved=page.waitForResponse(response=>response.url()===origin+'/api/account/profile'&&response.request().method()==='PUT');
  await settings.getByRole('button',{name:'Сохранить настройки',exact:true}).click();assert.equal((await saved).status(),200);await settings.getByRole('status').filter({hasText:'Настройки сохранены.'}).waitFor();

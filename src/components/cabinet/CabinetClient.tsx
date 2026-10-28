@@ -2389,12 +2389,14 @@ function AvatarEditor({
   onChange,
   onError,
   saveProfile,
+  children,
 }: {
   ownerKey: string;
   profile: CabinetProfile;
   onChange: (profile: CabinetProfile) => void;
   onError: (message: string) => void;
   saveProfile?: (profile: CabinetProfile) => Promise<CabinetProfile>;
+  children?: React.ReactNode;
 }) {
   const avatarContext = useCookieCabinetProfile();
   const [loading, setLoading] = useState(false);
@@ -2556,10 +2558,10 @@ function AvatarEditor({
 
         <div className="min-w-0">
           <div className="grid gap-2">
-            <div className="min-w-0">
+            {children ?? <div className="min-w-0">
               <h3 className="text-base font-bold text-[#060b27]">Аватарка</h3>
               <p className="mt-0.5 text-xs leading-5 text-slate-600">Выберите фото и настройте кадр.</p>
-            </div>
+            </div>}
             <div className="flex flex-wrap gap-2">
               <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0664b3]">
                 <Camera className="h-4 w-4" />
@@ -2886,20 +2888,18 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
   }
 
   return (
-    <section aria-labelledby="account-settings-heading" className="mx-auto mt-4 w-full max-w-3xl rounded-xl border border-blue-100 bg-white p-3 sm:p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section aria-labelledby="account-settings-heading" className="mx-auto w-full max-w-3xl bg-white">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h2 id="account-settings-heading" className="text-lg font-bold text-[#060b27]">Настройки аккаунта</h2>
-          <p className="mt-1 text-sm leading-5 text-slate-600">Имя, телефон и город можно изменить.</p>
         </div>
-        <button type="button" onClick={() => { cookie?.clearSettingsDraft(); onClose(); }} className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700">
-          Закрыть
+        <button type="button" aria-label="Закрыть" onClick={() => { cookie?.clearSettingsDraft(); onClose(); }} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-700">
+          <span className="text-xl leading-none" aria-hidden="true">×</span>
         </button>
       </div>
       <form className="mt-3 grid gap-3" onSubmit={handleSubmit}>
         <CabinetFormValidation/>
-        <AvatarEditor ownerKey={identity.ownerKey} profile={form} onChange={setForm} onError={setMessage} saveProfile={saveProfile} />
-        <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
+        <AvatarEditor ownerKey={identity.ownerKey} profile={form} onChange={setForm} onError={setMessage} saveProfile={saveProfile}>
           <label className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
             <span className="leading-4">Имя</span>
             <input
@@ -2914,7 +2914,9 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
               required
             />
           </label>
-          <label className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
+        </AvatarEditor>
+        <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
+          <div className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
             <span className="flex min-h-4 items-center justify-between gap-2 leading-4">
               <span>Телефон</span>
               <span className={`truncate text-[11px] font-bold ${phoneIsVerified ? "text-[#0a8f32]" : "text-amber-700"}`}>
@@ -2934,8 +2936,8 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
                     phoneVerified: form.verifiedPhone === event.target.value ? form.phoneVerified : false,
                   })
                 }
-                placeholder="+7..."
-                validation={saveProfile?"internationalPhone":"phone"}
+                placeholder="+7-(999)-123-45-67"
+                validation="phone"
               />
               {!saveProfile&&<button
                 type="button"
@@ -2949,19 +2951,19 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
                 {saveProfile ? <span className="text-xs">Подтвердить</span> : <Check className="h-5 w-5" />}
               </button>}
             </div>
-            {saveProfile ? <PhoneVerificationButton owner={identity.ownerKey} displayedPhone={form.phone} returnTo="/cabinet" onVerified={async()=>{await cookie?.refreshVerifiedPhone();setMessage('Данные телефона обновлены.');}}/> : null}
-          </label>
+            {saveProfile ? <PhoneVerificationButton compact owner={identity.ownerKey} displayedPhone={form.phone} returnTo="/cabinet" onVerified={async()=>{await cookie?.refreshVerifiedPhone();setMessage('Данные телефона обновлены.');}}/> : null}
+          </div>
           <label className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
             <span className="leading-4">Город</span>
             <CitySearchSelect value={form.city} onChange={(city) => setForm({ ...form, city })} />
           </label>
-          <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-1 text-xs font-semibold text-slate-600">
+          <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 sm:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs font-semibold text-slate-600">
               <label htmlFor="account-settings-email" className="inline-flex items-center gap-1.5"><LockKeyhole className="h-3.5 w-3.5" aria-hidden="true"/>Email для входа</label>
               <span>Нельзя изменить</span>
             </div>
             <input id="account-settings-email" type="email" value={identity.email} readOnly aria-describedby="account-settings-email-help" className="mt-1 h-8 w-full min-w-0 rounded border border-transparent bg-transparent px-0 text-sm font-semibold text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"/>
-            <p id="account-settings-email-help" className="mt-1 text-xs leading-4 text-slate-600">Для входа и восстановления доступа.</p>
+            <p id="account-settings-email-help" className="sr-only">Для входа и восстановления доступа.</p>
           </div>
         </div>
         {saveProfile ? <div className="grid gap-2 text-sm text-slate-600">
@@ -2971,7 +2973,6 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="text-sm font-bold text-[#060b27]">Смена пароля</h3>
-              <p className="mt-1 text-xs leading-5 text-slate-600">Через письмо на email для входа.</p>
             </div>
             <button
               type="button"
@@ -3104,7 +3105,7 @@ export function CabinetProfileBar() {
 
   return (
     <section id="cabinet-profile" tabIndex={-1} className="mx-auto mt-4 w-full max-w-3xl scroll-mt-4 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:mt-5 sm:p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {!open && <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-50 text-lg font-bold text-[#0875d1]">
             {profile.avatarDataUrl ? (
@@ -3137,7 +3138,7 @@ export function CabinetProfileBar() {
           <Settings2 className="h-4 w-4" />
           Настройки
         </button>
-      </div>
+      </div>}
       {profileError ? <p role="alert" className="mt-3 text-sm font-semibold text-amber-700">{profileError}</p> : null}
       {open && !profileError ? <SettingsPanel key={identity.ownerKey} identity={identity} profile={profile} onClose={() => setOpen(false)} saveProfile={saveProfile} /> : null}
     </section>

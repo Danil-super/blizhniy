@@ -21,13 +21,19 @@ const urlOrHandlePattern = "^(@[A-Za-z0-9_.-]{2,64}|https?://[^\\s]+)$";
 const urlPattern = "^https?://[^\\s]+$";
 
 function sanitizePhone(value: string) {
+  value = value.trim();
+  // A country code must never be silently replaced with +7. Leave such input
+  // visibly invalid for the +7 pattern so the user can correct it explicitly.
+  if (/^\+(?!7)/.test(value)) return value.slice(0, 40);
   const digits = value.replace(/\D/g, "");
 
   if (!digits) {
     return "";
   }
 
-  const nationalDigits = digits.replace(/^(\d)?/, (firstDigit) => (firstDigit === "7" || firstDigit === "8" ? "" : firstDigit)).slice(0, 10);
+  if (digits.length > 11 || digits.length === 11 && !/^[78]/.test(digits)) return value.slice(0, 40);
+  const hasCountryPrefix = value.trimStart().startsWith('+7') || digits.length !== 10 && /^[78]/.test(digits);
+  const nationalDigits = hasCountryPrefix ? digits.slice(1) : digits;
   const parts = [
     nationalDigits.slice(0, 3),
     nationalDigits.slice(3, 6),

@@ -9,6 +9,7 @@ export function normalizeProfilePhone(value: string): string | null {
   if (!value.startsWith('+') && !(digits.length === 10 || digits.length === 11 && /^[78]/.test(digits))) return null;
   if (!value.startsWith('+') && digits.length === 10) digits = '7' + digits;
   if (!value.startsWith('+') && digits.length === 11 && digits.startsWith('8')) digits = '7' + digits.slice(1);
+  if (digits.startsWith('7') && digits.length !== 11) return null;
   return normalizeTelegramPhone(digits);
 }
 type PhoneCode = 'INVALID_ATTEMPT' | 'UNAVAILABLE' | 'PHONE_CONFLICT' | 'PROFILE_CHANGED' | 'PHONE_REQUIRED' | 'CANCELLED' | 'INVALID_INPUT' | 'RATE_LIMITED' | 'REPLACEMENT_REQUIRED';
