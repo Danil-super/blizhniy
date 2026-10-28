@@ -18,6 +18,11 @@ const localSource=`${references} join lateral (select i.target_revision as purch
     and i.target_type=w.kind and i.target_id=w.id and i.owner_id=w.author_id and i.target_revision<=w.revision
     and i.is_test and i.merchant_shop_id='local-fixture-shop' and f.published_at=w.published_at and f.expires_at=w.expires_at
    order by i.target_revision limit 1) eligibility on true`;
+// Financial publication fields are writable only by trusted server operations.
+// Postmoderation must not hide a paid placement merely because its author edited it.
+// Prior approval is retained only as the baseline for the displayed update date.
+const postmoderationSource=`${references} left join lateral (select max(review.revision) as purchased_revision
+ from app.work_moderation review where review.publication_id=w.id and review.state='approved' and review.revision<=w.revision) eligibility on true`;
 const live=`w.status='published' and w.is_paid and w.deleted_at is null and w.published_at<=statement_timestamp() and w.expires_at>statement_timestamp()`;
 const columns=`w.id,w.kind,w.form,w.status,w.is_paid as paid,
  to_char(w.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "updatedAt",
@@ -38,8 +43,8 @@ export class PostgresPublicWorkStore{
   if(typeof window!=='undefined')throw Error('Public work storage is server-only');
   if(policy.vacancyPostmoderation&&!readPostmoderationEnabled())throw Error('Local vacancy workflow unavailable');
   const simulation=process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled';
-  this.source=policy.vacancyPostmoderation&&simulation?localSource:source;
-   this.columns=columns+(policy.vacancyPostmoderation&&simulation?', w.revision>eligibility.purchased_revision as "contentEdited"':'');
+  this.source=policy.vacancyPostmoderation?(simulation?localSource:postmoderationSource):source;
+   this.columns=columns+(policy.vacancyPostmoderation?', w.revision>eligibility.purchased_revision as "contentEdited"':'');
    this.available=live+(policy.vacancyPostmoderation?" and (w.kind<>'workRequest' or not exists(select 1 from app.applications chosen where chosen.work_publication_id=w.id and chosen.status='selected' and chosen.is_paid and chosen.sent_at is not null))":'');
  }
  private async listRows(kind:WorkPublicationKind,limit:number,offset:number){
