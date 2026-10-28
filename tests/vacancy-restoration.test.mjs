@@ -83,6 +83,7 @@ function harness(type, options = {}) {
       module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true,
     }, fileName: absolute }).outputText;
     vm.runInContext(`(function(require,module,exports){${javascript}\n})`, context, { filename: absolute })((name) => {
+      if (name === "@/lib/legacy-request-body") return require("../src/lib/legacy-request-body.ts");
       if (!name.startsWith("@/") && !name.startsWith(".")) return require(name);
       const base = name.startsWith("@/") ? resolve(root, "src", name.slice(2)) : resolve(dirname(absolute), name);
       const dependency = [base, `${base}.ts`, `${base}.tsx`, resolve(base, "index.ts")]

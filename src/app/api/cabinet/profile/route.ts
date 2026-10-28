@@ -1,3 +1,4 @@
+import { LegacyBodyError, readLegacyProfileText } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { createDefaultCabinetProfile, type CabinetProfile } from "@/lib/cabinet-profile";
 import { getAuthenticatedRequestUser } from "@/lib/server-auth";
@@ -136,7 +137,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Требуется вход в аккаунт." }, { status: 401, headers: noStore });
     }
 
-    const raw = await request.text();
+    const raw = await readLegacyProfileText(request);
 
     if (raw.length > 500000) {
       return NextResponse.json({ error: "Профиль слишком большой." }, { status: 413, headers: noStore });
@@ -182,7 +183,8 @@ export async function PUT(request: Request) {
     );
 
     return NextResponse.json({ profile }, { headers: noStore });
-  } catch {
-    return NextResponse.json({ error: "Не удалось сохранить профиль. Повторите позже." }, { status: 503, headers: noStore });
+  } catch (error) {
+    const status = error instanceof LegacyBodyError ? error.status : 503;
+    return NextResponse.json({ error: "Не удалось сохранить профиль. Повторите позже." }, { status, headers: noStore });
   }
 }

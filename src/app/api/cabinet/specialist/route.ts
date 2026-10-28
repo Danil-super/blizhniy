@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { getSpecialistProfileCompleteness, getStoredSpecialistProfileForUser, upsertStoredSpecialistProfileForUser, type SpecialistProfileInput } from "@/lib/specialist-profile-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
@@ -78,7 +79,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Войдите, чтобы сохранить анкету" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as PatchBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as PatchBody | null;
 
   if (!body) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });

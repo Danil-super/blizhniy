@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { createAdMarqueePlacement, listAdMarqueePlacementsForUser } from "@/lib/ad-marquee-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Войдите, чтобы отправить текст на модерацию" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as CreateAdMarqueeBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as CreateAdMarqueeBody | null;
 
   try {
     const placement = await createAdMarqueePlacement({

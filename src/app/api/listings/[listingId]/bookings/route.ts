@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import {
   createStoredBookingRequest,
@@ -81,7 +82,7 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Некорректное объявление для бронирования" }, { status: 400 });
   }
 
-  const body = (await request.json().catch(() => null)) as CreateBookingBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as CreateBookingBody | null;
 
   if (!body) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
@@ -121,7 +122,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const { listingId } = await context.params;
-  const body = (await request.json().catch(() => null)) as UpdateBookingBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as UpdateBookingBody | null;
 
   if (!isUuid(listingId) || !body?.requestId || (body.status !== "accepted" && body.status !== "declined")) {
     return NextResponse.json({ error: "Некорректные параметры заявки" }, { status: 400 });

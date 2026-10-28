@@ -138,3 +138,14 @@ test("unexpected storage errors return generic unavailable, with no raw cause or
   assert.equal(response.headers.get("set-cookie"), null);
   assert.equal(JSON.stringify(f.calls.events).includes("synthetic secret failure"), false);
 });
+test('explicit anonymous session view avoids guest401 without granting authority or hiding storage failures',async()=>{
+ const headers={'x-blizhniy-session-view':'1'};
+ const guest=fixture();const response=await guest.handle(guest.request({},headers),'session');
+ assert.equal(response.status,200);assert.deepEqual(await response.json(),{user:null});assert.equal(guest.calls.factories,0);assert.equal(response.headers.get('cache-control'),'no-store');
+ assert.equal((await guest.handle(guest.request({}, {...headers,origin:'https://foreign.invalid'}),'session')).status,403);
+ const expired=fixture();const expiry=await expired.handle(expired.request({}, {...headers,cookie:`__Host-blizhniy_session=${token}`}), 'session');
+ assert.equal(expiry.status,200);assert.deepEqual(await expiry.json(),{user:null});assert.equal(expired.calls.limits.length,1);
+ const unavailable=fixture({outage:true});
+ assert.equal((await unavailable.handle(unavailable.request({}, {...headers,cookie:`__Host-blizhniy_session=${token}`}), 'session')).status,503);
+ assert.equal((await guest.handle(guest.request({token},headers),'session')).status,422);
+});

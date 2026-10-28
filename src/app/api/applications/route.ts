@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { createStoredApplication, ensureVacancyCanReceiveApplication, ensureWorkRequestCanReceiveApplication, findStoredApplicationForApplicant, findStoredWorkRequestApplicationForApplicant } from "@/lib/application-store";
 import { createPayment, validatePaymentCreationPrerequisites } from "@/lib/payment-provider";
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы откликнуться на вакансию" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as CreateApplicationBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as CreateApplicationBody | null;
   const vacancyId = cleanString(body?.vacancyId);
   const workRequestId = cleanString(body?.workRequestId);
 

@@ -24,6 +24,7 @@ function loadSource(relative, dependencies, injected = {}) {
   }).outputText;
   const module = { exports: {} };
   new Function('require', 'module', 'exports', ...Object.keys(injected), js)(name => {
+    if (name === "@/lib/legacy-request-body") return require("../src/lib/legacy-request-body.ts");
     if (!(name in dependencies)) throw new Error(`Unexpected dependency ${name} in ${relative}`);
     return dependencies[name];
   }, module, module.exports, ...Object.values(injected));

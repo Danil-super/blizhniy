@@ -173,6 +173,7 @@ function harness(options = {}) {
         if (id === 'next/cache') return { revalidatePath() {} };
         if (id === '@/lib/server-auth') return { isSupabaseServerConfigured: () => true,
           getAuthenticatedRequestUser: async () => ({ user: { id: ownerId } }), isAdminRequest: async () => false };
+        if (id === '@/lib/legacy-request-body') return require('../src/lib/legacy-request-body.ts');
         if (!id.startsWith('@/') && !id.startsWith('.')) return require(id);
         const base = id.startsWith('@/') ? resolve(root, 'src', id.slice(2)) : resolve(dirname(filename), id);
         const dependency = [base, `${base}.ts`, `${base}.tsx`].find((candidate) => /\.(ts|tsx)$/.test(candidate) && existsSync(candidate));

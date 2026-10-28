@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { createPayment, validatePaymentCreationPrerequisites } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
@@ -104,7 +105,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы создать вакансию" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as CreateVacancyBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as CreateVacancyBody | null;
 
   if (!body) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });

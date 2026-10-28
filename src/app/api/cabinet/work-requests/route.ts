@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { isUuid } from "@/lib/supabase-rest";
@@ -81,7 +82,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы изменить заказ" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as WorkRequestBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as WorkRequestBody | null;
   const requestId = cleanString(body?.id);
 
   if (!body || !requestId || !isUuid(requestId)) {
@@ -175,7 +176,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы удалить заказ" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as WorkRequestBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as WorkRequestBody | null;
   const requestId = cleanString(body?.id);
 
   if (!requestId || !isUuid(requestId)) {

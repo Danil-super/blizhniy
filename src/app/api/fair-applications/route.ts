@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { createPayment, validatePaymentCreationPrerequisites } from "@/lib/payment-provider";
 import { createStoredFairApplication, listStoredFairApplications, markStoredFairApplicationPaid } from "@/lib/fair-application-store";
@@ -70,7 +71,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы подать заявку" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as CreateFairApplicationBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as CreateFairApplicationBody | null;
 
   if (!body) {
     return NextResponse.json({ error: "Некорректные данные заявки" }, { status: 400 });
