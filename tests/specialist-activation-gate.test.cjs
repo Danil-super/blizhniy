@@ -38,6 +38,7 @@ function loadRoute() {
   }).outputText;
   const module = { exports: {} };
   new Function('require', 'module', 'exports', js)((name) => {
+    if (name === "@/lib/legacy-request-body") return require("../src/lib/legacy-request-body.ts");
     if (!(name in stubs)) throw new Error(`Unexpected dependency ${name}`);
     return stubs[name];
   }, module, module.exports);
@@ -109,6 +110,7 @@ function loadAdminStatusRoute() {
   }).outputText;
   const module = { exports: {} };
   new Function('require', 'module', 'exports', js)((name) => {
+    if (name === "@/lib/legacy-request-body") return require("../src/lib/legacy-request-body.ts");
     if (!(name in stubs)) throw new Error(`Unexpected dependency ${name}`);
     return stubs[name];
   }, module, module.exports);

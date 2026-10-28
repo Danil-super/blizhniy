@@ -15,6 +15,7 @@ function load(relative, stubs, mutate = (source) => source) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const module = { exports: {} };
   new Function('require', 'module', 'exports', js)((name) => {
+    if (name === "@/lib/legacy-request-body") return require("../src/lib/legacy-request-body.ts");
     assert.ok(name in stubs, `Unexpected dependency ${name}`);
     return stubs[name];
   }, module, module.exports);

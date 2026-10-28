@@ -594,7 +594,7 @@ export async function saveStoredListingForUser(
   const status = existingListing.status;
   const body = await storedListingBody(input, status, options);
   const rows = await supabaseRest<ListingRow[]>(
-    `/rest/v1/listings?select=${listingSelect}&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}`,
+    `/rest/v1/listings?select=${listingSelect}&id=eq.${encodeURIComponent(listingId)}&author_id=eq.${encodeURIComponent(userId)}&status=eq.${encodeURIComponent(status)}`,
     {
       method: "PATCH",
       prefer: "return=representation",

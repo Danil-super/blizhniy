@@ -20,6 +20,7 @@ function execute(relative, dependencies, lexical = {}) {
   const js = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }, fileName: file }).outputText;
   const mod = { exports: {} };
   new Function('require', 'module', 'exports', ...Object.keys(lexical), js)(name => {
+    if (name === "@/lib/legacy-request-body") return require("../src/lib/legacy-request-body.ts");
     assert.ok(name in dependencies, `Unexpected dependency ${name}`);
     return dependencies[name];
   }, mod, mod.exports, ...Object.values(lexical));

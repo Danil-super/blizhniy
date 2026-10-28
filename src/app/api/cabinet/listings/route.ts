@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import {
@@ -132,7 +133,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы удалить объявление" }, { status: 401 });
   }
 
-  const payload = (await request.json().catch(() => null)) as { id?: string } | null;
+  const payload = (await readLegacyJson(request).catch(() => null)) as { id?: string } | null;
   const listingId = payload?.id?.trim();
 
   if (!listingId) {
@@ -161,7 +162,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы изменить объявление" }, { status: 401 });
   }
 
-  const payload = (await request.json().catch(() => null)) as ListingActionBody | null;
+  const payload = (await readLegacyJson(request).catch(() => null)) as ListingActionBody | null;
   const listingId = payload?.id?.trim();
   const action = payload?.action?.trim();
 

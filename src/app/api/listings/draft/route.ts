@@ -1,3 +1,4 @@
+import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { createStoredListing, findReusableStoredDraftListing, updateStoredListingForUser } from "@/lib/listing-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
@@ -76,7 +77,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Войдите или зарегистрируйтесь, чтобы сохранить черновик" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as CreateDraftListingBody | null;
+  const body = (await readLegacyJson(request).catch(() => null)) as CreateDraftListingBody | null;
 
   if (!body) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });

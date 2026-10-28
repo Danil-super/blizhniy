@@ -28,10 +28,10 @@ function userView(value: unknown, production: boolean): LocalAccountUser {
       !["user", "admin"].includes(row.role as string) || row.isBlocked !== false) throw new LocalAccountError("AUTH_UNAVAILABLE");
   return { id: row.id, email: row.email, role: row.role as "user" | "admin", isBlocked: false };
 }
-async function request(action: "login" | "session" | "logout", body: unknown): Promise<Record<string, unknown>> {
+async function request(action: "login" | "session" | "logout", body: unknown, anonymousView = false): Promise<Record<string, unknown>> {
   try {
     const response = await fetch(`/api/account/${action}`, { method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error",
-      signal: AbortSignal.timeout(10000), headers: { "Content-Type": "application/json", "X-Blizhniy-Request": "1" }, body: JSON.stringify(body) });
+      signal: AbortSignal.timeout(10000), headers: { "Content-Type": "application/json", "X-Blizhniy-Request": "1", ...(anonymousView ? { "X-Blizhniy-Session-View": "1" } : {}) }, body: JSON.stringify(body) });
     consumeAccountCaptchaResponse(response);
     const payload = object(await response.json());
     if (!response.ok) {
@@ -56,8 +56,9 @@ function accountClient(production: boolean) { return {
   },
   async session(): Promise<LocalAccountUser | null> {
     try {
-      const payload = await request("session", {});
+      const payload = await request("session", {}, production);
       if (Object.keys(payload).length !== 1) throw new LocalAccountError("AUTH_UNAVAILABLE");
+      if (production && payload.user === null) return null;
       return userView(payload.user, production);
     } catch (error) {
       if (error instanceof LocalAccountError && error.code === "UNAUTHENTICATED") return null;

@@ -66,6 +66,7 @@ function harness(rows, options = {}) {
     }, fileName: filenameAbsolute }).outputText;
     vm.runInContext(`(function(require,module,exports){${javascript}\n})`, context, { filename: filenameAbsolute })((name) => {
       if (name === "@/lib/server-auth") return { isSupabaseServerConfigured: () => true, getAuthenticatedRequestUser: async () => ({ user: { id: owner } }) };
+      if (name === "@/lib/legacy-request-body") return require("../src/lib/legacy-request-body.ts");
       if (!name.startsWith("@/") && !name.startsWith(".")) return require(name);
       const base = name.startsWith("@/") ? resolve(root, "src", name.slice(2)) : resolve(dirname(filenameAbsolute), name);
       const dependency = [base, `${base}.ts`, `${base}.tsx`, resolve(base, "index.ts")].find((candidate) => existsSync(candidate) && /\.(ts|tsx)$/.test(candidate));

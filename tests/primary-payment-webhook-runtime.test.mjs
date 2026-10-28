@@ -1,3 +1,4 @@
+import * as legacyBody from "../src/lib/legacy-request-body.ts";
 import assert from 'node:assert/strict';import {test} from 'node:test';import {readFileSync} from 'node:fs';import {createRequire} from 'node:module';
 import * as http from '../src/lib/auth-http.ts';import {formModule} from './listing-form-module.mjs';
 test('primary webhook defaults off before credentials/pool; separate TEST gate does not depend on admitting new checkouts',async()=>{
@@ -24,6 +25,7 @@ test('old webhook refuses postgres/unknown auth modes before old storage or prov
    if(name==='next/server')return{NextResponse:{json:Response.json}};
    if(name==='@/lib/payment-provider')return{processYooKassaNotification:()=>assert.fail('legacy provider')};
    if(name==='@/lib/supabase-rest')return{isSupabaseServiceRoleConfigured:()=>assert.fail('legacy storage')};
+   if(name==='@/lib/legacy-request-body')return legacyBody;
    throw Error('Unapproved route test dependency');
   },exports,{env:{BLIZHNIY_AUTH_MODE:mode}});
   assert.equal((await exports.POST({json:()=>assert.fail('body must not be read')})).status,503);

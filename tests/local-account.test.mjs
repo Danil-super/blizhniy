@@ -105,3 +105,11 @@ test("production cookie client accepts canonical public email, sends CAPTCHA onl
   assert.deepEqual(JSON.parse(session.calls[0].init.body), {});
   await assert.rejects(setup({ error: { code: "CAPTCHA_REQUIRED" } }, 403).production.login(publicUser.email, "Synthetic passphrase 2026!", "bad"), { code: "CAPTCHA_REQUIRED" });
 });
+test('production session display explicitly requests nullable view, while local and error contracts stay strict',async()=>{
+ const guest=setup({user:null});assert.equal(await guest.production.session(),null);
+ assert.equal(guest.calls[0].init.headers['X-Blizhniy-Session-View'],'1');
+ assert.equal(guest.calls[0].init.cache,'no-store');assert.deepEqual(JSON.parse(guest.calls[0].init.body),{});
+ await assert.rejects(setup({user:null}).api.session(),{code:'AUTH_UNAVAILABLE'});
+ await assert.rejects(setup({user:null,role:'admin'}).production.session(),{code:'AUTH_UNAVAILABLE'});
+ await assert.rejects(setup({error:{code:'AUTH_UNAVAILABLE'}},503).production.session(),{code:'AUTH_UNAVAILABLE'});
+});

@@ -22,11 +22,12 @@
     "test:payments:local": "node --test tests/local-payment-db-postgres.mjs tests/payment-lifecycle-integration-postgres.mjs"
   },
   "dependencies": {
+    "@fastify/busboy": "3.2.4",
     "@supabase/supabase-js": "^2.106.2",
     "lottie-web": "^5.13.0",
     "lucide-react": "^0.468.0",
     "next": "^15.5.28",
-    "nodemailer": "10.1.0",
+    "nodemailer": "10.1.4",
     "openid-client": "6.8.8",
     "pg": "8.23.1",
     "react": "^19.0.0",
