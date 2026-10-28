@@ -7,11 +7,15 @@ import {parseApplicationCreate,type ApplicationCreateInput,type ApplicationKind}
 import {productionApplications,ApplicationClientError,applicationMatchesInput,type ApplicationPreview} from '@/lib/client-applications';
 import type {ApplicationSnapshot} from '@/lib/postgres-applications';
 import {applicationButton,applicationLabels,applicationTargetHref} from './ApplicationDetail';
+import {ApplicationCheckout} from './ApplicationCheckout';
+import {useListingPostmoderation} from '@/components/listings/ListingWorkflowProvider';
 
 type Intent={input:ApplicationCreateInput;phase:'unknown'|'retry'};
 function Workspace({owner,kind,targetId,visible}:{owner:string;kind:ApplicationKind;targetId:string;visible:boolean}){
+ const local=useListingPostmoderation();
  const [review,setReview]=useState<ApplicationPreview|null>(null),[fresh,setFresh]=useState(false),[text,setText]=useState(''),[issue,setIssue]=useState<string|null>(null);
- const [saved,setSaved]=useState<ApplicationSnapshot|null>(null),[intent,setIntent]=useState<Intent|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[needsProfile,setNeedsProfile]=useState(false);
+  const [saved,setSaved]=useState<ApplicationSnapshot|null>(null),[intent,setIntent]=useState<Intent|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[needsProfile,setNeedsProfile]=useState(false);
+  const [payAfterSave,setPayAfterSave]=useState(false);
  const controller=useRef<AbortController|null>(null),pending=useRef<object|null>(null),message=useRef<HTMLTextAreaElement>(null),alert=useRef<HTMLParagraphElement>(null),success=useRef<HTMLHeadingElement>(null),prefix=useId();
  const run=useCallback(async(work:(signal:AbortSignal)=>Promise<void>)=>{
   const current=controller.current;if(!current||current.signal.aborted||pending.current)return;const attempt={};pending.current=attempt;setBusy(true);setError(null);
@@ -31,7 +35,7 @@ function Workspace({owner,kind,targetId,visible}:{owner:string;kind:ApplicationK
   if(!visible||busy||saved||!review||!fresh||intent?.phase==='unknown')return;
   let input:ApplicationCreateInput;
   try{input=intent?.input??parseApplicationCreate({kind,targetId,creationKey:crypto.randomUUID(),expectedTargetRevision:review.target.revision,specialistId:review.specialist.id,expectedSpecialistRevision:review.specialist.revision,message:text});}
-  catch{setIssue('Сообщение должно содержать не более 3000 символов, без управляющих знаков.');message.current?.focus();return;}
+   catch{setIssue('Сообщение: до 500 символов, без HTML-разметки и скрытых управляющих знаков.');message.current?.focus();return;}
   const retry=!!intent;
   void run(async signal=>{setIntent({input,phase:'unknown'});try{const value=await productionApplications.create(owner,input,{signal});if(!signal.aborted){setSaved(value);setIntent(null);}}
    catch(error){if(!signal.aborted&&!retry&&error instanceof ApplicationClientError&&error.code!=='UNKNOWN'){setIntent(null);setFresh(false);}throw error;}});
@@ -44,18 +48,20 @@ function Workspace({owner,kind,targetId,visible}:{owner:string;kind:ApplicationK
  return <div hidden={!visible} inert={!visible} className="mt-3 min-w-0" aria-busy={busy}>
   {busy&&<p role="status" className="mb-3 text-sm text-slate-700">Проверяем отклик…</p>}
   {error&&<p ref={alert} tabIndex={-1} role="alert" className="mb-3 break-words rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
-  {saved?<div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3"><h3 ref={success} tabIndex={-1} className="font-semibold text-slate-950">{saved.status==='pending_payment'?'Отклик сохранён. Ожидает оплаты.':`Ваш отклик: ${applicationLabels[saved.status]}.`}</h3>
-   {!saved.sentAt&&<p className="mt-2 text-sm text-slate-800">Получатель ещё не получил отклик. {saved.paid?'Отправку должен подтвердить сервер.':'Платёжный сценарий ещё не подключён; деньги не списаны.'}</p>}
+  {saved?<div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3"><h3 ref={success} tabIndex={-1} className="font-semibold text-slate-950">{saved.withdrawn?'Отклик отозван':saved.targetClosed&&!saved.sentAt?'Заказ закрыт':saved.status==='pending_payment'?'Отклик сохранён. Ожидает оплаты.':`Ваш отклик: ${applicationLabels[saved.status]}.`}</h3>
+   {!saved.sentAt&&!saved.withdrawn&&<p className="mt-2 text-sm text-slate-800">Получатель ещё не получил отклик. {saved.targetClosed?'Заказчик уже выбрал исполнителя. Новая оплата и доставка недоступны; история сохранена.':saved.paid?'Отправку должен подтвердить сервер.':local?'Продолжите локальную TEST-оплату для доставки отклика.':'Платёжный сценарий ещё не подключён; деньги не списаны.'}</p>}
+    {local&&!saved.targetClosed&&!saved.withdrawn&&!saved.paid&&saved.status==='pending_payment'&&<ApplicationCheckout owner={owner} id={saved.id} revision={saved.revision} autoStart={payAfterSave}/>}
    <Link href="/cabinet/otkliki" className={`${applicationButton} mt-3`}>Мои отклики</Link></div>:<>
    {needsProfile&&<Link href="/cabinet/specialist" className={`${applicationButton} mb-3`}>Заполнить анкету</Link>}
    {!fresh&&!busy&&<button type="button" className={`${applicationButton} mb-3`} disabled={!!intent} onClick={()=>{if(visible&&!intent)void run(load);}}>Обновить данные отклика</button>}
    {review&&<form noValidate className="grid min-w-0 gap-3" onSubmit={event=>{event.preventDefault();submit();}}>
-    <p className="break-words text-sm text-slate-800">В отклик попадёт ваша опубликованная анкета: <strong>{review.specialist.snapshot.name}</strong>, {review.specialist.snapshot.profession}.</p>
-    <p className="text-sm text-slate-700">Сначала сохраните сообщение. Доставка получателю — после подтверждения оплаты сервером, без повторного ввода анкеты.</p>
-    <div className="grid min-w-0 gap-1"><label htmlFor={`${prefix}-message`} className="text-sm font-semibold text-slate-950">Сообщение</label><textarea id={`${prefix}-message`} ref={message} value={text} disabled={locked} aria-invalid={!!issue} aria-describedby={`${prefix}-hint${issue?` ${prefix}-error`:''}`} onChange={event=>{if(!visible||locked)return;setText(event.target.value);setIssue(null);setError(null);}} className="min-h-28 w-full min-w-0 resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-700 disabled:bg-slate-100"/></div>
-    <p id={`${prefix}-hint`} className="text-sm text-slate-600">Необязательно. До 3000 символов. Контакты будут взяты из вашей анкеты.</p>
+    <p className="break-words text-sm text-slate-800">В отклик попадёт ваша сохранённая анкета: <strong>{review.specialist.snapshot.name}</strong>, {review.specialist.snapshot.profession}.</p>
+     <p className="text-sm text-slate-700">После подтверждения оплаты отклик автоматически уйдёт заказчику вместе с вашей анкетой.</p>
+     <div className="grid min-w-0 gap-1"><label htmlFor={`${prefix}-message`} className="text-sm font-semibold text-slate-950">Сообщение</label><textarea id={`${prefix}-message`} name="message" maxLength={500} ref={message} value={text} disabled={locked} aria-invalid={!!issue} aria-describedby={`${prefix}-hint${issue?` ${prefix}-error`:''}`} onChange={event=>{if(!visible||locked)return;setText(event.target.value);setIssue(null);setError(null);}} className="min-h-28 w-full min-w-0 resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-700 disabled:bg-slate-100"/></div>
+     <p id={`${prefix}-hint`} className="text-sm text-slate-600">{text.length} / 500 символов. Контакты будут взяты из вашей анкеты.</p>
     {issue&&<p id={`${prefix}-error`} className="text-sm text-rose-800">{issue}</p>}
-    {intent?.phase==='unknown'?<><p className="text-sm text-slate-800">Результат сохранения не подтверждён. Сначала проверьте его, чтобы не создавать повторный отклик.</p><button type="button" className={applicationButton} disabled={busy} onClick={recover}>Проверить сохранение</button></>:<button type="submit" disabled={busy||!fresh} className={applicationButton}>{intent?'Повторить то же сохранение':'Сохранить отклик'}</button>}
+     {intent?.phase==='unknown'?<><p className="text-sm text-slate-800">Результат сохранения не подтверждён. Сначала проверьте его, чтобы не создавать повторный отклик.</p><button type="button" className={applicationButton} disabled={busy} onClick={recover}>Проверить сохранение</button></>:<div className="flex flex-wrap gap-2"><button type="submit" disabled={busy||!fresh} className={applicationButton} onClick={()=>{if(!intent)setPayAfterSave(false);}}>{intent?'Повторить то же сохранение':'Сохранить отклик'}</button>
+      {local&&!intent&&<button type="submit" disabled={busy||!fresh} className={`${applicationButton} border-blue-700 bg-blue-50`} onClick={()=>setPayAfterSave(true)}>Оплатить и отправить</button>}</div>}
    </form>}
   </>}
  </div>;

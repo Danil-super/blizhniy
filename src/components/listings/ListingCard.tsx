@@ -1,14 +1,13 @@
 import Link from "next/link";
-import { CalendarDays, Gift, Mail, MapPin, ShoppingBag, Tags } from "lucide-react";
+import { CalendarDays, Mail, MapPin } from "lucide-react";
 import { ContactAssetIcon } from "@/components/ContactAssetIcon";
 import { StoredMediaImage } from "@/components/StoredMedia";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewCounter } from "./ListingViewCounter";
-
-export type ListingKind = "prodam" | "kuplyu" | "otdam-darom" | "arenda";
-export type ListingStatus = "draft" | "pending_payment" | "paid" | "published" | "sold" | "archived" | "expired" | "rejected";
+import {ListingKindBadge, StatusBadge, listingKindIcons as kindIcons, type ListingKind, type ListingStatus} from './ListingBadges';
+export {ListingKindBadge, StatusBadge, type ListingKind, type ListingStatus} from './ListingBadges';
 
 export type DemoListing = {
   viewId?: string;
@@ -71,20 +70,6 @@ function formatListingDate(value?: string) {
   }).format(date);
 }
 
-const kindLabels: Record<ListingKind, string> = {
-  prodam: "Продам",
-  kuplyu: "Куплю",
-  "otdam-darom": "Отдам даром",
-  arenda: "Аренда",
-};
-
-const kindIcons = {
-  prodam: ShoppingBag,
-  kuplyu: Tags,
-  "otdam-darom": Gift,
-  arenda: CalendarDays,
-};
-
 const imageTones = {
   blue: "from-blue-100 via-white to-cyan-100 text-[#0875d1]",
   green: "from-emerald-100 via-white to-lime-100 text-[#0a8f32]",
@@ -98,7 +83,7 @@ function ListingImage({ className, iconClassName, listing }: { className: string
   const image = listing.images?.[0];
 
   if (image) {
-    return <StoredMediaImage src={image} alt={listing.title} className={`${className} bg-slate-100 object-contain`} />;
+    return <StoredMediaImage src={image} alt={listing.title} className={`${className} bg-slate-100 object-cover object-center`} />;
   }
 
   return (
@@ -106,41 +91,6 @@ function ListingImage({ className, iconClassName, listing }: { className: string
       <Icon className={iconClassName} />
     </span>
   );
-}
-
-export function ListingKindBadge({ kind }: { kind: ListingKind }) {
-  const Icon = kindIcons[kind];
-
-  return (
-    <span className="inline-flex h-7 min-w-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 sm:h-8 sm:px-3 sm:text-sm">
-      <Icon className="h-3.5 w-3.5 shrink-0 text-[#0875d1] sm:h-4 sm:w-4" />
-      {kindLabels[kind]}
-    </span>
-  );
-}
-
-export function StatusBadge({ status }: { status: ListingStatus }) {
-  const labels: Record<ListingStatus, string> = {
-    draft: "Черновик",
-    pending_payment: "Ожидает оплату",
-    paid: "Оплачено",
-    published: "Опубликовано",
-    sold: "Продано",
-    archived: "Архив",
-    expired: "Истек срок",
-    rejected: "Отклонено",
-  };
-
-  const tone =
-    status === "published"
-      ? "border-emerald-200 bg-emerald-50 text-[#0a8f32]"
-      : status === "sold"
-        ? "border-slate-300 bg-slate-100 text-slate-700"
-      : status === "pending_payment"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : "border-slate-200 bg-slate-50 text-slate-600";
-
-  return <span className={`inline-flex h-7 min-w-0 items-center rounded-full border px-2.5 text-xs font-bold sm:h-8 sm:px-3 sm:text-sm ${tone}`}>{labels[status]}</span>;
 }
 
 export function ListingCard({ listing }: { listing: DemoListing }) {
@@ -153,7 +103,7 @@ export function ListingCard({ listing }: { listing: DemoListing }) {
       <div className="flex min-w-0 gap-3 sm:contents">
         <Link
           href={href}
-          className="block aspect-square w-28 shrink-0 overflow-hidden rounded-lg sm:w-auto"
+          className="block aspect-[4/3] w-28 shrink-0 overflow-hidden rounded-lg sm:w-auto"
           aria-label={listing.title}
         >
           <ListingImage listing={listing} className="h-full w-full rounded-lg" iconClassName="h-8 w-8 sm:h-9 sm:w-9 lg:h-12 lg:w-12" />
@@ -227,7 +177,7 @@ export function ListingGridCard({ listing }: { listing: DemoListing }) {
   return (
     <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card">
       <Link href={href} className="block min-w-0">
-        <span className="relative block aspect-[4/3] overflow-hidden bg-slate-100 sm:aspect-square">
+        <span data-listing-photo-frame className="relative block aspect-[4/3] overflow-hidden bg-slate-100">
           <ListingImage listing={listing} className="h-full w-full" iconClassName="h-8 w-8" />
           {listing.images?.[0] ? <span className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-slate-950/30 to-transparent" /> : <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />}
         </span>

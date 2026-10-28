@@ -7,8 +7,14 @@ import { CookieProfileError, productionProfile } from "@/lib/client-postgres-pro
 import { notifyAccountSessionChange } from "@/lib/local-account";
 
 type Snapshot = { ownerId: string | null; profile: CabinetProfile | null; revision?: string | null; conflict?: boolean; error?: string; loading: boolean };
+export type AvatarCropSelection = {draft:{src:string;zoom:number;offsetX:number;offsetY:number};imageSize:{width:number;height:number}};
+type AvatarPreparation = {loading:boolean;message:string};
 type Value = Snapshot & { saveProfile: (profile: CabinetProfile) => Promise<CabinetProfile>; reload: () => void;
-  settingsDraft: CabinetProfile | null; setSettingsDraft: (profile: CabinetProfile) => void; clearSettingsDraft: () => void };
+  refreshVerifiedPhone: () => Promise<void>;
+  settingsDraft: CabinetProfile | null; setSettingsDraft: (profile: CabinetProfile) => void; clearSettingsDraft: () => void;
+  avatarDraft: AvatarCropSelection|null; setAvatarDraft:(value:AvatarCropSelection|null)=>void;
+  avatarPreparation:AvatarPreparation|null;
+  prepareAvatarSelection:(prepare:()=>Promise<AvatarCropSelection>)=>Promise<AvatarCropSelection|null> };
 const Context = createContext<Value | null>(null);
 const empty: Snapshot = { ownerId: null, profile: null, loading: true };
 export function useCookieCabinetProfile() { return useContext(Context); }
@@ -21,7 +27,18 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
   // Unsaved settings belong to this owner, not to the temporary form DOM. Never
   // persist private input in browser storage or carry it through a real logout.
   const [settings, setSettings] = useState<{ owner: string; profile: CabinetProfile } | null>(null);
+  const [avatar, setAvatar] = useState<{owner:string;value:AvatarCropSelection}|null>(null);
+  const [avatarPreparation, setAvatarPreparation] = useState<{owner:string;value:AvatarPreparation}|null>(null);
+  const avatarEpoch = useRef(0), avatarOwner = useRef(owner);
+  // A temporary check hides private state without discarding the selection.
+  // Logout, account changes and newer selections invalidate detached decoders.
+  if (auth.state === "signed-out" || (owner && avatarOwner.current !== owner)) {
+    avatarEpoch.current++;
+    avatarOwner.current = owner;
+    if (avatarPreparation) setAvatarPreparation(null);
+  }
   if (settings && (auth.state === "signed-out" || (owner && owner !== settings.owner))) setSettings(null);
+  if (avatar && (auth.state === "signed-out" || (owner && owner !== avatar.owner))) setAvatar(null);
   useEffect(() => {
     const generation = ++version.current;
     const controller = new AbortController(); scope.current = controller;
@@ -42,7 +59,7 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
     if (snapshot.conflict) throw new CookieProfileError("PROFILE_CHANGED");
     if (snapshot.revision === undefined) throw new CookieProfileError("UNKNOWN");
     if (pendingWrite.current) throw new Error("Сохранение профиля уже выполняется.");
-    const generation = version.current, attempt = {};
+    const generation = ++version.current, attempt = {};
     pendingWrite.current = attempt;
     try {
       const saved = await productionProfile.write(owner, profile, snapshot.revision, { signal: scope.current?.signal });
@@ -63,10 +80,56 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
   // In-flight data is never displayed for a changed or unverified identity, even before effect cleanup.
   const visible = owner && snapshot.ownerId === owner ? snapshot : empty;
   const reload = () => notifyAccountSessionChange(false);
-  return <Context.Provider value={{ ...visible, saveProfile, reload,
+  async function refreshVerifiedPhone() {
+    if (!owner || latestOwner.current !== owner || !snapshot.profile || snapshot.loading || pendingWrite.current) throw new CookieProfileError('SESSION_CHANGED');
+    const before=snapshot, generation=version.current;
+    const saved=await productionProfile.read(owner,{signal:scope.current?.signal});
+    if (generation!==version.current || latestOwner.current!==owner || pendingWrite.current) throw new CookieProfileError('SESSION_CHANGED');
+    const withoutPhone=(profile:CabinetProfile)=>Object.fromEntries(Object.entries(profile).filter(([key])=>!['phone','phoneVerified','verifiedPhone'].includes(key)).sort(([a],[b])=>a.localeCompare(b)));
+    if (JSON.stringify(withoutPhone(before.profile!))!==JSON.stringify(withoutPhone(saved.profile))) {
+      setSnapshot({...before,conflict:true,error:'Профиль изменён в другой вкладке. Несохранённые поля сохранены в этой форме.'});
+      throw new CookieProfileError('PROFILE_CHANGED');
+    }
+    setSnapshot({ownerId:owner,...saved,loading:false});
+    setSettings(current=>current?.owner===owner?{...current,profile:{...current.profile,phone:saved.profile.phone,
+      phoneVerified:saved.profile.phoneVerified,verifiedPhone:saved.profile.verifiedPhone}}:current);
+  }
+  async function prepareAvatarSelection(prepare:()=>Promise<AvatarCropSelection>):Promise<AvatarCropSelection|null> {
+    if (!owner || latestOwner.current !== owner || avatarOwner.current !== owner) return null;
+    const attempt = ++avatarEpoch.current;
+    setAvatar(null);
+    setAvatarPreparation({owner,value:{loading:true,message:""}});
+    const current = () => attempt === avatarEpoch.current && avatarOwner.current === owner;
+    try {
+      const value = await prepare();
+      if (!current()) return null;
+      setAvatar({owner,value});
+      setAvatarPreparation(null);
+      return value;
+    } catch (error) {
+      const known = ["Не удалось прочитать файл.","Не удалось подготовить изображение.",
+        "Выберите изображение в формате PNG, JPG или WebP."];
+      const message = error instanceof Error && known.includes(error.message) ? error.message
+        : "Не удалось открыть изображение. Выберите исправный файл PNG, JPG, WebP или SVG.";
+      if (current()) setAvatarPreparation({owner,value:{loading:false,message}});
+      return null;
+    }
+  }
+  return <Context.Provider value={{ ...visible, saveProfile, reload, refreshVerifiedPhone,
     settingsDraft: owner && settings?.owner === owner ? settings.profile : null,
     setSettingsDraft: profile => { if (owner && latestOwner.current === owner) setSettings({ owner, profile }); },
-    clearSettingsDraft: () => setSettings(null) }}>
+    clearSettingsDraft: () => {
+      if (!owner || latestOwner.current !== owner) return;
+      setSettings(null);avatarEpoch.current++;setAvatarPreparation(null);setAvatar(null);
+    },
+    // Selection is private, owner-scoped UI memory, never a saved profile or a
+    // write authorization. Unknown writes still require a fresh profile read.
+    avatarDraft: owner&&avatar?.owner===owner?avatar.value:null,
+    setAvatarDraft:value=>{if(owner&&latestOwner.current===owner){
+      avatarEpoch.current++;setAvatarPreparation(null);setAvatar(value?{owner,value}:null);
+    }},
+    avatarPreparation:owner&&avatarPreparation?.owner===owner?avatarPreparation.value:null,
+    prepareAvatarSelection }}>
     {visible.conflict ? <CabinetProfileFailure message="Профиль изменён в другой вкладке. Скопируйте несохранённые изменения и обновите профиль." reload={reload} /> : null}
     {children}
   </Context.Provider>;

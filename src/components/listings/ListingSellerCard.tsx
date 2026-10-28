@@ -43,7 +43,7 @@ export function ListingSellerCard({ sellerName, registeredSince, listingCount = 
           {sellerInitial(name)}
         </div>
         <div className="min-w-0">
-          <p className="text-xs font-bold uppercase text-slate-400">Продавец</p>
+          <p className="text-xs font-bold uppercase text-slate-600">Продавец</p>
           <h2 className="mt-1 [overflow-wrap:anywhere] text-lg font-bold text-[#060b27]">{name}</h2>
           {hasContacts ? (
             <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
@@ -56,14 +56,14 @@ export function ListingSellerCard({ sellerName, registeredSince, listingCount = 
 
       <div className="mt-4 grid grid-cols-2 gap-2">
         <div className="min-w-0 rounded-lg bg-slate-50 p-3">
-          <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-400">
+          <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-600">
             <CalendarDays className="h-4 w-4 shrink-0 text-[#0875d1]" />
             На платформе
           </div>
           <p className="mt-1 [overflow-wrap:anywhere] text-sm font-bold text-[#060b27]">{registeredSince ? `с ${registeredSince}` : "недавно"}</p>
         </div>
         <div className="min-w-0 rounded-lg bg-slate-50 p-3">
-          <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-400">
+          <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-600">
             <ClipboardList className="h-4 w-4 shrink-0 text-[#0875d1]" />
             Объявления
           </div>
@@ -72,7 +72,7 @@ export function ListingSellerCard({ sellerName, registeredSince, listingCount = 
           </p>
         </div>
         <div className="col-span-2 min-w-0 rounded-lg bg-slate-50 p-3">
-          <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-400">
+          <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-slate-600">
             <CheckCircle2 className="h-4 w-4 shrink-0 text-[#0875d1]" />
             Продано
           </div>
@@ -81,7 +81,7 @@ export function ListingSellerCard({ sellerName, registeredSince, listingCount = 
       </div>
 
       {profileHref ? (
-        <Link href={profileHref} className="mt-4 inline-flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
+        <Link href={profileHref} className="mt-4 inline-flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-blue-800 transition hover:border-[#0875d1] hover:bg-white">
           <span className="truncate">Профиль продавца</span>
           <ArrowRight className="h-4 w-4 shrink-0" />
         </Link>

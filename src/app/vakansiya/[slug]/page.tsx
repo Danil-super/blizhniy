@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { BriefcaseBusiness, MapPin } from "lucide-react";
+import { BriefcaseBusiness, MapPin, Wrench } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { DetailImageGallery } from "@/components/DetailImageGallery";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -10,7 +10,8 @@ import { VacancyApplicationButton } from "@/components/VacancyApplicationButton"
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { listVacancies } from "@/lib/mock-store";
-import { formatPublicationDateTime } from "@/lib/publication-time";
+import {PublicationDates} from '@/components/PublicationDates';
+import {PublicationHeading} from '@/components/PublicationHeading';
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isUuid } from "@/lib/supabase-rest";
 import type { JobVacancy } from "@/lib/types";
@@ -55,7 +56,6 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
   const hasPoint = Boolean(vacancy.showExactAddress) && hasMapCoordinates(vacancy.lat, vacancy.lng);
   const canReceivePaidApplications = isUuid(vacancy.id);
   const placeLabel = vacancyLocationLabel(vacancy);
-  const publishedLabel = formatPublicationDateTime(vacancy.publishedAt ?? vacancy.createdAt, "10:00");
 
   return (
     <>
@@ -68,23 +68,23 @@ export default async function VacancyDetailPage({ params }: { params: Promise<{ 
           </BackLink>
           <article className="grid gap-4 lg:grid-cols-[minmax(0,740px)_340px] lg:justify-center">
           <section className="grid gap-4">
-            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-card sm:p-5">
-              <div className="grid gap-3 md:grid-cols-[minmax(17rem,24rem)_minmax(0,1fr)] md:items-start md:gap-4">
-                <DetailImageGallery compactMobile images={images} title={vacancy.title} fallbackIcon={<BriefcaseBusiness className="h-14 w-14 text-slate-300 sm:h-16 sm:w-16" />} />
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
+              <PublicationHeading title={vacancy.title} price={vacancy.salary}>
+                <p className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800"><Wrench aria-hidden="true" className="h-4 w-4 shrink-0"/>{vacancy.profession}</p>
+                <StatusBadge status={vacancy.status}/>
+              </PublicationHeading>
+              <div className="grid gap-5 md:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] md:items-start">
+                <DetailImageGallery images={images} title={vacancy.title} fallbackIcon={<BriefcaseBusiness className="h-16 w-16 text-slate-300" />} />
                 <div className="order-1 min-w-0 md:order-2">
-                  <StatusBadge status={vacancy.status} />
-                  <p className="mt-3 text-sm font-semibold text-slate-500 [overflow-wrap:anywhere]">{vacancy.organization}</p>
-                  <p className="mt-2 text-sm text-slate-500 [overflow-wrap:anywhere]">{vacancy.profession}</p>
-                  <h1 className="mt-2 text-xl font-bold leading-tight text-[#060b27] [overflow-wrap:anywhere] sm:text-2xl lg:text-3xl">{vacancy.title}</h1>
-                  <p className="mt-3 text-xl font-bold text-[#060b27] [overflow-wrap:anywhere]">{vacancy.salary}</p>
+                  <p className="text-sm font-semibold text-slate-600 [overflow-wrap:anywhere]">{vacancy.organization}</p>
                   {vacancy.schedule || vacancy.workFormat ? (
                     <div className="mt-4 flex flex-wrap gap-2">
-                      {vacancy.schedule ? <span className="min-w-0 rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-[#0875d1] [overflow-wrap:anywhere]">{vacancy.schedule}</span> : null}
+                      {vacancy.schedule ? <span className="min-w-0 rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-blue-800 [overflow-wrap:anywhere]">{vacancy.schedule}</span> : null}
                       {vacancy.workFormat ? <span className="min-w-0 rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700 [overflow-wrap:anywhere]">{vacancy.workFormat}</span> : null}
                     </div>
                   ) : null}
                   <div className="mt-3 grid gap-2 text-sm font-semibold text-slate-600">
-                    {publishedLabel ? <p>{publishedLabel}</p> : null}
+                    <PublicationDates publishedAt={vacancy.publishedAt??vacancy.createdAt}/>
                     <p className="flex min-w-0 items-start gap-2">
                       <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#0875d1] sm:h-5 sm:w-5" />
                       <span className="min-w-0 [overflow-wrap:anywhere]">{placeLabel}</span>

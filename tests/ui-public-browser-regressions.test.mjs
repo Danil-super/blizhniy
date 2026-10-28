@@ -62,7 +62,7 @@ test('UI classifier legacy URL resolves to the existing catalog before a wildcar
 function listingPresentation() {
   const path = 'src/components/listings/ListingPages.tsx';
   const code = functionsFrom(path, ['listingImageTone', 'listingCategoryName', 'toDemoListing', 'slugifySubcategory', 'ListingDetailPage']);
-  const componentNames = ['SiteHeader', 'ListingViewTracker', 'Breadcrumbs', 'BackLink', 'ListingKindBadge', 'StatusBadge', 'MapPin', 'ListingMediaGallery', 'Phone', 'Mail', 'MessageCircle', 'ListingShareButton', 'ListingSellerCard', 'LocationMap', 'BookingCalculator', 'DeliveryInfoCard'];
+  const componentNames = ['SiteHeader', 'ListingViewTracker', 'Breadcrumbs', 'BackLink', 'ListingKindBadge', 'StatusBadge', 'MapPin', 'ListingMediaGallery', 'Phone', 'Mail', 'MessageCircle', 'ListingShareButton', 'ListingSellerCard', 'LocationMap', 'BookingCalculator', 'DeliveryInfoCard', 'PublicationHeading', 'PublicationDates'];
   return load(code, {}, {
     ...Object.fromEntries(componentNames.map((name) => [name, name])),
     fallbackCategories: [{ slug: 'sad-i-rasteniya', name: 'Сад и огород', children: ['Саженцы'] }],

@@ -1,4 +1,5 @@
 import type { ListingKind } from "./types";
+import {validPlainText} from './cabinet-field-validation.ts';
 
 export class ListingDraftInputError extends Error {
   constructor() { super("Invalid listing draft input"); this.name = "ListingDraftInputError"; }
@@ -56,7 +57,7 @@ export function parseListingDraft(value: unknown): ListingDraftInput {
     if (!Object.hasOwn(input, field)) return "";
     const result = input[field];
     const controls = multiline ? /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/ : /[\u0000-\u001f\u007f]/;
-    if (typeof result !== "string" || result.length > limit || !result.isWellFormed() || controls.test(result)) throw new ListingDraftInputError();
+    if (typeof result !== "string" || result.length > limit || !validPlainText(result,multiline) || controls.test(result)) throw new ListingDraftInputError();
     return multiline ? result : result.trim();
   };
   const reference = (field: "categoryId" | "cityId") => !Object.hasOwn(input, field) || input[field] === null

@@ -3,7 +3,7 @@ import {parseBookingRequest,quoteBookingRequest,BookingRequestInputError,Booking
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,type ListingDraftCursor} from './listing-draft-contract.ts';
 import {parseListingFormDraft,type ListingFormDraft} from './listing-form-contract.ts';import {checkListingFormContent} from './listing-publication-check';
 import {maxListingMediaTotalSize} from './media-limits.ts';import {enqueueNotificationInTransaction} from './postgres-notification-inbox';
-import {publicListingSource,publicListingLive,publicListingPhotos} from './listing-public-eligibility';
+import {publicListingSource,publicListingLive,publicListingPhotos,postmoderationListingSource,postmoderationListingLive} from './listing-public-eligibility';
 import type {PostgresDatabase,PostgresQueries} from './postgres';import type {BookingDetails} from './types';
 export class BookingAccessError extends Error{constructor(){super('Booking unavailable');this.name='BookingAccessError';}}
 export class BookingConflictError extends Error{constructor(){super('Booking changed');this.name='BookingConflictError';}}
@@ -11,12 +11,12 @@ export class BookingAvailabilityError extends Error{constructor(){super('Booking
 export class BookingBusyError extends Error{constructor(){super('Booking participant busy');this.name='BookingBusyError';}}
 type Bookable={id:string;author:string;revision:string;title:string;booking:BookingDetails;today:string};
 /** Shared public eligibility gate; private form/contact columns are validated, never returned. Caller locks separately for writes. */
-export async function readBookableListing(tx:PostgresQueries,id:string):Promise<Bookable|null>{
+export async function readBookableListing(tx:PostgresQueries,id:string,postmoderation=false):Promise<Bookable|null>{
  const row=(await tx.query<ListingFormDraft&{id:string;author:string;revision:string;today:string}>(`select l.id,l.author_id as author,l.revision::text as revision,l.title,l.description,l.price::text as price,
   coalesce(parent.slug,c.slug) as "categorySlug",case when c.parent_id is not null then c.name end as "subcategoryName",city.name as "cityName",
   l.district,l.address,l.latitude::float8 as latitude,l.longitude::float8 as longitude,l.show_exact_address as "showExactAddress",l.contact_phone as "contactPhone",l.messenger_url as "messengerUrl",l.booking,
   to_char(clock_timestamp() at time zone 'Europe/Moscow','YYYY-MM-DD') as today
-  ${publicListingSource} where l.id=$1 and l.listing_type='rent' and ${publicListingLive} and ${publicListingPhotos}`,[id,maxListingMediaTotalSize])).rows[0];
+  ${postmoderation?postmoderationListingSource:publicListingSource} where l.id=$1 and l.listing_type='rent' and ${postmoderation?postmoderationListingLive:publicListingLive} and ${publicListingPhotos}`,[id,maxListingMediaTotalSize])).rows[0];
  if(!row)return null;
  try{const {id,author,revision,today,...fields}=row,form=parseListingFormDraft({...fields,kind:'arenda',photoIds:[]});
   if(!form.booking||checkListingFormContent(form,true).length)return null;return{id,author,revision,title:form.title,booking:form.booking,today};
@@ -26,9 +26,9 @@ type Status='pending'|'accepted'|'declined';type Terms={listingRevision:string;t
 export type BookingInventory={listing:{id:string;revision:string;title:string};booking:BookingDetails;today:string;occupiedDates:string[];tourSeatsRemaining:number|null};
 /** Anonymous point-in-time inventory, never request rows. Mutations always recheck under the listing lock. */
 export class PostgresBookingAvailabilityStore{
- constructor(private readonly db:PostgresQueries){}
+ constructor(private readonly db:PostgresQueries,private readonly options:{postmoderation?:boolean}={}){}
  async read(value:unknown):Promise<BookingInventory|null>{
-  const id=parseListingDraftId(value),listing=await readBookableListing(this.db,id);if(!listing)return null;
+  const id=parseListingDraftId(value),listing=await readBookableListing(this.db,id,this.options.postmoderation===true);if(!listing)return null;
   let occupiedDates:string[]=[],tourSeatsRemaining:number|null=null;
   if(listing.booking.mode==='stay'){
    occupiedDates=(await this.db.query<{day:string}>(`select distinct to_char(day,'YYYY-MM-DD') as day from app.booking_requests b
@@ -39,7 +39,7 @@ export class PostgresBookingAvailabilityStore{
    const occupied=(await this.db.query<{occupied:string}>(`select coalesce(sum(guests),0)::text as occupied from app.booking_requests where listing_id=$1 and mode='tour' and status='accepted' and start_date=$2::date`,[id,listing.booking.tourDate])).rows[0].occupied;
    const remaining=BigInt(listing.booking.maxGuests!)-BigInt(occupied);tourSeatsRemaining=remaining>BigInt(0)?Number(remaining):0;
   }
-  const current=await readBookableListing(this.db,id);
+  const current=await readBookableListing(this.db,id,this.options.postmoderation===true);
   if(!current)return null;if(current.revision!==listing.revision||current.today!==listing.today||JSON.stringify(current.booking)!==JSON.stringify(listing.booking))throw new BookingConflictError();
   return{listing:{id,title:listing.title,revision:listing.revision},booking:listing.booking,today:listing.today,occupiedDates,tourSeatsRemaining};
  }
@@ -55,7 +55,7 @@ const columns=`b.id,b.guest_id as guest,l.author_id as host,b.listing_id as "lis
 const display=(row:Row,actor:string):BookingSnapshot=>({id:row.id,revision:row.revision,view:row.guest===actor?'guest':'host',listing:{id:row.listingId,title:row.terms.title},mode:row.mode,startDate:row.startDate,endDate:row.endDate,guests:row.guests,total:row.total,status:row.status,booking:row.terms.booking,createdAt:row.createdAt,updatedAt:row.updatedAt,decidedAt:row.decidedAt});
 /** All create/decision operations serialize on the listing row. No payment, identity or quoted amount updates. */
 export class PostgresBookingStore{
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>){}
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly options:{postmoderation?:boolean}={}){}
  private owner<T>(token:string,owner:string,work:(tx:PostgresQueries,actor:string)=>Promise<T>){const expected=parseListingDraftId(owner);
   return withAppSessionTransaction(this.db,token,(tx,user)=>{if(user.id!==expected)throw new AppSessionAccessError();return work(tx,user.id);});}
  private async peer(tx:PostgresQueries,id:string,live=false){
@@ -65,7 +65,7 @@ export class PostgresBookingStore{
  private async current(tx:PostgresQueries,actor:string,id:string){
   const initial=(await tx.query<{author:string}>('select author_id as author from app.listings where id=$1',[id])).rows[0];if(!initial||initial.author===actor)throw new BookingAccessError();
   await this.peer(tx,initial.author,true);const locked=(await tx.query<{author:string}>('select author_id as author from app.listings where id=$1 for update',[id])).rows[0];
-  if(!locked||locked.author!==initial.author)throw new BookingAccessError();const result=await readBookableListing(tx,id);if(!result)throw new BookingAccessError();return result;
+  if(!locked||locked.author!==initial.author)throw new BookingAccessError();const result=await readBookableListing(tx,id,this.options.postmoderation===true);if(!result)throw new BookingAccessError();return result;
  }
  private async available(tx:PostgresQueries,input:BookingRequestInput,booking:BookingDetails,exclude:string|null=null){
   if(input.mode==='stay'){
@@ -80,7 +80,7 @@ export class PostgresBookingStore{
  }
  private async row(tx:PostgresQueries,actor:string,id:string,lock=true){const row=(await tx.query<Row>(`select ${columns} ${source} where b.id=$1 and ${member} ${lock?'for update of b':''}`,[id,actor])).rows[0];if(!row)throw new BookingAccessError();return row;}
  private async locate(tx:PostgresQueries,actor:string,id:string){const initial=await this.row(tx,actor,id,false);await tx.query('select id from app.listings where id=$1 for update',[initial.listingId]);return this.row(tx,actor,id);}
- private async finish(tx:PostgresQueries,id:string,input:BookingRequestInput){const listing=await readBookableListing(tx,id);if(!listing)throw new BookingAccessError();quoteBookingRequest(listing.booking,input,listing.today);}
+ private async finish(tx:PostgresQueries,id:string,input:BookingRequestInput){const listing=await readBookableListing(tx,id,this.options.postmoderation===true);if(!listing)throw new BookingAccessError();quoteBookingRequest(listing.booking,input,listing.today);}
  preview(token:string,owner:string,value:unknown){const input=parseBookingRequest(value);return this.owner(token,owner,async(tx,actor)=>{
   const listing=await this.current(tx,actor,input.listingId);if(listing.revision!==input.expectedListingRevision)throw new BookingConflictError();
   const quote=quoteBookingRequest(listing.booking,input,listing.today);await this.available(tx,input,listing.booking);await this.finish(tx,listing.id,input);
@@ -104,7 +104,7 @@ export class PostgresBookingStore{
    const initial=await this.row(tx,actor,id,false);if(initial.host!==actor||initial.guest===actor)throw new BookingAccessError();await this.peer(tx,initial.guest,state==='accepted');const row=await this.locate(tx,actor,id);
    if(row.host!==actor)throw new BookingAccessError();if(row.status===state&&BigInt(row.revision)===BigInt(revision)+BigInt(1))return display(row,actor);
    if(row.status!=='pending'||row.revision!==revision)throw new BookingConflictError();let accepting:BookingRequestInput|null=null;
-   if(state==='accepted'){const listing=await readBookableListing(tx,row.listingId);if(!listing)throw new BookingAccessError();accepting={listingId:row.listingId,creationKey:row.creationKey,expectedListingRevision:listing.revision,mode:row.mode,startDate:row.startDate,endDate:row.endDate,guests:row.guests};
+   if(state==='accepted'){const listing=await readBookableListing(tx,row.listingId,this.options.postmoderation===true);if(!listing)throw new BookingAccessError();accepting={listingId:row.listingId,creationKey:row.creationKey,expectedListingRevision:listing.revision,mode:row.mode,startDate:row.startDate,endDate:row.endDate,guests:row.guests};
     quoteBookingRequest(listing.booking,accepting,listing.today);await this.available(tx,accepting,listing.booking,id);}
    const changed=await tx.query('update app.booking_requests set status=$2,revision=revision+1,decided_at=clock_timestamp(),updated_at=clock_timestamp() where id=$1 and revision=$3::bigint and revision<9223372036854775807',[id,state,revision]);if(changed.rowCount!==1)throw new BookingConflictError();
    await enqueueNotificationInTransaction(tx,row.guest,{eventKey:`booking_decision:${id}:${state}`,category:'booking',tone:state==='accepted'?'success':'warning',title:state==='accepted'?'Бронирование подтверждено':'Бронирование отклонено',body:'Владелец ответил на вашу заявку. Условия доступны в личном кабинете.',actionHref:'/cabinet/bronirovaniya',bookingRequestId:id});

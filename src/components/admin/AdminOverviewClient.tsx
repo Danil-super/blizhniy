@@ -120,9 +120,9 @@ function ActionLink({ children, href }: { children: ReactNode; href: string }) {
   );
 }
 
-export function AdminOverviewClient() {
+export function AdminOverviewClient({postmoderation=false}:{postmoderation?:boolean}={}) {
   const primary = usePrimaryAccountAuth();
-  return primary === null ? <LegacyAdminOverview /> : <PrimaryAdminOverview />;
+  return primary === null ? <LegacyAdminOverview /> : <PrimaryAdminOverview postmoderation={postmoderation}/>;
 }
 
 function LegacyAdminOverview() {

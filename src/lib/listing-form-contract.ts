@@ -2,6 +2,7 @@ import {ListingDraftInputError,parseListingDraft} from './listing-draft-contract
 import {parseListingPhotoIds,type ListingDraftPhoto} from './listing-photo-contract.ts';
 import {normalizeMessengerHref} from './messenger-url.ts';
 import type {BookingDetails} from './types';
+import {validPlainText,validPhone} from './cabinet-field-validation.ts';
 export type ListingFormDraft={kind:ReturnType<typeof parseListingDraft>['kind'];title:string;description:string;price:string|null;
  categorySlug:string|null;subcategoryName:string|null;cityName:string|null;district:string|null;address:string|null;
  latitude:number|null;longitude:number|null;showExactAddress:boolean;contactPhone:string|null;messengerUrl:string|null;contactMethod?:'messenger';booking:BookingDetails|null;photoIds:string[]};
@@ -13,7 +14,7 @@ function plain(value:unknown):Record<string,unknown>{
 }
 function text(value:unknown,limit:number):string|null{
  if(value===undefined||value===null||value==='')return null;
- if(typeof value!=='string'||value.length>limit||!value.isWellFormed()||/[\u0000-\u001f\u007f]/.test(value))return invalid();
+ if(typeof value!=='string'||value.length>limit||!validPlainText(value))return invalid();
  return value.trim()||null;
 }
 function booking(value:unknown):BookingDetails|null{
@@ -27,11 +28,12 @@ function booking(value:unknown):BookingDetails|null{
  for(const key of Reflect.ownKeys(row)){
   if(typeof key!=='string')return invalid();const v=row[key];if(key==='mode')continue;
   if(money.includes(key)||integers.includes(key)){
-   if(typeof v!=='number'||!Number.isFinite(v)||v<0||v>9999999999.99||(integers.includes(key)&&(!Number.isSafeInteger(v)||v<1)))return invalid();out[key]=v;
+   if(typeof v!=='number'||!Number.isFinite(v)||v<0||v>9999999999.99||(integers.includes(key)&&(!Number.isSafeInteger(v)||v<1))||
+    money.includes(key)&&!/^(0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(String(v)))return invalid();out[key]=v;
   }else if(dates.includes(key)){if(v==='')continue;if(!date(v))return invalid();out[key]=v;}
   else if(times.includes(key)){if(v==='')continue;if(typeof v!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(v))return invalid();out[key]=v;}
   else if(strings.includes(key)){
-   if(typeof v!=='string'||v.length>500||!v.isWellFormed()||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(v))return invalid();out[key]=v.trim();
+   if(typeof v!=='string'||v.length>500||!validPlainText(v,true))return invalid();out[key]=v.trim();
   }else if(key==='blockedDates'){if(!Array.isArray(v)||v.length>730||v.some(item=>!date(item)))return invalid();out[key]=v;}
   else return invalid();
  }
@@ -50,7 +52,8 @@ export function parseListingFormDraft(value:unknown):ListingFormDraft{
  if(typeof showExactAddress!=='boolean'||(latitude===null)!==(longitude===null)||(showExactAddress&&latitude===null))return invalid();
  const messenger=text(row.messengerUrl,500),messengerUrl=messenger?normalizeMessengerHref(messenger):null;if(messenger&&!messengerUrl)return invalid();
  if(row.contactMethod!==undefined&&row.contactMethod!=='phone'&&row.contactMethod!=='messenger')return invalid();
+ const contactPhone=text(row.contactPhone,40);if(contactPhone&&!validPhone(contactPhone))return invalid();
  return{kind:core.kind,title:core.title,description:core.description,price:core.price,categorySlug,subcategoryName,cityName:text(row.cityName,160),
-  district:text(row.district,160),address:text(row.address,300),latitude,longitude,showExactAddress,contactPhone:text(row.contactPhone,40),messengerUrl:messengerUrl??null,
+  district:text(row.district,160),address:text(row.address,300),latitude,longitude,showExactAddress,contactPhone,messengerUrl:messengerUrl??null,
   ...(row.contactMethod==='messenger'?{contactMethod:'messenger' as const}:{}),booking:booking(row.booking),photoIds:parseListingPhotoIds(row.photoIds??[])};
 }

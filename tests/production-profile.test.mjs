@@ -39,11 +39,12 @@ test("malformed, oversized and privileged profile fields fail rather than silent
     assert.throws(() => parseProductionProfile(input), ProfileInputError);
   }
 });
-test("supported bounded PNG bytes and literal SQL/HTML-looking text are accepted without execution", () => {
+test("supported bounded PNG bytes remain accepted while markup is not a person's name", () => {
   const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
-  const name = "<script>alert(1)</script>'); DROP TABLE app.users; --";
+  const name = "О'Коннор";
   assert.equal(parseProductionProfile({ avatarDataUrl: png, name }).avatarDataUrl, png);
   assert.equal(parseProductionProfile({ name }).name, name);
+  assert.throws(() => parseProductionProfile({ name: "<script>alert(1)</script>'); DROP TABLE app.users; --" }), ProfileInputError);
 });
 
 test("organization description retains the existing multiline editing contract", () => {

@@ -6,6 +6,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 export const metadata: Metadata = {
   title: "Реквизиты",
   description: "Реквизиты ООО «БЛИЖНИЙ» для пользователей, партнеров и платежных сервисов платформы.",
+  alternates: { canonical: "/rekvizity" },
 };
 
 const requisites = [

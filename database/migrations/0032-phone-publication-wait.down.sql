@@ -1,0 +1,21 @@
+begin;
+set local lock_timeout='3s';
+set local statement_timeout='10s';
+do $$ begin if exists(select 1 from app.payment_reconciliation_jobs where state='waiting_phone' or last_code='phone_required')
+ then raise exception 'Pending phone placements require an explicit retention decision';end if;end $$;
+drop trigger listing_phone_payment_window on app.listings;
+drop trigger work_phone_payment_window on app.work_publications;
+drop function app.guard_phone_payment_window();
+drop trigger phone_policy_wake on app.phone_verification_policy;
+drop function app.wake_disabled_phone_policy();
+drop trigger phone_binding_wake on app.telegram_phone_bindings;
+drop trigger phone_profile_wake on app.cabinet_profiles;
+drop function app.wake_phone_publications();
+drop trigger payment_phone_wait_guard on app.payment_reconciliation_jobs;
+drop function app.guard_phone_wait_job();
+alter table app.payment_reconciliation_jobs drop constraint payment_phone_wait_state;
+alter table app.payment_reconciliation_jobs drop constraint payment_reconciliation_jobs_state_check;
+alter table app.payment_reconciliation_jobs add constraint payment_reconciliation_jobs_state_check check(state in ('queued','processing','completed','blocked'));
+alter table app.payment_reconciliation_jobs drop constraint payment_reconciliation_jobs_last_code_check;
+alter table app.payment_reconciliation_jobs add constraint payment_reconciliation_jobs_last_code_check check(last_code in ('provider_pending','capture_required','processing_unavailable','publication_blocked','attempts_exhausted'));
+commit;

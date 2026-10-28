@@ -3,6 +3,7 @@ import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-con
 import {mediaUploadTypes,type UploadedImage} from './media-upload-contract.ts';
 import {maxListingImageFileSize,maxListingMediaTotalSize} from './media-limits.ts';
 import type {WorkPublicationSnapshot} from './postgres-work-publications';
+import {parsePhotoOrder,resolvePhotoOrder} from './photo-order.ts';
 type Options={signal?:AbortSignal};
 type Dependencies={upload:(owner:string,intent:string,file:Blob,options?:Options)=>Promise<UploadedImage>;
  create:(owner:string,kind:WorkPublicationKind,key:string,form:WorkPublicationForm,options?:Options)=>Promise<WorkPublicationSnapshot>;
@@ -11,13 +12,14 @@ type Dependencies={upload:(owner:string,intent:string,file:Blob,options?:Options
  intent:(owner:string,kind:WorkPublicationKind,key:string,options?:Options)=>Promise<WorkPublicationSnapshot|null>};
 
 /** A captured owner-scoped intent; an uncertain write can only be followed by a read. */
-export function createWorkPublicationSave(owner:string,kind:WorkPublicationKind,input:unknown,files:Blob[],dependencies:Dependencies,initial?:WorkPublicationSnapshot){
+export function createWorkPublicationSave(owner:string,kind:WorkPublicationKind,input:unknown,files:Blob[],dependencies:Dependencies,initial?:WorkPublicationSnapshot,photoOrder?:unknown){
  parseListingDraftId(owner);const form=structuredClone(parseWorkPublicationForm(kind,input));
  if(initial){parseListingDraftId(initial.id);parseListingDraftRevision(initial.revision);if(initial.kind!==kind)throw Error('Несовместимая публикация.');}
  if(form.photoIds.length+files.length>(kind==='vacancy'?20:6)||files.reduce((sum,file)=>sum+file.size,0)>maxListingMediaTotalSize||files.some(file=>file.size<1||file.size>maxListingImageFileSize||!mediaUploadTypes.some(type=>type===file.type)))throw Error('Выберите допустимые изображения до 10 МБ каждое.');
  const creationKey=crypto.randomUUID(),uploads=files.map(file=>({file,intent:crypto.randomUUID(),ready:null as UploadedImage|null}));
+ const order=parsePhotoOrder(photoOrder,form.photoIds,files.length);
  let base=initial??null,remote:WorkPublicationSnapshot|null=null,unknown=false,busy=false,complete:WorkPublicationSnapshot|null=null;
- const payload=()=>parseWorkPublicationForm(kind,{...form,photoIds:[...form.photoIds,...uploads.map(item=>{if(!item.ready)throw Error('Загрузка не подтверждена.');return item.ready.id;})]});
+ const payload=()=>parseWorkPublicationForm(kind,{...form,photoIds:resolvePhotoOrder(order,uploads.map(item=>{if(!item.ready)throw Error('Загрузка не подтверждена.');return item.ready.id;}))});
  const matches=(value:WorkPublicationSnapshot)=>uploads.every(item=>item.ready)&&JSON.stringify(parseWorkPublicationForm(kind,value.form))===JSON.stringify(payload());
  return{
   get uncertain(){return unknown;},get completed(){return complete;},

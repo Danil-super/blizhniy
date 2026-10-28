@@ -2,6 +2,7 @@ import {parseListingFormDraft,type ListingFormDraft,type ListingFormSnapshot} fr
 import {mediaUploadTypes,type UploadedImage} from './media-upload-contract.ts';
 import {maxListingImageFileSize,maxListingMediaTotalSize} from './media-limits.ts';
 import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-contract.ts';
+import {parsePhotoOrder,resolvePhotoOrder} from './photo-order.ts';
 type Options={signal?:AbortSignal};
 type Dependencies={create:(owner:string,key:string,options?:Options)=>Promise<{id:string;revision:string}>;
  upload:(owner:string,intent:string,file:Blob,options?:Options)=>Promise<UploadedImage>;
@@ -13,12 +14,13 @@ export function sameListingForm(a:ListingFormDraft,b:ListingFormDraft):boolean{
  return JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
 }
 /** One owner-scoped in-memory intent. Never silently repeats a full-form write after an unknown reply. */
-export function createListingFormSave(owner:string,input:unknown,files:Blob[],dependencies:Dependencies,existing?:ListingFormSnapshot){
+export function createListingFormSave(owner:string,input:unknown,files:Blob[],dependencies:Dependencies,existing?:ListingFormSnapshot,photoOrder?:unknown){
  const form=structuredClone(parseListingFormDraft(input));
  if(form.photoIds.some(id=>!existing?.form.photoIds.includes(id))||files.reduce((sum,file)=>sum+file.size,0)+(existing?.photos.filter(photo=>form.photoIds.includes(photo.id)).reduce((sum,photo)=>sum+photo.size,0)??0)>maxListingMediaTotalSize||files.some(file=>file.size<1||file.size>maxListingImageFileSize||!mediaUploadTypes.some(type=>type===file.type)))throw new Error('Выберите JPEG, PNG, WebP или статичный GIF до 10 МБ; общий объём до 160 МБ.');
  const creationKey=crypto.randomUUID(),uploads=files.map(file=>({file,intent:crypto.randomUUID(),ready:null as UploadedImage|null}));
+ const order=parsePhotoOrder(photoOrder,form.photoIds,files.length);
  let created:{id:string;revision:string}|null=existing?{id:parseListingDraftId(existing.id),revision:parseListingDraftRevision(existing.revision)}:null,unknown=false,remote:ListingFormSnapshot|null=null,busy=false,complete:ListingFormSnapshot|null=null;
- const payload=()=>({...form,photoIds:[...form.photoIds,...uploads.map(item=>{if(!item.ready)throw new Error('Загрузка не подтверждена.');return item.ready.id;})]});
+ const payload=()=>({...form,photoIds:resolvePhotoOrder(order,uploads.map(item=>{if(!item.ready)throw new Error('Загрузка не подтверждена.');return item.ready.id;}))});
  return{
   get id(){return created?.id??null;},get uncertain(){return unknown;},get completed(){return complete;},
   async save(options?:Options){

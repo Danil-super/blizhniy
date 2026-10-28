@@ -14,7 +14,9 @@ test('application edit has a separate complete CAS contract and cannot replace t
  for(const input of [{...edit,targetId:other},{...edit,creationKey:other},{...edit,expectedRevision:'0'},{...edit,expectedSpecialistRevision:'9223372036854775808'}])assert.throws(()=>parseApplicationEdit(input),ApplicationInputError);
 });
 test('application message is optional in meaning but required in the envelope, bounded, Unicode-safe and permits ordinary multiline text',()=>{
- assert.equal(parseApplicationCreate({...create,message:'x'.repeat(3000)}).message.length,3000);
+ assert.equal(parseApplicationCreate({...create,message:'x'.repeat(500)}).message.length,500);
  for(const message of [null,1,{},'x'.repeat(3001),'\u0000','\ud800'])assert.throws(()=>parseApplicationCreate({...create,message}),ApplicationInputError);
+ assert.throws(()=>parseApplicationCreate({...create,message:'x'.repeat(501)}),ApplicationInputError);
+ assert.throws(()=>parseApplicationEdit({...core,applicationId:id,expectedRevision:'2',message:'x'.repeat(501)}),ApplicationInputError);
  const missing={...create};delete missing.message;assert.throws(()=>parseApplicationCreate(missing),ApplicationInputError);
 });

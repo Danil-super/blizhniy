@@ -94,6 +94,9 @@ test('floor fails closed for missing base, invalid arguments and non-git directo
 });
 
 const registrationAssertionPairs = [
+  ['tests/application-contract.test.mjs',
+    " assert.equal(parseApplicationCreate({...create,message:'x'.repeat(3000)}).message.length,3000);",
+    " assert.equal(parseApplicationCreate({...create,message:'x'.repeat(500)}).message.length,500);"],
   ['tests/local-registration-ui.test.mjs', '  assert.match(html, /minLength="15"/i);', '  assert.match(html, /minLength="8"/i);'],
   ['tests/production-account-browser.mjs',
     '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());',

@@ -69,7 +69,6 @@ function WorkRequestListCard({ request }: { request: WorkRequest }) {
 
   return (
     <Link href={`/rabota/zakazy/${request.id}`} className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card sm:p-4">
-      <p className="truncate text-xs font-semibold text-slate-500">{request.author}</p>
       <h2 className="mt-1 line-clamp-2 text-sm font-bold leading-5 text-[#060b27] transition group-hover:text-[#0875d1] sm:min-h-10">{request.title}</h2>
       <p className="mt-1.5 text-sm font-bold text-[#060b27] sm:mt-2 sm:text-base">{request.budget}</p>
       {publishedLabel ? (

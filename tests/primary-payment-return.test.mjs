@@ -13,7 +13,7 @@ test('payment result distinguishes preparation, confirmed finance and actual ful
  assert.match(html({...base,order:{...base.order,status:'refunded'},fulfillment:{publishedAt:'2026-10-19T12:00:00.123456Z',expiresAt:'2026-11-18T12:00:00.123456Z'}}),/Средства возвращены/);
 });
 test('primary return page never mounts the legacy payment component in postgres or unknown auth modes',async()=>{
- const {default:Page}=load('src/app/oplata/[paymentId]/page.tsx',{'@/components/payments/PaymentReturnClient':{PaymentReturnClient:()=>React.createElement('p',null,'legacy')},'@/components/payments/PrimaryPaymentReturnClient':{PrimaryPaymentReturnClient:()=>React.createElement('p',null,'primary')}});
+ const {default:Page}=load('src/app/oplata/[paymentId]/page.tsx',{'@/components/payments/PaymentReturnClient':{PaymentReturnClient:()=>React.createElement('p',null,'legacy')},'@/components/payments/PrimaryPaymentReturnClient':{PrimaryPaymentReturnClient:()=>React.createElement('p',null,'primary')},'@/components/payments/ApplicationPaymentReturnClient':{ApplicationPaymentReturnClient:()=>React.createElement('p',null,'application')},'@/lib/listing-workflow-config':load('src/lib/listing-workflow-config.ts',{})});
  const previous=process.env.BLIZHNIY_AUTH_MODE;
  try{for(const mode of ['postgres','unknown','local','']){process.env.BLIZHNIY_AUTH_MODE=mode;assert.equal(renderToStaticMarkup(await Page({params:Promise.resolve({paymentId:'synthetic'})})),`<p>${!mode||mode==='local'?'legacy':'primary'}</p>`);}}
  finally{if(previous===undefined)delete process.env.BLIZHNIY_AUTH_MODE;else process.env.BLIZHNIY_AUTH_MODE=previous;}

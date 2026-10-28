@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, InputHTMLAttributes, useEffect, useState } from
 import { extractListingPriceDigits, maxListingPriceDigits } from "@/lib/listing-price";
 import { capitalizeFirstTextLetter } from "@/lib/text-format";
 
-type ValidationKind = "phone" | "email" | "messenger" | "emailOrMessenger" | "salary" | "urlOrHandle" | "url";
+type ValidationKind = "phone" | "internationalPhone" | "email" | "messenger" | "emailOrMessenger" | "salary" | "urlOrHandle" | "url";
 
 type ValidatedInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
   capitalizeFirstLetter?: boolean;
@@ -64,6 +64,7 @@ function sanitizeNoSpaces(value: string) {
 }
 
 function sanitizeByValidation(value: string, validation?: ValidationKind, capitalizeFirstLetter = false) {
+  if (validation === 'internationalPhone') return value.replace(/[^\d+ ().-]/g,'').slice(0,40);
   if (validation === "salary") {
     return extractListingPriceDigits(value);
   }
@@ -80,6 +81,8 @@ function sanitizeByValidation(value: string, validation?: ValidationKind, capita
 }
 
 function getValidationProps(validation?: ValidationKind) {
+  if (validation === 'internationalPhone') return {autoComplete:'tel',inputMode:'tel' as const,maxLength:40,
+    pattern:'\\+?[0-9 ()\\.\\-]{7,39}',title:'Введите номер с кодом страны, например +79991234567.',type:'tel'};
   if (validation === "salary") {
     return {
       autoComplete: "off",
@@ -160,7 +163,12 @@ export function ValidatedInput({ validation, defaultValue, value, onChange, onBe
   const validationProps = getValidationProps(validation);
 
   function syncSanitizedValue(event: ChangeEvent<HTMLInputElement> | FormEvent<HTMLInputElement>) {
-    const nextValue = sanitizeByValidation(event.currentTarget.value, validation, capitalizeFirstLetter);
+    // Do not restore mask punctuation while deleting: Backspace otherwise keeps
+    // deleting the same automatically reinserted ')' forever (including on mobile).
+    const deleting = validation === 'phone' && (event.nativeEvent as InputEvent).inputType?.startsWith('delete');
+    const raw = event.currentTarget.value;
+    const nextValue = deleting ? (/^\+?7?\D*$/.test(raw) ? '' : raw.replace(/[^\d]+$/, ''))
+      : sanitizeByValidation(raw, validation, capitalizeFirstLetter);
     event.currentTarget.value = nextValue;
     setInnerValue(nextValue);
   }

@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import * as boundary from "../src/lib/auth-http.ts";
 import * as cookies from "../src/lib/account-cookie.ts";
 import * as proxy from "../src/lib/trusted-proxy-ip.ts";
+import * as fields from '../src/lib/cabinet-field-validation.ts';
 import { loadAdminModule } from "./admin-module.mjs";
 
 const require = createRequire(import.meta.url);
@@ -17,6 +18,8 @@ export function loadProfileModule(name) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText)(path => {
     if (path === "node:crypto") return require(path);
+    if (path === "./phone-verification-contract.ts") return require("../src/lib/phone-verification-contract.ts");
+    if (path === './cabinet-field-validation.ts') return fields;
     if (path === "./auth-http") return boundary;
     if (path === "./account-cookie") return cookies;
     if (path === "./trusted-proxy-ip") return proxy;

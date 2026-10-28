@@ -20,6 +20,7 @@ import { BackLink } from "@/components/BackLink";
 import { BrandName } from "@/components/BrandName";
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { CapitalizedTextarea } from "@/components/CapitalizedTextarea";
+import {CabinetFormValidation} from '@/components/CabinetFormValidation';
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { HomeHero } from "@/components/HomeHero";
 import { LocationMap } from "@/components/LocationMap";
@@ -60,7 +61,9 @@ import { ListingShareButton } from "./ListingShareButton";
 import { ListingViewTracker } from "./ListingViewTracker";
 import {readServerListingDraft} from '@/lib/server-listing-draft';
 import {listingPlacementDefaults} from '@/lib/listing-placement-defaults';
-import {SavedListingPhotos} from './SavedListingPhotos';
+import {PublicationPhotoEditor} from '@/components/PublicationPhotoEditor';
+import {PublicationHeading} from '@/components/PublicationHeading';
+import {PublicationDates} from '@/components/PublicationDates';
 import { CatalogSeoContent } from "./CatalogSeoContent";
 
 const listingKinds: { slug: ListingKind; title: string; description: string }[] = [
@@ -599,9 +602,9 @@ const animalListingTitles: Record<string, string> = {
 };
 
 const animalListingDescriptions: Record<string, string> = {
-  "Домашние питомцы": "Объявление для проверки раздела домашних питомцев: карточка, фильтры, открытие объявления и форма создания.",
-  "Сельхоз животные": "Объявление для проверки раздела сельхоз животных: карточка, фильтры, открытие объявления и форма создания.",
-  "Экзотические животные": "Объявление для проверки раздела экзотических животных. Для размещения требуются документы и соблюдение правил содержания.",
+  "Домашние питомцы": "Домашние питомцы и принадлежности для их содержания в Краснодаре и крае. Уточняйте возраст, состояние здоровья и условия передачи у владельца.",
+  "Сельхоз животные": "Сельскохозяйственные животные и птица для личного хозяйства и фермы. Сравнивайте предложения в Краснодарском крае и уточняйте документы и условия перевозки.",
+  "Экзотические животные": "Предложения экзотических животных в Краснодарском крае. До приобретения уточняйте происхождение, необходимые документы и требования к содержанию.",
 };
 
 const animalListingPrices: Record<string, string> = {
@@ -1692,7 +1695,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
       <SiteHeader />
       <ListingViewTracker initialViews={listing.viewCount} listingId={viewId} />
       <main className="page-container py-6 sm:py-8 lg:py-10">
-        <div className="mx-auto max-w-[1060px] min-w-0">
+        <div className="mx-auto max-w-[1120px] min-w-0">
           <Breadcrumbs
             items={[
               { label: listing.categoryName, href: `/katalog/${listing.categorySlug}` },
@@ -1700,34 +1703,35 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
               { label: listing.title },
             ]}
           />
-          <div className="grid min-w-0 gap-5 sm:gap-7 lg:grid-cols-[minmax(0,640px)_minmax(320px,380px)] lg:items-start">
-          <section className="min-w-0 lg:max-w-[640px]">
-            <BackLink fallbackHref={`/obyavleniya?kind=${listing.kind}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
+            <BackLink fallbackHref={`/obyavleniya?kind=${listing.kind}`} className="mb-4 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
               Назад к разделу
             </BackLink>
-            <h1 className="[overflow-wrap:anywhere] mt-3 text-xl font-bold leading-tight text-[#060b27] sm:mt-4 sm:text-2xl lg:text-3xl">{listing.title}</h1>
-            <div className="mt-3 flex flex-wrap gap-2">
+          <article className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,740px)_340px] lg:items-start lg:justify-center">
+          <section className="grid min-w-0 gap-4">
+            <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
+            <PublicationHeading title={listing.title} price={listing.price}>
+             <div className="flex flex-wrap gap-2">
               <ListingKindBadge kind={listing.kind} />
               <StatusBadge status={listing.status} />
-            </div>
-            <div className="mt-4 min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-card lg:hidden">
-              <div className="flex min-w-0 items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="[overflow-wrap:anywhere] text-xl font-bold text-[#060b27]">{listing.price}</p>
-                  <p className="mt-2 flex min-w-0 items-start gap-2 text-sm font-semibold text-slate-600">
+             </div>
+            </PublicationHeading>
+            <div className="grid min-w-0 gap-5 md:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] md:items-start">
+              <div className="min-w-0 [&>section]:mt-0 [&>div]:mt-0"><ListingMediaGallery media={galleryMedia} title={listing.title}/></div>
+              <div className="grid min-w-0 gap-3 text-sm font-semibold text-slate-600">
+                  <PublicationDates publishedAt={listing.publishedAt}/>
+                  <p className="flex min-w-0 items-start gap-2">
                     <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#0875d1]" />
                     <span className="min-w-0 [overflow-wrap:anywhere]">{listingPlaceLabel(listing)}</span>
                   </p>
-                </div>
                 {listing.booking ? (
-                  <a href="#booking-calculator" className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-[#0aa337] px-3 text-sm font-bold text-white">
+                  <a href="#booking-calculator" className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-emerald-700 px-3 text-sm font-bold text-white hover:bg-emerald-800">
                     Рассчитать
                   </a>
                 ) : null}
               </div>
             </div>
-            <ListingMediaGallery media={galleryMedia} title={listing.title} />
-            <div className="mt-5 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-7 sm:p-6 lg:max-w-[640px]">
+            </div>
+            <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
               <h2 className="text-lg font-bold text-[#060b27]">Описание</h2>
               <p className="mt-2 [overflow-wrap:anywhere] text-sm leading-6 text-slate-700 sm:mt-3 sm:text-base sm:leading-7">{listing.description}</p>
               <dl className="mt-5 grid min-w-0 gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4">
@@ -1742,10 +1746,6 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
                   </div>
                 ) : null}
                 <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
-                  <dt className="text-sm font-bold text-slate-500">Размещено</dt>
-                  <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{formatPublicationDateTime(listing.publishedAt)}</dd>
-                </div>
-                <div className="min-w-0 rounded-lg bg-slate-50 p-3 sm:p-4">
                   <dt className="text-sm font-bold text-slate-500">Активно до</dt>
                   <dd className="mt-1 [overflow-wrap:anywhere] font-semibold text-slate-900">{formatListingDateOnly(listing.expiresAt)}</dd>
                 </div>
@@ -1755,19 +1755,11 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
 
           <aside className="min-w-0 space-y-4 lg:sticky lg:top-24">
             <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
-              <div className="hidden lg:block">
-                <p className="[overflow-wrap:anywhere] text-2xl font-bold tracking-tight text-[#060b27]">{listing.price}</p>
-                {!hasMapPoint ? (
-                  <p className="mt-3 flex min-w-0 items-start gap-2 text-slate-600">
-                    <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#0875d1]" />
-                    <span className="min-w-0 [overflow-wrap:anywhere]">{listingPlaceLabel(listing)}</span>
-                  </p>
-                ) : null}
-              </div>
-              <div className="grid gap-2 lg:mt-4">
+              <h2 className="text-xl font-bold text-[#060b27]">Связаться</h2>
+              <div className="mt-4 grid gap-2">
                 <div className={`grid min-w-0 gap-2 ${actionGridClass}`}>
                   {listing.phone ? (
-                    <a href={`tel:${listing.phone}`} className={`inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[#0aa337] px-2 text-xs font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-[#078a2e] sm:text-sm ${actionCount === 3 ? "col-span-2" : ""}`}>
+                    <a href={`tel:${listing.phone}`} className={`inline-flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-2 text-xs font-bold text-white shadow-sm shadow-emerald-100 transition hover:bg-emerald-800 sm:text-sm ${actionCount === 3 ? "col-span-2" : ""}`}>
                       <Phone className="h-4 w-4 shrink-0" />
                       <span className="whitespace-nowrap">Позвонить</span>
                     </a>
@@ -1810,7 +1802,7 @@ export function ListingDetailPage({ bookingRequests = [], slug, listingOverride 
             {listing.booking ? <BookingCalculator booking={listing.booking} initialRequests={bookingRequests} listingId={listing.slug} listingTitle={listing.title} listingOwnerId={listing.ownerKey} /> : null}
             {showDeliveryUi ? <DeliveryInfoCard delivery={listing.delivery} /> : null}
           </aside>
-          </div>
+          </article>
         </div>
       </main>
     </>
@@ -2051,6 +2043,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
           {error ? <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p> : null}
 
           <form action={adminMode ? publishWithoutPaymentAction : undefined} className="listing-create-form mt-6 grid min-w-0 max-w-full gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <CabinetFormValidation/>
             {savedDraft&&<input type="hidden" name="district" value={savedDraft.snapshot.form.district??''}/>}
             <div className="listing-create-primary-grid adaptive-field-grid">
               <ListingKindAndCategoryFields
@@ -2116,7 +2109,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
               </div>
             </div>
 
-            <ListingPhotoUploader savedPhotos={savedDraft?<SavedListingPhotos owner={savedDraft.owner} photos={savedDraft.snapshot.photos}/>:undefined}/>
+            {savedDraft?<PublicationPhotoEditor owner={savedDraft.owner} photos={savedDraft.snapshot.photos} maxPhotos={20} savedFieldName="savedPhotoIds"/>:<ListingPhotoUploader/>}
 
             <div className="grid gap-3">
               <LegalConsentCheckbox name="placementRightsAccepted" errorMessage="Примите условия документов, чтобы продолжить">
@@ -2124,7 +2117,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
                 <LegalLink href="/legal/agreement">Пользовательское соглашение</LegalLink> и{" "}
                 <LegalLink href="/legal/privacy">Политика обработки персональных данных</LegalLink>.
               </LegalConsentCheckbox>
-              {!adminMode ? (
+              {!adminMode&&!savedDraft?.placed ? (
                 <LegalConsentCheckbox
                   name="publicOfferAccepted"
                   requiredConsent={false}
@@ -2136,19 +2129,19 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
               ) : null}
             </div>
 
-            <div className="flex flex-wrap items-start gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <AdminDemoPublishButton
                 listingDraft={savedDraft?.snapshot}
                 listingOwnerId={savedDraft?.owner}
                 publicationType="listing"
                 returnHref="/cabinet/obyavleniya"
-                label="Сохранить черновик"
+                label={savedDraft?.placed?"Сохранить изменения":"Сохранить черновик"}
                 status="Черновик"
                 requireCaptcha={false}
                 validateForm={false}
                 buttonClassName="inline-flex h-12 w-fit items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-6 font-bold text-slate-800 transition hover:border-blue-200 hover:bg-blue-50 disabled:cursor-wait disabled:bg-slate-100"
               />
-              {adminMode ? (
+              {savedDraft?.placed?null:adminMode ? (
                 <AdminDemoPublishButton publicationType="listing" returnHref="/cabinet/obyavleniya" label="Опубликовать без оплаты" />
               ) : (
                 <AdminDemoPublishButton

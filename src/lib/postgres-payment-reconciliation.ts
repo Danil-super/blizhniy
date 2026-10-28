@@ -4,7 +4,7 @@ import type {PostgresDatabase} from './postgres';
 
 export type ReconciliationClaim={intentId:string;claimId:string;attempts:number};
 type Scope={shopId:string;isTest:boolean};
-type Code='provider_pending'|'capture_required'|'processing_unavailable'|'publication_blocked'|'attempts_exhausted';
+type Code='provider_pending'|'capture_required'|'processing_unavailable'|'publication_blocked'|'attempts_exhausted'|'phone_required';
 const scoped=`i.merchant_shop_id=$1 and i.is_test=$2 and i.target_type='listing'`;
 /** Already-known payment IDs only. No payment data, provider POST or financial writes. */
 export class PostgresPaymentReconciliationQueue{
@@ -43,14 +43,18 @@ export class PostgresPaymentReconciliationQueue{
   return this.db.transaction(async tx=>(await tx.query(`select q.intent_id from app.payment_reconciliation_jobs q join app.payment_checkout_intents i on i.id=q.intent_id
    where ${scoped} and q.intent_id=$3 and q.claim_id=$4 and q.state='processing' and q.lease_until>clock_timestamp()`,[...this.scope(),id,token])).rowCount===1);
  }
- async finish(claim:ReconciliationClaim,state:'completed'|'retry'|'blocked',code:Code|null=null):Promise<boolean>{
+ async finish(claim:ReconciliationClaim,state:'completed'|'retry'|'blocked'|'waiting_phone',code:Code|null=null):Promise<boolean>{
   const id=parseListingDraftId(claim.intentId),token=parseListingDraftId(claim.claimId);
-  if(!['completed','retry','blocked'].includes(state)||(state==='completed'?code!==null:!['provider_pending','capture_required','processing_unavailable','publication_blocked','attempts_exhausted'].includes(code??'')))throw new Error('Invalid reconciliation outcome');
-  return this.db.transaction(async tx=>(await tx.query(`update app.payment_reconciliation_jobs q set
+  if(!['completed','retry','blocked','waiting_phone'].includes(state)||(state==='completed'?code!==null:!['provider_pending','capture_required','processing_unavailable','publication_blocked','attempts_exhausted','phone_required'].includes(code??'')))throw new Error('Invalid reconciliation outcome');
+  return this.db.transaction(async tx=>{
+   // Same user -> queue order as phone confirmation. The SQL trigger closes the
+   // confirmation/acknowledgement race without reopening terminal jobs.
+   if(state==='waiting_phone')await tx.query('select u.id from app.users u where u.id=(select owner_id from app.payment_checkout_intents where id=$1) for update of u',[id]);
+   return (await tx.query(`update app.payment_reconciliation_jobs q set
    state=case when $5='retry' then case when attempts>=12 then 'blocked' else 'queued' end else $5 end,
    last_code=case when $5='retry' and attempts>=12 then 'attempts_exhausted' else $6 end,claim_id=null,lease_until=null,
    next_attempt_at=clock_timestamp()+make_interval(secs=>least(3600,30*power(2,attempts-1))::integer)
    where q.intent_id=$3 and q.claim_id=$4 and q.state='processing' and q.lease_until>clock_timestamp()
-    and exists(select 1 from app.payment_checkout_intents i where i.id=q.intent_id and ${scoped})`,[...this.scope(),id,token,state,code])).rowCount===1);
+    and exists(select 1 from app.payment_checkout_intents i where i.id=q.intent_id and ${scoped})`,[...this.scope(),id,token,state,code])).rowCount===1;});
  }
 }

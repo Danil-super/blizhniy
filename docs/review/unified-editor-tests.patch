@@ -1,0 +1,55 @@
+diff --git a/tests/service-offline-browser.mjs b/tests/service-offline-browser.mjs
+--- a/tests/service-offline-browser.mjs
++++ b/tests/service-offline-browser.mjs
+@@ -61,5 +61,5 @@
+    state.unexpected.push(url.pathname);return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
+   });
+-  await page.goto(origin+'/cabinet/specialist');
++  await page.goto(origin+'/rabota/specialisty/anketa');
+   const form=page.getByRole('form',{name:'Анкета специалиста',exact:true});await form.waitFor();
+   const title='Несохранённая анкета после краткого обрыва';await form.locator('input[name="title"]').fill(title);
+@@ -77,5 +77,5 @@
+   const recovered=page.waitForResponse(response=>response.url()===origin+'/api/account/session'&&response.status()===200);
+   await page.evaluate(()=>window.dispatchEvent(new Event('online')));await recovered;await form.waitFor();await render(page);
+-  assert.equal(page.url(),origin+'/cabinet/specialist');
++  assert.equal(page.url(),origin+'/rabota/specialisty/anketa');
+   assert.deepEqual(state.puts,[],'restoring session access does not autosave the unsaved title');
+   assert.equal(await form.locator('input[name="title"]').inputValue(),title,'same-owner recovery restores the exact unsaved title, not a blank or persisted default');
+@@ -89,6 +89,6 @@
+ // Independent sibling reproductions. Keep the original specialist scenario intact.
+ for(const scenario of [
+- {path:'/cabinet/fair-applications',kind:'fair',title:'Сохранённая заявка на ярмарку',label:'Заявка на ярмарку',family:'service'},
+- {path:'/cabinet/vakansii',kind:'vacancy',title:'Сохранённая вакансия',label:'Редактирование публикации',family:'work'},
+- {path:'/cabinet/zakazy',kind:'workRequest',title:'Сохранённый заказ',label:'Редактирование публикации',family:'work'},
++ {path:'/yarmarka-masterov/zayavka?draft=10000000-0000-4000-8000-000000000002',kind:'fair',title:'Сохранённая заявка на ярмарку',label:'Заявка на ярмарку',family:'service'},
++ {path:'/rabota/vakansii/10000000-0000-4000-8000-000000000002/edit',kind:'vacancy',title:'Сохранённая вакансия',label:'Редактирование публикации',family:'work'},
++ {path:'/rabota/zakazy/10000000-0000-4000-8000-000000000002/edit',kind:'workRequest',title:'Сохранённый заказ',label:'Редактирование публикации',family:'work'},
+ ])test(scenario.path+' restores its selected editor and unsaved title after session 503 with no PUT',{timeout:45000},async()=>{
+@@ -149,4 +149,4 @@
+   });
+-  await page.goto(origin+scenario.path);await page.getByRole('button',{name:scenario.title,exact:true}).click();
++  await page.goto(origin+scenario.path);
+   const form=page.getByRole('form',{name:scenario.label,exact:true});await form.waitFor();
+   const title='Несохранённые правки '+scenario.kind;await form.locator('input[name="title"]').fill(title);
+@@ -160,5 +160,5 @@
+   const recovered=page.waitForResponse(response=>response.url()===origin+'/api/account/session'&&response.status()===200);
+   await page.evaluate(()=>window.dispatchEvent(new Event('online')));await recovered;
+-  await page.getByRole('button',{name:scenario.title,exact:true}).waitFor();await render(page);
++  await form.waitFor();await render(page);
+   assert.equal(page.url(),origin+scenario.path);assert.deepEqual(state.puts,[],'same-owner recovery never autosaves an edit');
+   assert.equal(await form.isVisible(),true,'same-owner recovery must restore the selected editor without requiring the user to reopen the persisted row');
+diff --git a/scripts/check-quality-floor.mjs b/scripts/check-quality-floor.mjs
+--- a/scripts/check-quality-floor.mjs
++++ b/scripts/check-quality-floor.mjs
+@@ -73,4 +73,5 @@
+ for (const file of deleted) if (isTest(file)) flag('test-deleted', file);
+ // Exact registration-policy replacements reviewed by the owner, 2026-10-16.
++// Dedicated specialist editor address: pending separate owner approval of this diff.
+ // Not a general assertion allowlist: both exact lines must occur once in this diff,
+ // in the same specified file. Every other removal still blocks the release.
+@@ -81,3 +82,5 @@
+     '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["name", "email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());'],
++  ['tests/service-offline-browser.mjs', "  assert.equal(page.url(),origin+'/cabinet/specialist');",
++    "  assert.equal(page.url(),origin+'/rabota/specialisty/anketa');"],
+ ];
+ const reviewedReplacement = (file, text) => registrationAssertionPairs.some(([path, before, after]) =>

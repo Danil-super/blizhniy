@@ -1,3 +1,4 @@
+import {validWebUrl} from './cabinet-field-validation.ts';
 /** Turn a Telegram handle into a link and reject unusable URL schemes. */
 export function normalizeMessengerHref(value?: string) {
   const input = value?.trim();
@@ -10,7 +11,7 @@ export function normalizeMessengerHref(value?: string) {
     return `https://t.me/${input.slice(1)}`;
   }
 
-  if (!/^https?:\/\//i.test(input)) {
+  if (!validWebUrl(input)) {
     return undefined;
   }
 

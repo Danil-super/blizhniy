@@ -66,6 +66,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/kak-rabotaet",
     "/tarify",
     "/o-proekte",
+    "/rekvizity",
     "/yarmarka-masterov",
     "/legal/offer",
     "/legal/agreement",
@@ -74,14 +75,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...professions.filter((profession) => profession.active).map((profession) => `/rabota/specialisty/${profession.slug}`),
   ];
   const expiresAfter = encodeURIComponent(new Date().toISOString());
-  const [listingEntries, vacancyEntries] = await Promise.all([
-    publishedUrls("listings", "/obyavlenie", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`),
-    publishedUrls("vacancies", "/vakansiya", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`),
-  ]);
+  const publicationEntries = process.env.BLIZHNIY_AUTH_MODE === "postgres"
+    ? await (await import("@/lib/production-sitemap-runtime")).listPrimarySitemapEntries(base)
+    : (await Promise.all([
+      publishedUrls("listings", "/obyavlenie", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`),
+      publishedUrls("vacancies", "/vakansiya", `&is_paid=eq.true&expires_at=gt.${expiresAfter}`),
+    ])).flat();
 
-  return [
+  const entries = [
     ...Array.from(new Set(staticPaths)).map((path) => ({ url: `${base}${path}`, changeFrequency: "weekly" as const, priority: path === "" ? 1 : 0.7 })),
-    ...listingEntries,
-    ...vacancyEntries,
+    ...publicationEntries,
   ];
+  if (entries.length > 50000) throw new Error("Public sitemap requires partitioning");
+  return entries;
 }

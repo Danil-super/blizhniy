@@ -1,6 +1,7 @@
 "use client";
 import {WorkPublicationsPanel} from '@/components/work/WorkPublicationsPanel';
 import {ServicePublicationsPanel} from '@/components/services/ServicePublicationsPanel';
+import {PhoneVerificationButton} from '@/components/phone/PhoneVerificationButton';
 import {ApplicationsPanel} from '@/components/applications/ApplicationsPanel';
 
 /* eslint-disable @next/next/no-img-element */
@@ -49,6 +50,7 @@ import {
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { CabinetProfileFailure, useCookieCabinetProfile } from "./CookieCabinetProfileProvider";
+import {CabinetFormValidation} from '@/components/CabinetFormValidation';
 
 type UserCabinetState = {
   identity: ClientUserIdentity | null;
@@ -868,7 +870,7 @@ function toRussianPhoneE164(value: string) {
 }
 
 function sanitizePersonName(value: string) {
-  return value.replace(/[^\p{L}\s-]/gu, "").replace(/\s{2,}/g, " ").replace(/-{2,}/g, "-").slice(0, 60);
+  return value.replace(/[^\p{L}\p{M} .'’–-]/gu, "").replace(/\s{2,}/g, " ").replace(/-{2,}/g, "-").slice(0, 60);
 }
 
 function sanitizeCityQuery(value: string) {
@@ -2394,12 +2396,24 @@ function AvatarEditor({
   onError: (message: string) => void;
   saveProfile?: (profile: CabinetProfile) => Promise<CabinetProfile>;
 }) {
+  const avatarContext = useCookieCabinetProfile();
   const [loading, setLoading] = useState(false);
-  const [cropDraft, setCropDraft] = useState<AvatarCropDraft | null>(null);
-  const [cropImageSize, setCropImageSize] = useState<AvatarImageSize | null>(null);
+  const [cropDraft, setCropDraft] = useState<AvatarCropDraft | null>(avatarContext?.avatarDraft?.draft??null);
+  const [cropImageSize, setCropImageSize] = useState<AvatarImageSize | null>(avatarContext?.avatarDraft?.imageSize??null);
   const [stageSize, setStageSize] = useState(320);
   const [dragStart, setDragStart] = useState<{ pointerId: number; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const avatarDialogRef = useRef<HTMLDialogElement>(null);
+  const [avatarMessage, setAvatarMessage] = useState("");
+  const preparingAvatar = Boolean(avatarContext?.avatarPreparation?.loading);
+  const visibleAvatarMessage = avatarMessage || avatarContext?.avatarPreparation?.message || "";
+  const cropOpen = Boolean(cropDraft && cropImageSize);
+
+  useEffect(() => {
+    const dialog = avatarDialogRef.current;
+    if (cropOpen && dialog && !dialog.open) dialog.showModal();
+    return () => { if (dialog?.open) dialog.close(); };
+  }, [cropOpen]);
 
   useEffect(() => {
     if (!cropDraft || !stageRef.current) {
@@ -2420,16 +2434,25 @@ function AvatarEditor({
     }
 
     setLoading(true);
+    setAvatarMessage("");
     onError("");
 
     try {
-      const src = await prepareAvatarImage(file);
-      const image = await loadImage(src);
-
-      setCropDraft({ src, zoom: 1, offsetX: 0, offsetY: 0 });
-      setCropImageSize({ width: image.naturalWidth || image.width, height: image.naturalHeight || image.height });
+      const prepare = async () => {
+        const src = await prepareAvatarImage(file);
+        const image = await loadImage(src);
+        return {draft:{src,zoom:1,offsetX:0,offsetY:0},
+          imageSize:{width:image.naturalWidth||image.width,height:image.naturalHeight||image.height}};
+      };
+      // Register the attempt before reading/decompressing the file: closing a
+      // native picker can trigger an auth focus check and remove this editor.
+      const selection = avatarContext ? await avatarContext.prepareAvatarSelection(prepare) : await prepare();
+      if (!selection) return;
+      const {draft,imageSize} = selection;
+      setCropDraft(draft); setCropImageSize(imageSize);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Не удалось загрузить аватарку.");
+      const message = error instanceof Error ? error.message : "Не удалось загрузить аватарку.";
+      setAvatarMessage(message); onError(message);
     } finally {
       setLoading(false);
     }
@@ -2450,11 +2473,13 @@ function AvatarEditor({
     const nextDraft = { ...cropDraft, ...patch };
     const transform = getAvatarTransform(nextDraft, cropImageSize, stageSize);
 
-    setCropDraft({
+    const clampedDraft = {
       ...nextDraft,
       offsetX: transform.offsetX,
       offsetY: transform.offsetY,
-    });
+    };
+    setCropDraft(clampedDraft);
+    avatarContext?.setAvatarDraft({draft:clampedDraft,imageSize:cropImageSize});
   }
 
   function handleCropPointerDown(event: React.PointerEvent<HTMLDivElement>) {
@@ -2495,16 +2520,20 @@ function AvatarEditor({
     }
 
     setLoading(true);
+    setAvatarMessage("");
     onError("");
 
     try {
       const cropped = await cropAvatarImage(cropDraft, cropImageSize, stageSize);
       const avatarDataUrl = await compressAvatarImage(cropped);
       await commitAvatarPatch({ avatarDataUrl, avatarZoom: 1, avatarPositionX: 50, avatarPositionY: 50 });
+      setAvatarMessage("Аватарка сохранена.");
+      avatarContext?.setAvatarDraft(null);
       setCropDraft(null);
       setCropImageSize(null);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Не удалось применить аватарку.");
+      const message = error instanceof Error ? error.message : "Не удалось применить аватарку.";
+      setAvatarMessage(message); onError(message);
     } finally {
       setLoading(false);
     }
@@ -2514,9 +2543,9 @@ function AvatarEditor({
 
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
-      <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-4">
+      <div className="grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-3">
         <div className="flex justify-center">
-          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-blue-100 bg-white text-3xl font-bold text-[#0875d1] shadow-sm sm:h-28 sm:w-28 sm:text-4xl">
+          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-blue-100 bg-white text-2xl font-bold text-[#0875d1] shadow-sm">
             {profile.avatarDataUrl ? (
               <img src={profile.avatarDataUrl} alt="Аватарка" className="h-full w-full object-cover" />
             ) : (
@@ -2526,16 +2555,16 @@ function AvatarEditor({
         </div>
 
         <div className="min-w-0">
-          <div className="grid gap-3">
+          <div className="grid gap-2">
             <div className="min-w-0">
               <h3 className="text-base font-bold text-[#060b27]">Аватарка</h3>
-              <p className="mt-1 text-sm leading-6 text-slate-600">Выберите фото, затем выделите область аватарки в отдельном окне.</p>
+              <p className="mt-0.5 text-xs leading-5 text-slate-600">Выберите фото и настройте кадр.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0664b3]">
                 <Camera className="h-4 w-4" />
-                {loading ? "Готовим..." : "Выбрать"}
-                <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="sr-only" onChange={(event) => handleAvatarFile(event.target.files?.[0])} />
+                {loading || preparingAvatar ? "Готовим..." : "Выбрать"}
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="sr-only" disabled={loading || preparingAvatar} onChange={(event) => {const file=event.currentTarget.files?.[0];event.currentTarget.value='';void handleAvatarFile(file);}} />
               </label>
               <button
                 type="button"
@@ -2546,7 +2575,7 @@ function AvatarEditor({
                     .catch((error) => onError(error instanceof Error ? error.message : "Не удалось удалить аватарку."))
                     .finally(() => setLoading(false));
                 }}
-                disabled={loading || !profile.avatarDataUrl}
+                disabled={loading || preparingAvatar || !profile.avatarDataUrl}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-red-200 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Trash2 className="h-4 w-4" />
@@ -2557,22 +2586,31 @@ function AvatarEditor({
         </div>
       </div>
 
+      {!cropOpen && visibleAvatarMessage && <p className="mt-3 text-sm text-slate-700" role="status">{visibleAvatarMessage}</p>}
       {cropDraft && cropImageSize && cropTransform ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4">
+        <dialog ref={avatarDialogRef} aria-labelledby="avatar-crop-heading" className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto overscroll-contain rounded-2xl border-0 bg-white p-0 shadow-2xl backdrop:bg-slate-950/60" onCancel={event=>{event.preventDefault();if(!loading){avatarContext?.setAvatarDraft(null);setCropDraft(null);setCropImageSize(null);}}} onKeyDown={event=>{
+          if(event.key!=='Tab')return;
+          const controls=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'));
+          const first=controls[0],last=controls.at(-1);
+          if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
+          else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+        }}>
           <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-xl font-bold text-[#060b27]">Выберите область аватарки</h3>
+                <h3 id="avatar-crop-heading" className="text-xl font-bold text-[#060b27]">Выберите область аватарки</h3>
                 <p className="mt-1 text-sm leading-6 text-slate-600">Перетащите фото внутри круга и настройте масштаб.</p>
               </div>
               <button
                 type="button"
                 onClick={() => {
+                  avatarContext?.setAvatarDraft(null);
                   setCropDraft(null);
                   setCropImageSize(null);
                 }}
                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500"
                 aria-label="Закрыть редактор аватарки"
+                disabled={loading}
               >
                 <X className="h-5 w-5" />
               </button>
@@ -2637,8 +2675,9 @@ function AvatarEditor({
                 Сбросить
               </button>
             </div>
+            {avatarMessage && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{avatarMessage}</p>}
           </section>
-        </div>
+        </dialog>
       ) : null}
     </section>
   );
@@ -2847,29 +2886,31 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
   }
 
   return (
-    <section className="mt-4 rounded-xl border border-blue-100 bg-white p-4 shadow-card sm:p-5">
+    <section aria-labelledby="account-settings-heading" className="mx-auto mt-4 w-full max-w-3xl rounded-xl border border-blue-100 bg-white p-3 sm:p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-[#060b27]">Настройки аккаунта</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-600">Публичное имя, контакты, email для входа и уведомления кабинета.</p>
+          <h2 id="account-settings-heading" className="text-lg font-bold text-[#060b27]">Настройки аккаунта</h2>
+          <p className="mt-1 text-sm leading-5 text-slate-600">Имя, телефон и город можно изменить.</p>
         </div>
         <button type="button" onClick={() => { cookie?.clearSettingsDraft(); onClose(); }} className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700">
           Закрыть
         </button>
       </div>
-      <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
+      <form className="mt-3 grid gap-3" onSubmit={handleSubmit}>
+        <CabinetFormValidation/>
         <AvatarEditor ownerKey={identity.ownerKey} profile={form} onChange={setForm} onError={setMessage} saveProfile={saveProfile} />
-        <div className="grid grid-cols-1 items-start gap-x-3 gap-y-3 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-4">
+        <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
           <label className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
             <span className="leading-4">Имя</span>
             <input
               className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
               value={form.name}
+              name="name"
               onChange={(event) => setForm({ ...form, name: sanitizePersonName(event.target.value) })}
               minLength={2}
               maxLength={60}
-              pattern="^[\p{L}][\p{L}\s-]{1,59}$"
-              title="Имя может содержать только буквы, пробелы и дефис. Длина от 2 до 60 символов."
+              pattern="[\p{L}\p{M}][\p{L}\p{M} .'’\-–]{1,59}"
+              title="Имя: буквы, пробелы, дефис и апостроф. Длина от 2 до 60 символов."
               required
             />
           </label>
@@ -2880,10 +2921,12 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
                 {!form.phone ? "не указан" : phoneIsVerified ? "подтвержден" : "не подтвержден"}
               </span>
             </span>
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+            <div className={saveProfile?"grid":"grid grid-cols-[minmax(0,1fr)_auto] gap-2"}>
               <ValidatedInput
                 className="h-11 min-w-0 rounded-lg border border-slate-300 px-2 text-sm font-normal outline-none focus:border-[#0875d1] sm:px-3 sm:text-base"
                 value={form.phone}
+                name="phone"
+                aria-label="Телефон"
                 onChange={(event) =>
                   setForm({
                     ...form,
@@ -2892,9 +2935,9 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
                   })
                 }
                 placeholder="+7..."
-                validation="phone"
+                validation={saveProfile?"internationalPhone":"phone"}
               />
-              <button
+              {!saveProfile&&<button
                 type="button"
                 onClick={phoneIsVerified ? undefined : handleStartPhoneVerification}
                 disabled={Boolean(saveProfile) || phoneIsVerified || sendingPhoneCode || !phoneCanBeVerified}
@@ -2904,38 +2947,31 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
                 aria-label={phoneIsVerified ? "Телефон подтвержден" : "Подтвердить номер"}
               >
                 {saveProfile ? <span className="text-xs">Подтвердить</span> : <Check className="h-5 w-5" />}
-              </button>
+              </button>}
             </div>
-            {saveProfile ? <span id="phone-verification-availability" className="text-xs font-normal leading-5 text-slate-600">
-              Подтверждение по SMS пока недоступно: сервис отправки ещё не подключён. Номер можно сохранить без подтверждения.
-            </span> : null}
-          </label>
-          <label className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
-            <span className="leading-4">Email</span>
-            <ValidatedInput
-              className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
-              value={form.email}
-              readOnly={Boolean(saveProfile)}
-              onChange={(event) => setForm({ ...form, email: event.target.value })}
-              placeholder="mail@example.ru"
-              validation="email"
-              required
-            />
+            {saveProfile ? <PhoneVerificationButton owner={identity.ownerKey} displayedPhone={form.phone} returnTo="/cabinet" onVerified={async()=>{await cookie?.refreshVerifiedPhone();setMessage('Данные телефона обновлены.');}}/> : null}
           </label>
           <label className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
             <span className="leading-4">Город</span>
             <CitySearchSelect value={form.city} onChange={(city) => setForm({ ...form, city })} />
           </label>
+          <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-1 text-xs font-semibold text-slate-600">
+              <label htmlFor="account-settings-email" className="inline-flex items-center gap-1.5"><LockKeyhole className="h-3.5 w-3.5" aria-hidden="true"/>Email для входа</label>
+              <span>Нельзя изменить</span>
+            </div>
+            <input id="account-settings-email" type="email" value={identity.email} readOnly aria-describedby="account-settings-email-help" className="mt-1 h-8 w-full min-w-0 rounded border border-transparent bg-transparent px-0 text-sm font-semibold text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"/>
+            <p id="account-settings-email-help" className="mt-1 text-xs leading-4 text-slate-600">Для входа и восстановления доступа.</p>
+          </div>
         </div>
         {saveProfile ? <div className="grid gap-2 text-sm text-slate-600">
-          <p>Email подтверждён при регистрации; смена адреса и SMS-подтверждение ещё подключаются.</p>
           <Link href="/cabinet/organization" className="font-semibold text-brand-blue underline">Профиль организации</Link>
         </div> : null}
-        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <section className="rounded-lg border border-slate-200 bg-white p-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="font-bold text-[#060b27]">Смена пароля</h3>
-              <p className="mt-1 text-sm leading-6 text-slate-700">Для безопасности пароль меняется через письмо на подтвержденный email.</p>
+              <h3 className="text-sm font-bold text-[#060b27]">Смена пароля</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-600">Через письмо на email для входа.</p>
             </div>
             <button
               type="button"
@@ -2947,12 +2983,10 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
             </button>
           </div>
         </section>
-        <section className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <div>
-            <h3 className="font-bold text-[#060b27]">Уведомления</h3>
-            <p className="mt-1 text-sm leading-6 text-slate-600">Выберите события, которые будут попадать в колокольчик и будущие email/push-каналы.</p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <details className="group rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <summary className="flex min-h-6 cursor-pointer list-none items-center justify-between gap-2 text-sm font-bold text-[#060b27] focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-700">Уведомления<ChevronDown className="h-4 w-4 transition group-open:rotate-180" aria-hidden="true"/></summary>
+          <p className="mt-2 text-xs leading-5 text-slate-600">Выберите события и каналы уведомлений.</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {[
               ["notifyBookings", "Брони и заказы"],
               ["notifyMessages", "Сообщения"],
@@ -2971,7 +3005,7 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
               </label>
             ))}
           </div>
-          <div className="grid gap-3 border-t border-slate-200 pt-3 sm:grid-cols-2">
+          <div className="mt-3 grid gap-3 border-t border-slate-200 pt-3 sm:grid-cols-2">
             {[
               ["emailNotifications", "Email-уведомления"],
               ["pushNotifications", "Push после отдельного разрешения"],
@@ -2987,7 +3021,7 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
               </label>
             ))}
           </div>
-        </section>
+        </details>
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" disabled={saving} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white disabled:bg-slate-300">
             {saving ? "Сохраняем..." : "Сохранить настройки"}
@@ -3052,7 +3086,11 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
 export function CabinetProfileBar() {
   const { state: authState } = useAuthState();
   const { identity, profile, profileError, loading, saveProfile, reloadProfile } = useUserCabinetData();
-  const [open, setOpen] = useState(false);
+  const avatarMemory = useCookieCabinetProfile();
+  const retainedAvatar = avatarMemory?.avatarDraft ?? avatarMemory?.avatarPreparation;
+  const [open, setOpen] = useState(Boolean(retainedAvatar));
+  useEffect(() => { if (retainedAvatar) setOpen(true); }, [retainedAvatar]);
+  useEffect(()=>{if(new URLSearchParams(window.location.search).get('settings')==='1')setOpen(true);},[]);
 
   if (authState !== "signed-in" && authState !== "admin") {
     return null;
@@ -3065,7 +3103,7 @@ export function CabinetProfileBar() {
   }
 
   return (
-    <section id="cabinet-profile" tabIndex={-1} className="mt-4 scroll-mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-card sm:mt-5 sm:p-5">
+    <section id="cabinet-profile" tabIndex={-1} className="mx-auto mt-4 w-full max-w-3xl scroll-mt-4 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:mt-5 sm:p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-50 text-lg font-bold text-[#0875d1]">
@@ -3636,12 +3674,14 @@ export function CabinetOrganizationClient() {
       </div>
       {profileError ? <p role="alert" className="mt-4 text-sm font-semibold text-amber-700">{profileError}</p> : null}
       <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
+        <CabinetFormValidation/>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="grid gap-1.5 text-sm font-bold text-slate-700">
             Название организации или ИП
             <input
               className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
               value={form.organizationName}
+              name="organizationName"
               onChange={(event) => setForm({ ...form, organizationName: event.target.value.slice(0, 120) })}
               placeholder="ООО РемДом"
               minLength={2}
@@ -3654,6 +3694,8 @@ export function CabinetOrganizationClient() {
             <input
               className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
               value={form.organizationWebsite}
+              name="organizationWebsite"
+              type="url"
               onChange={(event) => setForm({ ...form, organizationWebsite: event.target.value.slice(0, 120) })}
               placeholder="https://example.ru"
               maxLength={120}
@@ -3664,6 +3706,8 @@ export function CabinetOrganizationClient() {
             <input
               className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
               value={form.organizationInn}
+              name="organizationInn"
+              pattern="([0-9]{10}|[0-9]{12})"
               onChange={(event) => setForm({ ...form, organizationInn: event.target.value.replace(/\D/g, "").slice(0, 12) })}
               placeholder="10 или 12 цифр"
               inputMode="numeric"
@@ -3675,6 +3719,8 @@ export function CabinetOrganizationClient() {
             <input
               className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
               value={form.organizationOgrn}
+              name="organizationOgrn"
+              pattern="([0-9]{13}|[0-9]{15})"
               onChange={(event) => setForm({ ...form, organizationOgrn: event.target.value.replace(/\D/g, "").slice(0, 15) })}
               placeholder="13 или 15 цифр"
               inputMode="numeric"
@@ -3687,6 +3733,7 @@ export function CabinetOrganizationClient() {
           <input
             className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
             value={form.organizationAddress}
+            name="organizationAddress"
             onChange={(event) => setForm({ ...form, organizationAddress: event.target.value.slice(0, 160) })}
             placeholder="Краснодар, ул. Красная, 1"
             maxLength={160}
@@ -3697,6 +3744,7 @@ export function CabinetOrganizationClient() {
           <textarea
             className="min-h-28 resize-y rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-[#0875d1]"
             value={form.organizationDescription}
+            name="organizationDescription"
             onChange={(event) => setForm({ ...form, organizationDescription: event.target.value.slice(0, 500) })}
             placeholder="Чем занимается компания, кого обычно нанимаете, важные условия для соискателей."
             maxLength={500}

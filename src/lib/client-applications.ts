@@ -1,6 +1,6 @@
 "use client";
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,type ListingDraftCursor} from './listing-draft-contract.ts';
-import {parseApplicationKind,parseApplicationCreate,type ApplicationCreateInput,type ApplicationKind} from './application-contract.ts';
+import {parseApplicationKind,parseApplicationCreate,parseApplicationEdit,type ApplicationCreateInput,type ApplicationEditInput,type ApplicationKind} from './application-contract.ts';
 import type {ApplicationPage,ApplicationSnapshot,ApplicationSummary,ApplicationProfileSnapshot} from './postgres-applications';
 type Options={signal?:AbortSignal};type Mode='applicant'|'recipient';type Decision='viewed'|'selected'|'rejected';
 export type ApplicationPreview={target:{id:string;kind:ApplicationKind;title:string;revision:string};specialist:{id:string;revision:string;snapshot:ApplicationProfileSnapshot};existing:ApplicationSnapshot|null};
@@ -8,7 +8,7 @@ export class ApplicationClientError extends Error{
  readonly code:string;
  constructor(code:string){super(code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='RATE_LIMITED'?'Слишком много запросов. Попробуйте позже.':
   code==='APPLICATION_NOT_FOUND'?'Отклик недоступен. Обновите список.':code==='APPLICATION_BUSY'?'Данные сейчас изменяются. Проверьте отклик и повторите действие.':
-  code==='APPLICATION_CHANGED'?'Отклик или публикация уже изменились. Обновите данные перед отправкой.':code==='SPECIALIST_REQUIRED'?'Для отклика нужна действующая опубликованная анкета специалиста.':code==='INVALID_INPUT'?'Проверьте сообщение: не более 3000 символов, без управляющих знаков.':'Не удалось подтвердить результат. Проверьте отклик перед повторным действием.');this.code=code;}
+  code==='APPLICATION_CHANGED'?'Отклик или публикация уже изменились. Обновите данные перед отправкой.':code==='SPECIALIST_REQUIRED'?'Для отклика заполните и сохраните анкету специалиста. Модерация анкеты не требуется.':code==='INVALID_INPUT'?'Проверьте сообщение: не более 500 символов, без управляющих знаков.':'Не удалось подтвердить результат. Проверьте отклик перед повторным действием.');this.code=code;}
 }
 function exact(value:unknown,keys:string[]):Record<string,unknown>{
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).sort().join()!==[...keys].sort().join())throw Error();return value as Record<string,unknown>;
@@ -24,32 +24,39 @@ function state(row:Record<string,unknown>){
  if(row.status==='pending_payment'&&row.paid||row.status!=='pending_payment'&&!row.paid||row.view==='recipient'&&!delivered)throw Error();return delivered;
 }
 function snapshot(value:unknown):ApplicationProfileSnapshot{
- const row=exact(value,['name','profession','price','skills','phone','email','messengerUrl']);
+ const withAbout=!!value&&typeof value==='object'&&Object.hasOwn(value,'about');
+ const row=exact(value,['name','profession','price','skills','phone','email','messengerUrl',...(withAbout?['about']:[])]);
  const price=text(row.price,13);if(!/^(0|[1-9][0-9]{0,9})\.[0-9]{2}$/.test(price))throw Error();
- return{name:text(row.name,160),profession:text(row.profession,160),price,skills:text(row.skills,500,true),
+ return{name:text(row.name,160),profession:text(row.profession,160),price,skills:text(row.skills,500,true),...(withAbout?{about:text(row.about,3000,true)}:{}),
   phone:row.phone===null?null:text(row.phone,40),email:row.email===null?null:text(row.email,254),messengerUrl:row.messengerUrl===null?null:text(row.messengerUrl,500)};
 }
 function detail(value:unknown,id:string):ApplicationSnapshot{
- const row=exact(value,['id','revision','view','target','specialistId','snapshot','message','status','paid','sentAt','createdAt','updatedAt']);
+ const optional=!!value&&typeof value==='object'&&Object.hasOwn(value,'withdrawn');
+ const closed=!!value&&typeof value==='object'&&Object.hasOwn(value,'targetClosed');
+ const row=exact(value,['id','revision','view','target','specialistId','snapshot','message','status','paid','sentAt','createdAt','updatedAt',...(optional?['withdrawn']:[]),...(closed?['targetClosed']:[])]);
+ if(closed&&typeof row.targetClosed!=='boolean')throw Error();
+ if(optional&&(typeof row.withdrawn!=='boolean'||row.withdrawn&&(row.status!=='pending_payment'||row.paid||row.sentAt!==null)))throw Error();
  if(parseListingDraftId(row.id)!==id)throw Error();const delivered=state(row),target=exact(row.target,['id','kind','title']);
  if(delivered?row.sentAt===null:row.sentAt!==null)throw Error();
  return{id,revision:parseListingDraftRevision(row.revision),view:row.view as Mode,target:{id:parseListingDraftId(target.id),kind:parseApplicationKind(target.kind),title:text(target.title,160)},
   specialistId:row.specialistId===null?null:parseListingDraftId(row.specialistId),snapshot:snapshot(row.snapshot),message:text(row.message,3000,true,true),status:row.status as ApplicationSnapshot['status'],paid:row.paid as boolean,
-  sentAt:row.sentAt===null?null:stamp(id,row.sentAt),createdAt:stamp(id,row.createdAt),updatedAt:stamp(id,row.updatedAt)};
+  sentAt:row.sentAt===null?null:stamp(id,row.sentAt),createdAt:stamp(id,row.createdAt),updatedAt:stamp(id,row.updatedAt),...(optional?{withdrawn:row.withdrawn as boolean}:{}),...(closed?{targetClosed:row.targetClosed as boolean}:{})};
 }
 function summary(value:unknown,mode:Mode):ApplicationSummary{
- const row=exact(value,['id','revision','view','status','paid','createdAt','targetId','kind','targetTitle','specialistName']);state(row);if(row.view!==mode)throw Error();const id=parseListingDraftId(row.id);
+ const optional=!!value&&typeof value==='object'&&Object.hasOwn(value,'withdrawn');
+ const closed=!!value&&typeof value==='object'&&Object.hasOwn(value,'targetClosed');
+ const row=exact(value,['id','revision','view','status','paid','createdAt','targetId','kind','targetTitle','specialistName',...(optional?['withdrawn']:[]),...(closed?['targetClosed']:[])]);state(row);if(row.view!==mode||closed&&typeof row.targetClosed!=='boolean'||optional&&(typeof row.withdrawn!=='boolean'||row.withdrawn&&(row.status!=='pending_payment'||row.paid)))throw Error();const id=parseListingDraftId(row.id);
  return{id,revision:parseListingDraftRevision(row.revision),view:mode,status:row.status as ApplicationSummary['status'],paid:row.paid as boolean,createdAt:stamp(id,row.createdAt),
-  targetId:parseListingDraftId(row.targetId),kind:parseApplicationKind(row.kind),targetTitle:text(row.targetTitle,160),specialistName:text(row.specialistName,160)};
+  targetId:parseListingDraftId(row.targetId),kind:parseApplicationKind(row.kind),targetTitle:text(row.targetTitle,160),specialistName:text(row.specialistName,160),...(optional?{withdrawn:row.withdrawn as boolean}:{}),...(closed?{targetClosed:row.targetClosed as boolean}:{})};
 }
 export function applicationMatchesInput(saved:ApplicationSnapshot,input:ApplicationCreateInput){
  return saved.view==='applicant'&&saved.target.id===input.targetId&&saved.target.kind===input.kind&&saved.specialistId===input.specialistId&&saved.message===input.message;
 }
 export function createApplicationsClient(transport:typeof fetch){
- async function send(owner:string,action:'list'|'read'|'decide'|'preview'|'create'|'intent',input:Record<string,unknown>,options:Options={}):Promise<unknown>{
+ async function send(owner:string,action:'list'|'read'|'decide'|'preview'|'create'|'update'|'withdraw'|'intent',input:Record<string,unknown>,options:Options={}):Promise<unknown>{
   try{
    options.signal?.throwIfAborted();const timeout=AbortSignal.timeout(15000),signal=options.signal?AbortSignal.any([timeout,options.signal]):timeout;
-   const response=await transport('/api/account/applications',{method:action==='decide'||action==='create'?'PUT':'POST',credentials:'same-origin',redirect:'error',cache:'no-store',signal,
+   const response=await transport('/api/account/applications',{method:['decide','create','update','withdraw'].includes(action)?'PUT':'POST',credentials:'same-origin',redirect:'error',cache:'no-store',signal,
     headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1'},body:JSON.stringify({action,expectedOwnerId:parseListingDraftId(owner),...input})});
    if(!response.body)throw Error();const reader=response.body.getReader(),chunks:Uint8Array[]=[],decoder=new TextDecoder('utf-8',{fatal:true});let length=0,complete=false;
    try{for(;;){signal.throwIfAborted();const part=await reader.read();signal.throwIfAborted();if(part.done){complete=true;break;}length+=part.value.byteLength;
@@ -75,6 +82,11 @@ export function createApplicationsClient(transport:typeof fetch){
    const input=parseApplicationCreate(value),row=await send(owner,'create',{input},options),saved=detail(row,parseListingDraftId((row as Record<string,unknown>)?.id));
    if(!applicationMatchesInput(saved,input))throw Error();return saved;
   }),
+  update:(owner:string,value:ApplicationEditInput,options?:Options):Promise<ApplicationSnapshot>=>checked(async()=>{
+   const input=parseApplicationEdit(value),saved=detail(await send(owner,'update',{input},options),input.applicationId);
+   if(saved.view!=='applicant'||saved.withdrawn||!['pending_payment','paid'].includes(saved.status)||saved.specialistId!==input.specialistId||saved.message!==input.message||BigInt(saved.revision)!==BigInt(input.expectedRevision)+BigInt(1))throw Error();
+   return saved;
+  }),
   intent:(owner:string,value:string,options?:Options):Promise<ApplicationSnapshot|null>=>checked(async()=>{
    const row=await send(owner,'intent',{creationKey:parseListingDraftId(value)},options);if(row===null)return null;
    const saved=detail(row,parseListingDraftId((row as Record<string,unknown>)?.id));if(saved.view!=='applicant')throw Error();return saved;
@@ -87,6 +99,10 @@ export function createApplicationsClient(transport:typeof fetch){
    if(next&&(items.length!==20||next.id!==previous?.id||next.updatedAt!==previous.updatedAt))throw Error();return{items,nextCursor:next};
   }),
   read:(owner:string,value:string,options?:Options):Promise<ApplicationSnapshot>=>checked(async()=>{const id=parseListingDraftId(value);return detail(await send(owner,'read',{applicationId:id},options),id);}),
+  withdraw:(owner:string,value:string,expected:string,options?:Options):Promise<ApplicationSnapshot>=>checked(async()=>{
+   const id=parseListingDraftId(value),revision=parseListingDraftRevision(expected),saved=detail(await send(owner,'withdraw',{applicationId:id,expectedRevision:revision},options),id);
+   if(saved.view!=='applicant'||saved.withdrawn!==true||saved.revision!==revision)throw Error();return saved;
+  }),
   decide:(owner:string,value:string,expected:string,state:Decision,options?:Options):Promise<ApplicationSnapshot>=>checked(async()=>{
    if(!['viewed','selected','rejected'].includes(state))throw Error();const id=parseListingDraftId(value),revision=parseListingDraftRevision(expected),result=detail(await send(owner,'decide',{applicationId:id,expectedRevision:revision,state},options),id);
    if(result.view!=='recipient'||result.status!==state||![BigInt(revision),BigInt(revision)+BigInt(1)].includes(BigInt(result.revision)))throw Error();return result;

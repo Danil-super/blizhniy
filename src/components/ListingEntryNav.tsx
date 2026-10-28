@@ -41,15 +41,17 @@ const listingEntries = [
 }>;
 
 export function ListingEntryNav({ activeKind }: { activeKind?: ListingKind }) {
+  const selected = listingEntries.find((entry) => entry.kind === activeKind);
+  const heading = activeKind === "arenda" ? "Аренда" : selected?.title;
   return (
     <section className="page-container pb-5 pt-2 sm:pb-7 sm:pt-3">
       <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 lg:p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Объявления</p>
-            <h1 className="mt-1 text-xl font-bold text-[#060b27]">Что хотите сделать?</h1>
+            <h1 className="mt-1 text-xl font-bold text-[#060b27]">{heading ?? "Что хотите сделать?"}</h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-              Выберите тип объявления: продать, купить или отдать бесплатно.
+              {activeKind === "arenda" ? "Предложения аренды и бронирования рядом с вами." : selected?.description ?? "Выберите тип объявления: продать, купить или отдать бесплатно."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

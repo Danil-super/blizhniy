@@ -1,5 +1,6 @@
 "use client";
 import type { CabinetProfile } from "./cabinet-profile";
+import {normalizeProfilePhone} from './phone-verification-contract.ts';
 
 const messages = { UNKNOWN: "Результат сохранения не подтверждён. Обновите профиль перед повторной попыткой.",
   SESSION_CHANGED: "Сессия изменилась. Проверьте вход и обновите профиль.", UNAUTHENTICATED: "Войдите в аккаунт повторно.",
@@ -9,7 +10,7 @@ type ErrorCode = keyof typeof messages;
 export class CookieProfileError extends Error {
   constructor(readonly code: ErrorCode) { super(messages[code]); this.name = "CookieProfileError"; }
 }
-const stringLimits = { name: 120, phone: 40, city: 80, email: 254, avatarDataUrl: 409623, verifiedPhone: 0,
+const stringLimits = { name: 120, phone: 40, city: 80, email: 254, avatarDataUrl: 409623, verifiedPhone: 40,
   organizationName: 120, organizationInn: 12, organizationOgrn: 15, organizationAddress: 160,
   organizationWebsite: 120, organizationDescription: 500 };
 const ranges = { avatarZoom: [1,5], avatarPositionX: [0,100], avatarPositionY: [0,100] };
@@ -28,7 +29,8 @@ function profileView(value: unknown): CabinetProfile {
   for (const [key, [min,max]] of Object.entries(ranges)) {
     if (typeof row[key] !== "number" || !Number.isFinite(row[key]) || row[key] < min || row[key] > max) throw new CookieProfileError("UNKNOWN");
   }
-  if (booleans.some(key => typeof row[key] !== "boolean") || row.phoneVerified !== false || row.verifiedPhone !== "" ||
+  if (booleans.some(key => typeof row[key] !== "boolean") ||
+      (row.phoneVerified ? !normalizeProfilePhone(row.phone as string) || normalizeProfilePhone(row.phone as string)!==normalizeProfilePhone(row.verifiedPhone as string) : row.verifiedPhone!=="") ||
       (row.avatarDataUrl && !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(row.avatarDataUrl as string))) throw new CookieProfileError("UNKNOWN");
   return row as CabinetProfile;
 }

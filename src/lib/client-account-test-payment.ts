@@ -22,7 +22,7 @@ export function createAccountTestPaymentClient(transport:typeof fetch){
    finally{try{if(!complete)await reader.cancel();}finally{reader.releaseLock();}}
    const all=new Uint8Array(size);let offset=0;for(const part of bytes){all.set(part,offset);offset+=part.byteLength;}
    const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(all));
-   if(response.status!==200){const codes:Record<string,number>={UNAUTHENTICATED:401,RATE_LIMITED:429,CHECKOUT_DISABLED:503,CHECKOUT_NOT_READY:409,CHECKOUT_CHANGED:409,DRAFT_CHANGED:409,DRAFT_NOT_FOUND:404},code=value?.error?.code;
+   if(response.status!==200){const codes:Record<string,number>={PHONE_REQUIRED:403,UNAUTHENTICATED:401,RATE_LIMITED:429,CHECKOUT_DISABLED:503,CHECKOUT_NOT_READY:409,CHECKOUT_CHANGED:409,DRAFT_CHANGED:409,DRAFT_NOT_FOUND:404},code=value?.error?.code;
     throw new ListingPaymentClientError(typeof code==='string'&&Object.hasOwn(codes,code)&&codes[code]===response.status?code:'UNKNOWN');}
    return value;
   }catch(error){if(error instanceof ListingPaymentClientError)throw error;throw new ListingPaymentClientError('UNKNOWN');}

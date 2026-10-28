@@ -28,3 +28,6 @@ test('worker does not blindly acknowledge after a lost lease or unknown completi
  const stale=fixture({queue:{finish:async()=>false}});assert.deepEqual(await stale.worker.tick(),{state:'lost'});
  let finishes=0;const unknown=fixture({queue:{finish:async()=>{finishes++;throw Error('Synthetic lost finish COMMIT');}}});await assert.rejects(unknown.worker.tick(),/Synthetic lost finish/);assert.equal(finishes,1);
 });
+test('phone prerequisite creates durable waiting without exhausting retries or treating payment as failed',async()=>{
+ const waiting=fixture({queue:{claim:async()=>({...claim,attempts:12})},fulfillment:{fulfill:async()=>{throw Object.assign(Error('Synthetic phone prerequisite'),{code:'P7601'});}}});assert.deepEqual(await waiting.worker.tick(),{state:'deferred',code:'phone_required'});const finish=waiting.calls.find(row=>row[0]==='finish');assert.equal(finish[2],'waiting_phone');assert.equal(finish[3],'phone_required');
+});
