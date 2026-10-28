@@ -11,8 +11,8 @@ export function ModerationPhotoPreview({actor,requestId,photo,index,count}:{acto
   }).catch(error=>{if(active){setError(true);if(error instanceof AdminModerationClientError&&['ADMIN_REQUIRED','UNAUTHENTICATED'].includes(error.code)){notifyAccountSessionChange(true);notifyAccountSessionChange(false);}}});
   return()=>{active=false;controller.abort();if(objectUrl)URL.revokeObjectURL(objectUrl);};
  },[actor,requestId,photo.id]);
- return <div className="mt-3 flex min-h-56 min-w-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-3 sm:min-h-80">
-  {error?<p role="alert">Фотография недоступна. Перечитайте запрос перед решением.</p>:url?<Image src={url} unoptimized alt={`Фотография ${index+1} из ${count}`} width={photo.width} height={photo.height}
-   className="h-56 w-full max-w-full rounded-lg object-contain sm:h-80" onError={()=>setError(true)}/>:<p role="status">Загружаем приватную фотографию…</p>}
+ return <div className="mt-3 flex min-h-24 w-fit min-w-0 max-w-full items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+  {error?<p className="max-w-sm p-3 text-sm" role="alert">Фотография недоступна. Перечитайте запрос перед решением.</p>:url?<Image src={url} unoptimized alt={`Фотография ${index+1} из ${count}`} width={photo.width} height={photo.height}
+   className="h-auto max-h-64 w-auto max-w-full object-contain sm:max-h-72" onError={()=>setError(true)}/>:<p className="p-3 text-sm" role="status">Загружаем приватную фотографию…</p>}
  </div>;
 }

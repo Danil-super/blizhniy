@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { test } from "node:test";
 import vm from "node:vm";
+import * as phoneContract from "../src/lib/phone-verification-contract.ts";
 import { createDefaultCabinetProfile } from "../src/lib/cabinet-profile.ts";
 const ts = createRequire(import.meta.url)("typescript");
 const owner = "12345678-1234-4321-8765-123456789abc";
@@ -11,7 +12,7 @@ function fixture(transport, snapshotContract = false) {
   const exports = {};
   const source = readFileSync(new URL("../src/lib/client-postgres-profile.ts", import.meta.url), "utf8");
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
-    { exports, fetch: transport, AbortSignal, TextDecoder, Object, Error, JSON });
+    { exports, fetch: transport, AbortSignal, TextDecoder, Object, Error, JSON, require: path => { if(path === "./phone-verification-contract.ts")return phoneContract; throw new Error("Unexpected profile dependency"); } });
   const client = exports.productionProfile;
   if (snapshotContract) return client;
   // Preserve existing profile/identity assertions while exercising the actual new DTO parser.

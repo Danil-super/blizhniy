@@ -124,6 +124,12 @@ export class AuthRateLimiter {
     return email === undefined || await this.consume(`production:credential:email:${email}`, 5);
   }
 
+  /** Independent Telegram budget: verification cannot exhaust login/recovery attempts. */
+  async allowPhoneVerification(ip: string): Promise<boolean> {
+    if (!isIP(ip)) throw new Error('Invalid phone rate key');
+    return await this.consume('production:phone:all',100) && await this.consume(`production:phone:ip:${ip}`,10);
+  }
+
   /** Bound provider traffic before CAPTCHA, without spending the account's email budget. */
   async allowProductionAttempt(action: CredentialAction, ip: string): Promise<boolean> {
     if (!credentialActions.includes(action) || !isIP(ip)) throw new Error("Invalid production rate limit key");

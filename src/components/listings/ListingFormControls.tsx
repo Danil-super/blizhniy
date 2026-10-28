@@ -383,6 +383,9 @@ function BookingNumberInput({
         name={name}
         type="number"
         min={min}
+        max={9999999999.99}
+        step={/Price/.test(name)?'0.01':'1'}
+        inputMode={/Price/.test(name)?'decimal':'numeric'}
         defaultValue={defaultValue}
         className="mt-2 h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm outline-none transition focus:border-[#0875d1] focus:ring-2 focus:ring-blue-100 sm:h-12"
         placeholder={placeholder}
@@ -412,6 +415,7 @@ function BookingTextInput({
       <input
         name={name}
         type={type}
+        maxLength={500}
         defaultValue={defaultValue}
         min={min}
         className="mt-2 h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm outline-none transition focus:border-[#0875d1] focus:ring-2 focus:ring-blue-100 sm:h-12"
@@ -863,7 +867,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
           <Camera className="h-5 w-5 shrink-0 text-[#0875d1]" />
           <div>
             <h2 className="font-bold text-slate-800">Фото объявления</h2>
-            <p className="mt-1 text-sm text-slate-500">{media.length ? `${media.length} из ${maxFiles}` : "Файлы не выбраны"}. {listingMediaLimitText()}</p>
+            <p className="mt-1 text-sm text-slate-500">{media.length ? `${media.length} из ${maxFiles}` : "Файлы не выбраны"}. {listingMediaLimitText()} Единый кадр 4:3; рекомендуемый размер — 1600×1200. Кадр можно настроить перед сохранением.</p>
           </div>
         </div>
         <button type="button" onClick={openFileDialog} disabled={availableSlots <= 0} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#d92d20] px-4 text-sm font-bold text-white transition hover:bg-[#b42318] disabled:cursor-not-allowed disabled:opacity-50">
@@ -873,7 +877,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
       </div>
 
       <button type="button" onClick={media.length ? openMediaLibrary : openFileDialog} className="mt-4 grid w-full grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/40">
-        <span className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-blue-50 text-[#0875d1]">
+        <span className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-blue-50 text-[#0875d1]">
           {heroMedia ? (
             heroMedia.kind === "video" ? (
               <video src={heroMedia.url} className="h-full w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
@@ -907,9 +911,9 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
                 aria-label={`Открыть файл ${index + 1}`}
               >
                 {item.kind === "video" ? (
-                  <video src={item.url} className="aspect-square w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
+                  <video src={item.url} className="aspect-[4/3] w-full bg-slate-950 object-cover" muted playsInline preload="metadata" />
                 ) : (
-                  <img src={item.url} alt={item.name || `Фото ${index + 1}`} className="aspect-square w-full bg-slate-50 object-cover" />
+                  <img src={item.url} alt={item.name || `Фото ${index + 1}`} className="aspect-[4/3] w-full bg-slate-50 object-cover" />
                 )}
               </button>
               {index === 0 ? (
@@ -968,7 +972,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
             {selectedMedia ? (
               <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
                 <div className="mx-auto max-w-xl">
-                  <div className="relative mx-auto aspect-square max-h-[38dvh] overflow-hidden rounded-xl bg-slate-950 sm:max-h-[22rem]">
+                  <div data-listing-photo-frame className="relative mx-auto aspect-[4/3] w-full max-w-md overflow-hidden rounded-xl bg-slate-950">
                     <img src={selectedMedia.url} alt={selectedMedia.name} className="h-full w-full object-cover" />
                     <div className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-inset ring-white/70" />
                   </div>
@@ -991,7 +995,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
                     </div>
                   </div>
 
-                  <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold leading-6 text-slate-600">Для карточек используется квадратный кадр. Нажмите “Кадр”, чтобы перетащить фото и настроить масштаб.</p>
+                  <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold leading-6 text-slate-600">Во всех объявлениях используется кадр 4:3. Нажмите «Кадр», чтобы настроить положение фото и масштаб. Рекомендуемый размер — 1600×1200.</p>
                 </div>
               </div>
             ) : (
@@ -1018,7 +1022,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
                         key={item.id}
                         type="button"
                         onClick={() => selectMedia(item)}
-                        className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-slate-100 text-left transition sm:h-20 sm:w-20 ${
+                        className={`relative aspect-[4/3] w-20 shrink-0 overflow-hidden rounded-lg border bg-slate-100 text-left transition sm:w-24 ${
                           selected ? "border-[#0875d1] ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
                         }`}
                       >
@@ -1038,6 +1042,8 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
       {cropEditorMedia ? (
         <SquareImageCropper
           alt={cropEditorMedia.name}
+          aspectRatio={4/3}
+          outputSize={1600}
           onApply={(dataUrl) => applySquareCrop(cropEditorMedia, dataUrl)}
           onCancel={() => setCropEditorId("")}
           src={cropEditorMedia.sourceUrl}

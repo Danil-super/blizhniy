@@ -7,7 +7,7 @@ import type {PostgresDatabase} from './postgres';
 /** Inventory includes blocked owners; actionable queues use the exact current revision and live owner policy. */
 export class PostgresAdminOverviewStore {
   private readonly db: Pick<PostgresDatabase, 'transaction'>;
-  constructor(db: Pick<PostgresDatabase, 'transaction'>) {this.db = db;}
+  constructor(db: Pick<PostgresDatabase, 'transaction'>,private readonly options:{postmoderation?:boolean}={}) {this.db = db;}
   async read(token: string, expectedAdminId: string) {
     const expected = parseListingDraftId(expectedAdminId);
     return withAppSessionTransaction(this.db, token, async (tx, principal) => {
@@ -17,8 +17,8 @@ export class PostgresAdminOverviewStore {
         (select count(*) from app.users where is_blocked)::text as users_blocked,
         ((select count(*) from app.listings)+(select count(*) from app.work_publications where deleted_at is null)
           +(select count(*) from app.service_publications where kind<>'marquee' and deleted_at is null))::text as publications_total,
-        ((select count(*) from app.listings l join app.listing_moderation m on m.listing_id=l.id and m.revision=l.revision
-            join app.users u on u.id=l.author_id where m.state='pending' and l.status='draft' and not u.is_blocked and u.email_verified_at is not null)
+        (${this.options.postmoderation===true?'0':`(select count(*) from app.listings l join app.listing_moderation m on m.listing_id=l.id and m.revision=l.revision
+            join app.users u on u.id=l.author_id where m.state='pending' and l.status='draft' and not u.is_blocked and u.email_verified_at is not null)`}
           +(select count(*) from app.work_publications p join app.work_moderation m on m.publication_id=p.id and m.revision=p.revision
             join app.users u on u.id=p.author_id where m.state='pending' and p.deleted_at is null and p.author_id<>$1
             and not u.is_blocked and u.email_verified_at is not null)

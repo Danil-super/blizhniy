@@ -1,3 +1,4 @@
+import {readPostmoderationEnabled} from './listing-workflow-config';
 import {authJson} from './auth-http';
 import {readProductionAuthConfig} from './production-auth-config';
 import {getProductionAccountDatabase} from './production-auth-runtime';
@@ -16,7 +17,7 @@ export async function handleListingCheckoutRequest(request:Request){
   if(!config)return authJson({error:{code:'CHECKOUT_DISABLED'}},503);
   return await createListingCheckoutHandler(auth,async()=>{
    const {db,limiter}=await getProductionAccountDatabase(auth);
-   const store=new PostgresListingCheckoutStore(db,config),dispatch=readAccountTestPaymentConfig(process.env,config);
+   const store=new PostgresListingCheckoutStore(db,config,{postmoderation:readPostmoderationEnabled()}),dispatch=readAccountTestPaymentConfig(process.env,config);
    return{store,limiter,payments:dispatch?createAccountTestListingPayment(db,store,dispatch):null};
   })(request);
  }catch{return authJson({error:{code:'CHECKOUT_UNAVAILABLE'}},503);}

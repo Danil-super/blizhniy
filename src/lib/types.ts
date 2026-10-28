@@ -150,6 +150,7 @@ export type WorkRequest = {
   status: PublicationStatus;
   createdAt: string;
   publishedAt?: string;
+  updatedAt?: string;
 };
 
 export type SpecialistProfile = {

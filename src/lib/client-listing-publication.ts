@@ -35,7 +35,7 @@ export async function inspectListingPublication(owner:string,id:string,revision:
   try{for(;;){signal.throwIfAborted();const part=await reader.read();signal.throwIfAborted();if(part.done){complete=true;text+=decoder.decode();break;}bytes+=part.value.byteLength;if(bytes>16384)throw new Error('Oversized response');text+=decoder.decode(part.value,{stream:true});}
   }finally{try{if(!complete)await reader.cancel();}finally{reader.releaseLock();}}
   const value=JSON.parse(text);
-  if(!response.ok){const codes:Record<string,number>={UNAUTHENTICATED:401,DRAFT_NOT_FOUND:404,DRAFT_CHANGED:409,INVALID_INPUT:422,RATE_LIMITED:429},code=value?.error?.code;
+  if(!response.ok){const codes:Record<string,number>={PHONE_REQUIRED:403,UNAUTHENTICATED:401,DRAFT_NOT_FOUND:404,DRAFT_CHANGED:409,INVALID_INPUT:422,RATE_LIMITED:429},code=value?.error?.code;
    throw new ListingPublicationClientError(Object.hasOwn(codes,code)&&codes[code]===response.status?code:'UNKNOWN');}
   return parseListingPublicationCheck(value,id,revision);
  }catch(error){if(error instanceof ListingPublicationClientError)throw error;throw new ListingPublicationClientError('UNKNOWN');}

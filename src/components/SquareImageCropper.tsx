@@ -20,6 +20,7 @@ type CropDraft = {
 
 type SquareImageCropperProps = {
   alt: string;
+  aspectRatio?: number;
   description?: string;
   onApply: (dataUrl: string) => void | Promise<void>;
   onCancel: () => void;
@@ -41,13 +42,14 @@ function loadImage(src: string) {
   });
 }
 
-function getCropTransform(draft: CropDraft, imageSize: ImageSize, stageSize: number) {
-  const baseScale = Math.max(stageSize / imageSize.width, stageSize / imageSize.height);
+function getCropTransform(draft: CropDraft, imageSize: ImageSize, stageSize: number, aspectRatio = 1) {
+  const stageHeight = stageSize / aspectRatio;
+  const baseScale = Math.max(stageSize / imageSize.width, stageHeight / imageSize.height);
   const scale = baseScale * draft.zoom;
   const width = imageSize.width * scale;
   const height = imageSize.height * scale;
   const maxOffsetX = Math.max(0, (width - stageSize) / 2);
-  const maxOffsetY = Math.max(0, (height - stageSize) / 2);
+  const maxOffsetY = Math.max(0, (height - stageHeight) / 2);
   const offsetX = clampNumber(draft.offsetX, -maxOffsetX, maxOffsetX);
   const offsetY = clampNumber(draft.offsetY, -maxOffsetY, maxOffsetY);
 
@@ -60,16 +62,18 @@ function getCropTransform(draft: CropDraft, imageSize: ImageSize, stageSize: num
   };
 }
 
-async function cropSquareImage(src: string, draft: CropDraft, imageSize: ImageSize, stageSize: number, minimumOutputSize: number) {
+async function cropSquareImage(src: string, draft: CropDraft, imageSize: ImageSize, stageSize: number, minimumOutputSize: number, aspectRatio = 1) {
   const image = await loadImage(src);
-  const transform = getCropTransform(draft, imageSize, stageSize);
+  const stageHeight = stageSize / aspectRatio;
+  const transform = getCropTransform(draft, imageSize, stageSize, aspectRatio);
   const sourceX = (transform.width / 2 - stageSize / 2 - transform.offsetX) / transform.scale;
-  const sourceY = (transform.height / 2 - stageSize / 2 - transform.offsetY) / transform.scale;
+  const sourceY = (transform.height / 2 - stageHeight / 2 - transform.offsetY) / transform.scale;
   const sourceSize = stageSize / transform.scale;
-  const outputSize = Math.max(minimumOutputSize, Math.round(sourceSize));
+  const outputSize = aspectRatio === 1 ? Math.max(minimumOutputSize, Math.round(sourceSize)) : minimumOutputSize;
+  const outputHeight = Math.round(outputSize / aspectRatio);
   const canvas = document.createElement("canvas");
   canvas.width = outputSize;
-  canvas.height = outputSize;
+  canvas.height = outputHeight;
 
   const context = canvas.getContext("2d");
 
@@ -78,14 +82,14 @@ async function cropSquareImage(src: string, draft: CropDraft, imageSize: ImageSi
   }
 
   context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, outputSize, outputSize);
+  context.fillRect(0, 0, outputSize, outputHeight);
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
-  context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, outputSize, outputSize);
+  context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize / aspectRatio, 0, 0, outputSize, outputHeight);
   return canvas.toDataURL("image/png");
 }
 
-export function SquareImageCropper({ alt, description = "Перетащите фото внутри квадрата и настройте масштаб.", onApply, onCancel, outputSize = 2400, src, title = "Выберите кадр" }: SquareImageCropperProps) {
+export function SquareImageCropper({ alt, aspectRatio = 1, description = "Перетащите фото внутри кадра и настройте масштаб.", onApply, onCancel, outputSize = 2400, src, title = "Выберите кадр" }: SquareImageCropperProps) {
   const [draft, setDraft] = useState<CropDraft>({ offsetX: 0, offsetY: 0, zoom: 1 });
   const [imageSize, setImageSize] = useState<ImageSize | null>(null);
   const [resolvedSrc, setResolvedSrc] = useState("");
@@ -146,7 +150,7 @@ export function SquareImageCropper({ alt, description = "Перетащите ф
     }
 
     const nextDraft = { ...draft, ...patch };
-    const transform = getCropTransform(nextDraft, imageSize, stageSize);
+    const transform = getCropTransform(nextDraft, imageSize, stageSize, aspectRatio);
     setDraft({ ...nextDraft, offsetX: transform.offsetX, offsetY: transform.offsetY });
   }
 
@@ -189,7 +193,7 @@ export function SquareImageCropper({ alt, description = "Перетащите ф
     setError("");
 
     try {
-      await onApply(await cropSquareImage(cropSource, draft, imageSize, stageSize, outputSize));
+      await onApply(await cropSquareImage(cropSource, draft, imageSize, stageSize, outputSize, aspectRatio));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось применить кадр.");
     } finally {
@@ -197,10 +201,10 @@ export function SquareImageCropper({ alt, description = "Перетащите ф
     }
   }
 
-  const transform = imageSize ? getCropTransform(draft, imageSize, stageSize) : null;
+  const transform = imageSize ? getCropTransform(draft, imageSize, stageSize, aspectRatio) : null;
 
   return (
-    <div className="fixed inset-0 z-[220] grid place-items-center bg-slate-950/60 p-3 sm:p-4" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[220] grid place-items-center bg-slate-950/60 p-3 sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
       <section className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4">
           <div className="min-w-0">
@@ -216,7 +220,8 @@ export function SquareImageCropper({ alt, description = "Перетащите ф
           <div className="grid justify-items-center">
             <div
               ref={stageRef}
-              className="relative aspect-square w-full max-w-80 touch-none select-none overflow-hidden rounded-xl bg-slate-950"
+              className="relative w-full max-w-80 touch-none select-none overflow-hidden rounded-xl bg-slate-950"
+              style={{aspectRatio}}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
@@ -231,7 +236,7 @@ export function SquareImageCropper({ alt, description = "Перетащите ф
                   style={{
                     height: `${transform.height}px`,
                     left: `${stageSize / 2 + transform.offsetX - transform.width / 2}px`,
-                    top: `${stageSize / 2 + transform.offsetY - transform.height / 2}px`,
+                    top: `${stageSize / aspectRatio / 2 + transform.offsetY - transform.height / 2}px`,
                     width: `${transform.width}px`,
                   }}
                 />

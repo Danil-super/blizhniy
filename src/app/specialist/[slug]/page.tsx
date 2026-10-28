@@ -14,7 +14,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
   return {
     title: specialist ? `${specialist.name} — ${specialist.profession}` : "Специалист",
-    description: specialist ? `${specialist.skills}. ${specialist.city}.` : "Карточка специалиста на платформе БЛИЖНИЙ.",
+    description: specialist ? `${specialist.skills || specialist.profession}. ${specialist.city}.` : "Карточка специалиста на платформе БЛИЖНИЙ.",
     alternates: {
       canonical: `/specialist/${slug}`,
     },

@@ -6,7 +6,7 @@ import { isDemoAdminBypassEnabled } from "@/lib/server-auth";
 import {PrimaryServicePublicationPage} from '@/components/services/PrimaryServicePublicationPage';
 
 type PageProps = {
-  searchParams?: Promise<{ admin?: string }>;
+  searchParams?: Promise<{ admin?: string;draft?:string }>;
 };
 
 export const metadata: Metadata = {
@@ -18,8 +18,8 @@ export const metadata: Metadata = {
 };
 
 export default async function Page({ searchParams }: PageProps) {
-  if(process.env.BLIZHNIY_AUTH_MODE==='postgres')return <><SiteHeader/><PublicationAuthGate preserveDraftDuringRecheck title="Войдите, чтобы подать заявку"><PrimaryServicePublicationPage kind="fair"/></PublicationAuthGate></>;
   const params = searchParams ? await searchParams : undefined;
+  if(process.env.BLIZHNIY_AUTH_MODE==='postgres')return <><SiteHeader/><PublicationAuthGate preserveDraftDuringRecheck title="Войдите, чтобы подать заявку"><PrimaryServicePublicationPage kind="fair" initialId={params?.draft}/></PublicationAuthGate></>;
   const adminMode = params?.admin === "1" && isDemoAdminBypassEnabled();
 
   return (

@@ -5,7 +5,7 @@ import type {ListingPaymentOrder,ListingPaymentSnapshot} from './postgres-listin
 
 export class ListingPaymentClientError extends Error{
  readonly code:string;
- constructor(code:string){super(code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='RATE_LIMITED'?'Слишком много запросов. Повторите проверку позже.':
+ constructor(code:string){super(code==='PHONE_REQUIRED'?'Подтвердите номер телефона, чтобы разместить публикацию.':code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='RATE_LIMITED'?'Слишком много запросов. Повторите проверку позже.':
   code==='CHECKOUT_DISABLED'?'Оплата пока недоступна. Новый платёж не создавался.':'Не удалось получить актуальный статус. Проверьте соединение и повторите проверку — новый платёж создан не будет.');this.code=code;}
 }
 function exact(value:unknown,keys:string[]):Record<string,unknown>{

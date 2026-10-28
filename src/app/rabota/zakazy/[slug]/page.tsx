@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { ClipboardList, MapPin } from "lucide-react";
+import { ClipboardList, MapPin, Wrench } from "lucide-react";
 import { BackLink } from "@/components/BackLink";
 import { DetailImageGallery } from "@/components/DetailImageGallery";
 import { LocationMap } from "@/components/LocationMap";
@@ -9,7 +9,8 @@ import { VacancyApplicationButton } from "@/components/VacancyApplicationButton"
 import { ListingViewTracker } from "@/components/listings/ListingViewTracker";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { listWorkRequests } from "@/lib/mock-store";
-import { formatPublicationDateTime } from "@/lib/publication-time";
+import {PublicationDates} from '@/components/PublicationDates';
+import {PublicationHeading} from '@/components/PublicationHeading';
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { isUuid } from "@/lib/supabase-rest";
 import { getStoredWorkRequestById, listWorkRequestsWithStored } from "@/lib/work-request-store";
@@ -53,7 +54,6 @@ export default async function Page({ params }: PageProps) {
   const hasPoint = Boolean(request.showExactAddress) && hasMapCoordinates(request.lat, request.lng);
   const canReceivePaidApplications = isUuid(request.id);
   const placeLabel = locationLabel(request);
-  const publishedLabel = formatPublicationDateTime(request.publishedAt ?? request.createdAt, "10:00");
 
   return (
     <>
@@ -67,15 +67,14 @@ export default async function Page({ params }: PageProps) {
           <article className="grid gap-4 lg:grid-cols-[minmax(0,740px)_340px] lg:justify-center">
             <section className="grid gap-4">
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
+                <PublicationHeading title={request.title} price={request.budget}>
+                    <p className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800"><Wrench aria-hidden="true" className="h-4 w-4 shrink-0"/>{request.profession}</p>
+                </PublicationHeading>
                 <div className="grid gap-5 md:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] md:items-start">
                   <DetailImageGallery images={images} localPublicationId={request.id} title={request.title} fallbackIcon={<ClipboardList className="h-16 w-16 text-slate-300" />} />
                   <div className="order-1 min-w-0 self-start md:order-2">
-                    <p className="text-sm font-semibold text-slate-500">{request.author}</p>
-                    <p className="mt-2 text-sm text-slate-500">{request.profession}</p>
-                    <h1 className="mt-2 text-xl font-bold leading-tight text-[#060b27] sm:text-2xl lg:text-3xl">{request.title}</h1>
-                    <p className="mt-3 text-xl font-bold text-[#060b27]">{request.budget}</p>
-                    <div className="mt-3 grid gap-2 text-sm font-semibold text-slate-600">
-                      {publishedLabel ? <p>{publishedLabel}</p> : null}
+                    <div className="grid gap-3 text-sm font-semibold text-slate-600">
+                      <PublicationDates publishedAt={request.publishedAt??request.createdAt} updatedAt={request.updatedAt}/>
                       <p className="flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-[#0875d1] sm:h-5 sm:w-5" />
                         {placeLabel}

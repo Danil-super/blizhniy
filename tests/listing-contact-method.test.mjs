@@ -65,6 +65,7 @@ test('primary full-form runtime enables the25 store only through its explicit ca
       './production-auth-config': {readProductionAuthConfig: () => ({origin: 'https://site.example.invalid'})},
       './production-auth-runtime': {getProductionAccountDatabase: async () => ({db: {query: async () => ({rows: []})}, limiter: {}})},
       './postgres-listing-form': {PostgresListingFormStore: class {constructor(_db, value) {options = value;}}},
+      './listing-workflow-config': {readPostmoderationEnabled:()=>false},
       './production-listing-form-http': {createProductionListingFormHandler: (_config, runtime) => async () => {await runtime(); return Response.json({});}},
     };
     new Function('require', 'exports', 'process', ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}}).outputText)(

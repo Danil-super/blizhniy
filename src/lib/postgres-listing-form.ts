@@ -5,7 +5,7 @@ import {parseListingFormDraft,type ListingFormDraft,type ListingFormSnapshot} fr
 import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';
 import type {ListingDraftPhoto} from './listing-photo-contract';
-import {checkListingPublication,type PublicationTariffRow} from './listing-publication-check';
+import {checkListingPublication,checkListingFormContent,type PublicationTariffRow} from './listing-publication-check';
 const kinds={sell:'prodam',buy:'kuplyu',free:'otdam-darom',rent:'arenda'} as const;
 const dbKinds={prodam:'sell',kuplyu:'buy','otdam-darom':'free',arenda:'rent'} as const;
 type Row=ListingFormDraft&{id:string;revision:string;listingType:keyof typeof kinds};
@@ -17,14 +17,17 @@ const columns=`l.id,l.revision::text as revision,l.listing_type as "listingType"
 /** Full owner-private draft replacement. No publication, billing writes, public view or retry. */
 export class PostgresListingFormStore{
  private readonly contactMethod:boolean;
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,options:{contactMethod?:boolean}={}){
+ private readonly editableStatus:string;
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,options:{contactMethod?:boolean;postmoderation?:boolean;ownerRemovals?:boolean}={}){
   if(typeof window!=='undefined'||(options.contactMethod!==undefined&&typeof options.contactMethod!=='boolean'))throw new Error('Listing forms are server-only');
   this.contactMethod=options.contactMethod===true;
+  this.editableStatus=(options.postmoderation===true?"l.status in ('draft','published','archived')":"l.status='draft'")+
+   (options.ownerRemovals===true?' and not exists(select 1 from app.listing_owner_removals removed where removed.listing_id=l.id)':'');
  }
  private async snapshot(tx:PostgresQueries,owner:string,id:string):Promise<ListingFormSnapshot>{
   const row=(await tx.query<Row>(`select ${columns}${this.contactMethod?',l.contact_method as "contactMethod"':''} from app.listings l left join app.categories c on c.id=l.category_id
    left join app.categories parent on parent.id=c.parent_id left join app.cities city on city.id=l.city_id
-   where l.id=$1 and l.author_id=$2 and l.status='draft'`,[id,owner])).rows[0];
+   where l.id=$1 and l.author_id=$2 and ${this.editableStatus}`,[id,owner])).rows[0];
   if(!row)throw new ListingDraftAccessError();
   const photos=(await tx.query<ListingDraftPhoto&{permitted:boolean}>(`select m.id,m.mime_type as "mimeType",m.width,m.height,m.size,
    (m.owner_id=$2 and m.state='ready') as permitted from app.listing_photos p join app.media_objects m on m.id=p.media_id
@@ -36,6 +39,11 @@ export class PostgresListingFormStore{
  }
  read(token:string,owner:string,listingId:unknown){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
   if(user.id!==owner)throw new ListingDraftAccessError();return this.snapshot(tx,owner,parseListingDraftId(listingId));
+ });}
+ readEditable(token:string,owner:string,listingId:unknown){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
+  if(user.id!==owner)throw new ListingDraftAccessError();const id=parseListingDraftId(listingId);
+  const row=(await tx.query<{status:string}>(`select l.status from app.listings l where l.id=$1 and l.author_id=$2 and ${this.editableStatus} for update`,[id,owner])).rows[0];
+  if(!row)throw new ListingDraftAccessError();return{snapshot:await this.snapshot(tx,owner,id),placed:row.status!=='draft'};
  });}
  checkPublication(token:string,owner:string,listingId:unknown,expectedRevision:unknown){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
   if(user.id!==owner)throw new ListingDraftAccessError();return (await this.inspectInTransaction(tx,owner,listingId,expectedRevision)).check;
@@ -57,14 +65,15 @@ export class PostgresListingFormStore{
    if(user.id!==owner)throw new ListingDraftAccessError();
    const id=parseListingDraftId(listingId),revision=parseListingDraftRevision(expectedRevision),form=parseListingFormDraft(input);
    if(form.contactMethod==='messenger'&&!this.contactMethod)throw new ListingDraftInputError();
-   const current=(await tx.query<{revision:string}>("select revision::text as revision from app.listings where id=$1 and author_id=$2 and status='draft' for update",[id,owner])).rows[0];
+   const current=(await tx.query<{revision:string;status:string}>(`select l.revision::text as revision,l.status from app.listings l where l.id=$1 and l.author_id=$2 and ${this.editableStatus} for update`,[id,owner])).rows[0];
    if(!current)throw new ListingDraftAccessError();if(current.revision!==revision||revision==='9223372036854775807')throw new ListingDraftConflictError();
+   if(current.status!=='draft'&&checkListingFormContent(form,true).length)throw new ListingDraftInputError();
    let categoryId:string|null=null,cityId:string|null=null;
    if(form.categorySlug){
-    const categories=(await tx.query<{id:string}>(`select c.id from app.categories root join app.categories c
+    const categories=(await tx.query<{id:string;active:boolean}>(`select c.id,(c.active and root.active) as active from app.categories root join app.categories c
      on (case when $2::text is null then c.id=root.id else c.parent_id=root.id and c.name=$2 end)
      where root.slug=$1 and root.parent_id is null limit 2`,[form.categorySlug,form.subcategoryName])).rows;
-    if(categories.length!==1)throw new ListingDraftInputError();categoryId=categories[0].id;
+    if(categories.length!==1||(current.status!=='draft'&&!categories[0].active))throw new ListingDraftInputError();categoryId=categories[0].id;
    }
    if(form.cityName){const cities=(await tx.query<{id:string}>('select id from app.cities where name=$1 limit 2',[form.cityName])).rows;
     if(cities.length!==1)throw new ListingDraftInputError();cityId=cities[0].id;}
@@ -73,7 +82,7 @@ export class PostgresListingFormStore{
    if(available.reduce((sum,item)=>sum+item.size,0)>maxListingMediaTotalSize)throw new ListingDraftInputError();
    const updated=await tx.query(`update app.listings set listing_type=$3,title=$4,description=$5,price=$6,category_id=$7,city_id=$8,
     district=$9,address=$10,latitude=$11,longitude=$12,show_exact_address=$13,contact_phone=$14,messenger_url=$15,booking=$16::jsonb,${this.contactMethod?'contact_method=$18,':''}
-    revision=revision+1,updated_at=clock_timestamp() where id=$1 and author_id=$2 and status='draft' and revision=$17::bigint`,
+    revision=revision+1,updated_at=clock_timestamp() where id=$1 and author_id=$2 and ${this.editableStatus.replaceAll('l.','')} and revision=$17::bigint`,
     [id,owner,dbKinds[form.kind],form.title,form.description,form.price,categoryId,cityId,form.district,form.address,form.latitude,form.longitude,
      form.showExactAddress,form.contactPhone,form.messengerUrl,form.booking===null?null:JSON.stringify(form.booking),revision,...(this.contactMethod?[form.contactMethod??'phone']:[])]);
    if(updated.rowCount!==1)throw new ListingDraftConflictError();

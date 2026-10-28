@@ -1,11 +1,10 @@
 "use client";
-import Link from 'next/link';
 import {useEffect, useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {adminOverview, AdminOverviewClientError} from '@/lib/client-admin-overview';
 import type {AdminOverview} from '@/lib/admin-overview-contract';
 
-function OverviewData({actor}: {actor: string}) {
+function OverviewData({actor,postmoderation}: {actor: string;postmoderation:boolean}) {
   const [data, setData] = useState<AdminOverview | null>(null), [error, setError] = useState('');
   const [loading, setLoading] = useState(true), [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -26,7 +25,7 @@ function OverviewData({actor}: {actor: string}) {
   ];
   return <section aria-label="Рабочий обзор админки" aria-busy={loading}>
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-slate-600">Данные рабочей базы. В очереди — только отправленные актуальные версии.</p>
+      <p className="text-sm text-slate-600">{postmoderation?'Локальный стенд. Для объявлений и вакансий предварительная модерация отключена.':'Данные рабочей базы. В очереди — только отправленные актуальные версии.'}</p>
       <button type="button" disabled={loading} onClick={() => setRevision(value => value + 1)} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-60">Обновить обзор</button>
     </div>
     {loading && <p role="status" className="mt-3 text-sm text-slate-600">Загружаем обзор…</p>}
@@ -38,21 +37,14 @@ function OverviewData({actor}: {actor: string}) {
       </div>)}
     </dl>
     <div className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
-      <h2 className="text-lg font-bold text-slate-950">Модерация и управление</h2>
-      <p className="mt-2 text-sm leading-6 text-slate-600">Одобрение разрешает оплату; объявление не публикуется до подтверждённой оплаты. Черновики, которые владелец ещё не отправил, в очередь не попадают.</p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {[
-          ['/admin/obyavleniya', 'Объявления'], ['/admin/vakansii', 'Вакансии'], ['/admin/zakazy', 'Заказы'],
-          ['/admin/specialisty', 'Специалисты'], ['/admin/fair-applications', 'Ярмарка'], ['/admin/ad-marquee', 'Бегущая строка'],
-          ['/admin/users', 'Пользователи'], ['/admin/tariffs', 'Тарифы'], ['/admin/payments', 'Платежи'],
-        ].map(([href, label]) => <Link key={href} href={href} className="flex min-h-11 items-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">{label}</Link>)}
-      </div>
+      <h2 className="text-lg font-bold text-slate-950">{postmoderation?'Управление публикациями':'Модерация и управление'}</h2>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{postmoderation?'Объявления и вакансии появляются на сайте после подтверждения оплаты, без предварительного одобрения. Объявление с нарушением можно заблокировать с уведомлением автора и указанием причины. Для остальных разделов прежний порядок проверки сохранён.':'Одобрение разрешает оплату; объявление не публикуется до подтверждённой оплаты. Черновики, которые владелец ещё не отправил, в очередь не попадают.'}</p>
     </div>
   </section>;
 }
-export function PrimaryAdminOverview() {
+export function PrimaryAdminOverview({postmoderation=false}:{postmoderation?:boolean}={}) {
   const auth = usePrimaryAccountAuth();
   if (auth?.state !== 'admin' || !auth.userId) return <p role="status" className="text-sm text-slate-600">{auth?.state === 'loading' ? 'Проверяем права администратора…' : 'Доступ администратора не подтверждён.'}</p>;
   // Unmount the private reader immediately on any identity recheck; late responses cannot restore hidden counts.
-  return <OverviewData key={auth.userId} actor={auth.userId}/>;
+  return <OverviewData key={auth.userId} actor={auth.userId} postmoderation={postmoderation}/>;
 }

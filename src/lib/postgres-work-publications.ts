@@ -4,6 +4,8 @@ import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor} f
 import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';
 import type {ListingDraftPhoto} from './listing-photo-contract';
+import {readPostmoderationEnabled} from './listing-workflow-config';
+import {checkWorkCheckoutForm} from './work-checkout-validation';
 
 export class WorkPublicationAccessError extends Error{constructor(){super('Work publication not found');}}
 export class WorkPublicationConflictError extends Error{constructor(){super('Work publication changed');}}
@@ -94,9 +96,16 @@ export class PostgresWorkPublicationStore{
   return this.write(()=>withAppSessionTransaction(this.db,token,async(tx,user)=>{
    if(user.id!==owner)throw new WorkPublicationAccessError();validKind(kind);
    const id=parseListingDraftId(publicationId),revision=parseListingDraftRevision(expectedRevision),form=parseWorkPublicationForm(kind,input);
-   const row=(await tx.query<{revision:string}>('select revision::text as revision from app.work_publications where id=$1 and author_id=$2 and kind=$3 and deleted_at is null for update',[id,owner,kind])).rows[0];
+   const row=(await tx.query<{revision:string;paid:boolean}>('select revision::text as revision,is_paid as paid from app.work_publications where id=$1 and author_id=$2 and kind=$3 and deleted_at is null for update',[id,owner,kind])).rows[0];
    if(!row)throw new WorkPublicationAccessError();if(row.revision!==revision||revision==='9223372036854775807')throw new WorkPublicationConflictError();
    const refs=await this.references(tx,form);await this.checkPhotos(tx,owner,form.photoIds);
+   if(row.paid&&readPostmoderationEnabled()){
+    if(checkWorkCheckoutForm(form).length)throw new WorkPublicationInputError();
+    // Runtime has read-only catalogue access. Public reads recheck active/current names as well.
+    const city=(await tx.query<{name:string}>('select name from app.cities where id=$1',[refs.city])).rows[0];
+    const profession=(await tx.query<{name:string;active:boolean}>('select name,active from app.specialist_categories where id=$1',[refs.profession])).rows[0];
+    if(city?.name!==form.cityName||!profession?.active||profession.name!==form.professionName)throw new WorkPublicationInputError();
+   }
    const result=await tx.query(`update app.work_publications set form=$4::jsonb,city_id=$5,profession_id=$6,revision=revision+1,updated_at=clock_timestamp()
     where id=$1 and author_id=$2 and kind=$3 and revision=$7::bigint and deleted_at is null`,[id,owner,kind,JSON.stringify(form),refs.city,refs.profession,revision]);
    if(result.rowCount!==1)throw new WorkPublicationConflictError();await this.photos(tx,id,form.photoIds);return this.snapshot(tx,owner,kind,id);

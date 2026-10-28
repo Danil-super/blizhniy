@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { createDefaultCabinetProfile, type CabinetProfile } from "./cabinet-profile";
 import { withAppSessionTransaction } from "./app-session-transaction";
 import type { PostgresDatabase, PostgresQueries } from "./postgres";
+import {validPlainText,validPersonName,validWebUrl} from './cabinet-field-validation.ts';
+import {normalizeProfilePhone} from './phone-verification-contract.ts';
 
 export class ProfileInputError extends Error {
   constructor() { super("Invalid profile input"); this.name = "ProfileInputError"; }
@@ -21,11 +23,11 @@ const booleans = ["notifyBookings", "notifyMessages", "notifyPayments", "notifyP
 
 /** Full replacement with defaults for omitted settings. Identity/verification claims are never persisted. */
 export function parseProductionProfile(value: unknown): StoredCabinetProfile {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new ProfileInputError();
+  if (!value || typeof value !== "object" || Array.isArray(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value))) throw new ProfileInputError();
   const input = value as Record<string, unknown>;
   const allowed = new Set([...Object.keys(textLimits), ...Object.keys(ranges), ...booleans,
     "avatarDataUrl", "email", "phoneVerified", "verifiedPhone"]);
-  if (Object.keys(input).some(key => !allowed.has(key))) throw new ProfileInputError();
+  if (Reflect.ownKeys(input).some(key => typeof key!=='string'||!allowed.has(key))) throw new ProfileInputError();
   const defaults = createDefaultCabinetProfile({ name: "Пользователь", email: "" });
   const result = Object.fromEntries(Object.entries(defaults).filter(([key]) => !["email", "phoneVerified", "verifiedPhone"].includes(key))) as StoredCabinetProfile;
   for (const [key, limit] of Object.entries(textLimits)) {
@@ -33,10 +35,11 @@ export function parseProductionProfile(value: unknown): StoredCabinetProfile {
     if (!Object.hasOwn(input, key)) continue;
     const text = input[key];
     const controls = field === "organizationDescription" ? /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/ : /[\u0000-\u001f\u007f]/;
-    if (typeof text !== "string" || !text.isWellFormed() || controls.test(text) || text.trim().length > limit) throw new ProfileInputError();
+    if (typeof text !== "string" || !validPlainText(text,field==='organizationDescription') || controls.test(text) || text.length > limit) throw new ProfileInputError();
     result[field] = text.trim();
   }
   result.name ||= defaults.name;
+  if(!validPersonName(result.name)||(result.phone&&!normalizeProfilePhone(result.phone))||!validWebUrl(result.organizationWebsite))throw new ProfileInputError();
   for (const field of booleans) {
     if (!Object.hasOwn(input, field)) continue;
     if (typeof input[field] !== "boolean") throw new ProfileInputError();
@@ -82,15 +85,22 @@ function profileRevision(profile: StoredCabinetProfile): string {
 }
 
 export class PostgresProfileStore {
-  constructor(private readonly db: Pick<PostgresDatabase, "transaction">) {
+  constructor(private readonly db: Pick<PostgresDatabase, "transaction">, private readonly options: {phoneVerification?:boolean} = {}) {
     if (typeof window !== "undefined") throw new Error("Profile storage is server-only");
+  }
+  private async phoneView(tx: PostgresQueries, owner: string, profile: StoredCabinetProfile, email: string): Promise<CabinetProfile> {
+    if (!this.options.phoneVerification) return view(profile,email);
+    await tx.query("select set_config('app.phone_user_id',$1,true)",[owner]);
+    const binding=(await tx.query<{phone:string}>('select phone from app.telegram_phone_bindings where user_id=$1',[owner])).rows[0];
+    const verified=Boolean(binding&&binding.phone===normalizeProfilePhone(profile.phone));
+    return {...profile,email,phoneVerified:verified,verifiedPhone:verified?profile.phone:''};
   }
   async read(token: string, expectedOwnerId: string): Promise<{ exists: boolean; profile: CabinetProfile; revision: string | null }> {
     return withAppSessionTransaction(this.db, token, async (tx, user) => {
       if (user.id !== expectedOwnerId) throw new ProfileOwnerChangedError();
       const email = await profileEmail(tx, user.id);
       const row = (await tx.query<{ profile: StoredCabinetProfile }>("select profile from app.cabinet_profiles where user_id=$1", [user.id])).rows[0];
-      return { exists: Boolean(row), revision: row ? profileRevision(row.profile) : null, profile: row ? view(row.profile, email)
+      return { exists: Boolean(row), revision: row ? profileRevision(row.profile) : null, profile: row ? await this.phoneView(tx,user.id,row.profile,email)
         : createDefaultCabinetProfile({ name: "Пользователь", email }) };
     });
   }
@@ -106,7 +116,7 @@ export class PostgresProfileStore {
         : "insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb) on conflict(user_id) do nothing returning user_id",
       [user.id, JSON.stringify(profile)]);
       if (saved.rowCount !== 1) throw new ProfileConflictError();
-      return { profile: view(profile, email), revision: profileRevision(profile) };
+      return { profile: await this.phoneView(tx,user.id,profile,email), revision: profileRevision(profile) };
     });
   }
 }

@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, InputHTMLAttributes, useEffect, useState } from
 import { extractListingPriceDigits, maxListingPriceDigits } from "@/lib/listing-price";
 import { capitalizeFirstTextLetter } from "@/lib/text-format";
 
-type ValidationKind = "phone" | "email" | "messenger" | "emailOrMessenger" | "salary" | "urlOrHandle" | "url";
+type ValidationKind = "phone" | "internationalPhone" | "email" | "messenger" | "emailOrMessenger" | "salary" | "urlOrHandle" | "url";
 
 type ValidatedInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
   capitalizeFirstLetter?: boolean;
@@ -21,13 +21,19 @@ const urlOrHandlePattern = "^(@[A-Za-z0-9_.-]{2,64}|https?://[^\\s]+)$";
 const urlPattern = "^https?://[^\\s]+$";
 
 function sanitizePhone(value: string) {
+  value = value.trim();
+  // A country code must never be silently replaced with +7. Leave such input
+  // visibly invalid for the +7 pattern so the user can correct it explicitly.
+  if (/^\+(?!7)/.test(value)) return value.slice(0, 40);
   const digits = value.replace(/\D/g, "");
 
   if (!digits) {
     return "";
   }
 
-  const nationalDigits = digits.replace(/^(\d)?/, (firstDigit) => (firstDigit === "7" || firstDigit === "8" ? "" : firstDigit)).slice(0, 10);
+  if (digits.length > 11 || digits.length === 11 && !/^[78]/.test(digits)) return value.slice(0, 40);
+  const hasCountryPrefix = value.trimStart().startsWith('+7') || digits.length !== 10 && /^[78]/.test(digits);
+  const nationalDigits = hasCountryPrefix ? digits.slice(1) : digits;
   const parts = [
     nationalDigits.slice(0, 3),
     nationalDigits.slice(3, 6),
@@ -64,6 +70,7 @@ function sanitizeNoSpaces(value: string) {
 }
 
 function sanitizeByValidation(value: string, validation?: ValidationKind, capitalizeFirstLetter = false) {
+  if (validation === 'internationalPhone') return value.replace(/[^\d+ ().-]/g,'').slice(0,40);
   if (validation === "salary") {
     return extractListingPriceDigits(value);
   }
@@ -80,6 +87,8 @@ function sanitizeByValidation(value: string, validation?: ValidationKind, capita
 }
 
 function getValidationProps(validation?: ValidationKind) {
+  if (validation === 'internationalPhone') return {autoComplete:'tel',inputMode:'tel' as const,maxLength:40,
+    pattern:'\\+?[0-9 ()\\.\\-]{7,39}',title:'Введите номер с кодом страны, например +79991234567.',type:'tel'};
   if (validation === "salary") {
     return {
       autoComplete: "off",
@@ -160,7 +169,12 @@ export function ValidatedInput({ validation, defaultValue, value, onChange, onBe
   const validationProps = getValidationProps(validation);
 
   function syncSanitizedValue(event: ChangeEvent<HTMLInputElement> | FormEvent<HTMLInputElement>) {
-    const nextValue = sanitizeByValidation(event.currentTarget.value, validation, capitalizeFirstLetter);
+    // Do not restore mask punctuation while deleting: Backspace otherwise keeps
+    // deleting the same automatically reinserted ')' forever (including on mobile).
+    const deleting = validation === 'phone' && (event.nativeEvent as InputEvent).inputType?.startsWith('delete');
+    const raw = event.currentTarget.value;
+    const nextValue = deleting ? (/^\+?7?\D*$/.test(raw) ? '' : raw.replace(/[^\d]+$/, ''))
+      : sanitizeByValidation(raw, validation, capitalizeFirstLetter);
     event.currentTarget.value = nextValue;
     setInnerValue(nextValue);
   }

@@ -1,0 +1,9 @@
+diff --git a/scripts/check-quality-floor.mjs b/scripts/check-quality-floor.mjs
+--- a/scripts/check-quality-floor.mjs
++++ b/scripts/check-quality-floor.mjs
+@@ -76,2 +76,5 @@
+ const registrationAssertionPairs = [
++  ['tests/application-contract.test.mjs',
++    " assert.equal(parseApplicationCreate({...create,message:'x'.repeat(3000)}).message.length,3000);",
++    " assert.equal(parseApplicationCreate({...create,message:'x'.repeat(500)}).message.length,500);"],
+   ['tests/local-registration-ui.test.mjs', '  assert.match(html, /minLength="15"/i);', '  assert.match(html, /minLength="8"/i);'],

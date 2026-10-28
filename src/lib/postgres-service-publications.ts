@@ -3,6 +3,8 @@ import {parseServicePublicationForm,checkServicePublicationForm,ServicePublicati
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor} from './listing-draft-contract.ts';
 import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';import type {ListingDraftPhoto} from './listing-photo-contract';
+import {validPersonName} from './cabinet-field-validation.ts';
+import {specialistAbout} from './specialist-application-profile.ts';
 export class ServicePublicationAccessError extends Error{constructor(){super('Service publication not found');}}
 export class ServicePublicationConflictError extends Error{constructor(){super('Service publication changed');}}
 export type ServicePublicationSnapshot={id:string;kind:ServicePublicationKind;form:ServicePublicationForm;photos:ListingDraftPhoto[];revision:string;status:string;paid:boolean;
@@ -17,7 +19,13 @@ function kindOf(kind:ServicePublicationKind){if(!['specialist','fair','marquee']
 const photoIds=(form:ServicePublicationForm)=>form.kind==='marquee'?[]:form.photoIds;
 /** Private service forms only, sharing the existing session transaction and immutable media boundary. */
 export class PostgresServicePublicationStore{
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>){if(typeof window!=='undefined')throw Error('Service storage is server-only');}
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly options:{specialistProfileIdentity?:boolean}={}){if(typeof window!=='undefined')throw Error('Service storage is server-only');}
+ private async profileBoundForm(tx:PostgresQueries,owner:string,form:ServicePublicationForm):Promise<ServicePublicationForm>{
+  if(form.kind!=='specialist'||!this.options.specialistProfileIdentity)return form;
+  const profile=(await tx.query<{name:string}>("select profile->>'name' as name from app.cabinet_profiles where user_id=$1",[owner])).rows[0];
+  if(!profile||!validPersonName(profile.name))throw new ServicePublicationInputError();
+  return parseServicePublicationForm('specialist',{...form,title:profile.name,description:specialistAbout(form),skills:null,experience:null,district:null,videoUrl:null,photoIds:[]});
+ }
  private async snapshot(tx:PostgresQueries,owner:string,kind:ServicePublicationKind,id:string):Promise<ServicePublicationSnapshot>{
   const row=(await tx.query<Row>(`select ${columns} from app.service_publications where id=$1 and author_id=$2 and kind=$3 and deleted_at is null`,[id,owner,kind])).rows[0];
   if(!row)throw new ServicePublicationAccessError();const form=parseServicePublicationForm(kind,row.form);
@@ -55,7 +63,7 @@ export class PostgresServicePublicationStore{
   if(!row.referencesActive)issues.push('Выберите действующие город и профессию.');return{snapshot,issues};
  }
  create(token:string,owner:string,kind:ServicePublicationKind,creationKey:unknown,input:unknown){return this.write(()=>withAppSessionTransaction(this.db,token,async(tx,user)=>{
-  if(user.id!==owner)throw new ServicePublicationAccessError();kindOf(kind);const key=parseListingDraftId(creationKey),form=parseServicePublicationForm(kind,input),refs=await this.references(tx,form),ids=photoIds(form);
+  if(user.id!==owner)throw new ServicePublicationAccessError();kindOf(kind);const key=parseListingDraftId(creationKey),form=await this.profileBoundForm(tx,owner,parseServicePublicationForm(kind,input)),refs=await this.references(tx,form),ids=photoIds(form);
   await this.checkPhotos(tx,owner,ids);
   const inserted=(await tx.query<{id:string}>(`insert into app.service_publications(author_id,kind,creation_key,form,city_id,profession_id)
    values($1,$2,$3,$4::jsonb,$5,$6) on conflict do nothing returning id`,[owner,kind,key,JSON.stringify(form),refs.city,refs.profession])).rows[0];
@@ -80,7 +88,7 @@ export class PostgresServicePublicationStore{
   const items=rows.slice(0,20),last=items.at(-1);return{items,nextCursor:rows.length>20&&last?{id:last.id,updatedAt:last.updatedAt}:null};
  });}
  update(token:string,owner:string,kind:ServicePublicationKind,publicationId:unknown,expectedRevision:unknown,input:unknown){return this.write(()=>withAppSessionTransaction(this.db,token,async(tx,user)=>{
-  if(user.id!==owner)throw new ServicePublicationAccessError();kindOf(kind);const id=parseListingDraftId(publicationId),revision=parseListingDraftRevision(expectedRevision),form=parseServicePublicationForm(kind,input);
+  if(user.id!==owner)throw new ServicePublicationAccessError();kindOf(kind);const id=parseListingDraftId(publicationId),revision=parseListingDraftRevision(expectedRevision),form=await this.profileBoundForm(tx,owner,parseServicePublicationForm(kind,input));
   const row=(await tx.query<{revision:string}>('select revision::text as revision from app.service_publications where id=$1 and author_id=$2 and kind=$3 and deleted_at is null for update',[id,owner,kind])).rows[0];
   if(!row)throw new ServicePublicationAccessError();if(row.revision!==revision||revision==='9223372036854775807')throw new ServicePublicationConflictError();
   const refs=await this.references(tx,form),ids=photoIds(form);await this.checkPhotos(tx,owner,ids);

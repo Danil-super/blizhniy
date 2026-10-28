@@ -13,7 +13,8 @@ export async function handleProductionProfileRequest(request: Request): Promise<
       const { db, limiter } = await getProductionAccountDatabase(config);
       // Missing schema/grants fail closed on the resource path, without touching legacy storage.
       await db.query("select user_id,profile,updated_at from app.cabinet_profiles limit 0");
-      return { store: new PostgresProfileStore(db), limiter };
+      const phone=(await db.query<{present:boolean}>("select to_regclass('app.telegram_phone_bindings') is not null as present")).rows[0]?.present===true;
+      return { store: new PostgresProfileStore(db,{phoneVerification:phone}), limiter };
     })(request);
   } catch {
     const requestId = randomUUID();

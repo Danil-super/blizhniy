@@ -27,3 +27,5 @@ test('preflight fails before I/O on a missing target and never exposes a raw dat
  await assert.rejects(verifyPaymentReconciliationDatabase(db,{database:'blizhniy_test'}),{message:'Payment reconciliation database preflight failed'});
  assert.equal(transactions,1);
 });
+
+test('cabinet release adds only read access to the listing block key, preserving every legacy worker grant',()=>{const old=getPaymentReconciliationRolePlan('blizhniy_test'),current=getPaymentReconciliationRolePlan('blizhniy_test',{cabinet:true});assert.deepEqual(current.grants.filter(sql=>!old.grants.includes(sql)),['grant select(listing_id) on app.listing_blocks to blizhniy_payment_reconciler']);assert.ok(old.grants.every(sql=>current.grants.includes(sql)));assert.throws(()=>getPaymentReconciliationRolePlan('blizhniy_test',{cabinet:'yes'}));});

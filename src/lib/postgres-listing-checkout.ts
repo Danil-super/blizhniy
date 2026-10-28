@@ -6,6 +6,8 @@ import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentIntent,type Pa
 import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-contract.ts';
 import {parseListingCheckout,ListingCheckoutConflictError,ListingCheckoutUnavailableError,type ListingCheckoutInput} from './listing-checkout-contract.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';
+import {inspectWorkPurchase} from './vacancy-purchase-eligibility';
+import {readPostmoderationEnabled} from './listing-workflow-config';
 
 export type ListingCheckoutConfig={shopId:string;isTest:boolean;siteOrigin:string;receiptVatCode:number|null};
 export type ListingPaymentOrder={id:string;creationKey:string;targetId:string;targetRevision:string;tariffId:string;amount:string;durationDays:number;status:'created'|'pending'|'succeeded'|'failed'|'refunded';createdAt:string};
@@ -15,12 +17,12 @@ type Offer={id:string;name:string;amount:string;currency:'RUB';durationDays:numb
 const columns=`o.id,o.creation_key as "creationKey",o.target_type as "targetType",o.target_id as "targetId",o.target_revision::text as "targetRevision",o.status,
  i.tariff_id as "tariffId",i.amount::text,i.duration_days as "durationDays",to_char(o.created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "createdAt"`;
 const source='from app.payment_orders o join app.payment_checkout_intents i on i.id=o.id';
-function display(row:OrderRow):ListingPaymentOrder{
- if(row.targetType!=='listing'||row.durationDays===null)throw new ListingCheckoutUnavailableError();
+function display(row:OrderRow,targetType='listing'):ListingPaymentOrder{
+ if(row.targetType!==targetType||row.durationDays===null)throw new ListingCheckoutUnavailableError();
  return{id:row.id,creationKey:row.creationKey,targetId:row.targetId,targetRevision:row.targetRevision,tariffId:row.tariffId,amount:row.amount,durationDays:row.durationDays,status:row.status,createdAt:row.createdAt};
 }
-function matches(row:OrderRow,input:ListingCheckoutInput){
- return row.targetType==='listing'&&row.targetId===input.listingId&&row.targetRevision===input.expectedRevision&&row.creationKey===input.creationKey&&
+function matches(row:OrderRow,input:ListingCheckoutInput,targetType='listing'){
+ return row.targetType===targetType&&row.targetId===input.listingId&&row.targetRevision===input.expectedRevision&&row.creationKey===input.creationKey&&
   row.tariffId===input.expectedTariffId&&row.amount===input.expectedAmount&&row.durationDays===input.expectedDurationDays;
 }
 /** Local-only session/target/offer authorization. No provider fetch, settlement or publication. */
@@ -28,8 +30,11 @@ export class PostgresListingCheckoutStore{
  private readonly forms:PostgresListingFormStore;
  private readonly intents:PostgresPaymentIntentStore;
  private readonly config:ListingCheckoutConfig;
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,config:ListingCheckoutConfig){
+ private readonly targetType:'listing'|'vacancy'|'workRequest';
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,config:ListingCheckoutConfig,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest'}={}){
   if(typeof window!=='undefined')throw new ListingCheckoutUnavailableError();
+  this.targetType=policy.targetType??'listing';
+  if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!config.isTest||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
   this.forms=new PostgresListingFormStore(db);this.intents=new PostgresPaymentIntentStore(db);this.config={...config};
  }
  private owner<T>(token:string,expectedOwner:string,work:(tx:PostgresQueries,owner:string)=>Promise<T>){
@@ -38,28 +43,41 @@ export class PostgresListingCheckoutStore{
   });
  }
  private async inspected(tx:PostgresQueries,owner:string,id:string,revision:string):Promise<Offer>{
+  if(this.targetType!=='listing'){
+   const {issues}=await inspectWorkPurchase(this.db,tx,owner,id,revision,this.targetType,false);
+   if(issues.length)throw new ListingCheckoutUnavailableError();
+   const offer=(await tx.query<Offer>(`select id,name,price::text as amount,'RUB' as currency,duration_days as "durationDays"
+    from app.tariffs where id=$1 and action=$2 and active and price>0 and duration_days between 1 and 3650`,
+    this.targetType==='vacancy'?['vacancy-publication','vacancy_publication']:['work-request-publication','work_request_publication'])).rows[0];
+   if(!offer)throw new ListingCheckoutUnavailableError();return offer;
+  }
   const {check}=await this.forms.inspectInTransaction(tx,owner,id,revision);
   if(!check.checksPassed||!check.tariff||check.tariff.amount==='0.00')throw new ListingCheckoutUnavailableError();
-  const approval=await tx.query(`select id from app.listing_moderation where listing_id=$1 and revision=$2::bigint and state='approved' for share`,[id,revision]);
-  if(approval.rowCount!==1)throw new ListingCheckoutUnavailableError();
+  if(this.policy.postmoderation){
+   const blocked=await tx.query('select listing_id from app.listing_blocks where listing_id=$1',[id]);
+   if(blocked.rowCount!==0)throw new ListingCheckoutUnavailableError();
+  }else{
+   const approval=await tx.query(`select id from app.listing_moderation where listing_id=$1 and revision=$2::bigint and state='approved' for share`,[id,revision]);
+   if(approval.rowCount!==1)throw new ListingCheckoutUnavailableError();
+  }
   return check.tariff;
  }
  private async keyed(tx:PostgresQueries,owner:string,key:string){
   return(await tx.query<OrderRow>(`select ${columns} ${source} where o.owner_id=$1 and o.creation_key=$2`,[owner,key])).rows[0];
  }
  private async active(tx:PostgresQueries,owner:string,id:string){
-  return(await tx.query<OrderRow>(`select ${columns} ${source} where o.owner_id=$1 and o.target_type='listing' and o.target_id=$2 and o.status in ('created','pending','succeeded')`,[owner,id])).rows[0];
+  return(await tx.query<OrderRow>(`select ${columns} ${source} where o.owner_id=$1 and o.target_type='${this.targetType}' and o.target_id=$2 and o.status in ('created','pending','succeeded')`,[owner,id])).rows[0];
  }
  async preview(token:string,owner:string,listingId:unknown,expectedRevision:unknown){
   const id=parseListingDraftId(listingId),revision=parseListingDraftRevision(expectedRevision);
   return this.owner(token,owner,async(tx,actor)=>{
    const tariff=await this.inspected(tx,actor,id,revision),active=await this.active(tx,actor,id);
-   return{listingId:id,revision,tariff,activePayment:active?display(active):null};
+   return{listingId:id,revision,tariff,activePayment:active?display(active,this.targetType):null};
   });
  }
  async readIntent(token:string,owner:string,creationKey:unknown){
   const key=parseListingDraftId(creationKey);return this.owner(token,owner,async(tx,actor)=>{
-   const row=await this.keyed(tx,actor,key);return row?display(row):null;
+   const row=await this.keyed(tx,actor,key);return row?display(row,this.targetType):null;
   });
  }
  /** Fresh session/owner authority for a saved intent; only a new POST requires current purchase eligibility.
@@ -73,7 +91,7 @@ export class PostgresListingCheckoutStore{
     i.merchant_shop_id as "shopId",i.is_test as "isTest",i.request_body as "requestBody",o.status
     from app.payment_orders o join app.payment_checkout_intents i on i.id=o.id and i.owner_id=o.owner_id
      and i.target_type=o.target_type and i.target_id=o.target_id and i.target_revision=o.target_revision
-    where o.id=$1 and o.owner_id=$2 and o.target_type='listing' and i.merchant_shop_id=$3 and i.is_test=$4`,
+    where o.id=$1 and o.owner_id=$2 and o.target_type='${this.targetType}' and i.merchant_shop_id=$3 and i.is_test=$4`,
    [id,actor,this.config.shopId,this.config.isTest])).rows[0];
    if(!row)throw new ListingDraftAccessError();
    const {status,...input}=row,intent=parsePaymentIntent(input);
@@ -96,10 +114,10 @@ export class PostgresListingCheckoutStore{
     to_char(f.published_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
     to_char(f.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "expiresAt"
     ${source} left join app.payment_fulfillments f on f.intent_id=o.id
-    where o.id=$1 and o.owner_id=$2 and o.target_type='listing' and i.merchant_shop_id=$3 and i.is_test=$4`,
+    where o.id=$1 and o.owner_id=$2 and o.target_type='${this.targetType}' and i.merchant_shop_id=$3 and i.is_test=$4`,
     [id,actor,this.config.shopId,this.config.isTest])).rows[0];
    if(!row)return null;
-   return{order:display(row),fulfillment:row.publishedAt&&row.expiresAt?{publishedAt:row.publishedAt,expiresAt:row.expiresAt}:null};
+   return{order:display(row,this.targetType),fulfillment:row.publishedAt&&row.expiresAt?{publishedAt:row.publishedAt,expiresAt:row.expiresAt}:null};
   });
  }
  private async intent(tx:PostgresQueries,owner:string,id:string,input:ListingCheckoutInput,offer:Offer):Promise<PaymentIntent>{
@@ -108,7 +126,7 @@ export class PostgresListingCheckoutStore{
    if(site.protocol!=='https:'||site.username||site.password||site.port||site.pathname!=='/'||site.search||site.hash||/[\s\\\u0000-\u001f\u007f]/.test(this.config.siteOrigin))throw new Error('Invalid checkout origin');
    origin=site.origin;
   }catch{throw new ListingCheckoutUnavailableError();}
-  const amount={value:offer.amount,currency:'RUB'},description='Размещение объявления';
+  const amount={value:offer.amount,currency:'RUB'},description=this.targetType==='vacancy'?'Размещение вакансии':this.targetType==='workRequest'?'Размещение заказа':'Размещение объявления';
   let receipt:object|undefined;
   if(this.config.receiptVatCode!==null){
    const vat=this.config.receiptVatCode;
@@ -117,28 +135,28 @@ export class PostgresListingCheckoutStore{
    if(!payer)throw new AppSessionAccessError();
    receipt={customer:{email:payer.email.trim().toLowerCase()},internet:true,items:[{amount,description,payment_mode:'full_payment',payment_subject:'service',quantity:1,vat_code:vat}]};
   }
-  return parsePaymentIntent({id,ownerId:owner,targetType:'listing',targetId:input.listingId,targetRevision:input.expectedRevision,
+  return parsePaymentIntent({id,ownerId:owner,targetType:this.targetType,targetId:input.listingId,targetRevision:input.expectedRevision,
    tariffId:offer.id,amount:offer.amount,durationDays:offer.durationDays,shopId:this.config.shopId,isTest:this.config.isTest,
-   requestBody:JSON.stringify({amount,capture:true,confirmation:{type:'redirect',return_url:`${origin}/oplata/${id}`},description,
-    metadata:{localPaymentId:id,targetId:input.listingId,targetType:'listing',tariffId:offer.id},...(receipt?{receipt}:{})})});
+   requestBody:JSON.stringify({amount,capture:true,confirmation:{type:'redirect',return_url:`${origin}/oplata/${id}${this.targetType!=='listing'?'?type='+this.targetType:''}`},description,
+    metadata:{localPaymentId:id,targetId:input.listingId,targetType:this.targetType,tariffId:offer.id},...(receipt?{receipt}:{})})});
  }
  async prepare(token:string,owner:string,value:unknown){
   const input=parseListingCheckout(value);return this.owner(token,owner,async(tx,actor)=>{
    // A readback never rebuilds old receipts or silently swaps the original expected offer.
    const prior=await this.keyed(tx,actor,input.creationKey);
-   if(prior){if(!matches(prior,input))throw new ListingCheckoutConflictError();return display(prior);}
+   if(prior){if(!matches(prior,input,this.targetType))throw new ListingCheckoutConflictError();return display(prior,this.targetType);}
    const offer=await this.inspected(tx,actor,input.listingId,input.expectedRevision);
    if(offer.id!==input.expectedTariffId||offer.amount!==input.expectedAmount||offer.durationDays!==input.expectedDurationDays)throw new ListingCheckoutConflictError();
    if(await this.active(tx,actor,input.listingId))throw new ListingCheckoutConflictError();
    const id=randomUUID();
    const inserted=await tx.query(`insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision)
-    values($1,$2,$3,'listing',$4,$5::bigint) on conflict do nothing returning id`,[id,actor,input.creationKey,input.listingId,input.expectedRevision]);
+    values($1,$2,$3,'${this.targetType}',$4,$5::bigint) on conflict do nothing returning id`,[id,actor,input.creationKey,input.listingId,input.expectedRevision]);
    if(inserted.rowCount!==1){
-    const winner=await this.keyed(tx,actor,input.creationKey);if(!winner||!matches(winner,input))throw new ListingCheckoutConflictError();return display(winner);
+    const winner=await this.keyed(tx,actor,input.creationKey);if(!winner||!matches(winner,input,this.targetType))throw new ListingCheckoutConflictError();return display(winner,this.targetType);
    }
    const intent=await this.intent(tx,actor,id,input,offer);
    await this.intents.persistInTransaction(tx,intent);
-   const saved=await this.keyed(tx,actor,input.creationKey);if(!saved)throw new ListingCheckoutUnavailableError();return display(saved);
+   const saved=await this.keyed(tx,actor,input.creationKey);if(!saved)throw new ListingCheckoutUnavailableError();return display(saved,this.targetType);
   });
  }
 }

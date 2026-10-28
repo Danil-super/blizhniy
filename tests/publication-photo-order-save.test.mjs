@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createWorkPublicationSave} from '../src/lib/work-publication-save.ts';
+import {createServicePublicationSave} from '../src/lib/service-publication-save.ts';
+import {createListingFormSave} from '../src/lib/listing-form-save.ts';
+import {parseWorkPublicationForm} from '../src/lib/work-publication-contract.ts';
+import {parseServicePublicationForm} from '../src/lib/service-publication-contract.ts';
+import {parseListingFormDraft} from '../src/lib/listing-form-contract.ts';
+const owner='11111111-1111-4111-8111-111111111111',a='22222222-2222-4222-8222-222222222222',b='33333333-3333-4333-8333-333333333333',c='44444444-4444-4444-8444-444444444444';
+for(const family of ['work','service','listing'])test(`${family} freezes mixed photo order and recovers a committed reply without another write`,async()=>{
+ const input={title:'Сохранённая форма',description:'Описание формы.',photoIds:[a,b]},form=family==='work'?parseWorkPublicationForm('workRequest',{...input,kind:'workRequest'}):family==='service'?parseServicePublicationForm('fair',{...input,kind:'fair'}):parseListingFormDraft({...input,kind:'prodam'});
+ const initial={id:owner,revision:'1',form,photos:[],kind:family==='work'?'workRequest':'fair'},order=[{savedId:a},{uploadIndex:0},{savedId:b}];
+ let writes=0,uploads=0,committed;
+ const write=async(...args)=>{writes++;committed={...initial,revision:'2',form:args[family==='listing'?3:4]};throw Error('Lost committed reply');};
+ const dependencies={upload:async()=>{uploads++;return{id:c,mimeType:'image/webp',width:1600,height:1200,size:20};},update:write,write,read:async()=>committed};
+ const files=[new Blob(['synthetic'],{type:'image/png'})];
+ const attempt=family==='work'?createWorkPublicationSave(owner,'workRequest',form,files,dependencies,initial,order):family==='service'?createServicePublicationSave(owner,'fair',form,files,dependencies,initial,order):createListingFormSave(owner,form,files,dependencies,initial,order);
+ order.reverse();
+ await assert.rejects(attempt.save(),/Lost committed reply/);assert.equal(attempt.uncertain,true);assert.deepEqual(committed.form.photoIds,[a,c,b]);
+ await attempt.readback();assert.equal(attempt.uncertain,false);assert.equal((await attempt.save()).revision,'2');assert.equal(writes,1);assert.equal(uploads,1);
+});

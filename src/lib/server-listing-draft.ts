@@ -8,6 +8,7 @@ import {AppSessionAccessError} from './app-session-transaction';
 import {PostgresListingFormStore} from './postgres-listing-form';
 import {readProductionAuthConfig} from './production-auth-config';
 import {getProductionAccountDatabase} from './production-auth-runtime';
+import {readPostmoderationEnabled} from './listing-workflow-config';
 
 /** The cookie is authority; the URL contains only a resource id, never an owner or token. */
 export async function readServerListingDraft(value:string){
@@ -19,7 +20,8 @@ export async function readServerListingDraft(value:string){
  const {db}=await getProductionAccountDatabase(config),user=await new IdentityStore(db).resolveSession(token!);
  if(!user)login();
  try{
-  const store=new PostgresListingFormStore(db,{contactMethod:process.env.BLIZHNIY_LISTING_CONTACT_METHOD==='enabled'});
-  return{owner:user!.id,snapshot:await store.read(token!,user!.id,id)};
+  const postmoderation=readPostmoderationEnabled();
+  const store=new PostgresListingFormStore(db,{contactMethod:process.env.BLIZHNIY_LISTING_CONTACT_METHOD==='enabled',postmoderation,ownerRemovals:postmoderation});
+  return{owner:user!.id,...await store.readEditable(token!,user!.id,id)};
  }catch(error){if(error instanceof ListingDraftAccessError)notFound();if(error instanceof AppSessionAccessError)login();throw error;}
 }

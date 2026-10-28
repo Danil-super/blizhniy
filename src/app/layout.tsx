@@ -11,6 +11,10 @@ import { BookingLegacyStorageCleanup } from "@/components/BookingLegacyStorageCl
 import { getPublicSiteUrl } from "@/lib/site-url";
 import { getTurnstileSiteKey } from "@/lib/turnstile-public-config";
 import { getPublicRuntimeSetting } from "@/lib/public-runtime-config";
+import {readPostmoderationEnabled} from '@/lib/listing-workflow-config';
+import {ListingWorkflowProvider} from '@/components/listings/ListingWorkflowProvider';
+import {readTelegramPhoneConfig} from '@/lib/telegram-phone-config';
+import {PhonePlacementProvider} from '@/components/phone/PhonePlacementProvider';
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -32,6 +36,7 @@ export default async function RootLayout({
   await connection();
   const mode = process.env.BLIZHNIY_AUTH_MODE;
   const backend = !mode || mode === "local" ? "legacy" : mode === "postgres" ? "postgres" : "unavailable";
+  const postmoderation=readPostmoderationEnabled();
   const incoming = await headers();
   const ip = getTrustedProxyIp(incoming);
   const proofExpiry = backend === "postgres" && process.env.BLIZHNIY_AUTH_REMEMBERED_CAPTCHA === "enabled" && ip
@@ -40,6 +45,8 @@ export default async function RootLayout({
     <html lang="ru">
       <head>
         <meta name="blizhniy-auth-backend" content={backend} />
+        <meta name="blizhniy-phone-verification" content={readTelegramPhoneConfig()?'enabled':'disabled'} />
+        <meta name="blizhniy-listing-workflow" content={postmoderation?'postmoderation':'pre-moderation'} />
         <meta name="blizhniy-turnstile-site-key" content={getTurnstileSiteKey() ?? ""} />
         <meta name="blizhniy-legacy-url" content={backend === "legacy" ? getPublicRuntimeSetting("legacy-url") ?? "" : ""} />
         <meta name="blizhniy-legacy-anon-key" content={backend === "legacy" ? getPublicRuntimeSetting("legacy-anon-key") ?? "" : ""} />
@@ -47,12 +54,16 @@ export default async function RootLayout({
       </head>
       <body className="antialiased">
         <AccountAuthProvider backend={backend}>
+        <ListingWorkflowProvider postmoderation={postmoderation} localSimulation={postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'}>
         <AccountCaptchaProvider expiresAt={proofExpiry}>
+        <PhonePlacementProvider>
         <BookingLegacyStorageCleanup />
         <div className="app-shell">{children}</div>
         <MobileBottomNav />
         <SiteFooter />
+        </PhonePlacementProvider>
         </AccountCaptchaProvider>
+        </ListingWorkflowProvider>
         </AccountAuthProvider>
       </body>
     </html>

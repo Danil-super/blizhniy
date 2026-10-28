@@ -51,7 +51,7 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
 
   if (!media.length) {
     return (
-      <div className="mt-5 flex aspect-square w-full max-w-[640px] items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
+      <div className="mt-5 flex aspect-[4/3] w-full max-w-[640px] items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400 sm:mt-6">
         <Camera className="h-12 w-12 sm:h-16 sm:w-16" />
       </div>
     );
@@ -60,7 +60,8 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
   return (
     <section className="mt-5 grid gap-3 sm:mt-6">
       <div
-        className="relative flex aspect-square w-full max-w-[640px] select-none items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 [touch-action:pan-y]"
+        data-listing-photo-frame
+        className="relative flex aspect-[4/3] w-full max-w-[640px] select-none items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 [touch-action:pan-y]"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
@@ -70,7 +71,7 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
               {item.kind === "video" ? (
                 <StoredMediaVideo src={item.src} className="h-full w-full bg-slate-950 object-contain" controls playsInline preload="metadata" />
               ) : (
-                <StoredMediaImage src={item.src} alt={index === 0 ? title : `${title}, фото ${index + 1}`} className="h-full w-full object-contain object-center" loading={index === activeIndex ? "eager" : "lazy"} />
+                <StoredMediaImage src={item.src} alt={index === 0 ? title : `${title}, фото ${index + 1}`} className="h-full w-full object-cover object-center" loading={index === activeIndex ? "eager" : "lazy"} />
               )}
             </div>
           ))}
@@ -108,7 +109,7 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
               type="button"
               key={`${item.src}-${index}`}
               onClick={() => setActiveIndex(index)}
-              className={`relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-slate-100 transition ${
+              className={`relative aspect-[4/3] w-24 shrink-0 overflow-hidden rounded-lg border-2 bg-slate-100 transition ${
                 index === activeIndex ? "border-[#0875d1]" : "border-slate-200 hover:border-blue-200"
               }`}
               aria-label={`Показать файл ${index + 1}`}
@@ -121,7 +122,7 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
                   </span>
                 </>
               ) : (
-                <StoredMediaImage src={item.src} alt={`${title}, фото ${index + 1}`} className="h-full w-full object-contain" loading="lazy" />
+                <StoredMediaImage src={item.src} alt={`${title}, фото ${index + 1}`} className="h-full w-full object-cover object-center" loading="lazy" />
               )}
             </button>
           ))}

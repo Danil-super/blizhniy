@@ -1,5 +1,6 @@
 import {parseListingFormDraft} from './listing-form-contract.ts';
 import {validateVacancyRequisites,type VacancyEmployerType} from './vacancy-requisites.ts';
+import {validPlainText,validPersonName,validEmail,validWebUrl} from './cabinet-field-validation.ts';
 
 export type WorkPublicationKind='vacancy'|'workRequest';
 type Common={title:string;description:string;cityName:string|null;professionName:string|null;district:string|null;address:string|null;
@@ -13,7 +14,7 @@ const commonKeys=['kind','title','description','cityName','professionName','dist
 const vacancyKeys=['salary','organization','employerType','inn','ogrn','ogrnip','contactPerson','email','website','requirements','responsibilities','conditions','schedule','workFormat'];
 function text(value:unknown,max:number,multiline=false):string|null{
  if(value===undefined||value===null||value==='')return null;
- if(typeof value!=='string'||value.length>max||!value.isWellFormed()||(multiline?/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/:/[\u0000-\u001f\u007f]/).test(value))return invalid();
+ if(typeof value!=='string'||value.length>max||!validPlainText(value,multiline))return invalid();
  return value.trim()||null;
 }
 /** Draft allowlist only: cookie authority, moderation and financial state are never form fields. */
@@ -25,7 +26,7 @@ export function parseWorkPublicationForm(kind:WorkPublicationKind,value:unknown)
   const core=parseListingFormDraft({kind:'prodam',title:row.title??'',description:row.description??'',price:row[kind==='vacancy'?'salary':'budget']??null,
    cityName:row.cityName,district:row.district,address:row.address,latitude:row.latitude,longitude:row.longitude,showExactAddress:row.showExactAddress,
    contactPhone:row.contactPhone,messengerUrl:row.messengerUrl,photoIds:row.photoIds});
-  if(core.title.length>120||core.photoIds.length>(kind==='vacancy'?20:6))return invalid();
+  if(core.title.length>120||core.description.length>3000||core.photoIds.length>(kind==='vacancy'?20:6))return invalid();
   const placementRightConfirmed=Object.hasOwn(row,'placementRightConfirmed')?row.placementRightConfirmed:false;
   if(typeof placementRightConfirmed!=='boolean')return invalid();
   const common:Common={title:core.title,description:core.description,cityName:core.cityName,professionName:text(row.professionName,160),
@@ -34,9 +35,11 @@ export function parseWorkPublicationForm(kind:WorkPublicationKind,value:unknown)
   if(kind==='workRequest')return{kind,...common,budget:core.price};
   const employerType=row.employerType??'organization';if(!['organization','ip','person'].includes(employerType as string))return invalid();
   const requisite=(key:string,max:number)=>{const value=text(row[key],max)??'';if(!/^\d*$/.test(value))return invalid();return value;};
-  const website=text(row.website,500);if(website){const url=new URL(website);if(!['https:','http:'].includes(url.protocol)||url.username||url.password)return invalid();}
-  return{kind,...common,salary:core.price,employerType:employerType as VacancyEmployerType,organization:text(row.organization,200),
-   inn:requisite('inn',12),ogrn:requisite('ogrn',13),ogrnip:requisite('ogrnip',15),contactPerson:text(row.contactPerson,160),email:text(row.email,254),website,
+  const website=text(row.website,500),email=text(row.email,254);if(!validWebUrl(website??'')||!validEmail(email??''))return invalid();
+  const organization=text(row.organization,200),contactPerson=text(row.contactPerson,160);
+  if(contactPerson&&!validPersonName(contactPerson)||organization&&employerType==='person'&&!validPersonName(organization))return invalid();
+  return{kind,...common,salary:core.price,employerType:employerType as VacancyEmployerType,organization,
+   inn:requisite('inn',12),ogrn:requisite('ogrn',13),ogrnip:requisite('ogrnip',15),contactPerson,email,website,
    requirements:text(row.requirements,3000,true),responsibilities:text(row.responsibilities,3000,true),conditions:text(row.conditions,3000,true),
    schedule:text(row.schedule,160),workFormat:text(row.workFormat,160)};
  }catch{return invalid();}

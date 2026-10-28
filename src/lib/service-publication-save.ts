@@ -3,6 +3,7 @@ import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-con
 import {mediaUploadTypes,type UploadedImage} from './media-upload-contract.ts';import {maxListingImageFileSize,maxListingMediaTotalSize} from './media-limits.ts';
 import type {ServicePublicationSnapshot} from './postgres-service-publications';
 import {ServiceClientError} from './client-service-publications.ts';
+import {parsePhotoOrder,resolvePhotoOrder} from './photo-order.ts';
 type Options={signal?:AbortSignal};
 type Dependencies={upload:(owner:string,intent:string,file:Blob,options?:Options)=>Promise<UploadedImage>;
  create:(owner:string,kind:ServicePublicationKind,key:string,form:ServicePublicationForm,options?:Options)=>Promise<ServicePublicationSnapshot>;
@@ -10,15 +11,18 @@ type Dependencies={upload:(owner:string,intent:string,file:Blob,options?:Options
  read:(owner:string,kind:ServicePublicationKind,id:string,options?:Options)=>Promise<ServicePublicationSnapshot>;
  intent:(owner:string,kind:ServicePublicationKind,key:string,options?:Options)=>Promise<ServicePublicationSnapshot|null>};
 /** Captures one owner/form/files intent. Unknown mutations can only be followed by explicit readback. */
-export function createServicePublicationSave(owner:string,kind:ServicePublicationKind,input:unknown,files:Blob[],dependencies:Dependencies,initial?:ServicePublicationSnapshot){
+export function createServicePublicationSave(owner:string,kind:ServicePublicationKind,input:unknown,files:Blob[],dependencies:Dependencies,initial?:ServicePublicationSnapshot,photoOrder?:unknown,identitySource?:'profile'){
  parseListingDraftId(owner);const form=structuredClone(parseServicePublicationForm(kind,input)),ids=form.kind==='marquee'?[]:form.photoIds;
+ if(identitySource&&kind!=='specialist')throw new ServicePublicationInputError();
  if(initial){parseListingDraftId(initial.id);parseListingDraftRevision(initial.revision);if(initial.kind!==kind)throw new ServicePublicationInputError();}
  const max=kind==='specialist'?12:kind==='fair'?10:0;
  if(ids.length+files.length>max||files.reduce((sum,file)=>sum+file.size,0)>maxListingMediaTotalSize||files.some(file=>file.size<1||file.size>maxListingImageFileSize||!mediaUploadTypes.some(type=>type===file.type)))throw Error('Выберите допустимые изображения до 10 МБ каждое.');
  const creationKey=crypto.randomUUID(),uploads=files.map(file=>({file,intent:crypto.randomUUID(),ready:null as UploadedImage|null}));
+ const order=parsePhotoOrder(photoOrder,ids,files.length);
  let base=initial??null,remote:ServicePublicationSnapshot|null=null,unknown=false,busy=false,complete:ServicePublicationSnapshot|null=null;
- const payload=()=>form.kind==='marquee'?form:parseServicePublicationForm(kind,{...form,photoIds:[...ids,...uploads.map(item=>{if(!item.ready)throw Error('Загрузка не подтверждена.');return item.ready.id;})]});
- const matches=(row:ServicePublicationSnapshot)=>uploads.every(item=>item.ready)&&JSON.stringify(parseServicePublicationForm(kind,row.form))===JSON.stringify(payload());
+ const payload=()=>form.kind==='marquee'?form:parseServicePublicationForm(kind,{...form,photoIds:resolvePhotoOrder(order,uploads.map(item=>{if(!item.ready)throw Error('Загрузка не подтверждена.');return item.ready.id;}))});
+ const comparable=(value:ServicePublicationForm)=>identitySource==='profile'?{...value,title:''}:value;
+ const matches=(row:ServicePublicationSnapshot)=>uploads.every(item=>item.ready)&&JSON.stringify(comparable(parseServicePublicationForm(kind,row.form)))===JSON.stringify(comparable(payload()));
  return{
   get uncertain(){return unknown;},get completed(){return complete;},
   async save(options?:Options){if(busy||unknown)throw Error('Сначала проверьте сохранённую версию.');if(complete)return complete;busy=true;

@@ -10,3 +10,9 @@ export const publicListingLive=`l.status='published' and l.is_paid and l.publish
 export const publicListingPhotos=`not exists(select 1 from app.listing_photos p left join app.media_objects m on m.id=p.media_id
  where p.listing_id=l.id and (m.id is null or m.owner_id<>l.author_id or m.state<>'ready'))
  and (select count(*)<=10000 and coalesce(sum(m.size),0)<=$2 from app.listing_photos p join app.media_objects m on m.id=p.media_id where p.listing_id=l.id)`;
+/** Schema0026 is opt-in. The old public gate remains the default on existing deployments. */
+export const postmoderationListingSource=`from app.listings l
+ join app.users author on author.id=l.author_id and not author.is_blocked and author.email_verified_at is not null
+ join app.categories c on c.id=l.category_id and c.active left join app.categories parent on parent.id=c.parent_id
+ join app.cities city on city.id=l.city_id`;
+export const postmoderationListingLive=`${publicListingLive} and not exists(select 1 from app.listing_blocks block where block.listing_id=l.id)`;

@@ -5,12 +5,12 @@ export type PublicListingRow={id:string;ownerId:string;revision:string;approvedR
 const money=(value:string|null)=>!value||value==='0.00'?'по договоренности':`${value.split('.')[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')}${value.endsWith('.00')?'':','+value.split('.')[1]} ₽`;
 
 /** Public DTO allowlist, not an owner/editor snapshot. SQL must also prove current author/reference/photo eligibility. */
-export function mapPublicListing(row:PublicListingRow,now:number):Listing|null{
+export function mapPublicListing(row:PublicListingRow,now:number,options:{postmoderation?:boolean}={}):Listing|null{
  try{
   const id=parseListingDraftId(row.id),ownerKey=parseListingDraftId(row.ownerId),revision=parseListingDraftRevision(row.revision),form=parseListingFormDraft(row.form);
   const stamp=(value:unknown)=>parseListingDraftCursor({id,updatedAt:value})!.updatedAt;
   const createdAt=stamp(row.createdAt),publishedAt=stamp(row.publishedAt),expiresAt=stamp(row.expiresAt),published=Date.parse(publishedAt),expires=Date.parse(expiresAt);
-  if(!Number.isFinite(now)||row.status!=='published'||row.paid!==true||row.approvedRevision!==revision||published>now||expires<=now||expires<=published||Date.parse(createdAt)>published||
+  if(!Number.isFinite(now)||row.status!=='published'||row.paid!==true||options.postmoderation!==true&&row.approvedRevision!==revision||published>now||expires<=now||expires<=published||Date.parse(createdAt)>published||
    checkListingFormContent(form,true).length||!Array.isArray(row.mediaIds)||JSON.stringify(row.mediaIds)!==JSON.stringify(form.photoIds)||
    !Number.isSafeInteger(row.viewCount)||row.viewCount<0||row.viewCount>2147483647||typeof row.isSubcategory!=='boolean'||row.isSubcategory!==(form.subcategoryName!==null)||form.kind!=='arenda'&&form.booking!==null)return null;
   let author='Автор объявления';if(row.authorName!==null){

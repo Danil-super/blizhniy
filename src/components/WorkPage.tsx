@@ -111,7 +111,6 @@ function WorkRequestCard({ request }: { request: WorkRequest }) {
         <span className="absolute -bottom-8 -right-6 h-24 w-24 rounded-full bg-white/35" />
       </span>
       <span className="block p-3">
-        <span className="block truncate text-[11px] text-slate-500 sm:text-xs">{request.author}</span>
         <span className="mt-1 block truncate text-base font-bold text-[#060b27]">{request.budget}</span>
         <span className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">
           {request.title}

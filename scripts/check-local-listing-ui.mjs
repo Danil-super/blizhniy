@@ -1,0 +1,78 @@
+// Explicit local manual-workflow regression. Keeps its clearly named synthetic listing for inspection.
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {join} from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {chromium} from 'playwright';
+import sharp from 'sharp';
+import {stateFile,stateDirectory,docker} from './local-primary-fixture.mjs';
+import {readLocalPrimaryState,validateLocalPrimaryContainer} from './local-primary-config.mjs';
+const state=readLocalPrimaryState(stateFile,process.cwd());
+validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
+const accounts=JSON.parse(await readFile(join(stateDirectory,'accounts.json'),'utf8'));
+const browser=await chromium.launch({headless:true});
+const userContext=await browser.newContext({ignoreHTTPSErrors:true}),adminContext=await browser.newContext({ignoreHTTPSErrors:true});
+const page=await userContext.newPage(),admin=await adminContext.newPage();
+const errors=[];page.on('pageerror',error=>errors.push(error.name));admin.on('pageerror',error=>errors.push(error.name));
+const origin=state.origin,title='Проверка полного пути — '+randomUUID().slice(0,8);
+async function login(page,role){const account=accounts.find(item=>item.role===role);await page.goto(origin+'/auth');await page.getByLabel('Email',{exact:true}).fill(account.email);await page.getByLabel('Пароль',{exact:true}).fill(account.password);await page.getByRole('button',{name:'Войти',exact:true}).click();await page.waitForURL(origin+'/');return account;}
+async function rpc(context,path,body,method='POST'){
+ const response=await context.request.fetch(origin+path,{method,headers:{Origin:origin,'Content-Type':'application/json','X-Blizhniy-Request':'1','Sec-Fetch-Site':'same-origin'},data:body});
+ assert.equal(response.status(),200,`local ${path} returned ${response.status()}`);return response.json();
+}
+try{
+ const user=await login(page,'user');
+ const draft=await rpc(userContext,'/api/account/listing-drafts/collection',{expectedOwnerId:user.id,creationKey:randomUUID()},'PUT');
+ const image=await sharp({create:{width:280,height:160,channels:3,background:{r:202,g:221,b:240}}}).webp().toBuffer();
+ const upload=await userContext.request.post(origin+'/api/account/media',{headers:{Origin:origin,'Content-Type':'image/webp','X-Blizhniy-Request':'1','X-Blizhniy-Owner':user.id,'X-Blizhniy-Intent':randomUUID(),'Sec-Fetch-Site':'same-origin'},data:image});
+ assert.equal(upload.status(),200);const photo=await upload.json();
+ await rpc(userContext,'/api/account/listing-form',{expectedOwnerId:user.id,listingId:draft.id,expectedRevision:draft.revision,form:{kind:'prodam',title,description:'Синтетическое объявление для сквозной проверки локальной формы, оплаты, публикации и блокировки.',price:'3500.00',categorySlug:'otdyh',subcategoryName:null,cityName:'Краснодар',district:'Центральный',address:null,latitude:null,longitude:null,showExactAddress:false,contactPhone:'+79990000000',messengerUrl:null,booking:null,photoIds:[photo.id]}},'PUT');
+ await page.goto(origin+'/razmestit/obyavlenie?draft='+draft.id);
+ await page.locator('input[name="placementRightsAccepted"]').check();
+ await page.locator('input[name="publicOfferAccepted"]').check();
+ await page.getByRole('button',{name:'Перейти к оплате',exact:true}).click();
+ await page.waitForURL('**/oplata/*');
+ const card=page.getByRole('article').filter({has:page.getByRole('heading',{name:title,exact:true})});
+ await page.getByRole('button',{name:'Открыть локальный симулятор',exact:true}).click();
+ await page.waitForURL('**/__local/payment?intent=*');
+ await page.getByRole('button',{name:'Подтвердить успешную оплату',exact:true}).click();
+ await page.getByText('Оплата подтверждена сервером, размещение выполнено.',{exact:false}).waitFor();
+ await page.getByRole('link',{name:'Мои объявления',exact:true}).click();
+ await card.getByText('Опубликовано',{exact:true}).waitFor();
+ await card.locator('summary').filter({hasText:'Действия'}).click();
+ await card.getByRole('link',{name:'Редактировать',exact:true}).click();
+ await page.getByRole('heading',{name:'Редактировать объявление',exact:true}).waitFor();
+ const savedTitle=await page.locator('input[name="title"]').inputValue();assert.equal(savedTitle,title);
+ await page.locator('input[name="placementRightsAccepted"]').check();
+ await page.getByRole('button',{name:'Сохранить изменения',exact:true}).click();
+ await page.waitForURL('**/cabinet/obyavleniya');await card.getByText('Опубликовано',{exact:true}).waitFor();
+ page.on('dialog',dialog=>dialog.accept());
+ await card.locator('summary').filter({hasText:'Действия'}).click();
+ await card.getByRole('button',{name:'Снять с публикации',exact:true}).click();
+ await card.getByText('Архив',{exact:true}).waitFor();
+ assert.equal((await page.goto(origin+'/obyavlenie/'+draft.id)).status(),404);
+ await page.goto(origin+'/cabinet/obyavleniya');await card.getByText('Архив',{exact:true}).waitFor();
+ await card.locator('summary').filter({hasText:'Действия'}).click();
+ await card.getByRole('button',{name:'Опубликовать снова',exact:true}).click();
+ await card.getByText('Опубликовано',{exact:true}).waitFor();
+ const publicResponse=await page.goto(origin+'/obyavlenie/'+draft.id);assert.equal(publicResponse.status(),200);
+ const moderator=await login(admin,'admin');void moderator;
+ await admin.goto(origin+'/admin/obyavleniya');await admin.getByRole('button').filter({hasText:title}).click();
+ const detail=admin.getByRole('region',{name:'Управление объявлением'});
+ await detail.getByRole('img',{name:'Фотография 1 из 1'}).waitFor();
+ await detail.getByRole('button',{name:'Заблокировать объявление',exact:true}).click();
+ await admin.getByRole('alert').filter({hasText:'Укажите причину'}).waitFor();
+ const reason='Локальная проверка: фотография нарушает правила.';
+ await detail.getByLabel('Причина блокировки',{exact:true}).fill(reason);
+ await detail.getByRole('button',{name:'Заблокировать объявление',exact:true}).click();
+ await detail.getByRole('heading',{name:'Причина блокировки',exact:true}).waitFor();
+ await admin.screenshot({path:'/tmp/blizhniy-local-admin-block.png',fullPage:true});
+ const hidden=await page.goto(origin+'/obyavlenie/'+draft.id);assert.equal(hidden.status(),404);
+ await page.goto(origin+'/cabinet/obyavleniya');await card.getByText('Заблокировано',{exact:true}).waitFor();await card.getByText(reason,{exact:false}).waitFor();
+ await page.screenshot({path:'/tmp/blizhniy-local-owner-block.png',fullPage:true});
+ const inbox=await rpc(userContext,'/api/account/notifications',{expectedOwnerId:user.id,action:'list',after:null});
+ assert.ok(inbox.items.some(item=>item.message.includes(reason)));
+ const mail=await userContext.request.get(origin+'/__local/mail');assert.equal(mail.status(),200);assert.ok((await mail.text()).includes(reason));
+ assert.deepEqual(errors,[]);
+ console.log(JSON.stringify({status:'passed',currentCookieAuth:true,fullForm:true,directPaymentNavigation:true,publishedEdit:true,withdrawAndRestore:true,moderationBeforePayment:false,localPayment:true,publication:true,adminBlock:true,privateAfterBlock:true,inboxAndCapturedMail:true,syntheticListingRetained:true,realCharges:false,productionTouched:false}));
+}finally{await browser.close();}

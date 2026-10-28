@@ -9,7 +9,7 @@ type Options={signal?:AbortSignal};
 const statuses=['draft','pending_payment','paid','published','archived','expired','rejected'];
 export class WorkPublicationClientError extends Error{
  readonly code:string;
- constructor(code:string){super(code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='PUBLICATION_CHANGED'?'Публикация изменена. Сверьте сохранённую версию.':
+ constructor(code:string){super(code==='PHONE_REQUIRED'?'Подтвердите номер телефона, чтобы разместить публикацию.':code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='PUBLICATION_CHANGED'?'Публикация изменена. Сверьте сохранённую версию.':
   code==='PUBLICATION_NOT_FOUND'?'Публикация недоступна.':code==='INVALID_INPUT'?'Проверьте поля, город, профессию и фотографии.':code==='RATE_LIMITED'?'Слишком много запросов. Повторите позже.':
   'Ответ не получен. Проверьте сохранённую версию перед повторной отправкой.');this.code=code;}
 }
@@ -45,7 +45,7 @@ export function createWorkPublicationClient(transport:typeof fetch){
    if(!response.body)throw Error();const reader=response.body.getReader(),decoder=new TextDecoder('utf-8',{fatal:true});let text='',bytes=0,complete=false;
    try{for(;;){signal.throwIfAborted();const part=await reader.read();signal.throwIfAborted();if(part.done){complete=true;text+=decoder.decode();break;}bytes+=part.value.byteLength;if(bytes>2097152)throw Error();text+=decoder.decode(part.value,{stream:true});}
    }finally{try{if(!complete)await reader.cancel();}finally{reader.releaseLock();}}
-   const value=JSON.parse(text);if(response.status!==200){const codes:Record<string,number>={UNAUTHENTICATED:401,PUBLICATION_NOT_FOUND:404,PUBLICATION_CHANGED:409,INVALID_INPUT:422,RATE_LIMITED:429},code=value?.error?.code;
+   const value=JSON.parse(text);if(response.status!==200){const codes:Record<string,number>={PHONE_REQUIRED:403,UNAUTHENTICATED:401,PUBLICATION_NOT_FOUND:404,PUBLICATION_CHANGED:409,INVALID_INPUT:422,RATE_LIMITED:429},code=value?.error?.code;
     throw new WorkPublicationClientError(Object.hasOwn(codes,code)&&codes[code]===response.status?code:'UNKNOWN');}return value;
   }catch(error){if(error instanceof WorkPublicationClientError)throw error;throw new WorkPublicationClientError('UNKNOWN');}
  }

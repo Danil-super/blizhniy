@@ -1,5 +1,6 @@
 import {parseListingFormDraft} from './listing-form-contract.ts';
 import {fairCategories} from './data.ts';
+import {validPlainText,validEmail,validWebUrl} from './cabinet-field-validation.ts';
 export type ServicePublicationKind='specialist'|'fair'|'marquee';
 type Consent={title:string;placementRightConfirmed:boolean};
 type Details=Consent&{description:string;cityName:string|null;district:string|null;address:string|null;latitude:number|null;longitude:number|null;
@@ -11,11 +12,11 @@ const invalid=():never=>{throw new ServicePublicationInputError();};
 const detailKeys=['description','cityName','district','address','latitude','longitude','showExactAddress','contactPhone','email','messengerUrl','photoIds','videoUrl'];
 function text(value:unknown,max:number,multiline=false):string|null{
  if(value===undefined||value===null||value==='')return null;
- if(typeof value!=='string'||value.length>max||!value.isWellFormed()||(multiline?/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/:/[\u0000-\u001f\u007f]/).test(value))return invalid();
+ if(typeof value!=='string'||value.length>max||!validPlainText(value,multiline))return invalid();
  return value.trim()||null;
 }
-function url(value:unknown){const result=text(value,500);if(!result)return null;const parsed=new URL(result);
- if(!['http:','https:'].includes(parsed.protocol)||parsed.username||parsed.password)return invalid();return parsed.toString();}
+function url(value:unknown){const result=text(value,500);if(!result)return null;
+ if(!validWebUrl(result))return invalid();return new URL(result).toString();}
 /** Three actual service domains, with explicit independent field allowlists. Never identity/status/payment input. */
 export function parseServicePublicationForm(kind:ServicePublicationKind,value:unknown):ServicePublicationForm{
  try{
@@ -29,10 +30,11 @@ export function parseServicePublicationForm(kind:ServicePublicationKind,value:un
   const core=parseListingFormDraft({kind:'prodam',title,description:row.description??'',price:kind==='specialist'?row.price??null:null,
    cityName:row.cityName,district:row.district,address:row.address,latitude:row.latitude,longitude:row.longitude,showExactAddress:row.showExactAddress,
    contactPhone:row.contactPhone,messengerUrl:row.messengerUrl,photoIds:row.photoIds});
-  if(core.photoIds.length>(kind==='specialist'?12:10))return invalid();
+  if(core.description.length>3000||core.photoIds.length>(kind==='specialist'?12:10))return invalid();
+  const email=text(row.email,254);if(!validEmail(email??''))return invalid();
   const details:Details={title,placementRightConfirmed,description:core.description,cityName:core.cityName,district:core.district,address:core.address,
    latitude:core.latitude,longitude:core.longitude,showExactAddress:core.showExactAddress,contactPhone:core.contactPhone,messengerUrl:core.messengerUrl,
-   email:text(row.email,254),photoIds:core.photoIds,videoUrl:url(row.videoUrl)};
+   email,photoIds:core.photoIds,videoUrl:url(row.videoUrl)};
   return kind==='specialist'?{kind,...details,professionName:text(row.professionName,160),price:core.price,skills:text(row.skills,500,true),experience:text(row.experience,500,true)}:
    {kind,...details,category:text(row.category,160),comment:text(row.comment,1000,true)};
  }catch{return invalid();}

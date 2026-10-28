@@ -32,6 +32,7 @@ export function createProductionServicePublicationHandler(config:{origin:string}
     case 'update':return reply(await store.update(token,owner,kind,id,revision,form),200);
    }
   }catch(error){
+   if(error&&typeof error==='object'&&'code'in error&&error.code==='P7601')error=new AuthRequestError(403,'PHONE_REQUIRED');
    if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
    if(error instanceof ServicePublicationAccessError)error=new AuthRequestError(404,'PUBLICATION_NOT_FOUND');
    if(error instanceof ServicePublicationConflictError)error=new AuthRequestError(409,'PUBLICATION_CHANGED');

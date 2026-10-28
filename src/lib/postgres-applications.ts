@@ -1,7 +1,11 @@
 import {withAppSessionTransaction,AppSessionAccessError} from './app-session-transaction';
 import {parseApplicationCreate,parseApplicationEdit,parseApplicationKind,ApplicationInputError,type ApplicationKind} from './application-contract.ts';
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,type ListingDraftCursor} from './listing-draft-contract.ts';
-import {parseServicePublicationForm} from './service-publication-contract.ts';
+import {parseServicePublicationForm,type ServicePublicationForm} from './service-publication-contract.ts';
+import {checkSpecialistApplicationForm,specialistAbout} from './specialist-application-profile.ts';
+import {validPersonName} from './cabinet-field-validation.ts';
+import {hashSessionToken} from './identity';
+import {readPostmoderationEnabled} from './listing-workflow-config';
 import {PostgresPublicWorkStore} from './postgres-public-work';import {PostgresPublicServiceStore} from './postgres-public-service';
 import {enqueueNotificationInTransaction} from './postgres-notification-inbox';import type {PostgresDatabase,PostgresQueries} from './postgres';
 export class ApplicationAccessError extends Error{constructor(){super('Application unavailable');this.name='ApplicationAccessError';}}
@@ -9,14 +13,15 @@ export class ApplicationConflictError extends Error{constructor(){super('Applica
 export class ApplicationEligibilityError extends Error{constructor(){super('Active specialist required');this.name='ApplicationEligibilityError';}}
 export class ApplicationBusyError extends Error{constructor(){super('Application participant is busy');this.name='ApplicationBusyError';}}
 type Status='pending_payment'|'paid'|'sent'|'viewed'|'selected'|'rejected';
-export type ApplicationProfileSnapshot={name:string;profession:string;price:string;skills:string;phone:string|null;email:string|null;messengerUrl:string|null};
+export type ApplicationProfileSnapshot={name:string;profession:string;price:string;skills:string;about?:string;phone:string|null;email:string|null;messengerUrl:string|null};
 type Target={id:string;kind:ApplicationKind;title:string;revision:string};
 export type ApplicationSnapshot={id:string;revision:string;view:'applicant'|'recipient';target:Omit<Target,'revision'>;specialistId:string|null;
- snapshot:ApplicationProfileSnapshot;message:string;status:Status;paid:boolean;sentAt:string|null;createdAt:string;updatedAt:string};
-export type ApplicationSummary=Pick<ApplicationSnapshot,'id'|'revision'|'view'|'status'|'paid'|'createdAt'>&{targetId:string;kind:ApplicationKind;targetTitle:string;specialistName:string};
+ snapshot:ApplicationProfileSnapshot;message:string;status:Status;paid:boolean;sentAt:string|null;createdAt:string;updatedAt:string;withdrawn?:boolean;targetClosed?:boolean};
+export type ApplicationSummary=Pick<ApplicationSnapshot,'id'|'revision'|'view'|'status'|'paid'|'createdAt'|'withdrawn'|'targetClosed'>&{targetId:string;kind:ApplicationKind;targetTitle:string;specialistName:string};
 export type ApplicationPage={items:ApplicationSummary[];nextCursor:ListingDraftCursor|null};
 type Row={id:string;applicant:string;targetOwner:string;targetId:string;kind:ApplicationKind;targetTitle:string;creationKey:string;targetRevision:string;specialistId:string|null;specialistRevision:string;
- revision:string;snapshot:ApplicationProfileSnapshot;message:string;status:Status;paid:boolean;sentAt:string|null;createdAt:string;updatedAt:string};
+ revision:string;snapshot:ApplicationProfileSnapshot;message:string;status:Status;paid:boolean;sentAt:string|null;createdAt:string;updatedAt:string;withdrawn?:boolean;targetClosed?:boolean};
+const closure="w.kind='workRequest' and exists(select 1 from app.applications chosen where chosen.work_publication_id=w.id and chosen.status='selected' and chosen.is_paid and chosen.sent_at is not null)";
 const delivered="a.is_paid and a.sent_at is not null and a.status in ('sent','viewed','selected','rejected')";
 const membership=`(a.applicant_id=$2 or (w.author_id=$2 and ${delivered}))`;
 const stamp=(column:string)=>`to_char(${column} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
@@ -25,11 +30,18 @@ const columns=`a.id,a.applicant_id as applicant,w.author_id as "targetOwner",w.i
  a.target_revision::text as "targetRevision",a.specialist_publication_id as "specialistId",a.specialist_revision::text as "specialistRevision",a.revision::text as revision,
  a.snapshot,a.message,a.status,a.is_paid as paid,${stamp('a.sent_at')} as "sentAt",${stamp('a.created_at')} as "createdAt",${stamp('a.updated_at')} as "updatedAt"`;
 function display(row:Row,actor:string):ApplicationSnapshot{return{id:row.id,revision:row.revision,view:row.applicant===actor?'applicant':'recipient',target:{id:row.targetId,kind:row.kind,title:row.targetTitle},
- specialistId:row.specialistId,snapshot:row.snapshot,message:row.message,status:row.status,paid:row.paid,sentAt:row.sentAt,createdAt:row.createdAt,updatedAt:row.updatedAt};}
+ specialistId:row.specialistId,snapshot:row.snapshot,message:row.message,status:row.status,paid:row.paid,sentAt:row.sentAt,createdAt:row.createdAt,updatedAt:row.updatedAt,...(row.withdrawn!==undefined?{withdrawn:row.withdrawn}:{}),...(row.targetClosed!==undefined?{targetClosed:row.targetClosed}:{})};}
 
 /** No financial authority. Peer locks are nonblocking so existing actor-user locks cannot form a cross-user cycle. */
 export class PostgresApplicationStore{
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>){}
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly policy:{vacancyPostmoderation?:boolean;specialistApplicationReady?:boolean;localActions?:boolean}={}){
+  if(policy.localActions&&!readPostmoderationEnabled())throw new ApplicationAccessError();
+ }
+ private get rowColumns(){return columns+(this.policy.localActions?`, exists(select 1 from app.application_withdrawals x where x.application_id=a.id) as withdrawn, (${closure}) as "targetClosed"`:'');}
+ private async editable(tx:PostgresQueries,row:Row){
+  if(!this.policy.localActions)return;
+  if(row.withdrawn||row.paid||row.sentAt||row.status!=='pending_payment'||(await tx.query("select id from app.payment_orders where target_type='application' and target_id=$1 and status in ('created','pending','succeeded')",[row.id])).rowCount)throw new ApplicationConflictError();
+ }
  private owner<T>(token:string,owner:string,work:(tx:PostgresQueries,actor:string)=>Promise<T>){
   const expected=parseListingDraftId(owner);return withAppSessionTransaction(this.db,token,(tx,user)=>{if(user.id!==expected)throw new AppSessionAccessError();return work(tx,user.id);});
  }
@@ -40,7 +52,11 @@ export class PostgresApplicationStore{
  private async window(tx:PostgresQueries,target:string,specialist:string){
   const result=await tx.query(`select w.id from app.work_publications w join app.service_publications s on s.id=$2
    where w.id=$1 and w.status='published' and w.is_paid and w.deleted_at is null and w.published_at<=clock_timestamp() and w.expires_at>clock_timestamp()
-   and s.status='published' and s.is_paid and s.deleted_at is null and s.published_at<=clock_timestamp() and s.expires_at>clock_timestamp()`,[target,specialist]);
+   ${this.policy.localActions?"and (w.kind<>'workRequest' or not exists(select 1 from app.applications chosen where chosen.work_publication_id=w.id and chosen.status='selected' and chosen.is_paid and chosen.sent_at is not null))":''}
+   and ${this.policy.specialistApplicationReady?`s.kind='specialist' and s.deleted_at is null
+    and exists(select 1 from app.cities c where c.id=s.city_id and c.name=s.form->>'cityName')
+    and exists(select 1 from app.specialist_categories p where p.id=s.profession_id and p.active and p.name=s.form->>'professionName')`:
+    "s.status='published' and s.is_paid and s.deleted_at is null and s.published_at<=clock_timestamp() and s.expires_at>clock_timestamp()"}`,[target,specialist]);
   if(result.rowCount!==1)throw new ApplicationAccessError();
  }
  private async current(tx:PostgresQueries,actor:string,kind:ApplicationKind,id:string){
@@ -50,14 +66,29 @@ export class PostgresApplicationStore{
   if(!target||target.author!==initial.author)throw new ApplicationAccessError();
   const specialist=(await tx.query<{id:string;revision:string;form:unknown}>("select id,revision::text as revision,form from app.service_publications where author_id=$1 and kind='specialist' and deleted_at is null for update",[actor])).rows[0];
   // Re-read eligibility in separate statements after all potentially waiting resource locks.
-  const work=await new PostgresPublicWorkStore(tx).read(kind,id);if(!work)throw new ApplicationAccessError();
-  if(!specialist||!await new PostgresPublicServiceStore(tx).read('specialist',specialist.id))throw new ApplicationEligibilityError();
-  const form=parseServicePublicationForm('specialist',specialist.form);if(form.kind!=='specialist')throw new ApplicationEligibilityError();
-  const snapshot:ApplicationProfileSnapshot={name:form.title,profession:form.professionName!,price:form.price!,skills:form.skills!,phone:form.contactPhone,email:form.email,messengerUrl:form.messengerUrl};
+  const work=await new PostgresPublicWorkStore(tx,this.policy).read(kind,id);if(!work)throw new ApplicationAccessError();
+  if(!specialist)throw new ApplicationEligibilityError();
+  let form:ServicePublicationForm;try{form=parseServicePublicationForm('specialist',specialist.form);}catch{throw new ApplicationEligibilityError();}
+  if(form.kind!=='specialist')throw new ApplicationEligibilityError();
+  let about:string|undefined;
+  if(this.policy.specialistApplicationReady){
+   const profile=(await tx.query<{name:string}>("select profile->>'name' as name from app.cabinet_profiles where user_id=$1",[actor])).rows[0];
+   if(!profile||typeof profile.name!=='string'||!validPersonName(profile.name))throw new ApplicationEligibilityError();
+   form={...form,title:profile.name};
+   if(checkSpecialistApplicationForm(form).length)throw new ApplicationEligibilityError();
+   const references=await tx.query(`select s.id from app.service_publications s
+    join app.cities c on c.id=s.city_id and c.name=$3
+    join app.specialist_categories p on p.id=s.profession_id and p.active and p.name=$4
+    where s.id=$1 and s.author_id=$2 and s.kind='specialist' and s.deleted_at is null`,[specialist.id,actor,form.cityName,form.professionName]);
+   if(references.rowCount!==1)throw new ApplicationEligibilityError();
+   about=specialistAbout(form);
+  }else if(!await new PostgresPublicServiceStore(tx).read('specialist',specialist.id))throw new ApplicationEligibilityError();
+  const snapshot:ApplicationProfileSnapshot={name:form.title,profession:form.professionName!,price:form.price!,skills:about?.slice(0,500).replace(/[\uD800-\uDBFF]$/,'')??form.skills!,
+   ...(about!==undefined?{about}:{}),phone:form.contactPhone,email:form.email,messengerUrl:form.messengerUrl};
   return{target:{id,kind,title:work.title,revision:target.revision},specialist:{id:specialist.id,revision:specialist.revision,snapshot}};
  }
  private async row(tx:PostgresQueries,actor:string,id:string,lock=true){
-  const row=(await tx.query<Row>(`select ${columns} ${source} where a.id=$1 and ${membership} ${lock?'for update of a':''}`,[id,actor])).rows[0];
+  const row=(await tx.query<Row>(`select ${this.rowColumns} ${source} where a.id=$1 and ${membership} ${lock?'for update of a':''}`,[id,actor])).rows[0];
   if(!row)throw new ApplicationAccessError();return row;
  }
  private async locate(tx:PostgresQueries,actor:string,id:string){
@@ -91,11 +122,32 @@ export class PostgresApplicationStore{
   const initial=await this.row(tx,actor,input.applicationId,false);if(initial.applicant!==actor)throw new ApplicationAccessError();
   if(!['pending_payment','paid'].includes(initial.status))throw new ApplicationConflictError();
   const current=await this.current(tx,actor,initial.kind,initial.targetId),row=await this.row(tx,actor,input.applicationId);
+  await this.editable(tx,row);
   if(row.revision!==input.expectedRevision||!['pending_payment','paid'].includes(row.status)||current.target.revision!==input.expectedTargetRevision||current.specialist.id!==input.specialistId||current.specialist.revision!==input.expectedSpecialistRevision)throw new ApplicationConflictError();
   const result=await tx.query(`update app.applications set message=$2,snapshot=$3::jsonb,specialist_publication_id=$4,target_revision=$5::bigint,specialist_revision=$6::bigint,revision=revision+1,updated_at=clock_timestamp()
    where id=$1 and revision=$7::bigint and revision<9223372036854775807`,[row.id,input.message,JSON.stringify(current.specialist.snapshot),input.specialistId,input.expectedTargetRevision,input.expectedSpecialistRevision,input.expectedRevision]);
   if(result.rowCount!==1)throw new ApplicationConflictError();const saved=display(await this.row(tx,actor,row.id),actor);await this.window(tx,row.targetId,input.specialistId);return saved;
  });}
+ /** Same lock order as edits: participant -> work -> specialist -> application. No financial writes. */
+ async inspectCheckoutInTransaction(tx:PostgresQueries,actor:string,id:string,revision:string){
+  if(!this.policy.localActions)throw new ApplicationAccessError();
+  const initial=await this.row(tx,actor,id,false);if(initial.applicant!==actor)throw new ApplicationAccessError();
+  const current=await this.current(tx,actor,initial.kind,initial.targetId),row=await this.row(tx,actor,id);
+  if(row.withdrawn||row.paid||row.sentAt||row.status!=='pending_payment'||row.revision!==revision||row.specialistId!==current.specialist.id||row.specialistRevision!==current.specialist.revision||row.targetRevision!==current.target.revision)throw new ApplicationConflictError();
+  await this.window(tx,row.targetId,current.specialist.id);return{row,current};
+ }
+ withdraw(token:string,owner:string,value:unknown,expected:unknown){
+  const id=parseListingDraftId(value),revision=parseListingDraftRevision(expected);
+  return this.owner(token,owner,async(tx,actor)=>{
+   if(!this.policy.localActions)throw new ApplicationAccessError();
+   const row=await this.locate(tx,actor,id);if(row.applicant!==actor)throw new ApplicationAccessError();
+   if(row.withdrawn){if(row.revision!==revision)throw new ApplicationConflictError();return display(row,actor);}
+   if(row.revision!==revision)throw new ApplicationConflictError();await this.editable(tx,row);
+   await tx.query("select set_config('blizhniy.application_session',$1,true)",[hashSessionToken(token)]);
+   await tx.query('insert into app.application_withdrawals(application_id,owner_id,withdrawn_revision) values($1,$2,$3::bigint)',[id,actor,revision]);
+   return display(await this.row(tx,actor,id),actor);
+  });
+ }
  decide(token:string,owner:string,value:unknown,expected:unknown,state:unknown){
   const id=parseListingDraftId(value),revision=parseListingDraftRevision(expected);if(state!=='viewed'&&state!=='selected'&&state!=='rejected')throw new ApplicationInputError();
   return this.owner(token,owner,async(tx,actor)=>{
@@ -103,10 +155,29 @@ export class PostgresApplicationStore{
    await this.peer(tx,initial.applicant);const row=await this.locate(tx,actor,id);
    if(row.status===state&&BigInt(row.revision)===BigInt(revision)+BigInt(1))return display(row,actor);
    if(row.revision!==revision||!['sent','viewed'].includes(row.status))throw new ApplicationConflictError();
-   if(row.status===state)return display(row,actor);
+    if(row.status===state)return display(row,actor);
+    // All creation/checkout/delivery and decisions serialize on the work row.
+    // A selected application is the durable closure marker; editing or payment
+    // replay cannot reopen the order or reset its purchased publication period.
+    const closesOrder=this.policy.localActions&&row.kind==='workRequest';
+    if(closesOrder&&(await tx.query("select id from app.applications where work_publication_id=$1 and status='selected' and is_paid and sent_at is not null",[row.targetId])).rowCount)throw new ApplicationConflictError();
+    let others:{id:string;applicant:string;revision:string;status:Status}[]=[];
+    if(closesOrder&&state==='selected'){
+     others=(await tx.query<{id:string;applicant:string;revision:string;status:Status}>(`select a.id,a.applicant_id as applicant,a.revision::text as revision,a.status from app.applications a
+      where a.work_publication_id=$1 and a.id<>$2 and not exists(select 1 from app.application_withdrawals x where x.application_id=a.id) order by a.id for update of a`,[row.targetId,id])).rows;
+     // Never wait for an applicant holding their user row while waiting for this work.
+     for(const applicant of [...new Set(others.map(item=>item.applicant))].sort())await this.peer(tx,applicant);
+    }
    const changed=await tx.query('update app.applications set status=$2,revision=revision+1,updated_at=clock_timestamp() where id=$1 and revision=$3::bigint and revision<9223372036854775807',[id,state,revision]);
    if(changed.rowCount!==1)throw new ApplicationConflictError();
-   if(state!=='viewed')await enqueueNotificationInTransaction(tx,row.applicant,{eventKey:`application_decision:${id}:${state}`,category:'message',tone:state==='selected'?'success':'warning',title:state==='selected'?'Ваш отклик выбран':'По отклику получен отказ',body:`По отклику на ${row.kind==='vacancy'?'вакансию':'заказ'} получено решение. Подробности доступны в кабинете.`,actionHref:'/cabinet/otkliki',bookingRequestId:null});
+    if(state!=='viewed')await enqueueNotificationInTransaction(tx,row.applicant,{eventKey:`application_decision:${id}:${state}`,category:'message',tone:state==='selected'?'success':'warning',title:state==='selected'?'Ваш отклик выбран':'По отклику получен отказ',body:`По отклику на ${row.kind==='vacancy'?'вакансию':'заказ'} получено решение. Подробности доступны в кабинете.`,actionHref:'/cabinet/otkliki',bookingRequestId:null});
+    for(const other of others){
+     if(other.status==='sent'||other.status==='viewed'){
+      const result=await tx.query("update app.applications set status='rejected',revision=revision+1,updated_at=clock_timestamp() where id=$1 and revision=$2::bigint and revision<9223372036854775807",[other.id,other.revision]);
+      if(result.rowCount!==1)throw new ApplicationConflictError();
+     }
+     await enqueueNotificationInTransaction(tx,other.applicant,{eventKey:`application_other_selected:${other.id}`,category:'message',tone:'info',title:'Заказчик выбрал другого исполнителя',body:'По заказу уже выбран исполнитель. Заказ закрыт для новых откликов. История вашего отклика сохранена в кабинете.',actionHref:'/cabinet/otkliki',bookingRequestId:null});
+    }
    return display(await this.row(tx,actor,id),actor);
   });
  }
@@ -114,6 +185,7 @@ export class PostgresApplicationStore{
   if(mode!=='applicant'&&mode!=='recipient')throw new ApplicationInputError();const cursor=parseListingDraftCursor(after);
   return this.owner(token,owner,async(tx,actor)=>{
    const rows=(await tx.query<Omit<ApplicationSummary,'view'>>(`select a.id,a.revision::text as revision,w.id as "targetId",w.kind,w.title as "targetTitle",a.snapshot->>'name' as "specialistName",a.status,a.is_paid as paid,${stamp('a.created_at')} as "createdAt"
+    ${this.policy.localActions?`, exists(select 1 from app.application_withdrawals x where x.application_id=a.id) as withdrawn, (${closure}) as "targetClosed"`:''}
     ${source} where ${mode==='applicant'?'a.applicant_id=$1':`w.author_id=$1 and a.applicant_id<>$1 and ${delivered}`}
     ${cursor?'and (a.created_at,a.id)<($2::timestamptz,$3::uuid)':''} order by a.created_at desc,a.id desc limit 21`,cursor?[actor,cursor.updatedAt,cursor.id]:[actor])).rows;
    const items=rows.slice(0,20).map<ApplicationSummary>(row=>({...row,view:mode})),last=items.at(-1);return{items,nextCursor:rows.length>20&&last?{id:last.id,updatedAt:last.createdAt}:null};

@@ -17,7 +17,7 @@ const sections = [
   ['/admin/fair-applications', 'Ярмарка'],
 ];
 
-function renderAdminPage(section, role = 'admin', mode = 'postgres') {
+function renderAdminPage(section, role = 'admin', mode = 'postgres', postmoderation = false) {
   const modules = new Map();
   const marker = name => function OwnedWorkspace() {return React.createElement('section', {'data-workspace': name});};
   const dependencies = {
@@ -29,6 +29,9 @@ function renderAdminPage(section, role = 'admin', mode = 'postgres') {
     '@/components/admin/AdminPublicationsTableClient': {AdminPublicationsTableClient: marker('legacy-publications')},
     '@/components/admin/AdminAdMarqueeClient': {AdminAdMarqueeClient: marker('legacy-marquee')},
     './ListingModerationWorkspace': {ListingModerationWorkspace: marker('primary-listings')},
+    './ListingManagementWorkspace': {ListingManagementWorkspace: marker('primary-listing-management')},
+    './ListingManagementDetailWorkspace': {ListingManagementDetailWorkspace: marker('primary-listing-detail')},
+    '@/lib/listing-workflow-config': {readPostmoderationEnabled: () => postmoderation},
     './WorkModerationWorkspace': {WorkModerationWorkspace: marker('primary-work')},
     './ServiceModerationWorkspace': {ServiceModerationWorkspace: marker('primary-services')},
     './ServicePublicationForm': {serviceFormLabels: {specialist: 'Анкеты специалистов', fair: 'Ярмарка', marquee: 'Бегущая строка'}},
@@ -81,4 +84,17 @@ test('primary listing page never exposes the administration menu to a non-admin 
   const html = renderAdminPage('obyavleniya', 'user');
   assert.doesNotMatch(html, /aria-label="Разделы админки"/);
   assert.doesNotMatch(html, /data-workspace="primary-listings"/);
+});
+
+test('opt-in postmoderation retains all admin sections and uses management rather than approval', () => {
+  const html = renderAdminPage('obyavleniya', 'admin', 'postgres', true);
+  const nav = html.match(/<nav\b[^>]*aria-label="Разделы админки"[^>]*>(.*?)<\/nav>/s)?.[1];
+  assert.ok(nav);
+  for (const [href, label] of sections) assert.match(nav, new RegExp(`href="${href}"[^>]*>.*?${label}<`, 's'));
+  assert.match(html, /data-workspace="primary-listing-management"/);
+  assert.doesNotMatch(html, /data-workspace="primary-listings"/);
+  assert.equal((html.match(/<main\b/g) ?? []).length, 1);
+  const denied = renderAdminPage('obyavleniya', 'user', 'postgres', true);
+  assert.doesNotMatch(denied, /aria-label="Разделы админки"/);
+  assert.doesNotMatch(denied, /data-workspace="primary-listing-management"/);
 });

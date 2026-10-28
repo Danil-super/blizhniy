@@ -19,8 +19,8 @@ export function SavedListingPhotos({owner,photos:initial}:{owner:string;photos:L
   {photos.map(item=><input key={item.id} type="hidden" name="savedPhotoIds" value={item.id}/>)}
   <p className="font-semibold">Сохранённые фотографии: {photos.length}</p>
   <p className="mt-1 text-sm text-slate-600">Они останутся в объявлении. Новые фотографии добавятся после них.</p>
-  {photo&&<><div className="mt-3 flex min-h-40 items-center justify-center rounded-lg bg-white">
-   {url?<Image unoptimized src={url} alt={`Сохранённая фотография ${index+1} из ${photos.length}`} width={photo.width} height={photo.height} className="h-56 w-full object-contain"/>:
+  {photo&&<><div data-listing-photo-frame className="mt-3 flex aspect-[4/3] max-w-md items-center justify-center overflow-hidden rounded-lg bg-white">
+   {url?<Image unoptimized src={url} alt={`Сохранённая фотография ${index+1} из ${photos.length}`} width={photo.width} height={photo.height} className="h-full w-full object-cover object-center"/>:
     <p role={error?'alert':'status'}>{error?'Не удалось загрузить фотографию. Она сохранена в объявлении.':'Загружаем фотографию…'}</p>}
   </div><div className="mt-3 flex flex-wrap gap-2">
    <button type="button" className="min-h-11 rounded-lg border bg-white px-3" disabled={index===0} onClick={()=>setIndex(value=>value-1)}>Предыдущая</button>
