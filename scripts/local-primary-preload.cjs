@@ -3,10 +3,15 @@
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
 const file=process.env.BLIZHNIY_LOCAL_PRIMARY_STATE;
 if(process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!file||!path.isAbsolute(file))throw Error('Local primary bridge is not enabled');
-const parent=fs.lstatSync(path.dirname(file)),info=fs.lstatSync(file);
-if(!parent.isDirectory()||parent.uid!==process.getuid()||(parent.mode&511)!==448||fs.realpathSync(path.dirname(file))!==path.dirname(file)||
- !info.isFile()||info.uid!==process.getuid()||(info.mode&511)!==384||info.nlink!==1||info.size>8192||fs.realpathSync(file)!==file)throw Error('Unsafe local primary bridge state');
-const state=JSON.parse(fs.readFileSync(file,'utf8'));
+const parent=fs.lstatSync(path.dirname(file));
+if(!parent.isDirectory()||parent.uid!==process.getuid()||(parent.mode&511)!==448||fs.realpathSync(path.dirname(file))!==path.dirname(file))throw Error('Unsafe local primary directory');
+const descriptor=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+let state;
+try{
+ const info=fs.fstatSync(descriptor);
+ if(!info.isFile()||info.uid!==process.getuid()||(info.mode&511)!==384||info.nlink!==1||info.size>8192)throw Error('Unsafe local primary state');
+ state=JSON.parse(fs.readFileSync(descriptor,'utf8'));
+}finally{fs.closeSync(descriptor);}
 if(state.version!==1||state.project!==fs.realpathSync(path.join(__dirname,'..'))||state.origin!==process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN||
  !/^https:\/\/127\.0\.0\.1:\d{4,5}$/.test(state.origin)||!Number.isInteger(state.dbPort)||state.dbPort<1024||state.dbPort>65535||
  !/^[a-f0-9]{64}$/.test(state.containerId)||!/^blizhniy-primary-local-[a-f0-9]{12}$/.test(state.containerName)||state.database!=='blizhniy_prod'||

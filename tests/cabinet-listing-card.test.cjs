@@ -58,7 +58,7 @@ test('only editable drafts link to the canonical editor; published cards link to
 test('blocked card shows escaped reason, not a payment action', () => {
   const markup = html('blocked', {blockReason: '<script>Нарушение правил</script>'});
   assert.ok(markup.includes('&lt;script&gt;Нарушение правил&lt;/script&gt;'));
-  assert.doesNotMatch(markup, /<script>|Оплатить размещение/);
+  assert.doesNotMatch(markup, /<script>|Оплатить размещение/i);
 });
 test('published status keeps a high-contrast green foreground on the light badge', () => {
   assert.match(html('published'), /text-emerald-800/);

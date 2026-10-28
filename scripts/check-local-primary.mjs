@@ -11,6 +11,7 @@ import {createRequire} from 'node:module';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {prepareLocalPrimaryFixture,stateDirectory,stateFile} from './local-primary-fixture.mjs';
+import {localPrimaryOrigin} from './local-primary-config.mjs';
 import {createLocalPrimaryProxy} from './local-primary-proxy.mjs';
 const require=createRequire(import.meta.url),{loadLocalPrimaryModule:load}=require('./local-primary-modules.cjs');
 process.env.NODE_ENV='test';
@@ -38,7 +39,7 @@ const proxy=await createLocalPrimaryProxy(state,{paymentHandler:async(request,{r
 proxy.server.listen(3045,'127.0.0.1');await once(proxy.server,'listening');
 const send=(path,body,extra={})=>new Promise((resolve,reject)=>{
  const bytes=body instanceof Buffer?body:Buffer.from(JSON.stringify(body));
- const request=httpsRequest(state.origin+path,{method:'POST',ca,servername:'127.0.0.1',headers:{origin:state.origin,'content-type':'application/json','content-length':String(bytes.length),'x-blizhniy-request':'1','user-agent':'Owned local smoke',...(cookie?{cookie}:{}),...extra}},response=>{
+ const request=httpsRequest(localPrimaryOrigin+path,{method:'POST',ca,servername:'127.0.0.1',headers:{origin:state.origin,'content-type':'application/json','content-length':String(bytes.length),'x-blizhniy-request':'1','user-agent':'Owned local smoke',...(cookie?{cookie}:{}),...extra}},response=>{
   const chunks=[];response.on('data',chunk=>chunks.push(chunk));response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,bytes:Buffer.concat(chunks)}));
  });request.on('error',reject);request.end(bytes);
 });

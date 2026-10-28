@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {createRequire} from 'node:module';
 import pg from 'pg';
 import {stateDirectory,localPrimaryDatabaseConfig,docker} from './local-primary-fixture.mjs';
-import {validateLocalPrimaryContainer} from './local-primary-config.mjs';
+import {validateLocalPrimaryContainer,localPrimaryUpstreamPort} from './local-primary-config.mjs';
 const require=createRequire(import.meta.url);
 const {loadLocalPrimaryModule:load}=require('./local-primary-modules.cjs');
 const canonical='https://xn----9sbphbgks4a4a.xn--p1ai';
@@ -15,6 +15,7 @@ const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const html=(body,status=200)=>new Response(`<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>БЛИЖНИЙ — локальный стенд</title><style>body{font:16px system-ui;max-width:900px;margin:32px auto;padding:0 20px;color:#16304a}a{color:#0668bb}article{border:1px solid #dde5ee;border-radius:12px;padding:18px;margin:14px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere}code{background:#eff5fa;padding:4px}nav{display:flex;gap:20px;flex-wrap:wrap}</style>${body}</html>`,{status,headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff','content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}});
 async function readBody(req){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>12*1024*1024)throw Error('Local request too large');chunks.push(chunk);}return Buffer.concat(chunks);}
 export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
+ if(state.origin!=='https://127.0.0.1:3045'||state.upstreamPort!==localPrimaryUpstreamPort)throw Error('Invalid local ingress target');
  if(process.env.NODE_ENV!=='test')throw Error('Local proxy requires isolated test process');
  validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
  const {PostgresDatabase}=load('postgres');
@@ -99,7 +100,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
     res.writeHead(response.status,Object.fromEntries(response.headers));
     res.end(Buffer.from(await response.arrayBuffer()));return;
    }
-   const outgoing=httpRequest({hostname:'127.0.0.1',port:state.upstreamPort,path:req.url,method:req.method,headers:{...Object.fromEntries(headers),'accept-encoding':'identity'}},incoming=>{
+   const outgoing=httpRequest({hostname:'127.0.0.1',port:localPrimaryUpstreamPort,path:req.url,method:req.method,headers:{...Object.fromEntries(headers),'accept-encoding':'identity'}},incoming=>{
     const replyHeaders={...incoming.headers};
     if(replyHeaders.location?.startsWith(canonical))replyHeaders.location=replyHeaders.location.replace(canonical,state.origin);
     replyHeaders['set-cookie']=[...(Array.isArray(replyHeaders['set-cookie'])?replyHeaders['set-cookie']:[]),proof.cookie];

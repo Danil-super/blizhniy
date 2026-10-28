@@ -1,10 +1,11 @@
-import {lstatSync,readFileSync,realpathSync} from 'node:fs';
+import {lstatSync,readFileSync,realpathSync,openSync,closeSync,fstatSync,constants} from 'node:fs';
 import {dirname,isAbsolute} from 'node:path';
+export const localPrimaryOrigin='https://127.0.0.1:3045',localPrimaryUpstreamPort=3046;
 export const localPrimaryImage='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
 export function validateLocalPrimaryState(state,project){
  const keys=['version','project','origin','upstreamPort','containerId','containerName','dbPort','database','runtimePassword','ownerPassword','rateSecret'];
  if(!state||Object.keys(state).sort().join()!==keys.sort().join()||state.version!==1||state.project!==project||!isAbsolute(project)||
-  !/^https:\/\/127\.0\.0\.1:\d{4,5}$/.test(state.origin)||new URL(state.origin).port===String(state.upstreamPort)||
+  state.origin!==localPrimaryOrigin||state.upstreamPort!==localPrimaryUpstreamPort||
   ![state.upstreamPort,state.dbPort,Number(new URL(state.origin).port)].every(n=>Number.isInteger(n)&&n>=1024&&n<=65535)||
   !/^[a-f0-9]{64}$/.test(state.containerId)||!/^blizhniy-primary-local-[a-f0-9]{12}$/.test(state.containerName)||
   state.database!=='blizhniy_prod'||![state.runtimePassword,state.ownerPassword,state.rateSecret].every(s=>/^[a-f0-9]{64}$/.test(s))||
@@ -13,12 +14,14 @@ export function validateLocalPrimaryState(state,project){
 }
 export function readLocalPrimaryState(file,project){
  if(!isAbsolute(file))throw Error('Local primary state must be absolute');
- for(const [path,mode,directory] of [[dirname(file),0o700,true],[file,0o600,false]]){
-  const info=lstatSync(path);
-  if(info.uid!==process.getuid()||(info.mode&0o777)!==mode||realpathSync(path)!==path||
-   (directory?!info.isDirectory():!info.isFile()||info.size>8192||info.nlink!==1))throw Error('Unsafe local primary state');
- }
- return validateLocalPrimaryState(JSON.parse(readFileSync(file,'utf8')),project);
+ const parent=lstatSync(dirname(file));
+ if(!parent.isDirectory()||parent.uid!==process.getuid()||(parent.mode&0o777)!==0o700||realpathSync(dirname(file))!==dirname(file))throw Error('Unsafe local primary directory');
+ const descriptor=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+ try{
+  const info=fstatSync(descriptor);
+  if(info.uid!==process.getuid()||(info.mode&0o777)!==0o600||!info.isFile()||info.size>8192||info.nlink!==1)throw Error('Unsafe local primary state');
+  return validateLocalPrimaryState(JSON.parse(readFileSync(descriptor,'utf8')),project);
+ }finally{closeSync(descriptor);}
 }
 export function validateLocalPrimaryContainer(metadata,state){
  const ports=metadata?.NetworkSettings?.Ports;
