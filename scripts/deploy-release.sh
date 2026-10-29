@@ -141,15 +141,20 @@ else
   fi
 fi
 
-copy_env_files "$PREVIOUS_RELEASE"
-
 if [[ "$PREBUILT_RELEASE" == true ]]; then
   test -f "${RELEASE_DIR}/server.js"
   test -f "${RELEASE_DIR}/.next/BUILD_ID"
   test -f "${RELEASE_DIR}/ecosystem.config.cjs"
   test -f "${RELEASE_DIR}/scripts/check-auth-captcha-env.cjs"
   export BLIZHNIY_NODE_PATH="$(command -v node)"
-else
+  log "verifying prebuilt commit, inventory, ABI and code permissions"
+  node "$RELEASE_DIR/scripts/verify-prebuilt-release.mjs" "$RELEASE_DIR" "$COMMIT_SHA"
+fi
+
+# Verify all code before adding private environment files or replacing a process.
+copy_env_files "$PREVIOUS_RELEASE"
+
+if [[ "$PREBUILT_RELEASE" != true ]]; then
   log "installing dependencies"
   npm --prefix "$RELEASE_DIR" ci --prefer-online --no-audit --no-fund
 fi
@@ -169,6 +174,9 @@ node "$RELEASE_DIR/scripts/web-runtime.cjs" --prepare "$RELEASE_DIR"
 
 log "starting ${APP_NAME} from ${RELEASE_DIR}"
 mkdir -p "${RELEASE_DIR}/.pm2"
+if [[ -n "${DEPLOY_RECORD:-}" ]]; then
+  (umask 077; set -o noclobber; printf '%s\n' "$RELEASE_DIR" > "$DEPLOY_RECORD")
+fi
 SERVICE_REPLACED=true
 pm2 delete "$APP_NAME" || true
 pm2 start "${RELEASE_DIR}/ecosystem.config.cjs" --update-env </dev/null

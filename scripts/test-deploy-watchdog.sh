@@ -30,6 +30,7 @@ prepare() {
   cat > "$CASE_DIR/switch.sh" <<SH
 #!/usr/bin/env bash
 set -eu
+printf '%s\n' '$CURRENT' > '$CASE_DIR/release.record'
 ln -sfn '$CURRENT' '$CASE_DIR/app.next'
 mv -Tf '$CASE_DIR/app.next' '$CASE_DIR/app'
 SH
@@ -37,6 +38,7 @@ SH
   export REMOTE_SCRIPT="$CASE_DIR/switch.sh"
   export REMOTE_STATUS="$CASE_DIR/status" REMOTE_RESULT="$CASE_DIR/result"
   export REMOTE_CONFIRMED="$CASE_DIR/confirmed" REMOTE_ABORT="$CASE_DIR/abort"
+  export DEPLOY_RECORD="$CASE_DIR/release.record"
   export RELEASE_LOCK_FILE="$CASE_DIR/release.lock" COMMIT_SHA="$SHA"
   export ACK_TIMEOUT_SECONDS=2 POLL_INTERVAL_SECONDS=0.05 LOCK_WAIT_SECONDS=0
 }
@@ -79,6 +81,14 @@ fi
 [[ $(cat "$REMOTE_RESULT") == rolled_back ]]
 [[ $(readlink -f "$APP_DIR") == "$PREVIOUS" ]]
 echo 'failure after switch reconciliation: passed'
+
+prepare same_commit_failure
+ln -sfn "$CURRENT" "$APP_DIR"
+printf '#!/bin/bash\nexit 17\n' > "$REMOTE_SCRIPT"
+if bash "$SCRIPT_DIR/deploy-watchdog.sh"; then exit 1; fi
+[[ $(cat "$REMOTE_RESULT") == deploy_failed ]]
+[[ $(readlink -f "$APP_DIR") == "$CURRENT" ]]
+echo 'failed retry cannot roll back an existing release with the same commit: passed'
 
 prepare lost_ssh
 ACK_TIMEOUT_SECONDS=1 bash "$SCRIPT_DIR/deploy-watchdog.sh" & worker=$!

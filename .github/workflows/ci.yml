@@ -2,6 +2,15 @@ name: CI - Lint, Build, Audit
 
 on:
   workflow_call:
+    inputs:
+      publish_release:
+        type: boolean
+        default: false
+    outputs:
+      archive_sha256:
+        value: ${{ jobs.validate.outputs.archive_sha256 }}
+      artifact_name:
+        value: ${{ jobs.validate.outputs.artifact_name }}
   pull_request:
     branches:
       - main
@@ -17,8 +26,11 @@ concurrency:
 jobs:
   validate:
     name: Validate app
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      archive_sha256: ${{ steps.package.outputs.archive_sha256 }}
+      artifact_name: ${{ steps.package.outputs.artifact_name }}
 
     steps:
       - name: Checkout
@@ -29,7 +41,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: 22
+          node-version: 22.23.3
           cache: npm
 
       - name: Guard quality floor
@@ -94,8 +106,39 @@ jobs:
           bash scripts/test-deploy-watchdog.sh
           bash scripts/test-check-zap-result.sh
 
-      - name: Build
+      - name: Build the production artifact on GitHub
+        env:
+          BLIZHNIY_BUILD_COMMIT: ${{ github.sha }}
+          __NEXT_PROCESSED_ENV: 'true'
+          NEXT_TELEMETRY_DISABLED: '1'
         run: npm run build
+
+      - name: Package and check the production artifact
+        id: package
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/release.tar.gz"
+          node --input-type=module - "$archive" <<'NODE'
+          import {appendFileSync} from 'node:fs';
+          import {packagePrebuiltRelease} from './scripts/package-prebuilt-release.mjs';
+          const result=packagePrebuiltRelease({source:process.cwd(),output:process.argv[2],commit:process.env.GITHUB_SHA});
+          appendFileSync(process.env.GITHUB_OUTPUT,`archive_sha256=${result.sha256}\nartifact_name=production-release-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}\n`);
+          NODE
+          check_root="$(mktemp -d "$RUNNER_TEMP/blizhniy-artifact-check.XXXXXXXX")"
+          tar --no-same-owner --no-same-permissions -xzf "$archive" -C "$check_root"
+          node scripts/verify-prebuilt-release.mjs "$check_root" "$GITHUB_SHA"
+          node --experimental-strip-types scripts/check-prebuilt-runtime.mjs "$check_root"
+
+      - name: Upload the verified production artifact
+        if: ${{ inputs.publish_release }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: ${{ steps.package.outputs.artifact_name }}
+          path: ${{ runner.temp }}/release.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
 
       # Dependency Review evaluates all changed dependency scopes. This audit blocks
       # high and critical vulnerabilities in dependencies shipped to production.

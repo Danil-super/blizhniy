@@ -1,9 +1,10 @@
-import { cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, chmodSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import {collectPrebuiltFiles} from './verify-prebuilt-release.mjs';
 
 const digest = buffer => createHash("sha256").update(buffer).digest("hex");
 function command(name, args, cwd) {
@@ -13,12 +14,20 @@ function command(name, args, cwd) {
 }
 function publicFile(source) {
   const name = basename(source);
-  if (name === ".git" || name === ".pm2") return false;
+  if ([".git", ".pm2", ".codex", ".npmrc", ".previous-release"].includes(name)) return false;
   if (name === ".env" || name.startsWith(".env.") || /\.(pem|key|crt)$/i.test(name)) return false;
   const entry = lstatSync(source);
   if (entry.isSymbolicLink()) throw new Error("Prebuilt input contains a symbolic link");
   if (!entry.isFile() && !entry.isDirectory()) throw new Error("Prebuilt input contains a special file");
   return true;
+}
+function codePermissions(root) {
+  const entry=lstatSync(root);
+  if(entry.isSymbolicLink()||entry.uid!==process.getuid())throw new Error('Unsafe prebuilt code owner');
+  if(entry.isDirectory()){
+    chmodSync(root,0o755);for(const name of readdirSync(root))codePermissions(join(root,name));
+  }else if(entry.isFile()&&entry.nlink===1)chmodSync(root,entry.mode&0o111?0o755:0o644);
+  else throw new Error('Unsafe prebuilt code entry');
 }
 
 /** Own trusted builder only: metadata is not a signature or an attestation of an untrusted build. */
@@ -45,6 +54,9 @@ export function packagePrebuiltRelease({ source, output, commit }) {
   // Require the exact tracked lockfile, not a silently rewritten dependency graph.
   const trackedLockfile = spawnSync("git", ["show", `${commit}:package-lock.json`], { cwd: root, timeout: 10000, maxBuffer: 4 * 1024 * 1024 });
   if (trackedLockfile.status !== 0 || !lockfile.equals(trackedLockfile.stdout)) throw new Error("Prebuilt lockfile does not match commit");
+  const lock = JSON.parse(lockfile), mail = JSON.parse(readFileSync(join(root, 'node_modules/nodemailer/package.json'), 'utf8'));
+  if (mail.name !== 'nodemailer' || mail.version !== lock.packages?.['node_modules/nodemailer']?.version ||
+      Object.keys(mail.dependencies ?? {}).length) throw new Error('Prebuilt mail dependency must match the lockfile and have no unbundled dependencies');
   for (const file of [".next/standalone/server.js", ".next/standalone/node_modules/@next/env/package.json", "ecosystem.config.cjs", "scripts/check-auth-captcha-env.cjs", "scripts/web-runtime.cjs"]) {
     if (!publicFile(join(root, file)) || !statSync(join(root, file)).isFile()) throw new Error("Prebuilt required input is missing");
   }
@@ -53,15 +65,23 @@ export function packagePrebuiltRelease({ source, output, commit }) {
     const stage = join(temporary, "package"); mkdirSync(stage, { mode: 0o700 });
     const copy = (from, to) => cpSync(join(root, from), join(stage, to), { recursive: true, filter: publicFile });
     copy(".next/standalone", ".");
-    copy("public", "public");
     copy(".next/static", ".next/static");
-    copy("ecosystem.config.cjs", "ecosystem.config.cjs");
-    copy("scripts/check-auth-captcha-env.cjs", "scripts/check-auth-captcha-env.cjs");
-    copy("scripts/web-runtime.cjs", "scripts/web-runtime.cjs");
-    copy("package-lock.json", "package-lock.json");
-    writeFileSync(join(stage, "release-manifest.json"), JSON.stringify({ format: 1, commit, buildId: commit,
+    // Only tracked code/static inputs: ignored local data must never enter an artifact.
+    const tracked = spawnSync('git', ['ls-files', '-z', 'public', 'src', 'database', 'scripts', 'package.json', 'package-lock.json', 'next.config.ts', 'ecosystem.config.cjs'],
+      {cwd:root,encoding:'utf8',timeout:10000,maxBuffer:4*1024*1024});
+    if(tracked.status!==0)throw new Error('Prebuilt tracked input check failed');
+    for(const file of tracked.stdout.split('\0').filter(Boolean)){
+      if(!publicFile(join(root,file)))continue;
+      mkdirSync(dirname(join(stage,file)),{recursive:true});copy(file,file);
+    }
+    // Next bundles this dependency into web chunks, but the separate mail worker imports it directly.
+    copy('node_modules/nodemailer','node_modules/nodemailer');
+    for(const file of ['scripts/rollback-release.sh','scripts/auth-mail-worker.mjs'])if(!existsSync(join(stage,file)))throw new Error('Prebuilt worker or rollback input is missing');
+    codePermissions(stage);
+    const {files}=collectPrebuiltFiles(stage);
+    writeFileSync(join(stage, "release-manifest.json"), JSON.stringify({ format: 2, commit, buildId: commit,
       lockfileSha256: digest(lockfile), node: process.version, platform: process.platform, arch: process.arch,
-      glibc: process.report.getReport().header.glibcVersionRuntime }, null, 2) + "\n", { mode: 0o600 });
+      glibc: process.report.getReport().header.glibcVersionRuntime, files }, null, 2) + "\n", { mode: 0o600 });
     const archive = join(temporary, "release.tar.gz");
     command("tar", ["-czf", archive, "-C", stage, "."], root);
     const bytes = readFileSync(archive);

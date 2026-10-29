@@ -16,6 +16,8 @@ concurrency:
 jobs:
   validate:
     uses: ./.github/workflows/ci.yml
+    with:
+      publish_release: true
     permissions:
       contents: read
 
@@ -35,11 +37,20 @@ jobs:
 
   deploy:
     needs: [validate, security, codeql]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      remote_dir: ${{ steps.ship.outputs.remote_dir }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Download the verified production artifact
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: ${{ needs.validate.outputs.artifact_name }}
+          path: ${{ runner.temp }}
 
       - name: Deploy over SSH
         id: ship
@@ -49,6 +60,7 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           APP_DIR: ${{ secrets.APP_DIR }}
+          RELEASE_ARCHIVE_SHA256: ${{ needs.validate.outputs.archive_sha256 }}
         run: |
           set -euo pipefail
 
@@ -103,23 +115,19 @@ jobs:
           REMOTE_RESULT="$REMOTE_DIR/deploy.result"
           REMOTE_CONFIRMED="$REMOTE_DIR/deploy.confirmed"
           REMOTE_ABORT="$REMOTE_DIR/deploy.abort"
+          DEPLOY_RECORD="$REMOTE_DIR/release.record"
           REMOTE_WATCHDOG="$REMOTE_DIR/deploy-watchdog.sh"
 
-          tar \
-            --exclude=.git \
-            --exclude=.github \
-            --exclude=.next \
-            --exclude=node_modules \
-            --exclude=category \
-            --exclude=docs \
-            --exclude=supabase/migrations \
-            --exclude=blizhniy_codex_tz.md \
-            -czf "$LOCAL_ARCHIVE" .
+          [[ "$RELEASE_ARCHIVE_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          cp "$RUNNER_TEMP/release.tar.gz" "$LOCAL_ARCHIVE"
+          test -f "$LOCAL_ARCHIVE"
 
           du -h "$LOCAL_ARCHIVE"
 
           cat > "$LOCAL_SCRIPT" <<'EOF'
             set -euo pipefail
+            [[ "$SOURCE_ARCHIVE_SHA256" =~ ^[a-f0-9]{64}$ ]]
+            printf '%s  %s\n' "$SOURCE_ARCHIVE_SHA256" "$SOURCE_ARCHIVE" | sha256sum --check --status
             WORK_DIR="$REMOTE_DIR/source"
             mkdir "$WORK_DIR"
             tar --no-same-owner --no-same-permissions -xzf "$SOURCE_ARCHIVE" -C "$WORK_DIR"
@@ -130,6 +138,9 @@ jobs:
           {
             printf '#!/usr/bin/env bash\n'
             printf 'set +e\n'
+            printf 'export PATH="/opt/blizhniy-node22/bin:$PATH"\n'
+            printf 'export PREBUILT_RELEASE=true\n'
+            printf 'export SOURCE_ARCHIVE_SHA256=%q\n' "$RELEASE_ARCHIVE_SHA256"
             printf 'export APP_DIR=%q\n' "$APP_DIR"
             printf 'export SOURCE_ARCHIVE=%q\n' "$REMOTE_ARCHIVE"
             printf 'export COMMIT_SHA=%q\n' "${{ github.sha }}"
@@ -140,6 +151,7 @@ jobs:
             printf 'export REMOTE_RESULT=%q\n' "$REMOTE_RESULT"
             printf 'export REMOTE_CONFIRMED=%q\n' "$REMOTE_CONFIRMED"
             printf 'export REMOTE_ABORT=%q\n' "$REMOTE_ABORT"
+            printf 'export DEPLOY_RECORD=%q\n' "$DEPLOY_RECORD"
             printf 'bash %q\n' "$REMOTE_WATCHDOG"
             printf 'status=$?\n'
             printf 'rm -f "$0"\n'
@@ -168,6 +180,14 @@ jobs:
           retry ssh "${SSH_OPTS[@]}" -i "$SSH_DIRECTORY/deploy_key" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "tail -n 200 '$REMOTE_LOG' || true" || true
           echo "Deploy timed out while waiting for remote status file."
           exit 124
+
+  postchecks:
+    needs: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Node.js for deployed layout checks
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -210,9 +230,32 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Confirm deployed release
+  finalize:
+    needs: [deploy, postchecks]
+    if: ${{ always() && needs.deploy.outputs.remote_dir != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Configure SSH for finalization
         env:
-          REMOTE_DIR: ${{ steps.ship.outputs.remote_dir }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          SSH_DIRECTORY="$RUNNER_TEMP/blizhniy-ssh"
+          bash scripts/setup-deployment-ssh.sh "$VPS_HOST" "$VPS_PORT" "$SSH_DIRECTORY"
+          printf '%s\n' "$VPS_SSH_KEY" > "$SSH_DIRECTORY/deploy_key"
+          chmod 600 "$SSH_DIRECTORY/deploy_key"
+
+      - name: Confirm deployed release
+        if: ${{ needs.deploy.result == 'success' && needs.postchecks.result == 'success' }}
+        env:
+          REMOTE_DIR: ${{ needs.deploy.outputs.remote_dir }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
           VPS_USER: ${{ secrets.VPS_USER }}
@@ -251,9 +294,9 @@ jobs:
           exit 1
 
       - name: Roll back release if a deployed check failed
-        if: ${{ failure() }}
+        if: ${{ always() && (needs.deploy.result != 'success' || needs.postchecks.result != 'success' || failure()) }}
         env:
-          REMOTE_DIR: ${{ steps.ship.outputs.remote_dir }}
+          REMOTE_DIR: ${{ needs.deploy.outputs.remote_dir }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
           VPS_USER: ${{ secrets.VPS_USER }}

@@ -1,0 +1,101 @@
+--- a/scripts/check-quality-floor.mjs
++++ b/scripts/check-quality-floor.mjs
+@@ -83,7 +83,40 @@
+     '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());',
+     '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["name", "email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());'],
+ ];
+-const reviewedReplacement = (file, text) => registrationAssertionPairs.some(([path, before, after]) =>
++// Apply only after owner review of the six exact deployment replacements.
++const deploymentAssertionPairs = [
++  [
++    "tests/ci-parallel-layout.test.mjs",
++    "    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],'ubuntu-latest');",
++    "    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');"
++  ],
++  [
++    "tests/ci-parallel-layout.test.mjs",
++    "    for(const step of job.steps){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}",
++    "    for(const step of job.steps.filter(step=>step.name!=='Upload the verified production artifact')){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}"
++  ],
++  [
++    "tests/deploy-readiness.test.mjs",
++    "  assert.equal(releaseMode, 0o700);",
++    "  assert.equal(releaseMode, 0o755);"
++  ],
++  [
++    "tests/deployment-ssh-host-trust.test.mjs",
++    "    assert.equal(execute(deploy.jobs.deploy.steps.find(step => step.name === 'Confirm deployed release')).status, 0);",
++    "    assert.equal(execute(deploy.jobs.finalize.steps.find(step => step.name === 'Confirm deployed release')).status, 0);"
++  ],
++  [
++    "tests/deployment-ssh-host-trust.test.mjs",
++    "    assert.equal(execute(deploy.jobs.deploy.steps.find(step => step.name === 'Roll back release if a deployed check failed'), 'rollback').status, 0);",
++    "    assert.equal(execute(deploy.jobs.finalize.steps.find(step => step.name === 'Roll back release if a deployed check failed'), 'rollback').status, 0);"
++  ],
++  [
++    "tests/deployment-ssh-host-trust.test.mjs",
++    "    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ steps.ship.outputs.remote_dir }}');",
++    "    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ needs.deploy.outputs.remote_dir }}');"
++  ]
++];
++const reviewedReplacement = (file, text) => [...registrationAssertionPairs, ...deploymentAssertionPairs].some(([path, before, after]) =>
+   file === path && text === before &&
+   removed.filter(line => line.file === path && line.text === before).length === 1 &&
+   added.filter(line => line.file === path && line.text === after).length === 1);
+--- a/tests/quality-floor.test.mjs
++++ b/tests/quality-floor.test.mjs
+@@ -120,3 +120,54 @@
+     assert.equal(run(['--base', 'HEAD']).status, 1, 'an approved pair cannot conceal another removed assertion');
+   });
+ }
++
++const deploymentAssertionPairs = [
++  [
++    "tests/ci-parallel-layout.test.mjs",
++    "    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],'ubuntu-latest');",
++    "    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');"
++  ],
++  [
++    "tests/ci-parallel-layout.test.mjs",
++    "    for(const step of job.steps){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}",
++    "    for(const step of job.steps.filter(step=>step.name!=='Upload the verified production artifact')){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}"
++  ],
++  [
++    "tests/deploy-readiness.test.mjs",
++    "  assert.equal(releaseMode, 0o700);",
++    "  assert.equal(releaseMode, 0o755);"
++  ],
++  [
++    "tests/deployment-ssh-host-trust.test.mjs",
++    "    assert.equal(execute(deploy.jobs.deploy.steps.find(step => step.name === 'Confirm deployed release')).status, 0);",
++    "    assert.equal(execute(deploy.jobs.finalize.steps.find(step => step.name === 'Confirm deployed release')).status, 0);"
++  ],
++  [
++    "tests/deployment-ssh-host-trust.test.mjs",
++    "    assert.equal(execute(deploy.jobs.deploy.steps.find(step => step.name === 'Roll back release if a deployed check failed'), 'rollback').status, 0);",
++    "    assert.equal(execute(deploy.jobs.finalize.steps.find(step => step.name === 'Roll back release if a deployed check failed'), 'rollback').status, 0);"
++  ],
++  [
++    "tests/deployment-ssh-host-trust.test.mjs",
++    "    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ steps.ship.outputs.remote_dir }}');",
++    "    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ needs.deploy.outputs.remote_dir }}');"
++  ]
++];
++for (const [file, before, after] of deploymentAssertionPairs) {
++  test(`floor permits only the exact reviewed deployment replacement in ${file}`, t => {
++    const { put, git, run } = fixture(t);
++    put(file, before+'\n'); git('add', '.'); git('commit', '-qm', 'deployment assertion baseline');
++    put(file, after+'\n');
++    assert.equal(run(['--base', 'HEAD']).status, 0);
++    // Deleting the replacement, altering it, or moving it to another file is not approved.
++    for (const replacement of ['', after.replace('assert.', 'assert.ok(true); // assert.'), after+'\n'+after]) {
++      put(file, replacement+'\n');
++      assert.equal(run(['--base', 'HEAD']).status, 1);
++    }
++    put(file, '\n'); put('tests/foreign.test.mjs', after+'\n');
++    assert.equal(run(['--base', 'HEAD']).status, 1);
++    put('tests/foreign.test.mjs', '\n'); put(file, after+'\n');
++    put('tests/example.test.mjs', '\n');
++    assert.equal(run(['--base', 'HEAD']).status, 1, 'an approved pair cannot conceal another removed assertion');
++  });
++}
