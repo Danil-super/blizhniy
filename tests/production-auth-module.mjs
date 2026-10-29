@@ -8,6 +8,7 @@ import * as identity from "../src/lib/identity.ts";
 import * as validation from '../src/lib/account-validation.ts';
 import * as browserProof from '../src/lib/account-browser-proof.ts';
 import { verifyProductionAuthDatabase } from "../src/lib/production-auth-database.ts";
+import * as initialization from '../src/lib/read-only-initialization.ts';
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
@@ -22,6 +23,7 @@ export function loadProductionAuth(name, extra = {}) {
     if (["node:fs", "node:path", "node:crypto"].includes(path)) return require(path);
     if (["./timeweb-mail", "./timeweb-mail.ts"].includes(path)) return mail;
     if (path === "./production-auth-database.ts") return { verifyProductionAuthDatabase };
+    if (path === './read-only-initialization.ts') return initialization;
     if (path === "./auth-http") return boundary;
     if (path === "./registration-legal") return { REGISTRATION_LEGAL_VERSIONS };
     if (path === "./registration") return { RegistrationStore, RegistrationInputError };

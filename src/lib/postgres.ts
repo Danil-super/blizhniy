@@ -61,8 +61,24 @@ export class PostgresError extends Error {
     const connectionCodes = ["ERR_TLS_CERT_ALTNAME_INVALID", "DEPTH_ZERO_SELF_SIGNED_CERT",
       "SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "CERT_HAS_EXPIRED",
       "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"];
-    this.code = typeof code === "string" && (/^[0-9A-Z]{5}$/.test(code) || connectionCodes.includes(code))
-      ? code : undefined;
+    const safeCode = (value: unknown): value is string => typeof value === 'string' &&
+      (/^[0-9A-Z]{5}$/.test(value) || connectionCodes.includes(value));
+    this.code = safeCode(code) ? code : undefined;
+    if (code === undefined && error instanceof Error) {
+      // pg/pg-pool emit these exact transport errors without a code. Normalize
+      // before discarding messages; explicit SQL/TLS codes always take precedence.
+      const cause = error.cause;
+      const causeCode = cause && typeof cause === 'object' && 'code' in cause ? cause.code : undefined;
+      if (safeCode(causeCode)) this.code = causeCode;
+      else if (causeCode === undefined) {
+        this.code = new Map([
+          ['Connection terminated due to connection timeout', 'ETIMEDOUT'],
+          ['timeout exceeded when trying to connect', 'ETIMEDOUT'],
+          ['timeout expired', 'ETIMEDOUT'],
+          ['Connection terminated unexpectedly', 'ECONNRESET'],
+        ]).get(error.message);
+      }
+    }
   }
 }
 
