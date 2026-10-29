@@ -28,6 +28,18 @@ test('production loopback callback preserves exact session/state checks behind t
  assert.equal((await f.handle(request,'callback')).headers.get('location'),'/cabinet/phone?error=cancelled');
  assert.deepEqual(f.calls.map(call=>call[0]),['claim','finish']);
 });
+test('Next standalone localhost request authority is canonicalized only behind the exact production ingress',async()=>{
+ const f=fixture(),input=new Request('https://localhost:3000/api/account/phone/telegram/callback?error=access_denied&state='+state,
+  {headers:{host:new URL(origin).host,'x-real-ip':'203.0.113.10','x-forwarded-proto':'https',cookie:'__Host-blizhniy_session='+'b'.repeat(64)}});
+ const request=canonicalTelegramCallback(input,origin);
+ assert.equal(new URL(request.url).origin,origin);
+ assert.equal((await f.handle(request,'callback')).headers.get('location'),'/cabinet/phone?error=cancelled');
+ assert.deepEqual(f.calls.map(call=>call[0]),['claim','finish']);
+ for(const [url,patch]of [
+  ['https://localhost:3001'+new URL(input.url).pathname,{}],['http://localhost:3000'+new URL(input.url).pathname,{}],
+  [input.url,{host:'evil.invalid'}],[input.url,{'x-forwarded-proto':'http'}],[input.url,{'x-real-ip':'invalid'}],
+ ]){const foreign=new Request(url,{headers:{...Object.fromEntries(input.headers),...patch}});assert.equal(canonicalTelegramCallback(foreign,origin),foreign);}
+});
 test('callback ingress does not canonicalize arbitrary URLs, forged host, forwarded lists or mutation requests',()=>{
  const path='/api/account/phone/telegram/callback?state='+state;
  const headers={host:new URL(origin).host,'x-real-ip':'203.0.113.10','x-forwarded-proto':'https'};

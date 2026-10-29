@@ -16,7 +16,9 @@ const statuses: Record<string, number> = { INVALID_ATTEMPT: 400, INVALID_INPUT: 
  * Never derive the public authority from X-Forwarded-Host or a caller URL. */
 export function canonicalTelegramCallback(request: Request, configuredOrigin: string): Request {
   const url = new URL(request.url);
-  if (request.method !== 'GET' || url.origin !== 'https://127.0.0.1:3000' || url.pathname !== telegramPhoneCallbackPath || url.hash ||
+  // Next standalone uses localhost in NextRequest even when the listener binds
+  // 127.0.0.1. Both authorities identify this fixed private listener only.
+  if (request.method !== 'GET' || !['https://127.0.0.1:3000', 'https://localhost:3000'].includes(url.origin) || url.pathname !== telegramPhoneCallbackPath || url.hash ||
       request.headers.get('host') !== new URL(configuredOrigin).host || request.headers.get('x-forwarded-proto') !== 'https' || !getTrustedProxyIp(request.headers)) return request;
   const target = new URL(configuredOrigin); target.pathname = url.pathname; target.search = url.search;
   return new Request(target, { method: 'GET', headers: request.headers, signal: request.signal, redirect: 'error' });
