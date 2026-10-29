@@ -55,4 +55,39 @@ export async function testProductionRateSchema(suite, db, applyMigration) {
       } finally { await f.clear(); }
     }
   });
+  await suite.test('real PG IP-denied bursts preserve credential, session and phone capacity across limiter instances', async () => {
+    for (const [method, attempts, allowed] of [
+      ['credential', 620, 20], ['session', 2020, 300], ['remembered', 620, 20], ['phone', 120, 10],
+    ]) {
+      const f = owned();
+      const invoke = (limiter, ip) => method === 'phone' ? limiter.allowPhoneVerification(ip)
+        : method === 'remembered' ? limiter.allowProductionAttempt('login', ip) : limiter.allowProduction(method, ip);
+      try {
+        const outcomes = await Promise.all(Array.from({length: attempts}, (_, i) => invoke(i % 2 ? f.first : f.second, '192.0.2.91')));
+        assert.equal(outcomes.filter(Boolean).length, allowed, method);
+        assert.equal(await invoke(f.second, '192.0.2.92'), true, `${method}: another source retains capacity`);
+      } finally { await f.clear(); }
+    }
+  });
+  await suite.test('real PG email-denied traffic does not consume the global credential budget', async () => {
+    const f = owned();
+    try {
+      const outcomes = await Promise.all(Array.from({length: 620}, (_, i) =>
+        (i % 2 ? f.first : f.second).allowProduction('credential', `2001:db8::${(i+1).toString(16)}`, 'same@example.invalid')));
+      assert.equal(outcomes.filter(Boolean).length, 5);
+      assert.equal(await f.second.allowProduction('credential', '192.0.2.92', 'other@example.invalid'), true);
+    } finally { await f.clear(); }
+  });
+  await suite.test('real PG distributed concurrent requests retain each aggregate overload cap', async () => {
+    for (const [scope, limit] of [['credential', 600], ['session', 2000], ['phone', 100]]) {
+      const f = owned();
+      try {
+        const outcomes = await Promise.all(Array.from({length: limit+10}, (_, i) => {
+          const limiter = i % 2 ? f.first : f.second, ip = `2001:db8::${(i+1).toString(16)}`;
+          return scope === 'phone' ? limiter.allowPhoneVerification(ip) : limiter.allowProduction(scope, ip);
+        }));
+        assert.equal(outcomes.filter(Boolean).length, limit, scope);
+      } finally { await f.clear(); }
+    }
+  });
 }

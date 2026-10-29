@@ -119,22 +119,23 @@ export class AuthRateLimiter {
   async allowProduction(scope: "credential" | "session", ip: string, email?: string): Promise<boolean> {
     if (!["credential", "session"].includes(scope) || !isIP(ip) ||
         (email !== undefined && (typeof email !== "string" || email.length > 254))) throw new Error("Invalid production rate limit key");
-    if (!await this.consume(`production:${scope}:all`, scope === "session" ? 2000 : 600)) return false;
+    // A request already denied by a narrower cap must not spend shared capacity.
     if (!await this.consume(`production:${scope}:ip:${ip}`, scope === "session" ? 300 : 20)) return false;
-    return email === undefined || await this.consume(`production:credential:email:${email}`, 5);
+    if (email !== undefined && !await this.consume(`production:credential:email:${email}`, 5)) return false;
+    return this.consume(`production:${scope}:all`, scope === "session" ? 2000 : 600);
   }
 
   /** Independent Telegram budget: verification cannot exhaust login/recovery attempts. */
   async allowPhoneVerification(ip: string): Promise<boolean> {
     if (!isIP(ip)) throw new Error('Invalid phone rate key');
-    return await this.consume('production:phone:all',100) && await this.consume(`production:phone:ip:${ip}`,10);
+    return await this.consume(`production:phone:ip:${ip}`,10) && await this.consume('production:phone:all',100);
   }
 
   /** Bound provider traffic before CAPTCHA, without spending the account's email budget. */
   async allowProductionAttempt(action: CredentialAction, ip: string): Promise<boolean> {
     if (!credentialActions.includes(action) || !isIP(ip)) throw new Error("Invalid production rate limit key");
-    return await this.consume("production:credential:all", 600) &&
-      await this.consume(`production:credential:${action}:ip:${ip}`, 20);
+    return await this.consume(`production:credential:${action}:ip:${ip}`, 20) &&
+      await this.consume("production:credential:all", 600);
   }
 
   /** Charge only verified human attempts; login cannot lock the recovery channel. */
