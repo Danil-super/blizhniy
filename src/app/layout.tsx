@@ -15,6 +15,7 @@ import {readPostmoderationEnabled} from '@/lib/listing-workflow-config';
 import {ListingWorkflowProvider} from '@/components/listings/ListingWorkflowProvider';
 import {readTelegramPhoneConfig} from '@/lib/telegram-phone-config';
 import {PhonePlacementProvider} from '@/components/phone/PhonePlacementProvider';
+import {CookieNotice} from '@/components/CookieNotice';
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -61,6 +62,7 @@ export default async function RootLayout({
         <div className="app-shell">{children}</div>
         <MobileBottomNav />
         <SiteFooter />
+        <CookieNotice />
         </PhonePlacementProvider>
         </AccountCaptchaProvider>
         </ListingWorkflowProvider>
