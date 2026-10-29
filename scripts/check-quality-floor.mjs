@@ -75,6 +75,9 @@ for (const file of deleted) if (isTest(file)) flag('test-deleted', file);
 // Not a general assertion allowlist: both exact lines must occur once in this diff,
 // in the same specified file. Every other removal still blocks the release.
 const registrationAssertionPairs = [
+  ['tests/registration-web-integration.mjs',
+    '        assert.equal(await page.getByText(/Администратор · права проверяет сервер/).count(), 0);',
+    '        assert.equal(await page.getByText("Администратор", { exact: true }).count(), 0);'],
   ['tests/application-contract.test.mjs',
     " assert.equal(parseApplicationCreate({...create,message:'x'.repeat(3000)}).message.length,3000);",
     " assert.equal(parseApplicationCreate({...create,message:'x'.repeat(500)}).message.length,500);"],
