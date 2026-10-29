@@ -4,6 +4,8 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,statSync,chmodSync,syml
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
 import {createHash} from 'node:crypto';
+import fs from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import {preparePrebuiltRelease} from '../scripts/verify-prebuilt-release.mjs';
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex'),commit='a'.repeat(40);
@@ -51,3 +53,18 @@ test('environment files, symlinks, hardlinks and traversal paths are never adopt
   change(context);assert.throws(()=>preparePrebuiltRelease(context.root,commit));assert.equal(statSync(context.root).mode&0o777,0o700);
  });
 });
+test('replacing a checked file with a symlink cannot read or chmod the external file',()=>fixture(({root})=>{
+ const external=mkdtempSync(join(tmpdir(),'prebuilt-race-external-')),target=join(external,'outside.js'),source=join(root,'server.js');
+ writeFileSync(target,readFileSync(source),{mode:0o600});
+ const original=fs.lstatSync;let replaced=false;
+ fs.lstatSync=function(file,...args){
+  const info=original(file,...args);
+  if(file===source&&!replaced){replaced=true;rmSync(source);symlinkSync(target,source);}
+  return info;
+ };
+ syncBuiltinESMExports();
+ try{
+  assert.throws(()=>preparePrebuiltRelease(root,commit));
+  assert.equal(replaced,true);assert.equal(statSync(target).mode&0o777,0o600);
+ }finally{fs.lstatSync=original;syncBuiltinESMExports();rmSync(external,{recursive:true,force:true});}
+}));
