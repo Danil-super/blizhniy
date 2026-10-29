@@ -21,7 +21,7 @@ export function LegalDocumentPage({ documentKey }: { documentKey: LegalDocumentK
           <div className="mt-7 space-y-4 text-base leading-7 text-slate-700">
             {document.body.map((paragraph, index) =>
               isSectionHeading(paragraph) ? (
-                <h2 key={`${paragraph}-${index}`} className="pt-4 text-xl font-bold leading-snug text-[#060b27]">
+                <h2 key={`${paragraph}-${index}`} id={documentKey==='privacy'&&paragraph.startsWith('8. Cookies')?'cookies':undefined} className="scroll-mt-24 pt-4 text-xl font-bold leading-snug text-[#060b27]">
                   {renderBrandText(paragraph)}
                 </h2>
               ) : (

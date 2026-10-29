@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Mail } from "lucide-react";
 import { BrandName } from "@/components/BrandName";
+import {CookieNoticeButton} from './CookieNotice';
 
 const footerLinks = [
   { href: "/o-proekte", label: "О проекте" },
@@ -47,6 +48,7 @@ export function SiteFooter() {
                 {link.label}
               </Link>
             ))}
+            <CookieNoticeButton />
           </nav>
         </div>
       </div>
