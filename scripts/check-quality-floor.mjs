@@ -83,7 +83,40 @@ const registrationAssertionPairs = [
     '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());',
     '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["name", "email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());'],
 ];
-const reviewedReplacement = (file, text) => registrationAssertionPairs.some(([path, before, after]) =>
+// Apply only after owner review of the six exact deployment replacements.
+const deploymentAssertionPairs = [
+  [
+    "tests/ci-parallel-layout.test.mjs",
+    "    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],'ubuntu-latest');",
+    "    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');"
+  ],
+  [
+    "tests/ci-parallel-layout.test.mjs",
+    "    for(const step of job.steps){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}",
+    "    for(const step of job.steps.filter(step=>step.name!=='Upload the verified production artifact')){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}"
+  ],
+  [
+    "tests/deploy-readiness.test.mjs",
+    "  assert.equal(releaseMode, 0o700);",
+    "  assert.equal(releaseMode, 0o755);"
+  ],
+  [
+    "tests/deployment-ssh-host-trust.test.mjs",
+    "    assert.equal(execute(deploy.jobs.deploy.steps.find(step => step.name === 'Confirm deployed release')).status, 0);",
+    "    assert.equal(execute(deploy.jobs.finalize.steps.find(step => step.name === 'Confirm deployed release')).status, 0);"
+  ],
+  [
+    "tests/deployment-ssh-host-trust.test.mjs",
+    "    assert.equal(execute(deploy.jobs.deploy.steps.find(step => step.name === 'Roll back release if a deployed check failed'), 'rollback').status, 0);",
+    "    assert.equal(execute(deploy.jobs.finalize.steps.find(step => step.name === 'Roll back release if a deployed check failed'), 'rollback').status, 0);"
+  ],
+  [
+    "tests/deployment-ssh-host-trust.test.mjs",
+    "    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ steps.ship.outputs.remote_dir }}');",
+    "    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ needs.deploy.outputs.remote_dir }}');"
+  ]
+];
+const reviewedReplacement = (file, text) => [...registrationAssertionPairs, ...deploymentAssertionPairs].some(([path, before, after]) =>
   file === path && text === before &&
   removed.filter(line => line.file === path && line.text === before).length === 1 &&
   added.filter(line => line.file === path && line.text === after).length === 1);

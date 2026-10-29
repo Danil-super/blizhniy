@@ -13,6 +13,18 @@ LOCK_WAIT_SECONDS="${LOCK_WAIT_SECONDS:-120}"
 : "${REMOTE_CONFIRMED:?}"
 : "${REMOTE_ABORT:?}"
 : "${COMMIT_SHA:?}"
+: "${DEPLOY_RECORD:?}"
+
+owns_release() {
+  [[ -f "$DEPLOY_RECORD" && ! -L "$DEPLOY_RECORD" ]] || return 1
+  local records=() current releases
+  mapfile -t records < "$DEPLOY_RECORD"
+  [[ ${#records[@]} == 1 && -L "$APP_DIR" ]] || return 1
+  current="$(readlink -f "$APP_DIR")"
+  releases="$(readlink -f "${RELEASES_DIR:-$(dirname "$APP_DIR")/blizhniy-releases}")"
+  [[ "$current" == "${records[0]}" && "$current" == "$releases/"* &&
+     "${current##*/}" == *-"${COMMIT_SHA:0:12}" && -f "$current/.previous-release" ]]
+}
 
 # The runner can outlive the Actions SSH connection. Keep the host lock until
 # post-deploy checks explicitly confirm the release or it has been rolled back.
@@ -28,11 +40,12 @@ if bash "$REMOTE_SCRIPT"; then
 else
   deploy_status=$?
 fi
+if (( deploy_status == 0 )) && ! owns_release; then deploy_status=1; fi
 printf '%s\n' "$deploy_status" > "$REMOTE_STATUS"
 if (( deploy_status != 0 )); then
   # A connection or wrapper error could be reported after the new symlink was
   # promoted. Reconcile the active SHA before accepting a failed deploy.
-  if [[ -L "$APP_DIR" && "$(readlink -f "$APP_DIR")" == *-"${COMMIT_SHA:0:12}" ]]; then
+  if owns_release; then
     if APP_DIR="$APP_DIR" COMMIT_SHA="$COMMIT_SHA" bash "$APP_DIR/scripts/rollback-release.sh"; then
       printf 'rolled_back\n' > "$REMOTE_RESULT"
       exit "$deploy_status"
@@ -52,12 +65,14 @@ while (( $(date +%s) < deadline )); do
     break
   fi
   if [[ -f "$REMOTE_CONFIRMED" ]]; then
+    if ! owns_release; then printf 'release_changed\n' > "$REMOTE_RESULT"; exit 1; fi
     printf 'confirmed\n' > "$REMOTE_RESULT"
     exit 0
   fi
   sleep "$POLL_INTERVAL_SECONDS"
 done
 
+if ! owns_release; then printf 'release_changed\n' > "$REMOTE_RESULT"; exit 1; fi
 if APP_DIR="$APP_DIR" COMMIT_SHA="$COMMIT_SHA" bash "$APP_DIR/scripts/rollback-release.sh"; then
   printf 'rolled_back\n' > "$REMOTE_RESULT"
   exit 0

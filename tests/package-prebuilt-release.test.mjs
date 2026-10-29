@@ -11,10 +11,15 @@ function fixture(run) {
   const root = mkdtempSync(join(tmpdir(), "blizhniy-package-test-")), source = join(root, "source");
   mkdirSync(source);
   const files = {
-    ".gitignore": ".next/\n",
-    "package-lock.json": '{"lockfileVersion":3}', "ecosystem.config.cjs": "module.exports = {};",
+    ".gitignore": ".next/\nnode_modules/\n",
+    "package-lock.json": '{"lockfileVersion":3,"packages":{"node_modules/nodemailer":{"version":"1.0.0"}}}', "ecosystem.config.cjs": "module.exports = {};",
     "scripts/check-auth-captcha-env.cjs": "// synthetic guard",
     "scripts/web-runtime.cjs": "// synthetic runtime guard",
+    "scripts/auth-mail-worker.mjs": "// synthetic mail worker",
+    "scripts/rollback-release.sh": "// synthetic rollback",
+    "src/lib/production-mail-runtime.ts": "// synthetic source worker runtime",
+    "database/migrations/synthetic.sql": "-- synthetic schema source",
+    "node_modules/nodemailer/package.json": '{"name":"nodemailer","version":"1.0.0"}',
     "public/icon.svg": "synthetic-static", ".next/static/chunk.js": "synthetic-browser-chunk",
     ".next/standalone/server.js": "// synthetic server", ".next/standalone/.next/BUILD_ID": "placeholder",
     ".next/standalone/node_modules/@next/env/package.json": '{"name":"@next/env"}',
@@ -30,7 +35,7 @@ function fixture(run) {
     assert.equal(result.status, 0); return result.stdout.trim();
   };
   git(["init", "-q"]);
-  git(["add", ".gitignore", "package-lock.json", "ecosystem.config.cjs", "scripts", "public"]);
+  git(["add", ".gitignore", "package-lock.json", "ecosystem.config.cjs", "scripts", "public", "src", "database"]);
   git(["-c", "user.name=Package fixture", "-c", "user.email=package@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "synthetic fixture"]);
   const commit = git(["rev-parse", "HEAD"]);
   writeFileSync(join(source, ".next/BUILD_ID"), commit);
@@ -50,6 +55,10 @@ test("standalone package includes static assets and manifest but excludes enviro
   assert.equal(readFileSync(join(unpack, "scripts/web-runtime.cjs"), "utf8"), "// synthetic runtime guard");
   const manifest = JSON.parse(readFileSync(join(unpack, "release-manifest.json"), "utf8"));
   assert.equal(manifest.commit, commit);
+  assert.equal(manifest.format, 2);
+  assert.equal(readFileSync(join(unpack, 'node_modules/nodemailer/package.json'), 'utf8'), '{"name":"nodemailer","version":"1.0.0"}');
+  assert.equal(readFileSync(join(unpack, 'src/lib/production-mail-runtime.ts'), 'utf8'), '// synthetic source worker runtime');
+  assert.equal(manifest.files['server.js'].sha256, createHash('sha256').update('// synthetic server').digest('hex'));
   assert.equal(manifest.lockfileSha256, createHash("sha256").update(readFileSync(join(source, "package-lock.json"))).digest("hex"));
   const list = spawnSync("tar", ["-tzf", output], { encoding: "utf8" }).stdout;
   assert.doesNotMatch(list, /\.env|\.key|\.git\/|tasks\//);

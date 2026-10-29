@@ -3,6 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createConnection, createServer } from 'node:net';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { tmpdir, userInfo } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -259,15 +260,17 @@ test('parsed deployment and TLS workflow paths use the effective pinned policy f
     assert.match(tls.jobs.renew.steps[0].uses, /^actions\/checkout@[0-9a-f]{40}$/);
     const { bin, log } = workflowFixture(root);
     const remoteDir = '/tmp/blizhniy-deploy-aBcD12345678';
-    const env = { PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: root, GITHUB_OUTPUT: path.join(root, 'outputs'), SSH_REMOTE_DIR: remoteDir, REMOTE_DIR: remoteDir, SSH_CALL_LOG: log, VPS_HOST: '217.149.30.35', VPS_PORT: '2222', VPS_USER: 'fixture-user', VPS_SSH_KEY: 'synthetic-client-key-only', APP_DIR: '/synthetic-app', GITHUB_RUN_ID: '12345', GITHUB_RUN_ATTEMPT: '1' };
+    const archive=path.join(root,'release.tar.gz');writeFileSync(archive,'synthetic prebuilt');
+    const archiveSha=createHash('sha256').update(readFileSync(archive)).digest('hex');
+    const env = { PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: root, GITHUB_OUTPUT: path.join(root, 'outputs'), SSH_REMOTE_DIR: remoteDir, REMOTE_DIR: remoteDir, SSH_CALL_LOG: log, VPS_HOST: '217.149.30.35', VPS_PORT: '2222', VPS_USER: 'fixture-user', VPS_SSH_KEY: 'synthetic-client-key-only', APP_DIR: '/synthetic-app', GITHUB_RUN_ID: '12345', GITHUB_RUN_ATTEMPT: '1', RELEASE_ARCHIVE_SHA256: archiveSha };
     const execute = (step, scenario = 'confirmed', overrides = {}) => {
       const code = step.run.replace(/\$\{\{\s*github\.run_id\s*\}\}/g, '12345').replace(/\$\{\{\s*github\.run_attempt\s*\}\}/g, '1').replace(/\$\{\{\s*github\.sha\s*\}\}/g, 'a'.repeat(40));
       return run('bash', ['-c', code], { ...env, SSH_SCENARIO: scenario, ...overrides });
     };
     assert.equal(execute(ship).status, 0);
     assert.equal(execute(ship, 'timeout').status, 124);
-    assert.equal(execute(deploy.jobs.deploy.steps.find(step => step.name === 'Confirm deployed release')).status, 0);
-    assert.equal(execute(deploy.jobs.deploy.steps.find(step => step.name === 'Roll back release if a deployed check failed'), 'rollback').status, 0);
+    assert.equal(execute(deploy.jobs.finalize.steps.find(step => step.name === 'Confirm deployed release')).status, 0);
+    assert.equal(execute(deploy.jobs.finalize.steps.find(step => step.name === 'Roll back release if a deployed check failed'), 'rollback').status, 0);
     assert.equal(execute(configure).status, 0);
     assert.equal(execute(tls.jobs.renew.steps.find(step => step.name === 'Enable Caddy automatic HTTPS')).status, 0);
     assert.equal(execute(tls.jobs.renew.steps.find(step => step.name === 'Verify the certificate served to visitors')).status, 1);
@@ -284,7 +287,7 @@ test('parsed deployment and TLS workflow paths use the effective pinned policy f
       assert.ok(call.args.at(-1).includes(`${remoteDir}/`), 'all deployment signals and logs share the private directory');
     }
     const runner = readFileSync(path.join(root, 'blizhniy-deploy-runner-12345-1.sh'), 'utf8');
-    for (const name of ['SOURCE_ARCHIVE', 'REMOTE_SCRIPT', 'REMOTE_STATUS', 'REMOTE_RESULT', 'REMOTE_CONFIRMED', 'REMOTE_ABORT', 'REMOTE_DIR']) {
+    for (const name of ['SOURCE_ARCHIVE', 'REMOTE_SCRIPT', 'REMOTE_STATUS', 'REMOTE_RESULT', 'REMOTE_CONFIRMED', 'REMOTE_ABORT', 'REMOTE_DIR', 'DEPLOY_RECORD']) {
       assert.match(runner, new RegExp(`export ${name}=${remoteDir}/?`));
     }
     for (const call of calls) {
@@ -294,9 +297,9 @@ test('parsed deployment and TLS workflow paths use the effective pinned policy f
       assert.equal(call.policy.hostname, '217.149.30.35');
       assert.ok(call.args.includes('StrictHostKeyChecking=yes'), 'critical call must explicitly require strict checking');
     }
-    const confirm = deploy.jobs.deploy.steps.find(step => step.name === 'Confirm deployed release');
-    const rollback = deploy.jobs.deploy.steps.find(step => step.name === 'Roll back release if a deployed check failed');
-    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ steps.ship.outputs.remote_dir }}');
+    const confirm = deploy.jobs.finalize.steps.find(step => step.name === 'Confirm deployed release');
+    const rollback = deploy.jobs.finalize.steps.find(step => step.name === 'Roll back release if a deployed check failed');
+    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ needs.deploy.outputs.remote_dir }}');
     for (const invalid of ['', '/tmp/other-directory', `${remoteDir}\n/tmp/second`, `${remoteDir}'; touch /tmp/invalid`]) {
       const before = readFileSync(log, 'utf8').trim().split('\n').length;
       assert.equal(execute(ship, 'confirmed', { SSH_REMOTE_DIR: invalid }).status, 1);
@@ -328,7 +331,7 @@ test('the deployed wrapper executes source only inside private staging and leave
     const script = path.join(stage, 'deploy.sh'); writeFileSync(script, wrapper[1]);
     const trace = path.join(root, 'trace');
     const result = run('bash', ['-c', 'umask 022; bash "$WRAPPER_SCRIPT"'], {
-      WRAPPER_SCRIPT: script, WRAPPER_TRACE: trace, REMOTE_DIR: stage, SOURCE_ARCHIVE: archive, RUN_TOKEN: token,
+      WRAPPER_SCRIPT: script, WRAPPER_TRACE: trace, REMOTE_DIR: stage, SOURCE_ARCHIVE: archive, SOURCE_ARCHIVE_SHA256: createHash('sha256').update(readFileSync(archive)).digest('hex'), RUN_TOKEN: token,
     });
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(readFileSync(trace, 'utf8').trim().split('\n'), [`${stage}/source/scripts/deploy-release.sh`, '0022']);

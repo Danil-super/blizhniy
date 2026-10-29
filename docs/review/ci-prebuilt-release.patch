@@ -1,0 +1,888 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 7e357be..1d2a95c 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -2,6 +2,15 @@ name: CI - Lint, Build, Audit
+ 
+ on:
+   workflow_call:
++    inputs:
++      publish_release:
++        type: boolean
++        default: false
++    outputs:
++      archive_sha256:
++        value: ${{ jobs.validate.outputs.archive_sha256 }}
++      artifact_name:
++        value: ${{ jobs.validate.outputs.artifact_name }}
+   pull_request:
+     branches:
+       - main
+@@ -17,8 +26,11 @@ concurrency:
+ jobs:
+   validate:
+     name: Validate app
+-    runs-on: ubuntu-latest
++    runs-on: ubuntu-24.04
+     timeout-minutes: 20
++    outputs:
++      archive_sha256: ${{ steps.package.outputs.archive_sha256 }}
++      artifact_name: ${{ steps.package.outputs.artifact_name }}
+ 
+     steps:
+       - name: Checkout
+@@ -29,7 +41,7 @@ jobs:
+       - name: Setup Node.js
+         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+         with:
+-          node-version: 22
++          node-version: 22.23.3
+           cache: npm
+ 
+       - name: Guard quality floor
+@@ -94,9 +106,40 @@ jobs:
+           bash scripts/test-deploy-watchdog.sh
+           bash scripts/test-check-zap-result.sh
+ 
+-      - name: Build
++      - name: Build the production artifact on GitHub
++        env:
++          BLIZHNIY_BUILD_COMMIT: ${{ github.sha }}
++          __NEXT_PROCESSED_ENV: 'true'
++          NEXT_TELEMETRY_DISABLED: '1'
+         run: npm run build
+ 
++      - name: Package and check the production artifact
++        id: package
++        run: |
++          set -euo pipefail
++          archive="$RUNNER_TEMP/release.tar.gz"
++          node --input-type=module - "$archive" <<'NODE'
++          import {appendFileSync} from 'node:fs';
++          import {packagePrebuiltRelease} from './scripts/package-prebuilt-release.mjs';
++          const result=packagePrebuiltRelease({source:process.cwd(),output:process.argv[2],commit:process.env.GITHUB_SHA});
++          appendFileSync(process.env.GITHUB_OUTPUT,`archive_sha256=${result.sha256}\nartifact_name=production-release-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}\n`);
++          NODE
++          check_root="$(mktemp -d "$RUNNER_TEMP/blizhniy-artifact-check.XXXXXXXX")"
++          tar --no-same-owner --no-same-permissions -xzf "$archive" -C "$check_root"
++          node scripts/verify-prebuilt-release.mjs "$check_root" "$GITHUB_SHA"
++          node --experimental-strip-types scripts/check-prebuilt-runtime.mjs "$check_root"
++
++      - name: Upload the verified production artifact
++        if: ${{ inputs.publish_release }}
++        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
++        with:
++          name: ${{ steps.package.outputs.artifact_name }}
++          path: ${{ runner.temp }}/release.tar.gz
++          if-no-files-found: error
++          compression-level: 0
++          retention-days: 1
++
++
+       # Dependency Review evaluates all changed dependency scopes. This audit blocks
+       # high and critical vulnerabilities in dependencies shipped to production.
+       - name: Audit production npm dependencies for high and critical vulnerabilities
+diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml
+index 691ec87..6d71869 100644
+--- a/.github/workflows/deploy.yml
++++ b/.github/workflows/deploy.yml
+@@ -16,6 +16,8 @@ concurrency:
+ jobs:
+   validate:
+     uses: ./.github/workflows/ci.yml
++    with:
++      publish_release: true
+     permissions:
+       contents: read
+ 
+@@ -35,12 +37,21 @@ jobs:
+ 
+   deploy:
+     needs: [validate, security, codeql]
+-    runs-on: ubuntu-latest
++    runs-on: ubuntu-24.04
++    timeout-minutes: 30
++    outputs:
++      remote_dir: ${{ steps.ship.outputs.remote_dir }}
+ 
+     steps:
+       - name: Checkout
+         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+ 
++      - name: Download the verified production artifact
++        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
++        with:
++          name: ${{ needs.validate.outputs.artifact_name }}
++          path: ${{ runner.temp }}
++
+       - name: Deploy over SSH
+         id: ship
+         env:
+@@ -49,6 +60,7 @@ jobs:
+           VPS_USER: ${{ secrets.VPS_USER }}
+           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+           APP_DIR: ${{ secrets.APP_DIR }}
++          RELEASE_ARCHIVE_SHA256: ${{ needs.validate.outputs.archive_sha256 }}
+         run: |
+           set -euo pipefail
+ 
+@@ -103,23 +115,19 @@ jobs:
+           REMOTE_RESULT="$REMOTE_DIR/deploy.result"
+           REMOTE_CONFIRMED="$REMOTE_DIR/deploy.confirmed"
+           REMOTE_ABORT="$REMOTE_DIR/deploy.abort"
++          DEPLOY_RECORD="$REMOTE_DIR/release.record"
+           REMOTE_WATCHDOG="$REMOTE_DIR/deploy-watchdog.sh"
+ 
+-          tar \
+-            --exclude=.git \
+-            --exclude=.github \
+-            --exclude=.next \
+-            --exclude=node_modules \
+-            --exclude=category \
+-            --exclude=docs \
+-            --exclude=supabase/migrations \
+-            --exclude=blizhniy_codex_tz.md \
+-            -czf "$LOCAL_ARCHIVE" .
++          [[ "$RELEASE_ARCHIVE_SHA256" =~ ^[a-f0-9]{64}$ ]]
++          cp "$RUNNER_TEMP/release.tar.gz" "$LOCAL_ARCHIVE"
++          test -f "$LOCAL_ARCHIVE"
+ 
+           du -h "$LOCAL_ARCHIVE"
+ 
+           cat > "$LOCAL_SCRIPT" <<'EOF'
+             set -euo pipefail
++            [[ "$SOURCE_ARCHIVE_SHA256" =~ ^[a-f0-9]{64}$ ]]
++            printf '%s  %s\n' "$SOURCE_ARCHIVE_SHA256" "$SOURCE_ARCHIVE" | sha256sum --check --status
+             WORK_DIR="$REMOTE_DIR/source"
+             mkdir "$WORK_DIR"
+             tar --no-same-owner --no-same-permissions -xzf "$SOURCE_ARCHIVE" -C "$WORK_DIR"
+@@ -130,6 +138,9 @@ jobs:
+           {
+             printf '#!/usr/bin/env bash\n'
+             printf 'set +e\n'
++            printf 'export PATH="/opt/blizhniy-node22/bin:$PATH"\n'
++            printf 'export PREBUILT_RELEASE=true\n'
++            printf 'export SOURCE_ARCHIVE_SHA256=%q\n' "$RELEASE_ARCHIVE_SHA256"
+             printf 'export APP_DIR=%q\n' "$APP_DIR"
+             printf 'export SOURCE_ARCHIVE=%q\n' "$REMOTE_ARCHIVE"
+             printf 'export COMMIT_SHA=%q\n' "${{ github.sha }}"
+@@ -140,6 +151,7 @@ jobs:
+             printf 'export REMOTE_RESULT=%q\n' "$REMOTE_RESULT"
+             printf 'export REMOTE_CONFIRMED=%q\n' "$REMOTE_CONFIRMED"
+             printf 'export REMOTE_ABORT=%q\n' "$REMOTE_ABORT"
++            printf 'export DEPLOY_RECORD=%q\n' "$DEPLOY_RECORD"
+             printf 'bash %q\n' "$REMOTE_WATCHDOG"
+             printf 'status=$?\n'
+             printf 'rm -f "$0"\n'
+@@ -169,6 +181,14 @@ jobs:
+           echo "Deploy timed out while waiting for remote status file."
+           exit 124
+ 
++  postchecks:
++    needs: deploy
++    runs-on: ubuntu-24.04
++    timeout-minutes: 15
++    steps:
++      - name: Checkout
++        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
++
+       - name: Setup Node.js for deployed layout checks
+         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+         with:
+@@ -210,9 +230,32 @@ jobs:
+           if-no-files-found: warn
+           retention-days: 14
+ 
++  finalize:
++    needs: [deploy, postchecks]
++    if: ${{ always() && needs.deploy.outputs.remote_dir != '' }}
++    runs-on: ubuntu-24.04
++    timeout-minutes: 10
++    steps:
++      - name: Checkout
++        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
++
++      - name: Configure SSH for finalization
++        env:
++          VPS_HOST: ${{ secrets.VPS_HOST }}
++          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
++          VPS_USER: ${{ secrets.VPS_USER }}
++          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
++        run: |
++          set -euo pipefail
++          SSH_DIRECTORY="$RUNNER_TEMP/blizhniy-ssh"
++          bash scripts/setup-deployment-ssh.sh "$VPS_HOST" "$VPS_PORT" "$SSH_DIRECTORY"
++          printf '%s\n' "$VPS_SSH_KEY" > "$SSH_DIRECTORY/deploy_key"
++          chmod 600 "$SSH_DIRECTORY/deploy_key"
++
+       - name: Confirm deployed release
++        if: ${{ needs.deploy.result == 'success' && needs.postchecks.result == 'success' }}
+         env:
+-          REMOTE_DIR: ${{ steps.ship.outputs.remote_dir }}
++          REMOTE_DIR: ${{ needs.deploy.outputs.remote_dir }}
+           VPS_HOST: ${{ secrets.VPS_HOST }}
+           VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+           VPS_USER: ${{ secrets.VPS_USER }}
+@@ -251,9 +294,9 @@ jobs:
+           exit 1
+ 
+       - name: Roll back release if a deployed check failed
+-        if: ${{ failure() }}
++        if: ${{ always() && (needs.deploy.result != 'success' || needs.postchecks.result != 'success' || failure()) }}
+         env:
+-          REMOTE_DIR: ${{ steps.ship.outputs.remote_dir }}
++          REMOTE_DIR: ${{ needs.deploy.outputs.remote_dir }}
+           VPS_HOST: ${{ secrets.VPS_HOST }}
+           VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+           VPS_USER: ${{ secrets.VPS_USER }}
+diff --git a/scripts/check-prebuilt-runtime.mjs b/scripts/check-prebuilt-runtime.mjs
+new file mode 100644
+index 0000000..2fb0cd7
+--- /dev/null
++++ b/scripts/check-prebuilt-runtime.mjs
+@@ -0,0 +1,38 @@
++import assert from 'node:assert/strict';
++import {createRequire} from 'node:module';
++import {realpathSync} from 'node:fs';
++import {pathToFileURL} from 'node:url';
++import {createServer} from 'node:net';
++import {spawn} from 'node:child_process';
++import {once} from 'node:events';
++import {setTimeout as delay} from 'node:timers/promises';
++
++const root=realpathSync(process.argv[2]),require=createRequire(root+'/server.js');
++for(const name of ['pg','nodemailer','sharp'])assert.ok(require.resolve(name).startsWith(root+'/node_modules/'));
++assert.equal(typeof require('pg').Pool,'function');
++assert.equal(typeof require('nodemailer').createTransport,'function');
++assert.equal(typeof (await import(pathToFileURL(root+'/scripts/auth-mail-worker-runtime.mjs'))).runAuthMailWorker,'function');
++const image=await require('sharp')({create:{width:2,height:2,channels:3,background:'green'}}).webp().toBuffer();
++assert.equal((await require('sharp')(image).metadata()).format,'webp');
++
++const reservation=createServer();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');
++const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
++const child=spawn(process.execPath,[root+'/server.js'],{cwd:root,stdio:'ignore',env:{PATH:process.env.PATH,LANG:'C.UTF-8',
++ NODE_ENV:'production',HOSTNAME:'127.0.0.1',PORT:String(port),__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1'}});
++let exited=false;const exit=new Promise(resolve=>{
++ child.once('exit',()=>{exited=true;resolve();});child.once('error',()=>{exited=true;resolve();});
++});
++try{
++ let healthy=false;
++ for(let attempt=0;attempt<60&&!exited;attempt++){
++  try{const response=await fetch(`http://127.0.0.1:${port}/api/health`,{signal:AbortSignal.timeout(1000)});
++   if(response.status===200&&(await response.json()).ok===true){healthy=true;break;}}
++  catch(error){if(!['TypeError','TimeoutError','AbortError'].includes(error.name))throw error;}
++  await delay(250);
++ }
++ assert.ok(healthy,'Standalone health endpoint did not become ready');
++ console.log('PASS prebuilt runtime: standalone health, generated WebP, PostgreSQL module and mail-worker imports; no SMTP or payment requests');
++}finally{
++ child.kill('SIGTERM');await Promise.race([exit,delay(3000)]);
++ if(!exited){child.kill('SIGKILL');await exit;}
++}
+diff --git a/scripts/deploy-release.sh b/scripts/deploy-release.sh
+index b14c331..b544762 100644
+--- a/scripts/deploy-release.sh
++++ b/scripts/deploy-release.sh
+@@ -141,15 +141,20 @@ else
+   fi
+ fi
+ 
+-copy_env_files "$PREVIOUS_RELEASE"
+-
+ if [[ "$PREBUILT_RELEASE" == true ]]; then
+   test -f "${RELEASE_DIR}/server.js"
+   test -f "${RELEASE_DIR}/.next/BUILD_ID"
+   test -f "${RELEASE_DIR}/ecosystem.config.cjs"
+   test -f "${RELEASE_DIR}/scripts/check-auth-captcha-env.cjs"
+   export BLIZHNIY_NODE_PATH="$(command -v node)"
+-else
++  log "verifying prebuilt commit, inventory, ABI and code permissions"
++  node "$RELEASE_DIR/scripts/verify-prebuilt-release.mjs" "$RELEASE_DIR" "$COMMIT_SHA"
++fi
++
++# Verify all code before adding private environment files or replacing a process.
++copy_env_files "$PREVIOUS_RELEASE"
++
++if [[ "$PREBUILT_RELEASE" != true ]]; then
+   log "installing dependencies"
+   npm --prefix "$RELEASE_DIR" ci --prefer-online --no-audit --no-fund
+ fi
+@@ -169,6 +174,9 @@ node "$RELEASE_DIR/scripts/web-runtime.cjs" --prepare "$RELEASE_DIR"
+ 
+ log "starting ${APP_NAME} from ${RELEASE_DIR}"
+ mkdir -p "${RELEASE_DIR}/.pm2"
++if [[ -n "${DEPLOY_RECORD:-}" ]]; then
++  (umask 077; set -o noclobber; printf '%s\n' "$RELEASE_DIR" > "$DEPLOY_RECORD")
++fi
+ SERVICE_REPLACED=true
+ pm2 delete "$APP_NAME" || true
+ pm2 start "${RELEASE_DIR}/ecosystem.config.cjs" --update-env </dev/null
+diff --git a/scripts/deploy-watchdog.sh b/scripts/deploy-watchdog.sh
+index 34ec102..5be2f4c 100644
+--- a/scripts/deploy-watchdog.sh
++++ b/scripts/deploy-watchdog.sh
+@@ -13,6 +13,18 @@ LOCK_WAIT_SECONDS="${LOCK_WAIT_SECONDS:-120}"
+ : "${REMOTE_CONFIRMED:?}"
+ : "${REMOTE_ABORT:?}"
+ : "${COMMIT_SHA:?}"
++: "${DEPLOY_RECORD:?}"
++
++owns_release() {
++  [[ -f "$DEPLOY_RECORD" && ! -L "$DEPLOY_RECORD" ]] || return 1
++  local records=() current releases
++  mapfile -t records < "$DEPLOY_RECORD"
++  [[ ${#records[@]} == 1 && -L "$APP_DIR" ]] || return 1
++  current="$(readlink -f "$APP_DIR")"
++  releases="$(readlink -f "${RELEASES_DIR:-$(dirname "$APP_DIR")/blizhniy-releases}")"
++  [[ "$current" == "${records[0]}" && "$current" == "$releases/"* &&
++     "${current##*/}" == *-"${COMMIT_SHA:0:12}" && -f "$current/.previous-release" ]]
++}
+ 
+ # The runner can outlive the Actions SSH connection. Keep the host lock until
+ # post-deploy checks explicitly confirm the release or it has been rolled back.
+@@ -28,11 +40,12 @@ if bash "$REMOTE_SCRIPT"; then
+ else
+   deploy_status=$?
+ fi
++if (( deploy_status == 0 )) && ! owns_release; then deploy_status=1; fi
+ printf '%s\n' "$deploy_status" > "$REMOTE_STATUS"
+ if (( deploy_status != 0 )); then
+   # A connection or wrapper error could be reported after the new symlink was
+   # promoted. Reconcile the active SHA before accepting a failed deploy.
+-  if [[ -L "$APP_DIR" && "$(readlink -f "$APP_DIR")" == *-"${COMMIT_SHA:0:12}" ]]; then
++  if owns_release; then
+     if APP_DIR="$APP_DIR" COMMIT_SHA="$COMMIT_SHA" bash "$APP_DIR/scripts/rollback-release.sh"; then
+       printf 'rolled_back\n' > "$REMOTE_RESULT"
+       exit "$deploy_status"
+@@ -52,12 +65,14 @@ while (( $(date +%s) < deadline )); do
+     break
+   fi
+   if [[ -f "$REMOTE_CONFIRMED" ]]; then
++    if ! owns_release; then printf 'release_changed\n' > "$REMOTE_RESULT"; exit 1; fi
+     printf 'confirmed\n' > "$REMOTE_RESULT"
+     exit 0
+   fi
+   sleep "$POLL_INTERVAL_SECONDS"
+ done
+ 
++if ! owns_release; then printf 'release_changed\n' > "$REMOTE_RESULT"; exit 1; fi
+ if APP_DIR="$APP_DIR" COMMIT_SHA="$COMMIT_SHA" bash "$APP_DIR/scripts/rollback-release.sh"; then
+   printf 'rolled_back\n' > "$REMOTE_RESULT"
+   exit 0
+diff --git a/scripts/package-prebuilt-release.mjs b/scripts/package-prebuilt-release.mjs
+index cb9ce5b..4682a23 100644
+--- a/scripts/package-prebuilt-release.mjs
++++ b/scripts/package-prebuilt-release.mjs
+@@ -1,9 +1,10 @@
+-import { cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
++import { cpSync, chmodSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+ import { createHash } from "node:crypto";
+ import { spawnSync } from "node:child_process";
+ import { tmpdir } from "node:os";
+ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+ import { pathToFileURL } from "node:url";
++import {collectPrebuiltFiles} from './verify-prebuilt-release.mjs';
+ 
+ const digest = buffer => createHash("sha256").update(buffer).digest("hex");
+ function command(name, args, cwd) {
+@@ -13,13 +14,21 @@ function command(name, args, cwd) {
+ }
+ function publicFile(source) {
+   const name = basename(source);
+-  if (name === ".git" || name === ".pm2") return false;
++  if ([".git", ".pm2", ".codex", ".npmrc", ".previous-release"].includes(name)) return false;
+   if (name === ".env" || name.startsWith(".env.") || /\.(pem|key|crt)$/i.test(name)) return false;
+   const entry = lstatSync(source);
+   if (entry.isSymbolicLink()) throw new Error("Prebuilt input contains a symbolic link");
+   if (!entry.isFile() && !entry.isDirectory()) throw new Error("Prebuilt input contains a special file");
+   return true;
+ }
++function codePermissions(root) {
++  const entry=lstatSync(root);
++  if(entry.isSymbolicLink()||entry.uid!==process.getuid())throw new Error('Unsafe prebuilt code owner');
++  if(entry.isDirectory()){
++    chmodSync(root,0o755);for(const name of readdirSync(root))codePermissions(join(root,name));
++  }else if(entry.isFile()&&entry.nlink===1)chmodSync(root,entry.mode&0o111?0o755:0o644);
++  else throw new Error('Unsafe prebuilt code entry');
++}
+ 
+ /** Own trusted builder only: metadata is not a signature or an attestation of an untrusted build. */
+ export function packagePrebuiltRelease({ source, output, commit }) {
+@@ -45,6 +54,9 @@ export function packagePrebuiltRelease({ source, output, commit }) {
+   // Require the exact tracked lockfile, not a silently rewritten dependency graph.
+   const trackedLockfile = spawnSync("git", ["show", `${commit}:package-lock.json`], { cwd: root, timeout: 10000, maxBuffer: 4 * 1024 * 1024 });
+   if (trackedLockfile.status !== 0 || !lockfile.equals(trackedLockfile.stdout)) throw new Error("Prebuilt lockfile does not match commit");
++  const lock = JSON.parse(lockfile), mail = JSON.parse(readFileSync(join(root, 'node_modules/nodemailer/package.json'), 'utf8'));
++  if (mail.name !== 'nodemailer' || mail.version !== lock.packages?.['node_modules/nodemailer']?.version ||
++      Object.keys(mail.dependencies ?? {}).length) throw new Error('Prebuilt mail dependency must match the lockfile and have no unbundled dependencies');
+   for (const file of [".next/standalone/server.js", ".next/standalone/node_modules/@next/env/package.json", "ecosystem.config.cjs", "scripts/check-auth-captcha-env.cjs", "scripts/web-runtime.cjs"]) {
+     if (!publicFile(join(root, file)) || !statSync(join(root, file)).isFile()) throw new Error("Prebuilt required input is missing");
+   }
+@@ -53,15 +65,23 @@ export function packagePrebuiltRelease({ source, output, commit }) {
+     const stage = join(temporary, "package"); mkdirSync(stage, { mode: 0o700 });
+     const copy = (from, to) => cpSync(join(root, from), join(stage, to), { recursive: true, filter: publicFile });
+     copy(".next/standalone", ".");
+-    copy("public", "public");
+     copy(".next/static", ".next/static");
+-    copy("ecosystem.config.cjs", "ecosystem.config.cjs");
+-    copy("scripts/check-auth-captcha-env.cjs", "scripts/check-auth-captcha-env.cjs");
+-    copy("scripts/web-runtime.cjs", "scripts/web-runtime.cjs");
+-    copy("package-lock.json", "package-lock.json");
+-    writeFileSync(join(stage, "release-manifest.json"), JSON.stringify({ format: 1, commit, buildId: commit,
++    // Only tracked code/static inputs: ignored local data must never enter an artifact.
++    const tracked = spawnSync('git', ['ls-files', '-z', 'public', 'src', 'database', 'scripts', 'package.json', 'package-lock.json', 'next.config.ts', 'ecosystem.config.cjs'],
++      {cwd:root,encoding:'utf8',timeout:10000,maxBuffer:4*1024*1024});
++    if(tracked.status!==0)throw new Error('Prebuilt tracked input check failed');
++    for(const file of tracked.stdout.split('\0').filter(Boolean)){
++      if(!publicFile(join(root,file)))continue;
++      mkdirSync(dirname(join(stage,file)),{recursive:true});copy(file,file);
++    }
++    // Next bundles this dependency into web chunks, but the separate mail worker imports it directly.
++    copy('node_modules/nodemailer','node_modules/nodemailer');
++    for(const file of ['scripts/rollback-release.sh','scripts/auth-mail-worker.mjs'])if(!existsSync(join(stage,file)))throw new Error('Prebuilt worker or rollback input is missing');
++    codePermissions(stage);
++    const {files}=collectPrebuiltFiles(stage);
++    writeFileSync(join(stage, "release-manifest.json"), JSON.stringify({ format: 2, commit, buildId: commit,
+       lockfileSha256: digest(lockfile), node: process.version, platform: process.platform, arch: process.arch,
+-      glibc: process.report.getReport().header.glibcVersionRuntime }, null, 2) + "\n", { mode: 0o600 });
++      glibc: process.report.getReport().header.glibcVersionRuntime, files }, null, 2) + "\n", { mode: 0o600 });
+     const archive = join(temporary, "release.tar.gz");
+     command("tar", ["-czf", archive, "-C", stage, "."], root);
+     const bytes = readFileSync(archive);
+diff --git a/scripts/test-deploy-watchdog.sh b/scripts/test-deploy-watchdog.sh
+index b79f033..f06c157 100644
+--- a/scripts/test-deploy-watchdog.sh
++++ b/scripts/test-deploy-watchdog.sh
+@@ -30,6 +30,7 @@ prepare() {
+   cat > "$CASE_DIR/switch.sh" <<SH
+ #!/usr/bin/env bash
+ set -eu
++printf '%s\n' '$CURRENT' > '$CASE_DIR/release.record'
+ ln -sfn '$CURRENT' '$CASE_DIR/app.next'
+ mv -Tf '$CASE_DIR/app.next' '$CASE_DIR/app'
+ SH
+@@ -37,6 +38,7 @@ SH
+   export REMOTE_SCRIPT="$CASE_DIR/switch.sh"
+   export REMOTE_STATUS="$CASE_DIR/status" REMOTE_RESULT="$CASE_DIR/result"
+   export REMOTE_CONFIRMED="$CASE_DIR/confirmed" REMOTE_ABORT="$CASE_DIR/abort"
++  export DEPLOY_RECORD="$CASE_DIR/release.record"
+   export RELEASE_LOCK_FILE="$CASE_DIR/release.lock" COMMIT_SHA="$SHA"
+   export ACK_TIMEOUT_SECONDS=2 POLL_INTERVAL_SECONDS=0.05 LOCK_WAIT_SECONDS=0
+ }
+@@ -80,6 +82,14 @@ fi
+ [[ $(readlink -f "$APP_DIR") == "$PREVIOUS" ]]
+ echo 'failure after switch reconciliation: passed'
+ 
++prepare same_commit_failure
++ln -sfn "$CURRENT" "$APP_DIR"
++printf '#!/bin/bash\nexit 17\n' > "$REMOTE_SCRIPT"
++if bash "$SCRIPT_DIR/deploy-watchdog.sh"; then exit 1; fi
++[[ $(cat "$REMOTE_RESULT") == deploy_failed ]]
++[[ $(readlink -f "$APP_DIR") == "$CURRENT" ]]
++echo 'failed retry cannot roll back an existing release with the same commit: passed'
++
+ prepare lost_ssh
+ ACK_TIMEOUT_SECONDS=1 bash "$SCRIPT_DIR/deploy-watchdog.sh" & worker=$!
+ wait "$worker"
+diff --git a/scripts/verify-prebuilt-release.mjs b/scripts/verify-prebuilt-release.mjs
+new file mode 100644
+index 0000000..5f9960e
+--- /dev/null
++++ b/scripts/verify-prebuilt-release.mjs
+@@ -0,0 +1,74 @@
++import {createHash} from 'node:crypto';
++import {lstatSync,readdirSync,readFileSync,realpathSync,chmodSync} from 'node:fs';
++import {isAbsolute,resolve} from 'node:path';
++import {fileURLToPath} from 'node:url';
++
++const invalid=()=>new Error('Invalid prebuilt release');
++const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
++const publicPath=name=>!name.split('/').some(part=>['.git','.pm2','.codex','.npmrc','.previous-release'].includes(part)||
++ part==='.env'||part.startsWith('.env.')||/\.(pem|key|crt)$/i.test(part));
++const relativePath=name=>typeof name==='string'&&name.length>0&&name.length<=4096&&!/[\\\u0000-\u001f\u007f]/.test(name)&&
++ !name.startsWith('/')&&!name.split('/').some(part=>!part||part==='.'||part==='..')&&publicPath(name);
++
++/** Only a fresh, owned package, before runtime environment files are copied. */
++export function collectPrebuiltFiles(root){
++ if(!isAbsolute(root)||resolve(root)!==root||realpathSync(root)!==root)throw invalid();
++ const files=Object.create(null),directories=[];let bytes=0,count=0;
++ function visit(path,relative,depth){
++  if(depth>100)throw invalid();
++  const info=lstatSync(path);
++  if(info.isSymbolicLink()||info.uid!==process.getuid()||(info.mode&0o7022))throw invalid();
++  if(info.isDirectory()){
++   directories.push(path);
++   for(const name of readdirSync(path)){
++    const child=relative?relative+'/'+name:name;
++    if(!relativePath(child))throw invalid();visit(path+'/'+name,child,depth+1);
++   }
++  }else{
++   if(!info.isFile()||info.nlink!==1||info.size>128*1024*1024)throw invalid();
++   if(relative==='release-manifest.json')return;
++   if(++count>20000||(bytes+=info.size)>1024*1024*1024)throw invalid();
++   files[relative]={sha256:hash(readFileSync(path)),mode:info.mode&0o111?0o755:0o644};
++  }
++ }
++ visit(root,'',0);return{files,directories};
++}
++
++/** Archive SHA256 is checked by the installer before this module executes. */
++export function preparePrebuiltRelease(root,commit){
++ if(!/^[a-f0-9]{40}$/.test(commit??''))throw invalid();
++ const metadata=lstatSync(root+'/release-manifest.json');
++ if(!metadata.isFile()||metadata.isSymbolicLink()||metadata.uid!==process.getuid()||metadata.nlink!==1||metadata.size>16*1024*1024)throw invalid();
++ const manifest=JSON.parse(readFileSync(root+'/release-manifest.json','utf8'));
++ if(manifest?.format!==2||manifest.commit!==commit||manifest.buildId!==commit||
++  manifest.platform!==process.platform||manifest.arch!==process.arch||manifest.platform!=='linux'||manifest.arch!=='x64'||
++  !/^v22\.\d+\.\d+$/.test(manifest.node??'')||!/^22\.\d+\.\d+$/.test(process.versions.node)||
++  Number(manifest.node.split('.')[1])<18||Number(process.versions.node.split('.')[1])<Number(manifest.node.split('.')[1])||
++  !/^\d+\.\d+$/.test(manifest.glibc??'')||!manifest.files||typeof manifest.files!=='object'||Array.isArray(manifest.files))throw invalid();
++ const runtimeGlibc=process.report.getReport().header.glibcVersionRuntime;
++ if(!/^\d+\.\d+$/.test(runtimeGlibc??''))throw invalid();
++ const [buildMajor,buildMinor]=manifest.glibc.split('.').map(Number),[major,minor]=runtimeGlibc.split('.').map(Number);
++ if(major<buildMajor||major===buildMajor&&minor<buildMinor)throw invalid();
++ for(const [name,entry]of Object.entries(manifest.files)){
++  if(!relativePath(name)||name==='release-manifest.json'||!entry||typeof entry!=='object'||
++   Object.keys(entry).sort().join()!=='mode,sha256'||!/^([a-f0-9]{64})$/.test(entry.sha256??'')||![0o644,0o755].includes(entry.mode))throw invalid();
++ }
++ const {files,directories}=collectPrebuiltFiles(root),names=Object.keys(files);
++ if(names.length!==Object.keys(manifest.files).length)throw invalid();
++ for(const [name,entry]of Object.entries(files))if(!Object.hasOwn(manifest.files,name)||
++  manifest.files[name].sha256!==entry.sha256||manifest.files[name].mode!==entry.mode)throw invalid();
++ for(const name of ['server.js','.next/BUILD_ID','package-lock.json','ecosystem.config.cjs','scripts/web-runtime.cjs',
++  'scripts/check-auth-captcha-env.cjs','scripts/rollback-release.sh','scripts/auth-mail-worker.mjs',
++  'node_modules/@next/env/package.json','node_modules/nodemailer/package.json'])if(!Object.hasOwn(files,name))throw invalid();
++ if(readFileSync(root+'/.next/BUILD_ID','utf8').trim()!==commit||
++  hash(readFileSync(root+'/package-lock.json'))!==manifest.lockfileSha256)throw invalid();
++ // No env or runtime data exists in this fresh tree. Only verified code is made readable.
++ for(const directory of directories)chmodSync(directory,0o755);
++ for(const [name,entry]of Object.entries(files))chmodSync(root+'/'+name,entry.mode);
++ chmodSync(root+'/release-manifest.json',0o644);
++ return{commit,files:names.length};
++}
++if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
++ try{if(process.argv.length!==4)throw invalid();console.log(JSON.stringify(preparePrebuiltRelease(process.argv[2],process.argv[3])));}
++ catch{console.error('Prebuilt integrity or compatibility check failed');process.exitCode=1;}
++}
+diff --git a/tests/ci-parallel-layout.test.mjs b/tests/ci-parallel-layout.test.mjs
+index edce562..9ee72ae 100644
+--- a/tests/ci-parallel-layout.test.mjs
++++ b/tests/ci-parallel-layout.test.mjs
+@@ -11,8 +11,8 @@ test('layout checks run independently while both reusable CI jobs remain mandato
+   assert.deepEqual(Object.keys(ci.jobs).sort(),['category_heroes','validate']);
+   for(const job of Object.values(ci.jobs)){
+     assert.equal(job.needs,undefined);assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);
+-    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],'ubuntu-latest');
+-    for(const step of job.steps){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}
++    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');
++    for(const step of job.steps.filter(step=>step.name!=='Upload the verified production artifact')){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}
+     const guard=job.steps.findIndex(step=>step.name==='Guard quality floor'),install=job.steps.findIndex(step=>step.name==='Install dependencies');
+     assert.ok(guard>=0&&guard<install);assert.equal(job.steps[install].run,'npm ci');
+   }
+diff --git a/tests/deploy-readiness.test.mjs b/tests/deploy-readiness.test.mjs
+index 8b92322..e4a62f2 100644
+--- a/tests/deploy-readiness.test.mjs
++++ b/tests/deploy-readiness.test.mjs
+@@ -1,5 +1,5 @@
+ import assert from 'node:assert/strict';
+-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
++import { existsSync, mkdtempSync, mkdirSync, readFileSync, readlinkSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+ import { tmpdir } from 'node:os';
+ import path from 'node:path';
+ import { spawnSync } from 'node:child_process';
+@@ -19,6 +19,7 @@ function runDeploy(ready, prebuilt = false, checksumValid = true, runtimeFailure
+     const commandLog = path.join(root, 'commands.log');
+     for (const dir of [bin, previous, source]) mkdirSync(dir);
+     writeFileSync(path.join(previous, 'ecosystem.config.cjs'), 'module.exports = {};\n');
++    writeFileSync(path.join(previous, '.env.production.local'), 'SYNTHETIC_PRIVATE_ENV=retained\n', {mode:0o600});
+     writeFileSync(path.join(source, 'ecosystem.config.cjs'), 'module.exports = {};\n');
+     symlinkSync(previous, app);
+ 
+@@ -26,6 +27,7 @@ function runDeploy(ready, prebuilt = false, checksumValid = true, runtimeFailure
+       writeFileSync(path.join(bin, cmd), `#!/usr/bin/env bash
+ printf '%s %s\\n' '${cmd}' "$*" >> "$COMMAND_LOG"
+ if [[ '${cmd}' == node && "$1" == --version ]]; then printf 'v22.23.3\\n'; fi
++if [[ '${cmd}' == node && "$1" == *'/scripts/verify-prebuilt-release.mjs' ]]; then exec "$REAL_NODE" "$@"; fi
+ if [[ '${cmd}' == node && "$1" == *'/scripts/web-runtime.cjs' && "$RUNTIME_FAILURE" == true ]]; then exit 1; fi
+ exit 0
+ `, { mode: 0o755 });
+@@ -42,8 +44,28 @@ exit 0
+       mkdirSync(path.join(source, '.next'));
+       mkdirSync(path.join(source, 'scripts'));
+       writeFileSync(path.join(source, 'scripts', 'check-auth-captcha-env.cjs'), '// fixture checker\n');
+-      writeFileSync(path.join(source, '.next', 'BUILD_ID'), 'fixture-build');
++      writeFileSync(path.join(source, '.next', 'BUILD_ID'), 'a'.repeat(40));
+       writeFileSync(path.join(source, 'server.js'), '// fixture standalone server\n');
++      const values={
++        'scripts/verify-prebuilt-release.mjs':readFileSync(path.resolve('scripts/verify-prebuilt-release.mjs'),'utf8'),
++        'scripts/web-runtime.cjs':'// fixture runtime', 'scripts/rollback-release.sh':'// fixture rollback',
++        'scripts/auth-mail-worker.mjs':'// fixture mail', 'package-lock.json':'{}',
++        'node_modules/@next/env/package.json':'{}', 'node_modules/nodemailer/package.json':'{}',
++      };
++      for(const [name,value]of Object.entries(values)){
++        mkdirSync(path.dirname(path.join(source,name)),{recursive:true});writeFileSync(path.join(source,name),value);
++      }
++      const inventory={};
++      function collect(dir,relative=''){
++        for(const entry of readdirSync(dir,{withFileTypes:true})){
++          const name=relative?relative+'/'+entry.name:entry.name,file=path.join(dir,entry.name);
++          if(entry.isDirectory())collect(file,name);else inventory[name]={sha256:createHash('sha256').update(readFileSync(file)).digest('hex'),mode:0o644};
++        }
++      }
++      collect(source);
++      writeFileSync(path.join(source,'release-manifest.json'),JSON.stringify({format:2,commit:'a'.repeat(40),buildId:'a'.repeat(40),
++        lockfileSha256:createHash('sha256').update('{}').digest('hex'),node:process.version,platform:'linux',arch:'x64',
++        glibc:process.report.getReport().header.glibcVersionRuntime,files:inventory}));
+       archive = path.join(root, 'release.tar.gz');
+       assert.equal(spawnSync('tar', ['-czf', archive, '-C', source, '.']).status, 0);
+       checksum = createHash('sha256').update(readFileSync(archive)).digest('hex');
+@@ -63,13 +85,15 @@ exit 0
+         COMMAND_LOG: commandLog,
+         READY_MODE: ready ? 'up' : 'down',
+         RUNTIME_FAILURE: String(runtimeFailure),
++        REAL_NODE: process.execPath,
+         PATH: `${bin}:${process.env.PATH}`,
+       },
+     });
+ 
+     return { result, activeRelease: readlinkSync(app), probes: existsSync(probeLog) ? readFileSync(probeLog, 'utf8') : '',
+       commands: existsSync(commandLog) ? readFileSync(commandLog, 'utf8') : '', previous,
+-      releaseMode: statSync(readlinkSync(app)).mode & 0o777 };
++      releaseMode: statSync(readlinkSync(app)).mode & 0o777,
++      environmentMode: statSync(path.join(readlinkSync(app), '.env.production.local')).mode & 0o777 };
+   } finally {
+     rmSync(root, { recursive: true, force: true });
+   }
+@@ -119,8 +143,9 @@ test('wrong artifact checksum refuses deployment before replacing the service',
+   assert.doesNotMatch(commands, /pm2 /);
+ });
+ 
+-test('prebuilt archive does not make the release directory accessible to other users', () => {
+-  const { result, releaseMode } = runDeploy(true, true);
++test('verified prebuilt code is readable while the runtime environment stays private', () => {
++  const { result, releaseMode, environmentMode } = runDeploy(true, true);
+   assert.equal(result.status, 0, result.stdout + result.stderr);
+-  assert.equal(releaseMode, 0o700);
++  assert.equal(releaseMode, 0o755);
++  assert.equal(environmentMode, 0o600);
+ });
+diff --git a/tests/deployment-ssh-host-trust.test.mjs b/tests/deployment-ssh-host-trust.test.mjs
+index 22944d0..f1d5083 100644
+--- a/tests/deployment-ssh-host-trust.test.mjs
++++ b/tests/deployment-ssh-host-trust.test.mjs
+@@ -3,6 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
+ import { createConnection, createServer } from 'node:net';
+ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+ import { createRequire } from 'node:module';
++import { createHash } from 'node:crypto';
+ import { tmpdir, userInfo } from 'node:os';
+ import path from 'node:path';
+ import test from 'node:test';
+@@ -259,15 +260,17 @@ test('parsed deployment and TLS workflow paths use the effective pinned policy f
+     assert.match(tls.jobs.renew.steps[0].uses, /^actions\/checkout@[0-9a-f]{40}$/);
+     const { bin, log } = workflowFixture(root);
+     const remoteDir = '/tmp/blizhniy-deploy-aBcD12345678';
+-    const env = { PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: root, GITHUB_OUTPUT: path.join(root, 'outputs'), SSH_REMOTE_DIR: remoteDir, REMOTE_DIR: remoteDir, SSH_CALL_LOG: log, VPS_HOST: '217.149.30.35', VPS_PORT: '2222', VPS_USER: 'fixture-user', VPS_SSH_KEY: 'synthetic-client-key-only', APP_DIR: '/synthetic-app', GITHUB_RUN_ID: '12345', GITHUB_RUN_ATTEMPT: '1' };
++    const archive=path.join(root,'release.tar.gz');writeFileSync(archive,'synthetic prebuilt');
++    const archiveSha=createHash('sha256').update(readFileSync(archive)).digest('hex');
++    const env = { PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: root, GITHUB_OUTPUT: path.join(root, 'outputs'), SSH_REMOTE_DIR: remoteDir, REMOTE_DIR: remoteDir, SSH_CALL_LOG: log, VPS_HOST: '217.149.30.35', VPS_PORT: '2222', VPS_USER: 'fixture-user', VPS_SSH_KEY: 'synthetic-client-key-only', APP_DIR: '/synthetic-app', GITHUB_RUN_ID: '12345', GITHUB_RUN_ATTEMPT: '1', RELEASE_ARCHIVE_SHA256: archiveSha };
+     const execute = (step, scenario = 'confirmed', overrides = {}) => {
+       const code = step.run.replace(/\$\{\{\s*github\.run_id\s*\}\}/g, '12345').replace(/\$\{\{\s*github\.run_attempt\s*\}\}/g, '1').replace(/\$\{\{\s*github\.sha\s*\}\}/g, 'a'.repeat(40));
+       return run('bash', ['-c', code], { ...env, SSH_SCENARIO: scenario, ...overrides });
+     };
+     assert.equal(execute(ship).status, 0);
+     assert.equal(execute(ship, 'timeout').status, 124);
+-    assert.equal(execute(deploy.jobs.deploy.steps.find(step => step.name === 'Confirm deployed release')).status, 0);
+-    assert.equal(execute(deploy.jobs.deploy.steps.find(step => step.name === 'Roll back release if a deployed check failed'), 'rollback').status, 0);
++    assert.equal(execute(deploy.jobs.finalize.steps.find(step => step.name === 'Confirm deployed release')).status, 0);
++    assert.equal(execute(deploy.jobs.finalize.steps.find(step => step.name === 'Roll back release if a deployed check failed'), 'rollback').status, 0);
+     assert.equal(execute(configure).status, 0);
+     assert.equal(execute(tls.jobs.renew.steps.find(step => step.name === 'Enable Caddy automatic HTTPS')).status, 0);
+     assert.equal(execute(tls.jobs.renew.steps.find(step => step.name === 'Verify the certificate served to visitors')).status, 1);
+@@ -284,7 +287,7 @@ test('parsed deployment and TLS workflow paths use the effective pinned policy f
+       assert.ok(call.args.at(-1).includes(`${remoteDir}/`), 'all deployment signals and logs share the private directory');
+     }
+     const runner = readFileSync(path.join(root, 'blizhniy-deploy-runner-12345-1.sh'), 'utf8');
+-    for (const name of ['SOURCE_ARCHIVE', 'REMOTE_SCRIPT', 'REMOTE_STATUS', 'REMOTE_RESULT', 'REMOTE_CONFIRMED', 'REMOTE_ABORT', 'REMOTE_DIR']) {
++    for (const name of ['SOURCE_ARCHIVE', 'REMOTE_SCRIPT', 'REMOTE_STATUS', 'REMOTE_RESULT', 'REMOTE_CONFIRMED', 'REMOTE_ABORT', 'REMOTE_DIR', 'DEPLOY_RECORD']) {
+       assert.match(runner, new RegExp(`export ${name}=${remoteDir}/?`));
+     }
+     for (const call of calls) {
+@@ -294,9 +297,9 @@ test('parsed deployment and TLS workflow paths use the effective pinned policy f
+       assert.equal(call.policy.hostname, '217.149.30.35');
+       assert.ok(call.args.includes('StrictHostKeyChecking=yes'), 'critical call must explicitly require strict checking');
+     }
+-    const confirm = deploy.jobs.deploy.steps.find(step => step.name === 'Confirm deployed release');
+-    const rollback = deploy.jobs.deploy.steps.find(step => step.name === 'Roll back release if a deployed check failed');
+-    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ steps.ship.outputs.remote_dir }}');
++    const confirm = deploy.jobs.finalize.steps.find(step => step.name === 'Confirm deployed release');
++    const rollback = deploy.jobs.finalize.steps.find(step => step.name === 'Roll back release if a deployed check failed');
++    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ needs.deploy.outputs.remote_dir }}');
+     for (const invalid of ['', '/tmp/other-directory', `${remoteDir}\n/tmp/second`, `${remoteDir}'; touch /tmp/invalid`]) {
+       const before = readFileSync(log, 'utf8').trim().split('\n').length;
+       assert.equal(execute(ship, 'confirmed', { SSH_REMOTE_DIR: invalid }).status, 1);
+@@ -328,7 +331,7 @@ test('the deployed wrapper executes source only inside private staging and leave
+     const script = path.join(stage, 'deploy.sh'); writeFileSync(script, wrapper[1]);
+     const trace = path.join(root, 'trace');
+     const result = run('bash', ['-c', 'umask 022; bash "$WRAPPER_SCRIPT"'], {
+-      WRAPPER_SCRIPT: script, WRAPPER_TRACE: trace, REMOTE_DIR: stage, SOURCE_ARCHIVE: archive, RUN_TOKEN: token,
++      WRAPPER_SCRIPT: script, WRAPPER_TRACE: trace, REMOTE_DIR: stage, SOURCE_ARCHIVE: archive, SOURCE_ARCHIVE_SHA256: createHash('sha256').update(readFileSync(archive)).digest('hex'), RUN_TOKEN: token,
+     });
+     assert.equal(result.status, 0, result.stderr);
+     assert.deepEqual(readFileSync(trace, 'utf8').trim().split('\n'), [`${stage}/source/scripts/deploy-release.sh`, '0022']);
+diff --git a/tests/package-prebuilt-release.test.mjs b/tests/package-prebuilt-release.test.mjs
+index 516caa1..3412714 100644
+--- a/tests/package-prebuilt-release.test.mjs
++++ b/tests/package-prebuilt-release.test.mjs
+@@ -11,10 +11,15 @@ function fixture(run) {
+   const root = mkdtempSync(join(tmpdir(), "blizhniy-package-test-")), source = join(root, "source");
+   mkdirSync(source);
+   const files = {
+-    ".gitignore": ".next/\n",
+-    "package-lock.json": '{"lockfileVersion":3}', "ecosystem.config.cjs": "module.exports = {};",
++    ".gitignore": ".next/\nnode_modules/\n",
++    "package-lock.json": '{"lockfileVersion":3,"packages":{"node_modules/nodemailer":{"version":"1.0.0"}}}', "ecosystem.config.cjs": "module.exports = {};",
+     "scripts/check-auth-captcha-env.cjs": "// synthetic guard",
+     "scripts/web-runtime.cjs": "// synthetic runtime guard",
++    "scripts/auth-mail-worker.mjs": "// synthetic mail worker",
++    "scripts/rollback-release.sh": "// synthetic rollback",
++    "src/lib/production-mail-runtime.ts": "// synthetic source worker runtime",
++    "database/migrations/synthetic.sql": "-- synthetic schema source",
++    "node_modules/nodemailer/package.json": '{"name":"nodemailer","version":"1.0.0"}',
+     "public/icon.svg": "synthetic-static", ".next/static/chunk.js": "synthetic-browser-chunk",
+     ".next/standalone/server.js": "// synthetic server", ".next/standalone/.next/BUILD_ID": "placeholder",
+     ".next/standalone/node_modules/@next/env/package.json": '{"name":"@next/env"}',
+@@ -30,7 +35,7 @@ function fixture(run) {
+     assert.equal(result.status, 0); return result.stdout.trim();
+   };
+   git(["init", "-q"]);
+-  git(["add", ".gitignore", "package-lock.json", "ecosystem.config.cjs", "scripts", "public"]);
++  git(["add", ".gitignore", "package-lock.json", "ecosystem.config.cjs", "scripts", "public", "src", "database"]);
+   git(["-c", "user.name=Package fixture", "-c", "user.email=package@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "synthetic fixture"]);
+   const commit = git(["rev-parse", "HEAD"]);
+   writeFileSync(join(source, ".next/BUILD_ID"), commit);
+@@ -50,6 +55,10 @@ test("standalone package includes static assets and manifest but excludes enviro
+   assert.equal(readFileSync(join(unpack, "scripts/web-runtime.cjs"), "utf8"), "// synthetic runtime guard");
+   const manifest = JSON.parse(readFileSync(join(unpack, "release-manifest.json"), "utf8"));
+   assert.equal(manifest.commit, commit);
++  assert.equal(manifest.format, 2);
++  assert.equal(readFileSync(join(unpack, 'node_modules/nodemailer/package.json'), 'utf8'), '{"name":"nodemailer","version":"1.0.0"}');
++  assert.equal(readFileSync(join(unpack, 'src/lib/production-mail-runtime.ts'), 'utf8'), '// synthetic source worker runtime');
++  assert.equal(manifest.files['server.js'].sha256, createHash('sha256').update('// synthetic server').digest('hex'));
+   assert.equal(manifest.lockfileSha256, createHash("sha256").update(readFileSync(join(source, "package-lock.json"))).digest("hex"));
+   const list = spawnSync("tar", ["-tzf", output], { encoding: "utf8" }).stdout;
+   assert.doesNotMatch(list, /\.env|\.key|\.git\/|tasks\//);
+diff --git a/tests/prebuilt-release.test.mjs b/tests/prebuilt-release.test.mjs
+new file mode 100644
+index 0000000..2c74edb
+--- /dev/null
++++ b/tests/prebuilt-release.test.mjs
+@@ -0,0 +1,53 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,statSync,chmodSync,symlinkSync,linkSync,rmSync} from 'node:fs';
++import {tmpdir} from 'node:os';
++import {join,dirname} from 'node:path';
++import {createHash} from 'node:crypto';
++import {preparePrebuiltRelease} from '../scripts/verify-prebuilt-release.mjs';
++
++const hash=bytes=>createHash('sha256').update(bytes).digest('hex'),commit='a'.repeat(40);
++function fixture(run){
++ const root=mkdtempSync(join(tmpdir(),'prebuilt-integrity-'));chmodSync(root,0o700);
++ const values={'server.js':'// server','ecosystem.config.cjs':'module.exports={}',
++  'package-lock.json':'{"lockfileVersion":3}','.next/BUILD_ID':commit,
++  'scripts/web-runtime.cjs':'// guard','scripts/check-auth-captcha-env.cjs':'// captcha',
++  'scripts/rollback-release.sh':'#!/bin/sh\nexit 0','scripts/auth-mail-worker.mjs':'// mail',
++  'node_modules/@next/env/package.json':'{"name":"@next/env"}',
++  'node_modules/nodemailer/package.json':'{"name":"nodemailer"}',
++  'public/image.webp':'synthetic pixels'};
++ const files=Object.fromEntries(Object.entries(values).map(([name,value])=>{
++  mkdirSync(dirname(join(root,name)),{recursive:true,mode:0o700});writeFileSync(join(root,name),value,{mode:0o600});
++  return[name,{sha256:hash(value),mode:0o644}];
++ }));
++ const manifest={format:2,commit,buildId:commit,lockfileSha256:hash(values['package-lock.json']),
++  node:process.version,platform:'linux',arch:'x64',glibc:process.report.getReport().header.glibcVersionRuntime,files};
++ const save=()=>writeFileSync(join(root,'release-manifest.json'),JSON.stringify(manifest),{mode:0o600});save();
++ try{return run({root,manifest,save});}finally{rmSync(root,{recursive:true,force:true});}
++}
++test('verified prebuilt code becomes readable without weakening its owner or write permissions',()=>fixture(({root})=>{
++ const proof=preparePrebuiltRelease(root,commit);assert.equal(proof.commit,commit);
++ assert.equal(statSync(root).mode&0o777,0o755);
++ assert.equal(statSync(join(root,'.next')).mode&0o777,0o755);
++ assert.equal(statSync(join(root,'server.js')).mode&0o777,0o644);
++ assert.equal(readFileSync(join(root,'.next/BUILD_ID'),'utf8'),commit);
++}));
++test('wrong commit, build ID, lockfile, platform or ABI is refused before changing permissions',()=>{
++ for(const change of [m=>m.commit='b'.repeat(40),m=>m.buildId='b'.repeat(40),m=>m.lockfileSha256='0'.repeat(64),
++  m=>m.platform='darwin',m=>m.arch='arm64',m=>m.node='v23.0.0',m=>m.glibc='99.0',m=>m.format=1])fixture(({root,manifest,save})=>{
++  change(manifest);save();assert.throws(()=>preparePrebuiltRelease(root,commit));assert.equal(statSync(root).mode&0o777,0o700);
++ });
++});
++test('changed or missing code and extra files are rejected before the permissions phase',()=>{
++ for(const change of [root=>writeFileSync(join(root,'server.js'),'altered'),root=>rmSync(join(root,'server.js')),
++  root=>writeFileSync(join(root,'extra.js'),'unexpected')])fixture(({root})=>{
++  change(root);assert.throws(()=>preparePrebuiltRelease(root,commit));assert.equal(statSync(root).mode&0o777,0o700);
++ });
++});
++test('environment files, symlinks, hardlinks and traversal paths are never adopted as code',()=>{
++ for(const change of [({root})=>symlinkSync('/etc/passwd',join(root,'link')),({root})=>linkSync(join(root,'server.js'),join(root,'alias')),
++  ({root,manifest,save})=>{writeFileSync(join(root,'.env.production.local'),'synthetic');manifest.files['.env.production.local']={sha256:hash('synthetic'),mode:0o644};save();},
++  ({manifest,save})=>{manifest.files['../outside']={sha256:hash('x'),mode:0o644};save();}])fixture(context=>{
++  change(context);assert.throws(()=>preparePrebuiltRelease(context.root,commit));assert.equal(statSync(context.root).mode&0o777,0o700);
++ });
++});
+diff --git a/tests/prebuilt-workflow.test.mjs b/tests/prebuilt-workflow.test.mjs
+new file mode 100644
+index 0000000..b55d91f
+--- /dev/null
++++ b/tests/prebuilt-workflow.test.mjs
+@@ -0,0 +1,49 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {createRequire} from 'node:module';
++import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,existsSync,rmSync} from 'node:fs';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {spawnSync} from 'node:child_process';
++const require=createRequire(import.meta.url),yaml=require('js-yaml');
++const workflow=()=>yaml.load(readFileSync('.github/workflows/deploy.yml','utf8'));
++test('production artifact is built and exercised on a compatible runner before SSH secrets become available',()=>{
++ const jobs=workflow().jobs,deploy=jobs.deploy,ci=yaml.load(readFileSync('.github/workflows/ci.yml','utf8'));
++ assert.equal(ci.jobs.validate['runs-on'],'ubuntu-24.04');assert.deepEqual(deploy.needs,['validate','security','codeql']);
++ const steps=ci.jobs.validate.steps,build=steps.findIndex(s=>s.name==='Build the production artifact on GitHub'),pack=steps.findIndex(s=>s.id==='package');
++ assert.ok(build>0&&build<pack);
++ assert.equal(steps[build].env.BLIZHNIY_BUILD_COMMIT,'${{ github.sha }}');
++ assert.equal(steps[build].env.__NEXT_PROCESSED_ENV,'true');
++ assert.match(steps[pack].run,/scripts\/check-prebuilt-runtime\.mjs/);
++ assert.match(steps[pack].run,/scripts\/verify-prebuilt-release\.mjs/);
++ assert.doesNotMatch(JSON.stringify(ci),/secrets\./);
++ assert.doesNotMatch(JSON.stringify(jobs.postchecks),/secrets\./);
++ assert.equal(jobs.validate.with.publish_release,true);
++ assert.equal(steps.find(s=>s.name==='Upload the verified production artifact').if,'${{ inputs.publish_release }}');
++ const download=deploy.steps.find(s=>s.name==='Download the verified production artifact');
++ assert.equal(download.with.name,'${{ needs.validate.outputs.artifact_name }}');
++ assert.equal(ci.on.workflow_call.outputs.artifact_name.value,'${{ jobs.validate.outputs.artifact_name }}');
++ const ship=deploy.steps.find(s=>s.id==='ship');
++ assert.equal(ship.env.RELEASE_ARCHIVE_SHA256,'${{ needs.validate.outputs.archive_sha256 }}');
++ assert.match(ship.run,/export PREBUILT_RELEASE=true/);
++ assert.match(ship.run,/export SOURCE_ARCHIVE_SHA256=/);
++ assert.match(jobs.finalize.if,/always\(\)/);
++ assert.deepEqual(jobs.finalize.needs,['deploy','postchecks']);
++ assert.doesNotMatch(JSON.stringify(jobs.finalize),/npm ci/);
++ assert.doesNotMatch(JSON.stringify(deploy),/npm ci|npm run build/);
++});
++test('a corrupted transport archive cannot execute its installer or create an extracted source tree',()=>{
++ for(const checksum of ['0'.repeat(64),'']){
++  const root=mkdtempSync(join(tmpdir(),'prebuilt-wrapper-integrity-'));
++  try{
++   const stage=join(root,'stage'),input=join(root,'input');mkdirSync(stage,{mode:0o700});mkdirSync(join(input,'scripts'),{recursive:true});
++   writeFileSync(join(input,'scripts/deploy-release.sh'),'touch "$UNEXPECTED_EXECUTION"\n');
++   const archive=join(stage,'release.tar.gz');assert.equal(spawnSync('tar',['-czf',archive,'-C',input,'.']).status,0);
++   const ship=workflow().jobs.deploy.steps.find(s=>s.id==='ship');
++   const wrapper=ship.run.match(/cat > "\$LOCAL_SCRIPT" <<'EOF'\n([\s\S]*?)\n\s*EOF/)[1];
++   const marker=join(root,'unexpected');const result=spawnSync('bash',['-c',wrapper],{encoding:'utf8',env:{...process.env,
++    REMOTE_DIR:stage,SOURCE_ARCHIVE:archive,SOURCE_ARCHIVE_SHA256:checksum,UNEXPECTED_EXECUTION:marker}});
++   assert.notEqual(result.status,0);assert.equal(existsSync(marker),false);assert.equal(existsSync(join(stage,'source')),false);
++  }finally{rmSync(root,{recursive:true,force:true});}
++ }
++});
