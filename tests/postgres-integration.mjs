@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -159,6 +159,7 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
       await run("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
         "-subj", "/CN=blizhniy-integration", "-addext", `subjectAltName=${subjectAltName}`,
         "-addext", "basicConstraints=critical,CA:TRUE", "-keyout", key, "-out", cert], { timeout: 10000 });
+      chmodSync(cert, 0o644);
       // docker cp writes to the container layer, not a live tmpfs mount.
       await docker(["cp", cert, `${id}:/tmp/blizhniy-server.crt`]);
       await docker(["cp", key, `${id}:/tmp/blizhniy-server.key`]);
@@ -187,7 +188,7 @@ test("isolated PostgreSQL 18.6: parameters, transactions, limits and cleanup", {
     } finally { await tlsDb.close(); }
     await suite.test("an unrelated CA cannot authenticate the server", async () => {
       const wrongCa = join(certificates, "wrong-ca.crt");
-      writeFileSync(wrongCa, rootCertificates[0]);
+      writeFileSync(wrongCa, rootCertificates[0], { mode: 0o644 });
       const invalid = createPostgresDatabase({ ...tlsEnv, BLIZHNIY_DB_CA_FILE: wrongCa });
       try { await assert.rejects(invalid.query("select 1"), { message: "PostgreSQL operation failed", code: "DEPTH_ZERO_SELF_SIGNED_CERT" }); }
       finally { await invalid.close(); }

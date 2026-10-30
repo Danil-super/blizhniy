@@ -1,7 +1,7 @@
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {randomBytes,createHash} from 'node:crypto';
-import {mkdir,writeFile,readFile} from 'node:fs/promises';
+import {mkdir,writeFile,readFile,chmod} from 'node:fs/promises';
 import {realpathSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
@@ -134,6 +134,7 @@ export async function seedLocalPrimaryAccounts(owner,state){
   await writeFile(join(stateDirectory,'mail-key.bin'),randomBytes(32),{mode:0o600,flag:'wx'});
   await run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','30','-subj','/CN=127.0.0.1','-addext','subjectAltName=IP:127.0.0.1','-addext','basicConstraints=critical,CA:TRUE',
    '-keyout',join(stateDirectory,'tls-key.pem'),'-out',join(stateDirectory,'tls-cert.pem')],{timeout:15000,maxBuffer:65536});
+  await chmod(join(stateDirectory,'tls-cert.pem'),0o644);
   await writeFile(join(stateDirectory,'ready.json'),JSON.stringify({version:1,containerId:state.containerId}),{mode:0o600,flag:'wx'});
 }
 export function localPrimaryDatabaseConfig(state,role='runtime'){

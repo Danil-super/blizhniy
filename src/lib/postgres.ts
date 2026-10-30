@@ -1,12 +1,36 @@
 // Node-only module. Browser code must use same-origin API handlers, never this client.
 import { X509Certificate } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
+import { constants, openSync, fstatSync, readSync, closeSync } from "node:fs";
 import { isIP } from "node:net";
 import pg from "pg";
 import type { Pool, PoolClient, PoolConfig, QueryResult, QueryResultRow } from "pg";
 
 function assertServer(): void {
   if (typeof window !== "undefined") throw new Error("PostgreSQL is server-only");
+}
+
+function readCertificateAuthority(path: string): string {
+  let descriptor: number | undefined;
+  const invalid = () => new Error("Invalid certificate authority");
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const info = fstatSync(descriptor), uid = process.getuid?.();
+    if (!info.isFile() || info.size < 1 || info.size > 65536 || uid === undefined ||
+        (info.uid !== 0 && info.uid !== uid) || (info.mode & 0o022) !== 0) throw invalid();
+    // The path may be replaced after open. Metadata and bounded reads refer
+    // to the same inode; a special file cannot block waiting for a writer.
+    const bytes = Buffer.alloc(65537);
+    let length = 0;
+    while (length < bytes.length) {
+      const count = readSync(descriptor, bytes, length, bytes.length - length, null);
+      if (!count) break;
+      length += count;
+    }
+    if (!length || length > 65536) throw invalid();
+    const ca = bytes.subarray(0, length).toString("utf8");
+    if (!new X509Certificate(ca).ca) throw invalid();
+    return ca;
+  } finally { if (descriptor !== undefined) closeSync(descriptor); }
 }
 
 export function readPostgresConfig(env: NodeJS.ProcessEnv = process.env): PoolConfig {
@@ -32,10 +56,8 @@ export function readPostgresConfig(env: NodeJS.ProcessEnv = process.env): PoolCo
     ssl = false;
   } else if (mode === "verify-full") {
     try {
-      const path = required("CA_FILE");
-      if (statSync(path).size > 65536) throw invalid();
-      const ca = readFileSync(path, "utf8");
-      if (!new X509Certificate(ca).ca) throw invalid();
+      // Includes cleanup failures: no filesystem details leave this boundary.
+      const ca = readCertificateAuthority(required("CA_FILE"));
       // pg supplies the connection hostname to Node TLS for certificate identity checks.
       ssl = { ca, rejectUnauthorized: true };
     } catch { throw invalid(); }

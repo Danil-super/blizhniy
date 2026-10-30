@@ -23,7 +23,7 @@ test('isolated worker artifact loads canonical compiled modules in plain Node wi
   const result=spawnSync(process.execPath,['--input-type=module','-e',script],{cwd:destination,env:{PATH:process.env.PATH},encoding:'utf8',timeout:10000});
   assert.equal(result.status,0,result.stderr);
   assert.deepEqual(JSON.parse(result.stdout),{postgres:'function',preflight:'function',journal:24,attempts:1});
-  const ca=join(owned,'root.crt');writeFileSync(ca,rootCertificates[0]);
+  const ca=join(owned,'root.crt');writeFileSync(ca,rootCertificates[0],{mode:0o644});
   const factoryScript=`const {createPaymentWorkerRuntime}=await import('./scripts/payment-worker-runtime.mjs');const runtime=await createPaymentWorkerRuntime();await runtime.close();console.log(JSON.stringify({closed:true}));`;
   const factory=spawnSync(process.execPath,['--input-type=module','-e',factoryScript],{cwd:destination,env:{PATH:process.env.PATH,NODE_ENV:'production',
    BLIZHNIY_PAYMENT_WORKER:'queued-test',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_PAYMENT_SHOP_ID:'synthetic',BLIZHNIY_PAYMENT_SECRET_KEY:'test_synthetic',

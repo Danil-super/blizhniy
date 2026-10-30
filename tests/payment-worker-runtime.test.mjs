@@ -27,7 +27,7 @@ test('TEST worker rejects disabled, LIVE, wrong role/host/database, ambient PG a
 test('factory uses verified canonical DB config, private max-two pool, immutable TEST merchant, read-only preflight and owned shutdown',async()=>{
  const {createPaymentWorkerRuntime}=await import('../scripts/payment-worker-runtime.mjs');
  const owned=mkdtempSync(join(tmpdir(),'blizhniy-payment-runtime-'));
- const ca=join(owned,'root.crt');writeFileSync(ca,rootCertificates[0]);
+ const ca=join(owned,'root.crt');writeFileSync(ca,rootCertificates[0],{mode:0o644});
  const env={...valid,BLIZHNIY_DB_CA_FILE:ca};
  let poolConfig,merchant,closed=0,reads=0,ticks=0,failWorker=false;
  const loadModules=()=>({readPostgresConfig,Pool:class{constructor(config){poolConfig=config;}async end(){closed++;}},
