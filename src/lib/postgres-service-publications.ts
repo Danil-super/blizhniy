@@ -5,12 +5,13 @@ import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';import type {ListingDraftPhoto} from './listing-photo-contract';
 import {validPersonName} from './cabinet-field-validation.ts';
 import {specialistAbout} from './specialist-application-profile.ts';
+import {effectivePublicationStatusSql} from './publication-effective-status';
 export class ServicePublicationAccessError extends Error{constructor(){super('Service publication not found');}}
 export class ServicePublicationConflictError extends Error{constructor(){super('Service publication changed');}}
 export type ServicePublicationSnapshot={id:string;kind:ServicePublicationKind;form:ServicePublicationForm;photos:ListingDraftPhoto[];revision:string;status:string;paid:boolean;
  createdAt:string;updatedAt:string;publishedAt:string|null;expiresAt:string|null};
 type Row=Omit<ServicePublicationSnapshot,'form'|'photos'>&{form:unknown};
-const columns=`id,kind,form,revision::text as revision,status,is_paid as paid,
+const columns=`id,kind,form,revision::text as revision,${effectivePublicationStatusSql()} as status,is_paid as paid,
  to_char(created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "createdAt",
  to_char(updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "updatedAt",
  to_char(published_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
@@ -81,7 +82,7 @@ export class PostgresServicePublicationStore{
  });}
  list(token:string,owner:string,kind:ServicePublicationKind,after:unknown){return withAppSessionTransaction(this.db,token,async(tx,user)=>{
   if(user.id!==owner)throw new ServicePublicationAccessError();kindOf(kind);const cursor=parseListingDraftCursor(after);
-  const rows=(await tx.query<{id:string;kind:ServicePublicationKind;title:string;revision:string;status:string;paid:boolean;updatedAt:string}>(`select id,kind,title,revision::text as revision,status,is_paid as paid,
+  const rows=(await tx.query<{id:string;kind:ServicePublicationKind;title:string;revision:string;status:string;paid:boolean;updatedAt:string}>(`select id,kind,title,revision::text as revision,${effectivePublicationStatusSql()} as status,is_paid as paid,
    to_char(updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "updatedAt" from app.service_publications
    where author_id=$1 and kind=$2 and deleted_at is null ${cursor?'and (updated_at,id)<($3::timestamptz,$4::uuid)':''}
    order by updated_at desc,id desc limit 21`,cursor?[owner,kind,cursor.updatedAt,cursor.id]:[owner,kind])).rows;

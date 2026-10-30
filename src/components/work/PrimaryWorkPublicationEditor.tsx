@@ -9,6 +9,7 @@ import type {WorkPublicationSnapshot} from '@/lib/postgres-work-publications';
 import {useListingPostmoderation} from '@/components/listings/ListingWorkflowProvider';
 import {WorkPublicationForm} from './WorkPublicationForm';
 import {WorkModerationStatus} from './WorkModerationStatus';
+import {PublicationPlacementPeriod} from '@/components/PublicationPlacementPeriod';
 
 function Editor({owner,kind,id,visible}:{owner:string;kind:WorkPublicationKind;id:string;visible:boolean}){
  const [snapshot,setSnapshot]=useState<WorkPublicationSnapshot|null>(null),[error,setError]=useState<string|null>(null),[retry,setRetry]=useState(0),[dirty,setDirty]=useState(false);
@@ -22,7 +23,8 @@ function Editor({owner,kind,id,visible}:{owner:string;kind:WorkPublicationKind;i
  return <section hidden={!visible} inert={!visible} aria-label="Редактор публикации" className="mt-5 min-w-0">
   <Link href={kind==='vacancy'?'/cabinet/vakansii':'/cabinet/zakazy'} prefetch={false} className="inline-flex min-h-11 items-center font-semibold text-blue-800 underline">← Вернуться в кабинет</Link>
   {error?<div><p role="alert" className="my-3 text-rose-800">{error}</p><button type="button" className="min-h-11 font-semibold text-blue-800 underline" onClick={()=>setRetry(value=>value+1)}>Повторить загрузку</button></div>:
-   snapshot?<div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"><WorkPublicationForm owner={owner} kind={kind} initial={snapshot} onDirtyChange={setDirty}/>
+   snapshot?<div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"><PublicationPlacementPeriod publishedAt={snapshot.publishedAt} expiresAt={snapshot.expiresAt} status={snapshot.status}/>
+    <WorkPublicationForm owner={owner} kind={kind} initial={snapshot} onDirtyChange={setDirty}/>
     {!localVacancy&&!dirty&&<WorkModerationStatus owner={owner} snapshot={snapshot}/>}</div>:<p role="status" className="mt-4">Загружаем сохранённую форму…</p>}
  </section>;
 }
