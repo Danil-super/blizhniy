@@ -125,6 +125,44 @@ canvas {
   animation-play-state: paused;
 }
 
+/* Stopping reveals every message, including one that was outside the viewport.
+   Starting movement again begins a new cycle; text stays server-rendered once. */
+.marquee[data-paused="true"] .marquee-track {
+  animation: none;
+  transform: none;
+  padding-left: 0;
+  width: 100%;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  will-change: auto;
+}
+
+.marquee[data-paused="true"] .marquee-item {
+  max-width: 100%;
+  white-space: normal;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+    transform: none;
+    padding-left: 0;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.5rem;
+    will-change: auto;
+  }
+
+  .marquee-item {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  [data-marquee-control] {
+    display: none;
+  }
+}
+
 @keyframes marquee-scroll {
   from {
     transform: translateX(0);
