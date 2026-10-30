@@ -129,6 +129,7 @@ test("sitemap spans batches, includes paid active URLs, and omits redirects and 
       ],
     },
     "@/lib/data": { professions: [{ slug: "active", active: true }, { slug: "inactive", active: false }] },
+    "@/lib/profession-store": { getPublicProfessions: async () => [{ slug: "active", active: true }] },
     "@/lib/instrument-subcategories": { instrumentSubcategories: [] },
     "@/lib/posuda-subcategories": { posudaSubcategories: [] },
     "@/lib/site-url": { getPublicSiteUrl: () => "https://example.test" },

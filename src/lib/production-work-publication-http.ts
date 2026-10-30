@@ -1,3 +1,4 @@
+import {professionWireView} from './profession-catalog-contract.ts';
 import {randomUUID} from 'node:crypto';
 import {authJson,readAuthJson,AuthRequestError,type AuthRateLimiter} from './auth-http';
 import {readAccountSessionToken} from './account-cookie';
@@ -14,7 +15,7 @@ const envelopes={list:['after'],read:['publicationId'],intent:['creationKey'],cr
 export function createProductionWorkPublicationHandler(config:{origin:string},runtime:()=>Promise<Runtime>|Runtime,audit:(event:Event)=>void=event=>console.info(JSON.stringify(event))){
  return async(request:Request)=>{
   const requestId=randomUUID(),start=Date.now();let status=503,code:string|undefined,operation='invalid';
-  const reply=(body:unknown,next:number,headers?:Record<string,string>)=>{status=next;return authJson(body,next,{'X-Request-ID':requestId,...headers});};
+  const reply=(body:unknown,next:number,headers?:Record<string,string>)=>{status=next;return authJson(professionWireView(body,request.headers.get('x-blizhniy-profession-refs')==='1'),next,{'X-Request-ID':requestId,...headers});};
   try{
    if(!['POST','PUT'].includes(request.method))throw new AuthRequestError(405,'METHOD_NOT_ALLOWED');
    const writing=request.method==='PUT',raw=await readAuthJson(request,config,2000,writing?'PUT':'POST',writing?65536:4096);

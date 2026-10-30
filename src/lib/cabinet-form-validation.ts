@@ -25,7 +25,15 @@ export function cabinetFieldIssue(name:string,value:string,multiline=false):stri
 type Control=HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement;
 export function validateCabinetControl(control:Control):string {
  if(control.matches(':disabled')||control instanceof HTMLInputElement&&['hidden','checkbox','radio','file','password','submit','button'].includes(control.type)||'readOnly'in control&&control.readOnly)return '';
- const issue=cabinetFieldIssue(control.name,control.value,control instanceof HTMLTextAreaElement);
+ const dynamicProfession=control.name==='profession'&&control.dataset.reference==='profession';
+ const issue=cabinetFieldIssue(dynamicProfession?'professionLabel':control.name,control.value,control instanceof HTMLTextAreaElement);
+ if(dynamicProfession){
+  const state=control.dataset.referenceState;
+  const message=issue||(state==='loading'?'Дождитесь загрузки профессий.':state==='error'?'Загрузите список профессий ещё раз.':state==='unknown'?'Выберите профессию из списка.':state==='unavailable'?'Выбранная профессия больше недоступна. Выберите действующую.':state==='inactive'?'Профессия отключена. Выберите действующую перед размещением.':'');
+  control.setCustomValidity(message);
+  // Keeping an inactive FK is permitted in drafts; native submit still rejects it.
+  return state==='inactive'&&!issue?'':message;
+ }
  const employer=control.form?.querySelector<HTMLInputElement>('input[name="employerType"]:not(:disabled)')?.value;
  const message=issue||(control.name==='organization'&&employer==='person'&&control.value&&!validPersonName(control.value.trim())?'Введите имя частного работодателя буквами.':'');
  control.setCustomValidity(message);

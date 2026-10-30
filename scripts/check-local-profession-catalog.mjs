@@ -1,0 +1,77 @@
+// Real Chromium + owned loopback fixture. Changes only random synthetic accounts/categories.
+import assert from 'node:assert/strict';
+import {randomBytes,randomUUID} from 'node:crypto';
+import {createRequire} from 'node:module';
+import pg from 'pg';
+import {chromium} from 'playwright';
+import {stateFile,localPrimaryDatabaseConfig,docker} from './local-primary-fixture.mjs';
+import {readLocalPrimaryState,validateLocalPrimaryContainer} from './local-primary-config.mjs';
+const require=createRequire(import.meta.url),{loadLocalPrimaryModule:load}=require('./local-primary-modules.cjs');
+const state=readLocalPrimaryState(stateFile,process.cwd());
+validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
+const db=new pg.Client(localPrimaryDatabaseConfig(state,'owner'));await db.connect();
+const suffix=randomBytes(8).toString('hex'),email=`profession-ui-${suffix}@local.invalid`,password=`Synthetic-profession-${randomBytes(16).toString('hex')}!`;
+const ids=[randomUUID(),randomUUID()],slugs=ids.map((_,index)=>`synthetic-profession-${suffix}-${index}`),label=`Мастер каталога ${suffix}`;
+let user,context;
+const browser=await chromium.launch({headless:true});
+try{
+ user=(await db.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',[email,await load('identity').hashPassword(password)])).rows[0].id;
+ const phone='+7999'+String(randomBytes(4).readUInt32BE()%10000000).padStart(7,'0');
+ const profile=Object.fromEntries(Object.entries(load('cabinet-profile').createDefaultCabinetProfile({name:'Проверка профессии',email})).filter(([key])=>!['email','phoneVerified','verifiedPhone'].includes(key)));profile.phone=phone;
+ await db.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[user,JSON.stringify(profile)]);
+ await db.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[user,phone,'synthetic-profession-'+suffix]);
+ for(let i=0;i<ids.length;i++)await db.query('insert into app.specialist_categories(id,slug,name,parent_name,active) values($1,$2,$3,$4,true)',[ids[i],slugs[i],label,`Синтетический раздел ${i+1}`]);
+ context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1440,height:900}});
+ const signed=await context.request.post(state.origin+'/api/account/login',{headers:{Origin:state.origin,'X-Blizhniy-Request':'1'},data:{email,password,captchaToken:''}});assert.equal(signed.status(),200);
+ const page=await context.newPage(),errors=[],external=[];page.setDefaultTimeout(10000);page.on('pageerror',error=>errors.push(error.name));
+ await context.route('**/*',async route=>{const url=new URL(route.request().url());if(['http:','https:'].includes(url.protocol)&&url.origin!==state.origin){external.push(url.host);return route.abort();}return route.continue();});
+ await page.goto(state.origin+'/rabota/zakazy/sozdat');
+ const input=page.getByRole('combobox',{name:'Профессия / специализация',exact:true});
+ await page.locator('input[name="profession"][data-reference-state="empty"]').waitFor();
+ await page.getByText('Загружаем профессии…',{exact:true}).waitFor({state:'hidden'});
+ await page.locator('input[name="title"]').fill('Проверка живого справочника');
+ await input.fill(label);assert.equal(await page.locator('input[name="professionId"]').inputValue(),'');
+ const choices=page.getByRole('option').filter({hasText:label});await choices.last().waitFor();assert.equal(await choices.count(),2);
+ await choices.filter({hasText:slugs[0]}).click();assert.equal(await page.locator('input[name="professionId"]').inputValue(),ids[0]);
+ for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false,`form fits ${width}px`);}
+ await db.query('update app.specialist_categories set name=$2 where id=$1',[ids[0],label+' новый']);
+ // Headless pages do not emit OS window focus when switched. Exercise the same registered event on this synthetic page.
+ const refreshed=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/reference/professions');await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await refreshed;
+ await page.waitForFunction(expected=>document.querySelector('input[name="profession"]')?.value===expected,label+' новый');
+ assert.equal(await page.locator('input[name="title"]').inputValue(),'Проверка живого справочника');
+ const write=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/account/work-publications'&&response.request().method()==='PUT');
+ await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();assert.equal((await write).status(),200);await page.waitForURL('**/cabinet/zakazy');
+ const saved=(await db.query("select id,profession_id,form,revision::text,status,is_paid from app.work_publications where author_id=$1 and kind='workRequest'",[user])).rows;
+ assert.equal(saved.length,1);assert.equal(saved[0].profession_id,ids[0]);assert.equal(saved[0].form.professionId,ids[0]);assert.equal(saved[0].form.professionName,label+' новый');assert.equal(saved[0].is_paid,false);
+ const edit=`/rabota/zakazy/${saved[0].id}/edit`;
+ await db.query('update app.specialist_categories set active=false where id=$1',[ids[0]]);
+ await page.goto(state.origin+edit);await page.getByText(/Профессия отключена\. Черновик/).waitFor();
+ assert.equal(await input.inputValue(),label+' новый');assert.equal(await page.locator('input[name="professionId"]').inputValue(),ids[0]);
+ await page.locator('input[name="title"]').fill('Черновик с отключённой профессией');
+ const retained=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/account/work-publications'&&response.request().method()==='PUT');
+ await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();assert.equal((await retained).status(),200);await page.waitForURL('**/cabinet/zakazy');
+ assert.equal((await db.query('select profession_id from app.work_publications where id=$1',[saved[0].id])).rows[0].profession_id,ids[0]);
+ await page.route('**/api/reference/professions',route=>route.fulfill({status:503,json:{error:{code:'CATALOG_UNAVAILABLE'}}}));
+ await page.goto(state.origin+edit);await page.getByText('Не удалось загрузить профессии.',{exact:false}).waitFor();
+ await page.locator('input[name="title"]').fill('Данные сохранены при ошибке справочника');
+ const revision=(await db.query('select revision::text from app.work_publications where id=$1',[saved[0].id])).rows[0].revision;
+ await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
+ assert.equal((await db.query('select revision::text from app.work_publications where id=$1',[saved[0].id])).rows[0].revision,revision);
+ await page.unroute('**/api/reference/professions');await page.getByRole('button',{name:'Повторить',exact:true}).click();await page.getByText(/Профессия отключена\. Черновик/).waitFor();
+ assert.equal(await page.locator('input[name="title"]').inputValue(),'Данные сохранены при ошибке справочника');
+ await input.fill(label);await page.getByRole('option').filter({hasText:slugs[1]}).click();assert.equal(await page.locator('input[name="professionId"]').inputValue(),ids[1]);
+ const replaced=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/account/work-publications'&&response.request().method()==='PUT');
+ await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();assert.equal((await replaced).status(),200);await page.waitForURL('**/cabinet/zakazy');
+ const final=(await db.query('select profession_id,form from app.work_publications where id=$1',[saved[0].id])).rows[0];assert.equal(final.profession_id,ids[1]);assert.equal(final.form.title,'Данные сохранены при ошибке справочника');
+ const catalog=await context.request.get(state.origin+'/api/reference/professions');assert.equal(catalog.status(),200);assert.equal(catalog.headers()['cache-control'],'no-store');
+ const items=(await catalog.json()).items;assert.equal(items.some(item=>item.id===ids[0]),false);assert.equal(items.some(item=>item.id===ids[1]),true);
+ const sitemap=await context.request.get(state.origin+'/sitemap.xml');assert.equal(sitemap.status(),200);const xml=await sitemap.text();assert.equal(xml.includes(slugs[0]),false);assert.equal(xml.includes(slugs[1]),true);
+ await page.goto(state.origin+'/poisk?q='+encodeURIComponent(label));await page.locator('a[href="/rabota/specialisty/'+slugs[1]+'"]').getByText(label,{exact:true}).waitFor();
+ await page.goto(state.origin+'/rabota/specialisty/'+slugs[1]);await page.getByRole('heading',{name:'Специалисты: '+label,exact:true}).waitFor();
+ assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
+ console.log('Local profession browser passed: live catalog/duplicate UUID choice, responsive form, rename refresh, inactive draft retention, error+retry preserves fields, canonical save, search/sitemap/profession route.');
+}finally{
+ await context?.close();await browser.close();
+ if(user)await db.query('delete from app.users where id=$1 and email=$2',[user,email]);
+ await db.query('delete from app.specialist_categories where id=any($1::uuid[]) and slug=any($2::text[])',[ids,slugs]);await db.end();
+}

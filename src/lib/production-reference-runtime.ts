@@ -3,6 +3,7 @@ import { readProductionAuthConfig } from "./production-auth-config";
 import { getProductionAccountDatabase } from "./production-auth-runtime";
 import { PostgresCatalogRepository } from "./postgres-catalog";
 import { PostgresTariffRepository } from "./postgres-tariffs";
+import { PostgresProfessionRepository } from './postgres-professions';
 
 /** Public projections reuse the verified limited Auth pool, never a second owner/legacy connection. */
 export async function getProductionReferenceRepositories() {
@@ -10,5 +11,5 @@ export async function getProductionReferenceRepositories() {
   const config = readProductionAuthConfig();
   if (!config) return null;
   const { db } = await getProductionAccountDatabase(config);
-  return { catalog: new PostgresCatalogRepository(db), tariffs: new PostgresTariffRepository(db) };
+  return { catalog: new PostgresCatalogRepository(db), tariffs: new PostgresTariffRepository(db), professions:new PostgresProfessionRepository(db) };
 }

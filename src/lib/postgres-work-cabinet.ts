@@ -21,7 +21,7 @@ export class PostgresWorkCabinetStore{
     to_char(w.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "updatedAt",
     w.form->>(case when w.kind='vacancy' then 'salary' else 'budget' end) as amount,
     w.form->>'organization' as organization,w.form->>'cityName' as city,w.form->>'district' as district,
-    w.form->>'professionName' as profession,w.form->>'schedule' as schedule,w.form->>'workFormat' as "workFormat",
+    coalesce((select name from app.specialist_categories p where p.id=w.profession_id),w.form->>'professionName') as profession,w.form->>'schedule' as schedule,w.form->>'workFormat' as "workFormat",
     photo.id as "coverPhotoId" from app.work_publications w
     left join lateral(select m.id from app.work_publication_photos p join app.media_objects m on m.id=p.media_id
      where p.publication_id=w.id and m.owner_id=w.author_id and m.state='ready' order by p.position limit 1) photo on true

@@ -47,6 +47,7 @@ function componentLoader(profile=null) {
       if (name.endsWith('/PrivateDraftEditor')) return { draftButton: 'button' };
       if (name === './WorkAmountField') return { WorkAmountField: () => null };
       if (name === './ProfessionSelect') return { ProfessionSelect: () => null };
+      if (name === './PrimaryProfessionSelect' || name === '@/components/work/PrimaryProfessionSelect') return { PrimaryProfessionSelect: () => null };
       if (name === './VacancyTermsFields') return { VacancyTermsFields: () => null };
       if (name.endsWith('/SquareImageCropper')) return { SquareImageCropper: () => null };
       if (name.endsWith('/StoredMedia')) return { StoredMediaImage: ({ src, alt, ...props }) => React.createElement('img', { src, alt, ...props }) };

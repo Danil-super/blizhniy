@@ -5,16 +5,18 @@ import type {PostgresQueries} from './postgres';
 import type {JobVacancy,WorkRequest} from './types';
 import type {MediaFileRecord} from './media-files';
 import {readPostmoderationEnabled} from './listing-workflow-config';
+import {professionFormSql} from './profession-reference';
 export type PublicWorkPhoto={record:MediaFileRecord;revision:string;expiresAt:string};
 const references=`from app.work_publications w
  join app.users author on author.id=w.author_id and not author.is_blocked and author.email_verified_at is not null
  join app.cities city on city.id=w.city_id
- join app.specialist_categories profession on profession.id=w.profession_id and profession.active`;
+ join app.specialist_categories profession on profession.id=w.profession_id and profession.active
+  and (not(w.form ? 'professionId') or w.form->>'professionId'=w.profession_id::text)`;
 const source=`${references} join app.work_moderation review on review.publication_id=w.id and review.revision=w.revision and review.state='approved'`;
 const localSource=`${references} join lateral (select i.target_revision as purchased_revision from app.payment_checkout_intents i
    join app.payment_orders o on o.id=i.id and o.status='succeeded'
    join app.payment_fulfillments f on f.intent_id=i.id
-   where w.kind in ('vacancy','workRequest') and city.name=w.form->>'cityName' and profession.name=w.form->>'professionName'
+   where w.kind in ('vacancy','workRequest') and city.name=w.form->>'cityName'
     and i.target_type=w.kind and i.target_id=w.id and i.owner_id=w.author_id and i.target_revision<=w.revision
     and i.is_test and i.merchant_shop_id='local-fixture-shop' and f.published_at=w.published_at and f.expires_at=w.expires_at
    order by i.target_revision limit 1) eligibility on true`;
@@ -24,7 +26,7 @@ const localSource=`${references} join lateral (select i.target_revision as purch
 const postmoderationSource=`${references} left join lateral (select max(review.revision) as purchased_revision
  from app.work_moderation review where review.publication_id=w.id and review.state='approved' and review.revision<=w.revision) eligibility on true`;
 const live=`w.status='published' and w.is_paid and w.deleted_at is null and w.published_at<=statement_timestamp() and w.expires_at>statement_timestamp()`;
-const columns=`w.id,w.kind,w.form,w.status,w.is_paid as paid,
+const columns=`w.id,w.kind,${professionFormSql('w')} as form,w.profession_id as "professionId",w.status,w.is_paid as paid,
  to_char(w.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "updatedAt",
  to_char(w.created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "createdAt",
  to_char(w.published_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",

@@ -6,12 +6,13 @@ import type {PostgresDatabase,PostgresQueries} from './postgres';import type {Li
 import {validPersonName} from './cabinet-field-validation.ts';
 import {specialistAbout} from './specialist-application-profile.ts';
 import {effectivePublicationStatusSql} from './publication-effective-status';
+import {resolveProfession,professionFormSql,ProfessionReferenceError} from './profession-reference';
 export class ServicePublicationAccessError extends Error{constructor(){super('Service publication not found');}}
 export class ServicePublicationConflictError extends Error{constructor(){super('Service publication changed');}}
-export type ServicePublicationSnapshot={id:string;kind:ServicePublicationKind;form:ServicePublicationForm;photos:ListingDraftPhoto[];revision:string;status:string;paid:boolean;
+export type ServicePublicationSnapshot={id:string;kind:ServicePublicationKind;form:ServicePublicationForm;photos:ListingDraftPhoto[];revision:string;status:string;paid:boolean;professionId?:string|null;
  createdAt:string;updatedAt:string;publishedAt:string|null;expiresAt:string|null};
 type Row=Omit<ServicePublicationSnapshot,'form'|'photos'>&{form:unknown};
-const columns=`id,kind,form,revision::text as revision,${effectivePublicationStatusSql()} as status,is_paid as paid,
+const columns=`id,kind,${professionFormSql()} as form,profession_id as "professionId",revision::text as revision,${effectivePublicationStatusSql()} as status,is_paid as paid,
  to_char(created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "createdAt",
  to_char(updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "updatedAt",
  to_char(published_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
@@ -30,16 +31,20 @@ export class PostgresServicePublicationStore{
  private async snapshot(tx:PostgresQueries,owner:string,kind:ServicePublicationKind,id:string):Promise<ServicePublicationSnapshot>{
   const row=(await tx.query<Row>(`select ${columns} from app.service_publications where id=$1 and author_id=$2 and kind=$3 and deleted_at is null`,[id,owner,kind])).rows[0];
   if(!row)throw new ServicePublicationAccessError();const form=parseServicePublicationForm(kind,row.form);
+  if(form.kind==='specialist'&&form.professionId&&form.professionId!==row.professionId)throw new ServicePublicationAccessError();
   const photos=(await tx.query<ListingDraftPhoto&{permitted:boolean}>(`select m.id,m.mime_type as "mimeType",m.width,m.height,m.size,(m.owner_id=$2 and m.state='ready') as permitted
    from app.service_publication_photos p join app.media_objects m on m.id=p.media_id where p.publication_id=$1 order by p.position limit 13`,[id,owner])).rows;
   if(photos.some(item=>!item.permitted)||photos.reduce((sum,item)=>sum+item.size,0)>maxListingMediaTotalSize||JSON.stringify(photoIds(form))!==JSON.stringify(photos.map(item=>item.id)))throw new ServicePublicationAccessError();
   return{...row,form,photos:photos.map(({id,mimeType,width,height,size})=>({id,mimeType,width,height,size}))};
  }
- private async references(tx:PostgresQueries,form:ServicePublicationForm){
+ private async references(tx:PostgresQueries,form:ServicePublicationForm,previous?:{id:string|null;name:string|null}){
   const lookup=async(value:string|null,sql:string)=>{if(!value)return null;const rows=(await tx.query<{id:string}>(sql,[value])).rows;
    if(rows.length!==1)throw new ServicePublicationInputError();return rows[0].id;};
-  return{city:form.kind==='marquee'?null:await lookup(form.cityName,'select id from app.cities where name=$1 limit 2'),
-   profession:form.kind!=='specialist'?null:await lookup(form.professionName,'select id from app.specialist_categories where name=$1 limit 2')};
+  const city=form.kind==='marquee'?null:await lookup(form.cityName,'select id from app.cities where name=$1 limit 2');
+  try{
+   const profession=form.kind==='specialist'?await resolveProfession(tx,form.professionName,form.professionId,previous):null;
+   return{city,profession:profession?.id??null,professionName:profession?.name??null};
+  }catch(error){if(error instanceof ProfessionReferenceError)throw new ServicePublicationInputError();throw error;}
  }
  private async checkPhotos(tx:PostgresQueries,owner:string,ids:string[]){
   const rows=ids.length?(await tx.query<{size:number}>("select size from app.media_objects where owner_id=$1 and state='ready' and id=any($2::uuid[])",[owner,ids])).rows:[];
@@ -64,7 +69,10 @@ export class PostgresServicePublicationStore{
   if(!row.referencesActive)issues.push('Выберите действующие город и профессию.');return{snapshot,issues};
  }
  create(token:string,owner:string,kind:ServicePublicationKind,creationKey:unknown,input:unknown){return this.write(()=>withAppSessionTransaction(this.db,token,async(tx,user)=>{
-  if(user.id!==owner)throw new ServicePublicationAccessError();kindOf(kind);const key=parseListingDraftId(creationKey),form=await this.profileBoundForm(tx,owner,parseServicePublicationForm(kind,input)),refs=await this.references(tx,form),ids=photoIds(form);
+  if(user.id!==owner)throw new ServicePublicationAccessError();kindOf(kind);const key=parseListingDraftId(creationKey),inputForm=parseServicePublicationForm(kind,input);
+  const prior=(await tx.query<{id:string}>("select id from app.service_publications where author_id=$1 and kind=$2 and (creation_key=$3 or kind='specialist') and deleted_at is null",[owner,kind,key])).rows[0];
+  if(prior)return this.snapshot(tx,owner,kind,prior.id);
+  const parsed=await this.profileBoundForm(tx,owner,inputForm),refs=await this.references(tx,parsed),form=parsed.kind==='specialist'?{...parsed,professionName:refs.professionName}:parsed,ids=photoIds(form);
   await this.checkPhotos(tx,owner,ids);
   const inserted=(await tx.query<{id:string}>(`insert into app.service_publications(author_id,kind,creation_key,form,city_id,profession_id)
    values($1,$2,$3,$4::jsonb,$5,$6) on conflict do nothing returning id`,[owner,kind,key,JSON.stringify(form),refs.city,refs.profession])).rows[0];
@@ -90,11 +98,12 @@ export class PostgresServicePublicationStore{
  });}
  update(token:string,owner:string,kind:ServicePublicationKind,publicationId:unknown,expectedRevision:unknown,input:unknown){return this.write(()=>withAppSessionTransaction(this.db,token,async(tx,user)=>{
   if(user.id!==owner)throw new ServicePublicationAccessError();kindOf(kind);const id=parseListingDraftId(publicationId),revision=parseListingDraftRevision(expectedRevision),form=await this.profileBoundForm(tx,owner,parseServicePublicationForm(kind,input));
-  const row=(await tx.query<{revision:string}>('select revision::text as revision from app.service_publications where id=$1 and author_id=$2 and kind=$3 and deleted_at is null for update',[id,owner,kind])).rows[0];
+  const row=(await tx.query<{revision:string;professionId:string|null;professionName:string|null}>(`select revision::text as revision,profession_id as "professionId",form->>'professionName' as "professionName"
+   from app.service_publications where id=$1 and author_id=$2 and kind=$3 and deleted_at is null for update`,[id,owner,kind])).rows[0];
   if(!row)throw new ServicePublicationAccessError();if(row.revision!==revision||revision==='9223372036854775807')throw new ServicePublicationConflictError();
-  const refs=await this.references(tx,form),ids=photoIds(form);await this.checkPhotos(tx,owner,ids);
+  const refs=await this.references(tx,form,{id:row.professionId,name:row.professionName}),canonical=form.kind==='specialist'?{...form,professionName:refs.professionName}:form,ids=photoIds(form);await this.checkPhotos(tx,owner,ids);
   const result=await tx.query(`update app.service_publications set form=$4::jsonb,city_id=$5,profession_id=$6,revision=revision+1,updated_at=clock_timestamp()
-   where id=$1 and author_id=$2 and kind=$3 and revision=$7::bigint and deleted_at is null`,[id,owner,kind,JSON.stringify(form),refs.city,refs.profession,revision]);
+   where id=$1 and author_id=$2 and kind=$3 and revision=$7::bigint and deleted_at is null`,[id,owner,kind,JSON.stringify(canonical),refs.city,refs.profession,revision]);
   if(result.rowCount!==1)throw new ServicePublicationConflictError();await this.photos(tx,id,ids);return this.snapshot(tx,owner,kind,id);
  }));}
 }

@@ -1,0 +1,55 @@
+--- a/scripts/check-local-vacancy-payments.mjs
++++ b/scripts/check-local-vacancy-payments.mjs
+@@ -76,13 +76,21 @@
+   await owner.query("update app.payment_orders set status='refunded' where id=$1",[f.order.id]);assert.equal(await publicRead(f.item.id),undefined);
+   await pay(f.order);assert.equal(await publicRead(f.item.id),undefined);assert.deepEqual(await row(f.item.id),before);
+  });
+- await check('renamed or disabled references cannot quote or publish after capture',async()=>{
++ await check('profession rename preserves identity; disabled references cannot quote or publish after capture',async()=>{
+   for(const mode of ['rename','disable']){
+    const f=await fixture();await owner.query('savepoint reference_change');
+    if(mode==='rename')await owner.query("update app.specialist_categories set name=name||' (переименовано)' where name=$1",[base.professionName]);
+    else await owner.query('update app.specialist_categories set active=false where name=$1',[base.professionName]);
+-   const q=await call({action:'testPreview',listingId:f.item.id,expectedRevision:f.item.revision});assert.equal(q.status,409);
+-   assert.equal((await pay(f.order)).status,200);assert.equal((await row(f.item.id)).is_paid,false);assert.equal(await count(f.order.id),0);
++   const q=await call({action:'testPreview',listingId:f.item.id,expectedRevision:f.item.revision});
++   if(mode==='rename'){
++    assert.equal(q.status,200);assert.equal((await pay(f.order)).status,200);
++    const placed=await row(f.item.id);assert.equal(placed.is_paid,true);assert.equal(placed.status,'published');assert.equal(await count(f.order.id),1);
++    assert.equal((await publicRead(f.item.id)).profession,base.professionName+' (переименовано)');
++    assert.equal((await pay(f.order)).status,200);assert.deepEqual(await row(f.item.id),placed);assert.equal(await count(f.order.id),1);
++   }else{
++    assert.equal(q.status,409);
++    assert.equal((await pay(f.order)).status,200);assert.equal((await row(f.item.id)).is_paid,false);assert.equal(await count(f.order.id),0);
++   }
+    await owner.query('rollback to savepoint reference_change');await owner.query('release savepoint reference_change');
+   }
+  });
+--- a/scripts/check-local-work-request-payments.mjs
++++ b/scripts/check-local-work-request-payments.mjs
+@@ -93,14 +93,22 @@
+   await owner.query("update app.payment_orders set status='refunded' where id=$1",[f.order.id]);assert.equal(await publicRead(f.item.id),undefined);
+   assert.equal((await pay(f.order)).status,200);assert.equal(await publicRead(f.item.id),undefined);assert.deepEqual(await row(f.item.id),before);assert.equal(await count(f.order.id),1);
+  });
+- await check('renamed city or profession and disabled profession invalidate payment eligibility and prevent publication after capture',async()=>{
++ await check('profession rename preserves identity; city rename and disabled profession prevent publication after capture',async()=>{
+   for(const mode of ['city','profession','disable']){
+    const f=await fixture();await owner.query('savepoint work_reference_change');
+    if(mode==='city')await owner.query("update app.cities set name=name||' (новое)' where name=$1",[base.cityName]);
+    else if(mode==='profession')await owner.query("update app.specialist_categories set name=name||' (новое)' where name=$1",[base.professionName]);
+    else await owner.query('update app.specialist_categories set active=false where name=$1',[base.professionName]);
+-   assert.equal((await call({action:'testPreview',listingId:f.item.id,expectedRevision:f.item.revision})).status,409);
+-   assert.equal((await pay(f.order)).status,200);assert.equal((await row(f.item.id)).is_paid,false);assert.equal(await count(f.order.id),0);
++   const quoted=await call({action:'testPreview',listingId:f.item.id,expectedRevision:f.item.revision});
++   if(mode==='profession'){
++    assert.equal(quoted.status,200);assert.equal((await pay(f.order)).status,200);
++    const placed=await row(f.item.id);assert.equal(placed.is_paid,true);assert.equal(placed.status,'published');assert.equal(await count(f.order.id),1);
++    assert.equal((await publicRead(f.item.id)).profession,base.professionName+' (новое)');
++    assert.equal((await pay(f.order)).status,200);assert.deepEqual(await row(f.item.id),placed);assert.equal(await count(f.order.id),1);
++   }else{
++    assert.equal(quoted.status,409);
++    assert.equal((await pay(f.order)).status,200);assert.equal((await row(f.item.id)).is_paid,false);assert.equal(await count(f.order.id),0);
++   }
+    await owner.query('rollback to savepoint work_reference_change');await owner.query('release savepoint work_reference_change');
+   }
+  });

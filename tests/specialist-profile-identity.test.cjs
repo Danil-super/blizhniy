@@ -13,6 +13,9 @@ function fixture(){
   if(sql.includes('from app.cabinet_profiles'))return{rows:[{name:'Анна-Мария'}],rowCount:1};
   if(sql.startsWith('insert into app.service_publications')){stored=JSON.parse(args[3]);return{rows:[{id}],rowCount:1};}
   if(sql.startsWith('select id,kind,form'))return{rows:[{id,kind:'specialist',form:stored,revision:'1',status:'draft',paid:false}],rowCount:1};
+  if(sql.startsWith(`select id,kind,case when kind in ('vacancy','workRequest','specialist') and profession_id is not null
+  then form || jsonb_build_object('professionName',(select profession_name.name from app.specialist_categories profession_name where profession_name.id=profession_id))
+  else form end as form,profession_id as "professionId",revision::text as revision,`))return{rows:[{id,kind:'specialist',form:stored,revision:'1',status:'draft',paid:false}],rowCount:1};
   return{rows:[],rowCount:1};
  }})};
  return{store:new PostgresServicePublicationStore(db,{specialistProfileIdentity:true}),calls,get form(){return stored;}};

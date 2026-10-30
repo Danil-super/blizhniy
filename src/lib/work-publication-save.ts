@@ -4,6 +4,7 @@ import {mediaUploadTypes,type UploadedImage} from './media-upload-contract.ts';
 import {maxListingImageFileSize,maxListingMediaTotalSize} from './media-limits.ts';
 import type {WorkPublicationSnapshot} from './postgres-work-publications';
 import {parsePhotoOrder,resolvePhotoOrder} from './photo-order.ts';
+import {sameProfessionForm} from './profession-catalog-contract.ts';
 type Options={signal?:AbortSignal};
 type Dependencies={upload:(owner:string,intent:string,file:Blob,options?:Options)=>Promise<UploadedImage>;
  create:(owner:string,kind:WorkPublicationKind,key:string,form:WorkPublicationForm,options?:Options)=>Promise<WorkPublicationSnapshot>;
@@ -20,7 +21,7 @@ export function createWorkPublicationSave(owner:string,kind:WorkPublicationKind,
  const order=parsePhotoOrder(photoOrder,form.photoIds,files.length);
  let base=initial??null,remote:WorkPublicationSnapshot|null=null,unknown=false,busy=false,complete:WorkPublicationSnapshot|null=null;
  const payload=()=>parseWorkPublicationForm(kind,{...form,photoIds:resolvePhotoOrder(order,uploads.map(item=>{if(!item.ready)throw Error('Загрузка не подтверждена.');return item.ready.id;}))});
- const matches=(value:WorkPublicationSnapshot)=>uploads.every(item=>item.ready)&&JSON.stringify(parseWorkPublicationForm(kind,value.form))===JSON.stringify(payload());
+ const matches=(value:WorkPublicationSnapshot)=>uploads.every(item=>item.ready)&&sameProfessionForm(parseWorkPublicationForm(kind,value.form),payload());
  return{
   get uncertain(){return unknown;},get completed(){return complete;},
   async save(options?:Options){

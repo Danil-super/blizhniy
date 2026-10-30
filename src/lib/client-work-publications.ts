@@ -25,12 +25,15 @@ function summary(value:unknown,expectedKind:WorkPublicationKind):WorkPublication
 }
 export function parseWorkPublicationSnapshot(value:unknown,expectedKind:WorkPublicationKind,expectedId?:string):WorkPublicationSnapshot{
  try{
-  const row=exact(value,['id','kind','revision','status','paid','form','photos','createdAt','updatedAt','publishedAt','expiresAt']);
+  const reference=!!value&&typeof value==='object'&&Object.hasOwn(value,'professionId');
+  const row=exact(value,['id','kind','revision','status','paid','form','photos','createdAt','updatedAt','publishedAt','expiresAt',...(reference?['professionId']:[])]);
   const id=parseListingDraftId(row.id);if((expectedId&&id!==parseListingDraftId(expectedId))||kind(row.kind)!==expectedKind||typeof row.status!=='string'||!statuses.includes(row.status)||typeof row.paid!=='boolean'||!Array.isArray(row.photos)||row.photos.length>20)throw Error();
   const form=parseWorkPublicationForm(expectedKind,row.form),photos=row.photos.map(parseUploadedImage);
   if(Object.keys(row.form as object).sort().join()!==Object.keys(form).sort().join())throw Error();
   if(photos.map(item=>item.id).join()!==form.photoIds.join())throw Error();
-  return{id,kind:expectedKind,revision:parseListingDraftRevision(row.revision),status:row.status as string,paid:row.paid,form,photos,
+  const professionId=reference?(row.professionId===null?null:parseListingDraftId(row.professionId)):undefined;
+  if(reference&&form.professionId&&form.professionId!==professionId)throw Error();
+  return{id,kind:expectedKind,revision:parseListingDraftRevision(row.revision),status:row.status as string,paid:row.paid,form,photos,...(reference?{professionId}:{}),
    createdAt:timestamp(row.createdAt),updatedAt:timestamp(row.updatedAt),publishedAt:row.publishedAt===null?null:timestamp(row.publishedAt),expiresAt:row.expiresAt===null?null:timestamp(row.expiresAt)};
  }catch{throw new WorkPublicationClientError('UNKNOWN');}
 }
@@ -41,7 +44,7 @@ export function createWorkPublicationClient(transport:typeof fetch){
    options.signal?.throwIfAborted();parseListingDraftId(owner);kind(chosen);
    const timeout=AbortSignal.timeout(15000),signal=options.signal?AbortSignal.any([timeout,options.signal]):timeout;
    const response=await transport('/api/account/work-publications',{method:['create','update'].includes(action)?'PUT':'POST',credentials:'same-origin',redirect:'error',cache:'no-store',signal,
-    headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1'},body:JSON.stringify({action,expectedOwnerId:owner,kind:chosen,...input})});
+    headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1','X-Blizhniy-Profession-Refs':'1'},body:JSON.stringify({action,expectedOwnerId:owner,kind:chosen,...input})});
    if(!response.body)throw Error();const reader=response.body.getReader(),decoder=new TextDecoder('utf-8',{fatal:true});let text='',bytes=0,complete=false;
    try{for(;;){signal.throwIfAborted();const part=await reader.read();signal.throwIfAborted();if(part.done){complete=true;text+=decoder.decode();break;}bytes+=part.value.byteLength;if(bytes>2097152)throw Error();text+=decoder.decode(part.value,{stream:true});}
    }finally{try{if(!complete)await reader.cancel();}finally{reader.releaseLock();}}

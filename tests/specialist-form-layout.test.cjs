@@ -6,6 +6,7 @@ function tree(kind,profile,initial){
   '@/components/LegalConsentCheckbox':{LegalConsentCheckbox:'legal',LegalLink:'link'},'@/components/cabinet/CookieCabinetProfileProvider':{useCookieCabinetProfile:()=>({ownerId:'owner',profile})},
   '@/lib/data':{professions:[],fairCategories:[]},'@/components/listings/PrivateDraftEditor':{draftButton:''},'@/components/PublicationPhotoEditor':{PublicationPhotoEditor:'savedPhotos'},'@/components/StoredMedia':{StoredMediaImage:'img'},
   '@/components/work/ProfessionSelect':{ProfessionSelect:'professionSelect'},'@/components/CabinetFormValidation':{CabinetFormValidation:'validation'},
+  '@/components/work/PrimaryProfessionSelect':{PrimaryProfessionSelect:'professionSelect'},
   '@/lib/specialist-application-profile':loadLocalPrimaryModule('specialist-application-profile'),
   './useServicePublicationSave':{useServicePublicationSave:()=>({})}};
  new Function('require','exports',ts.transpileModule(fs.readFileSync('src/components/services/ServicePublicationForm.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText)(name=>{assert.ok(Object.hasOwn(deps,name),name);return deps[name];},out);

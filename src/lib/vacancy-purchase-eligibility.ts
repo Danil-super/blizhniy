@@ -15,7 +15,7 @@ export async function inspectWorkPurchase(db:Pick<PostgresDatabase,'transaction'
   where p.publication_id=$1 order by m.id limit 21 for share of m`,[id]);
  const {snapshot,issues}=await new PostgresWorkPublicationStore(db).inspectInTransaction(tx,owner,kind,id,revision);
  if(snapshot.status!=='draft'||snapshot.paid||snapshot.publishedAt||snapshot.expiresAt)issues.push('Публикация уже не является неоплаченным черновиком.');
- if(city?.name!==snapshot.form.cityName||!profession?.active||profession.name!==snapshot.form.professionName)issues.push('Город или профессия изменились. Выберите их заново.');
+ if(city?.name!==snapshot.form.cityName||!profession?.active)issues.push('Город или профессия изменились. Выберите их заново.');
  issues.push(...checkWorkCheckoutForm(snapshot.form));
  return {snapshot,issues};
 }

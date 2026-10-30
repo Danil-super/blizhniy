@@ -1,3 +1,4 @@
+import {professionWireView} from './profession-catalog-contract.ts';
 import {randomUUID} from 'node:crypto';import {authJson,readAuthJson,AuthRequestError,type AuthRateLimiter} from './auth-http';
 import {readAccountSessionToken} from './account-cookie';import {getTrustedProxyIp} from './trusted-proxy-ip';
 import {AppSessionAccessError} from './app-session-transaction';import {AdminAccessError} from './admin-authorization';
@@ -10,7 +11,7 @@ type Event={event:'service_moderation';requestId:string;status:number;durationMs
 export function createProductionServiceModerationHandler(config:{origin:string},mode:'owner'|'admin',runtime:()=>Runtime|Promise<Runtime>,audit:(event:Event)=>void=event=>console.info(JSON.stringify(event))){
  return async(request:Request)=>{
   const requestId=randomUUID(),start=Date.now();let status=503,code:string|undefined,slot=false;
-  const reply=(body:unknown,next:number,headers?:Record<string,string>)=>{status=next;return authJson(body,next,{'X-Request-ID':requestId,...headers});};
+  const reply=(body:unknown,next:number,headers?:Record<string,string>)=>{status=next;return authJson(professionWireView(body,request.headers.get('x-blizhniy-profession-refs')==='1'),next,{'X-Request-ID':requestId,...headers});};
   try{
    if(!['POST','PUT'].includes(request.method))throw new AuthRequestError(405,'METHOD_NOT_ALLOWED');
    const raw=await readAuthJson(request,config,2000,request.method==='PUT'?'PUT':'POST',4096);

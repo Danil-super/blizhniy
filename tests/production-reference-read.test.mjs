@@ -9,6 +9,7 @@ import { categories } from "../src/lib/data.ts";
 import { loadProductionAuth } from "./production-auth-module.mjs";
 
 const ts = createRequire(import.meta.url)("typescript");
+const {loadLocalPrimaryModule}=createRequire(import.meta.url)("../scripts/local-primary-modules.cjs");
 const { readProductionAuthConfig } = loadProductionAuth("production-auth-config");
 const configured = { NODE_ENV: "production", BLIZHNIY_AUTH_MODE: "postgres", BLIZHNIY_AUTH_ORIGIN: "https://xn----9sbphbgks4a4a.xn--p1ai",
   BLIZHNIY_DB_HOST: "17e86f80f26733d39ef4b84d.twc1.net", BLIZHNIY_DB_PORT: "5432", BLIZHNIY_DB_NAME: "blizhniy_prod",
@@ -37,6 +38,7 @@ function loadReferenceRuntime(env, database) {
   return load("production-reference-runtime", {
     "./production-auth-config": { readProductionAuthConfig: () => readProductionAuthConfig(env) },
     "./production-auth-runtime": { getProductionAccountDatabase: database },
+    "./postgres-professions":loadLocalPrimaryModule("postgres-professions"),
     "./postgres-catalog": { PostgresCatalogRepository }, "./postgres-tariffs": { PostgresTariffRepository },
   });
 }

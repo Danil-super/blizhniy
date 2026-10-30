@@ -7,7 +7,7 @@ export function readWorkPublicationFormData(kind:WorkPublicationKind,data:FormDa
  const emailOrMessenger=read('emailOrMessenger'),isEmail=emailOrMessenger.includes('@')&&!emailOrMessenger.startsWith('@')&&!/^https?:/i.test(emailOrMessenger);
  const amount=read(kind==='vacancy'?'salary':'budget').replace(/\s/g,'').replace(',','.');
  const common={kind,title:read('title'),description:String(data.get('description')??''),cityName:(read('location')||read('city')).split(',')[0].trim()||null,
-  professionName:read('profession')||null,district:read('district')||null,address:exact?read('address')||null:null,
+  professionName:read('profession')||null,...(read('professionId')?{professionId:read('professionId')}:{}),district:read('district')||null,address:exact?read('address')||null:null,
   latitude:exact?coordinate('lat'):null,longitude:exact?coordinate('lng'):null,showExactAddress:exact,contactPhone:read('phone')||null,
   messengerUrl:social((!isEmail&&emailOrMessenger)||read('messengerUrl'))||null,placementRightConfirmed:['1','on'].includes(read('placementRightConfirmed'))};
  return parseWorkPublicationForm(kind,kind==='workRequest'?{...common,budget:amount||null}:{...common,salary:amount||null,

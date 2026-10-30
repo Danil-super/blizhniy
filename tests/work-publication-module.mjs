@@ -15,6 +15,8 @@ export function workPublicationModule(name,extra={}){
   './identity':loadLocalPrimaryModule('identity'),
   './work-checkout-validation':loadLocalPrimaryModule('work-checkout-validation'),...extra},exports={};
  deps['./publication-effective-status']=loadLocalPrimaryModule('publication-effective-status');
+ deps['./profession-reference']=loadLocalPrimaryModule('profession-reference');
+ deps['./profession-catalog-contract.ts']=loadLocalPrimaryModule('profession-catalog-contract');
  new Function('require','exports',ts.transpileModule(readFileSync(new URL(`../src/lib/${name}.ts`,import.meta.url),'utf8'),{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022},
  }).outputText)(path=>{if(!Object.hasOwn(deps,path))throw Error('Unapproved work-publication test dependency');return deps[path];},exports);

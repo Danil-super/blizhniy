@@ -4,6 +4,7 @@ import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,ty
 import {parseServicePublicationForm,type ServicePublicationForm} from './service-publication-contract.ts';
 import {checkSpecialistApplicationForm,specialistAbout} from './specialist-application-profile.ts';
 import {validPersonName} from './cabinet-field-validation.ts';
+import {professionFormSql} from './profession-reference';
 import {hashSessionToken} from './identity';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {PostgresPublicWorkStore} from './postgres-public-work';import {PostgresPublicServiceStore} from './postgres-public-service';
@@ -55,7 +56,8 @@ export class PostgresApplicationStore{
    ${this.policy.localActions?"and (w.kind<>'workRequest' or not exists(select 1 from app.applications chosen where chosen.work_publication_id=w.id and chosen.status='selected' and chosen.is_paid and chosen.sent_at is not null))":''}
    and ${this.policy.specialistApplicationReady?`s.kind='specialist' and s.deleted_at is null
     and exists(select 1 from app.cities c where c.id=s.city_id and c.name=s.form->>'cityName')
-    and exists(select 1 from app.specialist_categories p where p.id=s.profession_id and p.active and p.name=s.form->>'professionName')`:
+    and exists(select 1 from app.specialist_categories p where p.id=s.profession_id and p.active
+     and (not(s.form ? 'professionId') or s.form->>'professionId'=p.id::text))`:
     "s.status='published' and s.is_paid and s.deleted_at is null and s.published_at<=clock_timestamp() and s.expires_at>clock_timestamp()"}`,[target,specialist]);
   if(result.rowCount!==1)throw new ApplicationAccessError();
  }
@@ -64,7 +66,7 @@ export class PostgresApplicationStore{
   if(!initial||initial.author===actor)throw new ApplicationAccessError();await this.peer(tx,initial.author,true);
   const target=(await tx.query<{author:string;revision:string}>('select author_id as author,revision::text as revision from app.work_publications where id=$1 and kind=$2 for update',[id,kind])).rows[0];
   if(!target||target.author!==initial.author)throw new ApplicationAccessError();
-  const specialist=(await tx.query<{id:string;revision:string;form:unknown}>("select id,revision::text as revision,form from app.service_publications where author_id=$1 and kind='specialist' and deleted_at is null for update",[actor])).rows[0];
+  const specialist=(await tx.query<{id:string;revision:string;form:unknown}>(`select id,revision::text as revision,${professionFormSql()} as form from app.service_publications where author_id=$1 and kind='specialist' and deleted_at is null for update`,[actor])).rows[0];
   // Re-read eligibility in separate statements after all potentially waiting resource locks.
   const work=await new PostgresPublicWorkStore(tx,this.policy).read(kind,id);if(!work)throw new ApplicationAccessError();
   if(!specialist)throw new ApplicationEligibilityError();
@@ -78,8 +80,9 @@ export class PostgresApplicationStore{
    if(checkSpecialistApplicationForm(form).length)throw new ApplicationEligibilityError();
    const references=await tx.query(`select s.id from app.service_publications s
     join app.cities c on c.id=s.city_id and c.name=$3
-    join app.specialist_categories p on p.id=s.profession_id and p.active and p.name=$4
-    where s.id=$1 and s.author_id=$2 and s.kind='specialist' and s.deleted_at is null`,[specialist.id,actor,form.cityName,form.professionName]);
+    join app.specialist_categories p on p.id=s.profession_id and p.active
+     and (not(s.form ? 'professionId') or s.form->>'professionId'=p.id::text)
+    where s.id=$1 and s.author_id=$2 and s.kind='specialist' and s.deleted_at is null`,[specialist.id,actor,form.cityName]);
    if(references.rowCount!==1)throw new ApplicationEligibilityError();
    about=specialistAbout(form);
   }else if(!await new PostgresPublicServiceStore(tx).read('specialist',specialist.id))throw new ApplicationEligibilityError();

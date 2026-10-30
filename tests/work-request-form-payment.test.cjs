@@ -5,7 +5,7 @@ function render(initial){
   'react/jsx-runtime':{jsx,jsxs:jsx},'@/components/FormPanel':{},'@/components/VacancyEmployerFields':{},'./VacancyEmployerFlow':{},
   '@/components/listings/ListingWorkflowProvider':{useListingPostmoderation:()=>true,useLocalPaymentSimulation:()=>true},'@/components/listings/ListingFormControls':{},'@/components/LegalConsentCheckbox':{},
   '@/lib/data':{professions:[]},'@/components/listings/PrivateDraftEditor':{draftButton:'button'},'./WorkPublicationPhotos':{},'./WorkAmountField':{},
-  './ProfessionSelect':{ProfessionSelect:select},'./VacancyTermsFields':{},
+  './ProfessionSelect':{ProfessionSelect:select},'./PrimaryProfessionSelect':{PrimaryProfessionSelect:select},'./VacancyTermsFields':{},
   '@/components/PublicationPhotoEditor':{},'@/components/CabinetFormValidation':{},
   './useWorkPublicationSave':{useWorkPublicationSave:()=>({active:false,done:false,busy:false,uncertain:false})}};
  new Function('exports','require',ts.transpileModule(fs.readFileSync('src/components/work/WorkPublicationForm.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText)(exportsObject,name=>{

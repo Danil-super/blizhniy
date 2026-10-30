@@ -19,7 +19,7 @@ function formTree(initial, localPayment = true) {
     '@/components/listings/ListingWorkflowProvider': { useListingPostmoderation: () => localPayment,useLocalPaymentSimulation:()=>localPayment },
     '@/components/listings/ListingFormControls': {}, '@/components/LegalConsentCheckbox': {},
     '@/lib/data': { professions: [] }, '@/components/listings/PrivateDraftEditor': { draftButton: 'button' },
-    './WorkAmountField': { WorkAmountField: amount }, './ProfessionSelect': {},
+    './WorkAmountField': { WorkAmountField: amount }, './ProfessionSelect': {}, './PrimaryProfessionSelect': {},
     './VacancyTermsFields': { VacancyTermsFields: terms }, '@/components/PublicationPhotoEditor': {}, '@/components/CabinetFormValidation': {},
     './useWorkPublicationSave': { useWorkPublicationSave: () => ({ active: false, done: false, busy: false, uncertain: false, start: value => calls.push(value) }) },
   };

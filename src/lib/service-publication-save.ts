@@ -4,6 +4,7 @@ import {mediaUploadTypes,type UploadedImage} from './media-upload-contract.ts';i
 import type {ServicePublicationSnapshot} from './postgres-service-publications';
 import {ServiceClientError} from './client-service-publications.ts';
 import {parsePhotoOrder,resolvePhotoOrder} from './photo-order.ts';
+import {sameProfessionForm} from './profession-catalog-contract.ts';
 type Options={signal?:AbortSignal};
 type Dependencies={upload:(owner:string,intent:string,file:Blob,options?:Options)=>Promise<UploadedImage>;
  create:(owner:string,kind:ServicePublicationKind,key:string,form:ServicePublicationForm,options?:Options)=>Promise<ServicePublicationSnapshot>;
@@ -22,7 +23,7 @@ export function createServicePublicationSave(owner:string,kind:ServicePublicatio
  let base=initial??null,remote:ServicePublicationSnapshot|null=null,unknown=false,busy=false,complete:ServicePublicationSnapshot|null=null;
  const payload=()=>form.kind==='marquee'?form:parseServicePublicationForm(kind,{...form,photoIds:resolvePhotoOrder(order,uploads.map(item=>{if(!item.ready)throw Error('Загрузка не подтверждена.');return item.ready.id;}))});
  const comparable=(value:ServicePublicationForm)=>identitySource==='profile'?{...value,title:''}:value;
- const matches=(row:ServicePublicationSnapshot)=>uploads.every(item=>item.ready)&&JSON.stringify(comparable(parseServicePublicationForm(kind,row.form)))===JSON.stringify(comparable(payload()));
+ const matches=(row:ServicePublicationSnapshot)=>uploads.every(item=>item.ready)&&sameProfessionForm(comparable(parseServicePublicationForm(kind,row.form)),comparable(payload()));
  return{
   get uncertain(){return unknown;},get completed(){return complete;},
   async save(options?:Options){if(busy||unknown)throw Error('Сначала проверьте сохранённую версию.');if(complete)return complete;busy=true;
@@ -49,6 +50,6 @@ export function readServicePublicationFormData(kind:ServicePublicationKind,data:
   address:exact?read('address')||null:null,latitude:exact?coordinate('lat'):null,longitude:exact?coordinate('lng'):null,showExactAddress:exact,
   contactPhone:read('phone')||null,email:read('email')||null,messengerUrl:read('messengerUrl')||null,videoUrl:read('videoUrl')||null,
   photoIds:data.getAll('keepPhotoIds').map(String),placementRightConfirmed};
- return parseServicePublicationForm(kind,kind==='specialist'?{...common,professionName:read('profession')||null,price:read('price').replace(/\s/g,'').replace(',','.')||null,
+ return parseServicePublicationForm(kind,kind==='specialist'?{...common,professionName:read('profession')||null,...(read('professionId')?{professionId:read('professionId')}:{}),price:read('price').replace(/\s/g,'').replace(',','.')||null,
   skills:read('skills')||null,experience:read('experience')||null}:{...common,category:read('category')||null,comment:read('comment')||null});
 }

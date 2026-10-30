@@ -5,7 +5,8 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { VacancyThumbnail } from "@/components/VacancyMedia";
 import { listPublicDemoListings, parseListingPage, toDemoListing } from "@/components/listings/ListingPages";
 import { getPublicCategories } from "@/lib/category-store";
-import { cities, professions, region } from "@/lib/data";
+import { cities, region } from "@/lib/data";
+import { getPublicProfessions } from "@/lib/profession-store";
 import { listFairApplications, listSpecialists, listWorkRequests } from "@/lib/mock-store";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/specialist-profile-store";
@@ -178,7 +179,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     add({ title: category.name, description: category.children.join(", "), href: category.slug === "rabota" ? "/rabota" : category.slug === "yarmarka-masterov" ? "/yarmarka-masterov" : `/katalog/${category.slug}`, type: "Категория" });
   }
 
-  for (const profession of professions) {
+  for (const profession of await getPublicProfessions()) {
     if (enough()) break;
     if (!profession.active || !textMatch([profession.name, profession.parent])) continue;
     add({ title: profession.name, description: profession.parent, href: `/rabota/specialisty/${profession.slug}`, type: "Профессия" });

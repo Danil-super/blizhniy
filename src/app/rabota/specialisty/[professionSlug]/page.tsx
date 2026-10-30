@@ -5,7 +5,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SpecialistListCard } from "@/components/SpecialistListCard";
 import { ListingPagination } from "@/components/listings/ListingPagination";
 import { parseListingPage } from "@/components/listings/ListingPages";
-import { professions } from "@/lib/data";
+import { getPublicProfessions } from "@/lib/profession-store";
 import { listSpecialists } from "@/lib/mock-store";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/specialist-profile-store";
@@ -17,7 +17,7 @@ type PageProps = { params: Promise<{ professionSlug: string }>; searchParams?: P
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { professionSlug } = await params;
   const page = parseListingPage((await searchParams)?.page);
-  const profession = professions.find((item) => item.active && item.slug === professionSlug);
+  const profession = (await getPublicProfessions()).find((item) => item.slug === professionSlug);
 
   return {
     title: profession ? `Специалисты: ${profession.name}` : "Профессия",
@@ -25,18 +25,12 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   };
 }
 
-export default async function Page({ params, searchParams }: PageProps) {
-  const { professionSlug } = await params;
-  const profession = professions.find((item) => item.active && item.slug === professionSlug);
-
-  if (!profession) notFound();
-  const page = parseListingPage((await searchParams)?.page);
-  const pageSize = 24;
-  const skip = (page - 1) * pageSize;
+async function legacyProfessionPage(name:string,skip:number,pageSize:number){
+  const profession={name};
   const matched = [] as Awaited<ReturnType<typeof listStoredSpecialistProfiles>>;
   const batchSize = 100;
 
-  // Filter before slicing so an uncommon profession still appears after the first 100 profiles.
+  // Legacy records have names only: filter all batches before slicing.
   for (let offset = 0; matched.length <= skip + pageSize; offset += batchSize) {
     const batch = await listStoredSpecialistProfiles(batchSize, offset);
     matched.push(...batch.filter((specialist) => specialist.profession === profession.name));
@@ -44,9 +38,28 @@ export default async function Page({ params, searchParams }: PageProps) {
   }
 
   const storedSpecialists = matched.slice(skip, skip + pageSize);
+  return{items:storedSpecialists,hasMore:matched.length > skip + pageSize};
+}
+
+export default async function Page({ params, searchParams }: PageProps) {
+  const { professionSlug } = await params;
+  const profession = (await getPublicProfessions()).find((item) => item.slug === professionSlug);
+
+  if (!profession) notFound();
+  const page = parseListingPage((await searchParams)?.page);
+  const pageSize = 24;
+  const skip = (page - 1) * pageSize;
+  const primary=process.env.BLIZHNIY_AUTH_MODE==='postgres';
+  let result:Awaited<ReturnType<typeof legacyProfessionPage>>;
+  if(primary){
+    const {getProductionPublicServiceStore}=await import('@/lib/production-public-service-runtime');
+    const store=await getProductionPublicServiceStore();
+    result=await store.professionPage(profession.id,pageSize,skip);
+  }else result=await legacyProfessionPage(profession.name,skip,pageSize);
+  const storedSpecialists=result.items,hasMore=result.hasMore;
   if (page > 1 && !storedSpecialists.length) notFound();
-  const specialists = listSpecialistsWithStored(storedSpecialists, page === 1 && shouldShowFallbackContent() ? listSpecialists() : [])
-    .filter((specialist) => specialist.status === "published" && specialist.profession === profession.name).slice(0, pageSize);
+  const specialists = (primary?storedSpecialists:listSpecialistsWithStored(storedSpecialists, page === 1 && shouldShowFallbackContent() ? listSpecialists() : []))
+    .filter((specialist) => specialist.status === "published" && (primary?specialist.professionId===profession.id:specialist.profession === profession.name)).slice(0, pageSize);
 
   return (
     <>
@@ -60,7 +73,7 @@ export default async function Page({ params, searchParams }: PageProps) {
             <SpecialistListCard key={specialist.id} specialist={specialist} />
           ))}
         </div>
-        <ListingPagination baseHref={`/rabota/specialisty/${professionSlug}`} hasMore={matched.length > skip + pageSize} page={page} label="Страницы специалистов" />
+        <ListingPagination baseHref={`/rabota/specialisty/${professionSlug}`} hasMore={hasMore} page={page} label="Страницы специалистов" />
       </main>
     </>
   );

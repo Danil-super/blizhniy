@@ -32,7 +32,7 @@ export function parseWorkCabinetPage(value:unknown,kind:WorkPublicationKind):Wor
   const amount=parseListingDraft({kind:'prodam',price:row.amount}).price;
   if(amount!==row.amount)throw new ListingDraftInputError();
   return {id,kind,revision:parseListingDraftRevision(row.revision),status:row.status,paid:row.paid,title:text(row.title,120)!,updatedAt:stamp.updatedAt,
-   amount,organization:text(row.organization,200),city:text(row.city,160),district:text(row.district,160),profession:text(row.profession,160),
+   amount,organization:text(row.organization,200),city:text(row.city,160),district:text(row.district,160),profession:text(row.profession,200),
    schedule:text(row.schedule,160),workFormat:text(row.workFormat,160),coverPhotoId:row.coverPhotoId===null?null:parseListingDraftId(row.coverPhotoId)};
  });
  if(new Set(items.map(item=>item.id)).size!==items.length)throw new ListingDraftInputError();
