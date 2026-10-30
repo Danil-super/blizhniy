@@ -116,7 +116,9 @@ export class IdentityStore {
       if (previousHash && scope === "app") await tx.query("delete from app.sessions where token_hash=$1 and scope='app'", [previousHash]);
       const token = generateSessionToken();
       const { rows: [session] } = await tx.query<{ expiresAt: Date }>(
-        'insert into app.sessions (token_hash, user_id, auth_version, scope) values ($1, $2, $3, $4) returning expires_at as "expiresAt"',
+        `insert into app.sessions (token_hash, user_id, auth_version, scope, expires_at)
+          values ($1, $2, $3, $4, now()+case when $4='data-subject' then interval '1 hour' else interval '8 hours' end)
+          returning expires_at as "expiresAt"`,
         [hashSessionToken(token), current.id, current.authVersion, scope],
       );
       return { token, expiresAt: session.expiresAt, user: safeUser(current), scope };

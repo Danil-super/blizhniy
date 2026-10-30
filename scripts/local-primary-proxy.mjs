@@ -26,6 +26,9 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
  await load('production-auth-database').verifyProductionAuthDatabase(runtimeDb);
  const limiter=new(load('auth-http').AuthRateLimiter)(runtimeDb,state.rateSecret);
  const identity=new(load('identity').IdentityStore)(runtimeDb);
+ const deletion=load('account-deletion-http').createAccountDeletionHandler({origin:canonical,rateSecret:state.rateSecret,mailKeyFile:join(stateDirectory,'mail-key.bin'),rememberedCaptcha:true},()=>({
+  store:new(load('postgres-account-deletion').PostgresAccountDeletionStore)(runtimeDb),identity,limiter,verifyCaptcha:async()=>false,
+ }));
  // Use the same backend handler with the canonical Request constructed below.
  // Next's loopback transport URL is not the externally registered callback URL.
  const phoneConfig=load('telegram-phone-config').readTelegramPhoneConfig();
@@ -85,6 +88,8 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
    if(req.headers.origin)headers.set('origin',canonical);
    const request=new Request(canonical+req.url,{method:req.method,headers,...(body?{body}:{}),redirect:'error'});
    if(!response&&phoneCallback&&path==='/api/account/phone/telegram/callback')response=await phoneCallback(request,'callback');
+   const deletionMatch=/^\/api\/(account|admin)\/deletion\/([a-z]+)$/.exec(path);
+   if(!response&&deletionMatch)response=await deletion(request,deletionMatch[2],deletionMatch[1]==='admin');
    if(!response&&['/api/account/register','/api/account/resend','/api/account/recover'].includes(path)){
     const data=await request.clone().json();
     if(typeof data.email!=='string'||!data.email.endsWith('.invalid'))response=Response.json({error:{code:'SYNTHETIC_EMAIL_REQUIRED'}},{status:422});
@@ -108,7 +113,11 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
    }
    if(!response&&paymentHandler)response=await paymentHandler(request,context);
    if(response){
-    res.writeHead(response.status,Object.fromEntries(response.headers));
+    const responseHeaders=Object.fromEntries(response.headers);
+    // A login can set both the restricted cookie and the signed CAPTCHA proof.
+    const cookies=response.headers.getSetCookie();
+    if(cookies.length)responseHeaders['set-cookie']=cookies;
+    res.writeHead(response.status,responseHeaders);
     res.end(Buffer.from(await response.arrayBuffer()));return;
    }
    const outgoing=httpRequest({hostname:'127.0.0.1',port:localPrimaryUpstreamPort,path:req.url,method:req.method,headers:{...Object.fromEntries(headers),'accept-encoding':'identity'}},incoming=>{
