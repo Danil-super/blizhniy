@@ -30,7 +30,7 @@ async function createRuntime(config: ProductionAuthConfig): Promise<Runtime> {
   } finally { key.fill(0); }
   const db = createPostgresDatabase();
   const account: ProductionAccountRuntime = { store: new RegistrationStore(db, cipher, { confirmationNotice }),
-    recovery: new PasswordRecoveryStore(db, cipher), identity: new IdentityStore(db),
+    recovery: new PasswordRecoveryStore(db, cipher,{pendingAccounts:true}), identity: new IdentityStore(db),
     limiter: new AuthRateLimiter(db, config.rateSecret), verifyCaptcha: verifyTurnstileToken };
   try { await verifyProductionAuthDatabase(db); }
   catch (error) { await db.close(); throw error; }
@@ -64,7 +64,7 @@ export async function getProductionMailDelivery() {
   const state = await runtime(config);
   const mailer = createTimewebMailer();
   if (!mailer) throw new Error("Production mail unavailable");
-  return { worker: new MailDeliveryWorker(state.db, state.cipher, renderProductionAuthMail), mailer };
+  return { worker: new MailDeliveryWorker(state.db, state.cipher, renderProductionAuthMail,{pendingAccounts:true}), mailer };
 }
 
 /** Resource handlers reuse the verified Auth pool; they never accept caller-selected credentials. */

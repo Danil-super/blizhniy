@@ -10,8 +10,8 @@ export type PasswordResetReceipt = { email: string };
 export class RecoveryInputError extends Error {
   constructor() { super("Invalid recovery input"); this.name = "RecoveryInputError"; }
 }
-type RecoveryUser = { id: string; email: string; authVersion: string; emailVerifiedAt: Date | null };
-const columns = 'id, email, auth_version as "authVersion", email_verified_at as "emailVerifiedAt"';
+type RecoveryUser = { id: string; email: string; authVersion: string; emailVerifiedAt: Date | null; isBlocked:boolean };
+const columns = 'id, email, auth_version as "authVersion", email_verified_at as "emailVerifiedAt", is_blocked as "isBlocked"';
 
 function canonicalEmail(email: unknown): string {
   if (typeof email !== "string" || email.length > 254 || !email.isWellFormed() || /[\u0000-\u001f\u007f]/.test(email)) throw new RecoveryInputError();
@@ -23,10 +23,12 @@ function canonicalEmail(email: unknown): string {
 export class PasswordRecoveryStore {
   private readonly db: Pick<PostgresDatabase, "query" | "transaction">;
   private readonly mailCipher: MailPayloadCipher | undefined;
-  constructor(db: Pick<PostgresDatabase, "query" | "transaction">, mailCipher?: MailPayloadCipher) {
+  private readonly pendingAccounts:boolean;
+  constructor(db: Pick<PostgresDatabase, "query" | "transaction">, mailCipher?: MailPayloadCipher, options:{pendingAccounts?:boolean}={}) {
     if (typeof window !== "undefined") throw new Error("Recovery is server-only");
     this.db = db;
     this.mailCipher = mailCipher;
+    this.pendingAccounts=options.pendingAccounts===true;
   }
 
   /** Caller must apply shared rate limits and conceal the result behind a uniform mail response. */
@@ -34,7 +36,7 @@ export class PasswordRecoveryStore {
     const canonical = canonicalEmail(email);
     return this.db.transaction(async (tx) => {
       const user = (await tx.query<RecoveryUser>(`select ${columns} from app.users where email=$1 for update`, [canonical])).rows[0];
-      if (!user?.emailVerifiedAt) return null;
+      if (!user || !user.emailVerifiedAt && (!this.pendingAccounts || user.isBlocked)) return null;
       const token = generateSessionToken();
       // Same user-first ordering as login/confirmation/reset. Rotation cannot partially revoke a link.
       await tx.query("delete from app.password_recoveries where user_id=$1", [user.id]);
@@ -63,14 +65,19 @@ export class PasswordRecoveryStore {
     if (!candidate) return null;
     return this.db.transaction(async (tx) => {
       const user = (await tx.query<RecoveryUser>(`select ${columns} from app.users where id=$1 for update`, [candidate.userId])).rows[0];
-      if (!user?.emailVerifiedAt) return null;
+      if (!user || !user.emailVerifiedAt && (!this.pendingAccounts || user.isBlocked)) return null;
       // DELETE's predicate may run before a row-lock wait. Acquire both locks before checking expiry.
       await tx.query("select token_hash from app.password_recoveries where token_hash=$1 for update", [tokenHash]);
       const consumed = await tx.query(`delete from app.password_recoveries
         where token_hash=$1 and user_id=$2 and email=$3 and auth_version=$4 and expires_at > clock_timestamp()
         returning user_id`, [tokenHash, user.id, user.email, user.authVersion]);
       if (consumed.rowCount !== 1) return null;
-      await tx.query("update app.users set password_hash=$2,auth_version=auth_version+1 where id=$1", [user.id, passwordHash]);
+      // Possession of this email-bound token and explicit password submission
+      // proves pending email ownership too. No activation happens on GET/request.
+      const update=user.emailVerifiedAt
+        ? "update app.users set password_hash=$2,auth_version=auth_version+1 where id=$1"
+        : "update app.users set password_hash=$2,auth_version=auth_version+1,email_verified_at=clock_timestamp() where id=$1";
+      await tx.query(update, [user.id, passwordHash]);
       await tx.query("delete from app.sessions where user_id=$1", [user.id]);
       await tx.query("delete from app.email_confirmations where user_id=$1", [user.id]);
       if (this.mailCipher) {
@@ -86,7 +93,7 @@ export class PasswordRecoveryStore {
   async pruneRecoveries(): Promise<number> {
     const result = await this.db.query(`with candidates as (
       select r.token_hash from app.password_recoveries r join app.users u on u.id=r.user_id
-      where r.expires_at <= clock_timestamp() or r.email <> u.email or r.auth_version <> u.auth_version or u.email_verified_at is null
+      where r.expires_at <= clock_timestamp() or r.email <> u.email or r.auth_version <> u.auth_version or ${this.pendingAccounts?'(u.email_verified_at is null and u.is_blocked)':'u.email_verified_at is null'}
       order by r.expires_at,r.token_hash limit 1000 for update of r skip locked
     ) delete from app.password_recoveries r using candidates c where r.token_hash=c.token_hash`);
     return result.rowCount ?? 0;

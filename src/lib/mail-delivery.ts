@@ -33,14 +33,16 @@ export function deliveryFailure(code: MailFailureCode, attempt: number): { state
 export class MailDeliveryWorker {
   private readonly db: Pick<PostgresDatabase, "query" | "transaction">;
   private readonly cipher: MailPayloadCipher;
+  private readonly pendingAccounts:boolean;
   private readonly render: (intent: MailIntent, payload: AuthMailPayload) => TransactionalMail;
 
   constructor(db: Pick<PostgresDatabase, "query" | "transaction">, cipher: MailPayloadCipher,
-    render: (intent: MailIntent, payload: AuthMailPayload) => TransactionalMail) {
+    render: (intent: MailIntent, payload: AuthMailPayload) => TransactionalMail, options:{pendingAccounts?:boolean}={}) {
     assertServer();
     this.db = db;
     this.cipher = cipher;
     this.render = render;
+    this.pendingAccounts=options.pendingAccounts===true;
   }
 
   async claim(): Promise<MailClaim | null> {
@@ -84,7 +86,7 @@ export class MailDeliveryWorker {
       if (payload.email !== user.email) return cancel("cancelled", "STALE");
       if (row.purpose === "confirm_notice" && (!user.email_verified_at || user.is_blocked)) return cancel("cancelled", "STALE");
       if (row.purpose === "confirm" || row.purpose === "recover") {
-        if (row.purpose === "confirm" ? user.email_verified_at || user.is_blocked : !user.email_verified_at) {
+        if (row.purpose === "confirm" ? user.email_verified_at || user.is_blocked : !user.email_verified_at && (!this.pendingAccounts || user.is_blocked)) {
           return cancel("cancelled", "STALE");
         }
         const tokenHash = createHash("sha256").update(payload.token!).digest("hex");
