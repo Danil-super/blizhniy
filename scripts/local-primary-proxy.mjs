@@ -43,7 +43,12 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
  const files=await load('media-files').createLocalMediaFileStore(join(stateDirectory,'media'));
  const repository=new(load('media-metadata').MediaMetadataRepository)(runtimeDb,files);
  const writer=await load('media-file-worker').createLocalMediaFileWorker(state.project,join(stateDirectory,'media'));
- const upload=new(load('media-upload').LocalMediaUpload)(repository,load('media-worker').createLocalMediaWorker(state.project),new(load('media-write').LocalMediaWriter)(repository,writer));
+ const normalizer=load('media-worker').createLocalMediaWorker(state.project);
+ const upload=new(load('media-upload').LocalMediaUpload)(repository,normalizer,new(load('media-write').LocalMediaWriter)(repository,writer));
+ const profile=request=>load('production-profile-http').createProductionProfileHandler({origin:canonical},()=>({limiter,
+  store:new(load('postgres-profile').PostgresProfileStore)(runtimeDb,{phoneVerification:true,
+   normalizeAvatar:avatar=>load('profile-avatar').normalizeProfileAvatar(avatar,async()=>normalizer,request.signal)}),
+ }))(request);
  const media=load('production-media-http').createProductionMediaHandler({origin:canonical},()=>({identity,limiter,repository,upload}));
  const publicPhoto=load('production-public-work-photo-http').createProductionPublicWorkPhotoHandler({origin:canonical},()=>({store:new(load('postgres-public-listings').PostgresPublicListingStore)(runtimeDb,{postmoderation:true}),files}));
  const otherPublicPhotos=Object.fromEntries(['work','service'].map(kind=>[kind,load('production-public-work-photo-http').createProductionPublicWorkPhotoHandler({origin:canonical},()=>({store:new(load('postgres-public-'+kind)[kind==='work'?'PostgresPublicWorkStore':'PostgresPublicServiceStore'])(runtimeDb,kind==='work'?{vacancyPostmoderation:true}:{}),files}))]));
@@ -94,6 +99,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
     const data=await request.clone().json();
     if(typeof data.email!=='string'||!data.email.endsWith('.invalid'))response=Response.json({error:{code:'SYNTHETIC_EMAIL_REQUIRED'}},{status:422});
    }
+   if(!response&&path==='/api/account/profile')response=await profile(request);
    if(!response&&path==='/api/account/media')response=await media(request,'upload');
    if(!response&&path==='/api/account/media/read')response=await media(request,'read');
    const photoMatch=/^\/api\/listings\/([a-f0-9-]{36})\/photos\/([a-f0-9-]{36})$/.exec(path);
