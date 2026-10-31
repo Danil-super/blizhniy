@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {authJson,AuthRequestError} from './auth-http';
 import {getTrustedProxyIp} from './trusted-proxy-ip';
 import {parseListingDraftId,ListingDraftInputError} from './listing-draft-contract.ts';
+import {acquireMediaReadSlot} from './media-read-admission.ts';
 import {productionMediaAdmission} from './production-media-http';
 import type {PostgresPublicWorkStore} from './postgres-public-work';
 import type {MediaFileRecord} from './media-files';
@@ -11,16 +12,16 @@ type Event={event:'public_work_photo';requestId:string;status:number;durationMs:
 /** Public only after current SQL authorization; the underlying file directory stays private. */
 export function createProductionPublicWorkPhotoHandler(config:{origin:string},runtime:()=>Runtime|Promise<Runtime>,audit:(event:Event)=>void=event=>console.info(JSON.stringify(event))){
  return async(request:Request,publicationId:unknown,fileId:unknown):Promise<Response>=>{
-  const requestId=randomUUID(),start=Date.now();let status=503,code:string|undefined,slot=false;
+  const requestId=randomUUID(),start=Date.now();let status=503,code:string|undefined,release:(()=>void)|undefined;
   const reply=(next:number,reason:string)=>{status=next;code=reason;return authJson({error:{code}},next,{'X-Request-ID':requestId,...(reason==='MEDIA_BUSY'?{'Retry-After':'1'}:{}),...(next===405?{Allow:'GET'}:{})});};
   try{
    if(request.method!=='GET')throw new AuthRequestError(405,'METHOD_NOT_ALLOWED');
    if(request.headers.get('host')!==new URL(config.origin).host)throw new AuthRequestError(403,'FORBIDDEN_TARGET');
    if(new URL(request.url).search)throw new AuthRequestError(400,'QUERY_NOT_ALLOWED');
-   if(!getTrustedProxyIp(request.headers))throw new AuthRequestError(403,'UNTRUSTED_INGRESS');
+   const ip=getTrustedProxyIp(request.headers);if(!ip)throw new AuthRequestError(403,'UNTRUSTED_INGRESS');
    const id=parseListingDraftId(publicationId),file=parseListingDraftId(fileId);
-   if(productionMediaAdmission.reads>=4)throw new AuthRequestError(503,'MEDIA_BUSY');
-   productionMediaAdmission.reads++;slot=true;
+   release=await acquireMediaReadSlot(productionMediaAdmission,ip,request.signal);
+   if(!release)throw new AuthRequestError(503,'MEDIA_BUSY');
    request.signal.throwIfAborted();const {store,files}=await runtime(),access=await store.photoRecord(id,file);
    if(!access)throw new AuthRequestError(404,'MEDIA_NOT_FOUND');
    const revision=access.revision,record={...access.record};
@@ -36,6 +37,6 @@ export function createProductionPublicWorkPhotoHandler(config:{origin:string},ru
   }catch(error){
    if(error instanceof ListingDraftInputError)return reply(404,'MEDIA_NOT_FOUND');
    return reply(error instanceof AuthRequestError?error.status:503,error instanceof AuthRequestError?error.code:'MEDIA_UNAVAILABLE');
-  }finally{if(slot)productionMediaAdmission.reads--;audit({event:'public_work_photo',requestId,status,durationMs:Date.now()-start,code});}
+  }finally{release?.();audit({event:'public_work_photo',requestId,status,durationMs:Date.now()-start,code});}
  };
 }

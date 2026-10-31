@@ -4,11 +4,12 @@ import {loadAdminModule} from './admin-module.mjs';
 import * as contract from '../src/lib/work-publication-contract.ts';
 import * as drafts from '../src/lib/listing-draft-contract.ts';
 import * as limits from '../src/lib/media-limits.ts';
+import * as mediaAdmission from '../src/lib/media-read-admission.ts';
 import * as fields from '../src/lib/cabinet-field-validation.ts';
 import {loadLocalPrimaryModule} from '../scripts/local-primary-modules.cjs';
 const ts=createRequire(import.meta.url)('typescript');
 export function workPublicationModule(name,extra={}){
- const deps={'./app-session-transaction':loadAdminModule('app-session-transaction'),'./work-publication-contract.ts':contract,
+ const deps={'./media-read-admission.ts':mediaAdmission,'./app-session-transaction':loadAdminModule('app-session-transaction'),'./work-publication-contract.ts':contract,
   './listing-draft-contract.ts':drafts,'./media-limits.ts':limits,'./cabinet-field-validation.ts':fields,
   './listing-workflow-config':loadLocalPrimaryModule('listing-workflow-config'),
   './specialist-application-profile.ts':loadLocalPrimaryModule('specialist-application-profile'),

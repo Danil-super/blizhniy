@@ -1,3 +1,4 @@
+import {acquireMediaReadSlot} from './media-read-admission.ts';
 import {professionWireView} from './profession-catalog-contract.ts';
 import {randomUUID} from 'node:crypto';import {authJson,readAuthJson,AuthRequestError,type AuthRateLimiter} from './auth-http';
 import {readAccountSessionToken} from './account-cookie';import {getTrustedProxyIp} from './trusted-proxy-ip';
@@ -10,7 +11,7 @@ type Runtime={store:PostgresServiceModerationStore;limiter:Pick<AuthRateLimiter,
 type Event={event:'service_moderation';requestId:string;status:number;durationMs:number;code?:string};
 export function createProductionServiceModerationHandler(config:{origin:string},mode:'owner'|'admin',runtime:()=>Runtime|Promise<Runtime>,audit:(event:Event)=>void=event=>console.info(JSON.stringify(event))){
  return async(request:Request)=>{
-  const requestId=randomUUID(),start=Date.now();let status=503,code:string|undefined,slot=false;
+  const requestId=randomUUID(),start=Date.now();let status=503,code:string|undefined,releaseRead:(()=>void)|undefined;
   const reply=(body:unknown,next:number,headers?:Record<string,string>)=>{status=next;return authJson(professionWireView(body,request.headers.get('x-blizhniy-profession-refs')==='1'),next,{'X-Request-ID':requestId,...headers});};
   try{
    if(!['POST','PUT'].includes(request.method))throw new AuthRequestError(405,'METHOD_NOT_ALLOWED');
@@ -28,8 +29,9 @@ export function createProductionServiceModerationHandler(config:{origin:string},
    if(action==='read'||action==='submit')return reply(await store[action](token,actor,kind,id,revision),200);
    if(action==='list')return reply(await store.list(token,kind,cursor,actor),200);if(action==='inspect')return reply(await store.inspect(token,kind,id,actor),200);
    if(decision)return reply(await store.decide(token,kind,id,decision.state,decision.note,actor),200);
-   if(productionMediaAdmission.reads>=4)throw new AuthRequestError(503,'MEDIA_BUSY');productionMediaAdmission.reads++;slot=true;
-   const result=await store.readPhoto(token,kind,id,file,actor);if(result.record.mimeType!=='image/webp'||result.bytes.length!==result.record.size||result.bytes.length<12||result.bytes.length>2097152)throw Error('Invalid private image');
+   releaseRead=await acquireMediaReadSlot(productionMediaAdmission,ip,request.signal);
+   if(!releaseRead)throw new AuthRequestError(503,'MEDIA_BUSY');request.signal.throwIfAborted();
+   const result=await store.readPhoto(token,kind,id,file,actor);request.signal.throwIfAborted();if(result.record.mimeType!=='image/webp'||result.bytes.length!==result.record.size||result.bytes.length<12||result.bytes.length>2097152)throw Error('Invalid private image');
    status=200;const headers=new Headers(authJson({},200,{'X-Request-ID':requestId}).headers);headers.set('Content-Type','image/webp');headers.set('Content-Length',String(result.bytes.length));headers.set('Content-Disposition','inline; filename="photo.webp"');
    return new Response(new Uint8Array(result.bytes),{status,headers});
   }catch(error){
@@ -38,6 +40,6 @@ export function createProductionServiceModerationHandler(config:{origin:string},
    if(error instanceof ListingDraftInputError||error instanceof WorkModerationInputError)error=new AuthRequestError(422,'INVALID_INPUT');
    code=error instanceof AuthRequestError?error.code:'SERVICE_MODERATION_UNAVAILABLE';const next=error instanceof AuthRequestError?error.status:503;
    return reply({error:{code}},next,next===429?{'Retry-After':'900'}:code==='MEDIA_BUSY'?{'Retry-After':'1'}:next===405?{Allow:'POST, PUT'}:undefined);
-  }finally{if(slot)productionMediaAdmission.reads--;audit({event:'service_moderation',requestId,status,durationMs:Date.now()-start,code});}
+  }finally{releaseRead?.();audit({event:'service_moderation',requestId,status,durationMs:Date.now()-start,code});}
  };
 }
