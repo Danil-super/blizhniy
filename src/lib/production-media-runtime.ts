@@ -41,8 +41,9 @@ async function createRuntime(config: ProductionAuthConfig) {
   await db.query("select id,media_id,claimed_at from app.media_write_attempts limit 0");
   const files = await createLocalMediaFileStore(policy.root), writer = await createLocalMediaFileWorker(policy.app, policy.root);
   const repository = new MediaMetadataRepository(db, files);
-  const upload = new LocalMediaUpload(repository, createMediaSocketClient(policy.socket, validateSocket), new LocalMediaWriter(repository, writer));
-  return { identity: new IdentityStore(db), limiter, upload, repository, files };
+  const normalizer = createMediaSocketClient(policy.socket, validateSocket);
+  const upload = new LocalMediaUpload(repository, normalizer, new LocalMediaWriter(repository, writer));
+  return { identity: new IdentityStore(db), limiter, upload, repository, files, normalizer };
 }
 function runtime(config: ProductionAuthConfig) {
   shared.blizhniyProductionMedia ??= new ReadOnlyInitialization(() => createRuntime(config));
@@ -53,6 +54,11 @@ function runtime(config: ProductionAuthConfig) {
 export async function getProductionMediaFileReader(config: ProductionAuthConfig) {
   const state = await runtime(config);
   return { read: state.files.read };
+}
+
+/** Trusted profile composition. Reuses the same restricted decoder and capacity as uploads. */
+export async function getProductionMediaNormalizer(config: ProductionAuthConfig) {
+  return (await runtime(config)).normalizer;
 }
 
 /** No import-time files/connections, migrations or grants. Operator opt-in and restart only. */

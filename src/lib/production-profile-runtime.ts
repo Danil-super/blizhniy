@@ -4,6 +4,8 @@ import { readProductionAuthConfig } from "./production-auth-config";
 import { getProductionAccountDatabase } from "./production-auth-runtime";
 import { createProductionProfileHandler } from "./production-profile-http";
 import { PostgresProfileStore } from "./postgres-profile";
+import { normalizeProfileAvatar } from "./profile-avatar";
+import { getProductionMediaNormalizer } from "./production-media-runtime";
 
 export async function handleProductionProfileRequest(request: Request): Promise<Response> {
   try {
@@ -14,7 +16,8 @@ export async function handleProductionProfileRequest(request: Request): Promise<
       // Missing schema/grants fail closed on the resource path, without touching legacy storage.
       await db.query("select user_id,profile,updated_at from app.cabinet_profiles limit 0");
       const phone=(await db.query<{present:boolean}>("select to_regclass('app.telegram_phone_bindings') is not null as present")).rows[0]?.present===true;
-      return { store: new PostgresProfileStore(db,{phoneVerification:phone}), limiter };
+      return { store: new PostgresProfileStore(db,{phoneVerification:phone,
+        normalizeAvatar: avatar => normalizeProfileAvatar(avatar, () => getProductionMediaNormalizer(config), request.signal)}), limiter };
     })(request);
   } catch {
     const requestId = randomUUID();

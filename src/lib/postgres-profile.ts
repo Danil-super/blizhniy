@@ -85,7 +85,7 @@ function profileRevision(profile: StoredCabinetProfile): string {
 }
 
 export class PostgresProfileStore {
-  constructor(private readonly db: Pick<PostgresDatabase, "transaction">, private readonly options: {phoneVerification?:boolean} = {}) {
+  constructor(private readonly db: Pick<PostgresDatabase, "transaction">, private readonly options: {phoneVerification?:boolean; normalizeAvatar?:(dataUrl:string)=>Promise<string>} = {}) {
     if (typeof window !== "undefined") throw new Error("Profile storage is server-only");
   }
   private async phoneView(tx: PostgresQueries, owner: string, profile: StoredCabinetProfile, email: string): Promise<CabinetProfile> {
@@ -105,6 +105,17 @@ export class PostgresProfileStore {
     });
   }
   async write(token: string, expectedOwnerId: string, profile: StoredCabinetProfile, expectedRevision: string | null): Promise<{ profile: CabinetProfile; revision: string }> {
+    if (this.options.normalizeAvatar) {
+      // Snapshot untrusted fields before any await. Native decode runs outside a
+      // transaction, after admission; the final transaction repeats auth + CAS.
+      profile = parseProductionProfile(profile);
+      if (expectedRevision !== null && (typeof expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(expectedRevision))) throw new ProfileInputError();
+      const before = await this.read(token, expectedOwnerId);
+      if (before.revision !== expectedRevision) throw new ProfileConflictError();
+      if (profile.avatarDataUrl && profile.avatarDataUrl !== before.profile.avatarDataUrl) {
+        profile = parseProductionProfile({ ...profile, avatarDataUrl: await this.options.normalizeAvatar(profile.avatarDataUrl) });
+      }
+    }
     return withAppSessionTransaction(this.db, token, async (tx, user) => {
       if (user.id !== expectedOwnerId) throw new ProfileOwnerChangedError();
       if (expectedRevision !== null && (typeof expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(expectedRevision))) throw new ProfileInputError();
