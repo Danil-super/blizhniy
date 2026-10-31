@@ -49,7 +49,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
  const otherPublicPhotos=Object.fromEntries(['work','service'].map(kind=>[kind,load('production-public-work-photo-http').createProductionPublicWorkPhotoHandler({origin:canonical},()=>({store:new(load('postgres-public-'+kind)[kind==='work'?'PostgresPublicWorkStore':'PostgresPublicServiceStore'])(runtimeDb,kind==='work'?{vacancyPostmoderation:true}:{}),files}))]));
  const adminPhoto=load('admin-listing-moderation-http').createAdminListingModerationHandler({origin:canonical},()=>({identity,limiter,store:new(load('postgres-listing-moderation').PostgresListingModerationStore)(runtimeDb,files,{contactMethod:true})}));
  const key=await readFile(join(stateDirectory,'mail-key.bin'));
- const worker=new(load('mail-delivery').MailDeliveryWorker)(runtimeDb,new(load('mail-outbox').MailPayloadCipher)(key),load('production-auth-config').renderProductionAuthMail);key.fill(0);
+ const worker=new(load('mail-delivery').MailDeliveryWorker)(runtimeDb,new(load('mail-outbox').MailPayloadCipher)(key),load('production-auth-config').renderProductionAuthMail,{pendingAccounts:true});key.fill(0);
  let polling=false;
  const timer=setInterval(async()=>{
   if(polling)return;polling=true;

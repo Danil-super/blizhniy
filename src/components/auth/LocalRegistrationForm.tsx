@@ -138,7 +138,7 @@ function RegistrationForm({ production, captcha, captchaToken = "", captchaReady
 
   return <>
     <h1 className="text-[1.75rem] font-bold leading-tight tracking-tight text-brand-ink">{action === "register" ? "Регистрация" : "Повторное письмо"}</h1>
-    <p className="mt-2 text-sm leading-6 text-slate-600">{action === "register" ? production ? "Создайте аккаунт и подтвердите email по письму." : "Создайте тестовый аккаунт. Данные сохраняются в локальной PostgreSQL." : "Введите email и исходный пароль неподтверждённого аккаунта. Если забыли пароль подтверждённого аккаунта, восстановите доступ."}</p>
+    <p className="mt-2 text-sm leading-6 text-slate-600">{action === "register" ? production ? "Создайте аккаунт и подтвердите email по письму." : "Создайте тестовый аккаунт. Данные сохраняются в локальной PostgreSQL." : "Введите email и исходный пароль неподтверждённого аккаунта. Если забыли пароль, восстановите доступ по письму."}</p>
     <form ref={form} onSubmit={onSubmit} onChange={edit} noValidate className="mt-5" aria-busy={busy}>
       <fieldset disabled={busy} className="min-w-0 space-y-2">
       {action === "register" && <div>
