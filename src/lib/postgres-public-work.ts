@@ -61,6 +61,14 @@ export class PostgresPublicWorkStore{
  async list(kind:WorkPublicationKind,limit=24,offset=0):Promise<(JobVacancy|WorkRequest)[]>{
   return (await this.listRows(kind,limit,offset)).map(row=>mapPublicWorkPublication(row,Date.now())).filter((item):item is JobVacancy|WorkRequest=>item!==null);
  }
+ searchScope(){return{source:this.source,eligible:this.available};}
+ async readMany(values:unknown[]):Promise<(JobVacancy|WorkRequest)[]>{
+  if(!Array.isArray(values)||values.length>25)throw new ListingDraftInputError();
+  const ids=values.map(parseListingDraftId);if(new Set(ids).size!==ids.length)throw new ListingDraftInputError();if(!ids.length)return[];
+  const rows=(await this.db.query<PublicWorkRow>(`select ${this.columns} ${this.source}
+   where w.id=any($1::uuid[]) and ${this.available} limit 25`,[ids])).rows;
+  return rows.map(row=>mapPublicWorkPublication(row,Date.now())).filter((row):row is JobVacancy|WorkRequest=>row!==null);
+ }
  async sitemapPage(kind:WorkPublicationKind,limit=100,offset=0){
   const rows=await this.listRows(kind,limit,offset);
   const entries=rows.map(row=>mapPublicWorkPublication(row,Date.now())).filter((item):item is JobVacancy|WorkRequest=>item!==null)

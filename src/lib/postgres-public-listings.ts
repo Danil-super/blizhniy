@@ -52,6 +52,15 @@ export class PostgresPublicListingStore{
  async list(options:PublicListingQuery={}):Promise<Listing[]>{
   return (await this.listRows(options)).map(row=>this.project(row)).filter((row):row is Listing=>row!==null);
  }
+ /** Trusted search composition reuses the exact public predicates and mapper. */
+ searchScope(){return{source:this.source,eligible:this.eligible};}
+ async readMany(values:unknown[]):Promise<Listing[]>{
+  if(!Array.isArray(values)||values.length>25)throw new ListingDraftInputError();
+  const ids=values.map(parseListingDraftId);if(new Set(ids).size!==ids.length)throw new ListingDraftInputError();if(!ids.length)return[];
+  const rows=(await this.db.query<Row>(`select ${columns(true,this.postmoderation)} ${this.source}
+   where l.id=any($1::uuid[]) and ${this.eligible} limit 25`,[ids,maxListingMediaTotalSize])).rows;
+  return rows.map(row=>this.project(row)).filter((row):row is Listing=>row!==null);
+ }
  async sitemapPage(limit=100,offset=0){
   const rows=await this.listRows({limit,offset});
   const entries=rows.map(row=>this.project(row)).filter((row):row is Listing=>row!==null)

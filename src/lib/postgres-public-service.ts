@@ -37,6 +37,14 @@ export class PostgresPublicServiceStore{
  async list(kind:ServicePublicationKind,limit=kind==='marquee'?5:24,offset=0):Promise<PublicServiceMaterial[]>{
   return (await this.listRows(kind,limit,offset)).map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is PublicServiceMaterial=>row!==null);
  }
+ searchScope(){return{source,eligible:live,profileIdentity:this.options.specialistProfileIdentity===true};}
+ async readMany(values:unknown[]):Promise<Array<SpecialistProfile|FairApplication>>{
+  if(!Array.isArray(values)||values.length>25)throw new ListingDraftInputError();
+  const ids=values.map(parseListingDraftId);if(new Set(ids).size!==ids.length)throw new ListingDraftInputError();if(!ids.length)return[];
+  const rows=(await this.db.query<PublicServiceRow>(`select ${columns}${this.identityColumn} ${source}
+   where s.id=any($1::uuid[]) and s.kind in ('specialist','fair') and ${live} limit 25`,[ids])).rows;
+  return rows.map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is SpecialistProfile|FairApplication=>row!==null&&('profession'in row||'participantName'in row));
+ }
  async sitemapPage(limit=100,offset=0){
   const rows=await this.listRows('specialist',limit,offset);
   const entries=rows.map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is SpecialistProfile=>row!==null&&'profession' in row)
