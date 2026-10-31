@@ -98,6 +98,7 @@ export class PostgresError extends Error {
           ['timeout exceeded when trying to connect', 'ETIMEDOUT'],
           ['timeout expired', 'ETIMEDOUT'],
           ['Connection terminated unexpectedly', 'ECONNRESET'],
+          ['Query read timeout', 'ETIMEDOUT'],
         ]).get(error.message);
       }
     }
@@ -109,12 +110,12 @@ export interface PostgresQueries {
 }
 
 async function query<Row extends QueryResultRow>(
-  connection: Pool | PoolClient, text: string, values: unknown[] = [],
+  connection: Pool | PoolClient, text: string, values: unknown[] = [], timeoutMs?:number,
 ): Promise<QueryResult<Row>> {
   try {
     // Extended protocol rejects multiple statements, even when values is empty.
     // @types/pg does not yet declare pg's supported queryMode option.
-    const statement = { text, values, queryMode: "extended" };
+    const statement = { text, values, queryMode: "extended", ...(timeoutMs===undefined?{}:{query_timeout:timeoutMs}) };
     return await connection.query<Row>(statement);
   } catch (error) { throw new PostgresError(error); }
 }
@@ -157,6 +158,45 @@ export class PostgresDatabase implements PostgresQueries {
       // No retries: a failed COMMIT response does not prove that the write failed.
       throw error;
     } finally { client.release(discard ? true : undefined); }
+  }
+
+  /** Public bounded reads only. Existing auth/payment transaction semantics stay separate. */
+  async readTransaction<T>(work:(queries:PostgresQueries)=>Promise<T>,options:{timeoutMs:number;onComplete?:()=>void}):Promise<T>{
+    if(!Number.isSafeInteger(options?.timeoutMs)||options.timeoutMs<1||options.timeoutMs>5000)throw Error('Invalid read deadline');
+    const deadline=performance.now()+options.timeoutMs;
+    const timeout=()=>new PostgresError({code:'ETIMEDOUT'});
+    let expired=false,completed=false,released=false,client:PoolClient|undefined;
+    const remaining=()=>{const value=Math.ceil(deadline-performance.now());if(expired||released||completed||value<=0)throw timeout();return value;};
+    const complete=()=>{if(!completed){completed=true;options.onComplete?.();}};
+    const release=(discard:boolean)=>{if(client&&!released){released=true;try{client.release(discard);}finally{complete();}}};
+    return new Promise<T>((resolve,reject)=>{
+      const timer=setTimeout(()=>{
+        expired=true;release(true);reject(timeout());
+        // Pending pool checkout retains its admission lease until the actual
+        // callback settles. It cannot start SQL after this caller has timed out.
+      },options.timeoutMs);
+      try{this.pool.connect((error,connection)=>{
+        if(expired){connection?.release(true);complete();return;}
+        if(error||!connection){clearTimeout(timer);complete();reject(new PostgresError(error));return;}
+        client=connection;
+        const bounded:PostgresQueries={query:async<Row extends QueryResultRow>(text:string,values:unknown[]=[])=>{
+          const result=await query<Row>(connection,text,values,remaining());remaining();return result;
+        }};
+        const run=async()=>{
+          try{
+            await bounded.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+            const budget=remaining();
+            await bounded.query("select set_config('statement_timeout',$1,true),set_config('transaction_timeout',$2,true)",[String(Math.min(3000,budget)),String(budget)]);
+            const result=await work(bounded);
+            await bounded.query('COMMIT');release(false);return result;
+          }catch(error){release(true);throw error;}
+          finally{clearTimeout(timer);}
+        };
+        // Consume late completion/errors too. Timeout destroys the connection
+        // before rejection; every later query and COMMIT checks the same latch.
+        void run().then(resolve,reject);
+      });}catch(error){clearTimeout(timer);complete();reject(new PostgresError(error));}
+    });
   }
 
   close(): Promise<void> { return this.pool.end(); }
