@@ -25,6 +25,7 @@ export function createProductionListingFormHandler(config:{origin:string},runtim
    const {store,limiter}=await runtime();if(!await limiter.allowProduction('session',ip))throw new AuthRequestError(429,'RATE_LIMITED');
    return reply(form?await store.update(token,owner,id,revision,form):await store.read(token,owner,id),200);
   }catch(error){
+   if(error&&typeof error==='object'&&'code'in error&&error.code==='PBL01')error=new AuthRequestError(409,'CHECKOUT_ACTIVE');
    if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
    if(error instanceof ListingDraftAccessError)error=new AuthRequestError(404,'DRAFT_NOT_FOUND');
    if(error instanceof ListingDraftConflictError)error=new AuthRequestError(409,'DRAFT_CHANGED');

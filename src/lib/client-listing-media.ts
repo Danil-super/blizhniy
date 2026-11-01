@@ -6,6 +6,7 @@ import {maxListingImageFileSize} from './media-limits.ts';
 const messages={UNKNOWN:'Результат не подтверждён. Проверьте сохранённые фотографии перед повтором.',
  UNAUTHENTICATED:'Войдите в аккаунт повторно.',SESSION_CHANGED:'Аккаунт изменился. Откройте черновик заново.',
  DRAFT_CHANGED:'Черновик изменён. Сверьте сохранённую версию.',DRAFT_NOT_FOUND:'Черновик недоступен.',
+ CHECKOUT_ACTIVE:'Для этой публикации уже начата оплата. Вернитесь к ней в личном кабинете; после завершения оплаты можно сохранить изменения.',
  INVALID_INPUT:'Проверьте файл. Допустимы JPEG, PNG, WebP и статичный GIF до 10 МБ.',
  MEDIA_IN_PROGRESS:'Файл обрабатывается или результат требует проверки. Не загружайте его повторно с новым идентификатором.',
  RATE_LIMITED:'Слишком много запросов. Попробуйте позже.',MEDIA_BUSY:'Обработчик занят. Повторите попытку позже.'};
@@ -36,7 +37,7 @@ export function createListingMediaClient(transport:typeof fetch){
    const payload=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await bytes(response,signal,2097152)));
    if(response.status!==200){
     const code=payload?.error?.code;
-    const statuses:Record<string,number>={UNAUTHENTICATED:401,SESSION_CHANGED:409,DRAFT_CHANGED:409,DRAFT_NOT_FOUND:404,MEDIA_IN_PROGRESS:409,RATE_LIMITED:429,MEDIA_BUSY:503};
+    const statuses:Record<string,number>={UNAUTHENTICATED:401,SESSION_CHANGED:409,DRAFT_CHANGED:409,CHECKOUT_ACTIVE:409,DRAFT_NOT_FOUND:404,MEDIA_IN_PROGRESS:409,RATE_LIMITED:429,MEDIA_BUSY:503};
     if(Object.hasOwn(statuses,code)&&statuses[code]===response.status)throw new ListingMediaClientError(code as keyof typeof messages);
     if([413,415,422].includes(response.status))throw new ListingMediaClientError('INVALID_INPUT');
     throw new ListingMediaClientError('UNKNOWN');

@@ -26,6 +26,7 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
  const attempt=useRef<ReturnType<typeof createListingFormSave>|null>(null),formRef=useRef<HTMLFormElement|null>(null),pending=useRef(false),epoch=useRef(0);
  const moderation=useRef<ReturnType<typeof createListingFormModeration>|null>(null),controlsRef=useRef<HTMLFieldSetElement|null>(null),intentKey=useId();
  const [busy,setBusy]=useState(false),[message,setMessage]=useState<string|null>(null),[remote,setRemote]=useState<ListingFormSnapshot|null>(null),[active,setActive]=useState(false),[done,setDone]=useState(false);
+ const [checkoutBlocked,setCheckoutBlocked]=useState(false);
  const controller=useRef<AbortController|null>(null);
  const baseline=useRef(existing),readyFiles=useRef(new Map<Blob,UploadedImage>());
  const [rejected,setRejected]=useState(false);
@@ -59,9 +60,10 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
   if(!controller.current?.signal.aborted)setDone(true);
  }
  async function run(work:()=>Promise<void>){
-  if(pending.current||!owner)return;pending.current=true;setBusy(true);setMessage(null);const generation=epoch.current;
+  if(pending.current||!owner)return;pending.current=true;setBusy(true);setMessage(null);setCheckoutBlocked(false);const generation=epoch.current;
   try{await work();}catch(error){if(generation===epoch.current){setMessage(error instanceof ListingDraftInputError?'Проверьте поля объявления: цену, контакты, координаты и параметры аренды.':error instanceof Error?error.message:'Не удалось подтвердить сохранение.');
-   if(error instanceof ListingFormClientError&&['INVALID_INPUT','RATE_LIMITED'].includes(error.code))setRejected(true);
+   if(error instanceof ListingFormClientError&&['INVALID_INPUT','RATE_LIMITED','CHECKOUT_ACTIVE'].includes(error.code))setRejected(true);
+   if(error instanceof ListingFormClientError&&error.code==='CHECKOUT_ACTIVE')setCheckoutBlocked(true);
   }}
   finally{if(generation===epoch.current){pending.current=false;setBusy(false);if(formRef.current)delete formRef.current.dataset.primarySaving;}}
  }
@@ -89,8 +91,9 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
    if(event.currentTarget.form)void save(event.currentTarget.form);
   }}>{busy?(draft?'Сохраняем поля и фотографии…':'Сохраняем объявление…'):(draft?label:submitLabel)}</button>
   {!draft&&!active&&<p className="min-w-0 flex-1 basis-64 self-center text-sm text-slate-600 md:col-span-full">{postmoderation?'Объявление появится в каталоге после подтверждения оплаты. Сначала проверим поля и сохраним фотографии.':'Сначала бесплатная проверка модератором. Отправка не публикует объявление и не списывает деньги.'}</p>}
-  {active&&!done&&<p className="text-sm text-slate-600 md:col-span-full" role="status">Сохраняется снимок формы на момент нажатия. До подтверждения результата не создавайте объявление повторно.</p>}
+  {active&&!done&&!checkoutBlocked&&<p className="text-sm text-slate-600 md:col-span-full" role="status">Сохраняется снимок формы на момент нажатия. До подтверждения результата не создавайте объявление повторно.</p>}
   {message&&<p className="break-words text-sm font-semibold text-rose-700 md:col-span-full" role="alert">{message}</p>}
+  {checkoutBlocked&&<a href={returnHref} className="text-sm font-semibold text-[#0875d1] underline md:col-span-full">К начатой оплате в личном кабинете</a>}
   {paymentUncertain&&<button type="button" className={draftButton} disabled={busy||!owner} onClick={()=>void run(async()=>{
    if(!checkout.current.input)return;const order=await accountTestPayment.recover(owner!,checkout.current.input.creationKey,{signal:controller.current?.signal});
    if(controller.current?.signal.aborted)return;

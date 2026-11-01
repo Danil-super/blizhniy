@@ -42,6 +42,7 @@ export function createProductionWorkPublicationHandler(config:{origin:string},ru
     case 'update':return reply(await store.update(token,owner,kind,id,revision,form),200);
    }
   }catch(error){
+   if(error&&typeof error==='object'&&'code'in error&&error.code==='PBL01')error=new AuthRequestError(409,'CHECKOUT_ACTIVE');
    if(error&&typeof error==='object'&&'code'in error&&error.code==='P7601')error=new AuthRequestError(403,'PHONE_REQUIRED');
    if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
    if(error instanceof WorkPublicationAccessError)error=new AuthRequestError(404,'PUBLICATION_NOT_FOUND');
