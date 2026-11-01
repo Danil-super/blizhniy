@@ -35,8 +35,22 @@ function display(row:Row,actor:string):ApplicationSnapshot{return{id:row.id,revi
 
 /** No financial authority. Peer locks are nonblocking so existing actor-user locks cannot form a cross-user cycle. */
 export class PostgresApplicationStore{
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly policy:{vacancyPostmoderation?:boolean;specialistApplicationReady?:boolean;localActions?:boolean}={}){
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly policy:{vacancyPostmoderation?:boolean;specialistApplicationReady?:boolean;localActions?:boolean;contactViews?:boolean}={}){
   if(policy.localActions&&!readPostmoderationEnabled())throw new ApplicationAccessError();
+  if(policy.contactViews!==undefined&&typeof policy.contactViews!=='boolean')throw new ApplicationAccessError();
+  if(policy.contactViews&&(!policy.localActions||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!=='https://127.0.0.1:3045'))throw new ApplicationAccessError();
+ }
+ /** Evidence must commit with the authorized request before any contact payload
+  * escapes. A lost COMMIT reply is unknown; it never permits returning contacts.
+  */
+ private async disclosed(tx:PostgresQueries,actor:string,row:Row):Promise<ApplicationSnapshot>{
+  if(this.policy.contactViews&&row.targetOwner===actor&&row.applicant!==actor){
+   // No conflict target/RETURNING: the runtime intentionally has no SELECT on
+   // this journal, only INSERT(application_id,recipient_id). Its sole PK makes
+   // the first server-side disclosure idempotent without rewriting its time.
+   await tx.query('insert into app.application_contact_views(application_id,recipient_id) values($1,$2) on conflict do nothing',[row.id,actor]);
+  }
+  return display(row,actor);
  }
  private get rowColumns(){return columns+(this.policy.localActions?`, exists(select 1 from app.application_withdrawals x where x.application_id=a.id) as withdrawn, (${closure}) as "targetClosed"`:'');}
  private async editable(tx:PostgresQueries,row:Row){
@@ -117,7 +131,7 @@ export class PostgresApplicationStore{
    values($1,$2,$3,$4,$5::bigint,$6::bigint,$7::jsonb,$8) returning id`,[actor,input.targetId,input.specialistId,input.creationKey,input.expectedTargetRevision,input.expectedSpecialistRevision,JSON.stringify(current.specialist.snapshot),input.message])).rows[0];
   const saved=display(await this.row(tx,actor,id),actor);await this.window(tx,input.targetId,input.specialistId);return saved;
  });}
- read(token:string,owner:string,value:unknown){const id=parseListingDraftId(value);return this.owner(token,owner,async(tx,actor)=>display(await this.locate(tx,actor,id),actor));}
+ read(token:string,owner:string,value:unknown){const id=parseListingDraftId(value);return this.owner(token,owner,async(tx,actor)=>this.disclosed(tx,actor,await this.locate(tx,actor,id)));}
  readIntent(token:string,owner:string,value:unknown){const key=parseListingDraftId(value);return this.owner(token,owner,async(tx,actor)=>{
   const row=(await tx.query<{id:string}>('select id from app.applications where applicant_id=$1 and creation_key=$2',[actor,key])).rows[0];return row?display(await this.locate(tx,actor,row.id),actor):null;
  });}
@@ -156,9 +170,9 @@ export class PostgresApplicationStore{
   return this.owner(token,owner,async(tx,actor)=>{
    const initial=await this.row(tx,actor,id,false);if(initial.applicant===actor||initial.targetOwner!==actor)throw new ApplicationAccessError();
    await this.peer(tx,initial.applicant);const row=await this.locate(tx,actor,id);
-   if(row.status===state&&BigInt(row.revision)===BigInt(revision)+BigInt(1))return display(row,actor);
+   if(row.status===state&&BigInt(row.revision)===BigInt(revision)+BigInt(1))return this.disclosed(tx,actor,row);
    if(row.revision!==revision||!['sent','viewed'].includes(row.status))throw new ApplicationConflictError();
-    if(row.status===state)return display(row,actor);
+    if(row.status===state)return this.disclosed(tx,actor,row);
     // All creation/checkout/delivery and decisions serialize on the work row.
     // A selected application is the durable closure marker; editing or payment
     // replay cannot reopen the order or reset its purchased publication period.
@@ -181,7 +195,7 @@ export class PostgresApplicationStore{
      }
      await enqueueNotificationInTransaction(tx,other.applicant,{eventKey:`application_other_selected:${other.id}`,category:'message',tone:'info',title:'Заказчик выбрал другого исполнителя',body:'По заказу уже выбран исполнитель. Заказ закрыт для новых откликов. История вашего отклика сохранена в кабинете.',actionHref:'/cabinet/otkliki',bookingRequestId:null});
     }
-   return display(await this.row(tx,actor,id),actor);
+   return this.disclosed(tx,actor,await this.row(tx,actor,id));
   });
  }
  list(token:string,owner:string,mode:unknown,after:unknown):Promise<ApplicationPage>{
