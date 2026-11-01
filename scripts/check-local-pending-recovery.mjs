@@ -28,7 +28,7 @@ try{
   }
  };
  const confirmation=(await capture('confirm')).text.match(/#token=([a-f0-9]{64})/)?.[1];assert.ok(confirmation);
- await owner.query("update app.email_confirmations set created_at=clock_timestamp()-interval '2 hours',expires_at=clock_timestamp()-interval '1 hour' where user_id=$1",[user]);
+ await owner.query("update app.email_confirmations set created_at=clock_timestamp()-interval '2 hours',expires_at=clock_timestamp()-interval '90 minutes' where user_id=$1",[user]);
  assert.equal((await api('confirm',{token:confirmation})).status(),400);
  const before=(await owner.query('select password_hash,email_verified_at,auth_version::text,role,is_blocked from app.users where id=$1',[user])).rows[0];
  const profile=(await owner.query('select profile from app.cabinet_profiles where user_id=$1',[user])).rows[0].profile;
