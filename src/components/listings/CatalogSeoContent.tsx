@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { getPublicSiteUrl } from "@/lib/site-url";
 
 type RelatedSection = {
@@ -23,7 +24,7 @@ function safeJson(value: unknown) {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
-export function CatalogSeoContent({
+export async function CatalogSeoContent({
   categoryName,
   categoryPath,
   description,
@@ -31,6 +32,7 @@ export function CatalogSeoContent({
   sectionName,
   sectionPath,
 }: CatalogSeoContentProps) {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   const currentName = sectionName ?? categoryName;
   const currentPath = sectionPath ?? categoryPath;
   const breadcrumbItems = [
@@ -54,7 +56,7 @@ export function CatalogSeoContent({
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJson(structuredData) }} />
+      <script nonce={nonce} type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJson(structuredData) }} />
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-label={`О разделе ${currentName}`}>
         <h2 className="text-lg font-bold text-[#060b27]">Объявления: {currentName}</h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">{description}</p>

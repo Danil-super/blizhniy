@@ -1,5 +1,7 @@
 "use client";
 
+import { documentCspNonce } from "@/lib/client-csp-nonce";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapPin, Navigation, Search, X } from "lucide-react";
 import { capitalizeFirstTextLetter } from "@/lib/text-format";
@@ -92,6 +94,8 @@ function loadMapGl() {
     }
 
     const script = document.createElement("script");
+    const nonce = documentCspNonce();
+    if (nonce) script.nonce = nonce;
     script.src = "https://mapgl.2gis.com/api/js/v1";
     script.async = true;
     script.dataset.blizhniyDgis = "1";

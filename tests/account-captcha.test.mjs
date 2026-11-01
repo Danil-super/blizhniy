@@ -20,10 +20,15 @@ function widget(siteKey) {
   const configCode = readFileSync(new URL("../src/lib/turnstile-public-config.ts", import.meta.url), "utf8");
   vm.runInNewContext(ts.transpileModule(configCode, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
     { exports: config, document });
+  const nonce = {};
+  const nonceCode = readFileSync(new URL("../src/lib/client-csp-nonce.ts", import.meta.url), "utf8");
+  vm.runInNewContext(ts.transpileModule(nonceCode, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
+    { exports: nonce, document });
   const code = readFileSync(new URL("../src/components/TurnstileWidget.tsx", import.meta.url), "utf8");
   vm.runInNewContext(ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText,
     { exports, window, document, process: { env: { NEXT_PUBLIC_TURNSTILE_SITE_KEY: siteKey } }, require: (name) => {
       if (name === "@/lib/turnstile-public-config") return config;
+      if (name === "@/lib/client-csp-nonce") return nonce;
       return name === "react" ? hooks : require(name);
     } });
   exports.TurnstileWidget({ requireProvider: true, onVerify: (value) => values.push(value) });
