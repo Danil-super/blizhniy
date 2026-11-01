@@ -9,6 +9,7 @@ import pg from 'pg';
 import {stateDirectory,localPrimaryDatabaseConfig,docker} from './local-primary-fixture.mjs';
 import {validateLocalPrimaryContainer,localPrimaryUpstreamPort} from './local-primary-config.mjs';
 import {allowLocalPrimaryRequest} from './local-primary-origin.mjs';
+import {normalizeDocumentPrefetchHeaders} from './next-prefetch-ingress.mjs';
 import {createTelegramPhoneOidc} from '../src/lib/telegram-phone-oidc.ts';
 const require=createRequire(import.meta.url);
 const {loadLocalPrimaryModule:load}=require('./local-primary-modules.cjs');
@@ -87,7 +88,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
    let response=req.method==='GET'?await localPage(path):null;
    const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req);
    const proof=load('account-browser-proof').issueBrowserProof(state.rateSecret,'127.0.0.1',req.headers['user-agent']??'');
-   const headers=new Headers(Object.fromEntries(Object.entries(req.headers).filter(([,value])=>typeof value==='string')));
+   const headers=new Headers(Object.fromEntries(Object.entries(normalizeDocumentPrefetchHeaders(req.headers)).filter(([,value])=>typeof value==='string')));
    headers.set('host',new URL(canonical).host);headers.set('x-real-ip','127.0.0.1');
    headers.set('cookie',(req.headers.cookie??'').split(';').filter(part=>!part.trim().startsWith('__Host-blizhniy_human=')).concat(proof.cookie.split(';')[0]).filter(Boolean).join('; '));
    if(req.headers.origin)headers.set('origin',canonical);

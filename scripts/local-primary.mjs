@@ -33,7 +33,7 @@ else{
  const proxy=await createLocalPrimaryProxy(state,{paymentHandler:localPrimaryPaymentHandler});
  proxy.server.listen(Number(new URL(state.origin).port),'127.0.0.1');
  try{await once(proxy.server,'listening');}catch(error){await proxy.close();throw error;}
- const env={...telegram,PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',
+ const env={...telegram,BLIZHNIY_CSP_MODE:'enforce',PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',
   BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_STATE:stateFile,BLIZHNIY_LOCAL_PRIMARY_ORIGIN:state.origin,BLIZHNIY_LISTING_WORKFLOW:'postmoderation',
   BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_REMEMBERED_CAPTCHA:'enabled',BLIZHNIY_AUTH_CONFIRMATION_NOTICE:'enabled',
   BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_AUTH_RATE_SECRET:state.rateSecret,
