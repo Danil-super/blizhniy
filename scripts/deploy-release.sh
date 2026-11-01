@@ -14,6 +14,8 @@ PORT="${PORT:-3000}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${PORT}/api/health}"
 READY_URL="${READY_URL:-http://127.0.0.1:${PORT}/api/ready}"
 KEEP_RELEASES="${KEEP_RELEASES:-5}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+ROLLBACK_CHECK="${SCRIPT_DIR}/check-rollback-readiness.mjs"
 
 BASE_DIR="$(dirname "$APP_DIR")"
 RELEASES_DIR="${RELEASES_DIR:-${BASE_DIR}/blizhniy-releases}"
@@ -76,15 +78,24 @@ rollback() {
   fi
 
   if [[ -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" && -f "${PREVIOUS_RELEASE}/ecosystem.config.cjs" ]]; then
+    local previous_build_id
+    if [[ ! -f "$ROLLBACK_CHECK" || -L "$ROLLBACK_CHECK" ]] || ! previous_build_id="$(node "$ROLLBACK_CHECK" --build-id "$PREVIOUS_RELEASE")"; then
+      log "previous build cannot be verified; automatic rollback refused"
+      return 1
+    fi
     log "healthcheck failed; rolling back to ${PREVIOUS_RELEASE}"
-    ln -sfn "$PREVIOUS_RELEASE" "${APP_DIR}.next"
-    mv -Tf "${APP_DIR}.next" "$APP_DIR"
+    ln -sfn "$PREVIOUS_RELEASE" "${APP_DIR}.next" || return 1
+    mv -Tf "${APP_DIR}.next" "$APP_DIR" || return 1
     pm2 delete "$APP_NAME" || true
-    mkdir -p "${PREVIOUS_RELEASE}/.pm2"
-    pm2 start "${PREVIOUS_RELEASE}/ecosystem.config.cjs" --update-env </dev/null
-    pm2 save </dev/null
+    mkdir -p "${PREVIOUS_RELEASE}/.pm2" || return 1
+    pm2 start "${PREVIOUS_RELEASE}/ecosystem.config.cjs" --update-env </dev/null || return 1
+    node "$ROLLBACK_CHECK" --probe "$PORT" "$previous_build_id" || return 1
+    [[ "$(readlink -f "$APP_DIR")" == "$PREVIOUS_RELEASE" ]] || return 1
+    pm2 save </dev/null || return 1
+    log "previous release passed readiness checks"
   else
     log "healthcheck failed and no previous release is available"
+    return 1
   fi
 }
 
