@@ -11,6 +11,7 @@ import {ServicePublicationForm} from './ServicePublicationForm';
 import {ServiceModerationStatus} from './ServiceModerationStatus';
 import {SpecialistApplicationStatus} from './SpecialistApplicationStatus';
 import {useCookieCabinetProfile,CabinetProfileFailure} from '@/components/cabinet/CookieCabinetProfileProvider';
+import {PublicationPlacementPeriod} from '@/components/PublicationPlacementPeriod';
 
 /** Mount uncontrolled fields only after defaults load; never remount a dirty form on a transient recheck. */
 function ProfileReadyForm(props:ComponentProps<typeof ServicePublicationForm>){
@@ -37,7 +38,8 @@ function Editor({owner,kind,id,visible,embedded}:{owner:string;kind:ServicePubli
  return <section hidden={!visible} inert={!visible} aria-label="Редактор материала">
   {!embedded&&<Link href={servicePublicationNavigation[kind].cabinet} prefetch={false} className="mb-4 inline-flex min-h-11 items-center font-semibold text-blue-800 underline">← Вернуться в кабинет</Link>}
   {error?<div><p role="alert" className="mb-3 text-rose-800">{error}</p><button type="button" className="min-h-11 font-semibold text-blue-800 underline" onClick={()=>setRetry(value=>value+1)}>Повторить загрузку</button></div>:
-   ready?<div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6"><ProfileReadyForm owner={owner} kind={kind} initial={snapshot} onDirtyChange={setDirty}
+   ready?<div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">{snapshot&&<PublicationPlacementPeriod publishedAt={snapshot.publishedAt} expiresAt={snapshot.expiresAt} status={snapshot.status}/>}
+    <ProfileReadyForm owner={owner} kind={kind} initial={snapshot} onDirtyChange={setDirty}
     onSaved={()=>setSaved(true)}/>
     {snapshot&&!dirty&&(kind==='specialist'?<SpecialistApplicationStatus form={snapshot.form}/>:<ServiceModerationStatus owner={owner} snapshot={snapshot}/>)}</div>:<p role="status">Загружаем сохранённую форму…</p>}
  </section>;

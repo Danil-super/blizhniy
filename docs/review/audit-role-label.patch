@@ -1,0 +1,16 @@
+--- a/tests/registration-web-integration.mjs
++++ b/tests/registration-web-integration.mjs
+@@ -480,11 +480,11 @@
+         assert.equal((await db.query("select count(*)::integer as count from app.sessions where user_id=$1", [id])).rows[0].count, 1);
+         await db.query("update app.users set role='admin' where id=$1", [id]);
+         await page.getByRole("button", { name: "Проверить сессию", exact: true }).click();
+-        await page.getByText(/Администратор · права проверяет сервер/).waitFor();
++        await page.getByText("Администратор", { exact: true }).waitFor();
+         await db.query("update app.users set is_blocked=true where id=$1", [id]);
+         await page.getByRole("button", { name: "Проверить сессию", exact: true }).click();
+         await page.getByLabel("Email", { exact: true }).waitFor();
+-        assert.equal(await page.getByText(/Администратор · права проверяет сервер/).count(), 0);
++        assert.equal(await page.getByText("Администратор", { exact: true }).count(), 0);
+       } finally { await context.close(); }
+     });
+     await suite.test("login and active account fit mobile/desktop, expose labels, keyboard focus and unobscured touch targets", async () => {

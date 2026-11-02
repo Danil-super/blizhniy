@@ -27,7 +27,7 @@ function snapshot(value:unknown):ApplicationProfileSnapshot{
  const withAbout=!!value&&typeof value==='object'&&Object.hasOwn(value,'about');
  const row=exact(value,['name','profession','price','skills','phone','email','messengerUrl',...(withAbout?['about']:[])]);
  const price=text(row.price,13);if(!/^(0|[1-9][0-9]{0,9})\.[0-9]{2}$/.test(price))throw Error();
- return{name:text(row.name,160),profession:text(row.profession,160),price,skills:text(row.skills,500,true),...(withAbout?{about:text(row.about,3000,true)}:{}),
+ return{name:text(row.name,160),profession:text(row.profession,200),price,skills:text(row.skills,500,true),...(withAbout?{about:text(row.about,3000,true)}:{}),
   phone:row.phone===null?null:text(row.phone,40),email:row.email===null?null:text(row.email,254),messengerUrl:row.messengerUrl===null?null:text(row.messengerUrl,500)};
 }
 function detail(value:unknown,id:string):ApplicationSnapshot{

@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import type {PublicSearchPage} from "@/lib/public-search-contract";
 import Link from "next/link";
 import { ArrowRight, Search, UserRound } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { VacancyThumbnail } from "@/components/VacancyMedia";
 import { listPublicDemoListings, parseListingPage, toDemoListing } from "@/components/listings/ListingPages";
 import { getPublicCategories } from "@/lib/category-store";
-import { cities, professions, region } from "@/lib/data";
+import { cities, region } from "@/lib/data";
+import { getPublicProfessions } from "@/lib/profession-store";
 import { listFairApplications, listSpecialists, listWorkRequests } from "@/lib/mock-store";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
 import { listSpecialistsWithStored, listStoredSpecialistProfiles } from "@/lib/specialist-profile-store";
@@ -63,16 +65,18 @@ async function scanStoredResults<T>(
   }
 }
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; city?: string; page?: string }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; city?: string; page?: string; cursor?: string }> }) {
   const params = await searchParams;
-  const query = params.q?.trim().slice(0, 200) ?? "";
-  const page = parseListingPage(params.page);
+  const query = (typeof params.q==='string'?params.q.trim().slice(0,200):'').replace(/[\uD800-\uDBFF]$/,'');
+  const page = parseListingPage(typeof params.page==='string'?params.page:undefined);
   const pageSize = 24;
   const skip = (page - 1) * pageSize;
   const selectedCity = cities.find((city) => city.slug === params.city);
   const cityName = selectedCity?.name;
   const matchesCity = (value?: string) => !cityName || value === cityName;
-  const fallbackEnabled = shouldShowFallbackContent();
+  const primary=process.env.BLIZHNIY_AUTH_MODE==='postgres';
+  const fallbackEnabled = primary?false:shouldShowFallbackContent();
+  let primaryPage:PublicSearchPage|undefined;
   const results: SearchResult[] = [];
   let matchedCount = 0;
   const enough = () => results.length > pageSize;
@@ -83,6 +87,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
   const textMatch = (values: Array<string | undefined>) => !query || includesQuery(values, query);
   const seenListingSlugs = new Set<string>();
 
+  if(primary){
+    const {searchPrimaryPublications}=await import('@/lib/production-search-runtime');
+    primaryPage=await searchPrimaryPublications({query,cityName,page,...(typeof params.cursor==='string'?{cursor:params.cursor}:{})});
+    results.push(...primaryPage.items);
+  }else{
   await scanStoredResults(
     async (limit, offset) => (await listStoredListings(limit, { offset })).map(toDemoListing),
     (listing) => listing.status === "published" && matchesCity(listing.city) && textMatch([listing.title, listing.description, listing.city, listing.categoryName, listing.subcategoryName, listing.kind]),
@@ -178,18 +187,22 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
     add({ title: category.name, description: category.children.join(", "), href: category.slug === "rabota" ? "/rabota" : category.slug === "yarmarka-masterov" ? "/yarmarka-masterov" : `/katalog/${category.slug}`, type: "Категория" });
   }
 
-  for (const profession of professions) {
+  for (const profession of await getPublicProfessions()) {
     if (enough()) break;
     if (!profession.active || !textMatch([profession.name, profession.parent])) continue;
     add({ title: profession.name, description: profession.parent, href: `/rabota/specialisty/${profession.slug}`, type: "Профессия" });
   }
 
+  }
+
   const visibleResults = results.slice(0, pageSize);
-  const searchHref = (number: number) => {
+  const hasMore=primaryPage?.hasMore??results.length>pageSize;
+  const searchHref = (number: number,cursor?:string) => {
     const nextParams = new URLSearchParams();
     if (query) nextParams.set("q", query);
     if (selectedCity) nextParams.set("city", selectedCity.slug);
     if (number > 1) nextParams.set("page", String(number));
+    if(cursor)nextParams.set("cursor",cursor);
     return `/poisk${nextParams.size ? `?${nextParams}` : ""}`;
   };
 
@@ -243,11 +256,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
             </div>
           )}
         </section>
-        {page > 1 || results.length > pageSize ? (
+        {page > 1 || hasMore ? (
           <nav aria-label="Страницы результатов" className="mt-6 flex items-center justify-center gap-3">
-            {page > 1 ? <Link href={searchHref(page - 1)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-[#0875d1]">Назад</Link> : null}
+            {page > 1 ? <Link href={searchHref(page - 1,primaryPage?.previousCursor)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-[#0875d1]">Назад</Link> : null}
             <span className="text-sm font-bold text-slate-700">Страница {page}</span>
-            {results.length > pageSize ? <Link href={searchHref(page + 1)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-[#0875d1]">Далее</Link> : null}
+            {hasMore && page < 1000 ? <Link href={searchHref(page + 1,primaryPage?.nextCursor)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-[#0875d1]">Далее</Link> : null}
           </nav>
         ) : null}
       </main>

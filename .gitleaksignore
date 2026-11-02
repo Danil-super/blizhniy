@@ -1,0 +1,6 @@
+# Public npm registry ECDSA key and signed upstream file SHA256 digests.
+# Exact historical findings only; no file, rule, value or future-commit exclusion.
+a285840babea7e82c28bfc6b4d88c9d84f95675e:docs/selector-upstream-6.1.5.json:generic-api-key:21
+a285840babea7e82c28bfc6b4d88c9d84f95675e:docs/selector-upstream-6.1.5.json:generic-api-key:25
+a285840babea7e82c28bfc6b4d88c9d84f95675e:docs/selector-upstream-6.1.5.json:generic-api-key:50
+a285840babea7e82c28bfc6b4d88c9d84f95675e:docs/selector-upstream-6.1.5.json:generic-api-key:51

@@ -1,3 +1,4 @@
+import {acquireMediaReadSlot} from './media-read-admission.ts';
 import { randomUUID } from "node:crypto";
 import { AuthRequestError, authJson, readAuthJson } from "./auth-http.ts";
 import type { AuthRateLimiter } from "./auth-http";
@@ -56,7 +57,7 @@ export function createProductionMediaHandler(config: { origin: string }, getRunt
   audit: (event: Event) => void = event => console.info(JSON.stringify(event))) {
   if (typeof window !== "undefined") throw new Error("Media authorization is server-only");
   return async (request: Request, operation: "upload" | "read"): Promise<Response> => {
-    const requestId = randomUUID(), start = Date.now();let status = 503, code: string | undefined, acquired = false;
+    const requestId = randomUUID(), start = Date.now();let status = 503, code: string | undefined, acquired = false, releaseRead:(()=>void)|undefined;
     const respond = (body: unknown, next: number, headers?: Record<string, string>) => {
       status = next;return authJson(body, next, { "X-Request-ID": requestId, ...headers });
     };
@@ -79,9 +80,12 @@ export function createProductionMediaHandler(config: { origin: string }, getRunt
       const user = await runtime.identity.resolveSession(token);
       if (!user) throw new AuthRequestError(401, "UNAUTHENTICATED");
       if (user.id !== owner) throw new AuthRequestError(409, "SESSION_CHANGED");
-      if (operation === "upload" ? admission.upload : admission.reads >= 4) throw new AuthRequestError(503, "MEDIA_BUSY");
-      if (operation === "upload") admission.upload = true;else admission.reads++;
-      acquired = true;
+      if(operation==='upload'){
+        if(admission.upload)throw new AuthRequestError(503,'MEDIA_BUSY');admission.upload=true;acquired=true;
+      }else{
+        releaseRead=await acquireMediaReadSlot(admission,ip,request.signal);
+        if(!releaseRead)throw new AuthRequestError(503,'MEDIA_BUSY');request.signal.throwIfAborted();
+      }
       if (operation === "upload") {
         const bytes = await readUpload(request);
         const result = await runtime.upload.upload(token, intent!, bytes, mimeType!, request.signal);
@@ -89,7 +93,7 @@ export function createProductionMediaHandler(config: { origin: string }, getRunt
         try { view = parseUploadedImage(result); } catch { throw new Error("Invalid media upload reply"); }
         return respond(view, 200);
       }
-      const result = await runtime.repository.readOwned(token, fileId!);
+      const result = await runtime.repository.readOwned(token, fileId!);request.signal.throwIfAborted();
       if (!result) throw new AuthRequestError(404, "MEDIA_NOT_FOUND");
       if (result.record.mimeType !== "image/webp" || result.bytes.length !== result.record.size || result.bytes.length > normalizedImageByteLimit) throw new Error("Invalid private media reply");
       status = 200;
@@ -105,7 +109,7 @@ export function createProductionMediaHandler(config: { origin: string }, getRunt
       status = error instanceof AuthRequestError ? error.status : 503;code = error instanceof AuthRequestError ? error.code : "MEDIA_UNAVAILABLE";
       return respond({ error: { code } }, status, status === 429 ? { "Retry-After": "900" } : code === "MEDIA_BUSY" ? { "Retry-After": "1" } : undefined);
     } finally {
-      if (acquired) { if (operation === "upload") admission.upload = false;else admission.reads--; }
+      if(acquired)admission.upload=false;releaseRead?.();
       audit({ event: "media_request", requestId, operation, status, durationMs: Date.now()-start, code });
     }
   };

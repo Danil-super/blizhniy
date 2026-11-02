@@ -1,18 +1,17 @@
 "use client";
-import {useId,useRef,useState} from 'react';
+import {useRef,useState} from 'react';
 import {Field,PhotoField,TextAreaField} from '@/components/FormPanel';
 import {VacancyEmployerFields} from '@/components/VacancyEmployerFields';
 import {VacancyEmployerFlow} from './VacancyEmployerFlow';
 import {useListingPostmoderation,useLocalPaymentSimulation} from '@/components/listings/ListingWorkflowProvider';
 import {ListingLocationFields} from '@/components/listings/ListingFormControls';
 import {LegalConsentCheckbox,LegalLink} from '@/components/LegalConsentCheckbox';
-import {professions} from '@/lib/data';
 import {draftButton} from '@/components/listings/PrivateDraftEditor';
 import type {WorkPublicationKind} from '@/lib/work-publication-contract';
 import type {WorkPublicationSnapshot} from '@/lib/postgres-work-publications';
 import {useWorkPublicationSave} from './useWorkPublicationSave';
 import {WorkAmountField} from './WorkAmountField';
-import {ProfessionSelect} from './ProfessionSelect';
+import {PrimaryProfessionSelect} from './PrimaryProfessionSelect';
 import {VacancyTermsFields} from './VacancyTermsFields';
 import {PublicationPhotoEditor} from '@/components/PublicationPhotoEditor';
 import {CabinetFormValidation} from '@/components/CabinetFormValidation';
@@ -20,7 +19,6 @@ import {CabinetFormValidation} from '@/components/CabinetFormValidation';
 /** Existing form vocabulary, one owner-scoped save intent for both actions. */
 export function WorkPublicationForm({owner,kind,initial,onSaved,onDirtyChange}:{owner:string;kind:WorkPublicationKind;initial?:WorkPublicationSnapshot;onSaved?:(snapshot:WorkPublicationSnapshot)=>void;onDirtyChange?:(dirty:boolean)=>void}){
  const formRef=useRef<HTMLFormElement>(null),[dirty,setDirty]=useState(false),localPayment=useListingPostmoderation(),simulation=useLocalPaymentSimulation();
- const professionList=useId();
  const save=useWorkPublicationSave(owner,kind,formRef,dirty,initial,onSaved),form=initial?.form,vacancy=form?.kind==='vacancy'?form:null;
  const paidEdit=initial?.paid===true;
  const amount=vacancy?.salary??(form?.kind==='workRequest'?form.budget:null);
@@ -30,10 +28,7 @@ export function WorkPublicationForm({owner,kind,initial,onSaved,onDirtyChange}:{
     contactPerson:vacancy.contactPerson??undefined,website:vacancy.website??undefined,messengerUrl:vacancy.messengerUrl??undefined,phone:vacancy.contactPhone??undefined}:undefined;
  const body=<>
    <Field name="title" label={kind==='vacancy'?'Название':'Название заказа'} defaultValue={form?.title} minLength={3} maxLength={120} placeholder={kind==='vacancy'?'Мастер по ремонту':'Нужен ремонт ванной'} required/>
-   {localPayment?<ProfessionSelect defaultValue={form?.professionName??''} required/>:<label className="grid min-w-0 gap-2 text-sm font-bold text-slate-700">Профессия / специализация
-    <input name="profession" list={professionList} defaultValue={form?.professionName??''} maxLength={160} required placeholder="Укажите профессию" className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-base font-normal"/>
-    <datalist id={professionList}>{professions.filter(item=>item.active).map(item=><option key={item.slug} value={item.name}/>)}</datalist>
-   </label>}
+   <PrimaryProfessionSelect defaultValue={form?.professionName??''} defaultId={initial?.professionId} required/>
    <ListingLocationFields cityFieldName={kind==='vacancy'?'location':'city'} defaultCity={form?.cityName??'Краснодар'} defaultAddress={form?.address??undefined}
     defaultLat={form?.latitude??undefined} defaultLng={form?.longitude??undefined} addressLegend="Место работы" inlineControls/>
     {kind==='vacancy'?<Field name="district" label="Район" defaultValue={form?.district??''} maxLength={200}/>:<input type="hidden" name="district" value={form?.district??''}/>}

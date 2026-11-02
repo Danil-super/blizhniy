@@ -53,6 +53,7 @@ export function createProductionListingDraftHandler(config: { origin: string; co
         : await runtime.store.read(token, expectedOwnerId, listingId);
       return respond(result, 200);
     } catch (error) {
+      if(error&&typeof error==='object'&&'code'in error&&error.code==='PBL01')error=new AuthRequestError(409,'CHECKOUT_ACTIVE');
       if (error instanceof AppSessionAccessError) error = new AuthRequestError(401, "UNAUTHENTICATED");
       if (error instanceof ListingDraftAccessError) error = new AuthRequestError(404, "DRAFT_NOT_FOUND");
       if (error instanceof ListingDraftConflictError) error = new AuthRequestError(409, "DRAFT_CHANGED");

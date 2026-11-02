@@ -59,10 +59,10 @@ export default async function RootLayout({
         <AccountCaptchaProvider expiresAt={proofExpiry}>
         <PhonePlacementProvider>
         <BookingLegacyStorageCleanup />
+        <CookieNotice />
         <div className="app-shell">{children}</div>
         <MobileBottomNav />
         <SiteFooter />
-        <CookieNotice />
         </PhonePlacementProvider>
         </AccountCaptchaProvider>
         </ListingWorkflowProvider>

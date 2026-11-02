@@ -2,14 +2,16 @@ import {mapPublicServicePublication,type PublicServiceRow,type PublicServiceMate
 import {parseListingDraftId,ListingDraftInputError} from './listing-draft-contract.ts';
 import type {ServicePublicationKind} from './service-publication-contract';import type {PostgresQueries} from './postgres';import type {SpecialistProfile,FairApplication} from './types';
 import type {MediaFileRecord} from './media-files';
+import {professionFormSql} from './profession-reference';
 const source=`from app.service_publications s
  join app.users author on author.id=s.author_id and not author.is_blocked and author.email_verified_at is not null
  left join app.cities city on city.id=s.city_id and city.name=s.form->>'cityName'
- left join app.specialist_categories profession on profession.id=s.profession_id and profession.name=s.form->>'professionName' and profession.active
+ left join app.specialist_categories profession on profession.id=s.profession_id and profession.active
+  and (not(s.form ? 'professionId') or s.form->>'professionId'=s.profession_id::text)
  join app.service_moderation review on review.publication_id=s.id and review.revision=s.revision and review.state='approved'`;
 const live=`s.status='published' and s.is_paid and s.deleted_at is null and s.published_at<=statement_timestamp() and s.expires_at>statement_timestamp()
  and (s.kind='marquee' or city.id is not null) and (s.kind<>'specialist' or profession.id is not null)`;
-const columns=`s.id,s.kind,s.form,s.status,s.is_paid as paid,
+const columns=`s.id,s.kind,${professionFormSql('s')} as form,s.profession_id as "professionId",s.status,s.is_paid as paid,
  to_char(s.created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "createdAt",
  to_char(s.published_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
  to_char(s.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "expiresAt",
@@ -35,11 +37,26 @@ export class PostgresPublicServiceStore{
  async list(kind:ServicePublicationKind,limit=kind==='marquee'?5:24,offset=0):Promise<PublicServiceMaterial[]>{
   return (await this.listRows(kind,limit,offset)).map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is PublicServiceMaterial=>row!==null);
  }
+ searchScope(){return{source,eligible:live,profileIdentity:this.options.specialistProfileIdentity===true};}
+ async readMany(values:unknown[]):Promise<Array<SpecialistProfile|FairApplication>>{
+  if(!Array.isArray(values)||values.length>25)throw new ListingDraftInputError();
+  const ids=values.map(parseListingDraftId);if(new Set(ids).size!==ids.length)throw new ListingDraftInputError();if(!ids.length)return[];
+  const rows=(await this.db.query<PublicServiceRow>(`select ${columns}${this.identityColumn} ${source}
+   where s.id=any($1::uuid[]) and s.kind in ('specialist','fair') and ${live} limit 25`,[ids])).rows;
+  return rows.map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is SpecialistProfile|FairApplication=>row!==null&&('profession'in row||'participantName'in row));
+ }
  async sitemapPage(limit=100,offset=0){
   const rows=await this.listRows('specialist',limit,offset);
   const entries=rows.map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is SpecialistProfile=>row!==null&&'profession' in row)
    .map(({id,publishedAt})=>({id,publishedAt}));
   return{entries,hasMore:rows.length===limit};
+ }
+ async professionPage(professionId:unknown,limit=24,offset=0){
+  const id=parseListingDraftId(professionId);
+  if(!Number.isSafeInteger(limit)||limit<1||limit>100||!Number.isSafeInteger(offset)||offset<0||offset>1000000)throw new ListingDraftInputError();
+  const rows=(await this.db.query<PublicServiceRow>(`select ${columns}${this.identityColumn} ${source}
+   where ${live} and s.kind='specialist' and s.profession_id=$1 order by s.published_at desc,s.created_at desc,s.id desc limit $2 offset $3`,[id,limit+1,offset])).rows;
+  return{items:rows.slice(0,limit).map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is SpecialistProfile=>row!==null&&'profession' in row),hasMore:rows.length>limit};
  }
  read(kind:'specialist',id:unknown):Promise<SpecialistProfile|undefined>;
  read(kind:'fair',id:unknown):Promise<FairApplication|undefined>;

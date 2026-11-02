@@ -6,11 +6,12 @@ import * as drafts from './listing-draft-module.mjs';
 import * as limits from '../src/lib/media-limits.ts';
 import {loadAdminModule} from './admin-module.mjs';
 import {publicationCheck} from './listing-publication-check-module.mjs';
+import * as mediaAdmission from '../src/lib/media-read-admission.ts';
 import * as workflow from '../src/lib/listing-workflow-config.ts';
 import {loadLocalPrimaryModule} from '../scripts/local-primary-modules.cjs';
 const ts=createRequire(import.meta.url)('typescript');
 export function formModule(name,extra={}){
- const dependencies={'./listing-form-contract.ts':contract,'./listing-draft-contract.ts':draftContract,'./postgres-listing-drafts':drafts,
+ const dependencies={'./media-read-admission.ts':mediaAdmission,'./listing-form-contract.ts':contract,'./listing-draft-contract.ts':draftContract,'./postgres-listing-drafts':drafts,
   './app-session-transaction':loadAdminModule('app-session-transaction'),'./media-limits.ts':limits,'./listing-publication-check':publicationCheck,'./listing-workflow-config':workflow,
   './work-publication-contract':loadLocalPrimaryModule('work-publication-contract'),'./vacancy-purchase-eligibility':loadLocalPrimaryModule('vacancy-purchase-eligibility'),'./postgres-work-publications':loadLocalPrimaryModule('postgres-work-publications'),...extra};
  const exports={};new Function('require','exports',ts.transpileModule(readFileSync(new URL(`../src/lib/${name}.ts`,import.meta.url),'utf8'),{

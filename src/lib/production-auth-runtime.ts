@@ -14,28 +14,31 @@ import type { ProductionAuthConfig } from "./production-auth-config";
 import { createProductionAccountHandler } from "./production-account-http";
 import type { ProductionAccountRuntime } from "./production-account-http";
 import { verifyProductionAuthDatabase } from "./production-auth-database.ts";
+import { ReadOnlyInitialization } from './read-only-initialization.ts';
 
-type Runtime = { db: PostgresDatabase; cipher: MailPayloadCipher; account: ProductionAccountRuntime; verified: Promise<void> };
-const shared = globalThis as typeof globalThis & { blizhniyProductionAuth?: Runtime };
+type Runtime = { db: PostgresDatabase; cipher: MailPayloadCipher; account: ProductionAccountRuntime };
+const shared = globalThis as typeof globalThis & { blizhniyProductionAuth?: ReadOnlyInitialization<Runtime> };
 
-function runtime(config: ProductionAuthConfig): Runtime {
+async function createRuntime(config: ProductionAuthConfig): Promise<Runtime> {
   if (typeof window !== "undefined") throw new Error("Production auth is server-only");
-  if (!shared.blizhniyProductionAuth) {
-    const confirmationNotice = readConfirmationNoticeEnabled();
-    const key = readMailEncryptionKey(config.mailKeyFile);
-    let cipher: MailPayloadCipher;
-    try {
-      if (key.toString("hex") === config.rateSecret) throw new Error("Mail key cannot be the rate secret");
-      cipher = new MailPayloadCipher(key);
-    } finally { key.fill(0); }
-    const db = createPostgresDatabase();
-    const account: ProductionAccountRuntime = { store: new RegistrationStore(db, cipher, { confirmationNotice }),
-      recovery: new PasswordRecoveryStore(db, cipher), identity: new IdentityStore(db),
-      limiter: new AuthRateLimiter(db, config.rateSecret), verifyCaptcha: verifyTurnstileToken };
-    const verified = verifyProductionAuthDatabase(db).catch(async error => { await db.close(); throw error; });
-    shared.blizhniyProductionAuth = { db, cipher, account, verified };
-  }
-  return shared.blizhniyProductionAuth;
+  const confirmationNotice = readConfirmationNoticeEnabled();
+  const key = readMailEncryptionKey(config.mailKeyFile);
+  let cipher: MailPayloadCipher;
+  try {
+    if (key.toString("hex") === config.rateSecret) throw new Error("Mail key cannot be the rate secret");
+    cipher = new MailPayloadCipher(key);
+  } finally { key.fill(0); }
+  const db = createPostgresDatabase();
+  const account: ProductionAccountRuntime = { store: new RegistrationStore(db, cipher, { confirmationNotice }),
+    recovery: new PasswordRecoveryStore(db, cipher,{pendingAccounts:true}), identity: new IdentityStore(db),
+    limiter: new AuthRateLimiter(db, config.rateSecret), verifyCaptcha: verifyTurnstileToken };
+  try { await verifyProductionAuthDatabase(db); }
+  catch (error) { await db.close(); throw error; }
+  return { db, cipher, account };
+}
+function runtime(config: ProductionAuthConfig): Promise<Runtime> {
+  shared.blizhniyProductionAuth ??= new ReadOnlyInitialization(() => createRuntime(config));
+  return shared.blizhniyProductionAuth.get();
 }
 
 /** No imports connect, send SMTP, run migrations or load a key. Restart is required after configuration changes. */
@@ -44,8 +47,7 @@ export async function handleProductionAccountRequest(request: Request, action: s
     const config = readProductionAuthConfig();
     if (!config) return authJson({ error: { code: "NOT_FOUND" } }, 404);
     return await createProductionAccountHandler(config, async () => {
-      const state = runtime(config);
-      await state.verified;
+      const state = await runtime(config);
       return state.account;
     })(request, action);
   } catch {
@@ -59,16 +61,14 @@ export async function handleProductionAccountRequest(request: Request, action: s
 export async function getProductionMailDelivery() {
   const config = readProductionAuthConfig();
   if (!config) throw new Error("Production mail unavailable");
-  const state = runtime(config);
-  await state.verified;
+  const state = await runtime(config);
   const mailer = createTimewebMailer();
   if (!mailer) throw new Error("Production mail unavailable");
-  return { worker: new MailDeliveryWorker(state.db, state.cipher, renderProductionAuthMail), mailer };
+  return { worker: new MailDeliveryWorker(state.db, state.cipher, renderProductionAuthMail,{pendingAccounts:true}), mailer };
 }
 
 /** Resource handlers reuse the verified Auth pool; they never accept caller-selected credentials. */
 export async function getProductionAccountDatabase(config: ProductionAuthConfig) {
-  const state = runtime(config);
-  await state.verified;
+  const state = await runtime(config);
   return { db: state.db, limiter: state.account.limiter };
 }

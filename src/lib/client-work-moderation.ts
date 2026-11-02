@@ -19,7 +19,7 @@ export function createWorkModerationClient(transport:typeof fetch){
    options.signal?.throwIfAborted();
    const timeout=AbortSignal.timeout(15000),signal=options.signal?AbortSignal.any([timeout,options.signal]):timeout;
    const response=await transport(path,{method,credentials:'same-origin',cache:'no-store',redirect:'error',signal,
-    headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1'},body:JSON.stringify(body)});
+    headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1','X-Blizhniy-Profession-Refs':'1'},body:JSON.stringify(body)});
    if(!response.body)throw Error();const reader=response.body.getReader(),chunks:Uint8Array[]=[];let size=0,complete=false;
    try{for(;;){signal.throwIfAborted();const part=await reader.read();signal.throwIfAborted();if(part.done){complete=true;break;}size+=part.value.byteLength;if(size>2097152)throw Error();chunks.push(part.value);}
    }finally{try{if(!complete)await reader.cancel();}finally{reader.releaseLock();}}

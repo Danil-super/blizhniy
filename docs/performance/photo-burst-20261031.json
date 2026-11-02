@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-31",
+  "scope": "Own PG18.6 1CPU/512MiB, loopback HTTP, real restricted store and private WebP reader; two synthetic trusted IPs, 3 bursts of48requests, 25ms controlled read delay; combined server/client process RSS, not production capacity or leak proof.",
+  "files": [
+    {
+      "width": 512,
+      "height": 384,
+      "size": 129194
+    },
+    {
+      "width": 1280,
+      "height": 960,
+      "size": 804718
+    },
+    {
+      "width": 1920,
+      "height": 1440,
+      "size": 1808800
+    }
+  ],
+  "measurements": [
+    {
+      "name": "before",
+      "peakFileReads": 4,
+      "combinedHarnessRssPeak": 220827648,
+      "bursts": [
+        {
+          "requests": 48,
+          "successes": 4,
+          "busy": 44,
+          "totalMs": 84.83754100000033,
+          "p95ms": 80.56254900000022
+        },
+        {
+          "requests": 48,
+          "successes": 4,
+          "busy": 44,
+          "totalMs": 63.66669000000002,
+          "p95ms": 60.258906000000025
+        },
+        {
+          "requests": 48,
+          "successes": 4,
+          "busy": 44,
+          "totalMs": 57.49424900000031,
+          "p95ms": 54.90419299999985
+        }
+      ]
+    },
+    {
+      "name": "after",
+      "peakFileReads": 4,
+      "combinedHarnessRssPeak": 245964800,
+      "bursts": [
+        {
+          "requests": 48,
+          "successes": 48,
+          "busy": 0,
+          "totalMs": 523.7569080000003,
+          "p95ms": 518.6123590000002
+        },
+        {
+          "requests": 48,
+          "successes": 48,
+          "busy": 0,
+          "totalMs": 508.194614,
+          "p95ms": 504.15214100000003
+        },
+        {
+          "requests": 48,
+          "successes": 48,
+          "busy": 0,
+          "totalMs": 513.5170739999999,
+          "p95ms": 506.0260619999999
+        }
+      ]
+    }
+  ],
+  "withdrawalWhileQueued": "404 without file read",
+  "withdrawalDuringFileRead": "404 without bytes"
+}

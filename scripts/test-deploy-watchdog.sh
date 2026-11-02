@@ -14,7 +14,20 @@ cat > "$TMPDIR_TEST/bin/curl" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-chmod +x "$TMPDIR_TEST/bin/pm2" "$TMPDIR_TEST/bin/curl"
+cat > "$TMPDIR_TEST/bin/node" <<'SH'
+#!/usr/bin/env bash
+set -eu
+[[ "$1" == */scripts/check-rollback-readiness.mjs ]]
+if [[ "$2" == --build-id ]]; then
+  [[ -f "$3/.next/BUILD_ID" ]]
+  cat "$3/.next/BUILD_ID"
+elif [[ "$2" == --probe ]]; then
+  [[ "$3" == 3000 && "$4" == old-build ]]
+else
+  exit 1
+fi
+SH
+chmod +x "$TMPDIR_TEST/bin/pm2" "$TMPDIR_TEST/bin/curl" "$TMPDIR_TEST/bin/node"
 export PATH="$TMPDIR_TEST/bin:$PATH"
 
 prepare() {
@@ -22,9 +35,11 @@ prepare() {
   CASE_DIR="$TMPDIR_TEST/$case_name"
   PREVIOUS="$CASE_DIR/releases/previous"
   CURRENT="$CASE_DIR/releases/new-${SHA:0:12}"
-  mkdir -p "$PREVIOUS" "$CURRENT/scripts"
+  mkdir -p "$PREVIOUS/.next" "$CURRENT/scripts"
   touch "$PREVIOUS/ecosystem.config.cjs"
+  printf 'old-build\n' > "$PREVIOUS/.next/BUILD_ID"
   cp "$SCRIPT_DIR/rollback-release.sh" "$CURRENT/scripts/rollback-release.sh"
+  cp "$SCRIPT_DIR/check-rollback-readiness.mjs" "$CURRENT/scripts/check-rollback-readiness.mjs"
   printf '%s\n' "$PREVIOUS" > "$CURRENT/.previous-release"
   ln -s "$PREVIOUS" "$CASE_DIR/app"
   cat > "$CASE_DIR/switch.sh" <<SH

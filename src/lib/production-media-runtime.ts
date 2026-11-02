@@ -13,18 +13,26 @@ import { LocalMediaWriter } from "./media-write";
 import { LocalMediaUpload } from "./media-upload";
 import { IdentityStore } from "./identity";
 import { createProductionMediaHandler } from "./production-media-http";
+import { ReadOnlyInitialization, DependencyNotReadyError } from './read-only-initialization.ts';
 
-const shared = globalThis as typeof globalThis & { blizhniyProductionMedia?: ReturnType<typeof createRuntime> };
+const shared = globalThis as typeof globalThis & { blizhniyProductionMedia?: ReadOnlyInitialization<Awaited<ReturnType<typeof createRuntime>>> };
 async function createRuntime(config: ProductionAuthConfig) {
   const policy = assertMediaRuntime(process);
   if (!policy) throw new Error("Production media unavailable");
+  const dependencyStat = (path: string) => {
+    try { return lstatSync(path); }
+    catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') throw new DependencyNotReadyError();
+      throw error;
+    }
+  };
   const validateSocket = () => {
     assertMediaRuntime(process, policy.root, policy.app);
     for (const path of ["/run", "/run/blizhniy-media"]) {
-      const info = lstatSync(path);
+      const info = path === '/run' ? lstatSync(path) : dependencyStat(path);
       if (!info.isDirectory() || info.uid !== 0 || (info.mode & 0o022) || realpathSync(path) !== path) throw new Error("Media socket unavailable");
     }
-    const socket = lstatSync(policy.socket);
+    const socket = dependencyStat(policy.socket);
     if (!socket.isSocket() || socket.uid !== process.getuid?.() || socket.gid !== process.getgid?.() || (socket.mode & 0o7777) !== 0o600 || socket.nlink !== 1) throw new Error("Media socket unavailable");
   };
   validateSocket();
@@ -33,14 +41,24 @@ async function createRuntime(config: ProductionAuthConfig) {
   await db.query("select id,media_id,claimed_at from app.media_write_attempts limit 0");
   const files = await createLocalMediaFileStore(policy.root), writer = await createLocalMediaFileWorker(policy.app, policy.root);
   const repository = new MediaMetadataRepository(db, files);
-  const upload = new LocalMediaUpload(repository, createMediaSocketClient(policy.socket, validateSocket), new LocalMediaWriter(repository, writer));
-  return { identity: new IdentityStore(db), limiter, upload, repository, files };
+  const normalizer = createMediaSocketClient(policy.socket, validateSocket);
+  const upload = new LocalMediaUpload(repository, normalizer, new LocalMediaWriter(repository, writer));
+  return { identity: new IdentityStore(db), limiter, upload, repository, files, normalizer };
+}
+function runtime(config: ProductionAuthConfig) {
+  shared.blizhniyProductionMedia ??= new ReadOnlyInitialization(() => createRuntime(config));
+  return shared.blizhniyProductionMedia.get();
 }
 
 /** Trusted server composition only. The calling repository must authorize the exact resource first. */
 export async function getProductionMediaFileReader(config: ProductionAuthConfig) {
-  const state = await (shared.blizhniyProductionMedia ??= createRuntime(config));
+  const state = await runtime(config);
   return { read: state.files.read };
+}
+
+/** Trusted profile composition. Reuses the same restricted decoder and capacity as uploads. */
+export async function getProductionMediaNormalizer(config: ProductionAuthConfig) {
+  return (await runtime(config)).normalizer;
 }
 
 /** No import-time files/connections, migrations or grants. Operator opt-in and restart only. */
@@ -48,7 +66,7 @@ export async function handleProductionMediaRequest(request: Request, operation: 
   try {
     const config = readProductionAuthConfig();
     if (!config) return authJson({ error: { code: "NOT_FOUND" } }, 404);
-    return await createProductionMediaHandler(config, () => shared.blizhniyProductionMedia ??= createRuntime(config))(request, operation);
+    return await createProductionMediaHandler(config, () => runtime(config))(request, operation);
   } catch {
     const requestId = randomUUID();
     console.warn(JSON.stringify({ event: "media_configuration_failed", requestId, code: "MEDIA_UNAVAILABLE" }));

@@ -5,6 +5,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const ts=createRequire(import.meta.url)('typescript');
+const {loadLocalPrimaryModule}=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs');
 function load(path,modules={},env={}){
  const exports={};
  const code=ts.transpileModule(readFileSync(new URL('../'+path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
@@ -24,6 +25,7 @@ for(const kind of ['listing','work','service']){
    './listing-draft-contract.ts':{parseListingDraftId:value=>value,ListingDraftInputError:Error},
    './media-limits.ts':{maxListingMediaTotalSize:1000000},
    './listing-workflow-config':{readPostmoderationEnabled:()=>false},
+   './profession-reference':loadLocalPrimaryModule('profession-reference'),
    './public-listings':{mapPublicListing:mapper},
    './public-work-publications.ts':{mapPublicWorkPublication:mapper},
    './public-service-publications.ts':{mapPublicServicePublication:mapper},
@@ -81,6 +83,7 @@ test('sitemap route uses primary publication readers before leftover legacy sett
  let primary=0,legacy=0;
  const sitemap=load('src/app/sitemap.ts',{
   '@/components/listings/ListingPages':{slugifySubcategory:value=>value},'@/lib/category-store':{getPublicCategories:async()=>[]},
+  '@/lib/profession-store':{getPublicProfessions:async()=>[]},
   '@/lib/data':{professions:[]},'@/lib/instrument-subcategories':{instrumentSubcategories:[]},'@/lib/posuda-subcategories':{posudaSubcategories:[]},
   '@/lib/site-url':{getPublicSiteUrl:()=> 'https://example.test'},
   '@/lib/supabase-rest':{isSupabaseRestConfigured:()=>{legacy++;return true;},supabaseRest:async()=>{throw Error('Forbidden legacy request');}},

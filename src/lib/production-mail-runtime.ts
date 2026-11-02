@@ -21,7 +21,7 @@ export async function createProductionMailRuntime(env: NodeJS.ProcessEnv = proce
     await verifyProductionAuthDatabase(db);
     const mailer = createTimewebMailer(env);
     if (!mailer) throw new Error("Production mail unavailable");
-    return { worker: new MailDeliveryWorker(db, cipher, renderProductionAuthMail), mailer,
+    return { worker: new MailDeliveryWorker(db, cipher, renderProductionAuthMail,{pendingAccounts:true}), mailer,
       prune: () => pruneExpiredMail(db, 100), close: () => db.close() };
   } catch {
     await db.close();

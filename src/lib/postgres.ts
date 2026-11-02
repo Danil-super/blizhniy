@@ -1,12 +1,36 @@
 // Node-only module. Browser code must use same-origin API handlers, never this client.
 import { X509Certificate } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
+import { constants, openSync, fstatSync, readSync, closeSync } from "node:fs";
 import { isIP } from "node:net";
 import pg from "pg";
 import type { Pool, PoolClient, PoolConfig, QueryResult, QueryResultRow } from "pg";
 
 function assertServer(): void {
   if (typeof window !== "undefined") throw new Error("PostgreSQL is server-only");
+}
+
+function readCertificateAuthority(path: string): string {
+  let descriptor: number | undefined;
+  const invalid = () => new Error("Invalid certificate authority");
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const info = fstatSync(descriptor), uid = process.getuid?.();
+    if (!info.isFile() || info.size < 1 || info.size > 65536 || uid === undefined ||
+        (info.uid !== 0 && info.uid !== uid) || (info.mode & 0o022) !== 0) throw invalid();
+    // The path may be replaced after open. Metadata and bounded reads refer
+    // to the same inode; a special file cannot block waiting for a writer.
+    const bytes = Buffer.alloc(65537);
+    let length = 0;
+    while (length < bytes.length) {
+      const count = readSync(descriptor, bytes, length, bytes.length - length, null);
+      if (!count) break;
+      length += count;
+    }
+    if (!length || length > 65536) throw invalid();
+    const ca = bytes.subarray(0, length).toString("utf8");
+    if (!new X509Certificate(ca).ca) throw invalid();
+    return ca;
+  } finally { if (descriptor !== undefined) closeSync(descriptor); }
 }
 
 export function readPostgresConfig(env: NodeJS.ProcessEnv = process.env): PoolConfig {
@@ -32,10 +56,8 @@ export function readPostgresConfig(env: NodeJS.ProcessEnv = process.env): PoolCo
     ssl = false;
   } else if (mode === "verify-full") {
     try {
-      const path = required("CA_FILE");
-      if (statSync(path).size > 65536) throw invalid();
-      const ca = readFileSync(path, "utf8");
-      if (!new X509Certificate(ca).ca) throw invalid();
+      // Includes cleanup failures: no filesystem details leave this boundary.
+      const ca = readCertificateAuthority(required("CA_FILE"));
       // pg supplies the connection hostname to Node TLS for certificate identity checks.
       ssl = { ca, rejectUnauthorized: true };
     } catch { throw invalid(); }
@@ -61,8 +83,25 @@ export class PostgresError extends Error {
     const connectionCodes = ["ERR_TLS_CERT_ALTNAME_INVALID", "DEPTH_ZERO_SELF_SIGNED_CERT",
       "SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "CERT_HAS_EXPIRED",
       "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"];
-    this.code = typeof code === "string" && (/^[0-9A-Z]{5}$/.test(code) || connectionCodes.includes(code))
-      ? code : undefined;
+    const safeCode = (value: unknown): value is string => typeof value === 'string' &&
+      (/^[0-9A-Z]{5}$/.test(value) || connectionCodes.includes(value));
+    this.code = safeCode(code) ? code : undefined;
+    if (code === undefined && error instanceof Error) {
+      // pg/pg-pool emit these exact transport errors without a code. Normalize
+      // before discarding messages; explicit SQL/TLS codes always take precedence.
+      const cause = error.cause;
+      const causeCode = cause && typeof cause === 'object' && 'code' in cause ? cause.code : undefined;
+      if (safeCode(causeCode)) this.code = causeCode;
+      else if (causeCode === undefined) {
+        this.code = new Map([
+          ['Connection terminated due to connection timeout', 'ETIMEDOUT'],
+          ['timeout exceeded when trying to connect', 'ETIMEDOUT'],
+          ['timeout expired', 'ETIMEDOUT'],
+          ['Connection terminated unexpectedly', 'ECONNRESET'],
+          ['Query read timeout', 'ETIMEDOUT'],
+        ]).get(error.message);
+      }
+    }
   }
 }
 
@@ -71,12 +110,12 @@ export interface PostgresQueries {
 }
 
 async function query<Row extends QueryResultRow>(
-  connection: Pool | PoolClient, text: string, values: unknown[] = [],
+  connection: Pool | PoolClient, text: string, values: unknown[] = [], timeoutMs?:number,
 ): Promise<QueryResult<Row>> {
   try {
     // Extended protocol rejects multiple statements, even when values is empty.
     // @types/pg does not yet declare pg's supported queryMode option.
-    const statement = { text, values, queryMode: "extended" };
+    const statement = { text, values, queryMode: "extended", ...(timeoutMs===undefined?{}:{query_timeout:timeoutMs}) };
     return await connection.query<Row>(statement);
   } catch (error) { throw new PostgresError(error); }
 }
@@ -119,6 +158,45 @@ export class PostgresDatabase implements PostgresQueries {
       // No retries: a failed COMMIT response does not prove that the write failed.
       throw error;
     } finally { client.release(discard ? true : undefined); }
+  }
+
+  /** Public bounded reads only. Existing auth/payment transaction semantics stay separate. */
+  async readTransaction<T>(work:(queries:PostgresQueries)=>Promise<T>,options:{timeoutMs:number;onComplete?:()=>void}):Promise<T>{
+    if(!Number.isSafeInteger(options?.timeoutMs)||options.timeoutMs<1||options.timeoutMs>5000)throw Error('Invalid read deadline');
+    const deadline=performance.now()+options.timeoutMs;
+    const timeout=()=>new PostgresError({code:'ETIMEDOUT'});
+    let expired=false,completed=false,released=false,client:PoolClient|undefined;
+    const remaining=()=>{const value=Math.ceil(deadline-performance.now());if(expired||released||completed||value<=0)throw timeout();return value;};
+    const complete=()=>{if(!completed){completed=true;options.onComplete?.();}};
+    const release=(discard:boolean)=>{if(client&&!released){released=true;try{client.release(discard);}finally{complete();}}};
+    return new Promise<T>((resolve,reject)=>{
+      const timer=setTimeout(()=>{
+        expired=true;release(true);reject(timeout());
+        // Pending pool checkout retains its admission lease until the actual
+        // callback settles. It cannot start SQL after this caller has timed out.
+      },options.timeoutMs);
+      try{this.pool.connect((error,connection)=>{
+        if(expired){connection?.release(true);complete();return;}
+        if(error||!connection){clearTimeout(timer);complete();reject(new PostgresError(error));return;}
+        client=connection;
+        const bounded:PostgresQueries={query:async<Row extends QueryResultRow>(text:string,values:unknown[]=[])=>{
+          const result=await query<Row>(connection,text,values,remaining());remaining();return result;
+        }};
+        const run=async()=>{
+          try{
+            await bounded.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+            const budget=remaining();
+            await bounded.query("select set_config('statement_timeout',$1,true),set_config('transaction_timeout',$2,true)",[String(Math.min(3000,budget)),String(budget)]);
+            const result=await work(bounded);
+            await bounded.query('COMMIT');release(false);return result;
+          }catch(error){release(true);throw error;}
+          finally{clearTimeout(timer);}
+        };
+        // Consume late completion/errors too. Timeout destroys the connection
+        // before rejection; every later query and COMMIT checks the same latch.
+        void run().then(resolve,reject);
+      });}catch(error){clearTimeout(timer);complete();reject(new PostgresError(error));}
+    });
   }
 
   close(): Promise<void> { return this.pool.end(); }

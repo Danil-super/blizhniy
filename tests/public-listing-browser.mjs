@@ -20,10 +20,15 @@ test('ordinary Russian public pages render the primary DTO without hidden/privat
   app.stdout.on('data',chunk=>{output=(output+chunk).slice(-16000);});app.stderr.on('data',chunk=>{output=(output+chunk).slice(-16000);});const deadline=Date.now()+20000;
   for(;;){assert.equal(app.exitCode,null);let ready=false;try{ready=(await fetch(origin+'/api/health',{signal:AbortSignal.timeout(1000)})).ok;}catch(error){assert.ok(error.cause?.code==='ECONNREFUSED'||error.name==='TimeoutError');}if(ready)break;assert.ok(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,100));}
   browser=await chromium.launch({headless:true});const context=await browser.newContext(),page=await context.newPage(),foreign=[],legacy=[],errors=[];page.setDefaultTimeout(10000);
+  let imageMode='normal';const imageAttempts=new Map();
   const pixels=await sharp({create:{width:40,height:20,channels:3,background:'blue'}}).webp().toBuffer();
   await context.route('**/*',async route=>{const request=route.request(),url=new URL(request.url());if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){foreign.push(url.host);return route.abort();}
    if(url.pathname==='/api/account/session')return route.fulfill({status:401,json:{error:{code:'UNAUTHENTICATED'}}});
-   if(/^\/api\/listings\/[a-f0-9-]+\/photos\/[a-f0-9-]+$/.test(url.pathname))return route.fulfill({contentType:'image/webp',body:pixels});
+   if(/^\/api\/listings\/[a-f0-9-]+\/photos\/[a-f0-9-]+$/.test(url.pathname)){
+    imageAttempts.set(url.pathname,(imageAttempts.get(url.pathname)??0)+1);
+    if(imageMode==='permanent'||imageMode==='transient'&&imageAttempts.get(url.pathname)===1)return route.fulfill({status:503,headers:{'cache-control':'no-store','retry-after':'1'},json:{error:{code:'MEDIA_BUSY'}}});
+    return route.fulfill({contentType:'image/webp',body:pixels});
+   }
    // View counting remains a separate migration; anonymous cards must not call booking operations.
    if(/^\/api\/listings\/[a-f0-9-]+\/views$/.test(url.pathname))return route.fulfill({json:{views:2}});
    if(url.pathname.startsWith('/api/')&&url.pathname!=='/api/health'){legacy.push(url.pathname);return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});}return route.continue();
@@ -35,6 +40,31 @@ test('ordinary Russian public pages render the primary DTO without hidden/privat
    const image=page.locator(`img[src="/api/listings/${row.id}/photos/${photo}"]`).first();await image.waitFor();await image.evaluate(node=>node.decode());assert.ok(await image.evaluate(node=>node.naturalWidth>0));
    for(const width of [320,768,1440]){await page.setViewportSize({width,height:1000});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);}
    if(process.env.BLIZHNIY_PUBLIC_LISTING_VISUAL_REVIEW==='1'&&row.form.kind==='prodam'){const review=await mkdtemp(join(tmpdir(),'blizhniy-public-listing-review-'));await page.screenshot({path:join(review,'detail.png'),fullPage:true});console.info('Synthetic public listing visual review: '+join(review,'detail.png'));}
+  });
+  await suite.test('public image recovers from one busy GET without changing the URL or calling private APIs',async()=>{
+   const row=rows[0],path=`/api/listings/${row.id}/photos/${photo}`;imageMode='transient';imageAttempts.clear();
+   try{
+    await page.goto(`${origin}/obyavlenie/${row.id}`);
+    const image=page.locator(`img[src="${path}"]`).first();await image.scrollIntoViewIfNeeded();
+    await page.waitForFunction(path=>Array.from(document.images).some(image=>image.getAttribute('src')===path&&image.complete&&image.naturalWidth>0),path,{timeout:5000});
+    assert.equal(imageAttempts.get(path),2);assert.equal(await image.getAttribute('src'),path);
+   }finally{imageMode='normal';}
+  });
+  await suite.test('permanently unavailable public images stop after two retries',async()=>{
+   const row=rows[0],path=`/api/listings/${row.id}/photos/${photo}`;imageMode='permanent';imageAttempts.clear();
+   try{
+    await page.goto(`${origin}/obyavlenie/${row.id}`);await page.locator(`img[src="${path}"]`).first().scrollIntoViewIfNeeded();
+    await page.waitForTimeout(4500);assert.equal(imageAttempts.get(path),3);
+    await page.waitForTimeout(1200);assert.equal(imageAttempts.get(path),3);
+   }finally{imageMode='normal';}
+  });
+  await suite.test('navigating away after image failure cancels the pending public retry',async()=>{
+   const row=rows[0],path=`/api/listings/${row.id}/photos/${photo}`;imageMode='permanent';imageAttempts.clear();
+   try{
+    const failed=page.waitForResponse(response=>new URL(response.url()).pathname===path&&response.status()===503);
+    await page.goto(`${origin}/obyavlenie/${row.id}`);await failed;
+    await page.goto(origin+'/o-proekte');await page.waitForTimeout(1600);assert.equal(imageAttempts.get(path),1);
+   }finally{imageMode='normal';}
   });
   await suite.test('listing feed, category, search and seller consume primary rows; expired items disappear from direct detail and catalog without fallback',async()=>{
    // The unchanged home is a category landing page; the public feed lives at /obyavleniya.
@@ -48,6 +78,7 @@ test('ordinary Russian public pages render the primary DTO without hidden/privat
    const get=path=>new Promise((resolve,reject)=>{const outgoing=httpRequest(origin+path,{headers},incoming=>{let body='';incoming.setEncoding('utf8');incoming.on('data',chunk=>{body+=chunk;if(body.length>8192)incoming.destroy(Error('Owned response exceeded cap'));});incoming.on('error',reject);incoming.on('end',()=>resolve(new Response(body,{status:incoming.statusCode,headers:incoming.headers})));});outgoing.setTimeout(5000,()=>outgoing.destroy(Error('Owned ingress timed out')));outgoing.on('error',reject);outgoing.end();});
    const denied=await get(path);assert.equal(denied.status,404);assert.deepEqual(await denied.json(),{error:{code:'MEDIA_NOT_FOUND'}});assert.equal(denied.headers.get('cache-control'),'no-store');assert.equal((await get(path+'?unexpected=1')).status,400);
   });
+  if(errors.length)suite.diagnostic(output.slice(-4000));
   assert.deepEqual(foreign,[]);assert.deepEqual(legacy,[]);assert.deepEqual(errors,[]);assert.equal(output.includes('Unexpected browser fixture query'),false);await context.close();
  }finally{await browser?.close();if(app?.exitCode===null){process.kill(-app.pid,'SIGTERM');await once(app,'exit');}await rm(directory,{recursive:true,force:true});}
 });

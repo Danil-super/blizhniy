@@ -31,6 +31,7 @@ export function createProductionListingPhotoHandler(config:{origin:string},getRu
       if(!await runtime.limiter.allowProduction("session",ip)){code="RATE_LIMITED";return respond({error:{code}},429,{"Retry-After":"900"});}
       return respond(writing?await runtime.store.replace(token,owner,id,revision,photoIds):await runtime.store.read(token,owner,id),200);
     }catch(error){
+      if(error&&typeof error==='object'&&'code'in error&&error.code==='PBL01')error=new AuthRequestError(409,'CHECKOUT_ACTIVE');
       if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,"UNAUTHENTICATED");
       if(error instanceof ListingDraftAccessError)error=new AuthRequestError(404,"DRAFT_NOT_FOUND");
       if(error instanceof ListingDraftConflictError)error=new AuthRequestError(409,"DRAFT_CHANGED");

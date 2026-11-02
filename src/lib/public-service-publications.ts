@@ -2,7 +2,7 @@ import {parseServicePublicationForm,checkServicePublicationForm,type ServicePubl
 import {parseListingDraftId} from './listing-draft-contract.ts';import type {SpecialistProfile,FairApplication} from './types';
 import {validPersonName} from './cabinet-field-validation.ts';
 import {checkSpecialistApplicationForm,specialistAbout} from './specialist-application-profile.ts';
-export type PublicServiceRow={id:string;kind:ServicePublicationKind;form:unknown;mediaIds:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;profileIdentity?:{name:string;avatarDataUrl:string}|null};
+export type PublicServiceRow={id:string;kind:ServicePublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;profileIdentity?:{name:string;avatarDataUrl:string}|null};
 export type PublicMarquee={id:string;text:string;href?:string};
 export type PublicServiceMaterial=SpecialistProfile|FairApplication|PublicMarquee;
 /** Explicit public DTO: never spread the private form or copy its owner, contacts or review. */
@@ -28,7 +28,7 @@ export function mapPublicServicePublication(row:PublicServiceRow,now:number):Pub
     identity.avatarDataUrl&&!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(identity.avatarDataUrl))return null;
    name=identity.name;specialistImages=identity.avatarDataUrl?[identity.avatarDataUrl]:[];
   }
-  return{id,name,profession:form.professionName!,skills:profileBound?'':form.skills!,description:profileBound?specialistAbout(form):form.description,city:form.cityName!,price:`от ${display}`,imageSeed:'',images:specialistImages,
+  return{id,name,profession:form.professionName!,...(row.professionId?{professionId:parseListingDraftId(row.professionId)}:{}),skills:profileBound?'':form.skills!,description:profileBound?specialistAbout(form):form.description,city:form.cityName!,price:`от ${display}`,imageSeed:'',images:specialistImages,
    ...(form.videoUrl&&!profileBound?{videoUrl:form.videoUrl}:{}),status:'published',createdAt:row.createdAt,publishedAt:row.publishedAt!,hasMapPoint:form.showExactAddress,...location};
  }catch{return null;}
 }

@@ -2,7 +2,7 @@
 import {useRef,useState} from 'react';import {Field,PhotoField,TextAreaField} from '@/components/FormPanel';
 import {ListingLocationFields} from '@/components/listings/ListingFormControls';import {LegalConsentCheckbox,LegalLink} from '@/components/LegalConsentCheckbox';
 import {useCookieCabinetProfile} from '@/components/cabinet/CookieCabinetProfileProvider';import {fairCategories} from '@/lib/data';
-import {ProfessionSelect} from '@/components/work/ProfessionSelect';import {CabinetFormValidation} from '@/components/CabinetFormValidation';
+import {PrimaryProfessionSelect} from '@/components/work/PrimaryProfessionSelect';import {CabinetFormValidation} from '@/components/CabinetFormValidation';
 import {StoredMediaImage} from '@/components/StoredMedia';
 import {specialistAbout} from '@/lib/specialist-application-profile';
 import type {ServicePublicationKind} from '@/lib/service-publication-contract';import type {ServicePublicationSnapshot} from '@/lib/postgres-service-publications';
@@ -26,7 +26,7 @@ export function ServicePublicationForm({owner,kind,initial,onSaved,onDirtyChange
     <input type="hidden" name="title" value={profile?.name??''}/>
    </section>:<Field name="title" label={kind==='fair'?'Название мастерской или ФИО':'Текст рекламы'} defaultValue={form?.title??''} minLength={kind==='marquee'?10:2} maxLength={kind==='marquee'?140:160} required/>}
    {kind==='marquee'?<Field name="href" label="Ссылка (необязательно)" type="url" maxLength={500} defaultValue={form?.kind==='marquee'?form.href??'':''} placeholder="https://..."/>:<>
-    {kind==='specialist'?<><ProfessionSelect defaultValue={specialist?.professionName??''} required/>
+    {kind==='specialist'?<><PrimaryProfessionSelect defaultValue={specialist?.professionName??''} defaultId={initial?.professionId} required/>
      <Field name="price" label="Стоимость работ, ₽" defaultValue={specialist?.price?.replace(/\.00$/,'').replace('.',',')??''} inputMode="decimal" maxLength={13} pattern="[0-9]+([.,][0-9]{1,2})?" title="Сумма цифрами; допускается до двух знаков после запятой." placeholder="Например, 1500" required/>
      </>:
      <label className="grid gap-2 text-sm font-bold text-slate-700">Категория ярмарки<select name="category" defaultValue={fair?.category??''} required className="min-h-11 min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-base font-normal"><option value="" disabled>Выберите категорию</option>{fairCategories.map(item=><option key={item} value={item}>{item}</option>)}</select></label>}

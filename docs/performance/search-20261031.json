@@ -1,0 +1,2690 @@
+{
+  "date": "2026-10-31",
+  "scope": "Synthetic owned loopback PostgreSQL18.6, 1 CPU/512 MiB container, 25000 healthy publications, no provider or production calls; store operations, not HTTP latency.",
+  "command": "BLIZHNIY_SEARCH_BENCHMARK=1 node --experimental-strip-types --test tests/primary-search-postgres-integration.mjs",
+  "comparison": "Legacy numeric-page reads versus modern first-page or public-cursor reads; 1 warmup then 3 legacy samples (median/range), 20 modern samples (p95). Deep page1000 uses numeric legacy offset versus cursor over eligible public anchor. The two-reader check is not a capacity/load drill.",
+  "beforeBranchBudget": {
+    "version": 1,
+    "rows": 25000,
+    "legacySamplesPerCase": 3,
+    "modernSamplesPerCase": 20,
+    "parallelReaders": 2,
+    "parallelMs": 50.32963700000255,
+    "cases": [
+      {
+        "case": "popular",
+        "publications": 25000,
+        "legacyScope": "five publication readers; references do not match benchmark needles",
+        "legacy": {
+          "method": "numeric-page",
+          "samples": 3,
+          "medianMs": 48.9613070000014,
+          "rangeMs": [
+            47.21545100000003,
+            49.75926299999992
+          ],
+          "reads": 1,
+          "rowsTransferred": 100
+        },
+        "modern": {
+          "method": "first-page",
+          "samples": 20,
+          "p95ms": 105.46668900000077,
+          "reads": 2,
+          "rowsTransferred": 50
+        },
+        "explain": {
+          "planningMs": 2.932,
+          "executionMs": 99.299,
+          "sharedHits": 132442,
+          "sharedReads": 0,
+          "nodes": [
+            {
+              "type": "Limit",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Result",
+              "rows": 25000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Append",
+              "rows": 25000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 29,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 29,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Memoize",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 10000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 10000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 10000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 10000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 10000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Memoize",
+              "rows": 1,
+              "loops": 10000,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 1,
+              "loops": 10000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 10000,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 10000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 10000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 10000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 10000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 10000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 10000,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 1,
+              "loops": 10000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 10000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 29
+            },
+            {
+              "type": "Aggregate",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 29
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 28
+            }
+          ]
+        },
+        "sqlSha256": "5566239287f22ab72ba766d012b3d818ef4d37a308ad7cecbaf4b9bba243d518"
+      },
+      {
+        "case": "missing",
+        "publications": 25000,
+        "legacyScope": "five publication readers; references do not match benchmark needles",
+        "legacy": {
+          "method": "numeric-page",
+          "samples": 3,
+          "medianMs": 9508.908083999999,
+          "rangeMs": [
+            9490.719685,
+            9591.956719000002
+          ],
+          "reads": 255,
+          "rowsTransferred": 25000
+        },
+        "modern": {
+          "method": "first-page",
+          "samples": 20,
+          "p95ms": 49.16084200000478,
+          "reads": 1,
+          "rowsTransferred": 0
+        },
+        "explain": {
+          "planningMs": 2.718,
+          "executionMs": 44.587,
+          "sharedHits": 27434,
+          "sharedReads": 0,
+          "nodes": [
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Result",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Append",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 1,
+              "removed": 5000
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 29,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 29,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Memoize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 10000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Memoize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 1,
+              "removed": 5000
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 5000
+            },
+            {
+              "type": "Hash",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 29
+            },
+            {
+              "type": "Aggregate",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 29
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 28
+            }
+          ]
+        },
+        "sqlSha256": "5566239287f22ab72ba766d012b3d818ef4d37a308ad7cecbaf4b9bba243d518"
+      },
+      {
+        "case": "deep",
+        "publications": 25000,
+        "legacyScope": "five publication readers; references do not match benchmark needles",
+        "legacy": {
+          "method": "numeric-page",
+          "samples": 3,
+          "medianMs": 9286.608313000004,
+          "rangeMs": [
+            9158.040497000002,
+            9632.513022000014
+          ],
+          "reads": 245,
+          "rowsTransferred": 24100
+        },
+        "modern": {
+          "method": "public-cursor",
+          "samples": 20,
+          "p95ms": 21.767573999997694,
+          "reads": 2,
+          "rowsTransferred": 50
+        },
+        "explain": {
+          "planningMs": 3.044,
+          "executionMs": 10.255,
+          "sharedHits": 9371,
+          "sharedReads": 0,
+          "nodes": [
+            {
+              "type": "Limit",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Result",
+              "rows": 1024,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Append",
+              "rows": 1024,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 10000
+            },
+            {
+              "type": "Hash",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Memoize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 1024,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 1024,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 1024,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 1024,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 1024,
+              "loops": 1,
+              "removed": 8976
+            },
+            {
+              "type": "Hash",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 1024,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 1,
+              "loops": 1024,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 1024,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 29
+            },
+            {
+              "type": "Aggregate",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 29
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 28
+            }
+          ]
+        },
+        "sqlSha256": "5566239287f22ab72ba766d012b3d818ef4d37a308ad7cecbaf4b9bba243d518"
+      }
+    ]
+  },
+  "afterBranchBudget": {
+    "version": 1,
+    "rows": 25000,
+    "legacySamplesPerCase": 3,
+    "modernSamplesPerCase": 20,
+    "parallelReaders": 2,
+    "parallelMs": 62.72170000000915,
+    "cases": [
+      {
+        "case": "popular",
+        "publications": 25000,
+        "legacyScope": "five publication readers; references do not match benchmark needles",
+        "legacy": {
+          "method": "numeric-page",
+          "samples": 3,
+          "medianMs": 49.041588999999476,
+          "rangeMs": [
+            42.92625700000008,
+            49.157318999999916
+          ],
+          "reads": 1,
+          "rowsTransferred": 100
+        },
+        "modern": {
+          "method": "first-page",
+          "samples": 20,
+          "p95ms": 32.97830200000135,
+          "reads": 2,
+          "rowsTransferred": 50
+        },
+        "explain": {
+          "planningMs": 4.521,
+          "executionMs": 24.849,
+          "sharedHits": 40230,
+          "sharedReads": 0,
+          "nodes": [
+            {
+              "type": "Limit",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 29,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 29,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Result",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Result",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Append",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            }
+          ]
+        },
+        "sqlSha256": "803c85b1d3df5c6076eedc7de411b08a3efa27e435e8687197a950945ef51b18"
+      },
+      {
+        "case": "missing",
+        "publications": 25000,
+        "legacyScope": "five publication readers; references do not match benchmark needles",
+        "legacy": {
+          "method": "numeric-page",
+          "samples": 3,
+          "medianMs": 9625.867639999997,
+          "rangeMs": [
+            9536.63707,
+            9648.269084000003
+          ],
+          "reads": 255,
+          "rowsTransferred": 25000
+        },
+        "modern": {
+          "method": "first-page",
+          "samples": 20,
+          "p95ms": 53.991666000001715,
+          "reads": 1,
+          "rowsTransferred": 0
+        },
+        "explain": {
+          "planningMs": 4.068,
+          "executionMs": 44.769,
+          "sharedHits": 27434,
+          "sharedReads": 0,
+          "nodes": [
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 1,
+              "removed": 5000
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 29,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 29,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 10000,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 1,
+              "removed": 5000
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 5000,
+              "loops": 1,
+              "removed": 5000
+            },
+            {
+              "type": "Hash",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 5000,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Result",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 29
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 29
+            },
+            {
+              "type": "Aggregate",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 28
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Result",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Append",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            }
+          ]
+        },
+        "sqlSha256": "803c85b1d3df5c6076eedc7de411b08a3efa27e435e8687197a950945ef51b18"
+      },
+      {
+        "case": "deep",
+        "publications": 25000,
+        "legacyScope": "five publication readers; references do not match benchmark needles",
+        "legacy": {
+          "method": "numeric-page",
+          "samples": 3,
+          "medianMs": 9484.171629000004,
+          "rangeMs": [
+            9420.865802,
+            9578.745538999996
+          ],
+          "reads": 245,
+          "rowsTransferred": 24100
+        },
+        "modern": {
+          "method": "public-cursor",
+          "samples": 20,
+          "p95ms": 19.983884000001126,
+          "reads": 2,
+          "rowsTransferred": 50
+        },
+        "explain": {
+          "planningMs": 4.391,
+          "executionMs": 9.461,
+          "sharedHits": 9368,
+          "sharedReads": 0,
+          "nodes": [
+            {
+              "type": "Limit",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Result",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 10000
+            },
+            {
+              "type": "Hash",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Materialize",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 1024,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 1024,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 1024,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Hash Join",
+              "rows": 1024,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 1024,
+              "loops": 1,
+              "removed": 8976
+            },
+            {
+              "type": "Hash",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 28,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 1024,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 1,
+              "loops": 1024,
+              "removed": 0
+            },
+            {
+              "type": "Index Scan",
+              "rows": 1,
+              "loops": 1024,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Result",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Seq Scan",
+              "rows": 0,
+              "loops": 0,
+              "removed": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Result",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "Append",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 25,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 0,
+              "loops": 1,
+              "removed": 0
+            }
+          ]
+        },
+        "sqlSha256": "803c85b1d3df5c6076eedc7de411b08a3efa27e435e8687197a950945ef51b18"
+      }
+    ]
+  }
+}

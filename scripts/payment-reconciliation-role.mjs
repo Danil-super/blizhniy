@@ -64,10 +64,12 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw new Error('Invalid role');
    const journal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   // Only complete known releases: 0024, 0025 or the exact reviewed 0032 suffix.
+   // Only complete known releases: 0024, 0025, reviewed0032 or exact additive0033.
    // Unknown intermediate versions and changed hashes remain fail-closed.
    const cabinetJournal=[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan()];
-   const expectedJournal=journal.length===cabinetJournal.length?cabinetJournal:journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
+   const deletionJournal=[...cabinetJournal,{name:'0033-account-deletion.sql',sha256:'8d0159c6af65c4c66aabb123695110f402fd5eac268fa2a879d97c85e628ed2f'}];
+   const cabinetSchema=journal.length===cabinetJournal.length||journal.length===deletionJournal.length;
+   const expectedJournal=journal.length===deletionJournal.length?deletionJournal:journal.length===cabinetJournal.length?cabinetJournal:journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
    const schemas=(await tx.query(`select nspname as name,has_schema_privilege(oid,'USAGE') as usage,
     has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace
@@ -80,7 +82,7 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
     cross join (values('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) as p(privilege)
     where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema' and c.relkind in ('r','p','v','m','f')
      and a.attnum>0 and not a.attisdropped and has_column_privilege(c.oid,a.attnum,p.privilege) limit 10001`)).rows;
-   const expected=new Set(Object.entries(journal.length===cabinetJournal.length?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
+   const expected=new Set(Object.entries(cabinetSchema?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
    if(actual.length!==expected.size||actual.some(item=>item.grantable!==false||!expected.delete(item.key))||expected.size)throw new Error('Invalid column privileges');
    const dangerous=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema' and

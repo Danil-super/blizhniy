@@ -9,6 +9,7 @@ import pg from 'pg';
 import {stateDirectory,localPrimaryDatabaseConfig,docker} from './local-primary-fixture.mjs';
 import {validateLocalPrimaryContainer,localPrimaryUpstreamPort} from './local-primary-config.mjs';
 import {allowLocalPrimaryRequest} from './local-primary-origin.mjs';
+import {normalizeDocumentPrefetchHeaders} from './next-prefetch-ingress.mjs';
 import {createTelegramPhoneOidc} from '../src/lib/telegram-phone-oidc.ts';
 const require=createRequire(import.meta.url);
 const {loadLocalPrimaryModule:load}=require('./local-primary-modules.cjs');
@@ -26,6 +27,9 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
  await load('production-auth-database').verifyProductionAuthDatabase(runtimeDb);
  const limiter=new(load('auth-http').AuthRateLimiter)(runtimeDb,state.rateSecret);
  const identity=new(load('identity').IdentityStore)(runtimeDb);
+ const deletion=load('account-deletion-http').createAccountDeletionHandler({origin:canonical,rateSecret:state.rateSecret,mailKeyFile:join(stateDirectory,'mail-key.bin'),rememberedCaptcha:true},()=>({
+  store:new(load('postgres-account-deletion').PostgresAccountDeletionStore)(runtimeDb),identity,limiter,verifyCaptcha:async()=>false,
+ }));
  // Use the same backend handler with the canonical Request constructed below.
  // Next's loopback transport URL is not the externally registered callback URL.
  const phoneConfig=load('telegram-phone-config').readTelegramPhoneConfig();
@@ -40,13 +44,18 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
  const files=await load('media-files').createLocalMediaFileStore(join(stateDirectory,'media'));
  const repository=new(load('media-metadata').MediaMetadataRepository)(runtimeDb,files);
  const writer=await load('media-file-worker').createLocalMediaFileWorker(state.project,join(stateDirectory,'media'));
- const upload=new(load('media-upload').LocalMediaUpload)(repository,load('media-worker').createLocalMediaWorker(state.project),new(load('media-write').LocalMediaWriter)(repository,writer));
+ const normalizer=load('media-worker').createLocalMediaWorker(state.project);
+ const upload=new(load('media-upload').LocalMediaUpload)(repository,normalizer,new(load('media-write').LocalMediaWriter)(repository,writer));
+ const profile=request=>load('production-profile-http').createProductionProfileHandler({origin:canonical},()=>({limiter,
+  store:new(load('postgres-profile').PostgresProfileStore)(runtimeDb,{phoneVerification:true,
+   normalizeAvatar:avatar=>load('profile-avatar').normalizeProfileAvatar(avatar,async()=>normalizer,request.signal)}),
+ }))(request);
  const media=load('production-media-http').createProductionMediaHandler({origin:canonical},()=>({identity,limiter,repository,upload}));
  const publicPhoto=load('production-public-work-photo-http').createProductionPublicWorkPhotoHandler({origin:canonical},()=>({store:new(load('postgres-public-listings').PostgresPublicListingStore)(runtimeDb,{postmoderation:true}),files}));
  const otherPublicPhotos=Object.fromEntries(['work','service'].map(kind=>[kind,load('production-public-work-photo-http').createProductionPublicWorkPhotoHandler({origin:canonical},()=>({store:new(load('postgres-public-'+kind)[kind==='work'?'PostgresPublicWorkStore':'PostgresPublicServiceStore'])(runtimeDb,kind==='work'?{vacancyPostmoderation:true}:{}),files}))]));
  const adminPhoto=load('admin-listing-moderation-http').createAdminListingModerationHandler({origin:canonical},()=>({identity,limiter,store:new(load('postgres-listing-moderation').PostgresListingModerationStore)(runtimeDb,files,{contactMethod:true})}));
  const key=await readFile(join(stateDirectory,'mail-key.bin'));
- const worker=new(load('mail-delivery').MailDeliveryWorker)(runtimeDb,new(load('mail-outbox').MailPayloadCipher)(key),load('production-auth-config').renderProductionAuthMail);key.fill(0);
+ const worker=new(load('mail-delivery').MailDeliveryWorker)(runtimeDb,new(load('mail-outbox').MailPayloadCipher)(key),load('production-auth-config').renderProductionAuthMail,{pendingAccounts:true});key.fill(0);
  let polling=false;
  const timer=setInterval(async()=>{
   if(polling)return;polling=true;
@@ -79,16 +88,19 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
    let response=req.method==='GET'?await localPage(path):null;
    const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req);
    const proof=load('account-browser-proof').issueBrowserProof(state.rateSecret,'127.0.0.1',req.headers['user-agent']??'');
-   const headers=new Headers(Object.fromEntries(Object.entries(req.headers).filter(([,value])=>typeof value==='string')));
+   const headers=new Headers(Object.fromEntries(Object.entries(normalizeDocumentPrefetchHeaders(req.headers)).filter(([,value])=>typeof value==='string')));
    headers.set('host',new URL(canonical).host);headers.set('x-real-ip','127.0.0.1');
    headers.set('cookie',(req.headers.cookie??'').split(';').filter(part=>!part.trim().startsWith('__Host-blizhniy_human=')).concat(proof.cookie.split(';')[0]).filter(Boolean).join('; '));
    if(req.headers.origin)headers.set('origin',canonical);
    const request=new Request(canonical+req.url,{method:req.method,headers,...(body?{body}:{}),redirect:'error'});
    if(!response&&phoneCallback&&path==='/api/account/phone/telegram/callback')response=await phoneCallback(request,'callback');
+   const deletionMatch=/^\/api\/(account|admin)\/deletion\/([a-z]+)$/.exec(path);
+   if(!response&&deletionMatch)response=await deletion(request,deletionMatch[2],deletionMatch[1]==='admin');
    if(!response&&['/api/account/register','/api/account/resend','/api/account/recover'].includes(path)){
     const data=await request.clone().json();
     if(typeof data.email!=='string'||!data.email.endsWith('.invalid'))response=Response.json({error:{code:'SYNTHETIC_EMAIL_REQUIRED'}},{status:422});
    }
+   if(!response&&path==='/api/account/profile')response=await profile(request);
    if(!response&&path==='/api/account/media')response=await media(request,'upload');
    if(!response&&path==='/api/account/media/read')response=await media(request,'read');
    const photoMatch=/^\/api\/listings\/([a-f0-9-]{36})\/photos\/([a-f0-9-]{36})$/.exec(path);
@@ -108,7 +120,11 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
    }
    if(!response&&paymentHandler)response=await paymentHandler(request,context);
    if(response){
-    res.writeHead(response.status,Object.fromEntries(response.headers));
+    const responseHeaders=Object.fromEntries(response.headers);
+    // A login can set both the restricted cookie and the signed CAPTCHA proof.
+    const cookies=response.headers.getSetCookie();
+    if(cookies.length)responseHeaders['set-cookie']=cookies;
+    res.writeHead(response.status,responseHeaders);
     res.end(Buffer.from(await response.arrayBuffer()));return;
    }
    const outgoing=httpRequest({hostname:'127.0.0.1',port:localPrimaryUpstreamPort,path:req.url,method:req.method,headers:{...Object.fromEntries(headers),'accept-encoding':'identity'}},incoming=>{

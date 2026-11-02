@@ -4,11 +4,12 @@ import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import * as http from '../src/lib/auth-http.ts';
 import * as proxy from '../src/lib/trusted-proxy-ip.ts';
+import * as mediaAdmission from '../src/lib/media-read-admission.ts';
 import * as ids from '../src/lib/listing-draft-contract.ts';
 const ts=createRequire(import.meta.url)('typescript');
 const id='10000000-0000-4000-8000-000000000001',file='10000000-0000-4000-8000-000000000002',origin='https://example.invalid';
 function fixture(){
- const admission={reads:0},events=[],exports={},deps={'node:crypto':createRequire(import.meta.url)('node:crypto'),'./auth-http':http,
+ const admission={reads:0},events=[],exports={},deps={'./media-read-admission.ts':mediaAdmission,'node:crypto':createRequire(import.meta.url)('node:crypto'),'./auth-http':http,
   './trusted-proxy-ip':proxy,'./listing-draft-contract.ts':ids,'./production-media-http':{productionMediaAdmission:admission}};
  new Function('require','exports',ts.transpileModule(readFileSync(new URL('../src/lib/production-public-work-photo-http.ts',import.meta.url),'utf8'),{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText)(name=>{assert.ok(Object.hasOwn(deps,name),name);return deps[name];},exports);

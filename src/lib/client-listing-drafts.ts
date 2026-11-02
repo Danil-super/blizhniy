@@ -5,6 +5,7 @@ import type { ListingDraftInput, ListingDraftSnapshot, ListingDraftPage, Listing
 const messages = { UNKNOWN: "Результат операции не подтверждён. Проверьте сохранённую версию перед повтором.",
   UNAUTHENTICATED: "Войдите в аккаунт повторно.", DRAFT_NOT_FOUND: "Черновик недоступен. Проверьте аккаунт.",
   DRAFT_CHANGED: "Черновик изменён. Сверьте сохранённую версию с вашими правками.",
+  CHECKOUT_ACTIVE: "Для этой публикации уже начата оплата. Вернитесь к ней в личном кабинете; после завершения оплаты можно сохранить изменения.",
   INVALID_INPUT: "Проверьте данные черновика.", RATE_LIMITED: "Слишком много запросов. Попробуйте позже." };
 export class ListingDraftClientError extends Error {
   constructor(readonly code: keyof typeof messages) { super(messages[code]);this.name = "ListingDraftClientError"; }
@@ -61,7 +62,7 @@ async function request(ownerId: string, method: "POST" | "PUT", collection: bool
     const payload = await readJson(response, signal);
     if (response.status !== 200) {
       const code = object(object(payload).error).code;
-      const statuses = { UNAUTHENTICATED: 401, DRAFT_NOT_FOUND: 404, DRAFT_CHANGED: 409, INVALID_INPUT: 422, RATE_LIMITED: 429 };
+      const statuses = { UNAUTHENTICATED: 401, DRAFT_NOT_FOUND: 404, DRAFT_CHANGED: 409, CHECKOUT_ACTIVE: 409, INVALID_INPUT: 422, RATE_LIMITED: 429 };
       for (const name of Object.keys(statuses) as (keyof typeof statuses)[]) {
         if (code === name && response.status === statuses[name]) throw new ListingDraftClientError(name);
       }

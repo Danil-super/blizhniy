@@ -127,6 +127,8 @@ try {
         await page.setViewportSize({ width, height: 1000 });
         const response = await openCategory(page, scenario.slug);
         assert.equal(response.status(), 200);
+        // Fresh contexts must observe the first-visit panel before actionability checks.
+        await page.getByRole("region", { name: "Файлы cookie", exact: true }).waitFor({ state: "visible" });
         const hero = page.locator(`[data-category-theme="${scenario.slug}"]`);
         await hero.locator("picture img").waitFor();
         await hero.locator("picture img").evaluate((img) => img.decode());
@@ -217,6 +219,7 @@ try {
         await page.setViewportSize({ width, height: 1000 });
         const response = await openCategory(page, scenario.slug);
         assert.equal(response.status(), 200);
+        await page.getByRole("region", { name: "Файлы cookie", exact: true }).waitFor({ state: "visible" });
 
         const hero = page.locator(`[data-category-theme="${scenario.slug}"]`);
         await hero.waitFor();
@@ -307,10 +310,18 @@ try {
               return action.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
             }),
             actionCount: actions.length,
+            actionHitTargets: actions.map((action) => {
+              const rect = action.getBoundingClientRect();
+              const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+              return { text: action.textContent, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                hit: hit ? { tag: hit.tagName, id: hit.id, className: hit.getAttribute("class") } : null,
+                scrollY: window.scrollY, viewportHeight: window.innerHeight };
+            }),
           };
         });
 
         await hero.screenshot({ path: `${artifactDir}/${width}.png` });
+        if (!layout.actionsClickable) console.error(JSON.stringify({ category: scenario.slug, width, actionHitTargets: layout.actionHitTargets }));
         assert.equal(layout.imageHero, "true", `${scenario.slug} ${width}: shared responsive image-hero contract`);
         assert.equal(layout.titleVisible, true, `${scenario.slug} ${width}: title remains visible`);
         assert.ok(layout.photoCount > 0, `${scenario.slug} ${width}: hero photo remains rendered`);

@@ -1,4 +1,4 @@
-import { AdminAccountDeletionRequestsClient } from '@/components/admin/AdminAccountDeletionRequestsClient';
+import { AdminAccountDeletionEntry } from '@/components/admin/AdminAccountDeletionEntry';
 import { AdminShell } from '@/components/admin/AdminShell';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ export default function Page() {
       title="Удаление аккаунтов"
       description="Заявления пользователей для ручной проверки и принятия решения."
     >
-      <AdminAccountDeletionRequestsClient />
+      <AdminAccountDeletionEntry />
     </AdminShell>
   );
 }

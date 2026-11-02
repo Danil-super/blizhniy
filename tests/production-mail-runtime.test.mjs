@@ -12,7 +12,7 @@ import { MailDeliveryWorker } from "../src/lib/mail-delivery.ts";
 test("real production mail runtime loads no key/pool until explicit valid configuration, verifies role/schema and owns shutdown", async () => {
   const directory = mkdtempSync(join(tmpdir(), "blizhniy-mail-runtime-fixture-"));
   const keyFile = join(directory, "mail.key"), caFile = join(directory, "root.crt");
-  writeFileSync(keyFile, randomBytes(32), { mode: 0o600 }); writeFileSync(caFile, rootCertificates[0]);
+  writeFileSync(keyFile, randomBytes(32), { mode: 0o600 }); writeFileSync(caFile, rootCertificates[0], { mode: 0o644 });
   const env = { NODE_ENV: "production", BLIZHNIY_AUTH_MODE: "postgres",
     BLIZHNIY_AUTH_ORIGIN: "https://xn----9sbphbgks4a4a.xn--p1ai", BLIZHNIY_DB_HOST: "17e86f80f26733d39ef4b84d.twc1.net",
     BLIZHNIY_DB_PORT: "5432", BLIZHNIY_DB_NAME: "blizhniy_prod", BLIZHNIY_DB_USER: "blizhniy_runtime", BLIZHNIY_DB_PASSWORD: "synthetic-worker-password",

@@ -5,7 +5,7 @@ function render(){
   'react/jsx-runtime':{jsx,jsxs:jsx},'@/components/FormPanel':{},'@/components/VacancyEmployerFields':{},'./VacancyEmployerFlow':{},
   '@/components/listings/ListingWorkflowProvider':{useListingPostmoderation:()=>false,useLocalPaymentSimulation:()=>false},'@/components/listings/ListingFormControls':{},'@/components/LegalConsentCheckbox':{},
   '@/lib/data':{professions:[]},'@/components/listings/PrivateDraftEditor':{draftButton:'button'},'./WorkPublicationPhotos':{},'./WorkAmountField':{},
-  './ProfessionSelect':{},'./VacancyTermsFields':{},
+  './ProfessionSelect':{},'./PrimaryProfessionSelect':{},'./VacancyTermsFields':{},
   '@/components/PublicationPhotoEditor':{},'@/components/CabinetFormValidation':{},
   './useWorkPublicationSave':{useWorkPublicationSave:()=>({active:true,done:false,busy:false,uncertain:false})}};
  new Function('exports','require',ts.transpileModule(fs.readFileSync('src/components/work/WorkPublicationForm.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText)(exportsObject,name=>{

@@ -1,11 +1,12 @@
 import {parseListingFormDraft} from './listing-form-contract.ts';
 import {fairCategories} from './data.ts';
 import {validPlainText,validEmail,validWebUrl} from './cabinet-field-validation.ts';
+import {parseListingDraftId} from './listing-draft-contract.ts';
 export type ServicePublicationKind='specialist'|'fair'|'marquee';
 type Consent={title:string;placementRightConfirmed:boolean};
 type Details=Consent&{description:string;cityName:string|null;district:string|null;address:string|null;latitude:number|null;longitude:number|null;
  showExactAddress:boolean;contactPhone:string|null;email:string|null;messengerUrl:string|null;photoIds:string[];videoUrl:string|null};
-export type ServicePublicationForm=(Details&{kind:'specialist';professionName:string|null;price:string|null;skills:string|null;experience:string|null})|
+export type ServicePublicationForm=(Details&{kind:'specialist';professionName:string|null;professionId?:string;price:string|null;skills:string|null;experience:string|null})|
  (Details&{kind:'fair';category:string|null;comment:string|null})|(Consent&{kind:'marquee';href:string|null});
 export class ServicePublicationInputError extends Error{constructor(){super('Invalid service publication');}}
 const invalid=():never=>{throw new ServicePublicationInputError();};
@@ -21,7 +22,7 @@ function url(value:unknown){const result=text(value,500);if(!result)return null;
 export function parseServicePublicationForm(kind:ServicePublicationKind,value:unknown):ServicePublicationForm{
  try{
   if(!['specialist','fair','marquee'].includes(kind)||!value||typeof value!=='object'||Array.isArray(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))return invalid();
-  const row=value as Record<string,unknown>,allowed=['kind','title','placementRightConfirmed',...(kind==='marquee'?['href']:[...detailKeys,...(kind==='specialist'?['professionName','price','skills','experience']:['category','comment'])])];
+  const row=value as Record<string,unknown>,allowed=['kind','title','placementRightConfirmed',...(kind==='marquee'?['href']:[...detailKeys,...(kind==='specialist'?['professionName','professionId','price','skills','experience']:['category','comment'])])];
   if(Reflect.ownKeys(row).some(key=>typeof key!=='string'||!allowed.includes(key))||row.kind!==undefined&&row.kind!==kind)return invalid();
   const placementRightConfirmed=Object.hasOwn(row,'placementRightConfirmed')?row.placementRightConfirmed:false;
   if(typeof placementRightConfirmed!=='boolean')return invalid();
@@ -35,7 +36,8 @@ export function parseServicePublicationForm(kind:ServicePublicationKind,value:un
   const details:Details={title,placementRightConfirmed,description:core.description,cityName:core.cityName,district:core.district,address:core.address,
    latitude:core.latitude,longitude:core.longitude,showExactAddress:core.showExactAddress,contactPhone:core.contactPhone,messengerUrl:core.messengerUrl,
    email,photoIds:core.photoIds,videoUrl:url(row.videoUrl)};
-  return kind==='specialist'?{kind,...details,professionName:text(row.professionName,160),price:core.price,skills:text(row.skills,500,true),experience:text(row.experience,500,true)}:
+  return kind==='specialist'?{kind,...details,professionName:text(row.professionName,200),price:core.price,skills:text(row.skills,500,true),experience:text(row.experience,500,true),
+   ...(Object.hasOwn(row,'professionId')?{professionId:parseListingDraftId(row.professionId)}:{})}:
    {kind,...details,category:text(row.category,160),comment:text(row.comment,1000,true)};
  }catch{return invalid();}
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { documentCspNonce } from "@/lib/client-csp-nonce";
+
 import { useEffect, useRef, useState } from "react";
 import { getTurnstileSiteKey } from "@/lib/turnstile-public-config";
 
@@ -74,6 +76,8 @@ function loadTurnstileScript() {
     const loaded = () => finish(false);
     const failedLoad = () => finish(true);
     const timer = window.setTimeout(failedLoad, 12000);
+    const nonce = documentCspNonce();
+    if (nonce) script.nonce = nonce;
     script.id = turnstileScriptId;
     script.src = turnstileScriptSrc;
     script.async = true;

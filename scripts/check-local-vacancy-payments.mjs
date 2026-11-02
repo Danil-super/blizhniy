@@ -26,6 +26,11 @@ try{
  const user=(await owner.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',[
   `vacancy-pay-${randomUUID()}@example.invalid`,`scrypt$131072$8$1$${'a'.repeat(32)}$${'b'.repeat(128)}`])).rows[0].id;
  const token=randomBytes(32).toString('hex');await owner.query("insert into app.sessions(token_hash,user_id,auth_version,scope) values($1,$2,0,'app')",[load('identity').hashSessionToken(token),user]);
+ const phone='+7999'+String(randomBytes(4).readUInt32BE()%10000000).padStart(7,'0');
+ await owner.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[user,JSON.stringify({name:'Синтетический работодатель',phone})]);
+ await owner.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[user,phone,'synthetic-vacancy-payment-'+randomUUID()]);
+ assert.equal((await owner.query('select app.phone_is_confirmed($1) as confirmed',[user])).rows[0].confirmed,true);
+
  const base={kind:'vacancy',title:'Локальная проверка вакансии',description:'Синтетическая вакансия для проверки оплаты.',cityName:'Краснодар',professionName:'Сантехник',contactPhone:'+79990000000',placementRightConfirmed:true,
   employerType:'organization',organization:'Мастерская',inn:'7707083893',ogrn:'1027700132195',contactPerson:'Иван Иванов',email:'hr@example.invalid',salary:'45000.00'};
  const call=(body,method='POST',path='/api/account/vacancy-checkout',session=token)=>localPrimaryPaymentHandler(request(path,session,{expectedOwnerId:user,...body},method),context);
@@ -51,6 +56,12 @@ try{
  });
  await check('invalid INN and missing employer contacts cannot start payment; partial draft remains saved',async()=>{
   for(const patch of [{inn:'7707083894'},{contactPerson:null},{contactPhone:'123'},{employerType:'person',organization:'123',inn:'',ogrn:''}]){
+   if(patch.contactPhone==='123'||patch.employerType==='person'){
+    const before=(await owner.query('select count(*)::int as n from app.work_publications where author_id=$1',[user])).rows[0].n;
+    await assert.rejects(create(patch),load('work-publication-contract').WorkPublicationInputError);
+    assert.equal((await owner.query('select count(*)::int as n from app.work_publications where author_id=$1',[user])).rows[0].n,before);
+    continue;
+   }
    const item=await create(patch),response=await call({action:'testPreview',listingId:item.id,expectedRevision:item.revision});assert.equal(response.status,409);assert.equal((await row(item.id)).is_paid,false);
   }
  });
@@ -76,13 +87,21 @@ try{
   await owner.query("update app.payment_orders set status='refunded' where id=$1",[f.order.id]);assert.equal(await publicRead(f.item.id),undefined);
   await pay(f.order);assert.equal(await publicRead(f.item.id),undefined);assert.deepEqual(await row(f.item.id),before);
  });
- await check('renamed or disabled references cannot quote or publish after capture',async()=>{
+ await check('profession rename preserves identity; disabled references cannot quote or publish after capture',async()=>{
   for(const mode of ['rename','disable']){
    const f=await fixture();await owner.query('savepoint reference_change');
    if(mode==='rename')await owner.query("update app.specialist_categories set name=name||' (переименовано)' where name=$1",[base.professionName]);
    else await owner.query('update app.specialist_categories set active=false where name=$1',[base.professionName]);
-   const q=await call({action:'testPreview',listingId:f.item.id,expectedRevision:f.item.revision});assert.equal(q.status,409);
-   assert.equal((await pay(f.order)).status,200);assert.equal((await row(f.item.id)).is_paid,false);assert.equal(await count(f.order.id),0);
+   const q=await call({action:'testPreview',listingId:f.item.id,expectedRevision:f.item.revision});
+   if(mode==='rename'){
+    assert.equal(q.status,200);assert.equal((await pay(f.order)).status,200);
+    const placed=await row(f.item.id);assert.equal(placed.is_paid,true);assert.equal(placed.status,'published');assert.equal(await count(f.order.id),1);
+    assert.equal((await publicRead(f.item.id)).profession,base.professionName+' (переименовано)');
+    assert.equal((await pay(f.order)).status,200);assert.deepEqual(await row(f.item.id),placed);assert.equal(await count(f.order.id),1);
+   }else{
+    assert.equal(q.status,409);
+    assert.equal((await pay(f.order)).status,200);assert.equal((await row(f.item.id)).is_paid,false);assert.equal(await count(f.order.id),0);
+   }
    await owner.query('rollback to savepoint reference_change');await owner.query('release savepoint reference_change');
   }
  });

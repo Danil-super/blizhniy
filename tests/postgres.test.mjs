@@ -55,7 +55,7 @@ test("remote connections verify the certificate chain and require an explicit CA
   try {
     const remote = { ...local, NODE_ENV: "production", BLIZHNIY_DB_HOST: "db.example.ru", BLIZHNIY_DB_SSL_MODE: "verify-full" };
     assert.throws(() => readPostgresConfig(remote), /configuration/);
-    writeFileSync(caFile, rootCertificates[0]);
+    writeFileSync(caFile, rootCertificates[0], { mode: 0o644 });
     const config = readPostgresConfig({ ...remote, BLIZHNIY_DB_CA_FILE: caFile });
     assert.equal(config.ssl.rejectUnauthorized, true);
     assert.equal(config.ssl.ca, rootCertificates[0]);

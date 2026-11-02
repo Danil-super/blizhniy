@@ -4,6 +4,7 @@ import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,ty
 import {parseServicePublicationForm,type ServicePublicationForm} from './service-publication-contract.ts';
 import {checkSpecialistApplicationForm,specialistAbout} from './specialist-application-profile.ts';
 import {validPersonName} from './cabinet-field-validation.ts';
+import {professionFormSql} from './profession-reference';
 import {hashSessionToken} from './identity';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {PostgresPublicWorkStore} from './postgres-public-work';import {PostgresPublicServiceStore} from './postgres-public-service';
@@ -34,8 +35,22 @@ function display(row:Row,actor:string):ApplicationSnapshot{return{id:row.id,revi
 
 /** No financial authority. Peer locks are nonblocking so existing actor-user locks cannot form a cross-user cycle. */
 export class PostgresApplicationStore{
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly policy:{vacancyPostmoderation?:boolean;specialistApplicationReady?:boolean;localActions?:boolean}={}){
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly policy:{vacancyPostmoderation?:boolean;specialistApplicationReady?:boolean;localActions?:boolean;contactViews?:boolean}={}){
   if(policy.localActions&&!readPostmoderationEnabled())throw new ApplicationAccessError();
+  if(policy.contactViews!==undefined&&typeof policy.contactViews!=='boolean')throw new ApplicationAccessError();
+  if(policy.contactViews&&(!policy.localActions||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!=='https://127.0.0.1:3045'))throw new ApplicationAccessError();
+ }
+ /** Evidence must commit with the authorized request before any contact payload
+  * escapes. A lost COMMIT reply is unknown; it never permits returning contacts.
+  */
+ private async disclosed(tx:PostgresQueries,actor:string,row:Row):Promise<ApplicationSnapshot>{
+  if(this.policy.contactViews&&row.targetOwner===actor&&row.applicant!==actor){
+   // No conflict target/RETURNING: the runtime intentionally has no SELECT on
+   // this journal, only INSERT(application_id,recipient_id). Its sole PK makes
+   // the first server-side disclosure idempotent without rewriting its time.
+   await tx.query('insert into app.application_contact_views(application_id,recipient_id) values($1,$2) on conflict do nothing',[row.id,actor]);
+  }
+  return display(row,actor);
  }
  private get rowColumns(){return columns+(this.policy.localActions?`, exists(select 1 from app.application_withdrawals x where x.application_id=a.id) as withdrawn, (${closure}) as "targetClosed"`:'');}
  private async editable(tx:PostgresQueries,row:Row){
@@ -55,7 +70,8 @@ export class PostgresApplicationStore{
    ${this.policy.localActions?"and (w.kind<>'workRequest' or not exists(select 1 from app.applications chosen where chosen.work_publication_id=w.id and chosen.status='selected' and chosen.is_paid and chosen.sent_at is not null))":''}
    and ${this.policy.specialistApplicationReady?`s.kind='specialist' and s.deleted_at is null
     and exists(select 1 from app.cities c where c.id=s.city_id and c.name=s.form->>'cityName')
-    and exists(select 1 from app.specialist_categories p where p.id=s.profession_id and p.active and p.name=s.form->>'professionName')`:
+    and exists(select 1 from app.specialist_categories p where p.id=s.profession_id and p.active
+     and (not(s.form ? 'professionId') or s.form->>'professionId'=p.id::text))`:
     "s.status='published' and s.is_paid and s.deleted_at is null and s.published_at<=clock_timestamp() and s.expires_at>clock_timestamp()"}`,[target,specialist]);
   if(result.rowCount!==1)throw new ApplicationAccessError();
  }
@@ -64,7 +80,7 @@ export class PostgresApplicationStore{
   if(!initial||initial.author===actor)throw new ApplicationAccessError();await this.peer(tx,initial.author,true);
   const target=(await tx.query<{author:string;revision:string}>('select author_id as author,revision::text as revision from app.work_publications where id=$1 and kind=$2 for update',[id,kind])).rows[0];
   if(!target||target.author!==initial.author)throw new ApplicationAccessError();
-  const specialist=(await tx.query<{id:string;revision:string;form:unknown}>("select id,revision::text as revision,form from app.service_publications where author_id=$1 and kind='specialist' and deleted_at is null for update",[actor])).rows[0];
+  const specialist=(await tx.query<{id:string;revision:string;form:unknown}>(`select id,revision::text as revision,${professionFormSql()} as form from app.service_publications where author_id=$1 and kind='specialist' and deleted_at is null for update`,[actor])).rows[0];
   // Re-read eligibility in separate statements after all potentially waiting resource locks.
   const work=await new PostgresPublicWorkStore(tx,this.policy).read(kind,id);if(!work)throw new ApplicationAccessError();
   if(!specialist)throw new ApplicationEligibilityError();
@@ -78,8 +94,9 @@ export class PostgresApplicationStore{
    if(checkSpecialistApplicationForm(form).length)throw new ApplicationEligibilityError();
    const references=await tx.query(`select s.id from app.service_publications s
     join app.cities c on c.id=s.city_id and c.name=$3
-    join app.specialist_categories p on p.id=s.profession_id and p.active and p.name=$4
-    where s.id=$1 and s.author_id=$2 and s.kind='specialist' and s.deleted_at is null`,[specialist.id,actor,form.cityName,form.professionName]);
+    join app.specialist_categories p on p.id=s.profession_id and p.active
+     and (not(s.form ? 'professionId') or s.form->>'professionId'=p.id::text)
+    where s.id=$1 and s.author_id=$2 and s.kind='specialist' and s.deleted_at is null`,[specialist.id,actor,form.cityName]);
    if(references.rowCount!==1)throw new ApplicationEligibilityError();
    about=specialistAbout(form);
   }else if(!await new PostgresPublicServiceStore(tx).read('specialist',specialist.id))throw new ApplicationEligibilityError();
@@ -114,7 +131,7 @@ export class PostgresApplicationStore{
    values($1,$2,$3,$4,$5::bigint,$6::bigint,$7::jsonb,$8) returning id`,[actor,input.targetId,input.specialistId,input.creationKey,input.expectedTargetRevision,input.expectedSpecialistRevision,JSON.stringify(current.specialist.snapshot),input.message])).rows[0];
   const saved=display(await this.row(tx,actor,id),actor);await this.window(tx,input.targetId,input.specialistId);return saved;
  });}
- read(token:string,owner:string,value:unknown){const id=parseListingDraftId(value);return this.owner(token,owner,async(tx,actor)=>display(await this.locate(tx,actor,id),actor));}
+ read(token:string,owner:string,value:unknown){const id=parseListingDraftId(value);return this.owner(token,owner,async(tx,actor)=>this.disclosed(tx,actor,await this.locate(tx,actor,id)));}
  readIntent(token:string,owner:string,value:unknown){const key=parseListingDraftId(value);return this.owner(token,owner,async(tx,actor)=>{
   const row=(await tx.query<{id:string}>('select id from app.applications where applicant_id=$1 and creation_key=$2',[actor,key])).rows[0];return row?display(await this.locate(tx,actor,row.id),actor):null;
  });}
@@ -153,9 +170,9 @@ export class PostgresApplicationStore{
   return this.owner(token,owner,async(tx,actor)=>{
    const initial=await this.row(tx,actor,id,false);if(initial.applicant===actor||initial.targetOwner!==actor)throw new ApplicationAccessError();
    await this.peer(tx,initial.applicant);const row=await this.locate(tx,actor,id);
-   if(row.status===state&&BigInt(row.revision)===BigInt(revision)+BigInt(1))return display(row,actor);
+   if(row.status===state&&BigInt(row.revision)===BigInt(revision)+BigInt(1))return this.disclosed(tx,actor,row);
    if(row.revision!==revision||!['sent','viewed'].includes(row.status))throw new ApplicationConflictError();
-    if(row.status===state)return display(row,actor);
+    if(row.status===state)return this.disclosed(tx,actor,row);
     // All creation/checkout/delivery and decisions serialize on the work row.
     // A selected application is the durable closure marker; editing or payment
     // replay cannot reopen the order or reset its purchased publication period.
@@ -178,7 +195,7 @@ export class PostgresApplicationStore{
      }
      await enqueueNotificationInTransaction(tx,other.applicant,{eventKey:`application_other_selected:${other.id}`,category:'message',tone:'info',title:'Заказчик выбрал другого исполнителя',body:'По заказу уже выбран исполнитель. Заказ закрыт для новых откликов. История вашего отклика сохранена в кабинете.',actionHref:'/cabinet/otkliki',bookingRequestId:null});
     }
-   return display(await this.row(tx,actor,id),actor);
+   return this.disclosed(tx,actor,await this.row(tx,actor,id));
   });
  }
  list(token:string,owner:string,mode:unknown,after:unknown):Promise<ApplicationPage>{

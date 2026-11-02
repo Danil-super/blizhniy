@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { slugifySubcategory } from "@/components/listings/ListingPages";
 import { getPublicCategories } from "@/lib/category-store";
-import { professions } from "@/lib/data";
+import { getPublicProfessions } from "@/lib/profession-store";
 import { instrumentSubcategories } from "@/lib/instrument-subcategories";
 import { posudaSubcategories } from "@/lib/posuda-subcategories";
 import { getPublicSiteUrl } from "@/lib/site-url";
@@ -72,7 +72,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/legal/agreement",
     "/legal/privacy",
     ...categoryPaths,
-    ...professions.filter((profession) => profession.active).map((profession) => `/rabota/specialisty/${profession.slug}`),
+    ...(await getPublicProfessions()).map((profession) => `/rabota/specialisty/${profession.slug}`),
   ];
   const expiresAfter = encodeURIComponent(new Date().toISOString());
   const publicationEntries = process.env.BLIZHNIY_AUTH_MODE === "postgres"

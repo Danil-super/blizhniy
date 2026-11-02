@@ -1,16 +1,17 @@
 import {parseListingFormDraft} from './listing-form-contract.ts';
 import {validateVacancyRequisites,type VacancyEmployerType} from './vacancy-requisites.ts';
 import {validPlainText,validPersonName,validEmail,validWebUrl} from './cabinet-field-validation.ts';
+import {parseListingDraftId} from './listing-draft-contract.ts';
 
 export type WorkPublicationKind='vacancy'|'workRequest';
-type Common={title:string;description:string;cityName:string|null;professionName:string|null;district:string|null;address:string|null;
+type Common={title:string;description:string;cityName:string|null;professionName:string|null;professionId?:string;district:string|null;address:string|null;
  latitude:number|null;longitude:number|null;showExactAddress:boolean;contactPhone:string|null;messengerUrl:string|null;photoIds:string[];placementRightConfirmed:boolean};
 export type WorkPublicationForm=Common&({kind:'workRequest';budget:string|null}|{kind:'vacancy';salary:string|null;organization:string|null;
  employerType:VacancyEmployerType;inn:string;ogrn:string;ogrnip:string;contactPerson:string|null;email:string|null;website:string|null;
  requirements:string|null;responsibilities:string|null;conditions:string|null;schedule:string|null;workFormat:string|null});
 export class WorkPublicationInputError extends Error{constructor(){super('Invalid work publication');}}
 const invalid=():never=>{throw new WorkPublicationInputError();};
-const commonKeys=['kind','title','description','cityName','professionName','district','address','latitude','longitude','showExactAddress','contactPhone','messengerUrl','photoIds','placementRightConfirmed'];
+const commonKeys=['kind','title','description','cityName','professionName','professionId','district','address','latitude','longitude','showExactAddress','contactPhone','messengerUrl','photoIds','placementRightConfirmed'];
 const vacancyKeys=['salary','organization','employerType','inn','ogrn','ogrnip','contactPerson','email','website','requirements','responsibilities','conditions','schedule','workFormat'];
 function text(value:unknown,max:number,multiline=false):string|null{
  if(value===undefined||value===null||value==='')return null;
@@ -29,9 +30,10 @@ export function parseWorkPublicationForm(kind:WorkPublicationKind,value:unknown)
   if(core.title.length>120||core.description.length>3000||core.photoIds.length>(kind==='vacancy'?20:6))return invalid();
   const placementRightConfirmed=Object.hasOwn(row,'placementRightConfirmed')?row.placementRightConfirmed:false;
   if(typeof placementRightConfirmed!=='boolean')return invalid();
-  const common:Common={title:core.title,description:core.description,cityName:core.cityName,professionName:text(row.professionName,160),
+  const common:Common={title:core.title,description:core.description,cityName:core.cityName,professionName:text(row.professionName,200),
    district:core.district,address:core.address,latitude:core.latitude,longitude:core.longitude,showExactAddress:core.showExactAddress,
-   contactPhone:core.contactPhone,messengerUrl:core.messengerUrl,photoIds:core.photoIds,placementRightConfirmed};
+   contactPhone:core.contactPhone,messengerUrl:core.messengerUrl,photoIds:core.photoIds,placementRightConfirmed,
+   ...(Object.hasOwn(row,'professionId')?{professionId:parseListingDraftId(row.professionId)}:{})};
   if(kind==='workRequest')return{kind,...common,budget:core.price};
   const employerType=row.employerType??'organization';if(!['organization','ip','person'].includes(employerType as string))return invalid();
   const requisite=(key:string,max:number)=>{const value=text(row[key],max)??'';if(!/^\d*$/.test(value))return invalid();return value;};

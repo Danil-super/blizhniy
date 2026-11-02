@@ -1,3 +1,4 @@
+import {acquireMediaReadSlot} from './media-read-admission.ts';
 import {randomUUID} from 'node:crypto';
 import {authJson,readAuthJson,AuthRequestError,type AuthRateLimiter} from './auth-http';
 import {readAccountSessionToken} from './account-cookie';import {getTrustedProxyIp} from './trusted-proxy-ip';
@@ -12,7 +13,7 @@ type Runtime={store:Pick<PostgresListingModerationStore,'list'|'inspect'|'decide
 type Event={event:'admin_listing_moderation';requestId:string;status:number;durationMs:number;code?:string};
 export function createAdminListingModerationHandler(config:{origin:string},runtime:()=>Promise<Runtime>|Runtime,audit:(event:Event)=>void=event=>console.info(JSON.stringify(event))){
  return async(request:Request)=>{
-  const requestId=randomUUID(),started=Date.now();let status=503,code:string|undefined,photoSlot=false;
+  const requestId=randomUUID(),started=Date.now();let status=503,code:string|undefined,releaseRead:(()=>void)|undefined;
   const reply=(body:unknown,next:number,headers?:Record<string,string>)=>{status=next;return authJson(body,next,{'X-Request-ID':requestId,...headers});};
   try{
    if(request.method!=='POST'&&request.method!=='PUT')throw new AuthRequestError(405,'METHOD_NOT_ALLOWED');
@@ -34,8 +35,10 @@ export function createAdminListingModerationHandler(config:{origin:string},runti
    // This admission pre-check is not authority: readPhoto rechecks role/session/revision inside its transaction.
    const principal=await state.identity.resolveSession(token);if(!principal)throw new AuthRequestError(401,'UNAUTHENTICATED');
    if(principal.role!=='admin'||principal.id!==admin)throw new AdminAccessError();
-   if(productionMediaAdmission.reads>=4)throw new AuthRequestError(503,'MEDIA_BUSY');productionMediaAdmission.reads++;photoSlot=true;
+   releaseRead=await acquireMediaReadSlot(productionMediaAdmission,ip,request.signal);
+   if(!releaseRead)throw new AuthRequestError(503,'MEDIA_BUSY');request.signal.throwIfAborted();
    const result=await state.store.readPhoto(token,id,file,admin);
+   request.signal.throwIfAborted();
    if(result.record.mimeType!=='image/webp'||result.bytes.length!==result.record.size||result.bytes.length<12||result.bytes.length>normalizedImageByteLimit)throw new Error('Invalid private image reply');
    status=200;const headers=new Headers(authJson({},200,{'X-Request-ID':requestId}).headers);
    headers.set('Content-Type','image/webp');headers.set('Content-Length',String(result.bytes.length));headers.set('Content-Disposition','inline; filename="photo.webp"');
@@ -47,6 +50,6 @@ export function createAdminListingModerationHandler(config:{origin:string},runti
    if(error instanceof ListingDraftInputError||error instanceof ListingModerationInputError)error=new AuthRequestError(422,'INVALID_INPUT');
    code=error instanceof AuthRequestError?error.code:'MODERATION_UNAVAILABLE';const next=error instanceof AuthRequestError?error.status:503;
    return reply({error:{code}},next,next===429?{'Retry-After':'900'}:code==='MEDIA_BUSY'?{'Retry-After':'1'}:next===405?{Allow:'POST, PUT'}:undefined);
-  }finally{if(photoSlot)productionMediaAdmission.reads--;audit({event:'admin_listing_moderation',requestId,status,durationMs:Date.now()-started,code});}
+  }finally{releaseRead?.();audit({event:'admin_listing_moderation',requestId,status,durationMs:Date.now()-started,code});}
  };
 }

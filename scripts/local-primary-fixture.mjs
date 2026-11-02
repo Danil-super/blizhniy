@@ -1,7 +1,7 @@
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {randomBytes,createHash} from 'node:crypto';
-import {mkdir,writeFile,readFile} from 'node:fs/promises';
+import {mkdir,writeFile,readFile,chmod} from 'node:fs/promises';
 import {realpathSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
@@ -13,6 +13,9 @@ import {createDefaultCabinetProfile} from '../src/lib/cabinet-profile.ts';
 import {localPrimaryImage,readLocalPrimaryState,validateLocalPrimaryState,validateLocalPrimaryContainer,validateLocalPrimaryContainerDefinition} from './local-primary-config.mjs';
 import {getInteractionGrantPlan} from './grant-interactions.mjs';
 import {getLocalTelegramMigrations,withoutTransaction} from './local-telegram-migrations.mjs';
+import {getLocalDeletionMigrations} from './local-deletion-schema.mjs';
+import {getLocalCheckoutEditMigrations} from './local-checkout-edit-schema.mjs';
+import {getLocalApplicationContactMigrations} from './local-application-contact-schema.mjs';
 
 const root=realpathSync(fileURLToPath(new URL('..',import.meta.url))),run=promisify(execFile);
 export const stateDirectory=join(homedir(),'.local','state','blizhniy','local-primary-private');
@@ -58,7 +61,7 @@ export async function prepareLocalPrimaryFixture(){
 export async function verifyLocalPrimarySchema(state){
  const owner=new pg.Client(localPrimaryDatabaseConfig(state,'owner'));await owner.connect();
  try{
-  const extras=[...await getLocalPrimaryExtraMigrations(),...await getLocalTelegramMigrations()];
+  const extras=[...await getLocalPrimaryExtraMigrations(),...await getLocalTelegramMigrations(),...await getLocalDeletionMigrations(),...await getLocalCheckoutEditMigrations(),...await getLocalApplicationContactMigrations()];
   const expected=[...getBootstrapPlan({includeListingContactMethod:true}).map(({name,sha256})=>({name,sha256})),...extras.map(({name,sha256})=>({name,sha256}))];
   const journal=(await owner.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
   if(JSON.stringify(journal)!==JSON.stringify(expected))throw Error('Local schema changed; data preserved, automatic migration refused');
@@ -78,7 +81,7 @@ export async function initializeLocalPrimarySchema(state){
   await bootstrapPostgres(owner,`127.0.0.1:${state.database}`,{includeListingContactMethod:true});
   await owner.query('begin');
   try{
-   for(const {name,source,sha256} of [...await getLocalPrimaryExtraMigrations(),...await getLocalTelegramMigrations()]){
+   for(const {name,source,sha256} of [...await getLocalPrimaryExtraMigrations(),...await getLocalTelegramMigrations(),...await getLocalDeletionMigrations(),...await getLocalCheckoutEditMigrations(),...await getLocalApplicationContactMigrations()]){
     await owner.query(source.replace(/^begin;\r?\n/m,'').replace(/commit;\s*$/,''));
     await owner.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[name,sha256]);
    }
@@ -106,7 +109,9 @@ export async function initializeLocalPrimarySchema(state){
   await owner.query('grant select,insert on app.listing_blocks,app.listing_block_mail to blizhniy_runtime;grant insert on app.notifications to blizhniy_runtime');
   await owner.query('grant select on app.listing_owner_removals to blizhniy_runtime;grant insert(listing_id,owner_id,removed_revision) on app.listing_owner_removals to blizhniy_runtime');
   await owner.query('grant select on app.application_withdrawals to blizhniy_runtime;grant insert(application_id,owner_id,withdrawn_revision) on app.application_withdrawals to blizhniy_runtime');
+  await owner.query('grant insert(application_id,recipient_id) on app.application_contact_views to blizhniy_runtime');
   await owner.query(withoutTransaction(await readFile(new URL('../database/permissions/telegram-phone.sql',import.meta.url),'utf8')));
+  await owner.query(withoutTransaction(await readFile(new URL('../database/permissions/account-deletion.sql',import.meta.url),'utf8')));
   await owner.query('grant update(status) on app.listings to blizhniy_runtime');
   for(const table of ['work_publications','service_publications'])await owner.query(`grant insert(author_id,kind,creation_key,form,city_id,profession_id),update(form,city_id,profession_id,revision,updated_at) on app.${table} to blizhniy_runtime`);
   for(const table of ['work_publication_photos','service_publication_photos'])await owner.query(`grant insert(publication_id,media_id,position),delete on app.${table} to blizhniy_runtime`);
@@ -132,6 +137,7 @@ export async function seedLocalPrimaryAccounts(owner,state){
   await writeFile(join(stateDirectory,'mail-key.bin'),randomBytes(32),{mode:0o600,flag:'wx'});
   await run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','30','-subj','/CN=127.0.0.1','-addext','subjectAltName=IP:127.0.0.1','-addext','basicConstraints=critical,CA:TRUE',
    '-keyout',join(stateDirectory,'tls-key.pem'),'-out',join(stateDirectory,'tls-cert.pem')],{timeout:15000,maxBuffer:65536});
+  await chmod(join(stateDirectory,'tls-cert.pem'),0o644);
   await writeFile(join(stateDirectory,'ready.json'),JSON.stringify({version:1,containerId:state.containerId}),{mode:0o600,flag:'wx'});
 }
 export function localPrimaryDatabaseConfig(state,role='runtime'){

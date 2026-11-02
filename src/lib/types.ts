@@ -95,6 +95,7 @@ export type Listing = {
 };
 
 export type JobVacancy = {
+  professionId?: string;
   id: string;
   employerType?: "organization" | "ip" | "person" | string;
   organization: string;
@@ -132,6 +133,7 @@ export type JobVacancy = {
 };
 
 export type WorkRequest = {
+  professionId?: string;
   id: string;
   author: string;
   title: string;
@@ -154,6 +156,7 @@ export type WorkRequest = {
 };
 
 export type SpecialistProfile = {
+  professionId?: string;
   id: string;
   name: string;
   profession: string;

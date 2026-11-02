@@ -6,6 +6,7 @@ type Options={signal?:AbortSignal};
 export class ListingFormClientError extends Error{
  readonly code:string;
  constructor(code:string){super(code==='INVALID_INPUT'?'Проверьте поля формы: категорию, город, контакты и параметры аренды.':code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':
+  code==='CHECKOUT_ACTIVE'?'Для этой публикации уже начата оплата. Вернитесь к ней в личном кабинете; после завершения оплаты можно сохранить изменения.':
   code==='DRAFT_CHANGED'?'Черновик изменён. Сверьте сохранённую версию.':code==='RATE_LIMITED'?'Слишком много запросов. Попробуйте позже.':'Результат не подтверждён. Проверьте сохранённую версию перед повтором.');this.code=code;}
 }
 export function parseListingFormSnapshot(value:unknown,expectedId:string):ListingFormSnapshot{
@@ -28,7 +29,7 @@ async function request(owner:string,id:string,revision:string|null,form:ListingF
    size+=part.value.byteLength;if(size>2097152)throw new Error('Reply too large');text+=decoder.decode(part.value,{stream:true});}
   }finally{try{if(!complete)await reader.cancel();}finally{reader.releaseLock();}}
   const payload=JSON.parse(text);
-  if(!response.ok){const codes:Record<string,number>={UNAUTHENTICATED:401,DRAFT_NOT_FOUND:404,DRAFT_CHANGED:409,INVALID_INPUT:422,RATE_LIMITED:429},code=payload?.error?.code;
+  if(!response.ok){const codes:Record<string,number>={UNAUTHENTICATED:401,DRAFT_NOT_FOUND:404,DRAFT_CHANGED:409,CHECKOUT_ACTIVE:409,INVALID_INPUT:422,RATE_LIMITED:429},code=payload?.error?.code;
    throw new ListingFormClientError(Object.hasOwn(codes,code)&&codes[code]===response.status?code:'UNKNOWN');}
   return parseListingFormSnapshot(payload,id);
  }catch(error){if(error instanceof ListingFormClientError)throw error;throw new ListingFormClientError('UNKNOWN');}

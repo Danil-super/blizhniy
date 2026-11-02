@@ -4,6 +4,7 @@ import type { AuthRateLimiter } from "./auth-http";
 import type { CredentialAction } from "./auth-http";
 import { issueBrowserProof, readBrowserProof, clearBrowserProofCookie } from "./account-browser-proof.ts";
 import { createAccountSessionCookie, readAccountSessionToken } from "./account-cookie";
+import { createDataSubjectCookie, readDataSubjectToken } from './data-subject-cookie';
 import { getTrustedProxyIp } from "./trusted-proxy-ip";
 import { normalizeMailAddress } from "./timeweb-mail";
 import { RegistrationInputError } from "./registration";
@@ -75,6 +76,7 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
     let proofCookie: string | undefined;
     let proofExpiry: number | undefined;
     let proofBoundary = false;
+    let clearRightsCookie = false;
     const respond = (body: unknown, nextStatus: number, headers?: Record<string, string>) => {
       status = nextStatus;
       const response = authJson(body, status, { "X-Request-ID": requestId, ...headers });
@@ -82,6 +84,7 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
         proofCookie = clearBrowserProofCookie(); proofExpiry = 0;
       }
       if (proofCookie) response.headers.append("Set-Cookie", proofCookie);
+      if (clearRightsCookie) response.headers.append('Set-Cookie', createDataSubjectCookie('', 0));
       if (proofExpiry !== undefined) response.headers.set("X-Blizhniy-Human-Proof", String(proofExpiry));
       return response;
     };
@@ -92,16 +95,21 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
       const ip = getTrustedProxyIp(request.headers);
       if (!ip) throw new AuthRequestError(403, "UNTRUSTED_INGRESS");
       const presented = readAccountSessionToken(request);
+      const rightsToken = readDataSubjectToken(request);
       // Optional UI discovery only. Resource authorization still resolves the HttpOnly cookie.
       const anonymousView = action === "session" && request.headers.get("x-blizhniy-session-view") === "1";
       if (action === "session" && !presented) {
         if (anonymousView) return respond({ user: null }, 200);
         throw new AuthRequestError(401, "UNAUTHENTICATED");
       }
-      if (action === "logout" && !presented) return respond({ status: "logged_out" }, 200, { "Set-Cookie": createAccountSessionCookie("", 0) });
+      if (action === "logout" && !presented && !rightsToken) {
+        return respond({ status: "logged_out" }, 200, { "Set-Cookie": createAccountSessionCookie("", 0) });
+      }
       const state = await getRuntime();
       if (action === "logout") {
         if (presented) await state.identity.revokeSession(presented);
+        if (rightsToken && rightsToken !== presented) await state.identity.revokeSession(rightsToken);
+        clearRightsCookie = Boolean(rightsToken);
         return respond({ status: "logged_out" }, 200, { "Set-Cookie": createAccountSessionCookie("", 0) });
       }
       const email = typeof input.email === "string" ? input.email : undefined;
@@ -154,6 +162,10 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
         if (!issued) throw new AuthRequestError(401, "INVALID_CREDENTIALS");
         const maxAge = Math.min(8*3600, Math.floor((issued.expiresAt.getTime()-Date.now())/1000));
         if (issued.scope !== "app" || issued.user.isBlocked || maxAge <= 0) throw new Error("Invalid issued session");
+        // A shared browser must not retain another account's rights-only credential.
+        // Failed logins do not consume it; no new cookie is exposed until revocation succeeds.
+        if (rightsToken) await state.identity.revokeSession(rightsToken);
+        clearRightsCookie = Boolean(rightsToken);
         return respond({ status: "authenticated", user: view(issued.user) }, 200, { "Set-Cookie": createAccountSessionCookie(issued.token, maxAge) });
       }
       if (action === "resend") await state.store.resendConfirmation(email!, input.password as string);
