@@ -31,3 +31,17 @@ test('worker does not blindly acknowledge after a lost lease or unknown completi
 test('phone prerequisite creates durable waiting without exhausting retries or treating payment as failed',async()=>{
  const waiting=fixture({queue:{claim:async()=>({...claim,attempts:12})},fulfillment:{fulfill:async()=>{throw Object.assign(Error('Synthetic phone prerequisite'),{code:'P7601'});}}});assert.deepEqual(await waiting.worker.tick(),{state:'deferred',code:'phone_required'});const finish=waiting.calls.find(row=>row[0]==='finish');assert.equal(finish[2],'waiting_phone');assert.equal(finish[3],'phone_required');
 });
+test('refund reservations stop publication retries without erasing capture; phone and unknown errors retain their own outcomes',async()=>{
+ for(const attempts of [1,12])for(const [sql,state,code,ack] of [
+  ['PBR01','blocked','publication_blocked','blocked'],
+  ['P7602','blocked','publication_blocked','blocked'],
+  ['P7601','deferred','phone_required','waiting_phone'],
+  ['42P01',attempts===12?'blocked':'deferred',attempts===12?'attempts_exhausted':'processing_unavailable',attempts===12?'blocked':'retry'],
+ ]){
+  const f=fixture({queue:{claim:async()=>({...claim,attempts})},fulfillment:{fulfill:async()=>{throw Object.assign(Error('private financial fixture'),{code:sql});}}});
+  assert.deepEqual(await f.worker.tick(),{state,code});
+  assert.deepEqual(f.calls.map(row=>row[0]),['GET','finish']);
+  assert.deepEqual(f.calls[1],['finish',{...claim,attempts},ack,code]);
+  assert.equal(JSON.stringify(f.calls).includes('private'),false);
+ }
+});

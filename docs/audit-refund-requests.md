@@ -1,6 +1,6 @@
 # F02: неизменяемый запрос и первое окно возврата
 
-Локальный инкремент02.11.2026: миграция0037, `PostgresRefundRequestStore`, чистый serializer и отдельный PostgreSQL runner. Только подготовка полного TEST-возврата `listing`/`vacancy`/`workRequest`, без POST, provider refund ID, webhook, runtime GRANT или изменения услуги. Одноразовая БД содержит0001–0025+0036+0037; ручной стенд сохраняет35. Композиция0026–0035 и schema/ACL preflight до включения остаются открытыми.
+Локальный инкремент02.11.2026: миграция0037, `PostgresRefundRequestStore`, чистый serializer и отдельный PostgreSQL runner. Только подготовка полного TEST-возврата `listing`/`vacancy`/`workRequest`, без POST, provider refund ID, webhook, runtime GRANT или изменения услуги. Первоначальная одноразовая БД содержит0001–0025+0036+0037; отдельным последующим прогоном проверен полный состав0001–0037 (`docs/audit-refund-composition.md`). Ручной стенд сохраняет35. Production schema/ACL preflight и активация остаются открытыми.
 
 ## Проверенный внешний контракт
 
