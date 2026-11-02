@@ -1,0 +1,9 @@
+# Готовность первого визита в проверке баннеров
+
+02.11.2026. Повторный GitHub job125414627420 завершился `instrumenty640: actions stay clickable`; предыдущий такой сбой перемежался успешными запусками. Assertions не отключались. В старом CI не было DOM hit-target диагностики, поэтому точный перекрывающий элемент в том запуске не сохранён.
+
+Управляемое воспроизведение на настоящем локальном production Next: viewport640×1000, собственный новый browser context, задерживаются только JS chunks того же loopback origin. SSR и изображение готовы, cookie-panel ещё нет. Оба существующих trial clicks проходят при scrollY0. После освобождения JS реальная cookie-panel монтируется и оба center-hit указывают на `cookie-notice-heading`, `actionsClickable=false`. После ожидания видимого cookie-region и тех же trial clicks scrollY257, оба center-hit снова указывают на ссылки. Cookie-panel остаётся видимой; нет force click, установки acknowledgement, скрытия UI, sleep или повтора assertion. Независимый инженер воспроизвёл механизм на production3045 и dev3100.
+
+Исправление `scripts/check-category-heroes.mjs`: в обоих циклах перед прежними проверками дождаться видимого cookie-region. Это дополнительное условие готовности первого визита, а не замена проверки кнопок. Fresh contexts в этом runner не принимают cookie-notice, поэтому region обязан появляться. Все прежние assertions, viewport, thresholds, trial clicks и browser API center-hit сохранены. При неуспехе дополнительно выводятся только статические hero-action hit-target/geometry для диагностики; данные аккаунтов не читаются.
+
+Полный category runner на изолированном dev того же UI прошёл после изменения. Controlled JS-delay proof, types/lint/floor и `git diff --check` прошли; прежнее предупреждение lint не скрыто. Включение в release требует нового полного CI. UI приложения, cookie storage и workflows не менялись.
