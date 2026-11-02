@@ -1,6 +1,8 @@
 import {assertPrimaryYooKassaBinding,rublesToKopecks,YooKassaBoundaryError,type PrimaryYooKassaBinding} from './yookassa-payment-contract.ts';
 
 export type KnownYooKassaRefund={
+  operationId?:string;
+  paymentCapturedAt?:string;
   payment:PrimaryYooKassaBinding&{providerPaymentId:string};
   providerRefundId:string;
   amount:string;
@@ -21,9 +23,12 @@ export function assertPrimaryYooKassaRefundBinding(expected:KnownYooKassaRefund,
   if(!object(expected)||!object(expected.payment))invalid();
   assertPrimaryYooKassaBinding(expected.payment,now);
   if(typeof expected.payment.providerPaymentId!=='string'||!providerId.test(expected.payment.providerPaymentId)||
+     (expected.operationId!==undefined&&(typeof expected.operationId!=='string'||!providerId.test(expected.operationId)))||
      typeof expected.providerRefundId!=='string'||!providerId.test(expected.providerRefundId)||
      typeof expected.amount!=='string'||!/^(0|[1-9]\d{0,9})\.\d{2}$/.test(expected.amount)||
      rublesToKopecks(expected.amount)>rublesToKopecks(expected.payment.amount))invalid();
+  if(expected.paymentCapturedAt!==undefined&&(!Number.isSafeInteger(now)||
+     timestampNanos(expected.paymentCapturedAt)>BigInt(now+5*60_000)*BigInt(1_000_000)))invalid();
 }
 
 function timestampNanos(value:unknown):bigint{
@@ -42,8 +47,15 @@ export function validatePrimaryYooKassaRefund(payload:unknown,expected:KnownYooK
   if(!Number.isSafeInteger(now)||!object(payload)||payload.id!==expected.providerRefundId||payload.payment_id!==expected.payment.providerPaymentId||
      !object(payload.amount)||payload.amount.value!==expected.amount||payload.amount.currency!=='RUB'||
      (payload.status!=='pending'&&payload.status!=='succeeded'&&payload.status!=='canceled'))invalid();
+  // Initial association with our prepared operation must be proved by provider
+  // metadata, not merely by a coincidentally equal payment ID and amount.
+  if(expected.operationId!==undefined&&(!object(payload.metadata)||payload.metadata.localRefundId!==expected.operationId||
+     payload.metadata.localPaymentId!==expected.payment.id))invalid();
+  if(expected.paymentCapturedAt!==undefined&&capturedAt!==undefined&&
+     timestampNanos(expected.paymentCapturedAt)!==timestampNanos(capturedAt))invalid();
+  const capture=expected.paymentCapturedAt??capturedAt;
   const created=timestampNanos(payload.created_at);
-  if(created>BigInt(now+5*60_000)*BigInt(1_000_000)||(capturedAt!==undefined&&created<timestampNanos(capturedAt)))invalid();
+  if(created>BigInt(now+5*60_000)*BigInt(1_000_000)||(capture!==undefined&&created<timestampNanos(capture)))invalid();
   return {id:expected.providerRefundId,paymentId:expected.payment.providerPaymentId,amount:{value:expected.amount,currency:'RUB'},status:payload.status,createdAt:payload.created_at as string};
 }
 
