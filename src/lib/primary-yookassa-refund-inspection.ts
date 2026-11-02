@@ -1,12 +1,12 @@
 import {
-  assertPrimaryYooKassaBinding, validatePrimaryYooKassaPayment, YooKassaBoundaryError,
+  assertPrimaryYooKassaBinding, validatePrimaryYooKassaPayment, validateCaptureTime, YooKassaBoundaryError,
   type PrimaryYooKassaBinding,
 } from './yookassa-payment-contract.ts';
 import {validatePrimaryYooKassaRefund} from './yookassa-refund-contract.ts';
 import {mergePaymentVerification} from './payment-verification-contract.ts';
 import {createYooKassaTransport, type YooKassaRequestBudget} from './yookassa-transport.ts';
 
-type KnownPayment = PrimaryYooKassaBinding & {providerPaymentId: string};
+type KnownPayment = PrimaryYooKassaBinding & {providerPaymentId: string; paymentCapturedAt?: string};
 type Merchant = {shopId: string; isTest: boolean; secretKey: string};
 export type RefundInspectionEvidence = {
   paymentId: string;
@@ -76,16 +76,18 @@ export function createPrimaryYooKassaRefundInspection(config: Merchant, fetcher:
     }
     const paymentPath = `payments/${expected.providerPaymentId}`;
     const before = inspectPayment(await get(paymentPath), expected);
+    const initial = mergePaymentVerification(expected.paymentCapturedAt === undefined ? null : {status: 'succeeded', capturedAt: expected.paymentCapturedAt},
+      {status: before.payment.status, capturedAt: before.payment.capturedAt ?? null});
     const history = await get(`refunds?payment_id=${expected.providerPaymentId}&limit=100`);
-    const canceledRefundCount = inspectHistory(history, expected, before.payment.capturedAt);
+    const canceledRefundCount = inspectHistory(history, expected, initial.capturedAt ?? undefined);
     const after = inspectPayment(await get(paymentPath), expected);
     const merged = mergePaymentVerification(
-      {status: before.payment.status, capturedAt: before.payment.capturedAt ?? null},
+      initial,
       {status: after.payment.status, capturedAt: after.payment.capturedAt ?? null},
     );
     // If capture was absent initially, the final observation must still constrain
     // every history row; never replace a missing provider timestamp with now.
-    if (!before.payment.capturedAt && merged.capturedAt) inspectHistory(history, expected, merged.capturedAt);
+    if (!initial.capturedAt && merged.capturedAt) inspectHistory(history, expected, merged.capturedAt);
     budget.check();
     return {paymentId: expected.providerPaymentId, amount: expected.amount, currency: 'RUB',
       reportedRefundedAmount: after.reportedRefundedAmount, canceledRefundCount, inspectedAt: new Date().toISOString()};
@@ -94,6 +96,7 @@ export function createPrimaryYooKassaRefundInspection(config: Merchant, fetcher:
     async inspect(value: KnownPayment, budget?: YooKassaRequestBudget) {
       const expected = {...value};
       assertPrimaryYooKassaBinding(expected, Date.now());
+      if (expected.paymentCapturedAt !== undefined) validateCaptureTime(expected.paymentCapturedAt, 'succeeded', Date.now());
       if (!expected.providerPaymentId || expected.shopId !== merchant.shopId || expected.isTest !== true ||
           !['listing', 'vacancy', 'workRequest'].includes(expected.targetType)) invalid();
       return budget ? inspectKnown(expected, budget) : transport.withYooKassaRequestBudget(shared => inspectKnown(expected, shared));

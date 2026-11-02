@@ -46,6 +46,18 @@ export class PostgresRefundRequestStore{
  private async captured(tx:PostgresQueries,paymentIntentId:string,providerPaymentId:string,status:string,history=false){
   const verified=(await tx.query<{status:string;id:string;capturedAt:string|null}>('select status,provider_payment_id as id,captured_at as "capturedAt" from app.payment_verifications where intent_id=$1',[paymentIntentId])).rows[0];
   if((status!=='succeeded'&&!(history&&status==='refunded'))||verified?.status!=='succeeded'||verified.id!==providerPaymentId||typeof verified.capturedAt!=='string')fail();
+  return verified.capturedAt;
+ }
+ /** Private read of an already prepared source. Never creates a request or a send window. */
+ async readPrepared(value:unknown){
+  if(!uuid(value))fail();
+  return this.db.transaction(async tx=>{
+   const state=await this.locked(tx,value);if(!state.saved)fail();
+   const paymentCapturedAt=await this.captured(tx,state.purchase.id,state.purchase.providerPaymentId,state.order.status,true);
+   const p=state.purchase;
+   return {request:state.request(state.saved),payment:{id:p.id,targetId:p.targetId,targetType:p.targetType,tariffId:p.tariffId,
+    amount:p.amount,providerPaymentId:p.providerPaymentId,shopId:p.shopId,isTest:p.isTest},paymentCapturedAt};
+  });
  }
  async prepare(value:unknown):Promise<PreparedRefundRequest>{
   if(!uuid(value))fail();

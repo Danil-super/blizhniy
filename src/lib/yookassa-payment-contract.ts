@@ -86,7 +86,7 @@ function validateConfirmationUrl(value: unknown) {
   return value;
 }
 
-function validateCaptureTime(value: unknown, status: YooKassaPaymentStatus, now: number) {
+export function validateCaptureTime(value: unknown, status: YooKassaPaymentStatus, now: number) {
   if (typeof value !== "string" || value.length > 30 || status !== "succeeded") {
     throw new YooKassaBoundaryError("YooKassa capture time is invalid");
   }
