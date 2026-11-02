@@ -46,6 +46,7 @@ jobs:
             detect \
               --source=/repo \
               --redact \
+              --gitleaks-ignore-path=/repo/.gitleaksignore \
               --report-format=sarif \
               --report-path=/repo/security-reports/gitleaks.sarif \
               --exit-code=1
