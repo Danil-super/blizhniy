@@ -17,6 +17,7 @@ function Workspace({owner,visible}:{owner:string;visible:boolean}){
  function display(saved:BookingSnapshot){setSelected(saved);setUnknown(false);setPage(page=>page?{...page,items:page.items.map(item=>item.id===saved.id?{...item,status:saved.status,revision:saved.revision}:item)}:null);}
  function refresh(){if(!selected||!visible)return;void run(async signal=>{const saved=await productionBookings.read(owner,selected.id,{signal});if(!signal.aborted){display(saved);setSuccess('Актуальное состояние загружено.');}});}
  function decide(state:'accepted'|'declined'){if(!visible||!selected||unknown)return;const current=selected;void run(async signal=>{setUnknown(true);const saved=await productionBookings.decide(owner,current.id,current.revision,state,{signal});if(!signal.aborted){display(saved);setSuccess('Решение сохранено.');}});}
+ function cancel(reason:string){if(!visible||!selected||unknown)return;const current=selected;void run(async signal=>{setUnknown(true);const saved=await productionBookings.cancel(owner,current.id,current.revision,reason,{signal});if(!signal.aborted){display(saved);setSuccess('Бронирование отменено. Вторая сторона получила уведомление.');}});}
  return <div hidden={!visible} inert={!visible} className="mt-5 min-w-0" aria-busy={busy}>
   <div className="flex flex-wrap gap-2" role="group" aria-label="Направление бронирований">{([['guest','Мои поездки'],['host','Заявки гостей']] as const).map(([value,label])=>
    <button key={value} type="button" className={bookingButton} aria-pressed={mode===value} disabled={busy||unknown} onClick={()=>{if(visible)void run(async signal=>{await load(value,null,signal);if(!signal.aborted)setSelected(null);});}}>{label}</button>)}
@@ -33,7 +34,7 @@ function Workspace({owner,visible}:{owner:string;visible:boolean}){
    <button type="button" className={`${bookingButton} mt-3`} disabled={busy||unknown} onClick={event=>{openedFrom.current=event.currentTarget;void run(async signal=>{const saved=await productionBookings.read(owner,item.id,{signal});if(!signal.aborted)display(saved);});}}>Подробнее</button>
   </li>)}</ul>}
   {page?.nextCursor&&<button type="button" className={`${bookingButton} mt-4`} disabled={busy||unknown} onClick={()=>void run(signal=>load(mode,page.nextCursor,signal))}>Следующая страница</button>}
-  {selected&&<BookingDetail key={selected.id} value={selected} busy={busy} unknown={unknown} onDecision={decide} onRefresh={refresh} onClose={()=>{setSelected(null);setUnknown(false);setSuccess(null);openedFrom.current?.focus();}}/>}
+  {selected&&<BookingDetail key={selected.id} value={selected} busy={busy} unknown={unknown} onDecision={decide} onCancel={cancel} onRefresh={refresh} onClose={()=>{setSelected(null);setUnknown(false);setSuccess(null);openedFrom.current?.focus();}}/>}
  </div>;
 }
 export function BookingsPanel(){
