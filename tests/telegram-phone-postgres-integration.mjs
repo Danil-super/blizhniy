@@ -1,5 +1,6 @@
 // Opt-in isolated PostgreSQL fixture; never reads dotenv/private stand/remote DB.
 import assert from 'node:assert/strict';import test from 'node:test';
+import {getCabinetMigrationPlan} from '../scripts/cabinet-release-plan.mjs';
 import {getPaymentReconciliationRolePlan,verifyPaymentReconciliationDatabase} from '../scripts/payment-reconciliation-role.mjs';
 import {PostgresDatabase} from '../src/lib/postgres.ts';
 import {testPhonePayments} from './telegram-phone-payment-cases.mjs';
@@ -61,7 +62,14 @@ test('Telegram phone: real SQL uniqueness, sessions, RLS, replacement and public
    }finally{for(const k of keys)if(before[k]===undefined)delete process.env[k];else process.env[k]=before[k];}
   });
   await suite.test('exact financial worker preflight accepts only the complete cabinet suffix and its single new read privilege',async()=>{
-   await owner.query('revoke all on database blizhniy_test from public');
+   // Phone behavior uses all migrations; the worker must still accept only its reviewed release.
+   await owner.query('create database blizhniy_worker_fixture');
+   const workerConfig={...config,database:'blizhniy_worker_fixture'},releaseOwner=new pg.Client(workerConfig);await releaseOwner.connect();
+   try{
+    await bootstrapPostgres(releaseOwner,'127.0.0.1:blizhniy_worker_fixture',{includeListingContactMethod:true});
+    for(const migration of getCabinetMigrationPlan()){await releaseOwner.query(migration.sql);await releaseOwner.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[migration.name,migration.sha256]);}
+    const owner=releaseOwner,config=workerConfig;
+   await owner.query('revoke all on database blizhniy_worker_fixture from public');
    const plan=getPaymentReconciliationRolePlan(config.database,{cabinet:true}),password=randomBytes(24).toString('hex');await owner.query(plan.createRole);await owner.query(`alter role ${plan.role} login password '${password}'`);for(const sql of plan.grants)await owner.query(sql);
    const workerDb=new PostgresDatabase(new pg.Pool({...config,user:plan.role,password,options:'-c search_path=pg_catalog,public',max:2,statement_timeout:8000}));
    const check=()=>verifyPaymentReconciliationDatabase(workerDb,{database:config.database});
@@ -69,6 +77,7 @@ test('Telegram phone: real SQL uniqueness, sessions, RLS, replacement and public
     const last=(await owner.query('select name,sha256 from blizhniy_meta.migrations order by name desc limit 1')).rows[0];await owner.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[last.name,'a'.repeat(64)]);await assert.rejects(check(),/preflight failed/);await owner.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[last.name,last.sha256]);await check();
     await owner.query('delete from blizhniy_meta.migrations where name=$1',[last.name]);await assert.rejects(check(),/preflight failed/);await owner.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[last.name,last.sha256]);await check();
    }finally{await workerDb.close();}
+   }finally{await releaseOwner.end();}
   });
  }finally{if(db)await db.close();if(owner)await owner.end();if(container){const meta=JSON.parse(await docker(['inspect',container]))[0];assert.equal(meta.Config.Labels['blizhniy.telegram-test'],name);await docker(['rm','--force',container]);}}
 });

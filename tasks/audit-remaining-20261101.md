@@ -23,8 +23,8 @@
 | F16 | Проверить production ingress/nonce/reporting и совместимость внешних провайдеров до включения enforce CSP |
 | F17 | Подключить локальный handoff к реальному процессу выпуска; проверить разные сборки, общие сессии/лимиты, единственные workers, старые assets и ресурсный запас |
 | F18 | Усиление rollback установлено с cad3210; остаётся реальная приёмка outage/reboot/cross-build восстановления |
-| QA01 | Сделать настоящий PostgreSQL обязательным CI/release gate. Подготовить конкретный workflow diff для review по CONSTRAINTS.md |
-| DEP-MINIMATCH-20261101 | Совместимое исправление нового moderate build/dev advisory либо отдельное решение владельца об остаточном риске перед релизом. Проверенная текущая ESLint-конфигурация не вызывает уязвимый level2 путь; finding не скрыт |
+| QA01 | Локально добавлен обязательный PG18 gate в существующий validate перед build/package,13 наборов687/687. Точный diff одобрен владельцем10.11; публикация и настоящий GitHub runner ещё не проверены. docs/review/postgres-ci-gate.md |
+| DEP-MINIMATCH-20261101 | Локально исправлен scoped override minimatch11.0.1 только для TypeScript ESLint; RED/GREEN и настоящий parser projectService проверены. Полный audit7→1 moderate, production0. Публикация и CI на GitHub ещё не выполнялись; подробности docs/audit-minimatch-remediation.md |
 | Общая приёмка | Проверки двух российских серверов, TEST-провайдера/SMTP/Telegram, нагрузки и mobile CWV/accessibility, restore PostgreSQL+media, алертов/перезагрузки и наблюдаемой беты |
 
 Локально исправлены и проверены F07,F09–F15,F19–F21. У F16–F18 есть локальная реализация/доказательства, но незавершён production этап. F03 и F02 закрываются частями, полностью завершёнными не объявлены.
@@ -66,3 +66,16 @@
 Локально10.11: F03/0047 — отмена владельцем только undispatched TEST local-fixture-shop. Immutable journal→created/failed, shared intent lock с dispatch, anchor/UNKNOWN не освобождаются. HTTP/UI четырёх типов, readback после потери ответа/focus, редактирование и новая подготовка проверены настоящим compiled browser/SQL. Native2557/2557, PG26/26 (13 новых), прежний payment runner20/20; RED/mutation и review/floor/types/lint/build прошли. Ручная схема39 записей, только SELECT/INSERT(payment_id) нового журнала; старые финансовые ACL неизменны. Production/реальные деньги/компенсационные очереди не включались. Исторический recovery и автоматическая/операторская обработка забытых подготовок открыты. docs/audit-checkout-cancellation.md.
 
 Свежий локальный запуск проверен: HTTPS health/ready200; HTML/Flight кабинета и страницы оплаты содержит BUILD_ID `IRodMtqDHCsG3p4JAqf4T`, совпадающий с `.next/BUILD_ID`. Адрес `https://127.0.0.1:3045`. Graphify10450/30426 и Code Graph2118/6270 обновлены; staged Gitleaks — без находок.
+
+
+## Локальный инкремент DEP-MINIMATCH и QA01 — 10.11.2026
+
+Основа603641a. Scoped override minimatch11.0.1 только у TypeScript ESLint устраняет GHSA-g3hv-75wg-m249. Остальные lock entries сохранены, кроме новой зависимости исправленного matcher. Проверен реальный parser projectService/allowDefaultProject, RED budget и исправленный bounded matcher. Полный audit7→1 moderate/high0/critical0; production0. Оставшийся version-based finding прежнего selector-parser backport не скрыт. docs/audit-minimatch-remediation.md.
+
+Владелец одобрил точный workflow diff только локально. В существующий validate добавлены Chromium и13 последовательных disposable PG18 наборов перед build/package/upload; secrets, permissions, guard, timeout, security/layout/deploy dependencies неизменны. Неверно совмещённый phone/worker fixture разделён на две БД того же owned контейнера: телефон проверяет47, worker только разрешённый32; прежние assertions и финансовый preflight сохранены. docs/review/postgres-ci-gate.md.
+
+Реальные PostgreSQL/browser687/687 за188.2s и native2562/2562 без skips, frozen npm ci, floor/types/lint/build, expiry/watchdog/ZAP shell suites проходят. Единственное прежнее lint-предупреждение targetType. Concurrent build/dev прогон не засчитан; финальные PG и build выполнены последовательно. Ручная схема39 записей и production33 не менялись, provider HTTP не выполнялся. QA01 на выпуске требует реального GitHub runner: local proof не подтверждает его сеть/OS/install time и общий20min budget.
+
+Локальный HTTPS стенд запущен на `https://127.0.0.1:3045` (вход `/__local`): health/ready200, фактический HTML/Flight заказов и откликов совпадает с BUILD_ID `IPkCMMYcCqTUUU-wpETEk`. Push/deploy не выполнялись. Финансы/компенсации, исторический recovery, удаление данных, media cleanup и эксплуатационная приёмка остаются открыты согласно плану.
+
+Graphify10463/30453 и Code Graph2120/6276 обновлены для текущего корня; staged Gitleaks без находок.

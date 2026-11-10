@@ -1,0 +1,29 @@
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -106,6 +106,26 @@
+           bash scripts/test-deploy-watchdog.sh
+           bash scripts/test-check-zap-result.sh
+
++      - name: Run isolated PostgreSQL 18 integration gate
++        run: |
++          set -euo pipefail
++          npx playwright install --with-deps chromium
++          docker --host unix:///var/run/docker.sock pull postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
++          node --experimental-strip-types --test --test-concurrency=1 \
++            tests/postgres-integration.mjs \
++            tests/bootstrap-postgres-integration.mjs \
++            tests/telegram-phone-postgres-integration.mjs \
++            tests/account-deletion-postgres-integration.mjs \
++            tests/profession-catalog-postgres-integration.mjs \
++            tests/primary-search-postgres-integration.mjs \
++            tests/booking-lifecycle-postgres.mjs \
++            tests/payment-reconciliation-deletion-postgres.mjs \
++            tests/placement-refund-approval-postgres.mjs \
++            tests/application-compensation-cases-postgres.mjs \
++            tests/work-owner-actions-postgres.mjs \
++            tests/response-checkout-fence-postgres.mjs \
++            tests/checkout-cancellation-postgres.mjs
++
+       - name: Build the production artifact on GitHub
+         env:
+           BLIZHNIY_BUILD_COMMIT: ${{ github.sha }}
