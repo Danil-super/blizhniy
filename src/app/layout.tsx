@@ -16,6 +16,7 @@ import {ListingWorkflowProvider} from '@/components/listings/ListingWorkflowProv
 import {readTelegramPhoneConfig} from '@/lib/telegram-phone-config';
 import {PhonePlacementProvider} from '@/components/phone/PhonePlacementProvider';
 import {CookieNotice} from '@/components/CookieNotice';
+import {readWorkOwnerActionsEnabled} from '@/lib/work-owner-actions-contract';
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -55,7 +56,7 @@ export default async function RootLayout({
       </head>
       <body className="antialiased">
         <AccountAuthProvider backend={backend}>
-        <ListingWorkflowProvider postmoderation={postmoderation} localSimulation={postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'}>
+        <ListingWorkflowProvider postmoderation={postmoderation} localSimulation={postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'} workOwnerActions={readWorkOwnerActionsEnabled()}>
         <AccountCaptchaProvider expiresAt={proofExpiry}>
         <PhonePlacementProvider>
         <BookingLegacyStorageCleanup />

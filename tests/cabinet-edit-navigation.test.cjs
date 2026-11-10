@@ -26,7 +26,8 @@ function load(relative,{openService=false}={}){
   if(name==='next/link')return {__esModule:true,default:({children,...props})=>{delete props.prefetch;return React.createElement('a',props,children);}};
   if(name.endsWith('/AccountAuthProvider'))return {usePrimaryAccountAuth:()=>({state:'signed-in',userId:owner})};
   if(name.endsWith('/CookieCabinetProfileProvider'))return {CookieCabinetProfileProvider:({children})=>React.createElement('div',{'data-profile-provider':true},children)};
-  if(name.endsWith('/ListingWorkflowProvider'))return {useListingPostmoderation:()=>true,useLocalPaymentSimulation:()=>true};
+  if(name.endsWith('/ListingWorkflowProvider'))return {useListingPostmoderation:()=>true,useLocalPaymentSimulation:()=>true,useWorkOwnerActions:()=>false};
+  if(name==='./WorkOwnerActions')return {WorkOwnerActions:()=>null};
   if(name.endsWith('/PrivateDraftEditor'))return {draftButton:'button'};
   if(name.endsWith('/local-account'))return {notifyAccountSessionChange(){}};
   if(name.endsWith('/client-work-publications'))return {productionWorkPublications:{}};

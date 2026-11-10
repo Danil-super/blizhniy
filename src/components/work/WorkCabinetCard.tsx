@@ -4,9 +4,10 @@ import {BriefcaseBusiness,Building2,MapPin} from 'lucide-react';
 import {StatusBadge} from '@/components/listings/ListingBadges';
 import type {WorkCabinetItem} from '@/lib/work-cabinet-contract';
 import {WorkCabinetPhoto} from './WorkCabinetPhoto';
+import type {ReactNode} from 'react';
 const action='inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 px-3 text-sm font-semibold text-[#0875d1] hover:border-blue-300 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700';
 
-export function WorkCabinetCard({owner,item,onDetails,disabled,showDetails=true}:{owner:string;item:WorkCabinetItem;onDetails:()=>void;disabled:boolean;showDetails?:boolean}){
+export function WorkCabinetCard({owner,item,onDetails,disabled,showDetails=true,ownerActions}:{owner:string;item:WorkCabinetItem;onDetails:()=>void;disabled:boolean;showDetails?:boolean;ownerActions?:ReactNode}){
  const title=item.title||'Без названия',vacancy=item.kind==='vacancy';
  const place=[item.city,item.district].filter(Boolean).join(', ')||'Город не указан';
  const amount=item.amount===null?'По договорённости':`${new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(Number(item.amount))} ₽`;
@@ -26,6 +27,7 @@ export function WorkCabinetCard({owner,item,onDetails,disabled,showDetails=true}
     {showDetails&&<button type="button" className={action} disabled={disabled} onClick={onDetails} aria-label={`Подробнее: ${title}`}>Подробнее</button>}
     <Link href={editHref} prefetch={false} className={action}>Редактировать</Link>
     {item.status==='published'&&<Link href={href} prefetch={false} className={action}>Посмотреть</Link>}
+    {ownerActions}
    </div>
   </div>
  </article>;

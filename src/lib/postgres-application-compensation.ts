@@ -4,7 +4,7 @@ import type {PostgresDatabase,PostgresQueries} from './postgres.ts';
 export class ApplicationCompensationAccessError extends Error {constructor(){super('Application compensation requires reconciliation');this.name='ApplicationCompensationAccessError';}}
 export class ApplicationCompensationBusyError extends Error {constructor(){super('Application compensation participant is busy');this.name='ApplicationCompensationBusyError';}}
 export type ApplicationCompensationCase={paymentIntentId:string;applicationId:string;shopId:string;policyVersion:'paid-response-unread-v1';amount:string;
- fiscalMode:'provider-automatic-full'|'test-without-receipt';reason:'unread-five-days'|'other-selected-unread';eligibleAt:string;deliveredAt:string;
+ fiscalMode:'provider-automatic-full'|'test-without-receipt';reason:'unread-five-days'|'other-selected-unread'|'customer-closed-unread';eligibleAt:string;deliveredAt:string;
  contactViewAt:string|null;selectedApplicationId:string|null;createdAt:string};
 type Source={facts:ApplicationCompensationFacts;observedAt:string};
 const columns=`payment_intent_id as "paymentIntentId",application_id as "applicationId",merchant_shop_id as "shopId",policy_version as "policyVersion",amount::text,
