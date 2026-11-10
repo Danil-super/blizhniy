@@ -5,6 +5,7 @@ import {PostgresPaymentIntentStore} from './postgres-payment-intents.ts';
 import {describeFullPlacementRefund,parsePlacementRefundApproval,type PlacementRefundFiscalMode} from './placement-refund-approval.ts';
 import {validateCaptureTime} from './yookassa-payment-contract.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres.ts';
+import type {RefundTransactionAdmission} from './postgres-refund-dispatch.ts';
 export class RefundApprovalAccessError extends Error{constructor(){super('Refund approval unavailable');this.name='RefundApprovalAccessError';}}
 export class RefundApprovalConflictError extends Error{constructor(){super('Refund approval already exists');this.name='RefundApprovalConflictError';}}
 export class RefundApprovalBusyError extends Error{constructor(){super('Refund approval participant busy');this.name='RefundApprovalBusyError';}}
@@ -65,8 +66,9 @@ export class PostgresRefundApprovalStore {
  }
  /** Trusted worker only. Durable approval survives the approving browser session. */
  read(value:unknown){const id=parseListingDraftId(value);return this.db.transaction(tx=>this.approval(tx,id));}
- async assertDispatch(value:unknown){const id=parseListingDraftId(value);return this.db.transaction(async tx=>{
+ async assertDispatch(value:unknown,assertActive?:RefundTransactionAdmission){const id=parseListingDraftId(value);return this.db.transaction(async tx=>{
   const saved=await this.approval(tx,id);await this.source(tx,saved.approval.paymentIntentId,false);
+  await assertActive?.(tx);
   const reservation=(await tx.query<{id:string}>('select id from app.payment_refund_reservations where payment_intent_id=$1',[saved.approval.paymentIntentId])).rows[0];
   if(reservation?.id!==saved.approval.id)fail();
  });}

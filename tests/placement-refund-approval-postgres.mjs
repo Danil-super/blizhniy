@@ -7,6 +7,7 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {readFile,readdir} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import pg from 'pg';
+import {testPlacementRefundQueue} from './placement-refund-queue-cases.mjs';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
 const name='blizhniy-refund-approval-'+randomBytes(8).toString('hex'),label='blizhniy.refund-approval',password=randomBytes(24).toString('hex');
@@ -41,14 +42,15 @@ test('full TEST placement refund: durable authenticated administrator approval',
    await admin.query("insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at) values($1,$2,'app',0,clock_timestamp()+interval '1 hour')",[hashSessionToken(token),id]);
   }
   const [operator,other,ordinary]=users;
-  async function purchase({receipt=false,succeeded=true,capturedAt:capturedOverride=null}={}){
-   const targetId=(await admin.query("insert into app.listings(author_id,listing_type,category_id,city_id,title,description,contact_phone,created_at) select $1,'sell',c.id,city.id,'Синтетическая публикация','Синтетическое описание для проверки возврата.','+79990000000',clock_timestamp()-interval '2 minutes' from app.categories c cross join app.cities city returning id",[ordinary.id])).rows[0].id;
-   const id=randomUUID(),providerPaymentId=randomUUID(),binding={id,ownerId:ordinary.id,targetType:'listing',targetId,targetRevision:'1',tariffId:'listing-publication',amount:'199.00',durationDays:30,shopId:merchant.shopId,isTest:true};
-   const metadata={localPaymentId:id,targetId,targetType:'listing',tariffId:binding.tariffId};
+  async function purchase({receipt=false,succeeded=true,capturedAt:capturedOverride=null,scope=merchant,kind='listing',payerId=ordinary.id}={}){
+   const targetId=kind==='listing'?(await admin.query("insert into app.listings(author_id,listing_type,category_id,city_id,title,description,contact_phone,created_at) select $1,'sell',c.id,city.id,'Синтетическая публикация','Синтетическое описание для проверки возврата.','+79990000000',clock_timestamp()-interval '2 minutes' from app.categories c cross join app.cities city returning id",[payerId])).rows[0].id:
+    (await admin.query('insert into app.work_publications(author_id,kind,creation_key,form) values($1,$2,$3,$4) returning id',[payerId,kind,randomUUID(),{kind,title:'Синтетическая публикация'}])).rows[0].id;
+   const id=randomUUID(),providerPaymentId=randomUUID(),binding={id,ownerId:payerId,targetType:kind,targetId,targetRevision:'1',tariffId:'listing-publication',amount:'199.00',durationDays:30,shopId:scope.shopId,isTest:true};
+   const metadata={localPaymentId:id,targetId,targetType:kind,tariffId:binding.tariffId};
    const requestBody=JSON.stringify({amount:{value:'199.00',currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:'https://fixture.example.invalid/return'},metadata,...(receipt?{receipt:{customer:{email:'receipt@example.invalid'},internet:true,items:[{description:'Размещение',quantity:1,amount:{value:'199.00',currency:'RUB'},vat_code:1,payment_mode:'full_payment',payment_subject:'service'}]}}:{})});
    await ownerDb.transaction(async tx=>{
     await new PostgresPaymentIntentStore(ownerDb).persistInTransaction(tx,{...binding,requestBody});
-    await tx.query('insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision) values($1,$2,$3,$4,$5,1)',[id,ordinary.id,randomUUID(),'listing',targetId]);
+    await tx.query('insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision) values($1,$2,$3,$4,$5,1)',[id,payerId,randomUUID(),kind,targetId]);
     await tx.query('insert into app.payment_dispatch_anchors(intent_id) values($1)',[id]);await tx.query('insert into app.payment_provider_links(intent_id,provider_payment_id) values($1,$2)',[id,providerPaymentId]);
    });
    const capturedAt=capturedOverride??new Date(Date.now()-60000).toISOString();if(succeeded){await admin.query("update app.payment_orders set status='succeeded' where id=$1",[id]);await admin.query("insert into app.payment_verifications(intent_id,provider_payment_id,status,captured_at) values($1,$2,'succeeded',$3)",[id,providerPaymentId,capturedAt]);}
@@ -191,6 +193,7 @@ test('full TEST placement refund: durable authenticated administrator approval',
    await assert.rejects(processor.process(randomUUID()),{name:'RefundApprovalAccessError'});assert.equal(calls,0);
    assert.equal((await admin.query('select id from app.payment_refund_reservations where payment_intent_id=$1',[item.id])).rows[0].id,legacy);
   });
+  await testPlacementRefundQueue(suite,{admin,ownerDb,purchase,load,operator,merchant});
  }finally{
   await Promise.allSettled([db?.close(),ownerDb?.close(),admin?.end()]);
   if(container){const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);await docker(['rm','--force',container]);}
