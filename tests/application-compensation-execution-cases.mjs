@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import pg from 'pg';
 import {testApplicationCompensationQueue} from './application-compensation-queue-cases.mjs';
+import {testApplicationCompensationDiscovery} from './application-compensation-discovery-cases.mjs';
 
 export async function testApplicationCompensationExecution(suite,{admin,ownerDb,store,merchant,purchase,view,load}) {
  for(const file of ['0044-work-owner-actions.sql','0045-customer-closure-compensation.sql','0046-response-checkout-fence.sql','0047-checkout-cancellation.sql','0048-application-compensation-refunds.sql'])await admin.query(await readFile(new URL('../database/migrations/'+file,import.meta.url),'utf8'));
@@ -37,7 +38,7 @@ export async function testApplicationCompensationExecution(suite,{admin,ownerDb,
   grant insert(operation_id,merchant_shop_id) on app.payment_refund_effects to compensation_refund_worker;
   grant execute on function app.lock_application_compensation_source(uuid,text),app.refund_target_admitted(uuid,uuid) to compensation_refund_worker`);
  const worker=new PostgresDatabase(new pg.Pool({...admin.options,user:'compensation_refund_worker',password:workerPassword,max:5}));
- async function provider(item){
+ async function provider(item,scope=merchant){
   const original=JSON.parse(item.requestBody),amount=original.amount.value,capturedAt=(await admin.query('select captured_at from app.payment_verifications where intent_id=$1',[item.id])).rows[0].captured_at;
   const calls=[],state={status:'succeeded',losePost:false,postHook:null,refundId:randomUUID(),createdAt:new Date().toISOString()};
   const refund=()=>({id:state.refundId,payment_id:item.providerPaymentId,amount:{value:amount,currency:'RUB'},status:state.status,created_at:state.createdAt,metadata:{localRefundId:item.id,localPaymentId:item.id}});
@@ -49,11 +50,11 @@ export async function testApplicationCompensationExecution(suite,{admin,ownerDb,
     if(state.postHook)await state.postHook();if(state.losePost)throw new TypeError('Synthetic uncertain refund response');return Response.json(refund());
    }
    assert.equal(init.method,'GET');
-   if(url==='https://api.yookassa.ru/v3/payments/'+item.providerPaymentId)return Response.json({id:item.providerPaymentId,amount:original.amount,status:'succeeded',paid:true,test:true,refundable:true,captured_at:capturedAt,recipient:{account_id:merchant.shopId},metadata:original.metadata});
+   if(url==='https://api.yookassa.ru/v3/payments/'+item.providerPaymentId)return Response.json({id:item.providerPaymentId,amount:original.amount,status:'succeeded',paid:true,test:true,refundable:true,captured_at:capturedAt,recipient:{account_id:scope.shopId},metadata:original.metadata});
    if(url==='https://api.yookassa.ru/v3/refunds?payment_id='+item.providerPaymentId+'&limit=100')return Response.json({type:'list',items:[]});
    assert.equal(url,'https://api.yookassa.ru/v3/refunds/'+state.refundId);return Response.json(refund());
   };
-  return{state,calls,fetcher,processor:createApplicationCompensationRefundProcessor(worker,config,fetcher)};
+  return{state,calls,fetcher,processor:createApplicationCompensationRefundProcessor(worker,{...config,...scope},fetcher)};
  }
  const order=async item=>(await admin.query('select status from app.payment_orders where id=$1',[item.id])).rows[0].status;
  const effects=async item=>(await admin.query('select count(*)::int as n from app.application_compensation_refunds where payment_intent_id=$1',[item.id])).rows[0].n;
@@ -162,5 +163,6 @@ export async function testApplicationCompensationExecution(suite,{admin,ownerDb,
    }finally{await admin.query('grant execute on function app.refund_target_admitted(uuid,uuid) to compensation_refund_worker;grant select on app.application_compensation_cases,app.application_compensation_refunds to compensation_refund_worker');}
   });
   await testApplicationCompensationQueue(suite,{admin,db:worker,store,merchant,config,purchase,provider,load,effects,notifications});
+  await testApplicationCompensationDiscovery(suite,{admin,db:worker,ownerDb,purchase,provider,load});
  }finally{await worker.close();}
 }
