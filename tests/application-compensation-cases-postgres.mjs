@@ -7,6 +7,7 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {readFile,readdir} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import pg from 'pg';
+import {testApplicationCompensationExecution} from './application-compensation-execution-cases.mjs';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
 const name='blizhniy-compensation-'+randomBytes(8).toString('hex'),label='blizhniy.compensation',password=randomBytes(24).toString('hex');
@@ -175,6 +176,7 @@ test('paid-response compensation cases serialize with actual contact disclosure 
    await assert.rejects(db.query('insert into app.application_compensation_cases(payment_intent_id,merchant_shop_id) values($1,$2)',[item.id,merchant.shopId]),{code:'23514'});
    assert.equal(await store.read(item.id),null);
   });
+  await testApplicationCompensationExecution(suite,{admin,db,ownerDb,store,merchant,purchase,view,load});
  }finally{
   await db?.close();await ownerDb?.close();await admin?.end();
   if(container){const meta=JSON.parse(await docker(['inspect',container]))[0];assert.equal(meta.Id,container);assert.equal(meta.Config.Labels[label],name);await docker(['rm','--force','--volumes',container]);}

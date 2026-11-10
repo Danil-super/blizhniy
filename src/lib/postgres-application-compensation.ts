@@ -14,9 +14,10 @@ const columns=`payment_intent_id as "paymentIntentId",application_id as "applica
 /** Private TEST intake, not a browser capability. No provider, financial UPDATE or retries. */
 export class PostgresApplicationCompensationStore {
  private readonly shopId:string;
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,merchant:{shopId:string;isTest:boolean}){
+ private readonly db:Pick<PostgresDatabase,'transaction'>;
+ constructor(db:Pick<PostgresDatabase,'transaction'>,merchant:{shopId:string;isTest:boolean}){
   if(typeof window!=='undefined'||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw new ApplicationCompensationAccessError();
-  this.shopId=merchant.shopId;
+  this.db=db;this.shopId=merchant.shopId;
  }
  private async saved(tx:PostgresQueries,id:string){
   return(await tx.query<ApplicationCompensationCase>(`select ${columns} from app.application_compensation_cases where payment_intent_id=$1 and merchant_shop_id=$2`,[id,this.shopId])).rows[0]??null;

@@ -24,7 +24,7 @@ export function createPrimaryRefundDispatcher(db: Pick<PostgresDatabase, 'transa
       if (original.candidateId) return journal.reconcile(original.request.operationId, original.candidateId);
       // Do not treat our own unresolved attempt as a new purchase/refund. A retry
       // must recover the SAME key/bytes, even if the original send is now pending.
-      if (!original.attempted) await inspection.inspect({...original.payment, paymentCapturedAt: original.paymentCapturedAt});
+      if (!original.attempted) await (original.payment.targetType === 'application' ? inspection.inspectCompensation : inspection.inspect)({...original.payment, paymentCapturedAt: original.paymentCapturedAt});
       const key = refundDispatchSourceKey(original);
       let attemptId: string | undefined;
       let payload: unknown;

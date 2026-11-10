@@ -53,7 +53,7 @@ function inspectHistory(payload: unknown, expected: KnownPayment, capturedAt?: s
   return ids.size;
 }
 
-/** Read-only TEST placement evidence. No permission, POST, persistence or service effects.
+/** Read-only TEST captured-payment evidence. No permission, POST, persistence or service effects.
  * A provider operation can still race the final GET; this is not a balance guarantee.
  * Source: https://yookassa.ru/developers/api/yookassa-openapi-specification.yaml
  */
@@ -92,14 +92,16 @@ export function createPrimaryYooKassaRefundInspection(config: Merchant, fetcher:
     return {paymentId: expected.providerPaymentId, amount: expected.amount, currency: 'RUB',
       reportedRefundedAmount: after.reportedRefundedAmount, canceledRefundCount, inspectedAt: new Date().toISOString()};
   }
-  return {
-    async inspect(value: KnownPayment, budget?: YooKassaRequestBudget) {
+  async function inspect(value: KnownPayment, budget: YooKassaRequestBudget | undefined, compensation: boolean) {
       const expected = {...value};
       assertPrimaryYooKassaBinding(expected, Date.now());
       if (expected.paymentCapturedAt !== undefined) validateCaptureTime(expected.paymentCapturedAt, 'succeeded', Date.now());
       if (!expected.providerPaymentId || expected.shopId !== merchant.shopId || expected.isTest !== true ||
-          !['listing', 'vacancy', 'workRequest'].includes(expected.targetType)) invalid();
+          !(compensation ? expected.targetType === 'application' : ['listing', 'vacancy', 'workRequest'].includes(expected.targetType))) invalid();
       return budget ? inspectKnown(expected, budget) : transport.withYooKassaRequestBudget(shared => inspectKnown(expected, shared));
-    },
+  }
+  return {
+    inspect: (value: KnownPayment, budget?: YooKassaRequestBudget) => inspect(value, budget, false),
+    inspectCompensation: (value: KnownPayment, budget?: YooKassaRequestBudget) => inspect(value, budget, true),
   };
 }

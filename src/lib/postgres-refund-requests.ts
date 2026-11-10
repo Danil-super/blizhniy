@@ -5,6 +5,11 @@ import type {PostgresDatabase,PostgresQueries} from './postgres.ts';
 import type {PlacementRefundReservation} from './postgres-placement-refund-reservations.ts';
 export {RefundRequestError} from './refund-request-contract.ts';
 
+export async function applicationRefundAdmitted(tx:PostgresQueries,paymentIntentId:string,operationId:string){
+ const result=await tx.query<{admitted:boolean}>('select app.refund_target_admitted($1,$2) as admitted',[paymentIntentId,operationId]);
+ return result.rows[0]?.admitted===true;
+}
+
 export type PreparedRefundRequest=Omit<PlacementRefundReservation,'id'>&{operationId:string;requestBody:string;idempotenceKey:string};
 type RequestRow={requestBody:string;idempotenceKey:string;createdAt:string;sha256:string};
 type Merchant={shopId:string;isTest:boolean};
@@ -32,7 +37,8 @@ export class PostgresRefundRequestStore{
   if((await tx.query('select id from app.users where id=(select owner_id from app.payment_checkout_intents where id=$1) for update',[reservation.paymentIntentId])).rowCount!==1)fail();
   const purchase=await this.intents.lockKnownInTransaction(tx,reservation.paymentIntentId).catch(error=>{if(error instanceof PaymentIntentError)fail();throw error;});
   const order=(await tx.query<{status:string}>('select status from app.payment_orders where id=$1 for update',[reservation.paymentIntentId])).rows[0];
-  if(!order||!['listing','vacancy','workRequest'].includes(purchase.targetType)||purchase.durationDays===null||!purchase.isTest||purchase.shopId!==this.merchant.shopId||
+  if(!order||!(['listing','vacancy','workRequest'].includes(purchase.targetType)&&purchase.durationDays!==null||
+    purchase.targetType==='application'&&purchase.durationDays===null&&await applicationRefundAdmitted(tx,purchase.id,operationId))||!purchase.isTest||purchase.shopId!==this.merchant.shopId||
    reservation.id!==operationId||reservation.paymentIntentId!==purchase.id||reservation.providerPaymentId!==purchase.providerPaymentId||reservation.amount!==purchase.amount||
    reservation.shopId!==purchase.shopId||reservation.isTest!==purchase.isTest)fail();
   const expected=buildPlacementRefundRequest({operationId,paymentIntentId:purchase.id,providerPaymentId:purchase.providerPaymentId,amount:purchase.amount});
