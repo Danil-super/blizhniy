@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import pg from 'pg';
 import {testApplicationCompensationQueue} from './application-compensation-queue-cases.mjs';
 import {testApplicationCompensationDiscovery} from './application-compensation-discovery-cases.mjs';
+import {testRefundRecovery} from './refund-recovery-cases.mjs';
 
 export async function testApplicationCompensationExecution(suite,{admin,ownerDb,store,merchant,purchase,view,load}) {
  for(const file of ['0044-work-owner-actions.sql','0045-customer-closure-compensation.sql','0046-response-checkout-fence.sql','0047-checkout-cancellation.sql','0048-application-compensation-refunds.sql'])await admin.query(await readFile(new URL('../database/migrations/'+file,import.meta.url),'utf8'));
@@ -164,5 +165,6 @@ export async function testApplicationCompensationExecution(suite,{admin,ownerDb,
   });
   await testApplicationCompensationQueue(suite,{admin,db:worker,store,merchant,config,purchase,provider,load,effects,notifications});
   await testApplicationCompensationDiscovery(suite,{admin,db:worker,ownerDb,purchase,provider,load});
+  await testRefundRecovery(suite,{admin,ownerDb,purchase,provider,load,merchant,config,effects,notifications,expireWindow,store});
  }finally{await worker.close();}
 }
