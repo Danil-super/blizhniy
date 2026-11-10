@@ -3,6 +3,7 @@ import {PostgresRefundRequestStore,applicationRefundAdmitted} from './postgres-r
 import {parseListingDraftId} from './listing-draft-contract.ts';
 import {validateCaptureTime} from './yookassa-payment-contract.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres.ts';
+import type {RefundTransactionAdmission} from './postgres-refund-dispatch.ts';
 
 export class ApplicationCompensationRefundError extends Error {
  constructor(){super('Application compensation refund requires reconciliation');this.name='ApplicationCompensationRefundError';}
@@ -50,16 +51,18 @@ export class PostgresApplicationCompensationRefundStore {
    return id;
   });
  }
- async assertDispatch(value:unknown){
+ async assertDispatch(value:unknown,assertActive?:RefundTransactionAdmission){
   const id=parseListingDraftId(value);
   await this.db.transaction(async tx=>{
    await this.source(tx,id,false);
+   await assertActive?.(tx);
    if((await tx.query('select id from app.payment_refund_reservations where id=$1 and payment_intent_id=$1 and merchant_shop_id=$2',[id,this.merchant.shopId])).rowCount!==1)throw new ApplicationCompensationRefundError();
   });
  }
- async apply(value:unknown):Promise<ApplicationCompensationRefundEffect>{
+ async apply(value:unknown,assertActive?:RefundTransactionAdmission):Promise<ApplicationCompensationRefundEffect>{
   const id=parseListingDraftId(value);
   return this.db.transaction(async tx=>{
+   if(assertActive){await this.source(tx,id,true);await assertActive(tx);}
    await tx.query('insert into app.application_compensation_refunds(payment_intent_id,merchant_shop_id) values($1,$2) on conflict do nothing',[id,this.merchant.shopId]);
    const row=(await tx.query<ApplicationCompensationRefundEffect>(`select ${columns} from app.application_compensation_refunds where payment_intent_id=$1 and merchant_shop_id=$2`,[id,this.merchant.shopId])).rows[0];
    if(!row)throw new ApplicationCompensationRefundError();return row;

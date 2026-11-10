@@ -4,6 +4,7 @@ import type {PostgresDatabase, PostgresQueries} from './postgres.ts';
 
 export type RefundDispatchSource = Awaited<ReturnType<PostgresRefundRequestStore['readPrepared']>>;
 export type LoadedRefundDispatch = RefundDispatchSource & {candidateId: string | null; attempted: boolean};
+export type RefundTransactionAdmission = (tx: PostgresQueries) => Promise<void>;
 export class RefundDispatchError extends Error {
   constructor() { super('Refund dispatch requires reconciliation'); this.name = 'RefundDispatchError'; }
 }
@@ -40,12 +41,13 @@ export class PostgresRefundDispatchStore {
     if (!uuid(operationId)) fail();
     return this.db.transaction(tx => this.known(tx, operationId));
   }
-  async authorize(operationId: unknown, attemptId: unknown) {
+  async authorize(operationId: unknown, attemptId: unknown, assertActive?: RefundTransactionAdmission) {
     if (!uuid(operationId) || !uuid(attemptId)) fail();
     const started = performance.now();
     const result = await this.db.transaction(async tx => {
       const known = await this.known(tx, operationId);
       if (known.candidateId) return {decision: 'recover', known} as const;
+      await assertActive?.(tx);
       // Original window is never reset, including after an uncertain send.
       await tx.query('insert into app.payment_refund_dispatch_anchors(operation_id) values($1) on conflict(operation_id) do nothing', [operationId]);
       const existing = (await tx.query<{operationId: string; sha256: string}>(

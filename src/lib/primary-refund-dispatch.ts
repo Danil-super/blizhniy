@@ -5,6 +5,7 @@ import {PostgresRefundJournalStore} from './postgres-refund-journal.ts';
 import {createYooKassaTransport} from './yookassa-transport.ts';
 import {validatePrimaryYooKassaRefund} from './yookassa-refund-contract.ts';
 import type {PostgresDatabase} from './postgres.ts';
+import type {RefundTransactionAdmission} from './postgres-refund-dispatch.ts';
 type Merchant = Parameters<typeof createPrimaryYooKassaRefundInspection>[0];
 class CandidateDiscovered extends Error {}
 
@@ -18,8 +19,8 @@ export function createPrimaryRefundDispatcher(db: Pick<PostgresDatabase, 'transa
   const store = new PostgresRefundDispatchStore(db, merchant), journal = new PostgresRefundJournalStore(db, merchant, fetcher);
   const transport = createYooKassaTransport({fetch: fetcher, monotonicNow: () => performance.now(), setTimeout, clearTimeout});
   return {
-    async dispatch(operationId: unknown, authorizeRefund: () => Promise<void>) {
-      if (typeof authorizeRefund !== 'function') throw new RefundDispatchError();
+    async dispatch(operationId: unknown, authorizeRefund: () => Promise<void>, assertActive?: RefundTransactionAdmission) {
+      if (typeof authorizeRefund !== 'function' || (assertActive !== undefined && typeof assertActive !== 'function')) throw new RefundDispatchError();
       const original = await store.load(operationId);
       if (original.candidateId) return journal.reconcile(original.request.operationId, original.candidateId);
       // Do not treat our own unresolved attempt as a new purchase/refund. A retry
@@ -35,7 +36,7 @@ export function createPrimaryRefundDispatcher(db: Pick<PostgresDatabase, 'transa
             headers: {Authorization: `Basic ${Buffer.from(`${merchant.shopId}:${merchant.secretKey}`, 'utf8').toString('base64')}`,
               'Content-Type': 'application/json', 'Idempotence-Key': original.request.idempotenceKey},
           }, budget, async shared => {
-            const checkingAt = performance.now(), permitted = await store.authorize(original.request.operationId, randomUUID());
+            const checkingAt = performance.now(), permitted = await store.authorize(original.request.operationId, randomUUID(), assertActive);
             if (refundDispatchSourceKey(permitted.known) !== key) throw new RefundDispatchError();
             if (permitted.decision === 'recover') throw new CandidateDiscovered();
             shared.limit(permitted.remainingMs - Math.max(0, performance.now() - checkingAt));
