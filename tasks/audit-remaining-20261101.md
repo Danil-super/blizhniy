@@ -46,3 +46,7 @@
 Свежий локальный запуск подтверждён: HTTPS ready200, HTML/Flight BUILD_ID `gkxYl3Eq4I_hcjkDMI-Iu`, адрес `https://127.0.0.1:3045`.
 
 Локально10.11: private TEST approval0042 и composition с существующим processor. Полный native2532/2532, focused17/17 с реальным PG18.6; session-expiry mutation обнаружена. HTTP/очередь и права не активированы, ручной стенд остаётся0001–0035+0041. См. `docs/audit-refund-approval.md`.
+
+Локально10.11: добавлена и проверена чистая политика компенсаций откликов (`docs/audit-application-compensation-policy.md`):120 часов от доставки, выбор другого/снятие заказчиком до раскрытия, сохранение уже возникшего основания при позднем просмотре, блокировка legacy_unknown. Это классификация, не финансовое разрешение: следующий этап — атомарный уникальный case и очередь/исполнение/уведомления.
+
+Последняя проверка10.11: native2540/2540, focused-policy8/8, floor/types/lint/build/Gitleaks прошли; Graphify/Code Graph обновлены. Ручной стенд запущен, health/ready200 и совпадение HTML/Flight с BUILD_ID `reCRbpzlsAAinBs0Y1Zya` проверены. Production не менялся.
