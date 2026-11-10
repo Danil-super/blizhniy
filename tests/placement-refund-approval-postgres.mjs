@@ -8,6 +8,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import pg from 'pg';
 import {testPlacementRefundQueue} from './placement-refund-queue-cases.mjs';
+import {testRefundWorkerRole} from './refund-worker-role-cases.mjs';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
 const name='blizhniy-refund-approval-'+randomBytes(8).toString('hex'),label='blizhniy.refund-approval',password=randomBytes(24).toString('hex');
@@ -194,6 +195,7 @@ test('full TEST placement refund: durable authenticated administrator approval',
    assert.equal((await admin.query('select id from app.payment_refund_reservations where payment_intent_id=$1',[item.id])).rows[0].id,legacy);
   });
   await testPlacementRefundQueue(suite,{admin,ownerDb,purchase,load,operator,merchant});
+  await testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,operator,merchant});
  }finally{
   await Promise.allSettled([db?.close(),ownerDb?.close(),admin?.end()]);
   if(container){const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);await docker(['rm','--force',container]);}
