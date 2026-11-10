@@ -38,3 +38,7 @@ test('a decision acknowledgement must match the requested application, recipient
  }
  let calls=0;await assert.rejects(createApplicationsClient(async()=>{calls++;return Response.json(result);}).decide(owner,id,'1','sent'),ApplicationClientError);assert.equal(calls,0);
 });
+
+test('pending response payment remains a known conflict in the client',async()=>{
+ await assert.rejects(createApplicationsClient(async()=>Response.json({error:{code:'RESPONSE_PAYMENT_PENDING'}},{status:409})).decide(owner,id,'1','selected'),error=>error.code==='RESPONSE_PAYMENT_PENDING'&&error.message.includes('Оплата отклика'));
+});
