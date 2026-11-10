@@ -4,6 +4,7 @@ import type {PostgresDatabase,PostgresQueries} from './postgres.ts';
 
 export type ApplicationCompensationClaim={paymentIntentId:string;claimId:string;attempts:number};
 export type ApplicationCompensationJobCode='provider_pending'|'provider_canceled'|'processing_unavailable'|'attempts_exhausted'|'source_unavailable';
+export class ApplicationCompensationLeaseError extends Error {readonly code='PBQ01';constructor(){super('Compensation lease unavailable');this.name='ApplicationCompensationLeaseError';}}
 const codes=['provider_pending','provider_canceled','processing_unavailable','attempts_exhausted','source_unavailable'];
 function validateClaim(claim:ApplicationCompensationClaim){
  if(!claim||!Number.isInteger(claim.attempts)||claim.attempts<1||claim.attempts>12)throw Error('Invalid compensation claim');
@@ -47,6 +48,11 @@ export class PostgresApplicationCompensationQueue {
  async assertActive(claim:ApplicationCompensationClaim,tx:PostgresQueries):Promise<void>{
   const [id,token]=validateClaim(claim);
   await tx.query('select app.assert_application_compensation_job($1,$2,$3)',[this.shopId,id,token]);
+ }
+ async remaining(claim:ApplicationCompensationClaim,tx:PostgresQueries):Promise<number>{
+  const [id,token]=validateClaim(claim);
+  const remaining=(await tx.query<{remaining:number}>('select app.assert_application_compensation_job_remaining($1,$2,$3) as remaining',[this.shopId,id,token])).rows[0]?.remaining;
+  if(!Number.isInteger(remaining)||remaining<1||remaining>300000)throw new ApplicationCompensationLeaseError();return remaining;
  }
  async finish(claim:ApplicationCompensationClaim,state:'completed'|'retry'|'blocked',code:ApplicationCompensationJobCode|null=null):Promise<boolean>{
   const [id,token]=validateClaim(claim);

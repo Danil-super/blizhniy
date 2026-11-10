@@ -28,7 +28,7 @@ Native RED→GREEN для отказа по lease до SQL и TEST-only конф
 
 ## Остаток F02
 
-Нужны private operator interface/role/preflight, единый service/preflight и запуск consumers, совместимость схем/ACL и настоящая TEST/fiscal приёмка. Перед включением application compensation consumer также нужно перенести last-mile deadline и финальную lease-проверку на его отдельный effect path: найденный при review класс задержек ещё не закрыт для прежнего0048/0049 consumer. В этом инкременте он не меняется и не запускается. LIVE/production/реальные возвраты не включались.
+Нужны private operator interface/role/preflight, единый service/preflight и запуск consumers, совместимость схем/ACL и настоящая TEST/fiscal приёмка. Обновление0053 закрывает локально last-mile deadline и финальную lease-проверку application consumer; см. docs/audit-application-compensation-lease.md. Consumer не запускается. LIVE/production/реальные возвраты не включались.
 
 Native2571/2571, полный PG13-наборов758/758 за227.7s. После добавленной collision-защиты финальный placement набор31/31; прочие наборы не затронуты новой SQL-привязкой. Три негативные мутации deadline/final lease/raw-page bound обнаружены, исходники восстановлены побайтно. Дополнительный RED→GREEN проверяет совпадение UUID оплаты отклика и чужого placement approval: recovery не завершает чужую задачу.
 

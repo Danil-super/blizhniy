@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
+import {testApplicationCompensationLease} from './application-compensation-lease-cases.mjs';
 
 export async function testApplicationCompensationQueue(suite,{admin,db,store,merchant,config,purchase,provider,load,effects,notifications}) {
  await admin.query(await readFile(new URL('../database/migrations/0049-application-compensation-queue.sql',import.meta.url),'utf8'));
+ await admin.query(await readFile(new URL('../database/migrations/0053-application-compensation-lease.sql',import.meta.url),'utf8'));
  await admin.query(`grant execute on function app.enqueue_application_compensation_batch(text,integer),app.claim_application_compensation_job(text),
   app.owns_application_compensation_job(text,uuid,uuid),app.finish_application_compensation_job(text,uuid,uuid,text,text),app.assert_application_compensation_job(text,uuid,uuid) to compensation_refund_worker`);
+ await admin.query('grant execute on function app.assert_application_compensation_job_remaining(text,uuid,uuid) to compensation_refund_worker');
  const {PostgresApplicationCompensationQueue}=load('postgres-application-compensation-queue'),{createApplicationCompensationWorker}=load('application-compensation-worker');
  const queue=new PostgresApplicationCompensationQueue(db,merchant);
  const job=async id=>(await admin.query('select * from app.application_compensation_jobs where payment_intent_id=$1',[id])).rows[0];
@@ -135,4 +138,5 @@ export async function testApplicationCompensationQueue(suite,{admin,db,store,mer
   for(const sql of ["select * from app.application_compensation_jobs","update app.application_compensation_jobs set state='completed' where false","delete from app.application_compensation_jobs where false","update app.application_compensation_queue_cursors set after_payment_id=gen_random_uuid() where false"]){await assert.rejects(db.query(sql),{code:'42501'});}
   await assert.rejects(db.query('select app.enqueue_application_compensation_batch($1,101)',[merchant.shopId]),{code:'22023'});
  });
+ await testApplicationCompensationLease(suite,{admin,db,purchase,provider,load,effects,notifications});
 }

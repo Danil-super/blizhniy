@@ -65,7 +65,9 @@ export class PostgresApplicationCompensationRefundStore {
    if(assertActive){await this.source(tx,id,true);await assertActive(tx);}
    await tx.query('insert into app.application_compensation_refunds(payment_intent_id,merchant_shop_id) values($1,$2) on conflict do nothing',[id,this.merchant.shopId]);
    const row=(await tx.query<ApplicationCompensationRefundEffect>(`select ${columns} from app.application_compensation_refunds where payment_intent_id=$1 and merchant_shop_id=$2`,[id,this.merchant.shopId])).rows[0];
-   if(!row)throw new ApplicationCompensationRefundError();return row;
+   if(!row)throw new ApplicationCompensationRefundError();
+   // Foreign-key/notification locks inside INSERT can outlive the initial admission.
+   await assertActive?.(tx);return row;
   });
  }
 }
