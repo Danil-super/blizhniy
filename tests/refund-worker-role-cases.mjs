@@ -4,6 +4,7 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import pg from 'pg';
 import {getRefundWorkerRolePlan,verifyRefundWorkerDatabase} from '../scripts/refund-worker-role.mjs';
 import {testRefundSchemaReference,testRefundSchemaDrift} from './refund-worker-schema-cases.mjs';
+import {testRefundWorkerArtifact} from './refund-worker-artifact-cases.mjs';
 
 // Called only by the owned disposable PG18 placement fixture; no environment credentials.
 export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,operator,merchant}){
@@ -152,6 +153,7 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
    assert.equal((await admin.query('select status,is_paid from app.applications where id=$1',[application])).rows[0].status,'sent');
    assert.equal(remote.posts(),1);assert.deepEqual(await worker.tick(),{state:'idle'});assert.equal(remote.posts(),1);await check();
   });
+  await testRefundWorkerArtifact(suite,{admin,config:{...admin.options,user:role,password},ownerDb,purchase,load,operator,merchant,provider});
  }finally{await db.close();}
 }
 

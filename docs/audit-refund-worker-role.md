@@ -1,5 +1,7 @@
 # F02: отдельные права обработчика возвратов
 
+Локальное продолжение упаковки11.11: отдельный offline compiled-пакет обоих refund consumers и неизменённого guard — `docs/audit-refund-artifact.md`. Runtime/TLS/merchant/service admission не добавлены.
+
 Продолжение11.11: подготовлена отдельная read-only сверка фактической схемы `app` с эталоном54 миграций, см. `docs/audit-refund-schema.md` и точный review `docs/review/refund-schema.md`. Это дополняет описанный ниже первоначальный guard; установка роли/финансового runtime по-прежнему не выполнена.
 
 10.11.2026. Локальный кандидат; запуск службы и production не разрешаются этим документом.
