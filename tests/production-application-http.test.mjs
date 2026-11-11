@@ -42,3 +42,9 @@ test('application HTTP maps access, eligibility, busy, conflict and unknown infr
  }
  const f=fixture(null,false),result=await f.handler(f.request());assert.equal(result.status,429);assert.equal(result.headers.get('retry-after'),'900');assert.deepEqual(f.calls,[]);
 });
+
+test('pending response payment maps to a private conflict without retrying the decision',async()=>{
+ const f=fixture(Object.assign(Error('private SQL detail'),{code:'PWR01'}));
+ const result=await f.handler(f.request({...base,action:'decide',applicationId:id,expectedRevision:'1',state:'selected'},{},'PUT'));
+ assert.equal(result.status,409);assert.deepEqual(await result.json(),{error:{code:'RESPONSE_PAYMENT_PENDING'}});assert.equal(f.calls.length,1);
+});

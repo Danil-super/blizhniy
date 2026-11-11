@@ -3,13 +3,14 @@ import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,ty
 import {parseListingFormDraft} from './listing-form-contract.ts';import {parseBookingRequest,type BookingRequestInput,type BookingQuote} from './booking-request-contract.ts';
 import {addBookingDays,bookingNightsCount} from './booking-availability.ts';
 import type {BookingInventory,BookingSnapshot,BookingSummary,BookingPage} from './postgres-bookings';
+import {parseBookingCancellation,type BookingLifecycle} from './booking-lifecycle.ts';
 type Options={signal?:AbortSignal};type Mode='guest'|'host';
 export class BookingClientError extends Error{
  readonly code:string;
  constructor(code:string){super(code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='RATE_LIMITED'?'Слишком много запросов. Попробуйте позже.':
   code==='BOOKING_NOT_FOUND'?'Бронирование недоступно. Обновите данные.':code==='BOOKING_UNAVAILABLE'?'Эти даты или места уже заняты. Выберите другой вариант.':
   code==='BOOKING_INVALID'?'Проверьте даты и количество гостей.':code==='BOOKING_CHANGED'?'Условия уже изменились. Проверьте актуальные данные.':
-  code==='BOOKING_BUSY'?'Данные сейчас изменяются. Проверьте заявку перед повторным действием.':'Результат не подтверждён. Проверьте заявку перед повторной отправкой.');this.code=code;}
+  code==='BOOKING_BUSY'?'Данные сейчас изменяются. Проверьте заявку перед повторным действием.':code==='BOOKING_HOLD_LIMIT'?'Можно ожидать ответ не более чем по трём заявкам. Отмените лишнюю или дождитесь ответа.':'Результат не подтверждён. Проверьте заявку перед повторной отправкой.');this.code=code;}
 }
 function exact(value:unknown,keys:string[]):Record<string,unknown>{
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).sort().join()!==[...keys].sort().join())throw Error();return value as Record<string,unknown>;
@@ -20,14 +21,26 @@ const stamp=(id:string,value:unknown)=>parseListingDraftCursor({id,updatedAt:val
 function terms(value:unknown){const booking=parseListingFormDraft({kind:'arenda',booking:value}).booking;if(!booking)throw Error();return booking;}
 function publicListing(value:unknown,revision=false){const row=exact(value,revision?['id','title','revision']:['id','title']);return{id:parseListingDraftId(row.id),title:title(row.title),...(revision?{revision:parseListingDraftRevision(row.revision)}:{})};}
 function common(value:unknown,detail:boolean):BookingSummary|BookingSnapshot{
- const row=exact(value,['id','revision','view','listing','mode','startDate','endDate','guests','total','status','createdAt',...(detail?['booking','updatedAt','decidedAt']:[])]),id=parseListingDraftId(row.id),listing=publicListing(row.listing);
+ const hasLifecycle=detail&&!!value&&typeof value==='object'&&Object.hasOwn(value,'lifecycle');
+ const row=exact(value,['id','revision','view','listing','mode','startDate','endDate','guests','total','status','createdAt',...(detail?['booking','updatedAt','decidedAt']:[]),...(hasLifecycle?['lifecycle']:[])]),id=parseListingDraftId(row.id),listing=publicListing(row.listing);
  const input=parseBookingRequest({listingId:listing.id,creationKey:id,expectedListingRevision:'1',mode:row.mode,startDate:row.startDate,endDate:row.endDate,guests:row.guests});
  const nights=input.mode==='stay'?bookingNightsCount(input.startDate,input.endDate!):0;
- if(input.mode==='stay'&&(!nights||nights<1||nights>30)||row.view!=='guest'&&row.view!=='host'||!['pending','accepted','declined'].includes(row.status as string))throw Error();
+ if(input.mode==='stay'&&(!nights||nights<1||nights>30)||row.view!=='guest'&&row.view!=='host'||!['pending','accepted','declined','cancelled','expired'].includes(row.status as string))throw Error();
  const summary:BookingSummary={id,revision:parseListingDraftRevision(row.revision),view:row.view as Mode,listing,mode:input.mode,startDate:input.startDate,endDate:input.endDate,guests:input.guests,total:money(row.total),status:row.status as BookingSummary['status'],createdAt:stamp(id,row.createdAt)};
  if(!detail)return summary;
  if(row.status==='pending'?row.decidedAt!==null:row.decidedAt===null)throw Error();const booking=terms(row.booking);if(booking.mode!==input.mode)throw Error();
- return{...summary,booking,updatedAt:stamp(id,row.updatedAt),decidedAt:row.decidedAt===null?null:stamp(id,row.decidedAt)};
+ let lifecycle:BookingLifecycle|undefined;
+ if(hasLifecycle){
+  const meta=exact(row.lifecycle,['startsAt','expiresAt','canCancel','cancelledBy','cancellationReason']);
+  const startsAt=stamp(id,meta.startsAt),expiresAt=stamp(id,meta.expiresAt);
+  if(expiresAt>startsAt||typeof meta.canCancel!=='boolean'||meta.canCancel&&!['pending','accepted'].includes(summary.status))throw Error();
+  if(summary.status==='cancelled'){
+   if(meta.cancelledBy!=='guest'&&meta.cancelledBy!=='host'||parseBookingCancellation(meta.cancellationReason)!==meta.cancellationReason)throw Error();
+  }else if(meta.cancelledBy!==null||meta.cancellationReason!==null)throw Error();
+  lifecycle={startsAt,expiresAt,canCancel:meta.canCancel,cancelledBy:meta.cancelledBy as BookingLifecycle['cancelledBy'],cancellationReason:meta.cancellationReason as string|null};
+ }
+ if(['cancelled','expired'].includes(summary.status)&&!lifecycle)throw Error();
+ return{...summary,booking,updatedAt:stamp(id,row.updatedAt),decidedAt:row.decidedAt===null?null:stamp(id,row.decidedAt),...(lifecycle?{lifecycle}:{})};
 }
 function detail(value:unknown,id?:string):BookingSnapshot{const result=common(value,true) as BookingSnapshot;if(id&&result.id!==id)throw Error();return result;}
 export function createBookingsClient(transport:typeof fetch){
@@ -40,12 +53,12 @@ export function createBookingsClient(transport:typeof fetch){
    try{for(;;){signal.throwIfAborted();const part=await reader.read();signal.throwIfAborted();if(part.done){complete=true;break;}size+=part.value.byteLength;if(size>262144||chunks.length>=1024)throw Error();chunks.push(part.value);}}
    finally{try{if(!complete)await reader.cancel();}finally{reader.releaseLock();}}
    const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}const result=JSON.parse(decoder.decode(bytes));
-   if(response.status!==200){const codes:Record<string,number>={UNAUTHENTICATED:401,INVALID_INPUT:422,BOOKING_INVALID:422,RATE_LIMITED:429,BOOKING_NOT_FOUND:404,BOOKING_CHANGED:409,BOOKING_BUSY:409,BOOKING_UNAVAILABLE:409},code=result?.error?.code;
+   if(response.status!==200){const codes:Record<string,number>={UNAUTHENTICATED:401,INVALID_INPUT:422,BOOKING_INVALID:422,RATE_LIMITED:429,BOOKING_NOT_FOUND:404,BOOKING_CHANGED:409,BOOKING_BUSY:409,BOOKING_UNAVAILABLE:409,BOOKING_HOLD_LIMIT:409},code=result?.error?.code;
     throw new BookingClientError(typeof code==='string'&&Object.hasOwn(codes,code)&&codes[code]===response.status?code:'UNKNOWN');}return result;
   }catch(error){if(error instanceof BookingClientError)throw error;throw new BookingClientError('UNKNOWN');}
  }
  const checked=async<T>(work:()=>Promise<T>):Promise<T>=>{try{return await work();}catch(error){if(error instanceof BookingClientError)throw error;throw new BookingClientError('UNKNOWN');}};
- const account=(owner:string,action:string,data:Record<string,unknown>,options?:Options)=>send('/api/account/bookings',{action,expectedOwnerId:parseListingDraftId(owner),...data},['create','decide'].includes(action),options);
+ const account=(owner:string,action:string,data:Record<string,unknown>,options?:Options)=>send('/api/account/bookings',{action,expectedOwnerId:parseListingDraftId(owner),...data},['create','decide','cancel'].includes(action),options);
  return{
   inventory:(value:string,options?:Options):Promise<BookingInventory>=>checked(async()=>{
    const id=parseListingDraftId(value),row=exact(await send(`/api/listings/${id}/bookings`,null,false,options),['listing','booking','today','occupiedDates','tourSeatsRemaining']),listing=publicListing(row.listing,true) as BookingInventory['listing'],booking=terms(row.booking);
@@ -69,6 +82,11 @@ export function createBookingsClient(transport:typeof fetch){
   decide:(owner:string,id:string,expected:string,state:'accepted'|'declined',options?:Options):Promise<BookingSnapshot>=>checked(async()=>{
    const revision=parseListingDraftRevision(expected);if(state!=='accepted'&&state!=='declined')throw Error();const saved=detail(await account(owner,'decide',{bookingId:parseListingDraftId(id),expectedRevision:revision,state},options),id);
    if(saved.view!=='host'||saved.status!==state||BigInt(saved.revision)!==BigInt(revision)+BigInt(1))throw Error();return saved;
+  }),
+  cancel:(owner:string,id:string,expected:string,reason:unknown,options?:Options):Promise<BookingSnapshot>=>checked(async()=>{
+   const revision=parseListingDraftRevision(expected),note=parseBookingCancellation(reason);
+   const saved=detail(await account(owner,'cancel',{bookingId:parseListingDraftId(id),expectedRevision:revision,reason:note},options),id);
+   if(saved.status!=='cancelled'||BigInt(saved.revision)!==BigInt(revision)+BigInt(1)||saved.lifecycle?.cancellationReason!==note||saved.lifecycle.cancelledBy!==saved.view)throw Error();return saved;
   }),
   list:(owner:string,mode:Mode,after:ListingDraftCursor|null,options?:Options):Promise<BookingPage>=>checked(async()=>{
    if(mode!=='guest'&&mode!=='host')throw Error();const cursor=parseListingDraftCursor(after),row=exact(await account(owner,'list',{mode,after:cursor},options),['items','nextCursor']);

@@ -11,20 +11,23 @@ import type {WorkPublicationSnapshot} from '@/lib/postgres-work-publications';
 import {draftButton} from '@/components/listings/PrivateDraftEditor';
 import {PrimaryWorkPublicationEditor} from './PrimaryWorkPublicationEditor';
 import {WorkModerationStatus} from './WorkModerationStatus';
-import {useListingPostmoderation} from '@/components/listings/ListingWorkflowProvider';
+import {useListingPostmoderation,useWorkOwnerActions} from '@/components/listings/ListingWorkflowProvider';
+import {WorkOwnerActions} from './WorkOwnerActions';
+import type {WorkOwnerActionResult} from '@/lib/postgres-work-owner-actions';
 import {WorkCabinetCard} from './WorkCabinetCard';
 import {TwoRowCardViewport} from '@/components/cabinet/TwoRowCardViewport';
 
-export function WorkCabinetList({owner,page,disabled,onDetails,onLoadMore,error=false,visible=true}:{owner:string;page:WorkCabinetPage;disabled:boolean;onDetails:(id:string)=>void;onLoadMore?:()=>void;error?:boolean;visible?:boolean}){
+export function WorkCabinetList({owner,page,disabled,onDetails,onLoadMore,error=false,visible=true,onChanged}:{owner:string;page:WorkCabinetPage;disabled:boolean;onDetails:(id:string)=>void;onLoadMore?:()=>void;error?:boolean;visible?:boolean;onChanged?:(result:WorkOwnerActionResult)=>void}){
  return <TwoRowCardViewport label={page.items[0]?.kind==='workRequest'?'Список заказов':'Список вакансий'} className="mt-5"
   gridClassName="grid auto-rows-fr min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5"
   hasMore={!!page.nextCursor} loading={disabled} error={error} onLoadMore={onLoadMore} enabled={visible}>
-   {page.items.map(item=><li key={item.id} className="min-w-0"><WorkCabinetCard owner={owner} item={item} disabled={disabled} showDetails={false} onDetails={()=>onDetails(item.id)}/></li>)}
+   {page.items.map(item=><li key={item.id} className="min-w-0"><WorkCabinetCard owner={owner} item={item} disabled={disabled} showDetails={false} onDetails={()=>onDetails(item.id)} ownerActions={onChanged&&visible?<WorkOwnerActions owner={owner} item={item} onChanged={onChanged}/>:undefined}/></li>)}
  </TwoRowCardViewport>;
 }
 
 function Workspace({owner,kind,visible}:{owner:string;kind:WorkPublicationKind;visible:boolean}){
  const localVacancy=useListingPostmoderation();
+ const ownerActions=useWorkOwnerActions();
  const [page,setPage]=useState<WorkCabinetPage|null>(null),[editor,setEditor]=useState<WorkPublicationSnapshot|null>(null);
  const [message,setMessage]=useState<string|null>(null),[busy,setBusy]=useState(false);
  const pending=useRef(false),scope=useRef<AbortController|null>(null);
@@ -47,7 +50,7 @@ function Workspace({owner,kind,visible}:{owner:string;kind:WorkPublicationKind;v
   {busy&&<p className="mt-4" role="status">Загружаем публикации…</p>}{message&&<div className="mt-4"><p className="break-words text-rose-700" role="alert">{message}</p>
    <button type="button" className={`${draftButton} mt-2`} disabled={busy} onClick={()=>{if(retry.current)void run(retry.current);}}>Повторить загрузку</button></div>}
   {page?.items.length===0&&<p className="mt-5">{kind==='vacancy'?'Вакансий пока нет.':'Заказов пока нет.'}</p>}
-  {page&&page.items.length>0&&<WorkCabinetList owner={owner} page={page} disabled={busy} error={!!message} visible={visible} onLoadMore={()=>void next()} onDetails={id=>void run(async()=>{
+  {page&&page.items.length>0&&<WorkCabinetList owner={owner} page={page} disabled={busy} error={!!message} visible={visible} onChanged={ownerActions?result=>setPage(current=>current?{...current,items:result.action==='remove'?current.items.filter(item=>item.id!==result.publicationId):current.items.map(item=>item.id===result.publicationId&&BigInt(item.revision)<=BigInt(result.resultingRevision)?{...item,revision:result.resultingRevision,status:result.status,updatedAt:result.occurredAt}:item)}:current):undefined} onLoadMore={()=>void next()} onDetails={id=>void run(async()=>{
    const result=await productionWorkPublications.read(owner,kind,id,{signal:scope.current?.signal});if(!scope.current?.signal.aborted)setEditor(result);
   })}/>}
   {editor&&<section className="mt-6 min-w-0 rounded-lg border border-slate-200 bg-white p-4 sm:p-6" aria-label="Сведения о публикации">

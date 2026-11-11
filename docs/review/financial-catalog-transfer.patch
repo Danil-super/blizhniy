@@ -1,0 +1,188 @@
+diff --git a/scripts/financial-catalog-privileges.mjs b/scripts/financial-catalog-privileges.mjs
+new file mode 100644
+index 0000000..711ca56
+--- /dev/null
++++ b/scripts/financial-catalog-privileges.mjs
+@@ -0,0 +1,39 @@
++// Shared read-only system privilege boundary for the two dedicated financial roles.
++// Caller has verified identity and set local search_path=pg_catalog. No grants or connection creation.
++// PG18.6 information_schema.sql creates these public SELECTs after pg_init_privs.
++const publicMetadata='information_schema_catalog_name,applicable_roles,administrable_role_authorizations,attributes,character_sets,check_constraint_routine_usage,check_constraints,collations,collation_character_set_applicability,column_column_usage,column_domain_usage,column_privileges,column_udt_usage,columns,constraint_column_usage,constraint_table_usage,domain_constraints,domain_udt_usage,domains,enabled_roles,key_column_usage,parameters,referential_constraints,role_column_grants,routine_column_usage,routine_privileges,role_routine_grants,routine_routine_usage,routine_sequence_usage,routine_table_usage,routines,schemata,sequences,sql_features,sql_implementation_info,sql_sizing,table_constraints,table_privileges,role_table_grants,tables,triggered_update_columns,triggers,udt_privileges,role_udt_grants,usage_privileges,role_usage_grants,user_defined_types,view_column_usage,view_routine_usage,view_table_usage,views,data_type_privileges,element_types,column_options,foreign_data_wrapper_options,foreign_data_wrappers,foreign_server_options,foreign_servers,foreign_table_options,foreign_tables,user_mapping_options,user_mappings'.split(',');
++
++export async function assertFinancialCatalogPrivileges(tx){
++   const schemas=(await tx.query(`select nspname as name,has_schema_privilege(oid,'USAGE') as usage,
++    has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace
++    `)).rows;
++   if(!['app','blizhniy_meta'].every(name=>schemas.some(item=>item.name===name&&item.usage===true))||
++    schemas.some(item=>item.extra!==false||(item.usage&&!['app','blizhniy_meta','public','pg_catalog','information_schema'].includes(item.name))))throw Error('Invalid schema privileges');
++   if((await tx.query("select 1 from pg_parameter_acl where has_parameter_privilege(parname,'SET,ALTER SYSTEM') limit 1")).rows.length)throw Error('Invalid parameter privileges');
++   // A direct built-in EXECUTE grant can bypass table ACLs without any role membership.
++   const catalogExtra=await tx.query(`with catalog_acl as (
++    select 'pg_proc'::regclass as classoid,p.oid as objoid,0 as objsubid,
++     coalesce(p.proacl,acldefault('f',p.proowner)) as acl,
++     coalesce(i.initprivs,acldefault('f',p.proowner)) as initial,false as public_metadata
++    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
++    left join pg_init_privs i on i.classoid='pg_proc'::regclass and i.objoid=p.oid and i.objsubid=0 and i.privtype='i'
++    where n.nspname in ('pg_catalog','information_schema')
++    union all
++    select 'pg_class'::regclass,c.oid,0,coalesce(c.relacl,acldefault(case when c.relkind='S' then 's'::"char" else 'r'::"char" end,c.relowner)),
++     coalesce(i.initprivs,acldefault(case when c.relkind='S' then 's'::"char" else 'r'::"char" end,c.relowner)),
++     n.nspname='information_schema' and c.oid<16384 and c.relname=any($1::text[]) and c.relkind in ('r','v')
++    from pg_class c join pg_namespace n on n.oid=c.relnamespace
++    left join pg_init_privs i on i.classoid='pg_class'::regclass and i.objoid=c.oid and i.objsubid=0 and i.privtype='i'
++    where n.nspname in ('pg_catalog','information_schema')
++    union all
++    select 'pg_class'::regclass,c.oid,a.attnum,a.attacl,coalesce(i.initprivs,'{}'::aclitem[]),false
++    from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
++    left join pg_init_privs i on i.classoid='pg_class'::regclass and i.objoid=c.oid and i.objsubid=a.attnum and i.privtype='i'
++    where n.nspname in ('pg_catalog','information_schema') and a.attnum>0 and not a.attisdropped
++   ) select 1 from catalog_acl c cross join lateral aclexplode(c.acl) g
++    where g.grantee in (0,(select oid from pg_roles where rolname=current_user))
++    and not (c.public_metadata and g.privilege_type='SELECT' and not g.is_grantable) and not exists (
++     select 1 from aclexplode(c.initial) p where p.grantee=0 and p.privilege_type=g.privilege_type
++      and (not g.is_grantable or p.is_grantable)) limit 1`,[publicMetadata]);
++   if(catalogExtra.rows.length)throw Error('Invalid catalog privileges');
++}
+diff --git a/scripts/build-payment-worker.mjs b/scripts/build-payment-worker.mjs
+index 90fed7d..90c99b1 100644
+--- a/scripts/build-payment-worker.mjs
++++ b/scripts/build-payment-worker.mjs
+@@ -27 +27 @@ export function buildPaymentWorker(destination){
+- for(const name of ['cabinet-release-plan.mjs','payment-reconciliation-role.mjs','payment-reconciliation-service.mjs','postgres-migration-plan.mjs','payment-worker-runtime.mjs','payment-worker.mjs'])
++ for(const name of ['cabinet-release-plan.mjs','financial-catalog-privileges.mjs','payment-reconciliation-role.mjs','payment-reconciliation-service.mjs','postgres-migration-plan.mjs','payment-worker-runtime.mjs','payment-worker.mjs'])
+diff --git a/scripts/payment-reconciliation-role.mjs b/scripts/payment-reconciliation-role.mjs
+index af037cd..8f5ad76 100644
+--- a/scripts/payment-reconciliation-role.mjs
++++ b/scripts/payment-reconciliation-role.mjs
+@@ -3,0 +4 @@ import {getBootstrapPlan} from './postgres-migration-plan.mjs';
++import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.mjs';
+@@ -48,0 +50,2 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
++   await tx.query("set local statement_timeout='5s'");
++   await tx.query("set local lock_timeout='1s'");
+@@ -74,5 +77 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
+-   const schemas=(await tx.query(`select nspname as name,has_schema_privilege(oid,'USAGE') as usage,
+-    has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace
+-    where left(nspname,3)<>'pg_' and nspname<>'information_schema'`)).rows;
+-   if(!['app','blizhniy_meta'].every(name=>schemas.some(item=>item.name===name&&item.usage===true))||
+-    schemas.some(item=>item.extra!==false||(item.usage&&!['app','blizhniy_meta','public'].includes(item.name))))throw new Error('Invalid schema privileges');
++   await assertFinancialCatalogPrivileges(tx);
+@@ -83 +82 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
+-    where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema' and c.relkind in ('r','p','v','m','f')
++    where n.nspname not in ('pg_catalog','information_schema') and c.relkind in ('r','p','v','m','f','t')
+@@ -88,2 +87,2 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
+-    where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema' and
+-     ((c.relkind in ('r','p','v','m','f') and has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN')) or
++    where n.nspname not in ('pg_catalog','information_schema') and
++     ((c.relkind in ('r','p','v','m','f','t') and has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN')) or
+@@ -92 +91 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
+-    where left(n.nspname,3)<>'pg_' and n.nspname<>'information_schema' and has_function_privilege(p.oid,'EXECUTE') limit 1`);
++    where n.nspname not in ('pg_catalog','information_schema') and has_function_privilege(p.oid,'EXECUTE') limit 1`);
+diff --git a/scripts/refund-worker-role.mjs b/scripts/refund-worker-role.mjs
+index af07a54..a781dae 100644
+--- a/scripts/refund-worker-role.mjs
++++ b/scripts/refund-worker-role.mjs
+@@ -5,0 +6 @@ import {getCabinetMigrationPlan} from './cabinet-release-plan.mjs';
++import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.mjs';
+@@ -10,2 +10,0 @@ const cols=text=>text.split(',');
+-// PG18.6 information_schema.sql grants these SELECTs after initdb records pg_init_privs.
+-const publicMetadata=cols('information_schema_catalog_name,applicable_roles,administrable_role_authorizations,attributes,character_sets,check_constraint_routine_usage,check_constraints,collations,collation_character_set_applicability,column_column_usage,column_domain_usage,column_privileges,column_udt_usage,columns,constraint_column_usage,constraint_table_usage,domain_constraints,domain_udt_usage,domains,enabled_roles,key_column_usage,parameters,referential_constraints,role_column_grants,routine_column_usage,routine_privileges,role_routine_grants,routine_routine_usage,routine_sequence_usage,routine_table_usage,routines,schemata,sequences,sql_features,sql_implementation_info,sql_sizing,table_constraints,table_privileges,role_table_grants,tables,triggered_update_columns,triggers,udt_privileges,role_udt_grants,usage_privileges,role_usage_grants,user_defined_types,view_column_usage,view_routine_usage,view_table_usage,views,data_type_privileges,element_types,column_options,foreign_data_wrapper_options,foreign_data_wrappers,foreign_server_options,foreign_servers,foreign_table_options,foreign_tables,user_mapping_options,user_mappings');
+@@ -81,6 +80 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
+-   const schemas=(await tx.query(`select nspname as name,has_schema_privilege(oid,'USAGE') as usage,
+-    has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace
+-    `)).rows;
+-   if(!['app','blizhniy_meta'].every(name=>schemas.some(item=>item.name===name&&item.usage===true))||
+-    schemas.some(item=>item.extra!==false||(item.usage&&!['app','blizhniy_meta','public','pg_catalog','information_schema'].includes(item.name))))throw Error('Invalid schema privileges');
+-   if((await tx.query("select 1 from pg_parameter_acl where has_parameter_privilege(parname,'SET,ALTER SYSTEM') limit 1")).rows.length)throw Error('Invalid parameter privileges');
++   await assertFinancialCatalogPrivileges(tx);
+@@ -91 +85 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
+-    where n.nspname not in ('pg_catalog','information_schema') and c.relkind in ('r','p','v','m','f')
++    where n.nspname not in ('pg_catalog','information_schema') and c.relkind in ('r','p','v','m','f','t')
+@@ -97 +91 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
+-     ((c.relkind in ('r','p','v','m','f') and has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN')) or
++     ((c.relkind in ('r','p','v','m','f','t') and has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN')) or
+@@ -104,26 +97,0 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
+-   // A direct built-in EXECUTE grant can bypass table ACLs without any role membership.
+-   const catalogExtra=await tx.query(`with catalog_acl as (
+-    select 'pg_proc'::regclass as classoid,p.oid as objoid,0 as objsubid,
+-     coalesce(p.proacl,acldefault('f',p.proowner)) as acl,
+-     coalesce(i.initprivs,acldefault('f',p.proowner)) as initial,false as public_metadata
+-    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+-    left join pg_init_privs i on i.classoid='pg_proc'::regclass and i.objoid=p.oid and i.objsubid=0 and i.privtype='i'
+-    where n.nspname in ('pg_catalog','information_schema')
+-    union all
+-    select 'pg_class'::regclass,c.oid,0,coalesce(c.relacl,acldefault(case when c.relkind='S' then 's'::"char" else 'r'::"char" end,c.relowner)),
+-     coalesce(i.initprivs,acldefault(case when c.relkind='S' then 's'::"char" else 'r'::"char" end,c.relowner)),
+-     n.nspname='information_schema' and c.oid<16384 and c.relname=any($1::text[]) and c.relkind in ('r','v')
+-    from pg_class c join pg_namespace n on n.oid=c.relnamespace
+-    left join pg_init_privs i on i.classoid='pg_class'::regclass and i.objoid=c.oid and i.objsubid=0 and i.privtype='i'
+-    where n.nspname in ('pg_catalog','information_schema')
+-    union all
+-    select 'pg_class'::regclass,c.oid,a.attnum,a.attacl,coalesce(i.initprivs,'{}'::aclitem[]),false
+-    from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
+-    left join pg_init_privs i on i.classoid='pg_class'::regclass and i.objoid=c.oid and i.objsubid=a.attnum and i.privtype='i'
+-    where n.nspname in ('pg_catalog','information_schema') and a.attnum>0 and not a.attisdropped
+-   ) select 1 from catalog_acl c cross join lateral aclexplode(c.acl) g
+-    where g.grantee in (0,(select oid from pg_roles where rolname=current_user))
+-    and not (c.public_metadata and g.privilege_type='SELECT' and not g.is_grantable) and not exists (
+-     select 1 from aclexplode(c.initial) p where p.grantee=0 and p.privilege_type=g.privilege_type
+-      and (not g.is_grantable or p.is_grantable)) limit 1`,[publicMetadata]);
+-   if(catalogExtra.rows.length)throw Error('Invalid catalog privileges');
+diff --git a/tests/payment-reconciliation-deletion-schema.test.mjs b/tests/payment-reconciliation-deletion-schema.test.mjs
+index 8a079a7..0115fde 100644
+--- a/tests/payment-reconciliation-deletion-schema.test.mjs
++++ b/tests/payment-reconciliation-deletion-schema.test.mjs
+@@ -21,0 +22 @@ function fixture(journal,extra=[]){
++   if(sql==="set local statement_timeout='5s'"||sql==="set local lock_timeout='1s'")return{rows:[]};
+@@ -24,0 +26 @@ function fixture(journal,extra=[]){
++   if(sql.startsWith('select 1 from pg_parameter_acl')||sql.startsWith('with catalog_acl'))return{rows:[]};
+diff --git a/tests/payment-reconciliation-role-integration.mjs b/tests/payment-reconciliation-role-integration.mjs
+index b99e7a8..8241691 100644
+--- a/tests/payment-reconciliation-role-integration.mjs
++++ b/tests/payment-reconciliation-role-integration.mjs
+@@ -7 +7 @@ import {createRequire} from 'node:module';
+-import {fileURLToPath} from 'node:url';
++import {fileURLToPath,pathToFileURL} from 'node:url';
+@@ -49,0 +50,34 @@ export async function testPaymentReconciliationRole(suite,admin,config,credentia
++  const artifactGuard=(await import(pathToFileURL(join(artifactDirectory,'artifact/scripts/payment-reconciliation-role.mjs')).href)).verifyPaymentReconciliationDatabase;
++  const artifactCheck=()=>artifactGuard(db,{database:config.database});
++  for(const [label,change,restore] of [
++   ['built-in file access',`grant execute on function pg_catalog.pg_read_binary_file(text) to ${role}`,`revoke execute on function pg_catalog.pg_read_binary_file(text) from ${role}`],
++   ['PUBLIC built-in file access','grant execute on function pg_catalog.pg_read_binary_file(text) to public','revoke execute on function pg_catalog.pg_read_binary_file(text) from public'],
++   ['catalog password column',`grant select(rolpassword) on pg_catalog.pg_authid to ${role}`,`revoke select(rolpassword) on pg_catalog.pg_authid from ${role}`],
++   ['PUBLIC catalog password column','grant select(rolpassword) on pg_catalog.pg_authid to public','revoke select(rolpassword) on pg_catalog.pg_authid from public'],
++   ['information schema CREATE',`grant create on schema information_schema to ${role}`,`revoke create on schema information_schema from ${role}`],
++   ['catalog schema CREATE',`grant create on schema pg_catalog to ${role}`,`revoke create on schema pg_catalog from ${role}`],
++   ['persistent server configuration',`grant alter system on parameter shared_preload_libraries to ${role}`,`revoke alter system on parameter shared_preload_libraries from ${role}`],
++   ['session preload',`grant set on parameter session_preload_libraries to ${role}`,`revoke set on parameter session_preload_libraries from ${role}`],
++   ['metadata write',`grant update on information_schema.schemata to ${role}`,`revoke update on information_schema.schemata from ${role}`],
++   ['internal metadata read',`grant select on information_schema._pg_foreign_servers to ${role}`,`revoke select on information_schema._pg_foreign_servers from ${role}`],
++  ])await suite.test('source and isolated artifact both refuse extra '+label,async()=>{
++   await check();await artifactCheck();await admin.query(change);
++   try{
++    const outcomes=await Promise.allSettled([check(),artifactCheck()]);
++    assert.deepEqual(outcomes.map(value=>value.status),['rejected','rejected']);
++    for(const outcome of outcomes)assert.equal(outcome.reason.message,'Payment reconciliation database preflight failed');
++   }finally{await admin.query(restore);}
++   await check();await artifactCheck();
++  });
++  await suite.test('source and isolated artifact inspect an actual pg_toast relation even without schema USAGE',async()=>{
++   const relation=(await admin.query("select reltoastrelid::regclass::text as name from pg_class where oid='app.users'::regclass")).rows[0].name;
++   assert.match(relation,/^pg_toast\.pg_toast_[0-9]+$/);
++   assert.equal((await admin.query("select has_schema_privilege($1,'pg_toast','USAGE') as allowed",[role])).rows[0].allowed,false);
++   await admin.query(`grant select on ${relation} to ${role}`);
++   try{
++    const outcomes=await Promise.allSettled([check(),artifactCheck()]);
++    assert.deepEqual(outcomes.map(value=>value.status),['rejected','rejected']);
++    for(const outcome of outcomes)assert.equal(outcome.reason.message,'Payment reconciliation database preflight failed');
++   }finally{await admin.query(`revoke select on ${relation} from ${role}`);}
++   await check();await artifactCheck();
++  });
+diff --git a/tests/refund-worker-role-cases.mjs b/tests/refund-worker-role-cases.mjs
+index 5634418..423f650 100644
+--- a/tests/refund-worker-role-cases.mjs
++++ b/tests/refund-worker-role-cases.mjs
+@@ -44,0 +45,2 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
++   const toast=(await admin.query("select reltoastrelid::regclass::text as name from pg_class where oid='app.users'::regclass")).rows[0].name;
++   assert.match(toast,/^pg_toast\.pg_toast_[0-9]+$/);
+@@ -55,0 +58 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
++    [`grant select on ${toast} to ${role}`,`revoke select on ${toast} from ${role}`],

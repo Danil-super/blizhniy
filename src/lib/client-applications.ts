@@ -6,7 +6,7 @@ type Options={signal?:AbortSignal};type Mode='applicant'|'recipient';type Decisi
 export type ApplicationPreview={target:{id:string;kind:ApplicationKind;title:string;revision:string};specialist:{id:string;revision:string;snapshot:ApplicationProfileSnapshot};existing:ApplicationSnapshot|null};
 export class ApplicationClientError extends Error{
  readonly code:string;
- constructor(code:string){super(code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='RATE_LIMITED'?'Слишком много запросов. Попробуйте позже.':
+ constructor(code:string){super(code==='RESPONSE_PAYMENT_PENDING'?'Оплата отклика ещё обрабатывается. После её завершения повторите выбор исполнителя.':code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='RATE_LIMITED'?'Слишком много запросов. Попробуйте позже.':
   code==='APPLICATION_NOT_FOUND'?'Отклик недоступен. Обновите список.':code==='APPLICATION_BUSY'?'Данные сейчас изменяются. Проверьте отклик и повторите действие.':
   code==='APPLICATION_CHANGED'?'Отклик или публикация уже изменились. Обновите данные перед отправкой.':code==='SPECIALIST_REQUIRED'?'Для отклика заполните и сохраните анкету специалиста. Модерация анкеты не требуется.':code==='INVALID_INPUT'?'Проверьте сообщение: не более 500 символов, без управляющих знаков.':'Не удалось подтвердить результат. Проверьте отклик перед повторным действием.');this.code=code;}
 }
@@ -63,7 +63,7 @@ export function createApplicationsClient(transport:typeof fetch){
     if(length>524288||chunks.length>=2048)throw Error();chunks.push(part.value);}}
    finally{try{if(!complete)await reader.cancel();}finally{reader.releaseLock();}}
    const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}const value=JSON.parse(decoder.decode(bytes));
-   if(response.status!==200){const codes:Record<string,number>={UNAUTHENTICATED:401,INVALID_INPUT:422,RATE_LIMITED:429,APPLICATION_NOT_FOUND:404,APPLICATION_CHANGED:409,APPLICATION_BUSY:409,SPECIALIST_REQUIRED:409},code=value?.error?.code;
+   if(response.status!==200){const codes:Record<string,number>={RESPONSE_PAYMENT_PENDING:409,UNAUTHENTICATED:401,INVALID_INPUT:422,RATE_LIMITED:429,APPLICATION_NOT_FOUND:404,APPLICATION_CHANGED:409,APPLICATION_BUSY:409,SPECIALIST_REQUIRED:409},code=value?.error?.code;
     throw new ApplicationClientError(typeof code==='string'&&Object.hasOwn(codes,code)&&codes[code]===response.status?code:'UNKNOWN');}return value;
   }catch(error){if(error instanceof ApplicationClientError)throw error;throw new ApplicationClientError('UNKNOWN');}
  }

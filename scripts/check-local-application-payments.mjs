@@ -1,5 +1,5 @@
 // Owned local PostgreSQL only; all synthetic data/schema/grants are rolled back.
-import assert from 'node:assert/strict';import {randomUUID,randomBytes} from 'node:crypto';import {readFile} from 'node:fs/promises';import {createRequire} from 'node:module';import pg from 'pg';
+import assert from 'node:assert/strict';import {randomUUID,randomBytes,randomInt} from 'node:crypto';import {readFile} from 'node:fs/promises';import {createRequire} from 'node:module';import pg from 'pg';
 import {stateFile,localPrimaryDatabaseConfig,docker} from './local-primary-fixture.mjs';import {readLocalPrimaryState,validateLocalPrimaryContainer} from './local-primary-config.mjs';import {localPrimaryPaymentHandler} from './local-primary-payment.mjs';
 const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule,state=readLocalPrimaryState(stateFile,process.cwd());
 validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
@@ -10,11 +10,12 @@ const request=(path,token,body,method='POST',form=false)=>new Request(origin+pat
 try{
  await owner.query('begin');
  if(!(await owner.query("select to_regclass('app.application_withdrawals') as name")).rows[0].name){const sql=await readFile(new URL('../database/migrations/0030-application-withdrawals.sql',import.meta.url),'utf8');await owner.query(sql.replace(/^begin;\r?\n/m,'').replace(/commit;\s*$/,''));}
+ if(!(await owner.query("select to_regprocedure('app.require_resolved_response_checkout(uuid)') as name")).rows[0].name){const sql=await readFile(new URL('../database/migrations/0046-response-checkout-fence.sql',import.meta.url),'utf8');await owner.query(sql.replace(/^begin;\r?\n/m,'').replace(/commit;\s*$/,''));}
  await owner.query('grant select on app.application_withdrawals to blizhniy_runtime;grant insert(application_id,owner_id,withdrawn_revision) on app.application_withdrawals to blizhniy_runtime');
  const tx={query:(sql,values)=>owner.query(sql,values)},db=restricted=>({...tx,transaction:async work=>{const key='app_payment_'+(++count);await owner.query('savepoint '+key);try{if(restricted){await owner.query('set local role blizhniy_runtime');await owner.query("select set_config('blizhniy.application_session','',true)");}const result=await work(tx);if(restricted)await owner.query('reset role');await owner.query('release savepoint '+key);return result;}catch(error){await owner.query('rollback to savepoint '+key);await owner.query('reset role');await owner.query('release savepoint '+key);throw error;}}});
  const runtime=db(true),trusted=db(false),context={state,ownerDb:trusted,runtimeDb:runtime,load};
  const apps=new(load('postgres-applications').PostgresApplicationStore)(runtime,{specialistApplicationReady:true,vacancyPostmoderation:true,localActions:true});
- async function account(){const id=(await owner.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',[`app-payment-${randomUUID()}@example.invalid`,`scrypt$131072$8$1$${'a'.repeat(32)}$${'b'.repeat(128)}`])).rows[0].id,token=randomBytes(32).toString('hex');await owner.query("insert into app.sessions(token_hash,user_id,scope,auth_version) values($1,$2,'app',0)",[load('identity').hashSessionToken(token),id]);await owner.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[id,JSON.stringify({name:'Локальный мастер'})]);return{id,token};}
+ async function account(){const id=(await owner.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',[`app-payment-${randomUUID()}@example.invalid`,`scrypt$131072$8$1$${'a'.repeat(32)}$${'b'.repeat(128)}`])).rows[0].id,token=randomBytes(32).toString('hex'),phone='+7999'+String(randomInt(1000000,9999999));await owner.query("insert into app.sessions(token_hash,user_id,scope,auth_version) values($1,$2,'app',0)",[load('identity').hashSessionToken(token),id]);await owner.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[id,JSON.stringify({name:'Локальный мастер',phone})]);await owner.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[id,phone,'response-fence-'+id]);return{id,token};}
  const employer=await account(),applicant=await account(),foreign=await account();
  const form={title:'Локальный мастер',description:'Выполняю монтаж и ремонт сантехники, соблюдаю сроки.',professionName:'Сантехник',cityName:'Краснодар',price:'1500',contactPhone:'+79990000000',placementRightConfirmed:true};
  await new(load('postgres-service-publications').PostgresServicePublicationStore)(runtime,{specialistProfileIdentity:true}).create(applicant.token,applicant.id,'specialist',randomUUID(),form);
@@ -100,15 +101,16 @@ try{
   assert.equal((await owner.query('select request_body from app.payment_checkout_intents where id=$1',[f.order.id])).rows[0].request_body,bytes);
   await owner.query("update app.tariffs set price=$1 where id='job-response'",[original]);
  });
- for(const change of ['refund','revision','profession','city','deletion'])await check('capture cannot deliver after target '+change,async()=>{
+ for(const change of ['refund','revision','profession','city','deletion'])await check('capture respects authoritative target changes and refuses unsafe owner edits: '+change,async()=>{
   const f=await prepare(await application());assert.equal((await dispatch(f)).status,200);
   const target=f.item.target.id;
   if(change==='refund')await owner.query("update app.payment_orders set status='refunded' where id in(select id from app.payment_checkout_intents where target_id=$1 and target_type='workRequest')",[target]);
-  if(change==='revision')await owner.query('update app.work_publications set revision=revision+1 where id=$1',[target]);
+  if(change==='revision')await assert.rejects(runtime.transaction(tx=>tx.query('update app.work_publications set revision=revision+1 where id=$1',[target])),{code:'PWR01'});
   if(change==='profession')await owner.query('update app.specialist_categories set active=false where id=(select profession_id from app.work_publications where id=$1)',[target]);
   if(change==='city')await owner.query("update app.cities set name=name||' — изменён' where id=(select city_id from app.work_publications where id=$1)",[target]);
-  if(change==='deletion')await owner.query("update app.work_publications set status='archived',deleted_at=clock_timestamp() where id=$1",[target]);
-  assert.equal((await pay(f.order.id,'application')).status,200);assert.equal((await row(f.item.id)).is_paid,false);assert.equal(await receiptCount(f.order.id),0);
+  if(change==='deletion')await assert.rejects(trusted.transaction(tx=>tx.query("update app.work_publications set status='archived',deleted_at=clock_timestamp() where id=$1",[target])),{code:'PWR01'});
+  assert.equal((await pay(f.order.id,'application')).status,200);const protectedEdit=['revision','deletion'].includes(change);assert.equal((await row(f.item.id)).is_paid,protectedEdit);assert.equal(await receiptCount(f.order.id),protectedEdit?1:0);
+  if(protectedEdit){assert.equal(await eventCount('application_paid:'+f.item.id),1);assert.equal((await pay(f.order.id,'application')).status,200);assert.equal(await receiptCount(f.order.id),1);assert.equal(await eventCount('application_paid:'+f.item.id),1);}
   assert.equal((await owner.query('select status from app.payment_orders where id=$1',[f.order.id])).rows[0].status,'succeeded');
   if(change==='profession')await owner.query('update app.specialist_categories set active=true where id=(select profession_id from app.work_publications where id=$1)',[target]);
   if(change==='city')await owner.query("update app.cities set name='Краснодар' where id=(select city_id from app.work_publications where id=$1)",[target]);
@@ -152,9 +154,13 @@ try{
    assert.equal((await call(endpoint,actor,{action:'dispatch',paymentId:payment.id})).status,200);
    assert.equal((await pay(payment.id,'application','succeed',actor)).status,200);
   }
-  // A pending simulator payment must not capture after another specialist wins.
+  // Resolve every active checkout before selecting an executor; unpaid peers still receive closure notices.
   assert.equal((await call(endpoint,thirdActor,{action:'dispatch',paymentId:thirdOrder.id})).status,200);
   const sent=await apps.read(employer.token,employer.id,winner.id);
+  await assert.rejects(apps.decide(employer.token,employer.id,sent.id,sent.revision,'selected'),{code:'PWR01'});
+  assert.equal((await pay(thirdOrder.id,'application','cancel',thirdActor)).status,200);
+  assert.equal((await call(endpoint,lateActor,{action:'dispatch',paymentId:lateOrder.id})).status,200);
+  assert.equal((await pay(lateOrder.id,'application','cancel',lateActor)).status,200);
   const selected=await apps.decide(employer.token,employer.id,sent.id,sent.revision,'selected');assert.equal(selected.status,'selected');
   const publicStore=new(load('postgres-public-work').PostgresPublicWorkStore)(runtime,{vacancyPostmoderation:true});
   assert.equal(await publicStore.read('workRequest',work.id),undefined);assert.ok(!(await publicStore.list('workRequest',1000)).some(item=>item.id===work.id));
@@ -164,16 +170,16 @@ try{
   assert.equal(await eventCount('application_other_selected:'+second.id),1);assert.equal(await eventCount('application_other_selected:'+third.id),1);
   await apps.decide(employer.token,employer.id,sent.id,sent.revision,'selected');assert.equal(await eventCount('application_other_selected:'+second.id),1);
   await assert.rejects(apps.decide(employer.token,employer.id,second.id,'2','selected'));
-  assert.notEqual((await pay(thirdOrder.id,'application','succeed',thirdActor)).status,200);
-  assert.equal((await owner.query('select status from local_primary.provider_payments where intent_id=$1',[thirdOrder.id])).rows[0].status,'pending');
-  assert.notEqual((await call(endpoint,lateActor,{action:'dispatch',paymentId:lateOrder.id})).status,200);
-  assert.equal((await owner.query('select count(*)::int as n from local_primary.provider_payments where intent_id=$1',[lateOrder.id])).rows[0].n,0);
+  assert.equal((await pay(thirdOrder.id,'application','succeed',thirdActor)).status,200);assert.equal((await owner.query('select status from app.payment_orders where id=$1',[thirdOrder.id])).rows[0].status,'failed');
+  assert.equal((await owner.query('select status from local_primary.provider_payments where intent_id=$1',[thirdOrder.id])).rows[0].status,'canceled');
+  assert.equal((await call(endpoint,lateActor,{action:'dispatch',paymentId:lateOrder.id})).status,200);
+  assert.equal((await owner.query('select status from app.payment_orders where id=$1',[lateOrder.id])).rows[0].status,'failed');
   for(const actor of [applicant,foreign,thirdActor,lateActor])await assert.rejects(apps.preview(actor.token,actor.id,'workRequest',work.id));
   // Replaying captured delivery remains idempotent after the order closes.
   assert.equal((await pay(firstOrder.id,'application','succeed',applicant)).status,200);assert.equal(await receiptCount(firstOrder.id),1);
   assert.equal((await(await call(endpoint,thirdActor,{action:'order',paymentId:thirdOrder.id})).json()).targetClosed,true);
  });
- await check('captured but undelivered payment stays truthful when executor selection closes its target',async()=>{
+ await check('captured but undelivered payment prevents selection, recovers once, then permits selection',async()=>{
   const work=await target(),winner=await applicationOn(applicant,work),other=await applicationOn(foreign,work);
   const first=await purchaseFor(applicant,winner),late=await purchaseFor(foreign,other);
   for(const [actor,payment] of [[applicant,first],[foreign,late]])assert.equal((await call(endpoint,actor,{action:'dispatch',paymentId:payment.id})).status,200);
@@ -181,11 +187,14 @@ try{
   await owner.query("update local_primary.provider_payments set status='succeeded',captured_at=to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') where intent_id=$1",[late.id]);
   // The simulator read/reconciliation path recovers this original capture; no new capture is made.
   assert.equal((await pay(first.id,'application','succeed',applicant)).status,200);
-  const sent=await apps.read(employer.token,employer.id,winner.id);await apps.decide(employer.token,employer.id,sent.id,sent.revision,'selected');
+  const sent=await apps.read(employer.token,employer.id,winner.id);await assert.rejects(apps.decide(employer.token,employer.id,sent.id,sent.revision,'selected'),{code:'PWR01'});
   const snapshot=await(await call(endpoint,foreign,{action:'order',paymentId:late.id})).json();
-  assert.equal(snapshot.order.status,'succeeded');assert.equal(snapshot.targetClosed,true);assert.equal(snapshot.deliveredAt,null);
+  assert.equal(snapshot.order.status,'succeeded');assert.equal(snapshot.targetClosed,false);assert.equal(snapshot.deliveredAt,null);
   assert.equal(await receiptCount(late.id),0);assert.equal((await row(other.id)).is_paid,false);
   assert.equal((await pay(late.id,'application','succeed',foreign)).status,200);
+  assert.equal(await receiptCount(late.id),1);assert.equal(await eventCount('application_paid:'+other.id),1);
+  await apps.decide(employer.token,employer.id,sent.id,sent.revision,'selected');assert.equal((await row(other.id)).status,'rejected');
+  assert.equal((await pay(late.id,'application','succeed',foreign)).status,200);assert.equal(await receiptCount(late.id),1);assert.equal(await eventCount('application_paid:'+other.id),1);
  });
  await check('explicit rejection notifies its applicant once and leaves the order open',async()=>{
   const f=await captured(await prepare(await application())),sent=await apps.read(employer.token,employer.id,f.item.id);
@@ -219,11 +228,12 @@ try{
   const provider=(await owner.query('select provider_id,status from local_primary.provider_payments where intent_id=$1',[lost.id])).rows[0];assert.equal(provider.status,'pending');
   assert.equal((await owner.query('select count(*)::int as n from app.payment_provider_links where intent_id=$1',[lost.id])).rows[0].n,0);
   assert.equal((await call(endpoint,applicant,{action:'dispatch',paymentId:first.id})).status,200);assert.equal((await pay(first.id,'application')).status,200);
-  const sent=await apps.read(employer.token,employer.id,winner.id);await apps.decide(employer.token,employer.id,sent.id,sent.revision,'selected');
+  const sent=await apps.read(employer.token,employer.id,winner.id);await assert.rejects(apps.decide(employer.token,employer.id,sent.id,sent.revision,'selected'),{code:'PWR01'});
   assert.equal((await call(endpoint,foreign,{action:'dispatch',paymentId:lost.id})).status,200);
   assert.equal((await owner.query('select provider_payment_id from app.payment_provider_links where intent_id=$1',[lost.id])).rows[0].provider_payment_id,provider.provider_id);
   assert.deepEqual((await owner.query('select provider_id,status from local_primary.provider_payments where intent_id=$1',[lost.id])).rows[0],provider);
-  assert.notEqual((await pay(lost.id,'application','succeed',foreign)).status,200);assert.equal(await receiptCount(lost.id),0);
+  assert.equal((await pay(lost.id,'application','cancel',foreign)).status,200);await apps.decide(employer.token,employer.id,sent.id,sent.revision,'selected');
+  assert.equal((await pay(lost.id,'application','succeed',foreign)).status,200);assert.equal(await receiptCount(lost.id),0);assert.equal((await owner.query('select status from app.payment_orders where id=$1',[lost.id])).rows[0].status,'failed');
  });
  async function applicationOn(actor,work){
   if(!(await owner.query("select id from app.service_publications where author_id=$1 and kind='specialist' and deleted_at is null",[actor.id])).rowCount)await new(load('postgres-service-publications').PostgresServicePublicationStore)(runtime,{specialistProfileIdentity:true}).create(actor.token,actor.id,'specialist',randomUUID(),form);

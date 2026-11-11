@@ -1,0 +1,411 @@
+diff --git a/database/migrations/0054-refund-worker-locks.sql b/database/migrations/0054-refund-worker-locks.sql
+new file mode 100644
+index 0000000..faf8001
+--- /dev/null
++++ b/database/migrations/0054-refund-worker-locks.sql
+@@ -0,0 +1,23 @@
++-- Private refund worker: UPDATE(id) permits row locks, never identity changes.
++-- Column-specific triggers leave SECURITY DEFINER refund status updates available.
++begin;
++set local lock_timeout='3s';
++set local statement_timeout='10s';
++create function app.guard_refund_worker_locks() returns trigger
++ language plpgsql security invoker set search_path='' as $$ begin
++ if current_user='blizhniy_refund_worker' or session_user='blizhniy_refund_worker' then
++  raise exception using errcode='23514',message='Refund worker lock-only relation';
++ end if;
++ return new;
++end $$;
++create trigger refund_worker_lock_only before update of id on app.users
++ for each row execute function app.guard_refund_worker_locks();
++create trigger refund_worker_lock_only before update of id on app.payment_checkout_intents
++ for each row execute function app.guard_refund_worker_locks();
++create trigger refund_worker_lock_only before update of id on app.payment_orders
++ for each row execute function app.guard_refund_worker_locks();
++alter table app.users enable always trigger refund_worker_lock_only;
++alter table app.payment_checkout_intents enable always trigger refund_worker_lock_only;
++alter table app.payment_orders enable always trigger refund_worker_lock_only;
++revoke all on function app.guard_refund_worker_locks() from public;
++commit;
+diff --git a/scripts/refund-worker-role.mjs b/scripts/refund-worker-role.mjs
+new file mode 100644
+index 0000000..af07a54
+--- /dev/null
++++ b/scripts/refund-worker-role.mjs
+@@ -0,0 +1,143 @@
++// Dormant operator library: sources/SQL only, no connection, role adoption or grant executor.
++import {readFileSync} from 'node:fs';
++import {createHash} from 'node:crypto';
++import {getBootstrapPlan} from './postgres-migration-plan.mjs';
++import {getCabinetMigrationPlan} from './cabinet-release-plan.mjs';
++
++const role='blizhniy_refund_worker',locks=['users','payment_checkout_intents','payment_orders'];
++const suffix=['0033-account-deletion.sql','0034-checkout-edit-fence.sql','0035-application-contact-views.sql','0036-placement-refund-reservations.sql','0037-refund-requests.sql','0038-refund-journal.sql','0039-refund-dispatch.sql','0040-placement-refund-effects.sql','0041-booking-lifecycle.sql','0042-placement-refund-approvals.sql','0043-application-compensation-cases.sql','0044-work-owner-actions.sql','0045-customer-closure-compensation.sql','0046-response-checkout-fence.sql','0047-checkout-cancellation.sql','0048-application-compensation-refunds.sql','0049-application-compensation-queue.sql','0050-application-compensation-discovery.sql','0051-refund-recovery.sql','0052-placement-refund-queue.sql','0053-application-compensation-lease.sql','0054-refund-worker-locks.sql'];
++const cols=text=>text.split(',');
++// PG18.6 information_schema.sql grants these SELECTs after initdb records pg_init_privs.
++const publicMetadata=cols('information_schema_catalog_name,applicable_roles,administrable_role_authorizations,attributes,character_sets,check_constraint_routine_usage,check_constraints,collations,collation_character_set_applicability,column_column_usage,column_domain_usage,column_privileges,column_udt_usage,columns,constraint_column_usage,constraint_table_usage,domain_constraints,domain_udt_usage,domains,enabled_roles,key_column_usage,parameters,referential_constraints,role_column_grants,routine_column_usage,routine_privileges,role_routine_grants,routine_routine_usage,routine_sequence_usage,routine_table_usage,routines,schemata,sequences,sql_features,sql_implementation_info,sql_sizing,table_constraints,table_privileges,role_table_grants,tables,triggered_update_columns,triggers,udt_privileges,role_udt_grants,usage_privileges,role_usage_grants,user_defined_types,view_column_usage,view_routine_usage,view_table_usage,views,data_type_privileges,element_types,column_options,foreign_data_wrapper_options,foreign_data_wrappers,foreign_server_options,foreign_servers,foreign_table_options,foreign_tables,user_mapping_options,user_mappings');
++const policy={
++ 'app.users':{select:['id'],update:['id']},
++ 'app.payment_checkout_intents':{select:cols('id,owner_id,target_type,target_id,target_revision,tariff_id,amount,duration_days,merchant_shop_id,is_test,request_body,request_sha256,created_at'),update:['id']},
++ 'app.payment_orders':{select:cols('id,status'),update:['id']},
++ 'app.payment_provider_links':{select:cols('intent_id,provider_payment_id')},
++ 'app.payment_verifications':{select:cols('intent_id,provider_payment_id,status,captured_at')},
++ 'app.payment_refund_approvals':{select:cols('id,payment_intent_id,approved_by,reason,policy_version,fiscal_mode,amount,approved_at')},
++ 'app.payment_refund_reservations':{select:cols('id,payment_intent_id,provider_payment_id,merchant_shop_id,is_test,amount,created_at'),insert:cols('id,payment_intent_id,provider_payment_id,merchant_shop_id,is_test,amount')},
++ 'app.payment_refund_requests':{select:cols('operation_id,idempotence_key,request_body,request_sha256,created_at'),insert:cols('operation_id,idempotence_key,request_body')},
++ 'app.payment_refund_dispatch_anchors':{select:cols('operation_id,authorized_at'),insert:['operation_id']},
++ 'app.payment_refund_send_attempts':{select:cols('id,operation_id,request_sha256'),insert:cols('id,operation_id')},
++ 'app.payment_refund_candidates':{select:cols('operation_id,attempt_id,provider_refund_id'),insert:cols('operation_id,attempt_id,provider_refund_id')},
++ 'app.payment_refund_provider_links':{select:cols('operation_id,provider_refund_id'),insert:cols('operation_id,provider_refund_id')},
++ 'app.payment_refund_observations':{select:cols('operation_id,provider_refund_id,status,provider_created_at,observed_at'),insert:cols('operation_id,provider_refund_id,status,provider_created_at')},
++ 'app.payment_refund_effects':{select:cols('operation_id,merchant_shop_id,payment_intent_id,provider_refund_id,target_type,target_id,effect,applied_at'),insert:cols('operation_id,merchant_shop_id')},
++ 'app.application_compensation_cases':{select:cols('payment_intent_id,application_id,merchant_shop_id,policy_version,amount,fiscal_mode,reason,eligible_at,delivered_at,contact_view_at,selected_application_id,created_at'),insert:cols('payment_intent_id,merchant_shop_id')},
++ 'app.application_compensation_refunds':{select:cols('payment_intent_id,merchant_shop_id,application_id,provider_refund_id,amount,applied_at'),insert:cols('payment_intent_id,merchant_shop_id')},
++ 'blizhniy_meta.migrations':{select:['name','sha256']},
++};
++const functions=[
++ 'app.lock_application_compensation_source(uuid,text)','app.refund_target_admitted(uuid,uuid)',
++ 'app.next_application_compensation_candidates(text,integer)',
++ 'app.enqueue_application_compensation_batch(text,integer)','app.claim_application_compensation_job(text)',
++ 'app.owns_application_compensation_job(text,uuid,uuid)','app.finish_application_compensation_job(text,uuid,uuid,text,text)',
++ 'app.assert_application_compensation_job(text,uuid,uuid)','app.assert_application_compensation_job_remaining(text,uuid,uuid)',
++ 'app.enqueue_placement_refund_batch(text,integer)','app.claim_placement_refund_job(text)',
++ 'app.owns_placement_refund_job(text,uuid,uuid)','app.finish_placement_refund_job(text,uuid,uuid,text,text)',
++ 'app.assert_placement_refund_job(text,uuid,uuid)',
++];
++const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
++function journal(){return[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan(),...suffix.map(name=>{
++ const source=readFileSync(new URL('../database/migrations/'+name,import.meta.url),'utf8');
++ if(!/^begin;$/m.test(source)||!/commit;\s*$/.test(source))throw Error('Invalid refund migration');
++ return{name,sha256:createHash('sha256').update(source).digest('hex')};
++})].map(({name,sha256})=>({name,sha256}));}
++
++export function getRefundWorkerRolePlan(database){
++ if(!validDatabase(database))throw Error('Invalid refund database');
++ return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(),
++  grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
++   ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`)),
++   ...functions.map(signature=>`grant execute on function ${signature} to ${role}`)]};
++}
++
++/** Read-only identity/ACL/journal/lock-guard admission, not full live-schema attestation.
++ * Trusted TEST financial process; merchant isolation is enforced by the stores, not SQL RLS.
++ * No managed membership exception, production runtime wiring or automatic activation.
++ */
++export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
++ try{
++  if(!validDatabase(database)||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
++  const expectedJournal=journal();
++  await db.transaction(async tx=>{
++   await tx.query("set local statement_timeout='5s'");
++   await tx.query("set local lock_timeout='1s'");
++   await tx.query('set local search_path=pg_catalog');
++   const identity=(await tx.query(`select current_user as name,session_user as login,current_database() as database,
++    current_setting('server_version_num')::integer as version,current_setting('transaction_read_only') as readonly,
++    current_setting('session_replication_role') as replication,rolsuper,rolcreatedb,rolcreaterole,rolinherit,rolreplication,rolbypassrls,rolcanlogin,rolconnlimit,
++    exists(select 1 from pg_auth_members m where m.roleid=r.oid or m.member=r.oid) as membership,
++    has_database_privilege(current_database(),'CONNECT') as connect,
++    has_database_privilege(current_database(),'CREATE,TEMP,CONNECT WITH GRANT OPTION') as database_extra,
++    has_parameter_privilege('session_replication_role','SET,ALTER SYSTEM') as replication_override
++    from pg_roles r where rolname=current_user`)).rows[0];
++   if(!identity||identity.name!==role||identity.login!==role||identity.database!==database||identity.version<180000||identity.version>=190000||
++    identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
++    ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
++   const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
++   if(JSON.stringify(actualJournal)!==JSON.stringify(expectedJournal))throw Error('Invalid refund journal');
++   const schemas=(await tx.query(`select nspname as name,has_schema_privilege(oid,'USAGE') as usage,
++    has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace
++    `)).rows;
++   if(!['app','blizhniy_meta'].every(name=>schemas.some(item=>item.name===name&&item.usage===true))||
++    schemas.some(item=>item.extra!==false||(item.usage&&!['app','blizhniy_meta','public','pg_catalog','information_schema'].includes(item.name))))throw Error('Invalid schema privileges');
++   if((await tx.query("select 1 from pg_parameter_acl where has_parameter_privilege(parname,'SET,ALTER SYSTEM') limit 1")).rows.length)throw Error('Invalid parameter privileges');
++   const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
++    has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
++    from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid
++    cross join (values('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) as p(privilege)
++    where n.nspname not in ('pg_catalog','information_schema') and c.relkind in ('r','p','v','m','f')
++     and a.attnum>0 and not a.attisdropped and has_column_privilege(c.oid,a.attnum,p.privilege) limit 10001`)).rows;
++   const expected=new Set(Object.entries(policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
++   if(actual.length!==expected.size||actual.some(item=>item.grantable!==false||!expected.delete(item.key))||expected.size)throw Error('Invalid column privileges');
++   const dangerous=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
++    where n.nspname not in ('pg_catalog','information_schema') and
++     ((c.relkind in ('r','p','v','m','f') and has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN')) or
++      (c.relkind='S' and has_sequence_privilege(c.oid,'USAGE,SELECT,UPDATE'))) limit 1`);
++   const callable=(await tx.query(`select n.nspname||'.'||p.proname||'('||oidvectortypes(p.proargtypes)||')' as signature,
++    has_function_privilege(p.oid,'EXECUTE WITH GRANT OPTION') as grantable from pg_proc p join pg_namespace n on n.oid=p.pronamespace
++    where n.nspname not in ('pg_catalog','information_schema') and has_function_privilege(p.oid,'EXECUTE') limit 10001`)).rows;
++   const allowed=new Set(functions.map(name=>name.replaceAll(',',', ')));
++   if(dangerous.rows.length||callable.length!==allowed.size||callable.some(item=>item.grantable!==false||!allowed.delete(item.signature))||allowed.size)throw Error('Invalid object privileges');
++   // A direct built-in EXECUTE grant can bypass table ACLs without any role membership.
++   const catalogExtra=await tx.query(`with catalog_acl as (
++    select 'pg_proc'::regclass as classoid,p.oid as objoid,0 as objsubid,
++     coalesce(p.proacl,acldefault('f',p.proowner)) as acl,
++     coalesce(i.initprivs,acldefault('f',p.proowner)) as initial,false as public_metadata
++    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
++    left join pg_init_privs i on i.classoid='pg_proc'::regclass and i.objoid=p.oid and i.objsubid=0 and i.privtype='i'
++    where n.nspname in ('pg_catalog','information_schema')
++    union all
++    select 'pg_class'::regclass,c.oid,0,coalesce(c.relacl,acldefault(case when c.relkind='S' then 's'::"char" else 'r'::"char" end,c.relowner)),
++     coalesce(i.initprivs,acldefault(case when c.relkind='S' then 's'::"char" else 'r'::"char" end,c.relowner)),
++     n.nspname='information_schema' and c.oid<16384 and c.relname=any($1::text[]) and c.relkind in ('r','v')
++    from pg_class c join pg_namespace n on n.oid=c.relnamespace
++    left join pg_init_privs i on i.classoid='pg_class'::regclass and i.objoid=c.oid and i.objsubid=0 and i.privtype='i'
++    where n.nspname in ('pg_catalog','information_schema')
++    union all
++    select 'pg_class'::regclass,c.oid,a.attnum,a.attacl,coalesce(i.initprivs,'{}'::aclitem[]),false
++    from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
++    left join pg_init_privs i on i.classoid='pg_class'::regclass and i.objoid=c.oid and i.objsubid=a.attnum and i.privtype='i'
++    where n.nspname in ('pg_catalog','information_schema') and a.attnum>0 and not a.attisdropped
++   ) select 1 from catalog_acl c cross join lateral aclexplode(c.acl) g
++    where g.grantee in (0,(select oid from pg_roles where rolname=current_user))
++    and not (c.public_metadata and g.privilege_type='SELECT' and not g.is_grantable) and not exists (
++     select 1 from aclexplode(c.initial) p where p.grantee=0 and p.privilege_type=g.privilege_type
++      and (not g.is_grantable or p.is_grantable)) limit 1`,[publicMetadata]);
++   if(catalogExtra.rows.length)throw Error('Invalid catalog privileges');
++   const body=readFileSync(new URL('../database/migrations/0054-refund-worker-locks.sql',import.meta.url),'utf8').match(/as \$\$([\s\S]*?)\$\$;/)?.[1];
++   const guards=(await tx.query(`select c.relname as name,t.tgenabled,t.tgtype,t.tgnargs,
++    t.tgattr::text=a.attnum::text as id_only,t.tgqual is null as unconditional,p.prosrc,p.prosecdef,p.proconfig,l.lanname
++    from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace
++    join pg_proc p on p.oid=t.tgfoid join pg_language l on l.oid=p.prolang
++    join pg_attribute a on a.attrelid=c.oid and a.attname='id' and not a.attisdropped
++    where n.nspname='app' and c.relname=any($1::text[]) and t.tgname='refund_worker_lock_only'
++     and not t.tgisinternal and p.oid='app.guard_refund_worker_locks()'::regprocedure`,[locks])).rows;
++   if(!body||guards.length!==locks.length||new Set(guards.map(item=>item.name)).size!==locks.length||guards.some(item=>
++    item.tgenabled!=='A'||item.tgtype!==19||item.tgnargs!==0||item.id_only!==true||item.unconditional!==true||
++    item.prosrc!==body||item.prosecdef!==false||item.lanname!=='plpgsql'||JSON.stringify(item.proconfig)!==JSON.stringify(['search_path=""'])))throw Error('Invalid lock guards');
++  },{readOnly:true});
++ }catch{throw Error('Refund worker database preflight failed');}
++}
+diff --git a/tests/refund-worker-role-cases.mjs b/tests/refund-worker-role-cases.mjs
+new file mode 100644
+index 0000000..5634418
+--- /dev/null
++++ b/tests/refund-worker-role-cases.mjs
+@@ -0,0 +1,166 @@
++import assert from 'node:assert/strict';
++import {readFile} from 'node:fs/promises';
++import {randomBytes,randomUUID} from 'node:crypto';
++import pg from 'pg';
++import {getRefundWorkerRolePlan,verifyRefundWorkerDatabase} from '../scripts/refund-worker-role.mjs';
++
++// Called only by the owned disposable PG18 placement fixture; no environment credentials.
++export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,operator,merchant}){
++ await admin.query(await readFile(new URL('../database/migrations/0053-application-compensation-lease.sql',import.meta.url),'utf8'));
++ await admin.query(await readFile(new URL('../database/migrations/0054-refund-worker-locks.sql',import.meta.url),'utf8'));
++ const plan=getRefundWorkerRolePlan('blizhniy_test'),role=plan.role,password=randomBytes(24).toString('hex');
++ const {PostgresDatabase}=load('postgres');
++ await admin.query(`create schema blizhniy_meta;revoke all on schema blizhniy_meta from public;
++  create table blizhniy_meta.migrations(name text primary key,sha256 text not null check(sha256 ~ '^[a-f0-9]{64}$'));
++  revoke all on blizhniy_meta.migrations from public`);
++ for(const {name,sha256} of plan.journal)await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[name,sha256]);
++ await admin.query(plan.createRole);await admin.query(`alter role ${role} login password ${pg.escapeLiteral(password)}`);
++ const db=new PostgresDatabase(new pg.Pool({...admin.options,user:role,password,max:3}));
++ const check=()=>verifyRefundWorkerDatabase(db,{database:'blizhniy_test',merchant});
++ try{
++  await suite.test('dedicated refund role fails without grants and succeeds only with its complete column and function plan',async()=>{
++   await assert.rejects(check(),{message:'Refund worker database preflight failed'});
++   for(const sql of plan.grants)await admin.query(sql);
++  });
++  await suite.test('refund worker lock-only capability cannot even perform a no-op UPDATE on an existing user',async()=>{
++   await db.transaction(async tx=>{assert.equal((await tx.query('select id from app.users where id=$1 for update',[operator.id])).rowCount,1);});
++   await assert.rejects(db.query('update app.users set id=id where id=$1',[operator.id]),{code:'23514'});
++  });
++  await suite.test('refund identity guards reject both SET ROLE and SECURITY DEFINER identity writes',async()=>{
++   await assert.rejects(ownerDb.transaction(async tx=>{await tx.query(`set local role ${role}`);await tx.query('update app.users set id=id where id=$1',[operator.id]);}),{code:'23514'});
++   await admin.query(`create function app.refund_lock_probe(value uuid) returns void language sql security definer set search_path='' as $$update app.users set id=id where id=value$$;
++    revoke all on function app.refund_lock_probe(uuid) from public;grant execute on function app.refund_lock_probe(uuid) to ${role}`);
++   try{await assert.rejects(db.query('select app.refund_lock_probe($1)',[operator.id]),{code:'23514'});}
++   finally{await admin.query('drop function app.refund_lock_probe(uuid)');}
++  });
++  await suite.test('exact refund role passes read-only preflight; owner, wrong database and SET ROLE sessions fail',async()=>{
++   await check();
++   await assert.rejects(verifyRefundWorkerDatabase(ownerDb,{database:'blizhniy_test',merchant}));
++   await assert.rejects(verifyRefundWorkerDatabase(db,{database:'wrong_database',merchant}));
++   const impersonated={transaction:(work,options)=>ownerDb.transaction(async tx=>{await tx.query(`set local role ${role}`);return work(tx);},options)};
++   await assert.rejects(verifyRefundWorkerDatabase(impersonated,{database:'blizhniy_test',merchant}));
++  });
++  await suite.test('refund preflight refuses missing permissions, grant options, extra financial writes, PII and dangerous objects',async()=>{
++   await admin.query('create schema pgbackup_refund_probe;create table pgbackup_refund_probe.probe(id integer);create sequence app.refund_acl_probe;create function app.refund_acl_probe() returns integer language sql as $$select 1$$;revoke all on function app.refund_acl_probe() from public');
++   const changes=[
++    [`grant select(email) on app.users to ${role}`,`revoke select(email) on app.users from ${role}`],
++    [`grant update(status) on app.payment_orders to ${role}`,`revoke update(status) on app.payment_orders from ${role}`],
++    [`grant select(id) on app.users to ${role} with grant option`,`revoke grant option for select(id) on app.users from ${role}`],
++    [`revoke select(sha256) on blizhniy_meta.migrations from ${role}`,`grant select(sha256) on blizhniy_meta.migrations to ${role}`],
++    [`revoke execute on function app.assert_application_compensation_job_remaining(text,uuid,uuid) from ${role}`,`grant execute on function app.assert_application_compensation_job_remaining(text,uuid,uuid) to ${role}`],
++    [`grant execute on function app.refund_acl_probe() to ${role}`,`revoke execute on function app.refund_acl_probe() from ${role}`],
++    [`grant execute on function app.refund_target_admitted(uuid,uuid) to ${role} with grant option`,`revoke grant option for execute on function app.refund_target_admitted(uuid,uuid) from ${role}`],
++    [`grant delete on app.payment_refund_effects to ${role}`,`revoke delete on app.payment_refund_effects from ${role}`],
++    [`grant usage on sequence app.refund_acl_probe to ${role}`,`revoke usage on sequence app.refund_acl_probe from ${role}`],
++    [`grant select(id) on pgbackup_refund_probe.probe to ${role}`,`revoke select(id) on pgbackup_refund_probe.probe from ${role}`],
++    [`grant create on schema app to ${role}`,`revoke create on schema app from ${role}`],
++    [`grant create on schema information_schema to ${role}`,`revoke create on schema information_schema from ${role}`],
++    [`grant create on schema pg_catalog to ${role}`,`revoke create on schema pg_catalog from ${role}`],
++    [`grant alter system on parameter shared_preload_libraries to ${role}`,`revoke alter system on parameter shared_preload_libraries from ${role}`],
++    [`grant set on parameter session_preload_libraries to ${role}`,`revoke set on parameter session_preload_libraries from ${role}`],
++    [`grant temp on database blizhniy_test to ${role}`,`revoke temp on database blizhniy_test from ${role}`],
++   ];
++   try{for(const [change,restore] of changes){await admin.query(change);try{await assert.rejects(check());}finally{await admin.query(restore);}await check();}}
++   finally{await admin.query('drop function app.refund_acl_probe();drop sequence app.refund_acl_probe;drop schema pgbackup_refund_probe cascade');}
++  });
++  await suite.test('refund preflight rejects privileged flags and all incoming or outgoing memberships without managed exceptions',async()=>{
++   await admin.query('create role refund_membership_probe nologin');
++   const changes=[...['superuser','createdb','createrole','inherit','replication','bypassrls'].map(flag=>[`alter role ${role} ${flag}`,`alter role ${role} no${flag}`]),
++    [`alter role ${role} connection limit 5`,`alter role ${role} connection limit 4`],
++    [`grant refund_membership_probe to ${role}`,`revoke refund_membership_probe from ${role}`],
++    [`grant ${role} to refund_membership_probe with admin true,inherit false,set false`,`revoke ${role} from refund_membership_probe`]];
++   try{for(const [change,restore] of changes){await admin.query(change);try{await assert.rejects(check());}finally{await admin.query(restore);}await check();}}
++   finally{await admin.query('drop role refund_membership_probe');}
++  });
++  await suite.test('refund preflight rejects built-in file access and catalog column ACL escalation, including PUBLIC grants',async()=>{
++   for(const [change,restore] of [
++    [`grant execute on function pg_catalog.pg_read_binary_file(text) to ${role}`,`revoke execute on function pg_catalog.pg_read_binary_file(text) from ${role}`],
++    ['grant execute on function pg_catalog.pg_read_binary_file(text) to public','revoke execute on function pg_catalog.pg_read_binary_file(text) from public'],
++    [`grant select(rolpassword) on pg_catalog.pg_authid to ${role}`,`revoke select(rolpassword) on pg_catalog.pg_authid from ${role}`],
++    ['grant select(rolpassword) on pg_catalog.pg_authid to public','revoke select(rolpassword) on pg_catalog.pg_authid from public'],
++    [`grant update on information_schema.schemata to ${role}`,`revoke update on information_schema.schemata from ${role}`],
++    [`grant select on information_schema._pg_foreign_servers to ${role}`,`revoke select on information_schema._pg_foreign_servers from ${role}`],
++   ]){await admin.query(change);try{await assert.rejects(check());}finally{await admin.query(restore);}await check();}
++  });
++  await suite.test('refund preflight rejects unknown migration, changed hash and disabled or altered lock guards',async()=>{
++   const hash=plan.journal[0].sha256,body=(await admin.query("select prosrc from pg_proc where oid='app.guard_refund_worker_locks()'::regprocedure")).rows[0].prosrc;
++   const changes=[
++    ["insert into blizhniy_meta.migrations values('0055-unknown.sql',repeat('0',64))","delete from blizhniy_meta.migrations where name='0055-unknown.sql'"],
++    ["update blizhniy_meta.migrations set sha256=repeat('0',64) where name='0001-identity.sql'",`update blizhniy_meta.migrations set sha256='${hash}' where name='0001-identity.sql'`],
++    ...['users','payment_checkout_intents','payment_orders'].map(table=>[`alter table app.${table} disable trigger refund_worker_lock_only`,`alter table app.${table} enable always trigger refund_worker_lock_only`]),
++    ['alter function app.guard_refund_worker_locks() security definer','alter function app.guard_refund_worker_locks() security invoker'],
++    ["alter function app.guard_refund_worker_locks() set search_path=public", "alter function app.guard_refund_worker_locks() set search_path=''"],
++    ["create or replace function app.guard_refund_worker_locks() returns trigger language plpgsql set search_path='' as $$begin return new;end$$",`create or replace function app.guard_refund_worker_locks() returns trigger language plpgsql set search_path='' as ${pg.escapeLiteral(body)}`],
++    ['drop trigger refund_worker_lock_only on app.payment_orders;create trigger refund_worker_lock_only before update of status on app.payment_orders for each row execute function app.guard_refund_worker_locks();alter table app.payment_orders enable always trigger refund_worker_lock_only',
++     'drop trigger refund_worker_lock_only on app.payment_orders;create trigger refund_worker_lock_only before update of id on app.payment_orders for each row execute function app.guard_refund_worker_locks();alter table app.payment_orders enable always trigger refund_worker_lock_only'],
++   ];
++   for(const [change,restore] of changes){await admin.query(change);try{await assert.rejects(check());}finally{await admin.query(restore);}await check();}
++  });
++  await suite.test('refund role cannot read sessions or profiles, approve refunds, set financial outcomes or bypass triggers',async()=>{
++   for(const sql of ['select email from app.users','select token_hash from app.sessions','select * from app.cabinet_profiles',
++    "update app.payment_orders set status='refunded' where false",'delete from app.payment_refund_effects where false',
++    'insert into app.payment_refund_approvals default values',"set session_replication_role='replica'",'select * from app.placement_refund_jobs',
++    'select * from app.application_compensation_jobs'])await assert.rejects(db.query(sql),{code:'42501'});
++  });
++  await suite.test('dedicated refund role completes every placement type with one effect and notification while identity updates stay forbidden',async()=>{
++   for(const kind of ['listing','vacancy','workRequest']){
++    const shop={...merchant,shopId:'refund-role-'+randomBytes(6).toString('hex')},item=await purchase({kind,scope:shop});
++    const approval=await new (load('postgres-refund-approvals').PostgresRefundApprovalStore)(ownerDb,shop).approve(operator.token,operator.id,{id:randomUUID(),paymentIntentId:item.id,reason:'Возврат для проверки выделенной роли.'});
++    if(kind==='listing')await new (load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(ownerDb,shop,{postmoderation:true}).fulfill(item.id);
++    const remote=provider(item,approval.id,shop),worker=load('placement-refund-worker').createPlacementRefundWorker(db,shop,remote.fetcher);
++    await check();assert.deepEqual(await worker.tick(),{state:'completed'});
++    assert.equal((await admin.query('select count(*)::int as n from app.payment_refund_effects where operation_id=$1',[approval.id])).rows[0].n,1);
++    assert.equal((await admin.query('select count(*)::int as n from app.notifications where event_key=$1',['placement_refund:'+item.id])).rows[0].n,1);
++    assert.equal((await admin.query('select status from app.payment_orders where id=$1',[item.id])).rows[0].status,'refunded');
++    assert.equal(remote.posts(),1);assert.deepEqual(await worker.tick(),{state:'idle'});assert.equal(remote.posts(),1);
++    for(const table of ['payment_checkout_intents','payment_orders']){
++     await db.transaction(async tx=>{assert.equal((await tx.query(`select id from app.${table} where id=$1 for update`,[item.id])).rowCount,1);});
++     await assert.rejects(db.query(`update app.${table} set id=id where id=$1`,[item.id]),{code:'23514'});
++     await assert.rejects(db.query(`update app.${table} set id=$2 where id=$1`,[item.id,randomUUID()]),{code:'23514'});
++    }
++   }
++  });
++  await suite.test('dedicated refund role discovers and compensates one unread paid response without contact or publication write grants',async()=>{
++   const shop={...merchant,shopId:'response-role-'+randomBytes(6).toString('hex')},work=await purchase({kind:'workRequest',scope:shop});
++   const application=(await admin.query("insert into app.applications(applicant_id,work_publication_id,creation_key,target_revision,specialist_revision,snapshot,is_paid,status,created_at,sent_at) values($1,$2,$3,1,1,'{}',true,'sent',clock_timestamp()-interval '7 days',clock_timestamp()-interval '6 days') returning id",[operator.id,work.targetId,randomUUID()])).rows[0].id;
++   const id=randomUUID(),item={id,ownerId:operator.id,targetType:'application',targetId:application,targetRevision:'1',tariffId:'job-response',amount:'99.00',durationDays:null,shopId:shop.shopId,isTest:true,providerPaymentId:randomUUID(),capturedAt:new Date(Date.now()-6*86400000-1000).toISOString()};
++   item.metadata={localPaymentId:id,targetId:application,targetType:'application',tariffId:'job-response'};
++   const requestBody=JSON.stringify({amount:{value:item.amount,currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:'https://fixture.example.invalid/return'},metadata:item.metadata});
++   await ownerDb.transaction(async tx=>{
++    const {providerPaymentId,capturedAt,metadata,...binding}=item;assert.ok(providerPaymentId&&capturedAt&&metadata);
++    await new (load('postgres-payment-intents').PostgresPaymentIntentStore)(ownerDb).persistInTransaction(tx,{...binding,requestBody});
++    await tx.query("insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision) values($1,$2,$3,'application',$4,1)",[id,item.ownerId,randomUUID(),application]);
++    await tx.query('insert into app.payment_dispatch_anchors(intent_id) values($1)',[id]);await tx.query('insert into app.payment_provider_links(intent_id,provider_payment_id) values($1,$2)',[id,item.providerPaymentId]);
++    await tx.query("update app.payment_orders set status='succeeded' where id=$1",[id]);await tx.query("insert into app.payment_verifications(intent_id,provider_payment_id,status,captured_at) values($1,$2,'succeeded',$3)",[id,item.providerPaymentId,item.capturedAt]);
++   });
++   const remote=provider(item,id,shop),worker=load('application-compensation-worker').createApplicationCompensationWorker(db,shop,remote.fetcher);
++   // The bounded global cursor may visit earlier synthetic sources before this one.
++   const discovery=new (load('postgres-application-compensation-discovery').PostgresApplicationCompensationDiscovery)(db,shop);
++   for(let page=0;page<100;page++){
++    await discovery.scan(25);
++    if((await admin.query('select count(*)::int as n from app.application_compensation_cases where payment_intent_id=$1',[id])).rows[0].n===1)break;
++   }
++   assert.deepEqual(await worker.tick(),{state:'completed'});
++   assert.equal((await admin.query('select count(*)::int as n from app.application_compensation_refunds where payment_intent_id=$1',[id])).rows[0].n,1);
++   assert.equal((await admin.query('select status from app.payment_orders where id=$1',[id])).rows[0].status,'refunded');
++   assert.equal((await admin.query('select status,is_paid from app.applications where id=$1',[application])).rows[0].status,'sent');
++   assert.equal(remote.posts(),1);assert.deepEqual(await worker.tick(),{state:'idle'});assert.equal(remote.posts(),1);await check();
++  });
++ }finally{await db.close();}
++}
++
++function provider(item,operationId,shop){
++ let posts=0;const refundId=randomUUID(),refund={id:refundId,payment_id:item.providerPaymentId,amount:{value:item.amount,currency:'RUB'},status:'succeeded',created_at:new Date().toISOString(),metadata:{localRefundId:operationId,localPaymentId:item.id}};
++ return{posts:()=>posts,fetcher:async(url,init)=>{
++  assert.equal(init.cache,'no-store');assert.equal(init.redirect,'error');
++  if(init.method==='POST'){
++   assert.equal(String(url),'https://api.yookassa.ru/v3/refunds');assert.equal(init.headers['Idempotence-Key'],'refund-'+operationId);
++   assert.deepEqual(JSON.parse(init.body),{payment_id:item.providerPaymentId,amount:{value:item.amount,currency:'RUB'},metadata:{localRefundId:operationId,localPaymentId:item.id}});
++   posts++;return Response.json(refund);
++  }
++  assert.equal(init.method,'GET');
++  if(String(url)==='https://api.yookassa.ru/v3/payments/'+item.providerPaymentId)return Response.json({id:item.providerPaymentId,amount:{value:item.amount,currency:'RUB'},status:'succeeded',paid:true,test:true,refundable:true,captured_at:item.capturedAt,recipient:{account_id:shop.shopId},metadata:item.metadata});
++  if(String(url)==='https://api.yookassa.ru/v3/refunds?payment_id='+item.providerPaymentId+'&limit=100')return Response.json({type:'list',items:[]});
++  assert.equal(String(url),'https://api.yookassa.ru/v3/refunds/'+refundId);return Response.json(refund);
++ }};
++}
+diff --git a/tests/refund-worker-role.test.mjs b/tests/refund-worker-role.test.mjs
+new file mode 100644
+index 0000000..048867e
+--- /dev/null
++++ b/tests/refund-worker-role.test.mjs
+@@ -0,0 +1,35 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {getRefundWorkerRolePlan,verifyRefundWorkerDatabase} from '../scripts/refund-worker-role.mjs';
++
++test('refund worker plan is inert, NOLOGIN and pinned to the reviewed migration boundary',()=>{
++ const plan=getRefundWorkerRolePlan('blizhniy_test');
++ assert.equal(plan.role,'blizhniy_refund_worker');
++ assert.match(plan.createRole,/nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4$/);
++ assert.equal(plan.journal.length,54);
++ assert.equal(plan.journal.at(-1).name,'0054-refund-worker-locks.sql');
++ assert.ok(plan.journal.every(row=>/^[a-f0-9]{64}$/.test(row.sha256)));
++ assert.ok(plan.grants.every(sql=>/^grant (connect|usage|select\(|insert\(|update\(id\)|execute on function)/.test(sql)));
++ assert.equal(plan.grants.some(sql=>/app\.(sessions|profiles|notifications|listings|work_publications)\b/.test(sql)),false);
++ assert.equal(plan.grants.some(sql=>/^grant insert.* on app.payment_refund_approvals /.test(sql)),false);
++ assert.equal(plan.grants.some(sql=>/refund_recovery/.test(sql)),false);
++});
++
++test('refund worker target rejects identifiers before producing SQL',()=>{
++ for(const value of [undefined,null,'','a";drop database x;--','a'.repeat(64),{},1])assert.throws(()=>getRefundWorkerRolePlan(value));
++ assert.ok(getRefundWorkerRolePlan('fixture-db.v1').grants[0].includes('"fixture-db.v1"'));
++});
++
++test('refund worker preflight rejects LIVE or malformed scope before reading the database',async()=>{
++ let reads=0;const db={transaction:async()=>{reads++;throw Error('Must not reach DB');}};
++ for(const merchant of [{shopId:'fixture',isTest:false},{shopId:'',isTest:true},null])
++  await assert.rejects(verifyRefundWorkerDatabase(db,{database:'blizhniy_test',merchant}),/Refund worker database preflight failed/);
++ assert.equal(reads,0);
++});
++
++test('refund worker preflight requires a read-only transaction and redacts database errors',async()=>{
++ let calls=0;
++ const db={transaction:async(work,options)=>{calls++;assert.deepEqual(options,{readOnly:true});return work({query:async()=>{throw Error('sensitive database detail');}});}};
++ await assert.rejects(verifyRefundWorkerDatabase(db,{database:'blizhniy_test',merchant:{shopId:'fixture',isTest:true}}),{message:'Refund worker database preflight failed'});
++ assert.equal(calls,1);
++});
+diff --git a/tests/placement-refund-approval-postgres.mjs b/tests/placement-refund-approval-postgres.mjs
+index c89b5de..68c8243 100644
+--- a/tests/placement-refund-approval-postgres.mjs
++++ b/tests/placement-refund-approval-postgres.mjs
+@@ -8,6 +8,7 @@ import {readFile,readdir} from 'node:fs/promises';
+ import {createRequire} from 'node:module';
+ import pg from 'pg';
+ import {testPlacementRefundQueue} from './placement-refund-queue-cases.mjs';
++import {testRefundWorkerRole} from './refund-worker-role-cases.mjs';
+ const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
+ const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
+ const name='blizhniy-refund-approval-'+randomBytes(8).toString('hex'),label='blizhniy.refund-approval',password=randomBytes(24).toString('hex');
+@@ -194,6 +195,7 @@ test('full TEST placement refund: durable authenticated administrator approval',
+    assert.equal((await admin.query('select id from app.payment_refund_reservations where payment_intent_id=$1',[item.id])).rows[0].id,legacy);
+   });
+   await testPlacementRefundQueue(suite,{admin,ownerDb,purchase,load,operator,merchant});
++  await testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,operator,merchant});
+  }finally{
+   await Promise.allSettled([db?.close(),ownerDb?.close(),admin?.end()]);
+   if(container){const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);await docker(['rm','--force',container]);}

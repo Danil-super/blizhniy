@@ -86,8 +86,13 @@ const registrationAssertionPairs = [
     '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());',
     '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["name", "email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());'],
 ];
-// Apply only after owner review of the six exact deployment replacements.
+// Apply only after owner review of the exact deployment replacements.
 const deploymentAssertionPairs = [
+  [
+    "tests/postgres-ci-gate.test.mjs",
+    "  assert.deepEqual(calls,[['npx','playwright','install','--with-deps','chromium'],['docker','--host','unix:///var/run/docker.sock','pull',image],['node','--experimental-strip-types','--test','--test-concurrency=1',...suites.map(file=>'tests/'+file)]]);",
+    "  assert.deepEqual(calls,[['npx','playwright','install','--with-deps','chromium'],['docker','--host','unix:///var/run/docker.sock','pull',image],...suites.map(file=>['node','--experimental-strip-types','--test','--test-concurrency=1','tests/'+file])]);"
+  ],
   [
     "tests/ci-parallel-layout.test.mjs",
     "    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],'ubuntu-latest');",

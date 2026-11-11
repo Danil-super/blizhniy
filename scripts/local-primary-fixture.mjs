@@ -16,6 +16,10 @@ import {getLocalTelegramMigrations,withoutTransaction} from './local-telegram-mi
 import {getLocalDeletionMigrations} from './local-deletion-schema.mjs';
 import {getLocalCheckoutEditMigrations} from './local-checkout-edit-schema.mjs';
 import {getLocalApplicationContactMigrations} from './local-application-contact-schema.mjs';
+import {getLocalBookingLifecycleMigrations} from './local-booking-lifecycle-schema.mjs';
+import {getLocalWorkOwnerActionsMigrations} from './local-work-owner-actions-schema.mjs';
+import {getLocalResponseCheckoutMigrations} from './local-response-checkout-schema.mjs';
+import {getLocalCheckoutCancellationMigrations} from './local-checkout-cancellation-schema.mjs';
 
 const root=realpathSync(fileURLToPath(new URL('..',import.meta.url))),run=promisify(execFile);
 export const stateDirectory=join(homedir(),'.local','state','blizhniy','local-primary-private');
@@ -61,7 +65,7 @@ export async function prepareLocalPrimaryFixture(){
 export async function verifyLocalPrimarySchema(state){
  const owner=new pg.Client(localPrimaryDatabaseConfig(state,'owner'));await owner.connect();
  try{
-  const extras=[...await getLocalPrimaryExtraMigrations(),...await getLocalTelegramMigrations(),...await getLocalDeletionMigrations(),...await getLocalCheckoutEditMigrations(),...await getLocalApplicationContactMigrations()];
+  const extras=[...await getLocalPrimaryExtraMigrations(),...await getLocalTelegramMigrations(),...await getLocalDeletionMigrations(),...await getLocalCheckoutEditMigrations(),...await getLocalApplicationContactMigrations(),...await getLocalBookingLifecycleMigrations(),...await getLocalWorkOwnerActionsMigrations(),...await getLocalResponseCheckoutMigrations(),...await getLocalCheckoutCancellationMigrations()];
   const expected=[...getBootstrapPlan({includeListingContactMethod:true}).map(({name,sha256})=>({name,sha256})),...extras.map(({name,sha256})=>({name,sha256}))];
   const journal=(await owner.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
   if(JSON.stringify(journal)!==JSON.stringify(expected))throw Error('Local schema changed; data preserved, automatic migration refused');
@@ -81,7 +85,7 @@ export async function initializeLocalPrimarySchema(state){
   await bootstrapPostgres(owner,`127.0.0.1:${state.database}`,{includeListingContactMethod:true});
   await owner.query('begin');
   try{
-   for(const {name,source,sha256} of [...await getLocalPrimaryExtraMigrations(),...await getLocalTelegramMigrations(),...await getLocalDeletionMigrations(),...await getLocalCheckoutEditMigrations(),...await getLocalApplicationContactMigrations()]){
+   for(const {name,source,sha256} of [...await getLocalPrimaryExtraMigrations(),...await getLocalTelegramMigrations(),...await getLocalDeletionMigrations(),...await getLocalCheckoutEditMigrations(),...await getLocalApplicationContactMigrations(),...await getLocalBookingLifecycleMigrations(),...await getLocalWorkOwnerActionsMigrations(),...await getLocalResponseCheckoutMigrations(),...await getLocalCheckoutCancellationMigrations()]){
     await owner.query(source.replace(/^begin;\r?\n/m,'').replace(/commit;\s*$/,''));
     await owner.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[name,sha256]);
    }
@@ -117,6 +121,9 @@ export async function initializeLocalPrimarySchema(state){
   for(const table of ['work_publication_photos','service_publication_photos'])await owner.query(`grant insert(publication_id,media_id,position),delete on app.${table} to blizhniy_runtime`);
   for(const table of ['work_moderation','service_moderation'])await owner.query(`grant insert(publication_id,revision),update(state,decision_note,decided_at,decided_by) on app.${table} to blizhniy_runtime`);
   await grantLocalPrimaryInteractions(owner);
+  await owner.query(withoutTransaction(await readFile(new URL('../database/permissions/booking-lifecycle.sql',import.meta.url),'utf8')));
+  await owner.query(withoutTransaction(await readFile(new URL('../database/permissions/work-owner-actions.sql',import.meta.url),'utf8')));
+  await owner.query(withoutTransaction(await readFile(new URL('../database/permissions/checkout-cancellation.sql',import.meta.url),'utf8')));
   for(const permission of ['listing-checkout.sql','listing-checkout-dispatch.sql'])await owner.query(await readFile(new URL('../database/permissions/'+permission,import.meta.url),'utf8'));
   await seedLocalPrimaryAccounts(owner,state);
  }finally{await owner.end();}

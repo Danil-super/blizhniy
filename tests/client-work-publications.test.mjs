@@ -55,3 +55,7 @@ test('work client rejects malformed authority and cancelled requests before tran
  await assert.rejects(()=>client.update(owner,'workRequest',id,1,form));await assert.rejects(()=>client.read(owner,'workRequest',id,{signal:controller.signal}));
  assert.equal(calls,0);
 });
+
+test('pending response payment remains a known conflict in the client',async()=>{
+ await assert.rejects(createWorkPublicationClient(async()=>Response.json({error:{code:'RESPONSE_PAYMENT_PENDING'}},{status:409})).update(owner,'workRequest',id,'1',form),error=>error.code==='RESPONSE_PAYMENT_PENDING'&&error.message.includes('Оплата отклика'));
+});

@@ -209,3 +209,8 @@ test('work publication rejected action metadata cannot copy attacker-controlled 
  assert.equal(f.calls.factories,0);assert.deepEqual(f.calls.operations,[]);assert.equal(f.calls.events.length,1);
  assert.equal(JSON.stringify(f.calls.events).includes(privateAction),false);
 });
+
+test('pending response checkout rejects publication editing with a useful conflict and no SQL leakage',async()=>{
+ const f=fixture({error:Object.assign(Error('private SQL detail'),{code:'PWR01'})}),result=await f.handle(f.request(updateBody,{},'PUT'));
+ assert.equal(result.status,409);assert.deepEqual(await result.json(),{error:{code:'RESPONSE_PAYMENT_PENDING'}});assert.equal(f.calls.operations.length,1);
+});

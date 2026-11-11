@@ -1,0 +1,24 @@
+# F02: автономный код возвратов — локально, 11.11.2026
+
+`scripts/build-refund-worker.mjs` собирает отдельный пакет двух существующих TEST consumers: возврата размещений и компенсации откликов. Код обработчиков, SQL, роли, планы прав и guard не меняются. Старый сборщик/установленный reconciler также не меняются; он по-прежнему допускает24/25/32/33. Совместный rollout на54 остаётся частью service preflight.
+
+Сборщик использует установленный TypeScript Compiler API с явными entrypoints, strict/noEmitOnError и прежними настройками CommonJS. Он принимает только новый абсолютный каталог с каноническим существующим родителем; `mkdir0700` отказывает в переиспользовании. При ошибке частичный новый каталог не удаляется и не объявляется готовым. `manifest.json` записывается последним и содержит schema54, версию TypeScript и список compiled lib-модулей. Граница миграций фиксирована: ровно54, последняя0054.
+
+Пакет содержит compiled зависимости двух consumers/PG, пять read-only source-plan/guard модулей, точные54 SQL-миграции и фиксированный `refund-schema-0054.json`. Байты каждой миграции повторно проверяются против известного журнала; записываются те же считанные байты. Подмена между расчётом журнала и упаковкой отклоняется до создания каталога. Никаких TS-исходников, `.env`, учётных данных, grant executor, bootstrap installer, CLI/service runner или старого payment-worker runtime в пакет не добавляется. Требуется установленный `pg` из принятого lockfile, как для прежнего артефакта; зависимости не скачиваются и не устанавливаются сборщиком.
+
+CLI сборки предназначен для Node22.18+ (проект проверяет22.23.1 локально, CI закреплён на22.23.3). `import.meta.main` отличает запуск от импорта без обращения к произвольному `argv[1]`. Неверный вызов завершается общей ошибкой без SQL/реквизитов. Сам импорт не запускает workers, grant или соединение.
+
+Native-проверка запускает обычный Node из каталога пакета, без root/src/TS-loader/aliases. До импорта запрещены глобальный fetch, socket connect и PG pool query/connect; импорт/создание workers не обращаются к ним. Явные ticks используют только тестовый DB stub. Проверены точные SQL/SHA256 и schema snapshot bytes, existing/symlink destination, generic CLI refusal и замена миграции во время сборки. Mutation с отсутствующей зависимостью schema guard обнаружена.
+
+Интеграция выполняется только в прежней owned disposable PostgreSQL18.6 на54: пакет использует свой compiled PostgresDatabase и скопированный guard, реальный логин blizhniy_refund_worker и прежний минимальный GRANT-план. Изменённая SQL-функция и лишнее чтение email закрывают допуск; восстановление возвращает допуск. Три вида размещения и unread response intake→compensation выполняются через compiled consumers с fake HTTP: один POST, эффект и уведомление, повтор idle. Глобальная сеть fetch запрещена; реальные provider HTTP не выполняются. Новых пропусков/исключений или изменений прежних assertions нет.
+
+Это упаковка исходного поведения, а не разрешение на запуск. Factory/TLS/merchant/service/operator admission и эксплуатационная TEST/fiscal приёмка ещё нужны; compiled PG в этом инкременте соединяется только с синтетической локальной БД без TLS. Нет автоматического запуска, установки роли/миграций/consumer, push или production-изменений. Прошедший managed-допуск не продлевается. Ручная БД сохраняет39 миграций.
+
+Независимое инженерное ревью завершено в трёх ограниченных циклах; замечания учтены. Дополнительную модель владелец пропустил. Источники API через Context7: [TypeScript Compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API), [Node22 import.meta.main](https://nodejs.org/docs/latest-v22.x/api/esm.html#importmetamain).
+
+
+Итог11.11: native2578/2578, полная последовательная матрица13 PostgreSQL-наборов808/808 за227.1s, без skips/cancelled. Floor/types/lint/build прошли; только прежнее предупреждение targetType. Graphify10660/31022 и Code Graph2157/6377 обновлены для этого проекта. Mutation с missing dependency обнаружена; исходные байты сборщика восстановлены.
+
+Отдельный настоящий CLI build сохранил35 модулей и manifest schema54 в закрытом каталоге [manifest.json](/home/danil/.local/state/blizhniy/refund-candidates/refund54-0d5njois/artifact/manifest.json). Каталог не устанавливается в service или в сайт. Это исходный код пакета с внешней зависимостью pg, не исполненный финансовый процесс и не проверенный production release.
+
+Ручная БД проверена read-only: точный журнал39; refund effects/queue/new lock guard/worker role отсутствуют. HTTPS https://127.0.0.1:3045 (`/__local`) запущен, health/ready200, фактический HTML/Flight заказов/откликов/оплаты совпадает с BUILD_ID lDLpqIqzJbRsf8ICEjSkg. Staged Gitleaks — без находок и новых исключений. Runtime/CI/merchant/TLS на целевом контуре и настоящая TEST/fiscal приёмка остаются открыты. Push/deploy/production/provider HTTP/LIVE не выполнялись.

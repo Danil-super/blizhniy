@@ -27,7 +27,7 @@ function mount(kind,responses){
  const api={async list(...args){calls.push(args);const response=responses.shift();if(response instanceof Error)throw response;if(!response)throw Error('Unexpected page request');return response;}};
  const deps={react,'react/jsx-runtime':{jsx,jsxs:jsx,Fragment:react.Fragment},'next/link':{__esModule:true,default:({children,...props})=>jsx('a',{...props,children})},
   '@/components/auth/AccountAuthProvider':{usePrimaryAccountAuth:()=>({state:'signed-in',userId:owner})},
-  '@/components/listings/ListingWorkflowProvider':{useListingPostmoderation:()=>true,useLocalPaymentSimulation:()=>true},
+  '@/components/listings/ListingWorkflowProvider':{useListingPostmoderation:()=>true,useWorkOwnerActions:()=>false,useLocalPaymentSimulation:()=>true},
   '@/lib/local-account':{notifyAccountSessionChange(){}},
   '@/lib/client-listing-drafts':{productionDrafts:api},'@/lib/client-listing-cabinet':{listingCabinet:api,ListingCabinetClientError:class extends Error{}},
   '@/lib/client-work-cabinet':{workCabinet:api},'@/lib/client-work-publications':{productionWorkPublications:{}},
@@ -37,6 +37,7 @@ function mount(kind,responses){
   const compiled=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   new Function('exports','require',compiled)(out,name=>{
    if(Object.hasOwn(deps,name))return deps[name];
+   if(name==='./WorkOwnerActions')return {WorkOwnerActions:()=>null};
    if(name==='lucide-react')return new Proxy({},{get:()=>()=>null});
    if(name.endsWith('/CabinetListingCard')||name==='./CabinetListingCard')return {CabinetListingCard:({item,onChanged})=>jsx('article',{'data-record':item.id,onChanged,children:item.title})};
    if(name==='./WorkCabinetCard')return {WorkCabinetCard:({item})=>jsx('article',{'data-record':item.id,children:item.title})};
@@ -99,9 +100,10 @@ test('vacancy cards in the cabinet only offer Edit and View, with no duplicate D
   new Function('require','exports',compiled)(name=>{
    if(name==='next/link')return {__esModule:true,default:({children,...props})=>{delete props.prefetch;return React.createElement('a',props,children);}};
    if(name.endsWith('/AccountAuthProvider'))return {usePrimaryAccountAuth:()=>({state:'signed-in',userId:owner})};
-   if(name.endsWith('/ListingWorkflowProvider'))return {useListingPostmoderation:()=>true,useLocalPaymentSimulation:()=>true};
+   if(name.endsWith('/ListingWorkflowProvider'))return {useListingPostmoderation:()=>true,useWorkOwnerActions:()=>false,useLocalPaymentSimulation:()=>true};
    if(/client-work-publications|client-work-cabinet|local-account/.test(name))return {};
    if(name==='./WorkCabinetPhoto')return {WorkCabinetPhoto:()=>null};
+   if(name==='./WorkOwnerActions')return {WorkOwnerActions:()=>null};
    if(/PrivateDraftEditor/.test(name))return {draftButton:'button'};
    if(/PrimaryWorkPublicationEditor|WorkModerationStatus/.test(name))return new Proxy({},{get:()=>()=>null});
    const base=name.startsWith('@/')?path.join(root,'src',name.slice(2)):name.startsWith('.')?path.resolve(path.dirname(filename),name):null;

@@ -4,7 +4,7 @@ import {readFileSync,mkdtempSync,rmSync,symlinkSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createRequire} from 'node:module';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import pg from 'pg';
 import {bootstrapPostgres,getBootstrapPlan} from '../scripts/bootstrap-postgres.mjs';
 import {getPaymentReconciliationRolePlan,verifyPaymentReconciliationDatabase} from '../scripts/payment-reconciliation-role.mjs';
@@ -46,6 +46,40 @@ export async function testPaymentReconciliationRole(suite,admin,config,credentia
    await check();
    await assert.rejects(verifyPaymentReconciliationDatabase(ownerDb,{database:config.database}),{message:'Payment reconciliation database preflight failed'});
    await assert.rejects(verifyPaymentReconciliationDatabase(db,{database:'wrong_target'}),{message:'Payment reconciliation database preflight failed'});
+  });
+  const artifactGuard=(await import(pathToFileURL(join(artifactDirectory,'artifact/scripts/payment-reconciliation-role.mjs')).href)).verifyPaymentReconciliationDatabase;
+  const artifactCheck=()=>artifactGuard(db,{database:config.database});
+  for(const [label,change,restore] of [
+   ['built-in file access',`grant execute on function pg_catalog.pg_read_binary_file(text) to ${role}`,`revoke execute on function pg_catalog.pg_read_binary_file(text) from ${role}`],
+   ['PUBLIC built-in file access','grant execute on function pg_catalog.pg_read_binary_file(text) to public','revoke execute on function pg_catalog.pg_read_binary_file(text) from public'],
+   ['catalog password column',`grant select(rolpassword) on pg_catalog.pg_authid to ${role}`,`revoke select(rolpassword) on pg_catalog.pg_authid from ${role}`],
+   ['PUBLIC catalog password column','grant select(rolpassword) on pg_catalog.pg_authid to public','revoke select(rolpassword) on pg_catalog.pg_authid from public'],
+   ['information schema CREATE',`grant create on schema information_schema to ${role}`,`revoke create on schema information_schema from ${role}`],
+   ['catalog schema CREATE',`grant create on schema pg_catalog to ${role}`,`revoke create on schema pg_catalog from ${role}`],
+   ['persistent server configuration',`grant alter system on parameter shared_preload_libraries to ${role}`,`revoke alter system on parameter shared_preload_libraries from ${role}`],
+   ['session preload',`grant set on parameter session_preload_libraries to ${role}`,`revoke set on parameter session_preload_libraries from ${role}`],
+   ['metadata write',`grant update on information_schema.schemata to ${role}`,`revoke update on information_schema.schemata from ${role}`],
+   ['internal metadata read',`grant select on information_schema._pg_foreign_servers to ${role}`,`revoke select on information_schema._pg_foreign_servers from ${role}`],
+  ])await suite.test('source and isolated artifact both refuse extra '+label,async()=>{
+   await check();await artifactCheck();await admin.query(change);
+   try{
+    const outcomes=await Promise.allSettled([check(),artifactCheck()]);
+    assert.deepEqual(outcomes.map(value=>value.status),['rejected','rejected']);
+    for(const outcome of outcomes)assert.equal(outcome.reason.message,'Payment reconciliation database preflight failed');
+   }finally{await admin.query(restore);}
+   await check();await artifactCheck();
+  });
+  await suite.test('source and isolated artifact inspect an actual pg_toast relation even without schema USAGE',async()=>{
+   const relation=(await admin.query("select reltoastrelid::regclass::text as name from pg_class where oid='app.users'::regclass")).rows[0].name;
+   assert.match(relation,/^pg_toast\.pg_toast_[0-9]+$/);
+   assert.equal((await admin.query("select has_schema_privilege($1,'pg_toast','USAGE') as allowed",[role])).rows[0].allowed,false);
+   await admin.query(`grant select on ${relation} to ${role}`);
+   try{
+    const outcomes=await Promise.allSettled([check(),artifactCheck()]);
+    assert.deepEqual(outcomes.map(value=>value.status),['rejected','rejected']);
+    for(const outcome of outcomes)assert.equal(outcome.reason.message,'Payment reconciliation database preflight failed');
+   }finally{await admin.query(`revoke select on ${relation} from ${role}`);}
+   await check();await artifactCheck();
   });
   await suite.test('preflight accepts only the approved bootstrap-granted gen_user administrative membership and rejects every unsafe variant',async()=>{
    await admin.query('create role gen_user nologin createrole nosuperuser; create role reconciliation_admin_probe nologin');

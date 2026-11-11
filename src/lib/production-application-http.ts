@@ -37,6 +37,7 @@ export function createProductionApplicationHandler(config:{origin:string},runtim
     case'decide':return reply(await store.decide(token,owner,id,revision,row.state),200);
    }
   }catch(error){
+   if(error&&typeof error==='object'&&'code'in error&&error.code==='PWR01')error=new AuthRequestError(409,'RESPONSE_PAYMENT_PENDING');
    if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
    if(error instanceof ApplicationAccessError)error=new AuthRequestError(404,'APPLICATION_NOT_FOUND');
    if(error instanceof ApplicationConflictError)error=new AuthRequestError(409,'APPLICATION_CHANGED');

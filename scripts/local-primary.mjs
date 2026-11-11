@@ -5,6 +5,7 @@ import {join} from 'node:path';
 import {prepareLocalPrimaryFixture,stateDirectory,stateFile} from './local-primary-fixture.mjs';
 import {readLocalTelegramConfig} from './local-telegram-config.mjs';
 import {createLocalPrimaryProxy} from './local-primary-proxy.mjs';
+import {startLocalBookingExpiry} from './local-booking-expiry.mjs';
 
 async function main(){
 if(!['--prepare','--start','--background'].includes(process.argv[2])||process.argv.length!==3)throw Error('Usage: node --experimental-strip-types scripts/local-primary.mjs --prepare|--start|--background');
@@ -34,7 +35,7 @@ else{
  proxy.server.listen(Number(new URL(state.origin).port),'127.0.0.1');
  try{await once(proxy.server,'listening');}catch(error){await proxy.close();throw error;}
  const env={...telegram,BLIZHNIY_CSP_MODE:'enforce',PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',
-  BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_STATE:stateFile,BLIZHNIY_LOCAL_PRIMARY_ORIGIN:state.origin,BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_APPLICATION_CONTACT_VIEWS:'enabled',
+  BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_STATE:stateFile,BLIZHNIY_LOCAL_PRIMARY_ORIGIN:state.origin,BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_APPLICATION_CONTACT_VIEWS:'enabled',BLIZHNIY_BOOKING_LIFECYCLE:'local-v1',BLIZHNIY_WORK_OWNER_ACTIONS:'local-v1',BLIZHNIY_CHECKOUT_CANCELLATION:'local-v1',
   BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_REMEMBERED_CAPTCHA:'enabled',BLIZHNIY_AUTH_CONFIRMATION_NOTICE:'enabled',
   BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_AUTH_RATE_SECRET:state.rateSecret,
   BLIZHNIY_AUTH_MAIL_KEY_FILE:join(stateDirectory,'mail-key.bin'),BLIZHNIY_DB_HOST:'17e86f80f26733d39ef4b84d.twc1.net',
@@ -47,8 +48,9 @@ else{
  const child=spawn(process.execPath,['--require',join(state.project,'scripts/local-primary-preload.cjs'),join(state.project,'node_modules/next/dist/bin/next'),'start','--hostname','127.0.0.1','--port',String(state.upstreamPort)],
   {cwd:state.project,env,stdio:['ignore',log.fd,log.fd]});
  await log.close();
+ const expiry=startLocalBookingExpiry(state);
  let stopping=false;
- const stop=async()=>{if(stopping)return;stopping=true;child.kill('SIGTERM');await proxy.close();};
+ const stop=async()=>{if(stopping)return;stopping=true;child.kill('SIGTERM');await expiry.close();await proxy.close();};
  process.on('SIGINT',stop);process.on('SIGTERM',stop);
  child.once('exit',async code=>{await stop();process.exitCode=code||0;});
  child.once('error',async()=>{console.error('Local application failed to start');await stop();process.exitCode=1;});
