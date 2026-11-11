@@ -1,0 +1,263 @@
+diff --git a/scripts/refund-worker-role.mjs b/scripts/refund-worker-role.mjs
+index a781dae..cae86f5 100644
+--- a/scripts/refund-worker-role.mjs
++++ b/scripts/refund-worker-role.mjs
+@@ -6,0 +7 @@ import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.m
++import {assertRefundSchema} from './refund-worker-schema.mjs';
+@@ -55 +56 @@ export function getRefundWorkerRolePlan(database){
+-/** Read-only identity/ACL/journal/lock-guard admission, not full live-schema attestation.
++/** Read-only identity/ACL/journal and pinned PG18 app-schema admission.
+@@ -79,0 +81 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
++   await assertRefundSchema(tx);
+diff --git a/tests/placement-refund-approval-postgres.mjs b/tests/placement-refund-approval-postgres.mjs
+index 68c8243..d8693a6 100644
+--- a/tests/placement-refund-approval-postgres.mjs
++++ b/tests/placement-refund-approval-postgres.mjs
+@@ -118 +118 @@ test('full TEST placement refund: durable authenticated administrator approval',
+-   await admin.query('alter table app.payment_checkout_intents disable trigger user');
++   await admin.query('alter table app.payment_checkout_intents disable trigger payment_intent_immutable');
+@@ -120 +120 @@ test('full TEST placement refund: durable authenticated administrator approval',
+-   finally{await admin.query('alter table app.payment_checkout_intents enable trigger user');}
++   finally{await admin.query('alter table app.payment_checkout_intents enable trigger payment_intent_immutable');}
+@@ -134 +134 @@ test('full TEST placement refund: durable authenticated administrator approval',
+-   await admin.query('alter table app.payment_checkout_intents disable trigger user');
++   await admin.query('alter table app.payment_checkout_intents disable trigger payment_intent_immutable');
+@@ -136 +136 @@ test('full TEST placement refund: durable authenticated administrator approval',
+-   finally{await admin.query('alter table app.payment_checkout_intents enable trigger user');}
++   finally{await admin.query('alter table app.payment_checkout_intents enable trigger payment_intent_immutable');}
+@@ -149 +149 @@ test('full TEST placement refund: durable authenticated administrator approval',
+-    await admin.query('alter table app.payment_checkout_intents disable trigger user');
++    await admin.query('alter table app.payment_checkout_intents disable trigger payment_intent_immutable');
+@@ -151 +151 @@ test('full TEST placement refund: durable authenticated administrator approval',
+-    finally{await admin.query('alter table app.payment_checkout_intents enable trigger user');}
++    finally{await admin.query('alter table app.payment_checkout_intents enable trigger payment_intent_immutable');}
+diff --git a/tests/refund-worker-role-cases.mjs b/tests/refund-worker-role-cases.mjs
+index 423f650..77e26e6 100644
+--- a/tests/refund-worker-role-cases.mjs
++++ b/tests/refund-worker-role-cases.mjs
+@@ -5,0 +6 @@ import {getRefundWorkerRolePlan,verifyRefundWorkerDatabase} from '../scripts/ref
++import {testRefundSchemaReference,testRefundSchemaDrift} from './refund-worker-schema-cases.mjs';
+@@ -42,0 +44,2 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
++  await testRefundSchemaReference(suite,admin,db);
++  await testRefundSchemaDrift(suite,admin,check);
+@@ -44 +47 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
+-   await admin.query('create schema pgbackup_refund_probe;create table pgbackup_refund_probe.probe(id integer);create sequence app.refund_acl_probe;create function app.refund_acl_probe() returns integer language sql as $$select 1$$;revoke all on function app.refund_acl_probe() from public');
++   await admin.query('create schema pgbackup_refund_probe;create table pgbackup_refund_probe.probe(id integer);create sequence pgbackup_refund_probe.refund_acl_probe;create function pgbackup_refund_probe.refund_acl_probe() returns integer language sql as $$select 1$$;revoke all on function pgbackup_refund_probe.refund_acl_probe() from public');
+@@ -53 +56 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
+-    [`grant execute on function app.refund_acl_probe() to ${role}`,`revoke execute on function app.refund_acl_probe() from ${role}`],
++    [`grant execute on function pgbackup_refund_probe.refund_acl_probe() to ${role}`,`revoke execute on function pgbackup_refund_probe.refund_acl_probe() from ${role}`],
+@@ -56 +59 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
+-    [`grant usage on sequence app.refund_acl_probe to ${role}`,`revoke usage on sequence app.refund_acl_probe from ${role}`],
++    [`grant usage on sequence pgbackup_refund_probe.refund_acl_probe to ${role}`,`revoke usage on sequence pgbackup_refund_probe.refund_acl_probe from ${role}`],
+@@ -67 +70 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
+-   finally{await admin.query('drop function app.refund_acl_probe();drop sequence app.refund_acl_probe;drop schema pgbackup_refund_probe cascade');}
++   finally{await admin.query('drop function pgbackup_refund_probe.refund_acl_probe();drop sequence pgbackup_refund_probe.refund_acl_probe;drop schema pgbackup_refund_probe cascade');}
+diff --git a/scripts/refund-worker-schema.mjs b/scripts/refund-worker-schema.mjs
+new file mode 100644
+index 0000000..b475416
+--- /dev/null
++++ b/scripts/refund-worker-schema.mjs
+@@ -0,0 +1,85 @@
++import {createHash} from 'node:crypto';
++import {readFileSync} from 'node:fs';
++
++const expected=JSON.parse(readFileSync(new URL('../database/refund-schema-0054.json',import.meta.url),'utf8'));
++
++// One catalog snapshot; no table data, object OIDs, physical layout or owner names.
++export async function readRefundSchema(tx){
++ await tx.query(`select set_config('search_path','pg_catalog',true),set_config('IntervalStyle','postgres',true),
++  set_config('DateStyle','ISO, YMD',true),set_config('TimeZone','UTC',true),
++  set_config('standard_conforming_strings','on',true),set_config('quote_all_identifiers','off',true),set_config('extra_float_digits','3',true)`);
++ const rows=(await tx.query(`with objects as (
++  select 'relation' as kind,c.relname::text as name,jsonb_build_array(c.relkind,c.relpersistence,c.relrowsecurity,c.relforcerowsecurity,
++   c.relreplident,c.reloptions,c.relowner=n.nspowner,am.amname) as definition
++  from pg_class c join pg_namespace n on n.oid=c.relnamespace left join pg_am am on am.oid=c.relam where n.nspname='app'
++  union all
++  select 'column',c.relname||'.'||a.attname,jsonb_build_array(a.attnum,format_type(a.atttypid,a.atttypmod),
++   a.attnotnull,a.attidentity,a.attgenerated,pg_get_expr(d.adbin,d.adrelid,false),
++   case when a.attcollation=0 then null else a.attcollation::regcollation::text end)
++  from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
++   left join pg_attrdef d on d.adrelid=c.oid and d.adnum=a.attnum
++  where n.nspname='app' and a.attnum>0 and not a.attisdropped
++  union all
++  select 'function',p.oid::regprocedure::text,jsonb_build_array(pg_get_functiondef(p.oid),p.proowner=n.nspowner)
++  from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app'
++  union all
++  select 'constraint',c.conrelid::regclass::text||'.'||c.conname,
++   jsonb_build_array(pg_get_constraintdef(c.oid,false),c.convalidated,c.conenforced,c.conislocal,c.connoinherit)
++  from pg_constraint c join pg_namespace n on n.oid=c.connamespace where n.nspname='app'
++  union all
++  select 'trigger',t.tgrelid::regclass::text||'.'||case when t.tgisinternal
++    then c.conname||'.'||t.tgfoid::regprocedure::text else t.tgname::text end,
++   jsonb_build_array(case when not t.tgisinternal then pg_get_triggerdef(t.oid,false) end,
++    t.tgenabled,t.tgtype,t.tgdeferrable,t.tginitdeferred,t.tgisinternal)
++  from pg_trigger t join pg_class r on r.oid=t.tgrelid join pg_namespace n on n.oid=r.relnamespace
++   left join pg_constraint c on c.oid=t.tgconstraint where n.nspname='app'
++  union all
++  select 'index',i.indexrelid::regclass::text,jsonb_build_array(pg_get_indexdef(i.indexrelid,0,false),
++   i.indisvalid,i.indisready,i.indislive,i.indisreplident)
++  from pg_index i join pg_class c on c.oid=i.indrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='app'
++  union all
++  select 'rule',r.ev_class::regclass::text||'.'||r.rulename,jsonb_build_array(pg_get_ruledef(r.oid,false),r.ev_enabled)
++  from pg_rewrite r join pg_class c on c.oid=r.ev_class join pg_namespace n on n.oid=c.relnamespace where n.nspname='app'
++  union all
++  select 'type',t.typname,jsonb_build_array(t.typtype,t.typcategory,t.typnotnull,t.typdefault,
++   t.typowner=n.nspowner,case when t.typelem<>0 then format_type(t.typelem,null) end,
++   case when t.typbasetype<>0 then format_type(t.typbasetype,t.typtypmod) end,
++   (select jsonb_agg(e.enumlabel order by e.enumsortorder) from pg_enum e where e.enumtypid=t.oid))
++  from pg_type t join pg_namespace n on n.oid=t.typnamespace where n.nspname='app'
++  union all
++  select 'inheritance',i.inhrelid::regclass::text||'.'||i.inhseqno,
++   jsonb_build_array(i.inhparent::regclass::text,i.inhdetachpending)
++  from pg_inherits i join pg_class c on c.oid=i.inhrelid join pg_namespace n on n.oid=c.relnamespace
++   join pg_class parent on parent.oid=i.inhparent join pg_namespace pn on pn.oid=parent.relnamespace
++  where n.nspname='app' or pn.nspname='app'
++  union all
++  select 'sequence',s.seqrelid::regclass::text,
++   jsonb_build_array(format_type(s.seqtypid,null),s.seqstart,s.seqincrement,s.seqmax,s.seqmin,s.seqcache,s.seqcycle)
++  from pg_sequence s join pg_class c on c.oid=s.seqrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='app'
++  union all
++  select 'unsupported','app',jsonb_build_array(
++   (select count(*) from pg_operator where oprnamespace='app'::regnamespace),
++   (select count(*) from pg_collation where collnamespace='app'::regnamespace),
++   (select count(*) from pg_opclass where opcnamespace='app'::regnamespace),
++   (select count(*) from pg_opfamily where opfnamespace='app'::regnamespace),
++   (select count(*) from pg_conversion where connamespace='app'::regnamespace),
++   (select count(*) from pg_ts_config where cfgnamespace='app'::regnamespace),
++   (select count(*) from pg_ts_dict where dictnamespace='app'::regnamespace),
++   (select count(*) from pg_ts_parser where prsnamespace='app'::regnamespace),
++   (select count(*) from pg_ts_template where tmplnamespace='app'::regnamespace),
++   (select count(*) from pg_extension where extnamespace='app'::regnamespace),
++   (select count(*) from pg_cast c join pg_type s on s.oid=c.castsource join pg_type t on t.oid=c.casttarget
++    where s.typnamespace='app'::regnamespace or t.typnamespace='app'::regnamespace),
++   (select count(*) from pg_statistic_ext s join pg_class c on c.oid=s.stxrelid
++    where s.stxnamespace='app'::regnamespace or c.relnamespace='app'::regnamespace),
++   (select count(*) from pg_policy p join pg_class c on c.oid=p.polrelid where c.relnamespace='app'::regnamespace))
++ ) select kind,name,definition from objects order by kind collate "C",name collate "C",definition::text collate "C" limit 10001`)).rows;
++ if(rows.length===0||rows.length>10000)throw Error('Invalid refund schema size');
++ const groups={};
++ for(const {kind,name,definition} of rows)(groups[kind]??=[]).push([name,definition]);
++ return Object.fromEntries(Object.entries(groups).map(([kind,items])=>[kind,{count:items.length,sha256:createHash('sha256').update(JSON.stringify(items)).digest('hex')}]));
++}
++
++export async function assertRefundSchema(tx){
++ if(JSON.stringify(await readRefundSchema(tx))!==JSON.stringify(expected))throw Error('Invalid refund schema');
++}
+diff --git a/database/refund-schema-0054.json b/database/refund-schema-0054.json
+new file mode 100644
+index 0000000..273bdb0
+--- /dev/null
++++ b/database/refund-schema-0054.json
+@@ -0,0 +1,34 @@
++{
++  "column": {
++    "count": 732,
++    "sha256": "ea770287dad8ef7c87505ca6041fc5fe74ac124a03733d192d123217f06cc44b"
++  },
++  "constraint": {
++    "count": 900,
++    "sha256": "db9b8eb05907ef276b488d3b79529e88cdc680dead11416b47b95cb6b68a14bc"
++  },
++  "function": {
++    "count": 84,
++    "sha256": "b834e33ffed75cc157900c971ea75dc7b4e37ce632a138d96eeda3cbd879cdc4"
++  },
++  "index": {
++    "count": 178,
++    "sha256": "e79c21ff43b8bf98eec84253604ab0258925003bc4187e6d8c71b485d47782d4"
++  },
++  "relation": {
++    "count": 244,
++    "sha256": "081eac85b4b3b3c2c52bd3dbe81c15e66bb4123c52254f1b1abe3aebdba74b43"
++  },
++  "trigger": {
++    "count": 471,
++    "sha256": "1c511f0a2c0931d55ce2aa7d00a640ecef9d36fa11afc4c6db6e532b29c9182c"
++  },
++  "type": {
++    "count": 132,
++    "sha256": "69ec55d145fd4ddc1f58a080a97a2dbaa43b2ca9aeb3dc6f0b24988bcf810f3a"
++  },
++  "unsupported": {
++    "count": 1,
++    "sha256": "a5e515d8810cff8d821f99910a2eac8e3362922e192414ed6d96b489e0f5c189"
++  }
++}
+diff --git a/tests/refund-worker-schema-cases.mjs b/tests/refund-worker-schema-cases.mjs
+new file mode 100644
+index 0000000..b3ede3b
+--- /dev/null
++++ b/tests/refund-worker-schema-cases.mjs
+@@ -0,0 +1,72 @@
++import assert from 'node:assert/strict';
++import {createHash} from 'node:crypto';
++import {readFile} from 'node:fs/promises';
++import pg from 'pg';
++import {getRefundWorkerRolePlan} from '../scripts/refund-worker-role.mjs';
++import {readRefundSchema} from '../scripts/refund-worker-schema.mjs';
++
++// Reference comes only from the explicit trusted sources in an owned disposable container.
++export async function testRefundSchemaReference(suite,admin,db){
++ await suite.test('schema fingerprint is pinned to a fresh complete migration replay under a different owner',async()=>{
++  await admin.query('create role refund_schema_owner nologin');
++  await admin.query('create database refund_schema_reference owner refund_schema_owner');
++  const reference=new pg.Client({...admin.options,password:admin.options.password,database:'refund_schema_reference'});
++  try{
++   await reference.connect();await reference.query('set role refund_schema_owner');
++   for(const {name,sha256} of getRefundWorkerRolePlan('blizhniy_test').journal){
++    const source=await readFile(new URL('../database/migrations/'+name,import.meta.url),'utf8');
++    assert.equal(createHash('sha256').update(source).digest('hex'),sha256);
++    await reference.query(source);
++   }
++   await reference.query('begin read only;set local search_path=pg_catalog');
++   const fingerprint=await readRefundSchema(reference);
++   assert.deepEqual(fingerprint,JSON.parse(await readFile(new URL('../database/refund-schema-0054.json',import.meta.url),'utf8')));
++   assert.deepEqual(await db.transaction(readRefundSchema,{readOnly:true}),fingerprint);
++   await reference.query("set local IntervalStyle='iso_8601';set local DateStyle='SQL, DMY';set local TimeZone='Europe/Moscow';set local quote_all_identifiers=on;set local standard_conforming_strings=off");
++   assert.deepEqual(await readRefundSchema(reference),fingerprint);
++   await reference.query('commit');
++  }finally{await reference.end();await admin.query('drop database refund_schema_reference');await admin.query('drop role refund_schema_owner');}
++ });
++}
++
++export async function testRefundSchemaDrift(suite,admin,check){
++ const definition=async signature=>(await admin.query('select pg_get_functiondef($1::regprocedure) as sql',[signature])).rows[0].sql;
++ const functionBody=await definition('app.refund_target_admitted(uuid,uuid)');
++ const claim=await definition('app.claim_placement_refund_job(text)');
++ const constraint='payment_refund_reservations_amount_check';
++ const originalConstraint=(await admin.query('select pg_get_constraintdef(oid) as sql from pg_constraint where conrelid=$1::regclass and conname=$2',['app.payment_refund_reservations',constraint])).rows[0].sql;
++ const fk=(await admin.query("select conname,pg_get_constraintdef(oid) as sql from pg_constraint where conrelid='app.payment_refund_reservations'::regclass and contype='f' order by conname limit 1")).rows[0];
++ const trigger=(await admin.query("select pg_get_triggerdef(oid) as sql from pg_trigger where tgrelid='app.payment_refund_requests'::regclass and tgname='refund_request_guard'")).rows[0].sql;
++ const journal=async()=>(await admin.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
++ const originalJournal=await journal();
++ const changes=[
++  ['changed private business function body',"create or replace function app.refund_target_admitted(payment_id uuid,operation uuid) returns boolean language plpgsql security definer set search_path='' as $$begin return true;end$$",functionBody],
++  ['changed queue function security mode','alter function app.claim_placement_refund_job(text) security invoker',claim],
++  ['changed queue search path',"alter function app.claim_placement_refund_job(text) set search_path=public",claim],
++  ['disabled business trigger','alter table app.payment_refund_requests disable trigger refund_request_guard','alter table app.payment_refund_requests enable trigger refund_request_guard'],
++  ['repointed business trigger','drop trigger refund_request_guard on app.payment_refund_requests;create trigger refund_request_guard before insert or update or delete on app.payment_refund_requests for each row execute function app.guard_refund_worker_locks()','drop trigger refund_request_guard on app.payment_refund_requests;'+trigger],
++  ['weakened amount CHECK',`alter table app.payment_refund_reservations drop constraint ${constraint};alter table app.payment_refund_reservations add constraint ${constraint} check(amount>=0)`,`alter table app.payment_refund_reservations drop constraint ${constraint};alter table app.payment_refund_reservations add constraint ${constraint} ${originalConstraint}`],
++  ['removed foreign key',`alter table app.payment_refund_reservations drop constraint ${fk.conname}`,`alter table app.payment_refund_reservations add constraint ${fk.conname} ${fk.sql}`],
++  ['disabled internal foreign key trigger','alter table app.payment_refund_reservations disable trigger all','alter table app.payment_refund_reservations enable trigger all'],
++  ['removed unique index','drop index app.application_one_order_selection','create unique index application_one_order_selection on app.application_selection_events(work_publication_id) where kind=\'workRequest\''],
++  ['changed default',"alter table app.payment_refund_reservations alter column created_at set default '2000-01-01'::timestamptz",'alter table app.payment_refund_reservations alter column created_at set default clock_timestamp()'],
++  ['removed NOT NULL','alter table app.payment_refund_requests alter column request_body drop not null','alter table app.payment_refund_requests alter column request_body set not null'],
++  ['changed column type','alter table app.payment_refund_requests alter column idempotence_key type varchar(256)','alter table app.payment_refund_requests alter column idempotence_key type text'],
++  ['enabled RLS','alter table app.payment_refund_requests enable row level security','alter table app.payment_refund_requests disable row level security'],
++  ['added trigger','create trigger refund_schema_probe before insert on app.payment_refund_requests for each row execute function app.guard_refund_worker_locks()','drop trigger refund_schema_probe on app.payment_refund_requests'],
++  ['changed function owner','alter function app.claim_placement_refund_job(text) owner to refund_schema_other_owner','alter function app.claim_placement_refund_job(text) owner to postgres'],
++  ['inherited external parent','create table public.refund_schema_parent(id uuid);alter table app.users inherit public.refund_schema_parent','alter table app.users no inherit public.refund_schema_parent;drop table public.refund_schema_parent'],
++  ['external inheriting child','create table public.refund_schema_child() inherits(app.payment_refund_requests)','drop table public.refund_schema_child'],
++  ['added implicit cast','create cast (app.users as text) with inout as implicit','drop cast (app.users as text)'],
++  ['added extended statistics','create statistics app.refund_schema_probe on status,target_type from app.payment_orders','drop statistics app.refund_schema_probe'],
++ ];
++ await admin.query('create role refund_schema_other_owner nologin');
++ try{
++  for(const [name,change,restore] of changes)await suite.test('unchanged journal cannot hide '+name,async()=>{
++   await admin.query(change);
++   try{assert.deepEqual(await journal(),originalJournal);await assert.rejects(check(),{message:'Refund worker database preflight failed'});}
++   finally{await admin.query(restore);}
++   await check();
++  });
++ }finally{await admin.query('drop role refund_schema_other_owner');}
++}

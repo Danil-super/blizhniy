@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {randomBytes,randomUUID} from 'node:crypto';
 import pg from 'pg';
 import {getRefundWorkerRolePlan,verifyRefundWorkerDatabase} from '../scripts/refund-worker-role.mjs';
+import {testRefundSchemaReference,testRefundSchemaDrift} from './refund-worker-schema-cases.mjs';
 
 // Called only by the owned disposable PG18 placement fixture; no environment credentials.
 export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,operator,merchant}){
@@ -40,8 +41,10 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
    const impersonated={transaction:(work,options)=>ownerDb.transaction(async tx=>{await tx.query(`set local role ${role}`);return work(tx);},options)};
    await assert.rejects(verifyRefundWorkerDatabase(impersonated,{database:'blizhniy_test',merchant}));
   });
+  await testRefundSchemaReference(suite,admin,db);
+  await testRefundSchemaDrift(suite,admin,check);
   await suite.test('refund preflight refuses missing permissions, grant options, extra financial writes, PII and dangerous objects',async()=>{
-   await admin.query('create schema pgbackup_refund_probe;create table pgbackup_refund_probe.probe(id integer);create sequence app.refund_acl_probe;create function app.refund_acl_probe() returns integer language sql as $$select 1$$;revoke all on function app.refund_acl_probe() from public');
+   await admin.query('create schema pgbackup_refund_probe;create table pgbackup_refund_probe.probe(id integer);create sequence pgbackup_refund_probe.refund_acl_probe;create function pgbackup_refund_probe.refund_acl_probe() returns integer language sql as $$select 1$$;revoke all on function pgbackup_refund_probe.refund_acl_probe() from public');
    const toast=(await admin.query("select reltoastrelid::regclass::text as name from pg_class where oid='app.users'::regclass")).rows[0].name;
    assert.match(toast,/^pg_toast\.pg_toast_[0-9]+$/);
    const changes=[
@@ -50,10 +53,10 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
     [`grant select(id) on app.users to ${role} with grant option`,`revoke grant option for select(id) on app.users from ${role}`],
     [`revoke select(sha256) on blizhniy_meta.migrations from ${role}`,`grant select(sha256) on blizhniy_meta.migrations to ${role}`],
     [`revoke execute on function app.assert_application_compensation_job_remaining(text,uuid,uuid) from ${role}`,`grant execute on function app.assert_application_compensation_job_remaining(text,uuid,uuid) to ${role}`],
-    [`grant execute on function app.refund_acl_probe() to ${role}`,`revoke execute on function app.refund_acl_probe() from ${role}`],
+    [`grant execute on function pgbackup_refund_probe.refund_acl_probe() to ${role}`,`revoke execute on function pgbackup_refund_probe.refund_acl_probe() from ${role}`],
     [`grant execute on function app.refund_target_admitted(uuid,uuid) to ${role} with grant option`,`revoke grant option for execute on function app.refund_target_admitted(uuid,uuid) from ${role}`],
     [`grant delete on app.payment_refund_effects to ${role}`,`revoke delete on app.payment_refund_effects from ${role}`],
-    [`grant usage on sequence app.refund_acl_probe to ${role}`,`revoke usage on sequence app.refund_acl_probe from ${role}`],
+    [`grant usage on sequence pgbackup_refund_probe.refund_acl_probe to ${role}`,`revoke usage on sequence pgbackup_refund_probe.refund_acl_probe from ${role}`],
     [`grant select(id) on pgbackup_refund_probe.probe to ${role}`,`revoke select(id) on pgbackup_refund_probe.probe from ${role}`],
     [`grant select on ${toast} to ${role}`,`revoke select on ${toast} from ${role}`],
     [`grant create on schema app to ${role}`,`revoke create on schema app from ${role}`],
@@ -64,7 +67,7 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
     [`grant temp on database blizhniy_test to ${role}`,`revoke temp on database blizhniy_test from ${role}`],
    ];
    try{for(const [change,restore] of changes){await admin.query(change);try{await assert.rejects(check());}finally{await admin.query(restore);}await check();}}
-   finally{await admin.query('drop function app.refund_acl_probe();drop sequence app.refund_acl_probe;drop schema pgbackup_refund_probe cascade');}
+   finally{await admin.query('drop function pgbackup_refund_probe.refund_acl_probe();drop sequence pgbackup_refund_probe.refund_acl_probe;drop schema pgbackup_refund_probe cascade');}
   });
   await suite.test('refund preflight rejects privileged flags and all incoming or outgoing memberships without managed exceptions',async()=>{
    await admin.query('create role refund_membership_probe nologin');

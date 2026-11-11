@@ -115,9 +115,9 @@ test('full TEST placement refund: durable authenticated administrator approval',
   });
   await suite.test('a coherent checksum does not admit a malformed original receipt through either store or direct SQL',async()=>{
    const item=await purchase({receipt:true}),input=proposal(item),body=JSON.parse(item.requestBody);body.receipt=null;
-   await admin.query('alter table app.payment_checkout_intents disable trigger user');
+   await admin.query('alter table app.payment_checkout_intents disable trigger payment_intent_immutable');
    try{await admin.query("update app.payment_checkout_intents set request_body=$2,request_sha256=encode(sha256(convert_to($2,'UTF8')),'hex') where id=$1",[item.id,JSON.stringify(body)]);}
-   finally{await admin.query('alter table app.payment_checkout_intents enable trigger user');}
+   finally{await admin.query('alter table app.payment_checkout_intents enable trigger payment_intent_immutable');}
    await assert.rejects(store.approve(operator.token,operator.id,input));
    await assert.rejects(db.transaction(async tx=>{await tx.query("select set_config('blizhniy.refund_approval_session',$1,true)",[hashSessionToken(operator.token)]);await tx.query('insert into app.payment_refund_approvals(id,payment_intent_id,reason) values($1,$2,$3)',[input.id,item.id,input.reason]);}),{code:'23514'});
    assert.equal((await admin.query('select count(*)::int as n from app.payment_refund_approvals where id=$1',[input.id])).rows[0].n,0);
@@ -131,9 +131,9 @@ test('full TEST placement refund: durable authenticated administrator approval',
   });
   await suite.test('a coherent historical source with a non-HTTPS return URL cannot create a direct SQL approval',async()=>{
    const item=await purchase(),input=proposal(item),body=JSON.parse(item.requestBody);body.confirmation.return_url='javascript:invalid';
-   await admin.query('alter table app.payment_checkout_intents disable trigger user');
+   await admin.query('alter table app.payment_checkout_intents disable trigger payment_intent_immutable');
    try{await admin.query("update app.payment_checkout_intents set request_body=$2,request_sha256=encode(sha256(convert_to($2,'UTF8')),'hex') where id=$1",[item.id,JSON.stringify(body)]);}
-   finally{await admin.query('alter table app.payment_checkout_intents enable trigger user');}
+   finally{await admin.query('alter table app.payment_checkout_intents enable trigger payment_intent_immutable');}
    await assert.rejects(db.transaction(async tx=>{await tx.query("select set_config('blizhniy.refund_approval_session',$1,true)",[hashSessionToken(operator.token)]);await tx.query('insert into app.payment_refund_approvals(id,payment_intent_id,reason) values($1,$2,$3)',[input.id,item.id,input.reason]);}),{code:'23514'});
   });
   await suite.test('an original capture outside provider clock tolerance is rejected by store and independent SQL',async()=>{
@@ -146,9 +146,9 @@ test('full TEST placement refund: durable authenticated administrator approval',
    const mutations=[body=>{body.confirmation.return_url='https://fixture.example.invalid/'+'😀'.repeat(1020);},body=>{body.description='😀'.repeat(65);},body=>{body.receipt.items[0].description='😀'.repeat(65);},body=>{body.receipt.customer.email='😀'.repeat(125)+'@fixture.invalid';}];
    for(const mutate of mutations){
     const item=await purchase({receipt:true}),input=proposal(item),body=JSON.parse(item.requestBody);mutate(body);
-    await admin.query('alter table app.payment_checkout_intents disable trigger user');
+    await admin.query('alter table app.payment_checkout_intents disable trigger payment_intent_immutable');
     try{await admin.query("update app.payment_checkout_intents set request_body=$2,request_sha256=encode(sha256(convert_to($2,'UTF8')),'hex') where id=$1",[item.id,JSON.stringify(body)]);}
-    finally{await admin.query('alter table app.payment_checkout_intents enable trigger user');}
+    finally{await admin.query('alter table app.payment_checkout_intents enable trigger payment_intent_immutable');}
     await assert.rejects(store.approve(operator.token,operator.id,input));
     await assert.rejects(db.transaction(async tx=>{await tx.query("select set_config('blizhniy.refund_approval_session',$1,true)",[hashSessionToken(operator.token)]);await tx.query('insert into app.payment_refund_approvals(id,payment_intent_id,reason) values($1,$2,$3)',[input.id,item.id,input.reason]);}),{code:'23514'});
    }

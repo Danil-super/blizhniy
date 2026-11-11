@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {getBootstrapPlan} from './postgres-migration-plan.mjs';
 import {getCabinetMigrationPlan} from './cabinet-release-plan.mjs';
 import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.mjs';
+import {assertRefundSchema} from './refund-worker-schema.mjs';
 
 const role='blizhniy_refund_worker',locks=['users','payment_checkout_intents','payment_orders'];
 const suffix=['0033-account-deletion.sql','0034-checkout-edit-fence.sql','0035-application-contact-views.sql','0036-placement-refund-reservations.sql','0037-refund-requests.sql','0038-refund-journal.sql','0039-refund-dispatch.sql','0040-placement-refund-effects.sql','0041-booking-lifecycle.sql','0042-placement-refund-approvals.sql','0043-application-compensation-cases.sql','0044-work-owner-actions.sql','0045-customer-closure-compensation.sql','0046-response-checkout-fence.sql','0047-checkout-cancellation.sql','0048-application-compensation-refunds.sql','0049-application-compensation-queue.sql','0050-application-compensation-discovery.sql','0051-refund-recovery.sql','0052-placement-refund-queue.sql','0053-application-compensation-lease.sql','0054-refund-worker-locks.sql'];
@@ -52,7 +53,7 @@ export function getRefundWorkerRolePlan(database){
    ...functions.map(signature=>`grant execute on function ${signature} to ${role}`)]};
 }
 
-/** Read-only identity/ACL/journal/lock-guard admission, not full live-schema attestation.
+/** Read-only identity/ACL/journal and pinned PG18 app-schema admission.
  * Trusted TEST financial process; merchant isolation is enforced by the stores, not SQL RLS.
  * No managed membership exception, production runtime wiring or automatic activation.
  */
@@ -77,6 +78,7 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
    if(JSON.stringify(actualJournal)!==JSON.stringify(expectedJournal))throw Error('Invalid refund journal');
+   await assertRefundSchema(tx);
    await assertFinancialCatalogPrivileges(tx);
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
