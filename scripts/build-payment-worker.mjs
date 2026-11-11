@@ -24,7 +24,7 @@ export function buildPaymentWorker(destination){
  const emitted=program.emit();
  if(emitted.emitSkipped||emitted.diagnostics.length)throw Error('Worker compilation failed');
  mkdirSync(join(destination,'scripts'));mkdirSync(join(destination,'database'));mkdirSync(join(destination,'database/migrations'));
- for(const name of ['cabinet-release-plan.mjs','payment-reconciliation-role.mjs','payment-reconciliation-service.mjs','postgres-migration-plan.mjs','payment-worker-runtime.mjs','payment-worker.mjs'])
+ for(const name of ['cabinet-release-plan.mjs','financial-catalog-privileges.mjs','payment-reconciliation-role.mjs','payment-reconciliation-service.mjs','postgres-migration-plan.mjs','payment-worker-runtime.mjs','payment-worker.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
  for(const {name} of [...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan()])
   copyFileSync(join(root,'database/migrations',name),join(destination,'database/migrations',name));

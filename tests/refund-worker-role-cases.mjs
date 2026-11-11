@@ -42,6 +42,8 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
   });
   await suite.test('refund preflight refuses missing permissions, grant options, extra financial writes, PII and dangerous objects',async()=>{
    await admin.query('create schema pgbackup_refund_probe;create table pgbackup_refund_probe.probe(id integer);create sequence app.refund_acl_probe;create function app.refund_acl_probe() returns integer language sql as $$select 1$$;revoke all on function app.refund_acl_probe() from public');
+   const toast=(await admin.query("select reltoastrelid::regclass::text as name from pg_class where oid='app.users'::regclass")).rows[0].name;
+   assert.match(toast,/^pg_toast\.pg_toast_[0-9]+$/);
    const changes=[
     [`grant select(email) on app.users to ${role}`,`revoke select(email) on app.users from ${role}`],
     [`grant update(status) on app.payment_orders to ${role}`,`revoke update(status) on app.payment_orders from ${role}`],
@@ -53,6 +55,7 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
     [`grant delete on app.payment_refund_effects to ${role}`,`revoke delete on app.payment_refund_effects from ${role}`],
     [`grant usage on sequence app.refund_acl_probe to ${role}`,`revoke usage on sequence app.refund_acl_probe from ${role}`],
     [`grant select(id) on pgbackup_refund_probe.probe to ${role}`,`revoke select(id) on pgbackup_refund_probe.probe from ${role}`],
+    [`grant select on ${toast} to ${role}`,`revoke select on ${toast} from ${role}`],
     [`grant create on schema app to ${role}`,`revoke create on schema app from ${role}`],
     [`grant create on schema information_schema to ${role}`,`revoke create on schema information_schema from ${role}`],
     [`grant create on schema pg_catalog to ${role}`,`revoke create on schema pg_catalog from ${role}`],

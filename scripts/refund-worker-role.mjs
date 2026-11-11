@@ -3,12 +3,11 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {getBootstrapPlan} from './postgres-migration-plan.mjs';
 import {getCabinetMigrationPlan} from './cabinet-release-plan.mjs';
+import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.mjs';
 
 const role='blizhniy_refund_worker',locks=['users','payment_checkout_intents','payment_orders'];
 const suffix=['0033-account-deletion.sql','0034-checkout-edit-fence.sql','0035-application-contact-views.sql','0036-placement-refund-reservations.sql','0037-refund-requests.sql','0038-refund-journal.sql','0039-refund-dispatch.sql','0040-placement-refund-effects.sql','0041-booking-lifecycle.sql','0042-placement-refund-approvals.sql','0043-application-compensation-cases.sql','0044-work-owner-actions.sql','0045-customer-closure-compensation.sql','0046-response-checkout-fence.sql','0047-checkout-cancellation.sql','0048-application-compensation-refunds.sql','0049-application-compensation-queue.sql','0050-application-compensation-discovery.sql','0051-refund-recovery.sql','0052-placement-refund-queue.sql','0053-application-compensation-lease.sql','0054-refund-worker-locks.sql'];
 const cols=text=>text.split(',');
-// PG18.6 information_schema.sql grants these SELECTs after initdb records pg_init_privs.
-const publicMetadata=cols('information_schema_catalog_name,applicable_roles,administrable_role_authorizations,attributes,character_sets,check_constraint_routine_usage,check_constraints,collations,collation_character_set_applicability,column_column_usage,column_domain_usage,column_privileges,column_udt_usage,columns,constraint_column_usage,constraint_table_usage,domain_constraints,domain_udt_usage,domains,enabled_roles,key_column_usage,parameters,referential_constraints,role_column_grants,routine_column_usage,routine_privileges,role_routine_grants,routine_routine_usage,routine_sequence_usage,routine_table_usage,routines,schemata,sequences,sql_features,sql_implementation_info,sql_sizing,table_constraints,table_privileges,role_table_grants,tables,triggered_update_columns,triggers,udt_privileges,role_udt_grants,usage_privileges,role_usage_grants,user_defined_types,view_column_usage,view_routine_usage,view_table_usage,views,data_type_privileges,element_types,column_options,foreign_data_wrapper_options,foreign_data_wrappers,foreign_server_options,foreign_servers,foreign_table_options,foreign_tables,user_mapping_options,user_mappings');
 const policy={
  'app.users':{select:['id'],update:['id']},
  'app.payment_checkout_intents':{select:cols('id,owner_id,target_type,target_id,target_revision,tariff_id,amount,duration_days,merchant_shop_id,is_test,request_body,request_sha256,created_at'),update:['id']},
@@ -78,55 +77,24 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
    if(JSON.stringify(actualJournal)!==JSON.stringify(expectedJournal))throw Error('Invalid refund journal');
-   const schemas=(await tx.query(`select nspname as name,has_schema_privilege(oid,'USAGE') as usage,
-    has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace
-    `)).rows;
-   if(!['app','blizhniy_meta'].every(name=>schemas.some(item=>item.name===name&&item.usage===true))||
-    schemas.some(item=>item.extra!==false||(item.usage&&!['app','blizhniy_meta','public','pg_catalog','information_schema'].includes(item.name))))throw Error('Invalid schema privileges');
-   if((await tx.query("select 1 from pg_parameter_acl where has_parameter_privilege(parname,'SET,ALTER SYSTEM') limit 1")).rows.length)throw Error('Invalid parameter privileges');
+   await assertFinancialCatalogPrivileges(tx);
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
     from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid
     cross join (values('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) as p(privilege)
-    where n.nspname not in ('pg_catalog','information_schema') and c.relkind in ('r','p','v','m','f')
+    where n.nspname not in ('pg_catalog','information_schema') and c.relkind in ('r','p','v','m','f','t')
      and a.attnum>0 and not a.attisdropped and has_column_privilege(c.oid,a.attnum,p.privilege) limit 10001`)).rows;
    const expected=new Set(Object.entries(policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
    if(actual.length!==expected.size||actual.some(item=>item.grantable!==false||!expected.delete(item.key))||expected.size)throw Error('Invalid column privileges');
    const dangerous=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname not in ('pg_catalog','information_schema') and
-     ((c.relkind in ('r','p','v','m','f') and has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN')) or
+     ((c.relkind in ('r','p','v','m','f','t') and has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN')) or
       (c.relkind='S' and has_sequence_privilege(c.oid,'USAGE,SELECT,UPDATE'))) limit 1`);
    const callable=(await tx.query(`select n.nspname||'.'||p.proname||'('||oidvectortypes(p.proargtypes)||')' as signature,
     has_function_privilege(p.oid,'EXECUTE WITH GRANT OPTION') as grantable from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname not in ('pg_catalog','information_schema') and has_function_privilege(p.oid,'EXECUTE') limit 10001`)).rows;
    const allowed=new Set(functions.map(name=>name.replaceAll(',',', ')));
    if(dangerous.rows.length||callable.length!==allowed.size||callable.some(item=>item.grantable!==false||!allowed.delete(item.signature))||allowed.size)throw Error('Invalid object privileges');
-   // A direct built-in EXECUTE grant can bypass table ACLs without any role membership.
-   const catalogExtra=await tx.query(`with catalog_acl as (
-    select 'pg_proc'::regclass as classoid,p.oid as objoid,0 as objsubid,
-     coalesce(p.proacl,acldefault('f',p.proowner)) as acl,
-     coalesce(i.initprivs,acldefault('f',p.proowner)) as initial,false as public_metadata
-    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-    left join pg_init_privs i on i.classoid='pg_proc'::regclass and i.objoid=p.oid and i.objsubid=0 and i.privtype='i'
-    where n.nspname in ('pg_catalog','information_schema')
-    union all
-    select 'pg_class'::regclass,c.oid,0,coalesce(c.relacl,acldefault(case when c.relkind='S' then 's'::"char" else 'r'::"char" end,c.relowner)),
-     coalesce(i.initprivs,acldefault(case when c.relkind='S' then 's'::"char" else 'r'::"char" end,c.relowner)),
-     n.nspname='information_schema' and c.oid<16384 and c.relname=any($1::text[]) and c.relkind in ('r','v')
-    from pg_class c join pg_namespace n on n.oid=c.relnamespace
-    left join pg_init_privs i on i.classoid='pg_class'::regclass and i.objoid=c.oid and i.objsubid=0 and i.privtype='i'
-    where n.nspname in ('pg_catalog','information_schema')
-    union all
-    select 'pg_class'::regclass,c.oid,a.attnum,a.attacl,coalesce(i.initprivs,'{}'::aclitem[]),false
-    from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
-    left join pg_init_privs i on i.classoid='pg_class'::regclass and i.objoid=c.oid and i.objsubid=a.attnum and i.privtype='i'
-    where n.nspname in ('pg_catalog','information_schema') and a.attnum>0 and not a.attisdropped
-   ) select 1 from catalog_acl c cross join lateral aclexplode(c.acl) g
-    where g.grantee in (0,(select oid from pg_roles where rolname=current_user))
-    and not (c.public_metadata and g.privilege_type='SELECT' and not g.is_grantable) and not exists (
-     select 1 from aclexplode(c.initial) p where p.grantee=0 and p.privilege_type=g.privilege_type
-      and (not g.is_grantable or p.is_grantable)) limit 1`,[publicMetadata]);
-   if(catalogExtra.rows.length)throw Error('Invalid catalog privileges');
    const body=readFileSync(new URL('../database/migrations/0054-refund-worker-locks.sql',import.meta.url),'utf8').match(/as \$\$([\s\S]*?)\$\$;/)?.[1];
    const guards=(await tx.query(`select c.relname as name,t.tgenabled,t.tgtype,t.tgnargs,
     t.tgattr::text=a.attnum::text as id_only,t.tgqual is null as unconditional,p.prosrc,p.prosecdef,p.proconfig,l.lanname

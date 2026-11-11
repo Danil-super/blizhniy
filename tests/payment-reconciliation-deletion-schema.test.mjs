@@ -19,9 +19,11 @@ function fixture(journal,extra=[]){
   assert.deepEqual(options,{readOnly:true});
   return work({query:async sql=>{
    if(sql==='set local search_path=pg_catalog')return{rows:[]};
+   if(sql==="set local statement_timeout='5s'"||sql==="set local lock_timeout='1s'")return{rows:[]};
    if(sql.includes('current_user as name'))return{rows:[{name:'blizhniy_payment_reconciler',login:'blizhniy_payment_reconciler',database,version:180006,readonly:'on',replication:'origin',rolcanlogin:true,rolconnlimit:4,connect:true,rolsuper:false,rolcreatedb:false,rolcreaterole:false,rolinherit:false,rolreplication:false,rolbypassrls:false,membership:false,database_extra:false,replication_override:false}]};
    if(sql==='select name,sha256 from blizhniy_meta.migrations order by name')return{rows:journal};
    if(sql.includes('select nspname as name'))return{rows:['app','blizhniy_meta','public'].map(name=>({name,usage:true,extra:false}))};
+   if(sql.startsWith('select 1 from pg_parameter_acl')||sql.startsWith('with catalog_acl'))return{rows:[]};
    if(sql.includes("as key,"))return{rows:[...privileges,...extra]};
    if(sql.startsWith('select 1 from pg_class')||sql.startsWith('select 1 from pg_proc'))return{rows:[]};
    if(sql.includes('t.tgenabled,t.tgtype'))return{rows:['users','payment_checkout_intents','categories','cities','media_objects','listing_moderation'].map(name=>({name,tgenabled:'A',tgtype:19,tgnargs:0,attributes:'',unconditional:true,prosrc:guardBody,prosecdef:false,lanname:'plpgsql',proconfig:['search_path=""']}))};
