@@ -28,11 +28,12 @@ test('real PostgreSQL is a mandatory gate before packaging and is inherited by d
 test('the exact CI shell pulls only the pinned image and executes every suite serially without swallowed failures',()=>{
  const step=ci.jobs.validate.steps.find(s=>s.name==='Run isolated PostgreSQL 18 integration gate');assert.ok(step);const directory=mkdtempSync(join(tmpdir(),'blizhniy-ci-argv-'));
  try{
-  const output=join(directory,'argv.jsonl'),stub='#!/usr/bin/python3\nimport sys,json,os\nwith open(os.environ["ARGV_OUTPUT"],"a") as f:f.write(json.dumps([os.path.basename(sys.argv[0]),*sys.argv[1:]])+"\\n")\nif os.path.basename(sys.argv[0])=="node":sys.exit(int(os.environ.get("NODE_EXIT","0")))\nif os.path.basename(sys.argv[0])=="docker":sys.exit(int(os.environ.get("DOCKER_EXIT","0")))\nif os.path.basename(sys.argv[0])=="npx":sys.exit(int(os.environ.get("BROWSER_EXIT","0")))\n';
+  const output=join(directory,'argv.jsonl'),stub='#!/usr/bin/python3\nimport sys,json,os\nwith open(os.environ["ARGV_OUTPUT"],"a") as f:f.write(json.dumps([os.path.basename(sys.argv[0]),*sys.argv[1:]])+"\\n")\nif os.path.basename(sys.argv[0])=="node":sys.exit(int(os.environ.get("NODE_EXIT" if "--test" in sys.argv else "PREFLIGHT_EXIT","0")))\nif os.path.basename(sys.argv[0])=="docker":sys.exit(int(os.environ.get("DOCKER_EXIT","0")))\nif os.path.basename(sys.argv[0])=="npx":sys.exit(int(os.environ.get("BROWSER_EXIT","0")))\n';
   for(const command of ['docker','node','npx'])writeFileSync(join(directory,command),stub,{mode:0o700});const env={PATH:directory+':/usr/bin:/bin',LANG:'C.UTF-8',ARGV_OUTPUT:output};
   execFileSync('bash',['-c',step.run],{env,timeout:5000,stdio:'pipe'});const calls=readFileSync(output,'utf8').trim().split('\n').map(line=>JSON.parse(line));
-  assert.deepEqual(calls,[['npx','playwright','install','--with-deps','chromium'],['docker','--host','unix:///var/run/docker.sock','pull',image],...suites.map(file=>['node','--experimental-strip-types','--test','--test-concurrency=1','tests/'+file])]);
+  assert.deepEqual(calls,[['npx','playwright','install','chromium'],['node','--input-type=module','-'],['docker','--host','unix:///var/run/docker.sock','pull',image],...suites.map(file=>['node','--experimental-strip-types','--test','--test-concurrency=1','tests/'+file])]);
   assert.throws(()=>execFileSync('bash',['-c',step.run],{env:{...env,NODE_EXIT:'17'},timeout:5000,stdio:'pipe'}),error=>error.status===17);
+  assert.throws(()=>execFileSync('bash',['-c',step.run],{env:{...env,PREFLIGHT_EXIT:'23'},timeout:5000,stdio:'pipe'}),error=>error.status===23);
   assert.throws(()=>execFileSync('bash',['-c',step.run],{env:{...env,DOCKER_EXIT:'19'},timeout:5000,stdio:'pipe'}),error=>error.status===19);
   assert.throws(()=>execFileSync('bash',['-c',step.run],{env:{...env,BROWSER_EXIT:'21'},timeout:5000,stdio:'pipe'}),error=>error.status===21);
  }finally{rmSync(directory,{recursive:true,force:true});}

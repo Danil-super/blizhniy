@@ -198,11 +198,8 @@ jobs:
       - name: Install layout check dependencies
         run: npm ci
 
-      - name: Prepare Ubuntu package mirrors
-        run: bash scripts/prepare-ci-apt-mirrors.sh
-
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: bash scripts/prepare-ci-browser.sh
 
       - name: Check deployed category heroes on mobile and desktop
         env:

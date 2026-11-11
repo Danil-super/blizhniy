@@ -61,9 +61,6 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Prepare Ubuntu package mirrors
-        run: bash scripts/prepare-ci-apt-mirrors.sh
-
       - name: Prepare OpenSSH regression prerequisites
         run: |
           set -euo pipefail
@@ -112,7 +109,7 @@ jobs:
       - name: Run isolated PostgreSQL 18 integration gate
         run: |
           set -euo pipefail
-          npx playwright install --with-deps chromium
+          bash scripts/prepare-ci-browser.sh
           docker --host unix:///var/run/docker.sock pull postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
           for suite in \
             tests/postgres-integration.mjs \
@@ -201,11 +198,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Prepare Ubuntu package mirrors
-        run: bash scripts/prepare-ci-apt-mirrors.sh
-
       - name: Install Chromium for layout checks
-        run: npx playwright install --with-deps chromium
+        run: bash scripts/prepare-ci-browser.sh
 
       - name: Check category heroes before deployment
         env:
