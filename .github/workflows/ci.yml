@@ -111,7 +111,7 @@ jobs:
           set -euo pipefail
           npx playwright install --with-deps chromium
           docker --host unix:///var/run/docker.sock pull postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
-          node --experimental-strip-types --test --test-concurrency=1 \
+          for suite in \
             tests/postgres-integration.mjs \
             tests/bootstrap-postgres-integration.mjs \
             tests/telegram-phone-postgres-integration.mjs \
@@ -125,6 +125,9 @@ jobs:
             tests/work-owner-actions-postgres.mjs \
             tests/response-checkout-fence-postgres.mjs \
             tests/checkout-cancellation-postgres.mjs
+          do
+            node --experimental-strip-types --test --test-concurrency=1 "$suite"
+          done
 
       - name: Build the production artifact on GitHub
         env:

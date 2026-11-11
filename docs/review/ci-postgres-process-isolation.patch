@@ -1,0 +1,49 @@
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -111,7 +111,7 @@
+           set -euo pipefail
+           npx playwright install --with-deps chromium
+           docker --host unix:///var/run/docker.sock pull postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+-          node --experimental-strip-types --test --test-concurrency=1 \
++          for suite in \
+             tests/postgres-integration.mjs \
+             tests/bootstrap-postgres-integration.mjs \
+             tests/telegram-phone-postgres-integration.mjs \
+@@ -125,6 +125,9 @@
+             tests/work-owner-actions-postgres.mjs \
+             tests/response-checkout-fence-postgres.mjs \
+             tests/checkout-cancellation-postgres.mjs
++          do
++            node --experimental-strip-types --test --test-concurrency=1 "$suite"
++          done
+ 
+       - name: Build the production artifact on GitHub
+         env:
+--- a/tests/postgres-ci-gate.test.mjs
++++ b/tests/postgres-ci-gate.test.mjs
+@@ -31,7 +31,7 @@
+   const output=join(directory,'argv.jsonl'),stub='#!/usr/bin/python3\nimport sys,json,os\nwith open(os.environ["ARGV_OUTPUT"],"a") as f:f.write(json.dumps([os.path.basename(sys.argv[0]),*sys.argv[1:]])+"\\n")\nif os.path.basename(sys.argv[0])=="node":sys.exit(int(os.environ.get("NODE_EXIT","0")))\nif os.path.basename(sys.argv[0])=="docker":sys.exit(int(os.environ.get("DOCKER_EXIT","0")))\nif os.path.basename(sys.argv[0])=="npx":sys.exit(int(os.environ.get("BROWSER_EXIT","0")))\n';
+   for(const command of ['docker','node','npx'])writeFileSync(join(directory,command),stub,{mode:0o700});const env={PATH:directory+':/usr/bin:/bin',LANG:'C.UTF-8',ARGV_OUTPUT:output};
+   execFileSync('bash',['-c',step.run],{env,timeout:5000,stdio:'pipe'});const calls=readFileSync(output,'utf8').trim().split('\n').map(line=>JSON.parse(line));
+-  assert.deepEqual(calls,[['npx','playwright','install','--with-deps','chromium'],['docker','--host','unix:///var/run/docker.sock','pull',image],['node','--experimental-strip-types','--test','--test-concurrency=1',...suites.map(file=>'tests/'+file)]]);
++  assert.deepEqual(calls,[['npx','playwright','install','--with-deps','chromium'],['docker','--host','unix:///var/run/docker.sock','pull',image],...suites.map(file=>['node','--experimental-strip-types','--test','--test-concurrency=1','tests/'+file])]);
+   assert.throws(()=>execFileSync('bash',['-c',step.run],{env:{...env,NODE_EXIT:'17'},timeout:5000,stdio:'pipe'}),error=>error.status===17);
+   assert.throws(()=>execFileSync('bash',['-c',step.run],{env:{...env,DOCKER_EXIT:'19'},timeout:5000,stdio:'pipe'}),error=>error.status===19);
+   assert.throws(()=>execFileSync('bash',['-c',step.run],{env:{...env,BROWSER_EXIT:'21'},timeout:5000,stdio:'pipe'}),error=>error.status===21);
+--- a/scripts/check-quality-floor.mjs
++++ b/scripts/check-quality-floor.mjs
+@@ -86,8 +86,13 @@
+     '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());',
+     '      assert.deepEqual(Object.keys(calls[0].body).sort(), ["name", "email", "password", "acceptedAgreement", "acknowledgedPrivacy", "agreementVersion", "privacyVersion", "captchaToken"].sort());'],
+ ];
+-// Apply only after owner review of the six exact deployment replacements.
++// Apply only after owner review of the exact deployment replacements.
+ const deploymentAssertionPairs = [
++  [
++    "tests/postgres-ci-gate.test.mjs",
++    "  assert.deepEqual(calls,[['npx','playwright','install','--with-deps','chromium'],['docker','--host','unix:///var/run/docker.sock','pull',image],['node','--experimental-strip-types','--test','--test-concurrency=1',...suites.map(file=>'tests/'+file)]]);",
++    "  assert.deepEqual(calls,[['npx','playwright','install','--with-deps','chromium'],['docker','--host','unix:///var/run/docker.sock','pull',image],...suites.map(file=>['node','--experimental-strip-types','--test','--test-concurrency=1','tests/'+file])]);"
++  ],
+   [
+     "tests/ci-parallel-layout.test.mjs",
+     "    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],'ubuntu-latest');",
