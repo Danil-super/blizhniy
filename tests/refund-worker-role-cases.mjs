@@ -157,7 +157,7 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
   });
   await testRefundWorkerArtifact(suite,{admin,config:{...admin.options,user:role,password},ownerDb,purchase,load,operator,merchant,provider,tls});
   await testReconcilerRefundSchema(suite,{admin,ownerDb,refundDb:db,purchase,load,operator,merchant,provider});
-  await testRefundOperatorRole(suite,{admin,ownerDb,refundDb:db,purchase,load,operator,merchant,provider});
+  await testRefundOperatorRole(suite,{admin,ownerDb,refundDb:db,purchase,load,operator,merchant,provider,tls});
  }finally{await db.close();}
 }
 

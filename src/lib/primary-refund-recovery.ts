@@ -49,15 +49,21 @@ export function createPrimaryRefundRecovery(db:Database,merchant:Merchant,fetche
    return work(tx,source);
   },{requireAdmin:true,denied:()=>new RefundRecoveryError()});
  }
- return{async recover(token:string,expectedAdmin:unknown,value:unknown){
-  const input=parseRefundRecovery(value),actor=parseListingDraftId(expectedAdmin);
-  const completed=await authorized(token,actor,input,true,async tx=>{
+ async function prepare(token:string,actor:string,input:RecoveryInput){
+  return authorized(token,actor,input,true,async tx=>{
    const audit=(await tx.query<Audit>(`select ${columns} from app.payment_refund_recovery_actions where action_id=$1 and phase in ('succeeded','canceled')`,[input.id])).rows[0];
    if(!audit)return null;
    const verification=await new PostgresRefundJournalStore({transaction:work=>work(tx)},scope,fetcher).read(input.operationId);
    if(!verification||verification.providerRefundId!==input.providerRefundId||verification.status!==audit.phase)fail();
    return{state:verification.status==='succeeded'?'applied' as const:verification.status,verification,audit};
   });
+ }
+ return{
+  /** Durable administrator request and local terminal proof; never provider I/O or a new financial attempt. */
+  prepare(token:string,expectedAdmin:unknown,value:unknown){return prepare(token,parseListingDraftId(expectedAdmin),parseRefundRecovery(value));},
+  async recover(token:string,expectedAdmin:unknown,value:unknown){
+  const input=parseRefundRecovery(value),actor=parseListingDraftId(expectedAdmin);
+  const completed=await prepare(token,actor,input);
   if(completed)return completed;
   const guarded:Database={transaction:work=>authorized(token,actor,input,false,tx=>work(tx))};
   await new PostgresRefundJournalStore(guarded,scope,fetcher).reconcile(input.operationId,input.providerRefundId);

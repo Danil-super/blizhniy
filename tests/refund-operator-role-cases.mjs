@@ -13,9 +13,10 @@ import {verifyPaymentReconciliationDatabase} from '../scripts/payment-reconcilia
 import {testRefundOperatorAdmission} from './refund-operator-admission-cases.mjs';
 import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
 import {testRefundOperatorActions} from './refund-operator-actions-cases.mjs';
+import {testLocalRefundOperatorRuntime} from './local-refund-operator-runtime-cases.mjs';
 
 // Owned disposable fixture only. The operator is trusted financial code, not an untrusted SQL principal.
-export async function testRefundOperatorRole(suite,{admin,ownerDb,refundDb,purchase,load,operator,merchant,provider}){
+export async function testRefundOperatorRole(suite,{admin,ownerDb,refundDb,purchase,load,operator,merchant,provider,tls}){
  const plan=getRefundOperatorRolePlan('blizhniy_test'),password=randomBytes(24).toString('hex');
  const owned=mkdtempSync(join(tmpdir(),'blizhniy-operator-role-')),artifact=join(owned,'artifact'),originalFetch=globalThis.fetch;let unexpectedHttp=0;
  globalThis.fetch=()=>{unexpectedHttp++;throw Error('Unexpected provider request');};
@@ -84,6 +85,7 @@ export async function testRefundOperatorRole(suite,{admin,ownerDb,refundDb,purch
    }
   });
   await testRefundOperatorActions(suite,{admin,ownerDb,db,refundDb,purchase,load,operatorLoad,operator,merchant,provider,check});
+  await testLocalRefundOperatorRuntime(suite,{admin,config:{...admin.options,user:plan.role,password},artifact,tls,purchase,load,operator,merchant,provider,refundDb});
   assert.equal(unexpectedHttp,0);
  }finally{globalThis.fetch=originalFetch;try{await db?.close();}finally{rmSync(owned,{recursive:true,force:true});}}
 }
