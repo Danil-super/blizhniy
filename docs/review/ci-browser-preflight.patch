@@ -1,0 +1,220 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index aa8d4fe..a0b4fa6 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -61,9 +61,6 @@ jobs:
+       - name: Lint
+         run: npm run lint
+ 
+-      - name: Prepare Ubuntu package mirrors
+-        run: bash scripts/prepare-ci-apt-mirrors.sh
+-
+       - name: Prepare OpenSSH regression prerequisites
+         run: |
+           set -euo pipefail
+@@ -112,7 +109,7 @@ jobs:
+       - name: Run isolated PostgreSQL 18 integration gate
+         run: |
+           set -euo pipefail
+-          npx playwright install --with-deps chromium
++          bash scripts/prepare-ci-browser.sh
+           docker --host unix:///var/run/docker.sock pull postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+           for suite in \
+             tests/postgres-integration.mjs \
+@@ -201,11 +198,8 @@ jobs:
+       - name: Install dependencies
+         run: npm ci
+ 
+-      - name: Prepare Ubuntu package mirrors
+-        run: bash scripts/prepare-ci-apt-mirrors.sh
+-
+       - name: Install Chromium for layout checks
+-        run: npx playwright install --with-deps chromium
++        run: bash scripts/prepare-ci-browser.sh
+ 
+       - name: Check category heroes before deployment
+         env:
+diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml
+index 2d58ea9..0992ec9 100644
+--- a/.github/workflows/deploy.yml
++++ b/.github/workflows/deploy.yml
+@@ -198,11 +198,8 @@ jobs:
+       - name: Install layout check dependencies
+         run: npm ci
+ 
+-      - name: Prepare Ubuntu package mirrors
+-        run: bash scripts/prepare-ci-apt-mirrors.sh
+-
+       - name: Install Chromium
+-        run: npx playwright install --with-deps chromium
++        run: bash scripts/prepare-ci-browser.sh
+ 
+       - name: Check deployed category heroes on mobile and desktop
+         env:
+diff --git a/scripts/check-quality-floor.mjs b/scripts/check-quality-floor.mjs
+index 46134f4..d2af79c 100644
+--- a/scripts/check-quality-floor.mjs
++++ b/scripts/check-quality-floor.mjs
+@@ -88,6 +88,11 @@ const registrationAssertionPairs = [
+ ];
+ // Apply only after owner review of the exact deployment replacements.
+ const deploymentAssertionPairs = [
++  [
++    "tests/postgres-ci-gate.test.mjs",
++    "  assert.deepEqual(calls,[['npx','playwright','install','--with-deps','chromium'],['docker','--host','unix:///var/run/docker.sock','pull',image],...suites.map(file=>['node','--experimental-strip-types','--test','--test-concurrency=1','tests/'+file])]);",
++    "  assert.deepEqual(calls,[['npx','playwright','install','chromium'],['node','--input-type=module','-'],['docker','--host','unix:///var/run/docker.sock','pull',image],...suites.map(file=>['node','--experimental-strip-types','--test','--test-concurrency=1','tests/'+file])]);"
++  ],
+   [
+     "tests/postgres-ci-gate.test.mjs",
+     "  assert.deepEqual(calls,[['npx','playwright','install','--with-deps','chromium'],['docker','--host','unix:///var/run/docker.sock','pull',image],['node','--experimental-strip-types','--test','--test-concurrency=1',...suites.map(file=>'tests/'+file)]]);",
+diff --git a/scripts/prepare-ci-apt-mirrors.sh b/scripts/prepare-ci-apt-mirrors.sh
+deleted file mode 100755
+index ce30d7e..0000000
+--- a/scripts/prepare-ci-apt-mirrors.sh
++++ /dev/null
+@@ -1,12 +0,0 @@
+-#!/usr/bin/env bash
+-set -euo pipefail
+-
+-if [[ "${GITHUB_ACTIONS:-}" != true || "${RUNNER_OS:-}" != Linux || "${RUNNER_ARCH:-}" != X64 || "${RUNNER_ENVIRONMENT:-}" != github-hosted ]]; then
+-  echo "APT mirror preparation requires a GitHub-hosted Linux x64 runner." >&2
+-  exit 1
+-fi
+-
+-mirror_list=/etc/apt/apt-mirrors.txt
+-test -f "$mirror_list"
+-# Keep signed Ubuntu repositories and avoid the failing Azure mirror on ephemeral runners.
+-printf '%s\tpriority:%s\n' 'https://archive.ubuntu.com/ubuntu/' 1 'https://security.ubuntu.com/ubuntu/' 2 | sudo tee "$mirror_list" >/dev/null
+diff --git a/scripts/prepare-ci-browser.sh b/scripts/prepare-ci-browser.sh
+new file mode 100755
+index 0000000..d09bd08
+--- /dev/null
++++ b/scripts/prepare-ci-browser.sh
+@@ -0,0 +1,9 @@
++#!/usr/bin/env bash
++set -euo pipefail
++npx playwright install chromium
++node --input-type=module - <<'NODE'
++import {chromium} from 'playwright';
++const browser = await chromium.launch({headless: true});
++await browser.close();
++console.log('Chromium launch preflight passed');
++NODE
+diff --git a/tests/ci-apt-mirrors.test.mjs b/tests/ci-apt-mirrors.test.mjs
+deleted file mode 100644
+index 7dc9651..0000000
+--- a/tests/ci-apt-mirrors.test.mjs
++++ /dev/null
+@@ -1,44 +0,0 @@
+-import assert from 'node:assert/strict';
+-import {test} from 'node:test';
+-import {createRequire} from 'node:module';
+-import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync} from 'node:fs';
+-import {join} from 'node:path';
+-import {tmpdir} from 'node:os';
+-import {spawnSync} from 'node:child_process';
+-const yaml=createRequire(import.meta.url)('js-yaml');
+-const source=readFileSync(new URL('../scripts/prepare-ci-apt-mirrors.sh',import.meta.url),'utf8');
+-const mirrors='https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n';
+-function fixture(t,{env={},missing=false,sudoExit='0'}={}){
+- const root=mkdtempSync(join(tmpdir(),'blizhniy-apt-mirrors-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+- const mirror=join(root,'mirrors.txt'),trace=join(root,'trace'),script=join(root,'helper.sh'),bin=join(root,'bin');mkdirSync(bin);
+- const original='http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n';if(!missing)writeFileSync(mirror,original);
+- assert.equal(source.split('mirror_list=/etc/apt/apt-mirrors.txt').length,2);
+- writeFileSync(script,source.replace('mirror_list=/etc/apt/apt-mirrors.txt','mirror_list="$FIXTURE_MIRROR"'));
+- writeFileSync(join(bin,'sudo'),'#!/usr/bin/python3\nimport sys,os\nassert sys.argv[1:]==["tee",os.environ["FIXTURE_MIRROR"]]\nwith open(os.environ["FIXTURE_TRACE"],"w") as f:f.write("sudo tee")\nstatus=int(os.environ["FIXTURE_SUDO_EXIT"])\nif status:sys.exit(status)\nwith open(os.environ["FIXTURE_MIRROR"],"w") as f:f.write(sys.stdin.read())\n',{mode:0o700});
+- const result=spawnSync('bash',[script],{encoding:'utf8',timeout:5000,env:{PATH:bin+':/usr/bin:/bin',GITHUB_ACTIONS:'true',RUNNER_OS:'Linux',RUNNER_ARCH:'X64',RUNNER_ENVIRONMENT:'github-hosted',FIXTURE_MIRROR:mirror,FIXTURE_TRACE:trace,FIXTURE_SUDO_EXIT:sudoExit,...env}});
+- return{result,mirror,trace,original};
+-}
+-test('runner helper replaces only its mirror list with two prioritized official HTTPS archives',(t)=>{
+- const f=fixture(t);assert.equal(f.result.status,0,f.result.stderr);assert.equal(readFileSync(f.mirror,'utf8'),mirrors);assert.equal(readFileSync(f.trace,'utf8'),'sudo tee');
+-});
+-for(const [name,env] of [['outside Actions',{GITHUB_ACTIONS:''}],['non-Linux',{RUNNER_OS:'Windows'}],['non-x64',{RUNNER_ARCH:'ARM64'}],['self-hosted',{RUNNER_ENVIRONMENT:'self-hosted'}]]){
+- test('runner helper refuses '+name+' before any privileged write',(t)=>{
+-  const f=fixture(t,{env});assert.equal(f.result.status,1);assert.equal(readFileSync(f.mirror,'utf8'),f.original);assert.throws(()=>readFileSync(f.trace),{code:'ENOENT'});
+- });
+-}
+-test('missing expected runner mirror list fails before sudo',(t)=>{
+- const f=fixture(t,{missing:true});assert.equal(f.result.status,1);assert.throws(()=>readFileSync(f.trace),{code:'ENOENT'});
+-});
+-test('privileged write failure is preserved, never converted to success',(t)=>{
+- const f=fixture(t,{sudoExit:'17'});assert.equal(f.result.status,17);assert.equal(readFileSync(f.mirror,'utf8'),f.original);
+-});
+-test('all three browser callers prepare mirrors before apt/browser setup without changing existing gates',()=>{
+- const ci=yaml.load(readFileSync(new URL('../.github/workflows/ci.yml',import.meta.url),'utf8')),deploy=yaml.load(readFileSync(new URL('../.github/workflows/deploy.yml',import.meta.url),'utf8'));
+- for(const [job,before] of [[ci.jobs.validate,'Prepare OpenSSH regression prerequisites'],[ci.jobs.category_heroes,'Install Chromium for layout checks'],[deploy.jobs.postchecks,'Install Chromium']]){
+-  const matches=job.steps.filter(s=>s.name==='Prepare Ubuntu package mirrors');assert.equal(matches.length,1);const step=matches[0];assert.equal(step.run,'bash scripts/prepare-ci-apt-mirrors.sh');assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);
+-  assert.ok(job.steps.indexOf(step)<job.steps.findIndex(s=>s.name===before));
+- }
+- assert.equal(ci.jobs.category_heroes.steps.find(s=>s.name==='Install Chromium for layout checks').run,'npx playwright install --with-deps chromium');
+- assert.equal(deploy.jobs.postchecks.steps.find(s=>s.name==='Install Chromium').run,'npx playwright install --with-deps chromium');
+- assert.match(ci.jobs.validate.steps.find(s=>s.name==='Run isolated PostgreSQL 18 integration gate').run,/npx playwright install --with-deps chromium/);
+-});
+diff --git a/tests/ci-browser-preflight.test.mjs b/tests/ci-browser-preflight.test.mjs
+new file mode 100644
+index 0000000..3c794d4
+--- /dev/null
++++ b/tests/ci-browser-preflight.test.mjs
+@@ -0,0 +1,43 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {createRequire} from 'node:module';
++import {readFileSync,writeFileSync,mkdirSync,mkdtempSync,rmSync} from 'node:fs';
++import {join} from 'node:path';
++import {tmpdir} from 'node:os';
++import {pathToFileURL,fileURLToPath} from 'node:url';
++import {spawnSync} from 'node:child_process';
++const helper=new URL('../scripts/prepare-ci-browser.sh',import.meta.url);
++const yaml=createRequire(import.meta.url)('js-yaml');
++function fixture(t,{installExit='0',smokeExit='0'}={}){
++ const root=mkdtempSync(join(tmpdir(),'blizhniy-browser-preflight-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
++ const bin=join(root,'bin'),trace=join(root,'trace'),payload=join(root,'payload.js');mkdirSync(bin);
++ const stub='#!/usr/bin/python3\nimport os,sys,json\nname=os.path.basename(sys.argv[0])\nwith open(os.environ["TRACE"],"a") as f:f.write(json.dumps([name,*sys.argv[1:]])+"\\n")\nif name=="node":\n with open(os.environ["PAYLOAD"],"w") as f:f.write(sys.stdin.read())\n sys.exit(int(os.environ["SMOKE_EXIT"]))\nsys.exit(int(os.environ["INSTALL_EXIT"]))\n';
++ for(const command of ['npx','node'])writeFileSync(join(bin,command),stub,{mode:0o700});
++ const result=spawnSync('bash',[fileURLToPath(helper)],{encoding:'utf8',timeout:5000,env:{PATH:bin+':/usr/bin:/bin',TRACE:trace,PAYLOAD:payload,INSTALL_EXIT:installExit,SMOKE_EXIT:smokeExit}});
++ const calls=readFileSync(trace,'utf8').trim().split('\n').map(x=>JSON.parse(x));return{root,result,calls,payload};
++}
++test('browser preparation installs the locked browser and runs mandatory Node preflight without apt or validation bypasses',(t)=>{
++ const f=fixture(t);assert.equal(f.result.status,0,f.result.stderr);assert.deepEqual(f.calls,[['npx','playwright','install','chromium'],['node','--input-type=module','-']]);
++ assert.doesNotMatch(readFileSync(helper,'utf8'),/sudo|apt-get|PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS|--no-sandbox|ignore-certificate/);
++});
++test('browser installation failure stops before launch preflight',(t)=>{
++ const f=fixture(t,{installExit:'17'});assert.equal(f.result.status,17);assert.deepEqual(f.calls,[['npx','playwright','install','chromium']]);
++});
++test('browser preflight failure remains a failing shell exit',(t)=>{
++ const f=fixture(t,{smokeExit:'19'});assert.equal(f.result.status,19);assert.equal(f.calls.length,2);
++});
++for(const mode of ['ok','launch-failure','close-failure'])test('actual preflight JavaScript awaits launch/close and propagates '+mode,(t)=>{
++ const f=fixture(t),module=join(f.root,'browser.mjs'),marker=join(f.root,'marker');
++ writeFileSync(module,"import {appendFileSync} from 'node:fs';export const chromium={async launch(options){if(options.headless!==true)throw new Error('Headless required');appendFileSync(process.env.MARKER,'launch\\n');if(process.env.MODE==='launch-failure')throw new Error('Synthetic missing browser dependency');return{async close(){appendFileSync(process.env.MARKER,'close\\n');if(process.env.MODE==='close-failure')throw new Error('Synthetic close failure');}};}};");
++ const source=readFileSync(f.payload,'utf8');assert.equal(source.split("from 'playwright'").length,2);
++ const result=spawnSync(process.execPath,['--input-type=module'],{input:source.replace("from 'playwright'",'from '+JSON.stringify(pathToFileURL(module).href)),encoding:'utf8',timeout:5000,env:{MARKER:marker,MODE:mode}});
++ assert.equal(result.status,mode==='ok'?0:1,result.stderr);assert.equal(readFileSync(marker,'utf8'),mode==='launch-failure'?'launch\n':'launch\nclose\n');
++ if(mode==='ok')assert.match(result.stdout,/Chromium launch preflight passed/);
++});
++test('all three existing browser callers keep mandatory preflight before unchanged checks',()=>{
++ const ci=yaml.load(readFileSync(new URL('../.github/workflows/ci.yml',import.meta.url),'utf8')),deploy=yaml.load(readFileSync(new URL('../.github/workflows/deploy.yml',import.meta.url),'utf8'));
++ const gate=ci.jobs.validate.steps.find(s=>s.name==='Run isolated PostgreSQL 18 integration gate');assert.ok(gate.run.indexOf('bash scripts/prepare-ci-browser.sh')<gate.run.indexOf('docker --host'));assert.equal(gate.if,undefined);assert.equal(gate['continue-on-error'],undefined);
++ for(const [job,stepName,nextName] of [[ci.jobs.category_heroes,'Install Chromium for layout checks','Check category heroes before deployment'],[deploy.jobs.postchecks,'Install Chromium','Check deployed category heroes on mobile and desktop']]){
++  const step=job.steps.find(s=>s.name===stepName);assert.equal(step.run,'bash scripts/prepare-ci-browser.sh');assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);assert.ok(job.steps.indexOf(step)<job.steps.findIndex(s=>s.name===nextName));
++ }
++});
+diff --git a/tests/postgres-ci-gate.test.mjs b/tests/postgres-ci-gate.test.mjs
+index 1987533..de5bdf0 100644
+--- a/tests/postgres-ci-gate.test.mjs
++++ b/tests/postgres-ci-gate.test.mjs
+@@ -28,11 +28,12 @@ test('real PostgreSQL is a mandatory gate before packaging and is inherited by d
+ test('the exact CI shell pulls only the pinned image and executes every suite serially without swallowed failures',()=>{
+  const step=ci.jobs.validate.steps.find(s=>s.name==='Run isolated PostgreSQL 18 integration gate');assert.ok(step);const directory=mkdtempSync(join(tmpdir(),'blizhniy-ci-argv-'));
+  try{
+-  const output=join(directory,'argv.jsonl'),stub='#!/usr/bin/python3\nimport sys,json,os\nwith open(os.environ["ARGV_OUTPUT"],"a") as f:f.write(json.dumps([os.path.basename(sys.argv[0]),*sys.argv[1:]])+"\\n")\nif os.path.basename(sys.argv[0])=="node":sys.exit(int(os.environ.get("NODE_EXIT","0")))\nif os.path.basename(sys.argv[0])=="docker":sys.exit(int(os.environ.get("DOCKER_EXIT","0")))\nif os.path.basename(sys.argv[0])=="npx":sys.exit(int(os.environ.get("BROWSER_EXIT","0")))\n';
++  const output=join(directory,'argv.jsonl'),stub='#!/usr/bin/python3\nimport sys,json,os\nwith open(os.environ["ARGV_OUTPUT"],"a") as f:f.write(json.dumps([os.path.basename(sys.argv[0]),*sys.argv[1:]])+"\\n")\nif os.path.basename(sys.argv[0])=="node":sys.exit(int(os.environ.get("NODE_EXIT" if "--test" in sys.argv else "PREFLIGHT_EXIT","0")))\nif os.path.basename(sys.argv[0])=="docker":sys.exit(int(os.environ.get("DOCKER_EXIT","0")))\nif os.path.basename(sys.argv[0])=="npx":sys.exit(int(os.environ.get("BROWSER_EXIT","0")))\n';
+   for(const command of ['docker','node','npx'])writeFileSync(join(directory,command),stub,{mode:0o700});const env={PATH:directory+':/usr/bin:/bin',LANG:'C.UTF-8',ARGV_OUTPUT:output};
+   execFileSync('bash',['-c',step.run],{env,timeout:5000,stdio:'pipe'});const calls=readFileSync(output,'utf8').trim().split('\n').map(line=>JSON.parse(line));
+-  assert.deepEqual(calls,[['npx','playwright','install','--with-deps','chromium'],['docker','--host','unix:///var/run/docker.sock','pull',image],...suites.map(file=>['node','--experimental-strip-types','--test','--test-concurrency=1','tests/'+file])]);
++  assert.deepEqual(calls,[['npx','playwright','install','chromium'],['node','--input-type=module','-'],['docker','--host','unix:///var/run/docker.sock','pull',image],...suites.map(file=>['node','--experimental-strip-types','--test','--test-concurrency=1','tests/'+file])]);
+   assert.throws(()=>execFileSync('bash',['-c',step.run],{env:{...env,NODE_EXIT:'17'},timeout:5000,stdio:'pipe'}),error=>error.status===17);
++  assert.throws(()=>execFileSync('bash',['-c',step.run],{env:{...env,PREFLIGHT_EXIT:'23'},timeout:5000,stdio:'pipe'}),error=>error.status===23);
+   assert.throws(()=>execFileSync('bash',['-c',step.run],{env:{...env,DOCKER_EXIT:'19'},timeout:5000,stdio:'pipe'}),error=>error.status===19);
+   assert.throws(()=>execFileSync('bash',['-c',step.run],{env:{...env,BROWSER_EXIT:'21'},timeout:5000,stdio:'pipe'}),error=>error.status===21);
+  }finally{rmSync(directory,{recursive:true,force:true});}
