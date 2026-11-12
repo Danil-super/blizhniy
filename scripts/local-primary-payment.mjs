@@ -1,7 +1,8 @@
 // Trusted LOCAL provider simulator. It never connects to YooKassa or loads a real merchant.
 import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
-const canonical='https://xn----9sbphbgks4a4a.xn--p1ai',merchant={shopId:'local-fixture-shop',isTest:true,secretKey:'test_local-fixture-never-a-real-key'};
+export const localPrimaryMerchant=Object.freeze({shopId:'local-fixture-shop',isTest:true,secretKey:'test_local-fixture-never-a-real-key'});
+const canonical='https://xn----9sbphbgks4a4a.xn--p1ai',merchant=localPrimaryMerchant;
 const instances=new WeakMap();
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // A browser's native no-cors form POST sends Origin:null with no-referrer.

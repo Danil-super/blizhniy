@@ -5,9 +5,12 @@ import {join} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
 import {getRefundWorkerRolePlan} from '../scripts/refund-worker-role.mjs';
+import {localPrimaryMerchant} from '../scripts/local-primary-payment.mjs';
+import {testLocalPrimaryRefundProvider} from './local-primary-refund-provider-cases.mjs';
 
 /** Reuses only the parent's new owned synthetic prod-named database; never the persistent manual stand. */
 export async function testOwnedRefundComposition(suite,{admin,owned,environment,stateFile,project,load,artifact,actor,token}){
+ environment={...environment,BLIZHNIY_PAYMENT_SHOP_ID:localPrimaryMerchant.shopId,BLIZHNIY_PAYMENT_SECRET_KEY:localPrimaryMerchant.secretKey};
  const plan=getRefundWorkerRolePlan('blizhniy_prod',{schema:55}),password=randomBytes(32).toString('hex'),destination=join(owned,'worker');
  buildRefundWorker(destination,{schema:55});await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(destination,'node_modules'),'dir');
  await admin.query(plan.createRole);await admin.query("alter role blizhniy_refund_worker login password '"+password+"'");for(const sql of plan.grants)await admin.query(sql);
@@ -122,5 +125,6 @@ export async function testOwnedRefundComposition(suite,{admin,owned,environment,
    assert.equal((await admin.query('select count(*)::int as n from app.notifications where event_key=$1',['placement_refund:'+item.id])).rows[0].n,1);
    await assert.rejects(callLocalRefundOperator(socket,token,{action:'list',expectedAdminId:actor,input:null}));
   });
+  await testLocalPrimaryRefundProvider(suite,{admin,ownerDb,load,intent,environment,workerEnvironment,operatorModule,workerModule,stateFile,project,actor,token});
  }finally{try{await runtime?.close();}finally{if(server)await server.close();else await operator?.close();}}
 }

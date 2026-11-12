@@ -20,6 +20,8 @@ import {getLocalBookingLifecycleMigrations} from './local-booking-lifecycle-sche
 import {getLocalWorkOwnerActionsMigrations} from './local-work-owner-actions-schema.mjs';
 import {getLocalResponseCheckoutMigrations} from './local-response-checkout-schema.mjs';
 import {getLocalCheckoutCancellationMigrations} from './local-checkout-cancellation-schema.mjs';
+import {getRefundOperatorRolePlan} from './refund-operator-role.mjs';
+import {assertRefundSchema} from './refund-worker-schema.mjs';
 
 const root=realpathSync(fileURLToPath(new URL('..',import.meta.url))),run=promisify(execFile);
 export const stateDirectory=join(homedir(),'.local','state','blizhniy','local-primary-private');
@@ -65,12 +67,17 @@ export async function prepareLocalPrimaryFixture(){
 export async function verifyLocalPrimarySchema(state){
  const owner=new pg.Client(localPrimaryDatabaseConfig(state,'owner'));await owner.connect();
  try{
+  await owner.query('begin isolation level repeatable read read only');
+  await owner.query("select set_config('statement_timeout','5s',true),set_config('lock_timeout','1s',true)");
   const extras=[...await getLocalPrimaryExtraMigrations(),...await getLocalTelegramMigrations(),...await getLocalDeletionMigrations(),...await getLocalCheckoutEditMigrations(),...await getLocalApplicationContactMigrations(),...await getLocalBookingLifecycleMigrations(),...await getLocalWorkOwnerActionsMigrations(),...await getLocalResponseCheckoutMigrations(),...await getLocalCheckoutCancellationMigrations()];
   const expected=[...getBootstrapPlan({includeListingContactMethod:true}).map(({name,sha256})=>({name,sha256})),...extras.map(({name,sha256})=>({name,sha256}))];
   const journal=(await owner.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-  if(JSON.stringify(journal)!==JSON.stringify(expected))throw Error('Local schema changed; data preserved, automatic migration refused');
+  const refundSchema=journal.length===55&&JSON.stringify(journal)===JSON.stringify(getRefundOperatorRolePlan(state.database).journal);
+  if(JSON.stringify(journal)!==JSON.stringify(expected)&&!refundSchema)throw Error('Local schema changed; data preserved, automatic migration refused');
+  if(refundSchema)await assertRefundSchema(owner,55,{localPrimary:true});
   const role=(await owner.query("select rolsuper,rolcreatedb,rolcreaterole,rolinherit,rolreplication,rolbypassrls from pg_roles where rolname='blizhniy_runtime'")).rows[0];
   if(!role||Object.values(role).some(Boolean))throw Error('Unexpected local runtime authority');
+  await owner.query('commit');
  }finally{await owner.end();}
 }
 export async function getLocalPrimaryExtraMigrations(){

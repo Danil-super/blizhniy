@@ -22,18 +22,18 @@ export async function testOwnedLocalPrimaryRefundRuntime(suite,{artifact,load}){
  try{
   container=await docker(['run','--detach','--pull','never','--name',name,'--label','blizhniy.primary-local='+project,'--label','blizhniy.refund-owned-proof='+name,'--memory','512m','--cpus','1','--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB=blizhniy_prod',localPrimaryImage]);
   const metadata=JSON.parse(await docker(['inspect',container]))[0],port=Number(metadata.NetworkSettings.Ports['5432/tcp'][0].HostPort);
-  const state={version:1,project,origin:'https://127.0.0.1:3045',upstreamPort:3046,containerId:container,containerName:name,dbPort:port,database:'blizhniy_prod',runtimePassword:randomBytes(32).toString('hex'),ownerPassword:randomBytes(32).toString('hex'),rateSecret:randomBytes(32).toString('hex')};
+  const state={version:1,project,origin:'https://127.0.0.1:3045',upstreamPort:3046,containerId:container,containerName:name,dbPort:port,database:'blizhniy_prod',runtimePassword:randomBytes(32).toString('hex'),ownerPassword:password,rateSecret:randomBytes(32).toString('hex')};
   validateLocalPrimaryContainerDefinition(metadata,state);validateLocalPrimaryContainer(metadata,state);assert.equal(metadata.Config.Labels['blizhniy.refund-owned-proof'],name);
   await writeFile(stateFile,JSON.stringify(state),{mode:0o600});const deadline=Date.now()+20000;
   for(;;){try{await docker(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres','-d','blizhniy_prod']);break;}catch{assert.ok(Date.now()<deadline);}await new Promise(r=>setTimeout(r,100));}
   admin=new pg.Pool({host:'127.0.0.1',port,database:'blizhniy_prod',user:'postgres',password,ssl:false,max:2,connectionTimeoutMillis:3000});
   const plan=getRefundOperatorRolePlan('blizhniy_prod');for(const entry of plan.journal)await admin.query(await readFile(new URL('../database/migrations/'+entry.name,import.meta.url),'utf8'));
-  await admin.query('create role blizhniy_runtime nologin');
+  await admin.query('create role blizhniy_runtime nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls');
   await admin.query(await readFile(new URL('../database/local-primary-payment.sql',import.meta.url),'utf8'));
   await admin.query(await readFile(new URL('../database/permissions/telegram-phone.sql',import.meta.url),'utf8'));
-  await testLocalPrimaryRefundSchema(suite,{admin,plan});
   await admin.query("revoke all on database blizhniy_prod from public;create schema blizhniy_meta;revoke all on schema blizhniy_meta from public;create table blizhniy_meta.migrations(name text primary key,sha256 text not null check(sha256 ~ '^[a-f0-9]{64}$'));revoke all on blizhniy_meta.migrations from public");
   for(const entry of plan.journal)await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[entry.name,entry.sha256]);
+  await testLocalPrimaryRefundSchema(suite,{admin,plan,state});
   await admin.query(plan.createRole);await admin.query('alter role blizhniy_refund_operator login password '+pg.escapeLiteral(rolePassword));for(const sql of plan.grants)await admin.query(sql);
   await run('/usr/bin/openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=owned-local-refund-fixture','-addext','subjectAltName=IP:127.0.0.1','-addext','basicConstraints=critical,CA:TRUE','-keyout',key,'-out',ca],{timeout:10000});await chmod(ca,0o644);
   for(const [source,base] of [[ca,'server.crt'],[key,'server.key']]){

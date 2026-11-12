@@ -1,5 +1,14 @@
 # Что осталось после аудита
 
+Обновление12.11: подготовлен [кандидат устойчивого provider и launcher55](../docs/review/local-refund-provider-launcher55.md).
+Provider хранит idempotency в local_primary, переживает потерю ответа/новый
+pool и отклоняет LIVE/foreign/pending/canceled-wait без новых возвратов.
+Исправлено исполнение DDL оплаты через extended protocol. Launcher guard
+сохраняет точный39 и дополнительно проверяет полный55/fingerprint в одном
+read-only snapshot. Native2642/2642 и PG112/112 прошли; владелец12.11 одобрил
+точный diff только для локального сохранения. Постоянный стенд, роли/TLS и production
+не менялись. Далее — единый пакет установки и подключения ручного сайта.
+
 Обновление12.11: [общий lifecycle operator/worker](../docs/audit-local-refund-services.md)
 получает private socket только после обоих preflight и закрывает ресурсы
 при отказе/отмене без повторов. Native2640/2640, PG110/110 и focused9/9 прошли;
