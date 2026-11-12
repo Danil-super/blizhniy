@@ -61,3 +61,10 @@ test('encoded processing uncertainty revokes admission for both consumer interfa
   await assert.rejects(runtime.placement.tick());await assert.rejects(runtime.application.sweep());await runtime.close();
  }
 });
+
+test('worker shutdown errors are redacted and cached without reopening or repeating close',async()=>{
+ const f=fixture();f.modules.PostgresDatabase=class{async close(){f.calls.push(['close']);throw Error('private driver shutdown credential');}};
+ const runtime=await createLocalRefundWorkerRuntime(env,{loadModules:()=>f.modules});
+ await assert.rejects(runtime.close(),{message:'Local refund runtime unavailable'});await assert.rejects(runtime.close(),{message:'Local refund runtime unavailable'});
+ assert.equal(f.calls.filter(c=>c[0]==='close').length,1);await assert.rejects(runtime.preflight());await assert.rejects(runtime.placement.tick());
+});

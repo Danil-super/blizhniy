@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import {testOwnedRefundComposition} from './local-primary-refund-composition-cases.mjs';
+import {testLocalPrimaryRefundSchema} from './local-primary-refund-schema-cases.mjs';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {randomBytes,randomUUID} from 'node:crypto';
@@ -26,6 +28,10 @@ export async function testOwnedLocalPrimaryRefundRuntime(suite,{artifact,load}){
   for(;;){try{await docker(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres','-d','blizhniy_prod']);break;}catch{assert.ok(Date.now()<deadline);}await new Promise(r=>setTimeout(r,100));}
   admin=new pg.Pool({host:'127.0.0.1',port,database:'blizhniy_prod',user:'postgres',password,ssl:false,max:2,connectionTimeoutMillis:3000});
   const plan=getRefundOperatorRolePlan('blizhniy_prod');for(const entry of plan.journal)await admin.query(await readFile(new URL('../database/migrations/'+entry.name,import.meta.url),'utf8'));
+  await admin.query('create role blizhniy_runtime nologin');
+  await admin.query(await readFile(new URL('../database/local-primary-payment.sql',import.meta.url),'utf8'));
+  await admin.query(await readFile(new URL('../database/permissions/telegram-phone.sql',import.meta.url),'utf8'));
+  await testLocalPrimaryRefundSchema(suite,{admin,plan});
   await admin.query("revoke all on database blizhniy_prod from public;create schema blizhniy_meta;revoke all on schema blizhniy_meta from public;create table blizhniy_meta.migrations(name text primary key,sha256 text not null check(sha256 ~ '^[a-f0-9]{64}$'));revoke all on blizhniy_meta.migrations from public");
   for(const entry of plan.journal)await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[entry.name,entry.sha256]);
   await admin.query(plan.createRole);await admin.query('alter role blizhniy_refund_operator login password '+pg.escapeLiteral(rolePassword));for(const sql of plan.grants)await admin.query(sql);
@@ -53,6 +59,7 @@ export async function testOwnedLocalPrimaryRefundRuntime(suite,{artifact,load}){
    await assert.rejects(modules.createLocalPrimaryRefundOperatorRuntime({...environment,BLIZHNIY_DB_PORT:String(port+1)},options),{message:'Local refund operator unavailable'});
    await assert.rejects(modules.createLocalPrimaryRefundOperatorRuntime(environment,options),{message:'Local refund operator unavailable'});assert.equal(pools,0);assert.equal(http,0);
   });
+  await testOwnedRefundComposition(suite,{admin,owned,environment,stateFile,project,load,artifact,actor,token});
  }finally{
   try{await runtime?.close();}finally{try{await admin?.end();}finally{
    if(container){const ownedMetadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(ownedMetadata.Id,container);assert.equal(ownedMetadata.Config.Labels['blizhniy.refund-owned-proof'],name);await docker(['rm','--force',container]);}

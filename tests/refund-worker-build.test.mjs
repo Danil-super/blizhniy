@@ -25,6 +25,7 @@ test('isolated refund artifact loads both canonical consumers and its complete s
    const forbidden=()=>{network++;throw Error('Network forbidden');};
    globalThis.fetch=forbidden;net.Socket.prototype.connect=forbidden;
    const require=createRequire(import.meta.url),pg=require('pg');
+   require('node:child_process').execFile=()=>{network++;throw Error('Process launch forbidden');};
    pg.Pool.prototype.query=pg.Pool.prototype.connect=()=>{poolCalls++;throw Error('Database forbidden');};
    const {PostgresDatabase}=require('./compiled/lib/postgres.js');
    const {createPlacementRefundWorker}=require('./compiled/lib/placement-refund-worker.js');

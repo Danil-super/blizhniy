@@ -1,5 +1,6 @@
 import {isAbsolute} from 'node:path';
 import {createRequire} from 'node:module';
+import {verifyLocalPrimaryRefundTarget,assertLocalPrimaryRefundTrust} from './local-primary-refund-target.mjs';
 import {verifyRefundWorkerDatabase} from './refund-worker-role.mjs';
 
 const require=createRequire(import.meta.url);
@@ -12,12 +13,23 @@ function loadCompiledModules(){
 /** Local disposable TEST database only; no implicit environment, installer or startup.
  * Trusted module/fetch seams are for composition tests, never environment-selected paths.
  */
-export async function createLocalRefundWorkerRuntime(environment,{loadModules=loadCompiledModules,fetcher=globalThis.fetch}={}){
+export async function createLocalRefundWorkerRuntime(environment,options={}){
+ return createRuntime(environment,options,'blizhniy_test');
+}
+/** Separate owned manual-stand entry; ordinary disposable admission remains unchanged. */
+export async function createLocalPrimaryRefundWorkerRuntime(environment,{stateFile,project,...options}={}){
+ try{
+  const env={...environment},certificate=await verifyLocalPrimaryRefundTarget(env,{stateFile,project});
+  return await createRuntime(env,options,'blizhniy_prod',certificate);
+ }catch{throw Error('Local refund runtime unavailable');}
+}
+async function createRuntime(environment,options,database,certificate){
  let db,pool;
  try{
+  const {loadModules=loadCompiledModules,fetcher=globalThis.fetch}=options;
   const env={...environment};
   if(typeof window!=='undefined'||env.NODE_ENV!=='production'||env.BLIZHNIY_REFUND_WORKER!=='local-test'||env.BLIZHNIY_PAYMENT_MODE!=='test'||
-   env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!=='blizhniy_test'||env.BLIZHNIY_DB_USER!=='blizhniy_refund_worker'||
+   env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!==database||env.BLIZHNIY_DB_USER!=='blizhniy_refund_worker'||
    !/^\d{1,5}$/.test(env.BLIZHNIY_DB_PORT??'')||Number(env.BLIZHNIY_DB_PORT)<1||Number(env.BLIZHNIY_DB_PORT)>65535||!env.BLIZHNIY_DB_PASSWORD||
    env.BLIZHNIY_DB_SSL_MODE!=='verify-full'||!env.BLIZHNIY_DB_CA_FILE||!isAbsolute(env.BLIZHNIY_DB_CA_FILE)||
    [env,process.env].some(e=>e.NODE_TLS_REJECT_UNAUTHORIZED==='0'||Object.keys(e).some(k=>k.startsWith('PG')))||
@@ -26,9 +38,10 @@ export async function createLocalRefundWorkerRuntime(environment,{loadModules=lo
    typeof fetcher!=='function')throw Error();
   const merchant=Object.freeze({shopId:env.BLIZHNIY_PAYMENT_SHOP_ID,secretKey:env.BLIZHNIY_PAYMENT_SECRET_KEY,isTest:true});
   const modules=loadModules(),config=modules.readPostgresConfig(env);
+  if(certificate!==undefined)assertLocalPrimaryRefundTrust(config,certificate);
   pool=new modules.Pool({...config,max:2,application_name:'blizhniy-local-refund-worker'});db=new modules.PostgresDatabase(pool);
   const placement=modules.createPlacementRefundWorker(db,merchant,fetcher),application=modules.createApplicationCompensationWorker(db,merchant,fetcher);
-  const verify=()=>modules.verifyRefundWorkerDatabase(db,{database:config.database,merchant}),probe=modules.createRefundMerchantPreflight(merchant,fetcher);
+  const verify=()=>modules.verifyRefundWorkerDatabase(db,{database:config.database,merchant,...(certificate!==undefined?{localPrimary:true}:{})}),probe=modules.createRefundMerchantPreflight(merchant,fetcher);
   let admitted=false,closed=false,active,closing;
   function exclusive(task,admission=false){
    if(closed||active||(!admission&&!admitted))return Promise.reject(Error('Local refund runtime unavailable'));
@@ -44,7 +57,7 @@ export async function createLocalRefundWorkerRuntime(environment,{loadModules=lo
   return{
    preflight:()=>exclusive(async()=>{await probe();await verify();if(!closed)admitted=true;},true),
    placement:{tick:()=>exclusive(()=>placement.tick())},application:{sweep:()=>exclusive(()=>application.sweep())},
-   close:()=>closing??=(async()=>{closed=true;admitted=false;try{await active;}catch{ /* Drain before closing the owned pool. */ }await db.close();})(),
+   close:()=>closing??=(async()=>{closed=true;admitted=false;try{await active;}catch{ /* Drain before closing the owned pool. */ }try{await db.close();}catch{throw Error('Local refund runtime unavailable');}})(),
   };
  }catch{
   try{if(db)await db.close();else if(pool)await pool.end();}catch{ /* Keep credentials and driver details out of errors. */ }

@@ -34,6 +34,7 @@ export function buildRefundOperator(destination){
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
  copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
+ copyFileSync(join(root,'database/refund-schema-local-primary-0055.json'),join(destination,'database/refund-schema-local-primary-0055.json'));
  for(const {name,bytes} of migrations)writeFileSync(join(destination,'database/migrations',name),bytes,{flag:'wx',mode:0o600});
  const manifest={version:1,schema:55,typescript:ts.version,sources};
  writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});

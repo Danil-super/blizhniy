@@ -42,7 +42,7 @@ async function createRuntime(environment,options,database,certificate){
   const readOnlyFetch=(url,init)=>{if(closed||init?.method!=='GET')throw unavailable();init.signal?.throwIfAborted();return fetcher(url,init);};
   const config=modules.readPostgresConfig(env);if(certificate!==undefined)assertLocalPrimaryRefundTrust(config,certificate);pool=new modules.Pool({...config,max:2,application_name:'blizhniy-local-refund-operator'});db=new modules.PostgresDatabase(pool);
   const journal=new modules.PostgresAdminRefundJournal(db,merchant),approvals=new modules.PostgresRefundApprovalStore(db,merchant),recovery=modules.createPrimaryRefundRecovery(db,merchant,readOnlyFetch);
-  const verify=()=>modules.verifyRefundOperatorDatabase(db,{database:config.database,merchant}),probe=modules.createRefundMerchantPreflight(merchant,readOnlyFetch);
+  const verify=()=>modules.verifyRefundOperatorDatabase(db,{database:config.database,merchant,...(certificate!==undefined?{localPrimary:true}:{})}),probe=modules.createRefundMerchantPreflight(merchant,readOnlyFetch);
   async function admitMerchant(){await probe();if(closed)throw unavailable();await verify();if(closed)throw unavailable();}
   function execute(work,merchantAdmission=false){
    if(closed||active)return Promise.reject(unavailable());

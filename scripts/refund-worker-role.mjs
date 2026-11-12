@@ -57,9 +57,9 @@ export function getRefundWorkerRolePlan(database,{schema=54}={}){
  * Trusted TEST financial process; merchant isolation is enforced by the stores, not SQL RLS.
  * No managed membership exception, production runtime wiring or automatic activation.
  */
-export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
+export async function verifyRefundWorkerDatabase(db,{database,merchant,localPrimary=false}={}){
  try{
-  if(!validDatabase(database)||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
+  if(!validDatabase(database)||typeof localPrimary!=='boolean'||(localPrimary&&database!=='blizhniy_prod')||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
   const expectedJournal=journal();
   await db.transaction(async tx=>{
    await tx.query("set local statement_timeout='5s'");
@@ -79,7 +79,7 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
    const schema=actualJournal.length===55?55:54;
    if(JSON.stringify(actualJournal)!==JSON.stringify(schema===55?journal(55):expectedJournal))throw Error('Invalid refund journal');
-   await assertRefundSchema(tx,schema);
+   await assertRefundSchema(tx,schema,{localPrimary});
    await assertFinancialCatalogPrivileges(tx);
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
