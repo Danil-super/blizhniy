@@ -26,8 +26,16 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
  if(process.env.NODE_ENV!=='test')throw Error('Local proxy requires isolated test process');
  validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
  const {PostgresDatabase}=load('postgres');
- const runtimeDb=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state),max:5}));
- const ownerDb=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state,'owner'),max:2}));
+ let runtimeDb,ownerDb,timer,server,mailRunning,closing,closed=false;
+ const close=()=>closing??=(async()=>{
+  closed=true;clearInterval(timer);
+  try{if(server?.listening)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
+  finally{try{await mailRunning;}finally{try{await runtimeDb?.close();}finally{await ownerDb?.close();}}}
+ })();
+ try{
+ const tls={key:await readFile(join(stateDirectory,'tls-key.pem')),cert:await readFile(join(stateDirectory,'tls-cert.pem'))};
+ runtimeDb=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state),max:5}));
+ ownerDb=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state,'owner'),max:2}));
  await load('production-auth-database').verifyProductionAuthDatabase(runtimeDb);
  const limiter=new(load('auth-http').AuthRateLimiter)(runtimeDb,state.rateSecret);
  const identity=new(load('identity').IdentityStore)(runtimeDb);
@@ -60,14 +68,15 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
  const adminPhoto=load('admin-listing-moderation-http').createAdminListingModerationHandler({origin:canonical},()=>({identity,limiter,store:new(load('postgres-listing-moderation').PostgresListingModerationStore)(runtimeDb,files,{contactMethod:true})}));
  const key=await readFile(join(stateDirectory,'mail-key.bin'));
  const worker=new(load('mail-delivery').MailDeliveryWorker)(runtimeDb,new(load('mail-outbox').MailPayloadCipher)(key),load('production-auth-config').renderProductionAuthMail,{pendingAccounts:true});key.fill(0);
- let polling=false;
- const timer=setInterval(async()=>{
-  if(polling)return;polling=true;
+ timer=setInterval(()=>{
+  if(closed||mailRunning)return;
+  mailRunning=(async()=>{
   try{await worker.runOne({send:async message=>{
    const captured={...message,text:message.text.replaceAll(canonical,state.origin),capturedAt:new Date().toISOString()};
    const file=join(stateDirectory,`mail-${message.id}.json`);
    try{await writeFile(file,JSON.stringify(captured),{mode:0o600,flag:'wx'});}catch(error){if(error.code!=='EEXIST')throw error;}
-  }});}catch{console.warn('Local mail capture unavailable');}finally{polling=false;}
+  }});}catch{console.warn('Local mail capture unavailable');}
+  })().finally(()=>{mailRunning=undefined;});
  },1000);
  const context={state,ownerDb,runtimeDb,load};
  const refundAdmin=refundOperatorSocket===undefined?null:load('admin-refund-http').createAdminRefundHandler({origin:canonical},()=>({limiter,
@@ -85,7 +94,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
   }
   return null;
  };
- const server=createServer({key:await readFile(join(stateDirectory,'tls-key.pem')),cert:await readFile(join(stateDirectory,'tls-cert.pem'))},async(req,res)=>{
+ server=createServer(tls,async(req,res)=>{
   try{
    if(typeof req.url!=='string'||!req.url.startsWith('/')||req.url.startsWith('//')||/[\\\x00-\x20]/.test(req.url)){res.writeHead(400,{'cache-control':'no-store'});res.end('Invalid local path');return;}
    if(!allowLocalPrimaryRequest(req,state.origin,process.env.BLIZHNIY_TELEGRAM_PHONE==='enabled')){
@@ -145,5 +154,6 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
    outgoing.setTimeout(30000,()=>outgoing.destroy());outgoing.end(body);
   }catch(error){console.warn('Local ingress request failed:',error?.code??error?.name??'Error');if(!res.headersSent)res.writeHead(503,{'content-type':'text/plain','cache-control':'no-store'});res.end('Local request unavailable');}
  });
- return {server,close:async()=>{clearInterval(timer);await new Promise(resolve=>server.close(resolve));await runtimeDb.close();await ownerDb.close();}};
+ return {server,close};
+ }catch(error){try{await close();}catch{ /* All acquired resources have been attempted. */ }throw error;}
 }

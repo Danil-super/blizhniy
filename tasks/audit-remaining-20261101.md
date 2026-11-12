@@ -1,5 +1,14 @@
 # Что осталось после аудита
 
+Обновление12.11: подготовлено [подключение ручного контура](../docs/audit-local-refund-activation.md):
+явный --refunds, private config, свежие пакеты, существующий UI/socket,
+полный startup/shutdown cleanup. Native2651/2651 (concurrency4), PG113/113,
+focused9/9 и Chromium1/1 прошли после раздельного прогона с прежними лимитами.
+Есть точный review-only JSON-план16 миграций/двух ролей/TLS. Постоянный
+контейнер временно запускался для READ ONLY: exact39/TLSoff/отсутствие ролей
+подтверждены, остановленное состояние возвращено. Сохранение кода не означает установку. Следующее
+отдельное решение — применение плана только на постоянной локальной БД.
+
 Обновление12.11: подготовлен [кандидат устойчивого provider и launcher55](../docs/review/local-refund-provider-launcher55.md).
 Provider хранит idempotency в local_primary, переживает потерю ответа/новый
 pool и отклоняет LIVE/foreign/pending/canceled-wait без новых возвратов.

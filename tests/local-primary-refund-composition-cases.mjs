@@ -7,6 +7,7 @@ import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
 import {getRefundWorkerRolePlan} from '../scripts/refund-worker-role.mjs';
 import {localPrimaryMerchant} from '../scripts/local-primary-payment.mjs';
 import {testLocalPrimaryRefundProvider} from './local-primary-refund-provider-cases.mjs';
+import {testLocalPrimaryRefundActivation} from './local-primary-refund-activation-cases.mjs';
 
 /** Reuses only the parent's new owned synthetic prod-named database; never the persistent manual stand. */
 export async function testOwnedRefundComposition(suite,{admin,owned,environment,stateFile,project,load,artifact,actor,token}){
@@ -126,5 +127,6 @@ export async function testOwnedRefundComposition(suite,{admin,owned,environment,
    await assert.rejects(callLocalRefundOperator(socket,token,{action:'list',expectedAdminId:actor,input:null}));
   });
   await testLocalPrimaryRefundProvider(suite,{admin,ownerDb,load,intent,environment,workerEnvironment,operatorModule,workerModule,stateFile,project,actor,token});
+  await testLocalPrimaryRefundActivation(suite,{admin,ownerDb,load,intent,environment,workerEnvironment,stateFile,actor,token});
  }finally{try{await runtime?.close();}finally{if(server)await server.close();else await operator?.close();}}
 }
