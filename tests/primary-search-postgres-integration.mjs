@@ -290,8 +290,9 @@ async function runSearchFixture(suite,benchmark=false){
    const post=new PostgresPublicSearchStore(runtime,{postmoderation:true,specialistProfileIdentity:true});
    const blocked=await listing({title:'Заблокированная карточка'}),closed=await work('workRequest',{form:{title:'Закрытый заказ'}});
    await owner.query("insert into app.listing_blocks(listing_id,blocked_by,blocked_revision,reason) values($1,$2,1,'Синтетическая причина')",[blocked.id,principal]);
-   await owner.query(`insert into app.applications(applicant_id,work_publication_id,creation_key,target_revision,specialist_revision,snapshot,status,is_paid,sent_at)
-    values($1,$2,$3,1,1,'{}'::jsonb,'selected',true,clock_timestamp())`,[peer,closed.id,randomUUID()]);
+   // One statement clock prevents sent_at from preceding the later-evaluated created_at default.
+   await owner.query(`insert into app.applications(applicant_id,work_publication_id,creation_key,target_revision,specialist_revision,snapshot,status,is_paid,created_at,sent_at)
+    values($1,$2,$3,1,1,'{}'::jsonb,'selected',true,statement_timestamp(),statement_timestamp())`,[peer,closed.id,randomUUID()]);
    assert.ok(find(await query('Заблокированная карточка'),blocked));assert.ok(find(await query('Закрытый заказ'),closed));
    assert.equal(find(await post.search({query:'Заблокированная карточка',page:1}),blocked),undefined);
    assert.equal(find(await post.search({query:'Закрытый заказ',page:1}),closed),undefined);
