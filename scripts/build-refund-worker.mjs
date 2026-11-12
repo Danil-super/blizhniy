@@ -31,7 +31,7 @@ export function buildRefundWorker(destination,{schema=54}={}){
  const emitted=program.emit();
  if(emitted.emitSkipped||emitted.diagnostics.length)throw Error('Refund worker compilation failed');
  mkdirSync(join(destination,'scripts'));mkdirSync(join(destination,'database'));mkdirSync(join(destination,'database/migrations'));
- for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','local-refund-worker-runtime.mjs','refund-worker-service.mjs','local-primary-refund-target.mjs','local-primary-config.mjs'])
+ for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','local-refund-worker-runtime.mjs','refund-worker-service.mjs','local-primary-refund-target.mjs','local-primary-config.mjs','local-refund-services.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
  if(schema===55)for(const name of ['refund-schema-0055.json','refund-schema-local-primary-0055.json'])copyFileSync(join(root,'database',name),join(destination,'database',name));

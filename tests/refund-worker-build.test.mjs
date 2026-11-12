@@ -33,6 +33,7 @@ test('isolated refund artifact loads both canonical consumers and its complete s
    const {getRefundWorkerRolePlan,verifyRefundWorkerDatabase}=await import('./scripts/refund-worker-role.mjs');
    const {createLocalRefundWorkerRuntime}=await import('./scripts/local-refund-worker-runtime.mjs');
    const {runRefundWorkerService}=await import('./scripts/refund-worker-service.mjs');
+   const {startLocalRefundServices}=await import('./scripts/local-refund-services.mjs');assert.equal(typeof startLocalRefundServices,'function');
    assert.equal(typeof createLocalRefundWorkerRuntime,'function');assert.equal(typeof runRefundWorkerService,'function');
    const db={transaction:async()=>{queries++;throw Error('synthetic');}};
    const fetcher=async()=>{http++;throw Error('Network forbidden');};

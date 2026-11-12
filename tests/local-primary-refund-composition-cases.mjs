@@ -77,5 +77,50 @@ export async function testOwnedRefundComposition(suite,{admin,owned,environment,
    runtime=await workerModule.createLocalPrimaryRefundWorkerRuntime(workerEnvironment,{stateFile,project,fetcher});await runtime.preflight();assert.deepEqual(await runtime.placement.tick(),{state:'idle'});assert.equal((await runtime.application.sweep()).processing.state,'idle');assert.equal(posts.length,4);
    const sessions=(await admin.query("select usename,s.ssl from pg_stat_activity a join pg_stat_ssl s using(pid) where application_name in ('blizhniy-local-refund-worker','blizhniy-local-refund-operator')")).rows;assert.ok(sessions.some(s=>s.usename==='blizhniy_refund_worker'));assert.ok(sessions.some(s=>s.usename==='blizhniy_refund_operator'));assert.ok(sessions.every(s=>s.ssl));
   });
+  await suite.test('packaged joint service starts after both real TLS admissions and closes its private IPC across restart',async()=>{
+   await runtime?.close();runtime=undefined;await server.close();server=undefined;operator=undefined;
+   const {startLocalRefundServices}=await import(pathToFileURL(join(destination,'scripts/local-refund-services.mjs')).href);
+   const {callLocalRefundOperator}=load('local-refund-operator-client');
+   for(let restart=0;restart<2;restart++){
+    const controller=new AbortController(),events=[];
+    const services=await startLocalRefundServices({signal:controller.signal,
+     createOperator:()=>operatorModule.createLocalPrimaryRefundOperatorRuntime(environment,{stateFile,project,fetcher}),
+     createWorker:()=>workerModule.createLocalPrimaryRefundWorkerRuntime(workerEnvironment,{stateFile,project,fetcher}),
+     startOperatorServer:startLocalRefundOperatorServer,report:async event=>events.push(event)});
+    try{
+     assert.equal(events[0].status,'ready');
+     const page=await callLocalRefundOperator(services.socketPath,token,{action:'list',expectedAdminId:actor,input:null});
+     assert.equal(page.items.length,4);assert.ok(page.items.every(item=>item.status==='refunded'));assert.equal(posts.length,4);
+    }finally{await services.close();}
+    assert.equal(await services.done,0);await assert.rejects(callLocalRefundOperator(services.socketPath,token,{action:'list',expectedAdminId:actor,input:null}));
+    assert.equal((await admin.query("select count(*)::int as n from pg_stat_activity where application_name in ('blizhniy-local-refund-worker','blizhniy-local-refund-operator')")).rows[0].n,0);
+   }
+   assert.equal(posts.length,4);assert.equal((await admin.query('select count(*)::int as n from app.notifications')).rows[0].n,4);
+  });
+  await suite.test('joint startup accepts an IPC approval before its first claim and applies one refund before draining',async()=>{
+   const payer=randomUUID(),phone='+79990000002';
+   await admin.query("insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())",[payer,payer+'@owned.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
+   await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[payer,{name:'Владелец размещения',phone}]);
+   await admin.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[payer,phone,'owned-refund-'+randomUUID()]);
+   const listing=(await admin.query("insert into app.listings(author_id,listing_type,category_id,city_id,title,description,contact_phone,created_at) select $1,'sell',c.id,city.id,'Проверка общего запуска','Синтетическое описание полного возврата после совместного запуска.',$2,clock_timestamp()-interval '2 minutes' from app.categories c cross join app.cities city returning id",[payer,phone])).rows[0].id;
+   const item=await intent('listing',listing,payer);
+   assert.equal((await new (load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(ownerDb,merchant,{postmoderation:true}).fulfill(item.id)).state,'fulfilled');
+   const {startLocalRefundServices}=await import(pathToFileURL(join(destination,'scripts/local-refund-services.mjs')).href);
+   const {callLocalRefundOperator}=load('local-refund-operator-client'),controller=new AbortController();let socket,completed=0;
+   const service=await startLocalRefundServices({signal:controller.signal,
+    createOperator:()=>operatorModule.createLocalPrimaryRefundOperatorRuntime(environment,{stateFile,project,fetcher}),
+    createWorker:()=>workerModule.createLocalPrimaryRefundWorkerRuntime(workerEnvironment,{stateFile,project,fetcher}),
+    startOperatorServer:async runtime=>{const handle=await startLocalRefundOperatorServer(runtime);socket=handle.socketPath;return handle;},
+    report:async event=>{
+     if(event.status==='ready')await callLocalRefundOperator(socket,token,{action:'approve',expectedAdminId:actor,input:{id:randomUUID(),paymentIntentId:item.id,reason:'Возврат при совместном запуске обработчиков.'}});
+     if(event.status==='tick'&&event.kind==='placement'&&event.state==='completed'){completed++;controller.abort();}
+    }});
+   try{assert.equal(await service.done,0);}finally{await service.close();}
+   assert.equal(completed,1);assert.equal(posts.length,5);
+   assert.deepEqual((await admin.query('select status,is_paid from app.listings where id=$1',[listing])).rows[0],{status:'archived',is_paid:false});
+   assert.equal((await admin.query('select count(*)::int as n from app.payment_refund_effects where payment_intent_id=$1',[item.id])).rows[0].n,1);
+   assert.equal((await admin.query('select count(*)::int as n from app.notifications where event_key=$1',['placement_refund:'+item.id])).rows[0].n,1);
+   await assert.rejects(callLocalRefundOperator(socket,token,{action:'list',expectedAdminId:actor,input:null}));
+  });
  }finally{try{await runtime?.close();}finally{if(server)await server.close();else await operator?.close();}}
 }
