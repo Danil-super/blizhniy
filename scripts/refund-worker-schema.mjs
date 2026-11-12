@@ -1,7 +1,6 @@
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 
-const expected=JSON.parse(readFileSync(new URL('../database/refund-schema-0054.json',import.meta.url),'utf8'));
 
 // One catalog snapshot; no table data, object OIDs, physical layout or owner names.
 export async function readRefundSchema(tx){
@@ -80,6 +79,8 @@ export async function readRefundSchema(tx){
  return Object.fromEntries(Object.entries(groups).map(([kind,items])=>[kind,{count:items.length,sha256:createHash('sha256').update(JSON.stringify(items)).digest('hex')}]));
 }
 
-export async function assertRefundSchema(tx){
+export async function assertRefundSchema(tx,schema=54){
+ if(![54,55].includes(schema))throw Error('Invalid refund schema version');
+ const expected=JSON.parse(readFileSync(new URL(`../database/refund-schema-00${schema}.json`,import.meta.url),'utf8'));
  if(JSON.stringify(await readRefundSchema(tx))!==JSON.stringify(expected))throw Error('Invalid refund schema');
 }

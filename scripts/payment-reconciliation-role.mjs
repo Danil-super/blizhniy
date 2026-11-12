@@ -70,16 +70,17 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw new Error('Invalid role');
    const journal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   // Only complete known releases: 0024, 0025, reviewed0032/0033 or pinned refund0054.
+   // Only complete known releases: 0024, 0025, reviewed0032/0033 or pinned refund0054/0055.
    // Unknown intermediate versions and changed hashes remain fail-closed.
    const cabinetJournal=[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan()];
    const deletionJournal=[...cabinetJournal,{name:'0033-account-deletion.sql',sha256:'8d0159c6af65c4c66aabb123695110f402fd5eac268fa2a879d97c85e628ed2f'}];
-   const refundJournal=getRefundWorkerRolePlan(database).journal,refundSchema=journal.length===refundJournal.length;
+   const schema=journal.length===55?55:54;
+   const refundJournal=getRefundWorkerRolePlan(database,{schema}).journal,refundSchema=journal.length===refundJournal.length;
    if(identity.refund_installed!==refundSchema)throw new Error('Refund schema and journal disagree');
    const cabinetSchema=refundSchema||journal.length===cabinetJournal.length||journal.length===deletionJournal.length;
    const expectedJournal=refundSchema?refundJournal:journal.length===deletionJournal.length?deletionJournal:journal.length===cabinetJournal.length?cabinetJournal:journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
-   if(refundSchema)await assertRefundSchema(tx);
+   if(refundSchema)await assertRefundSchema(tx,schema);
    await assertFinancialCatalogPrivileges(tx);
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable

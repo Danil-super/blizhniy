@@ -1,0 +1,682 @@
+diff --git a/database/migrations/0055-refund-operator-locks.sql b/database/migrations/0055-refund-operator-locks.sql
+new file mode 100644
+index 0000000..8300255
+--- /dev/null
++++ b/database/migrations/0055-refund-operator-locks.sql
+@@ -0,0 +1,22 @@
++-- Private operator row-lock capability never permits identity writes.
++begin;
++set local lock_timeout='3s';
++set local statement_timeout='10s';
++create function app.guard_refund_operator_locks() returns trigger
++ language plpgsql security invoker set search_path='' as $$ begin
++ if current_user='blizhniy_refund_operator' or session_user='blizhniy_refund_operator' then
++  raise exception using errcode='23514',message='Refund operator lock-only relation';
++ end if;
++ return new;
++end $$;
++create trigger refund_operator_lock_only before update of id on app.users
++ for each row execute function app.guard_refund_operator_locks();
++create trigger refund_operator_lock_only before update of id on app.payment_checkout_intents
++ for each row execute function app.guard_refund_operator_locks();
++create trigger refund_operator_lock_only before update of id on app.payment_orders
++ for each row execute function app.guard_refund_operator_locks();
++alter table app.users enable always trigger refund_operator_lock_only;
++alter table app.payment_checkout_intents enable always trigger refund_operator_lock_only;
++alter table app.payment_orders enable always trigger refund_operator_lock_only;
++revoke all on function app.guard_refund_operator_locks() from public;
++commit;
+diff --git a/database/refund-schema-0055.json b/database/refund-schema-0055.json
+new file mode 100644
+index 0000000..793cd3c
+--- /dev/null
++++ b/database/refund-schema-0055.json
+@@ -0,0 +1,34 @@
++{
++  "column": {
++    "count": 732,
++    "sha256": "ea770287dad8ef7c87505ca6041fc5fe74ac124a03733d192d123217f06cc44b"
++  },
++  "constraint": {
++    "count": 900,
++    "sha256": "db9b8eb05907ef276b488d3b79529e88cdc680dead11416b47b95cb6b68a14bc"
++  },
++  "function": {
++    "count": 85,
++    "sha256": "54020bee74fa215d771af6589332e4ad8fdc39e6156207da6dddfba0f74d196f"
++  },
++  "index": {
++    "count": 178,
++    "sha256": "e79c21ff43b8bf98eec84253604ab0258925003bc4187e6d8c71b485d47782d4"
++  },
++  "relation": {
++    "count": 244,
++    "sha256": "081eac85b4b3b3c2c52bd3dbe81c15e66bb4123c52254f1b1abe3aebdba74b43"
++  },
++  "trigger": {
++    "count": 474,
++    "sha256": "36a5cc0207cbf57545adb642aa3fca9b5cb67a76a2aeed80f1be06d47475e2ba"
++  },
++  "type": {
++    "count": 132,
++    "sha256": "69ec55d145fd4ddc1f58a080a97a2dbaa43b2ca9aeb3dc6f0b24988bcf810f3a"
++  },
++  "unsupported": {
++    "count": 1,
++    "sha256": "a5e515d8810cff8d821f99910a2eac8e3362922e192414ed6d96b489e0f5c189"
++  }
++}
+diff --git a/scripts/build-payment-worker.mjs b/scripts/build-payment-worker.mjs
+index e66e854..a9d8153 100644
+--- a/scripts/build-payment-worker.mjs
++++ b/scripts/build-payment-worker.mjs
+@@ -10 +10,2 @@ const root=fileURLToPath(new URL('../',import.meta.url));
+-export function buildPaymentWorker(destination){
++export function buildPaymentWorker(destination,{schema=54}={}){
++ if(![54,55].includes(schema))throw Error('Invalid worker schema');
+@@ -21 +22 @@ export function buildPaymentWorker(destination){
+- const migrations=getRefundWorkerRolePlan('artifact').journal.map(({name,sha256})=>{
++ const migrations=getRefundWorkerRolePlan('artifact',{schema}).journal.map(({name,sha256})=>{
+@@ -34,0 +36 @@ export function buildPaymentWorker(destination){
++ if(schema===55)copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
+diff --git a/scripts/build-refund-operator.mjs b/scripts/build-refund-operator.mjs
+new file mode 100644
+index 0000000..3383a71
+--- /dev/null
++++ b/scripts/build-refund-operator.mjs
+@@ -0,0 +1,48 @@
++// Explicit offline build only; no credentials, database connection or service activation.
++import {copyFileSync,mkdirSync,readFileSync,realpathSync,writeFileSync} from 'node:fs';
++import {createHash} from 'node:crypto';
++import {dirname,isAbsolute,join,relative} from 'node:path';
++import {fileURLToPath} from 'node:url';
++import ts from 'typescript';
++import {getRefundOperatorRolePlan} from './refund-operator-role.mjs';
++
++const root=fileURLToPath(new URL('../',import.meta.url));
++export function buildRefundOperator(destination){
++ if(typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid refund operator destination');
++ const program=ts.createProgram(['postgres-refund-approvals.ts','primary-refund-recovery.ts','postgres.ts','refund-merchant-preflight.ts'].map(name=>join(root,'src/lib',name)),{
++  target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,
++  moduleResolution:ts.ModuleResolutionKind.Node10,strict:true,esModuleInterop:true,skipLibCheck:true,
++  noEmitOnError:true,rewriteRelativeImportExtensions:true,rootDir:join(root,'src'),outDir:join(destination,'compiled'),
++  paths:{'@/*':[join(root,'src/*')]},
++ });
++ if(ts.getPreEmitDiagnostics(program).length)throw Error('Refund operator compilation failed');
++ const sources=program.getSourceFiles().filter(file=>!file.isDeclarationFile).map(file=>relative(join(root,'src'),file.fileName).replace(/\.ts$/,'.js')).sort();
++ if(sources.some(path=>!/^lib\/[a-z0-9-]+\.js$/.test(path)))throw Error('Unexpected refund operator source');
++ const migrations=getRefundOperatorRolePlan('artifact').journal.map(({name,sha256})=>{
++  const bytes=readFileSync(join(root,'database/migrations',name));
++  if(createHash('sha256').update(bytes).digest('hex')!==sha256)throw Error('Refund migration changed during build');
++  return{name,bytes};
++ });
++ if(migrations.length!==55||migrations.at(-1).name!=='0055-refund-operator-locks.sql')throw Error('Unexpected refund migration boundary');
++ // A new private directory is the ownership boundary. Existing destinations are never reused.
++ mkdirSync(destination,{mode:0o700});
++ writeFileSync(join(destination,'package.json'),JSON.stringify({private:true,type:'commonjs'})+'\n',{flag:'wx',mode:0o600});
++ const emitted=program.emit();
++ if(emitted.emitSkipped||emitted.diagnostics.length)throw Error('Refund operator compilation failed');
++ mkdirSync(join(destination,'scripts'));mkdirSync(join(destination,'database'));mkdirSync(join(destination,'database/migrations'));
++ for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','refund-operator-role.mjs'])
++  copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
++ copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
++ copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
++ for(const {name,bytes} of migrations)writeFileSync(join(destination,'database/migrations',name),bytes,{flag:'wx',mode:0o600});
++ const manifest={version:1,schema:55,typescript:ts.version,sources};
++ writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});
++ return manifest;
++}
++
++if(import.meta.main){
++ try{
++  if(process.argv.length!==3)throw Error('Refund operator build needs one new absolute destination');
++  const result=buildRefundOperator(process.argv[2]);console.log(JSON.stringify({status:'built',modules:result.sources.length}));
++ }catch{console.error('Refund operator build failed; destination is never overwritten');process.exitCode=1;}
++}
+diff --git a/scripts/build-refund-worker.mjs b/scripts/build-refund-worker.mjs
+index e12406a..c022bda 100644
+--- a/scripts/build-refund-worker.mjs
++++ b/scripts/build-refund-worker.mjs
+@@ -10 +10,2 @@ const root=fileURLToPath(new URL('../',import.meta.url));
+-export function buildRefundWorker(destination){
++export function buildRefundWorker(destination,{schema=54}={}){
++ if(![54,55].includes(schema))throw Error('Invalid refund worker schema');
+@@ -21 +22 @@ export function buildRefundWorker(destination){
+- const migrations=getRefundWorkerRolePlan('artifact').journal.map(({name,sha256})=>{
++ const migrations=getRefundWorkerRolePlan('artifact',{schema}).journal.map(({name,sha256})=>{
+@@ -26 +27 @@ export function buildRefundWorker(destination){
+- if(migrations.length!==54||migrations.at(-1).name!=='0054-refund-worker-locks.sql')throw Error('Unexpected refund migration boundary');
++ if(migrations.length!==schema||migrations.at(-1).name!==(schema===54?'0054-refund-worker-locks.sql':'0055-refund-operator-locks.sql'))throw Error('Unexpected refund migration boundary');
+@@ -35,0 +37 @@ export function buildRefundWorker(destination){
++ if(schema===55)copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
+@@ -37 +39 @@ export function buildRefundWorker(destination){
+- const manifest={version:1,schema:54,typescript:ts.version,sources};
++ const manifest={version:1,schema,typescript:ts.version,sources};
+diff --git a/scripts/payment-reconciliation-role.mjs b/scripts/payment-reconciliation-role.mjs
+index b48df1d..4c23236 100644
+--- a/scripts/payment-reconciliation-role.mjs
++++ b/scripts/payment-reconciliation-role.mjs
+@@ -73 +73 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
+-   // Only complete known releases: 0024, 0025, reviewed0032/0033 or pinned refund0054.
++   // Only complete known releases: 0024, 0025, reviewed0032/0033 or pinned refund0054/0055.
+@@ -77 +77,2 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
+-   const refundJournal=getRefundWorkerRolePlan(database).journal,refundSchema=journal.length===refundJournal.length;
++   const schema=journal.length===55?55:54;
++   const refundJournal=getRefundWorkerRolePlan(database,{schema}).journal,refundSchema=journal.length===refundJournal.length;
+@@ -82 +83 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
+-   if(refundSchema)await assertRefundSchema(tx);
++   if(refundSchema)await assertRefundSchema(tx,schema);
+diff --git a/scripts/refund-operator-role.mjs b/scripts/refund-operator-role.mjs
+new file mode 100644
+index 0000000..0ff85a5
+--- /dev/null
++++ b/scripts/refund-operator-role.mjs
+@@ -0,0 +1,97 @@
++// Private operator plan and read-only admission; no role installation or service startup.
++import {readFileSync} from 'node:fs';
++import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.mjs';
++import {assertRefundSchema} from './refund-worker-schema.mjs';
++import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
++
++const role='blizhniy_refund_operator',locks=['users','payment_checkout_intents','payment_orders'];
++const cols=text=>text.split(',');
++const policy={
++ 'app.users':{select:cols('id,role,is_blocked,email_verified_at,auth_version'),update:['id']},
++ 'app.sessions':{select:cols('token_hash,user_id,auth_version,scope,expires_at,last_seen_at'),update:['last_seen_at']},
++ 'app.payment_checkout_intents':{select:cols('id,owner_id,target_type,target_id,target_revision,tariff_id,amount,duration_days,merchant_shop_id,is_test,request_body,request_sha256,created_at'),update:['id']},
++ 'app.payment_orders':{select:cols('id,status'),update:['id']},
++ 'app.payment_provider_links':{select:cols('intent_id,provider_payment_id')},
++ 'app.payment_verifications':{select:cols('intent_id,provider_payment_id,status,captured_at')},
++ 'app.payment_refund_approvals':{select:cols('id,payment_intent_id,approved_by,reason,policy_version,fiscal_mode,amount,approved_at'),insert:cols('id,payment_intent_id,reason')},
++ 'app.payment_refund_reservations':{select:cols('id,payment_intent_id,provider_payment_id,merchant_shop_id,is_test,amount,created_at')},
++ 'app.payment_refund_requests':{select:cols('operation_id,idempotence_key,request_body,request_sha256,created_at')},
++ 'app.payment_refund_dispatch_anchors':{select:cols('operation_id,authorized_at')},
++ 'app.payment_refund_send_attempts':{select:cols('id,operation_id,request_sha256')},
++ 'app.payment_refund_candidates':{select:cols('operation_id,attempt_id,provider_refund_id')},
++ 'app.payment_refund_provider_links':{select:cols('operation_id,provider_refund_id'),insert:cols('operation_id,provider_refund_id')},
++ 'app.payment_refund_observations':{select:cols('operation_id,provider_refund_id,status,provider_created_at,observed_at'),insert:cols('operation_id,provider_refund_id,status,provider_created_at')},
++ 'app.payment_refund_effects':{select:cols('operation_id,merchant_shop_id,payment_intent_id,provider_refund_id,target_type,target_id,effect,applied_at'),insert:cols('operation_id,merchant_shop_id')},
++ 'app.application_compensation_refunds':{select:cols('payment_intent_id,merchant_shop_id,application_id,provider_refund_id,amount,applied_at'),insert:cols('payment_intent_id,merchant_shop_id')},
++ 'app.payment_refund_recovery_actions':{select:cols('action_id,operation_id,provider_refund_id,reason,operator_id,phase,recorded_at'),insert:cols('action_id,operation_id,provider_refund_id,reason,phase')},
++ 'blizhniy_meta.migrations':{select:['name','sha256']},
++};
++const functions=['app.lock_refund_recovery_source(uuid,uuid)','app.refund_target_admitted(uuid,uuid)'];
++const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
++const journal=()=>getRefundWorkerRolePlan('operator',{schema:55}).journal;
++
++export function getRefundOperatorRolePlan(database){
++ if(!validDatabase(database))throw Error('Invalid refund database');
++ return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(),
++  grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
++   ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`)),
++   ...functions.map(signature=>`grant execute on function ${signature} to ${role}`)]};
++}
++
++/** Trusted TEST operator: session/source reads and audited approval/recovery, no send capabilities.
++ * Read-only exact PG18/schema55 admission; never an untrusted-SQL or per-merchant isolation boundary.
++ */
++export async function verifyRefundOperatorDatabase(db,{database,merchant}={}){
++ try{
++  if(!validDatabase(database)||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
++  const expectedJournal=journal();
++  await db.transaction(async tx=>{
++   await tx.query("set local statement_timeout='5s'");
++   await tx.query("set local lock_timeout='1s'");
++   await tx.query('set local search_path=pg_catalog');
++   const identity=(await tx.query(`select current_user as name,session_user as login,current_database() as database,
++    current_setting('server_version_num')::integer as version,current_setting('transaction_read_only') as readonly,
++    current_setting('session_replication_role') as replication,rolsuper,rolcreatedb,rolcreaterole,rolinherit,rolreplication,rolbypassrls,rolcanlogin,rolconnlimit,
++    exists(select 1 from pg_auth_members m where m.roleid=r.oid or m.member=r.oid) as membership,
++    has_database_privilege(current_database(),'CONNECT') as connect,
++    has_database_privilege(current_database(),'CREATE,TEMP,CONNECT WITH GRANT OPTION') as database_extra,
++    has_parameter_privilege('session_replication_role','SET,ALTER SYSTEM') as replication_override
++    from pg_roles r where rolname=current_user`)).rows[0];
++   if(!identity||identity.name!==role||identity.login!==role||identity.database!==database||identity.version<180000||identity.version>=190000||
++    identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
++    ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
++   const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
++   if(JSON.stringify(actualJournal)!==JSON.stringify(expectedJournal))throw Error('Invalid refund journal');
++   await assertRefundSchema(tx,55);
++   await assertFinancialCatalogPrivileges(tx);
++   const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
++    has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
++    from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid
++    cross join (values('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) as p(privilege)
++    where n.nspname not in ('pg_catalog','information_schema') and c.relkind in ('r','p','v','m','f','t')
++     and a.attnum>0 and not a.attisdropped and has_column_privilege(c.oid,a.attnum,p.privilege) limit 10001`)).rows;
++   const expected=new Set(Object.entries(policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
++   if(actual.length!==expected.size||actual.some(item=>item.grantable!==false||!expected.delete(item.key))||expected.size)throw Error('Invalid column privileges');
++   const dangerous=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
++    where n.nspname not in ('pg_catalog','information_schema') and
++     ((c.relkind in ('r','p','v','m','f','t') and has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN')) or
++      (c.relkind='S' and has_sequence_privilege(c.oid,'USAGE,SELECT,UPDATE'))) limit 1`);
++   const callable=(await tx.query(`select n.nspname||'.'||p.proname||'('||oidvectortypes(p.proargtypes)||')' as signature,
++    has_function_privilege(p.oid,'EXECUTE WITH GRANT OPTION') as grantable from pg_proc p join pg_namespace n on n.oid=p.pronamespace
++    where n.nspname not in ('pg_catalog','information_schema') and has_function_privilege(p.oid,'EXECUTE') limit 10001`)).rows;
++   const allowed=new Set(functions.map(name=>name.replaceAll(',',', ')));
++   if(dangerous.rows.length||callable.length!==allowed.size||callable.some(item=>item.grantable!==false||!allowed.delete(item.signature))||allowed.size)throw Error('Invalid object privileges');
++   const body=readFileSync(new URL('../database/migrations/0055-refund-operator-locks.sql',import.meta.url),'utf8').match(/as \$\$([\s\S]*?)\$\$;/)?.[1];
++   const guards=(await tx.query(`select c.relname as name,t.tgenabled,t.tgtype,t.tgnargs,
++    t.tgattr::text=a.attnum::text as id_only,t.tgqual is null as unconditional,p.prosrc,p.prosecdef,p.proconfig,l.lanname
++    from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace
++    join pg_proc p on p.oid=t.tgfoid join pg_language l on l.oid=p.prolang
++    join pg_attribute a on a.attrelid=c.oid and a.attname='id' and not a.attisdropped
++    where n.nspname='app' and c.relname=any($1::text[]) and t.tgname='refund_operator_lock_only'
++     and not t.tgisinternal and p.oid='app.guard_refund_operator_locks()'::regprocedure`,[locks])).rows;
++   if(!body||guards.length!==locks.length||new Set(guards.map(item=>item.name)).size!==locks.length||guards.some(item=>
++    item.tgenabled!=='A'||item.tgtype!==19||item.tgnargs!==0||item.id_only!==true||item.unconditional!==true||
++    item.prosrc!==body||item.prosecdef!==false||item.lanname!=='plpgsql'||JSON.stringify(item.proconfig)!==JSON.stringify(['search_path=""'])))throw Error('Invalid lock guards');
++  },{readOnly:true});
++ }catch{throw Error('Refund operator database preflight failed');}
++}
+diff --git a/scripts/refund-worker-role.mjs b/scripts/refund-worker-role.mjs
+index cae86f5..a9de2f7 100644
+--- a/scripts/refund-worker-role.mjs
++++ b/scripts/refund-worker-role.mjs
+@@ -42 +42 @@ const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.tes
+-function journal(){return[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan(),...suffix.map(name=>{
++function journal(schema=54){return[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan(),...[...suffix,...(schema===55?['0055-refund-operator-locks.sql']:[])].map(name=>{
+@@ -48,3 +48,3 @@ function journal(){return[...getBootstrapPlan({includeListingContactMethod:true}
+-export function getRefundWorkerRolePlan(database){
+- if(!validDatabase(database))throw Error('Invalid refund database');
+- return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(),
++export function getRefundWorkerRolePlan(database,{schema=54}={}){
++ if(!validDatabase(database)||![54,55].includes(schema))throw Error('Invalid refund database');
++ return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(schema),
+@@ -80,2 +80,3 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
+-   if(JSON.stringify(actualJournal)!==JSON.stringify(expectedJournal))throw Error('Invalid refund journal');
+-   await assertRefundSchema(tx);
++   const schema=actualJournal.length===55?55:54;
++   if(JSON.stringify(actualJournal)!==JSON.stringify(schema===55?journal(55):expectedJournal))throw Error('Invalid refund journal');
++   await assertRefundSchema(tx,schema);
+diff --git a/scripts/refund-worker-schema.mjs b/scripts/refund-worker-schema.mjs
+index b475416..d98d1ee 100644
+--- a/scripts/refund-worker-schema.mjs
++++ b/scripts/refund-worker-schema.mjs
+@@ -4 +3,0 @@ import {readFileSync} from 'node:fs';
+-const expected=JSON.parse(readFileSync(new URL('../database/refund-schema-0054.json',import.meta.url),'utf8'));
+@@ -83 +82,3 @@ export async function readRefundSchema(tx){
+-export async function assertRefundSchema(tx){
++export async function assertRefundSchema(tx,schema=54){
++ if(![54,55].includes(schema))throw Error('Invalid refund schema version');
++ const expected=JSON.parse(readFileSync(new URL(`../database/refund-schema-00${schema}.json`,import.meta.url),'utf8'));
+diff --git a/tests/refund-operator-actions-cases.mjs b/tests/refund-operator-actions-cases.mjs
+new file mode 100644
+index 0000000..00f5f53
+--- /dev/null
++++ b/tests/refund-operator-actions-cases.mjs
+@@ -0,0 +1,77 @@
++import assert from 'node:assert/strict';
++import {randomBytes,randomUUID} from 'node:crypto';
++
++export async function testRefundOperatorActions(suite,{admin,ownerDb,db,refundDb,purchase,load,operatorLoad,operator,merchant,provider,check}){
++ const approve=(shop,source=db)=>new (operatorLoad('postgres-refund-approvals').PostgresRefundApprovalStore)(source,shop);
++ const recovery=(shop,fetcher,source=db)=>operatorLoad('primary-refund-recovery').createPrimaryRefundRecovery(source,shop,fetcher);
++ const lostGet=(remote)=>async(url,init)=>{if(init.method==='GET'&&String(url).includes('/v3/refunds/'))throw Error('Synthetic refund GET outage');return remote.fetcher(url,init);};
++ async function account(role='admin'){
++  const id=randomUUID(),token=randomBytes(32).toString('hex');
++  await admin.query('insert into app.users(id,email,password_hash,role,email_verified_at) values($1,$2,$3,$4,clock_timestamp())',[id,id+'@operator.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128),role]);
++  await admin.query("insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at) values($1,$2,'app',0,clock_timestamp()+interval '1 hour')",[load('identity').hashSessionToken(token),id]);return{id,token};
++ }
++ async function uncertain(actor=operator){
++  const shop={...merchant,shopId:'operator-action-'+randomBytes(6).toString('hex')},item=await purchase({scope:shop});
++  const approval=await approve(shop).approve(actor.token,actor.id,{id:randomUUID(),paymentIntentId:item.id,reason:'Проверка восстановления отдельным оператором.'});
++  const remote=provider(item,approval.id,shop);
++  assert.deepEqual(await load('placement-refund-worker').createPlacementRefundWorker(refundDb,shop,lostGet(remote)).tick(),{state:'deferred',code:'processing_unavailable'});
++  const candidate=(await admin.query('select provider_refund_id as id from app.payment_refund_candidates where operation_id=$1',[approval.id])).rows[0];
++  assert.ok(candidate);return{shop,item,approval,remote,action:{id:randomUUID(),operationId:approval.id,providerRefundId:candidate.id,reason:'Сверка результата после неопределённого ответа.'}};
++ }
++ await suite.test('compiled operator GET-recovers unread response compensation once without withdrawing the application or changing its history',async()=>{
++  const shop={...merchant,shopId:'operator-response-'+randomBytes(6).toString('hex')},work=await purchase({kind:'workRequest',scope:shop});
++  const application=(await admin.query("insert into app.applications(applicant_id,work_publication_id,creation_key,target_revision,specialist_revision,snapshot,is_paid,status,created_at,sent_at) values($1,$2,$3,1,1,'{}',true,'sent',clock_timestamp()-interval '7 days',clock_timestamp()-interval '6 days') returning id",[operator.id,work.targetId,randomUUID()])).rows[0].id;
++  const id=randomUUID(),item={id,ownerId:operator.id,targetType:'application',targetId:application,targetRevision:'1',tariffId:'job-response',amount:'99.00',durationDays:null,shopId:shop.shopId,isTest:true,providerPaymentId:randomUUID(),capturedAt:new Date(Date.now()-6*86400000-1000).toISOString()};
++  item.metadata={localPaymentId:id,targetId:application,targetType:'application',tariffId:'job-response'};
++  const requestBody=JSON.stringify({amount:{value:item.amount,currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:'https://fixture.example.invalid/return'},metadata:item.metadata});
++  await ownerDb.transaction(async tx=>{
++   const {providerPaymentId,capturedAt,metadata,...binding}=item;assert.ok(providerPaymentId&&capturedAt&&metadata);
++   await new (load('postgres-payment-intents').PostgresPaymentIntentStore)(ownerDb).persistInTransaction(tx,{...binding,requestBody});
++   await tx.query("insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision) values($1,$2,$3,'application',$4,1)",[id,item.ownerId,randomUUID(),application]);
++   await tx.query('insert into app.payment_dispatch_anchors(intent_id) values($1)',[id]);await tx.query('insert into app.payment_provider_links(intent_id,provider_payment_id) values($1,$2)',[id,item.providerPaymentId]);
++   await tx.query("update app.payment_orders set status='succeeded' where id=$1",[id]);await tx.query("insert into app.payment_verifications(intent_id,provider_payment_id,status,captured_at) values($1,$2,'succeeded',$3)",[id,item.providerPaymentId,item.capturedAt]);
++  });
++  const discovery=new (load('postgres-application-compensation-discovery').PostgresApplicationCompensationDiscovery)(refundDb,shop);
++  for(let page=0;page<100;page++){await discovery.scan(25);if((await admin.query('select count(*)::int as n from app.application_compensation_cases where payment_intent_id=$1',[id])).rows[0].n===1)break;}
++  const remote=provider(item,id,shop),before=(await admin.query('select status,is_paid,snapshot,sent_at from app.applications where id=$1',[application])).rows[0];
++  assert.deepEqual(await load('application-compensation-worker').createApplicationCompensationWorker(refundDb,shop,lostGet(remote)).tick(),{state:'deferred',code:'processing_unavailable'});
++  const candidate=(await admin.query('select provider_refund_id as id from app.payment_refund_candidates where operation_id=$1',[id])).rows[0];assert.ok(candidate);
++  const action={id:randomUUID(),operationId:id,providerRefundId:candidate.id,reason:'Сверка компенсации непросмотренного отклика.'};
++  const recover=recovery(shop,async(url,init)=>{assert.equal(init.method,'GET');return remote.fetcher(url,init);});
++  assert.equal((await recover.recover(operator.token,operator.id,action)).state,'applied');assert.equal((await recover.recover(operator.token,operator.id,action)).state,'applied');assert.equal(remote.posts(),1);
++  assert.deepEqual((await admin.query('select status,is_paid,snapshot,sent_at from app.applications where id=$1',[application])).rows[0],before);
++  assert.equal((await admin.query('select count(*)::int as n from app.application_compensation_refunds where payment_intent_id=$1',[id])).rows[0].n,1);
++  assert.equal((await admin.query('select count(*)::int as n from app.notifications where event_key=$1',['application_compensation:'+id])).rows[0].n,1);await check();
++ });
++ await suite.test('compiled operator rejects ordinary, blocked, stale and mismatched sessions before approval or provider I/O',async()=>{
++  const ordinary=await account('user'),blocked=await account(),stale=await account(),shop={...merchant,shopId:'operator-auth-'+randomBytes(6).toString('hex')},item=await purchase({scope:shop});
++  await admin.query('update app.users set is_blocked=true where id=$1',[blocked.id]);await admin.query("update app.sessions set created_at=clock_timestamp()-interval '2 hours',last_seen_at=clock_timestamp()-interval '31 minutes' where token_hash=$1",[load('identity').hashSessionToken(stale.token)]);
++  let http=0;
++  for(const [actor,expected]of [[ordinary,ordinary.id],[blocked,blocked.id],[stale,stale.id],[operator,ordinary.id]]){
++   const id=randomUUID();await assert.rejects(approve(shop).approve(actor.token,expected,{id,paymentIntentId:item.id,reason:'Проверка отсутствия полномочий.'}));
++   await assert.rejects(recovery(shop,async()=>{http++;throw Error('Unexpected HTTP');}).recover(actor.token,expected,{id:randomUUID(),operationId:randomUUID(),providerRefundId:randomUUID(),reason:'Проверка отсутствия полномочий.'}));
++   assert.equal((await admin.query('select count(*)::int as n from app.payment_refund_approvals where id=$1',[id])).rows[0].n,0);
++  }assert.equal(http,0);await check();
++ });
++ await suite.test('compiled recovery rechecks current administrator after remote GET and records no effect after revocation',async()=>{
++  const actor=await account(),value=await uncertain(actor);let changed=false;
++  await assert.rejects(recovery(value.shop,async(url,init)=>{
++   assert.equal(init.method,'GET');const response=await value.remote.fetcher(url,init);
++   if(!changed){changed=true;await admin.query("update app.users set role='user' where id=$1",[actor.id]);}return response;
++  }).recover(actor.token,actor.id,value.action));
++  assert.equal(changed,true);assert.equal(value.remote.posts(),1);
++  assert.deepEqual((await admin.query('select phase from app.payment_refund_recovery_actions where action_id=$1',[value.action.id])).rows,[{phase:'requested'}]);
++  assert.equal((await admin.query('select count(*)::int as n from app.payment_refund_effects where operation_id=$1',[value.approval.id])).rows[0].n,0);await check();
++ });
++ await suite.test('lost final operator recovery COMMIT is read back with the same action without another HTTP request or effect',async()=>{
++  const value=await uncertain();let lose=true;
++  const uncertainDb={transaction:async work=>{
++   let final=false;const result=await db.transaction(tx=>work({query:(sql,values)=>{if(sql.includes("'observe'"))final=true;return tx.query(sql,values);}}));
++   if(final&&lose){lose=false;throw Error('Synthetic lost operator COMMIT');}return result;
++  }};
++  await assert.rejects(recovery(value.shop,value.remote.fetcher,uncertainDb).recover(operator.token,operator.id,value.action),/Synthetic lost operator COMMIT/);
++  assert.equal((await recovery(value.shop,async()=>{throw Error('Terminal replay must not use HTTP');}).recover(operator.token,operator.id,value.action)).state,'applied');
++  assert.equal(value.remote.posts(),1);assert.equal((await admin.query('select count(*)::int as n from app.payment_refund_effects where operation_id=$1',[value.approval.id])).rows[0].n,1);
++  assert.equal((await admin.query('select count(*)::int as n from app.notifications where event_key=$1',['placement_refund:'+value.item.id])).rows[0].n,1);await check();
++ });
++}
+diff --git a/tests/refund-operator-admission-cases.mjs b/tests/refund-operator-admission-cases.mjs
+new file mode 100644
+index 0000000..11d2160
+--- /dev/null
++++ b/tests/refund-operator-admission-cases.mjs
+@@ -0,0 +1,92 @@
++import assert from 'node:assert/strict';
++import {mkdtempSync,rmSync,symlinkSync,readFileSync} from 'node:fs';
++import {randomBytes,createHash} from 'node:crypto';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {fileURLToPath,pathToFileURL} from 'node:url';
++import pg from 'pg';
++import {buildPaymentWorker} from '../scripts/build-payment-worker.mjs';
++import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
++import {getRefundWorkerRolePlan,verifyRefundWorkerDatabase} from '../scripts/refund-worker-role.mjs';
++import {verifyPaymentReconciliationDatabase} from '../scripts/payment-reconciliation-role.mjs';
++import {readRefundSchema} from '../scripts/refund-worker-schema.mjs';
++
++export async function testRefundOperatorAdmission(suite,{admin,db,refundDb,load,merchant,check}){
++ await suite.test('schema55 fingerprint matches independent full replay under another owner without changing the schema54 baseline',async()=>{
++  await admin.query('create role operator_schema_owner nologin');await admin.query('create database operator_schema_reference owner operator_schema_owner');
++  const reference=new pg.Client({...admin.options,user:admin.options.user,password:admin.options.password,database:'operator_schema_reference'});
++  try{
++   await reference.connect();await reference.query('set role operator_schema_owner');
++   for(const {name,sha256}of getRefundWorkerRolePlan('blizhniy_test',{schema:55}).journal){
++    const source=readFileSync(new URL('../database/migrations/'+name,import.meta.url));assert.equal(createHash('sha256').update(source).digest('hex'),sha256);await reference.query(source.toString());
++   }
++   await reference.query('begin read only');const fingerprint=await readRefundSchema(reference);await reference.query('commit');
++   assert.deepEqual(fingerprint,JSON.parse(readFileSync(new URL('../database/refund-schema-0055.json',import.meta.url),'utf8')));
++   assert.deepEqual(await db.transaction(readRefundSchema,{readOnly:true}),fingerprint);
++  }finally{await reference.end();await admin.query('drop database operator_schema_reference');await admin.query('drop role operator_schema_owner');}
++ });
++ const owned=mkdtempSync(join(tmpdir(),'blizhniy-operator55-admission-')),password=randomBytes(24).toString('hex');
++ let paymentDb;
++ try{
++  const payment=join(owned,'payment'),refund=join(owned,'refund');buildPaymentWorker(payment,{schema:55});buildRefundWorker(refund,{schema:55});
++  for(const target of [payment,refund])symlinkSync(fileURLToPath(new URL('../node_modules',import.meta.url)),join(target,'node_modules'),'dir');
++  const paymentGuard=(await import(pathToFileURL(join(payment,'scripts/payment-reconciliation-role.mjs')).href)).verifyPaymentReconciliationDatabase;
++  const refundGuard=(await import(pathToFileURL(join(refund,'scripts/refund-worker-role.mjs')).href)).verifyRefundWorkerDatabase;
++  await admin.query(`alter role blizhniy_payment_reconciler password ${pg.escapeLiteral(password)}`);
++  paymentDb=new (load('postgres').PostgresDatabase)(new pg.Pool({...admin.options,user:'blizhniy_payment_reconciler',password,max:1}));
++  const all=async()=>{await check();for(const guard of [verifyRefundWorkerDatabase,refundGuard])await guard(refundDb,{database:'blizhniy_test',merchant});for(const guard of [verifyPaymentReconciliationDatabase,paymentGuard])await guard(paymentDb,{database:'blizhniy_test'});};
++  await suite.test('all three distinct roles and both compiled worker packages admit exact55 without expanding worker grants',async()=>{
++   assert.deepEqual(getRefundWorkerRolePlan('blizhniy_test',{schema:55}).grants,getRefundWorkerRolePlan('blizhniy_test').grants);
++   await all();
++  });
++  await suite.test('source and compiled workers reject mismatched54 journal with installed55, unknown56 and changed55 hash',async()=>{
++   const row=(await admin.query("select * from blizhniy_meta.migrations where name='0055-refund-operator-locks.sql'")).rows[0];
++   for(const [change,restore,args]of [
++    ["delete from blizhniy_meta.migrations where name='0055-refund-operator-locks.sql'",'insert into blizhniy_meta.migrations values($1,$2)',[row.name,row.sha256]],
++    ["insert into blizhniy_meta.migrations values('0056-unknown.sql',repeat('0',64))","delete from blizhniy_meta.migrations where name='0056-unknown.sql'"],
++    ["update blizhniy_meta.migrations set sha256=repeat('0',64) where name='0055-refund-operator-locks.sql'",'update blizhniy_meta.migrations set sha256=$2 where name=$1',[row.name,row.sha256]],
++   ]){
++    await admin.query(change);try{
++     await assert.rejects(check());for(const guard of [verifyRefundWorkerDatabase,refundGuard])await assert.rejects(guard(refundDb,{database:'blizhniy_test',merchant}));
++     for(const guard of [verifyPaymentReconciliationDatabase,paymentGuard])await assert.rejects(guard(paymentDb,{database:'blizhniy_test'}));
++    }finally{await admin.query(restore,args);}await all();
++   }
++  });
++  await suite.test('unchanged55 journal cannot hide removed, disabled or altered operator lock guards from any role',async()=>{
++   const body=(await admin.query("select pg_get_functiondef('app.guard_refund_operator_locks()'::regprocedure) as sql")).rows[0].sql;
++   for(const [change,restore]of [
++    ['drop trigger refund_operator_lock_only on app.users;drop trigger refund_operator_lock_only on app.payment_checkout_intents;drop trigger refund_operator_lock_only on app.payment_orders;drop function app.guard_refund_operator_locks()',readFileSync(new URL('../database/migrations/0055-refund-operator-locks.sql',import.meta.url),'utf8')],
++    ['alter table app.users disable trigger refund_operator_lock_only','alter table app.users enable always trigger refund_operator_lock_only'],
++    ["create or replace function app.guard_refund_operator_locks() returns trigger language plpgsql set search_path='' as $$begin return new;end$$",body],
++    ['alter function app.guard_refund_operator_locks() security definer','alter function app.guard_refund_operator_locks() security invoker'],
++    ['drop trigger refund_operator_lock_only on app.payment_orders;create trigger refund_operator_lock_only before update of status on app.payment_orders for each row execute function app.guard_refund_operator_locks();alter table app.payment_orders enable always trigger refund_operator_lock_only',
++     'drop trigger refund_operator_lock_only on app.payment_orders;create trigger refund_operator_lock_only before update of id on app.payment_orders for each row execute function app.guard_refund_operator_locks();alter table app.payment_orders enable always trigger refund_operator_lock_only'],
++   ]){
++    await admin.query(change);try{
++     await assert.rejects(check());for(const guard of [verifyRefundWorkerDatabase,refundGuard])await assert.rejects(guard(refundDb,{database:'blizhniy_test',merchant}));
++     for(const guard of [verifyPaymentReconciliationDatabase,paymentGuard])await assert.rejects(guard(paymentDb,{database:'blizhniy_test'}));
++    }finally{await admin.query(restore);}await all();
++   }
++  });
++  await suite.test('operator admission rejects missing session access, excess authority, memberships and system escalation',async()=>{
++   await admin.query('create role operator_membership_probe nologin');
++   const changes=[
++    ["revoke select(last_seen_at) on app.sessions from blizhniy_refund_operator","grant select(last_seen_at) on app.sessions to blizhniy_refund_operator"],
++    ["grant select(password_hash) on app.users to blizhniy_refund_operator","revoke select(password_hash) on app.users from blizhniy_refund_operator"],
++    ["grant update(status) on app.payment_orders to blizhniy_refund_operator","revoke update(status) on app.payment_orders from blizhniy_refund_operator"],
++    ["grant select(id) on app.users to blizhniy_refund_operator with grant option","revoke grant option for select(id) on app.users from blizhniy_refund_operator"],
++    ["grant insert(operation_id) on app.payment_refund_dispatch_anchors to blizhniy_refund_operator","revoke insert(operation_id) on app.payment_refund_dispatch_anchors from blizhniy_refund_operator"],
++    ["grant execute on function app.claim_placement_refund_job(text) to blizhniy_refund_operator","revoke execute on function app.claim_placement_refund_job(text) from blizhniy_refund_operator"],
++    ["grant blizhniy_refund_operator to operator_membership_probe with admin true,inherit false,set false","revoke blizhniy_refund_operator from operator_membership_probe"],
++    ["grant operator_membership_probe to blizhniy_refund_operator","revoke operator_membership_probe from blizhniy_refund_operator"],
++    ["grant execute on function pg_catalog.pg_read_binary_file(text) to blizhniy_refund_operator","revoke execute on function pg_catalog.pg_read_binary_file(text) from blizhniy_refund_operator"],
++    ["grant select(rolpassword) on pg_catalog.pg_authid to public","revoke select(rolpassword) on pg_catalog.pg_authid from public"],
++    ["alter role blizhniy_refund_operator createrole","alter role blizhniy_refund_operator nocreaterole"],
++    ["grant create on schema pg_catalog to blizhniy_refund_operator","revoke create on schema pg_catalog from blizhniy_refund_operator"],
++    ["grant alter system on parameter shared_preload_libraries to blizhniy_refund_operator","revoke alter system on parameter shared_preload_libraries from blizhniy_refund_operator"],
++   ];
++   try{for(const [change,restore]of changes){await admin.query(change);try{await assert.rejects(check());}finally{await admin.query(restore);}await check();}}
++   finally{await admin.query('drop role operator_membership_probe');}await all();
++  });
++ }finally{await paymentDb?.close();rmSync(owned,{recursive:true,force:true});}
++}
+diff --git a/tests/refund-operator-build.test.mjs b/tests/refund-operator-build.test.mjs
+new file mode 100644
+index 0000000..74e6300
+--- /dev/null
++++ b/tests/refund-operator-build.test.mjs
+@@ -0,0 +1,46 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {mkdtempSync,rmSync,readFileSync,symlinkSync,existsSync} from 'node:fs';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {fileURLToPath} from 'node:url';
++import {spawnSync} from 'node:child_process';
++import {createHash} from 'node:crypto';
++import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
++import {getRefundOperatorRolePlan} from '../scripts/refund-operator-role.mjs';
++
++test('private operator artifact imports existing approval/recovery without network, sending consumers or installed roles',()=>{
++ const owned=mkdtempSync(join(tmpdir(),'blizhniy-operator-build-'));
++ try{
++  const artifact=join(owned,'artifact'),manifest=buildRefundOperator(artifact);assert.equal(manifest.schema,55);
++  assert.ok(manifest.sources.includes('lib/postgres-refund-approvals.js'));assert.ok(manifest.sources.includes('lib/primary-refund-recovery.js'));
++  for(const name of ['placement-refund-worker','application-compensation-worker','primary-yookassa-refund-sender'])assert.equal(manifest.sources.includes('lib/'+name+'.js'),false);
++  for(const {name,sha256} of getRefundOperatorRolePlan('artifact').journal)assert.equal(createHash('sha256').update(readFileSync(join(artifact,'database/migrations',name))).digest('hex'),sha256);
++  symlinkSync(fileURLToPath(new URL('../node_modules',import.meta.url)),join(artifact,'node_modules'),'dir');
++  const script=`import assert from 'node:assert/strict';import net from 'node:net';import {createRequire} from 'node:module';
++   let calls=0;globalThis.fetch=net.Socket.prototype.connect=()=>{calls++;throw Error('Network forbidden');};
++   const require=createRequire(import.meta.url),{PostgresRefundApprovalStore}=require('./compiled/lib/postgres-refund-approvals.js'),{createPrimaryRefundRecovery}=require('./compiled/lib/primary-refund-recovery.js');
++   const {verifyRefundOperatorDatabase}=await import('./scripts/refund-operator-role.mjs');
++   const db={transaction:()=>{throw Error('Database forbidden');}},merchant={shopId:'synthetic',isTest:true,secretKey:'test_synthetic'};
++   assert.equal(typeof new PostgresRefundApprovalStore(db,merchant).approve,'function');assert.equal(typeof createPrimaryRefundRecovery(db,merchant).recover,'function');
++   assert.equal(typeof verifyRefundOperatorDatabase,'function');assert.equal(calls,0);console.log('offline');`;
++  const result=spawnSync(process.execPath,['--input-type=module','-e',script],{cwd:artifact,env:{PATH:process.env.PATH},encoding:'utf8',timeout:10000});
++  assert.equal(result.status,0,result.stderr);assert.equal(result.stdout.trim(),'offline');
++  assert.equal(existsSync(join(artifact,'scripts/bootstrap-postgres.mjs')),false);assert.equal(existsSync(join(artifact,'scripts/refund-worker-service.mjs')),false);
++  const before=readFileSync(join(artifact,'manifest.json'));assert.throws(()=>buildRefundOperator(artifact),/destination|exists/i);assert.deepEqual(readFileSync(join(artifact,'manifest.json')),before);
++ }finally{rmSync(owned,{recursive:true,force:true});}
++});
++
++test('operator build refuses altered copied55 bytes before creating the destination',()=>{
++ const owned=mkdtempSync(join(tmpdir(),'blizhniy-operator-build-race-'));
++ try{
++  const destination=join(owned,'rejected');
++  const script=`import assert from 'node:assert/strict';import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';
++   const read=fs.readFileSync;let replaced=0;fs.readFileSync=(path,...args)=>{const bytes=read(path,...args);
++    if(typeof path==='string'&&path.endsWith('/database/migrations/0055-refund-operator-locks.sql')){replaced++;return Buffer.concat([bytes,Buffer.from('\\n-- synthetic replacement\\n')]);}return bytes;};
++   syncBuiltinESMExports();const {buildRefundOperator}=await import(process.argv[2]);
++   assert.throws(()=>buildRefundOperator(process.argv[1]),/Refund migration changed during build/);assert.equal(replaced,1);assert.equal(fs.existsSync(process.argv[1]),false);`;
++  const result=spawnSync(process.execPath,['--input-type=module','-e',script,destination,new URL('../scripts/build-refund-operator.mjs',import.meta.url).href],{env:{PATH:process.env.PATH},encoding:'utf8',timeout:10000});
++  assert.equal(result.status,0,result.stderr);assert.equal(existsSync(destination),false);
++ }finally{rmSync(owned,{recursive:true,force:true});}
++});
+diff --git a/tests/refund-operator-role-cases.mjs b/tests/refund-operator-role-cases.mjs
+new file mode 100644
+index 0000000..4ac8832
+--- /dev/null
++++ b/tests/refund-operator-role-cases.mjs
+@@ -0,0 +1,89 @@
++import assert from 'node:assert/strict';
++import {readFile} from 'node:fs/promises';
++import {mkdtempSync,rmSync,symlinkSync} from 'node:fs';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {createRequire} from 'node:module';
++import {fileURLToPath,pathToFileURL} from 'node:url';
++import {randomBytes,randomUUID} from 'node:crypto';
++import pg from 'pg';
++import {getRefundOperatorRolePlan,verifyRefundOperatorDatabase} from '../scripts/refund-operator-role.mjs';
++import {verifyRefundWorkerDatabase} from '../scripts/refund-worker-role.mjs';
++import {verifyPaymentReconciliationDatabase} from '../scripts/payment-reconciliation-role.mjs';
++import {testRefundOperatorAdmission} from './refund-operator-admission-cases.mjs';
++import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
++import {testRefundOperatorActions} from './refund-operator-actions-cases.mjs';
++
++// Owned disposable fixture only. The operator is trusted financial code, not an untrusted SQL principal.
++export async function testRefundOperatorRole(suite,{admin,ownerDb,refundDb,purchase,load,operator,merchant,provider}){
++ const plan=getRefundOperatorRolePlan('blizhniy_test'),password=randomBytes(24).toString('hex');
++ const owned=mkdtempSync(join(tmpdir(),'blizhniy-operator-role-')),artifact=join(owned,'artifact'),originalFetch=globalThis.fetch;let unexpectedHttp=0;
++ globalThis.fetch=()=>{unexpectedHttp++;throw Error('Unexpected provider request');};
++ const {PostgresDatabase}=load('postgres');let db;
++ try{
++  buildRefundOperator(artifact);symlinkSync(fileURLToPath(new URL('../node_modules',import.meta.url)),join(artifact,'node_modules'),'dir');
++  const require=createRequire(import.meta.url),operatorLoad=name=>require(join(artifact,'compiled/lib/'+name+'.js'));
++  const artifactGuard=(await import(pathToFileURL(join(artifact,'scripts/refund-operator-role.mjs')).href)).verifyRefundOperatorDatabase;
++  await admin.query(await readFile(new URL('../database/migrations/0055-refund-operator-locks.sql',import.meta.url),'utf8'));
++  const migration=plan.journal.at(-1);await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[migration.name,migration.sha256]);
++  await admin.query(plan.createRole);await admin.query(`alter role ${plan.role} login password ${pg.escapeLiteral(password)}`);
++  db=new PostgresDatabase(new pg.Pool({...admin.options,user:plan.role,password,max:3}));
++  const check=async()=>{await verifyRefundOperatorDatabase(db,{database:'blizhniy_test',merchant});await artifactGuard(db,{database:'blizhniy_test',merchant});};
++  await suite.test('operator admission requires its own exact55 schema and grants while the refund worker retains its existing authority',async()=>{
++   await assert.rejects(check(),{message:'Refund operator database preflight failed'});
++   for(const sql of plan.grants)await admin.query(sql);
++   await check();await verifyRefundWorkerDatabase(refundDb,{database:'blizhniy_test',merchant});
++   await assert.rejects(verifyRefundOperatorDatabase(ownerDb,{database:'blizhniy_test',merchant}));
++   await assert.rejects(verifyPaymentReconciliationDatabase(db,{database:'blizhniy_test'}));
++  });
++  await testRefundOperatorAdmission(suite,{admin,db,refundDb,load,merchant,check});
++  await suite.test('operator row locks work but UPDATE id including no-op, SET ROLE and SECURITY DEFINER cannot change identity',async()=>{
++   const item=await purchase();
++   for(const [table,id]of [['users',operator.id],['payment_checkout_intents',item.id],['payment_orders',item.id]]){
++    await db.transaction(async tx=>{assert.equal((await tx.query(`select id from app.${table} where id=$1 for update`,[id])).rowCount,1);});
++    for(const replacement of [id,randomUUID()])await assert.rejects(db.query(`update app.${table} set id=$2 where id=$1`,[id,replacement]),{code:'23514'});
++    await assert.rejects(ownerDb.transaction(async tx=>{await tx.query('set local role blizhniy_refund_operator');await tx.query(`update app.${table} set id=id where id=$1`,[id]);}),{code:'23514'});
++   }
++   await admin.query("create function app.operator_id_probe(value uuid) returns void language sql security definer set search_path='' as $$update app.users set id=id where id=value$$;revoke all on function app.operator_id_probe(uuid) from public;grant execute on function app.operator_id_probe(uuid) to blizhniy_refund_operator");
++   try{await assert.rejects(db.query('select app.operator_id_probe($1)',[operator.id]),{code:'23514'});}
++   finally{await admin.query('drop function app.operator_id_probe(uuid)');}await check();
++   await admin.query('alter table app.users disable trigger refund_operator_lock_only');
++   try{
++    await assert.rejects(check(),{message:'Refund operator database preflight failed'});
++    assert.equal((await db.query('update app.users set id=id where id=$1 returning id',[operator.id])).rowCount,1);
++   }finally{await admin.query('alter table app.users enable always trigger refund_operator_lock_only');}
++   await check();
++  });
++  await suite.test('operator cannot read passwords/profiles, send, reset queues, change payments/publications or erase history',async()=>{
++   for(const sql of ['select password_hash from app.users','select * from app.cabinet_profiles','select * from app.placement_refund_jobs',
++    'insert into app.payment_refund_reservations default values','insert into app.payment_refund_requests default values',
++    'insert into app.payment_refund_dispatch_anchors default values','insert into app.payment_refund_send_attempts default values',
++    'insert into app.payment_refund_candidates default values',"select app.claim_placement_refund_job('synthetic')",
++    "update app.payment_orders set status='refunded' where false","update app.listings set status='published' where false",
++    'delete from app.payment_refund_approvals where false',"set session_replication_role='replica'"])
++    await assert.rejects(db.query(sql),{code:'42501'});
++   await check();
++  });
++  await suite.test('exact operator approves and reads full placements and GET-recovers each blocked worker result once',async()=>{
++   for(const kind of ['listing','vacancy','workRequest']){
++    const shop={...merchant,shopId:'operator-'+randomBytes(6).toString('hex')},item=await purchase({kind,scope:shop});
++    const store=new (operatorLoad('postgres-refund-approvals').PostgresRefundApprovalStore)(db,shop),input={id:randomUUID(),paymentIntentId:item.id,reason:'Возврат для проверки отдельной роли оператора.'};
++    const approval=await store.approve(operator.token,operator.id,input);assert.deepEqual(await store.readForAdmin(operator.token,operator.id,input.id),approval);
++    const remote=provider(item,approval.id,shop),worker=load('placement-refund-worker').createPlacementRefundWorker(refundDb,shop,async(url,init)=>{
++     if(init.method==='GET'&&String(url).includes('/v3/refunds/'))throw Error('Synthetic refund GET outage');return remote.fetcher(url,init);
++    });
++    assert.deepEqual(await worker.tick(),{state:'deferred',code:'processing_unavailable'});assert.equal(remote.posts(),1);
++    const candidate=(await admin.query('select provider_refund_id as id from app.payment_refund_candidates where operation_id=$1',[approval.id])).rows[0];assert.ok(candidate);
++    const recovery=operatorLoad('primary-refund-recovery').createPrimaryRefundRecovery(db,shop,async(url,init)=>{assert.equal(init.method,'GET');return remote.fetcher(url,init);});
++    const action={id:randomUUID(),operationId:approval.id,providerRefundId:candidate.id,reason:'Сверка результата после недоступного ответа.'};
++    assert.equal((await recovery.recover(operator.token,operator.id,action)).state,'applied');
++    assert.equal((await recovery.recover(operator.token,operator.id,action)).state,'applied');assert.equal(remote.posts(),1);
++    assert.equal((await admin.query('select count(*)::int as n from app.payment_refund_effects where operation_id=$1',[approval.id])).rows[0].n,1);
++    assert.equal((await admin.query('select count(*)::int as n from app.notifications where event_key=$1',['placement_refund:'+item.id])).rows[0].n,1);
++    assert.deepEqual((await admin.query('select phase from app.payment_refund_recovery_actions where action_id=$1 order by phase',[action.id])).rows,[{phase:'requested'},{phase:'succeeded'}]);await check();
++   }
++  });
++  await testRefundOperatorActions(suite,{admin,ownerDb,db,refundDb,purchase,load,operatorLoad,operator,merchant,provider,check});
++  assert.equal(unexpectedHttp,0);
++ }finally{globalThis.fetch=originalFetch;try{await db?.close();}finally{rmSync(owned,{recursive:true,force:true});}}
++}
+diff --git a/tests/refund-operator-role.test.mjs b/tests/refund-operator-role.test.mjs
+new file mode 100644
+index 0000000..7a094db
+--- /dev/null
++++ b/tests/refund-operator-role.test.mjs
+@@ -0,0 +1,38 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {getRefundOperatorRolePlan,verifyRefundOperatorDatabase} from '../scripts/refund-operator-role.mjs';
++import {getRefundWorkerRolePlan} from '../scripts/refund-worker-role.mjs';
++
++test('refund operator plan is separate from sending, scope-limited and retains the original54 migration hashes',()=>{
++ const plan=getRefundOperatorRolePlan('blizhniy_test');
++ assert.equal(plan.role,'blizhniy_refund_operator');assert.equal(plan.journal.length,55);
++ assert.deepEqual(plan.journal.slice(0,54),getRefundWorkerRolePlan('blizhniy_test').journal);
++ assert.deepEqual(getRefundWorkerRolePlan('blizhniy_test',{schema:55}).grants,getRefundWorkerRolePlan('blizhniy_test').grants);
++ for(const schema of [53,56,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));
++ assert.equal(plan.journal.at(-1).name,'0055-refund-operator-locks.sql');
++ assert.match(plan.createRole,/nologin.*nosuperuser.*nocreatedb.*nocreaterole.*noinherit.*noreplication.*nobypassrls.*connection limit 4/);
++ for(const sql of plan.grants){assert.match(sql,/^grant /);assert.match(sql,/ to blizhniy_refund_operator$/);assert.equal(/\ball\b|with grant option|blizhniy_runtime/i.test(sql),false);}
++ const inserts=plan.grants.filter(sql=>/^grant insert/.test(sql));
++ assert.equal(inserts.length,6);
++ assert.ok(inserts.every(sql=>!/(reservations|requests|anchors|attempts|candidates|jobs)/.test(sql)));
++ assert.deepEqual(plan.grants.filter(sql=>/^grant update/.test(sql)),[
++  'grant update(id) on app.users to blizhniy_refund_operator',
++  'grant update(last_seen_at) on app.sessions to blizhniy_refund_operator',
++  'grant update(id) on app.payment_checkout_intents to blizhniy_refund_operator',
++  'grant update(id) on app.payment_orders to blizhniy_refund_operator',
++ ]);
++ assert.equal(plan.grants.filter(sql=>/^grant execute/.test(sql)).length,2);
++ plan.journal[0].sha256='0'.repeat(64);plan.grants.length=0;
++ assert.notEqual(getRefundOperatorRolePlan('blizhniy_test').journal[0].sha256,'0'.repeat(64));
++ assert.ok(getRefundOperatorRolePlan('blizhniy_test').grants.length>0);
++ for(const value of ['',null,'x;drop table app.users','x'.repeat(64)])assert.throws(()=>getRefundOperatorRolePlan(value));
++});
++
++test('operator admission rejects invalid TEST scope before I/O and redacts database failures',async()=>{
++ let calls=0;const db={transaction:async()=>{calls++;throw Error('synthetic sensitive driver detail');}};
++ for(const input of [{},{database:'blizhniy_test',merchant:{shopId:'fixture',isTest:false}},{database:'blizhniy_test',merchant:{shopId:'bad/shop',isTest:true}}])
++  await assert.rejects(verifyRefundOperatorDatabase(db,input),{message:'Refund operator database preflight failed'});
++ assert.equal(calls,0);
++ await assert.rejects(verifyRefundOperatorDatabase(db,{database:'blizhniy_test',merchant:{shopId:'fixture',isTest:true}}),{message:'Refund operator database preflight failed'});
++ assert.equal(calls,1);
++});
+diff --git a/tests/refund-worker-role-cases.mjs b/tests/refund-worker-role-cases.mjs
+index 4491f6f..feacc3d 100644
+--- a/tests/refund-worker-role-cases.mjs
++++ b/tests/refund-worker-role-cases.mjs
+@@ -8,0 +9 @@ import {testReconcilerRefundSchema} from './reconciler-refund-schema-cases.mjs';
++import {testRefundOperatorRole} from './refund-operator-role-cases.mjs';
+@@ -158,0 +160 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
++  await testRefundOperatorRole(suite,{admin,ownerDb,refundDb:db,purchase,load,operator,merchant,provider});

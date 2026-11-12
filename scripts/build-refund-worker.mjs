@@ -7,7 +7,8 @@ import ts from 'typescript';
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
-export function buildRefundWorker(destination){
+export function buildRefundWorker(destination,{schema=54}={}){
+ if(![54,55].includes(schema))throw Error('Invalid refund worker schema');
  if(typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid refund worker destination');
  const program=ts.createProgram(['placement-refund-worker.ts','application-compensation-worker.ts','postgres.ts','refund-merchant-preflight.ts'].map(name=>join(root,'src/lib',name)),{
   target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,
@@ -18,12 +19,12 @@ export function buildRefundWorker(destination){
  if(ts.getPreEmitDiagnostics(program).length)throw Error('Refund worker compilation failed');
  const sources=program.getSourceFiles().filter(file=>!file.isDeclarationFile).map(file=>relative(join(root,'src'),file.fileName).replace(/\.ts$/,'.js')).sort();
  if(sources.some(path=>!/^lib\/[a-z0-9-]+\.js$/.test(path)))throw Error('Unexpected refund worker source');
- const migrations=getRefundWorkerRolePlan('artifact').journal.map(({name,sha256})=>{
+ const migrations=getRefundWorkerRolePlan('artifact',{schema}).journal.map(({name,sha256})=>{
   const bytes=readFileSync(join(root,'database/migrations',name));
   if(createHash('sha256').update(bytes).digest('hex')!==sha256)throw Error('Refund migration changed during build');
   return{name,bytes};
  });
- if(migrations.length!==54||migrations.at(-1).name!=='0054-refund-worker-locks.sql')throw Error('Unexpected refund migration boundary');
+ if(migrations.length!==schema||migrations.at(-1).name!==(schema===54?'0054-refund-worker-locks.sql':'0055-refund-operator-locks.sql'))throw Error('Unexpected refund migration boundary');
  // A new private directory is the ownership boundary. Existing destinations are never reused.
  mkdirSync(destination,{mode:0o700});
  writeFileSync(join(destination,'package.json'),JSON.stringify({private:true,type:'commonjs'})+'\n',{flag:'wx',mode:0o600});
@@ -33,8 +34,9 @@ export function buildRefundWorker(destination){
  for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','local-refund-worker-runtime.mjs','refund-worker-service.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
+ if(schema===55)copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
  for(const {name,bytes} of migrations)writeFileSync(join(destination,'database/migrations',name),bytes,{flag:'wx',mode:0o600});
- const manifest={version:1,schema:54,typescript:ts.version,sources};
+ const manifest={version:1,schema,typescript:ts.version,sources};
  writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});
  return manifest;
 }
