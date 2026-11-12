@@ -15,6 +15,7 @@ function fixture(){
   Pool:class{constructor(config){calls.push(['pool',config]);}},PostgresDatabase:class{async close(){calls.push(['close']);}},
   verifyRefundOperatorDatabase:async()=>{calls.push(['database']);if(failDb)throw Error('private database detail');},
   createRefundMerchantPreflight:()=>async()=>{calls.push(['merchant']);if(gate){enter();await gate;}},
+  PostgresAdminRefundJournal:class{async list(...args){calls.push(['list',args]);return{items:[],nextAfter:null};}},
   PostgresRefundApprovalStore:class{constructor(_db,scope){calls.push(['store',scope]);}
    async approve(...args){calls.push(['approve',args]);if(failAction){failAction=false;throw Error('private uncertain COMMIT');}return{id:args[2].id};}
    async readForAdmin(...args){calls.push(['read',args]);return{id:args[2]};}},
@@ -34,9 +35,10 @@ test('operator factory rejects implicit, remote, wrong-role, unsafe-TLS and LIVE
 test('operator freshly checks DB for every action, checks TEST merchant for new work and owns one close',async()=>{
  const f=fixture(),config={...env},runtime=await createLocalRefundOperatorRuntime(config,{loadModules:()=>f.modules});config.BLIZHNIY_PAYMENT_SHOP_ID='changed';
  assert.deepEqual(f.calls.map(c=>c[0]),['pool','store']);assert.equal(Object.isFrozen(f.calls[1][1]),true);assert.equal(f.calls[1][1].shopId,'synthetic');
- assert.deepEqual(Object.keys(runtime).sort(),['approve','close','preflight','readForAdmin','recover']);assert.equal(f.calls[0][1].max,2);
+ assert.deepEqual(Object.keys(runtime).sort(),['approve','close','listForAdmin','preflight','readForAdmin','recover']);assert.equal(f.calls[0][1].max,2);
  await runtime.preflight();assert.deepEqual(f.calls.slice(-3).map(c=>c[0]),['database','merchant','database']);
  await runtime.approve(token,actor,input);assert.deepEqual(f.calls.slice(-4).map(c=>c[0]),['database','merchant','database','approve']);
+ await runtime.listForAdmin(token,actor,null);assert.deepEqual(f.calls.slice(-2).map(c=>c[0]),['database','list']);
  await runtime.readForAdmin(token,actor,input.id);assert.deepEqual(f.calls.slice(-2).map(c=>c[0]),['database','read']);
  await runtime.recover(token,actor,{id:input.id,operationId:input.id,providerRefundId:input.paymentIntentId,reason:input.reason});assert.deepEqual(f.calls.slice(-5).map(c=>c[0]),['database','prepare','merchant','database','recover']);
  await runtime.close();await runtime.close();assert.equal(f.calls.filter(c=>c[0]==='close').length,1);await assert.rejects(runtime.preflight());

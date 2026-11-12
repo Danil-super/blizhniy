@@ -22,6 +22,7 @@ test('private operator artifact imports existing approval/recovery without netwo
    const require=createRequire(import.meta.url),{PostgresRefundApprovalStore}=require('./compiled/lib/postgres-refund-approvals.js'),{createPrimaryRefundRecovery}=require('./compiled/lib/primary-refund-recovery.js');
    const {verifyRefundOperatorDatabase}=await import('./scripts/refund-operator-role.mjs');
    const {createLocalRefundOperatorRuntime}=await import('./scripts/local-refund-operator-runtime.mjs');assert.equal(typeof createLocalRefundOperatorRuntime,'function');
+   const {startLocalRefundOperatorServer}=await import('./scripts/local-refund-operator-server.mjs');assert.equal(typeof startLocalRefundOperatorServer,'function');
    const db={transaction:()=>{throw Error('Database forbidden');}},merchant={shopId:'synthetic',isTest:true,secretKey:'test_synthetic'};
    assert.equal(typeof new PostgresRefundApprovalStore(db,merchant).approve,'function');assert.equal(typeof createPrimaryRefundRecovery(db,merchant).recover,'function');
    assert.equal(typeof verifyRefundOperatorDatabase,'function');assert.equal(calls,0);console.log('offline');`;

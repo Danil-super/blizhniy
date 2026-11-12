@@ -9,7 +9,7 @@ import {getRefundOperatorRolePlan} from './refund-operator-role.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 export function buildRefundOperator(destination){
  if(typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid refund operator destination');
- const program=ts.createProgram(['postgres-refund-approvals.ts','primary-refund-recovery.ts','postgres.ts','refund-merchant-preflight.ts'].map(name=>join(root,'src/lib',name)),{
+ const program=ts.createProgram(['admin-refund-commands.ts','postgres-admin-refund-journal.ts','postgres-refund-approvals.ts','primary-refund-recovery.ts','postgres.ts','refund-merchant-preflight.ts'].map(name=>join(root,'src/lib',name)),{
   target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,
   moduleResolution:ts.ModuleResolutionKind.Node10,strict:true,esModuleInterop:true,skipLibCheck:true,
   noEmitOnError:true,rewriteRelativeImportExtensions:true,rootDir:join(root,'src'),outDir:join(destination,'compiled'),
@@ -30,7 +30,7 @@ export function buildRefundOperator(destination){
  const emitted=program.emit();
  if(emitted.emitSkipped||emitted.diagnostics.length)throw Error('Refund operator compilation failed');
  mkdirSync(join(destination,'scripts'));mkdirSync(join(destination,'database'));mkdirSync(join(destination,'database/migrations'));
- for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','refund-operator-role.mjs','local-refund-operator-runtime.mjs'])
+ for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','refund-operator-role.mjs','local-refund-operator-runtime.mjs','local-refund-operator-server.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
  copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));

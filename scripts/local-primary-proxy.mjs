@@ -16,8 +16,12 @@ const {loadLocalPrimaryModule:load}=require('./local-primary-modules.cjs');
 const canonical='https://xn----9sbphbgks4a4a.xn--p1ai';
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const html=(body,status=200)=>new Response(`<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>БЛИЖНИЙ — локальный стенд</title><style>body{font:16px system-ui;max-width:900px;margin:32px auto;padding:0 20px;color:#16304a}a{color:#0668bb}article{border:1px solid #dde5ee;border-radius:12px;padding:18px;margin:14px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere}code{background:#eff5fa;padding:4px}nav{display:flex;gap:20px;flex-wrap:wrap}</style>${body}</html>`,{status,headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff','content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}});
-async function readBody(req){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>12*1024*1024)throw Error('Local request too large');chunks.push(chunk);}return Buffer.concat(chunks);}
-export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
+export async function readBody(req,limit=12*1024*1024,deadlineMs){
+ let size=0;const chunks=[],timer=deadlineMs===undefined?undefined:setTimeout(()=>req.destroy(Error('Local body deadline')),deadlineMs);
+ try{for await(const chunk of req){size+=chunk.length;if(size>limit)throw Error('Local request too large');chunks.push(chunk);}return Buffer.concat(chunks);}
+ finally{clearTimeout(timer);}
+}
+export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperatorSocket}={}){
  if(state.origin!=='https://127.0.0.1:3045'||state.upstreamPort!==localPrimaryUpstreamPort)throw Error('Invalid local ingress target');
  if(process.env.NODE_ENV!=='test')throw Error('Local proxy requires isolated test process');
  validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
@@ -66,6 +70,9 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
   }});}catch{console.warn('Local mail capture unavailable');}finally{polling=false;}
  },1000);
  const context={state,ownerDb,runtimeDb,load};
+ const refundAdmin=refundOperatorSocket===undefined?null:load('admin-refund-http').createAdminRefundHandler({origin:canonical},()=>({limiter,
+  command:(token,command,signal)=>load('local-refund-operator-client').callLocalRefundOperator(refundOperatorSocket,token,command,signal),
+ }));
  const localPage=async path=>{
   if(path==='/__local'){
    const accounts=JSON.parse(await readFile(join(stateDirectory,'accounts.json'),'utf8'));
@@ -86,7 +93,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
    }
    const path=new URL(req.url,state.origin).pathname;
    let response=req.method==='GET'?await localPage(path):null;
-   const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req);
+   const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req,...(refundAdmin&&path==='/api/admin/refunds'?[4096,2000]:[]));
    const proof=load('account-browser-proof').issueBrowserProof(state.rateSecret,'127.0.0.1',req.headers['user-agent']??'');
    const headers=new Headers(Object.fromEntries(Object.entries(normalizeDocumentPrefetchHeaders(req.headers)).filter(([,value])=>typeof value==='string')));
    headers.set('host',new URL(canonical).host);headers.set('x-real-ip','127.0.0.1');
@@ -100,6 +107,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
     const data=await request.clone().json();
     if(typeof data.email!=='string'||!data.email.endsWith('.invalid'))response=Response.json({error:{code:'SYNTHETIC_EMAIL_REQUIRED'}},{status:422});
    }
+   if(!response&&refundAdmin&&path==='/api/admin/refunds')response=await refundAdmin(request);
    if(!response&&path==='/api/account/profile')response=await profile(request);
    if(!response&&path==='/api/account/media')response=await media(request,'upload');
    if(!response&&path==='/api/account/media/read')response=await media(request,'read');
