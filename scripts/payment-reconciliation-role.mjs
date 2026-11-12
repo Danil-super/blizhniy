@@ -2,6 +2,8 @@
 import {getCabinetMigrationPlan} from './cabinet-release-plan.mjs';
 import {getBootstrapPlan} from './postgres-migration-plan.mjs';
 import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.mjs';
+import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
+import {assertRefundSchema} from './refund-worker-schema.mjs';
 
 const role='blizhniy_payment_reconciler';
 const locks=['users','payment_checkout_intents','categories','cities','media_objects','listing_moderation'];
@@ -61,19 +63,23 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
     )) as membership,
     has_database_privilege(current_database(),'CONNECT') as connect,
     has_database_privilege(current_database(),'CREATE,TEMP,CONNECT WITH GRANT OPTION') as database_extra,
-    has_parameter_privilege('session_replication_role','SET,ALTER SYSTEM') as replication_override
+    has_parameter_privilege('session_replication_role','SET,ALTER SYSTEM') as replication_override,
+    to_regclass('app.payment_refund_reservations') is not null as refund_installed
     from pg_roles r where rolname=current_user`)).rows[0];
    if(!identity||identity.name!==role||identity.login!==role||identity.database!==database||identity.version<180000||identity.version>=190000||
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw new Error('Invalid role');
    const journal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   // Only complete known releases: 0024, 0025, reviewed0032 or exact additive0033.
+   // Only complete known releases: 0024, 0025, reviewed0032/0033 or pinned refund0054.
    // Unknown intermediate versions and changed hashes remain fail-closed.
    const cabinetJournal=[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan()];
    const deletionJournal=[...cabinetJournal,{name:'0033-account-deletion.sql',sha256:'8d0159c6af65c4c66aabb123695110f402fd5eac268fa2a879d97c85e628ed2f'}];
-   const cabinetSchema=journal.length===cabinetJournal.length||journal.length===deletionJournal.length;
-   const expectedJournal=journal.length===deletionJournal.length?deletionJournal:journal.length===cabinetJournal.length?cabinetJournal:journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
+   const refundJournal=getRefundWorkerRolePlan(database).journal,refundSchema=journal.length===refundJournal.length;
+   if(identity.refund_installed!==refundSchema)throw new Error('Refund schema and journal disagree');
+   const cabinetSchema=refundSchema||journal.length===cabinetJournal.length||journal.length===deletionJournal.length;
+   const expectedJournal=refundSchema?refundJournal:journal.length===deletionJournal.length?deletionJournal:journal.length===cabinetJournal.length?cabinetJournal:journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
+   if(refundSchema)await assertRefundSchema(tx);
    await assertFinancialCatalogPrivileges(tx);
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
