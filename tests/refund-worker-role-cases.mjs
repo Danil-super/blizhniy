@@ -7,7 +7,7 @@ import {testRefundSchemaReference,testRefundSchemaDrift} from './refund-worker-s
 import {testRefundWorkerArtifact} from './refund-worker-artifact-cases.mjs';
 
 // Called only by the owned disposable PG18 placement fixture; no environment credentials.
-export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,operator,merchant}){
+export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,operator,merchant,tls}){
  await admin.query(await readFile(new URL('../database/migrations/0053-application-compensation-lease.sql',import.meta.url),'utf8'));
  await admin.query(await readFile(new URL('../database/migrations/0054-refund-worker-locks.sql',import.meta.url),'utf8'));
  const plan=getRefundWorkerRolePlan('blizhniy_test'),role=plan.role,password=randomBytes(24).toString('hex');
@@ -153,7 +153,7 @@ export async function testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,op
    assert.equal((await admin.query('select status,is_paid from app.applications where id=$1',[application])).rows[0].status,'sent');
    assert.equal(remote.posts(),1);assert.deepEqual(await worker.tick(),{state:'idle'});assert.equal(remote.posts(),1);await check();
   });
-  await testRefundWorkerArtifact(suite,{admin,config:{...admin.options,user:role,password},ownerDb,purchase,load,operator,merchant,provider});
+  await testRefundWorkerArtifact(suite,{admin,config:{...admin.options,user:role,password},ownerDb,purchase,load,operator,merchant,provider,tls});
  }finally{await db.close();}
 }
 

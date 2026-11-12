@@ -7,9 +7,10 @@ import {createRequire} from 'node:module';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import pg from 'pg';
 import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
+import {testLocalRefundRuntime} from './local-refund-runtime-cases.mjs';
 
 // Only the existing owned disposable PG54 fixture passes these synthetic credentials.
-export async function testRefundWorkerArtifact(suite,{admin,config,ownerDb,purchase,load,operator,merchant,provider}){
+export async function testRefundWorkerArtifact(suite,{admin,config,ownerDb,purchase,load,operator,merchant,provider,tls}){
  assert.equal(config.host,'127.0.0.1');assert.equal(config.database,'blizhniy_test');assert.equal(config.user,'blizhniy_refund_worker');
  const owned=mkdtempSync(join(tmpdir(),'blizhniy-refund-artifact-pg-'));
  let db,unexpectedHttp=0;
@@ -69,6 +70,7 @@ export async function testRefundWorkerArtifact(suite,{admin,config,ownerDb,purch
    assert.equal(remote.posts(),1);assert.deepEqual(await worker.tick(),{state:'idle'});assert.equal(remote.posts(),1);
    await check();
   });
+  await testLocalRefundRuntime(suite,{admin,config,ownerDb,purchase,load,operator,merchant,provider,artifact,tls});
   assert.equal(unexpectedHttp,0);
  }finally{globalThis.fetch=originalFetch;try{await db?.close();}finally{rmSync(owned,{recursive:true,force:true});}}
 }

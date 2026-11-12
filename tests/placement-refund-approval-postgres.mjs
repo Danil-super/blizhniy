@@ -195,7 +195,7 @@ test('full TEST placement refund: durable authenticated administrator approval',
    assert.equal((await admin.query('select id from app.payment_refund_reservations where payment_intent_id=$1',[item.id])).rows[0].id,legacy);
   });
   await testPlacementRefundQueue(suite,{admin,ownerDb,purchase,load,operator,merchant});
-  await testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,operator,merchant});
+  await testRefundWorkerRole(suite,{admin,ownerDb,purchase,load,operator,merchant,tls:{docker,container}});
  }finally{
   await Promise.allSettled([db?.close(),ownerDb?.close(),admin?.end()]);
   if(container){const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);await docker(['rm','--force',container]);}
