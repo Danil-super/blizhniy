@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {rootCertificates} from 'node:tls';
+import {testOwnedLocalPrimaryRefundRuntime} from './local-primary-refund-runtime-cases.mjs';
 import {testLocalRefundAdmin} from './local-refund-admin-cases.mjs';
 import {randomBytes,randomUUID} from 'node:crypto';
 
@@ -87,6 +88,7 @@ export async function testLocalRefundOperatorRuntime(suite,{admin,config,artifac
    assert.deepEqual((await admin.query('select phase from app.payment_refund_recovery_actions where action_id=$1',[action.id])).rows,[{phase:'requested'}]);
    assert.equal((await admin.query('select count(*)::int as n from app.payment_refund_effects where operation_id=$1',[id])).rows[0].n,0);await runtime.close();
   });
+  await testOwnedLocalPrimaryRefundRuntime(suite,{artifact,load});
   await testLocalRefundAdmin(suite,{admin,artifact,environment,createLocalRefundOperatorRuntime,purchase,load,operator,merchant,provider,refundDb});
  }finally{try{await runtime?.close();}finally{await rm(owned,{recursive:true,force:true});}}
 }

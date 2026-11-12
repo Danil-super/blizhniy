@@ -19,6 +19,7 @@ test('private operator artifact imports existing approval/recovery without netwo
   symlinkSync(fileURLToPath(new URL('../node_modules',import.meta.url)),join(artifact,'node_modules'),'dir');
   const script=`import assert from 'node:assert/strict';import net from 'node:net';import {createRequire} from 'node:module';
    let calls=0;globalThis.fetch=net.Socket.prototype.connect=()=>{calls++;throw Error('Network forbidden');};
+   createRequire(import.meta.url)('node:child_process').execFile=()=>{calls++;throw Error('Process launch forbidden');};
    const require=createRequire(import.meta.url),{PostgresRefundApprovalStore}=require('./compiled/lib/postgres-refund-approvals.js'),{createPrimaryRefundRecovery}=require('./compiled/lib/primary-refund-recovery.js');
    const {verifyRefundOperatorDatabase}=await import('./scripts/refund-operator-role.mjs');
    const {createLocalRefundOperatorRuntime}=await import('./scripts/local-refund-operator-runtime.mjs');assert.equal(typeof createLocalRefundOperatorRuntime,'function');

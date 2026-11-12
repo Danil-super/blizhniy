@@ -1,5 +1,6 @@
 import {isAbsolute} from 'node:path';
 import {createRequire} from 'node:module';
+import {verifyLocalPrimaryRefundTarget,assertLocalPrimaryRefundTrust} from './local-primary-refund-target.mjs';
 import {verifyRefundOperatorDatabase} from './refund-operator-role.mjs';
 
 const require=createRequire(import.meta.url),unavailable=()=>Error('Local refund operator unavailable');
@@ -13,12 +14,23 @@ function loadCompiledModules(){
 /** Explicit private local TEST capability. Every command rechecks admission; canonical stores authorize the live admin.
  * Unknown results require an explicit same-ID call. No HTTP listener, send method, ambient config or command/SQL retry.
  */
-export async function createLocalRefundOperatorRuntime(environment,{loadModules=loadCompiledModules,fetcher=globalThis.fetch}={}){
+export async function createLocalRefundOperatorRuntime(environment,options={}){
+ return createRuntime(environment,options,'blizhniy_test');
+}
+/** Separate owned manual-stand entry; default test-database admission above is unchanged. */
+export async function createLocalPrimaryRefundOperatorRuntime(environment,{stateFile,project,...options}={}){
+ try{
+  const env={...environment},certificate=await verifyLocalPrimaryRefundTarget(env,{stateFile,project});
+  return await createRuntime(env,options,'blizhniy_prod',certificate);
+ }catch{throw unavailable();}
+}
+async function createRuntime(environment,options,database,certificate){
  let db,pool;
  try{
+  const {loadModules=loadCompiledModules,fetcher=globalThis.fetch}=options;
   const env={...environment};
   if(typeof window!=='undefined'||env.NODE_ENV!=='production'||env.BLIZHNIY_REFUND_OPERATOR!=='local-test'||env.BLIZHNIY_PAYMENT_MODE!=='test'||
-   env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!=='blizhniy_test'||env.BLIZHNIY_DB_USER!=='blizhniy_refund_operator'||
+   env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!==database||env.BLIZHNIY_DB_USER!=='blizhniy_refund_operator'||
    !/^\d{1,5}$/.test(env.BLIZHNIY_DB_PORT??'')||Number(env.BLIZHNIY_DB_PORT)<1||Number(env.BLIZHNIY_DB_PORT)>65535||!env.BLIZHNIY_DB_PASSWORD||
    env.BLIZHNIY_DB_SSL_MODE!=='verify-full'||!env.BLIZHNIY_DB_CA_FILE||!isAbsolute(env.BLIZHNIY_DB_CA_FILE)||
    [env,process.env].some(e=>e.NODE_TLS_REJECT_UNAUTHORIZED==='0'||Object.keys(e).some(k=>k.startsWith('PG')))||
@@ -28,7 +40,7 @@ export async function createLocalRefundOperatorRuntime(environment,{loadModules=
   const merchant=Object.freeze({shopId:env.BLIZHNIY_PAYMENT_SHOP_ID,secretKey:env.BLIZHNIY_PAYMENT_SECRET_KEY,isTest:true}),modules=loadModules();
   let closed=false,active,closing;
   const readOnlyFetch=(url,init)=>{if(closed||init?.method!=='GET')throw unavailable();init.signal?.throwIfAborted();return fetcher(url,init);};
-  const config=modules.readPostgresConfig(env);pool=new modules.Pool({...config,max:2,application_name:'blizhniy-local-refund-operator'});db=new modules.PostgresDatabase(pool);
+  const config=modules.readPostgresConfig(env);if(certificate!==undefined)assertLocalPrimaryRefundTrust(config,certificate);pool=new modules.Pool({...config,max:2,application_name:'blizhniy-local-refund-operator'});db=new modules.PostgresDatabase(pool);
   const journal=new modules.PostgresAdminRefundJournal(db,merchant),approvals=new modules.PostgresRefundApprovalStore(db,merchant),recovery=modules.createPrimaryRefundRecovery(db,merchant,readOnlyFetch);
   const verify=()=>modules.verifyRefundOperatorDatabase(db,{database:config.database,merchant}),probe=modules.createRefundMerchantPreflight(merchant,readOnlyFetch);
   async function admitMerchant(){await probe();if(closed)throw unavailable();await verify();if(closed)throw unavailable();}

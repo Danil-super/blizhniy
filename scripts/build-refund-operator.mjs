@@ -30,7 +30,7 @@ export function buildRefundOperator(destination){
  const emitted=program.emit();
  if(emitted.emitSkipped||emitted.diagnostics.length)throw Error('Refund operator compilation failed');
  mkdirSync(join(destination,'scripts'));mkdirSync(join(destination,'database'));mkdirSync(join(destination,'database/migrations'));
- for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','refund-operator-role.mjs','local-refund-operator-runtime.mjs','local-refund-operator-server.mjs'])
+ for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','refund-operator-role.mjs','local-refund-operator-runtime.mjs','local-refund-operator-server.mjs','local-primary-refund-target.mjs','local-primary-config.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
  copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
