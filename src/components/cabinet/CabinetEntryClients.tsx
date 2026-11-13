@@ -13,12 +13,15 @@ import type {CabinetResponseItem} from "./CabinetClient";
 export {CabinetCapabilities} from "./CabinetCapabilities";
 export type {CabinetPaymentHistoryItem} from "./CabinetClient";
 
+const CookieCabinetOrganization = dynamic(() => import("./CabinetOrganization").then(module => module.CookieCabinetOrganization));
+const PrimaryPaymentHistory = dynamic(() => import("./PrimaryPaymentHistory").then(module => module.PrimaryPaymentHistory));
+
 const LegacyOverview = dynamic(() => import("./CabinetClient").then(module => module.CabinetOverviewClient));
 const LegacyPublications = dynamic(() => import("./CabinetClient").then(module => module.CabinetPublicationsClient));
 const LegacyResponses = dynamic(() => import("./CabinetClient").then(module => module.CabinetResponsesClient));
 const LegacySpecialist = dynamic(() => import("./CabinetClient").then(module => module.CabinetSpecialistClient));
-export const CabinetOrganizationClient = dynamic(() => import("./CabinetClient").then(module => module.CabinetOrganizationClient));
-export const CabinetPaymentsClient = dynamic(() => import("./CabinetClient").then(module => module.CabinetPaymentsClient));
+const LegacyOrganization = dynamic(() => import("./CabinetClient").then(module => module.CabinetOrganizationClient));
+const LegacyPayments = dynamic(() => import("./CabinetClient").then(module => module.CabinetPaymentsClient));
 
 export function CabinetOverviewClient() {
   const primary = usePrimaryAccountAuth();
@@ -42,4 +45,11 @@ export function CabinetResponsesClient({responses = []}: {responses?: CabinetRes
 
 export function CabinetSpecialistClient() {
   return usePrimaryAccountAuth() ? <ServicePublicationsPanel kind="specialist" /> : <LegacySpecialist />;
+}
+
+export function CabinetOrganizationClient(){
+ return usePrimaryAccountAuth()?<CookieCabinetOrganization/>:<LegacyOrganization/>;
+}
+export function CabinetPaymentsClient(props:{initialPayments?:import("./CabinetClient").CabinetPaymentHistoryItem[]}){
+ return usePrimaryAccountAuth()?<PrimaryPaymentHistory/>:<LegacyPayments {...props}/>;
 }

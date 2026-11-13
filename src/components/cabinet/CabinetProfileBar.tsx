@@ -88,7 +88,7 @@ export function CabinetProfileView({ data }: { data: CabinetProfileData }) {
             <h2 className="truncate text-xl font-bold text-[#060b27]">{profile.name}</h2>
             <p className="truncate text-sm text-slate-500">{profile.email || "Email не указан"}</p>
             {profile.phone ? (
-              <p className={profile.phoneVerified && profile.verifiedPhone === profile.phone ? "mt-1 text-xs font-bold text-[#0a8f32]" : "mt-1 text-xs font-bold text-amber-700"}>
+              <p className={profile.phoneVerified && profile.verifiedPhone === profile.phone ? "mt-1 text-xs font-bold text-[#0a7b2b]" : "mt-1 text-xs font-bold text-amber-700"}>
                 {profile.phone} · {profile.phoneVerified && profile.verifiedPhone === profile.phone ? "подтвержден" : "не подтвержден"}
               </p>
             ) : null}
