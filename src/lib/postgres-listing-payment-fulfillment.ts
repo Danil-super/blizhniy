@@ -2,7 +2,7 @@ import {PostgresPaymentIntentStore} from './postgres-payment-intents.ts';
 import {PostgresListingFormStore} from './postgres-listing-form';
 import {parseListingDraftId} from './listing-draft-contract.ts';
 import {paymentPublicationPeriod,PaymentPublicationError,type PaymentPublicationPeriod} from './payment-publication-period.ts';
-import type {PostgresDatabase} from './postgres';
+import type {PostgresDatabase,PostgresQueries} from './postgres';
 import {inspectWorkPurchase} from './vacancy-purchase-eligibility';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {WorkPublicationAccessError,WorkPublicationConflictError} from './postgres-work-publications';
@@ -21,12 +21,26 @@ export class PostgresListingPaymentFulfillmentStore{
  private readonly forms:PostgresListingFormStore;
  private readonly merchant:MerchantScope;
  private readonly targetType:'listing'|'vacancy'|'workRequest';
- constructor(db:Pick<PostgresDatabase,'transaction'>,merchant:MerchantScope,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest'}={}){
+ constructor(db:Pick<PostgresDatabase,'transaction'>,merchant:MerchantScope,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest';renewals?:boolean}={}){
   if(typeof window!=='undefined'||!merchant||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId)||typeof merchant.isTest!=='boolean')throw new PaymentPublicationError();
   this.merchant={...merchant};
   this.targetType=policy.targetType??'listing';
   if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!merchant.isTest||!readPostmoderationEnabled()))throw new PaymentPublicationError();
-  this.db=db;this.intents=new PostgresPaymentIntentStore(db);this.forms=new PostgresListingFormStore(db);
+  if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!merchant.isTest||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled()))throw new PaymentPublicationError();
+  this.db=db;this.intents=new PostgresPaymentIntentStore(db);this.forms=new PostgresListingFormStore(db,{postmoderation:policy.renewals===true,renewals:policy.renewals===true});
+ }
+ private async renew(tx:PostgresQueries,intent:{id:string;ownerId:string;targetId:string}):Promise<Result>{
+  const table=this.targetType==='listing'?'listings':'work_publications';
+  const previous=(await tx.query<{id:string}>(`select i.id from app.payment_checkout_intents i
+   join app.payment_orders o on o.id=i.id and o.status='succeeded' join app.payment_fulfillments f on f.intent_id=i.id
+   join app.${table} target on target.id=i.target_id and target.author_id=i.owner_id
+    and target.published_at=f.published_at and target.expires_at=f.expires_at
+   where i.owner_id=$1 and i.target_type=$2 and i.target_id=$3 and i.id<>$4 and i.merchant_shop_id=$5 and i.is_test=$6 limit 2`,
+  [intent.ownerId,this.targetType,intent.targetId,intent.id,this.merchant.shopId,this.merchant.isTest])).rows;
+  if(previous.length!==1)return{state:'blocked',reason:'renewal_basis_unavailable'};
+  const period=(await tx.query<PaymentPublicationPeriod>(`insert into app.payment_renewals(intent_id,previous_intent_id) values($1,$2)
+   returning ${receiptColumns}`,[intent.id,previous[0].id])).rows[0];
+  if(!period)throw new PaymentPublicationError();return{state:'fulfilled',period};
  }
  async fulfill(value:unknown):Promise<Result>{
   const id=parseListingDraftId(value);
@@ -51,7 +65,7 @@ export class PostgresListingPaymentFulfillmentStore{
    if(!user||user.blocked||!user.verified)return{state:'blocked',reason:'account_unavailable'};
    if(this.targetType!=='listing'){
     let inspected:Awaited<ReturnType<typeof inspectWorkPurchase>>;
-    try{inspected=await inspectWorkPurchase(this.db,tx,intent.ownerId,intent.targetId,intent.targetRevision,this.targetType);}
+    try{inspected=await inspectWorkPurchase(this.db,tx,intent.ownerId,intent.targetId,intent.targetRevision,this.targetType,true,this.policy.renewals===true);}
     catch(error){
      if(error instanceof WorkPublicationAccessError||error instanceof WorkPublicationConflictError)return{state:'blocked',reason:'target_changed'};
      if(error instanceof WorkPublicationInputError)return{state:'blocked',reason:'content_unavailable'};
@@ -59,6 +73,7 @@ export class PostgresListingPaymentFulfillmentStore{
     }
     const {issues}=inspected;
     if(issues.length)return{state:'blocked',reason:'content_unavailable'};
+    if(this.policy.renewals&&inspected.snapshot.paid)return this.renew(tx,intent);
     const period=paymentPublicationPeriod(verified.capturedAt,intent.durationDays);
     const updated=await tx.query(`update app.work_publications set status='published',is_paid=true,published_at=$4::timestamptz,expires_at=$5::timestamptz,updated_at=clock_timestamp()
      where id=$1 and author_id=$2 and kind=$6 and revision=$3::bigint and status='draft' and not is_paid and deleted_at is null
@@ -72,7 +87,7 @@ export class PostgresListingPaymentFulfillmentStore{
    }
    const listing=(await tx.query<{revision:string;status:string;paid:boolean;category:string|null;city:string|null}>(`select revision::text,status,is_paid as paid,category_id as category,city_id as city
     from app.listings where id=$1 and author_id=$2 for update`,[intent.targetId,intent.ownerId])).rows[0];
-   if(!listing||listing.revision!==intent.targetRevision||listing.status!=='draft'||listing.paid)return{state:'blocked',reason:'target_changed'};
+   if(!listing||listing.revision!==intent.targetRevision||(!this.policy.renewals&&(listing.status!=='draft'||listing.paid)))return{state:'blocked',reason:'target_changed'};
    // Lock changing references before the canonical form inspection, not just the target row.
    const category=(await tx.query<{parent:string|null}>('select parent_id as parent from app.categories where id=$1 for share',[listing.category])).rows[0];
    if(category?.parent)await tx.query('select id from app.categories where id=$1 for share',[category.parent]);
@@ -86,9 +101,10 @@ export class PostgresListingPaymentFulfillmentStore{
     const approval=await tx.query(`select id from app.listing_moderation where listing_id=$1 and revision=$2::bigint and state='approved' for share`,[intent.targetId,intent.targetRevision]);
     if(approval.rowCount!==1)return{state:'blocked',reason:'approval_required'};
    }
-   const {check}=await this.forms.inspectInTransaction(tx,intent.ownerId,intent.targetId,intent.targetRevision);
+   const {check}=await this.forms.inspectInTransaction(tx,intent.ownerId,intent.targetId,intent.targetRevision,this.policy.renewals===true);
    // Price and duration were accepted in the original immutable order; a new tariff is not a new consent.
    if(check.issues.some(issue=>issue.field!=='tariff'))return{state:'blocked',reason:'content_unavailable'};
+   if(this.policy.renewals&&listing.paid)return this.renew(tx,intent);
    const period=paymentPublicationPeriod(verified.capturedAt,intent.durationDays);
    const updated=await tx.query(`update app.listings set status='published',is_paid=true,published_at=$4::timestamptz,expires_at=$5::timestamptz,updated_at=clock_timestamp()
     where id=$1 and author_id=$2 and revision=$3::bigint and status='draft' and not is_paid and published_at is null and expires_at is null

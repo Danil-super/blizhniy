@@ -95,3 +95,10 @@ test('local approval reads and completed recovery remain available during provid
  assert.deepEqual(await runtime.recover(token,actor,{id:input.id,operationId:input.id,providerRefundId:input.paymentIntentId,reason:input.reason}),{state:'applied'});
  await runtime.close();
 });
+
+test('operator preserves only a proven approval-order rejection; a forged code or unknown COMMIT remains uncertain',async()=>{
+ const f=fixture();class Rejected extends Error{};f.modules.RefundApprovalOrderError=Rejected;
+ let typed=true;f.modules.PostgresRefundApprovalStore=class{async approve(){if(typed)throw new Rejected('private SQL');throw Object.assign(Error('private commit'),{code:'REFUND_NOT_LATEST'});}};
+ const runtime=await createLocalRefundOperatorRuntime(env,{loadModules:()=>f.modules});
+ try{await assert.rejects(runtime.approve(token,actor,input),e=>e.code==='REFUND_NOT_LATEST'&&!e.message.includes('private'));typed=false;await assert.rejects(runtime.approve(token,actor,input),e=>e.code===undefined&&!e.message.includes('private'));}finally{await runtime.close();}
+});

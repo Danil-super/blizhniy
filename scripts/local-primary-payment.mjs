@@ -1,6 +1,7 @@
 // Trusted LOCAL provider simulator. It never connects to YooKassa or loads a real merchant.
 import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
+import {readPlacementRenewalsEnabled} from '../src/lib/placement-renewal-config.ts';
 export const localPrimaryMerchant=Object.freeze({shopId:'local-fixture-shop',isTest:true,secretKey:'test_local-fixture-never-a-real-key'});
 const canonical='https://xn----9sbphbgks4a4a.xn--p1ai',merchant=localPrimaryMerchant;
 const instances=new WeakMap();
@@ -21,7 +22,7 @@ async function create(context,targetType){
  const {state,ownerDb,runtimeDb,load}=context;
  if(process.env.NODE_ENV!=='test'||!load('listing-workflow-config').readPostmoderationEnabled()||state.origin!==process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN)throw Error('Local provider disabled');
  await ownerDb.query(await readFile(new URL('../database/local-primary-payment.sql',import.meta.url),'utf8'));
- const policy={postmoderation:true,...(targetType!=='listing'?{targetType}:{})};
+ const policy={postmoderation:true,...(readPlacementRenewalsEnabled()?{renewals:true}:{}),...(targetType!=='listing'?{targetType}:{})};
  const store=targetType==='application'?new(load('postgres-application-checkout').PostgresApplicationCheckoutStore)(runtimeDb,async id=>(await ownerDb.query(`select to_char(sent_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as stamp from local_primary.application_deliveries where intent_id=$1`,[id])).rows[0]?.stamp??null,async(token,owner,id)=>{
   if(await recoverExistingProvider(token,owner,id))await verification.reconcile(id);
  }):new(load('postgres-listing-checkout').PostgresListingCheckoutStore)(runtimeDb,{...merchant,siteOrigin:canonical,receiptVatCode:1},policy);

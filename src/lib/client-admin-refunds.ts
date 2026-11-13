@@ -2,7 +2,7 @@
 import {parseAdminRefundCommand,parseAdminRefundResult,type AdminRefundCommand} from './admin-refund-contract.ts';
 export class AdminRefundClientError extends Error{
  readonly code:string;
- constructor(code:string){super(code==='UNAUTHENTICATED'?'Войдите в аккаунт заново.':code==='RATE_LIMITED'?'Слишком много запросов. Повторите позже.':code==='INVALID_INPUT'?'Проверьте введённые данные.':'Результат запроса не подтверждён. Проверьте журнал или повторите ту же операцию.');this.code=code;}
+ constructor(code:string){super(code==='UNAUTHENTICATED'?'Войдите в аккаунт заново.':code==='RATE_LIMITED'?'Слишком много запросов. Повторите позже.':code==='INVALID_INPUT'?'Проверьте введённые данные.':code==='REFUND_NOT_LATEST'?'Решение не принято. Сначала верните последнюю покупку и завершите начатую оплату.':'Результат запроса не подтверждён. Проверьте журнал или повторите ту же операцию.');this.code=code;}
 }
 export function createAdminRefundClient(transport:typeof fetch){return{async call(value:unknown,outer?:AbortSignal){
  let command:AdminRefundCommand;try{command=parseAdminRefundCommand(value);}catch{throw new AdminRefundClientError('INVALID_INPUT');}
@@ -14,7 +14,8 @@ export function createAdminRefundClient(transport:typeof fetch){return{async cal
   try{for(;;){signal.throwIfAborted();const chunk=await reader.read();signal.throwIfAborted();if(chunk.done){complete=true;text+=decoder.decode();break;}size+=chunk.value.byteLength;if(size>262144)throw Error();text+=decoder.decode(chunk.value,{stream:true});}}
   finally{try{if(!complete)await reader.cancel();}finally{reader.releaseLock();}}
   const value=JSON.parse(text);if(response.status!==200){const codes:Record<string,number>={UNAUTHENTICATED:401,RATE_LIMITED:429,INVALID_INPUT:422},code=value?.error?.code;
-   throw new AdminRefundClientError(typeof code==='string'&&codes[code]===response.status?code:'UNKNOWN');}
+   const rejected=command.action==='approve'&&response.status===409&&code==='REFUND_NOT_LATEST'&&Object.keys(value).join()==='error'&&Object.keys(value.error).join()==='code';
+   throw new AdminRefundClientError(rejected?'REFUND_NOT_LATEST':typeof code==='string'&&codes[code]===response.status?code:'UNKNOWN');}
   return parseAdminRefundResult(command,value);
  }catch(error){if(error instanceof AdminRefundClientError)throw error;throw new AdminRefundClientError('UNKNOWN');}
 }};}

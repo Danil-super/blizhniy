@@ -6,6 +6,7 @@ export type RefundRecoveryCommand={id:string;operationId:string;providerRefundId
 export type AdminRefundCommand={expectedAdminId:string}&({action:'list';input:string|null}|{action:'read';input:string}|{action:'approve';input:RefundApprovalCommand}|{action:'recover';input:RefundRecoveryCommand});
 export type AdminRefundApproval={id:string;paymentIntentId:string;reason:string;amount:string;approvedAt:string};
 export type AdminRefundRecovery={actionId:string;operationId:string;providerRefundId:string;status:'pending'|'succeeded'|'canceled';state:'pending'|'applied'|'canceled'};
+export class AdminRefundRejectedError extends Error{constructor(){super('Refund the latest purchase first');this.name='AdminRefundRejectedError';}}
 export class AdminRefundInputError extends Error {constructor(){super('Invalid refund administration data');}}
 function fail():never{throw new AdminRefundInputError();}
 function object(value:unknown,keys:string[]){
@@ -32,13 +33,15 @@ export function parseAdminRefundCommand(value:unknown):AdminRefundCommand{
 export function parseAdminRefundPage(value:unknown):AdminRefundPage{
  const page=object(value,['items','nextAfter']);if(!Array.isArray(page.items)||page.items.length>50)fail();
  const items=page.items.map((value):AdminRefundPayment=>{
-  const r=object(value,['id','targetType','targetId','amount','createdAt','status','capturedAt','operationId','attempted','approvalId','reason','approvedAt','providerRefundId','refundStatus','appliedAt']);
+  const hasEligibility=!!value&&typeof value==='object'&&Object.hasOwn(value,'canRefund');
+  const r=object(value,['id','targetType','targetId','amount','createdAt','status','capturedAt','operationId','attempted','approvalId','reason','approvedAt','providerRefundId','refundStatus','appliedAt',...(hasEligibility?['canRefund']:[])]);
   if(typeof r.targetType!=='string'||!['listing','vacancy','workRequest','specialist','application','fair_application','ad_marquee'].includes(r.targetType)||typeof r.status!=='string'||!['created','pending','succeeded','failed','refunded'].includes(r.status)||
    r.refundStatus!==null&&(typeof r.refundStatus!=='string'||!['pending','succeeded','canceled'].includes(r.refundStatus)))fail();
   if(typeof r.attempted!=='boolean')fail();
+  if(hasEligibility&&typeof r.canRefund!=='boolean')fail();
   const result={operationId:optional(r.operationId,id),attempted:r.attempted,id:id(r.id),targetType:r.targetType,targetId:id(r.targetId),amount:money(r.amount),createdAt:stamp(r.createdAt),status:r.status,capturedAt:optional(r.capturedAt,stamp),approvalId:optional(r.approvalId,id),reason:optional(r.reason,reason),approvedAt:optional(r.approvedAt,stamp),providerRefundId:optional(r.providerRefundId,id),refundStatus:r.refundStatus as string|null,appliedAt:optional(r.appliedAt,stamp)};
   if([result.approvalId,result.reason,result.approvedAt].some(v=>v===null)&&[result.approvalId,result.reason,result.approvedAt].some(v=>v!==null)||result.refundStatus&&!result.providerRefundId||(result.attempted||result.providerRefundId)&&!result.operationId)fail();
-  return result;
+  return{...result,...(hasEligibility?{canRefund:r.canRefund as boolean}:{})};
  });
  const nextAfter=optional(page.nextAfter,id);if(new Set(items.map(row=>row.id)).size!==items.length||nextAfter!==null&&(items.length!==50||items.at(-1)?.id!==nextAfter))fail();
  return{items,nextAfter};

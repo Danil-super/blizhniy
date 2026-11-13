@@ -129,7 +129,13 @@ const deploymentAssertionPairs = [
     "    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ needs.deploy.outputs.remote_dir }}');"
   ]
 ];
-const reviewedReplacement = (file, text) => [...registrationAssertionPairs, ...deploymentAssertionPairs].some(([path, before, after]) =>
+// Candidate: apply only after owner review of this exact renewal boundary pair.
+const renewalAssertionPairs = [
+  ['tests/refund-operator-role.test.mjs',
+   " for(const schema of [53,56,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));",
+   " for(const schema of [53,57,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));"],
+];
+const reviewedReplacement = (file, text) => [...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs].some(([path, before, after]) =>
   file === path && text === before &&
   removed.filter(line => line.file === path && line.text === before).length === 1 &&
   added.filter(line => line.file === path && line.text === after).length === 1);

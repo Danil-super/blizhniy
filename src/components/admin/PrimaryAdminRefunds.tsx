@@ -1,7 +1,7 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
-import {adminRefunds} from '@/lib/client-admin-refunds';
+import {adminRefunds,AdminRefundClientError} from '@/lib/client-admin-refunds';
 import {createRefundActionDrafts} from '@/lib/refund-action-draft';
 import {parseAdminRefundCommand,parseAdminRefundResult,type AdminRefundCommand} from '@/lib/admin-refund-contract';
 import type {AdminRefundPage,AdminRefundPayment} from '@/lib/postgres-admin-refund-journal';
@@ -30,11 +30,11 @@ function RefundForm({actor,row,kind,busy,onCancel,onSubmit}:{actor:string;row:Ad
   }catch{setError(kind==='approve'?'Укажите причину до 500 символов обычным текстом и подтвердите решение.':'Проверьте номер возврата и укажите причину до 500 символов.');}
  }}>
   <h3 className="font-bold text-slate-950">{kind==='approve'?'Полный возврат платы за размещение':'Сверка существующего возврата'} · {money.format(Number(row.amount))}</h3>
-  <p className="mt-1 text-sm leading-6 text-slate-700">{kind==='approve'?'После подтверждения возврата размещение прекратится.':'Проверим результат уже созданного возврата без повторной отправки денег.'}</p>
+  <p className="mt-1 text-sm leading-6 text-slate-700">{kind==='approve'?'Возврат отменит срок этой покупки. Прежний оплаченный остаток сохранится.':'Проверим результат уже созданного возврата без повторной отправки денег.'}</p>
   {kind==='recover'&&!row.providerRefundId&&<label className="mt-3 block text-sm font-bold text-slate-700">Номер возврата в ЮKassa<input value={providerId} onChange={e=>setProviderId(e.target.value)} required maxLength={36} disabled={busy} className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 font-normal"/><span className="mt-1 block text-xs font-normal text-slate-600">Возьмите номер созданного возврата в кабинете ЮKassa.</span></label>}
   <label className="mt-3 block text-sm font-bold text-slate-700">Причина<textarea ref={focus} value={reason} onChange={e=>setReason(e.target.value)} required maxLength={500} rows={3} disabled={busy} className="mt-1 block w-full resize-y rounded-lg border border-slate-300 bg-white p-3 font-normal text-slate-950"/></label>
   <p className="mt-1 text-right text-xs text-slate-600">{reason.length}/500</p>
-  {kind==='approve'&&<label className="mt-2 flex items-start gap-2 text-sm text-slate-800"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} required disabled={busy} className="mt-1"/>Вернуть полную сумму и прекратить размещение.</label>}
+  {kind==='approve'&&<label className="mt-2 flex items-start gap-2 text-sm text-slate-800"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} required disabled={busy} className="mt-1"/>Вернуть полную сумму этой покупки.</label>}
   {error&&<p role="alert" className="mt-2 text-sm text-red-800">{error}</p>}
   <div className="mt-3 flex flex-wrap gap-2"><button type="submit" disabled={busy} className={button}>{kind==='approve'?'Подтвердить возврат':'Сверить возврат'}</button><button type="button" disabled={busy} className={button} onClick={onCancel}>Отмена</button></div>
  </form>;
@@ -67,7 +67,13 @@ function RefundWorkspace({actor}:{actor:string}){
    if(!scope.active)return;
    createRefundActionDrafts(sessionStorage).clear(actor,command.input.id);setPending(null);
    setNotice(command.action==='approve'?'Решение о возврате сохранено. Обработчик выполнит возврат отдельно.':'Результат возврата проверен. Обновите журнал для текущего состояния.');
-  }catch(error){if(scope.active){if(error instanceof Error&&error.message==='DRAFT_NOT_SAVED')setStorageError('Браузер не сохранил номер операции. Команда не отправлена.');else setError('Результат операции не подтверждён. Проверьте сохранённое решение или повторите ту же операцию.');}}
+  }catch(error){if(scope.active){
+   if(!readback&&action.action==='approve'&&error instanceof AdminRefundClientError&&error.code==='REFUND_NOT_LATEST'){
+    try{createRefundActionDrafts(sessionStorage).clear(actor,action.input.id);setPending(null);setPage(null);setError(error.message+' Обновите журнал.');}
+    catch{setStorageReady(false);setStorageError('Браузер не очистил отклонённое решение. Новые решения недоступны.');}
+   }else if(error instanceof Error&&error.message==='DRAFT_NOT_SAVED')setStorageError('Браузер не сохранил номер операции. Команда не отправлена.');
+   else setError('Результат операции не подтверждён. Проверьте сохранённое решение или повторите ту же операцию.');
+  }}
   finally{if(life.current===scope){working.current=false;if(scope.active)setBusy(false);}}
  }
  return <section aria-label="Локальный журнал возвратов" aria-busy={busy}>
@@ -82,7 +88,8 @@ function RefundWorkspace({actor}:{actor:string}){
    {page.items.map(row=><li key={row.id} className="rounded-lg border border-slate-200 bg-white p-4"><div className="flex flex-wrap justify-between gap-3"><div><h3 className="font-bold text-slate-950">{types[row.targetType]??'Платёж'} · {row.id.slice(0,8)}</h3><p className="mt-1 text-sm text-slate-600"><time dateTime={row.createdAt}>{date(row.createdAt)}</time></p></div><div className="text-right"><p className="font-bold text-slate-950">{money.format(Number(row.amount))}</p><p className={'mt-1 text-sm font-semibold '+(row.appliedAt?'text-emerald-800':'text-slate-700')}>{status(row)}</p></div></div>
     {row.reason&&<p className="mt-2 text-sm text-slate-700">Причина возврата: {row.reason}</p>}
     <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer py-2">Идентификаторы платежа и размещения</summary><p className="break-all">Платёж: {row.id}</p><p className="mt-1 break-all">Размещение: {row.targetId}</p></details>
-    <div className="mt-2 flex flex-wrap gap-2">{['listing','vacancy','workRequest'].includes(row.targetType)&&row.status==='succeeded'&&row.capturedAt&&!row.approvalId&&<button type="button" className={button} disabled={busy||!!pending||!storageReady} onClick={()=>setSelection({row,kind:'approve'})}>Вернуть плату</button>}
+    {row.canRefund===false&&['listing','vacancy','workRequest'].includes(row.targetType)&&row.status==='succeeded'&&!row.approvalId&&<p className="mt-2 text-sm text-slate-600">Для возврата начните с последней покупки и завершите начатую оплату.</p>}
+    <div className="mt-2 flex flex-wrap gap-2">{['listing','vacancy','workRequest'].includes(row.targetType)&&row.status==='succeeded'&&row.capturedAt&&!row.approvalId&&row.canRefund!==false&&<button type="button" className={button} disabled={busy||!!pending||!storageReady} onClick={()=>setSelection({row,kind:'approve'})}>Вернуть плату</button>}
     {row.operationId&&row.attempted&&!row.appliedAt&&row.refundStatus!=='canceled'&&<button type="button" className={button} disabled={busy||!!pending||!storageReady} onClick={()=>setSelection({row,kind:'recover'})}>{row.providerRefundId?'Сверить возврат':'Сверить по номеру ЮKassa'}</button>}</div>
    </li>)}
   </ul>{page.items.length===0&&<p className="p-6 text-center text-sm text-slate-600">В этом TEST-магазине платежей пока нет.</p>}</div>{page.nextAfter&&<button type="button" className={button+' mt-3'} disabled={busy} onClick={()=>void load(page.nextAfter)}>Следующие платежи</button>}</>}

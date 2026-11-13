@@ -171,3 +171,13 @@ for (const [file, before, after] of deploymentAssertionPairs) {
     assert.equal(run(['--base', 'HEAD']).status, 1, 'an approved pair cannot conceal another removed assertion');
   });
 }
+
+test('reviewed renewal boundary changes only one exact56 rejection to unknown57, retaining all other assertion protection',t=>{
+ const {put,git,run}=fixture(t),target='tests/refund-operator-role.test.mjs',other='tests/another-role.test.mjs';
+ const before=" for(const schema of [53,56,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));",after=before.replace('53,56','53,57');
+ put(target,before+'\n');put(other,before+'\n');git('add','.');git('commit','-qm','known renewal boundary');const base=git('rev-parse','HEAD').toString().trim();
+ put(target,after+'\n');assert.equal(run(['--base',base]).status,0);
+ put(target,after.replace('53,57','53,58')+'\n');assert.equal(run(['--base',base]).status,1);
+ put(target,after+'\n'+after+'\n');assert.equal(run(['--base',base]).status,1);
+ put(target,after+'\n');put(other,after+'\n');assert.equal(run(['--base',base]).status,1);
+});

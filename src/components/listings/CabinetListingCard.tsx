@@ -11,6 +11,7 @@ import type {ListingCabinetSummary} from '@/lib/listing-cabinet-contract';
 import {ListingKindBadge, StatusBadge} from './ListingBadges';
 import {ListingOwnerVisibilityButton} from './ListingOwnerVisibilityButton';
 import {ListingOwnerRemoveButton} from './ListingOwnerRemoveButton';
+import {usePlacementRenewals} from './ListingWorkflowProvider';
 
 const action = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-blue-800 transition hover:border-blue-300 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700';
 const readThumbnail = createListingThumbnailQueue(productionListingMedia.read);
@@ -45,6 +46,7 @@ function CabinetThumbnail({owner, photoId, title}: {owner: string; photoId: stri
 export function CabinetListingCard({owner, item, open, onToggle, children,managePublication=false,onChanged=()=>{}}: {
   owner: string; item: ListingCabinetSummary; open: boolean; onToggle: () => void; children: ReactNode;managePublication?:boolean;onChanged?:()=>void;
 }) {
+  const renewals=usePlacementRenewals();
   const editable = item.card.status === 'draft';
   const title = item.title || 'Без названия';
   const href = editable ? `/razmestit/obyavlenie?draft=${item.id}` : item.card.status === 'published' ? `/obyavlenie/${item.id}` : null;
@@ -75,6 +77,7 @@ export function CabinetListingCard({owner, item, open, onToggle, children,manage
        <div className="absolute bottom-full right-0 z-30 mb-2 w-60 max-w-[80vw] rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
         {['draft','published','archived','blocked'].includes(item.card.status)&&<Link href={`/razmestit/obyavlenie?draft=${item.id}`} className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-blue-800 hover:bg-blue-50">Редактировать</Link>}
         {item.card.status==='published'&&<Link href={`/obyavlenie/${item.id}`} className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-blue-800 hover:bg-blue-50">Посмотреть</Link>}
+        {renewals&&['published','expired'].includes(item.card.status)&&<Link href={`/cabinet/prodlit?type=listing&id=${item.id}&revision=${item.revision}`} className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-blue-800 hover:bg-blue-50">Продлить размещение</Link>}
         {['published','archived'].includes(item.card.status)&&<ListingOwnerVisibilityButton owner={owner} id={item.id} revision={item.revision} restore={item.card.status==='archived'} onChanged={onChanged}/>}
         {item.card.status==='blocked'&&<ListingOwnerRemoveButton owner={owner} id={item.id} revision={item.revision} onChanged={onChanged}/>}
         {!['draft','published','archived','blocked'].includes(item.card.status)&&<p className="px-3 py-2 text-sm text-slate-600">Статус объявления указан в карточке.</p>}

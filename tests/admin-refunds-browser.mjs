@@ -29,7 +29,7 @@ test('local refund admin UI preserves uncertain IDs, scopes private data to curr
   const id=randomUUID(),recoveryId=randomUUID(),providerId=randomUUID();
   const row={id,targetType:'listing',targetId:randomUUID(),amount:'199.00',createdAt:'2026-11-12T10:00:00.123456Z',status:'succeeded',capturedAt:'2026-11-12T10:01:00Z',operationId:null,attempted:false,approvalId:null,reason:null,approvedAt:null,providerRefundId:null,refundStatus:null,appliedAt:null};
   const unknown={...row,id:randomUUID(),targetType:'workRequest',targetId:randomUUID(),operationId:recoveryId,attempted:true,approvalId:recoveryId,reason:'Возврат за ошибочное размещение.',approvedAt:'2026-11-12T10:02:00Z'};
-  const rows=[row,unknown];let approval;
+  const rows=[row,unknown],stale={...row,id:randomUUID(),targetId:randomUUID(),canRefund:true},failedClear={...stale,id:randomUUID(),targetId:randomUUID()};let approval;
   await context.route('**/*',async route=>{
    const req=route.request(),url=new URL(req.url());if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){foreign.push(url.hostname);return route.abort();}
    if(url.pathname==='/api/account/session')return route.fulfill({json:{user:{id:actor,email:'synthetic-admin@example.invalid',role,isBlocked:false}}});
@@ -37,6 +37,7 @@ test('local refund admin UI preserves uncertain IDs, scopes private data to curr
     const command=req.postDataJSON();calls.push(command);assert.equal(req.method(),'POST');assert.equal(req.headers()['x-blizhniy-request'],'1');assert.equal(req.headers().authorization,undefined);
     if(command.action==='list'){if(gate){entered();await gate;}return route.fulfill({json:{items:rows,nextAfter:null}});}
     if(command.action==='approve'){
+     if(command.input.paymentIntentId===stale.id||command.input.paymentIntentId===failedClear.id){(command.input.paymentIntentId===stale.id?stale:failedClear).canRefund=false;return route.fulfill({status:409,json:{error:{code:'REFUND_NOT_LATEST'}}});}
      approval={...command.input,amount:row.amount,approvedAt:'2026-11-12T10:02:00Z'};Object.assign(row,{approvalId:approval.id,reason:approval.reason,approvedAt:approval.approvedAt});
      if(lost){lost=false;return route.abort();}return route.fulfill({json:approval});
     }
@@ -58,6 +59,11 @@ test('local refund admin UI preserves uncertain IDs, scopes private data to curr
   await region().getByRole('button',{name:'Сверить по номеру ЮKassa',exact:true}).click();const recover=page.getByRole('form',{name:'Сверка возврата',exact:true});
   await recover.getByRole('textbox',{name:/Номер возврата в ЮKassa/}).fill(providerId);await recover.getByRole('textbox',{name:'Причина',exact:true}).fill('Сверка известного возврата после потери ответа.');await recover.getByRole('button',{name:'Сверить возврат',exact:true}).click();
   await region().getByText('Результат возврата проверен. Обновите журнал для текущего состояния.',{exact:true}).waitFor();await region().getByRole('button',{name:'Обновить журнал',exact:true}).click();await region().getByText('Возврат выполнен',{exact:true}).waitFor();assert.equal(calls.filter(c=>c.action==='recover').length,1);
+  rows.push(stale);await region().getByRole('button',{name:'Обновить журнал',exact:true}).click();await region().getByRole('button',{name:'Вернуть плату',exact:true}).click();
+  await form.getByRole('textbox',{name:'Причина',exact:true}).fill('Возврат более ранней покупки.');await form.getByRole('checkbox').check();await form.getByRole('button',{name:'Подтвердить возврат',exact:true}).click();
+  await region().getByText('Решение не принято. Сначала верните последнюю покупку и завершите начатую оплату. Обновите журнал.',{exact:true}).waitFor();
+  assert.equal(await region().getByRole('heading',{name:'Сохранённая операция',exact:true}).count(),0);assert.equal(await page.evaluate(actor=>sessionStorage.getItem('blizhniy-refund-action:'+actor),actor),null);
+  await region().getByRole('button',{name:'Обновить журнал',exact:true}).click();await region().getByText('Для возврата начните с последней покупки и завершите начатую оплату.',{exact:true}).waitFor();assert.equal(await region().getByRole('button',{name:'Вернуть плату',exact:true}).count(),0);
   await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
   for(const width of [320,768,1024,1440]){
    await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
@@ -69,6 +75,12 @@ test('local refund admin UI preserves uncertain IDs, scopes private data to curr
   assert.equal(await region().count(),0);assert.equal(await page.getByText(row.id.slice(0,8),{exact:false}).count(),0);
   actor='44444444-4444-4444-8444-444444444444';role='admin';await page.reload({waitUntil:'domcontentloaded'});await region().getByRole('button',{name:'Обновить журнал',exact:true}).waitFor();await region().getByText('Возврат выполнен',{exact:true}).waitFor();
   assert.equal(await region().getByRole('heading',{name:'Сохранённая операция',exact:true}).count(),0);assert.equal(calls.at(-1).expectedAdminId,actor);
+  rows.push(failedClear);await region().getByRole('button',{name:'Обновить журнал',exact:true}).click();await region().getByRole('button',{name:'Вернуть плату',exact:true}).click();
+  await page.evaluate(()=>{const original=Storage.prototype.removeItem;Storage.prototype.removeItem=function(key){if(key.startsWith('blizhniy-refund-action:'))throw Error('Synthetic removal failure');return original.call(this,key);};});
+  await form.getByRole('textbox',{name:'Причина',exact:true}).fill('Проверка отказа очистки операции.');await form.getByRole('checkbox').check();await form.getByRole('button',{name:'Подтвердить возврат',exact:true}).click();
+  await region().getByText('Браузер не очистил отклонённое решение. Новые решения недоступны.',{exact:true}).waitFor();assert.equal(await region().getByRole('button',{name:'Повторить ту же операцию',exact:true}).isDisabled(),true);
+  const retained=calls.at(-1);assert.equal(retained.action,'approve');assert.equal(await page.evaluate(actor=>JSON.parse(sessionStorage.getItem('blizhniy-refund-action:'+actor)).input.id,actor),retained.input.id);
+  await page.reload({waitUntil:'domcontentloaded'});await region().getByRole('button',{name:'Повторить ту же операцию',exact:true}).click();await region().getByText('Решение не принято. Сначала верните последнюю покупку и завершите начатую оплату. Обновите журнал.',{exact:true}).waitFor();assert.equal(calls.at(-1).input.id,retained.input.id);assert.equal(await page.evaluate(actor=>sessionStorage.getItem('blizhniy-refund-action:'+actor),actor),null);
   rows.push({...row,id:randomUUID(),targetId:randomUUID(),approvalId:null,reason:null,approvedAt:null});const beforeBlocked=calls.filter(c=>c.action==='approve').length;
   await page.addInitScript(()=>Object.defineProperty(window,'sessionStorage',{get(){throw Error('Synthetic blocked storage');}}));
   await page.reload({waitUntil:'domcontentloaded'});await region().getByText('Браузер не может прочитать сохранённую операцию. Новые решения о возврате недоступны.',{exact:true}).waitFor();

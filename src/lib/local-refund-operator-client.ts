@@ -2,7 +2,7 @@ import {request} from 'node:http';
 import {lstat,realpath} from 'node:fs/promises';
 import {basename,dirname,isAbsolute,join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {parseAdminRefundCommand,parseAdminRefundResult} from './admin-refund-contract.ts';
+import {AdminRefundRejectedError,parseAdminRefundCommand,parseAdminRefundResult} from './admin-refund-contract.ts';
 import {hashSessionToken} from './identity';
 /** No network host/redirect/retry. A timeout may hide a committed action; reuse its original ID explicitly. */
 export async function callLocalRefundOperator(socketPath:string,token:string,value:unknown,signal?:AbortSignal){
@@ -21,8 +21,12 @@ export async function callLocalRefundOperator(socketPath:string,token:string,val
     let size=0,text='';const decoder=new TextDecoder('utf-8',{fatal:true});
     incoming.on('data',(chunk:Buffer)=>{try{size+=chunk.length;if(size>262144)throw Error();text+=decoder.decode(chunk,{stream:true});}catch{incoming.destroy();reject(Error());}});
     incoming.on('error',reject);incoming.on('aborted',()=>reject(Error()));
-    incoming.on('end',()=>{try{if(incoming.statusCode!==200||incoming.headers['content-type']!=='application/json')throw Error();resolve(JSON.parse(text+decoder.decode()));}catch{reject(Error());}});
+    incoming.on('end',()=>{try{
+     if(incoming.headers['content-type']!=='application/json')throw Error();const value=JSON.parse(text+decoder.decode());
+     if(command.action==='approve'&&incoming.statusCode===409&&value?.error?.code==='REFUND_NOT_LATEST'&&Object.keys(value).join()==='error'&&Object.keys(value.error).join()==='code')throw new AdminRefundRejectedError();
+     if(incoming.statusCode!==200)throw Error();resolve(value);
+    }catch(error){reject(error instanceof AdminRefundRejectedError?error:Error());}});
    });outgoing.on('error',reject);outgoing.end(body);
   });return parseAdminRefundResult(command,payload);
- }catch{throw Error('Local refund operator unavailable');}
+ }catch(error){if(error instanceof AdminRefundRejectedError)throw error;throw Error('Local refund operator unavailable');}
 }

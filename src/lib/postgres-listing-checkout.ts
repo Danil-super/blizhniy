@@ -31,42 +31,61 @@ export class PostgresListingCheckoutStore{
  private readonly intents:PostgresPaymentIntentStore;
  private readonly config:ListingCheckoutConfig;
  private readonly targetType:'listing'|'vacancy'|'workRequest';
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,config:ListingCheckoutConfig,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest'}={}){
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,config:ListingCheckoutConfig,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest';renewals?:boolean}={}){
   if(typeof window!=='undefined')throw new ListingCheckoutUnavailableError();
   this.targetType=policy.targetType??'listing';
   if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!config.isTest||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
-  this.forms=new PostgresListingFormStore(db);this.intents=new PostgresPaymentIntentStore(db);this.config={...config};
+  if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!config.isTest||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
+  this.forms=new PostgresListingFormStore(db,{postmoderation:policy.renewals===true,renewals:policy.renewals===true});this.intents=new PostgresPaymentIntentStore(db);this.config={...config};
  }
  private owner<T>(token:string,expectedOwner:string,work:(tx:PostgresQueries,owner:string)=>Promise<T>){
   const owner=parseListingDraftId(expectedOwner);return withAppSessionTransaction(this.db,token,(tx,user)=>{
    if(user.id!==owner)throw new AppSessionAccessError();return work(tx,user.id);
   });
  }
+ private async renewalBasis(tx:PostgresQueries,owner:string,id:string){
+  if(!this.policy.renewals)return;
+  const table=this.targetType==='listing'?'listings':'work_publications';
+  const row=(await tx.query<{available:boolean}>(`select (not target.is_paid or
+   (select count(*) from app.payment_checkout_intents i join app.payment_orders o on o.id=i.id and o.status='succeeded'
+    join app.payment_fulfillments f on f.intent_id=i.id where i.owner_id=target.author_id and i.target_type=$3 and i.target_id=target.id
+     and i.merchant_shop_id=$4 and i.is_test=$5 and f.published_at=target.published_at and f.expires_at=target.expires_at)=1) as available
+   from app.${table} target where target.id=$1 and target.author_id=$2`,[id,owner,this.targetType,this.config.shopId,this.config.isTest])).rows[0];
+  if(!row?.available)throw new ListingCheckoutUnavailableError();
+ }
  private async inspected(tx:PostgresQueries,owner:string,id:string,revision:string):Promise<Offer>{
   if(this.targetType!=='listing'){
-   const {issues}=await inspectWorkPurchase(this.db,tx,owner,id,revision,this.targetType,false);
+   const {issues}=await inspectWorkPurchase(this.db,tx,owner,id,revision,this.targetType,false,this.policy.renewals===true);
    if(issues.length)throw new ListingCheckoutUnavailableError();
    const offer=(await tx.query<Offer>(`select id,name,price::text as amount,'RUB' as currency,duration_days as "durationDays"
     from app.tariffs where id=$1 and action=$2 and active and price>0 and duration_days between 1 and 3650`,
     this.targetType==='vacancy'?['vacancy-publication','vacancy_publication']:['work-request-publication','work_request_publication'])).rows[0];
-   if(!offer)throw new ListingCheckoutUnavailableError();return offer;
+   if(!offer)throw new ListingCheckoutUnavailableError();await this.renewalBasis(tx,owner,id);return offer;
   }
-  const {check}=await this.forms.inspectInTransaction(tx,owner,id,revision);
+  const {check}=await this.forms.inspectInTransaction(tx,owner,id,revision,this.policy.renewals===true);
   if(!check.checksPassed||!check.tariff||check.tariff.amount==='0.00')throw new ListingCheckoutUnavailableError();
   if(this.policy.postmoderation){
    const blocked=await tx.query('select listing_id from app.listing_blocks where listing_id=$1',[id]);
    if(blocked.rowCount!==0)throw new ListingCheckoutUnavailableError();
+   if(this.policy.renewals){
+    const current=(await tx.query<{available:boolean}>(`select (not is_paid and status='draft' and published_at is null and expires_at is null or
+     is_paid and published_at is not null and expires_at is not null and
+      (status='published' or status in ('archived','expired') and expires_at<=clock_timestamp())) and
+     not exists(select 1 from app.listing_owner_removals r where r.listing_id=l.id) as available from app.listings l where id=$1`,[id])).rows[0];
+    if(!current?.available)throw new ListingCheckoutUnavailableError();
+   }
   }else{
    const approval=await tx.query(`select id from app.listing_moderation where listing_id=$1 and revision=$2::bigint and state='approved' for share`,[id,revision]);
    if(approval.rowCount!==1)throw new ListingCheckoutUnavailableError();
   }
-  return check.tariff;
+  await this.renewalBasis(tx,owner,id);return check.tariff;
  }
  private async keyed(tx:PostgresQueries,owner:string,key:string){
   return(await tx.query<OrderRow>(`select ${columns} ${source} where o.owner_id=$1 and o.creation_key=$2`,[owner,key])).rows[0];
  }
  private async active(tx:PostgresQueries,owner:string,id:string){
-  return(await tx.query<OrderRow>(`select ${columns} ${source} where o.owner_id=$1 and o.target_type='${this.targetType}' and o.target_id=$2 and o.status in ('created','pending','succeeded')`,[owner,id])).rows[0];
+  return(await tx.query<OrderRow>(`select ${columns} ${source} where o.owner_id=$1 and o.target_type='${this.targetType}' and o.target_id=$2 and
+   ${this.policy.renewals?"(o.status in ('created','pending') or o.status='succeeded' and not exists(select 1 from app.payment_fulfillments f where f.intent_id=o.id))":"o.status in ('created','pending','succeeded')"}`,[owner,id])).rows[0];
  }
  async preview(token:string,owner:string,listingId:unknown,expectedRevision:unknown){
   const id=parseListingDraftId(listingId),revision=parseListingDraftRevision(expectedRevision);
@@ -107,11 +126,11 @@ export class PostgresListingCheckoutStore{
     tariffId:intent.tariffId,amount:intent.amount,durationDays:intent.durationDays,shopId:intent.shopId,isTest:intent.isTest};
   });
  }
- /** Historical execution receipt, not a claim that the target is still public. No provider I/O. */
+ /** Historical purchased period (only its added interval for renewals), not current visibility. No provider I/O. */
  async readOrder(token:string,owner:string,paymentId:unknown):Promise<ListingPaymentSnapshot|null>{
   const id=parseListingDraftId(paymentId);return this.owner(token,owner,async(tx,actor)=>{
    const row=(await tx.query<OrderRow&{publishedAt:string|null;expiresAt:string|null}>(`select ${columns},
-    to_char(f.published_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
+    to_char(${this.policy.renewals?"greatest(f.published_at,f.expires_at-i.duration_days*interval '24 hours')":'f.published_at'} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
     to_char(f.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "expiresAt"
     ${source} left join app.payment_fulfillments f on f.intent_id=o.id
     where o.id=$1 and o.owner_id=$2 and o.target_type='${this.targetType}' and i.merchant_shop_id=$3 and i.is_test=$4`,

@@ -1,3 +1,4 @@
+import {readPlacementRenewalsEnabled} from '../src/lib/placement-renewal-config.ts';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {randomBytes,createHash} from 'node:crypto';
@@ -72,9 +73,11 @@ export async function verifyLocalPrimarySchema(state){
   const extras=[...await getLocalPrimaryExtraMigrations(),...await getLocalTelegramMigrations(),...await getLocalDeletionMigrations(),...await getLocalCheckoutEditMigrations(),...await getLocalApplicationContactMigrations(),...await getLocalBookingLifecycleMigrations(),...await getLocalWorkOwnerActionsMigrations(),...await getLocalResponseCheckoutMigrations(),...await getLocalCheckoutCancellationMigrations()];
   const expected=[...getBootstrapPlan({includeListingContactMethod:true}).map(({name,sha256})=>({name,sha256})),...extras.map(({name,sha256})=>({name,sha256}))];
   const journal=(await owner.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-  const refundSchema=journal.length===55&&JSON.stringify(journal)===JSON.stringify(getRefundOperatorRolePlan(state.database).journal);
+  const schema=readPlacementRenewalsEnabled({...process.env,BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:state.origin,BLIZHNIY_LISTING_WORKFLOW:'postmoderation'})?56:55;
+  const refundSchema=journal.length===schema&&JSON.stringify(journal)===JSON.stringify(getRefundOperatorRolePlan(state.database,{schema}).journal);
+  if(schema===56&&!refundSchema)throw Error('Local renewal schema required; automatic migration refused');
   if(JSON.stringify(journal)!==JSON.stringify(expected)&&!refundSchema)throw Error('Local schema changed; data preserved, automatic migration refused');
-  if(refundSchema)await assertRefundSchema(owner,55,{localPrimary:true});
+  if(refundSchema)await assertRefundSchema(owner,schema,{localPrimary:true});
   const role=(await owner.query("select rolsuper,rolcreatedb,rolcreaterole,rolinherit,rolreplication,rolbypassrls from pg_roles where rolname='blizhniy_runtime'")).rows[0];
   if(!role||Object.values(role).some(Boolean))throw Error('Unexpected local runtime authority');
   await owner.query('commit');

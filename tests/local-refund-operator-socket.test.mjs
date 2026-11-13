@@ -50,3 +50,12 @@ test('socket shutdown drains a running command, never retries and redacts driver
  assert.equal((await work).id,id);await assert.rejects(closing,{message:'Local refund operator unavailable'});await assert.rejects(service.close());
  assert.equal(state.calls.filter(c=>c[0]==='approve').length,1);assert.equal(state.calls.filter(c=>c[0]==='close').length,1);await assert.rejects(lstat(service.socketPath));
 });
+test('a definite approval rejection crosses private IPC without exposing SQL or treating readback as failed',async()=>{
+ const state=runtime();state.approve=async()=>{throw Object.assign(Error('private SQL detail'),{code:'REFUND_NOT_LATEST'});};state.readForAdmin=state.approve;
+ const service=await startLocalRefundOperatorServer(state,{createCommands:createAdminRefundCommands});
+ try{
+  await assert.rejects(callLocalRefundOperator(service.socketPath,token,command),error=>error.name==='AdminRefundRejectedError'&&!error.message.includes('private'));
+  const result=await raw(service.socketPath,{body:JSON.stringify({token,command})});assert.equal(result.status,409);assert.equal(result.text,'{"error":{"code":"REFUND_NOT_LATEST"}}');
+  await assert.rejects(callLocalRefundOperator(service.socketPath,token,{action:'read',expectedAdminId:actor,input:id}),{message:'Local refund operator unavailable'});
+ }finally{await service.close();}
+});

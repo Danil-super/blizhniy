@@ -2,7 +2,7 @@ import {withAppSessionTransaction} from './app-session-transaction';
 import {parseListingDraftId} from './listing-draft-contract.ts';
 import type {PostgresDatabase} from './postgres';
 export type AdminRefundPayment={id:string;targetType:string;targetId:string;amount:string;createdAt:string;status:string;capturedAt:string|null;
- operationId:string|null;attempted:boolean;approvalId:string|null;reason:string|null;approvedAt:string|null;providerRefundId:string|null;refundStatus:string|null;appliedAt:string|null};
+ operationId:string|null;attempted:boolean;approvalId:string|null;reason:string|null;approvedAt:string|null;providerRefundId:string|null;refundStatus:string|null;appliedAt:string|null;canRefund?:boolean};
 export type AdminRefundPage={items:AdminRefundPayment[];nextAfter:string|null};
 /** Local operator read model. Receipt sources, session hashes and payer contacts never leave the process. */
 export class PostgresAdminRefundJournal {
@@ -21,6 +21,7 @@ export class PostgresAdminRefundJournal {
    const rows=(await tx.query<AdminRefundPayment>(`select i.id,i.target_type as "targetType",i.target_id as "targetId",i.amount::text,
     to_char(i.created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "createdAt",p.status,v.captured_at as "capturedAt",
     b.id as "operationId",exists(select 1 from app.payment_refund_send_attempts where operation_id=b.id) as attempted,
+    app.refund_target_admitted(i.id,coalesce(b.id,i.id)) as "canRefund",
     a.id as "approvalId",a.reason,to_char(a.approved_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "approvedAt",
     coalesce(l.provider_refund_id,c.provider_refund_id) as "providerRefundId",o.status as "refundStatus",
     coalesce(to_char(e.applied_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),to_char(r.applied_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) as "appliedAt"

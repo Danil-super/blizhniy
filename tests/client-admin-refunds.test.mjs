@@ -14,3 +14,10 @@ test('browser unknown outcomes are redacted and never automatically retried; abo
  await assert.rejects(createAdminRefundClient(async()=>new Response('x'.repeat(262145))).call(command));
  const denied=createAdminRefundClient(async()=>Response.json({error:{code:'UNAUTHENTICATED'}},{status:401}));await assert.rejects(denied.call(command),error=>error.code==='UNAUTHENTICATED');
 });
+test('only a definite latest-purchase rejection is actionable; wrong status, shape and readback remain uncertain',async()=>{
+ for(const [status,payload,expected] of [[409,{error:{code:'REFUND_NOT_LATEST'}},'REFUND_NOT_LATEST'],[503,{error:{code:'REFUND_NOT_LATEST'}},'UNKNOWN'],[409,{error:{code:'REFUND_NOT_LATEST',private:'detail'}},'UNKNOWN']]){
+  const client=createAdminRefundClient(async()=>Response.json(payload,{status}));await assert.rejects(client.call(command),error=>error.code===expected);
+ }
+ const client=createAdminRefundClient(async()=>Response.json({error:{code:'REFUND_NOT_LATEST'}},{status:409}));
+ await assert.rejects(client.call({action:'read',expectedAdminId:actor,input:id}),error=>error.code==='UNKNOWN');
+});

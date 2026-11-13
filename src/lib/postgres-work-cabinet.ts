@@ -9,13 +9,13 @@ import {effectivePublicationStatusSql} from './publication-effective-status';
 
 /** Separate bounded read model: no changed write contract, new privileges or per-card SQL round trips. */
 export class PostgresWorkCabinetStore{
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>){if(typeof window!=='undefined')throw Error('Work cabinet storage is server-only');}
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly renewals=false){if(typeof window!=='undefined')throw Error('Work cabinet storage is server-only');}
  list(token:string,expectedOwner:string,kind:WorkPublicationKind,after:unknown){
   const owner=parseListingDraftId(expectedOwner),cursor=parseListingDraftCursor(after);
   if(kind!=='vacancy'&&kind!=='workRequest')throw new WorkPublicationAccessError();
   return withAppSessionTransaction(this.db,token,async(tx,user)=>{
    if(user.id!==owner)throw new WorkPublicationAccessError();
-   const effective=effectivePublicationStatusSql('w');
+   const original=effectivePublicationStatusSql('w'),effective=this.renewals?`case when w.status='archived' and w.is_paid and w.expires_at<=statement_timestamp() then 'expired' else ${original} end`:original;
    const status=readPostmoderationEnabled()&&kind==='workRequest'?`case when exists(select 1 from app.applications chosen where chosen.work_publication_id=w.id and chosen.status='selected' and chosen.is_paid and chosen.sent_at is not null) then 'assigned' else ${effective} end`:effective;
    const rows=(await tx.query<WorkCabinetItem>(`select w.id,w.kind,w.revision::text as revision,${status} as status,w.is_paid as paid,w.title,
     to_char(w.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "updatedAt",

@@ -1,3 +1,4 @@
+import {readPlacementRenewalsEnabled} from '../src/lib/placement-renewal-config.ts';
 import {realpathSync} from 'node:fs';
 import {mkdtemp,symlink,rm} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
@@ -30,13 +31,14 @@ export async function startLocalPrimaryRefunds({stateFile,signal,report}={}){
    !(signal instanceof AbortSignal)||signal.aborted||typeof report!=='function')throw unavailable();
   const state=readLocalPrimaryState(stateFile,root),parent=dirname(stateFile),config=readLocalPrimaryRefundConfig(join(parent,'refunds.json'),state);
   if(process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!==state.origin)throw unavailable();
+  const schema=readPlacementRenewalsEnabled()?56:55;
   const env={NODE_ENV:'production',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_DB_HOST:'127.0.0.1',
    BLIZHNIY_DB_PORT:String(state.dbPort),BLIZHNIY_DB_NAME:state.database,BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:join(parent,'refund-db-ca.pem'),
    BLIZHNIY_PAYMENT_SHOP_ID:localPrimaryMerchant.shopId,BLIZHNIY_PAYMENT_SECRET_KEY:localPrimaryMerchant.secretKey};
   const certificate=await verifyLocalPrimaryRefundTarget(env,{stateFile,project:root});signal.throwIfAborted();
   directory=await mkdtemp(join(parent,'refund-runtime-'));signal.throwIfAborted();
   const operatorPath=join(directory,'operator'),workerPath=join(directory,'worker');
-  buildRefundOperator(operatorPath);signal.throwIfAborted();buildRefundWorker(workerPath,{schema:55});signal.throwIfAborted();
+  buildRefundOperator(operatorPath,{schema});signal.throwIfAborted();buildRefundWorker(workerPath,{schema});signal.throwIfAborted();
   for(const destination of [operatorPath,workerPath])await symlink(join(root,'node_modules'),join(destination,'node_modules'),'dir');
   const require=createRequire(join(workerPath,'package.json')),{PostgresDatabase,readPostgresConfig}=require('./compiled/lib/postgres.js');
   const ownerConfig=readPostgresConfig({...env,BLIZHNIY_DB_USER:'postgres',BLIZHNIY_DB_PASSWORD:state.ownerPassword});
@@ -45,8 +47,8 @@ export async function startLocalPrimaryRefunds({stateFile,signal,report}={}){
   await ownerDb.transaction(async tx=>{
    await tx.query("set local statement_timeout='5s'");await tx.query("set local lock_timeout='1s'");
    const journal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   if(JSON.stringify(journal)!==JSON.stringify(getRefundOperatorRolePlan(state.database).journal))throw unavailable();
-   await assertRefundSchema(tx,55,{localPrimary:true});
+   if(JSON.stringify(journal)!==JSON.stringify(getRefundOperatorRolePlan(state.database,{schema}).journal))throw unavailable();
+   await assertRefundSchema(tx,schema,{localPrimary:true});
   },{readOnly:true});signal.throwIfAborted();
   const fetcher=await createLocalPrimaryRefundProvider({state,ownerDb});signal.throwIfAborted();
   const operator=await import(pathToFileURL(join(operatorPath,'scripts/local-refund-operator-runtime.mjs')).href);

@@ -8,7 +8,7 @@ test('refund operator plan is separate from sending, scope-limited and retains t
  assert.equal(plan.role,'blizhniy_refund_operator');assert.equal(plan.journal.length,55);
  assert.deepEqual(plan.journal.slice(0,54),getRefundWorkerRolePlan('blizhniy_test').journal);
  assert.deepEqual(getRefundWorkerRolePlan('blizhniy_test',{schema:55}).grants,getRefundWorkerRolePlan('blizhniy_test').grants);
- for(const schema of [53,56,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));
+ for(const schema of [53,57,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));
  assert.equal(plan.journal.at(-1).name,'0055-refund-operator-locks.sql');
  assert.match(plan.createRole,/nologin.*nosuperuser.*nocreatedb.*nocreaterole.*noinherit.*noreplication.*nobypassrls.*connection limit 4/);
  for(const sql of plan.grants){assert.match(sql,/^grant /);assert.match(sql,/ to blizhniy_refund_operator$/);assert.equal(/\ball\b|with grant option|blizhniy_runtime/i.test(sql),false);}

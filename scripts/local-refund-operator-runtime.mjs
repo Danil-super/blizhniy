@@ -50,7 +50,10 @@ async function createRuntime(environment,options,database,certificate){
     try{
      await verify();if(closed)throw unavailable();if(merchantAdmission)await admitMerchant();
      const result=await work();if(closed)throw unavailable();return result;
-    }catch{throw unavailable();}
+    }catch(error){
+     if(!closed&&typeof modules.RefundApprovalOrderError==='function'&&error instanceof modules.RefundApprovalOrderError)throw Object.assign(unavailable(),{code:'REFUND_NOT_LATEST'});
+     throw unavailable();
+    }
    });
    return active.finally(()=>{active=undefined;});
   }

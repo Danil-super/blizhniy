@@ -14,16 +14,17 @@ export async function startLocalRefundOperatorServer(runtime,{createCommands=com
   const socketPath=join(directory,'operator.sock');if(Buffer.byteLength(socketPath)>100)throw unavailable();
   server=createServer({maxHeaderSize:4096,requestTimeout:3000,headersTimeout:3000},async(req,res)=>{
    const reply=(status,body)=>{if(res.destroyed)return;res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Connection':'close'});res.end(body);};
-   const lifetime=setTimeout(()=>res.destroy(),75000);let bodyTimer;
+   const lifetime=setTimeout(()=>res.destroy(),75000);let bodyTimer,approval=false;
    try{
     if(closed||req.method!=='POST'||req.url!=='/command'||req.headers.host!=='refund-operator.invalid'||req.headers.origin||req.headers['content-type']!=='application/json'||
      req.headers['content-length']!==undefined&&(!/^\d+$/.test(req.headers['content-length'])||Number(req.headers['content-length'])>4096))throw unavailable();
     bodyTimer=setTimeout(()=>req.destroy(),2000);let size=0,text='';const decoder=new TextDecoder('utf-8',{fatal:true});
     for await(const chunk of req){size+=chunk.length;if(size>4096)throw unavailable();text+=decoder.decode(chunk,{stream:true});}
     clearTimeout(bodyTimer);text+=decoder.decode();if(closed||req.aborted||res.destroyed)throw unavailable();
-    const result=await commands(JSON.parse(text)),body=JSON.stringify(result);if(Buffer.byteLength(body)>262144)throw unavailable();
+    const envelope=JSON.parse(text);approval=envelope?.command?.action==='approve';
+    const result=await commands(envelope),body=JSON.stringify(result);if(Buffer.byteLength(body)>262144)throw unavailable();
     reply(200,body);
-   }catch{reply(503,'{"error":{"code":"REFUND_OPERATOR_UNAVAILABLE"}}');}
+   }catch(error){if(approval&&error?.code==='REFUND_NOT_LATEST')reply(409,'{"error":{"code":"REFUND_NOT_LATEST"}}');else reply(503,'{"error":{"code":"REFUND_OPERATOR_UNAVAILABLE"}}');}
    finally{clearTimeout(bodyTimer);clearTimeout(lifetime);}
   });
   server.maxConnections=8;server.timeout=80000;server.on('timeout',socket=>socket.destroy());

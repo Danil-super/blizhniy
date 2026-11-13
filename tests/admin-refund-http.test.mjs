@@ -24,3 +24,10 @@ test('local refund view flag never enables an operator on production or accepts 
  assert.equal(readLocalRefundAdminEnabled(env),true);
  for(const change of [{BLIZHNIY_REFUND_ADMIN:'enabled'},{BLIZHNIY_LOCAL_PRIMARY:undefined},{NODE_ENV:'test'},{BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai'},{BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:1000'}])assert.throws(()=>readLocalRefundAdminEnabled({...env,...change}));
 });
+test('only an authenticated definite approval rejection becomes 409, without private diagnostics',async()=>{
+ const {createAdminRefundHandler}=load('admin-refund-http'),{AdminRefundRejectedError}=load('admin-refund-contract');let calls=0;
+ const handler=createAdminRefundHandler({origin},()=>({limiter:{allowProduction:async()=>true},command:async()=>{calls++;throw new AdminRefundRejectedError();}}),()=>{});
+ const approval={action:'approve',expectedAdminId:actor,input:{id:actor,paymentIntentId:actor,reason:'Возврат.'}};
+ const reply=await handler(request(approval));assert.equal(reply.status,409);assert.deepEqual(await reply.json(),{error:{code:'REFUND_NOT_LATEST'}});
+ assert.equal((await handler(request())).status,503);assert.equal((await handler(request(approval,{cookie:''}))).status,401);assert.equal(calls,2);
+});
