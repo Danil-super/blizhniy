@@ -21,6 +21,13 @@ try{
    const page=await context.newPage();page.setDefaultTimeout(15000);
    for(const path of paths){
     const errors=[],onError=error=>errors.push(error.name);page.on('pageerror',onError);
+    const legacySdkPaths=[],scripts=[];
+    const onScript=response=>{
+     if(path==='/auth'&&response.request().resourceType()==='script')scripts.push(response.text().then(body=>{
+      if(/supabase-js\/|supabase-js-web\/|GoTrueClient|gotrue-js|postgrest-js/.test(body))legacySdkPaths.push(new URL(response.url()).pathname);
+     }).catch(()=>errors.push('ScriptBodyUnavailable')));
+    };
+    page.on('response',onScript);
     try{
      const response=await page.goto(state.origin+path,{waitUntil:'networkidle',timeout:30000});
      await page.addScriptTag({path:axePath});
@@ -30,8 +37,9 @@ try{
        .filter(item=>['serious','critical'].includes(item.impact))
        .map(item=>({id:item.id,impact:item.impact,targets:item.nodes.map(node=>node.target)})),
      }));
-     results.push({path,width,status:response.status(),errors,...checked});
-    }finally{page.off('pageerror',onError);}
+     await Promise.all(scripts);
+     results.push({path,width,status:response.status(),errors,legacySdkPaths,...checked});
+    }finally{page.off('pageerror',onError);page.off('response',onScript);}
    }
   }finally{await context.close();}
  }
@@ -39,4 +47,5 @@ try{
 await writeFile(join(stateDirectory,'public-accessibility-'+randomUUID()+'.json'),JSON.stringify(results,null,2)+'\n',{flag:'wx',mode:0o600});
 const failures=results.filter(result=>result.status!==200||result.errors.length||result.overflow||result.violations.length);
 assert.deepEqual(failures,[],'Public page accessibility, runtime and responsive checks');
+assert.deepEqual(results.filter(result=>result.path==='/auth'&&result.legacySdkPaths.length),[],'Primary login must not download the legacy SDK');
 console.log(JSON.stringify({status:'passed',pages:paths.length,viewports:[320,768,1440],checks:results.length,axeSeriousCritical:0,productionTouched:false,paymentActions:false}));

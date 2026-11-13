@@ -34,3 +34,15 @@ for(const entry of ['SiteHeader.tsx','MobileBottomNav.tsx','BookingLegacyStorage
   assert.equal(eagerExternalImports('src/components/'+entry).some(name=>name.startsWith('@supabase/')),false);
  });
 }
+
+test('production login entry does not eagerly import the legacy SDK',()=>{
+ assert.equal(eagerExternalImports('src/app/auth/page.tsx').some(name=>name.startsWith('@supabase/')),false);
+});
+
+test('cabinet entries do not eagerly import administration screens',()=>{
+ for(const section of ['', 'obyavleniya','vakansii','zakazy','specialist','otkliki','bronirovaniya','fair-applications','organization','oplata']){
+  const seen=new Set();
+  eagerExternalImports(`src/app/cabinet/${section?section+'/':''}page.tsx`,seen);
+  assert.deepEqual([...seen].filter(file=>file.includes('/components/admin/')||file.endsWith('/AdminPublicationStatusForm.tsx')||file.endsWith('/AdMarqueeAdminPanel.tsx')),[],section||'overview');
+ }
+});
