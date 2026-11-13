@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LogOut } from "lucide-react";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { productionAccount, notifyAccountSessionChange } from "@/lib/local-account";
 import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
 import type { AccountAuthSnapshot } from "@/lib/account-session-state";
@@ -43,29 +42,33 @@ function LegacyLogoutButton() {
   useEffect(() => {
     let subscription: { unsubscribe: () => void } | null = null;
 
-    try {
-      const supabase = getSupabaseBrowserClient();
-
-      supabase.auth.getSession().then(({ data }) => {
-        setSignedIn(Boolean(data.session));
-      });
-
-      const authState = supabase.auth.onAuthStateChange((_event, session) => {
-        setSignedIn(Boolean(session));
-      });
-
-      subscription = authState.data.subscription;
-    } catch {
-      setSignedIn(false);
+    let active = true;
+    let sessionChanged = false;
+    async function subscribe() {
+      try {
+        const { getSupabaseBrowserClient } = await import("@/lib/supabase-browser");
+        if (!active) return;
+        const supabase = getSupabaseBrowserClient();
+        subscription = supabase.auth.onAuthStateChange((_event, session) => {
+          sessionChanged = true;
+          if (active) setSignedIn(Boolean(session));
+        }).data.subscription;
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (active && !sessionChanged) setSignedIn(Boolean(data.session));
+      } catch {
+        if (active && !sessionChanged) setSignedIn(false);
+      }
     }
-
-    return () => subscription?.unsubscribe();
+    void subscribe();
+    return () => { active = false; subscription?.unsubscribe(); };
   }, []);
 
   async function handleLogout() {
     setState("loading");
 
     try {
+      const { getSupabaseBrowserClient } = await import("@/lib/supabase-browser");
       const supabase = getSupabaseBrowserClient();
       const { error } = await supabase.auth.signOut();
 

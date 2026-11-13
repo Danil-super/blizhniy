@@ -4,9 +4,11 @@ import { useEffect } from "react";
 import { installLegacyBookingStorageCleanup } from "@/lib/booking-notifications";
 import { clearLegacyDemoPublicationsStorage } from "@/lib/demo-publications";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
-import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
+import { clearLegacySiteNotificationStorage } from "@/lib/site-notification-storage";
+import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
 
 export function BookingLegacyStorageCleanup() {
+  const useLegacy = usePrimaryAccountAuth() === null;
   useEffect(() => {
     if (shouldShowClientFallbackContent()) {
       return;
@@ -20,14 +22,20 @@ export function BookingLegacyStorageCleanup() {
     }
 
     return installLegacyBookingStorageCleanup(storage, (onChange) => {
-      if (!isSupabaseBrowserConfigured()) {
-        return () => {};
+      let active = true;
+      let subscription: { unsubscribe: () => void } | undefined;
+      if (useLegacy) {
+        void import("@/lib/supabase-browser").then(({ getSupabaseBrowserClient, isSupabaseBrowserConfigured }) => {
+          if (!active || !isSupabaseBrowserConfigured()) return;
+          subscription = getSupabaseBrowserClient().auth.onAuthStateChange(onChange).data.subscription;
+        }).catch(() => { if (active) onChange(); });
       }
-
-      const { data: { subscription } } = getSupabaseBrowserClient().auth.onAuthStateChange(onChange);
-      return () => subscription.unsubscribe();
-    }, () => clearLegacyDemoPublicationsStorage(storage));
-  }, []);
+      return () => { active = false; subscription?.unsubscribe(); };
+    }, () => {
+      clearLegacyDemoPublicationsStorage(storage);
+      clearLegacySiteNotificationStorage(storage);
+    });
+  }, [useLegacy]);
 
   return null;
 }
