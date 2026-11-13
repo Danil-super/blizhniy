@@ -26,7 +26,7 @@ async function staticState(region,width){
 try{
  const desktop=await open({viewport:{width:1440,height:900},reducedMotion:'no-preference'});
  const control=desktop.region.getByRole('button',{name:pause,exact:true});
- await control.waitFor();await control.focus();await desktop.page.keyboard.press('Enter');
+ await control.waitFor();const controlWidth=(await control.boundingBox()).width,regionWidth=(await desktop.region.boundingBox()).width;assert.ok(controlWidth>=regionWidth-40,'the whole text strip is the control, with no separate side button');assert.equal(await desktop.region.getByRole('button').count(),1);assert.equal(await desktop.region.locator('svg').count(),0);await control.focus();await desktop.page.keyboard.press('Enter');
  await desktop.region.getByRole('button',{name:resume,exact:true}).waitFor();await staticState(desktop.region,1440);
  await desktop.page.keyboard.press('Enter');await desktop.region.getByRole('button',{name:pause,exact:true}).waitFor();
  const moving=await desktop.region.locator('.marquee-track').evaluate(element=>({name:getComputedStyle(element).animationName,state:getComputedStyle(element).animationPlayState}));
@@ -36,7 +36,7 @@ try{
  const box=await mobileControl.boundingBox();assert.ok(box&&box.width>=44&&box.height>=44);
  await mobileControl.tap();await mobile.region.getByRole('button',{name:resume,exact:true}).waitFor();await staticState(mobile.region,390);
  const reduced=await open({viewport:{width:320,height:800},reducedMotion:'reduce'});
- assert.equal(await reduced.region.getByRole('button',{name:pause,exact:true}).isVisible(),false);await staticState(reduced.region,320);
+ assert.equal(await reduced.region.locator('svg').count(),0);await staticState(reduced.region,320);
  await desktop.page.emulateMedia({reducedMotion:'reduce'});await staticState(desktop.region,1440);
- console.log('Local marquee passed: keyboard and touch stop/start, 44px control, reduced motion, readable stationary text at 320px.');
+ console.log('Local marquee passed: keyboard and touch stop/start, whole-strip control without side icons, reduced motion, readable stationary text at 320px.');
 }finally{await Promise.allSettled(contexts.map(context=>context.close()));await browser.close();}

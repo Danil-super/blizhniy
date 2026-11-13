@@ -32,3 +32,12 @@ test('marquee text is server-rendered once and remains escaped text',async()=>{
 test('an empty marquee does not leave a moving empty frame or an ineffective control',async()=>{
  assert.equal(await markup([]),'');
 });
+
+test('the text strip itself is the control with no separate icon button',async()=>{
+ const html=await markup(['Объявления рядом']);
+ assert.equal((html.match(/<button\b/g)||[]).length,1);
+ assert.match(html,/<button[^>]*class="[^"]*w-full/);
+ assert.doesNotMatch(html,/<svg/);
+ const description=/aria-describedby="([^"]+)"/.exec(html)?.[1];assert.ok(description);assert.ok(html.includes('id="'+description+'"'));
+ assert.match(html,/<button[^>]*>[\s\S]*Объявления рядом[\s\S]*<\/button>/);
+});

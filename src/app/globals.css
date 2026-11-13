@@ -157,10 +157,6 @@ canvas {
     max-width: 100%;
     white-space: normal;
   }
-
-  [data-marquee-control] {
-    display: none;
-  }
 }
 
 @keyframes marquee-scroll {
