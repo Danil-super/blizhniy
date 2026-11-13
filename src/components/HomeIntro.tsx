@@ -23,14 +23,7 @@ export function HomeIntro() {
               <span className="block text-[#188c32] sm:whitespace-nowrap">Для вас и ваших близких.</span>
             </h1>
             <p className="mt-4 max-w-[20rem] text-[13px] font-semibold leading-6 text-slate-700 sm:max-w-[46rem] sm:text-base sm:leading-7 lg:max-w-[52rem]">
-              <span className="block lg:hidden">
-                Местная платформа демонстрирует устойчивость к развитию услуг и размещению объявлений.
-              </span>
-              <span className="block lg:hidden">Товары, услуги, работа и многое</span>
-              <span className="block lg:hidden">другое рядом с вами.</span>
-              <span className="hidden lg:block">Местная платформа демонстрирует устойчивость</span>
-              <span className="hidden lg:block">к развитию услуг и размещению объявлений.</span>
-              <span className="hidden lg:block">Товары, услуги, работа и многое другое рядом с вами.</span>
+              Покупайте и продавайте вещи, находите работу и специалистов в Краснодарском крае.
             </p>
             <div className="mt-5 flex flex-wrap items-center justify-start gap-2 sm:mt-6">
               <Link

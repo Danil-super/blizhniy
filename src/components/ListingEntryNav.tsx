@@ -48,7 +48,7 @@ export function ListingEntryNav({ activeKind }: { activeKind?: ListingKind }) {
       <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 lg:p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Объявления</p>
+            <p className="text-sm font-bold uppercase tracking-wide text-[#087f2b]">Объявления</p>
             <h1 className="mt-1 text-xl font-bold text-[#060b27]">{heading ?? "Что хотите сделать?"}</h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
               {activeKind === "arenda" ? "Предложения аренды и бронирования рядом с вами." : selected?.description ?? "Выберите тип объявления: продать, купить или отдать бесплатно."}
@@ -64,7 +64,7 @@ export function ListingEntryNav({ activeKind }: { activeKind?: ListingKind }) {
             </Link>
             <Link
               href="/razmestit/obyavlenie"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e] sm:h-11 sm:px-5"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#087f2b] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#087030] sm:h-11 sm:px-5"
             >
               <PlusCircle className="h-4 w-4" />
               Разместить

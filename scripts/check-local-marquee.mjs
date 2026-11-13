@@ -23,9 +23,21 @@ async function staticState(region,width){
  assert.ok(result.bounds.length>0);
  assert.ok(result.bounds.every(value=>value.left>=0&&value.right<=width+1&&value.width>0),'all stationary messages fit the viewport');
 }
+async function initialMessageVisible(region){
+ const visible=await region.evaluate(element=>{
+  const track=element.querySelector('.marquee-track'),animations=track.getAnimations();
+  for(const animation of animations){animation.pause();animation.currentTime=0;}
+  const message=track.querySelector('.marquee-item').getBoundingClientRect(),clip=track.parentElement.getBoundingClientRect();
+  const result=message.width>0&&message.left<clip.right-1&&message.right>clip.left+1;
+  for(const animation of animations)animation.play();
+  return result;
+ });
+ assert.equal(visible,true,'the first message is visible before animation begins');
+}
 try{
  const desktop=await open({viewport:{width:1440,height:900},reducedMotion:'no-preference'});
  const control=desktop.region.getByRole('button',{name:pause,exact:true});
+ await initialMessageVisible(desktop.region);
  await control.waitFor();const controlWidth=(await control.boundingBox()).width,regionWidth=(await desktop.region.boundingBox()).width;assert.ok(controlWidth>=regionWidth-40,'the whole text strip is the control, with no separate side button');assert.equal(await desktop.region.getByRole('button').count(),1);assert.equal(await desktop.region.locator('svg').count(),0);await control.focus();await desktop.page.keyboard.press('Enter');
  await desktop.region.getByRole('button',{name:resume,exact:true}).waitFor();await staticState(desktop.region,1440);
  await desktop.page.keyboard.press('Enter');await desktop.region.getByRole('button',{name:pause,exact:true}).waitFor();
@@ -33,6 +45,7 @@ try{
  assert.equal(moving.name,'marquee-scroll');assert.equal(moving.state,'running');
  const mobile=await open({viewport:{width:390,height:844},hasTouch:true,isMobile:true,reducedMotion:'no-preference'});
  const mobileControl=mobile.region.getByRole('button',{name:pause,exact:true});
+ await initialMessageVisible(mobile.region);
  const box=await mobileControl.boundingBox();assert.ok(box&&box.width>=44&&box.height>=44);
  await mobileControl.tap();await mobile.region.getByRole('button',{name:resume,exact:true}).waitFor();await staticState(mobile.region,390);
  const reduced=await open({viewport:{width:320,height:800},reducedMotion:'reduce'});

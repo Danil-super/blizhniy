@@ -48,7 +48,7 @@ export default async function Page() {
       <SiteHeader />
       <main className="page-container py-8 sm:py-12">
         <section className="max-w-4xl">
-          <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Оплата публикаций</p>
+          <p className="text-sm font-bold uppercase tracking-wide text-[#087f2b]">Оплата публикаций</p>
           <h1 className="mt-3 text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">Тарифы</h1>
           <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
             Выберите нужное действие: счет на оплату появится после создания объявления, вакансии, отклика или заявки. Анкету специалиста пока можно сохранить как черновик.
@@ -71,7 +71,7 @@ export default async function Page() {
                 {tariff.action === "specialist_publication" ? (
                   <p className="mt-2 text-sm font-semibold leading-6 text-amber-700">Публикация и оплата анкеты временно недоступны. Черновик можно сохранить.</p>
                 ) : null}
-                {tariff.active ? <Link href={cta.href} className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#0aa337] text-sm font-bold text-white">
+                {tariff.active ? <Link href={cta.href} className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#087f2b] text-sm font-bold text-white">
                   {cta.label}
                 </Link> : <p role="status" className="mt-5 text-sm font-semibold leading-6 text-slate-700">Тариф временно недоступен</p>}
               </article>

@@ -40,7 +40,7 @@ export default function Page() {
       <SiteHeader />
       <main className="page-container py-8 sm:py-12">
         <section className="max-w-4xl">
-          <p className="text-sm font-bold uppercase tracking-wide text-[#0aa337]">Сценарии сервиса</p>
+          <p className="text-sm font-bold uppercase tracking-wide text-[#087f2b]">Сценарии сервиса</p>
           <h1 className="mt-3 text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">
             Как работает <BrandName />
           </h1>
@@ -68,12 +68,12 @@ export default function Page() {
         <section className="mt-8 rounded-xl border border-emerald-200 bg-emerald-50 p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <BadgeCheck className="mt-1 h-5 w-5 shrink-0 text-[#0aa337]" />
+              <BadgeCheck className="mt-1 h-5 w-5 shrink-0 text-[#087f2b]" />
               <p className="max-w-3xl text-sm leading-6 text-slate-700">
                 Публикации, заявки и отклики проходят через авторизацию, проверку данных и оплату, если для выбранного размещения нужен тариф.
               </p>
             </div>
-            <Link href="/razmestit" className="inline-flex h-11 shrink-0 items-center justify-center rounded-lg bg-[#0aa337] px-5 text-sm font-bold text-white">
+            <Link href="/razmestit" className="inline-flex h-11 shrink-0 items-center justify-center rounded-lg bg-[#087f2b] px-5 text-sm font-bold text-white">
               Разместить
             </Link>
           </div>

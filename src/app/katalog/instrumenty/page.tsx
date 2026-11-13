@@ -199,7 +199,7 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
       `}</style>
       <main className="bg-[var(--category-page)] pb-8" style={categoryPageStyle("instrumenty")}>
         <div className="page-container py-3 sm:py-4 lg:py-5">
-          <nav className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:text-sm" aria-label="Хлебные крошки">
+          <nav className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-600 sm:text-sm" aria-label="Хлебные крошки">
             <Link href="/katalog" className="hover:text-[#0875d1]">
               Категории
             </Link>
@@ -221,7 +221,7 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
             <section aria-label="Подкатегории">
               <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
                 <h2 className="text-lg font-bold leading-tight text-[#060b27]">Подкатегории</h2>
-                <p className="text-sm font-semibold text-slate-500">Инструменты для ремонта, стройки и участка</p>
+                <p className="text-sm font-semibold text-slate-600">Инструменты для ремонта, стройки и участка</p>
               </div>
               <div className={subcategoryGridClassName(instrumentSubcategories.length)}>
                 {instrumentSubcategories.map((subcategory) => (

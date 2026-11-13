@@ -23,7 +23,8 @@ export function BackLink({ fallbackHref, children = "Назад", className }: B
     .replaceAll("text-[#0875d1]", "text-[#d92d20] transition hover:text-[#b42318]")
     .replaceAll("border-slate-300", "border-[#d92d20]")
     .replaceAll("text-slate-800", "text-[#d92d20] transition hover:bg-[#fff1f0] hover:text-[#b42318]")
-    ?? "inline-flex items-center gap-2 text-sm font-bold text-[#d92d20] transition hover:text-[#b42318]";
+    .replaceAll("text-[#d92d20]", "text-[#b42318]")
+    ?? "inline-flex items-center gap-2 text-sm font-bold text-[#b42318] transition hover:text-[#b42318]";
 
   function handleClick(event: MouseEvent<HTMLAnchorElement>) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
