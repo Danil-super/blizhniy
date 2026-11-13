@@ -1,3 +1,4 @@
+import {servicePlacementRefundTarget} from './service-checkout-config.ts';
 import {createHash} from 'node:crypto';
 import {PostgresPaymentIntentStore,PaymentIntentError} from './postgres-payment-intents.ts';
 import {buildPlacementRefundRequest,RefundRequestError} from './refund-request-contract.ts';
@@ -37,7 +38,7 @@ export class PostgresRefundRequestStore{
   if((await tx.query('select id from app.users where id=(select owner_id from app.payment_checkout_intents where id=$1) for update',[reservation.paymentIntentId])).rowCount!==1)fail();
   const purchase=await this.intents.lockKnownInTransaction(tx,reservation.paymentIntentId).catch(error=>{if(error instanceof PaymentIntentError)fail();throw error;});
   const order=(await tx.query<{status:string}>('select status from app.payment_orders where id=$1 for update',[reservation.paymentIntentId])).rows[0];
-  if(!order||!(['listing','vacancy','workRequest'].includes(purchase.targetType)&&purchase.durationDays!==null||
+  if(!order||!(['listing','vacancy','workRequest'].includes(purchase.targetType)&&purchase.durationDays!==null||servicePlacementRefundTarget(purchase)||
     purchase.targetType==='application'&&purchase.durationDays===null&&await applicationRefundAdmitted(tx,purchase.id,operationId))||!purchase.isTest||purchase.shopId!==this.merchant.shopId||
    reservation.id!==operationId||reservation.paymentIntentId!==purchase.id||reservation.providerPaymentId!==purchase.providerPaymentId||reservation.amount!==purchase.amount||
    reservation.shopId!==purchase.shopId||reservation.isTest!==purchase.isTest)fail();

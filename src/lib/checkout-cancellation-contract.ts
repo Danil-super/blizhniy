@@ -1,10 +1,10 @@
 import {parseListingDraftId} from './listing-draft-contract.ts';
-export type CheckoutCancellationInput={paymentId:string;targetType:'listing'|'vacancy'|'workRequest'|'application'};
+export type CheckoutCancellationInput={paymentId:string;targetType:'listing'|'vacancy'|'workRequest'|'application'|'fair_application'|'ad_marquee'};
 export type CheckoutCancellationResult=CheckoutCancellationInput&{state:'cancelled'};
 export class CheckoutCancellationInputError extends Error{constructor(){super('Invalid checkout cancellation');this.name='CheckoutCancellationInputError';}}
-export function parseCheckoutCancellation(value:unknown):CheckoutCancellationInput{
+export function parseCheckoutCancellation(value:unknown,options:{services?:boolean}={}):CheckoutCancellationInput{
  try{if(!value||typeof value!=='object'||Array.isArray(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value))||Reflect.ownKeys(value).length!==2)throw Error();
-  const row=value as Record<string,unknown>;if(!Object.hasOwn(row,'paymentId')||!Object.hasOwn(row,'targetType')||!['listing','vacancy','workRequest','application'].some(type=>type===row.targetType))throw Error();
+  const row=value as Record<string,unknown>;if(!Object.hasOwn(row,'paymentId')||!Object.hasOwn(row,'targetType')||!['listing','vacancy','workRequest','application',...(options.services===true?['fair_application','ad_marquee']:[])].some(type=>type===row.targetType))throw Error();
   return{paymentId:parseListingDraftId(row.paymentId),targetType:row.targetType as CheckoutCancellationInput['targetType']};
  }catch{throw new CheckoutCancellationInputError();}
 }

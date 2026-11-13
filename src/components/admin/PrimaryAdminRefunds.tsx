@@ -1,4 +1,5 @@
 'use client';
+import {useServiceCheckout} from '@/components/listings/ListingWorkflowProvider';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {adminRefunds,AdminRefundClientError} from '@/lib/client-admin-refunds';
@@ -40,6 +41,7 @@ function RefundForm({actor,row,kind,busy,onCancel,onSubmit}:{actor:string;row:Ad
  </form>;
 }
 function RefundWorkspace({actor}:{actor:string}){
+ const serviceCheckout=useServiceCheckout();
  const [page,setPage]=useState<AdminRefundPage|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[storageError,setStorageError]=useState('');
  const [pending,setPending]=useState<Action|null>(null),[storageReady,setStorageReady]=useState(false),[selection,setSelection]=useState<{row:AdminRefundPayment;kind:'approve'|'recover'}|null>(null);
  const life=useRef<{active:boolean;controller:AbortController}|null>(null),working=useRef(false),scroll=useRef<HTMLDivElement>(null);
@@ -89,7 +91,7 @@ function RefundWorkspace({actor}:{actor:string}){
     {row.reason&&<p className="mt-2 text-sm text-slate-700">Причина возврата: {row.reason}</p>}
     <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer py-2">Идентификаторы платежа и размещения</summary><p className="break-all">Платёж: {row.id}</p><p className="mt-1 break-all">Размещение: {row.targetId}</p></details>
     {row.canRefund===false&&['listing','vacancy','workRequest'].includes(row.targetType)&&row.status==='succeeded'&&!row.approvalId&&<p className="mt-2 text-sm text-slate-600">Для возврата начните с последней покупки и завершите начатую оплату.</p>}
-    <div className="mt-2 flex flex-wrap gap-2">{['listing','vacancy','workRequest'].includes(row.targetType)&&row.status==='succeeded'&&row.capturedAt&&!row.approvalId&&row.canRefund!==false&&<button type="button" className={button} disabled={busy||!!pending||!storageReady} onClick={()=>setSelection({row,kind:'approve'})}>Вернуть плату</button>}
+    <div className="mt-2 flex flex-wrap gap-2">{(['listing','vacancy','workRequest'].includes(row.targetType)||serviceCheckout&&['fair_application','ad_marquee'].includes(row.targetType))&&row.status==='succeeded'&&row.capturedAt&&!row.approvalId&&row.canRefund!==false&&<button type="button" className={button} disabled={busy||!!pending||!storageReady} onClick={()=>setSelection({row,kind:'approve'})}>Вернуть плату</button>}
     {row.operationId&&row.attempted&&!row.appliedAt&&row.refundStatus!=='canceled'&&<button type="button" className={button} disabled={busy||!!pending||!storageReady} onClick={()=>setSelection({row,kind:'recover'})}>{row.providerRefundId?'Сверить возврат':'Сверить по номеру ЮKassa'}</button>}</div>
    </li>)}
   </ul>{page.items.length===0&&<p className="p-6 text-center text-sm text-slate-600">В этом TEST-магазине платежей пока нет.</p>}</div>{page.nextAfter&&<button type="button" className={button+' mt-3'} disabled={busy} onClick={()=>void load(page.nextAfter)}>Следующие платежи</button>}</>}

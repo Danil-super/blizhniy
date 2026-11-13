@@ -1,3 +1,4 @@
+import {readServiceCheckoutEnabled} from './service-checkout-config.ts';
 import {
   assertPrimaryYooKassaBinding, validatePrimaryYooKassaPayment, validateCaptureTime, YooKassaBoundaryError,
   type PrimaryYooKassaBinding,
@@ -97,7 +98,7 @@ export function createPrimaryYooKassaRefundInspection(config: Merchant, fetcher:
       assertPrimaryYooKassaBinding(expected, Date.now());
       if (expected.paymentCapturedAt !== undefined) validateCaptureTime(expected.paymentCapturedAt, 'succeeded', Date.now());
       if (!expected.providerPaymentId || expected.shopId !== merchant.shopId || expected.isTest !== true ||
-          !(compensation ? expected.targetType === 'application' : ['listing', 'vacancy', 'workRequest'].includes(expected.targetType))) invalid();
+          !(compensation ? expected.targetType === 'application' : (['listing', 'vacancy', 'workRequest'].includes(expected.targetType)||readServiceCheckoutEnabled()&&['fair_application','ad_marquee'].includes(expected.targetType)))) invalid();
       return budget ? inspectKnown(expected, budget) : transport.withYooKassaRequestBudget(shared => inspectKnown(expected, shared));
   }
   return {

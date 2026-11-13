@@ -1,0 +1,12 @@
+import {readPostmoderationEnabled} from './listing-workflow-config.ts';
+import type {PaymentIntentBinding} from './postgres-payment-intents.ts';
+/** Local synthetic composition only. This flag grants no schema, database or dispatch authority. */
+export function readServiceCheckoutEnabled(env:NodeJS.ProcessEnv=process.env):boolean{
+ if(env.BLIZHNIY_SERVICE_CHECKOUT===undefined||env.BLIZHNIY_SERVICE_CHECKOUT==='disabled')return false;
+ if(env.BLIZHNIY_SERVICE_CHECKOUT!=='local-v1'||env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled(env))throw Error('Invalid service checkout rollout');
+ return true;
+}
+export function servicePlacementRefundTarget(purchase:Pick<PaymentIntentBinding,'targetType'|'durationDays'>):boolean{
+ if(!['fair_application','ad_marquee'].includes(purchase.targetType)||!readServiceCheckoutEnabled())return false;
+ return purchase.targetType==='fair_application'?purchase.durationDays===null:purchase.durationDays!==null;
+}

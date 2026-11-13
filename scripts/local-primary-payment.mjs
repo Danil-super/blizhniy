@@ -2,6 +2,7 @@
 import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {readPlacementRenewalsEnabled} from '../src/lib/placement-renewal-config.ts';
+import {readServiceCheckoutEnabled} from '../src/lib/service-checkout-config.ts';
 export const localPrimaryMerchant=Object.freeze({shopId:'local-fixture-shop',isTest:true,secretKey:'test_local-fixture-never-a-real-key'});
 const canonical='https://xn----9sbphbgks4a4a.xn--p1ai',merchant=localPrimaryMerchant;
 const instances=new WeakMap();
@@ -22,8 +23,9 @@ async function create(context,targetType){
  const {state,ownerDb,runtimeDb,load}=context;
  if(process.env.NODE_ENV!=='test'||!load('listing-workflow-config').readPostmoderationEnabled()||state.origin!==process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN)throw Error('Local provider disabled');
  await ownerDb.query(await readFile(new URL('../database/local-primary-payment.sql',import.meta.url),'utf8'));
+ const service=['fair','marquee'].includes(targetType);if(service&&!readServiceCheckoutEnabled())throw Error('Local service checkout disabled');
  const policy={postmoderation:true,...(readPlacementRenewalsEnabled()?{renewals:true}:{}),...(targetType!=='listing'?{targetType}:{})};
- const store=targetType==='application'?new(load('postgres-application-checkout').PostgresApplicationCheckoutStore)(runtimeDb,async id=>(await ownerDb.query(`select to_char(sent_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as stamp from local_primary.application_deliveries where intent_id=$1`,[id])).rows[0]?.stamp??null,async(token,owner,id)=>{
+ const store=service?new(load('postgres-service-checkout').PostgresServiceCheckoutStore)(runtimeDb,{...merchant,siteOrigin:canonical,receiptVatCode:1},targetType):targetType==='application'?new(load('postgres-application-checkout').PostgresApplicationCheckoutStore)(runtimeDb,async id=>(await ownerDb.query(`select to_char(sent_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as stamp from local_primary.application_deliveries where intent_id=$1`,[id])).rows[0]?.stamp??null,async(token,owner,id)=>{
   if(await recoverExistingProvider(token,owner,id))await verification.reconcile(id);
  }):new(load('postgres-listing-checkout').PostgresListingCheckoutStore)(runtimeDb,{...merchant,siteOrigin:canonical,receiptVatCode:1},policy);
  const identity=new(load('identity').IdentityStore)(runtimeDb),limiter=new(load('auth-http').AuthRateLimiter)(runtimeDb,state.rateSecret);
@@ -55,7 +57,7 @@ async function create(context,targetType){
  };
  const dispatch=load('primary-payment-dispatch').createPrimaryPaymentDispatcher(runtimeDb,merchant,fakeFetch);
  const verification=new(load('postgres-payment-verification').PostgresPaymentVerificationStore)(ownerDb,merchant,fakeFetch);
- const fulfillment=targetType==='application'?new(load('postgres-application-fulfillment').PostgresApplicationFulfillmentStore)(ownerDb):new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(ownerDb,merchant,policy);
+ const fulfillment=service?new(load('postgres-service-payment-fulfillment').PostgresServicePaymentFulfillmentStore)(ownerDb,merchant):targetType==='application'?new(load('postgres-application-fulfillment').PostgresApplicationFulfillmentStore)(ownerDb):new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(ownerDb,merchant,policy);
  async function recoverExistingProvider(token,owner,id){
   const binding=await store.authorizeDispatch(token,owner,id);
   // Recover a simulator commit whose response/link was lost, even after closure.
@@ -71,6 +73,9 @@ async function create(context,targetType){
   const binding=await recoverExistingProvider(token,owner,id)??await store.authorizeDispatch(token,owner,id);
   const result=await dispatch.dispatch(binding,()=>store.authorizeDispatch(token,owner,id,true));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};
  }})};
+ if(service)return{store,identity,verification,fulfillment,handler:load('service-checkout-http').createServiceCheckoutHandler({origin:canonical},targetType,{store,limiter,dispatch:async(token,owner,id)=>{
+  const binding=await recoverExistingProvider(token,owner,id)??await store.authorizeDispatch(token,owner,id);const result=await dispatch.dispatch(binding,()=>store.authorizeDispatch(token,owner,id,true));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};
+ }})};
  const handler=load('listing-checkout-http').createListingCheckoutHandler({origin:canonical},()=>({store,limiter,payments:{
   preview:(...args)=>store.preview(...args),
   dispatch:async(token,owner,id)=>{const binding=await store.authorizeDispatch(token,owner,id);const result=await dispatch.dispatch(binding,()=>store.authorizeDispatch(token,owner,id,true));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};},
@@ -79,10 +84,12 @@ async function create(context,targetType){
 }
 export async function localPrimaryPaymentHandler(request,context){
  const url=new URL(request.url);
- if(!['/api/account/application-checkout','/api/account/listing-checkout','/api/account/vacancy-checkout','/api/account/work-request-checkout','/__local/payment'].includes(url.pathname))return null;
- if(url.pathname==='/__local/payment'&&url.searchParams.has('type')&&!['vacancy','workRequest','application'].includes(url.searchParams.get('type')))return html('<p>Неизвестный тип заказа.</p>',422);
- const targetType=url.pathname==='/api/account/application-checkout'?'application':url.pathname==='/api/account/work-request-checkout'?'workRequest':url.pathname==='/api/account/vacancy-checkout'?'vacancy':url.pathname==='/__local/payment'?url.searchParams.get('type')??'listing':'listing';
- const returnQuery=targetType==='listing'?'':'?type='+targetType,formQuery=targetType==='listing'?'':'&amp;type='+targetType,cabinet=targetType==='application'?'/cabinet/otkliki':targetType==='workRequest'?'/cabinet/zakazy':targetType==='vacancy'?'/cabinet/vakansii':'/cabinet/obyavleniya';
+ if(!['/api/account/fair-checkout','/api/account/marquee-checkout','/api/account/application-checkout','/api/account/listing-checkout','/api/account/vacancy-checkout','/api/account/work-request-checkout','/__local/payment'].includes(url.pathname))return null;
+ if(url.pathname==='/__local/payment'&&url.searchParams.has('type')&&!['vacancy','workRequest','application','fair','marquee'].includes(url.searchParams.get('type')))return html('<p>Неизвестный тип заказа.</p>',422);
+ const targetType=url.pathname==='/api/account/fair-checkout'?'fair':url.pathname==='/api/account/marquee-checkout'?'marquee':url.pathname==='/api/account/application-checkout'?'application':url.pathname==='/api/account/work-request-checkout'?'workRequest':url.pathname==='/api/account/vacancy-checkout'?'vacancy':url.pathname==='/__local/payment'?url.searchParams.get('type')??'listing':'listing';
+ const service=['fair','marquee'].includes(targetType);if(service&&!readServiceCheckoutEnabled())return html('<p>Оплата услуги отключена.</p>',404);
+ const paymentPath=service?'/oplata/uslugi':'/oplata';
+ const returnQuery=targetType==='listing'?'':'?type='+targetType,formQuery=targetType==='listing'?'':'&amp;type='+targetType,cabinet=targetType==='fair'?'/cabinet/fair-applications':targetType==='marquee'?'/reklama/begushchaya-stroka?view=list':targetType==='application'?'/cabinet/otkliki':targetType==='workRequest'?'/cabinet/zakazy':targetType==='vacancy'?'/cabinet/vakansii':'/cabinet/obyavleniya';
  let group=instances.get(context.ownerDb);if(!group){group=new Map();instances.set(context.ownerDb,group);}
  let instance=group.get(targetType);
  if(!instance){instance=create(context,targetType);group.set(targetType,instance);}
@@ -104,6 +111,7 @@ export async function localPrimaryPaymentHandler(request,context){
   if(!user)return html('<p>Войдите в свой локальный аккаунт.</p><a href="/auth">Войти</a>',401);
   const id=context.load('listing-draft-contract').parseListingDraftId(url.searchParams.get('intent'));
   const order=await state.store.readOrder(token,user.id,id);if(!order)return html('<p>Заказ недоступен.</p>',404);
+  if(service&&order.order.status==='refunded')return html(`<p>Плата возвращена. История размещения сохранена.</p><a href="${paymentPath}/${id}${returnQuery}">Статус заказа</a>`);
   if(request.method==='POST'){
    if(request.headers.get('origin')!==canonical||request.headers.get('sec-fetch-site')!=='same-origin')return html('<p>Нужен запрос с локальной страницы оплаты.</p>',403);
    const data=await request.formData(),action=data.get('action');
@@ -118,11 +126,11 @@ export async function localPrimaryPaymentHandler(request,context){
    await state.verification.reconcile(id);
    let result;
    try{result=await state.fulfillment.fulfill(id);}
-   catch(error){if(error?.code==='P7601')return html(`<p>Оплата подтверждена. Для размещения подтвердите номер телефона. Повторно платить не нужно.</p><a href="/oplata/${id}${returnQuery}">Подтвердить телефон и проверить размещение</a>`);throw error;}
-   return html(`<p>${result.state==='fulfilled'?targetType==='application'?'Оплата подтверждена сервером, отклик доставлен.':'Оплата подтверждена сервером, размещение выполнено. Текущий статус смотрите в кабинете.':'Результат записан. Действие не выполнено: '+escape(result.reason)}</p><a href="/oplata/${id}${returnQuery}">Статус заказа</a><a href="${cabinet}">Мои публикации</a>`);
+   catch(error){if(error?.code==='P7601')return html(`<p>Оплата подтверждена. Для размещения подтвердите номер телефона. Повторно платить не нужно.</p><a href="${paymentPath}/${id}${returnQuery}">Подтвердить телефон и проверить размещение</a>`);throw error;}
+   return html(`<p>${result.state==='fulfilled'?targetType==='application'?'Оплата подтверждена сервером, отклик доставлен.':'Оплата подтверждена сервером, размещение выполнено. Текущий статус смотрите в кабинете.':result.state==='queued'?'Оплата подтверждена. Реклама ожидает свободное место; оплаченный срок ещё не начался.':'Результат записан. Действие не выполнено: '+escape(result.reason)}</p><a href="${paymentPath}/${id}${returnQuery}">Статус заказа</a><a href="${cabinet}">Мои публикации</a>`);
   }
   if(request.method!=='GET')return html('<p>Метод недоступен.</p>',405);
-  if(order.targetClosed&&!order.deliveredAt)return html(`<p>Заказчик уже выбрал исполнителя. Новая оплата отклика недоступна; история сохранена.</p><a href="/oplata/${id}${returnQuery}">Статус заказа</a>`);
-  return html(`<p>Заказ: ${escape(order.order.amount)} ₽${targetType==='application'?' за один отклик':` за ${order.order.durationDays} дн.`} Никаких банковских данных вводить не нужно. Это не ЮKassa и не реальная оплата.</p><form method="post" action="/__local/payment?intent=${id}${formQuery}"><button name="action" value="succeed">Подтвердить успешную оплату</button><button name="action" value="cancel">Отменить оплату</button><button name="action" value="pending">Оставить в ожидании</button></form><a href="/oplata/${id}${returnQuery}">Назад к заказу</a>`);
+  if(order.targetClosed&&!order.deliveredAt)return html(`<p>Заказчик уже выбрал исполнителя. Новая оплата отклика недоступна; история сохранена.</p><a href="${paymentPath}/${id}${returnQuery}">Статус заказа</a>`);
+  return html(`<p>Заказ: ${escape(order.order.amount)} ₽${targetType==='application'?' за один отклик':targetType==='fair'?` до конца ярмарки ${escape(order.order.fairEvent.date)}`:` за ${order.order.durationDays} дн.`} Никаких банковских данных вводить не нужно. Это не ЮKassa и не реальная оплата.</p><form method="post" action="/__local/payment?intent=${id}${formQuery}"><button name="action" value="succeed">Подтвердить успешную оплату</button><button name="action" value="cancel">Отменить оплату</button><button name="action" value="pending">Оставить в ожидании</button></form><a href="${paymentPath}/${id}${returnQuery}">Назад к заказу</a>`);
  }catch{return html(`<p>Не удалось подтвердить результат. Не создавайте новый заказ; проверьте исходный в кабинете.</p><a href="${cabinet}">Мои публикации</a>`,503);}
 }

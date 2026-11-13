@@ -1,0 +1,358 @@
+--- a/scripts/refund-worker-role.mjs
++++ b/scripts/refund-worker-role.mjs
+@@ -39,14 +39,14 @@
+  'app.assert_placement_refund_job(text,uuid,uuid)',
+ ];
+ const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
+-function journal(schema=54){return[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan(),...[...suffix,...(schema>=55?['0055-refund-operator-locks.sql']:[]),...(schema===56?['0056-placement-renewals.sql']:[])].map(name=>{
++function journal(schema=54){return[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan(),...[...suffix,...(schema>=55?['0055-refund-operator-locks.sql']:[]),...(schema>=56?['0056-placement-renewals.sql']:[]),...(schema===57?['0057-service-payment-terms.sql']:[])].map(name=>{
+  const source=readFileSync(new URL('../database/migrations/'+name,import.meta.url),'utf8');
+  if(!/^begin;$/m.test(source)||!/commit;\s*$/.test(source))throw Error('Invalid refund migration');
+  return{name,sha256:createHash('sha256').update(source).digest('hex')};
+ })].map(({name,sha256})=>({name,sha256}));}
+ 
+ export function getRefundWorkerRolePlan(database,{schema=54}={}){
+- if(!validDatabase(database)||![54,55,56].includes(schema))throw Error('Invalid refund database');
++ if(!validDatabase(database)||![54,55,56,57].includes(schema))throw Error('Invalid refund database');
+  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(schema),
+   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
+    ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`)),
+@@ -77,7 +77,7 @@
+     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
+     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
+    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
+-   const schema=localPrimary&&actualJournal.length===56?56:actualJournal.length===55?55:54;
++   const schema=localPrimary&&[56,57].includes(actualJournal.length)?actualJournal.length:actualJournal.length===55?55:54;
+    if(JSON.stringify(actualJournal)!==JSON.stringify(schema>=55?journal(schema):expectedJournal))throw Error('Invalid refund journal');
+    await assertRefundSchema(tx,schema,{localPrimary});
+    await assertFinancialCatalogPrivileges(tx);
+--- a/scripts/refund-operator-role.mjs
++++ b/scripts/refund-operator-role.mjs
+@@ -31,7 +31,7 @@
+ const journal=(schema=55)=>getRefundWorkerRolePlan('operator',{schema}).journal;
+ 
+ export function getRefundOperatorRolePlan(database,{schema=55}={}){
+- if(!validDatabase(database)||![55,56].includes(schema))throw Error('Invalid refund database');
++ if(!validDatabase(database)||![55,56,57].includes(schema))throw Error('Invalid refund database');
+  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(schema),
+   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
+    ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`)),
+@@ -61,8 +61,8 @@
+     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
+     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
+    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
+-   const schema=localPrimary&&actualJournal.length===56?56:55;
+-   if(JSON.stringify(actualJournal)!==JSON.stringify(schema===56?journal(56):expectedJournal))throw Error('Invalid refund journal');
++   const schema=localPrimary&&[56,57].includes(actualJournal.length)?actualJournal.length:55;
++   if(JSON.stringify(actualJournal)!==JSON.stringify(schema>=56?journal(schema):expectedJournal))throw Error('Invalid refund journal');
+    await assertRefundSchema(tx,schema,{localPrimary});
+    await assertFinancialCatalogPrivileges(tx);
+    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
+--- a/scripts/refund-worker-schema.mjs
++++ b/scripts/refund-worker-schema.mjs
+@@ -92,7 +92,7 @@
+ }
+ 
+ export async function assertRefundSchema(tx,schema=54,{localPrimary=false}={}){
+- if(![54,55,56].includes(schema)||typeof localPrimary!=='boolean'||(localPrimary&&schema<55))throw Error('Invalid refund schema version');
++ if(![54,55,56,57].includes(schema)||typeof localPrimary!=='boolean'||(localPrimary&&schema<55))throw Error('Invalid refund schema version');
+  const expected=JSON.parse(readFileSync(new URL(localPrimary?`../database/refund-schema-local-primary-00${schema}.json`:`../database/refund-schema-00${schema}.json`,import.meta.url),'utf8'));
+  if(JSON.stringify(await readRefundSchema(tx))!==JSON.stringify(expected))throw Error('Invalid refund schema');
+ }
+--- a/scripts/build-refund-worker.mjs
++++ b/scripts/build-refund-worker.mjs
+@@ -8,7 +8,7 @@
+ 
+ const root=fileURLToPath(new URL('../',import.meta.url));
+ export function buildRefundWorker(destination,{schema=54}={}){
+- if(![54,55,56].includes(schema))throw Error('Invalid refund worker schema');
++ if(![54,55,56,57].includes(schema))throw Error('Invalid refund worker schema');
+  if(typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid refund worker destination');
+  const program=ts.createProgram(['placement-refund-worker.ts','application-compensation-worker.ts','postgres.ts','refund-merchant-preflight.ts'].map(name=>join(root,'src/lib',name)),{
+   target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,
+@@ -24,7 +24,7 @@
+   if(createHash('sha256').update(bytes).digest('hex')!==sha256)throw Error('Refund migration changed during build');
+   return{name,bytes};
+  });
+- if(migrations.length!==schema||migrations.at(-1).name!==(schema===54?'0054-refund-worker-locks.sql':schema===55?'0055-refund-operator-locks.sql':'0056-placement-renewals.sql'))throw Error('Unexpected refund migration boundary');
++ if(migrations.length!==schema||migrations.at(-1).name!==(schema===54?'0054-refund-worker-locks.sql':schema===55?'0055-refund-operator-locks.sql':schema===56?'0056-placement-renewals.sql':'0057-service-payment-terms.sql'))throw Error('Unexpected refund migration boundary');
+  // A new private directory is the ownership boundary. Existing destinations are never reused.
+  mkdirSync(destination,{mode:0o700});
+  writeFileSync(join(destination,'package.json'),JSON.stringify({private:true,type:'commonjs'})+'\n',{flag:'wx',mode:0o600});
+@@ -34,7 +34,7 @@
+  for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','local-refund-worker-runtime.mjs','refund-worker-service.mjs','local-primary-refund-target.mjs','local-primary-config.mjs','local-refund-services.mjs'])
+   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
+  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
+- if(schema>=55)for(const name of ['refund-schema-0055.json','refund-schema-local-primary-0055.json',...(schema===56?['refund-schema-0056.json','refund-schema-local-primary-0056.json']:[])])copyFileSync(join(root,'database',name),join(destination,'database',name));
++ if(schema>=55)for(const name of ['refund-schema-0055.json','refund-schema-local-primary-0055.json',...(schema>=56?['refund-schema-0056.json','refund-schema-local-primary-0056.json']:[]),...(schema===57?['refund-schema-0057.json','refund-schema-local-primary-0057.json']:[])])copyFileSync(join(root,'database',name),join(destination,'database',name));
+  for(const {name,bytes} of migrations)writeFileSync(join(destination,'database/migrations',name),bytes,{flag:'wx',mode:0o600});
+  const manifest={version:1,schema,typescript:ts.version,sources};
+  writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});
+--- a/scripts/build-refund-operator.mjs
++++ b/scripts/build-refund-operator.mjs
+@@ -8,7 +8,7 @@
+ 
+ const root=fileURLToPath(new URL('../',import.meta.url));
+ export function buildRefundOperator(destination,{schema=55}={}){
+- if(![55,56].includes(schema))throw Error('Invalid refund operator schema');
++ if(![55,56,57].includes(schema))throw Error('Invalid refund operator schema');
+  if(typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid refund operator destination');
+  const program=ts.createProgram(['admin-refund-commands.ts','postgres-admin-refund-journal.ts','postgres-refund-approvals.ts','primary-refund-recovery.ts','postgres.ts','refund-merchant-preflight.ts'].map(name=>join(root,'src/lib',name)),{
+   target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,
+@@ -24,7 +24,7 @@
+   if(createHash('sha256').update(bytes).digest('hex')!==sha256)throw Error('Refund migration changed during build');
+   return{name,bytes};
+  });
+- if(migrations.length!==schema||migrations.at(-1).name!==(schema===55?'0055-refund-operator-locks.sql':'0056-placement-renewals.sql'))throw Error('Unexpected refund migration boundary');
++ if(migrations.length!==schema||migrations.at(-1).name!==(schema===55?'0055-refund-operator-locks.sql':schema===56?'0056-placement-renewals.sql':'0057-service-payment-terms.sql'))throw Error('Unexpected refund migration boundary');
+  // A new private directory is the ownership boundary. Existing destinations are never reused.
+  mkdirSync(destination,{mode:0o700});
+  writeFileSync(join(destination,'package.json'),JSON.stringify({private:true,type:'commonjs'})+'\n',{flag:'wx',mode:0o600});
+@@ -37,7 +37,7 @@
+  copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
+  copyFileSync(join(root,'database/refund-schema-local-primary-0055.json'),join(destination,'database/refund-schema-local-primary-0055.json'));
+  for(const {name,bytes} of migrations)writeFileSync(join(destination,'database/migrations',name),bytes,{flag:'wx',mode:0o600});
+- if(schema===56)for(const name of ['refund-schema-0056.json','refund-schema-local-primary-0056.json'])copyFileSync(join(root,'database',name),join(destination,'database',name));
++ if(schema>=56)for(const name of ['refund-schema-0056.json','refund-schema-local-primary-0056.json',...(schema===57?['refund-schema-0057.json','refund-schema-local-primary-0057.json']:[])])copyFileSync(join(root,'database',name),join(destination,'database',name));
+  const manifest={version:1,schema,typescript:ts.version,sources};
+  writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});
+  return manifest;
+--- a/scripts/local-primary-fixture.mjs
++++ b/scripts/local-primary-fixture.mjs
+@@ -1,3 +1,4 @@
++import {readServiceCheckoutEnabled} from '../src/lib/service-checkout-config.ts';
+ import {readPlacementRenewalsEnabled} from '../src/lib/placement-renewal-config.ts';
+ import {execFile} from 'node:child_process';
+ import {promisify} from 'node:util';
+@@ -73,9 +74,9 @@
+   const extras=[...await getLocalPrimaryExtraMigrations(),...await getLocalTelegramMigrations(),...await getLocalDeletionMigrations(),...await getLocalCheckoutEditMigrations(),...await getLocalApplicationContactMigrations(),...await getLocalBookingLifecycleMigrations(),...await getLocalWorkOwnerActionsMigrations(),...await getLocalResponseCheckoutMigrations(),...await getLocalCheckoutCancellationMigrations()];
+   const expected=[...getBootstrapPlan({includeListingContactMethod:true}).map(({name,sha256})=>({name,sha256})),...extras.map(({name,sha256})=>({name,sha256}))];
+   const journal=(await owner.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
+-  const schema=readPlacementRenewalsEnabled({...process.env,BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:state.origin,BLIZHNIY_LISTING_WORKFLOW:'postmoderation'})?56:55;
++  const schema=readServiceCheckoutEnabled({...process.env,BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:state.origin,BLIZHNIY_LISTING_WORKFLOW:'postmoderation'})?57:readPlacementRenewalsEnabled({...process.env,BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:state.origin,BLIZHNIY_LISTING_WORKFLOW:'postmoderation'})?56:55;
+   const refundSchema=journal.length===schema&&JSON.stringify(journal)===JSON.stringify(getRefundOperatorRolePlan(state.database,{schema}).journal);
+-  if(schema===56&&!refundSchema)throw Error('Local renewal schema required; automatic migration refused');
++  if(schema>=56&&!refundSchema)throw Error('Local renewal schema required; automatic migration refused');
+   if(JSON.stringify(journal)!==JSON.stringify(expected)&&!refundSchema)throw Error('Local schema changed; data preserved, automatic migration refused');
+   if(refundSchema)await assertRefundSchema(owner,schema,{localPrimary:true});
+   const role=(await owner.query("select rolsuper,rolcreatedb,rolcreaterole,rolinherit,rolreplication,rolbypassrls from pg_roles where rolname='blizhniy_runtime'")).rows[0];
+--- a/scripts/local-primary-refunds.mjs
++++ b/scripts/local-primary-refunds.mjs
+@@ -1,3 +1,4 @@
++import {readServiceCheckoutEnabled} from '../src/lib/service-checkout-config.ts';
+ import {readPlacementRenewalsEnabled} from '../src/lib/placement-renewal-config.ts';
+ import {realpathSync} from 'node:fs';
+ import {mkdtemp,symlink,rm} from 'node:fs/promises';
+@@ -31,7 +32,7 @@
+    !(signal instanceof AbortSignal)||signal.aborted||typeof report!=='function')throw unavailable();
+   const state=readLocalPrimaryState(stateFile,root),parent=dirname(stateFile),config=readLocalPrimaryRefundConfig(join(parent,'refunds.json'),state);
+   if(process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!==state.origin)throw unavailable();
+-  const schema=readPlacementRenewalsEnabled()?56:55;
++  const schema=readServiceCheckoutEnabled()?57:readPlacementRenewalsEnabled()?56:55;
+   const env={NODE_ENV:'production',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_DB_HOST:'127.0.0.1',
+    BLIZHNIY_DB_PORT:String(state.dbPort),BLIZHNIY_DB_NAME:state.database,BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:join(parent,'refund-db-ca.pem'),
+    BLIZHNIY_PAYMENT_SHOP_ID:localPrimaryMerchant.shopId,BLIZHNIY_PAYMENT_SECRET_KEY:localPrimaryMerchant.secretKey};
+--- a/scripts/local-primary.mjs
++++ b/scripts/local-primary.mjs
+@@ -7,6 +7,8 @@
+ import {createLocalPrimaryProxy} from './local-primary-proxy.mjs';
+ import {startLocalBookingExpiry} from './local-booking-expiry.mjs';
+ import {startLocalPrimaryServices} from './local-primary-services.mjs';
++import {readServiceCheckoutEnabled} from '../src/lib/service-checkout-config.ts';
++import {startLocalServicePublicationQueue} from './local-service-publication-queue.mjs';
+ import {readPlacementRenewalsEnabled} from '../src/lib/placement-renewal-config.ts';
+ 
+ async function main(){
+@@ -18,7 +20,7 @@
+  if(Number(process.versions.node.split('.')[0])!==22)throw Error('Local primary requires Node22');
+  const log=await open(join(stateDirectory,'launcher.log'),'a',0o600);
+  const child=spawn(process.execPath,['--experimental-strip-types',join(state.project,'scripts/local-primary.mjs'),'--start',...(refunds?['--refunds']:[])],{
+-  cwd:state.project,env:{PATH:process.env.PATH,LANG:'C.UTF-8',...(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG?{BLIZHNIY_LOCAL_TELEGRAM_CONFIG:process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG}:{}),...(process.env.BLIZHNIY_PLACEMENT_RENEWALS?{BLIZHNIY_PLACEMENT_RENEWALS:process.env.BLIZHNIY_PLACEMENT_RENEWALS}:{})},detached:true,stdio:['ignore',log.fd,log.fd],
++  cwd:state.project,env:{PATH:process.env.PATH,LANG:'C.UTF-8',...(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG?{BLIZHNIY_LOCAL_TELEGRAM_CONFIG:process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG}:{}),...(process.env.BLIZHNIY_PLACEMENT_RENEWALS?{BLIZHNIY_PLACEMENT_RENEWALS:process.env.BLIZHNIY_PLACEMENT_RENEWALS}:{}),...(process.env.BLIZHNIY_SERVICE_CHECKOUT?{BLIZHNIY_SERVICE_CHECKOUT:process.env.BLIZHNIY_SERVICE_CHECKOUT}:{})},detached:true,stdio:['ignore',log.fd,log.fd],
+  });
+  await once(child,'spawn');await log.close();child.unref();
+  await writeFile(join(stateDirectory,'launcher-process.json'),JSON.stringify({version:1,pid:child.pid,project:state.project,origin:state.origin}),{mode:0o600});
+@@ -34,7 +36,7 @@
+  const telegram=readLocalTelegramConfig(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG,state.origin);
+  Object.assign(process.env,telegram);
+  const {localPrimaryPaymentHandler}=await import('./local-primary-payment.mjs');
+- const env={...telegram,...(readPlacementRenewalsEnabled()?{BLIZHNIY_PLACEMENT_RENEWALS:'local-v1'}:{}),BLIZHNIY_CSP_MODE:'enforce',PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',
++ const env={...telegram,...(readServiceCheckoutEnabled()?{BLIZHNIY_SERVICE_CHECKOUT:'local-v1'}:{}),...(readPlacementRenewalsEnabled()?{BLIZHNIY_PLACEMENT_RENEWALS:'local-v1'}:{}),BLIZHNIY_CSP_MODE:'enforce',PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',
+   BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_STATE:stateFile,BLIZHNIY_LOCAL_PRIMARY_ORIGIN:state.origin,BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_APPLICATION_CONTACT_VIEWS:'enabled',BLIZHNIY_BOOKING_LIFECYCLE:'local-v1',BLIZHNIY_WORK_OWNER_ACTIONS:'local-v1',BLIZHNIY_CHECKOUT_CANCELLATION:'local-v1',
+   BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_REMEMBERED_CAPTCHA:'enabled',BLIZHNIY_AUTH_CONFIRMATION_NOTICE:'enabled',
+   BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_AUTH_RATE_SECRET:state.rateSecret,
+@@ -67,7 +69,12 @@
+      const spawned=once(child,'spawn').then(()=>true,()=>false);await log.close();if(!await spawned)throw Error('Local app spawn failed');signal.throwIfAborted();return{done,close};
+     }catch(error){try{await log.close();}finally{await close();}throw error;}
+    },
+-   startExpiry:()=>startLocalBookingExpiry(state),
++   startExpiry:async()=>{
++    const booking=startLocalBookingExpiry(state);let services;
++    try{if(readServiceCheckoutEnabled())services=startLocalServicePublicationQueue(state);
++     return{close:async()=>{try{await services?.close();}finally{await booking.close();}}};
++    }catch(error){await booking.close();throw error;}
++   },
+    onReady:async()=>{console.log(`Локальный PostgreSQL-стенд: ${state.origin}/__local`);console.log('Только синтетические данные; письма перехватываются; внешние платежи и SMTP недоступны.');},
+   });
+   process.exitCode=await services.done;
+--- a/tests/refund-operator-role.test.mjs
++++ b/tests/refund-operator-role.test.mjs
+@@ -8,7 +8,7 @@
+  assert.equal(plan.role,'blizhniy_refund_operator');assert.equal(plan.journal.length,55);
+  assert.deepEqual(plan.journal.slice(0,54),getRefundWorkerRolePlan('blizhniy_test').journal);
+  assert.deepEqual(getRefundWorkerRolePlan('blizhniy_test',{schema:55}).grants,getRefundWorkerRolePlan('blizhniy_test').grants);
+- for(const schema of [53,57,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));
++ for(const schema of [53,58,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));
+  assert.equal(plan.journal.at(-1).name,'0055-refund-operator-locks.sql');
+  assert.match(plan.createRole,/nologin.*nosuperuser.*nocreatedb.*nocreaterole.*noinherit.*noreplication.*nobypassrls.*connection limit 4/);
+  for(const sql of plan.grants){assert.match(sql,/^grant /);assert.match(sql,/ to blizhniy_refund_operator$/);assert.equal(/\ball\b|with grant option|blizhniy_runtime/i.test(sql),false);}
+--- a/scripts/check-quality-floor.mjs
++++ b/scripts/check-quality-floor.mjs
+@@ -131,13 +131,21 @@
+ ];
+ // Candidate: apply only after owner review of this exact renewal boundary pair.
+ const renewalAssertionPairs = [
++  ['tests/placement-renewal-artifacts.test.mjs',
++   "   const rejected=join(owned,name+'-57');assert.throws(()=>build(rejected,{schema:57}));assert.equal(existsSync(rejected),false);",
++   "   const rejected=join(owned,name+'-58');assert.throws(()=>build(rejected,{schema:58}));assert.equal(existsSync(rejected),false);"],
++  ['tests/refund-operator-role.test.mjs',
++   " for(const schema of [53,57,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));",
++   " for(const schema of [53,58,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));"],
+   ['tests/refund-operator-role.test.mjs',
+    " for(const schema of [53,56,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));",
+-   " for(const schema of [53,57,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));"],
++   " for(const schema of [53,58,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));"],
+ ];
+-const reviewedReplacement = (file, text) => [...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs].some(([path, before, after]) =>
++const reviewedAssertionPairs = [...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs];
++const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, before, after]) =>
+   file === path && text === before &&
+-  removed.filter(line => line.file === path && line.text === before).length === 1 &&
++  removed.filter(line => line.file === path && reviewedAssertionPairs.some(([pairPath, pairBefore, pairAfter]) =>
++    pairPath === path && pairAfter === after && line.text === pairBefore)).length === 1 &&
+   added.filter(line => line.file === path && line.text === after).length === 1);
+ // Exact complete browser-test replacements approved by the owner, 2026-10-20.
+ // Content-addressed artifacts, not a blanket permission to remove assertions.
+--- a/tests/quality-floor.test.mjs
++++ b/tests/quality-floor.test.mjs
+@@ -172,12 +172,18 @@
+   });
+ }
+ 
+-test('reviewed renewal boundary changes only one exact56 rejection to unknown57, retaining all other assertion protection',t=>{
++for(const boundary of [56,57])test(`reviewed service boundary changes only one exact${boundary} rejection to unknown58`,t=>{
+  const {put,git,run}=fixture(t),target='tests/refund-operator-role.test.mjs',other='tests/another-role.test.mjs';
+- const before=" for(const schema of [53,56,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));",after=before.replace('53,56','53,57');
+- put(target,before+'\n');put(other,before+'\n');git('add','.');git('commit','-qm','known renewal boundary');const base=git('rev-parse','HEAD').toString().trim();
++ const before=` for(const schema of [53,${boundary},'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));`,after=before.replace(`53,${boundary}`,'53,58');
++ put(target,before+'\n');put(other,before+'\n');git('add','.');git('commit','-qm','known service boundary');const base=git('rev-parse','HEAD').toString().trim();
+  put(target,after+'\n');assert.equal(run(['--base',base]).status,0);
+- put(target,after.replace('53,57','53,58')+'\n');assert.equal(run(['--base',base]).status,1);
++ put(target,after.replace('53,58','53,59')+'\n');assert.equal(run(['--base',base]).status,1);
+  put(target,after+'\n'+after+'\n');assert.equal(run(['--base',base]).status,1);
+  put(target,after+'\n');put(other,after+'\n');assert.equal(run(['--base',base]).status,1);
+ });
++test('two service boundary assertions cannot collapse into one reviewed replacement',t=>{
++ const {put,git,run}=fixture(t),target='tests/refund-operator-role.test.mjs';
++ const line=schema=>` for(const schema of [53,${schema},'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));`;
++ put(target,line(56)+'\n'+line(57)+'\n');git('add','.');git('commit','-qm','two assertions');
++ put(target,line(58)+'\n');assert.equal(run(['--base','HEAD']).status,1);
++});
+--- a/tests/placement-renewal-artifacts.test.mjs
++++ b/tests/placement-renewal-artifacts.test.mjs
+@@ -19,7 +19,7 @@
+    for(const profile of ['refund-schema-0056.json','refund-schema-local-primary-0056.json'])assert.deepEqual(readFileSync(join(path,'database',profile)),readFileSync(new URL('../database/'+profile,import.meta.url)));
+    symlinkSync(fileURLToPath(new URL('../node_modules',import.meta.url)),join(path,'node_modules'),'dir');
+    const proof=execFileSync(process.execPath,['--input-type=module','-e',`import {createRequire} from 'node:module';const require=createRequire(import.meta.url);let calls=0;globalThis.fetch=()=>{calls++;throw Error('network forbidden');};Object.defineProperty(require('pg'),'Pool',{value:class{constructor(){calls++;throw Error('pool forbidden');}}});await import('./scripts/local-refund-${name}-runtime.mjs');for(const file of ${JSON.stringify(result.sources)})require('./compiled/'+file);if(calls!==0)throw Error('Import started work');console.log('offline');`],{cwd:path,env:{PATH:process.env.PATH,LANG:'C.UTF-8'},encoding:'utf8',timeout:10000});assert.equal(proof.trim(),'offline');
+-   const rejected=join(owned,name+'-57');assert.throws(()=>build(rejected,{schema:57}));assert.equal(existsSync(rejected),false);
++   const rejected=join(owned,name+'-58');assert.throws(()=>build(rejected,{schema:58}));assert.equal(existsSync(rejected),false);
+   }
+  }finally{rmSync(owned,{recursive:true,force:true});}
+ });
+--- a/tests/service-payment-postgres.mjs
++++ b/tests/service-payment-postgres.mjs
+@@ -1,3 +1,4 @@
++import {testServicePaymentGuards} from './service-payment-guard-cases.mjs';
+ // Owned disposable database. Never installs the candidate on the permanent local stand.
+ import assert from 'node:assert/strict';import {test} from 'node:test';import {execFile} from 'node:child_process';import {promisify} from 'node:util';
+ import {randomBytes,randomUUID,randomInt} from 'node:crypto';import {readFile,readdir} from 'node:fs/promises';import {createRequire} from 'node:module';import pg from 'pg';
+@@ -185,6 +186,7 @@
+    assert.equal((await services.fulfill(p.id)).state,'blocked');assert.deepEqual(await window(p),{status:'draft',is_paid:false,published_at:null,expires_at:null});
+    const read=await new(load('postgres-service-checkout').PostgresServiceCheckoutStore)(db,{shopId:'service-fixture',isTest:true,siteOrigin:'https://fixture.example.invalid',receiptVatCode:1},'fair').readOrder(p.token,p.owner,p.id);assert.equal(read.eventEnded,true);assert.equal(read.order.fairEvent.date,before.date);assert.equal(Date.parse(read.order.fairEvent.endsAt),Date.parse(before.ends));assert.equal(read.fulfillment,null);assert.equal(read.order.status,'succeeded');
+   });
++  await testServicePaymentGuards(suite,{admin,config,load});
+   await suite.test('candidate rollback refuses to erase nonempty terms or original financial history',async()=>{
+    await assert.rejects(admin.query(await readFile(new URL('../database/migrations/0057-service-payment-terms.down.sql',import.meta.url),'utf8')),e=>e.code==='23514');await admin.query('rollback');
+    assert.ok((await admin.query('select count(*)::int n from app.service_payment_terms')).rows[0].n>0);
+--- /dev/null
++++ b/tests/service-payment-guard-cases.mjs
+@@ -0,0 +1,41 @@
++import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import pg from 'pg';
++import {getRefundOperatorRolePlan,verifyRefundOperatorDatabase} from '../scripts/refund-operator-role.mjs';
++import {getRefundWorkerRolePlan,verifyRefundWorkerDatabase} from '../scripts/refund-worker-role.mjs';
++import {assertRefundSchema} from '../scripts/refund-worker-schema.mjs';
++import {verifyLocalPrimarySchema} from '../scripts/local-primary-fixture.mjs';
++export async function testServicePaymentGuards(suite,{admin,config,load}){
++ await admin.query('begin read only');try{await assertRefundSchema(admin,57,{localPrimary:true});await assert.rejects(assertRefundSchema(admin,56,{localPrimary:true}));}finally{await admin.query('rollback');}
++ await admin.query('create database blizhniy_prod');const local=new pg.Pool({...config,database:'blizhniy_prod',max:3}),databases=[],checks=[];
++ const operator=getRefundOperatorRolePlan('blizhniy_prod',{schema:57}),worker=getRefundWorkerRolePlan('blizhniy_prod',{schema:57}),merchant={shopId:'service-fixture',isTest:true};
++ const state={database:'blizhniy_prod',dbPort:config.port,ownerPassword:config.password,origin:'https://127.0.0.1:3045'};
++ try{
++  for(const {name} of operator.journal)await local.query(await readFile(new URL('../database/migrations/'+name,import.meta.url),'utf8'));
++  await local.query("create schema blizhniy_meta;create table blizhniy_meta.migrations(name text primary key,sha256 text not null);revoke all on database blizhniy_prod from public;revoke create on schema public from public;revoke all on schema blizhniy_meta from public;revoke all on blizhniy_meta.migrations from public");
++  for(const {name,sha256} of operator.journal)await local.query('insert into blizhniy_meta.migrations values($1,$2)',[name,sha256]);
++  await local.query(await readFile(new URL('../database/local-primary-payment.sql',import.meta.url),'utf8'));await local.query(await readFile(new URL('../database/permissions/telegram-phone.sql',import.meta.url),'utf8'));
++  for(const [plan,verify] of [[operator,verifyRefundOperatorDatabase],[worker,verifyRefundWorkerDatabase]]){
++   await local.query(plan.createRole);await local.query(`alter role ${plan.role} login password ${pg.escapeLiteral(config.password)}`);for(const sql of plan.grants)await local.query(sql);
++   const db=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database:'blizhniy_prod',user:plan.role,max:2}));databases.push(db);checks.push(()=>verify(db,{database:'blizhniy_prod',merchant,localPrimary:true}));
++  }
++  const check=async()=>{await verifyLocalPrimarySchema(state);for(const fn of checks)await fn();};
++  await suite.test('full local57 is exact, opt-in and gives neither financial role new privileges',async()=>{
++   await check();assert.deepEqual(operator.grants,getRefundOperatorRolePlan('blizhniy_prod').grants);assert.deepEqual(worker.grants,getRefundWorkerRolePlan('blizhniy_prod',{schema:55}).grants);
++   const value=process.env.BLIZHNIY_SERVICE_CHECKOUT;delete process.env.BLIZHNIY_SERVICE_CHECKOUT;try{await assert.rejects(verifyLocalPrimarySchema(state));}finally{process.env.BLIZHNIY_SERVICE_CHECKOUT=value;}
++   for(const db of databases)await assert.rejects(db.query('select * from app.service_payment_terms'),{code:'42501'});
++   await assert.rejects(verifyRefundOperatorDatabase(databases[0],{database:'blizhniy_prod',merchant}));await assert.rejects(verifyRefundWorkerDatabase(databases[1],{database:'blizhniy_prod',merchant}));
++  });
++  for(const [name,change,undo] of [
++   ['unknown58',"insert into blizhniy_meta.migrations values('0058-synthetic.sql',repeat('a',64))","delete from blizhniy_meta.migrations where name='0058-synthetic.sql'"],
++   ['wrong57hash',"update blizhniy_meta.migrations set sha256=repeat('0',64) where name='0057-service-payment-terms.sql'",null],
++   ['terms-trigger',"alter table app.service_payment_terms disable trigger service_payment_terms_guard","alter table app.service_payment_terms enable trigger service_payment_terms_guard"],
++   ['service-window-trigger',"alter table app.payment_fulfillments disable trigger service_payment_fulfillment_guard","alter table app.payment_fulfillments enable trigger service_payment_fulfillment_guard"],
++   ['service-edit-trigger',"alter table app.service_publications disable trigger service_checkout_edit_guard","alter table app.service_publications enable trigger service_checkout_edit_guard"],
++  ])await suite.test(name+' rejects owned launcher and both roles without silently repairing the schema',async()=>{
++   await local.query(change);try{await assert.rejects(verifyLocalPrimarySchema(state));for(const fn of checks)await assert.rejects(fn());}finally{if(undo)await local.query(undo);else await local.query('update blizhniy_meta.migrations set sha256=$1 where name=$2',[operator.journal.at(-1).sha256,operator.journal.at(-1).name]);}await check();
++  });
++  await suite.test('missing57 and extra financial SELECT cannot be admitted',async()=>{
++   await local.query("delete from blizhniy_meta.migrations where name='0057-service-payment-terms.sql'");try{await assert.rejects(check());for(const fn of checks)await assert.rejects(fn());}finally{await local.query('insert into blizhniy_meta.migrations values($1,$2)',[operator.journal.at(-1).name,operator.journal.at(-1).sha256]);}
++   for(const [index,role] of [[0,operator.role],[1,worker.role]]){await local.query('grant select(intent_id) on app.service_payment_terms to '+role);try{await assert.rejects(checks[index]());}finally{await local.query('revoke select(intent_id) on app.service_payment_terms from '+role);}}await check();
++  });
++ }finally{for(const db of databases)await db.close();await local.end();}
++}
+--- /dev/null
++++ b/tests/service-payment-artifacts.test.mjs
+@@ -0,0 +1,25 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {mkdtempSync,readFileSync,rmSync,symlinkSync,existsSync} from 'node:fs';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {fileURLToPath} from 'node:url';
++import {execFileSync} from 'node:child_process';
++import {createHash} from 'node:crypto';
++import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
++import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
++import {getRefundOperatorRolePlan} from '../scripts/refund-operator-role.mjs';
++test('both local57 service artifacts contain exact copied bytes, snapshots and offline-loadable modules; defaults remain old boundaries',()=>{
++ const owned=mkdtempSync(join(tmpdir(),'blizhniy-service57-artifacts-'));
++ try{
++  assert.equal(getRefundOperatorRolePlan('artifact').journal.length,55);
++  for(const [name,build] of [['operator',buildRefundOperator],['worker',buildRefundWorker]]){
++   const path=join(owned,name),result=build(path,{schema:57});assert.equal(result.schema,57);assert.deepEqual(JSON.parse(readFileSync(join(path,'manifest.json'),'utf8')),result);
++   for(const {name,sha256} of getRefundOperatorRolePlan('artifact',{schema:57}).journal)assert.equal(createHash('sha256').update(readFileSync(join(path,'database/migrations',name))).digest('hex'),sha256);
++   for(const profile of ['refund-schema-0057.json','refund-schema-local-primary-0057.json'])assert.deepEqual(readFileSync(join(path,'database',profile)),readFileSync(new URL('../database/'+profile,import.meta.url)));
++   symlinkSync(fileURLToPath(new URL('../node_modules',import.meta.url)),join(path,'node_modules'),'dir');
++   const proof=execFileSync(process.execPath,['--input-type=module','-e',`import {createRequire} from 'node:module';const require=createRequire(import.meta.url);let calls=0;globalThis.fetch=()=>{calls++;throw Error('network forbidden');};Object.defineProperty(require('pg'),'Pool',{value:class{constructor(){calls++;throw Error('pool forbidden');}}});await import('./scripts/local-refund-${name}-runtime.mjs');for(const file of ${JSON.stringify(result.sources)})require('./compiled/'+file);if(calls!==0)throw Error('Import started work');console.log('offline');`],{cwd:path,env:{PATH:process.env.PATH,LANG:'C.UTF-8'},encoding:'utf8',timeout:10000});assert.equal(proof.trim(),'offline');
++   const rejected=join(owned,name+'-58');assert.throws(()=>build(rejected,{schema:58}));assert.equal(existsSync(rejected),false);
++  }
++ }finally{rmSync(owned,{recursive:true,force:true});}
++});
