@@ -1,4 +1,5 @@
 "use client";
+import {CabinetProfileView} from "./CabinetProfileBar";
 import {WorkPublicationsPanel} from '@/components/work/WorkPublicationsPanel';
 import {ServicePublicationsPanel} from '@/components/services/ServicePublicationsPanel';
 import {PhoneVerificationButton} from '@/components/phone/PhoneVerificationButton';
@@ -8,7 +9,7 @@ import {ApplicationsPanel} from '@/components/applications/ApplicationsPanel';
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, FileText, LockKeyhole, Mail, MapPin, Move, Phone, Plus, Search, Settings2, Trash2, UserRound, Video, X } from "lucide-react";
+import { BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, FileText, LockKeyhole, Mail, MapPin, Move, Phone, Plus, Search, Trash2, Video, X } from "lucide-react";
 import {
   demoPublicationLabels,
   canUseDemoPublicationsStorage,
@@ -24,7 +25,6 @@ import {
   type DemoPublication,
   type DemoPublicationType,
 } from "@/lib/demo-publications";
-import { useAuthState } from "@/components/auth/useAuthState";
 import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
 import { PrivateDraftsPanel } from "@/components/listings/PrivateDraftsPage";
 import { LegalLink } from "@/components/LegalConsentCheckbox";
@@ -2685,7 +2685,7 @@ function AvatarEditor({
   );
 }
 
-function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: ClientUserIdentity; profile: CabinetProfile; onClose: () => void;
+export function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: ClientUserIdentity; profile: CabinetProfile; onClose: () => void;
   saveProfile?: (profile: CabinetProfile) => Promise<CabinetProfile> }) {
   const cookie = useCookieCabinetProfile();
   const [localForm, setLocalForm] = useState(profile);
@@ -3085,64 +3085,7 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
 }
 
 export function CabinetProfileBar() {
-  const { state: authState } = useAuthState();
-  const { identity, profile, profileError, loading, saveProfile, reloadProfile } = useUserCabinetData();
-  const avatarMemory = useCookieCabinetProfile();
-  const retainedAvatar = avatarMemory?.avatarDraft ?? avatarMemory?.avatarPreparation;
-  const [open, setOpen] = useState(Boolean(retainedAvatar));
-  useEffect(() => { if (retainedAvatar) setOpen(true); }, [retainedAvatar]);
-  useEffect(()=>{if(new URLSearchParams(window.location.search).get('settings')==='1')setOpen(true);},[]);
-
-  if (authState !== "signed-in" && authState !== "admin") {
-    return null;
-  }
-
-  if (!loading && profileError && !profile) return <CabinetProfileFailure message={profileError} reload={reloadProfile} />;
-
-  if (loading || !identity || !profile) {
-    return null;
-  }
-
-  return (
-    <section id="cabinet-profile" tabIndex={-1} className="mx-auto mt-4 w-full max-w-3xl scroll-mt-4 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:mt-5 sm:p-4">
-      {!open && <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-50 text-lg font-bold text-[#0875d1]">
-            {profile.avatarDataUrl ? (
-              <img
-                src={profile.avatarDataUrl}
-                alt={`Аватар ${profile.name}`}
-                className="h-full w-full object-cover"
-                style={{
-                  objectPosition: `${profile.avatarPositionX}% ${profile.avatarPositionY}%`,
-                  transform: `scale(${profile.avatarZoom})`,
-                  transformOrigin: `${profile.avatarPositionX}% ${profile.avatarPositionY}%`,
-                }}
-              />
-            ) : (
-              profile.name.slice(0, 1).toUpperCase()
-            )}
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold uppercase text-[#0a7b2b]">Ваш профиль</p>
-            <h2 className="truncate text-xl font-bold text-[#060b27]">{profile.name}</h2>
-            <p className="truncate text-sm text-slate-500">{profile.email || "Email не указан"}</p>
-            {profile.phone ? (
-              <p className={profile.phoneVerified && profile.verifiedPhone === profile.phone ? "mt-1 text-xs font-bold text-[#0a8f32]" : "mt-1 text-xs font-bold text-amber-700"}>
-                {profile.phone} · {profile.phoneVerified && profile.verifiedPhone === profile.phone ? "подтвержден" : "не подтвержден"}
-              </p>
-            ) : null}
-          </div>
-        </div>
-        <button type="button" disabled={Boolean(profileError)} onClick={() => setOpen((value) => !value)} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1] disabled:cursor-not-allowed disabled:opacity-50">
-          <Settings2 className="h-4 w-4" />
-          Настройки
-        </button>
-      </div>}
-      {profileError ? <p role="alert" className="mt-3 text-sm font-semibold text-amber-700">{profileError}</p> : null}
-      {open && !profileError ? <SettingsPanel key={identity.ownerKey} identity={identity} profile={profile} onClose={() => setOpen(false)} saveProfile={saveProfile} /> : null}
-    </section>
-  );
+  return <CabinetProfileView data={useUserCabinetData()} />;
 }
 
 export function CabinetOverviewClient() {
@@ -4136,32 +4079,7 @@ function LegacyCabinetSpecialistClient() {
   );
 }
 
-export function CabinetCapabilities() {
-  return (
-    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
-        <UserRound className="h-5 w-5 text-[#0875d1]" />
-        <h3 className="mt-3 font-bold text-[#060b27]">Профиль</h3>
-        <p className="mt-1 text-sm leading-6 text-slate-600">Имя, телефон, email и город хранятся в настройках.</p>
-      </article>
-      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
-        <LockKeyhole className="h-5 w-5 text-[#0875d1]" />
-        <h3 className="mt-3 font-bold text-[#060b27]">Безопасность</h3>
-        <p className="mt-1 text-sm leading-6 text-slate-600">Пароль меняется только через защищенную ссылку из письма.</p>
-      </article>
-      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
-        <Bell className="h-5 w-5 text-[#0875d1]" />
-        <h3 className="mt-3 font-bold text-[#060b27]">Уведомления</h3>
-        <p className="mt-1 text-sm leading-6 text-slate-600">Можно включить или выключить события по броням, оплатам и сообщениям.</p>
-      </article>
-      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
-        <CheckCircle2 className="h-5 w-5 text-[#0875d1]" />
-        <h3 className="mt-3 font-bold text-[#060b27]">Публикации</h3>
-        <p className="mt-1 text-sm leading-6 text-slate-600">Новые пользователи начинают с нулевых счетчиков и понятных действий.</p>
-      </article>
-    </section>
-  );
-}
+export { CabinetCapabilities } from "./CabinetCapabilities";
 
 export function CabinetContactsHint() {
   return (

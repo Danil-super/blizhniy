@@ -3,7 +3,7 @@ import Link from "next/link";
 import {BriefcaseBusiness,CircleUserRound,ClipboardList,FileText,Gauge,MessageSquare,Plus,Store} from "lucide-react";
 import {SiteHeader} from "@/components/SiteHeader";
 import {CabinetShellActions} from "@/components/cabinet/CabinetShellActions";
-import {CabinetProfileBar} from "@/components/cabinet/CabinetClient";
+import {CabinetProfileBar} from "@/components/cabinet/CabinetProfileBar";
 
 export const cabinetNav = [
   { href: "/cabinet", label: "Обзор", icon: Gauge },

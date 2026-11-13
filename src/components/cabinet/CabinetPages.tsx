@@ -4,7 +4,7 @@ import {CabinetAuthGate} from "@/components/auth/CabinetAuthGate";
 import {CabinetDraftWorkspace} from "@/components/listings/CabinetDraftWorkspace";
 import {CabinetPublicationWorkspace} from "./CabinetPublicationWorkspace";
 import {BookingsPanel} from "@/components/bookings/BookingsPanel";
-import {CabinetCapabilities,CabinetOverviewClient,CabinetOrganizationClient,CabinetPaymentsClient,CabinetPublicationsClient,CabinetResponsesClient,CabinetSpecialistClient,type CabinetPaymentHistoryItem} from "./CabinetClient";
+import {CabinetCapabilities,CabinetOverviewClient,CabinetOrganizationClient,CabinetPaymentsClient,CabinetPublicationsClient,CabinetResponsesClient,CabinetSpecialistClient,type CabinetPaymentHistoryItem} from "./CabinetEntryClients";
 import {paymentRows,responseRows} from "./dashboard-rows";
 
 export function CabinetPage() {

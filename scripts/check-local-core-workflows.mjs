@@ -20,7 +20,7 @@ const headers={Origin:origin,'Content-Type':'application/json','X-Blizhniy-Reque
 async function account(name,confirmed=true){
  const email='core-'+randomUUID()+'@local.invalid',password='SyntheticCore-'+randomUUID()+'!',phone='+7999'+randomInt(1000000,9999999);
  await owner.query('begin');let id;try{id=(await owner.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',[email,await load('identity').hashPassword(password)])).rows[0].id;
- await owner.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[id,JSON.stringify({name,phone,city:'Краснодар'})]);
+ await owner.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[id,JSON.stringify(load('postgres-profile').parseProductionProfile({name,phone,city:'Краснодар'}))]);
  if(confirmed)await owner.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[id,phone,'synthetic-core-'+id]);
  await owner.query('commit');}catch(error){await owner.query('rollback');throw error;}
  const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:1440,height:1000}});contexts.push(context);

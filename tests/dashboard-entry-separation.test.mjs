@@ -16,7 +16,7 @@ function load(file,substitutions){
 function shell(){
  return load('src/components/DashboardShell.tsx',{
   '@/components/SiteHeader':{SiteHeader:()=>React.createElement('header',{'data-header':true})},
-  '@/components/cabinet/CabinetClient':{CabinetProfileBar:()=>React.createElement('section',{'data-profile':true})},
+  '@/components/cabinet/CabinetProfileBar':{CabinetProfileBar:()=>React.createElement('section',{'data-profile':true})},
   '@/components/cabinet/CabinetShellActions':{CabinetShellActions:()=>React.createElement('div',{'data-actions':true})},
  });
 }

@@ -46,3 +46,12 @@ test('cabinet entries do not eagerly import administration screens',()=>{
   assert.deepEqual([...seen].filter(file=>file.includes('/components/admin/')||file.endsWith('/AdminPublicationStatusForm.tsx')||file.endsWith('/AdMarqueeAdminPanel.tsx')),[],section||'overview');
  }
 });
+
+test('cabinet entries leave the legacy profile and SDK behind lazy boundaries',()=>{
+ for(const section of ['', 'obyavleniya','vakansii','zakazy','specialist','otkliki','bronirovaniya','fair-applications','organization','oplata']){
+  const seen=new Set();
+  const external=eagerExternalImports(`src/app/cabinet/${section?section+'/':''}page.tsx`,seen);
+  assert.equal(external.some(name=>name.startsWith('@supabase/')),false,section||'overview');
+  assert.equal([...seen].some(file=>file.endsWith('/cabinet/CabinetClient.tsx')),false,section||'overview');
+ }
+});
