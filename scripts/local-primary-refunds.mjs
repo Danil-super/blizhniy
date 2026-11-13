@@ -1,3 +1,4 @@
+import {readServiceCheckoutEnabled} from '../src/lib/service-checkout-config.ts';
 import {readPlacementRenewalsEnabled} from '../src/lib/placement-renewal-config.ts';
 import {realpathSync} from 'node:fs';
 import {mkdtemp,symlink,rm} from 'node:fs/promises';
@@ -31,7 +32,7 @@ export async function startLocalPrimaryRefunds({stateFile,signal,report}={}){
    !(signal instanceof AbortSignal)||signal.aborted||typeof report!=='function')throw unavailable();
   const state=readLocalPrimaryState(stateFile,root),parent=dirname(stateFile),config=readLocalPrimaryRefundConfig(join(parent,'refunds.json'),state);
   if(process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!==state.origin)throw unavailable();
-  const schema=readPlacementRenewalsEnabled()?56:55;
+  const schema=readServiceCheckoutEnabled()?57:readPlacementRenewalsEnabled()?56:55;
   const env={NODE_ENV:'production',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_DB_HOST:'127.0.0.1',
    BLIZHNIY_DB_PORT:String(state.dbPort),BLIZHNIY_DB_NAME:state.database,BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:join(parent,'refund-db-ca.pem'),
    BLIZHNIY_PAYMENT_SHOP_ID:localPrimaryMerchant.shopId,BLIZHNIY_PAYMENT_SECRET_KEY:localPrimaryMerchant.secretKey};

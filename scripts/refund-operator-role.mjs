@@ -31,7 +31,7 @@ const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.tes
 const journal=(schema=55)=>getRefundWorkerRolePlan('operator',{schema}).journal;
 
 export function getRefundOperatorRolePlan(database,{schema=55}={}){
- if(!validDatabase(database)||![55,56].includes(schema))throw Error('Invalid refund database');
+ if(!validDatabase(database)||![55,56,57].includes(schema))throw Error('Invalid refund database');
  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(schema),
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
    ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`)),
@@ -61,8 +61,8 @@ export async function verifyRefundOperatorDatabase(db,{database,merchant,localPr
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   const schema=localPrimary&&actualJournal.length===56?56:55;
-   if(JSON.stringify(actualJournal)!==JSON.stringify(schema===56?journal(56):expectedJournal))throw Error('Invalid refund journal');
+   const schema=localPrimary&&[56,57].includes(actualJournal.length)?actualJournal.length:55;
+   if(JSON.stringify(actualJournal)!==JSON.stringify(schema>=56?journal(schema):expectedJournal))throw Error('Invalid refund journal');
    await assertRefundSchema(tx,schema,{localPrimary});
    await assertFinancialCatalogPrivileges(tx);
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,

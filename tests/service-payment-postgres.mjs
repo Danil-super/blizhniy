@@ -1,3 +1,4 @@
+import {testServicePaymentGuards} from './service-payment-guard-cases.mjs';
 // Owned disposable database. Never installs the candidate on the permanent local stand.
 import assert from 'node:assert/strict';import {test} from 'node:test';import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {randomBytes,randomUUID,randomInt} from 'node:crypto';import {readFile,readdir} from 'node:fs/promises';import {createRequire} from 'node:module';import pg from 'pg';
@@ -185,6 +186,7 @@ test('service event terms and advertising slots are authoritative and once only'
    assert.equal((await services.fulfill(p.id)).state,'blocked');assert.deepEqual(await window(p),{status:'draft',is_paid:false,published_at:null,expires_at:null});
    const read=await new(load('postgres-service-checkout').PostgresServiceCheckoutStore)(db,{shopId:'service-fixture',isTest:true,siteOrigin:'https://fixture.example.invalid',receiptVatCode:1},'fair').readOrder(p.token,p.owner,p.id);assert.equal(read.eventEnded,true);assert.equal(read.order.fairEvent.date,before.date);assert.equal(Date.parse(read.order.fairEvent.endsAt),Date.parse(before.ends));assert.equal(read.fulfillment,null);assert.equal(read.order.status,'succeeded');
   });
+  await testServicePaymentGuards(suite,{admin,config,load});
   await suite.test('candidate rollback refuses to erase nonempty terms or original financial history',async()=>{
    await assert.rejects(admin.query(await readFile(new URL('../database/migrations/0057-service-payment-terms.down.sql',import.meta.url),'utf8')),e=>e.code==='23514');await admin.query('rollback');
    assert.ok((await admin.query('select count(*)::int n from app.service_payment_terms')).rows[0].n>0);

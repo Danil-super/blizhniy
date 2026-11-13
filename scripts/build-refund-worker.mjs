@@ -8,7 +8,7 @@ import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 export function buildRefundWorker(destination,{schema=54}={}){
- if(![54,55,56].includes(schema))throw Error('Invalid refund worker schema');
+ if(![54,55,56,57].includes(schema))throw Error('Invalid refund worker schema');
  if(typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid refund worker destination');
  const program=ts.createProgram(['placement-refund-worker.ts','application-compensation-worker.ts','postgres.ts','refund-merchant-preflight.ts'].map(name=>join(root,'src/lib',name)),{
   target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,
@@ -24,7 +24,7 @@ export function buildRefundWorker(destination,{schema=54}={}){
   if(createHash('sha256').update(bytes).digest('hex')!==sha256)throw Error('Refund migration changed during build');
   return{name,bytes};
  });
- if(migrations.length!==schema||migrations.at(-1).name!==(schema===54?'0054-refund-worker-locks.sql':schema===55?'0055-refund-operator-locks.sql':'0056-placement-renewals.sql'))throw Error('Unexpected refund migration boundary');
+ if(migrations.length!==schema||migrations.at(-1).name!==(schema===54?'0054-refund-worker-locks.sql':schema===55?'0055-refund-operator-locks.sql':schema===56?'0056-placement-renewals.sql':'0057-service-payment-terms.sql'))throw Error('Unexpected refund migration boundary');
  // A new private directory is the ownership boundary. Existing destinations are never reused.
  mkdirSync(destination,{mode:0o700});
  writeFileSync(join(destination,'package.json'),JSON.stringify({private:true,type:'commonjs'})+'\n',{flag:'wx',mode:0o600});
@@ -34,7 +34,7 @@ export function buildRefundWorker(destination,{schema=54}={}){
  for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','local-refund-worker-runtime.mjs','refund-worker-service.mjs','local-primary-refund-target.mjs','local-primary-config.mjs','local-refund-services.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
- if(schema>=55)for(const name of ['refund-schema-0055.json','refund-schema-local-primary-0055.json',...(schema===56?['refund-schema-0056.json','refund-schema-local-primary-0056.json']:[])])copyFileSync(join(root,'database',name),join(destination,'database',name));
+ if(schema>=55)for(const name of ['refund-schema-0055.json','refund-schema-local-primary-0055.json',...(schema>=56?['refund-schema-0056.json','refund-schema-local-primary-0056.json']:[]),...(schema===57?['refund-schema-0057.json','refund-schema-local-primary-0057.json']:[])])copyFileSync(join(root,'database',name),join(destination,'database',name));
  for(const {name,bytes} of migrations)writeFileSync(join(destination,'database/migrations',name),bytes,{flag:'wx',mode:0o600});
  const manifest={version:1,schema,typescript:ts.version,sources};
  writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});

@@ -131,13 +131,21 @@ const deploymentAssertionPairs = [
 ];
 // Candidate: apply only after owner review of this exact renewal boundary pair.
 const renewalAssertionPairs = [
+  ['tests/placement-renewal-artifacts.test.mjs',
+   "   const rejected=join(owned,name+'-57');assert.throws(()=>build(rejected,{schema:57}));assert.equal(existsSync(rejected),false);",
+   "   const rejected=join(owned,name+'-58');assert.throws(()=>build(rejected,{schema:58}));assert.equal(existsSync(rejected),false);"],
+  ['tests/refund-operator-role.test.mjs',
+   " for(const schema of [53,57,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));",
+   " for(const schema of [53,58,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));"],
   ['tests/refund-operator-role.test.mjs',
    " for(const schema of [53,56,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));",
-   " for(const schema of [53,57,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));"],
+   " for(const schema of [53,58,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));"],
 ];
-const reviewedReplacement = (file, text) => [...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs].some(([path, before, after]) =>
+const reviewedAssertionPairs = [...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs];
+const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, before, after]) =>
   file === path && text === before &&
-  removed.filter(line => line.file === path && line.text === before).length === 1 &&
+  removed.filter(line => line.file === path && reviewedAssertionPairs.some(([pairPath, pairBefore, pairAfter]) =>
+    pairPath === path && pairAfter === after && line.text === pairBefore)).length === 1 &&
   added.filter(line => line.file === path && line.text === after).length === 1);
 // Exact complete browser-test replacements approved by the owner, 2026-10-20.
 // Content-addressed artifacts, not a blanket permission to remove assertions.

@@ -8,7 +8,7 @@ import {getRefundOperatorRolePlan} from './refund-operator-role.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 export function buildRefundOperator(destination,{schema=55}={}){
- if(![55,56].includes(schema))throw Error('Invalid refund operator schema');
+ if(![55,56,57].includes(schema))throw Error('Invalid refund operator schema');
  if(typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid refund operator destination');
  const program=ts.createProgram(['admin-refund-commands.ts','postgres-admin-refund-journal.ts','postgres-refund-approvals.ts','primary-refund-recovery.ts','postgres.ts','refund-merchant-preflight.ts'].map(name=>join(root,'src/lib',name)),{
   target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,
@@ -24,7 +24,7 @@ export function buildRefundOperator(destination,{schema=55}={}){
   if(createHash('sha256').update(bytes).digest('hex')!==sha256)throw Error('Refund migration changed during build');
   return{name,bytes};
  });
- if(migrations.length!==schema||migrations.at(-1).name!==(schema===55?'0055-refund-operator-locks.sql':'0056-placement-renewals.sql'))throw Error('Unexpected refund migration boundary');
+ if(migrations.length!==schema||migrations.at(-1).name!==(schema===55?'0055-refund-operator-locks.sql':schema===56?'0056-placement-renewals.sql':'0057-service-payment-terms.sql'))throw Error('Unexpected refund migration boundary');
  // A new private directory is the ownership boundary. Existing destinations are never reused.
  mkdirSync(destination,{mode:0o700});
  writeFileSync(join(destination,'package.json'),JSON.stringify({private:true,type:'commonjs'})+'\n',{flag:'wx',mode:0o600});
@@ -37,7 +37,7 @@ export function buildRefundOperator(destination,{schema=55}={}){
  copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
  copyFileSync(join(root,'database/refund-schema-local-primary-0055.json'),join(destination,'database/refund-schema-local-primary-0055.json'));
  for(const {name,bytes} of migrations)writeFileSync(join(destination,'database/migrations',name),bytes,{flag:'wx',mode:0o600});
- if(schema===56)for(const name of ['refund-schema-0056.json','refund-schema-local-primary-0056.json'])copyFileSync(join(root,'database',name),join(destination,'database',name));
+ if(schema>=56)for(const name of ['refund-schema-0056.json','refund-schema-local-primary-0056.json',...(schema===57?['refund-schema-0057.json','refund-schema-local-primary-0057.json']:[])])copyFileSync(join(root,'database',name),join(destination,'database',name));
  const manifest={version:1,schema,typescript:ts.version,sources};
  writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});
  return manifest;
