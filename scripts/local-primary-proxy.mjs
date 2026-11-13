@@ -144,7 +144,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
     res.writeHead(response.status,responseHeaders);
     res.end(Buffer.from(await response.arrayBuffer()));return;
    }
-   const outgoing=httpRequest({hostname:'127.0.0.1',port:localPrimaryUpstreamPort,path:req.url,method:req.method,headers:{...Object.fromEntries(headers),'accept-encoding':'identity'}},incoming=>{
+   const outgoing=httpRequest({hostname:'127.0.0.1',port:localPrimaryUpstreamPort,path:req.url,method:req.method,headers:Object.fromEntries(headers)},incoming=>{
     const replyHeaders={...incoming.headers};
     if(replyHeaders.location?.startsWith(canonical))replyHeaders.location=replyHeaders.location.replace(canonical,state.origin);
     replyHeaders['set-cookie']=[...(Array.isArray(replyHeaders['set-cookie'])?replyHeaders['set-cookie']:[]),proof.cookie];
