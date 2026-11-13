@@ -8,10 +8,12 @@ import { Camera, ImagePlus, Trash2, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { YandexMapPicker } from "@/components/YandexMapPicker";
+import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import { categories as fallbackCategories, cities, region } from "@/lib/data";
 import { extractListingPriceDigits } from "@/lib/listing-price";
 import { getRentalSubcategories, isRentalCategorySlug, isRentalSubcategorySlug } from "@/lib/listing-rental";
 import { filterListingMediaFiles, listingMediaLimitText } from "@/lib/media-limits";
+import { mediaOwnerQuotaText } from "@/lib/media-upload-contract";
 import { hasMapCoordinates } from "@/lib/map-location";
 import type { BookingDetails, Category, ListingKind } from "@/lib/types";
 
@@ -714,6 +716,7 @@ export function ListingKindAndCategoryFields({
 }
 
 export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) {
+  const primary=usePrimaryAccountAuth();
   const [media, setMedia] = useState<PreviewMedia[]>([]);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("");
@@ -868,6 +871,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
           <div>
             <h2 className="font-bold text-slate-800">Фото объявления</h2>
             <p className="mt-1 text-sm text-slate-500">{media.length ? `${media.length} из ${maxFiles}` : "Файлы не выбраны"}. {listingMediaLimitText()} Единый кадр 4:3; рекомендуемый размер — 1600×1200. Кадр можно настроить перед сохранением.</p>
+            {primary&&<p className="mt-1 text-sm text-slate-500">{mediaOwnerQuotaText}</p>}
           </div>
         </div>
         <button type="button" onClick={openFileDialog} disabled={availableSlots <= 0} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#d92d20] px-4 text-sm font-bold text-white transition hover:bg-[#b42318] disabled:cursor-not-allowed disabled:opacity-50">

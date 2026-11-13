@@ -12,6 +12,8 @@ test('removing a photo below the shared limit clears the obsolete full-capacity 
  }).outputText;
  new Function('exports','require',code)(output,name=>{
   if(name==='react')return hooks;
+  if(name==='@/components/auth/AccountAuthProvider')return{usePrimaryAccountAuth:()=>null};
+  if(name==='@/lib/media-upload-contract')return require('../src/lib/media-upload-contract.ts');
   if(name==='@/components/SquareImageCropper')return{SquareImageCropper:()=>null};
   if(name==='@/components/StoredMedia')return{StoredMediaImage:()=>null};
   if(name==='@/lib/client-listing-media')return{productionListingMedia:{read(){throw Error('Unexpected media read');}}};

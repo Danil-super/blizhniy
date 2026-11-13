@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useState} from 'react';
+import {mediaOwnerQuotaText} from "@/lib/media-upload-contract";
 import {productionListingMedia} from '@/lib/client-listing-media';
 import type {usePrivateDraftPhotos} from './usePrivateDraftPhotos';
 import {draftButton} from './PrivateDraftEditor';
@@ -20,6 +21,7 @@ export function PrivateDraftPhotos({owner,photos,disabled}:{owner:string;photos:
  const list=photos.saved?.photos??[],blocked=disabled||photos.busy;
  return <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 sm:p-6" aria-label="Фотографии черновика">
   <h2 className="text-xl font-bold">Фотографии</h2>
+  <p className="mt-2 text-sm text-slate-600">{mediaOwnerQuotaText}</p>
   <p className="mt-2 text-sm text-slate-600">Пока объявление в черновиках, фото доступны только вам. JPEG, PNG, WebP или статичный GIF до 10 МБ. Координаты и другие метаданные удаляются.</p>
   <button type="button" className={`${draftButton} mt-3`} disabled={blocked} onClick={photos.reload}>Обновить фотографии</button>
   {photos.message&&<p role="status" className="mt-3 break-words">{photos.message}</p>}

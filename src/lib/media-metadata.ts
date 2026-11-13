@@ -1,3 +1,4 @@
+import {mediaOwnerByteLimit,mediaOwnerObjectLimit} from "./media-upload-contract.ts";
 import { AppSessionAccessError, withAppSessionTransaction } from "./app-session-transaction";
 import { assertMediaRuntime } from "./media-runtime-policy.ts";
 import type { MediaFileRecord, MediaFileObservation } from "./media-files";
@@ -9,7 +10,7 @@ export type MediaReservation = MediaFileRecord & { state: "pending" | "ready" };
 export type MediaWriteClaim = { attemptId: string; record: MediaFileRecord };
 export type MediaWriteAttempt = { attemptId: string; claimedAt: Date };
 export type MediaWriteObservation = { state: MediaReservation["state"]; files: MediaFileObservation };
-type ErrorCode = "INVALID_MEDIA_METADATA" | "MEDIA_ACCESS_DENIED" | "MEDIA_NOT_FOUND" | "MEDIA_INTENT_CONFLICT" | "MEDIA_IN_PROGRESS" | "MEDIA_QUOTA_EXCEEDED" | "MEDIA_METADATA_UNAVAILABLE";
+type ErrorCode = "INVALID_MEDIA_METADATA" | "MEDIA_ACCESS_DENIED" | "MEDIA_NOT_FOUND" | "MEDIA_INTENT_CONFLICT" | "MEDIA_IN_PROGRESS" | "MEDIA_QUOTA_EXCEEDED" | "MEDIA_OWNER_QUOTA_EXCEEDED" | "MEDIA_METADATA_UNAVAILABLE";
 export class MediaMetadataError extends Error {
   constructor(readonly code: ErrorCode) { super("Media metadata operation failed"); this.name = "MediaMetadataError"; }
 }
@@ -50,12 +51,17 @@ export class MediaMetadataRepository {
   async reserve(token: string, intentId: string, input: unknown): Promise<MediaReservation> {
     this.assertLocal(); const intent = identifier(intentId), image = imageMetadata(input);
     return this.owned(token, async (tx, ownerId) => {
+      // The user lock taken by owned() serializes uploads; a stale RR snapshot must not admit another reservation.
+      const isolation = (await tx.query<{isolation:string}>("select current_setting('transaction_isolation') as isolation")).rows[0];
+      if (isolation?.isolation !== "read committed") throw new MediaMetadataError("MEDIA_METADATA_UNAVAILABLE");
       const { rows: [inserted] } = await tx.query<MediaReservation>(`insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256)
-        values($1,$2,$3,$4,$5,$6,$7) on conflict(owner_id,intent_id) do nothing returning ${columns}`,
-      [ownerId, intent, image.mimeType, image.width, image.height, image.size, image.sha256]);
+        select $1,$2,$3,$4,$5,$6,$7 where (
+          select count(*)<$8::integer and coalesce(sum(size),0)<=$9::bigint-$6::integer from app.media_objects where owner_id=$1
+        ) on conflict(owner_id,intent_id) do nothing returning ${columns}`,
+      [ownerId, intent, image.mimeType, image.width, image.height, image.size, image.sha256, mediaOwnerObjectLimit, mediaOwnerByteLimit]);
       if (inserted) return inserted;
       const { rows: [existing] } = await tx.query<MediaReservation>(`select ${columns} from app.media_objects where owner_id=$1 and intent_id=$2`, [ownerId, intent]);
-      if (!existing) throw new MediaMetadataError("MEDIA_METADATA_UNAVAILABLE");
+      if (!existing) throw new MediaMetadataError("MEDIA_OWNER_QUOTA_EXCEEDED");
       if (existing.mimeType !== image.mimeType || existing.width !== image.width || existing.height !== image.height || existing.size !== image.size || existing.sha256 !== image.sha256) throw new MediaMetadataError("MEDIA_INTENT_CONFLICT");
       if (existing.state !== "ready") throw new MediaMetadataError("MEDIA_IN_PROGRESS");
       return existing;

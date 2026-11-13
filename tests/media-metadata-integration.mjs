@@ -165,6 +165,46 @@ export async function testMediaMetadata(suite, db, operator) {
       await assert.rejects(operator.query("delete from app.users where id=$1", [users[0].id]), { code: "23001" });
       await consistent();
     });
+    await suite.test("media: owner quota serializes two sessions at the500th object and preserves replay at the cap", async () => {
+      const user=(await operator.query("insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id,email",['media-quota-count@example.invalid',hash])).rows[0];users.push(user);
+      const firstToken=await session(user),secondToken=await session(user),intent=randomUUID();
+      const original=await repo.reserve(firstToken,intent,image);await store.write(original,bytes);await repo.complete(firstToken,original.id);
+      await operator.query(`insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256,created_at)
+        select $1,gen_random_uuid(),'image/webp',16,9,$2,$3,clock_timestamp()-interval '30 days' from generate_series(1,498)`,[user.id,image.size,image.sha256]);
+      let release,entered,pidReady;const gate=new Promise(resolve=>{release=resolve;}),inside=new Promise(resolve=>{entered=resolve;}),pidKnown=new Promise(resolve=>{pidReady=resolve;});
+      const held=new MediaMetadataRepository({transaction:work=>db.transaction(async tx=>{const result=await work(tx);entered();await gate;return result;})},files);
+      const follower=new MediaMetadataRepository({transaction:work=>db.transaction(async tx=>{pidReady((await tx.query('select pg_backend_pid() as pid')).rows[0].pid);return work(tx);})},files);
+      const winnerIntent=randomUUID(),first=held.reserve(firstToken,winnerIntent,image);first.catch(()=>{});let second;
+      try{await inside;second=follower.reserve(secondToken,randomUUID(),image);second.catch(()=>{});await waitForLock(db,await pidKnown);}
+      finally{release();}
+      assert.equal((await first).state,'pending');await fail(second,'MEDIA_OWNER_QUOTA_EXCEEDED');
+      assert.equal((await operator.query('select count(*)::integer as n from app.media_objects where owner_id=$1',[user.id])).rows[0].n,500);
+      const before=await budget();assert.equal((await repo.reserve(firstToken,intent,image)).id,original.id);
+      await fail(repo.reserve(firstToken,winnerIntent,image),'MEDIA_IN_PROGRESS');await fail(repo.reserve(firstToken,intent,{...image,sha256:'e'.repeat(64)}),'MEDIA_INTENT_CONFLICT');
+      await fail(repo.reserve(firstToken,randomUUID(),image),'MEDIA_OWNER_QUOTA_EXCEEDED');assert.deepEqual(await budget(),before);
+      assert.equal((await repo.reserve(otherToken,randomUUID(),image)).state,'pending');await consistent();
+    });
+    await suite.test("media: owner byte quota admits exactly250MiB and rejects the next object without charging", async () => {
+      const user=(await operator.query("insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id,email",['media-quota-bytes@example.invalid',hash])).rows[0];users.push(user);const ownToken=await session(user),large={...image,size:2*1024*1024};
+      await operator.query(`insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256)
+        select $1,gen_random_uuid(),'image/webp',16,9,$2,$3 from generate_series(1,124)`,[user.id,large.size,image.sha256]);
+      assert.equal((await repo.reserve(ownToken,randomUUID(),large)).state,'pending');
+      assert.equal((await operator.query('select sum(size)::text as bytes from app.media_objects where owner_id=$1',[user.id])).rows[0].bytes,String(250*1024*1024));
+      const before=await budget();await fail(repo.reserve(ownToken,randomUUID(),{...image,size:12}),'MEDIA_OWNER_QUOTA_EXCEEDED');assert.deepEqual(await budget(),before);await consistent();
+    });
+    await suite.test("media: stale isolation fails closed and old over-quota records remain intact", async () => {
+      const before=await budget();
+      for(const isolation of ['repeatable read','serializable']){
+        const stale=new MediaMetadataRepository({transaction:work=>db.transaction(async tx=>{await tx.query('set local transaction isolation level '+isolation);return work(tx);})},files);
+        await fail(stale.reserve(token,randomUUID(),image),'MEDIA_METADATA_UNAVAILABLE');
+      }
+      assert.deepEqual(await budget(),before);
+      const user=(await operator.query("insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id,email",['media-quota-legacy@example.invalid',hash])).rows[0];users.push(user);const ownToken=await session(user);
+      await operator.query(`insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256)
+        select $1,gen_random_uuid(),'image/webp',16,9,$2,$3 from generate_series(1,501)`,[user.id,image.size,image.sha256]);
+      const charged=await budget();await fail(repo.reserve(ownToken,randomUUID(),image),'MEDIA_OWNER_QUOTA_EXCEEDED');assert.deepEqual(await budget(),charged);
+      assert.equal((await operator.query('select count(*)::integer as n from app.media_objects where owner_id=$1',[user.id])).rows[0].n,501);await consistent();
+    });
     await suite.test("media: restricted runtime charges through a non-superuser fixed-path trigger but cannot alter budget/auth/DDL", async () => {
       await operator.query("create role media_fixture_runtime nologin;create role media_fixture_budget_owner nologin"); rolesCreated = true;
       await operator.query(`grant usage on schema app to media_fixture_runtime,media_fixture_budget_owner;
