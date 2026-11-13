@@ -105,11 +105,27 @@ try{
    await owner.query('rollback to savepoint reference_change');await owner.query('release savepoint reference_change');
   }
  });
+ // Arrange historical damage before inserting its old immutable payment; never disable live guards.
+ async function historicalFixture(mode){
+  const item=await create(),q=await quote(item);
+  if(mode==='edit')await forms.update(token,user,'vacancy',item.id,item.revision,{...item.form,title:'Изменённая вакансия'});
+  else await trusted.transaction(tx=>tx.query('update app.work_publications set deleted_at=clock_timestamp() where id=$1',[item.id]));
+  const id=randomUUID(),providerId=randomUUID(),binding={id,ownerId:user,targetType:'vacancy',targetId:item.id,targetRevision:item.revision,tariffId:q.tariff.id,amount:q.tariff.amount,durationDays:q.tariff.durationDays,shopId:'local-fixture-shop',isTest:true};
+  const requestBody=JSON.stringify({amount:{value:binding.amount,currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:origin+'/oplata/'+id},metadata:{localPaymentId:id,targetId:item.id,targetType:'vacancy',tariffId:binding.tariffId}});
+  const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(trusted);
+  await trusted.transaction(async tx=>{await intents.persistInTransaction(tx,{...binding,requestBody});await tx.query('insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision) values($1,$2,$3,$4,$5,$6::bigint)',[id,user,randomUUID(),'vacancy',item.id,item.revision]);});
+  await intents.authorize(binding);await owner.query("insert into local_primary.provider_payments(intent_id,provider_id,status) values($1,$2,'pending')",[id,providerId]);await intents.bindProvider(binding,providerId);
+  return{item,order:{id}};
+ }
+ await check('active checkout prevents edits and deletion without losing the saved draft or purchase',async()=>{
+  const f=await fixture(),orderBefore=(await owner.query('select * from app.payment_orders where id=$1',[f.order.id])).rows[0],before=await forms.read(token,user,'vacancy',f.item.id);
+  await assert.rejects(forms.update(token,user,'vacancy',f.item.id,f.item.revision,{...f.item.form,title:'Изменённая вакансия'}),error=>error.code==='PBL01');
+  await assert.rejects(trusted.transaction(tx=>tx.query('update app.work_publications set deleted_at=clock_timestamp() where id=$1',[f.item.id])),error=>error.code==='PBL01');
+  assert.deepEqual(await forms.read(token,user,'vacancy',f.item.id),before);assert.deepEqual((await owner.query('select * from app.payment_orders where id=$1',[f.order.id])).rows[0],orderBefore);assert.equal(await count(f.order.id),0);
+ });
  await check('edited or deleted draft after dispatch returns explicit blocked with durable payment and no publication',async()=>{
   for(const mode of ['edit','delete']){
-   const f=await fixture();
-   if(mode==='edit')await forms.update(token,user,'vacancy',f.item.id,f.item.revision,{...f.item.form,title:'Изменённая вакансия'});
-   else await owner.query('update app.work_publications set deleted_at=clock_timestamp() where id=$1',[f.item.id]);
+   const f=await historicalFixture(mode);
    const response=await pay(f.order);assert.equal(response.status,200);assert.match(await response.text(),/target_changed/);
    assert.equal((await row(f.item.id)).is_paid,false);assert.equal(await count(f.order.id),0);
    assert.equal((await owner.query('select status from app.payment_orders where id=$1',[f.order.id])).rows[0].status,'succeeded');

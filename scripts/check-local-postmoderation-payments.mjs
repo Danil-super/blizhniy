@@ -20,6 +20,10 @@ try{
  const tx={query:(sql,values)=>owner.query(sql,values)},database={...tx,transaction:work=>work(tx)},context={state,ownerDb:database,runtimeDb:database,load};
  const user=(await owner.query('insert into app.users(email,password_hash,email_verified_at,role) values($1,$2,clock_timestamp(),$3) returning id',[`pay-local-${randomUUID()}@example.invalid`,`scrypt$131072$8$1$${'a'.repeat(32)}$${'b'.repeat(128)}`,'admin'])).rows[0].id;
  const token=randomBytes(32).toString('hex');await owner.query("insert into app.sessions(token_hash,user_id,auth_version,scope) values($1,$2,0,'app')",[load('identity').hashSessionToken(token),user]);
+ const phone='+7999'+String(randomBytes(4).readUInt32BE()%10000000).padStart(7,'0');
+ await owner.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[user,JSON.stringify({name:'Синтетический автор',phone})]);
+ await owner.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[user,phone,'synthetic-listing-payment-'+randomUUID()]);
+ assert.equal((await owner.query('select app.phone_is_confirmed($1) as confirmed',[user])).rows[0].confirmed,true);
  async function fixture(){
   const id=(await owner.query("insert into app.listings(author_id,listing_type,category_id,city_id,title,description,contact_phone) select $1,'sell',c.id,city.id,'Проверка локальной оплаты','Синтетическое объявление для проверки платежей.','+79990000000' from app.categories c cross join app.cities city where c.slug='otdyh' and city.name='Краснодар' returning id",[user])).rows[0].id;
   const preview=await localPrimaryPaymentHandler(request('/api/account/listing-checkout',token,{action:'testPreview',expectedOwnerId:user,listingId:id,expectedRevision:'1'}),context);
