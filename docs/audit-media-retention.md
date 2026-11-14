@@ -286,3 +286,65 @@ Production, два российских сервера, push/deploy и наст�
 
 Источник условий snapshot: [PostgreSQL18, Repeatable Read](https://www.postgresql.org/docs/18/transaction-iso.html#XACT-REPEATABLE-READ).
 Завершение child подтверждается по [Node22, close](https://github.com/nodejs/node/blob/v22.23.4/doc/api/child_process.md#event-close), а не только exit или отправке сигнала.
+
+
+## 14.11.2026 — единый кандидат активации local58
+
+Подготовлен [пакет допуска и установки](review/local-media-retention58.md)
+с [точным планом](review/local-media-retention58-plan.json). Рабочая версия
+остаётся local57: чтением сверены полный journal/fingerprint и pinned TLS,
+роль очистки отсутствует. Новая схема/права пока не установлены.
+
+Кандидат включает полный fingerprint58, отдельную роль без ownership/memberships,
+SELECT новых runtime-колонок, совместимость financial artifacts и локальных
+compositions. Схема58 требует явного localPrimary:true; defaults и прежние
+unknown58 тесты без этого признака сохранены, floor не менялся. Финансовые
+права не расширены; payment artifact также включает новую зависимость.
+
+One-shot runner привязан к фиксированным state/media пути сайта, проверяет
+owned Docker target, pinned TLS, полную схему/journal/ACL и независимый
+закрытый пароль до FS. Нельзя передать копию state и получить completion
+для чужой пустой папки. Проверены abort/ошибки/close и конечные сообщения;
+настоящий child/SQL/delete/replay проверен отдельно на disposable PG18.
+
+Native2757/2757, новая PG fixture48/48 и прежние PG176/176 (вместе224),
+check:fast и сборка epxs0bkTVi41RomD7dmjk прошли. Прежний lint warning
+targetType сохранён. Общий PG набор включал browser account-сценарии.
+Локальный57 перезапущен с прежними флагами: главная/health/ready отвечают200.
+Инженерное ревью исправило ошибочный путь media, недостающий dependency
+платёжной сборки, передачу localPrimary оператору, ownership вне app,
+независимость credential и невыполнимую немедленную post-install очистку.
+
+После установки первые168часов существующие media не могут очищаться:
+backfill наблюдает их текущим временем. Часы/история постоянного стенда
+не подменяются. Приёмка eligible cleanup откладывается, incomplete quarantine
+остаётся отдельным открытым ограничением. F08 не закрыт до согласования
+точного guard-пакета, установки и эксплуатационной приёмки. Production,
+оба российских сервера, реальные платежи и push/deploy не затронуты.
+
+Gitleaks проверил точные29 изменённых файлов, включая review patch, без
+находок и новых исключений. Reverse apply --check подтвердил соответствие
+patch текущим байтам; migration/profile SHA256 сверены. Graphify и Code Graph
+обновлены. Guard и установка ожидают решения владельца; commit не выполнялся.
+
+## 14.11.2026 — local58 установлен и принят
+
+После команды владельца продолжить точный пакет сохранён в `fb8283d`.
+Свежий закрытый backup57 проверен реальным restore; только0058, отдельная
+роль и указанные два SELECT установлены локально. До COMMIT совпали все
+прежние строки/учёт/role attributes/memberships и эффективные старые права;
+после COMMIT прошли три точных role admission и pinned TLS.
+
+На работающем58 прошли основные публикации/правки/12 lost replies, phone/input
+gates, бесплатная анкета и оплаченный отклик. Через actual admin ingress и
+собранный operator/worker прошёл один синтетический полный возврат с повтором,
+одним effect/provider refund/уведомлением и404 карточки. Upload/replay/quota
+и320/1440 без JS/external errors. Преждевременный one-shot отказал без marker
+и изменения фото; все160 прежних файлов совпадают, budget/active view сходятся.
+Главная/health/ready200, HTML/build ID совпали.
+
+[Полный отчёт и границы](audit-media-retention-local58.md). Схема58 и её
+необратимые markers не откатываются автоматически. Реальных удалений на
+ручном стенде не было; earliest age floor для исходного набора —21.11 около
+19:42 МСК, references продолжают удерживать файлы. Quarantine, поздняя
+приёмка,58 restore и production rollout открыты; F08 целиком не закрыт.
