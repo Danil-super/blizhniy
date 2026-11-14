@@ -6,6 +6,7 @@ import {promisify} from 'node:util';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {readFile,readdir} from 'node:fs/promises';
 import pg from 'pg';
+import {insertMediaPayment,testMediaRetirementCandidate} from './media-retirement-candidate-cases.mjs';
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
 const name='blizhniy-media-journal-'+randomBytes(8).toString('hex'),label='blizhniy.media-journal-fixture',password=randomBytes(32).toString('hex');
 const docker=async args=>(await run('/usr/bin/docker',['--host','unix:///var/run/docker.sock',...args],{timeout:20000,maxBuffer:1048576,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',POSTGRES_PASSWORD:password}})).stdout.trim();
@@ -28,6 +29,7 @@ test('candidate media reference journal tracks actual transitions without cleanu
   const work=(await admin.query("insert into app.work_publications(author_id,kind,creation_key,form) values($1,'workRequest',$2,$3) returning id",[owner,randomUUID(),{kind:'workRequest',title:'Синтетический заказ',photoIds:[ids[1]]}])).rows[0].id;
   const service=(await admin.query("insert into app.service_publications(author_id,kind,creation_key,form) values($1,'fair',$2,$3) returning id",[owner,randomUUID(),{kind:'fair',title:'Синтетическая ярмарка'}])).rows[0].id;
   await admin.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[listing,ids[0]]);
+  const legacyIntent=await insertMediaPayment(admin,owner,'listing',randomUUID());
   const before=(await admin.query('select clock_timestamp() stamp')).rows[0].stamp;await admin.query(migration);
   const events=async(id,source)=>(await admin.query('select event_type,recorded_at,resource_id from app.media_reference_events where media_id=$1 and ($2::text is null or source=$2) order by event_id',[id,source??null])).rows;
   const baseline=(await admin.query('select * from app.media_storage_budget')).rows;
@@ -98,6 +100,7 @@ test('candidate media reference journal tracks actual transitions without cleanu
    }finally{await holder.query('reset role');}
    assert.equal((await events(ids[1],'work_publications')).at(-1).event_type,'attached');
   });
+  await testMediaRetirementCandidate(suite,{admin,holder,waiter,owner,ids,legacyIntent});
  }finally{
   if(holder)await holder.end();if(waiter)await waiter.end();if(admin)await admin.end();
   if(container){const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);assert.equal(metadata.Config.Image,image);await docker(['rm','--force',container]);}
