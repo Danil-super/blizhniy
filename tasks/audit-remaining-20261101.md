@@ -9,6 +9,15 @@
 
 # Что осталось после аудита
 
+Обновление14.11, следующий блок F08: [журнал-кандидат и fenced claim](../docs/audit-media-retention.md).
+События связывания/снятия фото и baseline старых данных проверены на временной
+PG18; кандидат58 не установлен. Исправлены phantom events при ON CONFLICT и
+FK lock upgrade; реальный upload теперь получает claim только после OS flock,
+поздний ответ SQL после остановки child не пишет файл. PG9/9 и364/364,
+native2737/2737, supervisor22/22, build/fast/Gitleaks и браузер прошли. Остались terminal
+retirement, защита финансовых target-связей, durable unlink/освобождение квоты
+ровно один раз и единый пакет допуска/установки. Файлы не удаляются; F08 открыт.
+
 Обновление14.11: владелец выбрал7 дней после снятия последней связи.
 [F08 SQL-сверка и план retirement](../docs/audit-media-retention.md): local57
 проверен в одном bounded read-only snapshot —156 объектов/3909920B,

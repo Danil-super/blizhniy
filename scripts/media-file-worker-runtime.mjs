@@ -27,7 +27,7 @@ export function assertFileFence(root) {
 }
 
 export async function runFileWorker(createStore = createLocalMediaFileStore, mode = "write") {
-  if (!["write", "inspect", "observe"].includes(mode)) throw new Error("File operation unavailable");
+  if (!["write", "claimed-write", "inspect", "observe"].includes(mode)) throw new Error("File operation unavailable");
   const root = process.argv[2], proof = assertFileFence(root);
   if (mode === "observe") {
     process.stdout.write(Buffer.from([82])); // READY only after this process proves its kernel fence.
@@ -47,9 +47,14 @@ export async function runFileWorker(createStore = createLocalMediaFileStore, mod
     if ((frame.length !== 0 && !observed) || !same(proof, assertFileFence(root))) throw new Error("File observation unavailable");
     return Buffer.from([68]); // DONE, including denied/no-request observations.
   }
+  if (mode === "claimed-write") process.stdout.write(Buffer.from([82]));
   const chunks = []; let size = 0;
   for await (const chunk of process.stdin) {
-    size += chunk.length; if (size > (mode === "write" ? FILE_WRITE_MAX_BYTES : FILE_INSPECT_REQUEST_BYTES) || chunks.length >= 256) throw new Error("File operation unavailable"); chunks.push(chunk);
+    size += chunk.length; if (size > (mode === "inspect" ? FILE_INSPECT_REQUEST_BYTES : FILE_WRITE_MAX_BYTES) || chunks.length >= 256) throw new Error("File operation unavailable"); chunks.push(chunk);
+  }
+  if (mode === "claimed-write" && size === 0) {
+    if (!same(proof, assertFileFence(root))) throw new Error("File fence unavailable");
+    return Buffer.from([68]);
   }
   if (mode === "inspect") {
     const { record, attemptId } = decodeFileInspection(Buffer.concat(chunks, size));

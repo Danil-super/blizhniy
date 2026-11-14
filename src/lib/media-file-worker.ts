@@ -6,6 +6,7 @@ import type { MediaFileRecord, MediaFileObservation } from "./media-files";
 import { encodeFileWrite } from "./media-file-protocol.ts";
 import { encodeFileInspection, decodeFileObservation, FILE_INSPECT_REPLY_BYTES } from "./media-file-inspection-protocol.ts";
 import { assertMediaRuntime } from "./media-runtime-policy.ts";
+import { MEDIA_MAX_OUTPUT_BYTES } from "./media-worker-protocol.ts";
 
 type WorkerCode = "INVALID_MEDIA_FILE_WRITE" | "INVALID_MEDIA_FILE_INSPECTION" | "MEDIA_FILE_WORKER_BUSY" | "MEDIA_FILE_WORKER_UNAVAILABLE";
 export class MediaFileWorkerError extends Error {
@@ -19,6 +20,7 @@ const same = (a: BigIntStats, b: BigIntStats) => a.dev === b.dev && a.ino === b.
 export type MediaFileInspector = (record: MediaFileRecord, attemptId: string) => Promise<MediaFileObservation>;
 type FileJob = { mode: "write" | "inspect"; frame: Buffer };
 type ObservationJob<T> = { mode: "observe"; work: (inspect: MediaFileInspector) => Promise<T> };
+type ClaimedWriteJob = { mode: "claimed-write"; frame: () => Promise<Buffer> };
 
 /** Trusted local configuration only. No SQL authority, retry, cleanup or production upload. */
 export async function createLocalMediaFileWorker(appDirectory: string, rootDirectory: string) {
@@ -48,7 +50,8 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
   const initial = await acquireDescriptors(); try { await close(initial.lock); } finally { await close(initial.directory); }
   async function execute(job: FileJob, signal?: AbortSignal): Promise<Buffer>;
   async function execute<T>(job: ObservationJob<T>, signal?: AbortSignal): Promise<T>;
-  async function execute(job: FileJob | ObservationJob<unknown>, signal?: AbortSignal): Promise<unknown> {
+  async function execute(job: ClaimedWriteJob, signal?: AbortSignal): Promise<void>;
+  async function execute(job: FileJob | ObservationJob<unknown> | ClaimedWriteJob, signal?: AbortSignal): Promise<unknown> {
       const mode = job.mode;
       check();
       if (signal?.aborted) throw unavailable();
@@ -67,13 +70,13 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
         return await new Promise<unknown>((accept, reject) => {
           let reply = Buffer.alloc(0), stopping = false, finished = false, exited = false;
           let started = false, workFinished = false, workFailed = false, workResult: unknown, workError: unknown;
-          let requested = false, inspected = false;
+          let requested = false, inspected = false, frameSent = false;
           let inspectResolve: ((value: MediaFileObservation) => void) | undefined, inspectReject: ((error: Error) => void) | undefined;
           let stopDeadline: ReturnType<typeof setTimeout> | undefined;
           const finish = (error?: MediaFileWorkerError) => {
             if (finished) return; finished = true; clearTimeout(deadline); clearTimeout(stopDeadline); signal?.removeEventListener("abort", stop);
             stdin.destroy(); stdout.destroy(); inspectReject?.(unavailable());
-            if (error) reject(error); else if (mode === "observe" && workFailed) reject(workError); else accept(mode === "observe" ? workResult : reply);
+            if (error) reject(error); else if ((mode === "observe" || mode === "claimed-write") && workFailed) reject(workError); else accept(mode === "observe" ? workResult : reply);
           };
           const stop = () => {
             if (finished || stopping) return; stopping = true;
@@ -87,10 +90,11 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
             workFinished = true; workFailed = failed; if (failed) { workError = value; workRejection = { error: value }; } else workResult = value;
             // A callback must await its one observation; no detached work or later reuse.
             if (requested && !inspected) { stop(); return; }
-            stdin.end();
+            if (mode === "claimed-write" && !failed) { frameSent = true; stdin.end(value as Buffer); }
+            else stdin.end();
           };
           const startWork = () => {
-            if (job.mode !== "observe" || started) return;
+            if ((job.mode !== "observe" && job.mode !== "claimed-write") || started) return;
             started = true;
             const inspect: MediaFileInspector = (record, attemptId) => {
               const pending = (async () => {
@@ -107,7 +111,7 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
             };
             Promise.resolve().then(() => {
               if (finished || stopping || exited) throw unavailable();
-              return job.work(inspect);
+              return job.mode === "claimed-write" ? job.frame() : job.work(inspect);
             }).then(value => finishWork(false, value), error => finishWork(true, error));
           };
           signal?.addEventListener("abort", stop, { once: true });
@@ -117,10 +121,14 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
           stdout.on("error", stop);
           stdout.on("data", (chunk: Buffer) => {
             if (finished || stopping) return;
-            if (reply.length + chunk.length > (mode === "write" ? 1 : mode === "inspect" ? FILE_INSPECT_REPLY_BYTES : 9)) { stop(); return; }
+            if (reply.length + chunk.length > (mode === "write" ? 1 : mode === "inspect" ? FILE_INSPECT_REPLY_BYTES : mode === "claimed-write" ? 2 : 9)) { stop(); return; }
             reply = Buffer.concat([reply, chunk]);
-            if (mode !== "observe") return;
+            if (mode !== "observe" && mode !== "claimed-write") return;
             if (reply[0] !== 82) { stop(); return; }
+            if (mode === "claimed-write") {
+              if (reply.length > 1 && (!workFinished || reply[1] !== (workFailed ? 68 : 0))) { stop(); return; }
+              startWork(); return;
+            }
             startWork();
             if ((!requested && reply.length > 1 && (!workFinished || reply.length !== 2 || reply[1] !== 68)) ||
                 (requested && reply.length > 8 && !workFinished)) { stop(); return; }
@@ -136,20 +144,34 @@ export async function createLocalMediaFileWorker(appDirectory: string, rootDirec
               try {
                 if (mode === "observe") {
                   if (!started || !workFinished || reply.length !== (requested ? 9 : 2) || reply[0] !== 82 || reply.at(-1) !== 68 || (requested && !inspected)) throw unavailable();
+                } else if (mode === "claimed-write") {
+                  if (!started || !workFinished || reply.length !== 2 || reply[0] !== 82 || reply[1] !== (workFailed ? 68 : 0)) throw unavailable();
                 } else if (mode === "inspect") decodeFileObservation(reply);
                 else if (reply.length !== 1 || reply[0] !== 0) throw unavailable();
                 finish(); return;
               } catch { /* Invalid reply is UNKNOWN, not successful observation. */ }
             }
-            state.disabled = true; finish(unavailable());
+            // Actual close before sending a frame proves this child could not write.
+            // The SQL callback may still commit; its late result is never sent/replayed.
+            if (mode !== "claimed-write" || frameSent) state.disabled = true;
+            finish(unavailable());
           });
           if (signal?.aborted) stop();
-          if (job.mode !== "observe") stdin.end(job.frame);
+          if (job.mode === "write" || job.mode === "inspect") stdin.end(job.frame);
         });
       } catch (error) { if (error instanceof MediaFileWorkerError || (workRejection && error === workRejection.error)) throw error; throw unavailable(); }
       finally { try { await close(handles?.lock); } finally { try { await close(handles?.directory); } finally { state.busy = false; } } }
   }
   return {
+    async writeClaimed(source: Uint8Array, claim: () => Promise<{ record: MediaFileRecord; attemptId: string }>, signal?: AbortSignal): Promise<void> {
+      check();
+      if (!(source instanceof Uint8Array) || source.byteLength < 12 || source.byteLength > MEDIA_MAX_OUTPUT_BYTES || typeof claim !== "function") throw new MediaFileWorkerError("INVALID_MEDIA_FILE_WRITE");
+      const bytes = Buffer.from(source);
+      await execute({ mode: "claimed-write", frame: async () => {
+        const { record, attemptId } = await claim();
+        try { return encodeFileWrite(record, bytes, attemptId); } catch { throw new MediaFileWorkerError("INVALID_MEDIA_FILE_WRITE"); }
+      } }, signal);
+    },
     async write(record: MediaFileRecord, bytes: Uint8Array, attemptId: string, signal?: AbortSignal): Promise<void> {
       check(); let frame: Buffer;
       try { frame = encodeFileWrite(record, bytes, attemptId); } catch { throw new MediaFileWorkerError("INVALID_MEDIA_FILE_WRITE"); }

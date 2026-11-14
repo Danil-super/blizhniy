@@ -43,6 +43,9 @@ test("a separate live process holds the same inode lock: conflict starts no FS a
     await new Promise((resolve, reject) => { child.stdout.once("data", chunk => chunk.toString() === "locked" ? resolve() : reject(new Error("Unexpected fixture reply"))); child.once("error", reject); child.once("close", () => reject(new Error("Lock holder closed"))); });
     await failure(worker.write(metadata, bytes, randomUUID()), "MEDIA_FILE_WORKER_BUSY");
     await failure(worker.inspect(metadata, randomUUID()), "MEDIA_FILE_WORKER_BUSY");
+    let claims=0;
+    await failure(worker.writeClaimed(bytes,async()=>{claims++;return{record:metadata,attemptId:randomUUID()};}),"MEDIA_FILE_WORKER_BUSY");
+    assert.equal(claims,0);
     assert.deepEqual(await fs.readdir(root), [".writer.lock"]);
   } finally { clearTimeout(guard); if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); await ended; }
   await worker.write(metadata, bytes, randomUUID());
@@ -71,6 +74,27 @@ test("invalid input and pre-aborted jobs cannot create files", async t => {
   await failure(worker.write({ ...record(), id: "../outside" }, bytes, randomUUID()), "INVALID_MEDIA_FILE_WRITE");
   await failure(worker.write(record(), bytes, randomUUID(), abort.signal));
   assert.deepEqual(await fs.readdir(root), [".writer.lock"]);
+});
+test("real claimed write holds the OS fence throughout authority acquisition and copies input before waiting",async t=>{
+  const {root,worker}=await fixture(t),metadata=record(),attemptId=randomUUID(),source=Buffer.from(bytes);
+  const pending=worker.writeClaimed(source,async()=>{
+    const child=spawn('/usr/bin/flock',['--no-fork','--exclusive','--nonblock','--conflict-exit-code=73',path.join(root,'.writer.lock'),'/usr/bin/true'],{env:{},stdio:'ignore'});
+    const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);});assert.equal(code,73);
+    assert.deepEqual(await fs.readdir(root),['.writer.lock']);return{record:metadata,attemptId};
+  });source.fill(0);await pending;
+  assert.deepEqual(await(await createLocalMediaFileStore(root)).read(metadata),bytes);
+});
+test("real denied claim never writes; a delayed claim after cancellation cannot recreate a file",async t=>{
+  const {root,worker}=await fixture(t),metadata=record(),attemptId=randomUUID(),denied=new Error('synthetic denial');
+  await assert.rejects(worker.writeClaimed(bytes,async()=>{throw denied;}),error=>error===denied);
+  assert.deepEqual(await fs.readdir(root),['.writer.lock']);
+  const abort=new AbortController();let entered,release;
+  const started=new Promise(resolve=>{entered=resolve;}),held=new Promise(resolve=>{release=resolve;});
+  const pending=worker.writeClaimed(bytes,async()=>{entered();await held;return{record:metadata,attemptId};},abort.signal),rejected=failure(pending);
+  await started;abort.abort();await rejected;release();await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(await fs.readdir(root),['.writer.lock']);
+  await worker.writeClaimed(bytes,async()=>({record:record(),attemptId:randomUUID()}));
+  await assert.rejects(fs.stat(path.join(root,metadata.id+'.webp')),{code:'ENOENT'});
 });
 test("production mode cannot start the file worker", async t => {
   const { root } = await fixture(t); process.env.NODE_ENV = "production";
@@ -137,7 +161,7 @@ test("invoking the entry without its kernel lock cannot perform file effects", a
   const { encodeFileWrite } = await import("../src/lib/media-file-protocol.ts");
   const lock = await fs.open(path.join(root, ".writer.lock"), "r"), directory = await fs.open(root, "r");
   try {
-    for (const mode of ["write", "inspect", "observe"]) {
+    for (const mode of ["write", "inspect", "observe", "claimed-write"]) {
       const child = spawn(process.execPath, ["--experimental-strip-types", "--no-warnings", path.join(appRoot, "scripts/media-file-worker.mjs"), root, mode], {
         env: { NODE_ENV: "test" }, stdio: ["pipe", "pipe", "ignore", lock.fd, directory.fd],
       });
