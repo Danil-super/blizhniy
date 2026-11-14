@@ -1,5 +1,70 @@
 # Найденный TEST-магазин и локальный стенд — 13.11.2026
 
+## Повторная проверка14.11.2026
+
+После local58 снова проверен доступ к фиксированному GET `/v3/me` без
+Authorization: Node HTTPS остановлен общим8s deadline, оба Python-прогона
+(обычный и принудительно прямой) завершились тайм-аутом около4s.
+HTTP-статус не получен. Proxy env variables отсутствовали; TLS verification
+сохранена. Это транспортный отказ до проверки ключа, а не доказательство
+невалидного магазина/секрета. Authenticated запросы, новые платежи и изменения
+магазина не выполнялись. Два российских сервера не использовались как proxy.
+
+Существующий закрытый файл прочитан ограниченно с no-follow и проверкой
+owner/mode/nlink: только три ожидаемых поля, прежний shop совпал, isTest=true,
+ключ имеет TEST-префикс. Значения не печатались. Повторно просить владельца
+создать магазин или прислать ключ сейчас не нужно. По прежнему указанию
+владельца банковский прогон отложен до доступности API; локальный симулятор
+и проверенная схема58 продолжают работать.
+
+### Границы следующего инкремента
+
+Сверены actual callers: `PostgresListingCheckoutStore` запрещает порт в
+siteOrigin, `parsePaymentIntent` запрещает порт в сохранённом return_url,
+а `PostgresApplicationCheckoutStore` жёстко задаёт canonical production URL.
+Дополнительно обнаружена SQL-зависимость: функция
+`app.placement_refund_fiscal_mode` из0042 принимает только ASCII DNS authority
+с optional443 и запрещает IP/noncanonical origin. Изменить только JS parser
+недостаточно: такая новая покупка позднее получит отказ пути возврата.
+Действующие исходные миграции и guards не изменялись.
+
+Порядок реализации и проверки одного согласованного кандидата:
+
+1. Сначала воспроизводимые отрицательные/положительные тесты нового локального
+   return-origin. Допуск только фиксированного HTTPS127.0.0.1:3045, TEST merchant
+   и проверенного local runtime; default/production и произвольные ports/IP/
+   credentials/encoded authority остаются запрещены. Одновременно проверить
+   parser, stores, dispatcher, approval и SQL source validation.
+2. Не менять байты ни одного старого intent/чека/return_url. Новые банковские
+   покупки отделяются от `local-fixture-shop`; выбор provider/store выполняется
+   по исходному merchant binding, а не текущему переключателю интерфейса.
+3. Проверить жёсткую merchant-привязку в application checkout/fulfillment,
+   work public read и checkout cancellation. History сейчас читает собственные
+   покупки без dispatch/verify: это поведение сохраняется. Проверки должны
+   одновременно читать старую synthetic и новую TEST-историю без смешения.
+4. Подготовить банковский transport только с закрытой TEST-конфигурацией и
+   allowlist локальных аккаунтов; UI явно различает два режима. Переход на
+   return_url не доказывает оплату: необходим исходный binding и server GET.
+   Lost reply/повтор/закрытие вкладки не создают новый ключ или второе исполнение.
+5. Полный исходный receipt хранится неизменяемо. Payment status и
+   receipt_registration проверяются отдельно; test shop имитирует ответ кассы.
+   Существующий refund merchant preflight отвергает fiscalization.enabled=true:
+   его нельзя обойти ради успешного прогона. TEST/fiscal refunds требуют
+   отдельной законченной реализации/приёмки перед включением.
+6. Возможные добавочные SQL/profile/role изменения представить точным пакетом
+   после локальных тестов; не применять их из этой заметки. Новый режим не
+   становится production-ready из-за одного успешного банковского callback.
+
+Это подготовка следующего этапа F01/F02, не активированная интеграция.
+Когда появится проверенный банковский сценарий, от владельца понадобится
+ручное завершение TEST-оплаты в окне провайдера; сейчас действий не требуется.
+
+Источники: [возврат из payment flow и отдельная проверка статуса](https://yookassa.ru/developers/payment-acceptance/integration-scenarios/widget/integration?lang=en),
+[тестирование и имитация ответа кассы](https://yookassa.ru/developers/payment-acceptance/testing-and-going-live/testing?lang=en),
+[receipt status](https://yookassa.ru/developers/payment-acceptance/receipts/54fz/yoomoney/payments?lang=en).
+
+## Предыдущие наблюдения13.11.2026
+
 По поручению владельца проверена прежняя production-конфигурация READ ONLY.
 Создавать новый магазин или повторно запрашивать ключи не требуется.
 
