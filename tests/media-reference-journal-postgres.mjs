@@ -7,6 +7,7 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {readFile,readdir} from 'node:fs/promises';
 import pg from 'pg';
 import {insertMediaPayment,testMediaRetirementCandidate} from './media-retirement-candidate-cases.mjs';
+import {testMediaRetentionActivation} from './media-retention-activation-cases.mjs';
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
 const name='blizhniy-media-journal-'+randomBytes(8).toString('hex'),label='blizhniy.media-journal-fixture',password=randomBytes(32).toString('hex');
 const docker=async args=>(await run('/usr/bin/docker',['--host','unix:///var/run/docker.sock',...args],{timeout:20000,maxBuffer:1048576,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',POSTGRES_PASSWORD:password}})).stdout.trim();
@@ -101,6 +102,7 @@ test('candidate media reference journal tracks actual transitions without cleanu
    assert.equal((await events(ids[1],'work_publications')).at(-1).event_type,'attached');
   });
   await testMediaRetirementCandidate(suite,{admin,holder,waiter,owner,ids,legacyIntent});
+  await testMediaRetentionActivation(suite,{admin,config});
  }finally{
   if(holder)await holder.end();if(waiter)await waiter.end();if(admin)await admin.end();
   if(container){const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);assert.equal(metadata.Config.Image,image);await docker(['rm','--force',container]);}

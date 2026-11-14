@@ -28,10 +28,10 @@ const policy={
 };
 const functions=['app.lock_refund_recovery_source(uuid,uuid)','app.refund_target_admitted(uuid,uuid)'];
 const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
-const journal=(schema=55)=>getRefundWorkerRolePlan('operator',{schema}).journal;
+const journal=(schema=55)=>getRefundWorkerRolePlan('operator',{schema,localPrimary:schema===58}).journal;
 
-export function getRefundOperatorRolePlan(database,{schema=55}={}){
- if(!validDatabase(database)||![55,56,57].includes(schema))throw Error('Invalid refund database');
+export function getRefundOperatorRolePlan(database,{schema=55,localPrimary=false}={}){
+ if(typeof localPrimary!=='boolean'||(schema===58&&!localPrimary)||!validDatabase(database)||![55,56,57,58].includes(schema))throw Error('Invalid refund database');
  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(schema),
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
    ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`)),
@@ -61,7 +61,7 @@ export async function verifyRefundOperatorDatabase(db,{database,merchant,localPr
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   const schema=localPrimary&&[56,57].includes(actualJournal.length)?actualJournal.length:55;
+   const schema=localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:55;
    if(JSON.stringify(actualJournal)!==JSON.stringify(schema>=56?journal(schema):expectedJournal))throw Error('Invalid refund journal');
    await assertRefundSchema(tx,schema,{localPrimary});
    await assertFinancialCatalogPrivileges(tx);

@@ -92,7 +92,7 @@ export async function readRefundSchema(tx){
 }
 
 export async function assertRefundSchema(tx,schema=54,{localPrimary=false}={}){
- if(![54,55,56,57].includes(schema)||typeof localPrimary!=='boolean'||(localPrimary&&schema<55))throw Error('Invalid refund schema version');
+ if(![54,55,56,57,58].includes(schema)||typeof localPrimary!=='boolean'||(localPrimary&&schema<55)||(schema===58&&!localPrimary))throw Error('Invalid refund schema version');
  const expected=JSON.parse(readFileSync(new URL(localPrimary?`../database/refund-schema-local-primary-00${schema}.json`:`../database/refund-schema-00${schema}.json`,import.meta.url),'utf8'));
  if(JSON.stringify(await readRefundSchema(tx))!==JSON.stringify(expected))throw Error('Invalid refund schema');
 }

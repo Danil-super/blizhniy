@@ -1,3 +1,4 @@
+import {readMediaRetentionEnabled} from '../src/lib/media-retention-config.ts';
 // Local manual-review ingress. All application data is in the owned disposable
 // loopback PG18 fixture; no production secrets, SMTP or merchant are loaded.
 import {createServer} from 'node:https';
@@ -54,7 +55,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
   },
  })):null;
  const files=await load('media-files').createLocalMediaFileStore(join(stateDirectory,'media'));
- const repository=new(load('media-metadata').MediaMetadataRepository)(runtimeDb,files);
+ const repository=new(load('media-metadata').MediaMetadataRepository)(runtimeDb,files,readMediaRetentionEnabled());
  const writer=await load('media-file-worker').createLocalMediaFileWorker(state.project,join(stateDirectory,'media'));
  const normalizer=load('media-worker').createLocalMediaWorker(state.project);
  const upload=new(load('media-upload').LocalMediaUpload)(repository,normalizer,new(load('media-write').LocalMediaWriter)(repository,writer));

@@ -1,3 +1,4 @@
+import {readMediaRetentionEnabled} from '../src/lib/media-retention-config.ts';
 // One explicit local-only fixture setup for manual review. Paid state is reached
 // through the same immutable intent -> simulator -> verification -> fulfillment
 // stores, never by assigning publication/payment columns directly.
@@ -29,7 +30,7 @@ try{
  const accounts=JSON.parse(await readFile(join(stateDirectory,'accounts.json'),'utf8')),user=accounts.find(item=>item.role==='user'),admin=accounts.find(item=>item.role==='admin');
  userSession=await identity.login(user.email,user.password);adminSession=await identity.login(admin.email,admin.password);assert.ok(userSession&&adminSession);
  const files=await load('media-files').createLocalMediaFileStore(join(stateDirectory,'media'));
- const repository=new(load('media-metadata').MediaMetadataRepository)(runtimeDb,files);
+ const repository=new(load('media-metadata').MediaMetadataRepository)(runtimeDb,files,readMediaRetentionEnabled());
  const writer=await load('media-file-worker').createLocalMediaFileWorker(state.project,join(stateDirectory,'media'));
  const upload=new(load('media-upload').LocalMediaUpload)(repository,load('media-worker').createLocalMediaWorker(state.project),new(load('media-write').LocalMediaWriter)(repository,writer));
  const photo=await upload.upload(userSession.token,plan.uploadIntent,await readFile(join(state.project,'public/images/categories/home-dacha-category-hero.png')),'image/png');
