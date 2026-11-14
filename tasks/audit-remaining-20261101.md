@@ -9,6 +9,16 @@
 
 # Что осталось после аудита
 
+Обновление14.11: [файловое завершение F08](../docs/audit-media-retention.md).
+Подготовлены retention-aware read/replay/quota и one-shot retirement:
+flock → committed request → проверка обоих файлов → unlink/fsync/absence →
+ACK/actual close → одна completion. Проверены28 сценариев candidate/runtime PG,
+364 прежних PG,2751 native, build/fast и браузерный upload/replay/quota409.
+Unknown completion COMMIT восстанавливается без компенсации/двойного release;
+неполные temp сохраняются с начислением. Default retention=false и ручной57
+сохранены. Остался единый пакет admission/прав/локального включения и runner;
+production/push/реальные платежи не затронуты.
+
 Обновление14.11: [финансовые фото и терминальный учёт F08](../docs/audit-media-retention.md).
 Кандидат58 сохраняет исходный набор фотографий оплаты после редактирования,
 при неизвестной истории удерживает выбранные существующие media. Terminal

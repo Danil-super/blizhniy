@@ -8,11 +8,12 @@ import * as protocol from "../src/lib/media-file-protocol.ts";
 import * as inspection from "../src/lib/media-file-inspection-protocol.ts";
 import * as policy from "../src/lib/media-runtime-policy.ts";
 import * as workerProtocol from "../src/lib/media-worker-protocol.ts";
+import * as retirement from '../src/lib/media-file-retirement-protocol.ts';
 
 const ts = createRequire(import.meta.url)("typescript");
 export function fileWorkerModule(overrides = {}) {
   const dependencies = { "node:child_process": { ...childProcess, ...overrides.childProcess }, "node:fs": { constants }, "node:fs/promises": { ...fs, ...overrides.fs },
-    "node:path": path, "./media-file-protocol.ts": protocol, "./media-file-inspection-protocol.ts": inspection, "./media-runtime-policy.ts": policy, "./media-worker-protocol.ts": workerProtocol };
+    "node:path": path, "./media-file-protocol.ts": protocol, "./media-file-inspection-protocol.ts": inspection, "./media-runtime-policy.ts": policy, "./media-worker-protocol.ts": workerProtocol, './media-file-retirement-protocol.ts':retirement };
   const exports = {};
   vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../src/lib/media-file-worker.ts", import.meta.url), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },

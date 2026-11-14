@@ -29,7 +29,7 @@ function snapshotRecord(input: MediaFileRecord): MediaFileRecord {
 /** Local primitive, NOT authorization. Only a future guarded SQL reservation may supply records.
  * rootDirectory is pre-provisioned operator configuration outside releases/public; never an upload path.
  * The hierarchy and this UID must be trusted: this is not a sandbox against same-UID writers/root. */
-export async function createLocalMediaFileStore(rootDirectory: string, expectedRoot?: Pick<BigIntStats, "dev" | "ino">) {
+async function createMediaFiles(rootDirectory: string, expectedRoot?: Pick<BigIntStats, "dev" | "ino">) {
   let identity: BigIntStats | undefined, disabled = false;
   const checkRuntime = () => {
     try { assertMediaRuntime(process, rootDirectory); } catch { throw unavailable(); }
@@ -51,7 +51,37 @@ export async function createLocalMediaFileStore(rootDirectory: string, expectedR
     finally { await directory?.close().catch(() => { disabled = true; throw unavailable(); }); }
   };
   await withRoot(async () => undefined);
-  return {
+  const store = {
+    /** Trusted terminal reservation only. Incomplete/unknown leaves are retained, not inferred from a UUID. */
+    async retire(input: MediaFileRecord, attemptId: string | null): Promise<void> {
+      checkRuntime(); if(process.env.NODE_ENV!=="test")throw unavailable(); const record = snapshotRecord(input);
+      if (attemptId !== null && (typeof attemptId !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(attemptId))) throw new MediaFileError("INVALID_MEDIA_FILE");
+      return withRoot(async (directory, anchored) => {
+        const paths=[`${anchored}/${record.id}.webp`,...(attemptId===null?[]:[`${anchored}/.pending-${attemptId}`])];
+        const stat=async(path:string)=>{
+          try{return await lstat(path,{bigint:true});}
+          catch(error){if(error && typeof error === "object" && "code" in error && error.code === "ENOENT")return null;throw error;}
+        };
+        const before=await Promise.all(paths.map(stat));
+        if(attemptId===null && before[0]!==null)throw unavailable();
+        if(attemptId!==null){
+          const report=await store.inspect(record,attemptId);
+          if(![report.final,report.temporary].every(value=>value==="absent"||value==="complete"))throw unavailable();
+        }
+        const verified=await Promise.all(paths.map(stat));
+        if(before.some((info,index)=>{
+          const current=verified[index];return info===null?current!==null:current===null||!sameInode(info,current)||
+            info.size!==current.size||info.mode!==current.mode||info.uid!==current.uid||info.nlink!==current.nlink||info.mtimeNs!==current.mtimeNs||info.ctimeNs!==current.ctimeNs;
+        }))throw unavailable();
+        let mutation=false;
+        try{
+          // Both leaves were validated before either unlink; the child owns the shared OS fence.
+          for(let index=0;index<paths.length;index++)if(before[index]!==null){mutation=true;await unlink(paths[index]);}
+          await directory.sync();
+          if((await Promise.all(paths.map(stat))).some(info=>info!==null))throw unavailable();
+        }catch(error){if(mutation)disabled=true;throw error;}
+      });
+    },
     /** Snapshot of two known names, NOT ownership, durability or permission to delete/release. */
     async inspect(input: MediaFileRecord, attemptId: string): Promise<MediaFileObservation> {
       checkRuntime(); const record = snapshotRecord(input);
@@ -162,4 +192,15 @@ export async function createLocalMediaFileStore(rootDirectory: string, expectedR
       });
     },
   };
+  return store;
+}
+
+export async function createLocalMediaFileStore(rootDirectory:string,expectedRoot?:Pick<BigIntStats,"dev"|"ino">){
+  const {read,write,inspect}=await createMediaFiles(rootDirectory,expectedRoot);
+  return{read,write,inspect};
+}
+/** Separate local deletion capability; the existing file-store interface stays unchanged. */
+export async function createLocalMediaFileRetirer(rootDirectory:string,expectedRoot?:Pick<BigIntStats,"dev"|"ino">){
+  const {retire}=await createMediaFiles(rootDirectory,expectedRoot);
+  return{retire};
 }

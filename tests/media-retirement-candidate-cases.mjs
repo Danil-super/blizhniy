@@ -1,6 +1,7 @@
 // Only the caller's disposable PG fixture; no installed schema, files or payments.
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {testMediaRetirementRuntime} from './media-retirement-runtime-postgres.mjs';
 
 export async function insertMediaPayment(db,owner,type,target,revision='1',id=randomUUID()){
  const body=JSON.stringify({amount:{value:'199.00',currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:'https://example.invalid/payment'},metadata:{localPaymentId:id,targetId:target,targetType:type,tariffId:'fixture-publication'}});
@@ -122,5 +123,6 @@ export async function testMediaRetirementCandidate(suite,{admin,holder,waiter,ow
    for(const table of ['media_payment_reference_captures','media_retirement_requests','media_retirement_completions'])for(const sql of [`delete from app.${table}`,`truncate app.${table} cascade`])await assert.rejects(admin.query(sql),error=>error.code==='23514');
    await holder.query('begin isolation level repeatable read');try{await assert.rejects(request(holder,ids[0]),error=>error.code==='MRJ01');}finally{await holder.query('rollback');}
   });
+  await testMediaRetirementRuntime(suite,{admin,holder,clock,day});
  }finally{await holder.query('rollback');await waiter.query('rollback');await admin.query(clockDefinition);assert.equal((await admin.query("select pg_get_functiondef('app.media_retention_clock()'::regprocedure) ddl")).rows[0].ddl,clockDefinition);}
 }

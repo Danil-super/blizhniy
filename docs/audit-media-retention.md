@@ -193,20 +193,85 @@ Check:fast прошёл с прежним lint warning, без изменени�
 другой моделью владелец пропустил. Код приложения/сборка не менялись;
 на3045 продолжает работать `DDiu5BJfZWiaJzVbmjN_G` со схемой57.
 
+## 14.11: чтение, квота и файловое завершение во временном контуре
+
+`MediaMetadataRepository` получил явный trusted-параметр retention, по умолчанию
+false. Установленные compositions его не включают. В новом режиме все owned
+операции требуют READ COMMITTED; перед отдельной проверкой terminal marker
+блокируется media. Read держит блокировку до окончания файлового чтения.
+Get-by-intent/reserve/claim/complete отвергают terminal identity через уже
+существующий MEDIA_INTENT_CONFLICT; read/get-write-attempt не возвращают файл.
+Upload не нормализует и не пересоздаёт старый terminal intent. Quota admission
+использует `media_active_usage`, с нулевым значением для отсутствующего owner:
+request остаётся начисленным, только completion освобождает место.
+
+Отдельный `createLocalMediaFileRetirer` сохраняет прежний трёхметодный интерфейс
+file store. Он проверяет два точных известных имени под pinned root descriptor:
+private regular inode, UID/0600, размер, digest/формат, число hardlinks и стабильность
+снимка. **Оба** файла проверяются до первого unlink. Разрешены только complete
+или absent; пара имён может объяснять ровно два hardlink одного inode.
+Неполный, пустой, повреждённый, чужой hardlink, symlink, directory или неизвестный
+файл не удаляются; даже корректный второй файл остаётся на месте. Без write
+attempt разрешено подтвердить только уже отсутствующий final. Нет rm/рекурсии,
+путей от клиента, перечисления и удаления чужих временных файлов.
+
+После unlink выполняется directory fsync и повторная проверка отсутствия.
+Даже полностью отсутствующие имена требуют fsync: прежний процесс мог умереть
+между удалением и подтверждением долговечности. Ошибка после начала unlink
+означает UNKNOWN. Новый BFR1 frame116B связывает metadata с nullable attempt;
+он отдельно проверяет тип операции и повторно использует строгий BFI1 parser.
+Нулевое binary поле attempt отличается от любого допустимого UUID.
+
+`LocalMediaRetirement` работает только в test runtime и не имеет HTTP/cron/queue
+или автоматического retry. Сначала отдельный child получает тот же kernel flock,
+передаёт READY, затем callback коммитит terminal request (либо читает его
+прежний operation ID) и возвращает точную metadata/attempt пару. После bounded
+удаления/проверки child передаёт ACK и действительно закрывается; только после
+валидного close и закрытия descriptors начинается SQL completion. Child не
+получает соединение/пароли БД. Файловое retirement также запрещено в production.
+
+Освобождение fence перед completion безопасно в принятой модели: terminal
+request необратим, metadata/attempt identity неизменяемы, старый разрешённый
+writer уже завершился/умер до взятия этого flock, а новый claim отвергается.
+Все application writes обязаны идти через claim внутри flock; raw file-store/
+worker.write не являются разрешённым application-путём. Как и прежняя файловая
+модель, это не защита от root/постороннего writer с тем же UID, обходящего протокол.
+
+До доказанного ACK/close completion вообще не вызывается. Потеря ответа request
+COMMIT может оставить marker, но не запускает FS; свежий явный проход продолжает
+ту же операцию. Потеря ответа completion COMMIT означает **неизвестный** исход:
+начисление могло уже освободиться. Компенсации/авторетрай нет; свежий fenced
+проход заново доказывает отсутствие и видит прежнюю immutable completion,
+не освобождая бюджет повторно. Incomplete evidence остаётся на диске с request
+и начислением: одного UUID для доказательства происхождения недостаточно.
+
+Проверки на новом disposable PG18 и настоящих child/flock/files: ready→unlink→
+completion, старый intent не оживает, первая загрузка пустого owner и owner
+после удаления последнего объекта, ровно один конкурентный replacement на
+границе500 фото и отдельно250MiB, чтение перед удалением и чтение за terminal
+lock wait, потеря каждого COMMIT ACK, смерть child после настоящего fsync до
+ACK, явное восстановление без двойного release, неполный temp с сохранением
+обоих файлов/начисления. Кандидат/контур28/28, прежний bootstrap364/364,
+native2751/2751 и check:fast прошли, прежнее lint warning сохранено.
+Инженерное ревью замечаний к реализации не нашло; дополнительную проверку
+другой моделью владелец пропустил. Сборка `NkbuSgsuvSucg0UGYuaya` запущена на3045;
+браузерный upload/replay/quota409 проверил сохранность формы/учёта и320/1440 без
+JS-ошибок. На ручном стенде по-прежнему57, retention=false; его файлы не удаляли.
+
 ## Оставшийся пакет реализации очистки
 
 1. **Активация истории.** Журнал, финансовые captures и terminal ledger готовы
    в кандидате; нужны точный schema fingerprint, проверка backfill и допуск
    совместной работы всех установленных локальных handlers/workers.
-2. **Подключение terminal к приложению.** Все чтения/replay должны отвергать
-   terminal media, а owner quota — считать `media_active_usage`, сохраняя старую
-   identity. Нынешний reserve суммирует все metadata; установка одного SQL
-   кандидата без этих изменений не завершает освобождение пользовательской квоты.
-3. **Retirement под общим filesystem fence.** Разрыв claim до flock устранён
-   порядком READY → claim → frame, SQL-кандидат отвергает поздний attempt/ready.
-   Pending с попыткой не признаётся остановленным по возрасту.
-   Retire/file removal/fsync/единственное освобождение начисления требуют
-   устойчивых фаз и reconcile; UNKNOWN сохраняет начисление.
+2. **Включение terminal в compositions.** Новый режим чтения/replay/quota готов,
+   но текущие handlers/proxy создают repository с default false. Нужен единый
+   локальный rollout после проверки прав/view и schema admission; production
+   не включается этой работой.
+3. **Операторское исполнение и quarantine.** One-shot файловое исполнение и
+   явная сверка готовы для whole verified leaves/absence. Нужны ограниченная
+   роль, runner/допуск и операция восстановления для постоянного local58.
+   Неполные/неизвестные файлы требуют отдельного доказательства происхождения
+   или ручного рассмотрения; автоматическое освобождение их квоты запрещено.
 4. **Пакет допуска.** Новые права, SQL guards и расширение схемы готовятся
    изолированно, с проверками attach-vs-retire, delayed writer, replay, рестарт,
    lost ACK и session/lock expiry. Локальные handlers/operators/workers57

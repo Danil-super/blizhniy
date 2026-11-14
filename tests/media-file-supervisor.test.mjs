@@ -197,3 +197,17 @@ test("unknown claimed-write outcome after sending file bytes disables subsequent
   assert.equal(Buffer.concat(app.input).subarray(0,4).toString(),'BFW1');
   abort.abort();app.child.emit('close',null,'SIGKILL');await rejected;await fail(app.restart());
 });
+test('retirement binds its terminal claim after READY and returns proof only after actual close',async t=>{
+ const app=await fixture(t),claim={record:metadata(),attemptId:null,operationId:randomUUID()};let entered=0,returned=false;
+ const pending=app.worker.retire(async()=>{entered++;return claim;}).then(value=>{returned=true;return value;});
+ await app.started;assert.equal(entered,0);app.child.stdout.write(Buffer.from([82]));await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(entered,1);assert.equal(Buffer.concat(app.input).subarray(0,4).toString(),'BFR1');
+ app.child.stdout.write(Buffer.from([0]));app.child.emit('exit',0);await Promise.resolve();assert.equal(returned,false);
+ app.child.emit('close',0);assert.equal(await pending,claim);assert.equal(app.calls[0].args.at(-1),'retire');
+});
+test('retirement with an unknown file outcome yields no proof and disables that supervisor',async t=>{
+ const app=await fixture(t),abort=new AbortController();
+ const pending=app.worker.retire(async()=>({record:metadata(),attemptId:randomUUID()}),abort.signal),rejected=fail(pending);
+ await app.started;app.child.stdout.write(Buffer.from([82]));await new Promise(resolve=>setImmediate(resolve));
+ abort.abort();app.child.emit('close',null,'SIGKILL');await rejected;await fail(app.restart());
+});
