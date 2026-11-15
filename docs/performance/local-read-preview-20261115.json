@@ -1,0 +1,306 @@
+{
+  "date": "2026-11-15",
+  "sourceCheckpoint": "4bbb103",
+  "buildId": "WlKUdLS6-H8aqgkZRiH-l",
+  "scope": "Owned local HTTPS proxy + production Next build + owned PostgreSQL58. Fixed six anonymous document reads, pinned local CA, full identity HTML bodies <=2MiB, request deadline5s, keep-alive, closed-loop clients staggered across think interval. No mutations, browser assets, auth, provider calls, representative large dataset or production CPU limits. A 120s read preview does not meet the required 30min mixed staging soak.",
+  "profiles": [
+    {
+      "users": 4,
+      "thinkMs": 1000,
+      "elapsedMs": 30000.747,
+      "summary": [
+        {
+          "path": "/",
+          "count": 20,
+          "failures": 0,
+          "p50": 15.804,
+          "p95": 20.785,
+          "max": 22.24,
+          "statuses": {
+            "200": 20
+          }
+        },
+        {
+          "path": "/obyavleniya",
+          "count": 19,
+          "failures": 0,
+          "p50": 17.183,
+          "p95": 24.994,
+          "max": 24.994,
+          "statuses": {
+            "200": 19
+          }
+        },
+        {
+          "path": "/rabota",
+          "count": 19,
+          "failures": 0,
+          "p50": 18.598,
+          "p95": 24.669,
+          "max": 24.669,
+          "statuses": {
+            "200": 19
+          }
+        },
+        {
+          "path": "/rabota/vakansii",
+          "count": 20,
+          "failures": 0,
+          "p50": 19.765,
+          "p95": 25.668,
+          "max": 26.569,
+          "statuses": {
+            "200": 20
+          }
+        },
+        {
+          "path": "/rabota/zakazy",
+          "count": 20,
+          "failures": 0,
+          "p50": 13.253,
+          "p95": 16.187,
+          "max": 19.594,
+          "statuses": {
+            "200": 20
+          }
+        },
+        {
+          "path": "/poisk?q=%D1%80%D0%B5%D0%BC%D0%BE%D0%BD%D1%82",
+          "count": 20,
+          "failures": 0,
+          "p50": 26.796,
+          "p95": 30.848,
+          "max": 32.252,
+          "statuses": {
+            "200": 20
+          }
+        }
+      ]
+    },
+    {
+      "users": 12,
+      "thinkMs": 1000,
+      "elapsedMs": 30027.809,
+      "summary": [
+        {
+          "path": "/",
+          "count": 60,
+          "failures": 0,
+          "p50": 14.714,
+          "p95": 17.699,
+          "max": 25.715,
+          "statuses": {
+            "200": 60
+          }
+        },
+        {
+          "path": "/obyavleniya",
+          "count": 60,
+          "failures": 0,
+          "p50": 16.294,
+          "p95": 23.828,
+          "max": 28.018,
+          "statuses": {
+            "200": 60
+          }
+        },
+        {
+          "path": "/rabota",
+          "count": 59,
+          "failures": 0,
+          "p50": 17.482,
+          "p95": 22.035,
+          "max": 24.044,
+          "statuses": {
+            "200": 59
+          }
+        },
+        {
+          "path": "/rabota/vakansii",
+          "count": 59,
+          "failures": 0,
+          "p50": 16.959,
+          "p95": 23.394,
+          "max": 25.912,
+          "statuses": {
+            "200": 59
+          }
+        },
+        {
+          "path": "/rabota/zakazy",
+          "count": 59,
+          "failures": 0,
+          "p50": 12.382,
+          "p95": 16.092,
+          "max": 17.023,
+          "statuses": {
+            "200": 59
+          }
+        },
+        {
+          "path": "/poisk?q=%D1%80%D0%B5%D0%BC%D0%BE%D0%BD%D1%82",
+          "count": 59,
+          "failures": 0,
+          "p50": 24.573,
+          "p95": 30.456,
+          "max": 32.003,
+          "statuses": {
+            "200": 59
+          }
+        }
+      ]
+    },
+    {
+      "users": 25,
+      "thinkMs": 1000,
+      "elapsedMs": 30037.43,
+      "summary": [
+        {
+          "path": "/",
+          "count": 124,
+          "failures": 0,
+          "p50": 14.227,
+          "p95": 19.95,
+          "max": 31.944,
+          "statuses": {
+            "200": 124
+          }
+        },
+        {
+          "path": "/obyavleniya",
+          "count": 123,
+          "failures": 0,
+          "p50": 15.286,
+          "p95": 19.041,
+          "max": 25.517,
+          "statuses": {
+            "200": 123
+          }
+        },
+        {
+          "path": "/rabota",
+          "count": 124,
+          "failures": 0,
+          "p50": 16.373,
+          "p95": 21.115,
+          "max": 36.181,
+          "statuses": {
+            "200": 124
+          }
+        },
+        {
+          "path": "/rabota/vakansii",
+          "count": 124,
+          "failures": 0,
+          "p50": 15.943,
+          "p95": 22.017,
+          "max": 31.655,
+          "statuses": {
+            "200": 124
+          }
+        },
+        {
+          "path": "/rabota/zakazy",
+          "count": 123,
+          "failures": 0,
+          "p50": 11.792,
+          "p95": 16.062,
+          "max": 20.504,
+          "statuses": {
+            "200": 123
+          }
+        },
+        {
+          "path": "/poisk?q=%D1%80%D0%B5%D0%BC%D0%BE%D0%BD%D1%82",
+          "count": 123,
+          "failures": 0,
+          "p50": 23.217,
+          "p95": 28.0,
+          "max": 36.665,
+          "statuses": {
+            "200": 123
+          }
+        }
+      ]
+    },
+    {
+      "users": 100,
+      "thinkMs": 5000,
+      "elapsedMs": 120025.611,
+      "summary": [
+        {
+          "path": "/",
+          "count": 399,
+          "failures": 0,
+          "p50": 13.95,
+          "p95": 17.608,
+          "max": 26.476,
+          "statuses": {
+            "200": 399
+          }
+        },
+        {
+          "path": "/obyavleniya",
+          "count": 399,
+          "failures": 0,
+          "p50": 14.955,
+          "p95": 18.625,
+          "max": 24.204,
+          "statuses": {
+            "200": 399
+          }
+        },
+        {
+          "path": "/rabota",
+          "count": 399,
+          "failures": 0,
+          "p50": 16.076,
+          "p95": 20.241,
+          "max": 24.783,
+          "statuses": {
+            "200": 399
+          }
+        },
+        {
+          "path": "/rabota/vakansii",
+          "count": 400,
+          "failures": 0,
+          "p50": 15.478,
+          "p95": 20.239,
+          "max": 25.98,
+          "statuses": {
+            "200": 400
+          }
+        },
+        {
+          "path": "/rabota/zakazy",
+          "count": 399,
+          "failures": 0,
+          "p50": 11.845,
+          "p95": 15.76,
+          "max": 18.233,
+          "statuses": {
+            "200": 399
+          }
+        },
+        {
+          "path": "/poisk?q=%D1%80%D0%B5%D0%BC%D0%BE%D0%BD%D1%82",
+          "count": 399,
+          "failures": 0,
+          "p50": 22.811,
+          "p95": 29.125,
+          "max": 39.064,
+          "statuses": {
+            "200": 399
+          }
+        }
+      ]
+    }
+  ],
+  "simultaneousSearchSpike": {
+    "requests": 25,
+    "success200": 7,
+    "failed": 18,
+    "note": "Deliberate two-reader admission rejects excess requests. Root recovery UI was absent; that UI is addressed separately, not the rejection rate."
+  }
+}
