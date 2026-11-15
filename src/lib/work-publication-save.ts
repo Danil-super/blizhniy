@@ -19,7 +19,7 @@ export function createWorkPublicationSave(owner:string,kind:WorkPublicationKind,
  if(form.photoIds.length+files.length>(kind==='vacancy'?20:6)||files.reduce((sum,file)=>sum+file.size,0)>maxListingMediaTotalSize||files.some(file=>file.size<1||file.size>maxListingImageFileSize||!mediaUploadTypes.some(type=>type===file.type)))throw Error('Выберите допустимые изображения до 10 МБ каждое.');
  const creationKey=crypto.randomUUID(),uploads=files.map(file=>({file,intent:crypto.randomUUID(),ready:null as UploadedImage|null}));
  const order=parsePhotoOrder(photoOrder,form.photoIds,files.length);
- let base=initial??null,remote:WorkPublicationSnapshot|null=null,unknown=false,busy=false,complete:WorkPublicationSnapshot|null=null;
+ let base=initial?{id:initial.id,revision:initial.revision}:null,remote:WorkPublicationSnapshot|null=null,unknown=false,busy=false,complete:WorkPublicationSnapshot|null=null;
  const payload=()=>parseWorkPublicationForm(kind,{...form,photoIds:resolvePhotoOrder(order,uploads.map(item=>{if(!item.ready)throw Error('Загрузка не подтверждена.');return item.ready.id;}))});
  const matches=(value:WorkPublicationSnapshot)=>uploads.every(item=>item.ready)&&sameProfessionForm(parseWorkPublicationForm(kind,value.form),payload());
  return{
@@ -38,6 +38,6 @@ export function createWorkPublicationSave(owner:string,kind:WorkPublicationKind,
     if(!remote){unknown=false;return null;}if(matches(remote)){complete=remote;unknown=false;}return remote;
    }finally{busy=false;}
   },
-  acceptRemoteRevision(){if(busy||!remote)throw Error('Сначала прочитайте сохранённую версию.');base=remote;unknown=false;},
+  acceptRemoteRevision(){if(busy||!remote)throw Error('Сначала прочитайте сохранённую версию.');base={id:base?.id??remote.id,revision:remote.revision};unknown=false;},
  };
 }
