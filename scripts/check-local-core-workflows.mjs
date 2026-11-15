@@ -9,13 +9,14 @@ import sharp from 'sharp';
 import pg from 'pg';
 import {stateFile,stateDirectory,docker,localPrimaryDatabaseConfig} from './local-primary-fixture.mjs';
 import {readLocalPrimaryState,validateLocalPrimaryContainer} from './local-primary-config.mjs';
+import {observeBrowserHydration} from './local-browser-hydration.mjs';
 
 const state=readLocalPrimaryState(stateFile,process.cwd());
 validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
 assert.equal(state.origin,'https://127.0.0.1:3045');
 const origin=state.origin,run=randomUUID(),load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
 const owner=new pg.Client(localPrimaryDatabaseConfig(state,'owner'));await owner.connect();
-const browser=await chromium.launch({headless:true}),contexts=[],errors=[],external=[],results=[];
+const browser=await chromium.launch({headless:true}),contexts=[],errors=[],external=[],results=[],hydration=[];
 const headers={Origin:origin,'Content-Type':'application/json','X-Blizhniy-Request':'1','Sec-Fetch-Site':'same-origin'};
 async function account(name,confirmed=true){
  const email='core-'+randomUUID()+'@local.invalid',password='SyntheticCore-'+randomUUID()+'!',phone='+7999'+randomInt(1000000,9999999);
@@ -24,6 +25,7 @@ async function account(name,confirmed=true){
  if(confirmed)await owner.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[id,phone,'synthetic-core-'+id]);
  await owner.query('commit');}catch(error){await owner.query('rollback');throw error;}
  const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:1440,height:1000}});contexts.push(context);
+ hydration.push(await observeBrowserHydration(context));
  await context.route('**/*',route=>{const url=new URL(route.request().url());if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){external.push(url.origin);return route.abort();}return route.continue();});
  const page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',error=>errors.push(error.name));
  const api=async(path,data,method='POST',status=200)=>{const response=await context.request.fetch(origin+path,{method,headers,data:{expectedOwnerId:id,...data}});assert.equal(response.status(),status,path);return response.json();};
@@ -172,9 +174,9 @@ try{
  assert.equal((await owner.query('select count(*)::int n from local_primary.application_deliveries where intent_id=$1',[applicationPayment])).rows[0].n,1);
  assert.deepEqual(await paymentRows(applicationPayment),{anchors:1,links:1,providers:1});
  assert.equal((await owner.query('select count(*)::int n from app.notifications where user_id=$1 and event_key=$2',[author.id,'application_paid:'+application.id])).rows[0].n,1);
- assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
+ assert.deepEqual(errors,[]);assert.deepEqual(external,[]);assert.deepEqual(hydration.flat(),[]);
  const result={status:'passed',run,results,specialist:{id:profile.id,free:true,applicationId:application.id,paymentId:applicationPayment,lostPrepareReplyRecovered:true,lostDispatchReplyRecovered:true,lostCaptureReplyRecovered:true,singleNotification:true},realProviderCalls:false,productionTouched:false};
  await writeFile(join(stateDirectory,'core-workflows-'+run+'.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});
  console.log(JSON.stringify({status:'passed',types:results.map(r=>r.kind),publications:results.length,paidEdits:results.length,cancellations:results.length,lostReplyRecoveries:(results.length+1)*3,phoneGate:true,invalidFieldsRejected:true,workWithdrawRestore:true,freeProfile:true,paidResponseDelivered:true,singleResponseNotification:true,realProviderCalls:false,productionTouched:false}));
-}catch(error){await Promise.allSettled(contexts.flatMap((context,index)=>context.pages().map(page=>page.screenshot({path:join(stateDirectory,'core-workflows-'+run+'-failure-'+index+'.png'),fullPage:true}))));throw error;}
+}catch(error){await Promise.allSettled([writeFile(join(stateDirectory,'core-workflows-'+run+'-errors.json'),JSON.stringify({errors,hydration:hydration.flat()},null,2)+'\n',{flag:'wx',mode:0o600}),...contexts.flatMap((context,index)=>context.pages().map(page=>page.screenshot({path:join(stateDirectory,'core-workflows-'+run+'-failure-'+index+'.png'),fullPage:true})))]);throw error;}
 finally{await Promise.allSettled(contexts.map(c=>c.close()));await browser.close();await owner.end();}

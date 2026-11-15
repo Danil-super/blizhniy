@@ -2,10 +2,12 @@
 import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';import {createRequire} from 'node:module';
 import {writeFile} from 'node:fs/promises';import {join} from 'node:path';import {chromium} from 'playwright';import sharp from 'sharp';import pg from 'pg';
 import {stateFile,stateDirectory,docker,localPrimaryDatabaseConfig} from './local-primary-fixture.mjs';import {readLocalPrimaryState,validateLocalPrimaryContainer} from './local-primary-config.mjs';
+import {observeBrowserHydration} from './local-browser-hydration.mjs';
 const state=readLocalPrimaryState(stateFile,process.cwd());validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);assert.equal(state.origin,'https://127.0.0.1:3045');
 const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule,db=new pg.Client(localPrimaryDatabaseConfig(state,'owner'));await db.connect();
 const run=randomUUID(),email=`draft-${run}@local.invalid`,password=`Synthetic-${randomUUID()}!`,phone='+79991112233',messenger='https://t.me/synthetic_roundtrip';let phase='fixture';
 const browser=await chromium.launch(),context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1440,height:1000},serviceWorkers:'block'}),page=await context.newPage(),errors=[],external=[],payments=[],results=[];page.setDefaultTimeout(12000);
+const hydration=await observeBrowserHydration(context);
 page.on('pageerror',error=>errors.push(error.name));page.on('request',request=>{const path=new URL(request.url()).pathname;if(/\/api\/account\/.*checkout$/.test(path)&&request.method()==='PUT')payments.push(path);});
 await context.route('**/*',route=>{const url=new URL(route.request().url());if(['http:','https:'].includes(url.protocol)&&url.origin!==state.origin){external.push(url.host);return route.abort();}return route.continue();});
 const image=await sharp({create:{width:800,height:600,channels:3,background:'#34805b'}}).png().toBuffer();
@@ -35,8 +37,8 @@ try{
   const publicPath=(kind==='listing'?'/obyavlenie/':kind==='vacancy'?'/vakansiya/':'/rabota/zakazy/')+updated.id;assert.equal((await context.request.get(state.origin+publicPath)).status(),404);
   results.push({kind,id:initial.id,fields:true,photos:2,samePhotosAfterEdit:true,singleRevision:true});
  }
- assert.equal((await db.query('select count(*)::int n from app.payment_orders where owner_id=$1',[user])).rows[0].n,0);assert.deepEqual(payments,[]);assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
+ assert.equal((await db.query('select count(*)::int n from app.payment_orders where owner_id=$1',[user])).rows[0].n,0);assert.deepEqual(payments,[]);assert.deepEqual(errors,[]);assert.deepEqual(external,[]);assert.deepEqual(hydration,[]);
  await writeFile(join(stateDirectory,'draft-roundtrip-'+run+'.json'),JSON.stringify({run,user,results},null,2)+'\n',{flag:'wx',mode:0o600});
  console.log(JSON.stringify({status:'passed',types:results.map(row=>row.kind),drafts:3,edited:3,photosPreserved:true,paymentOrders:0,pageErrors:0,productionTouched:false}));
-}catch(error){await page.screenshot({path:join(stateDirectory,'draft-roundtrip-'+run+'-failure.png'),fullPage:true});console.error(JSON.stringify({status:'failed',phase,error:error?.name,check:error?.code==='ERR_ASSERTION'?error.message.slice(0,800):String(error?.message).split('\n')[0].slice(0,400)}));process.exitCode=1;}
+}catch(error){await Promise.allSettled([page.screenshot({path:join(stateDirectory,'draft-roundtrip-'+run+'-failure.png'),fullPage:true}),writeFile(join(stateDirectory,'draft-roundtrip-'+run+'-errors.json'),JSON.stringify({errors,hydration},null,2)+'\n',{flag:'wx',mode:0o600})]);console.error(JSON.stringify({status:'failed',phase,error:error?.name,check:error?.code==='ERR_ASSERTION'?error.message.slice(0,800):String(error?.message).split('\n')[0].slice(0,400)}));process.exitCode=1;}
 finally{await context.close();await browser.close();await db.end();}

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 import { connection } from "next/server";
 import { headers } from "next/headers";
 import { AccountCaptchaProvider } from "@/components/auth/AccountCaptchaProvider";
@@ -63,7 +64,8 @@ export default async function RootLayout({
         <PhonePlacementProvider>
         <BookingLegacyStorageCleanup />
         <CookieNotice />
-        <div className="app-shell">{children}</div>
+        {/* Isolate lazy Flight children from host replay in Next 15's bundled renderer. */}
+        <div className="app-shell"><Fragment key="route-content">{children}</Fragment></div>
         <MobileBottomNav />
         <SiteFooter />
         </PhonePlacementProvider>
