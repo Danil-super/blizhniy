@@ -1,0 +1,50 @@
+{
+  "column": {
+    "count": 782,
+    "sha256": "21175bdd1bb3f68d428312b4f0da566554db56decb8f14960f1fe70ec69bec66"
+  },
+  "constraint": {
+    "count": 959,
+    "sha256": "26ec8dedded0326a4870e436710e75852021ace85e9bb1eb7778a9c7f875d525"
+  },
+  "external_foreign_key": {
+    "count": 3,
+    "sha256": "2e6e00d09d511b963f0446c64e101bba4aaae19c1dfff3e8e6b0bc6f786b91fd"
+  },
+  "function": {
+    "count": 107,
+    "sha256": "8fc074174e7fdbffa340362712b29cbedb9deca06e8d891e22bb5806f96174b6"
+  },
+  "index": {
+    "count": 189,
+    "sha256": "a122e167b37f7a801ac02929ff2d0eab52750ea05ba29b472b1f276ec4ba1caa"
+  },
+  "policy": {
+    "count": 2,
+    "sha256": "a89c5ad889d5cf4df8f6a1f7794be5d920f6c3e8e2d9c62f038222fb0bb94f0a"
+  },
+  "relation": {
+    "count": 263,
+    "sha256": "6ad395c6e41fe44dea542786cf9dc30ba18d05c3f44ee4ce5a81e7454994bb8a"
+  },
+  "rule": {
+    "count": 1,
+    "sha256": "d719f82ddc11f20f94f0c08a02d8bc60b0be8e1d6cf1931d5ef88d83e4889d96"
+  },
+  "sequence": {
+    "count": 1,
+    "sha256": "4afb13696d8a5696047dfbae4ddce5eb35127e88c18ef93a10c73a7bbf29c59c"
+  },
+  "trigger": {
+    "count": 543,
+    "sha256": "244d3096b21a74d14324c6ac88fd0ece22373371fe2df66aab89754790504c0a"
+  },
+  "type": {
+    "count": 146,
+    "sha256": "ff104a6963872e54c96fe28f1fa6aaa5af2a7de5cfd75c6571fda90b5c60c90e"
+  },
+  "unsupported": {
+    "count": 1,
+    "sha256": "fce708b25e7e2572e23fe66f314932a52e0fb0a473bb3b11d1e86331378e9b66"
+  }
+}
