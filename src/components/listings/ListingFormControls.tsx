@@ -7,6 +7,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Camera, ImagePlus, Trash2, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
+import {containDialogTab,openDialog} from '@/lib/dialog-keyboard';
+import {imageDataUrlToBlob} from '@/lib/image-data-url';
 import { YandexMapPicker } from "@/components/YandexMapPicker";
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import { categories as fallbackCategories, cities, region } from "@/lib/data";
@@ -187,8 +189,7 @@ function cropFileName(name: string) {
 }
 
 async function dataUrlToImageFile(dataUrl: string, name: string) {
-  const response = await fetch(dataUrl);
-  const blob = await response.blob();
+  const blob = imageDataUrlToBlob(dataUrl);
   return new File([blob], cropFileName(name), { type: blob.type || "image/png" });
 }
 
@@ -719,6 +720,11 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
   const primary=usePrimaryAccountAuth();
   const [media, setMedia] = useState<PreviewMedia[]>([]);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const libraryDialogRef=useRef<HTMLDialogElement>(null);
+  useEffect(()=>{
+    if(!libraryOpen)return;const dialog=libraryDialogRef.current;if(!dialog)return;
+    return openDialog(dialog);
+  },[libraryOpen]);
   const [selectedId, setSelectedId] = useState("");
   const [cropEditorId, setCropEditorId] = useState("");
   const [mediaMessage, setMediaMessage] = useState("");
@@ -952,7 +958,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
       ) : null}
 
       {libraryOpen ? (
-        <div className="fixed inset-0 z-[200] flex items-stretch justify-center bg-white sm:items-center sm:bg-slate-950/60 sm:p-4" role="dialog" aria-modal="true">
+        <dialog ref={libraryDialogRef} className="fixed inset-0 m-0 h-[100dvh] max-h-none w-full max-w-none border-0 bg-transparent p-0 backdrop:bg-slate-950/60 open:grid open:place-items-center sm:p-4" role="dialog" aria-modal="true" aria-label="Медиатека" onKeyDown={containDialogTab} onCancel={event=>{event.preventDefault();setLibraryOpen(false);}}>
           <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[min(42rem,92vh)] sm:max-w-3xl sm:rounded-xl">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
               <div className="min-w-0">
@@ -987,7 +993,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
                       <p className="mt-0.5 text-xs font-semibold text-slate-500">Фото</p>
                     </div>
                     <div className="flex shrink-0 gap-2">
-                      <button type="button" onClick={() => setCropEditorId(selectedMedia.id)} className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-[#0875d1] transition hover:border-[#0875d1] hover:bg-white">
+                      <button type="button" onClick={() => setCropEditorId(selectedMedia.id)} className="inline-flex h-9 items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-[#0664b3] transition hover:border-[#0875d1] hover:bg-white">
                         Кадр
                       </button>
                       <button type="button" onClick={() => makeCover(selectedMedia)} disabled={heroMedia?.id === selectedMedia.id} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1] disabled:opacity-50">
@@ -1041,7 +1047,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
             ) : null}
 
           </div>
-        </div>
+        </dialog>
       ) : null}
       {cropEditorMedia ? (
         <SquareImageCropper

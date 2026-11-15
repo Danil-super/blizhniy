@@ -10,6 +10,7 @@ import {mediaOwnerQuotaText} from "@/lib/media-upload-contract";
 import {productionListingMedia} from '@/lib/client-listing-media';
 import {createListingThumbnailQueue} from '@/lib/listing-thumbnail-queue';
 import type {ListingDraftPhoto} from '@/lib/listing-photo-contract';
+import {imageDataUrlToBlob} from '@/lib/image-data-url';
 const readPrivatePhoto=createListingThumbnailQueue(productionListingMedia.read);
 
 type PreviewPhoto = {
@@ -38,8 +39,7 @@ function syncFileInput(input: HTMLInputElement | null, photos: PreviewPhoto[]) {
 }
 
 async function dataUrlToImageFile(dataUrl: string, name: string) {
-  const response = await fetch(dataUrl);
-  const blob = await response.blob();
+  const blob = imageDataUrlToBlob(dataUrl);
   const base = name.replace(/\.[^.]+$/, "") || "photo";
   return new File([blob], `${base}-crop.png`, { type: blob.type || "image/png" });
 }

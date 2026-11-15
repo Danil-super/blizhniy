@@ -19,6 +19,7 @@ test('removing a photo below the shared limit clears the obsolete full-capacity 
   if(name==='@/lib/client-listing-media')return{productionListingMedia:{read(){throw Error('Unexpected media read');}}};
   if(name==='@/lib/listing-thumbnail-queue')return{createListingThumbnailQueue:read=>read};
   if(name==='@/lib/media-limits')return{filterFormPhotoFiles:files=>({accepted:files,rejectedMessages:[]}),formPhotoLimitText:()=>''};
+  if(name==='@/lib/image-data-url')return require('../src/lib/image-data-url.ts');
   return require(name);
  });
  const props={label:'Фото',description:'Фото заказа',maxPhotos:3,savedMedia:{owner:'11111111-1111-4111-8111-111111111111',photos:[1,2,3].map(n=>({id:`22222222-2222-4222-8222-${String(n).padStart(12,'0')}`}))}};

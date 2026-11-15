@@ -13,6 +13,7 @@ test('photo crop dialog exposes its visible title as an accessible name', () => 
   }).outputText;
   new Function('require', 'exports', code)(name => {
     if (name === '@/lib/client-media-store') return { resolveStoredMediaUrl: async source => source };
+    if (name === '@/lib/dialog-keyboard') return require('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule('dialog-keyboard');
     return require(name);
   }, output);
   const title = 'Кадр для карточки';

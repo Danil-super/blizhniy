@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 import { Move, X } from "lucide-react";
 import { resolveStoredMediaUrl } from "@/lib/client-media-store";
+import {containDialogTab,openDialog} from '@/lib/dialog-keyboard';
 
 type ImageSize = {
   height: number;
@@ -98,6 +99,16 @@ export function SquareImageCropper({ alt, aspectRatio = 1, description = "Пер
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const stageRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog=dialogRef.current;if(!dialog)return;
+    return openDialog(dialog);
+  }, []);
+
+  useEffect(() => {
+    if (saving) dialogRef.current?.focus();
+  }, [saving]);
 
   useEffect(() => {
     let active = true;
@@ -145,7 +156,7 @@ export function SquareImageCropper({ alt, aspectRatio = 1, description = "Пер
   }, []);
 
   function updateDraft(patch: Partial<CropDraft>) {
-    if (!imageSize) {
+    if (!imageSize || saving) {
       return;
     }
 
@@ -155,6 +166,7 @@ export function SquareImageCropper({ alt, aspectRatio = 1, description = "Пер
   }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if(saving||!imageSize)return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragStart({
       offsetX: draft.offsetX,
@@ -204,14 +216,14 @@ export function SquareImageCropper({ alt, aspectRatio = 1, description = "Пер
   const transform = imageSize ? getCropTransform(draft, imageSize, stageSize, aspectRatio) : null;
 
   return (
-    <div className="fixed inset-0 z-[220] grid place-items-center bg-slate-950/60 p-3 sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
+    <dialog ref={dialogRef} className="fixed inset-0 m-0 h-[100dvh] max-h-none w-full max-w-none border-0 bg-transparent p-3 backdrop:bg-slate-950/60 open:grid open:place-items-center sm:p-4" role="dialog" aria-modal="true" aria-label={title} aria-busy={saving} onKeyDown={containDialogTab} onCancel={event=>{event.preventDefault();if(!saving)onCancel();}}>
       <section className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4">
           <div className="min-w-0">
             <h3 className="text-lg font-bold text-[#060b27] sm:text-xl">{title}</h3>
             <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
           </div>
-          <button type="button" onClick={onCancel} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:text-rose-600" aria-label="Закрыть редактор фото">
+          <button type="button" onClick={onCancel} disabled={saving} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:text-rose-600" aria-label="Закрыть редактор фото">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -249,23 +261,34 @@ export function SquareImageCropper({ alt, aspectRatio = 1, description = "Пер
             </div>
           </div>
 
-          <label className="mt-5 grid gap-2 text-sm font-bold text-slate-700">
+          <div role="group" aria-label="Положение фото" className="mt-4 flex justify-center gap-2">
+            {[
+              {label:'влево',x:-10,y:0,icon:'←'},{label:'вправо',x:10,y:0,icon:'→'},
+              {label:'вверх',x:0,y:-10,icon:'↑'},{label:'вниз',x:0,y:10,icon:'↓'},
+            ].map(({label,x,y,icon})=>{
+              const position={offsetX:(transform?.offsetX??0)+x,offsetY:(transform?.offsetY??0)+y};
+              const next=imageSize?getCropTransform({...draft,...position},imageSize,stageSize,aspectRatio):null;
+              return <button key={label} type="button" aria-label={`Сдвинуть фото ${label}`} title={`Сдвинуть фото ${label}`} disabled={saving||!next||!transform||(next.offsetX===transform.offsetX&&next.offsetY===transform.offsetY)} onClick={()=>updateDraft(position)} className="h-11 w-11 rounded-lg border border-slate-300 bg-white text-xl font-bold text-slate-700 disabled:opacity-40">{icon}</button>;
+            })}
+          </div>
+
+          <label className="mt-4 grid gap-2 text-sm font-bold text-slate-700">
             Масштаб
-            <input type="range" min="1" max="3" step="0.01" value={draft.zoom} onChange={(event) => updateDraft({ zoom: clampNumber(Number(event.target.value), 1, 3) })} className="accent-[#0875d1]" />
+            <input type="range" min="1" max="3" step="0.01" value={draft.zoom} disabled={saving||!transform} onChange={(event) => updateDraft({ zoom: clampNumber(Number(event.target.value), 1, 3) })} className="accent-[#0875d1]" />
           </label>
 
-          {error ? <p className="mt-3 rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p> : null}
+          {error ? <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p> : null}
 
           <div className="mt-5 grid gap-2 sm:grid-cols-2">
             <button type="button" onClick={applyCrop} disabled={saving || !transform} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-not-allowed disabled:bg-slate-300">
               {saving ? "Применяем..." : "Применить"}
             </button>
-            <button type="button" onClick={() => updateDraft({ offsetX: 0, offsetY: 0, zoom: 1 })} className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]">
+            <button type="button" disabled={saving||!transform} onClick={() => updateDraft({ offsetX: 0, offsetY: 0, zoom: 1 })} className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]">
               Сбросить
             </button>
           </div>
         </div>
       </section>
-    </div>
+    </dialog>
   );
 }

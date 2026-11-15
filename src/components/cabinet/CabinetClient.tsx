@@ -52,6 +52,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { CabinetProfileFailure, useCookieCabinetProfile } from "./CookieCabinetProfileProvider";
 import {CabinetFormValidation} from '@/components/CabinetFormValidation';
+import {containDialogTab,openDialog} from '@/lib/dialog-keyboard';
 
 type UserCabinetState = {
   identity: ClientUserIdentity | null;
@@ -2407,6 +2408,7 @@ function AvatarEditor({
   const [dragStart, setDragStart] = useState<{ pointerId: number; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const avatarDialogRef = useRef<HTMLDialogElement>(null);
+  const avatarFileRef = useRef<HTMLInputElement>(null);
   const [avatarMessage, setAvatarMessage] = useState("");
   const preparingAvatar = Boolean(avatarContext?.avatarPreparation?.loading);
   const visibleAvatarMessage = avatarMessage || avatarContext?.avatarPreparation?.message || "";
@@ -2414,9 +2416,12 @@ function AvatarEditor({
 
   useEffect(() => {
     const dialog = avatarDialogRef.current;
-    if (cropOpen && dialog && !dialog.open) dialog.showModal();
-    return () => { if (dialog?.open) dialog.close(); };
+    if (cropOpen && dialog) return openDialog(dialog,avatarFileRef.current);
   }, [cropOpen]);
+
+  useEffect(() => {
+    if (cropOpen && loading) avatarDialogRef.current?.focus();
+  }, [cropOpen, loading]);
 
   useEffect(() => {
     if (!cropDraft || !stageRef.current) {
@@ -2469,7 +2474,7 @@ function AvatarEditor({
   }
 
   function updateCropDraft(patch: Partial<AvatarCropDraft>) {
-    if (!cropDraft || !cropImageSize) {
+    if (!cropDraft || !cropImageSize || loading) {
       return;
     }
 
@@ -2564,10 +2569,10 @@ function AvatarEditor({
               <p className="mt-0.5 text-xs leading-5 text-slate-600">Выберите фото и настройте кадр.</p>
             </div>}
             <div className="flex flex-wrap gap-2">
-              <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0664b3]">
+              <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0664b3] focus-within:ring-2 focus-within:ring-[#0875d1] focus-within:ring-offset-2">
                 <Camera className="h-4 w-4" />
                 {loading || preparingAvatar ? "Готовим..." : "Выбрать"}
-                <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="sr-only" disabled={loading || preparingAvatar} onChange={(event) => {const file=event.currentTarget.files?.[0];event.currentTarget.value='';void handleAvatarFile(file);}} />
+                <input ref={avatarFileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="sr-only" disabled={loading || preparingAvatar} onChange={(event) => {const file=event.currentTarget.files?.[0];event.currentTarget.value='';void handleAvatarFile(file);}} />
               </label>
               <button
                 type="button"
@@ -2591,13 +2596,7 @@ function AvatarEditor({
 
       {!cropOpen && visibleAvatarMessage && <p className="mt-3 text-sm text-slate-700" role="status">{visibleAvatarMessage}</p>}
       {cropDraft && cropImageSize && cropTransform ? (
-        <dialog ref={avatarDialogRef} aria-labelledby="avatar-crop-heading" className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto overscroll-contain rounded-2xl border-0 bg-white p-0 shadow-2xl backdrop:bg-slate-950/60" onCancel={event=>{event.preventDefault();if(!loading){avatarContext?.setAvatarDraft(null);setCropDraft(null);setCropImageSize(null);}}} onKeyDown={event=>{
-          if(event.key!=='Tab')return;
-          const controls=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'));
-          const first=controls[0],last=controls.at(-1);
-          if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
-          else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
-        }}>
+        <dialog ref={avatarDialogRef} aria-labelledby="avatar-crop-heading" className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto overscroll-contain rounded-2xl border-0 bg-white p-0 shadow-2xl backdrop:bg-slate-950/60" aria-busy={loading} onCancel={event=>{event.preventDefault();if(!loading){avatarContext?.setAvatarDraft(null);setCropDraft(null);setCropImageSize(null);}}} onKeyDown={event=>containDialogTab(event)}>
           <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -2648,7 +2647,18 @@ function AvatarEditor({
               </div>
             </div>
 
-            <label className="mt-5 grid gap-2 text-sm font-bold text-slate-700">
+            <div role="group" aria-label="Положение фото" className="mt-4 flex justify-center gap-2">
+              {[
+                {label:'влево',x:-10,y:0,icon:'←'},{label:'вправо',x:10,y:0,icon:'→'},
+                {label:'вверх',x:0,y:-10,icon:'↑'},{label:'вниз',x:0,y:10,icon:'↓'},
+              ].map(({label,x,y,icon})=>{
+                const position={offsetX:cropTransform.offsetX+x,offsetY:cropTransform.offsetY+y};
+                const next=getAvatarTransform({...cropDraft,...position},cropImageSize,stageSize);
+                return <button key={label} type="button" aria-label={`Сдвинуть фото ${label}`} title={`Сдвинуть фото ${label}`} disabled={loading||(next.offsetX===cropTransform.offsetX&&next.offsetY===cropTransform.offsetY)} onClick={()=>updateCropDraft(position)} className="h-11 w-11 rounded-lg border border-slate-300 bg-white text-xl font-bold text-slate-700 disabled:opacity-40">{icon}</button>;
+              })}
+            </div>
+
+            <label className="mt-4 grid gap-2 text-sm font-bold text-slate-700">
               Масштаб
               <input
                 type="range"
@@ -2656,6 +2666,7 @@ function AvatarEditor({
                 max="3"
                 step="0.01"
                 value={cropDraft.zoom}
+                disabled={loading}
                 onChange={(event) => updateCropDraft({ zoom: clampNumber(Number(event.target.value), 1, 3) })}
                 className="accent-[#0875d1]"
               />
@@ -2673,6 +2684,7 @@ function AvatarEditor({
               <button
                 type="button"
                 onClick={() => updateCropDraft({ offsetX: 0, offsetY: 0, zoom: 1 })}
+                disabled={loading}
                 className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]"
               >
                 Сбросить
