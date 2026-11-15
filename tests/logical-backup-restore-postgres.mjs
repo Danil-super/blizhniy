@@ -9,6 +9,7 @@ import {getRefundOperatorRolePlan,verifyRefundOperatorDatabase} from '../scripts
 import {readRefundSchema,assertRefundSchema} from '../scripts/refund-worker-schema.mjs';
 import {restoreLocalPrimary57Checks} from '../scripts/restore-local-primary57-checks.mjs';
 import {restoreLocalPrimary58Checks} from '../scripts/restore-local-primary58-checks.mjs';
+import {readMediaRetentionInventory} from '../scripts/media-retention-inventory.mjs';
 import {insertMediaPayment} from './media-retirement-candidate-cases.mjs';
 import {getMediaRetentionRolePlan,verifyMediaRetentionDatabase,mediaRetentionRuntimeGrants} from '../scripts/media-retention-role.mjs';
 const {PostgresDatabase}=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule('postgres');
@@ -99,6 +100,12 @@ for(const schema of [57,58])test(`logical local${schema} restore reconstructs si
    await assert.rejects(db.query('insert into app.media_retirement_requests(media_id,operation_id) values($1,$2)',[held,randomUUID()]),{code:'MRJ02'});
    for(const table of ['media_reference_events','media_payment_reference_captures','media_retirement_requests','media_retirement_completions'])await assert.rejects(db.query('delete from app.'+table),{code:'23514'});
    assert.deepEqual((await db.query('select * from app.media_storage_budget')).rows,before);await catalog(db,true,schema);
+  });
+  if(schema===58)await suite.test('read-only58 inventory reconciles tombstones, active quota and the retained original payment photos',async()=>{
+   await db.query('begin isolation level repeatable read read only');let report;
+   try{report=await readMediaRetentionInventory(db,{retention:true});}finally{await db.query('rollback');}
+   assert.equal(report.summary.objects,3);assert.equal(report.summary.chargedObjects,2);assert.equal(report.summary.completedRetirements,1);assert.equal(report.summary.pendingRetirements,1);
+   assert.equal(report.media.find(row=>row.id===retired.id).retirementCompleted,true);assert.ok(report.media.find(row=>row.id===held).references.includes('retained_history'));assert.equal(report.cleanupAuthorized,false);
   });
   await suite.test('changing the restored email threshold is still detected by the unchanged guard',async()=>{
    await db.query('begin');try{await db.query('alter table app.users drop constraint users_email_check,add constraint users_email_check check(char_length(email)>=1)');await assert.rejects(assertRefundSchema(db,schema,{localPrimary:true}),/Invalid refund schema/);}finally{await db.query('rollback');}await catalog(db,true,schema);
