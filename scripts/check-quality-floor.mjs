@@ -151,6 +151,11 @@ const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, 
 // Content-addressed artifacts, not a blanket permission to remove assertions.
 const reviewedListingArtifacts = [
   {
+    "file": "tests/public-search-contract.test.mjs",
+    "before": "3920719f3e2bc374a8e90b33a3c6fbd64cd5d32683955e55a65dd8dfc2270ce7",
+    "after": "c2ce3043d5daca4d7b2d6830b7d083b31f39084b050d29cd58c7723e5f937017"
+  },
+  {
     "file": "tests/primary-listing-form-browser.mjs",
     "before": "107b019ad1e6dcd5c1d323a179d8ef34a4666aec11746bf6a4bdeca76c1a3b2f",
     "after": "94b3afeb529892c4c943687a6584b4199b142ea76f8eda1a105b0a90252c40f6"

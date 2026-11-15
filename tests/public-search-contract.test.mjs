@@ -131,10 +131,17 @@ test('malicious search and cursor strings remain literal SQL parameters rather t
  }
 });
 
-test('runtime admits exactly two leases and rejects a third before config or database initialization',async()=>{
+test('runtime retains two physical leases while a third expires in the bounded queue before initialization',async()=>{
  const f=runtimeFixture(),a=f.search(input),b=f.search({...input,page:2});await flush();
  assert.equal(f.calls.db,2);assert.equal(f.calls.searches.length,2);assert.equal(f.calls.config,2);
- await assert.rejects(f.search(input),publicError);assert.equal(f.calls.db,2);assert.equal(f.calls.config,2);
+ {
+  let settled=false;const pending=f.search(input);
+  void pending.then(()=>{settled=true;},()=>{settled=true;});
+  const rejected=assert.rejects(pending,publicError);await flush();
+  assert.equal(settled,false,'third request waits without starting config/database work');
+  f.clock.advance(750);await rejected;
+ }
+ assert.equal(f.calls.db,2);assert.equal(f.calls.config,2);
  assert.equal(f.calls.constructors[0].db,f.db);assert.deepEqual(f.calls.constructors[0].options,{postmoderation:true,specialistProfileIdentity:true});
  f.finish(0);f.finish(1);await Promise.all([a,b]);
  const c=f.search(input);await flush();assert.equal(f.calls.searches.length,3);f.finish(2);await c;
@@ -143,10 +150,24 @@ test('runtime admits exactly two leases and rejects a third before config or dat
 test('an expired store response retains its lease until physical cleanup and duplicate cleanup cannot overrelease',async()=>{
  const f=runtimeFixture(),a=f.search(input),b=f.search(input);await flush();
  const expiry=Error('Synthetic expired DB response');f.calls.searches[0].result.reject(expiry);await assert.rejects(a,error=>error===expiry);
- await assert.rejects(f.search(input),publicError);assert.equal(f.calls.db,2);
+ {
+  let settled=false;const pending=f.search(input);
+  void pending.then(()=>{settled=true;},()=>{settled=true;});
+  const rejected=assert.rejects(pending,publicError);await flush();
+  assert.equal(settled,false,'third request waits without starting config/database work');
+  f.clock.advance(750);await rejected;
+ }
+ assert.equal(f.calls.db,2);
  f.calls.searches[0].options.onComplete();f.calls.searches[0].options.onComplete();
  const c=f.search(input);await flush();assert.equal(f.calls.db,3);assert.equal(f.calls.searches.length,3);
- await assert.rejects(f.search(input),publicError);assert.equal(f.calls.db,3,'duplicate cleanup must not create a third simultaneous lease');
+ {
+  let settled=false;const pending=f.search(input);
+  void pending.then(()=>{settled=true;},()=>{settled=true;});
+  const rejected=assert.rejects(pending,publicError);await flush();
+  assert.equal(settled,false,'third request waits without starting config/database work');
+  f.clock.advance(750);await rejected;
+ }
+ assert.equal(f.calls.db,3,'duplicate cleanup must not create a third simultaneous lease');
  f.finish(1);f.finish(2);await Promise.all([b,c]);
 });
 
@@ -155,7 +176,14 @@ test('invalid input does not acquire a runtime lease or initialize auth/database
  for(const invalid of [{...input,query:'x'.repeat(201)},{...input,page:1001},{...input,cursor:'x'.repeat(4097)},{...input,unknown:true}])await assert.rejects(f.search(invalid),publicError);
  assert.equal(f.calls.config,0);assert.equal(f.calls.db,0);assert.equal(f.calls.searches.length,0);
  const a=f.search(input),b=f.search(input);await flush();assert.equal(f.calls.searches.length,2);
- await assert.rejects(f.search(input),publicError);f.finish(0);f.finish(1);await Promise.all([a,b]);
+ {
+  let settled=false;const pending=f.search(input);
+  void pending.then(()=>{settled=true;},()=>{settled=true;});
+  const rejected=assert.rejects(pending,publicError);await flush();
+  assert.equal(settled,false,'third request waits without starting config/database work');
+  f.clock.advance(750);await rejected;
+ }
+ f.finish(0);f.finish(1);await Promise.all([a,b]);
 });
 
 test('preflight failures release leases before delegation, preserving recovery without creating a store',async()=>{
@@ -175,10 +203,24 @@ test('cold initialization timeout returns on deadline but holds both leases unti
  const expiredA=assert.rejects(a,publicError),expiredB=assert.rejects(b,publicError);
  f.clock.advance(5000);await flush();await Promise.all([expiredA,expiredB]);
  assert.equal(f.calls.db,2);assert.equal(f.calls.constructors.length,0);assert.equal(f.calls.searches.length,0);
- await assert.rejects(f.search(input),publicError);assert.equal(f.calls.db,2);
+ {
+  let settled=false;const pending=f.search(input);
+  void pending.then(()=>{settled=true;},()=>{settled=true;});
+  const rejected=assert.rejects(pending,publicError);await flush();
+  assert.equal(settled,false,'third request waits without starting config/database work');
+  f.clock.advance(750);await rejected;
+ }
+ assert.equal(f.calls.db,2);
  f.calls.factories[0].resolve({db:f.db});await flush();assert.equal(f.calls.constructors.length,0,'late init must not create a store or issue SQL');assert.equal(f.calls.sql,0);
  const c=f.search(input);await flush();assert.equal(f.calls.db,3);
- await assert.rejects(f.search(input),publicError);assert.equal(f.calls.db,3);
+ {
+  let settled=false;const pending=f.search(input);
+  void pending.then(()=>{settled=true;},()=>{settled=true;});
+  const rejected=assert.rejects(pending,publicError);await flush();
+  assert.equal(settled,false,'third request waits without starting config/database work');
+  f.clock.advance(750);await rejected;
+ }
+ assert.equal(f.calls.db,3);
  f.calls.factories[1].reject(Error('Synthetic late initializer failure'));await flush();assert.equal(f.calls.constructors.length,0);assert.equal(f.calls.sql,0);
  f.calls.factories[2].resolve({db:f.db});await flush();assert.equal(f.calls.searches.length,1);f.finish(0);await c;
 });

@@ -239,7 +239,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ q
                   </span>
                 )}
                 <span>
-                  <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{result.type}</span>
+                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">{result.type}</span>
                   <span className="mt-0.5 block text-base font-bold leading-5 text-[#060b27] sm:mt-1 sm:text-xl sm:leading-normal">{result.title}</span>
                   <span className="mt-1 line-clamp-2 block text-sm leading-5 text-slate-600 sm:mt-2 sm:line-clamp-none sm:text-base sm:leading-6">{result.description}</span>
                 </span>

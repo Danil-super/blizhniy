@@ -161,10 +161,12 @@ export class PostgresDatabase implements PostgresQueries {
   }
 
   /** Public bounded reads only. Existing auth/payment transaction semantics stay separate. */
-  async readTransaction<T>(work:(queries:PostgresQueries)=>Promise<T>,options:{timeoutMs:number;onComplete?:()=>void}):Promise<T>{
-    if(!Number.isSafeInteger(options?.timeoutMs)||options.timeoutMs<1||options.timeoutMs>5000)throw Error('Invalid read deadline');
-    const deadline=performance.now()+options.timeoutMs;
+  async readTransaction<T>(work:(queries:PostgresQueries)=>Promise<T>,options:{timeoutMs:number;deadline?:number;onComplete?:()=>void}):Promise<T>{
+    if(!Number.isSafeInteger(options?.timeoutMs)||options.timeoutMs<1||options.timeoutMs>5000||
+       options.deadline!==undefined&&(!Number.isFinite(options.deadline)||options.deadline<0))throw Error('Invalid read deadline');
+    const deadline=Math.min(performance.now()+options.timeoutMs,options.deadline??Infinity);
     const timeout=()=>new PostgresError({code:'ETIMEDOUT'});
+    if(deadline<=performance.now()){options.onComplete?.();throw timeout();}
     let expired=false,completed=false,released=false,client:PoolClient|undefined;
     const remaining=()=>{const value=Math.ceil(deadline-performance.now());if(expired||released||completed||value<=0)throw timeout();return value;};
     const complete=()=>{if(!completed){completed=true;options.onComplete?.();}};
@@ -174,7 +176,7 @@ export class PostgresDatabase implements PostgresQueries {
         expired=true;release(true);reject(timeout());
         // Pending pool checkout retains its admission lease until the actual
         // callback settles. It cannot start SQL after this caller has timed out.
-      },options.timeoutMs);
+      },Math.max(1,Math.ceil(deadline-performance.now())));
       try{this.pool.connect((error,connection)=>{
         if(expired){connection?.release(true);complete();return;}
         if(error||!connection){clearTimeout(timer);complete();reject(new PostgresError(error));return;}

@@ -18,12 +18,13 @@ export class PostgresPublicSearchStore{
  constructor(private readonly db:Pick<PostgresDatabase,'readTransaction'>,private readonly options:{postmoderation?:boolean;specialistProfileIdentity?:boolean}={}){
   if(typeof window!=='undefined')throw new PublicSearchError();
  }
- async search(value:PublicSearchInput,options:{onComplete?:()=>void;timeoutMs?:number}={}):Promise<PublicSearchPage>{
+ async search(value:PublicSearchInput,options:{onComplete?:()=>void;timeoutMs?:number;deadline?:number}={}):Promise<PublicSearchPage>{
   let delegated=false;
   try{
    const input=parsePublicSearchInput(value),cursor=input.cursor?decodePublicSearchCursor(input.cursor,input):null,reverse=cursor?.direction==='previous';
    const timeoutMs=options.timeoutMs??5000;
-   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>5000)throw new PublicSearchError();
+   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>5000||
+    options.deadline!==undefined&&(!Number.isFinite(options.deadline)||options.deadline<=performance.now()))throw new PublicSearchError();
    delegated=true;
    return await this.db.readTransaction(async transaction=>{
     let bytes=0,candidateCount=0;
@@ -75,7 +76,7 @@ export class PostgresPublicSearchStore{
     return{items:shown.map(item=>item.result),hasMore,
      ...(hasMore?{nextCursor:encodePublicSearchCursor(anchorOf(shown.at(-1)!.candidate),input,'next')}:{}),
      ...(hasPrevious?{previousCursor:encodePublicSearchCursor(anchorOf(shown[0].candidate),input,'previous')}:{})};
-   },{timeoutMs,onComplete:options.onComplete});
+   },{timeoutMs,deadline:options.deadline,onComplete:options.onComplete});
   }finally{if(!delegated)options.onComplete?.();}
  }
  private reference(row:Candidate):PublicSearchResult|undefined{

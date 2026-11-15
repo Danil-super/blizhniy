@@ -263,6 +263,17 @@ async function runSearchFixture(suite,benchmark=false){
    try{await assert.rejects(trusted.readTransaction(tx=>tx.query("insert into app.regions(slug,name) values('forbidden-read-write','Запрещённая запись')"),{timeoutMs:1000}),{code:'25006'});}
    finally{await trusted.close();}
   });
+  await suite.test('an inherited absolute deadline bounds real SQL and expired reads leave the next checkout healthy',async()=>{
+   let completed=0;const started=performance.now();
+   await assert.rejects(runtime.readTransaction(tx=>tx.query('select pg_sleep(1)'),{
+    timeoutMs:1000,deadline:started+100,onComplete:()=>completed++,
+   }),error=>['ETIMEDOUT','57014','25P04'].includes(error.code));
+   assert.ok(performance.now()-started<700);assert.equal(completed,1);
+   await assert.rejects(runtime.readTransaction(()=>assert.fail('expired read must not run SQL'),{
+    timeoutMs:1000,deadline:performance.now()-1,onComplete:()=>completed++,
+   }),{code:'ETIMEDOUT'});
+   assert.equal(completed,2);assert.equal((await runtime.query('select 42 as answer')).rows[0].answer,42);
+  });
   await suite.test('cursor windows cross vacancy/order and specialist/fair mixed branches in both directions',async()=>{
    const groups=[{query:'Граница смешанной работы',kinds:['vacancy','workRequest'],types:['Вакансия','Заказ']},
     {query:'Граница смешанной услуги',kinds:['specialist','fair'],types:['Специалист','Ярмарка']}];
