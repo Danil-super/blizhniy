@@ -188,7 +188,7 @@ test("primary account browser forms use the new cookie API without remote traffi
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const calls = [], sessionReads = [], foreign = [], errors = [];
       const state = { active: null, override: null, sessionReads, profiles: new Map(), profileRequests: [], profileOverride: null,
-        drafts: new Map(), draftRequests: [], draftLoseWrite: false, draftLoseCreate: false, draftOverride: null,
+        drafts: new Map(), phoneReads: [], draftRequests: [], draftLoseWrite: false, draftLoseCreate: false, draftOverride: null,
         photos:new Map(),mediaRequests:[],photoLoseWrite:false };
       const pixels=await sharp({create:{width:16,height:9,channels:3,background:'red'}}).webp().toBuffer();
       await context.route("**/*", async route => {
@@ -265,6 +265,11 @@ test("primary account browser forms use the new cookie API without remote traffi
           return route.fulfill({ json: { exists: state.profiles.has(state.active.id), profile: stored, revision: fixtureRevision(state.profiles.get(state.active.id)) } });
         }
         assert.equal(request.method(), "POST"); assert.equal(request.headers()["x-blizhniy-request"], "1");
+        if (url.pathname === "/api/account/phone/status") {
+          assert.deepEqual(Object.keys(body), ["expectedOwnerId"]);state.phoneReads.push(body);
+          if(!state.active||body.expectedOwnerId!==state.active.id)return route.fulfill({status:401,json:{error:{code:"UNAUTHENTICATED"}}});
+          return route.fulfill({json:{available:false,required:true,verified:false,phone:state.profiles.get(state.active.id)?.phone||null,verifiedPhone:null}});
+        }
         assert.equal(url.search, ""); calls.push({ action, body });
         // Credential assertions stay separate from the new shared session reads; neither is ignored.
         if (action === "session") { assert.deepEqual(body, {}); sessionReads.push(calls.pop()); }
@@ -299,7 +304,7 @@ test("primary account browser forms use the new cookie API without remote traffi
       }
       await page.getByLabel('Email', { exact: true }).fill('owner@example.invalid');
       await page.getByRole('button', { name: 'Отправить письмо восстановления', exact: true }).click();
-      await page.getByRole('status').filter({ hasText: 'Если аккаунт подтверждён' }).waitFor();
+      await page.getByRole('status').filter({ hasText: 'Если адрес зарегистрирован и восстановление доступно' }).waitFor();
       assert.deepEqual(calls, [{ action: 'recover', body: { email: 'owner@example.invalid', captchaToken: '' } }]);
       await context.setExtraHTTPHeaders({ 'x-real-ip': '192.0.2.45' });
       await page.goto(origin + '/auth/recover');
@@ -517,8 +522,9 @@ test("primary account browser forms use the new cookie API without remote traffi
       await page.getByRole("heading", { name: "Синтетический", exact: true }).waitFor();
       await page.getByRole("button", { name: "Настройки", exact: true }).click();
       await page.getByLabel("Имя", { exact: true }).fill("Изменённый");
+      await page.locator("summary").filter({hasText:"Уведомления"}).click();
       await page.getByLabel("Брони и заказы", { exact: true }).uncheck();
-      assert.equal(await page.getByLabel("Email", { exact: true }).getAttribute("readonly"), "");
+      assert.equal(await page.getByLabel("Email для входа", { exact: true }).getAttribute("readonly"), "");
       await page.getByRole("button", { name: "Сохранить настройки", exact: true }).click();
       await page.getByText("Настройки сохранены.", { exact: true }).waitFor();
       assert.equal(state.profileRequests.filter(row => row.method === "PUT").length, 1);
@@ -617,6 +623,9 @@ test("primary account browser forms use the new cookie API without remote traffi
       assert.equal(await page.getByRole("button", { name: "Сохранить настройки", exact: true }).count(), 0);
       state.profileOverride = null;
       await page.getByRole("button", { name: "Обновить профиль", exact: true }).first().click();
+      await page.getByLabel("Имя", {exact:true}).waitFor();
+      assert.equal(await page.getByLabel("Имя", {exact:true}).inputValue(),"Сохранённый","readback restores the editor before explicitly clearing its draft");
+      await page.getByRole("button", {name:"Закрыть",exact:true}).click();
       await page.getByRole("heading", { name: "Сохранённый", exact: true }).waitFor();
       assert.equal(state.profileRequests.filter(row => row.method === "PUT").length, 1);
     });
@@ -674,8 +683,12 @@ test("primary account browser forms use the new cookie API without remote traffi
       try {
         await page.getByRole("button", { name: "Сохранить настройки", exact: true }).click(); await pending;
         const tab = await context.newPage(); tab.setDefaultTimeout(10000); await login(tab, second.email, true);
-        await page.getByRole("heading", { name: "Второй", exact: true }).waitFor();
+        await page.getByLabel("Имя", {exact:true}).waitFor();
+        assert.equal(await page.getByLabel("Имя", {exact:true}).inputValue(),"Второй","B editor must be live before A's response");
         release(); await settled;
+        await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+        assert.equal(await page.getByLabel("Имя", {exact:true}).inputValue(),"Второй","A's late response cannot replace B's live editor");
+        await page.getByRole("button", {name:"Закрыть",exact:true}).click();
         await page.getByRole("heading", { name: "Второй", exact: true }).waitFor();
         assert.equal(state.profiles.get(second.id).name, "Второй");
         assert.equal(await page.getByRole("heading", { name: "Изменённый первый", exact: true }).count(), 0);
@@ -932,7 +945,7 @@ test("primary account browser forms use the new cookie API without remote traffi
       await recover.waitFor(); await page.getByRole("button", { name: "Fixture: expire CAPTCHA" }).click();
       assert.equal(await recover.isDisabled(), true); assert.equal(calls.length, 0);
       await page.reload(); await page.getByLabel("Email", { exact: true }).fill("owner@example.invalid");
-      await recover.click(); await page.getByRole("status").filter({ hasText: "Если аккаунт подтверждён" }).waitFor();
+      await recover.click(); await page.getByRole("status").filter({ hasText: "Если адрес зарегистрирован и восстановление доступно" }).waitFor();
       assert.deepEqual(calls[0], { action: "recover", body: { email: "owner@example.invalid", captchaToken: "fixture-captcha" } });
       await page.goto(`${origin}/auth/reset#token=${"c".repeat(64)}`);
       await page.getByLabel("Новый пароль", { exact: true }).fill(password);

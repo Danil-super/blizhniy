@@ -27,6 +27,10 @@ pg.Pool=class extends CataloguePool{
   if(sql.startsWith('select token_hash from app.sessions where')||sql.startsWith('update app.sessions set last_seen_at=least')){
    const {active}=state();assert.deepEqual(values,[tokenHash,active,'0']);return result([{token_hash:tokenHash}]);
   }
+  if(sql==="select l.status from app.listings l where l.id=$1 and l.author_id=$2 and l.status='draft' for update"){
+   const {snapshot,owner}=state();assert.equal(values.length,2);
+   return result(snapshot&&values[0]===snapshot.id&&values[1]===owner?[{status:'draft'}]:[]);
+  }
   if(sql.startsWith('select l.id,l.revision::text as revision,l.listing_type as "listingType"')){
    const {snapshot,owner}=state();if(!snapshot||values[0]!==snapshot.id||values[1]!==owner)return result([]);
    const {kind,photoIds,...fields}=snapshot.form;assert.ok(Array.isArray(photoIds));

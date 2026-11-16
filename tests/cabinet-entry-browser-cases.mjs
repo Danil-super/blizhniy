@@ -7,7 +7,8 @@ export async function testCabinetEntryScenarios({ run, origin }) {
     state.active = owner;
     for (const path of ['/cabinet', '/cabinet/obyavleniya']) {
       await page.goto(origin + path);
-      await page.getByRole('button', { name: 'Обновить список', exact: true }).waitFor();
+      await page.getByRole('link', { name: 'Создать объявление', exact: true }).first().waitFor();
+      assert.equal(await page.getByRole('button', { name: 'Обновить список', exact: true }).count(),0);
       assert.equal(await page.getByRole('button', { name: 'Новый черновик', exact: true }).count(), 0);
       const create = page.locator('main a[href="/razmestit/obyavlenie"]').filter({ hasText: 'Создать объявление' }).first();
       assert.equal(await create.isVisible(), true);
@@ -28,10 +29,11 @@ export async function testCabinetEntryScenarios({ run, origin }) {
     await page.getByRole('heading', { name: 'Имя регистрации', exact: true }).waitFor();
     assert.equal(await page.getByText('Ваш профиль', { exact: true }).isVisible(), true);
     await page.getByRole('button', { name: 'Настройки', exact: true }).click();
-    const phone = page.getByRole('button', { name: 'Подтвердить номер', exact: true });
+    const phone = page.getByRole('button', { name: 'Подтвердить через Telegram', exact: true });
     assert.equal(await phone.isDisabled(), true);
-    assert.equal(await page.locator('#phone-verification-availability').isVisible(), true);
-    assert.equal(await phone.getAttribute('aria-describedby'), 'phone-verification-availability');
+    await page.getByRole('status').filter({hasText:'Подтверждение через Telegram пока не настроено.'}).waitFor();
+    assert.equal(await page.getByRole('status').filter({hasText:'Подтверждение через Telegram пока не настроено.'}).isVisible(), true);
+    assert.equal(await phone.getAttribute('aria-describedby'),await page.getByRole('status').filter({hasText:'Подтверждение через Telegram пока не настроено.'}).getAttribute('id'));
     assert.equal(await page.getByLabel('Имя', { exact: true }).inputValue(), 'Имя регистрации');
     for (const width of [320, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });

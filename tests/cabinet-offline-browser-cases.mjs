@@ -22,6 +22,7 @@ async function openSettings(page, origin, state, owner = identity(false), name =
   await page.getByRole("heading", { name, exact: true }).waitFor();
   await page.getByRole("button", { name: "Настройки", exact: true }).click();
   await page.getByLabel("Имя", { exact: true }).waitFor();
+  await page.locator("summary").filter({hasText:"Уведомления"}).click();
 }
 
 async function interruptSessionRead(page, origin, state) {
@@ -113,6 +114,9 @@ export async function testCabinetOfflineScenarios({ run, origin }) {
     assert.equal((await page.locator("main").textContent()).includes(unsaved), false);
     state.active = owner;
     await checkSession(page, origin);
+    await page.getByLabel("Имя", {exact:true}).waitFor();
+    assert.equal(await page.getByLabel("Имя", {exact:true}).inputValue(),"Сохранённое имя","auth boundary discards abandoned values before any explicit close");
+    await page.getByRole("button", {name:"Закрыть",exact:true}).click();
     await page.getByRole("heading", { name: "Сохранённое имя", exact: true }).waitFor();
     if (!await page.getByLabel("Имя", { exact: true }).count()) await page.getByRole("button", { name: "Настройки", exact: true }).click();
     assert.equal(await page.getByLabel("Имя", { exact: true }).inputValue(), "Сохранённое имя",
@@ -128,12 +132,18 @@ export async function testCabinetOfflineScenarios({ run, origin }) {
     await page.getByLabel("Имя", { exact: true }).fill(unsaved);
     state.active = second;
     await checkSession(page, origin);
-    await page.getByRole("heading", { name: "Второй сохранённый", exact: true }).waitFor();
+    await page.getByLabel("Имя", {exact:true}).waitFor();
+    assert.equal(await page.getByLabel("Имя", {exact:true}).inputValue(),"Второй сохранённый","auth boundary discards abandoned values before any explicit close");
+    assert.equal(await page.getByLabel("Email для входа", {exact:true}).inputValue(),second.email,"B identity is checked without clearing hidden A state");
     assert.equal((await page.locator("main").textContent()).includes(unsaved), false);
     if (!await page.getByLabel("Имя", { exact: true }).count()) await page.getByRole("button", { name: "Настройки", exact: true }).click();
     assert.equal(await page.getByLabel("Имя", { exact: true }).inputValue(), "Второй сохранённый");
     state.active = first;
     await checkSession(page, origin);
+    await page.getByLabel("Имя", {exact:true}).waitFor();
+    assert.equal(await page.getByLabel("Имя", {exact:true}).inputValue(),"Первый сохранённый","auth boundary discards abandoned values before any explicit close");
+    assert.equal(await page.getByLabel("Email для входа", {exact:true}).inputValue(),first.email);
+    await page.getByRole("button", {name:"Закрыть",exact:true}).click();
     await page.getByRole("heading", { name: "Первый сохранённый", exact: true }).waitFor();
     if (!await page.getByLabel("Имя", { exact: true }).count()) await page.getByRole("button", { name: "Настройки", exact: true }).click();
     assert.equal(await page.getByLabel("Имя", { exact: true }).inputValue(), "Первый сохранённый",

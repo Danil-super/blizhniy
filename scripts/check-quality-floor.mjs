@@ -150,6 +150,7 @@ const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, 
 // Exact browser-test replacements reviewed individually by the owner; see docs/review/.
 // Content-addressed artifacts, not a blanket permission to remove assertions.
 const reviewedListingArtifacts = [
+  {"file": "tests/cabinet-entry-browser-cases.mjs", "before": "bc0bbf335935bfd080363e382aa50062479bdfd65f058db368cfd00b44a618dd", "after": "a17a3ba056f19d5d4d7f10af9e2611f485f7d317954749b08229631570fc851e"},
   {"file": "tests/cabinet-card-browser-cases.mjs", "before": "85c919870ea9f4e06564e05a55520a4ae722d62f8981965be32627276c4d24ec", "after": "ebe5d0e8f5787ec30d23efd4041e076d22e1701a5314e1e05fcbe694adbcdba2"},
   {"file": "tests/primary-payment-return-browser.mjs", "before": "097f44cfbfd7355bdbb5222c616763a7257d85c879882b638705e292ec25aa1e", "after": "e1dc2baa4483ac51b9e95dda716717b69c2bd232e384ac829caa1a00b7ce0190"},
   {
@@ -159,8 +160,8 @@ const reviewedListingArtifacts = [
   },
   {
     "file": "tests/primary-listing-form-browser.mjs",
-    "before": "107b019ad1e6dcd5c1d323a179d8ef34a4666aec11746bf6a4bdeca76c1a3b2f",
-    "after": "94b3afeb529892c4c943687a6584b4199b142ea76f8eda1a105b0a90252c40f6"
+    "before": "94b3afeb529892c4c943687a6584b4199b142ea76f8eda1a105b0a90252c40f6",
+    "after": "eef145924f8b23aef530a7959fb853f3dfc2d31d5e43758c0af5f7d7258bf52c"
   },
   {
     "file": "tests/account-test-checkout-browser-cases.mjs",
@@ -169,8 +170,8 @@ const reviewedListingArtifacts = [
   },
   {
     "file": "tests/production-account-browser.mjs",
-    "before": "5254b6e61d8d990150c165b4ee2fe7fce21a7af520c6082c7696ebdfce632698",
-    "after": "e6d407deeae1ecb2e0a7361c954c162c0a46191257746fb3c24dec033795db98"
+    "before": "e6d407deeae1ecb2e0a7361c954c162c0a46191257746fb3c24dec033795db98",
+    "after": "c631dcadb019c2b51dc976142fda70e6cdeca530269ec707ea355f38b3c8a5b8"
   },
   {
     "file": "tests/cabinet-offline-browser-cases.mjs",

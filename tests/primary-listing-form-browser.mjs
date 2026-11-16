@@ -33,6 +33,10 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
    if(!url.pathname.startsWith('/api/account/'))return route.continue();
    assert.equal(request.headers().authorization,undefined);
    if(url.pathname.endsWith('/session')){if(sessionGate)await sessionGate;return route.fulfill({json:{user:{id:active,email:'fixture@example.invalid',role:'user',isBlocked:false}}});}
+   if(url.pathname==='/api/account/phone/status'){
+    assert.equal(request.method(),'POST');assert.deepEqual(request.postDataJSON(),{expectedOwnerId:active});
+    return route.fulfill({json:{available:true,required:true,verified:true,phone:'+79990000000',verifiedPhone:'+79990000000'}});
+   }
    if(url.pathname==='/api/account/media'){const mediaId=request.headers()['x-blizhniy-intent'];intents.push(mediaId);return route.fulfill({json:{id:mediaId,mimeType:'image/webp',width:80,height:40,size:12}});}
    if(url.pathname==='/api/account/profile'){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');return route.fulfill({json:{exists:false,profile:createDefaultCabinetProfile({name:'Технический',email:'fixture@example.invalid'}),revision:null}});}
    if(active!==owner){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');assert.ok(url.pathname.endsWith('/collection'));return route.fulfill({json:{items:[],nextCursor:null}});}
@@ -109,7 +113,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   assert.equal(await page.locator('input[name="bookingExtraGuestPrice"]').inputValue(),'0');
   assert.equal(await page.locator('input[name="bookingAvailableFrom"]').inputValue(),'2026-01-01');
   await page.locator('textarea[name="bookingIncluded"]').focus();await page.keyboard.press('Tab');assert.equal(await page.locator('textarea[name="bookingRules"]').evaluate(input=>document.activeElement===input),true);
-  await page.getByRole('img',{name:'Сохранённая фотография 1 из 1',exact:true}).waitFor();assert.equal(await page.getByRole('img',{name:'Сохранённая фотография 1 из 1',exact:true}).count(),1);
+  await page.getByRole('img',{name:'Фото 1',exact:true}).waitFor();assert.equal(await page.getByRole('img',{name:'Фото 1',exact:true}).count(),1);
   await page.locator('input[name="phone"]').fill('+79991112233');
   await page.locator('input[name="photos"]').setInputFiles({name:'second.png',mimeType:'image/png',buffer:pixels});
   sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('blizhniy-account-changed')));
@@ -203,7 +207,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   assert.equal(writes.length,beforeInitialWrites);assert.equal(submissions,beforeInitialSubmissions);
   await page.locator('input[name="title"]').fill('Сразу на модерацию');
   await page.locator('textarea[name="description"]').fill('Описание для модератора');
-  await page.getByRole('button',{name:'Выбрать',exact:true}).click();
+  await page.getByRole('button',{name:/Город и регион/}).click();
   await page.getByRole('option',{name:'Краснодар, Краснодарский край',exact:true}).click();
   await page.locator('input[name="phone"]').fill('+79990000000');
   loseSubmission=true;
@@ -234,7 +238,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   await page.goto(origin+'/razmestit/obyavlenie');
   await page.locator('input[name="title"]').fill('Проверка сохранения перед отправкой');
   await page.locator('textarea[name="description"]').fill('Форма сохраняется без дубликатов');
-  await page.getByRole('button',{name:'Выбрать',exact:true}).click();
+  await page.getByRole('button',{name:/Город и регион/}).click();
   await page.getByRole('option',{name:'Краснодар, Краснодарский край',exact:true}).click();
   await page.locator('input[name="phone"]').fill('+79990000000');
   await page.locator('input[name="placementRightsAccepted"]').check();
