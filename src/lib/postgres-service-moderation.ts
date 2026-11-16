@@ -10,7 +10,7 @@ const state=({id,revision,state,note}:Row):ServiceModerationState=>({id,revision
 /** Current-revision service moderation; cannot publish, pay, alter dates or confer identity authority. */
 export class PostgresServiceModerationStore{
  private readonly forms:PostgresServicePublicationStore;
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly files?:{read(record:MediaFileRecord):Promise<Buffer>}){this.forms=new PostgresServicePublicationStore(db);}
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly files?:{read(record:MediaFileRecord):Promise<Buffer>}){this.forms=new PostgresServicePublicationStore(db,{specialistProfileIdentity:true});}
  private owner<T>(token:string,owner:string,work:(tx:PostgresQueries)=>Promise<T>){return withAppSessionTransaction(this.db,token,(tx,user)=>{
   if(user.id!==owner)throw new ServicePublicationAccessError();return work(tx);
  });}

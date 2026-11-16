@@ -4,7 +4,7 @@ import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor} f
 import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';import type {ListingDraftPhoto} from './listing-photo-contract';
 import {validPersonName} from './cabinet-field-validation.ts';
-import {specialistAbout} from './specialist-application-profile.ts';
+import {specialistAbout,checkSpecialistApplicationForm} from './specialist-application-profile.ts';
 import {effectivePublicationStatusSql} from './publication-effective-status';
 import {resolveProfession,professionFormSql,ProfessionReferenceError} from './profession-reference';
 export class ServicePublicationAccessError extends Error{constructor(){super('Service publication not found');}}
@@ -65,7 +65,7 @@ export class PostgresServicePublicationStore{
    from app.service_publications s left join app.cities c on c.id=s.city_id left join app.specialist_categories p on p.id=s.profession_id
    where s.id=$1 and s.author_id=$2 and s.kind=$3 and s.deleted_at is null for update of s`,[id,owner,kind])).rows[0];
   if(!row)throw new ServicePublicationAccessError();if(row.revision!==revision)throw new ServicePublicationConflictError();
-  const snapshot=await this.snapshot(tx,owner,kind,id),issues=checkServicePublicationForm(snapshot.form);
+  const snapshot=await this.snapshot(tx,owner,kind,id),issues=this.options.specialistProfileIdentity&&kind==='specialist'?checkSpecialistApplicationForm(snapshot.form):checkServicePublicationForm(snapshot.form);
   if(!row.referencesActive)issues.push('Выберите действующие город и профессию.');return{snapshot,issues};
  }
  create(token:string,owner:string,kind:ServicePublicationKind,creationKey:unknown,input:unknown){return this.write(()=>withAppSessionTransaction(this.db,token,async(tx,user)=>{
