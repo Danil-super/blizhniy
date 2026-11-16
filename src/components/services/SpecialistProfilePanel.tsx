@@ -11,9 +11,13 @@ import {StoredMediaImage} from '@/components/StoredMedia';
 import {draftButton} from '@/components/listings/PrivateDraftEditor';
 import {PrimaryServicePublicationEditor} from './PrimaryServicePublicationEditor';
 import {SpecialistApplicationStatus} from './SpecialistApplicationStatus';
+import {ServiceModerationStatus} from './ServiceModerationStatus';
+import {useSpecialistCheckout} from '@/components/listings/ListingWorkflowProvider';
+import {PublicationPlacementPeriod} from '@/components/PublicationPlacementPeriod';
 
 /** The parent keys this workspace by owner; an uncertain read must never open a create form. */
 export function SpecialistProfilePanel({owner,visible}:{owner:string;visible:boolean}){
+ const checkout=useSpecialistCheckout();
  const [snapshot,setSnapshot]=useState<ServicePublicationSnapshot|null>(null),[loaded,setLoaded]=useState(false);
  const [error,setError]=useState<string|null>(null),[retry,setRetry]=useState(0),[busy,setBusy]=useState(true);
  const context=useCookieCabinetProfile(),profile=context?.ownerId===owner?context.profile:null;
@@ -54,6 +58,7 @@ export function SpecialistProfilePanel({owner,visible}:{owner:string;visible:boo
     </dl>
     <section aria-label="О себе" className="mt-5 border-t border-slate-200 pt-4"><h3 className="font-bold text-slate-950">О себе</h3><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{specialistAbout(form)||'Расскажите о себе в анкете.'}</p></section>
     <SpecialistApplicationStatus form={{...form,title:profile.name}}/>
+    {checkout&&<><PublicationPlacementPeriod publishedAt={snapshot.publishedAt} expiresAt={snapshot.expiresAt} status={snapshot.status}/><ServiceModerationStatus owner={owner} snapshot={snapshot}/></>}
    </section>}
  </div>;
 }

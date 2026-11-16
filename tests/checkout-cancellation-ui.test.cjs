@@ -12,6 +12,7 @@ function mount(application){const instances=new Map(),effects=[],cache=new Map()
   if(dep==='@/components/auth/AccountAuthProvider')return{usePrimaryAccountAuth:()=>auth};if(dep==='@/components/listings/ListingWorkflowProvider')return{useLocalPaymentSimulation:()=>true};
   if(dep==='@/lib/local-account')return{notifyAccountSessionChange(){calls.push('session.notify');}};
   if(dep==='@/lib/client-listing-payment')return{listingPayment:{read},ListingPaymentClientError:ClientError};if(dep==='@/lib/client-vacancy-payment')return{vacancyPaymentStatus:{read},workRequestPaymentStatus:{read}};
+  if(dep==='@/lib/client-specialist-payment')return{specialistPaymentStatus:{read}};
   if(dep==='@/lib/client-application-payment')return{applicationPayment:{read},ApplicationPaymentClientError:ClientError};
   if(dep==='@/lib/client-checkout-cancellation')return{CheckoutCancellationClientError:ClientError,checkoutCancellation:{cancel:async()=>{calls.push('cancel.write');return pendingWrite;},read:async()=>{calls.push('cancel.read');return{paymentId:payment,targetType:application?'application':'listing',state:'cancelled'};}}};
   if(dep==='./CheckoutCancellation')return load('CheckoutCancellation');if(dep==='./ListingPaymentStatus')return{ListingPaymentStatus:({snapshot})=>jsx('h2',{children:snapshot.order.status})};

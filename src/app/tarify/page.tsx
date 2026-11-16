@@ -5,12 +5,13 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { getPublicTariffs } from "@/lib/public-tariffs";
 import type { Tariff } from "@/lib/types";
 import { formatTariffPrice } from "@/lib/tariff-display";
+import { readSpecialistCheckoutEnabled } from "@/lib/specialist-checkout-config";
 
 function tariffDetail(durationDays: number | null) {
   return durationDays ? `${durationDays} дней размещения` : "Разовое действие";
 }
 
-function tariffCta(tariff: Tariff) {
+function tariffCta(tariff: Tariff, specialistCheckout = false) {
   if (tariff.action === "listing_publication") {
     return { href: "/razmestit/obyavlenie", label: "Создать объявление" };
   }
@@ -24,7 +25,7 @@ function tariffCta(tariff: Tariff) {
   }
 
   if (tariff.action === "specialist_publication") {
-    return { href: "/rabota/specialisty/anketa", label: "Подготовить черновик анкеты" };
+    return { href: "/rabota/specialisty/anketa", label: specialistCheckout ? "Подготовить анкету" : "Подготовить черновик анкеты" };
   }
 
   if (tariff.action === "job_response") {
@@ -46,6 +47,7 @@ export const metadata: Metadata = { title: "Тарифы", alternates: { canonic
 
 export default async function Page() {
   const tariffs = await getPublicTariffs();
+  const specialistCheckout = readSpecialistCheckoutEnabled();
 
   return (
     <>
@@ -65,7 +67,7 @@ export default async function Page() {
         {tariffs.length ? (
         <section className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {tariffs.map((tariff) => {
-            const cta = tariffCta(tariff);
+            const cta = tariffCta(tariff, specialistCheckout);
 
             return (
               <article key={tariff.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
@@ -76,7 +78,7 @@ export default async function Page() {
                 {tariff.active ? <p className="mt-4 text-2xl font-bold text-[#0875d1]">{formatTariffPrice(tariff)}</p> : null}
                 <p className="mt-2 text-sm leading-6 text-slate-600">{tariffDetail(tariff.durationDays)}</p>
                 {tariff.action === "specialist_publication" ? (
-                  <p className="mt-2 text-sm font-semibold leading-6 text-amber-700">Публикация и оплата анкеты временно недоступны. Черновик можно сохранить.</p>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-amber-700">{specialistCheckout ? "Локальная проверка: модерация, симуляция оплаты и публикация анкеты. Реальные деньги не списываются." : "Публикация и оплата анкеты временно недоступны. Черновик можно сохранить."}</p>
                 ) : null}
                 {tariff.active ? <Link href={cta.href} className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#087f2b] text-sm font-bold text-white">
                   {cta.label}

@@ -1,0 +1,778 @@
+diff --git a/database/candidates/0060-local-specialist-checkout.sql b/database/candidates/0060-local-specialist-checkout.sql
+new file mode 100644
+index 0000000..2614cd0
+--- /dev/null
++++ b/database/candidates/0060-local-specialist-checkout.sql
+@@ -0,0 +1,162 @@
++-- Proposed local synthetic first placement only. No roles, grants or activation.
++begin;
++set local lock_timeout='3s';
++set local statement_timeout='10s';
++create table app.specialist_checkout_terms (
++ intent_id uuid primary key references app.payment_checkout_intents(id) on delete restrict,
++ created_at timestamptz not null default clock_timestamp() check(isfinite(created_at))
++);
++create function app.specialist_checkout_ready(publication uuid,owner uuid,revision bigint) returns boolean
++ language sql volatile security definer set search_path=pg_catalog as $$
++ select exists(select 1 from app.service_publications s
++  join app.users u on u.id=s.author_id and not u.is_blocked and u.email_verified_at is not null
++  join app.cabinet_profiles profile on profile.user_id=u.id and profile.profile->>'name'=s.form->>'title'
++  join app.cities c on c.id=s.city_id and c.name=s.form->>'cityName'
++  join app.specialist_categories p on p.id=s.profession_id and p.active
++  join app.service_moderation m on m.publication_id=s.id and m.revision=s.revision and m.state='approved'
++  where s.id=$1 and s.author_id=$2 and s.revision=$3 and s.kind='specialist'
++   and s.status='draft' and not s.is_paid and s.deleted_at is null and s.published_at is null and s.expires_at is null
++   and app.phone_is_confirmed($2) and s.form->'placementRightConfirmed'='true'::jsonb
++   and char_length(s.title) between 2 and 200 and char_length(btrim(s.form->>'description')) between 20 and 3000
++   and s.form->>'price' ~ '^[0-9]+\.[0-9]{2}$' and (s.form->>'price')::numeric>=100
++   and (coalesce(s.form->>'contactPhone','')<>'' or coalesce(s.form->>'email','')<>'' or coalesce(s.form->>'messengerUrl','')<>'')
++   and s.form->'photoIds'='[]'::jsonb and s.form->'skills'='null'::jsonb and s.form->'experience'='null'::jsonb
++   and coalesce(s.form->>'professionId',s.profession_id::text)=s.profession_id::text
++   and not exists(select 1 from app.service_publication_photos where publication_id=s.id))
++$$;
++create function app.guard_specialist_checkout_terms() returns trigger
++ language plpgsql security definer set search_path=pg_catalog as $$
++ declare purchase app.payment_checkout_intents; session_hash text; actor uuid; version bigint;
++ begin
++  if tg_op<>'INSERT' then raise exception using errcode='23514',message='Specialist checkout terms are immutable';end if;
++  if current_setting('transaction_isolation')<>'read committed' then raise exception using errcode='PSP01',message='Specialist checkout requires read committed';end if;
++  session_hash:=current_setting('blizhniy.specialist_checkout_session',true);
++  if session_hash is null or session_hash !~ '^[a-f0-9]{64}$' then raise exception using errcode='PSP01',message='Specialist owner session required';end if;
++  select user_id into actor from app.sessions where token_hash=session_hash;
++  select auth_version into version from app.users where id=actor and not is_blocked and email_verified_at is not null for update;
++  if not found then raise exception using errcode='PSP01',message='Specialist owner session required';end if;
++  perform token_hash from app.sessions where token_hash=session_hash and user_id=actor and auth_version=version and scope='app'
++   and expires_at>clock_timestamp() and last_seen_at>clock_timestamp()-interval '30 minutes' for update;
++  if not found then raise exception using errcode='PSP01',message='Specialist owner session required';end if;
++  select * into purchase from app.payment_checkout_intents where id=new.intent_id for update;
++  if not found or purchase.owner_id<>actor or purchase.target_type<>'specialist' or not purchase.is_test or purchase.merchant_shop_id<>'local-fixture-shop'
++   or purchase.tariff_id<>'specialist-publication' or purchase.duration_days is null then
++   raise exception using errcode='PSP01',message='Local specialist purchase required';end if;
++  perform id from app.payment_orders where id=purchase.id and status='created' for update;
++  if not found then raise exception using errcode='PSP01',message='Unstarted specialist order required';end if;
++  perform id from app.service_publications where id=purchase.target_id for update;
++  perform id from app.cities where id=(select city_id from app.service_publications where id=purchase.target_id) for share;
++  perform id from app.specialist_categories where id=(select profession_id from app.service_publications where id=purchase.target_id) for share;
++  perform user_id from app.cabinet_profiles where user_id=actor for share;
++  perform id from app.service_moderation where publication_id=purchase.target_id and revision=purchase.target_revision for share;
++  if not app.specialist_checkout_ready(purchase.target_id,actor,purchase.target_revision) or
++   not exists(select 1 from app.tariffs where id=purchase.tariff_id and action='specialist_publication' and active and price>0
++    and price=purchase.amount and duration_days=purchase.duration_days and duration_days between 1 and 3650) or
++   exists(select 1 from app.payment_dispatch_anchors where intent_id=purchase.id) or exists(select 1 from app.payment_provider_links where intent_id=purchase.id) then
++   raise exception using errcode='PSP01',message='Specialist purchase terms changed';end if;
++  new.created_at:=clock_timestamp();return new;
++ end $$;
++create trigger specialist_checkout_terms_guard before insert or update or delete on app.specialist_checkout_terms
++ for each row execute function app.guard_specialist_checkout_terms();
++create trigger specialist_checkout_terms_truncate_guard before truncate on app.specialist_checkout_terms
++ for each statement execute function app.guard_specialist_checkout_terms();
++create function app.guard_specialist_checkout_edit() returns trigger
++ language plpgsql security definer set search_path=pg_catalog as $$
++ begin
++  if old.kind<>'specialist' then if tg_op='DELETE' then return old;end if;return new;end if;
++  if tg_op='UPDATE' and (to_jsonb(new)-array['status','is_paid','published_at','expires_at','updated_at','title']) is not distinct from
++   (to_jsonb(old)-array['status','is_paid','published_at','expires_at','updated_at','title']) then return new;end if;
++  if current_setting('transaction_isolation')<>'read committed' then raise exception using errcode='PSP02',message='Specialist edit requires read committed';end if;
++  if tg_op='UPDATE' and (row(new.id,new.author_id,new.kind) is distinct from row(old.id,old.author_id,old.kind) or
++   new.revision not in (old.revision,old.revision+1) or
++   row(new.form,new.city_id,new.profession_id) is distinct from row(old.form,old.city_id,old.profession_id) and new.revision<>old.revision+1) then
++   raise exception using errcode='PSP02',message='Specialist material edit requires the next revision';end if;
++  if exists(select 1 from app.payment_orders o where target_type='specialist' and target_id=old.id and
++   (status in ('created','pending') or status='succeeded' and not exists(select 1 from app.payment_fulfillments where intent_id=o.id))) then
++   raise exception using errcode='PSP02',message='Specialist checkout prevents editing';end if;
++  if tg_op='DELETE' then return old;end if;return new;
++ end $$;
++create trigger specialist_checkout_edit_guard before update or delete on app.service_publications
++ for each row execute function app.guard_specialist_checkout_edit();
++create function app.guard_specialist_checkout_photo() returns trigger
++ language plpgsql security definer set search_path=pg_catalog as $$
++ declare publication uuid;
++ begin
++  for publication in select id from app.service_publications where kind='specialist' and id=any(array[case when tg_op<>'INSERT' then old.publication_id end,case when tg_op<>'DELETE' then new.publication_id end]) order by id loop
++   if current_setting('transaction_isolation')<>'read committed' then raise exception using errcode='PSP02',message='Specialist photo edit requires read committed';end if;
++   perform id from app.users where id=(select author_id from app.service_publications where id=publication) for update;
++   perform id from app.service_publications where id=publication and kind='specialist' for update;
++   if found and exists(select 1 from app.payment_orders o where target_type='specialist' and target_id=publication and
++    (status in ('created','pending') or status='succeeded' and not exists(select 1 from app.payment_fulfillments where intent_id=o.id))) then
++    raise exception using errcode='PSP02',message='Specialist checkout prevents photo changes';end if;
++  end loop;
++  if tg_op='DELETE' then return old;end if;return new;
++ end $$;
++create trigger specialist_checkout_photo_guard before insert or update or delete on app.service_publication_photos
++ for each row execute function app.guard_specialist_checkout_photo();
++create function app.guard_specialist_payment_fulfillment() returns trigger
++ language plpgsql security definer set search_path=pg_catalog as $$
++ declare purchase app.payment_checkout_intents;
++ begin
++  select * into purchase from app.payment_checkout_intents where id=new.intent_id;
++  if purchase.target_type is distinct from 'specialist' then return new;end if;
++  if current_setting('transaction_isolation')<>'read committed' or new.published_at is not null or new.expires_at is not null then
++   raise exception using errcode='PSP03',message='Specialist period is server assigned';end if;
++  perform id from app.users where id=purchase.owner_id for update;
++  select * into purchase from app.payment_checkout_intents where id=new.intent_id for update;
++  perform id from app.payment_orders where id=purchase.id for update;
++  perform id from app.service_publications where id=purchase.target_id for update;
++  perform id from app.cities where id=(select city_id from app.service_publications where id=purchase.target_id) for share;
++  perform id from app.specialist_categories where id=(select profession_id from app.service_publications where id=purchase.target_id) for share;
++  perform user_id from app.cabinet_profiles where user_id=purchase.owner_id for share;
++  perform id from app.service_moderation where publication_id=purchase.target_id and revision=purchase.target_revision for share;
++  if not purchase.is_test or purchase.merchant_shop_id<>'local-fixture-shop' or purchase.tariff_id<>'specialist-publication' or purchase.duration_days is null or
++   not exists(select 1 from app.specialist_checkout_terms where intent_id=purchase.id) or
++   not exists(select 1 from app.payment_orders where id=purchase.id and status='succeeded') or
++   not exists(select 1 from app.payment_provider_links l join app.payment_verifications v on v.intent_id=l.intent_id and v.provider_payment_id=l.provider_payment_id
++    where l.intent_id=purchase.id and v.status='succeeded' and v.captured_at is not null and v.captured_at::timestamptz>=purchase.created_at and v.captured_at::timestamptz<=clock_timestamp()) or
++   not app.specialist_checkout_ready(purchase.target_id,purchase.owner_id,purchase.target_revision) then
++   raise exception using errcode='PSP03',message='Specialist capture or target unavailable';end if;
++  new.published_at:=clock_timestamp();new.expires_at:=new.published_at+purchase.duration_days*interval '24 hours';return new;
++ end $$;
++-- Take the user lock before older financial fences take the intent lock.
++create trigger a_specialist_payment_fulfillment_guard before insert on app.payment_fulfillments
++ for each row execute function app.guard_specialist_payment_fulfillment();
++create function app.apply_specialist_payment_fulfillment() returns trigger
++ language plpgsql security definer set search_path=pg_catalog as $$
++ declare purchase app.payment_checkout_intents;
++ begin
++  select * into purchase from app.payment_checkout_intents where id=new.intent_id;
++  if purchase.target_type is distinct from 'specialist' then return new;end if;
++  update app.service_publications set status='published',is_paid=true,published_at=new.published_at,expires_at=new.expires_at,updated_at=clock_timestamp()
++   where id=purchase.target_id and author_id=purchase.owner_id and kind='specialist' and revision=purchase.target_revision
++    and status='draft' and not is_paid and published_at is null and expires_at is null and deleted_at is null;
++  if not found then raise exception using errcode='PSP03',message='Specialist publication changed';end if;
++  return new;
++ end $$;
++create trigger specialist_payment_fulfillment_effect after insert on app.payment_fulfillments
++ for each row execute function app.apply_specialist_payment_fulfillment();
++create function app.guard_specialist_publication_window() returns trigger
++ language plpgsql security definer set search_path=pg_catalog as $$
++ begin
++  if new.kind<>'specialist' then
++   if tg_op='UPDATE' and old.kind='specialist' and old.is_paid then raise exception using errcode='PSP03',message='Paid specialist kind is immutable';end if;
++   return new;
++  end if;
++  if tg_op='UPDATE' and row(new.status,new.is_paid,new.published_at,new.expires_at,new.id,new.author_id,new.kind)
++   is not distinct from row(old.status,old.is_paid,old.published_at,old.expires_at,old.id,old.author_id,old.kind) then return new;end if;
++  if new.is_paid or new.status in ('published','paid') or new.published_at is not null or new.expires_at is not null then
++   if not exists(select 1 from app.payment_fulfillments f join app.payment_checkout_intents i on i.id=f.intent_id
++    join app.specialist_checkout_terms terms on terms.intent_id=i.id join app.payment_orders o on o.id=i.id and o.status='succeeded'
++    where i.target_type='specialist' and i.owner_id=new.author_id and i.target_id=new.id and i.target_revision=new.revision
++     and i.is_test and i.merchant_shop_id='local-fixture-shop' and f.published_at=new.published_at and f.expires_at=new.expires_at) then
++    raise exception using errcode='PSP03',message='Specialist publication requires its recorded receipt';end if;
++  end if;
++  return new;
++ end $$;
++create trigger specialist_publication_window_guard before insert or update on app.service_publications
++ for each row execute function app.guard_specialist_publication_window();
++revoke all on app.specialist_checkout_terms from public;
++revoke all on function app.specialist_checkout_ready(uuid,uuid,bigint),app.guard_specialist_checkout_terms(),app.guard_specialist_checkout_edit(),
++ app.guard_specialist_checkout_photo(),app.guard_specialist_payment_fulfillment(),app.apply_specialist_payment_fulfillment(),app.guard_specialist_publication_window() from public;
++commit;
+diff --git a/scripts/local-primary-payment.mjs b/scripts/local-primary-payment.mjs
+index 4dcf815..c3b7563 100644
+--- a/scripts/local-primary-payment.mjs
++++ b/scripts/local-primary-payment.mjs
+@@ -5,0 +6 @@ import {readServiceCheckoutEnabled} from '../src/lib/service-checkout-config.ts'
++import {readSpecialistCheckoutEnabled} from '../src/lib/specialist-checkout-config.ts';
+@@ -27 +28,2 @@ async function create(context,targetType){
+- const policy={postmoderation:true,...(readPlacementRenewalsEnabled()?{renewals:true}:{}),...(targetType!=='listing'?{targetType}:{})};
++ if(targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw Error('Local specialist checkout disabled');
++ const policy={postmoderation:true,...(targetType!=='specialist'&&readPlacementRenewalsEnabled()?{renewals:true}:{}),...(targetType!=='listing'?{targetType}:{})};
+@@ -38,0 +41 @@ async function create(context,targetType){
++  if(targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw Error('Local specialist checkout disabled');
+@@ -48,0 +52 @@ async function create(context,targetType){
++    if(targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw Error('Local specialist checkout disabled');
+@@ -81 +85 @@ async function create(context,targetType){
+-  dispatch:async(token,owner,id)=>{const binding=await store.authorizeDispatch(token,owner,id);const result=await dispatch.dispatch(binding,()=>store.authorizeDispatch(token,owner,id,true));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};},
++  dispatch:async(token,owner,id)=>{const binding=(targetType==='specialist'?await recoverExistingProvider(token,owner,id):null)??await store.authorizeDispatch(token,owner,id);const result=await dispatch.dispatch(binding,()=>store.authorizeDispatch(token,owner,id,true));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};},
+@@ -87,3 +91,10 @@ export async function localPrimaryPaymentHandler(request,context){
+- if(!['/api/account/fair-checkout','/api/account/marquee-checkout','/api/account/application-checkout','/api/account/listing-checkout','/api/account/vacancy-checkout','/api/account/work-request-checkout','/__local/payment'].includes(url.pathname))return null;
+- if(url.pathname==='/__local/payment'&&url.searchParams.has('type')&&!['vacancy','workRequest','application','fair','marquee'].includes(url.searchParams.get('type')))return html('<p>Неизвестный тип заказа.</p>',422);
+- const targetType=url.pathname==='/api/account/fair-checkout'?'fair':url.pathname==='/api/account/marquee-checkout'?'marquee':url.pathname==='/api/account/application-checkout'?'application':url.pathname==='/api/account/work-request-checkout'?'workRequest':url.pathname==='/api/account/vacancy-checkout'?'vacancy':url.pathname==='/__local/payment'?url.searchParams.get('type')??'listing':'listing';
++ if(!['/api/account/specialist-checkout','/api/account/fair-checkout','/api/account/marquee-checkout','/api/account/application-checkout','/api/account/listing-checkout','/api/account/vacancy-checkout','/api/account/work-request-checkout','/__local/payment'].includes(url.pathname))return null;
++ if(url.pathname==='/__local/payment'&&url.searchParams.has('type')&&!['specialist','vacancy','workRequest','application','fair','marquee'].includes(url.searchParams.get('type')))return html('<p>Неизвестный тип заказа.</p>',422);
++ const targetType=url.pathname==='/api/account/specialist-checkout'?'specialist':url.pathname==='/api/account/fair-checkout'?'fair':url.pathname==='/api/account/marquee-checkout'?'marquee':url.pathname==='/api/account/application-checkout'?'application':url.pathname==='/api/account/work-request-checkout'?'workRequest':url.pathname==='/api/account/vacancy-checkout'?'vacancy':url.pathname==='/__local/payment'?url.searchParams.get('type')??'listing':'listing';
++ if(targetType==='specialist'&&!readSpecialistCheckoutEnabled()){
++  if(process.env.NODE_ENV!=='test'||context.state.origin!==process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN||url.pathname==='/__local/payment'||request.method!=='POST')return html('<p>Оплата анкеты отключена.</p>',404);
++  return context.load('listing-checkout-http').createListingCheckoutHandler({origin:canonical},()=>({
++   store:new(context.load('postgres-listing-checkout').PostgresListingCheckoutStore)(context.runtimeDb,{...merchant,siteOrigin:canonical,receiptVatCode:1},{postmoderation:true,targetType:'specialist',testModeHistory:true}),
++   limiter:new(context.load('auth-http').AuthRateLimiter)(context.runtimeDb,context.state.rateSecret),
++  }),undefined,{readOnly:true})(request);
++ }
+@@ -92 +103 @@ export async function localPrimaryPaymentHandler(request,context){
+- const returnQuery=targetType==='listing'?'':'?type='+targetType,formQuery=targetType==='listing'?'':'&amp;type='+targetType,cabinet=targetType==='fair'?'/cabinet/fair-applications':targetType==='marquee'?'/reklama/begushchaya-stroka?view=list':targetType==='application'?'/cabinet/otkliki':targetType==='workRequest'?'/cabinet/zakazy':targetType==='vacancy'?'/cabinet/vakansii':'/cabinet/obyavleniya';
++ const returnQuery=targetType==='listing'?'':'?type='+targetType,formQuery=targetType==='listing'?'':'&amp;type='+targetType,cabinet=targetType==='specialist'?'/cabinet/specialist':targetType==='fair'?'/cabinet/fair-applications':targetType==='marquee'?'/reklama/begushchaya-stroka?view=list':targetType==='application'?'/cabinet/otkliki':targetType==='workRequest'?'/cabinet/zakazy':targetType==='vacancy'?'/cabinet/vakansii':'/cabinet/obyavleniya';
+@@ -119,0 +131 @@ export async function localPrimaryPaymentHandler(request,context){
++    if(targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw Error('Local specialist checkout disabled');
+@@ -123,0 +136 @@ export async function localPrimaryPaymentHandler(request,context){
++    if(targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw Error('Local specialist checkout disabled');
+diff --git a/scripts/local-primary.mjs b/scripts/local-primary.mjs
+index 89acb20..bc4d893 100644
+--- a/scripts/local-primary.mjs
++++ b/scripts/local-primary.mjs
+@@ -11,0 +12 @@ import {readServiceCheckoutEnabled} from '../src/lib/service-checkout-config.ts'
++import {readSpecialistCheckoutEnabled} from '../src/lib/specialist-checkout-config.ts';
+@@ -24 +25 @@ else if(process.argv[2]==='--background'){
+-  cwd:state.project,env:{PATH:process.env.PATH,LANG:'C.UTF-8',...(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG?{BLIZHNIY_LOCAL_TELEGRAM_CONFIG:process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG}:{}),...(process.env.BLIZHNIY_PLACEMENT_RENEWALS?{BLIZHNIY_PLACEMENT_RENEWALS:process.env.BLIZHNIY_PLACEMENT_RENEWALS}:{}),...(process.env.BLIZHNIY_MEDIA_RETENTION?{BLIZHNIY_MEDIA_RETENTION:process.env.BLIZHNIY_MEDIA_RETENTION}:{}),...(process.env.BLIZHNIY_SERVICE_CHECKOUT?{BLIZHNIY_SERVICE_CHECKOUT:process.env.BLIZHNIY_SERVICE_CHECKOUT}:{})},detached:true,stdio:['ignore',log.fd,log.fd],
++  cwd:state.project,env:{...(process.env.BLIZHNIY_SPECIALIST_CHECKOUT?{BLIZHNIY_SPECIALIST_CHECKOUT:process.env.BLIZHNIY_SPECIALIST_CHECKOUT}:{}),PATH:process.env.PATH,LANG:'C.UTF-8',...(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG?{BLIZHNIY_LOCAL_TELEGRAM_CONFIG:process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG}:{}),...(process.env.BLIZHNIY_PLACEMENT_RENEWALS?{BLIZHNIY_PLACEMENT_RENEWALS:process.env.BLIZHNIY_PLACEMENT_RENEWALS}:{}),...(process.env.BLIZHNIY_MEDIA_RETENTION?{BLIZHNIY_MEDIA_RETENTION:process.env.BLIZHNIY_MEDIA_RETENTION}:{}),...(process.env.BLIZHNIY_SERVICE_CHECKOUT?{BLIZHNIY_SERVICE_CHECKOUT:process.env.BLIZHNIY_SERVICE_CHECKOUT}:{})},detached:true,stdio:['ignore',log.fd,log.fd],
+@@ -40 +41 @@ else{
+- const env={...telegram,...(readMediaRetentionEnabled()?{BLIZHNIY_MEDIA_RETENTION:'local-v1'}:{}),...(readServiceCheckoutEnabled()?{BLIZHNIY_SERVICE_CHECKOUT:'local-v1'}:{}),...(readPlacementRenewalsEnabled()?{BLIZHNIY_PLACEMENT_RENEWALS:'local-v1'}:{}),BLIZHNIY_CSP_MODE:'enforce',PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',
++ const env={...telegram,...(readSpecialistCheckoutEnabled()?{BLIZHNIY_SPECIALIST_CHECKOUT:'local-v1'}:{}),...(readMediaRetentionEnabled()?{BLIZHNIY_MEDIA_RETENTION:'local-v1'}:{}),...(readServiceCheckoutEnabled()?{BLIZHNIY_SERVICE_CHECKOUT:'local-v1'}:{}),...(readPlacementRenewalsEnabled()?{BLIZHNIY_PLACEMENT_RENEWALS:'local-v1'}:{}),BLIZHNIY_CSP_MODE:'enforce',PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',
+diff --git a/src/app/layout.tsx b/src/app/layout.tsx
+index dda43b6..4d9c7de 100644
+--- a/src/app/layout.tsx
++++ b/src/app/layout.tsx
+@@ -22,0 +23 @@ import {readServiceCheckoutEnabled} from '@/lib/service-checkout-config';
++import {readSpecialistCheckoutEnabled} from '@/lib/specialist-checkout-config';
+@@ -62 +63 @@ export default async function RootLayout({
+-        <ListingWorkflowProvider postmoderation={postmoderation} localSimulation={postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'} workOwnerActions={readWorkOwnerActionsEnabled()} renewals={readPlacementRenewalsEnabled()} serviceCheckout={readServiceCheckoutEnabled()}>
++        <ListingWorkflowProvider postmoderation={postmoderation} localSimulation={postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'} workOwnerActions={readWorkOwnerActionsEnabled()} renewals={readPlacementRenewalsEnabled()} serviceCheckout={readServiceCheckoutEnabled()} specialistCheckout={readSpecialistCheckoutEnabled()}>
+diff --git a/src/app/oplata/[paymentId]/page.tsx b/src/app/oplata/[paymentId]/page.tsx
+index 9abf5cb..a48a0d8 100644
+--- a/src/app/oplata/[paymentId]/page.tsx
++++ b/src/app/oplata/[paymentId]/page.tsx
+@@ -5,0 +6 @@ import {readPostmoderationEnabled} from '@/lib/listing-workflow-config';
++import {readSpecialistCheckoutEnabled} from '@/lib/specialist-checkout-config';
+@@ -13 +14 @@ export default async function Page({ params,searchParams }: { params: Promise<{
+-  const type=readPostmoderationEnabled()?(await searchParams)?.type:undefined,vacancy=type==='vacancy',workRequest=type==='workRequest';
++  const type=readPostmoderationEnabled()?(await searchParams)?.type:undefined,vacancy=type==='vacancy',workRequest=type==='workRequest',specialist=type==='specialist';
+@@ -17 +18 @@ export default async function Page({ params,searchParams }: { params: Promise<{
+-  return mode && mode !== "local" ? <PrimaryPaymentReturnClient cancellationEnabled={readCheckoutCancellationEnabled()} paymentId={paymentId} vacancy={vacancy} workRequest={workRequest} testCheckout={process.env.BLIZHNIY_LISTING_PAYMENT==='account-publication-test'||process.env.BLIZHNIY_LISTING_PAYMENT==='account-test'&&(!vacancy&&!workRequest)||readPostmoderationEnabled()&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'} /> : <PaymentReturnClient paymentId={paymentId} />;
++  return mode && mode !== "local" ? <PrimaryPaymentReturnClient cancellationEnabled={!specialist&&readCheckoutCancellationEnabled()} paymentId={paymentId} vacancy={vacancy} workRequest={workRequest} specialist={specialist} testCheckout={(!specialist||readSpecialistCheckoutEnabled())&&(process.env.BLIZHNIY_LISTING_PAYMENT==='account-publication-test'||process.env.BLIZHNIY_LISTING_PAYMENT==='account-test'&&(!vacancy&&!workRequest)||readPostmoderationEnabled()&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled')} /> : <PaymentReturnClient paymentId={paymentId} />;
+diff --git a/src/app/tarify/page.tsx b/src/app/tarify/page.tsx
+index 48e2c3f..2295abb 100644
+--- a/src/app/tarify/page.tsx
++++ b/src/app/tarify/page.tsx
+@@ -7,0 +8 @@ import { formatTariffPrice } from "@/lib/tariff-display";
++import { readSpecialistCheckoutEnabled } from "@/lib/specialist-checkout-config";
+@@ -13 +14 @@ function tariffDetail(durationDays: number | null) {
+-function tariffCta(tariff: Tariff) {
++function tariffCta(tariff: Tariff, specialistCheckout = false) {
+@@ -27 +28 @@ function tariffCta(tariff: Tariff) {
+-    return { href: "/rabota/specialisty/anketa", label: "Подготовить черновик анкеты" };
++    return { href: "/rabota/specialisty/anketa", label: specialistCheckout ? "Подготовить анкету" : "Подготовить черновик анкеты" };
+@@ -48,0 +50 @@ export default async function Page() {
++  const specialistCheckout = readSpecialistCheckoutEnabled();
+@@ -68 +70 @@ export default async function Page() {
+-            const cta = tariffCta(tariff);
++            const cta = tariffCta(tariff, specialistCheckout);
+@@ -79 +81 @@ export default async function Page() {
+-                  <p className="mt-2 text-sm font-semibold leading-6 text-amber-700">Публикация и оплата анкеты временно недоступны. Черновик можно сохранить.</p>
++                  <p className="mt-2 text-sm font-semibold leading-6 text-amber-700">{specialistCheckout ? "Локальная проверка: модерация, симуляция оплаты и публикация анкеты. Реальные деньги не списываются." : "Публикация и оплата анкеты временно недоступны. Черновик можно сохранить."}</p>
+diff --git a/src/components/listings/ListingWorkflowProvider.tsx b/src/components/listings/ListingWorkflowProvider.tsx
+index 9b5f6d7..72d80aa 100644
+--- a/src/components/listings/ListingWorkflowProvider.tsx
++++ b/src/components/listings/ListingWorkflowProvider.tsx
+@@ -4,2 +4,2 @@ const Context=createContext(false),SimulationContext=createContext(false),WorkAc
+-const RenewalContext=createContext(false),ServiceCheckoutContext=createContext(false);
+-export function ListingWorkflowProvider({postmoderation,localSimulation=false,workOwnerActions=false,renewals=false,serviceCheckout=false,children}:{postmoderation:boolean;localSimulation?:boolean;workOwnerActions?:boolean;renewals?:boolean;serviceCheckout?:boolean;children:ReactNode}){return <Context.Provider value={postmoderation}><SimulationContext.Provider value={localSimulation}><WorkActionsContext.Provider value={workOwnerActions}><RenewalContext.Provider value={renewals}><ServiceCheckoutContext.Provider value={serviceCheckout}>{children}</ServiceCheckoutContext.Provider></RenewalContext.Provider></WorkActionsContext.Provider></SimulationContext.Provider></Context.Provider>;}
++const RenewalContext=createContext(false),ServiceCheckoutContext=createContext(false),SpecialistCheckoutContext=createContext(false);
++export function ListingWorkflowProvider({postmoderation,localSimulation=false,workOwnerActions=false,renewals=false,serviceCheckout=false,specialistCheckout=false,children}:{postmoderation:boolean;localSimulation?:boolean;workOwnerActions?:boolean;renewals?:boolean;serviceCheckout?:boolean;specialistCheckout?:boolean;children:ReactNode}){return <Context.Provider value={postmoderation}><SimulationContext.Provider value={localSimulation}><WorkActionsContext.Provider value={workOwnerActions}><RenewalContext.Provider value={renewals}><ServiceCheckoutContext.Provider value={serviceCheckout}><SpecialistCheckoutContext.Provider value={specialistCheckout}>{children}</SpecialistCheckoutContext.Provider></ServiceCheckoutContext.Provider></RenewalContext.Provider></WorkActionsContext.Provider></SimulationContext.Provider></Context.Provider>;}
+@@ -12,0 +13,2 @@ export function useServiceCheckout(){return useContext(ServiceCheckoutContext);}
++
++export function useSpecialistCheckout(){return useContext(SpecialistCheckoutContext);}
+diff --git a/src/components/listings/PrivateListingCheckout.tsx b/src/components/listings/PrivateListingCheckout.tsx
+index d47bb02..a4152b2 100644
+--- a/src/components/listings/PrivateListingCheckout.tsx
++++ b/src/components/listings/PrivateListingCheckout.tsx
+@@ -7,0 +8 @@ import {accountTestPayment} from '@/lib/client-account-test-payment';
++import {specialistPayment} from '@/lib/client-specialist-payment';
+@@ -13 +14,2 @@ export type {ListingCheckoutAttempt} from '@/lib/listing-payment-start';
+-export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=false}:{owner:string;id:string;revision:string;attempt:ListingCheckoutAttempt;localPreview?:boolean}){
++export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=false,specialist=false}:{owner:string;id:string;revision:string;attempt:ListingCheckoutAttempt;localPreview?:boolean;specialist?:boolean}){
++ const payment=specialist?specialistPayment:accountTestPayment;
+@@ -24 +26 @@ export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=f
+-   setError(code==='PHONE_REQUIRED'?'Подтвердите номер телефона, чтобы перейти к оплате размещения.':code==='CHECKOUT_DISABLED'||code==='CHECKOUT_NOT_READY'?localPreview?'Объявление пока не готово к оплате: проверьте обязательные поля и статус блокировки.':'TEST-оплата доступна только согласованному тестовому аккаунту. Для остальных оплата ещё не включена.':code==='CHECKOUT_CHANGED'||code==='DRAFT_CHANGED'?'Объявление или тариф изменились. Обновите сохранённую версию.':'Не удалось подтвердить результат. Не создавайте новый заказ: проверьте сохранённый.');
++   setError(code==='PHONE_REQUIRED'?'Подтвердите номер телефона, чтобы перейти к оплате размещения.':code==='CHECKOUT_DISABLED'||code==='CHECKOUT_NOT_READY'?localPreview?specialist?'Анкета пока не готова к оплате: проверьте профиль, телефон и одобрение модератора.':'Объявление пока не готово к оплате: проверьте обязательные поля и статус блокировки.':'TEST-оплата доступна только согласованному тестовому аккаунту. Для остальных оплата ещё не включена.':code==='CHECKOUT_CHANGED'||code==='DRAFT_CHANGED'?'Объявление или тариф изменились. Обновите сохранённую версию.':'Не удалось подтвердить результат. Не создавайте новый заказ: проверьте сохранённый.');
+@@ -27,2 +29,2 @@ export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=f
+- function open(paymentId:string,signal?:AbortSignal){if(live.current&&!signal?.aborted)window.location.assign(`/oplata/${paymentId}`);}
+- return <section aria-label="Оплата объявления" hidden={!visible} inert={!visible} aria-busy={busy} className="mt-4 min-w-0 border-t border-slate-200 pt-4">
++ function open(paymentId:string,signal?:AbortSignal){if(live.current&&!signal?.aborted)window.location.assign(`/oplata/${paymentId}${specialist?'?type=specialist':''}`);}
++ return <section aria-label={specialist?"Оплата анкеты":"Оплата объявления"} hidden={!visible} inert={!visible} aria-busy={busy} className="mt-4 min-w-0 border-t border-slate-200 pt-4">
+@@ -30,2 +32,2 @@ export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=f
+-   if(localPreview){await ensurePhoneForPlacement(owner);try{open(await startListingPayment(accountTestPayment,owner,id,revision,attempt,options),options.signal);}finally{if(live.current&&!options.signal?.aborted)setUncertain(attempt.uncertain);}}
+-   else{const value=await accountTestPayment.preview(owner,id,revision,options);if(live.current&&!options.signal?.aborted)setQuote(value);}
++   if(localPreview){await ensurePhoneForPlacement(owner);try{open(await startListingPayment(payment,owner,id,revision,attempt,options),options.signal);}finally{if(live.current&&!options.signal?.aborted)setUncertain(attempt.uncertain);}}
++   else{const value=await payment.preview(owner,id,revision,options);if(live.current&&!options.signal?.aborted)setQuote(value);}
+@@ -36 +38 @@ export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=f
+-   {quote.activePayment?<Link href={`/oplata/${quote.activePayment.id}`} className={`${draftButton} mt-3`}>Открыть существующий заказ</Link>:<>
++   {quote.activePayment?<Link href={`/oplata/${quote.activePayment.id}${specialist?'?type=specialist':''}`} className={`${draftButton} mt-3`}>Открыть существующий заказ</Link>:<>
+@@ -39 +41 @@ export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=f
+-     await ensurePhoneForPlacement(owner);attempt.uncertain=true;setUncertain(true);const order=await accountTestPayment.prepare(owner,attempt.input,options);if(!options.signal?.aborted){attempt.uncertain=false;attempt.input=null;setUncertain(false);open(order.id,options.signal);}
++     await ensurePhoneForPlacement(owner);attempt.uncertain=true;setUncertain(true);const order=await payment.prepare(owner,attempt.input,options);if(!options.signal?.aborted){attempt.uncertain=false;attempt.input=null;setUncertain(false);open(order.id,options.signal);}
+@@ -44 +46 @@ export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=f
+-   if(!attempt.input)return;const saved=await accountTestPayment.recover(owner,attempt.input.creationKey,options);
++   if(!attempt.input)return;const saved=await payment.recover(owner,attempt.input.creationKey,options);
+diff --git a/src/components/payments/ListingPaymentStatus.tsx b/src/components/payments/ListingPaymentStatus.tsx
+index d48162f..4f6c197 100644
+--- a/src/components/payments/ListingPaymentStatus.tsx
++++ b/src/components/payments/ListingPaymentStatus.tsx
+@@ -3 +3 @@ import type {ListingPaymentSnapshot} from '@/lib/postgres-listing-checkout';
+-export function ListingPaymentStatus({snapshot,testMode=false}:{snapshot:ListingPaymentSnapshot;testMode?:boolean}){
++export function ListingPaymentStatus({snapshot,testMode=false,specialist=false}:{snapshot:ListingPaymentSnapshot;testMode?:boolean;specialist?:boolean}){
+@@ -11,0 +12 @@ export function ListingPaymentStatus({snapshot,testMode=false}:{snapshot:Listing
++ if(specialist)message=message.replaceAll("объявления","анкеты").replaceAll("Объявление","Анкета");
+diff --git a/src/components/payments/PrimaryPaymentReturnClient.tsx b/src/components/payments/PrimaryPaymentReturnClient.tsx
+index 5a71ad4..eeb4ed8 100644
+--- a/src/components/payments/PrimaryPaymentReturnClient.tsx
++++ b/src/components/payments/PrimaryPaymentReturnClient.tsx
+@@ -12,0 +13 @@ import {CheckoutCancellation} from './CheckoutCancellation';
++import {specialistPaymentStatus} from '@/lib/client-specialist-payment';
+@@ -16,2 +17,2 @@ const button='inline-flex min-h-11 items-center justify-center rounded-lg border
+-function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,cancellationEnabled}:{owner:string;paymentId:string;visible:boolean;testCheckout:boolean;vacancy:boolean;workRequest:boolean;cancellationEnabled:boolean}){
+- const router=useRouter(),cabinet=workRequest?'/cabinet/zakazy':vacancy?'/cabinet/vakansii':'/cabinet/obyavleniya';
++function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,specialist,cancellationEnabled}:{owner:string;paymentId:string;visible:boolean;testCheckout:boolean;vacancy:boolean;workRequest:boolean;specialist:boolean;cancellationEnabled:boolean}){
++ const router=useRouter(),cabinet=specialist?'/cabinet/specialist':workRequest?'/cabinet/zakazy':vacancy?'/cabinet/vakansii':'/cabinet/obyavleniya';
+@@ -24 +25 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
+-  void (workRequest?workRequestPaymentStatus:vacancy?vacancyPaymentStatus:listingPayment).read(owner,paymentId,{signal:controller.signal}).then(value=>{
++  void (specialist?specialistPaymentStatus:workRequest?workRequestPaymentStatus:vacancy?vacancyPaymentStatus:listingPayment).read(owner,paymentId,{signal:controller.signal}).then(value=>{
+@@ -31 +32 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
+- },[owner,paymentId,visible,retry,vacancy,workRequest,cancellationPending]);
++ },[owner,paymentId,visible,retry,vacancy,workRequest,specialist,cancellationPending]);
+@@ -46,3 +47,3 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
+-  {snapshot&&<>{(snapshot.testOnly||snapshot.testPublication)&&<p className="mb-3 text-sm font-semibold text-amber-800">Тестовый платёж · Без списания денег</p>}{(error||busy)&&<p className="mb-3 text-sm text-slate-700">Последний полученный статус. Актуальность пока не подтверждена.</p>}<ListingPaymentStatus snapshot={snapshot} testMode={verificationOnly}/></>}
+-  {testCheckout&&snapshot&&(snapshot.order.status==='created'||snapshot.order.status==='pending')&&<TestPaymentLaunch publishes={snapshot.testPublication} disabled={cancellationPending} owner={owner} paymentId={paymentId} visible={visible} vacancy={vacancy} workRequest={workRequest}/>}
+-  {cancellationEnabled&&snapshot?.order.status==='created'&&!busy&&!error&&<CheckoutCancellation owner={owner} paymentId={paymentId} targetType={workRequest?'workRequest':vacancy?'vacancy':'listing'} visible={visible} onPendingChange={setCancellationPending} onCancelled={()=>{setSnapshot(null);setLoaded(false);setRetry(value=>value+1);}}/>}
++  {snapshot&&<>{(snapshot.testOnly||snapshot.testPublication)&&<p className="mb-3 text-sm font-semibold text-amber-800">Тестовый платёж · Без списания денег</p>}{(error||busy)&&<p className="mb-3 text-sm text-slate-700">Последний полученный статус. Актуальность пока не подтверждена.</p>}<ListingPaymentStatus snapshot={snapshot} testMode={verificationOnly} specialist={specialist}/></>}
++  {testCheckout&&snapshot&&(snapshot.order.status==='created'||snapshot.order.status==='pending')&&<TestPaymentLaunch publishes={snapshot.testPublication} disabled={cancellationPending} owner={owner} paymentId={paymentId} visible={visible} vacancy={vacancy} workRequest={workRequest} specialist={specialist}/>}
++  {cancellationEnabled&&!specialist&&snapshot?.order.status==='created'&&!busy&&!error&&<CheckoutCancellation owner={owner} paymentId={paymentId} targetType={workRequest?'workRequest':vacancy?'vacancy':'listing'} visible={visible} onPendingChange={setCancellationPending} onCancelled={()=>{setSnapshot(null);setLoaded(false);setRetry(value=>value+1);}}/>}
+@@ -52 +53 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
+-  <div className="mt-5 flex flex-wrap gap-3">{(!confirmed||error)&&<button type="button" className={button} disabled={busy||cancellationPending} onClick={()=>{automaticChecks.current=0;setRetry(value=>value+1);}}>Проверить статус</button>}<Link href={cabinet} className={button}>{confirmed?'Вернуться на сайт':workRequest?'Мои заказы':vacancy?'Мои вакансии':'Мои объявления'}</Link></div>
++  <div className="mt-5 flex flex-wrap gap-3">{(!confirmed||error)&&<button type="button" className={button} disabled={busy||cancellationPending} onClick={()=>{automaticChecks.current=0;setRetry(value=>value+1);}}>Проверить статус</button>}<Link href={cabinet} className={button}>{confirmed?'Вернуться на сайт':specialist?'Моя анкета':workRequest?'Мои заказы':vacancy?'Мои вакансии':'Мои объявления'}</Link></div>
+@@ -55 +56 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
+-export function PrimaryPaymentReturnClient({paymentId,testCheckout=false,vacancy=false,workRequest=false,cancellationEnabled=false}:{paymentId:string;testCheckout?:boolean;vacancy?:boolean;workRequest?:boolean;cancellationEnabled?:boolean}){
++export function PrimaryPaymentReturnClient({paymentId,testCheckout=false,vacancy=false,workRequest=false,specialist=false,cancellationEnabled=false}:{paymentId:string;testCheckout?:boolean;vacancy?:boolean;workRequest?:boolean;specialist?:boolean;cancellationEnabled?:boolean}){
+@@ -63,2 +64,2 @@ export function PrimaryPaymentReturnClient({paymentId,testCheckout=false,vacancy
+-   {!visible&&<div role="status" className="text-sm leading-6 text-slate-700">{auth?.state==='signed-out'?<><p>Войдите в аккаунт, из которого оформляли заказ.</p><Link className={`${button} mt-4`} href={`/auth?returnTo=${encodeURIComponent(`/oplata/${paymentId}${workRequest?'?type=workRequest':vacancy?'?type=vacancy':''}`)}`}>Войти и проверить оплату</Link></>:<><p>Проверяем доступ. Данные заказа временно скрыты.</p>{(!auth||auth.state==='unavailable')&&<button type="button" className={`${button} mt-4`} onClick={()=>notifyAccountSessionChange(false)}>Повторить проверку входа</button>}</>}</div>}
+-   {scope&&<StatusReader key={`${scope}:${paymentId}:${vacancy}:${workRequest}`} owner={scope} paymentId={paymentId} visible={visible} cancellationEnabled={cancellationEnabled} testCheckout={testCheckout} vacancy={vacancy} workRequest={workRequest}/>}
++   {!visible&&<div role="status" className="text-sm leading-6 text-slate-700">{auth?.state==='signed-out'?<><p>Войдите в аккаунт, из которого оформляли заказ.</p><Link className={`${button} mt-4`} href={`/auth?returnTo=${encodeURIComponent(`/oplata/${paymentId}${specialist?'?type=specialist':workRequest?'?type=workRequest':vacancy?'?type=vacancy':''}`)}`}>Войти и проверить оплату</Link></>:<><p>Проверяем доступ. Данные заказа временно скрыты.</p>{(!auth||auth.state==='unavailable')&&<button type="button" className={`${button} mt-4`} onClick={()=>notifyAccountSessionChange(false)}>Повторить проверку входа</button>}</>}</div>}
++   {scope&&<StatusReader key={`${scope}:${paymentId}:${vacancy}:${workRequest}:${specialist}`} owner={scope} paymentId={paymentId} visible={visible} cancellationEnabled={cancellationEnabled} testCheckout={testCheckout} vacancy={vacancy} workRequest={workRequest} specialist={specialist}/>}
+diff --git a/src/components/payments/TestPaymentLaunch.tsx b/src/components/payments/TestPaymentLaunch.tsx
+index f7fdd03..c9f1aff 100644
+--- a/src/components/payments/TestPaymentLaunch.tsx
++++ b/src/components/payments/TestPaymentLaunch.tsx
+@@ -3,0 +4 @@ import {accountTestPayment} from '@/lib/client-account-test-payment';
++import {specialistPayment} from '@/lib/client-specialist-payment';
+@@ -6 +7 @@ import {vacancyPayment,workRequestPayment} from '@/lib/client-vacancy-payment';
+-export function TestPaymentLaunch({owner,paymentId,visible,vacancy=false,workRequest=false,disabled=false,publishes=false}:{owner:string;paymentId:string;visible:boolean;vacancy?:boolean;workRequest?:boolean;disabled?:boolean;publishes?:boolean}){
++export function TestPaymentLaunch({owner,paymentId,visible,vacancy=false,workRequest=false,specialist=false,disabled=false,publishes=false}:{owner:string;paymentId:string;visible:boolean;vacancy?:boolean;workRequest?:boolean;specialist?:boolean;disabled?:boolean;publishes?:boolean}){
+@@ -14 +15 @@ export function TestPaymentLaunch({owner,paymentId,visible,vacancy=false,workReq
+-   const result=await (workRequest?workRequestPayment:vacancy?vacancyPayment:accountTestPayment).dispatch(owner,paymentId,{signal:controller?.signal});
++   const result=await (specialist?specialistPayment:workRequest?workRequestPayment:vacancy?vacancyPayment:accountTestPayment).dispatch(owner,paymentId,{signal:controller?.signal});
+@@ -16 +17 @@ export function TestPaymentLaunch({owner,paymentId,visible,vacancy=false,workReq
+-   if(result.confirmationUrl)window.location.assign(localPreview?`/__local/payment?intent=${paymentId}${workRequest?'&type=workRequest':vacancy?'&type=vacancy':''}`:result.confirmationUrl);
++   if(result.confirmationUrl)window.location.assign(localPreview?`/__local/payment?intent=${paymentId}${specialist?'&type=specialist':workRequest?'&type=workRequest':vacancy?'&type=vacancy':''}`:result.confirmationUrl);
+diff --git a/src/components/services/PrimaryServicePublicationEditor.tsx b/src/components/services/PrimaryServicePublicationEditor.tsx
+index 2fff75f..278b7be 100644
+--- a/src/components/services/PrimaryServicePublicationEditor.tsx
++++ b/src/components/services/PrimaryServicePublicationEditor.tsx
+@@ -14,0 +15 @@ import {PublicationPlacementPeriod} from '@/components/PublicationPlacementPerio
++import {useSpecialistCheckout} from '@/components/listings/ListingWorkflowProvider';
+@@ -24,0 +26 @@ function Editor({owner,kind,id,visible,embedded}:{owner:string;kind:ServicePubli
++ const specialistCheckout=useSpecialistCheckout();
+@@ -44 +46 @@ function Editor({owner,kind,id,visible,embedded}:{owner:string;kind:ServicePubli
+-    {snapshot&&!dirty&&(kind==='specialist'?<SpecialistApplicationStatus form={snapshot.form}/>:<ServiceModerationStatus owner={owner} snapshot={snapshot}/>)}</div>:<p role="status">Загружаем сохранённую форму…</p>}
++    {snapshot&&!dirty&&(kind==='specialist'?<><SpecialistApplicationStatus form={snapshot.form}/>{specialistCheckout&&<ServiceModerationStatus owner={owner} snapshot={snapshot}/>}</>:<ServiceModerationStatus owner={owner} snapshot={snapshot}/>)}</div>:<p role="status">Загружаем сохранённую форму…</p>}
+diff --git a/src/components/services/ServiceModerationStatus.tsx b/src/components/services/ServiceModerationStatus.tsx
+index 2710990..e3aeb17 100644
+--- a/src/components/services/ServiceModerationStatus.tsx
++++ b/src/components/services/ServiceModerationStatus.tsx
+@@ -3 +3,2 @@ import Link from 'next/link';
+-import {useServiceCheckout} from '@/components/listings/ListingWorkflowProvider';
++import {useServiceCheckout,useSpecialistCheckout} from '@/components/listings/ListingWorkflowProvider';
++import {PrivateListingCheckout,type ListingCheckoutAttempt} from '@/components/listings/PrivateListingCheckout';
+@@ -9 +10 @@ export function ServiceModerationStatus({owner,snapshot}:{owner:string;snapshot:
+- const checkout=useServiceCheckout();
++ const checkout=useServiceCheckout(),specialistCheckout=useSpecialistCheckout(),attempt=useRef<ListingCheckoutAttempt>({input:null,uncertain:false});
+@@ -25 +26 @@ export function ServiceModerationStatus({owner,snapshot}:{owner:string;snapshot:
+-  {value?.state==='approved'&&(snapshot.paid?<p className="mt-2 text-sm text-slate-600">{snapshot.status==='published'?'Размещение оплачено.':'Оплата сохранена. Проверьте статус размещения.'}</p>:checkout&&snapshot.kind!=='specialist'?<Link prefetch={false} className={draftButton+' mt-3'} href={`/cabinet/oplata-uslugi?type=${snapshot.kind}&id=${snapshot.id}&revision=${snapshot.revision}`}>Перейти к оплате</Link>:<p className="mt-2 text-sm text-slate-600">Материал одобрен. Оплата и размещение выполняются отдельно.</p>)}
++  {value?.state==='approved'&&(snapshot.paid?<p className="mt-2 text-sm text-slate-600">{snapshot.status==='published'?'Размещение оплачено.':'Оплата сохранена. Проверьте статус размещения.'}</p>:specialistCheckout&&snapshot.kind==='specialist'?<PrivateListingCheckout owner={owner} id={snapshot.id} revision={snapshot.revision} attempt={attempt.current} localPreview specialist/>:checkout&&snapshot.kind!=='specialist'?<Link prefetch={false} className={draftButton+' mt-3'} href={`/cabinet/oplata-uslugi?type=${snapshot.kind}&id=${snapshot.id}&revision=${snapshot.revision}`}>Перейти к оплате</Link>:<p className="mt-2 text-sm text-slate-600">Материал одобрен. Оплата и размещение выполняются отдельно.</p>)}
+diff --git a/src/components/services/SpecialistProfilePanel.tsx b/src/components/services/SpecialistProfilePanel.tsx
+index b7942d3..a25c28f 100644
+--- a/src/components/services/SpecialistProfilePanel.tsx
++++ b/src/components/services/SpecialistProfilePanel.tsx
+@@ -13,0 +14,3 @@ import {SpecialistApplicationStatus} from './SpecialistApplicationStatus';
++import {ServiceModerationStatus} from './ServiceModerationStatus';
++import {useSpecialistCheckout} from '@/components/listings/ListingWorkflowProvider';
++import {PublicationPlacementPeriod} from '@/components/PublicationPlacementPeriod';
+@@ -16,0 +20 @@ export function SpecialistProfilePanel({owner,visible}:{owner:string;visible:boo
++ const checkout=useSpecialistCheckout();
+@@ -56,0 +61 @@ export function SpecialistProfilePanel({owner,visible}:{owner:string;visible:boo
++    {checkout&&<><PublicationPlacementPeriod publishedAt={snapshot.publishedAt} expiresAt={snapshot.expiresAt} status={snapshot.status}/><ServiceModerationStatus owner={owner} snapshot={snapshot}/></>}
+diff --git a/src/lib/client-specialist-payment.ts b/src/lib/client-specialist-payment.ts
+new file mode 100644
+index 0000000..fbf1ace
+--- /dev/null
++++ b/src/lib/client-specialist-payment.ts
+@@ -0,0 +1,6 @@
++"use client";
++import {createAccountTestPaymentClient} from './client-account-test-payment';
++import {createListingPaymentClient} from './client-listing-payment';
++const transport:typeof fetch=(_input,init)=>fetch('/api/account/specialist-checkout',init);
++export const specialistPayment=createAccountTestPaymentClient(transport);
++export const specialistPaymentStatus=createListingPaymentClient(transport);
+diff --git a/src/lib/listing-checkout-http.ts b/src/lib/listing-checkout-http.ts
+index 0a335b5..014f9a3 100644
+--- a/src/lib/listing-checkout-http.ts
++++ b/src/lib/listing-checkout-http.ts
+@@ -11,0 +12 @@ import {WorkPublicationAccessError,WorkPublicationConflictError} from './postgre
++import {ServicePublicationAccessError,ServicePublicationConflictError} from './postgres-service-publications';
+@@ -61,0 +63,2 @@ export function createListingCheckoutHandler(config:{origin:string},runtime:()=>
++   if(error instanceof ServicePublicationAccessError)error=new AuthRequestError(404,'DRAFT_NOT_FOUND');
++   if(error instanceof ServicePublicationConflictError)error=new AuthRequestError(409,'DRAFT_CHANGED');
+diff --git a/src/lib/postgres-listing-checkout.ts b/src/lib/postgres-listing-checkout.ts
+index 7a945a9..2913a6e 100644
+--- a/src/lib/postgres-listing-checkout.ts
++++ b/src/lib/postgres-listing-checkout.ts
+@@ -10,0 +11,3 @@ import {readPostmoderationEnabled} from './listing-workflow-config';
++import {inspectSpecialistPurchase} from './specialist-purchase-eligibility';
++import {readSpecialistCheckoutEnabled} from './specialist-checkout-config';
++import {hashSessionToken} from './identity';
+@@ -33,2 +36,2 @@ export class PostgresListingCheckoutStore{
+- private readonly targetType:'listing'|'vacancy'|'workRequest';
+- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,config:ListingCheckoutConfig,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest';renewals?:boolean;publicationTestOwner?:string;testModeHistory?:boolean}={}){
++ private readonly targetType:'listing'|'vacancy'|'workRequest'|'specialist';
++ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,config:ListingCheckoutConfig,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest'|'specialist';renewals?:boolean;publicationTestOwner?:string;testModeHistory?:boolean}={}){
+@@ -38 +41,4 @@ export class PostgresListingCheckoutStore{
+-  if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!config.isTest||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
++  if(this.targetType==='specialist'){
++   readSpecialistCheckoutEnabled();
++   if(process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!=='https://127.0.0.1:3045'||!readPostmoderationEnabled()||!config.isTest||config.shopId!=='local-fixture-shop'||policy.renewals||policy.publicationTestOwner)throw new ListingCheckoutUnavailableError();
++  }else if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!config.isTest||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
+@@ -59,0 +66,6 @@ export class PostgresListingCheckoutStore{
++  if(this.targetType==='specialist'){
++   if((await inspectSpecialistPurchase(this.db,tx,owner,id,revision)).issues.length)throw new ListingCheckoutUnavailableError();
++   const offer=(await tx.query<Offer>(`select id,name,price::text as amount,'RUB' as currency,duration_days as "durationDays" from app.tariffs
++    where id='specialist-publication' and action='specialist_publication' and active and price>0 and duration_days between 1 and 3650`)).rows[0];
++   if(!offer)throw new ListingCheckoutUnavailableError();return offer;
++  }
+@@ -93,0 +106 @@ export class PostgresListingCheckoutStore{
++  if(this.targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw new ListingCheckoutUnavailableError();
+@@ -108,0 +122 @@ export class PostgresListingCheckoutStore{
++  if(this.targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw new ListingCheckoutUnavailableError();
+@@ -118,0 +133 @@ export class PostgresListingCheckoutStore{
++   if(this.targetType==='specialist'&&(await tx.query('select intent_id from app.specialist_checkout_terms where intent_id=$1',[id])).rowCount!==1)throw new ListingCheckoutUnavailableError();
+@@ -137 +152 @@ export class PostgresListingCheckoutStore{
+-    coalesce(i.is_test and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1',false) as "testPublication",
++    coalesce(i.is_test and (i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'${this.targetType==='specialist'?' or exists(select 1 from app.specialist_checkout_terms admitted where admitted.intent_id=i.id)':''}),false) as "testPublication",
+@@ -153 +168 @@ export class PostgresListingCheckoutStore{
+-  const amount={value:offer.amount,currency:'RUB'},description=this.targetType==='vacancy'?'Размещение вакансии':this.targetType==='workRequest'?'Размещение заказа':'Размещение объявления';
++  const amount={value:offer.amount,currency:'RUB'},description=this.targetType==='specialist'?'Размещение анкеты специалиста':this.targetType==='vacancy'?'Размещение вакансии':this.targetType==='workRequest'?'Размещение заказа':'Размещение объявления';
+@@ -167,0 +183 @@ export class PostgresListingCheckoutStore{
++  if(this.targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw new ListingCheckoutUnavailableError();
+@@ -182,0 +199,4 @@ export class PostgresListingCheckoutStore{
++   if(this.targetType==='specialist'){
++    await tx.query("select set_config('blizhniy.specialist_checkout_session',$1,true)",[hashSessionToken(token)]);
++    await tx.query('insert into app.specialist_checkout_terms(intent_id) values($1)',[id]);
++   }
+diff --git a/src/lib/postgres-listing-payment-fulfillment.ts b/src/lib/postgres-listing-payment-fulfillment.ts
+index 1e070fa..cc2b173 100644
+--- a/src/lib/postgres-listing-payment-fulfillment.ts
++++ b/src/lib/postgres-listing-payment-fulfillment.ts
+@@ -9,0 +10,3 @@ import {WorkPublicationInputError} from './work-publication-contract';
++import {inspectSpecialistPurchase} from './specialist-purchase-eligibility';
++import {readSpecialistCheckoutEnabled} from './specialist-checkout-config';
++import {ServicePublicationAccessError,ServicePublicationConflictError} from './postgres-service-publications';
+@@ -23,2 +26,2 @@ export class PostgresListingPaymentFulfillmentStore{
+- private readonly targetType:'listing'|'vacancy'|'workRequest';
+- constructor(db:Pick<PostgresDatabase,'transaction'>,merchant:MerchantScope,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest';renewals?:boolean;publicationTestOwner?:string}={}){
++ private readonly targetType:'listing'|'vacancy'|'workRequest'|'specialist';
++ constructor(db:Pick<PostgresDatabase,'transaction'>,merchant:MerchantScope,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest'|'specialist';renewals?:boolean;publicationTestOwner?:string}={}){
+@@ -29 +32,3 @@ export class PostgresListingPaymentFulfillmentStore{
+-  if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!merchant.isTest||!readPostmoderationEnabled()))throw new PaymentPublicationError();
++  if(this.targetType==='specialist'){
++   if(!readSpecialistCheckoutEnabled()||!merchant.isTest||merchant.shopId!=='local-fixture-shop'||policy.renewals||policy.publicationTestOwner)throw new PaymentPublicationError();
++  }else if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!merchant.isTest||!readPostmoderationEnabled()))throw new PaymentPublicationError();
+@@ -46,0 +52 @@ export class PostgresListingPaymentFulfillmentStore{
++  if(this.targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw new PaymentPublicationError();
+@@ -67,0 +74,7 @@ export class PostgresListingPaymentFulfillmentStore{
++   if(this.targetType==='specialist'){
++    try{if((await inspectSpecialistPurchase(this.db,tx,intent.ownerId,intent.targetId,intent.targetRevision)).issues.length)return{state:'blocked',reason:'content_unavailable'};}
++    catch(error){if(error instanceof ServicePublicationAccessError||error instanceof ServicePublicationConflictError)return{state:'blocked',reason:'target_changed'};throw error;}
++    if(!readSpecialistCheckoutEnabled())throw new PaymentPublicationError();
++    const period=(await tx.query<PaymentPublicationPeriod>(`insert into app.payment_fulfillments(intent_id) values($1) returning ${receiptColumns}`,[id])).rows[0];
++    if(!period)throw new PaymentPublicationError();return{state:'fulfilled',period};
++   }
+diff --git a/src/lib/specialist-checkout-config.ts b/src/lib/specialist-checkout-config.ts
+new file mode 100644
+index 0000000..0cf9a01
+--- /dev/null
++++ b/src/lib/specialist-checkout-config.ts
+@@ -0,0 +1,7 @@
++import {readPostmoderationEnabled} from './listing-workflow-config.ts';
++/** Synthetic local admission only; this switch cannot enable a production merchant. */
++export function readSpecialistCheckoutEnabled(env:NodeJS.ProcessEnv=process.env):boolean{
++ if(env.BLIZHNIY_SPECIALIST_CHECKOUT===undefined||env.BLIZHNIY_SPECIALIST_CHECKOUT==='disabled')return false;
++ if(env.BLIZHNIY_SPECIALIST_CHECKOUT!=='local-v1'||env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!=='https://127.0.0.1:3045'||!readPostmoderationEnabled(env))throw Error('Invalid specialist checkout rollout');
++ return true;
++}
+diff --git a/src/lib/specialist-purchase-eligibility.ts b/src/lib/specialist-purchase-eligibility.ts
+new file mode 100644
+index 0000000..8b6f94e
+--- /dev/null
++++ b/src/lib/specialist-purchase-eligibility.ts
+@@ -0,0 +1,19 @@
++import {PostgresServicePublicationStore,ServicePublicationAccessError,ServicePublicationConflictError} from './postgres-service-publications';
++import type {PostgresDatabase,PostgresQueries} from './postgres';
++/** The caller holds the user lock; retain references and approval through the purchase write. */
++export async function inspectSpecialistPurchase(db:Pick<PostgresDatabase,'transaction'>,tx:PostgresQueries,owner:string,id:string,revision:string){
++ const row=(await tx.query<{revision:string;city:string|null;profession:string|null}>(`select revision::text,city_id as city,profession_id as profession from app.service_publications
++  where id=$1 and author_id=$2 and kind='specialist' and deleted_at is null for update`,[id,owner])).rows[0];
++ if(!row)throw new ServicePublicationAccessError();if(row.revision!==revision)throw new ServicePublicationConflictError();
++ const city=(await tx.query<{name:string}>('select name from app.cities where id=$1 for share',[row.city])).rows[0];
++ const profession=(await tx.query<{active:boolean}>('select active from app.specialist_categories where id=$1 for share',[row.profession])).rows[0];
++ const profile=(await tx.query<{name:string}>("select profile->>'name' as name from app.cabinet_profiles where user_id=$1 for share",[owner])).rows[0];
++ const {snapshot,issues}=await new PostgresServicePublicationStore(db,{specialistProfileIdentity:true}).inspectInTransaction(tx,owner,'specialist',id,revision);
++ if(snapshot.status!=='draft'||snapshot.paid||snapshot.publishedAt!==null||snapshot.expiresAt!==null)issues.push('Анкета уже не является неоплаченным черновиком.');
++ if(snapshot.form.kind!=='specialist')throw new ServicePublicationAccessError();
++ if(city?.name!==snapshot.form.cityName||!profession?.active||!profile?.name||profile.name!==snapshot.form.title)issues.push('Данные профиля, города или профессии изменились. Сохраните анкету заново.');
++ if(snapshot.form.photoIds.length||snapshot.form.skills!==null||snapshot.form.experience!==null)issues.push('Сохраните анкету в текущем формате с единым полем «О себе».');
++ if(!(await tx.query('select app.phone_is_confirmed($1) ready',[owner])).rows[0]?.ready)issues.push('Подтвердите телефон.');
++ if((await tx.query("select id from app.service_moderation where publication_id=$1 and revision=$2::bigint and state='approved' for share",[id,revision])).rowCount!==1)issues.push('Дождитесь одобрения текущей версии анкеты.');
++ return{snapshot,issues};
++}
+diff --git a/tests/checkout-cancellation-ui.test.cjs b/tests/checkout-cancellation-ui.test.cjs
+index 3bc73c9..febc031 100644
+--- a/tests/checkout-cancellation-ui.test.cjs
++++ b/tests/checkout-cancellation-ui.test.cjs
+@@ -14,0 +15 @@ function mount(application){const instances=new Map(),effects=[],cache=new Map()
++  if(dep==='@/lib/client-specialist-payment')return{specialistPaymentStatus:{read}};
+diff --git a/tests/listing-form-module.mjs b/tests/listing-form-module.mjs
+index f707963..7ff6274 100644
+--- a/tests/listing-form-module.mjs
++++ b/tests/listing-form-module.mjs
+@@ -14 +14 @@ export function formModule(name,extra={}){
+- const dependencies={'./booking-lifecycle.ts':loadLocalPrimaryModule('booking-lifecycle'),'./media-read-admission.ts':mediaAdmission,'./listing-form-contract.ts':contract,'./listing-draft-contract.ts':draftContract,'./postgres-listing-drafts':drafts,
++ const dependencies={'./specialist-purchase-eligibility':loadLocalPrimaryModule('specialist-purchase-eligibility'),'./specialist-checkout-config':loadLocalPrimaryModule('specialist-checkout-config'),'./identity':loadLocalPrimaryModule('identity'),'./postgres-service-publications':loadLocalPrimaryModule('postgres-service-publications'),'./booking-lifecycle.ts':loadLocalPrimaryModule('booking-lifecycle'),'./media-read-admission.ts':mediaAdmission,'./listing-form-contract.ts':contract,'./listing-draft-contract.ts':draftContract,'./postgres-listing-drafts':drafts,
+diff --git a/tests/placement-return-navigation.test.cjs b/tests/placement-return-navigation.test.cjs
+index 433b6f8..e7e4a93 100644
+--- a/tests/placement-return-navigation.test.cjs
++++ b/tests/placement-return-navigation.test.cjs
+@@ -17,0 +18 @@ function mount(options={}){
++  if(name==='@/lib/client-specialist-payment')return{specialistPaymentStatus:{read}};
+@@ -34 +35 @@ function mount(options={}){
+-for(const [options,destination] of [[{},'/cabinet/obyavleniya'],[{vacancy:true},'/cabinet/vakansii'],[{workRequest:true},'/cabinet/zakazy']])test('verified success returns once to '+destination,async()=>{
++for(const [options,destination] of [[{},'/cabinet/obyavleniya'],[{vacancy:true},'/cabinet/vakansii'],[{workRequest:true},'/cabinet/zakazy'],[{specialist:true},'/cabinet/specialist']])test('verified success returns once to '+destination,async()=>{
+diff --git a/tests/primary-payment-return.test.mjs b/tests/primary-payment-return.test.mjs
+index bec110b..677fa14 100644
+--- a/tests/primary-payment-return.test.mjs
++++ b/tests/primary-payment-return.test.mjs
+@@ -16 +16 @@ test('primary return page never mounts the legacy payment component in postgres
+- const {default:Page}=load('src/app/oplata/[paymentId]/page.tsx',{'@/components/payments/PaymentReturnClient':{PaymentReturnClient:()=>React.createElement('p',null,'legacy')},'@/components/payments/PrimaryPaymentReturnClient':{PrimaryPaymentReturnClient:()=>React.createElement('p',null,'primary')},'@/components/payments/ApplicationPaymentReturnClient':{ApplicationPaymentReturnClient:()=>React.createElement('p',null,'application')},'@/lib/checkout-cancellation-contract':{readCheckoutCancellationEnabled:()=>false},'@/lib/listing-workflow-config':load('src/lib/listing-workflow-config.ts',{})});
++ const {default:Page}=load('src/app/oplata/[paymentId]/page.tsx',{'@/lib/specialist-checkout-config':{readSpecialistCheckoutEnabled:()=>false},'@/components/payments/PaymentReturnClient':{PaymentReturnClient:()=>React.createElement('p',null,'legacy')},'@/components/payments/PrimaryPaymentReturnClient':{PrimaryPaymentReturnClient:()=>React.createElement('p',null,'primary')},'@/components/payments/ApplicationPaymentReturnClient':{ApplicationPaymentReturnClient:()=>React.createElement('p',null,'application')},'@/lib/checkout-cancellation-contract':{readCheckoutCancellationEnabled:()=>false},'@/lib/listing-workflow-config':load('src/lib/listing-workflow-config.ts',{})});
+@@ -20,0 +21,14 @@ test('primary return page never mounts the legacy payment component in postgres
++test('specialist return preserves its target when disabled and never offers unsupported cancellation or dispatch',async()=>{
++ const names=['BLIZHNIY_AUTH_MODE','BLIZHNIY_LISTING_PAYMENT'],before=Object.fromEntries(names.map(name=>[name,process.env[name]]));let enabled=false;
++ const {default:Page}=load('src/app/oplata/[paymentId]/page.tsx',{
++  '@/components/payments/PaymentReturnClient':{PaymentReturnClient:()=>null},'@/components/payments/PrimaryPaymentReturnClient':{PrimaryPaymentReturnClient:()=>null},
++  '@/components/payments/ApplicationPaymentReturnClient':{ApplicationPaymentReturnClient:()=>null},'@/lib/checkout-cancellation-contract':{readCheckoutCancellationEnabled:()=>true},
++  '@/lib/listing-workflow-config':{readPostmoderationEnabled:()=>true},'@/lib/specialist-checkout-config':{readSpecialistCheckoutEnabled:()=>enabled},
++ });
++ try{
++  process.env.BLIZHNIY_AUTH_MODE='postgres';process.env.BLIZHNIY_LISTING_PAYMENT='account-publication-test';
++  const props=()=>Page({params:Promise.resolve({paymentId:'11111111-1111-4111-8111-111111111111'}),searchParams:Promise.resolve({type:'specialist'})});
++  const disabled=await props();assert.equal(disabled.props.specialist,true);assert.equal(disabled.props.testCheckout,false);assert.equal(disabled.props.cancellationEnabled,false);
++  enabled=true;const active=await props();assert.equal(active.props.specialist,true);assert.equal(active.props.testCheckout,true);assert.equal(active.props.cancellationEnabled,false);
++ }finally{for(const name of names){if(before[name]===undefined)delete process.env[name];else process.env[name]=before[name];}}
++});
+diff --git a/tests/production-account-ui.test.mjs b/tests/production-account-ui.test.mjs
+index 4057fa4..f5d3d29 100644
+--- a/tests/production-account-ui.test.mjs
++++ b/tests/production-account-ui.test.mjs
+@@ -110,0 +111 @@ test("shared root selects public backend and CAPTCHA settings after the request
++    '@/lib/specialist-checkout-config': {readSpecialistCheckoutEnabled:()=>false},
+diff --git a/tests/specialist-cabinet-view.test.cjs b/tests/specialist-cabinet-view.test.cjs
+index bade1d9..83eb3cd 100644
+--- a/tests/specialist-cabinet-view.test.cjs
++++ b/tests/specialist-cabinet-view.test.cjs
+@@ -13,0 +14 @@ function fixture(api={},initialProfile){
++  './ServiceModerationStatus':{ServiceModerationStatus:()=>null},'@/components/listings/ListingWorkflowProvider':{useSpecialistCheckout:()=>false},'@/components/PublicationPlacementPeriod':{PublicationPlacementPeriod:()=>null},
+diff --git a/tests/specialist-checkout-config.test.mjs b/tests/specialist-checkout-config.test.mjs
+new file mode 100644
+index 0000000..b1dd837
+--- /dev/null
++++ b/tests/specialist-checkout-config.test.mjs
+@@ -0,0 +1,13 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {createRequire} from 'node:module';
++const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
++test('specialist checkout is opt-in for the owned local stand and never activates Fair or production',()=>{
++ const {readSpecialistCheckoutEnabled}=load('specialist-checkout-config');
++ assert.equal(readSpecialistCheckoutEnabled({}),false);
++ assert.equal(readSpecialistCheckoutEnabled({BLIZHNIY_SPECIALIST_CHECKOUT:'disabled'}),false);
++ const enabled={BLIZHNIY_SPECIALIST_CHECKOUT:'local-v1',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:3045',BLIZHNIY_LISTING_WORKFLOW:'postmoderation'};
++ assert.equal(readSpecialistCheckoutEnabled(enabled),true);
++ for(const patch of [{BLIZHNIY_SPECIALIST_CHECKOUT:'production-v1'},{BLIZHNIY_LOCAL_PRIMARY:undefined},{BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://example.invalid'},{BLIZHNIY_LISTING_WORKFLOW:undefined}])assert.throws(()=>readSpecialistCheckoutEnabled({...enabled,...patch}));
++ assert.equal(load('service-checkout-config').readServiceCheckoutEnabled(enabled),false);
++});
+diff --git a/tests/specialist-checkout-postgres.mjs b/tests/specialist-checkout-postgres.mjs
+new file mode 100644
+index 0000000..a00d639
+--- /dev/null
++++ b/tests/specialist-checkout-postgres.mjs
+@@ -0,0 +1,148 @@
++// Disposable loopback PostgreSQL and synthetic captures only; never reads .env.
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {execFile} from 'node:child_process';
++import {promisify} from 'node:util';
++import {randomBytes,randomUUID,randomInt} from 'node:crypto';
++import {readFile,readdir} from 'node:fs/promises';
++import {createRequire} from 'node:module';
++import pg from 'pg';
++import {getPublicationTestMigrationPlan} from '../scripts/publication-test-release-plan.mjs';
++const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,run=promisify(execFile);
++const image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
++for(const full of [false,true])test('specialist synthetic checkout on '+(full?'full local58':'production36')+' schema',{timeout:90000},async suite=>{
++ const name='blizhniy-specialist-'+randomBytes(6).toString('hex'),password=randomBytes(32).toString('hex');let container,admin,web,worker,ownerDb;
++ const docker=async args=>(await run('/usr/bin/docker',['--host','unix:///var/run/docker.sock',...args],{timeout:20000,maxBuffer:1048576,env:{PATH:'/usr/bin:/bin',POSTGRES_PASSWORD:password}})).stdout.trim();
++ const keys=['NODE_ENV','BLIZHNIY_SPECIALIST_CHECKOUT','BLIZHNIY_LOCAL_PRIMARY','BLIZHNIY_LOCAL_PRIMARY_ORIGIN','BLIZHNIY_LISTING_WORKFLOW'],saved=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
++ Object.assign(process.env,{NODE_ENV:'test',BLIZHNIY_SPECIALIST_CHECKOUT:'local-v1',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:3045',BLIZHNIY_LISTING_WORKFLOW:'postmoderation'});
++ try{
++  container=await docker(['run','--detach','--pull','never','--name',name,'--label','blizhniy.specialist-fixture='+name,'--memory','512m','--cpus','1','--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB=blizhniy_test',image]);
++  const metadata=JSON.parse(await docker(['inspect',container]))[0],binding=metadata.NetworkSettings.Ports['5432/tcp'][0];assert.equal(binding.HostIp,'127.0.0.1');
++  const config={host:'127.0.0.1',port:Number(binding.HostPort),database:'blizhniy_test',user:'postgres',password,ssl:false,connectionTimeoutMillis:3000};
++  const until=Date.now()+20000;for(;;){try{await docker(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres','-d','blizhniy_test']);break;}catch{assert.ok(Date.now()<until);}await new Promise(r=>setTimeout(r,100));}
++  admin=new pg.Pool({...config,max:4});
++  if(full){for(const file of (await readdir(new URL('../database/migrations/',import.meta.url))).filter(n=>/^\d{4}-[a-z-]+\.sql$/.test(n)&&n<'0058').sort())await admin.query(await readFile(new URL('../database/migrations/'+file,import.meta.url),'utf8'));
++   await admin.query(await readFile(new URL('../database/candidates/0058-media-reference-journal.sql',import.meta.url),'utf8'));
++  }else for(const {sql} of getPublicationTestMigrationPlan())await admin.query(sql);
++  await admin.query(await readFile(new URL('../database/candidates/0060-local-specialist-checkout.sql',import.meta.url),'utf8'));
++  await admin.query("insert into app.regions(slug,name) values('krasnodarskiy-kray','Краснодарский край');insert into app.cities(region_id,slug,name) select id,'krasnodar','Краснодар' from app.regions;insert into app.specialist_categories(slug,name,parent_name) values('plumber','Сантехник','Строительство');insert into app.tariffs(id,action,name,price,duration_days) values('specialist-publication','specialist_publication','Анкета',299,30)");
++  await admin.query(`create role specialist_web login password '${password}';create role specialist_worker login password '${password}';grant usage on schema app to specialist_web,specialist_worker;grant select on all tables in schema app to specialist_web,specialist_worker;
++   grant update(id) on app.users,app.cities,app.specialist_categories,app.service_publications,app.service_moderation,app.payment_checkout_intents,app.payment_orders to specialist_web,specialist_worker;
++   grant update(last_seen_at) on app.sessions to specialist_web;grant update(token_hash) on app.sessions to specialist_web;
++   grant update(user_id) on app.cabinet_profiles to specialist_web,specialist_worker;
++   grant update(form,city_id,profession_id,revision,updated_at) on app.service_publications to specialist_web;
++   grant insert(author_id,kind,creation_key,form,city_id,profession_id) on app.service_publications to specialist_web;
++   grant insert(publication_id,media_id,position),delete on app.service_publication_photos to specialist_web;
++   grant insert(id,owner_id,creation_key,target_type,target_id,target_revision) on app.payment_orders to specialist_web;
++   grant insert(id,owner_id,target_type,target_id,target_revision,tariff_id,amount,duration_days,merchant_shop_id,is_test,request_body) on app.payment_checkout_intents to specialist_web;
++   grant insert(intent_id) on app.specialist_checkout_terms,app.payment_dispatch_anchors to specialist_web;
++   grant insert(intent_id,provider_payment_id) on app.payment_provider_links to specialist_web;
++   grant insert(intent_id) on app.payment_fulfillments to specialist_worker;
++   grant execute on function app.phone_is_confirmed(uuid) to specialist_web,specialist_worker;`);
++  const DB=load('postgres').PostgresDatabase;web=new DB(new pg.Pool({...config,user:'specialist_web',max:4}));worker=new DB(new pg.Pool({...config,user:'specialist_worker',max:4}));ownerDb=new DB(new pg.Pool({...config,max:4}));
++  const profession=(await admin.query('select id from app.specialist_categories')).rows[0].id;
++  async function draft(){
++   const owner=randomUUID(),token=randomBytes(32).toString('hex'),phone='+7999'+String(randomInt(10000000)).padStart(7,'0');
++   await admin.query('insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())',[owner,owner+'@specialist.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
++   await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[owner,{name:'Тестовый специалист',phone}]);
++   await admin.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[owner,phone,'test-'+owner]);
++   await admin.query("insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at) values($1,$2,'app',0,clock_timestamp()+interval '1 hour')",[load('identity').hashSessionToken(token),owner]);
++   const forms=new(load('postgres-service-publications').PostgresServicePublicationStore)(web,{specialistProfileIdentity:true});
++   const row=await forms.create(token,owner,'specialist',randomUUID(),{title:'Имя из профиля',description:'Выполняю монтаж и ремонт сантехники.',cityName:'Краснодар',professionName:'Сантехник',professionId:profession,price:'1500',contactPhone:phone,placementRightConfirmed:true});
++   await admin.query("insert into app.service_moderation(publication_id,revision,state,decided_by,decided_at) values($1,$2,'approved',$3,clock_timestamp())",[row.id,row.revision,owner]);
++   return{owner,token,id:row.id,revision:row.revision,forms};
++  }
++  const merchant={shopId:'local-fixture-shop',isTest:true},Store=load('postgres-listing-checkout').PostgresListingCheckoutStore;
++  const store=new Store(web,{...merchant,siteOrigin:'https://xn----9sbphbgks4a4a.xn--p1ai',receiptVatCode:1},{postmoderation:true,targetType:'specialist'});
++  const fulfillment=new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(worker,merchant,{postmoderation:true,targetType:'specialist'});
++  async function prepare(d){const q=await store.preview(d.token,d.owner,d.id,d.revision),input={listingId:d.id,expectedRevision:d.revision,creationKey:randomUUID(),expectedTariffId:q.tariff.id,expectedAmount:q.tariff.amount,expectedDurationDays:q.tariff.durationDays};return{input,order:await store.prepare(d.token,d.owner,input)};}
++  async function capture(d,order){const b=await store.authorizeDispatch(d.token,d.owner,order.id),intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(web),providerId=randomUUID();await intents.authorize(b);await intents.bindProvider(b,providerId);
++   await admin.query("update app.payment_orders set status='succeeded' where id=$1",[order.id]);await admin.query("insert into app.payment_verifications(intent_id,provider_payment_id,status,captured_at) values($1,$2,'succeeded',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'))",[order.id,providerId]);}
++  await suite.test('owner preparation, lost reply readback, concurrency and one public paid period',async()=>{
++   const d=await draft(),other=await draft(),{input,order}=await prepare(d);
++   assert.deepEqual(await store.prepare(d.token,d.owner,input),order);assert.equal((await store.readIntent(d.token,d.owner,input.creationKey)).id,order.id);
++   assert.equal(await store.readOrder(other.token,other.owner,order.id),null);await assert.rejects(store.preview(other.token,other.owner,d.id,d.revision));
++   await assert.rejects(d.forms.update(d.token,d.owner,'specialist',d.id,d.revision,{description:'Изменено во время оплаты.'}));
++   await assert.rejects(web.query("update app.payment_orders set status='succeeded' where id=$1",[order.id]),{code:'42501'});
++   await assert.rejects(web.query('insert into app.payment_fulfillments(intent_id) values($1)',[order.id]),{code:'42501'});
++   await assert.rejects(worker.query('insert into app.payment_fulfillments(intent_id) values($1)',[order.id]));
++   await capture(d,order);
++   await assert.rejects(admin.query("insert into app.payment_fulfillments(intent_id,published_at,expires_at) values($1,clock_timestamp(),clock_timestamp()+interval '90 days')",[order.id]),{code:'PSP03'});
++   const results=await Promise.all([fulfillment.fulfill(order.id),fulfillment.fulfill(order.id)]);assert.equal(results[0].state,'fulfilled');assert.deepEqual(results[1],results[0]);
++   const snapshot=await store.readOrder(d.token,d.owner,order.id);assert.ok(snapshot.fulfillment);assert.equal(Date.parse(snapshot.fulfillment.expiresAt)-Date.parse(snapshot.fulfillment.publishedAt),30*86400000);
++   assert.equal((await admin.query('select count(*)::int n from app.payment_fulfillments where intent_id=$1',[order.id])).rows[0].n,1);
++   const catalogue=new(load('postgres-public-service').PostgresPublicServiceStore)(web,{specialistProfileIdentity:true});const published=await catalogue.read('specialist',d.id);assert.ok(published);assert.equal(JSON.stringify(published).includes('@specialist.invalid'),false);
++   await assert.rejects(web.query("update app.service_publications set form=jsonb_set(form,'{description}',to_jsonb('Unreviewed raw SQL material edit'::text)) where id=$1",[d.id]),{code:'PSP02'});
++   assert.deepEqual(await catalogue.read('specialist',d.id),published);
++   await assert.rejects(prepare(d));
++   const before=await d.forms.read(d.token,d.owner,'specialist',d.id),edited=await d.forms.update(d.token,d.owner,'specialist',d.id,before.revision,{...before.form,description:'Новое описание после размещения анкеты.'});
++   assert.equal(await catalogue.read('specialist',d.id),undefined,'changed revision is private until approved');
++   assert.deepEqual((await fulfillment.fulfill(order.id)).period,snapshot.fulfillment,'replay never renews or republishes edited revision');
++   await admin.query("insert into app.service_moderation(publication_id,revision,state,decided_by,decided_at) values($1,$2,'approved',$3,clock_timestamp())",[d.id,edited.revision,other.owner]);assert.ok(await catalogue.read('specialist',d.id));
++   assert.deepEqual((await store.readOrder(d.token,d.owner,order.id)).fulfillment,snapshot.fulfillment);
++  });
++  await suite.test('lost simulator response recovers one provider identity after reference change; disabled mode retains read-only history',async()=>{
++   const {localPrimaryPaymentHandler}=await import('../scripts/local-primary-payment.mjs'),d=await draft(),{order}=await prepare(d);let lose=true,postTransactions=0;
++   const providerOwner={query:(...args)=>ownerDb.query(...args),transaction:async work=>{
++    let providerPost=false;const result=await ownerDb.transaction(tx=>work({query:async(...args)=>{if(args[0].startsWith('select * from local_primary.provider_payments where intent_id'))providerPost=true;return tx.query(...args);}}));
++    if(providerPost){postTransactions++;if(lose)throw Error('Synthetic lost provider response after COMMIT');}return result;
++   }};
++   const context={ownerDb:providerOwner,runtimeDb:web,state:{origin:'https://127.0.0.1:3045',rateSecret:'s'.repeat(64)},load:name=>name==='auth-http'?{...load(name),AuthRateLimiter:class{async allowProduction(){return true;}}}:load(name)};
++   const endpoint='https://xn----9sbphbgks4a4a.xn--p1ai',headers={host:new URL(endpoint).host,origin:endpoint,'x-real-ip':'192.0.2.4','x-blizhniy-request':'1','content-type':'application/json',cookie:'__Host-blizhniy_session='+d.token};
++   const request=action=>new Request(endpoint+'/api/account/specialist-checkout',{method:'POST',headers,body:JSON.stringify({expectedOwnerId:d.owner,action,paymentId:order.id})});
++   assert.equal((await localPrimaryPaymentHandler(request('dispatch'),context)).status,503);assert.ok(postTransactions>0);
++   assert.equal((await admin.query('select count(*)::int n from app.payment_provider_links where intent_id=$1',[order.id])).rows[0].n,0);
++   assert.equal((await admin.query('select count(*)::int n from local_primary.provider_payments where intent_id=$1',[order.id])).rows[0].n,1);
++   lose=false;await admin.query('update app.specialist_categories set active=false where id=$1',[profession]);const before=postTransactions;
++   const recovered=await localPrimaryPaymentHandler(request('dispatch'),context);assert.equal(recovered.status,200);assert.equal(postTransactions,before);
++   assert.equal((await admin.query('select count(*)::int n from app.payment_provider_links where intent_id=$1',[order.id])).rows[0].n,1);
++   await admin.query('update app.specialist_categories set active=true where id=$1',[profession]);
++   const completed=await localPrimaryPaymentHandler(new Request(endpoint+'/__local/payment?intent='+order.id+'&type=specialist',{method:'POST',headers:{...headers,'content-type':'application/x-www-form-urlencoded','sec-fetch-site':'same-origin'},body:'action=succeed'}),context);
++   assert.equal(completed.status,200);assert.match(await completed.text(),/размещение выполнено/);assert.equal(postTransactions,before);
++   const snapshot=await store.readOrder(d.token,d.owner,order.id);assert.ok(snapshot.fulfillment);assert.equal(snapshot.testPublication,true);
++   process.env.BLIZHNIY_SPECIALIST_CHECKOUT='disabled';
++   try{assert.equal((await localPrimaryPaymentHandler(request('order'),context)).status,200);assert.equal((await localPrimaryPaymentHandler(request('dispatch'),context)).status,503);assert.deepEqual(await store.readOrder(d.token,d.owner,order.id),snapshot);await assert.rejects(store.preview(d.token,d.owner,d.id,d.revision));await assert.rejects(fulfillment.fulfill(order.id));
++    const oversized=new Request(endpoint+'/api/account/specialist-checkout',{method:'POST',headers:{...headers,'content-length':'999999'},body:'invalid-json'});assert.equal((await localPrimaryPaymentHandler(oversized,context)).status,413);
++   }
++   finally{process.env.BLIZHNIY_SPECIALIST_CHECKOUT='local-v1';}
++  });
++  await suite.test('stale photo snapshots and cached fulfillment cannot mutate after preparation or disabling',async()=>{
++   const d=await draft(),media=(await admin.query("insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256) values($1,$2,'image/webp',40,20,12,$3) returning id",[d.owner,randomUUID(),'a'.repeat(64)])).rows[0].id;
++   await admin.query("update app.media_objects set state='ready',ready_at=clock_timestamp() where id=$1",[media]);
++   const rr=await admin.connect();let order;
++   try{await rr.query('begin isolation level repeatable read');await rr.query('select id from app.service_publications where id=$1',[d.id]);order=(await prepare(d)).order;
++    await assert.rejects(rr.query('insert into app.service_publication_photos(publication_id,media_id,position) values($1,$2,0)',[d.id,media]),{code:'PSP02'});
++   }finally{await rr.query('rollback');rr.release();}
++   await assert.rejects(web.query('insert into app.service_publication_photos(publication_id,media_id,position) values($1,$2,0)',[d.id,media]),{code:'PSP02'});
++   await capture(d,order);process.env.BLIZHNIY_SPECIALIST_CHECKOUT='disabled';
++   try{await assert.rejects(fulfillment.fulfill(order.id));assert.equal((await admin.query('select count(*)::int n from app.payment_fulfillments where intent_id=$1',[order.id])).rows[0].n,0);}
++   finally{process.env.BLIZHNIY_SPECIALIST_CHECKOUT='local-v1';}
++   assert.equal((await fulfillment.fulfill(order.id)).state,'fulfilled');
++  });
++  await suite.test('unmarked historical specialist captures and direct paid inserts cannot adopt the new publication path',async()=>{
++   const template=await draft(),{order}=await prepare(template),binding=await store.authorizeDispatch(template.token,template.owner,order.id),target=await draft(),id=randomUUID();
++   const body=JSON.parse((await admin.query('select request_body from app.payment_checkout_intents where id=$1',[order.id])).rows[0].request_body);
++   body.metadata.localPaymentId=id;body.metadata.targetId=target.id;body.receipt.customer.email=target.owner+'@specialist.invalid';
++   await ownerDb.transaction(async tx=>{await tx.query("insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision) values($1,$2,$3,'specialist',$4,$5)",[id,target.owner,randomUUID(),target.id,target.revision]);
++    await new(load('postgres-payment-intents').PostgresPaymentIntentStore)(ownerDb).persistInTransaction(tx,{...binding,id,ownerId:target.owner,targetId:target.id,targetRevision:target.revision,requestBody:JSON.stringify(body)});});
++   const provider=randomUUID();await admin.query('insert into app.payment_dispatch_anchors(intent_id) values($1)',[id]);await admin.query('insert into app.payment_provider_links(intent_id,provider_payment_id) values($1,$2)',[id,provider]);
++   await admin.query("update app.payment_orders set status='succeeded' where id=$1",[id]);await admin.query("insert into app.payment_verifications(intent_id,provider_payment_id,status,captured_at) values($1,$2,'succeeded',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'))",[id,provider]);
++   await assert.rejects(fulfillment.fulfill(id),{code:'PSP03'});assert.equal((await admin.query('select count(*)::int n from app.payment_fulfillments where intent_id=$1',[id])).rows[0].n,0);
++   await assert.rejects(admin.query("insert into app.service_publications(author_id,kind,creation_key,form,city_id,profession_id,status,is_paid,published_at,expires_at) select author_id,kind,$2,form,city_id,profession_id,'published',true,clock_timestamp(),clock_timestamp()+interval '30 days' from app.service_publications where id=$1",[target.id,randomUUID()]),{code:'PSP03'});
++  });
++  await suite.test('inactive references, missing phone and changed tariff cannot create or fulfill an order',async()=>{
++   const d=await draft();await admin.query('update app.specialist_categories set active=false where id=$1',[profession]);await assert.rejects(prepare(d));await admin.query('update app.specialist_categories set active=true where id=$1',[profession]);
++   const {order}=await prepare(d);await capture(d,order);await admin.query('delete from app.telegram_phone_bindings where user_id=$1',[d.owner]);assert.equal((await fulfillment.fulfill(order.id)).state,'blocked');
++   assert.equal((await admin.query('select count(*)::int n from app.payment_fulfillments where intent_id=$1',[order.id])).rows[0].n,0);
++   await assert.rejects(admin.query("update app.service_publications set status='published',is_paid=true,published_at=clock_timestamp(),expires_at=clock_timestamp()+interval '30 days' where id=$1",[d.id]));
++   const next=await draft(),q=await store.preview(next.token,next.owner,next.id,next.revision);await admin.query("update app.tariffs set price=399 where id='specialist-publication'");
++   await assert.rejects(store.prepare(next.token,next.owner,{listingId:next.id,expectedRevision:next.revision,creationKey:randomUUID(),expectedTariffId:q.tariff.id,expectedAmount:q.tariff.amount,expectedDurationDays:q.tariff.durationDays}));
++  });
++  await suite.test('synthetic-only admission refuses live merchants, renewal and old publication metadata',()=>{
++   for(const [config,policy] of [[{...merchant,isTest:false},{}],[{...merchant,shopId:'real-shop'},{}],[merchant,{renewals:true}],[merchant,{publicationTestOwner:randomUUID()}]])assert.throws(()=>new Store(web,{...config,siteOrigin:'https://example.invalid',receiptVatCode:1},{postmoderation:true,targetType:'specialist',...policy}));
++  });
++ }finally{
++  for(const key of keys){if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];}
++  await web?.close();await worker?.close();await ownerDb?.close();await admin?.end();if(container){const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Config.Labels['blizhniy.specialist-fixture'],name);await docker(['rm','--force','--volumes',container]);}
++ }
++});
+diff --git a/tests/tariff-display.test.mjs b/tests/tariff-display.test.mjs
+index 96eefb8..fdd3987 100644
+--- a/tests/tariff-display.test.mjs
++++ b/tests/tariff-display.test.mjs
+@@ -17 +17 @@ function display() {
+-function page(kind, tariffs) {
++function page(kind, tariffs, specialistCheckout = false) {
+@@ -24,0 +25 @@ function page(kind, tariffs) {
++    "@/lib/specialist-checkout-config": { readSpecialistCheckoutEnabled: () => specialistCheckout },
+@@ -95,0 +97,8 @@ test("public tariffs explain the limited TEST release before offering placement
++test("local specialist tariff describes moderation and synthetic placement only when enabled", async () => {
++  const tariffs = [{ ...fair, action: "specialist_publication", id: "specialist-publication" }];
++  const html = renderToStaticMarkup(await page("tariffs", tariffs, true).default());
++  assert.match(html, /Локальная проверка: модерация, симуляция оплаты и публикация анкеты/);
++  assert.doesNotMatch(html, /Публикация и оплата анкеты временно недоступны/);
++  const disabled = renderToStaticMarkup(await page("tariffs", tariffs).default());
++  assert.match(disabled, /Публикация и оплата анкеты временно недоступны/);
++});

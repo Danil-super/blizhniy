@@ -108,6 +108,7 @@ test("shared root selects public backend and CAPTCHA settings after the request 
     '@/lib/work-owner-actions-contract': {readWorkOwnerActionsEnabled:()=>false},
     '@/lib/placement-renewal-config': {readPlacementRenewalsEnabled:()=>false},
     '@/lib/service-checkout-config': {readServiceCheckoutEnabled:()=>false},
+    '@/lib/specialist-checkout-config': {readSpecialistCheckoutEnabled:()=>false},
     '@/components/listings/ListingWorkflowProvider': load('src/components/listings/ListingWorkflowProvider.tsx', {}),
     "@/lib/site-url": { getPublicSiteUrl: () => "https://example.invalid" },
     "@/lib/turnstile-public-config": load("src/lib/turnstile-public-config.ts", {}, { process: { env: environment } }),

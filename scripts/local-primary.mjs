@@ -9,6 +9,7 @@ import {createLocalPrimaryProxy} from './local-primary-proxy.mjs';
 import {startLocalBookingExpiry} from './local-booking-expiry.mjs';
 import {startLocalPrimaryServices} from './local-primary-services.mjs';
 import {readServiceCheckoutEnabled} from '../src/lib/service-checkout-config.ts';
+import {readSpecialistCheckoutEnabled} from '../src/lib/specialist-checkout-config.ts';
 import {startLocalServicePublicationQueue} from './local-service-publication-queue.mjs';
 import {readPlacementRenewalsEnabled} from '../src/lib/placement-renewal-config.ts';
 
@@ -21,7 +22,7 @@ else if(process.argv[2]==='--background'){
  if(Number(process.versions.node.split('.')[0])!==22)throw Error('Local primary requires Node22');
  const log=await open(join(stateDirectory,'launcher.log'),'a',0o600);
  const child=spawn(process.execPath,['--experimental-strip-types',join(state.project,'scripts/local-primary.mjs'),'--start',...(refunds?['--refunds']:[])],{
-  cwd:state.project,env:{PATH:process.env.PATH,LANG:'C.UTF-8',...(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG?{BLIZHNIY_LOCAL_TELEGRAM_CONFIG:process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG}:{}),...(process.env.BLIZHNIY_PLACEMENT_RENEWALS?{BLIZHNIY_PLACEMENT_RENEWALS:process.env.BLIZHNIY_PLACEMENT_RENEWALS}:{}),...(process.env.BLIZHNIY_MEDIA_RETENTION?{BLIZHNIY_MEDIA_RETENTION:process.env.BLIZHNIY_MEDIA_RETENTION}:{}),...(process.env.BLIZHNIY_SERVICE_CHECKOUT?{BLIZHNIY_SERVICE_CHECKOUT:process.env.BLIZHNIY_SERVICE_CHECKOUT}:{})},detached:true,stdio:['ignore',log.fd,log.fd],
+  cwd:state.project,env:{...(process.env.BLIZHNIY_SPECIALIST_CHECKOUT?{BLIZHNIY_SPECIALIST_CHECKOUT:process.env.BLIZHNIY_SPECIALIST_CHECKOUT}:{}),PATH:process.env.PATH,LANG:'C.UTF-8',...(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG?{BLIZHNIY_LOCAL_TELEGRAM_CONFIG:process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG}:{}),...(process.env.BLIZHNIY_PLACEMENT_RENEWALS?{BLIZHNIY_PLACEMENT_RENEWALS:process.env.BLIZHNIY_PLACEMENT_RENEWALS}:{}),...(process.env.BLIZHNIY_MEDIA_RETENTION?{BLIZHNIY_MEDIA_RETENTION:process.env.BLIZHNIY_MEDIA_RETENTION}:{}),...(process.env.BLIZHNIY_SERVICE_CHECKOUT?{BLIZHNIY_SERVICE_CHECKOUT:process.env.BLIZHNIY_SERVICE_CHECKOUT}:{})},detached:true,stdio:['ignore',log.fd,log.fd],
  });
  await once(child,'spawn');await log.close();child.unref();
  await writeFile(join(stateDirectory,'launcher-process.json'),JSON.stringify({version:1,pid:child.pid,project:state.project,origin:state.origin}),{mode:0o600});
@@ -37,7 +38,7 @@ else{
  const telegram=readLocalTelegramConfig(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG,state.origin);
  Object.assign(process.env,telegram);
  const {localPrimaryPaymentHandler}=await import('./local-primary-payment.mjs');
- const env={...telegram,...(readMediaRetentionEnabled()?{BLIZHNIY_MEDIA_RETENTION:'local-v1'}:{}),...(readServiceCheckoutEnabled()?{BLIZHNIY_SERVICE_CHECKOUT:'local-v1'}:{}),...(readPlacementRenewalsEnabled()?{BLIZHNIY_PLACEMENT_RENEWALS:'local-v1'}:{}),BLIZHNIY_CSP_MODE:'enforce',PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',
+ const env={...telegram,...(readSpecialistCheckoutEnabled()?{BLIZHNIY_SPECIALIST_CHECKOUT:'local-v1'}:{}),...(readMediaRetentionEnabled()?{BLIZHNIY_MEDIA_RETENTION:'local-v1'}:{}),...(readServiceCheckoutEnabled()?{BLIZHNIY_SERVICE_CHECKOUT:'local-v1'}:{}),...(readPlacementRenewalsEnabled()?{BLIZHNIY_PLACEMENT_RENEWALS:'local-v1'}:{}),BLIZHNIY_CSP_MODE:'enforce',PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',
   BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_STATE:stateFile,BLIZHNIY_LOCAL_PRIMARY_ORIGIN:state.origin,BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_APPLICATION_CONTACT_VIEWS:'enabled',BLIZHNIY_BOOKING_LIFECYCLE:'local-v1',BLIZHNIY_WORK_OWNER_ACTIONS:'local-v1',BLIZHNIY_CHECKOUT_CANCELLATION:'local-v1',
   BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_REMEMBERED_CAPTCHA:'enabled',BLIZHNIY_AUTH_CONFIRMATION_NOTICE:'enabled',
   BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_AUTH_RATE_SECRET:state.rateSecret,

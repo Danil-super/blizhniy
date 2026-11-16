@@ -13,10 +13,24 @@ test('payment result distinguishes preparation, confirmed finance and actual ful
  assert.match(html({...base,order:{...base.order,status:'refunded'},fulfillment:{publishedAt:'2026-10-19T12:00:00.123456Z',expiresAt:'2026-11-18T12:00:00.123456Z'}}),/Средства возвращены/);
 });
 test('primary return page never mounts the legacy payment component in postgres or unknown auth modes',async()=>{
- const {default:Page}=load('src/app/oplata/[paymentId]/page.tsx',{'@/components/payments/PaymentReturnClient':{PaymentReturnClient:()=>React.createElement('p',null,'legacy')},'@/components/payments/PrimaryPaymentReturnClient':{PrimaryPaymentReturnClient:()=>React.createElement('p',null,'primary')},'@/components/payments/ApplicationPaymentReturnClient':{ApplicationPaymentReturnClient:()=>React.createElement('p',null,'application')},'@/lib/checkout-cancellation-contract':{readCheckoutCancellationEnabled:()=>false},'@/lib/listing-workflow-config':load('src/lib/listing-workflow-config.ts',{})});
+ const {default:Page}=load('src/app/oplata/[paymentId]/page.tsx',{'@/lib/specialist-checkout-config':{readSpecialistCheckoutEnabled:()=>false},'@/components/payments/PaymentReturnClient':{PaymentReturnClient:()=>React.createElement('p',null,'legacy')},'@/components/payments/PrimaryPaymentReturnClient':{PrimaryPaymentReturnClient:()=>React.createElement('p',null,'primary')},'@/components/payments/ApplicationPaymentReturnClient':{ApplicationPaymentReturnClient:()=>React.createElement('p',null,'application')},'@/lib/checkout-cancellation-contract':{readCheckoutCancellationEnabled:()=>false},'@/lib/listing-workflow-config':load('src/lib/listing-workflow-config.ts',{})});
  const previous=process.env.BLIZHNIY_AUTH_MODE;
  try{for(const mode of ['postgres','unknown','local','']){process.env.BLIZHNIY_AUTH_MODE=mode;assert.equal(renderToStaticMarkup(await Page({params:Promise.resolve({paymentId:'synthetic'})})),`<p>${!mode||mode==='local'?'legacy':'primary'}</p>`);}}
  finally{if(previous===undefined)delete process.env.BLIZHNIY_AUTH_MODE;else process.env.BLIZHNIY_AUTH_MODE=previous;}
+});
+test('specialist return preserves its target when disabled and never offers unsupported cancellation or dispatch',async()=>{
+ const names=['BLIZHNIY_AUTH_MODE','BLIZHNIY_LISTING_PAYMENT'],before=Object.fromEntries(names.map(name=>[name,process.env[name]]));let enabled=false;
+ const {default:Page}=load('src/app/oplata/[paymentId]/page.tsx',{
+  '@/components/payments/PaymentReturnClient':{PaymentReturnClient:()=>null},'@/components/payments/PrimaryPaymentReturnClient':{PrimaryPaymentReturnClient:()=>null},
+  '@/components/payments/ApplicationPaymentReturnClient':{ApplicationPaymentReturnClient:()=>null},'@/lib/checkout-cancellation-contract':{readCheckoutCancellationEnabled:()=>true},
+  '@/lib/listing-workflow-config':{readPostmoderationEnabled:()=>true},'@/lib/specialist-checkout-config':{readSpecialistCheckoutEnabled:()=>enabled},
+ });
+ try{
+  process.env.BLIZHNIY_AUTH_MODE='postgres';process.env.BLIZHNIY_LISTING_PAYMENT='account-publication-test';
+  const props=()=>Page({params:Promise.resolve({paymentId:'11111111-1111-4111-8111-111111111111'}),searchParams:Promise.resolve({type:'specialist'})});
+  const disabled=await props();assert.equal(disabled.props.specialist,true);assert.equal(disabled.props.testCheckout,false);assert.equal(disabled.props.cancellationEnabled,false);
+  enabled=true;const active=await props();assert.equal(active.props.specialist,true);assert.equal(active.props.testCheckout,true);assert.equal(active.props.cancellationEnabled,false);
+ }finally{for(const name of names){if(before[name]===undefined)delete process.env[name];else process.env[name]=before[name];}}
 });
 test('TEST success explains that real money and production publication are not involved',()=>{
  const {ListingPaymentStatus}=load('src/components/payments/ListingPaymentStatus.tsx',{});

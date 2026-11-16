@@ -15,6 +15,7 @@ function mount(options={}){
   if(name==='next/navigation')return{useRouter:()=>router};if(name==='next/link')return{__esModule:true,default:props=>jsx('a',props)};
   if(name==='@/components/auth/AccountAuthProvider')return{usePrimaryAccountAuth:()=>auth};
   if(name==='@/lib/client-listing-payment')return{listingPayment:{read},ListingPaymentClientError:class extends Error{}};
+  if(name==='@/lib/client-specialist-payment')return{specialistPaymentStatus:{read}};
   if(name==='@/lib/client-vacancy-payment')return{vacancyPaymentStatus:{read},workRequestPaymentStatus:{read}};
   if(name==='@/lib/local-account')return{notifyAccountSessionChange(){}};
   if(name==='./ListingPaymentStatus')return{ListingPaymentStatus:({snapshot})=>jsx('h2',{children:snapshot.order.status})};
@@ -31,7 +32,7 @@ function mount(options={}){
   async tick(){assert.ok(timers.size,'Expected one automatic action');const [id,fn]=timers.entries().next().value;timers.delete(id);fn();if(dirty)render();await settle();},
   stop(){for(const i of instances.values())for(const v of i.values)v?.cleanup?.();},get timerCount(){return timers.size;}};
 }
-for(const [options,destination] of [[{},'/cabinet/obyavleniya'],[{vacancy:true},'/cabinet/vakansii'],[{workRequest:true},'/cabinet/zakazy']])test('verified success returns once to '+destination,async()=>{
+for(const [options,destination] of [[{},'/cabinet/obyavleniya'],[{vacancy:true},'/cabinet/vakansii'],[{workRequest:true},'/cabinet/zakazy'],[{specialist:true},'/cabinet/specialist']])test('verified success returns once to '+destination,async()=>{
  const h=mount(options);await h.settle();assert.deepEqual(h.buttons(),[]);assert.equal(h.links().filter(n=>text(n)==='Вернуться на сайт').length,1);
  await h.tick();assert.deepEqual(h.navigation,[destination]);assert.equal(h.reads.length,1);assert.equal(h.timerCount,0);h.stop();
 });
