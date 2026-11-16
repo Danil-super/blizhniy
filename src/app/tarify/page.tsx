@@ -19,6 +19,10 @@ function tariffCta(tariff: Tariff) {
     return { href: "/rabota/vakansii/sozdat", label: "Разместить вакансию" };
   }
 
+  if (tariff.action === "work_request_publication") {
+    return { href: "/rabota/zakazy/sozdat", label: "Разместить заказ" };
+  }
+
   if (tariff.action === "specialist_publication") {
     return { href: "/rabota/specialisty/anketa", label: "Подготовить черновик анкеты" };
   }
@@ -51,7 +55,10 @@ export default async function Page() {
           <p className="text-sm font-bold uppercase tracking-wide text-[#087f2b]">Оплата публикаций</p>
           <h1 className="mt-3 text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">Тарифы</h1>
           <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-            Выберите нужное действие: счет на оплату появится после создания объявления, вакансии, отклика или заявки. Анкету специалиста пока можно сохранить как черновик.
+            Выберите нужное действие и сохраните черновик. Доступность оплаты и условия размещения будут показаны перед оплатой. Анкету специалиста пока можно сохранить как черновик.
+          </p>
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+            Оплата пока доступна только участникам тестирования. Реальные деньги не списываются. Остальные пользователи могут сохранять черновики.
           </p>
         </section>
 
@@ -91,7 +98,7 @@ export default async function Page() {
               Оплата размещений
             </h2>
             <p className="mt-3 text-sm leading-6 text-slate-700">
-              После выбора тарифа сайт создает платеж и переводит публикацию в ожидание оплаты. После подтверждения платежа размещение становится активным.
+              Перед оплатой проверьте сумму, срок и условия размещения. Результат теста указан на экране оплаты: проверка платежа и публикация — отдельные этапы.
             </p>
           </article>
           <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-card sm:p-6">

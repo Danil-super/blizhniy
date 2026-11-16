@@ -73,6 +73,26 @@ test("active public tariff keeps its stored display price and existing action", 
   assert.match(html, /7\.29\s*₽/);
   assert.match(html, /href="\/yarmarka-masterov\/zayavka"/);
 });
+for (const [action, href, label] of [
+  ["listing_publication", "/razmestit/obyavlenie", "Создать объявление"],
+  ["vacancy_publication", "/rabota/vakansii/sozdat", "Разместить вакансию"],
+  ["work_request_publication", "/rabota/zakazy/sozdat", "Разместить заказ"],
+  ["specialist_publication", "/rabota/specialisty/anketa", "Подготовить черновик анкеты"],
+  ["job_response", "/rabota/vakansii", "Найти вакансию"],
+  ["fair_participation", "/yarmarka-masterov/zayavka", "Подать заявку"],
+  ["ad_marquee", "/reklama/begushchaya-stroka", "Разместить текст"],
+]) test(`public ${action} tariff opens its matching action`, async () => {
+  const html = renderToStaticMarkup(await page("tariffs", [{ ...fair, action }]).default());
+  assert.ok(html.includes(`href="${href}"`));
+  assert.ok(html.includes(label));
+});
+test("public tariffs explain the limited TEST release before offering placement actions", async () => {
+  const html = renderToStaticMarkup(await page("tariffs", [{ ...fair, action: "listing_publication" }]).default());
+  assert.match(html, /Оплата пока доступна только участникам тестирования/);
+  assert.match(html, /Реальные деньги не списываются/);
+  assert.match(html, /Результат теста указан на экране оплаты/);
+  assert.doesNotMatch(html, /После подтверждения платежа размещение становится активным/);
+});
 test("price labels distinguish active zero from missing or inactive tariffs", () => {
   const { formatTariffPrice } = display();
   assert.equal(formatTariffPrice({ ...fair, price: 0 }), "0 ₽");
