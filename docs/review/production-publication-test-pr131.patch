@@ -1,0 +1,497 @@
+diff --git a/scripts/build-payment-worker.mjs b/scripts/build-payment-worker.mjs
+index 5c13e7a..9e27645 100644
+--- a/scripts/build-payment-worker.mjs
++++ b/scripts/build-payment-worker.mjs
+@@ -5,10 +5,11 @@ import {dirname,isAbsolute,join,relative} from 'node:path';
+ import {fileURLToPath} from 'node:url';
+ import ts from 'typescript';
+ import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
++import {getPublicationTestMigrationPlan} from './publication-test-release-plan.mjs';
+ 
+ const root=fileURLToPath(new URL('../',import.meta.url));
+-export function buildPaymentWorker(destination,{schema=54}={}){
+- if(![54,55].includes(schema))throw Error('Invalid worker schema');
++export function buildPaymentWorker(destination,{schema=54,publicationTest=false}={}){
++ if(![54,55].includes(schema)||typeof publicationTest!=='boolean')throw Error('Invalid worker schema');
+  if(typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid worker destination');
+  const program=ts.createProgram(['payment-reconciliation-worker.ts','account-test-payment-verifier.ts','postgres.ts'].map(name=>join(root,'src/lib',name)),{
+   target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,
+@@ -19,8 +20,8 @@ export function buildPaymentWorker(destination,{schema=54}={}){
+  if(ts.getPreEmitDiagnostics(program).length)throw Error('Worker compilation failed');
+  const sources=program.getSourceFiles().filter(file=>!file.isDeclarationFile).map(file=>relative(join(root,'src'),file.fileName).replace(/\.ts$/,'.js')).sort();
+  if(sources.some(path=>!/^lib\/[a-z0-9-]+\.js$/.test(path)))throw Error('Unexpected worker source');
+- const migrations=getRefundWorkerRolePlan('artifact',{schema}).journal.map(({name,sha256})=>{
+-  const bytes=readFileSync(join(root,'database/migrations',name));
++ const migrations=(publicationTest?getPublicationTestMigrationPlan():getRefundWorkerRolePlan('artifact',{schema}).journal).map(({name,sha256})=>{
++  const bytes=readFileSync(join(root,'database',name.startsWith('0059-')?'candidates':'migrations',name));
+   if(createHash('sha256').update(bytes).digest('hex')!==sha256)throw Error('Worker migration changed during build');
+   return{name,bytes};
+  });
+@@ -30,11 +31,12 @@ export function buildPaymentWorker(destination,{schema=54}={}){
+  const emitted=program.emit();
+  if(emitted.emitSkipped||emitted.diagnostics.length)throw Error('Worker compilation failed');
+  mkdirSync(join(destination,'scripts'));mkdirSync(join(destination,'database'));mkdirSync(join(destination,'database/migrations'));
+- for(const name of ['media-retention-release.mjs','cabinet-release-plan.mjs','financial-catalog-privileges.mjs','payment-reconciliation-role.mjs','payment-reconciliation-service.mjs','postgres-migration-plan.mjs','payment-worker-runtime.mjs','payment-worker.mjs','refund-worker-role.mjs','refund-worker-schema.mjs'])
++ for(const name of ['media-retention-release.mjs','cabinet-release-plan.mjs','financial-catalog-privileges.mjs','publication-test-release-plan.mjs','payment-reconciliation-role.mjs','payment-reconciliation-service.mjs','postgres-migration-plan.mjs','payment-worker-runtime.mjs','payment-worker.mjs','refund-worker-role.mjs','refund-worker-schema.mjs'])
+   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
+  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
+  if(schema===55)copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
+- for(const {name,bytes} of migrations)writeFileSync(join(destination,'database/migrations',name),bytes,{flag:'wx',mode:0o600});
++ if(publicationTest)mkdirSync(join(destination,'database/candidates'));
++ for(const {name,bytes} of migrations)writeFileSync(join(destination,'database',name.startsWith('0059-')?'candidates':'migrations',name),bytes,{flag:'wx',mode:0o600});
+  const manifest={version:1,typescript:ts.version,sources};
+  writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});
+  return manifest;
+diff --git a/scripts/payment-reconciliation-role.mjs b/scripts/payment-reconciliation-role.mjs
+index 4c23236..e327aa7 100644
+--- a/scripts/payment-reconciliation-role.mjs
++++ b/scripts/payment-reconciliation-role.mjs
+@@ -4,6 +4,7 @@ import {getBootstrapPlan} from './postgres-migration-plan.mjs';
+ import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.mjs';
+ import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
+ import {assertRefundSchema} from './refund-worker-schema.mjs';
++import {getPublicationTestMigrationPlan,assertPublicationTestSchema} from './publication-test-release-plan.mjs';
+ 
+ const role='blizhniy_payment_reconciler';
+ const locks=['users','payment_checkout_intents','categories','cities','media_objects','listing_moderation'];
+@@ -26,16 +27,23 @@ const policy={
+  'blizhniy_meta.migrations':{select:['name','sha256']},
+ };
+ const cabinetPolicy={...policy,'app.listing_blocks':{select:['listing_id']}};
++const publicationPolicy={...cabinetPolicy,
++ 'app.payment_reconciliation_jobs':{...policy['app.payment_reconciliation_jobs'],insert:['intent_id']},
++ 'app.work_publications':{select:columns('id,author_id,kind,form,city_id,profession_id,revision,status,is_paid,published_at,expires_at,created_at,updated_at,deleted_at'),update:columns('status,is_paid,published_at,expires_at,updated_at')},
++ 'app.work_publication_photos':{select:columns('publication_id,media_id,position')},
++ 'app.specialist_categories':{select:columns('id,name,active'),update:['id']},
++ 'app.applications':{select:columns('id,work_publication_id,status,is_paid,sent_at')},
++};
+ const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
+ function approved(){return getBootstrapPlan({includePaymentReconciliationRole:true});}
+ 
+ /** Reviewable plan only. No executor, ambient credentials, password or automatic role adoption. */
+-export function getPaymentReconciliationRolePlan(database,{cabinet=false}={}) {
+- if(typeof cabinet!=='boolean'||!validDatabase(database))throw new Error('Invalid reconciliation database');
++export function getPaymentReconciliationRolePlan(database,{cabinet=false,publicationTest=false}={}) {
++ if(typeof cabinet!=='boolean'||typeof publicationTest!=='boolean'||publicationTest&&!cabinet||!validDatabase(database))throw new Error('Invalid reconciliation database');
+  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,
+-  journal:approved().map(({name,sha256})=>({name,sha256})),
++  journal:(publicationTest?getPublicationTestMigrationPlan():approved()).map(({name,sha256})=>({name,sha256})),
+   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
+-   ...Object.entries(cabinet?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`))],
++   ...Object.entries(publicationTest?publicationPolicy:cabinet?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`))],
+  };
+ }
+ 
+@@ -44,9 +52,9 @@ export function getPaymentReconciliationRolePlan(database,{cabinet=false}={}) {
+  * Approved managed-PG exception: bootstrap postgres -> gen_user ADMIN only, never INHERIT/SET.
+  * It does not authenticate a merchant or turn TEST into database row-level isolation.
+  */
+-export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
++export async function verifyPaymentReconciliationDatabase(db,{database,publicationTest=false}={}) {
+  try {
+-  if(!validDatabase(database))throw new Error('Invalid reconciliation target');
++  if(!validDatabase(database)||typeof publicationTest!=='boolean')throw new Error('Invalid reconciliation target');
+   const plan=approved();
+   await db.transaction(async tx=>{
+    await tx.query("set local statement_timeout='5s'");
+@@ -75,12 +83,13 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
+    const cabinetJournal=[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan()];
+    const deletionJournal=[...cabinetJournal,{name:'0033-account-deletion.sql',sha256:'8d0159c6af65c4c66aabb123695110f402fd5eac268fa2a879d97c85e628ed2f'}];
+    const schema=journal.length===55?55:54;
+-   const refundJournal=getRefundWorkerRolePlan(database,{schema}).journal,refundSchema=journal.length===refundJournal.length;
++   const refundJournal=publicationTest?[]:getRefundWorkerRolePlan(database,{schema}).journal,refundSchema=!publicationTest&&journal.length===refundJournal.length;
+    if(identity.refund_installed!==refundSchema)throw new Error('Refund schema and journal disagree');
+-   const cabinetSchema=refundSchema||journal.length===cabinetJournal.length||journal.length===deletionJournal.length;
+-   const expectedJournal=refundSchema?refundJournal:journal.length===deletionJournal.length?deletionJournal:journal.length===cabinetJournal.length?cabinetJournal:journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
++   const cabinetSchema=publicationTest||refundSchema||journal.length===cabinetJournal.length||journal.length===deletionJournal.length;
++   const expectedJournal=publicationTest?getPublicationTestMigrationPlan():refundSchema?refundJournal:journal.length===deletionJournal.length?deletionJournal:journal.length===cabinetJournal.length?cabinetJournal:journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
+    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
+    if(refundSchema)await assertRefundSchema(tx,schema);
++   if(publicationTest)await assertPublicationTestSchema(tx);
+    await assertFinancialCatalogPrivileges(tx);
+    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
+     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
+@@ -88,7 +97,7 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
+     cross join (values('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) as p(privilege)
+     where n.nspname not in ('pg_catalog','information_schema') and c.relkind in ('r','p','v','m','f','t')
+      and a.attnum>0 and not a.attisdropped and has_column_privilege(c.oid,a.attnum,p.privilege) limit 10001`)).rows;
+-   const expected=new Set(Object.entries(cabinetSchema?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
++   const expected=new Set(Object.entries(publicationTest?publicationPolicy:cabinetSchema?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
+    if(actual.length!==expected.size||actual.some(item=>item.grantable!==false||!expected.delete(item.key))||expected.size)throw new Error('Invalid column privileges');
+    const dangerous=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+     where n.nspname not in ('pg_catalog','information_schema') and
+@@ -104,8 +113,9 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
+     from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace
+     join pg_proc p on p.oid=t.tgfoid join pg_language l on l.oid=p.prolang
+     where n.nspname='app' and c.relname=any($1::text[]) and t.tgname='reconciliation_lock_only'
+-     and not t.tgisinternal and p.oid='app.guard_reconciliation_locks()'::regprocedure`,[locks])).rows;
+-   if(guards.length!==locks.length||new Set(guards.map(item=>item.name)).size!==locks.length||guards.some(item=>
++     and not t.tgisinternal and p.oid='app.guard_reconciliation_locks()'::regprocedure`,[publicationTest?[...locks,'specialist_categories']:locks])).rows;
++   const lockCount=locks.length+(publicationTest?1:0);
++   if(guards.length!==lockCount||new Set(guards.map(item=>item.name)).size!==lockCount||guards.some(item=>
+     item.tgenabled!=='A'||item.tgtype!==19||item.tgnargs!==0||item.attributes!==''||item.unconditional!==true||
+     item.prosrc!==guardBody||item.prosecdef!==false||item.lanname!=='plpgsql'||JSON.stringify(item.proconfig)!==JSON.stringify(['search_path=""'])))throw new Error('Invalid lock guards');
+   },{readOnly:true});
+diff --git a/scripts/payment-worker-runtime.mjs b/scripts/payment-worker-runtime.mjs
+index a8cfa36..893eede 100644
+--- a/scripts/payment-worker-runtime.mjs
++++ b/scripts/payment-worker-runtime.mjs
+@@ -15,7 +15,8 @@ export async function createPaymentWorkerRuntime(environment=process.env,{loadMo
+  let db,pool;
+  try {
+   const env={...environment};
+-  if(typeof window!=='undefined'||env.NODE_ENV!=='production'||!['queued-test','account-test'].includes(env.BLIZHNIY_PAYMENT_WORKER)||env.BLIZHNIY_PAYMENT_MODE!=='test'||
++  const publicationTest=env.BLIZHNIY_PAYMENT_WORKER==='account-publication-test';
++  if(typeof window!=='undefined'||env.NODE_ENV!=='production'||!['queued-test','account-test','account-publication-test'].includes(env.BLIZHNIY_PAYMENT_WORKER)||env.BLIZHNIY_PAYMENT_MODE!=='test'||
+    env.BLIZHNIY_DB_HOST!=='17e86f80f26733d39ef4b84d.twc1.net'||env.BLIZHNIY_DB_PORT!=='5432'||env.BLIZHNIY_DB_NAME!=='blizhniy_prod'||
+    env.BLIZHNIY_DB_USER!=='blizhniy_payment_reconciler'||!env.BLIZHNIY_DB_PASSWORD||env.BLIZHNIY_DB_SSL_MODE!=='verify-full'||
+    !env.BLIZHNIY_DB_CA_FILE||!isAbsolute(env.BLIZHNIY_DB_CA_FILE)||env.NODE_TLS_REJECT_UNAUTHORIZED==='0'||
+@@ -23,15 +24,16 @@ export async function createPaymentWorkerRuntime(environment=process.env,{loadMo
+    !/^[a-zA-Z0-9_-]{1,64}$/.test(env.BLIZHNIY_PAYMENT_SHOP_ID??'')||
+    typeof env.BLIZHNIY_PAYMENT_SECRET_KEY!=='string'||!env.BLIZHNIY_PAYMENT_SECRET_KEY.startsWith('test_')||
+    env.BLIZHNIY_PAYMENT_SECRET_KEY.length>2048||/[\s\u0000-\u001f\u007f]/.test(env.BLIZHNIY_PAYMENT_SECRET_KEY))throw Error('Invalid worker configuration');
+-  if(env.BLIZHNIY_PAYMENT_WORKER==='account-test'&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(env.BLIZHNIY_PAYMENT_TEST_USER_ID??''))throw Error('Invalid account TEST owner');
++  if((env.BLIZHNIY_PAYMENT_WORKER==='account-test'||publicationTest)&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(env.BLIZHNIY_PAYMENT_TEST_USER_ID??''))throw Error('Invalid account TEST owner');
++  if(publicationTest&&(env.BLIZHNIY_LISTING_WORKFLOW!=='postmoderation'||env.BLIZHNIY_AUTH_MODE!=='postgres'||env.BLIZHNIY_AUTH_ORIGIN!=='https://xn----9sbphbgks4a4a.xn--p1ai'||env.BLIZHNIY_LOCAL_PRIMARY!==undefined))throw Error('Invalid publication TEST deployment');
+   const merchant=Object.freeze({shopId:env.BLIZHNIY_PAYMENT_SHOP_ID,isTest:true,secretKey:env.BLIZHNIY_PAYMENT_SECRET_KEY});
+   const {readPostgresConfig,PostgresDatabase,Pool,createPaymentReconciliationWorker,createAccountTestPaymentVerifier}=loadModules();
+   const config=readPostgresConfig(env);
+   pool=new Pool({...config,max:2,application_name:'blizhniy-payment-reconciler'});
+   db=new PostgresDatabase(pool);
+-  const worker=env.BLIZHNIY_PAYMENT_WORKER==='account-test'?createAccountTestPaymentVerifier(db,Object.freeze({...merchant,ownerId:env.BLIZHNIY_PAYMENT_TEST_USER_ID})):createPaymentReconciliationWorker(db,merchant);
++  const worker=env.BLIZHNIY_PAYMENT_WORKER==='account-test'?createAccountTestPaymentVerifier(db,Object.freeze({...merchant,ownerId:env.BLIZHNIY_PAYMENT_TEST_USER_ID})):publicationTest?createPaymentReconciliationWorker(db,merchant,undefined,env.BLIZHNIY_PAYMENT_TEST_USER_ID):createPaymentReconciliationWorker(db,merchant);
+   let closing;
+-  return{worker,preflight:()=>verifyPaymentReconciliationDatabase(db,{database:config.database}),
++  return{worker,preflight:()=>verifyPaymentReconciliationDatabase(db,{database:config.database,...(publicationTest?{publicationTest:true}:{})}),
+    close:()=>closing??=db.close()};
+  }catch {
+   try {if(db)await db.close();else if(pool)await pool.end();}catch { /* Never replace the generic configuration error with driver details. */ }
+diff --git a/scripts/publication-test-release-plan.mjs b/scripts/publication-test-release-plan.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/publication-test-release-plan.mjs
+@@ -0,0 +1,41 @@
++import {readFileSync} from 'node:fs';
++import {createHash} from 'node:crypto';
++import {getBootstrapPlan} from './postgres-migration-plan.mjs';
++import {getCabinetMigrationPlan} from './cabinet-release-plan.mjs';
++const suffix=[
++ ['0033-account-deletion.sql','8d0159c6af65c4c66aabb123695110f402fd5eac268fa2a879d97c85e628ed2f'],
++ ['0034-checkout-edit-fence.sql','365cdd4a850aa67d334cff3dbed68cbfd6eff69e5c06643740bc1be02ad63df3'],
++ ['0044-work-owner-actions.sql','4e3f137c8dbc2e98ceece3ca4025e64f0270467c69774bd890c20f28d5c1a04f'],
++ ['0059-test-placement-guards.sql','8a9402d87aa417242f8cfb8e9200f61b15e9613e35e86de19811d8e8815c6c3c'],
++];
++/** Known production suffix, not the unrelated full local refund schema. No execution or credentials. */
++export function getPublicationTestMigrationPlan(){
++ return [...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan(),...suffix.map(([name,sha256])=>{
++  const sql=readFileSync(new URL('../database/'+(name.startsWith('0059-')?'candidates/':'migrations/')+name,import.meta.url),'utf8');
++  if(createHash('sha256').update(sql).digest('hex')!==sha256)throw Error('Publication TEST migration changed');return{name,sha256,sql};
++ })];
++}
++export async function assertPublicationTestSchema(tx){
++ const definitions=new Map();
++ for(const migration of getPublicationTestMigrationPlan().filter(({name})=>name.startsWith('0044-')||name.startsWith('0059-')))
++  for(const match of migration.sql.matchAll(/create (?:or replace )?function app\.([a-z_]+)\(\) returns trigger[\s\S]*?as \$\$([\s\S]*?)\$\$;/g))definitions.set(match[1],match[2]);
++ if(definitions.size!==4)throw Error('Publication TEST guard source unavailable');
++ const expected=new Map([
++  ['listings.listing_checkout_edit_fence',['guard_checkout_edit',19]],['work_publications.work_checkout_edit_fence',['guard_checkout_edit',19]],
++  ['listing_photos.listing_checkout_photo_fence',['guard_checkout_photo_edit',31]],['work_publication_photos.work_checkout_photo_fence',['guard_checkout_photo_edit',31]],
++  ['work_owner_actions.work_owner_action_guard',['apply_work_owner_action',31]],['work_owner_actions.work_owner_action_truncate_guard',['apply_work_owner_action',34]],
++  ['work_owner_actions.work_owner_action_effect',['apply_work_owner_action_effect',5]],
++ ]);
++ const rows=(await tx.query(`select c.relname||'.'||t.tgname as name,p.proname,t.tgenabled,t.tgtype,t.tgnargs,t.tgattr::text as attributes,
++  t.tgqual is null as unconditional,p.prosrc,p.prosecdef,p.proconfig,l.lanname
++  from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace
++  join pg_proc p on p.oid=t.tgfoid join pg_namespace pn on pn.oid=p.pronamespace join pg_language l on l.oid=p.prolang
++  where n.nspname='app' and pn.nspname='app' and c.relname||'.'||t.tgname=any($1::text[]) and not t.tgisinternal`,[[...expected.keys()]])).rows;
++ if(rows.length!==expected.size)throw Error('Publication TEST guards unavailable');
++ for(const row of rows){
++  const spec=expected.get(row.name);if(!spec||row.proname!==spec[0]||row.tgtype!==spec[1]||row.tgenabled!=='A'||row.tgnargs!==0||row.attributes!==''||!row.unconditional||
++   row.prosrc!==definitions.get(spec[0])||row.prosecdef!==true||row.lanname!=='plpgsql'||JSON.stringify(row.proconfig)!==JSON.stringify(['search_path=""']))throw Error('Publication TEST guard changed');
++  expected.delete(row.name);
++ }
++ if(expected.size)throw Error('Publication TEST guard missing');
++}
+diff --git a/database/candidates/0059-test-placement-guards.sql b/database/candidates/0059-test-placement-guards.sql
+new file mode 100644
+--- /dev/null
++++ b/database/candidates/0059-test-placement-guards.sql
+@@ -0,0 +1,90 @@
++-- New account TEST publication admission; historical verification-only TEST successes stay editable.
++begin;
++set local lock_timeout = '3s';
++set local statement_timeout = '10s';
++-- Runtime writers cannot read financial tables. Definer authority is restricted
++-- to this fixed read-only invariant, not granted to the web role as SQL access.
++create or replace function app.guard_checkout_edit() returns trigger
++ language plpgsql security definer set search_path='' as $$
++declare
++ previous jsonb := to_jsonb(old);
++ replacement jsonb := to_jsonb(new);
++ bookkeeping text[] := array['view_count','updated_at','status','is_paid','published_at','expires_at'];
++ target_kind text;
++begin
++ -- BEFORE triggers do not yet see the computed stored work title. Its source
++ -- form is compared in full; ordinary listing titles must remain protected.
++ if tg_relid='app.work_publications'::regclass then bookkeeping:=array_append(bookkeeping,'title');end if;
++ -- Financial fulfillment must still be able to publish the original version.
++ -- Existing grants/financial guards remain responsible for payment authority.
++ if (replacement-bookkeeping) is not distinct from (previous-bookkeeping)
++  and (new.status is not distinct from old.status or
++   (old.status='draft' and not old.is_paid and new.status='published' and new.is_paid)) then
++  return new;
++ end if;
++ -- A pre-wait REPEATABLE READ snapshot could miss a newly prepared order when
++ -- its owner/target locks did not update the locked tuple. Refuse that mode.
++ if current_setting('transaction_isolation')<>'read committed' then
++  raise exception using errcode='PBL02',message='Checkout editing requires read committed';
++ end if;
++ target_kind := case when tg_relid='app.listings'::regclass then 'listing' else previous->>'kind' end;
++ if exists(select 1 from app.payment_orders o
++  where o.owner_id=old.author_id and o.target_type=target_kind and o.target_id=old.id
++   and (o.status in ('created','pending') or (o.status='succeeded' and not exists(select 1 from app.payment_checkout_intents legacy where legacy.id=o.id and legacy.is_test and coalesce(legacy.request_body::jsonb->'metadata'->>'publicationMode','')<>'account-test-v1') and
++    not exists(select 1 from app.payment_fulfillments f where f.intent_id=o.id)))) then
++  raise exception using errcode='PBL01',message='Checkout must be resolved before editing';
++ end if;
++ return new;
++end $$;
++
++
++revoke all on function app.guard_checkout_edit() from public;
++
++-- Cover link edits as well as the parent revision. Existing stores already hold
++-- the same parent lock before changing photos; standalone SQL must acquire it.
++create or replace function app.guard_checkout_photo_edit() returns trigger
++ language plpgsql security definer set search_path='' as $$
++declare
++ parent_column text;
++ affected uuid[];
++ target record;
++begin
++ if tg_op='UPDATE' and new is not distinct from old then return new;end if;
++ if current_setting('transaction_isolation')<>'read committed' then
++  raise exception using errcode='PBL02',message='Checkout editing requires read committed';
++ end if;
++ parent_column := case when tg_relid='app.listing_photos'::regclass then 'listing_id' else 'publication_id' end;
++ affected := array[(to_jsonb(old)->>parent_column)::uuid,(to_jsonb(new)->>parent_column)::uuid];
++ if tg_relid='app.listing_photos'::regclass then
++  for target in select l.id,l.author_id,'listing'::text as kind from app.listings l
++   where l.id=any(affected) order by l.id for update loop
++   if exists(select 1 from app.payment_orders o where o.owner_id=target.author_id
++    and o.target_type=target.kind and o.target_id=target.id and (o.status in ('created','pending') or
++     (o.status='succeeded' and not exists(select 1 from app.payment_checkout_intents legacy where legacy.id=o.id and legacy.is_test and coalesce(legacy.request_body::jsonb->'metadata'->>'publicationMode','')<>'account-test-v1') and not exists(select 1 from app.payment_fulfillments f where f.intent_id=o.id)))) then
++    raise exception using errcode='PBL01',message='Checkout must be resolved before editing';
++   end if;
++  end loop;
++ else
++  for target in select w.id,w.author_id,w.kind from app.work_publications w
++   where w.id=any(affected) order by w.id for update loop
++   if exists(select 1 from app.payment_orders o where o.owner_id=target.author_id
++    and o.target_type=target.kind and o.target_id=target.id and (o.status in ('created','pending') or
++     (o.status='succeeded' and not exists(select 1 from app.payment_checkout_intents legacy where legacy.id=o.id and legacy.is_test and coalesce(legacy.request_body::jsonb->'metadata'->>'publicationMode','')<>'account-test-v1') and not exists(select 1 from app.payment_fulfillments f where f.intent_id=o.id)))) then
++    raise exception using errcode='PBL01',message='Checkout must be resolved before editing';
++   end if;
++  end loop;
++ end if;
++ if tg_op='DELETE' then return old;end if;
++ return new;
++end $$;
++
++
++revoke all on function app.guard_checkout_photo_edit() from public;
++create trigger reconciliation_lock_only before update on app.specialist_categories
++ for each row execute function app.guard_reconciliation_locks();
++alter table app.specialist_categories enable always trigger reconciliation_lock_only;
++alter table app.listings enable always trigger listing_checkout_edit_fence;
++alter table app.work_publications enable always trigger work_checkout_edit_fence;
++alter table app.listing_photos enable always trigger listing_checkout_photo_fence;
++alter table app.work_publication_photos enable always trigger work_checkout_photo_fence;
++commit;
+diff --git a/tests/publication-test-release-postgres.mjs b/tests/publication-test-release-postgres.mjs
+new file mode 100644
+--- /dev/null
++++ b/tests/publication-test-release-postgres.mjs
+@@ -0,0 +1,133 @@
++// Disposable PostgreSQL, synthetic identities and provider responses; no production credentials or network.
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {execFile} from 'node:child_process';
++import {promisify} from 'node:util';
++import {randomBytes,randomUUID,randomInt} from 'node:crypto';
++import {readFile,readdir,mkdtemp,symlink,rm,writeFile} from 'node:fs/promises';
++import {join} from 'node:path';
++import {tmpdir} from 'node:os';
++import {fileURLToPath,pathToFileURL} from 'node:url';
++import {getPublicationTestMigrationPlan} from '../scripts/publication-test-release-plan.mjs';
++import {getPaymentReconciliationRolePlan,verifyPaymentReconciliationDatabase} from '../scripts/payment-reconciliation-role.mjs';
++import {buildPaymentWorker} from '../scripts/build-payment-worker.mjs';
++import {createRequire} from 'node:module';
++import pg from 'pg';
++const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
++const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
++const name='blizhniy-publication-test-'+randomBytes(8).toString('hex'),label='blizhniy.publication-test-fixture',password=randomBytes(32).toString('hex');
++const docker=async args=>(await run('/usr/bin/docker',['--host','unix:///var/run/docker.sock',...args],{timeout:20000,maxBuffer:1048576,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',POSTGRES_PASSWORD:password}})).stdout.trim();
++
++test('candidate production TEST release: exact schema/ACL, compiled worker, original admission and one fulfillment',{timeout:90000},async suite=>{
++ let container,admin,db,workerDb,artifactDirectory;const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('External network forbidden');};
++ const variables=['BLIZHNIY_AUTH_MODE','BLIZHNIY_AUTH_ORIGIN','BLIZHNIY_LISTING_WORKFLOW','BLIZHNIY_LOCAL_PRIMARY'];
++ const saved=Object.fromEntries(variables.map(k=>[k,process.env[k]]));Object.assign(process.env,{BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_LISTING_WORKFLOW:'postmoderation'});delete process.env.BLIZHNIY_LOCAL_PRIMARY;
++ try{
++  container=await docker(['run','--detach','--pull','never','--name',name,'--label',label+'='+name,'--memory','512m','--cpus','1','--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB=blizhniy_test',image]);
++  const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);assert.equal(metadata.Config.Image,image);
++  const binding=metadata.NetworkSettings.Ports['5432/tcp'][0];assert.equal(binding.HostIp,'127.0.0.1');const config={host:'127.0.0.1',port:Number(binding.HostPort),database:'blizhniy_test',user:'postgres',password,ssl:false,connectionTimeoutMillis:3000};
++  const deadline=Date.now()+20000;for(;;){try{await docker(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres','-d','blizhniy_test']);break;}catch{assert.ok(Date.now()<deadline);}await new Promise(r=>setTimeout(r,100));}
++  admin=new pg.Pool({...config,max:3});db=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,max:4}));
++  const migrations=(await readdir(new URL('../database/migrations/',import.meta.url))).filter(n=>/^\d{4}-[a-z-]+\.sql$/.test(n)&&n<'0034').sort();assert.equal(migrations.length,33);
++  for(const n of migrations)await admin.query(await readFile(new URL('../database/migrations/'+n,import.meta.url),'utf8'));
++  const release=getPublicationTestMigrationPlan();assert.equal(release.length,36);
++  for(const migration of release.slice(33))await admin.query(migration.sql);
++  await admin.query('create schema blizhniy_meta;create table blizhniy_meta.migrations(name text primary key,sha256 text not null);revoke all on schema blizhniy_meta from public;revoke all on database blizhniy_test from public;revoke all on schema public from public');
++  for(const {name,sha256} of release)await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[name,sha256]);
++  const rolePlan=getPaymentReconciliationRolePlan(config.database,{cabinet:true,publicationTest:true}),workerPassword=randomBytes(32).toString('hex');await admin.query(rolePlan.createRole);await admin.query(`alter role ${rolePlan.role} login password '${workerPassword}'`);
++  workerDb=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:rolePlan.role,password:workerPassword,max:2}));
++  const preflight=()=>verifyPaymentReconciliationDatabase(workerDb,{database:config.database,publicationTest:true});
++  await suite.test('role fails before grants and passes only its exact production suffix and minimal column rights',async()=>{
++   await assert.rejects(preflight());for(const grant of rolePlan.grants)await admin.query(grant);await preflight();
++   await assert.rejects(verifyPaymentReconciliationDatabase(workerDb,{database:config.database}));
++   await admin.query('grant select(email) on app.users to blizhniy_payment_reconciler');await assert.rejects(preflight());await admin.query('revoke select(email) on app.users from blizhniy_payment_reconciler');await preflight();
++   await admin.query("insert into blizhniy_meta.migrations(name,sha256) values('0060-unknown.sql',repeat('0',64))");await assert.rejects(preflight());await admin.query("delete from blizhniy_meta.migrations where name='0060-unknown.sql'");await preflight();
++  });
++  await suite.test('disabled fences and changed journal hashes refuse startup',async()=>{
++   for(const [table,trigger] of [['listings','listing_checkout_edit_fence'],['work_publications','work_checkout_edit_fence'],['listing_photos','listing_checkout_photo_fence'],['work_publication_photos','work_checkout_photo_fence'],['work_owner_actions','work_owner_action_guard'],['work_owner_actions','work_owner_action_effect'],['work_owner_actions','work_owner_action_truncate_guard'],['specialist_categories','reconciliation_lock_only']]){
++    await admin.query(`alter table app.${table} disable trigger ${trigger}`);await assert.rejects(preflight());await admin.query(`alter table app.${table} enable always trigger ${trigger}`);
++   }
++   await admin.query("update blizhniy_meta.migrations set sha256=repeat('0',64) where name='0059-test-placement-guards.sql'");await assert.rejects(preflight());await admin.query('update blizhniy_meta.migrations set sha256=$1 where name=$2',[release.at(-1).sha256,release.at(-1).name]);await preflight();
++  });
++  artifactDirectory=await mkdtemp(join(tmpdir(),'blizhniy-publication-worker-test-'));const artifact=join(artifactDirectory,'artifact');buildPaymentWorker(artifact,{publicationTest:true});await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(artifact,'node_modules'),'dir');
++  const compiledWorker=createRequire(import.meta.url)(join(artifact,'compiled/lib/payment-reconciliation-worker.js')).createPaymentReconciliationWorker;
++  const copiedGuard=await import(pathToFileURL(join(artifact,'scripts/payment-reconciliation-role.mjs')).href);
++  await suite.test('copied artifact preflight works with only packaged migrations and rejects changed copied bytes',async()=>{
++   const check=()=>copiedGuard.verifyPaymentReconciliationDatabase(workerDb,{database:config.database,publicationTest:true});await check();
++   const path=join(artifact,'database/candidates/0059-test-placement-guards.sql'),bytes=await readFile(path);await writeFile(path,Buffer.concat([bytes,Buffer.from('\n-- changed bytes\n')]));await assert.rejects(check());await writeFile(path,bytes);await check();
++  });
++  await admin.query("insert into app.regions(slug,name) values('krasnodarskiy-kray','Краснодарский край');insert into app.cities(region_id,slug,name) select id,'krasnodar','Краснодар' from app.regions;insert into app.categories(slug,name) values('otdyh','Хобби и отдых');insert into app.specialist_categories(slug,name,parent_name) values('plumber','Сантехник','Строительство');insert into app.tariffs(id,action,name,price,duration_days) values('listing-publication','listing_publication','Объявление',199,30),('vacancy-publication','vacancy_publication','Вакансия',199,30),('work-request-publication','work_request_publication','Заказ',199,30)");
++  const city=(await admin.query('select id from app.cities')).rows[0].id,category=(await admin.query('select id from app.categories')).rows[0].id,profession=(await admin.query('select id from app.specialist_categories')).rows[0].id;
++  async function actor(){
++   const owner=randomUUID(),phone='+7999'+String(randomInt(10000000)).padStart(7,'0'),token=randomBytes(32).toString('hex');
++   await admin.query('insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())',[owner,owner+'@publication.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
++   await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[owner,{name:'Тестовый пользователь',phone}]);await admin.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[owner,phone,'test-'+owner]);
++   await admin.query("insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at) values($1,$2,'app',0,clock_timestamp()+interval '1 hour')",[load('identity').hashSessionToken(token),owner]);return{owner,phone,token};
++  }
++  const current=await actor(),other=await actor(),merchant={shopId:'publication-fixture',isTest:true,secretKey:'test_synthetic_only'},checkout={...merchant,siteOrigin:process.env.BLIZHNIY_AUTH_ORIGIN,receiptVatCode:1};
++  async function draft(kind,actor=current){
++   const target=kind==='listing'?(await admin.query("insert into app.listings(author_id,listing_type,category_id,city_id,title,description,contact_phone) values($1,'sell',$2,$3,'ТЕСТ: новое размещение','Синтетический прогон нового размещения.',$4) returning id,revision::text",[actor.owner,category,city,actor.phone])).rows[0]:
++    (await admin.query('insert into app.work_publications(author_id,kind,creation_key,form,city_id,profession_id) values($1,$2,$3,$4,$5,$6) returning id,revision::text',[actor.owner,kind,randomUUID(),load('work-publication-contract').parseWorkPublicationForm(kind,{kind,title:'ТЕСТ: новое размещение',description:'Синтетический прогон нового размещения.',cityName:'Краснодар',professionName:'Сантехник',professionId:profession,contactPhone:actor.phone,placementRightConfirmed:true,...(kind==='vacancy'?{employerType:'person',organization:'Иван Иванов',salary:'3500'}:{budget:'3500'})}),city,profession])).rows[0];
++   return{...actor,...target,kind};
++  }
++  const Store=load('postgres-listing-checkout').PostgresListingCheckoutStore;
++  const store=kind=>new Store(db,checkout,{postmoderation:true,...(kind==='listing'?{}:{targetType:kind}),publicationTestOwner:current.owner});
++  const provider=new Map();let posts=0,gets=0;
++  const fetcher=async(url,init)=>{
++   assert.equal(new URL(url).origin,'https://api.yookassa.ru');
++   if(init.method==='POST'){
++    posts++;const body=JSON.parse(init.body);assert.equal(body.metadata.publicationMode,'account-test-v1');const id=randomUUID();provider.set(id,{body,status:'succeeded'});
++    return Response.json({id,status:'pending',paid:false,test:true,recipient:{account_id:merchant.shopId},amount:body.amount,metadata:body.metadata,confirmation:{type:'redirect',confirmation_url:'https://yoomoney.ru/checkout'}});
++   }
++   assert.equal(init.method,'GET');gets++;const id=new URL(url).pathname.split('/').at(-1),entry=provider.get(id);assert.ok(entry);return Response.json({id,status:entry.status,paid:entry.status==='succeeded',test:true,recipient:{account_id:merchant.shopId},amount:entry.body.amount,metadata:entry.body.metadata,...(entry.status==='succeeded'?{captured_at:new Date().toISOString()}:{})});
++  };
++  const worker=compiledWorker(workerDb,merchant,fetcher,current.owner);
++  for(const kind of ['listing','vacancy','workRequest'])await suite.test(kind+': immutable admission, session owner, provider binding, one fulfillment and stable readback',async()=>{
++   const d=await draft(kind),s=store(kind),quote=await s.preview(d.token,d.owner,d.id,d.revision),input={listingId:d.id,expectedRevision:d.revision,creationKey:randomUUID(),expectedTariffId:quote.tariff.id,expectedAmount:quote.tariff.amount,expectedDurationDays:quote.tariff.durationDays};
++   const order=await s.prepare(d.token,d.owner,input);assert.deepEqual(await s.prepare(d.token,d.owner,input),order);
++   const table=kind==='listing'?'listings':'work_publications';
++   await assert.rejects(admin.query(`update app.${table} set ${kind==='listing'?"title='Попытка изменения'":"form=jsonb_set(form,'{title}','\"Попытка изменения\"')"} where id=$1`,[d.id]),{code:'PBL01'});
++   await assert.rejects(admin.query(`insert into app.${kind==='listing'?'listing_photos(listing_id':'work_publication_photos(publication_id'},media_id,position) values($1,$2,0)`,[d.id,randomUUID()]),{code:'PBL01'});
++   const raw=(await admin.query('select request_body from app.payment_checkout_intents where id=$1',[order.id])).rows[0].request_body;assert.equal(JSON.parse(raw).metadata.publicationMode,'account-test-v1');
++   await assert.rejects(s.preview(other.token,other.owner,d.id,d.revision));
++   const payment=load('account-test-listing-payment').createAccountTestListingPayment(db,s,{...merchant,ownerId:current.owner},fetcher);await payment.dispatch(d.token,d.owner,order.id);
++   assert.deepEqual(await worker.tick(),{state:'completed'});const read=await s.readOrder(d.token,d.owner,order.id);assert.equal(read.order.status,'succeeded');assert.ok(read.fulfillment);
++   const fulfillment=new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(workerDb,merchant,{postmoderation:true,publicationTestOwner:current.owner,...(kind==='listing'?{}:{targetType:kind})});assert.equal((await fulfillment.fulfill(order.id)).state,'fulfilled');assert.deepEqual(await s.readOrder(d.token,d.owner,order.id),read);
++   assert.equal((await admin.query('select count(*)::int n from app.payment_fulfillments where intent_id=$1',[order.id])).rows[0].n,1);
++   const publicRow=kind==='listing'?await new(load('postgres-public-listings').PostgresPublicListingStore)(db,{postmoderation:true}).read(d.id):await new(load('postgres-public-work').PostgresPublicWorkStore)(db,{vacancyPostmoderation:true}).read(kind,d.id);
++   assert.ok(publicRow);assert.match(publicRow.title,/^ТЕСТ · /);
++   assert.deepEqual(await worker.tick(),{state:'idle'});
++  });
++  await suite.test('old unmarked TEST success cannot enter discovery, claim or direct publication',async()=>{
++   const d=await draft('listing'),s=new Store(db,checkout,{postmoderation:true}),q=await s.preview(d.token,d.owner,d.id,d.revision),order=await s.prepare(d.token,d.owner,{listingId:d.id,expectedRevision:d.revision,creationKey:randomUUID(),expectedTariffId:q.tariff.id,expectedAmount:q.tariff.amount,expectedDurationDays:q.tariff.durationDays});
++   assert.equal(JSON.parse((await admin.query('select request_body from app.payment_checkout_intents where id=$1',[order.id])).rows[0].request_body).metadata.publicationMode,undefined);
++   await assert.rejects(store('listing').authorizeDispatch(d.token,d.owner,order.id),{name:'ListingCheckoutUnavailableError'});
++   assert.equal((await admin.query('select count(*)::int n from app.payment_dispatch_anchors where intent_id=$1',[order.id])).rows[0].n,0);
++   await assert.rejects(admin.query("update app.listings set title='Неопределённую оплату нельзя редактировать' where id=$1",[d.id]),{code:'PBL01'});
++   await assert.rejects(admin.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[d.id,randomUUID()]),{code:'PBL01'});
++   const b=await s.authorizeDispatch(d.token,d.owner,order.id),providerId=randomUUID(),intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);await intents.authorize(b);await intents.bindProvider(b,providerId);
++   await admin.query("update app.payment_orders set status='succeeded' where id=$1",[order.id]);
++   await admin.query("update app.listings set title='Исторический тест можно редактировать' where id=$1",[d.id]);
++   const photo=(await admin.query("insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256) values($1,$2,'image/webp',16,16,12,$3) returning id",[d.owner,randomUUID(),'a'.repeat(64)])).rows[0].id;
++   await admin.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[d.id,photo]);await admin.query('delete from app.listing_photos where listing_id=$1',[d.id]);
++   assert.deepEqual(await worker.tick(),{state:'idle'});
++   const fulfillment=new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(db,merchant,{postmoderation:true,publicationTestOwner:current.owner});assert.deepEqual(await fulfillment.fulfill(order.id),{state:'blocked',reason:'publication_not_admitted'});
++   assert.equal((await admin.query('select count(*)::int n from app.payment_fulfillments where intent_id=$1',[order.id])).rows[0].n,0);
++  });
++  assert.equal(posts,3);assert.equal(gets,3);
++  await suite.test('LIVE unresolved success retains parent/photo fences and cannot enter the TEST worker',async()=>{
++   const d=await draft('listing'),s=new Store(db,{...checkout,isTest:false},{postmoderation:true}),q=await s.preview(d.token,d.owner,d.id,d.revision),order=await s.prepare(d.token,d.owner,{listingId:d.id,expectedRevision:d.revision,creationKey:randomUUID(),expectedTariffId:q.tariff.id,expectedAmount:q.tariff.amount,expectedDurationDays:q.tariff.durationDays});
++   await admin.query("update app.payment_orders set status='succeeded' where id=$1",[order.id]);
++   await assert.rejects(admin.query("update app.listings set title='Изменение' where id=$1",[d.id]),{code:'PBL01'});await assert.rejects(admin.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[d.id,randomUUID()]),{code:'PBL01'});
++   assert.deepEqual(await worker.tick(),{state:'idle'});
++  });
++  await suite.test('profession lock permission cannot mutate data and extra publication rights remain forbidden',async()=>{
++   await assert.rejects(workerDb.query('update app.specialist_categories set id=id where id=$1',[profession]),{code:'23514'});
++   await assert.rejects(workerDb.query("update app.specialist_categories set name='Изменение' where id=$1",[profession]),{code:'42501'});
++   await assert.rejects(workerDb.query('delete from app.work_publications'),{code:'42501'});await preflight();
++  });
++ }finally{
++  for(const key of variables){if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];}globalThis.fetch=originalFetch;
++  await workerDb?.close();await db?.close();await admin?.end();if(container){const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);await docker(['rm','--force','--volumes',container]);}if(artifactDirectory)await rm(artifactDirectory,{recursive:true});
++ }
++});
+diff --git a/tests/publication-test-worker-runtime.test.mjs b/tests/publication-test-worker-runtime.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/tests/publication-test-worker-runtime.test.mjs
+@@ -0,0 +1,17 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {createPaymentWorkerRuntime} from '../scripts/payment-worker-runtime.mjs';
++const owner='11111111-1111-4111-8111-111111111111';
++const env={NODE_ENV:'production',BLIZHNIY_PAYMENT_WORKER:'account-publication-test',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_PAYMENT_SHOP_ID:'synthetic-shop',BLIZHNIY_PAYMENT_SECRET_KEY:'test_synthetic-key',
++ BLIZHNIY_DB_HOST:'17e86f80f26733d39ef4b84d.twc1.net',BLIZHNIY_DB_PORT:'5432',BLIZHNIY_DB_NAME:'blizhniy_prod',BLIZHNIY_DB_USER:'blizhniy_payment_reconciler',BLIZHNIY_DB_PASSWORD:'synthetic-db-key',BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:'/unused/root.crt',
++ BLIZHNIY_PAYMENT_TEST_USER_ID:owner,BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_LISTING_WORKFLOW:'postmoderation'};
++test('publication TEST runtime rejects LIVE/local/foreign deployment before pool allocation and pins the owner in the queued worker',async()=>{
++ for(const patch of [{BLIZHNIY_PAYMENT_MODE:'live'},{BLIZHNIY_PAYMENT_SECRET_KEY:'live_synthetic'},{BLIZHNIY_PAYMENT_TEST_USER_ID:undefined},{BLIZHNIY_PAYMENT_TEST_USER_ID:''},{BLIZHNIY_LOCAL_PRIMARY:'enabled'},{BLIZHNIY_AUTH_MODE:'local'},{BLIZHNIY_AUTH_ORIGIN:'https://foreign.invalid'},{BLIZHNIY_LISTING_WORKFLOW:'pre-moderation'}])
++  await assert.rejects(createPaymentWorkerRuntime({...env,...patch},{loadModules:()=>assert.fail('invalid configuration must fail before modules/pool')}),{message:'Payment worker configuration unavailable'});
++ let configured,closed=0;
++ const runtime=await createPaymentWorkerRuntime(env,{loadModules:()=>({readPostgresConfig:()=>({database:'blizhniy_prod'}),Pool:class{},PostgresDatabase:class{async close(){closed++;}},
++  createAccountTestPaymentVerifier:()=>assert.fail('publication mode must not select the old verifier'),
++  createPaymentReconciliationWorker:(_db,merchant,fetcher,account)=>{configured={merchant,fetcher,account};return{tick:async()=>({state:'idle'})};}})});
++ assert.equal(configured.account,owner);assert.equal(configured.fetcher,undefined);assert.equal(configured.merchant.isTest,true);assert.equal(Object.isFrozen(configured.merchant),true);
++ assert.deepEqual(await runtime.worker.tick(),{state:'idle'});await runtime.close();await runtime.close();assert.equal(closed,1);
++});
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index a0b4fa6..70a264f 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -124,7 +124,9 @@ jobs:
+             tests/application-compensation-cases-postgres.mjs \
+             tests/work-owner-actions-postgres.mjs \
+             tests/response-checkout-fence-postgres.mjs \
+-            tests/checkout-cancellation-postgres.mjs
++            tests/checkout-cancellation-postgres.mjs \
++            tests/publication-test-postgres.mjs \
++            tests/publication-test-release-postgres.mjs
+           do
+             node --experimental-strip-types --test --test-concurrency=1 "$suite"
+           done
+diff --git a/tests/postgres-ci-gate.test.mjs b/tests/postgres-ci-gate.test.mjs
+index de5bdf0..511cf01 100644
+--- a/tests/postgres-ci-gate.test.mjs
++++ b/tests/postgres-ci-gate.test.mjs
+@@ -15,6 +15,8 @@ const suites=[
+  'work-owner-actions-postgres.mjs',
+  'response-checkout-fence-postgres.mjs',
+  'checkout-cancellation-postgres.mjs',
++ 'publication-test-postgres.mjs',
++ 'publication-test-release-postgres.mjs',
+ ];
+ test('real PostgreSQL is a mandatory gate before packaging and is inherited by deployment',()=>{
+  assert.ok(ci.on.workflow_call);assert.deepEqual(ci.on.pull_request.branches,['main']);assert.ok(Object.hasOwn(ci.on,'workflow_dispatch'));

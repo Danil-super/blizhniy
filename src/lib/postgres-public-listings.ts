@@ -7,6 +7,9 @@ type Row=Omit<PublicListingRow,'form'>&{form:Omit<ListingFormDraft,'photoIds'>};
 const dbKinds={prodam:'sell',kuplyu:'buy','otdam-darom':'free',arenda:'rent'} as const;
 const stamp=(column:string)=>`to_char(${column} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 const columns=(coverOnly=false,postmoderation=false)=>`l.id,l.author_id as "ownerId",l.revision::text as revision,${postmoderation?'null::text':'review.revision::text'} as "approvedRevision",
+ ${postmoderation?`exists(select 1 from app.payment_checkout_intents i join app.payment_fulfillments f on f.intent_id=i.id
+  where i.target_type='listing' and i.target_id=l.id and i.owner_id=l.author_id and i.is_test
+   and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1' and f.published_at=l.published_at and f.expires_at=l.expires_at)`:'false'} as "testPublication",
  profile.profile->>'name' as "authorName",(c.parent_id is not null) as "isSubcategory",l.status,l.is_paid as paid,l.view_count as "viewCount",
  ${stamp('l.created_at')} as "createdAt",${stamp('l.published_at')} as "publishedAt",${stamp('l.expires_at')} as "expiresAt",
  json_build_object('kind',case l.listing_type when 'sell' then 'prodam' when 'buy' then 'kuplyu' when 'free' then 'otdam-darom' when 'rent' then 'arenda' end,

@@ -16,7 +16,7 @@ function exact(row:Record<string,unknown>,keys:string[]){
  if(Object.keys(row).length!==keys.length||keys.some(key=>!Object.hasOwn(row,key)))throw new AuthRequestError(422,'INVALID_INPUT');
 }
 /** Same-origin cookie boundary. Remote dispatch is opt-in, account-allowlisted and TEST-only. */
-export function createListingCheckoutHandler(config:{origin:string},runtime:()=>Promise<Runtime>|Runtime,audit:(event:Audit)=>void=event=>console.info(JSON.stringify(event))){
+export function createListingCheckoutHandler(config:{origin:string},runtime:()=>Promise<Runtime>|Runtime,audit:(event:Audit)=>void=event=>console.info(JSON.stringify(event)),policy:{readOnly?:boolean}={}){
  return async(request:Request)=>{
   const requestId=randomUUID(),start=Date.now();let status=503,code:string|undefined;
   const reply=(body:unknown,next:number,headers?:Record<string,string>)=>{status=next;return authJson(body,next,{'X-Request-ID':requestId,...headers});};
@@ -25,6 +25,7 @@ export function createListingCheckoutHandler(config:{origin:string},runtime:()=>
    const raw=await readAuthJson(request,config,2000,request.method,4096);
    if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new AuthRequestError(422,'INVALID_INPUT');
    const row=raw as Record<string,unknown>,owner=parseListingDraftId(row.expectedOwnerId);
+   if(policy.readOnly&&(request.method!=='POST'||!['intent','order'].includes(String(row.action))))throw new AuthRequestError(503,'CHECKOUT_DISABLED');
    let execute:(current:Runtime,token:string)=>Promise<unknown>;
    if(request.method==='PUT'){
     const value={...row};delete value.expectedOwnerId;

@@ -1,7 +1,7 @@
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor} from './listing-draft-contract.ts';
 import {parseListingFormDraft} from './listing-form-contract.ts';import {checkListingFormContent} from './listing-publication-check';
 import {formatBookingPrice} from './booking-details';import type {Listing} from './types';
-export type PublicListingRow={id:string;ownerId:string;revision:string;approvedRevision:string|null;authorName:string|null;form:unknown;mediaIds:string[];isSubcategory:boolean;status:string;paid:boolean;viewCount:number;createdAt:string;publishedAt:string|null;expiresAt:string|null};
+export type PublicListingRow={id:string;ownerId:string;revision:string;approvedRevision:string|null;authorName:string|null;form:unknown;mediaIds:string[];isSubcategory:boolean;status:string;paid:boolean;viewCount:number;createdAt:string;publishedAt:string|null;expiresAt:string|null;testPublication?:boolean};
 const money=(value:string|null)=>!value||value==='0.00'?'по договоренности':`${value.split('.')[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')}${value.endsWith('.00')?'':','+value.split('.')[1]} ₽`;
 
 /** Public DTO allowlist, not an owner/editor snapshot. SQL must also prove current author/reference/photo eligibility. */
@@ -16,7 +16,7 @@ export function mapPublicListing(row:PublicListingRow,now:number,options:{postmo
   let author='Автор объявления';if(row.authorName!==null){
    if(typeof row.authorName!=='string'||!row.authorName.trim()||row.authorName.length>120||!row.authorName.isWellFormed()||/[\x00-\x1f\x7f]/.test(row.authorName))return null;author=row.authorName.trim();
   }
-  return{id,slug:id,ownerKey,kind:form.kind,categorySlug:form.categorySlug!,subcategory:form.subcategoryName??'',isSubcategory:row.isSubcategory,author,title:form.title,description:form.description,city:form.cityName!,
+  return{id,slug:id,ownerKey,kind:form.kind,categorySlug:form.categorySlug!,subcategory:form.subcategoryName??'',isSubcategory:row.isSubcategory,author,title:row.testPublication===true?`ТЕСТ · ${form.title}`:form.title,description:form.description,city:form.cityName!,
    ...(form.district?{district:form.district}:{}),showExactAddress:form.showExactAddress,hasMapPoint:form.showExactAddress,
    ...(form.showExactAddress?{...(form.address?{address:form.address}:{}),lat:form.latitude!,lng:form.longitude!}:{}),
    price:form.booking?formatBookingPrice(form.booking):money(form.price),images:form.photoIds.map(photo=>`/api/listings/${id}/photos/${photo}`),

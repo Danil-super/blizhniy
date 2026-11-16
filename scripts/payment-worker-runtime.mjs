@@ -15,7 +15,8 @@ export async function createPaymentWorkerRuntime(environment=process.env,{loadMo
  let db,pool;
  try {
   const env={...environment};
-  if(typeof window!=='undefined'||env.NODE_ENV!=='production'||!['queued-test','account-test'].includes(env.BLIZHNIY_PAYMENT_WORKER)||env.BLIZHNIY_PAYMENT_MODE!=='test'||
+  const publicationTest=env.BLIZHNIY_PAYMENT_WORKER==='account-publication-test';
+  if(typeof window!=='undefined'||env.NODE_ENV!=='production'||!['queued-test','account-test','account-publication-test'].includes(env.BLIZHNIY_PAYMENT_WORKER)||env.BLIZHNIY_PAYMENT_MODE!=='test'||
    env.BLIZHNIY_DB_HOST!=='17e86f80f26733d39ef4b84d.twc1.net'||env.BLIZHNIY_DB_PORT!=='5432'||env.BLIZHNIY_DB_NAME!=='blizhniy_prod'||
    env.BLIZHNIY_DB_USER!=='blizhniy_payment_reconciler'||!env.BLIZHNIY_DB_PASSWORD||env.BLIZHNIY_DB_SSL_MODE!=='verify-full'||
    !env.BLIZHNIY_DB_CA_FILE||!isAbsolute(env.BLIZHNIY_DB_CA_FILE)||env.NODE_TLS_REJECT_UNAUTHORIZED==='0'||
@@ -23,15 +24,16 @@ export async function createPaymentWorkerRuntime(environment=process.env,{loadMo
    !/^[a-zA-Z0-9_-]{1,64}$/.test(env.BLIZHNIY_PAYMENT_SHOP_ID??'')||
    typeof env.BLIZHNIY_PAYMENT_SECRET_KEY!=='string'||!env.BLIZHNIY_PAYMENT_SECRET_KEY.startsWith('test_')||
    env.BLIZHNIY_PAYMENT_SECRET_KEY.length>2048||/[\s\u0000-\u001f\u007f]/.test(env.BLIZHNIY_PAYMENT_SECRET_KEY))throw Error('Invalid worker configuration');
-  if(env.BLIZHNIY_PAYMENT_WORKER==='account-test'&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(env.BLIZHNIY_PAYMENT_TEST_USER_ID??''))throw Error('Invalid account TEST owner');
+  if((env.BLIZHNIY_PAYMENT_WORKER==='account-test'||publicationTest)&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(env.BLIZHNIY_PAYMENT_TEST_USER_ID??''))throw Error('Invalid account TEST owner');
+  if(publicationTest&&(env.BLIZHNIY_LISTING_WORKFLOW!=='postmoderation'||env.BLIZHNIY_AUTH_MODE!=='postgres'||env.BLIZHNIY_AUTH_ORIGIN!=='https://xn----9sbphbgks4a4a.xn--p1ai'||env.BLIZHNIY_LOCAL_PRIMARY!==undefined))throw Error('Invalid publication TEST deployment');
   const merchant=Object.freeze({shopId:env.BLIZHNIY_PAYMENT_SHOP_ID,isTest:true,secretKey:env.BLIZHNIY_PAYMENT_SECRET_KEY});
   const {readPostgresConfig,PostgresDatabase,Pool,createPaymentReconciliationWorker,createAccountTestPaymentVerifier}=loadModules();
   const config=readPostgresConfig(env);
   pool=new Pool({...config,max:2,application_name:'blizhniy-payment-reconciler'});
   db=new PostgresDatabase(pool);
-  const worker=env.BLIZHNIY_PAYMENT_WORKER==='account-test'?createAccountTestPaymentVerifier(db,Object.freeze({...merchant,ownerId:env.BLIZHNIY_PAYMENT_TEST_USER_ID})):createPaymentReconciliationWorker(db,merchant);
+  const worker=env.BLIZHNIY_PAYMENT_WORKER==='account-test'?createAccountTestPaymentVerifier(db,Object.freeze({...merchant,ownerId:env.BLIZHNIY_PAYMENT_TEST_USER_ID})):publicationTest?createPaymentReconciliationWorker(db,merchant,undefined,env.BLIZHNIY_PAYMENT_TEST_USER_ID):createPaymentReconciliationWorker(db,merchant);
   let closing;
-  return{worker,preflight:()=>verifyPaymentReconciliationDatabase(db,{database:config.database}),
+  return{worker,preflight:()=>verifyPaymentReconciliationDatabase(db,{database:config.database,...(publicationTest?{publicationTest:true}:{})}),
    close:()=>closing??=db.close()};
  }catch {
   try {if(db)await db.close();else if(pool)await pool.end();}catch { /* Never replace the generic configuration error with driver details. */ }

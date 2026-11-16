@@ -34,8 +34,9 @@ export function parsePaymentIntent(input:unknown):PaymentIntent{
  keys(body,['amount','capture','confirmation','metadata'],['description','receipt']);
  const amount=object(body.amount);keys(amount,['value','currency']);
  if(amount.value!==intent.amount||amount.currency!=='RUB'||body.capture!==true)fail();
- const metadata=object(body.metadata);keys(metadata,['localPaymentId','targetId','targetType','tariffId']);
+ const metadata=object(body.metadata);keys(metadata,['localPaymentId','targetId','targetType','tariffId'],['publicationMode']);
  if(metadata.localPaymentId!==intent.id||metadata.targetId!==intent.targetId||metadata.targetType!==intent.targetType||metadata.tariffId!==intent.tariffId)fail();
+ if(Object.hasOwn(metadata,'publicationMode')&&(metadata.publicationMode!=='account-test-v1'||!intent.isTest||!['listing','vacancy','workRequest'].includes(intent.targetType)))fail();
  const confirmation=object(body.confirmation);keys(confirmation,['type','return_url']);
  if(confirmation.type!=='redirect')fail();https(confirmation.return_url);
  if(body.description!==undefined&&(typeof body.description!=='string'||!body.description.isWellFormed()||body.description.length>128||/[\u0000-\u001f\u007f]/.test(body.description)))fail();

@@ -1,5 +1,6 @@
 import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-contract.ts';
 import {validPlainText} from './cabinet-field-validation.ts';
+import {readPostmoderationEnabled} from './listing-workflow-config.ts';
 export class WorkOwnerActionInputError extends Error{constructor(){super('Invalid work owner action');this.name='WorkOwnerActionInputError';}}
 export type WorkOwnerAction={operationId:string;publicationId:string;kind:'vacancy'|'workRequest';expectedRevision:string;action:'withdraw'|'restore'|'remove';reason:string|null};
 export function parseWorkOwnerAction(value:unknown):WorkOwnerAction{
@@ -15,6 +16,10 @@ export function parseWorkOwnerAction(value:unknown):WorkOwnerAction{
 export function readWorkOwnerActionsEnabled(env:NodeJS.ProcessEnv=process.env):boolean{
  if(typeof window!=='undefined')throw Error('Work actions configuration is server-only');
  if(env.BLIZHNIY_WORK_OWNER_ACTIONS===undefined)return false;
+ if(env.BLIZHNIY_WORK_OWNER_ACTIONS==='production-v1'){
+  if(env.BLIZHNIY_LOCAL_PRIMARY!==undefined||!readPostmoderationEnabled(env))throw Error('Invalid production work owner action activation');
+  return true;
+ }
  if(env.BLIZHNIY_WORK_OWNER_ACTIONS!=='local-v1'||env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!=='https://127.0.0.1:3045')throw Error('Invalid work owner action activation');
  return true;
 }

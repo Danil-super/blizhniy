@@ -124,7 +124,9 @@ jobs:
             tests/application-compensation-cases-postgres.mjs \
             tests/work-owner-actions-postgres.mjs \
             tests/response-checkout-fence-postgres.mjs \
-            tests/checkout-cancellation-postgres.mjs
+            tests/checkout-cancellation-postgres.mjs \
+            tests/publication-test-postgres.mjs \
+            tests/publication-test-release-postgres.mjs
           do
             node --experimental-strip-types --test --test-concurrency=1 "$suite"
           done

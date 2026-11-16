@@ -11,7 +11,7 @@ import {readPostmoderationEnabled} from './listing-workflow-config';
 
 export type ListingCheckoutConfig={shopId:string;isTest:boolean;siteOrigin:string;receiptVatCode:number|null};
 export type ListingPaymentOrder={id:string;creationKey:string;targetId:string;targetRevision:string;tariffId:string;amount:string;durationDays:number;status:'created'|'pending'|'succeeded'|'failed'|'refunded';createdAt:string};
-export type ListingPaymentSnapshot={order:ListingPaymentOrder;fulfillment:{publishedAt:string;expiresAt:string}|null};
+export type ListingPaymentSnapshot={order:ListingPaymentOrder;fulfillment:{publishedAt:string;expiresAt:string}|null;testPublication?:true;testOnly?:true};
 type OrderRow=ListingPaymentOrder&{targetType:string};
 type Offer={id:string;name:string;amount:string;currency:'RUB';durationDays:number};
 const columns=`o.id,o.creation_key as "creationKey",o.target_type as "targetType",o.target_id as "targetId",o.target_revision::text as "targetRevision",o.status,
@@ -31,15 +31,18 @@ export class PostgresListingCheckoutStore{
  private readonly intents:PostgresPaymentIntentStore;
  private readonly config:ListingCheckoutConfig;
  private readonly targetType:'listing'|'vacancy'|'workRequest';
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,config:ListingCheckoutConfig,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest';renewals?:boolean}={}){
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,config:ListingCheckoutConfig,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest';renewals?:boolean;publicationTestOwner?:string;testModeHistory?:boolean}={}){
   if(typeof window!=='undefined')throw new ListingCheckoutUnavailableError();
+  if(policy.publicationTestOwner!==undefined&&(!config.isTest||parseListingDraftId(policy.publicationTestOwner)!==policy.publicationTestOwner||!policy.postmoderation||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
   this.targetType=policy.targetType??'listing';
   if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!config.isTest||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
   if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!config.isTest||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
   this.forms=new PostgresListingFormStore(db,{postmoderation:policy.renewals===true,renewals:policy.renewals===true});this.intents=new PostgresPaymentIntentStore(db);this.config={...config};
  }
  private owner<T>(token:string,expectedOwner:string,work:(tx:PostgresQueries,owner:string)=>Promise<T>){
-  const owner=parseListingDraftId(expectedOwner);return withAppSessionTransaction(this.db,token,(tx,user)=>{
+  const owner=parseListingDraftId(expectedOwner);
+  if(this.policy.publicationTestOwner&&owner!==this.policy.publicationTestOwner)throw new ListingCheckoutUnavailableError();
+  return withAppSessionTransaction(this.db,token,(tx,user)=>{
    if(user.id!==owner)throw new AppSessionAccessError();return work(tx,user.id);
   });
  }
@@ -114,6 +117,7 @@ export class PostgresListingCheckoutStore{
    [id,actor,this.config.shopId,this.config.isTest])).rows[0];
    if(!row)throw new ListingDraftAccessError();
    const {status,...input}=row,intent=parsePaymentIntent(input);
+   if(this.policy.publicationTestOwner&&JSON.parse(intent.requestBody).metadata.publicationMode!=='account-test-v1')throw new ListingCheckoutUnavailableError();
    if(requireCurrent){
     const known=(await tx.query('select provider_payment_id from app.payment_provider_links where intent_id=$1',[id])).rowCount===1;
     if(!known){
@@ -129,14 +133,15 @@ export class PostgresListingCheckoutStore{
  /** Historical purchased period (only its added interval for renewals), not current visibility. No provider I/O. */
  async readOrder(token:string,owner:string,paymentId:unknown):Promise<ListingPaymentSnapshot|null>{
   const id=parseListingDraftId(paymentId);return this.owner(token,owner,async(tx,actor)=>{
-   const row=(await tx.query<OrderRow&{publishedAt:string|null;expiresAt:string|null}>(`select ${columns},
+   const row=(await tx.query<OrderRow&{publishedAt:string|null;expiresAt:string|null;testPublication:boolean;testOnly:boolean}>(`select ${columns},i.is_test as "testOnly",
+    coalesce(i.is_test and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1',false) as "testPublication",
     to_char(${this.policy.renewals?"greatest(f.published_at,f.expires_at-i.duration_days*interval '24 hours')":'f.published_at'} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
     to_char(f.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "expiresAt"
     ${source} left join app.payment_fulfillments f on f.intent_id=o.id
     where o.id=$1 and o.owner_id=$2 and o.target_type='${this.targetType}' and i.merchant_shop_id=$3 and i.is_test=$4`,
     [id,actor,this.config.shopId,this.config.isTest])).rows[0];
    if(!row)return null;
-   return{order:display(row,this.targetType),fulfillment:row.publishedAt&&row.expiresAt?{publishedAt:row.publishedAt,expiresAt:row.expiresAt}:null};
+   return{order:display(row,this.targetType),fulfillment:row.publishedAt&&row.expiresAt?{publishedAt:row.publishedAt,expiresAt:row.expiresAt}:null,...(row.testPublication?{testPublication:true as const}:{}),...(this.policy.testModeHistory&&row.testOnly?{testOnly:true as const}:{})};
   });
  }
  private async intent(tx:PostgresQueries,owner:string,id:string,input:ListingCheckoutInput,offer:Offer):Promise<PaymentIntent>{
@@ -157,7 +162,7 @@ export class PostgresListingCheckoutStore{
   return parsePaymentIntent({id,ownerId:owner,targetType:this.targetType,targetId:input.listingId,targetRevision:input.expectedRevision,
    tariffId:offer.id,amount:offer.amount,durationDays:offer.durationDays,shopId:this.config.shopId,isTest:this.config.isTest,
    requestBody:JSON.stringify({amount,capture:true,confirmation:{type:'redirect',return_url:`${origin}/oplata/${id}${this.targetType!=='listing'?'?type='+this.targetType:''}`},description,
-    metadata:{localPaymentId:id,targetId:input.listingId,targetType:this.targetType,tariffId:offer.id},...(receipt?{receipt}:{})})});
+    metadata:{localPaymentId:id,targetId:input.listingId,targetType:this.targetType,tariffId:offer.id,...(this.policy.publicationTestOwner?{publicationMode:'account-test-v1'}:{})},...(receipt?{receipt}:{})})});
  }
  async prepare(token:string,owner:string,value:unknown){
   const input=parseListingCheckout(value);return this.owner(token,owner,async(tx,actor)=>{

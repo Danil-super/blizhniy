@@ -21,9 +21,10 @@ export class PostgresListingPaymentFulfillmentStore{
  private readonly forms:PostgresListingFormStore;
  private readonly merchant:MerchantScope;
  private readonly targetType:'listing'|'vacancy'|'workRequest';
- constructor(db:Pick<PostgresDatabase,'transaction'>,merchant:MerchantScope,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest';renewals?:boolean}={}){
+ constructor(db:Pick<PostgresDatabase,'transaction'>,merchant:MerchantScope,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest';renewals?:boolean;publicationTestOwner?:string}={}){
   if(typeof window!=='undefined'||!merchant||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId)||typeof merchant.isTest!=='boolean')throw new PaymentPublicationError();
   this.merchant={...merchant};
+  if(policy.publicationTestOwner!==undefined&&(!merchant.isTest||parseListingDraftId(policy.publicationTestOwner)!==policy.publicationTestOwner||!policy.postmoderation||!readPostmoderationEnabled()))throw new PaymentPublicationError();
   this.targetType=policy.targetType??'listing';
   if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!merchant.isTest||!readPostmoderationEnabled()))throw new PaymentPublicationError();
   if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!merchant.isTest||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled()))throw new PaymentPublicationError();
@@ -53,6 +54,7 @@ export class PostgresListingPaymentFulfillmentStore{
     from app.users where id=(select owner_id from app.payment_checkout_intents where id=$1) for update`,[id])).rows[0];
    const intent=await this.intents.lockKnownInTransaction(tx,id);
    if(intent.targetType!==this.targetType||intent.durationDays===null||intent.shopId!==this.merchant.shopId||intent.isTest!==this.merchant.isTest)throw new PaymentPublicationError();
+   if(this.policy.publicationTestOwner&&(intent.ownerId!==this.policy.publicationTestOwner||JSON.parse(intent.requestBody).metadata.publicationMode!=='account-test-v1'))return{state:'blocked',reason:'publication_not_admitted'};
    const order=(await tx.query<{status:string}>('select status from app.payment_orders where id=$1 for update',[id])).rows[0];
    if(!order)throw new PaymentPublicationError();
    // A receipt is historical. Replay must not depend on a target still being a draft or resurrect it.

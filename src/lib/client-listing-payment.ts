@@ -14,7 +14,11 @@ function exact(value:unknown,keys:string[]):Record<string,unknown>{
 const stamp=(id:string,value:unknown)=>parseListingDraftCursor({id,updatedAt:value})!.updatedAt;
 function snapshot(value:unknown,id:string):ListingPaymentSnapshot|null{
  if(value===null)return null;
- const row=exact(value,['order','fulfillment']),o=exact(row.order,['id','creationKey','targetId','targetRevision','tariffId','amount','durationDays','status','createdAt']);
+ const marked=typeof value==='object'&&Object.hasOwn(value,'testPublication');
+ const testOnly=typeof value==='object'&&Object.hasOwn(value,'testOnly');
+ const row=exact(value,['order','fulfillment',...(marked?['testPublication']:[]),...(testOnly?['testOnly']:[])]),o=exact(row.order,['id','creationKey','targetId','targetRevision','tariffId','amount','durationDays','status','createdAt']);
+ if(marked&&row.testPublication!==true)throw Error();
+ if(testOnly&&row.testOnly!==true)throw Error();
  if(o.id!==id||!['created','pending','succeeded','failed','refunded'].includes(o.status as string))throw Error();
  const input=parseListingCheckout({listingId:o.targetId,expectedRevision:o.targetRevision,creationKey:o.creationKey,expectedTariffId:o.tariffId,expectedAmount:o.amount,expectedDurationDays:o.durationDays});
  const order:ListingPaymentOrder={id,creationKey:input.creationKey,targetId:input.listingId,targetRevision:input.expectedRevision,tariffId:input.expectedTariffId,amount:input.expectedAmount,durationDays:input.expectedDurationDays,status:o.status as ListingPaymentOrder['status'],createdAt:stamp(id,o.createdAt)};
@@ -24,7 +28,7 @@ function snapshot(value:unknown,id:string):ListingPaymentSnapshot|null{
   const f=exact(row.fulfillment,['publishedAt','expiresAt']),publishedAt=stamp(id,f.publishedAt),expiresAt=stamp(id,f.expiresAt);
   if(publishedAt<order.createdAt||expiresAt<=publishedAt)throw Error();fulfillment={publishedAt,expiresAt};
  }
- return{order,fulfillment};
+ return{order,fulfillment,...(marked?{testPublication:true as const}:{}),...(testOnly?{testOnly:true as const}:{})};
 }
 export function createListingPaymentClient(transport:typeof fetch){return{
  async read(owner:string,paymentId:string,options:{signal?:AbortSignal}={}):Promise<ListingPaymentSnapshot|null>{

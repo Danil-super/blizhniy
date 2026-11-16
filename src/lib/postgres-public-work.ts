@@ -46,7 +46,11 @@ export class PostgresPublicWorkStore{
   if(policy.vacancyPostmoderation&&!readPostmoderationEnabled())throw Error('Local vacancy workflow unavailable');
   const simulation=process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled';
   this.source=policy.vacancyPostmoderation?(simulation?localSource:postmoderationSource):source;
-   this.columns=columns+(policy.vacancyPostmoderation?', w.revision>eligibility.purchased_revision as "contentEdited"':'');
+   this.columns=columns+(policy.vacancyPostmoderation?`, w.revision>eligibility.purchased_revision as "contentEdited",
+    exists(select 1 from app.payment_checkout_intents i join app.payment_fulfillments f on f.intent_id=i.id
+     where i.target_type=w.kind and i.target_id=w.id and i.owner_id=w.author_id and i.is_test
+      and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'
+      and f.published_at=w.published_at and f.expires_at=w.expires_at) as "testPublication"`:'');
    this.available=live+(policy.vacancyPostmoderation?" and (w.kind<>'workRequest' or not exists(select 1 from app.applications chosen where chosen.work_publication_id=w.id and chosen.status='selected' and chosen.is_paid and chosen.sent_at is not null))":'');
  }
  private async listRows(kind:WorkPublicationKind,limit:number,offset:number){
