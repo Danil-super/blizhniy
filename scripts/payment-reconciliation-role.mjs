@@ -4,6 +4,7 @@ import {getBootstrapPlan} from './postgres-migration-plan.mjs';
 import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.mjs';
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 import {assertRefundSchema} from './refund-worker-schema.mjs';
+import {getPublicationTestMigrationPlan,assertPublicationTestSchema} from './publication-test-release-plan.mjs';
 
 const role='blizhniy_payment_reconciler';
 const locks=['users','payment_checkout_intents','categories','cities','media_objects','listing_moderation'];
@@ -26,16 +27,23 @@ const policy={
  'blizhniy_meta.migrations':{select:['name','sha256']},
 };
 const cabinetPolicy={...policy,'app.listing_blocks':{select:['listing_id']}};
+const publicationPolicy={...cabinetPolicy,
+ 'app.payment_reconciliation_jobs':{...policy['app.payment_reconciliation_jobs'],insert:['intent_id']},
+ 'app.work_publications':{select:columns('id,author_id,kind,form,city_id,profession_id,revision,status,is_paid,published_at,expires_at,created_at,updated_at,deleted_at'),update:columns('status,is_paid,published_at,expires_at,updated_at')},
+ 'app.work_publication_photos':{select:columns('publication_id,media_id,position')},
+ 'app.specialist_categories':{select:columns('id,name,active'),update:['id']},
+ 'app.applications':{select:columns('id,work_publication_id,status,is_paid,sent_at')},
+};
 const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
 function approved(){return getBootstrapPlan({includePaymentReconciliationRole:true});}
 
 /** Reviewable plan only. No executor, ambient credentials, password or automatic role adoption. */
-export function getPaymentReconciliationRolePlan(database,{cabinet=false}={}) {
- if(typeof cabinet!=='boolean'||!validDatabase(database))throw new Error('Invalid reconciliation database');
+export function getPaymentReconciliationRolePlan(database,{cabinet=false,publicationTest=false}={}) {
+ if(typeof cabinet!=='boolean'||typeof publicationTest!=='boolean'||publicationTest&&!cabinet||!validDatabase(database))throw new Error('Invalid reconciliation database');
  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,
-  journal:approved().map(({name,sha256})=>({name,sha256})),
+  journal:(publicationTest?getPublicationTestMigrationPlan():approved()).map(({name,sha256})=>({name,sha256})),
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
-   ...Object.entries(cabinet?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`))],
+   ...Object.entries(publicationTest?publicationPolicy:cabinet?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`))],
  };
 }
 
@@ -44,9 +52,9 @@ export function getPaymentReconciliationRolePlan(database,{cabinet=false}={}) {
  * Approved managed-PG exception: bootstrap postgres -> gen_user ADMIN only, never INHERIT/SET.
  * It does not authenticate a merchant or turn TEST into database row-level isolation.
  */
-export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
+export async function verifyPaymentReconciliationDatabase(db,{database,publicationTest=false}={}) {
  try {
-  if(!validDatabase(database))throw new Error('Invalid reconciliation target');
+  if(!validDatabase(database)||typeof publicationTest!=='boolean')throw new Error('Invalid reconciliation target');
   const plan=approved();
   await db.transaction(async tx=>{
    await tx.query("set local statement_timeout='5s'");
@@ -75,12 +83,13 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
    const cabinetJournal=[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan()];
    const deletionJournal=[...cabinetJournal,{name:'0033-account-deletion.sql',sha256:'8d0159c6af65c4c66aabb123695110f402fd5eac268fa2a879d97c85e628ed2f'}];
    const schema=journal.length===55?55:54;
-   const refundJournal=getRefundWorkerRolePlan(database,{schema}).journal,refundSchema=journal.length===refundJournal.length;
+   const refundJournal=publicationTest?[]:getRefundWorkerRolePlan(database,{schema}).journal,refundSchema=!publicationTest&&journal.length===refundJournal.length;
    if(identity.refund_installed!==refundSchema)throw new Error('Refund schema and journal disagree');
-   const cabinetSchema=refundSchema||journal.length===cabinetJournal.length||journal.length===deletionJournal.length;
-   const expectedJournal=refundSchema?refundJournal:journal.length===deletionJournal.length?deletionJournal:journal.length===cabinetJournal.length?cabinetJournal:journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
+   const cabinetSchema=publicationTest||refundSchema||journal.length===cabinetJournal.length||journal.length===deletionJournal.length;
+   const expectedJournal=publicationTest?getPublicationTestMigrationPlan():refundSchema?refundJournal:journal.length===deletionJournal.length?deletionJournal:journal.length===cabinetJournal.length?cabinetJournal:journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
    if(refundSchema)await assertRefundSchema(tx,schema);
+   if(publicationTest)await assertPublicationTestSchema(tx);
    await assertFinancialCatalogPrivileges(tx);
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
@@ -88,7 +97,7 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
     cross join (values('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) as p(privilege)
     where n.nspname not in ('pg_catalog','information_schema') and c.relkind in ('r','p','v','m','f','t')
      and a.attnum>0 and not a.attisdropped and has_column_privilege(c.oid,a.attnum,p.privilege) limit 10001`)).rows;
-   const expected=new Set(Object.entries(cabinetSchema?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
+   const expected=new Set(Object.entries(publicationTest?publicationPolicy:cabinetSchema?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
    if(actual.length!==expected.size||actual.some(item=>item.grantable!==false||!expected.delete(item.key))||expected.size)throw new Error('Invalid column privileges');
    const dangerous=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname not in ('pg_catalog','information_schema') and
@@ -104,8 +113,9 @@ export async function verifyPaymentReconciliationDatabase(db,{database}={}) {
     from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace
     join pg_proc p on p.oid=t.tgfoid join pg_language l on l.oid=p.prolang
     where n.nspname='app' and c.relname=any($1::text[]) and t.tgname='reconciliation_lock_only'
-     and not t.tgisinternal and p.oid='app.guard_reconciliation_locks()'::regprocedure`,[locks])).rows;
-   if(guards.length!==locks.length||new Set(guards.map(item=>item.name)).size!==locks.length||guards.some(item=>
+     and not t.tgisinternal and p.oid='app.guard_reconciliation_locks()'::regprocedure`,[publicationTest?[...locks,'specialist_categories']:locks])).rows;
+   const lockCount=locks.length+(publicationTest?1:0);
+   if(guards.length!==lockCount||new Set(guards.map(item=>item.name)).size!==lockCount||guards.some(item=>
     item.tgenabled!=='A'||item.tgtype!==19||item.tgnargs!==0||item.attributes!==''||item.unconditional!==true||
     item.prosrc!==guardBody||item.prosecdef!==false||item.lanname!=='plpgsql'||JSON.stringify(item.proconfig)!==JSON.stringify(['search_path=""'])))throw new Error('Invalid lock guards');
   },{readOnly:true});

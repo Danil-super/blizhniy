@@ -15,6 +15,8 @@ const suites=[
  'work-owner-actions-postgres.mjs',
  'response-checkout-fence-postgres.mjs',
  'checkout-cancellation-postgres.mjs',
+ 'publication-test-postgres.mjs',
+ 'publication-test-release-postgres.mjs',
 ];
 test('real PostgreSQL is a mandatory gate before packaging and is inherited by deployment',()=>{
  assert.ok(ci.on.workflow_call);assert.deepEqual(ci.on.pull_request.branches,['main']);assert.ok(Object.hasOwn(ci.on,'workflow_dispatch'));

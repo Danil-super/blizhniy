@@ -1,9 +1,10 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useId,useRef,useState} from 'react';
 import {phoneVerification,PhoneClientError,type PhoneStatus} from '@/lib/client-phone-verification';
 import {phoneWindowMemory,openPhoneVerificationChannel} from '@/lib/phone-verification-window';
 import {normalizeProfilePhone} from '@/lib/phone-verification-contract';
 export function PhoneVerificationButton({owner,returnTo='/cabinet',onVerified,displayedPhone,compact=false}:{owner:string;returnTo?:string;onVerified?:()=>void|Promise<void>;displayedPhone?:string;compact?:boolean}){
+ const availabilityId=useId();
  const [status,setStatus]=useState<PhoneStatus|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const latest=useRef({owner,onVerified});latest.current={owner,onVerified};
  const mounted=useRef(false);
@@ -67,9 +68,9 @@ export function PhoneVerificationButton({owner,returnTo='/cabinet',onVerified,di
  }
  return <div className="min-w-0 space-y-2 font-normal">
   {shownVerified&&!compact&&<p className="text-sm font-semibold text-emerald-700">Телефон подтверждён через Telegram</p>}
-  <button type="button" disabled={!status?.available||busy} onClick={()=>void start()} className={compact?'inline-flex min-h-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-sky-800 transition hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:opacity-55':'inline-flex min-h-11 items-center justify-center rounded-lg border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:opacity-55'}>{busy?'Ожидаем подтверждение…':shownVerified?'Изменить номер':compact?'Подтвердить через Telegram':'Подтвердить номер через Telegram'}</button>
+  <button type="button" aria-describedby={status&&!status.available?availabilityId:undefined} disabled={!status?.available||busy} onClick={()=>void start()} className={compact?'inline-flex min-h-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-sky-800 transition hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:opacity-55':'inline-flex min-h-11 items-center justify-center rounded-lg border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-800 transition hover:bg-sky-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:opacity-55'}>{busy?'Ожидаем подтверждение…':shownVerified?'Изменить номер':compact?'Подтвердить через Telegram':'Подтвердить номер через Telegram'}</button>
   {!compact&&<p className="text-xs leading-5 text-slate-600">Получим номер, связанный с вашим Telegram-аккаунтом. Он не будет опубликован без вашего разрешения.</p>}
-  {status&&!status.available&&<p role="status" className="text-xs leading-5 text-slate-600">Подтверждение через Telegram пока не настроено. Номер можно сохранить без подтверждения.</p>}
+  {status&&!status.available&&<p id={availabilityId} role="status" className="text-xs leading-5 text-slate-600">Подтверждение через Telegram пока не настроено. Номер можно сохранить без подтверждения.</p>}
   {shownVerified&&<button type="button" disabled={busy} onClick={()=>void (async()=>{
    if(!window.confirm('Отвязать подтверждение Telegram? Новые размещения потребуют повторного подтверждения номера.'))return;
    setBusy(true);setError('');try{await phoneVerification.unlink(owner);if(latest.current.owner!==owner)return;setStatus(await phoneVerification.status(owner));await onVerified?.();}

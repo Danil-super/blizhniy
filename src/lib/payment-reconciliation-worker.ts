@@ -7,10 +7,17 @@ type Merchant=ConstructorParameters<typeof PostgresPaymentVerificationStore>[1];
 type Code='provider_pending'|'capture_required'|'processing_unavailable'|'publication_blocked'|'attempts_exhausted'|'phone_required';
 type Result={state:'idle'|'lost'|'completed'}|{state:'deferred'|'blocked';code:Code};
 /** Explicit one-job tick. No poller/startup hook, provider POST or caller-supplied financial snapshot. */
-export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'transaction'>,merchant:Merchant,fetcher:typeof fetch=globalThis.fetch){
+export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'transaction'>,merchant:Merchant,fetcher:typeof fetch=globalThis.fetch,publicationTestOwner?:string){
  const mode=process.env.BLIZHNIY_LISTING_WORKFLOW;if(mode!==undefined&&!['pre-moderation','postmoderation'].includes(mode))throw Error('Invalid worker publication mode');
- const queue=new PostgresPaymentReconciliationQueue(db,merchant),verification=new PostgresPaymentVerificationStore(db,merchant,fetcher),fulfillment=new PostgresListingPaymentFulfillmentStore(db,merchant,{postmoderation:mode==='postmoderation'});
+ const publication=publicationTestOwner!==undefined;
+ const queue=new PostgresPaymentReconciliationQueue(db,{...merchant,...(publication?{publicationTestOwner}:{})}),verification=new PostgresPaymentVerificationStore(db,merchant,fetcher);
+ const policy={postmoderation:mode==='postmoderation',...(publication?{publicationTestOwner}:{})};
+ const fulfillments={listing:new PostgresListingPaymentFulfillmentStore(db,merchant,policy),...(publication?{
+  vacancy:new PostgresListingPaymentFulfillmentStore(db,merchant,{...policy,targetType:'vacancy'}),
+  workRequest:new PostgresListingPaymentFulfillmentStore(db,merchant,{...policy,targetType:'workRequest'}),
+ }:{})};
  return{async tick():Promise<Result>{
+  if(publication)await queue.discover();
   // An unknown claim COMMIT is NOT retried: the persisted lease must expire first.
   const claim=await queue.claim();if(!claim)return{state:'idle'};if('exhausted' in claim)return{state:'blocked',code:'attempts_exhausted'};
   let state:'completed'|'retry'|'blocked'|'waiting_phone'='retry',code:Code|null='processing_unavailable';
@@ -22,7 +29,9 @@ export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'tran
    else if(verified.orderStatus!=='succeeded')code='provider_pending';
    else if(!verified.capturedAt)code='capture_required';
    else{
-    const result=await fulfillment.fulfill(claim.intentId);
+    const kind=publication?claim.targetType:'listing';
+    if(!kind||!Object.hasOwn(fulfillments,kind))throw Error('Invalid publication target');
+    const result=await fulfillments[kind]!.fulfill(claim.intentId);
     if(result.state==='fulfilled'){state='completed';code=null;}
     else if(result.state==='blocked'){state='blocked';code='publication_blocked';}
     else code='capture_required';

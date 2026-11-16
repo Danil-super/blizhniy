@@ -1,7 +1,7 @@
 import {parseWorkPublicationForm,checkWorkPublicationForm,type WorkPublicationKind} from './work-publication-contract.ts';
 import {parseListingDraftId} from './listing-draft-contract.ts';
 import type {JobVacancy,WorkRequest} from './types';
-export type PublicWorkRow={id:string;kind:WorkPublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;updatedAt?:string;contentEdited?:boolean};
+export type PublicWorkRow={id:string;kind:WorkPublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;updatedAt?:string;contentEdited?:boolean;testPublication?:boolean};
 const money=(value:string|null)=>!value||value==='0.00'?'по договоренности':`${value.split('.')[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')}${value.endsWith('.00')?'':','+value.split('.')[1]} ₽`;
 
 /** Final public DTO boundary: no contacts, identifiers of owners or unchecked private form spread. */
@@ -13,7 +13,7 @@ export function mapPublicWorkPublication(row:PublicWorkRow,now:number):JobVacanc
   if(row.status!=='published'||row.paid!==true||!Number.isFinite(now)||!Number.isFinite(published)||!Number.isFinite(expires)||published>now||expires<=now||expires<=published||
    !Number.isFinite(Date.parse(row.createdAt))||checkWorkPublicationForm(form).length||!form.cityName||!form.professionName||!Array.isArray(row.mediaIds)||JSON.stringify(row.mediaIds)!==JSON.stringify(form.photoIds))return null;
   const images=form.photoIds.map(photo=>`/api/work-publications/${id}/photos/${photo}`);
-  const common={id,title:form.title,description:form.description,profession:form.professionName,...(row.professionId?{professionId:parseListingDraftId(row.professionId)}:{}),city:form.cityName,
+  const common={id,title:row.testPublication===true?`ТЕСТ · ${form.title}`:form.title,description:form.description,profession:form.professionName,...(row.professionId?{professionId:parseListingDraftId(row.professionId)}:{}),city:form.cityName,
    ...(form.district?{district:form.district}:{}),showExactAddress:form.showExactAddress,
    ...(form.showExactAddress?{address:form.address!,lat:form.latitude!,lng:form.longitude!}:{}),images,status:'published' as const,createdAt:row.createdAt,publishedAt:row.publishedAt!};
   if(form.kind==='workRequest')return{...common,author:'Автор заказа',budget:money(form.budget),...(row.contentEdited!==false&&row.updatedAt&&Number.isFinite(Date.parse(row.updatedAt))&&Date.parse(row.updatedAt)>published?{updatedAt:row.updatedAt}:{})};

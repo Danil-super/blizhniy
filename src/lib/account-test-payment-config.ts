@@ -1,13 +1,16 @@
 import type {ListingCheckoutConfig} from './postgres-listing-checkout';
-export type AccountTestPaymentConfig={ownerId:string;shopId:string;isTest:true;secretKey:string};
+export type AccountTestPaymentConfig={ownerId:string;shopId:string;isTest:true;secretKey:string;publication?:true};
 /** Server-only, fail-closed TEST allowlist. No implicit adoption of legacy LIVE credentials. */
 export function readAccountTestPaymentConfig(env:NodeJS.ProcessEnv,checkout:ListingCheckoutConfig):AccountTestPaymentConfig|null{
  if(typeof window!=='undefined')throw Error('Payment configuration is server-only');
  const mode=env.BLIZHNIY_LISTING_PAYMENT;
  if(mode===undefined||mode==='disabled')return null;
  const owner=env.BLIZHNIY_PAYMENT_TEST_USER_ID,secret=env.YOOKASSA_SECRET_KEY;
- if(mode!=='account-test'||!checkout.isTest||checkout.receiptVatCode===null||
+ const publication=mode==='account-publication-test';
+ if(publication&&(env.BLIZHNIY_AUTH_MODE!=='postgres'||env.BLIZHNIY_AUTH_ORIGIN!=='https://xn----9sbphbgks4a4a.xn--p1ai'||
+  checkout.siteOrigin!==env.BLIZHNIY_AUTH_ORIGIN||env.BLIZHNIY_LISTING_WORKFLOW!=='postmoderation'||env.BLIZHNIY_LOCAL_PRIMARY!==undefined))throw Error('Invalid publication TEST configuration');
+ if(mode!=='account-test'&&!publication||!checkout.isTest||checkout.receiptVatCode===null||
   !owner||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(owner)||
   env.YOOKASSA_SHOP_ID!==checkout.shopId||!secret?.startsWith('test_')||secret.length>2048||/[\s\u0000-\u001f\u007f]/.test(secret))throw Error('Invalid account TEST payment configuration');
- return{ownerId:owner,shopId:checkout.shopId,isTest:true,secretKey:secret};
+ return{ownerId:owner,shopId:checkout.shopId,isTest:true,secretKey:secret,...(publication?{publication:true as const}:{})};
 }

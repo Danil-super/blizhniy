@@ -1,0 +1,250 @@
+--- a/tests/primary-listing-form-browser.mjs
++++ b/tests/primary-listing-form-browser.mjs
+@@ -33,6 +33,10 @@
+    if(!url.pathname.startsWith('/api/account/'))return route.continue();
+    assert.equal(request.headers().authorization,undefined);
+    if(url.pathname.endsWith('/session')){if(sessionGate)await sessionGate;return route.fulfill({json:{user:{id:active,email:'fixture@example.invalid',role:'user',isBlocked:false}}});}
++   if(url.pathname==='/api/account/phone/status'){
++    assert.equal(request.method(),'POST');assert.deepEqual(request.postDataJSON(),{expectedOwnerId:active});
++    return route.fulfill({json:{available:true,required:true,verified:true,phone:'+79990000000',verifiedPhone:'+79990000000'}});
++   }
+    if(url.pathname==='/api/account/media'){const mediaId=request.headers()['x-blizhniy-intent'];intents.push(mediaId);return route.fulfill({json:{id:mediaId,mimeType:'image/webp',width:80,height:40,size:12}});}
+    if(url.pathname==='/api/account/profile'){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');return route.fulfill({json:{exists:false,profile:createDefaultCabinetProfile({name:'Технический',email:'fixture@example.invalid'}),revision:null}});}
+    if(active!==owner){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');assert.ok(url.pathname.endsWith('/collection'));return route.fulfill({json:{items:[],nextCursor:null}});}
+@@ -109,7 +113,7 @@
+   assert.equal(await page.locator('input[name="bookingExtraGuestPrice"]').inputValue(),'0');
+   assert.equal(await page.locator('input[name="bookingAvailableFrom"]').inputValue(),'2026-01-01');
+   await page.locator('textarea[name="bookingIncluded"]').focus();await page.keyboard.press('Tab');assert.equal(await page.locator('textarea[name="bookingRules"]').evaluate(input=>document.activeElement===input),true);
+-  await page.getByRole('img',{name:'Сохранённая фотография 1 из 1',exact:true}).waitFor();assert.equal(await page.getByRole('img',{name:'Сохранённая фотография 1 из 1',exact:true}).count(),1);
++  await page.getByRole('img',{name:'Фото 1',exact:true}).waitFor();assert.equal(await page.getByRole('img',{name:'Фото 1',exact:true}).count(),1);
+   await page.locator('input[name="phone"]').fill('+79991112233');
+   await page.locator('input[name="photos"]').setInputFiles({name:'second.png',mimeType:'image/png',buffer:pixels});
+   sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('blizhniy-account-changed')));
+@@ -203,7 +207,7 @@
+   assert.equal(writes.length,beforeInitialWrites);assert.equal(submissions,beforeInitialSubmissions);
+   await page.locator('input[name="title"]').fill('Сразу на модерацию');
+   await page.locator('textarea[name="description"]').fill('Описание для модератора');
+-  await page.getByRole('button',{name:'Выбрать',exact:true}).click();
++  await page.getByRole('button',{name:/Город и регион/}).click();
+   await page.getByRole('option',{name:'Краснодар, Краснодарский край',exact:true}).click();
+   await page.locator('input[name="phone"]').fill('+79990000000');
+   loseSubmission=true;
+@@ -234,7 +238,7 @@
+   await page.goto(origin+'/razmestit/obyavlenie');
+   await page.locator('input[name="title"]').fill('Проверка сохранения перед отправкой');
+   await page.locator('textarea[name="description"]').fill('Форма сохраняется без дубликатов');
+-  await page.getByRole('button',{name:'Выбрать',exact:true}).click();
++  await page.getByRole('button',{name:/Город и регион/}).click();
+   await page.getByRole('option',{name:'Краснодар, Краснодарский край',exact:true}).click();
+   await page.locator('input[name="phone"]').fill('+79990000000');
+   await page.locator('input[name="placementRightsAccepted"]').check();
+--- a/tests/production-account-browser.mjs
++++ b/tests/production-account-browser.mjs
+@@ -188,7 +188,7 @@
+       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+       const calls = [], sessionReads = [], foreign = [], errors = [];
+       const state = { active: null, override: null, sessionReads, profiles: new Map(), profileRequests: [], profileOverride: null,
+-        drafts: new Map(), draftRequests: [], draftLoseWrite: false, draftLoseCreate: false, draftOverride: null,
++        drafts: new Map(), phoneReads: [], draftRequests: [], draftLoseWrite: false, draftLoseCreate: false, draftOverride: null,
+         photos:new Map(),mediaRequests:[],photoLoseWrite:false };
+       const pixels=await sharp({create:{width:16,height:9,channels:3,background:'red'}}).webp().toBuffer();
+       await context.route("**/*", async route => {
+@@ -265,6 +265,11 @@
+           return route.fulfill({ json: { exists: state.profiles.has(state.active.id), profile: stored, revision: fixtureRevision(state.profiles.get(state.active.id)) } });
+         }
+         assert.equal(request.method(), "POST"); assert.equal(request.headers()["x-blizhniy-request"], "1");
++        if (url.pathname === "/api/account/phone/status") {
++          assert.deepEqual(Object.keys(body), ["expectedOwnerId"]);state.phoneReads.push(body);
++          if(!state.active||body.expectedOwnerId!==state.active.id)return route.fulfill({status:401,json:{error:{code:"UNAUTHENTICATED"}}});
++          return route.fulfill({json:{available:false,required:true,verified:false,phone:state.profiles.get(state.active.id)?.phone||null,verifiedPhone:null}});
++        }
+         assert.equal(url.search, ""); calls.push({ action, body });
+         // Credential assertions stay separate from the new shared session reads; neither is ignored.
+         if (action === "session") { assert.deepEqual(body, {}); sessionReads.push(calls.pop()); }
+@@ -299,7 +304,7 @@
+       }
+       await page.getByLabel('Email', { exact: true }).fill('owner@example.invalid');
+       await page.getByRole('button', { name: 'Отправить письмо восстановления', exact: true }).click();
+-      await page.getByRole('status').filter({ hasText: 'Если аккаунт подтверждён' }).waitFor();
++      await page.getByRole('status').filter({ hasText: 'Если адрес зарегистрирован и восстановление доступно' }).waitFor();
+       assert.deepEqual(calls, [{ action: 'recover', body: { email: 'owner@example.invalid', captchaToken: '' } }]);
+       await context.setExtraHTTPHeaders({ 'x-real-ip': '192.0.2.45' });
+       await page.goto(origin + '/auth/recover');
+@@ -517,8 +522,9 @@
+       await page.getByRole("heading", { name: "Синтетический", exact: true }).waitFor();
+       await page.getByRole("button", { name: "Настройки", exact: true }).click();
+       await page.getByLabel("Имя", { exact: true }).fill("Изменённый");
++      await page.locator("summary").filter({hasText:"Уведомления"}).click();
+       await page.getByLabel("Брони и заказы", { exact: true }).uncheck();
+-      assert.equal(await page.getByLabel("Email", { exact: true }).getAttribute("readonly"), "");
++      assert.equal(await page.getByLabel("Email для входа", { exact: true }).getAttribute("readonly"), "");
+       await page.getByRole("button", { name: "Сохранить настройки", exact: true }).click();
+       await page.getByText("Настройки сохранены.", { exact: true }).waitFor();
+       assert.equal(state.profileRequests.filter(row => row.method === "PUT").length, 1);
+@@ -617,6 +623,9 @@
+       assert.equal(await page.getByRole("button", { name: "Сохранить настройки", exact: true }).count(), 0);
+       state.profileOverride = null;
+       await page.getByRole("button", { name: "Обновить профиль", exact: true }).first().click();
++      await page.getByLabel("Имя", {exact:true}).waitFor();
++      assert.equal(await page.getByLabel("Имя", {exact:true}).inputValue(),"Сохранённый","readback restores the editor before explicitly clearing its draft");
++      await page.getByRole("button", {name:"Закрыть",exact:true}).click();
+       await page.getByRole("heading", { name: "Сохранённый", exact: true }).waitFor();
+       assert.equal(state.profileRequests.filter(row => row.method === "PUT").length, 1);
+     });
+@@ -674,8 +683,12 @@
+       try {
+         await page.getByRole("button", { name: "Сохранить настройки", exact: true }).click(); await pending;
+         const tab = await context.newPage(); tab.setDefaultTimeout(10000); await login(tab, second.email, true);
+-        await page.getByRole("heading", { name: "Второй", exact: true }).waitFor();
++        await page.getByLabel("Имя", {exact:true}).waitFor();
++        assert.equal(await page.getByLabel("Имя", {exact:true}).inputValue(),"Второй","B editor must be live before A's response");
+         release(); await settled;
++        await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
++        assert.equal(await page.getByLabel("Имя", {exact:true}).inputValue(),"Второй","A's late response cannot replace B's live editor");
++        await page.getByRole("button", {name:"Закрыть",exact:true}).click();
+         await page.getByRole("heading", { name: "Второй", exact: true }).waitFor();
+         assert.equal(state.profiles.get(second.id).name, "Второй");
+         assert.equal(await page.getByRole("heading", { name: "Изменённый первый", exact: true }).count(), 0);
+@@ -932,7 +945,7 @@
+       await recover.waitFor(); await page.getByRole("button", { name: "Fixture: expire CAPTCHA" }).click();
+       assert.equal(await recover.isDisabled(), true); assert.equal(calls.length, 0);
+       await page.reload(); await page.getByLabel("Email", { exact: true }).fill("owner@example.invalid");
+-      await recover.click(); await page.getByRole("status").filter({ hasText: "Если аккаунт подтверждён" }).waitFor();
++      await recover.click(); await page.getByRole("status").filter({ hasText: "Если адрес зарегистрирован и восстановление доступно" }).waitFor();
+       assert.deepEqual(calls[0], { action: "recover", body: { email: "owner@example.invalid", captchaToken: "fixture-captcha" } });
+       await page.goto(`${origin}/auth/reset#token=${"c".repeat(64)}`);
+       await page.getByLabel("Новый пароль", { exact: true }).fill(password);
+--- a/tests/cabinet-entry-browser-cases.mjs
++++ b/tests/cabinet-entry-browser-cases.mjs
+@@ -7,7 +7,8 @@
+     state.active = owner;
+     for (const path of ['/cabinet', '/cabinet/obyavleniya']) {
+       await page.goto(origin + path);
+-      await page.getByRole('button', { name: 'Обновить список', exact: true }).waitFor();
++      await page.getByRole('link', { name: 'Создать объявление', exact: true }).first().waitFor();
++      assert.equal(await page.getByRole('button', { name: 'Обновить список', exact: true }).count(),0);
+       assert.equal(await page.getByRole('button', { name: 'Новый черновик', exact: true }).count(), 0);
+       const create = page.locator('main a[href="/razmestit/obyavlenie"]').filter({ hasText: 'Создать объявление' }).first();
+       assert.equal(await create.isVisible(), true);
+@@ -28,10 +29,11 @@
+     await page.getByRole('heading', { name: 'Имя регистрации', exact: true }).waitFor();
+     assert.equal(await page.getByText('Ваш профиль', { exact: true }).isVisible(), true);
+     await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+-    const phone = page.getByRole('button', { name: 'Подтвердить номер', exact: true });
++    const phone = page.getByRole('button', { name: 'Подтвердить через Telegram', exact: true });
+     assert.equal(await phone.isDisabled(), true);
+-    assert.equal(await page.locator('#phone-verification-availability').isVisible(), true);
+-    assert.equal(await phone.getAttribute('aria-describedby'), 'phone-verification-availability');
++    await page.getByRole('status').filter({hasText:'Подтверждение через Telegram пока не настроено.'}).waitFor();
++    assert.equal(await page.getByRole('status').filter({hasText:'Подтверждение через Telegram пока не настроено.'}).isVisible(), true);
++    assert.equal(await phone.getAttribute('aria-describedby'),await page.getByRole('status').filter({hasText:'Подтверждение через Telegram пока не настроено.'}).getAttribute('id'));
+     assert.equal(await page.getByLabel('Имя', { exact: true }).inputValue(), 'Имя регистрации');
+     for (const width of [320, 768, 1024, 1440]) {
+       await page.setViewportSize({ width, height: 900 });
+--- a/tests/cabinet-offline-browser-cases.mjs
++++ b/tests/cabinet-offline-browser-cases.mjs
+@@ -22,6 +22,7 @@
+   await page.getByRole("heading", { name, exact: true }).waitFor();
+   await page.getByRole("button", { name: "Настройки", exact: true }).click();
+   await page.getByLabel("Имя", { exact: true }).waitFor();
++  await page.locator("summary").filter({hasText:"Уведомления"}).click();
+ }
+ 
+ async function interruptSessionRead(page, origin, state) {
+@@ -113,6 +114,9 @@
+     assert.equal((await page.locator("main").textContent()).includes(unsaved), false);
+     state.active = owner;
+     await checkSession(page, origin);
++    await page.getByLabel("Имя", {exact:true}).waitFor();
++    assert.equal(await page.getByLabel("Имя", {exact:true}).inputValue(),"Сохранённое имя","auth boundary discards abandoned values before any explicit close");
++    await page.getByRole("button", {name:"Закрыть",exact:true}).click();
+     await page.getByRole("heading", { name: "Сохранённое имя", exact: true }).waitFor();
+     if (!await page.getByLabel("Имя", { exact: true }).count()) await page.getByRole("button", { name: "Настройки", exact: true }).click();
+     assert.equal(await page.getByLabel("Имя", { exact: true }).inputValue(), "Сохранённое имя",
+@@ -128,12 +132,18 @@
+     await page.getByLabel("Имя", { exact: true }).fill(unsaved);
+     state.active = second;
+     await checkSession(page, origin);
+-    await page.getByRole("heading", { name: "Второй сохранённый", exact: true }).waitFor();
++    await page.getByLabel("Имя", {exact:true}).waitFor();
++    assert.equal(await page.getByLabel("Имя", {exact:true}).inputValue(),"Второй сохранённый","auth boundary discards abandoned values before any explicit close");
++    assert.equal(await page.getByLabel("Email для входа", {exact:true}).inputValue(),second.email,"B identity is checked without clearing hidden A state");
+     assert.equal((await page.locator("main").textContent()).includes(unsaved), false);
+     if (!await page.getByLabel("Имя", { exact: true }).count()) await page.getByRole("button", { name: "Настройки", exact: true }).click();
+     assert.equal(await page.getByLabel("Имя", { exact: true }).inputValue(), "Второй сохранённый");
+     state.active = first;
+     await checkSession(page, origin);
++    await page.getByLabel("Имя", {exact:true}).waitFor();
++    assert.equal(await page.getByLabel("Имя", {exact:true}).inputValue(),"Первый сохранённый","auth boundary discards abandoned values before any explicit close");
++    assert.equal(await page.getByLabel("Email для входа", {exact:true}).inputValue(),first.email);
++    await page.getByRole("button", {name:"Закрыть",exact:true}).click();
+     await page.getByRole("heading", { name: "Первый сохранённый", exact: true }).waitFor();
+     if (!await page.getByLabel("Имя", { exact: true }).count()) await page.getByRole("button", { name: "Настройки", exact: true }).click();
+     assert.equal(await page.getByLabel("Имя", { exact: true }).inputValue(), "Первый сохранённый",
+--- a/tests/account-test-checkout-browser-cases.mjs
++++ b/tests/account-test-checkout-browser-cases.mjs
+@@ -38,7 +38,7 @@
+  await page.getByRole('button',{name:'Проверить сохранённый заказ',exact:true}).waitFor();assert.equal(calls.filter(call=>call.method==='PUT').length,1);
+  let release;const gate=new Promise(resolve=>{release=resolve;});
+  await context.route('**/api/account/session',async route=>{await gate;return route.fulfill({json:{user:{id:owner,email:'fixture@example.invalid',role:'user',isBlocked:false}}});});
+- await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
++ await page.evaluate(()=>window.dispatchEvent(new Event('blizhniy-account-changed')));
+  await page.getByText('Проверяем доступ к черновикам…',{exact:true}).waitFor();release();
+  await page.getByRole('button',{name:'Проверить сохранённый заказ',exact:true}).waitFor();
+  assert.equal(calls.filter(call=>call.method==='PUT').length,1);
+--- a/tests/listing-edit-browser-pg.cjs
++++ b/tests/listing-edit-browser-pg.cjs
+@@ -27,6 +27,10 @@
+   if(sql.startsWith('select token_hash from app.sessions where')||sql.startsWith('update app.sessions set last_seen_at=least')){
+    const {active}=state();assert.deepEqual(values,[tokenHash,active,'0']);return result([{token_hash:tokenHash}]);
+   }
++  if(sql==="select l.status from app.listings l where l.id=$1 and l.author_id=$2 and l.status='draft' for update"){
++   const {snapshot,owner}=state();assert.equal(values.length,2);
++   return result(snapshot&&values[0]===snapshot.id&&values[1]===owner?[{status:'draft'}]:[]);
++  }
+   if(sql.startsWith('select l.id,l.revision::text as revision,l.listing_type as "listingType"')){
+    const {snapshot,owner}=state();if(!snapshot||values[0]!==snapshot.id||values[1]!==owner)return result([]);
+    const {kind,photoIds,...fields}=snapshot.form;assert.ok(Array.isArray(photoIds));
+--- a/tests/listing-form-browser-pg.cjs
++++ b/tests/listing-form-browser-pg.cjs
+@@ -14,7 +14,7 @@
+   if(/from app\.categories\b/.test(sql))return{rows};
+   if(/from app\.tariffs\b/.test(sql))return{rows:tariffs.map(t=>({id:uuid(t.action),action:t.action,name:t.name,price:Number(t.price).toFixed(2),duration_days:t.durationDays,active:t.active}))};
+   if(sql.startsWith('select w.id,w.kind,w.form,w.status,w.is_paid as paid,')&&sql.includes('join app.work_moderation review')&&sql.includes("review.state='approved'")&&sql.includes("w.status='published' and w.is_paid")&&sql.includes('w.expires_at>statement_timestamp()'))return{rows:[]};
+-  if(sql.startsWith('select s.id,s.kind,s.form,s.status,s.is_paid as paid,')&&sql.includes('join app.service_moderation review')&&sql.includes("review.state='approved'")&&sql.includes("s.status='published' and s.is_paid")&&sql.includes('s.expires_at>statement_timestamp()'))return{rows:[]};
++  if(sql.startsWith('select s.id,s.kind,')&&sql.includes('from app.service_publications s')&&sql.includes('join app.service_moderation review')&&sql.includes("review.state='approved'")&&sql.includes("s.status='published' and s.is_paid")&&sql.includes('s.deleted_at is null')&&sql.includes('s.expires_at>statement_timestamp()'))return{rows:[]};
+   // This general fixture has no ordinary public listings. Dedicated page tests provide their own rows.
+   if(sql.startsWith('select l.id,l.author_id as "ownerId"')&&sql.includes("review.state='approved'")&&sql.includes("l.status='published' and l.is_paid")&&sql.includes('l.expires_at>clock_timestamp()'))return{rows:[]};
+   if(/limit 0/i.test(sql))return{rows:[]};
+--- a/scripts/check-quality-floor.mjs
++++ b/scripts/check-quality-floor.mjs
+@@ -150,6 +150,7 @@
+ // Exact browser-test replacements reviewed individually by the owner; see docs/review/.
+ // Content-addressed artifacts, not a blanket permission to remove assertions.
+ const reviewedListingArtifacts = [
++  {"file": "tests/cabinet-entry-browser-cases.mjs", "before": "bc0bbf335935bfd080363e382aa50062479bdfd65f058db368cfd00b44a618dd", "after": "a17a3ba056f19d5d4d7f10af9e2611f485f7d317954749b08229631570fc851e"},
+   {"file": "tests/cabinet-card-browser-cases.mjs", "before": "85c919870ea9f4e06564e05a55520a4ae722d62f8981965be32627276c4d24ec", "after": "ebe5d0e8f5787ec30d23efd4041e076d22e1701a5314e1e05fcbe694adbcdba2"},
+   {"file": "tests/primary-payment-return-browser.mjs", "before": "097f44cfbfd7355bdbb5222c616763a7257d85c879882b638705e292ec25aa1e", "after": "e1dc2baa4483ac51b9e95dda716717b69c2bd232e384ac829caa1a00b7ce0190"},
+   {
+@@ -159,8 +160,8 @@
+   },
+   {
+     "file": "tests/primary-listing-form-browser.mjs",
+-    "before": "107b019ad1e6dcd5c1d323a179d8ef34a4666aec11746bf6a4bdeca76c1a3b2f",
+-    "after": "94b3afeb529892c4c943687a6584b4199b142ea76f8eda1a105b0a90252c40f6"
++    "before": "94b3afeb529892c4c943687a6584b4199b142ea76f8eda1a105b0a90252c40f6",
++    "after": "eef145924f8b23aef530a7959fb853f3dfc2d31d5e43758c0af5f7d7258bf52c"
+   },
+   {
+     "file": "tests/account-test-checkout-browser-cases.mjs",
+@@ -169,8 +170,8 @@
+   },
+   {
+     "file": "tests/production-account-browser.mjs",
+-    "before": "5254b6e61d8d990150c165b4ee2fe7fce21a7af520c6082c7696ebdfce632698",
+-    "after": "e6d407deeae1ecb2e0a7361c954c162c0a46191257746fb3c24dec033795db98"
++    "before": "e6d407deeae1ecb2e0a7361c954c162c0a46191257746fb3c24dec033795db98",
++    "after": "c631dcadb019c2b51dc976142fda70e6cdeca530269ec707ea355f38b3c8a5b8"
+   },
+   {
+     "file": "tests/cabinet-offline-browser-cases.mjs",

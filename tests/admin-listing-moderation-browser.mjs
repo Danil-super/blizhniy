@@ -35,7 +35,7 @@ test('moderator reviews private photos, preserves a rejection reason through ses
   await page.goto(origin+'/admin/obyavleniya',{waitUntil:'domcontentloaded'});await page.getByRole('heading',{name:'Объявления на модерации',exact:true}).waitFor();
   await page.getByRole('button',{name:form.title,exact:true}).click();await page.getByRole('img',{name:'Фотография 1 из 1',exact:true}).waitFor();
   await page.getByLabel('Причина отказа',{exact:true}).fill('Исправьте фотографию');
-  let release;gate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  let release;gate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('blizhniy-account-changed')));
   await page.getByText('Проверяем права. Данные модерации временно скрыты.',{exact:true}).waitFor();assert.equal(await page.getByLabel('Причина отказа',{exact:true}).count(),0);
   release();gate=null;await page.getByLabel('Причина отказа',{exact:true}).waitFor();assert.equal(await page.getByLabel('Причина отказа',{exact:true}).inputValue(),'Исправьте фотографию');
   await page.getByRole('button',{name:'Отклонить с причиной',exact:true}).click();await page.getByText('Результат не подтверждён. Перечитайте запрос перед повторным решением.',{exact:true}).waitFor();

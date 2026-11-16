@@ -38,7 +38,7 @@ export async function testAccountCheckoutBrowser({context,page,origin,owner,id,r
  await page.getByRole('button',{name:'Проверить сохранённый заказ',exact:true}).waitFor();assert.equal(calls.filter(call=>call.method==='PUT').length,1);
  let release;const gate=new Promise(resolve=>{release=resolve;});
  await context.route('**/api/account/session',async route=>{await gate;return route.fulfill({json:{user:{id:owner,email:'fixture@example.invalid',role:'user',isBlocked:false}}});});
- await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await page.evaluate(()=>window.dispatchEvent(new Event('blizhniy-account-changed')));
  await page.getByText('Проверяем доступ к черновикам…',{exact:true}).waitFor();release();
  await page.getByRole('button',{name:'Проверить сохранённый заказ',exact:true}).waitFor();
  assert.equal(calls.filter(call=>call.method==='PUT').length,1);

@@ -8,6 +8,7 @@ function mount(application){const instances=new Map(),effects=[],cache=new Map()
  const read=async()=>{calls.push('payment.read');return snapshot();};
  function load(name){if(cache.has(name))return cache.get(name);const out={};cache.set(name,out);new Function('require','exports',ts.transpileModule(fs.readFileSync(path.join(root,'src/components/payments',name+'.tsx'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText)(dep=>{
   if(dep==='react')return react;if(dep==='react/jsx-runtime')return{jsx,jsxs:jsx};if(dep==='next/link')return{__esModule:true,default:props=>jsx('a',props)};
+  if(dep==='next/navigation')return{useRouter:()=>({replace(){assert.fail('Cancellation must not automatically navigate');}})};
   if(dep==='@/components/auth/AccountAuthProvider')return{usePrimaryAccountAuth:()=>auth};if(dep==='@/components/listings/ListingWorkflowProvider')return{useLocalPaymentSimulation:()=>true};
   if(dep==='@/lib/local-account')return{notifyAccountSessionChange(){calls.push('session.notify');}};
   if(dep==='@/lib/client-listing-payment')return{listingPayment:{read},ListingPaymentClientError:ClientError};if(dep==='@/lib/client-vacancy-payment')return{vacancyPaymentStatus:{read},workRequestPaymentStatus:{read}};
