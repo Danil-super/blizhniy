@@ -126,7 +126,9 @@ jobs:
             tests/response-checkout-fence-postgres.mjs \
             tests/checkout-cancellation-postgres.mjs \
             tests/publication-test-postgres.mjs \
-            tests/publication-test-release-postgres.mjs
+            tests/publication-test-release-postgres.mjs \
+            tests/specialist-checkout-postgres.mjs \
+            tests/specialist-checkout-guards-postgres.mjs
           do
             node --experimental-strip-types --test --test-concurrency=1 "$suite"
           done

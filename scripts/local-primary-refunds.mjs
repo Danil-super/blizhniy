@@ -1,3 +1,4 @@
+import {readSpecialistCheckoutEnabled} from '../src/lib/specialist-checkout-config.ts';
 import {readMediaRetentionEnabled} from '../src/lib/media-retention-config.ts';
 import {readServiceCheckoutEnabled} from '../src/lib/service-checkout-config.ts';
 import {readPlacementRenewalsEnabled} from '../src/lib/placement-renewal-config.ts';
@@ -33,25 +34,28 @@ export async function startLocalPrimaryRefunds({stateFile,signal,report}={}){
    !(signal instanceof AbortSignal)||signal.aborted||typeof report!=='function')throw unavailable();
   const state=readLocalPrimaryState(stateFile,root),parent=dirname(stateFile),config=readLocalPrimaryRefundConfig(join(parent,'refunds.json'),state);
   if(process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!==state.origin)throw unavailable();
-  const schema=readMediaRetentionEnabled()?58:readServiceCheckoutEnabled()?57:readPlacementRenewalsEnabled()?56:55;
+  const specialist=readSpecialistCheckoutEnabled();
+  let schema=specialist?60:readMediaRetentionEnabled()?58:readServiceCheckoutEnabled()?57:readPlacementRenewalsEnabled()?56:55;
   const env={NODE_ENV:'production',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_DB_HOST:'127.0.0.1',
    BLIZHNIY_DB_PORT:String(state.dbPort),BLIZHNIY_DB_NAME:state.database,BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:join(parent,'refund-db-ca.pem'),
    BLIZHNIY_PAYMENT_SHOP_ID:localPrimaryMerchant.shopId,BLIZHNIY_PAYMENT_SECRET_KEY:localPrimaryMerchant.secretKey};
   const certificate=await verifyLocalPrimaryRefundTarget(env,{stateFile,project:root});signal.throwIfAborted();
   directory=await mkdtemp(join(parent,'refund-runtime-'));signal.throwIfAborted();
-  const operatorPath=join(directory,'operator'),workerPath=join(directory,'worker');
-  buildRefundOperator(operatorPath,{schema,localPrimary:schema===58});signal.throwIfAborted();buildRefundWorker(workerPath,{schema,localPrimary:schema===58});signal.throwIfAborted();
-  for(const destination of [operatorPath,workerPath])await symlink(join(root,'node_modules'),join(destination,'node_modules'),'dir');
-  const require=createRequire(join(workerPath,'package.json')),{PostgresDatabase,readPostgresConfig}=require('./compiled/lib/postgres.js');
+  const {PostgresDatabase,readPostgresConfig}=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule('postgres');
   const ownerConfig=readPostgresConfig({...env,BLIZHNIY_DB_USER:'postgres',BLIZHNIY_DB_PASSWORD:state.ownerPassword});
   assertLocalPrimaryRefundTrust(ownerConfig,certificate);signal.throwIfAborted();
   ownerDb=new PostgresDatabase(new pg.Pool({...ownerConfig,max:2,application_name:'blizhniy-local-refund-provider'}));
   await ownerDb.transaction(async tx=>{
    await tx.query("set local statement_timeout='5s'");await tx.query("set local lock_timeout='1s'");
    const journal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   if(JSON.stringify(journal)!==JSON.stringify(getRefundOperatorRolePlan(state.database,{schema,localPrimary:schema===58}).journal))throw unavailable();
+   if(journal.length===59)schema=60;
+   if(JSON.stringify(journal)!==JSON.stringify(getRefundOperatorRolePlan(state.database,{schema,localPrimary:[58,60].includes(schema)}).journal))throw unavailable();
    await assertRefundSchema(tx,schema,{localPrimary:true});
   },{readOnly:true});signal.throwIfAborted();
+  const operatorPath=join(directory,'operator'),workerPath=join(directory,'worker');
+  buildRefundOperator(operatorPath,{schema,localPrimary:[58,60].includes(schema)});signal.throwIfAborted();
+  buildRefundWorker(workerPath,{schema,localPrimary:[58,60].includes(schema)});signal.throwIfAborted();
+  for(const destination of [operatorPath,workerPath])await symlink(join(root,'node_modules'),join(destination,'node_modules'),'dir');
   const fetcher=await createLocalPrimaryRefundProvider({state,ownerDb});signal.throwIfAborted();
   const operator=await import(pathToFileURL(join(operatorPath,'scripts/local-refund-operator-runtime.mjs')).href);
   const server=await import(pathToFileURL(join(operatorPath,'scripts/local-refund-operator-server.mjs')).href);

@@ -1,4 +1,4 @@
-// Local57/58 read-only inventory; --files adds fenced observation, never apply/delete.
+// Local57/58/60 read-only inventory; --files adds fenced observation, never apply/delete.
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {lstat,realpath,writeFile} from 'node:fs/promises';
@@ -27,13 +27,13 @@ try{
  const snapshot=()=>db.readTransaction(async tx=>{
   const journal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
   phase='schema';
-  const schema=journal.length===58?58:57;
+  const schema=journal.length===59?60:journal.length===58?58:57;
   assert.deepEqual(journal,getRefundOperatorRolePlan(state.database,{schema,localPrimary:true}).journal);
   await assertRefundSchema(tx,schema,{localPrimary:true});
   phase='inventory';
-  const report=await readMediaRetentionInventory(tx,{retention:schema===58});
+  const report=await readMediaRetentionInventory(tx,{retention:schema>=58});
   if(!includeFiles)return report;
-  assert.equal(schema,58);phase='files';
+  assert.ok(schema===58||schema===60);phase='files';
   const rows=(await tx.query(`select m.id,m.mime_type as "mimeType",m.width,m.height,m.size,m.sha256,a.id as "attemptId"
    from app.media_objects m left join app.media_write_attempts a on a.media_id=m.id order by m.id limit 10001`)).rows;
   assert.equal(rows.length,report.media.length);

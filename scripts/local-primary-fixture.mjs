@@ -1,3 +1,5 @@
+import {readSpecialistCheckoutEnabled} from '../src/lib/specialist-checkout-config.ts';
+import {verifySpecialistCheckoutRuntimeAccess} from './specialist-checkout-release.mjs';
 import {verifyMediaRetentionRuntimeAccess} from './media-retention-role.mjs';
 import {readMediaRetentionEnabled} from '../src/lib/media-retention-config.ts';
 import {readServiceCheckoutEnabled} from '../src/lib/service-checkout-config.ts';
@@ -77,12 +79,14 @@ export async function verifyLocalPrimarySchema(state){
   const expected=[...getBootstrapPlan({includeListingContactMethod:true}).map(({name,sha256})=>({name,sha256})),...extras.map(({name,sha256})=>({name,sha256}))];
   const journal=(await owner.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
   const local={...process.env,BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:state.origin,BLIZHNIY_LISTING_WORKFLOW:'postmoderation'};
-  const schema=readMediaRetentionEnabled(local)?58:readServiceCheckoutEnabled(local)?57:readPlacementRenewalsEnabled(local)?56:55;
-  const refundSchema=journal.length===schema&&JSON.stringify(journal)===JSON.stringify(getRefundOperatorRolePlan(state.database,{schema,localPrimary:schema===58}).journal);
+  const specialist=readSpecialistCheckoutEnabled(local);
+  const schema=journal.length===59||specialist?60:readMediaRetentionEnabled(local)?58:readServiceCheckoutEnabled(local)?57:readPlacementRenewalsEnabled(local)?56:55;
+  const refundSchema=(schema===60?journal.length===59:journal.length===schema)&&JSON.stringify(journal)===JSON.stringify(getRefundOperatorRolePlan(state.database,{schema,localPrimary:[58,60].includes(schema)}).journal);
   if(schema>=56&&!refundSchema)throw Error('Local renewal schema required; automatic migration refused');
   if(JSON.stringify(journal)!==JSON.stringify(expected)&&!refundSchema)throw Error('Local schema changed; data preserved, automatic migration refused');
   if(refundSchema)await assertRefundSchema(owner,schema,{localPrimary:true});
-  if(schema===58)await verifyMediaRetentionRuntimeAccess(owner);
+  if(schema>=58)await verifyMediaRetentionRuntimeAccess(owner);
+  if(schema===60)await verifySpecialistCheckoutRuntimeAccess(owner);
   const role=(await owner.query("select rolsuper,rolcreatedb,rolcreaterole,rolinherit,rolreplication,rolbypassrls from pg_roles where rolname='blizhniy_runtime'")).rows[0];
   if(!role||Object.values(role).some(Boolean))throw Error('Unexpected local runtime authority');
   await owner.query('commit');
