@@ -11,15 +11,17 @@ export function createAccountSessionState(session: () => Promise<LocalAccountUse
   let version = 0, changing = 0;
   const listeners = new Set<(value: AccountAuthSnapshot) => void>();
   function publish(state: AccountAuthSnapshot["state"], userId: string | null = null) {
+    if (snapshot.state === state && snapshot.userId === userId) return;
     snapshot = { state, userId };
     listeners.forEach(listener => listener(snapshot));
   }
-  async function refresh() {
+  async function refresh(background = false) {
     const current = ++version;
     // Anonymous UI holds no private identity. Publishing loading here would
     // unmount an embedded login form on focus or during its own submission.
     const anonymous = snapshot.state === "signed-out";
-    if (!anonymous) publish("loading");
+    // Focus checks retain the last verified view; explicit account changes still fence it immediately.
+    if (!anonymous && !background) publish("loading");
     if (changing) return;
     try {
       const user = await session();

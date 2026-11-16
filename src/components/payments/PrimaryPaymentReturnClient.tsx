@@ -1,6 +1,7 @@
 "use client";
 import Link from 'next/link';
-import {useEffect,useState} from 'react';
+import {useRouter} from 'next/navigation';
+import {useEffect,useRef,useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {listingPayment,ListingPaymentClientError} from '@/lib/client-listing-payment';
 import {notifyAccountSessionChange} from '@/lib/local-account';
@@ -13,6 +14,8 @@ import {PhonePaymentNotice} from '@/components/phone/PhonePaymentNotice';
 
 const button='inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:opacity-60';
 function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,cancellationEnabled}:{owner:string;paymentId:string;visible:boolean;testCheckout:boolean;vacancy:boolean;workRequest:boolean;cancellationEnabled:boolean}){
+ const router=useRouter(),cabinet=workRequest?'/cabinet/zakazy':vacancy?'/cabinet/vakansii':'/cabinet/obyavleniya';
+ const automaticChecks=useRef(0);
  const [cancellationPending,setCancellationPending]=useState(false);
  const [snapshot,setSnapshot]=useState<ListingPaymentSnapshot|null>(null),[loaded,setLoaded]=useState(false),[error,setError]=useState<string|null>(null),[busy,setBusy]=useState(false),[retry,setRetry]=useState(0);
  useEffect(()=>{
@@ -26,15 +29,26 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
   }).finally(()=>{if(!controller.signal.aborted)setBusy(false);});
   return()=>controller.abort();
  },[owner,paymentId,visible,retry,vacancy,workRequest,cancellationPending]);
+ const confirmed=!!snapshot&&snapshot.order.status==='succeeded'&&(testCheckout||!!snapshot.fulfillment);
+ const terminal=confirmed||snapshot?.order.status==='failed'||snapshot?.order.status==='refunded';
+ useEffect(()=>{
+  if(!visible||busy||error||cancellationPending||!snapshot)return;
+  if(confirmed){const timer=setTimeout(()=>router.replace(cabinet),2000);return()=>clearTimeout(timer);}
+  if(!terminal&&automaticChecks.current<10){
+   const timer=setTimeout(()=>{automaticChecks.current++;setRetry(value=>value+1);},2000);
+   return()=>clearTimeout(timer);
+  }
+ },[visible,busy,error,cancellationPending,snapshot,confirmed,terminal,router,cabinet]);
  return <div hidden={!visible} inert={!visible} aria-busy={busy} className="min-w-0">
   {busy&&<p role="status" className="mb-4 text-sm text-slate-700">Получаем статус заказа…</p>}
   {error&&<p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm leading-6 text-rose-800">{error}</p>}
   {snapshot&&<>{(error||busy)&&<p className="mb-3 text-sm text-slate-700">Последний полученный статус. Актуальность пока не подтверждена.</p>}<ListingPaymentStatus snapshot={snapshot} testMode={testCheckout}/></>}
   {testCheckout&&snapshot&&(snapshot.order.status==='created'||snapshot.order.status==='pending')&&<TestPaymentLaunch disabled={cancellationPending} owner={owner} paymentId={paymentId} visible={visible} vacancy={vacancy} workRequest={workRequest}/>}
   {cancellationEnabled&&snapshot?.order.status==='created'&&!busy&&!error&&<CheckoutCancellation owner={owner} paymentId={paymentId} targetType={workRequest?'workRequest':vacancy?'vacancy':'listing'} visible={visible} onPendingChange={setCancellationPending} onCancelled={()=>{setSnapshot(null);setLoaded(false);setRetry(value=>value+1);}}/>}
-  {snapshot?.order.status==='succeeded'&&!snapshot.fulfillment&&<PhonePaymentNotice owner={owner} onVerified={()=>setRetry(value=>value+1)}/>}
+  {snapshot?.order.status==='succeeded'&&!testCheckout&&!snapshot.fulfillment&&<PhonePaymentNotice owner={owner} onVerified={()=>setRetry(value=>value+1)}/>}
   {loaded&&!snapshot&&!error&&!busy&&<p role="status" className="text-sm leading-6 text-slate-700">Платёж недоступен. Проверьте ссылку и убедитесь, что вошли в аккаунт, из которого оформляли заказ.</p>}
-  <div className="mt-5 flex flex-wrap gap-3"><button type="button" className={button} disabled={busy||cancellationPending} onClick={()=>setRetry(value=>value+1)}>Проверить статус</button><Link href={workRequest?'/cabinet/zakazy':vacancy?'/cabinet/vakansii':'/cabinet/obyavleniya'} className={button}>{workRequest?'Мои заказы':vacancy?'Мои вакансии':'Мои объявления'}</Link></div>
+  {confirmed&&!error&&<p role="status" className="mt-4 text-sm text-slate-600">Возвращаем в личный кабинет…</p>}
+  <div className="mt-5 flex flex-wrap gap-3">{(!confirmed||error)&&<button type="button" className={button} disabled={busy||cancellationPending} onClick={()=>{automaticChecks.current=0;setRetry(value=>value+1);}}>Проверить статус</button>}<Link href={cabinet} className={button}>{confirmed?'Вернуться на сайт':workRequest?'Мои заказы':vacancy?'Мои вакансии':'Мои объявления'}</Link></div>
  </div>;
 }
 export function PrimaryPaymentReturnClient({paymentId,testCheckout=false,vacancy=false,workRequest=false,cancellationEnabled=false}:{paymentId:string;testCheckout?:boolean;vacancy?:boolean;workRequest?:boolean;cancellationEnabled?:boolean}){

@@ -9,6 +9,41 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 
+test("ordinary focus revalidation preserves the same snapshot without remounting private content", async () => {
+  const pending = deferred(); let calls = 0;
+  const state = createAccountSessionState(() => ++calls === 1 ? Promise.resolve(user("A")) : pending.promise);
+  await state.refresh();
+  const previous = state.read(), observed = [];
+  state.subscribe(value => observed.push(value));
+  const checking = state.refresh(true);
+  assert.equal(state.read(), previous);
+  pending.resolve(user("A")); await checking;
+  assert.equal(state.read(), previous);
+  assert.deepEqual(observed, []);
+});
+
+test("background checks revoke stale identity on null, blocked or unavailable responses", async () => {
+  for (const outcome of [null, {...user("A"), isBlocked: true}, new Error("Synthetic network failure")]) {
+    const pending = deferred(); let calls = 0;
+    const state = createAccountSessionState(() => ++calls === 1 ? Promise.resolve(user("A")) : pending.promise);
+    await state.refresh(); const checking = state.refresh(true);
+    assert.equal(state.read().userId, "A");
+    if (outcome instanceof Error) pending.reject(outcome); else pending.resolve(outcome);
+    await checking;
+    assert.deepEqual(state.read(), {state: outcome === null ? "signed-out" : "unavailable", userId: null});
+  }
+});
+
+test("a known account change fences pending background reads and cannot resurrect the previous owner", async () => {
+  const pending = deferred(); let calls = 0;
+  const state = createAccountSessionState(() => ++calls === 1 ? Promise.resolve(user("A")) : calls === 2 ? pending.promise : Promise.resolve(user("B")));
+  await state.refresh(); const old = state.refresh(true);
+  state.beginChange();
+  assert.deepEqual(state.read(), {state:"loading", userId:null});
+  await state.endChange(); pending.resolve(user("A")); await old;
+  assert.deepEqual(state.read(), {state:"signed-in", userId:"B"});
+});
+
 test("shared cookie state clears the previous account before checking and cannot restore a stale response", async () => {
   const first = deferred(), next = deferred();
   const queue = [Promise.resolve(user("A", "admin")), first.promise, next.promise];

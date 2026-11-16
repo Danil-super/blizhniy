@@ -63,10 +63,10 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   await page.getByRole('heading',{name:'Создать объявление',exact:true}).waitFor();
   assert.equal(await page.getByRole('heading',{name:'Создать объявление',exact:true}).count(),1);
   await page.locator('input[name="title"]').fill('Полная форма');await page.locator('textarea[name="description"]').fill('Не потерять описание');await page.locator('input[name="price"]').fill('1234');
-  await page.getByRole('button',{name:'Выбрать',exact:true}).click();await page.getByRole('option',{name:'Краснодар, Краснодарский край',exact:true}).click();
+  await page.getByRole('button',{name:/Город и регион/}).click();await page.getByRole('option',{name:'Краснодар, Краснодарский край',exact:true}).click();
   await page.locator('input[name="phone"]').fill('+79990000000');await page.locator('input[name="messengerUrl"]').fill('@example_user');
   await page.locator('input[name="photos"]').setInputFiles({name:'fixture.png',mimeType:'image/png',buffer:pixels});
-  let release;sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  let release;sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('blizhniy-account-changed')));
   await page.getByText('Проверяем вход. Заполненная форма скрыта до подтверждения аккаунта.',{exact:true}).waitFor();
   assert.equal(await page.locator('input[name="title"]').isVisible(),false);release();sessionGate=null;
   await page.locator('input[name="title"]').waitFor();assert.equal(await page.locator('input[name="title"]').inputValue(),'Полная форма');
@@ -112,7 +112,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   await page.getByRole('img',{name:'Сохранённая фотография 1 из 1',exact:true}).waitFor();assert.equal(await page.getByRole('img',{name:'Сохранённая фотография 1 из 1',exact:true}).count(),1);
   await page.locator('input[name="phone"]').fill('+79991112233');
   await page.locator('input[name="photos"]').setInputFiles({name:'second.png',mimeType:'image/png',buffer:pixels});
-  sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('blizhniy-account-changed')));
   await page.getByText('Проверяем вход. Заполненная форма скрыта до подтверждения аккаунта.',{exact:true}).waitFor();
   assert.equal(await page.locator('input[name="phone"]').isVisible(),false);
   release();sessionGate=null;await page.locator('input[name="phone"]').waitFor();
@@ -177,7 +177,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   assert.equal(await page.getByText('Не удалось загрузить профиль. Проверьте сессию и обновите данные.',{exact:true}).count(),0);
   await moderatedCard.getByRole('link',{name:'Редактировать',exact:true}).click();
   await page.locator('input[name="title"]').fill('Буфер обзора');
-  sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  sessionGate=new Promise(resolve=>{release=resolve;});await page.evaluate(()=>window.dispatchEvent(new Event('blizhniy-account-changed')));
   await page.getByText('Проверяем вход. Заполненная форма скрыта до подтверждения аккаунта.',{exact:true}).waitFor();assert.equal(await page.locator('input[name="title"]').isVisible(),false);
   release();sessionGate=null;await page.locator('input[name="title"]').waitFor();assert.equal(await page.locator('input[name="title"]').inputValue(),'Буфер обзора');
   active='32345678-1234-4321-8765-123456789abc';await persist();await page.evaluate(()=>window.dispatchEvent(new Event('focus')));

@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import {ImageIcon, MapPin} from 'lucide-react';
-import {useEffect, useState, type ReactNode} from 'react';
+import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {ListingMediaClientError, productionListingMedia} from '@/lib/client-listing-media';
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import {createListingThumbnailQueue} from '@/lib/listing-thumbnail-queue';
@@ -47,6 +47,14 @@ export function CabinetListingCard({owner, item, open, onToggle, children,manage
   owner: string; item: ListingCabinetSummary; open: boolean; onToggle: () => void; children: ReactNode;managePublication?:boolean;onChanged?:()=>void;
 }) {
   const renewals=usePlacementRenewals();
+  const dialog=useRef<HTMLDialogElement>(null);
+  const opener=useRef<HTMLButtonElement>(null);
+  const close=()=>{dialog.current?.close();onToggle();opener.current?.focus({preventScroll:true});};
+  useEffect(()=>{
+    if(!open)return;
+    const node=dialog.current;if(!node)return;
+    node.showModal();return()=>node.close();
+  },[open]);
   const editable = item.card.status === 'draft';
   const title = item.title || 'Без названия';
   const href = editable ? `/razmestit/obyavlenie?draft=${item.id}` : item.card.status === 'published' ? `/obyavlenie/${item.id}` : null;
@@ -68,11 +76,11 @@ export function CabinetListingCard({owner, item, open, onToggle, children,manage
         <p className="mt-1 flex min-h-5 items-start gap-1 text-xs text-slate-600"><MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true"/><span className="truncate">{place||'Город не указан'}</span></p>
     {item.card.status === 'blocked' ? <p title={item.card.blockReason??''} className="mt-2 line-clamp-2 min-h-10 text-sm leading-5 text-rose-900">
       <span className="font-semibold">Причина блокировки: </span>{item.card.blockReason || 'Обновите список, чтобы получить причину.'}
-    </p>:<p className="mt-2 min-h-10 text-xs leading-5 text-slate-500">{item.card.status==='published'?'Объявление доступно в каталоге.':item.card.status==='archived'?'Снято с публикации. Срок размещения продолжает идти.':item.card.status==='pending_payment'?'Продолжите оплату, чтобы разместить объявление.':item.card.status==='draft'?'Черновик сохранён. Можно продолжить заполнение.':item.card.status==='paid'?'Оплата подтверждена. Проверяем публикацию.':'Объявление не показывается в каталоге.'}</p>}
+    </p>:<p className="mt-2 min-h-10 text-xs leading-5 text-slate-500">{item.card.status==='published'?'Объявление доступно в каталоге.':item.card.status==='archived'?'Снято с публикации. Срок размещения продолжает идти.':item.card.status==='pending_payment'?'Продолжите оплату, чтобы разместить объявление.':item.card.status==='draft'?'Черновик сохранён. Можно продолжить заполнение.':item.card.status==='paid'?'Оплата подтверждена. Объявление не опубликовано.':'Объявление не показывается в каталоге.'}</p>}
     <div className="mt-auto flex flex-wrap gap-2 pt-3">
       {!managePublication&&editable && <Link href={`/razmestit/obyavlenie?draft=${item.id}`} className={action}>Редактировать</Link>}
       {!managePublication&&item.card.status === 'published' && <Link href={`/obyavlenie/${item.id}`} className={action}>Посмотреть</Link>}
-      {['draft','pending_payment','paid'].includes(item.card.status)&&<button type="button" className={action} aria-expanded={open} aria-controls={detailsId} onClick={onToggle}>Статус и оплата</button>}
+      {['draft','pending_payment','paid'].includes(item.card.status)&&<button ref={opener} type="button" className={action} aria-haspopup="dialog" aria-expanded={open} aria-controls={detailsId} onClick={onToggle}>Статус и оплата</button>}
       {managePublication&&<details data-listing-actions name={`listing-actions-${owner}`} className="relative min-w-0 flex-1"><summary className={`${action} w-full cursor-pointer list-none`}>Действия</summary>
        <div className="absolute bottom-full right-0 z-30 mb-2 w-60 max-w-[80vw] rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
         {['draft','published','archived','blocked'].includes(item.card.status)&&<Link href={`/razmestit/obyavlenie?draft=${item.id}`} className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-blue-800 hover:bg-blue-50">Редактировать</Link>}
@@ -84,7 +92,11 @@ export function CabinetListingCard({owner, item, open, onToggle, children,manage
        </div>
       </details>}
     </div>
-    <div id={detailsId}>{open && children}</div>
+    <div id={detailsId}>{open&&<dialog ref={dialog} aria-labelledby={`${detailsId}-title`} onCancel={event=>{event.preventDefault();close();}}
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-5 text-slate-950 shadow-xl backdrop:bg-slate-950/40">
+      <div className="flex items-start justify-between gap-3"><h2 id={`${detailsId}-title`} className="break-words text-lg font-bold">{title}</h2><button type="button" autoFocus className={action} onClick={close}>Закрыть</button></div>
+      {children}
+    </dialog>}</div>
       </div>
   </article>;
 }

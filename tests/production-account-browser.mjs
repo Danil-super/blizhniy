@@ -471,7 +471,7 @@ test("primary account browser forms use the new cookie API without remote traffi
         assert.equal(action, "session");started();await gate;return route.fulfill({ json: { user: state.active } });
       };
       try {
-        await page.evaluate(() => window.dispatchEvent(new Event("focus")));await pending;
+        await page.evaluate(() => window.dispatchEvent(new Event("blizhniy-account-changed")));await pending;
         await page.getByText("Проверяем доступ к черновикам…", { exact: true }).waitFor();
         assert.equal(await page.getByLabel("Название", { exact: true }).count(), 0);
         assert.equal((await page.locator("main").textContent()).includes("Локальные правки владельца"), false);

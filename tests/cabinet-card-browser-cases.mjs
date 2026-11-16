@@ -14,7 +14,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
       status, blockReason: status === 'blocked' ? 'Фотография нарушает правила публикации.' : null}}));
   const pixels = await sharp({create: {width: 480, height: 320, channels: 3, background: '#a05a2c'}}).webp().toBuffer();
   const errors = [], consoleErrors = [], writes = [], foreign = [];
-  let holdSession = null, mediaReads = 0;
+  let holdSession = null, mediaReads = 0, listReads = 0;
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {if (message.type() === 'error') consoleErrors.push(message.text());});
   await context.route('**/*', async route => {
@@ -29,6 +29,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
     if (url.pathname === '/api/account/profile') return route.fulfill({json: {exists: false,
       profile: createDefaultCabinetProfile({name: 'Локальная проверка', email: 'cabinet-ui@example.invalid'}), revision: null}});
     if (url.pathname === '/api/account/listings') {
+      listReads++;
       assert.equal(request.method(), 'POST'); assert.equal(request.postDataJSON().expectedOwnerId, owner);
       return route.fulfill({json: {items, nextCursor: null, workflow: 'postmoderation'}});
     }
@@ -55,25 +56,46 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   await cards.getByRole('img', {name: 'Комод — draft', exact: true}).waitFor();
   assert.ok(mediaReads >= 1);
   await cards.getByText('Фотография нарушает правила публикации.', {exact: false}).waitFor();
+  const closedSizes=await cards.locator('article').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().height));
   await draft.getByRole('button', {name: 'Статус и оплата', exact: true}).focus();
   await page.keyboard.press('Space');
   await draft.getByRole('button', {name: 'Оплатить размещение', exact: true}).waitFor();
+  assert.deepEqual(await cards.locator('article').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().height)),closedSizes,'opening payment details cannot increase any card height');
+  await page.screenshot({path:'/tmp/blizhniy-focus-card-dialog-desktop.png'});
   assert.equal(await cards.getByText(/На модерации|Не отправлено на модерацию/).count(), 0);
   let release;
   holdSession = new Promise(resolve => {release = resolve;});
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  const cardNode=await draft.elementHandle(),imageNode=await cards.getByRole('img',{name:'Комод — draft',exact:true}).elementHandle();
+  const beforeReads={list:listReads,media:mediaReads},beforeSizes=await cards.locator('article').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().height));
+  const checked=page.waitForRequest(request=>new URL(request.url()).pathname==='/api/account/session');
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));await checked;
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  assert.equal(await cardNode.evaluate(node=>node.isConnected),true);
+  assert.equal(await imageNode.evaluate(node=>node.isConnected),true);
+  assert.equal(await page.getByRole('dialog').isVisible(),true);
+  assert.deepEqual({list:listReads,media:mediaReads},beforeReads,'ordinary focus must not restart listing/photo loading');
+  assert.deepEqual(await cards.locator('article').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().height)),beforeSizes);
+  await page.evaluate(() => window.dispatchEvent(new Event('blizhniy-account-changed')));
   await page.getByText('Проверяем доступ к черновикам…', {exact: true}).waitFor();
+  assert.equal(await page.getByRole('dialog').count(),0,'known auth invalidation hides the top-layer dialog immediately');
   release(); holdSession = null;
   await draft.getByRole('button', {name: 'Оплатить размещение', exact: true}).waitFor();
+  await page.setViewportSize({width:320,height:900});
+  assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
+  await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
+  assert.deepEqual(await page.getByRole('dialog').evaluate(async node=>(await window.axe.run(node)).violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id)),[]);
+  await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
+  assert.equal(await draft.getByRole('button',{name:'Статус и оплата',exact:true}).evaluate(node=>node===document.activeElement),true,'Escape restores focus to the opener');
   await page.screenshot({path: '/tmp/blizhniy-local-cabinet-cards.png', fullPage: true});
   const axe = await readFile(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
   await page.addScriptTag({content: axe});
   for (const width of [320, 768, 1024, 1440]) {
     await page.setViewportSize({width, height: 900});
     assert.equal(await page.locator('body').evaluate(node => node.scrollWidth > innerWidth), false);
-    assert.equal(await cards.locator(':scope > ul').evaluate(node => getComputedStyle(node).gridTemplateColumns.split(' ').length), width >= 1440 ? 4 : width >= 1024 ? 3 : width >= 768 ? 2 : 1);
+    assert.equal(await cards.locator('ul').evaluate(node => getComputedStyle(node).gridTemplateColumns.split(' ').length), width >= 1440 ? 4 : width >= 1024 ? 3 : width >= 768 ? 2 : 1);
     const dimensions=await cards.locator('article').evaluateAll(nodes=>nodes.map(node=>({width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height})));
     assert.ok(dimensions.every(size=>Math.abs(size.width-dimensions[0].width)<=1));
+    assert.ok(dimensions.every(size=>Math.abs(size.height-dimensions[0].height)<=1),'expanding payment details must not stretch the grid');
     const violations = await cards.evaluate(async element => (await window.axe.run(element)).violations
       .filter(item => ['serious', 'critical'].includes(item.impact)).map(item => ({id: item.id, nodes: item.nodes.map(node => node.target)})));
     assert.deepEqual(violations, []);

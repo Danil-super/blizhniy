@@ -63,6 +63,14 @@ test('blocked card shows escaped reason, not a payment action', () => {
 test('published status keeps a high-contrast green foreground on the light badge', () => {
   assert.match(html('published'), /text-emerald-800/);
 });
+test('paid cards do not promise publication after a TEST payment and open details separately', () => {
+  const markup = html('paid');
+  assert.match(markup, /Объявление не опубликовано/);
+  assert.doesNotMatch(markup, /Проверяем публикацию/);
+  assert.match(markup, /aria-haspopup="dialog"/);
+  const detail = renderToStaticMarkup(React.createElement(loadCard(), {owner:'10000000-0000-4000-8000-000000000002', item:item('paid'), open:true, onToggle() {}}, React.createElement('p',null,'Сохранённый статус оплаты')));
+  assert.match(detail, /<dialog\b[^>]*>[\s\S]*Сохранённый статус оплаты[\s\S]*<\/dialog>/);
+});
 test('moderation image area is intrinsically bounded, not a full-width padded stage', () => {
   const source = readFileSync(resolve(__dirname, '../src/components/admin/ModerationPhotoPreview.tsx'), 'utf8');
   assert.match(source, /w-fit/);
