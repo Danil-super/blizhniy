@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { StoredMediaImage } from "@/components/StoredMedia";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { readStoredDemoPublications } from "@/lib/demo-publications";
+import {containDialogTab,openDialog} from '@/lib/dialog-keyboard';
 
 type DetailImageGalleryProps = {
   compactMobile?: boolean;
@@ -21,11 +22,13 @@ export function DetailImageGallery({ compactMobile = false, fallbackIcon, images
   const [localImages, setLocalImages] = useState<string[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [open, setOpen] = useState(false);
+  const dialogRef=useRef<HTMLDialogElement>(null);
   const didSwipeRef = useRef(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const validImages = [...images, ...localImages].filter(Boolean).filter((image, index, list) => list.indexOf(image) === index);
   const safeActiveIndex = Math.min(activeIndex, Math.max(0, validImages.length - 1));
   const activeImage = validImages[safeActiveIndex];
+  const hasActiveImage=Boolean(activeImage);
   const hasMultiple = validImages.length > 1;
   const frameClassName = compactMobile ? "aspect-[4/3] sm:aspect-square" : "aspect-square";
 
@@ -59,27 +62,10 @@ export function DetailImageGallery({ compactMobile = false, fallbackIcon, images
   }, [activeIndex, validImages.length]);
 
   useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-
-      if (event.key === "ArrowLeft") {
-        setActiveIndex((index) => (index - 1 + validImages.length) % validImages.length);
-      }
-
-      if (event.key === "ArrowRight") {
-        setActiveIndex((index) => (index + 1) % validImages.length);
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, validImages.length]);
+    if(!open)return;
+    const dialog=dialogRef.current;if(!dialog){setOpen(false);return;}
+    return openDialog(dialog);
+  }, [open, hasActiveImage]);
 
   function showPrevious() {
     if (!validImages.length) {
@@ -217,11 +203,18 @@ export function DetailImageGallery({ compactMobile = false, fallbackIcon, images
         ) : null}
       </section>
       {open && activeImage ? (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/85 p-3 sm:p-6 [touch-action:pan-y]"
+        <dialog
+          ref={dialogRef}
+          className="fixed inset-0 m-0 h-[100dvh] max-h-none w-full max-w-none border-0 bg-transparent p-3 backdrop:bg-slate-950/85 open:grid open:place-items-center sm:p-6 [touch-action:pan-y]"
           role="dialog"
           aria-modal="true"
           aria-label={`Фото: ${title}`}
+          onCancel={event=>{event.preventDefault();setOpen(false);}}
+          onKeyDown={event=>{
+            containDialogTab(event);
+            if(event.key==='ArrowLeft'){event.preventDefault();showPrevious();}
+            if(event.key==='ArrowRight'){event.preventDefault();showNext();}
+          }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
@@ -229,20 +222,20 @@ export function DetailImageGallery({ compactMobile = false, fallbackIcon, images
             <X className="h-5 w-5" />
           </button>
           {hasMultiple ? (
-            <button type="button" onClick={showPrevious} className="absolute left-3 top-1/2 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-900 shadow-lg sm:left-5 sm:inline-flex" aria-label="Предыдущее фото">
+            <button type="button" onClick={showPrevious} className="absolute left-3 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-900 shadow-lg sm:left-5" aria-label="Предыдущее фото">
               <ChevronLeft className="h-6 w-6" />
             </button>
           ) : null}
           <div className="flex max-h-[88vh] w-full max-w-5xl items-center justify-center">
-            <StoredMediaImage src={activeImage} alt={title} className="max-h-[88vh] w-auto max-w-full rounded-2xl bg-white object-contain shadow-2xl" />
+            <StoredMediaImage src={activeImage} alt={`${title}, фото ${safeActiveIndex+1} из ${validImages.length}`} className="max-h-[88vh] w-auto max-w-full rounded-2xl bg-white object-contain shadow-2xl" />
           </div>
           {hasMultiple ? (
-            <button type="button" onClick={showNext} className="absolute right-3 top-1/2 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-900 shadow-lg sm:right-5 sm:inline-flex" aria-label="Следующее фото">
+            <button type="button" onClick={showNext} className="absolute right-3 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-900 shadow-lg sm:right-5" aria-label="Следующее фото">
               <ChevronRight className="h-6 w-6" />
             </button>
           ) : null}
-          {hasMultiple ? <p className="absolute bottom-4 rounded-full bg-white/95 px-3 py-1 text-sm font-bold text-slate-700">{safeActiveIndex + 1} / {validImages.length}</p> : null}
-        </div>
+          {hasMultiple ? <p aria-live="polite" aria-atomic="true" className="absolute bottom-4 rounded-full bg-white/95 px-3 py-1 text-sm font-bold text-slate-700">{safeActiveIndex + 1} / {validImages.length}</p> : null}
+        </dialog>
       ) : null}
     </>
   );

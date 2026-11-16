@@ -138,3 +138,76 @@ test("a detached inspection is refused without returning evidence or leaking an 
   assert.ok(app.calls.includes("SIGKILL")); app.child.emit("close", null, "SIGKILL"); await rejected;
   await new Promise(resolve => setImmediate(resolve));
 });
+test("claimed write cannot acquire SQL authority before READY and releases success only after close", async t => {
+  const app = await fixture(t), record = metadata(), attemptId = randomUUID(); let claims = 0, release, resolved = false;
+  const held = new Promise(resolve => { release = resolve; });
+  const pending = app.worker.writeClaimed(bytes, async () => { claims++; await held; return { record, attemptId }; }).then(() => { resolved = true; });
+  await app.started; assert.equal(claims, 0); assert.equal(app.input.length, 0);
+  app.child.stdout.write(Buffer.from([82])); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(claims, 1); assert.equal(app.input.length, 0); assert.equal(app.child.stdin.writableEnded, false);
+  release(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(Buffer.concat(app.input).subarray(0,4).toString(), "BFW1"); assert.equal(app.child.stdin.writableEnded, true);
+  app.child.stdout.write(Buffer.from([0])); app.child.emit("exit", 0); await Promise.resolve(); assert.equal(resolved, false);
+  app.child.emit("close", 0); await pending; assert.equal(resolved, true); assert.equal(app.timers.size, 0);
+});
+test("denied or unknown claim sends no file bytes and preserves error after a clean no-write close", async t => {
+  for (const denied of [Object.assign(new Error("denied"),{code:"MEDIA_IN_PROGRESS"}),new Error("lost claim COMMIT")]) {
+    const app = await fixture(t); const pending = app.worker.writeClaimed(bytes, async () => { throw denied; });
+    const rejected = assert.rejects(pending, error => error === denied);
+    await app.started; app.child.stdout.write(Buffer.from([82])); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(app.input.length, 0); assert.equal(app.child.stdin.writableEnded, true);
+    app.child.stdout.write(Buffer.from([68])); app.child.emit("close",0); await rejected; await app.restart();
+  }
+});
+test("expired claimed writer cannot send a delayed committed claim to a dead child", async t => {
+  const app = await fixture(t), abort = new AbortController(); let release;
+  const held = new Promise(resolve => { release = resolve; });
+  const pending = app.worker.writeClaimed(bytes, async () => { await held; return {record:metadata(),attemptId:randomUUID()}; },abort.signal), rejected=fail(pending);
+  await app.started; app.child.stdout.write(Buffer.from([82])); await new Promise(resolve => setImmediate(resolve));
+  abort.abort(); app.child.emit("close",null,"SIGKILL"); await rejected;
+  release(); await new Promise(resolve => setImmediate(resolve)); assert.equal(app.input.length,0); await app.restart();
+});
+test("SQL timeout before a frame allows new jobs only after confirmed close; missing close latches", async t => {
+  for(const closes of [true,false]){
+    const app=await fixture(t);let release;
+    const held=new Promise(resolve=>{release=resolve;});
+    const pending=app.worker.writeClaimed(bytes,async()=>{await held;return{record:metadata(),attemptId:randomUUID()};}), rejected=fail(pending);
+    await app.started;app.child.stdout.write(Buffer.from([82]));await new Promise(resolve=>setImmediate(resolve));
+    [...app.timers.values()].find(timer=>timer.ms===5000).fn();
+    await assert.rejects(app.worker.inspect(metadata(),randomUUID()),{code:"MEDIA_FILE_WORKER_BUSY"});
+    if(closes)app.child.emit("close",null,"SIGKILL");else [...app.timers.values()].find(timer=>timer.ms===2000).fn();
+    await rejected;release();await new Promise(resolve=>setImmediate(resolve));assert.equal(app.input.length,0);
+    if(closes)await app.restart();else await fail(app.restart());
+  }
+});
+test("conflict and premature claimed-write acknowledgements cannot start SQL", async t => {
+  for (const reply of [null,Buffer.from([82,0])]) {
+    const app=await fixture(t); let claims=0;
+    const pending=app.worker.writeClaimed(bytes,async()=>{claims++;return{record:metadata(),attemptId:randomUUID()};});
+    const rejected=reply?fail(pending):assert.rejects(pending,{code:"MEDIA_FILE_WORKER_BUSY"}); await app.started;
+    if(reply){app.child.stdout.write(reply);await new Promise(resolve=>setImmediate(resolve));app.child.emit("close",null,"SIGKILL");}
+    else app.child.emit("close",73);
+    await rejected; assert.equal(claims,0); assert.equal(app.input.length,0);
+  }
+});
+test("unknown claimed-write outcome after sending file bytes disables subsequent writers",async t=>{
+  const app=await fixture(t),abort=new AbortController();
+  const pending=app.worker.writeClaimed(bytes,async()=>({record:metadata(),attemptId:randomUUID()}),abort.signal),rejected=fail(pending);
+  await app.started;app.child.stdout.write(Buffer.from([82]));await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(Buffer.concat(app.input).subarray(0,4).toString(),'BFW1');
+  abort.abort();app.child.emit('close',null,'SIGKILL');await rejected;await fail(app.restart());
+});
+test('retirement binds its terminal claim after READY and returns proof only after actual close',async t=>{
+ const app=await fixture(t),claim={record:metadata(),attemptId:null,operationId:randomUUID()};let entered=0,returned=false;
+ const pending=app.worker.retire(async()=>{entered++;return claim;}).then(value=>{returned=true;return value;});
+ await app.started;assert.equal(entered,0);app.child.stdout.write(Buffer.from([82]));await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(entered,1);assert.equal(Buffer.concat(app.input).subarray(0,4).toString(),'BFR1');
+ app.child.stdout.write(Buffer.from([0]));app.child.emit('exit',0);await Promise.resolve();assert.equal(returned,false);
+ app.child.emit('close',0);assert.equal(await pending,claim);assert.equal(app.calls[0].args.at(-1),'retire');
+});
+test('retirement with an unknown file outcome yields no proof and disables that supervisor',async t=>{
+ const app=await fixture(t),abort=new AbortController();
+ const pending=app.worker.retire(async()=>({record:metadata(),attemptId:randomUUID()}),abort.signal),rejected=fail(pending);
+ await app.started;app.child.stdout.write(Buffer.from([82]));await new Promise(resolve=>setImmediate(resolve));
+ abort.abort();app.child.emit('close',null,'SIGKILL');await rejected;await fail(app.restart());
+});

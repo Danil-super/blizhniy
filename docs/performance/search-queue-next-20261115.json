@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-15",
+  "buildId": "NArjORzu7JrzdhLy7A6wj",
+  "scope": "Actual owned HTTPS3045 ingress, production Next render, owned PG58. Three closed simultaneous bursts25 of the same public search document; full identity HTML bounded2MiB, pinned local CA, request deadline5s, no redirects/mutations/providers or production. Warm-up six public routes; not browser rendering or30min mixed staging.",
+  "reports": [
+    {
+      "run": 1,
+      "requests": 25,
+      "successful": 25,
+      "p95Ms": 412.394,
+      "maxMs": 419.798
+    },
+    {
+      "run": 2,
+      "requests": 25,
+      "successful": 25,
+      "p95Ms": 347.403,
+      "maxMs": 356.806
+    },
+    {
+      "run": 3,
+      "requests": 25,
+      "successful": 25,
+      "p95Ms": 346.596,
+      "maxMs": 363.521
+    }
+  ]
+}

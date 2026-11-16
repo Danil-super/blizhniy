@@ -1,9 +1,10 @@
 import { fstatSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { createLocalMediaFileStore } from "../src/lib/media-files.ts";
+import { createLocalMediaFileStore,createLocalMediaFileRetirer } from "../src/lib/media-files.ts";
 import { decodeFileWrite, FILE_WRITE_MAX_BYTES } from "../src/lib/media-file-protocol.ts";
 import { decodeFileInspection, encodeFileObservation, FILE_INSPECT_REQUEST_BYTES } from "../src/lib/media-file-inspection-protocol.ts";
 import { assertMediaRuntime } from "../src/lib/media-runtime-policy.ts";
+import {decodeFileRetirement,FILE_RETIRE_REQUEST_BYTES} from '../src/lib/media-file-retirement-protocol.ts';
 
 const same = (a, b) => a.dev === b.dev && a.ino === b.ino;
 export function assertFileFence(root) {
@@ -26,8 +27,8 @@ export function assertFileFence(root) {
   return directory;
 }
 
-export async function runFileWorker(createStore = createLocalMediaFileStore, mode = "write") {
-  if (!["write", "inspect", "observe"].includes(mode)) throw new Error("File operation unavailable");
+export async function runFileWorker(createStore = createLocalMediaFileStore, mode = "write",createRetirer=createLocalMediaFileRetirer) {
+  if (!["write", "claimed-write", "inspect", "observe", "retire"].includes(mode)||(mode==='retire'&&process.env.NODE_ENV!=='test')) throw new Error("File operation unavailable");
   const root = process.argv[2], proof = assertFileFence(root);
   if (mode === "observe") {
     process.stdout.write(Buffer.from([82])); // READY only after this process proves its kernel fence.
@@ -47,9 +48,21 @@ export async function runFileWorker(createStore = createLocalMediaFileStore, mod
     if ((frame.length !== 0 && !observed) || !same(proof, assertFileFence(root))) throw new Error("File observation unavailable");
     return Buffer.from([68]); // DONE, including denied/no-request observations.
   }
+  if (mode === "claimed-write" || mode === "retire") process.stdout.write(Buffer.from([82]));
   const chunks = []; let size = 0;
   for await (const chunk of process.stdin) {
-    size += chunk.length; if (size > (mode === "write" ? FILE_WRITE_MAX_BYTES : FILE_INSPECT_REQUEST_BYTES) || chunks.length >= 256) throw new Error("File operation unavailable"); chunks.push(chunk);
+    size += chunk.length; if (size > (mode === "inspect" ? FILE_INSPECT_REQUEST_BYTES : mode === "retire" ? FILE_RETIRE_REQUEST_BYTES : FILE_WRITE_MAX_BYTES) || chunks.length >= 256) throw new Error("File operation unavailable"); chunks.push(chunk);
+  }
+  if ((mode === "claimed-write" || mode === "retire") && size === 0) {
+    if (!same(proof, assertFileFence(root))) throw new Error("File fence unavailable");
+    return Buffer.from([68]);
+  }
+  if(mode==='retire'){
+    const {record,attemptId}=decodeFileRetirement(Buffer.concat(chunks,size));
+    if(!same(proof,assertFileFence(root)))throw new Error('File fence unavailable');
+    await(await createRetirer(root,proof)).retire(record,attemptId);
+    if(!same(proof,assertFileFence(root)))throw new Error('File fence unavailable');
+    return;
   }
   if (mode === "inspect") {
     const { record, attemptId } = decodeFileInspection(Buffer.concat(chunks, size));

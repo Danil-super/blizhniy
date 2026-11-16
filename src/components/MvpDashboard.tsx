@@ -1,3 +1,7 @@
+import {ActionLink,Shell,NavPills} from "@/components/DashboardShell";
+import {paymentRows} from "@/components/cabinet/dashboard-rows";
+export {AuthPage} from "@/components/auth/AuthPage";
+export {CabinetPage,CabinetListingsPage,CabinetVacanciesPage,CabinetOrganizationPage,CabinetWorkRequestsPage,CabinetSpecialistPage,CabinetResponsesPage,CabinetBookingsPage,CabinetPaymentsPage,CabinetFairApplicationsPage} from "@/components/cabinet/CabinetPages";
 import type React from "react";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
@@ -11,8 +15,6 @@ import {
   CreditCard,
   FileText,
   Gauge,
-  MessageSquare,
-  Plus,
   ShieldCheck,
   Store,
   Tags,
@@ -26,26 +28,8 @@ import { AdminCategoriesClient } from "@/components/admin/AdminCategoriesClient"
 import { AdminPublicationsTableClient } from "@/components/admin/AdminPublicationsTableClient";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminUsersClient } from "@/components/admin/AdminUsersClient";
-import { AuthForm } from "@/components/auth/AuthForm";
-import { CabinetAuthGate } from "@/components/auth/CabinetAuthGate";
-import { CabinetDraftWorkspace } from "@/components/listings/CabinetDraftWorkspace";
-import { CabinetPublicationWorkspace } from '@/components/cabinet/CabinetPublicationWorkspace';
-import {BookingsPanel} from '@/components/bookings/BookingsPanel';
-import { CabinetShellActions } from "@/components/cabinet/CabinetShellActions";
-import {
-  CabinetCapabilities,
-  CabinetOverviewClient,
-  CabinetOrganizationClient,
-  CabinetPaymentsClient,
-  type CabinetResponseItem,
-  type CabinetPaymentHistoryItem,
-  CabinetProfileBar,
-  CabinetPublicationsClient,
-  CabinetResponsesClient,
-  CabinetSpecialistClient,
-} from "@/components/cabinet/CabinetClient";
+
 import { MockPaymentButton } from "@/components/payments/MockPaymentButton";
-import { SiteHeader } from "@/components/SiteHeader";
 import { updateStoredFairApplicationStatus } from "@/lib/fair-application-store";
 import { getPayment, listPayments } from "@/lib/payment-provider";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
@@ -55,8 +39,6 @@ import { listAdminUsers } from "@/lib/user-store";
 import { listStoredVacanciesForAdmin } from "@/lib/vacancy-store";
 import { listStoredWorkRequestsForAdmin } from "@/lib/work-request-store";
 import {
-  listApplications,
-  listMockPayments,
   updateFairApplicationStatus,
   updateListingStatus,
   updateSpecialistStatus,
@@ -122,17 +104,6 @@ const moderationStatusOptions: Array<{ label: string; value: PublicationStatus }
   { label: "Отклонено", value: "rejected" },
   { label: "Истек срок", value: "expired" },
   { label: "Продано", value: "sold" },
-];
-
-const cabinetNav = [
-  { href: "/cabinet", label: "Обзор", icon: Gauge },
-  { href: "/cabinet/obyavleniya", label: "Объявления", icon: FileText },
-  { href: "/cabinet/vakansii", label: "Вакансии", icon: BriefcaseBusiness },
-  { href: "/cabinet/zakazy", label: "Заказы", icon: ClipboardList },
-  { href: "/cabinet/specialist", label: "Анкета", icon: CircleUserRound },
-  { href: "/cabinet/otkliki", label: "Отклики", icon: MessageSquare },
-  { href: "/cabinet/bronirovaniya", label: "Бронирования", icon: ClipboardList },
-  { href: "/cabinet/fair-applications", label: "Ярмарка", icon: Store },
 ];
 
 const adminNav = [
@@ -259,38 +230,6 @@ async function updatePublicationStatusAction(formData: FormData) {
   }
 }
 
-function paymentRows() {
-  if (!shouldShowFallbackContent()) {
-    return [];
-  }
-
-  return listMockPayments().map((payment) => ({
-    id: payment.id,
-    href: `/oplata/${payment.id}`,
-    editHref: "/cabinet/oplata",
-    subject: payment.targetTitle,
-    amount: `${payment.amount} ₽`,
-    method: payment.provider === "mock" ? "Оплата" : payment.provider,
-    status: payment.status,
-  }));
-}
-
-function responseRows(): CabinetResponseItem[] {
-  if (!shouldShowFallbackContent()) {
-    return [];
-  }
-
-  return listApplications().map((application) => ({
-    href: "/rabota/vakansii",
-    id: application.id,
-    paymentHref: `/oplata/${application.paymentId}`,
-    paymentId: application.paymentId,
-    specialistName: application.specialistName,
-    status: application.status,
-    vacancyTitle: application.vacancyTitle,
-  }));
-}
-
 function adminPaymentRows() {
   return paymentRows().map((payment, index) => ({
     ...payment,
@@ -313,92 +252,6 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-flex min-h-7 items-center rounded-full border px-3 text-xs font-bold ${classes[tone]}`}>
       {statusLabels[status] ?? status}
     </span>
-  );
-}
-
-function ActionLink({ href, children, tone = "blue" }: { href: string; children: React.ReactNode; tone?: "blue" | "green" | "plain" }) {
-  const classes = {
-    blue: "bg-[#0875d1] text-white hover:bg-[#0765b2]",
-    green: "bg-[#0aa337] text-white hover:bg-[#078a2e]",
-    plain: "border border-slate-300 bg-white text-slate-800 hover:border-blue-200 hover:text-[#0875d1]",
-  };
-
-  return (
-    <Link href={href} className={`inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg px-5 text-sm font-bold transition sm:w-auto ${classes[tone]}`}>
-      {children}
-    </Link>
-  );
-}
-
-function Shell({
-  title,
-  description,
-  eyebrow,
-  nav,
-  activeHref,
-  createHref = "/razmestit",
-  createLabel = "Создать",
-  children,
-}: {
-  title: string;
-  description: string;
-  eyebrow: string;
-  nav?: typeof cabinetNav;
-  activeHref?: string;
-  createHref?: string | null;
-  createLabel?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <>
-      <SiteHeader />
-      <main className={`page-container dashboard-shell pt-6 sm:pt-10 ${nav === cabinetNav ? "pb-16 sm:pb-20" : "pb-6 sm:pb-10"}`}>
-        <p className="text-xs font-bold uppercase tracking-wide text-[#0aa337] sm:text-sm">{eyebrow}</p>
-        <div className="mt-2 flex flex-col gap-4 sm:mt-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">{title}</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 [overflow-wrap:anywhere] sm:mt-3 sm:text-lg sm:leading-7">{description}</p>
-          </div>
-          <div className={nav ? "grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3" : "grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:gap-3"}>
-            {nav ? (
-              <CabinetShellActions createHref={createHref} createLabel={createLabel} />
-            ) : createHref ? (
-              <ActionLink href={createHref} tone="green">
-                <Plus className="h-4 w-4" />
-                {createLabel}
-              </ActionLink>
-            ) : null}
-          </div>
-        </div>
-        {nav ? <NavPills items={nav} activeHref={activeHref} /> : null}
-        {nav === cabinetNav ? <CabinetProfileBar /> : null}
-        <div className="mt-5 sm:mt-7">{children}</div>
-      </main>
-    </>
-  );
-}
-
-function NavPills({ items, activeHref }: { items: typeof cabinetNav; activeHref?: string }) {
-  return (
-    <nav className="mt-5 grid grid-cols-2 gap-2 pb-1 min-[430px]:grid-cols-3 sm:mt-7 sm:flex sm:flex-wrap sm:overflow-visible sm:pb-0" aria-label="Разделы">
-      {items.map((item) => {
-        const Icon = item.icon;
-        const active = item.href === activeHref;
-        return (
-          <Link
-            href={item.href}
-            className={`inline-flex min-h-10 w-full max-w-full items-center justify-start gap-2 rounded-lg border px-3 py-2 text-xs font-bold leading-snug transition sm:min-h-11 sm:w-auto sm:min-w-[9.5rem] sm:flex-none sm:px-4 sm:text-sm ${
-              active ? "border-blue-200 bg-blue-50 text-[#0664b3] ring-1 ring-blue-100" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
-            }`}
-            aria-current={active ? "page" : undefined}
-            key={item.href}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 break-words">{item.label}</span>
-          </Link>
-        );
-      })}
-    </nav>
   );
 }
 
@@ -561,119 +414,6 @@ function SectionTitle({ title, actionHref, actionLabel }: { title: string; actio
         </Link>
       ) : null}
     </div>
-  );
-}
-
-export function AuthPage() {
-  return (
-    <>
-      <SiteHeader />
-      <main className="min-h-screen bg-slate-50">
-        <h1 className="sr-only">Вход и регистрация</h1>
-        <div className="page-container flex min-h-screen items-start justify-center py-5 sm:items-center sm:py-10">
-          <div className="w-full max-w-[460px] min-w-0">
-            <AuthForm />
-          </div>
-        </div>
-      </main>
-    </>
-  );
-}
-
-export function CabinetPage() {
-  const footer = <>
-    <div className="mt-8"><CabinetCapabilities /></div>
-    <div className="mt-8 border-t border-slate-200 pt-5 text-sm">
-      <Link href="/cabinet/udalit-akkaunt" className="font-semibold text-[#0875d1] underline">Запросить удаление аккаунта</Link>
-    </div>
-  </>;
-  return (
-    <Shell title="Личный кабинет" description="Панель пользователя для публикаций, откликов и рабочих разделов." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet">
-      <CabinetDraftWorkspace overview footer={footer}><CabinetOverviewClient /></CabinetDraftWorkspace>
-    </Shell>
-  );
-}
-
-export function CabinetListingsPage() {
-  return (
-    <Shell title="Мои объявления" description="Статусы публикаций, просмотры и быстрые действия по объявлениям пользователя." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/obyavleniya" createHref="/razmestit/obyavlenie" createLabel="Создать объявление">
-      <CabinetDraftWorkspace><CabinetPublicationsClient type="listing" /></CabinetDraftWorkspace>
-    </Shell>
-  );
-}
-
-export function CabinetVacanciesPage() {
-  return (
-    <Shell title="Мои вакансии" description="Список вакансий работодателя с оплатой публикации и управлением статусом." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/vakansii" createHref="/rabota/vakansii/sozdat" createLabel="Разместить вакансию">
-      <CabinetPublicationWorkspace>
-        <CabinetPublicationsClient type="vacancy" />
-      </CabinetPublicationWorkspace>
-    </Shell>
-  );
-}
-
-export function CabinetOrganizationPage() {
-  return <Shell title="Организация" description="Данные работодателя и организации в вашем частном профиле." eyebrow="Кабинет"
-    nav={cabinetNav} activeHref="/cabinet/organization" createHref={null}>
-    <CabinetAuthGate><CabinetOrganizationClient /></CabinetAuthGate>
-  </Shell>;
-}
-
-export function CabinetWorkRequestsPage() {
-  return (
-    <Shell title="Мои заказы исполнителям" description="Задачи, которые пользователь размещает для специалистов и исполнителей." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/zakazy" createHref="/rabota/zakazy/sozdat" createLabel="Разместить заказ">
-      <CabinetPublicationWorkspace>
-        <CabinetPublicationsClient type="workRequest" />
-      </CabinetPublicationWorkspace>
-    </Shell>
-  );
-}
-
-export function CabinetSpecialistPage() {
-  return (
-    <Shell title="Анкета специалиста" description="Единая анкета исполнителя для платных откликов и публичного каталога." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/specialist" createHref={null}>
-      <CabinetPublicationWorkspace><CabinetSpecialistClient /></CabinetPublicationWorkspace>
-    </Shell>
-  );
-}
-
-export function CabinetResponsesPage() {
-  const responses = responseRows();
-
-  return (
-    <Shell title="Мои отклики" description="Отклики на вакансии со статусами оплаты, отправки и просмотра работодателем." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/otkliki" createHref="/rabota/vakansii" createLabel="Найти вакансию">
-      <CabinetPublicationWorkspace>
-        <CabinetResponsesClient responses={responses} />
-      </CabinetPublicationWorkspace>
-    </Shell>
-  );
-}
-
-export function CabinetBookingsPage(){
- return <Shell title="Бронирования" description="Ваши поездки и заявки гостей: даты, условия и ответы владельцев." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/bronirovaniya" createHref={null}>
-  <CabinetPublicationWorkspace><BookingsPanel/></CabinetPublicationWorkspace>
- </Shell>;
-}
-
-export function CabinetPaymentsPage() {
-  const payments = paymentRows() as CabinetPaymentHistoryItem[];
-
-  return (
-    <Shell title="Платежи" description="Сформированные заказы, ожидающие оплаты, и история платежей." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/oplata" createHref={null}>
-      <CabinetAuthGate>
-        <CabinetPaymentsClient initialPayments={payments} />
-      </CabinetAuthGate>
-    </Shell>
-  );
-}
-
-export function CabinetFairApplicationsPage() {
-  return (
-    <Shell title="Заявки на ярмарку" description="Заявки пользователя на участие в Ярмарке мастеров, статусы оплаты и публикации." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/fair-applications" createHref="/yarmarka-masterov/zayavka" createLabel="Подать заявку">
-      <CabinetPublicationWorkspace>
-        <CabinetPublicationsClient type="fairApplication" />
-      </CabinetPublicationWorkspace>
-    </Shell>
   );
 }
 

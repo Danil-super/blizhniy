@@ -1,0 +1,498 @@
+diff --git a/scripts/local-primary-proxy.mjs b/scripts/local-primary-proxy.mjs
+index 0b620a9..1d7980e 100644
+--- a/scripts/local-primary-proxy.mjs
++++ b/scripts/local-primary-proxy.mjs
+@@ -26,8 +26,16 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
+  if(process.env.NODE_ENV!=='test')throw Error('Local proxy requires isolated test process');
+  validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
+  const {PostgresDatabase}=load('postgres');
+- const runtimeDb=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state),max:5}));
+- const ownerDb=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state,'owner'),max:2}));
++ let runtimeDb,ownerDb,timer,server,mailRunning,closing,closed=false;
++ const close=()=>closing??=(async()=>{
++  closed=true;clearInterval(timer);
++  try{if(server?.listening)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
++  finally{try{await mailRunning;}finally{try{await runtimeDb?.close();}finally{await ownerDb?.close();}}}
++ })();
++ try{
++ const tls={key:await readFile(join(stateDirectory,'tls-key.pem')),cert:await readFile(join(stateDirectory,'tls-cert.pem'))};
++ runtimeDb=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state),max:5}));
++ ownerDb=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state,'owner'),max:2}));
+  await load('production-auth-database').verifyProductionAuthDatabase(runtimeDb);
+  const limiter=new(load('auth-http').AuthRateLimiter)(runtimeDb,state.rateSecret);
+  const identity=new(load('identity').IdentityStore)(runtimeDb);
+@@ -60,14 +68,15 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
+  const adminPhoto=load('admin-listing-moderation-http').createAdminListingModerationHandler({origin:canonical},()=>({identity,limiter,store:new(load('postgres-listing-moderation').PostgresListingModerationStore)(runtimeDb,files,{contactMethod:true})}));
+  const key=await readFile(join(stateDirectory,'mail-key.bin'));
+  const worker=new(load('mail-delivery').MailDeliveryWorker)(runtimeDb,new(load('mail-outbox').MailPayloadCipher)(key),load('production-auth-config').renderProductionAuthMail,{pendingAccounts:true});key.fill(0);
+- let polling=false;
+- const timer=setInterval(async()=>{
+-  if(polling)return;polling=true;
++ timer=setInterval(()=>{
++  if(closed||mailRunning)return;
++  mailRunning=(async()=>{
+   try{await worker.runOne({send:async message=>{
+    const captured={...message,text:message.text.replaceAll(canonical,state.origin),capturedAt:new Date().toISOString()};
+    const file=join(stateDirectory,`mail-${message.id}.json`);
+    try{await writeFile(file,JSON.stringify(captured),{mode:0o600,flag:'wx'});}catch(error){if(error.code!=='EEXIST')throw error;}
+-  }});}catch{console.warn('Local mail capture unavailable');}finally{polling=false;}
++  }});}catch{console.warn('Local mail capture unavailable');}
++  })().finally(()=>{mailRunning=undefined;});
+  },1000);
+  const context={state,ownerDb,runtimeDb,load};
+  const refundAdmin=refundOperatorSocket===undefined?null:load('admin-refund-http').createAdminRefundHandler({origin:canonical},()=>({limiter,
+@@ -85,7 +94,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
+   }
+   return null;
+  };
+- const server=createServer({key:await readFile(join(stateDirectory,'tls-key.pem')),cert:await readFile(join(stateDirectory,'tls-cert.pem'))},async(req,res)=>{
++ server=createServer(tls,async(req,res)=>{
+   try{
+    if(typeof req.url!=='string'||!req.url.startsWith('/')||req.url.startsWith('//')||/[\\\x00-\x20]/.test(req.url)){res.writeHead(400,{'cache-control':'no-store'});res.end('Invalid local path');return;}
+    if(!allowLocalPrimaryRequest(req,state.origin,process.env.BLIZHNIY_TELEGRAM_PHONE==='enabled')){
+@@ -145,5 +154,6 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
+    outgoing.setTimeout(30000,()=>outgoing.destroy());outgoing.end(body);
+   }catch(error){console.warn('Local ingress request failed:',error?.code??error?.name??'Error');if(!res.headersSent)res.writeHead(503,{'content-type':'text/plain','cache-control':'no-store'});res.end('Local request unavailable');}
+  });
+- return {server,close:async()=>{clearInterval(timer);await new Promise(resolve=>server.close(resolve));await runtimeDb.close();await ownerDb.close();}};
++ return {server,close};
++ }catch(error){try{await close();}catch{ /* All acquired resources have been attempted. */ }throw error;}
+ }
+diff --git a/scripts/local-primary.mjs b/scripts/local-primary.mjs
+index 755ee81..ccea453 100644
+--- a/scripts/local-primary.mjs
++++ b/scripts/local-primary.mjs
+@@ -6,15 +6,17 @@ import {prepareLocalPrimaryFixture,stateDirectory,stateFile} from './local-prima
+ import {readLocalTelegramConfig} from './local-telegram-config.mjs';
+ import {createLocalPrimaryProxy} from './local-primary-proxy.mjs';
+ import {startLocalBookingExpiry} from './local-booking-expiry.mjs';
++import {startLocalPrimaryServices} from './local-primary-services.mjs';
+
+ async function main(){
+-if(!['--prepare','--start','--background'].includes(process.argv[2])||process.argv.length!==3)throw Error('Usage: node --experimental-strip-types scripts/local-primary.mjs --prepare|--start|--background');
++const refunds=process.argv[3]==='--refunds';
++if(!['--prepare','--start','--background'].includes(process.argv[2])||!(process.argv.length===3||process.argv.length===4&&refunds&&process.argv[2]!=='--prepare'))throw Error('Invalid local primary command');
+ const state=await prepareLocalPrimaryFixture();
+ if(process.argv[2]==='--prepare')console.log(JSON.stringify({ready:true,origin:state.origin}));
+ else if(process.argv[2]==='--background'){
+  if(Number(process.versions.node.split('.')[0])!==22)throw Error('Local primary requires Node22');
+  const log=await open(join(stateDirectory,'launcher.log'),'a',0o600);
+- const child=spawn(process.execPath,['--experimental-strip-types',join(state.project,'scripts/local-primary.mjs'),'--start'],{
++ const child=spawn(process.execPath,['--experimental-strip-types',join(state.project,'scripts/local-primary.mjs'),'--start',...(refunds?['--refunds']:[])],{
+   cwd:state.project,env:{PATH:process.env.PATH,LANG:'C.UTF-8',...(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG?{BLIZHNIY_LOCAL_TELEGRAM_CONFIG:process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG}:{})},detached:true,stdio:['ignore',log.fd,log.fd],
+  });
+  await once(child,'spawn');await log.close();child.unref();
+@@ -31,9 +33,6 @@ else{
+  const telegram=readLocalTelegramConfig(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG,state.origin);
+  Object.assign(process.env,telegram);
+  const {localPrimaryPaymentHandler}=await import('./local-primary-payment.mjs');
+- const proxy=await createLocalPrimaryProxy(state,{paymentHandler:localPrimaryPaymentHandler});
+- proxy.server.listen(Number(new URL(state.origin).port),'127.0.0.1');
+- try{await once(proxy.server,'listening');}catch(error){await proxy.close();throw error;}
+  const env={...telegram,BLIZHNIY_CSP_MODE:'enforce',PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',
+   BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_STATE:stateFile,BLIZHNIY_LOCAL_PRIMARY_ORIGIN:state.origin,BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_APPLICATION_CONTACT_VIEWS:'enabled',BLIZHNIY_BOOKING_LIFECYCLE:'local-v1',BLIZHNIY_WORK_OWNER_ACTIONS:'local-v1',BLIZHNIY_CHECKOUT_CANCELLATION:'local-v1',
+   BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_REMEMBERED_CAPTCHA:'enabled',BLIZHNIY_AUTH_CONFIRMATION_NOTICE:'enabled',
+@@ -43,19 +42,35 @@ else{
+   BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:join(stateDirectory,'tls-cert.pem'),
+   BLIZHNIY_MAIL_MODE:'timeweb',BLIZHNIY_SMTP_USER:'notifications@ближний-ру.рф',BLIZHNIY_SMTP_PASSWORD:'synthetic-local-not-used-by-smtp',
+   TURNSTILE_SECRET_KEY:'synthetic-local-not-used-by-provider',NEXT_PUBLIC_TURNSTILE_SITE_KEY:'synthetic-local-primary-site-key',
+-  BLIZHNIY_LISTING_CONTACT_METHOD:'enabled',BLIZHNIY_LISTING_CHECKOUT:'prepare-only',BLIZHNIY_PAYMENT_MODE:'test'};
+- const log=await open(join(stateDirectory,'next.log'),'a',0o600);
+- const child=spawn(process.execPath,['--require',join(state.project,'scripts/local-primary-preload.cjs'),join(state.project,'node_modules/next/dist/bin/next'),'start','--hostname','127.0.0.1','--port',String(state.upstreamPort)],
+-  {cwd:state.project,env,stdio:['ignore',log.fd,log.fd]});
+- await log.close();
+- const expiry=startLocalBookingExpiry(state);
+- let stopping=false;
+- const stop=async()=>{if(stopping)return;stopping=true;child.kill('SIGTERM');await expiry.close();await proxy.close();};
+- process.on('SIGINT',stop);process.on('SIGTERM',stop);
+- child.once('exit',async code=>{await stop();process.exitCode=code||0;});
+- child.once('error',async()=>{console.error('Local application failed to start');await stop();process.exitCode=1;});
+- console.log(`Локальный PostgreSQL-стенд: ${state.origin}/__local`);
+- console.log('Только синтетические данные; письма перехватываются; внешние платежи и SMTP недоступны.');
++  BLIZHNIY_LISTING_CONTACT_METHOD:'enabled',BLIZHNIY_LISTING_CHECKOUT:'prepare-only',BLIZHNIY_PAYMENT_MODE:'test',...(refunds?{BLIZHNIY_REFUND_ADMIN:'local-test'}:{})};
++ const controller=new AbortController(),stop=()=>controller.abort();process.once('SIGINT',stop);process.once('SIGTERM',stop);
++ try{
++  const services=await startLocalPrimaryServices({signal:controller.signal,
++   ...(refunds?{createRefunds:async signal=>(await import('./local-primary-refunds.mjs')).startLocalPrimaryRefunds({stateFile,signal,report:async event=>console.info(JSON.stringify(event))})}:{}),
++   createProxy:async(socket,signal)=>{
++    const proxy=await createLocalPrimaryProxy(state,{paymentHandler:localPrimaryPaymentHandler,...(socket?{refundOperatorSocket:socket}:{})});
++    try{signal.throwIfAborted();proxy.server.listen(Number(new URL(state.origin).port),'127.0.0.1');await once(proxy.server,'listening');signal.throwIfAborted();return proxy;}
++    catch(error){await proxy.close();throw error;}
++   },
++   startApplication:async signal=>{
++    const log=await open(join(stateDirectory,'next.log'),'a',0o600);let child,done,closing;
++    const close=()=>closing??=(async()=>{
++     if(!child)return;
++     if(child.exitCode===null&&child.signalCode===null)child.kill('SIGTERM');
++     const timer=setTimeout(()=>{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');},5000);timer.unref();
++     try{await done;}finally{clearTimeout(timer);}
++    })();
++    try{
++     signal.throwIfAborted();child=spawn(process.execPath,['--require',join(state.project,'scripts/local-primary-preload.cjs'),join(state.project,'node_modules/next/dist/bin/next'),'start','--hostname','127.0.0.1','--port',String(state.upstreamPort)],{cwd:state.project,env,stdio:['ignore',log.fd,log.fd]});
++     done=new Promise(resolve=>{child.once('error',()=>resolve(1));child.once('exit',code=>resolve(code??1));});
++     const spawned=once(child,'spawn').then(()=>true,()=>false);await log.close();if(!await spawned)throw Error('Local app spawn failed');signal.throwIfAborted();return{done,close};
++    }catch(error){try{await log.close();}finally{await close();}throw error;}
++   },
++   startExpiry:()=>startLocalBookingExpiry(state),
++   onReady:async()=>{console.log(`Локальный PostgreSQL-стенд: ${state.origin}/__local`);console.log('Только синтетические данные; письма перехватываются; внешние платежи и SMTP недоступны.');},
++  });
++  process.exitCode=await services.done;
++ }finally{process.removeListener('SIGINT',stop);process.removeListener('SIGTERM',stop);}
+ }
+ }
+ main().catch(()=>{console.error('Локальный стенд не запущен. Проверьте собственную конфигурацию и занятость портов; рабочий сервер не изменён.');process.exitCode=1;});
+diff --git a/tests/local-primary-refund-composition-cases.mjs b/tests/local-primary-refund-composition-cases.mjs
+index 7ee793d..6f7f2f6 100644
+--- a/tests/local-primary-refund-composition-cases.mjs
++++ b/tests/local-primary-refund-composition-cases.mjs
+@@ -7,6 +7,7 @@ import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
+ import {getRefundWorkerRolePlan} from '../scripts/refund-worker-role.mjs';
+ import {localPrimaryMerchant} from '../scripts/local-primary-payment.mjs';
+ import {testLocalPrimaryRefundProvider} from './local-primary-refund-provider-cases.mjs';
++import {testLocalPrimaryRefundActivation} from './local-primary-refund-activation-cases.mjs';
+
+ /** Reuses only the parent's new owned synthetic prod-named database; never the persistent manual stand. */
+ export async function testOwnedRefundComposition(suite,{admin,owned,environment,stateFile,project,load,artifact,actor,token}){
+@@ -126,5 +127,6 @@ export async function testOwnedRefundComposition(suite,{admin,owned,environment,
+    await assert.rejects(callLocalRefundOperator(socket,token,{action:'list',expectedAdminId:actor,input:null}));
+   });
+   await testLocalPrimaryRefundProvider(suite,{admin,ownerDb,load,intent,environment,workerEnvironment,operatorModule,workerModule,stateFile,project,actor,token});
++  await testLocalPrimaryRefundActivation(suite,{admin,ownerDb,load,intent,environment,workerEnvironment,stateFile,actor,token});
+  }finally{try{await runtime?.close();}finally{if(server)await server.close();else await operator?.close();}}
+ }
+diff --git a/scripts/local-primary-refund-config.mjs b/scripts/local-primary-refund-config.mjs
+new file mode 100644
+index 0000000..a4d8dd8
+--- /dev/null
++++ b/scripts/local-primary-refund-config.mjs
+@@ -0,0 +1,22 @@
++import {openSync,closeSync,fstatSync,lstatSync,readSync,realpathSync,constants} from 'node:fs';
++import {isAbsolute,dirname} from 'node:path';
++
++/** Fixed local role credentials only; no URLs, merchant keys or module paths. */
++export function readLocalPrimaryRefundConfig(file,state){
++ let descriptor;
++ try{
++  if(!isAbsolute(file)||state?.origin!=='https://127.0.0.1:3045'||state.database!=='blizhniy_prod')throw Error();
++  const parent=lstatSync(dirname(file));
++  if(!parent.isDirectory()||parent.uid!==process.getuid()||(parent.mode&0o777)!==0o700||realpathSync(dirname(file))!==dirname(file))throw Error();
++  descriptor=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);const info=fstatSync(descriptor);
++  if(!info.isFile()||info.uid!==process.getuid()||(info.mode&0o777)!==0o600||info.nlink!==1||info.size>2048)throw Error();
++  const bytes=Buffer.alloc(2049);let length=0;
++  for(;;){const count=readSync(descriptor,bytes,length,bytes.length-length,null);if(!count)break;length+=count;if(length>2048)throw Error();}
++  const value=JSON.parse(bytes.subarray(0,length).toString('utf8'));
++  if(!value||Object.keys(value).sort().join()!=='containerId,operatorPassword,project,version,workerPassword'||value.version!==1||
++   value.project!==state.project||value.containerId!==state.containerId||![value.operatorPassword,value.workerPassword].every(v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v))||
++   new Set([value.operatorPassword,value.workerPassword,state.ownerPassword,state.runtimePassword]).size!==4)throw Error();
++  return value;
++ }catch{throw Error('Local refund configuration unavailable');}
++ finally{if(descriptor!==undefined)closeSync(descriptor);}
++}
+diff --git a/scripts/local-primary-refunds.mjs b/scripts/local-primary-refunds.mjs
+new file mode 100644
+index 0000000..b1d7fc1
+--- /dev/null
++++ b/scripts/local-primary-refunds.mjs
+@@ -0,0 +1,70 @@
++import {realpathSync} from 'node:fs';
++import {mkdtemp,symlink,rm} from 'node:fs/promises';
++import {dirname,join} from 'node:path';
++import {fileURLToPath,pathToFileURL} from 'node:url';
++import {createRequire} from 'node:module';
++import pg from 'pg';
++import {readLocalPrimaryState} from './local-primary-config.mjs';
++import {readLocalPrimaryRefundConfig} from './local-primary-refund-config.mjs';
++import {verifyLocalPrimaryRefundTarget,assertLocalPrimaryRefundTrust} from './local-primary-refund-target.mjs';
++import {buildRefundOperator} from './build-refund-operator.mjs';
++import {buildRefundWorker} from './build-refund-worker.mjs';
++import {getRefundOperatorRolePlan} from './refund-operator-role.mjs';
++import {assertRefundSchema} from './refund-worker-schema.mjs';
++import {createLocalPrimaryRefundProvider} from './local-primary-refund-provider.mjs';
++import {localPrimaryMerchant} from './local-primary-payment.mjs';
++
++const root=realpathSync(fileURLToPath(new URL('..',import.meta.url))),unavailable=()=>Error('Local primary refunds unavailable');
++/** Explicit owned stand only. Fresh checked artifacts, fixed fake provider, no installer or real merchant. */
++export async function startLocalPrimaryRefunds({stateFile,signal,report}={}){
++ let directory,ownerDb,services,cleaning,closing;
++ const cleanup=()=>cleaning??=(async()=>{
++  let failed=false;
++  try{await ownerDb?.close();}catch{failed=true;}
++  if(directory)try{await rm(directory,{recursive:true,force:true});}catch{failed=true;}
++  return failed;
++ })();
++ try{
++  if(typeof window!=='undefined'||process.env.NODE_ENV!=='test'||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||
++   process.env.NODE_TLS_REJECT_UNAUTHORIZED==='0'||Object.keys(process.env).some(key=>key.startsWith('PG'))||
++   !(signal instanceof AbortSignal)||signal.aborted||typeof report!=='function')throw unavailable();
++  const state=readLocalPrimaryState(stateFile,root),parent=dirname(stateFile),config=readLocalPrimaryRefundConfig(join(parent,'refunds.json'),state);
++  if(process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!==state.origin)throw unavailable();
++  const env={NODE_ENV:'production',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_DB_HOST:'127.0.0.1',
++   BLIZHNIY_DB_PORT:String(state.dbPort),BLIZHNIY_DB_NAME:state.database,BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:join(parent,'refund-db-ca.pem'),
++   BLIZHNIY_PAYMENT_SHOP_ID:localPrimaryMerchant.shopId,BLIZHNIY_PAYMENT_SECRET_KEY:localPrimaryMerchant.secretKey};
++  const certificate=await verifyLocalPrimaryRefundTarget(env,{stateFile,project:root});signal.throwIfAborted();
++  directory=await mkdtemp(join(parent,'refund-runtime-'));signal.throwIfAborted();
++  const operatorPath=join(directory,'operator'),workerPath=join(directory,'worker');
++  buildRefundOperator(operatorPath);signal.throwIfAborted();buildRefundWorker(workerPath,{schema:55});signal.throwIfAborted();
++  for(const destination of [operatorPath,workerPath])await symlink(join(root,'node_modules'),join(destination,'node_modules'),'dir');
++  const require=createRequire(join(workerPath,'package.json')),{PostgresDatabase,readPostgresConfig}=require('./compiled/lib/postgres.js');
++  const ownerConfig=readPostgresConfig({...env,BLIZHNIY_DB_USER:'postgres',BLIZHNIY_DB_PASSWORD:state.ownerPassword});
++  assertLocalPrimaryRefundTrust(ownerConfig,certificate);signal.throwIfAborted();
++  ownerDb=new PostgresDatabase(new pg.Pool({...ownerConfig,max:2,application_name:'blizhniy-local-refund-provider'}));
++  await ownerDb.transaction(async tx=>{
++   await tx.query("set local statement_timeout='5s'");await tx.query("set local lock_timeout='1s'");
++   const journal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
++   if(JSON.stringify(journal)!==JSON.stringify(getRefundOperatorRolePlan(state.database).journal))throw unavailable();
++   await assertRefundSchema(tx,55,{localPrimary:true});
++  },{readOnly:true});signal.throwIfAborted();
++  const fetcher=await createLocalPrimaryRefundProvider({state,ownerDb});signal.throwIfAborted();
++  const operator=await import(pathToFileURL(join(operatorPath,'scripts/local-refund-operator-runtime.mjs')).href);
++  const server=await import(pathToFileURL(join(operatorPath,'scripts/local-refund-operator-server.mjs')).href);
++  const worker=await import(pathToFileURL(join(workerPath,'scripts/local-refund-worker-runtime.mjs')).href);
++  const {startLocalRefundServices}=await import(pathToFileURL(join(workerPath,'scripts/local-refund-services.mjs')).href);
++  services=await startLocalRefundServices({signal,report,startOperatorServer:server.startLocalRefundOperatorServer,
++   createOperator:()=>operator.createLocalPrimaryRefundOperatorRuntime({...env,BLIZHNIY_REFUND_OPERATOR:'local-test',BLIZHNIY_DB_USER:'blizhniy_refund_operator',BLIZHNIY_DB_PASSWORD:config.operatorPassword},{stateFile,project:root,fetcher}),
++   createWorker:()=>worker.createLocalPrimaryRefundWorkerRuntime({...env,BLIZHNIY_REFUND_WORKER:'local-test',BLIZHNIY_DB_USER:'blizhniy_refund_worker',BLIZHNIY_DB_PASSWORD:config.workerPassword},{stateFile,project:root,fetcher}),
++  });
++  const done=services.done.then(async code=>(await cleanup())?1:code);
++  if(signal.aborted){await services.close();await done;throw unavailable();}
++  return{socketPath:services.socketPath,done,close:()=>closing??=(async()=>{
++   let failed=false;try{await services.close();}catch{failed=true;}
++   if(await done!==0||failed)throw unavailable();
++  })()};
++ }catch{
++  try{await services?.close();}catch{ /* Drain before closing the provider and artifacts. */ }
++  await cleanup();throw unavailable();
++ }
++}
+diff --git a/scripts/local-primary-services.mjs b/scripts/local-primary-services.mjs
+new file mode 100644
+index 0000000..22377d2
+--- /dev/null
++++ b/scripts/local-primary-services.mjs
+@@ -0,0 +1,27 @@
++const unavailable=()=>Error('Local primary services unavailable');
++/** Trusted launcher factories must unwind their own partial creation; returned handles are owned here. */
++export async function startLocalPrimaryServices({signal,createRefunds,createProxy,startApplication,startExpiry,onReady}={}){
++ if(!(signal instanceof AbortSignal)||signal.aborted||[createProxy,startApplication,startExpiry,onReady].some(fn=>typeof fn!=='function')||
++  (createRefunds!==undefined&&typeof createRefunds!=='function'))throw unavailable();
++ const controller=new AbortController();let refund,proxy,app,expiry,failed=false,ready=false,closing,resolveReady,rejectReady,resolveStop;
++ const startup=new Promise((resolve,reject)=>{resolveReady=resolve;rejectReady=reject;}),stopped=new Promise(resolve=>{resolveStop=resolve;});
++ const stop=()=>{controller.abort();resolveStop();};signal.addEventListener('abort',stop,{once:true});
++ const observe=(resource,isRefund)=>resource.done.then(code=>{if(!controller.signal.aborted){failed=isRefund||code!==0;stop();}},()=>{failed=true;stop();});
++ const done=(async()=>{
++  try{
++   if(createRefunds){refund=await createRefunds(controller.signal);observe(refund,true);}controller.signal.throwIfAborted();
++   proxy=await createProxy(refund?.socketPath,controller.signal);controller.signal.throwIfAborted();
++   app=await startApplication(controller.signal);observe(app,false);controller.signal.throwIfAborted();
++   expiry=await startExpiry(controller.signal);controller.signal.throwIfAborted();
++   await onReady();controller.signal.throwIfAborted();ready=true;resolveReady();await stopped;
++  }catch{failed=true;}
++  finally{
++   stop();
++   for(const resource of [refund,app,expiry,proxy])try{await resource?.close();}catch{failed=true;}
++   signal.removeEventListener('abort',stop);if(!ready)rejectReady(unavailable());
++  }
++  return failed?1:0;
++ })();
++ try{await startup;}catch{await done;throw unavailable();}
++ return{done,close:()=>closing??=(async()=>{stop();if(await done!==0)throw unavailable();})()};
++}
+diff --git a/tests/local-primary-command.test.mjs b/tests/local-primary-command.test.mjs
+new file mode 100644
+index 0000000..a510589
+--- /dev/null
++++ b/tests/local-primary-command.test.mjs
+@@ -0,0 +1,16 @@
++import assert from 'node:assert/strict';import {test} from 'node:test';import {spawnSync} from 'node:child_process';
++
++test('local CLI accepts refund opt-in only on start/background and rejects other arguments before fixture access',()=>{
++ for(const [args,expected] of [[[],0],[['--prepare','--refunds'],0],[['--start','--other'],0],[['--background','--refunds','extra'],0],[['--start','--refunds'],1],[['--background','--refunds'],1],[['--start'],1]]){
++  const script=`
++   import assert from 'node:assert/strict';import fs from 'node:fs';import child from 'node:child_process';import {syncBuiltinESMExports} from 'node:module';
++   let fixture=0;const original=fs.promises.mkdir;fs.promises.mkdir=async(path,...args)=>{if(String(path).includes('/.local/state/blizhniy/')){fixture++;throw Error('Fixture forbidden');}return original(path,...args);};
++   child.execFile=()=>{throw Error('Processes forbidden');};globalThis.fetch=()=>{throw Error('Network forbidden');};syncBuiltinESMExports();
++   process.argv=['node',process.cwd()+'/scripts/local-primary.mjs',...JSON.parse(process.argv[1])];console.error=()=>{};
++   await import('./scripts/local-primary.mjs');await new Promise(resolve=>setTimeout(resolve,20));
++   assert.equal(fixture,${expected});assert.equal(process.exitCode,1);process.exitCode=0;console.log('checked');
++  `;
++  const result=spawnSync(process.execPath,['--experimental-strip-types','--input-type=module','-e',script,JSON.stringify(args)],{env:{PATH:process.env.PATH,LANG:'C.UTF-8'},encoding:'utf8',timeout:15000});
++  assert.equal(result.status,0,result.stderr);assert.equal(result.stdout.trim(),'checked');
++ }
++});
+diff --git a/tests/local-primary-proxy-cleanup.test.mjs b/tests/local-primary-proxy-cleanup.test.mjs
+new file mode 100644
+index 0000000..458e0fe
+--- /dev/null
++++ b/tests/local-primary-proxy-cleanup.test.mjs
+@@ -0,0 +1,31 @@
++import assert from 'node:assert/strict';import {test} from 'node:test';import {spawnSync} from 'node:child_process';
++
++test('proxy startup unwinds both pools and the mail timer on auth and late TLS failures without reading the manual fixture',()=>{
++ const script=`
++  import assert from 'node:assert/strict';import fs from 'node:fs';import childProcess from 'node:child_process';import {syncBuiltinESMExports,createRequire} from 'node:module';import pg from 'pg';
++  const state={project:process.cwd(),origin:'https://127.0.0.1:3045',upstreamPort:3046,containerId:'a'.repeat(64),containerName:'blizhniy-primary-local-123456789abc',dbPort:35432,database:'blizhniy_prod',runtimePassword:'b'.repeat(64),ownerPassword:'c'.repeat(64),rateSecret:'d'.repeat(64)};
++  const metadata={Id:state.containerId,Name:'/'+state.containerName,Config:{Image:'postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873',Labels:{'blizhniy.primary-local':state.project}},NetworkSettings:{Ports:{'5432/tcp':[{HostIp:'127.0.0.1',HostPort:'35432'}]}}};
++  childProcess.execFile=(_cmd,args,_options,callback)=>{assert.equal(args.includes('inspect'),true);callback(null,{stdout:JSON.stringify([metadata])});};
++  let stage,pools=0,closed=0,timers=0,cleared=0,network=0;
++  globalThis.fetch=()=>{network++;throw Error('Network forbidden');};
++  globalThis.setInterval=()=>{timers++;return{};};globalThis.clearInterval=value=>{if(value)cleared++;};
++  pg.Pool=class{constructor(){pools++;}};
++  const read=fs.promises.readFile;fs.promises.readFile=async(file,...args)=>{
++   if(String(file).endsWith('/tls-key.pem')||String(file).endsWith('/tls-cert.pem')){if(stage==='read')throw Error('Synthetic TLS read failure');return Buffer.from('synthetic invalid PEM');}
++   if(String(file).endsWith('/mail-key.bin'))return Buffer.alloc(32);
++   if(String(file).includes('/.local/state/'))throw Error('Permanent fixture access forbidden');return read(file,...args);
++  };syncBuiltinESMExports();
++  const fake=()=>({}),require=createRequire(import.meta.url);
++  require('./scripts/local-primary-modules.cjs').loadLocalPrimaryModule=name=>{
++   if(name==='postgres')return{PostgresDatabase:class{async close(){closed++;}}};
++   if(name==='production-auth-database')return{verifyProductionAuthDatabase:async()=>{if(stage==='auth')throw Error('Synthetic auth failure');}};
++   if(name==='telegram-phone-config')return{readTelegramPhoneConfig:()=>null};
++   return new Proxy({}, {get:()=>function(){return fake();}});
++  };
++  const {createLocalPrimaryProxy}=await import('./scripts/local-primary-proxy.mjs');
++  for(stage of ['read','auth','tls']){pools=closed=timers=cleared=0;await assert.rejects(createLocalPrimaryProxy(state));assert.equal(pools,stage==='read'?0:2);assert.equal(closed,pools);assert.equal(timers,stage==='tls'?1:0);assert.equal(cleared,timers);}
++  assert.equal(network,0);console.log('cleanup verified');
++ `;
++ const child=spawnSync(process.execPath,['--experimental-strip-types','--input-type=module','-e',script],{env:{PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'test'},encoding:'utf8',timeout:20000});
++ assert.equal(child.status,0,child.stderr);assert.equal(child.stdout.trim(),'cleanup verified');
++});
+diff --git a/tests/local-primary-refund-activation-cases.mjs b/tests/local-primary-refund-activation-cases.mjs
+new file mode 100644
+index 0000000..c1d1798
+--- /dev/null
++++ b/tests/local-primary-refund-activation-cases.mjs
+@@ -0,0 +1,45 @@
++import assert from 'node:assert/strict';
++import {randomUUID} from 'node:crypto';
++import {readFile,writeFile,readdir} from 'node:fs/promises';
++import {dirname,join} from 'node:path';
++import {startLocalPrimaryRefunds} from '../scripts/local-primary-refunds.mjs';
++
++export async function testLocalPrimaryRefundActivation(suite,{admin,ownerDb,load,intent,environment,workerEnvironment,stateFile,actor,token}){
++ await suite.test('manual activation builds fresh artifacts and connects the real HTTP boundary to TLS roles and durable fake refunds',async()=>{
++  const state=JSON.parse(await readFile(stateFile,'utf8')),parent=dirname(stateFile),keys=['NODE_ENV','BLIZHNIY_LOCAL_PRIMARY','BLIZHNIY_LOCAL_PRIMARY_ORIGIN'];
++  const saved=Object.fromEntries(keys.map(key=>[key,process.env[key]]));let services;
++  try{
++   Object.assign(process.env,{NODE_ENV:'test',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:state.origin});
++   await writeFile(join(parent,'refunds.json'),JSON.stringify({version:1,project:state.project,containerId:state.containerId,operatorPassword:environment.BLIZHNIY_DB_PASSWORD,workerPassword:workerEnvironment.BLIZHNIY_DB_PASSWORD}),{mode:0o600});
++   await writeFile(join(parent,'refund-db-ca.pem'),await readFile(environment.BLIZHNIY_DB_CA_FILE),{mode:0o600});
++   const source=(await admin.query("select author_id,category_id,city_id,contact_phone from app.listings where title='Синтетическая публикация'")).rows[0];
++   const listing=(await admin.query("insert into app.listings(author_id,listing_type,category_id,city_id,title,description,contact_phone,created_at) values($1,'sell',$2,$3,'Проверка ручного запуска','Синтетическая проверка HTTP, отдельного сокета и устойчивого провайдера.',$4,clock_timestamp()-interval '2 minutes') returning id",[source.author_id,source.category_id,source.city_id,source.contact_phone])).rows[0].id;
++   const payment=await intent('listing',listing,source.author_id);
++   await admin.query("insert into local_primary.provider_payments(intent_id,provider_id,status,captured_at) values($1,$2,'succeeded',$3)",[payment.id,payment.providerPaymentId,payment.capturedAt]);
++   assert.equal((await new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(ownerDb,{shopId:environment.BLIZHNIY_PAYMENT_SHOP_ID,isTest:true},{postmoderation:true}).fulfill(payment.id)).state,'fulfilled');
++   const {createAdminRefundHandler}=load('admin-refund-http'),{callLocalRefundOperator}=load('local-refund-operator-client');
++   for(let restart=0;restart<2;restart++){
++    const controller=new AbortController(),events=[];
++    services=await startLocalPrimaryRefunds({stateFile,signal:controller.signal,report:async event=>events.push(event)});
++    const socket=services.socketPath;
++    const handler=createAdminRefundHandler({origin:'https://admin.example.invalid'},()=>({limiter:new(load('auth-http').AuthRateLimiter)(ownerDb,state.rateSecret),command:(...args)=>callLocalRefundOperator(socket,...args)}),()=>{});
++    const request=command=>new Request('https://admin.example.invalid/api/admin/refunds',{method:'POST',headers:{host:'admin.example.invalid',origin:'https://admin.example.invalid','content-type':'application/json','x-blizhniy-request':'1','x-real-ip':'127.0.0.1',cookie:'__Host-blizhniy_session='+token},body:JSON.stringify(command)});
++    if(restart===0){
++     const approved=await handler(request({action:'approve',expectedAdminId:actor,input:{id:randomUUID(),paymentIntentId:payment.id,reason:'Полный возврат через ручной локальный контур.'}}));assert.equal(approved.status,200);
++     const deadline=Date.now()+20000;
++     while((await admin.query('select count(*)::int as n from app.payment_refund_effects where payment_intent_id=$1',[payment.id])).rows[0].n===0){assert.ok(Date.now()<deadline,'owned worker completes the queued refund');await new Promise(resolve=>setTimeout(resolve,100));}
++    }
++    const listed=await handler(request({action:'list',expectedAdminId:actor,input:null}));assert.equal(listed.status,200);
++    assert.ok((await listed.json()).items.some(row=>row.id===payment.id&&row.status==='refunded'));
++    assert.equal(events[0].status,'ready');await services.close();assert.equal(await services.done,0);services=undefined;
++    assert.equal((await handler(request({action:'list',expectedAdminId:actor,input:null}))).status,503);
++    assert.equal((await readdir(parent)).filter(name=>name.startsWith('refund-runtime-')).length,0);
++   }
++   assert.equal((await admin.query('select count(*)::int as n from app.payment_refund_effects where payment_intent_id=$1',[payment.id])).rows[0].n,1);
++   assert.equal((await admin.query('select count(*)::int as n from app.notifications where event_key=$1',['placement_refund:'+payment.id])).rows[0].n,1);
++   assert.equal((await admin.query("select count(*)::int as n from pg_stat_activity where application_name in ('blizhniy-local-refund-provider','blizhniy-local-refund-worker','blizhniy-local-refund-operator')")).rows[0].n,0);
++  }finally{
++   try{await services?.close();}finally{for(const key of keys)if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];}
++  }
++ });
++}
+diff --git a/tests/local-primary-refund-config.test.mjs b/tests/local-primary-refund-config.test.mjs
+new file mode 100644
+index 0000000..70e1e1c
+--- /dev/null
++++ b/tests/local-primary-refund-config.test.mjs
+@@ -0,0 +1,37 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {mkdtempSync,writeFileSync,chmodSync,symlinkSync,linkSync,rmSync} from 'node:fs';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {readLocalPrimaryRefundConfig} from '../scripts/local-primary-refund-config.mjs';
++import {spawnSync} from 'node:child_process';
++
++test('refund credentials are private, bounded and bound to the exact owned project and container',()=>{
++ const directory=mkdtempSync(join(tmpdir(),'blizhniy-refund-config-')),file=join(directory,'refunds.json');
++ const state={project:process.cwd(),containerId:'a'.repeat(64),origin:'https://127.0.0.1:3045',database:'blizhniy_prod',ownerPassword:'b'.repeat(64),runtimePassword:'c'.repeat(64)};
++ const value={version:1,project:state.project,containerId:state.containerId,operatorPassword:'d'.repeat(64),workerPassword:'e'.repeat(64)};
++ try{
++  chmodSync(directory,0o700);writeFileSync(file,JSON.stringify(value),{mode:0o600});assert.deepEqual(readLocalPrimaryRefundConfig(file,state),value);
++  for(const patch of [{version:2},{project:'/foreign'},{containerId:'f'.repeat(64)},{operatorPassword:state.ownerPassword},{workerPassword:state.runtimePassword},{workerPassword:value.operatorPassword},{workerPassword:''},{extra:true}]){
++   writeFileSync(file,JSON.stringify({...value,...patch}));assert.throws(()=>readLocalPrimaryRefundConfig(file,state),{message:'Local refund configuration unavailable'});
++  }
++  writeFileSync(file,JSON.stringify(value));symlinkSync(file,join(directory,'link'));assert.throws(()=>readLocalPrimaryRefundConfig(join(directory,'link'),state));
++  linkSync(file,join(directory,'hardlink'));assert.throws(()=>readLocalPrimaryRefundConfig(file,state));rmSync(join(directory,'hardlink'));
++  chmodSync(file,0o644);assert.throws(()=>readLocalPrimaryRefundConfig(file,state));chmodSync(file,0o600);
++  writeFileSync(file,'x'.repeat(2049));assert.throws(()=>readLocalPrimaryRefundConfig(file,state));writeFileSync(file,JSON.stringify(value));
++  chmodSync(directory,0o755);assert.throws(()=>readLocalPrimaryRefundConfig(file,state));
++ }finally{rmSync(directory,{recursive:true,force:true});}
++});
++
++test('refund config caps actual reads when its inode grows after stat',()=>{
++ const directory=mkdtempSync(join(tmpdir(),'blizhniy-refund-growing-')),file=join(directory,'refunds.json');
++ try{
++  chmodSync(directory,0o700);writeFileSync(file,' '.repeat(4096),{mode:0o600});
++  const script=`import assert from 'node:assert/strict';import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';
++   const stat=fs.fstatSync,read=fs.readSync;let total=0,checking=false;fs.fstatSync=fd=>checking?({...stat(fd),isFile:()=>true,size:100}):stat(fd);
++   fs.readSync=(fd,buffer,offset,length,position)=>{if(checking)assert.ok(buffer.length<=2049);const count=read(fd,buffer,offset,length,position);if(checking)total+=count;return count;};syncBuiltinESMExports();
++   const {readLocalPrimaryRefundConfig}=await import('./scripts/local-primary-refund-config.mjs');checking=true;
++   assert.throws(()=>readLocalPrimaryRefundConfig(process.argv[1],{origin:'https://127.0.0.1:3045',database:'blizhniy_prod'}),{message:'Local refund configuration unavailable'});assert.equal(total,2049);`;
++  const child=spawnSync(process.execPath,['--input-type=module','-e',script,file],{env:{PATH:process.env.PATH},encoding:'utf8',timeout:5000});assert.equal(child.status,0,child.stderr);
++ }finally{rmSync(directory,{recursive:true,force:true});}
++});
+diff --git a/tests/local-primary-services.test.mjs b/tests/local-primary-services.test.mjs
+new file mode 100644
+index 0000000..b8d9d59
+--- /dev/null
++++ b/tests/local-primary-services.test.mjs
+@@ -0,0 +1,40 @@
++import assert from 'node:assert/strict';import {test} from 'node:test';
++import {startLocalPrimaryServices} from '../scripts/local-primary-services.mjs';
++const defer=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
++function fixture(){
++ const calls=[],controller=new AbortController(),refundDone=defer(),appDone=defer();
++ const handle=name=>({close:async()=>calls.push('close-'+name)});
++ const refund={...handle('refund'),socketPath:'/tmp/private.sock',done:refundDone.promise},proxy=handle('proxy'),app={...handle('app'),done:appDone.promise},expiry=handle('expiry');
++ const options={signal:controller.signal,createRefunds:async()=>{calls.push('refund');return refund;},createProxy:async socket=>{calls.push('proxy');assert.equal(socket,refund.socketPath);return proxy;},
++  startApplication:async()=>{calls.push('app');return app;},startExpiry:async()=>{calls.push('expiry');return expiry;},onReady:async()=>calls.push('ready')};
++ return{calls,controller,refundDone,appDone,refund,proxy,app,expiry,options};
++}
++test('local startup wires the socket before the app and caches ordered complete shutdown',async()=>{
++ const f=fixture(),service=await startLocalPrimaryServices(f.options);assert.deepEqual(f.calls,['refund','proxy','app','expiry','ready']);
++ const closing=service.close();assert.equal(service.close(),closing);await closing;assert.equal(await service.done,0);
++ assert.deepEqual(f.calls.slice(5),['close-refund','close-app','close-expiry','close-proxy']);
++});
++test('late resources after cancellation are closed and no later startup step runs',async()=>{
++ for(const key of ['createRefunds','createProxy','startApplication','startExpiry','onReady']){
++  const f=fixture(),entered=defer(),release=defer(),original=f.options[key];
++  f.options[key]=async(...args)=>{entered.resolve();await release.promise;return original(...args);};
++  const starting=startLocalPrimaryServices(f.options);await entered.promise;f.controller.abort();release.resolve();
++  await assert.rejects(starting,{message:'Local primary services unavailable'});
++  assert.equal(f.calls.filter(c=>c==='close-refund').length,1);
++  if(key==='createProxy')assert.equal(f.calls.includes('app'),false);
++ }
++});
++test('refund failure during pending proxy startup cannot resume into starting Next',async()=>{
++ const f=fixture(),entered=defer(),release=defer();f.options.createProxy=async()=>{entered.resolve();await release.promise;return f.proxy;};
++ const starting=startLocalPrimaryServices(f.options);await entered.promise;f.refundDone.resolve(1);await Promise.resolve();release.resolve();
++ await assert.rejects(starting,{message:'Local primary services unavailable'});assert.equal(f.calls.includes('app'),false);assert.ok(f.calls.includes('close-proxy'));
++});
++test('every acquired resource closes even when startup or an earlier close fails',async()=>{
++ const f=fixture();f.options.onReady=async()=>{throw Error('private configuration');};f.refund.close=async()=>{f.calls.push('close-refund');throw Error('private driver');};
++ await assert.rejects(startLocalPrimaryServices(f.options),{message:'Local primary services unavailable'});
++ assert.deepEqual(f.calls.slice(-4),['close-refund','close-app','close-expiry','close-proxy']);
++});
++test('unexpected app or worker exit closes ingress, while base startup needs no refund configuration',async()=>{
++ for(const name of ['refundDone','appDone']){const f=fixture(),service=await startLocalPrimaryServices(f.options);f[name].resolve(1);assert.equal(await service.done,1);await assert.rejects(service.close());assert.ok(f.calls.includes('close-proxy'));}
++ const f=fixture();delete f.options.createRefunds;f.options.createProxy=async socket=>{assert.equal(socket,undefined);return f.proxy;};const service=await startLocalPrimaryServices(f.options);await service.close();assert.equal(f.calls.includes('refund'),false);
++});

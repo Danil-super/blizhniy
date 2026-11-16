@@ -1,5 +1,7 @@
 "use client";
 
+import {imageDataUrlToBlob} from './image-data-url';
+
 const databaseName = "blizhniy-media-store";
 const databaseVersion = 1;
 const objectStoreName = "media";
@@ -74,8 +76,7 @@ export async function storeMediaFile(file: File) {
 }
 
 export async function storeMediaDataUrl(dataUrl: string, name = "media") {
-  const response = await fetch(dataUrl);
-  const blob = await response.blob();
+  const blob = imageDataUrlToBlob(dataUrl);
   const id = mediaId();
   const record: StoredMediaRecord = {
     blob,

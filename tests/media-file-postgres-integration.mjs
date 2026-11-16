@@ -26,10 +26,11 @@ export async function testFencedMediaWrites(suite, db, { repo, root, token, othe
   await suite.test("file process + PG: committed owner claim, OS-fenced write, ready and private read", async () => {
     const pending = await repo.reserve(token, randomUUID(), image);
     const worker = await fileWorkerModule().createLocalMediaFileWorker(appRoot, root);
-    const writer = new LocalMediaWriter(repo, { write: async (...args) => {
+    const writer = new LocalMediaWriter(repo, { writeClaimed: (payload,claim) => worker.writeClaimed(payload,async()=>{
+      const value=await claim(),args=[value.record,payload,value.attemptId];
       assert.equal((await repo.getWriteAttempt(token, pending.id)).attemptId, args[2]);
-      await worker.write(...args);
-    } });
+      return value;
+    }) });
     assert.equal((await writer.write(token, pending.id, { ...image, bytes })).state, "ready");
     assert.deepEqual((await repo.readOwned(token, pending.id)).bytes, bytes);
     await assert.rejects(writer.write(token, pending.id, { ...image, bytes }), { code: "MEDIA_IN_PROGRESS" });
@@ -39,7 +40,7 @@ export async function testFencedMediaWrites(suite, db, { repo, root, token, othe
     const limited = new MediaMetadataRepository(limitedDb, await createLocalMediaFileStore(root));
     const worker = await fileWorkerModule().createLocalMediaFileWorker(appRoot, root);
     let writes = 0, decodes = 0;
-    const writer = new LocalMediaWriter(limited, { write: async (...args) => { writes++; await worker.write(...args); } });
+    const writer = new LocalMediaWriter(limited, { writeClaimed: (payload,claim) => worker.writeClaimed(payload,async()=>{const value=await claim();writes++;return value;}) });
     // Real pixels here, not a codec sandbox: systemd/cgroup enforcement has its separate local suite.
     const normalizer = { normalize: async (...args) => { decodes++; return normalizeMediaImage(...args); } };
     const upload = new LocalMediaUpload(limited, normalizer, writer), intent = randomUUID();
@@ -68,12 +69,29 @@ export async function testFencedMediaWrites(suite, db, { repo, root, token, othe
     await assert.rejects(upload.upload(token, randomUUID(), source.subarray(0, 30), "image/jpeg"), { code: "INVALID_IMAGE" });
     assert.equal((await db.query("select count(*)::integer as n from app.media_objects")).rows[0].n, beforeInvalid);
   });
+  await suite.test('fenced claim + PG: late committed SQL after child cancellation cannot create or replay a file',async()=>{
+    const pending=await repo.reserve(token,randomUUID(),image),abort=new AbortController();let entered,release,completed=0;
+    const started=new Promise(resolve=>{entered=resolve;}),held=new Promise(resolve=>{release=resolve;});
+    const worker=await fileWorkerModule().createLocalMediaFileWorker(appRoot,root);
+    const writer=new LocalMediaWriter({claimWrite:async(...args)=>{const claim=await repo.claimWrite(...args);entered();await held;return claim;},complete:async()=>{completed++;throw new Error('unexpected completion');}},
+      {writeClaimed:(...args)=>worker.writeClaimed(...args,abort.signal)});
+    const before=(await db.query('select charged_bytes,charged_objects from app.media_storage_budget')).rows[0];
+    const writing=writer.write(token,pending.id,{...image,bytes}),rejected=fail(writing);
+    try{
+      await started;abort.abort();await rejected;release();await new Promise(resolve=>setImmediate(resolve));
+      assert.equal(completed,0);assert.ok(await repo.getWriteAttempt(token,pending.id));
+      await assert.rejects(fs.stat(path.join(root,pending.id+'.webp')),{code:'ENOENT'});
+      await assert.rejects(new LocalMediaWriter(repo,worker).write(token,pending.id,{...image,bytes}),{code:'MEDIA_IN_PROGRESS'});
+      assert.equal((await db.query('select count(*)::int n from app.media_write_attempts where media_id=$1',[pending.id])).rows[0].n,1);
+      assert.equal(await repo.readOwned(token,pending.id),null);assert.deepEqual((await db.query('select charged_bytes,charged_objects from app.media_storage_budget')).rows[0],before);
+    }finally{release();abort.abort();await rejected;}
+  });
   await suite.test("upload + PG: lost ready acknowledgement reads the committed file without a second claim or write", async () => {
     const worker = await fileWorkerModule().createLocalMediaFileWorker(appRoot, root);
     let writes = 0;
     const writer = new LocalMediaWriter({ claimWrite: repo.claimWrite.bind(repo), complete: async (...args) => {
       await repo.complete(...args); throw new Error("Synthetic lost committed ready acknowledgement");
-    } }, { write: async (...args) => { writes++; await worker.write(...args); } });
+    } }, { writeClaimed: (payload,claim) => worker.writeClaimed(payload,async()=>{const value=await claim();writes++;return value;}) });
     const upload = new LocalMediaUpload(repo, { normalize: normalizeMediaImage }, writer), intent = randomUUID();
     await assert.rejects(upload.upload(token, intent, bytes, "image/webp"), { code: "MEDIA_UPLOAD_UNAVAILABLE" });
     const saved = await repo.getByIntent(token, intent); assert.equal(saved.state, "ready");
@@ -118,7 +136,7 @@ export async function testFencedMediaWrites(suite, db, { repo, root, token, othe
     let entered = 0, release, writes = 0;
     const barrier = new Promise(resolve => { release = resolve; });
     const normalizer = { normalize: async () => { if (++entered === 2) release(); await barrier; return normalized; } };
-    const writer = new LocalMediaWriter(repo, { write: async (...args) => { writes++; await worker.write(...args); } });
+    const writer = new LocalMediaWriter(repo, { writeClaimed: (payload,claim) => worker.writeClaimed(payload,async()=>{const value=await claim();writes++;return value;}) });
     const upload = new LocalMediaUpload(repo, normalizer, writer), intent = randomUUID();
     const outcomes = await Promise.allSettled([upload.upload(token, intent, bytes, "image/webp"), upload.upload(token, intent, bytes, "image/webp")]);
     assert.equal(entered, 2); assert.ok(outcomes.some(value => value.status === "fulfilled"));
@@ -134,7 +152,7 @@ export async function testFencedMediaWrites(suite, db, { repo, root, token, othe
       child.once("close", () => { closed = true; }); return child;
     } } });
     const worker = await module.createLocalMediaFileWorker(appRoot, root);
-    const writer = new LocalMediaWriter(repo, { write: (...args) => worker.write(...args, abort.signal) });
+    const writer = new LocalMediaWriter(repo, { writeClaimed: (...args) => worker.writeClaimed(...args, abort.signal) });
     const writing = writer.write(token, pending.id, { ...image, bytes }), rejected = fail(writing); let claim, partial;
     try {
       const deadline = Date.now() + 4000;

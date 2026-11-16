@@ -1,3 +1,4 @@
+import {readServiceCheckoutEnabled} from './service-checkout-config.ts';
 import {withAppSessionTransaction,AppSessionAccessError} from './app-session-transaction';
 import {hashSessionToken} from './identity';
 import {parseListingDraftId} from './listing-draft-contract.ts';
@@ -7,7 +8,7 @@ export class CheckoutCancellationError extends Error{constructor(readonly code:'
 export class PostgresCheckoutCancellation {
  constructor(private readonly db:Pick<PostgresDatabase,'transaction'>){}
  private async perform(token:string,expectedOwner:unknown,value:unknown,write:boolean):Promise<CheckoutCancellationResult|null>{
-  const owner=parseListingDraftId(expectedOwner),input=parseCheckoutCancellation(value);
+  const owner=parseListingDraftId(expectedOwner),input=parseCheckoutCancellation(value,{services:readServiceCheckoutEnabled()});
   try{return await withAppSessionTransaction(this.db,token,async(tx,user)=>{
    if(user.id!==owner)throw new AppSessionAccessError();
    if((await tx.query(`select o.id from app.payment_orders o join app.payment_checkout_intents i on i.id=o.id

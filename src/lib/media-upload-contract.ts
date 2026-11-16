@@ -1,3 +1,6 @@
+export const mediaOwnerByteLimit = 250 * 1024 * 1024;
+export const mediaOwnerObjectLimit = 500;
+export const mediaOwnerQuotaText = `Для публикаций на аккаунт — до ${mediaOwnerObjectLimit} фото и ${mediaOwnerByteLimit / 1024 / 1024} МБ, включая сохранённые фото и незавершённые загрузки.`;
 export const mediaUploadTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 export const normalizedImageByteLimit = 2 * 1024 * 1024;
 export type UploadedImage = { id: string; mimeType: "image/webp"; width: number; height: number; size: number };

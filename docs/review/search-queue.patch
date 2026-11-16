@@ -1,0 +1,150 @@
+--- a/tests/public-search-contract.test.mjs
++++ b/tests/public-search-contract.test.mjs
+@@ -131,10 +131,17 @@
+  }
+ });
+ 
+-test('runtime admits exactly two leases and rejects a third before config or database initialization',async()=>{
++test('runtime retains two physical leases while a third expires in the bounded queue before initialization',async()=>{
+  const f=runtimeFixture(),a=f.search(input),b=f.search({...input,page:2});await flush();
+  assert.equal(f.calls.db,2);assert.equal(f.calls.searches.length,2);assert.equal(f.calls.config,2);
+- await assert.rejects(f.search(input),publicError);assert.equal(f.calls.db,2);assert.equal(f.calls.config,2);
++ {
++  let settled=false;const pending=f.search(input);
++  void pending.then(()=>{settled=true;},()=>{settled=true;});
++  const rejected=assert.rejects(pending,publicError);await flush();
++  assert.equal(settled,false,'third request waits without starting config/database work');
++  f.clock.advance(750);await rejected;
++ }
++ assert.equal(f.calls.db,2);assert.equal(f.calls.config,2);
+  assert.equal(f.calls.constructors[0].db,f.db);assert.deepEqual(f.calls.constructors[0].options,{postmoderation:true,specialistProfileIdentity:true});
+  f.finish(0);f.finish(1);await Promise.all([a,b]);
+  const c=f.search(input);await flush();assert.equal(f.calls.searches.length,3);f.finish(2);await c;
+@@ -143,10 +150,24 @@
+ test('an expired store response retains its lease until physical cleanup and duplicate cleanup cannot overrelease',async()=>{
+  const f=runtimeFixture(),a=f.search(input),b=f.search(input);await flush();
+  const expiry=Error('Synthetic expired DB response');f.calls.searches[0].result.reject(expiry);await assert.rejects(a,error=>error===expiry);
+- await assert.rejects(f.search(input),publicError);assert.equal(f.calls.db,2);
++ {
++  let settled=false;const pending=f.search(input);
++  void pending.then(()=>{settled=true;},()=>{settled=true;});
++  const rejected=assert.rejects(pending,publicError);await flush();
++  assert.equal(settled,false,'third request waits without starting config/database work');
++  f.clock.advance(750);await rejected;
++ }
++ assert.equal(f.calls.db,2);
+  f.calls.searches[0].options.onComplete();f.calls.searches[0].options.onComplete();
+  const c=f.search(input);await flush();assert.equal(f.calls.db,3);assert.equal(f.calls.searches.length,3);
+- await assert.rejects(f.search(input),publicError);assert.equal(f.calls.db,3,'duplicate cleanup must not create a third simultaneous lease');
++ {
++  let settled=false;const pending=f.search(input);
++  void pending.then(()=>{settled=true;},()=>{settled=true;});
++  const rejected=assert.rejects(pending,publicError);await flush();
++  assert.equal(settled,false,'third request waits without starting config/database work');
++  f.clock.advance(750);await rejected;
++ }
++ assert.equal(f.calls.db,3,'duplicate cleanup must not create a third simultaneous lease');
+  f.finish(1);f.finish(2);await Promise.all([b,c]);
+ });
+ 
+@@ -155,7 +176,14 @@
+  for(const invalid of [{...input,query:'x'.repeat(201)},{...input,page:1001},{...input,cursor:'x'.repeat(4097)},{...input,unknown:true}])await assert.rejects(f.search(invalid),publicError);
+  assert.equal(f.calls.config,0);assert.equal(f.calls.db,0);assert.equal(f.calls.searches.length,0);
+  const a=f.search(input),b=f.search(input);await flush();assert.equal(f.calls.searches.length,2);
+- await assert.rejects(f.search(input),publicError);f.finish(0);f.finish(1);await Promise.all([a,b]);
++ {
++  let settled=false;const pending=f.search(input);
++  void pending.then(()=>{settled=true;},()=>{settled=true;});
++  const rejected=assert.rejects(pending,publicError);await flush();
++  assert.equal(settled,false,'third request waits without starting config/database work');
++  f.clock.advance(750);await rejected;
++ }
++ f.finish(0);f.finish(1);await Promise.all([a,b]);
+ });
+ 
+ test('preflight failures release leases before delegation, preserving recovery without creating a store',async()=>{
+@@ -175,10 +203,24 @@
+  const expiredA=assert.rejects(a,publicError),expiredB=assert.rejects(b,publicError);
+  f.clock.advance(5000);await flush();await Promise.all([expiredA,expiredB]);
+  assert.equal(f.calls.db,2);assert.equal(f.calls.constructors.length,0);assert.equal(f.calls.searches.length,0);
+- await assert.rejects(f.search(input),publicError);assert.equal(f.calls.db,2);
++ {
++  let settled=false;const pending=f.search(input);
++  void pending.then(()=>{settled=true;},()=>{settled=true;});
++  const rejected=assert.rejects(pending,publicError);await flush();
++  assert.equal(settled,false,'third request waits without starting config/database work');
++  f.clock.advance(750);await rejected;
++ }
++ assert.equal(f.calls.db,2);
+  f.calls.factories[0].resolve({db:f.db});await flush();assert.equal(f.calls.constructors.length,0,'late init must not create a store or issue SQL');assert.equal(f.calls.sql,0);
+  const c=f.search(input);await flush();assert.equal(f.calls.db,3);
+- await assert.rejects(f.search(input),publicError);assert.equal(f.calls.db,3);
++ {
++  let settled=false;const pending=f.search(input);
++  void pending.then(()=>{settled=true;},()=>{settled=true;});
++  const rejected=assert.rejects(pending,publicError);await flush();
++  assert.equal(settled,false,'third request waits without starting config/database work');
++  f.clock.advance(750);await rejected;
++ }
++ assert.equal(f.calls.db,3);
+  f.calls.factories[1].reject(Error('Synthetic late initializer failure'));await flush();assert.equal(f.calls.constructors.length,0);assert.equal(f.calls.sql,0);
+  f.calls.factories[2].resolve({db:f.db});await flush();assert.equal(f.calls.searches.length,1);f.finish(0);await c;
+ });
+--- a/src/lib/production-search-runtime.ts
++++ b/src/lib/production-search-runtime.ts
+@@ -5,12 +5,36 @@
+ import {PostgresPublicSearchStore} from './postgres-public-search';
+ import {parsePublicSearchInput,PublicSearchError,type PublicSearchInput} from './public-search-contract';
+ let active=0;
+-/** Two leases per process leave capacity in the existing shared five-connection pool. */
++type WaitingSearch={start:()=>void};
++const waiting:WaitingSearch[]=[];
++function pump(){while(active<2&&waiting.length)waiting.shift()!.start();}
++function acquireSearchSlot(deadline:number):Promise<()=>void>{
++ const reserve=()=>{
++  active++;let released=false;
++  return()=>{if(!released){released=true;active--;pump();}};
++ };
++ if(!waiting.length&&active<2)return Promise.resolve(reserve());
++ if(waiting.length>=32)return Promise.reject(new PublicSearchError());
++ return new Promise((resolve,reject)=>{
++  let pending=true;const expiresAt=Math.min(deadline,performance.now()+750);
++  const job:WaitingSearch={start:()=>{
++   if(!pending)return;pending=false;clearTimeout(timer);
++   if(performance.now()>=expiresAt){reject(new PublicSearchError());return;}
++   resolve(reserve());
++  }};
++  const timer=setTimeout(()=>{
++   if(!pending)return;pending=false;
++   const index=waiting.indexOf(job);if(index>=0)waiting.splice(index,1);
++   reject(new PublicSearchError());pump();
++  },Math.max(1,Math.ceil(expiresAt-performance.now())));
++  waiting.push(job);
++ });
++}
++/** Two physical leases plus a short bounded FIFO leave auth capacity in the shared pool. */
+ export async function searchPrimaryPublications(value:PublicSearchInput){
+- const input=parsePublicSearchInput(value);if(active>=2)throw new PublicSearchError();
+- active++;let delegated=false,released=false;
+- const deadline=performance.now()+5000;let initializing=false;
+- const release=()=>{if(!released){released=true;active--;}};
++ const input=parsePublicSearchInput(value),deadline=performance.now()+5000;
++ const release=await acquireSearchSlot(deadline);
++ let delegated=false,initializing=false;
+  try{
+   const config=readProductionAuthConfig();if(!config||performance.now()>=deadline)throw new PublicSearchError();
+   const pending=getProductionAccountDatabase(config);initializing=true;
+--- a/scripts/check-quality-floor.mjs
++++ b/scripts/check-quality-floor.mjs
+@@ -151,6 +151,11 @@
+ // Content-addressed artifacts, not a blanket permission to remove assertions.
+ const reviewedListingArtifacts = [
+   {
++    "file": "tests/public-search-contract.test.mjs",
++    "before": "3920719f3e2bc374a8e90b33a3c6fbd64cd5d32683955e55a65dd8dfc2270ce7",
++    "after": "c2ce3043d5daca4d7b2d6830b7d083b31f39084b050d29cd58c7723e5f937017"
++  },
++  {
+     "file": "tests/primary-listing-form-browser.mjs",
+     "before": "107b019ad1e6dcd5c1d323a179d8ef34a4666aec11746bf6a4bdeca76c1a3b2f",
+     "after": "94b3afeb529892c4c943687a6584b4199b142ea76f8eda1a105b0a90252c40f6"

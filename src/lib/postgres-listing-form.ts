@@ -18,10 +18,10 @@ const columns=`l.id,l.revision::text as revision,l.listing_type as "listingType"
 export class PostgresListingFormStore{
  private readonly contactMethod:boolean;
  private readonly editableStatus:string;
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,options:{contactMethod?:boolean;postmoderation?:boolean;ownerRemovals?:boolean}={}){
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,options:{contactMethod?:boolean;postmoderation?:boolean;ownerRemovals?:boolean;renewals?:boolean}={}){
   if(typeof window!=='undefined'||(options.contactMethod!==undefined&&typeof options.contactMethod!=='boolean'))throw new Error('Listing forms are server-only');
   this.contactMethod=options.contactMethod===true;
-  this.editableStatus=(options.postmoderation===true?"l.status in ('draft','published','archived')":"l.status='draft'")+
+  this.editableStatus=(options.renewals===true?"l.status in ('draft','published','archived','expired')":options.postmoderation===true?"l.status in ('draft','published','archived')":"l.status='draft'")+
    (options.ownerRemovals===true?' and not exists(select 1 from app.listing_owner_removals removed where removed.listing_id=l.id)':'');
  }
  private async snapshot(tx:PostgresQueries,owner:string,id:string):Promise<ListingFormSnapshot>{
@@ -49,9 +49,9 @@ export class PostgresListingFormStore{
   if(user.id!==owner)throw new ListingDraftAccessError();return (await this.inspectInTransaction(tx,owner,listingId,expectedRevision)).check;
  });}
  /** Trusted repository composition only: caller must authorize identity and hold the app-session transaction. */
- async inspectInTransaction(tx:PostgresQueries,owner:string,listingId:unknown,expectedRevision:unknown){
+ async inspectInTransaction(tx:PostgresQueries,owner:string,listingId:unknown,expectedRevision:unknown,allowPlaced=false){
   const id=parseListingDraftId(listingId),revision=parseListingDraftRevision(expectedRevision);
-  const current=(await tx.query<{revision:string}>("select revision::text as revision from app.listings where id=$1 and author_id=$2 and status='draft' for update",[id,owner])).rows[0];
+  const current=(await tx.query<{revision:string}>(`select revision::text as revision from app.listings where id=$1 and author_id=$2 and ${allowPlaced?"status in ('draft','published','archived','expired')":"status='draft'"} for update`,[id,owner])).rows[0];
   if(!current)throw new ListingDraftAccessError();if(current.revision!==revision)throw new ListingDraftConflictError();
   const snapshot=await this.snapshot(tx,owner,id);
   const category=(await tx.query<{active:boolean}>(`select (c.active and (c.parent_id is null or parent.active is true)) as active

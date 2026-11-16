@@ -1,5 +1,5 @@
 import type { MediaMetadataRepository, MediaReservation } from "./media-metadata";
-import type { MediaFileRecord } from "./media-files";
+import type { createLocalMediaFileWorker } from "./media-file-worker";
 import type { NormalizedImage } from "./media-image";
 import { encodeMediaReply, MEDIA_MAX_OUTPUT_BYTES } from "./media-worker-protocol";
 import { assertMediaRuntime } from "./media-runtime-policy.ts";
@@ -30,18 +30,17 @@ function snapshot(input: unknown): NormalizedImage {
  * This orchestrator itself is not a cleanup lease or authorization for resetting attempts. No HTTP/retry. */
 export class LocalMediaWriter {
   constructor(private readonly repository: Pick<MediaMetadataRepository, "claimWrite" | "complete">,
-    private readonly files: { write(record: MediaFileRecord, bytes: Uint8Array, attemptId: string): Promise<void> }) { assertLocal(); }
+    private readonly files: Pick<Awaited<ReturnType<typeof createLocalMediaFileWorker>>, "writeClaimed">) { assertLocal(); }
   async write(token: string, fileId: string, input: unknown): Promise<MediaReservation> {
     assertLocal(); const image = snapshot(input);
     try {
       const { mimeType, width, height, size, sha256 } = image;
-      const claim = await this.repository.claimWrite(token, fileId, { mimeType, width, height, size, sha256 });
-      // Never run FS after an unknown claim COMMIT or replay a previously observed attempt.
-      await this.files.write(claim.record, image.bytes, claim.attemptId);
+      // Claim only while the child owns the OS fence; unknown/late COMMIT never sends file bytes.
+      await this.files.writeClaimed(image.bytes, () => this.repository.claimWrite(token, fileId, { mimeType, width, height, size, sha256 }));
       return await this.repository.complete(token, fileId);
     } catch (error) {
       const code = error && typeof error === "object" && "code" in error ? error.code : null;
-      throw new MediaWriteError(metadataErrors.find(value => value === code) ?? "MEDIA_WRITE_UNAVAILABLE");
+      throw new MediaWriteError(code === "MEDIA_FILE_WORKER_BUSY" ? "MEDIA_IN_PROGRESS" : metadataErrors.find(value => value === code) ?? "MEDIA_WRITE_UNAVAILABLE");
     }
   }
 }

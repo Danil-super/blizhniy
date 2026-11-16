@@ -112,6 +112,9 @@ export async function testRegistrationWeb(suite, db, dbEnv) {
       assert.ok(Date.now() < deadline, "local app started before deadline");
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+    // Compile the owned dev page during startup; browser action deadlines stay unchanged.
+    assert.equal((await fetchLocal("/auth/local")).status, 200, "registration route is ready before browser scenarios");
+    assert.ok(Date.now() < deadline, "registration compilation stays inside the startup deadline");
     await suite.test("actual Next HTTP signup hides the mail token; duplicate cannot replace credentials", async () => {
       const response = await post("register", signup);
       assert.equal(response.status, 202, JSON.stringify(response.body));

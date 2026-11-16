@@ -8,6 +8,7 @@ import type {PostgresDatabase,PostgresQueries} from './postgres.ts';
 import type {RefundTransactionAdmission} from './postgres-refund-dispatch.ts';
 export class RefundApprovalAccessError extends Error{constructor(){super('Refund approval unavailable');this.name='RefundApprovalAccessError';}}
 export class RefundApprovalConflictError extends Error{constructor(){super('Refund approval already exists');this.name='RefundApprovalConflictError';}}
+export class RefundApprovalOrderError extends Error{constructor(){super('Refund the latest purchase first');this.name='RefundApprovalOrderError';}}
 export class RefundApprovalBusyError extends Error{constructor(){super('Refund approval participant busy');this.name='RefundApprovalBusyError';}}
 export type PlacementRefundApproval={id:string;paymentIntentId:string;approvedBy:string;reason:string;policyVersion:'placement-full-admin-v1';fiscalMode:PlacementRefundFiscalMode;amount:string;approvedAt:string};
 type Merchant={shopId:string;isTest:boolean};
@@ -56,7 +57,7 @@ export class PostgresRefundApprovalStore {
    await this.source(tx,input.paymentIntentId,false);
    await tx.query("select set_config('blizhniy.refund_approval_session',$1,true)",[hashSessionToken(token)]);
    try{await tx.query('insert into app.payment_refund_approvals(id,payment_intent_id,reason) values($1,$2,$3)',[input.id,input.paymentIntentId,input.reason]);}
-   catch(error){if(error&&typeof error==='object'&&'code'in error&&error.code==='23505')throw new RefundApprovalConflictError();throw error;}
+   catch(error){if(error&&typeof error==='object'&&'code'in error&&error.code==='23505')throw new RefundApprovalConflictError();if(error&&typeof error==='object'&&'code'in error&&error.code==='PRN01')throw new RefundApprovalOrderError();throw error;}
    return(await this.approval(tx,input.id)).approval;
   },{requireAdmin:true,denied:()=>new RefundApprovalAccessError()});
  }

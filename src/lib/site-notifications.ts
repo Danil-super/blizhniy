@@ -9,6 +9,7 @@ import {
 } from "@/lib/client-user-profile";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { clearLegacySiteNotificationStorage } from "@/lib/site-notification-storage";
 
 export type SiteNotificationCategory = "booking" | "message" | "payment" | "publication" | "system" | "security";
 export type SiteNotificationTone = "info" | "success" | "warning" | "danger";
@@ -45,10 +46,7 @@ export function siteNotificationsStorageKey(ownerKey: string) {
 
 function removePersistedNotifications() {
   try {
-    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
-      const key = window.localStorage.key(index);
-      if (key?.startsWith(storagePrefix)) window.localStorage.removeItem(key);
-    }
+    clearLegacySiteNotificationStorage(window.localStorage);
   } catch {
     // Storage may be disabled. In-memory notifications remain owner scoped.
   }

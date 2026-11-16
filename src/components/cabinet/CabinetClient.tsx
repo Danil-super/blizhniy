@@ -1,4 +1,6 @@
 "use client";
+import {CabinetOrganizationView} from "./CabinetOrganization";
+import {CabinetProfileView} from "./CabinetProfileBar";
 import {WorkPublicationsPanel} from '@/components/work/WorkPublicationsPanel';
 import {ServicePublicationsPanel} from '@/components/services/ServicePublicationsPanel';
 import {PhoneVerificationButton} from '@/components/phone/PhoneVerificationButton';
@@ -8,7 +10,7 @@ import {ApplicationsPanel} from '@/components/applications/ApplicationsPanel';
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, FileText, LockKeyhole, Mail, MapPin, Move, Phone, Plus, Search, Settings2, Trash2, UserRound, Video, X } from "lucide-react";
+import { BriefcaseBusiness, Camera, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, FileText, LockKeyhole, Mail, MapPin, Move, Phone, Plus, Search, Trash2, Video, X } from "lucide-react";
 import {
   demoPublicationLabels,
   canUseDemoPublicationsStorage,
@@ -24,7 +26,6 @@ import {
   type DemoPublication,
   type DemoPublicationType,
 } from "@/lib/demo-publications";
-import { useAuthState } from "@/components/auth/useAuthState";
 import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
 import { PrivateDraftsPanel } from "@/components/listings/PrivateDraftsPage";
 import { LegalLink } from "@/components/LegalConsentCheckbox";
@@ -51,6 +52,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { CabinetProfileFailure, useCookieCabinetProfile } from "./CookieCabinetProfileProvider";
 import {CabinetFormValidation} from '@/components/CabinetFormValidation';
+import {containDialogTab,openDialog} from '@/lib/dialog-keyboard';
 
 type UserCabinetState = {
   identity: ClientUserIdentity | null;
@@ -2406,6 +2408,7 @@ function AvatarEditor({
   const [dragStart, setDragStart] = useState<{ pointerId: number; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const avatarDialogRef = useRef<HTMLDialogElement>(null);
+  const avatarFileRef = useRef<HTMLInputElement>(null);
   const [avatarMessage, setAvatarMessage] = useState("");
   const preparingAvatar = Boolean(avatarContext?.avatarPreparation?.loading);
   const visibleAvatarMessage = avatarMessage || avatarContext?.avatarPreparation?.message || "";
@@ -2413,9 +2416,12 @@ function AvatarEditor({
 
   useEffect(() => {
     const dialog = avatarDialogRef.current;
-    if (cropOpen && dialog && !dialog.open) dialog.showModal();
-    return () => { if (dialog?.open) dialog.close(); };
+    if (cropOpen && dialog) return openDialog(dialog,avatarFileRef.current);
   }, [cropOpen]);
+
+  useEffect(() => {
+    if (cropOpen && loading) avatarDialogRef.current?.focus();
+  }, [cropOpen, loading]);
 
   useEffect(() => {
     if (!cropDraft || !stageRef.current) {
@@ -2468,7 +2474,7 @@ function AvatarEditor({
   }
 
   function updateCropDraft(patch: Partial<AvatarCropDraft>) {
-    if (!cropDraft || !cropImageSize) {
+    if (!cropDraft || !cropImageSize || loading) {
       return;
     }
 
@@ -2563,10 +2569,10 @@ function AvatarEditor({
               <p className="mt-0.5 text-xs leading-5 text-slate-600">Выберите фото и настройте кадр.</p>
             </div>}
             <div className="flex flex-wrap gap-2">
-              <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0664b3]">
+              <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#0875d1] px-4 text-sm font-bold text-white transition hover:bg-[#0664b3] focus-within:ring-2 focus-within:ring-[#0875d1] focus-within:ring-offset-2">
                 <Camera className="h-4 w-4" />
                 {loading || preparingAvatar ? "Готовим..." : "Выбрать"}
-                <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="sr-only" disabled={loading || preparingAvatar} onChange={(event) => {const file=event.currentTarget.files?.[0];event.currentTarget.value='';void handleAvatarFile(file);}} />
+                <input ref={avatarFileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="sr-only" disabled={loading || preparingAvatar} onChange={(event) => {const file=event.currentTarget.files?.[0];event.currentTarget.value='';void handleAvatarFile(file);}} />
               </label>
               <button
                 type="button"
@@ -2590,13 +2596,7 @@ function AvatarEditor({
 
       {!cropOpen && visibleAvatarMessage && <p className="mt-3 text-sm text-slate-700" role="status">{visibleAvatarMessage}</p>}
       {cropDraft && cropImageSize && cropTransform ? (
-        <dialog ref={avatarDialogRef} aria-labelledby="avatar-crop-heading" className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto overscroll-contain rounded-2xl border-0 bg-white p-0 shadow-2xl backdrop:bg-slate-950/60" onCancel={event=>{event.preventDefault();if(!loading){avatarContext?.setAvatarDraft(null);setCropDraft(null);setCropImageSize(null);}}} onKeyDown={event=>{
-          if(event.key!=='Tab')return;
-          const controls=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'));
-          const first=controls[0],last=controls.at(-1);
-          if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
-          else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
-        }}>
+        <dialog ref={avatarDialogRef} aria-labelledby="avatar-crop-heading" className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto overscroll-contain rounded-2xl border-0 bg-white p-0 shadow-2xl backdrop:bg-slate-950/60" aria-busy={loading} onCancel={event=>{event.preventDefault();if(!loading){avatarContext?.setAvatarDraft(null);setCropDraft(null);setCropImageSize(null);}}} onKeyDown={event=>containDialogTab(event)}>
           <section className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -2647,7 +2647,18 @@ function AvatarEditor({
               </div>
             </div>
 
-            <label className="mt-5 grid gap-2 text-sm font-bold text-slate-700">
+            <div role="group" aria-label="Положение фото" className="mt-4 flex justify-center gap-2">
+              {[
+                {label:'влево',x:-10,y:0,icon:'←'},{label:'вправо',x:10,y:0,icon:'→'},
+                {label:'вверх',x:0,y:-10,icon:'↑'},{label:'вниз',x:0,y:10,icon:'↓'},
+              ].map(({label,x,y,icon})=>{
+                const position={offsetX:cropTransform.offsetX+x,offsetY:cropTransform.offsetY+y};
+                const next=getAvatarTransform({...cropDraft,...position},cropImageSize,stageSize);
+                return <button key={label} type="button" aria-label={`Сдвинуть фото ${label}`} title={`Сдвинуть фото ${label}`} disabled={loading||(next.offsetX===cropTransform.offsetX&&next.offsetY===cropTransform.offsetY)} onClick={()=>updateCropDraft(position)} className="h-11 w-11 rounded-lg border border-slate-300 bg-white text-xl font-bold text-slate-700 disabled:opacity-40">{icon}</button>;
+              })}
+            </div>
+
+            <label className="mt-4 grid gap-2 text-sm font-bold text-slate-700">
               Масштаб
               <input
                 type="range"
@@ -2655,6 +2666,7 @@ function AvatarEditor({
                 max="3"
                 step="0.01"
                 value={cropDraft.zoom}
+                disabled={loading}
                 onChange={(event) => updateCropDraft({ zoom: clampNumber(Number(event.target.value), 1, 3) })}
                 className="accent-[#0875d1]"
               />
@@ -2672,6 +2684,7 @@ function AvatarEditor({
               <button
                 type="button"
                 onClick={() => updateCropDraft({ offsetX: 0, offsetY: 0, zoom: 1 })}
+                disabled={loading}
                 className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:text-[#0875d1]"
               >
                 Сбросить
@@ -2685,7 +2698,7 @@ function AvatarEditor({
   );
 }
 
-function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: ClientUserIdentity; profile: CabinetProfile; onClose: () => void;
+export function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: ClientUserIdentity; profile: CabinetProfile; onClose: () => void;
   saveProfile?: (profile: CabinetProfile) => Promise<CabinetProfile> }) {
   const cookie = useCookieCabinetProfile();
   const [localForm, setLocalForm] = useState(profile);
@@ -3085,64 +3098,7 @@ function SettingsPanel({ identity, profile, onClose, saveProfile }: { identity: 
 }
 
 export function CabinetProfileBar() {
-  const { state: authState } = useAuthState();
-  const { identity, profile, profileError, loading, saveProfile, reloadProfile } = useUserCabinetData();
-  const avatarMemory = useCookieCabinetProfile();
-  const retainedAvatar = avatarMemory?.avatarDraft ?? avatarMemory?.avatarPreparation;
-  const [open, setOpen] = useState(Boolean(retainedAvatar));
-  useEffect(() => { if (retainedAvatar) setOpen(true); }, [retainedAvatar]);
-  useEffect(()=>{if(new URLSearchParams(window.location.search).get('settings')==='1')setOpen(true);},[]);
-
-  if (authState !== "signed-in" && authState !== "admin") {
-    return null;
-  }
-
-  if (!loading && profileError && !profile) return <CabinetProfileFailure message={profileError} reload={reloadProfile} />;
-
-  if (loading || !identity || !profile) {
-    return null;
-  }
-
-  return (
-    <section id="cabinet-profile" tabIndex={-1} className="mx-auto mt-4 w-full max-w-3xl scroll-mt-4 rounded-xl border border-slate-200 bg-white p-3 shadow-card sm:mt-5 sm:p-4">
-      {!open && <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-50 text-lg font-bold text-[#0875d1]">
-            {profile.avatarDataUrl ? (
-              <img
-                src={profile.avatarDataUrl}
-                alt={`Аватар ${profile.name}`}
-                className="h-full w-full object-cover"
-                style={{
-                  objectPosition: `${profile.avatarPositionX}% ${profile.avatarPositionY}%`,
-                  transform: `scale(${profile.avatarZoom})`,
-                  transformOrigin: `${profile.avatarPositionX}% ${profile.avatarPositionY}%`,
-                }}
-              />
-            ) : (
-              profile.name.slice(0, 1).toUpperCase()
-            )}
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold uppercase text-[#0a7b2b]">Ваш профиль</p>
-            <h2 className="truncate text-xl font-bold text-[#060b27]">{profile.name}</h2>
-            <p className="truncate text-sm text-slate-500">{profile.email || "Email не указан"}</p>
-            {profile.phone ? (
-              <p className={profile.phoneVerified && profile.verifiedPhone === profile.phone ? "mt-1 text-xs font-bold text-[#0a8f32]" : "mt-1 text-xs font-bold text-amber-700"}>
-                {profile.phone} · {profile.phoneVerified && profile.verifiedPhone === profile.phone ? "подтвержден" : "не подтвержден"}
-              </p>
-            ) : null}
-          </div>
-        </div>
-        <button type="button" disabled={Boolean(profileError)} onClick={() => setOpen((value) => !value)} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 transition hover:border-blue-200 hover:text-[#0875d1] disabled:cursor-not-allowed disabled:opacity-50">
-          <Settings2 className="h-4 w-4" />
-          Настройки
-        </button>
-      </div>}
-      {profileError ? <p role="alert" className="mt-3 text-sm font-semibold text-amber-700">{profileError}</p> : null}
-      {open && !profileError ? <SettingsPanel key={identity.ownerKey} identity={identity} profile={profile} onClose={() => setOpen(false)} saveProfile={saveProfile} /> : null}
-    </section>
-  );
+  return <CabinetProfileView data={useUserCabinetData()} />;
 }
 
 export function CabinetOverviewClient() {
@@ -3576,190 +3532,9 @@ export function CabinetPaymentsClient({ initialPayments = [] }: { initialPayment
 }
 
 export function CabinetOrganizationClient() {
-  const { identity, profile, profileError, loading, saveProfile, reloadProfile } = useUserCabinetData();
-  const [form, setForm] = useState<CabinetProfile | null>(profile);
-  const [message, setMessage] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setForm(profile);
-  }, [profile]);
-
-  if (!loading && profileError && !profile) return <CabinetProfileFailure message={profileError} reload={reloadProfile} />;
-  if (loading || !identity || !profile || !form) {
-    return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm font-semibold text-slate-600 shadow-card">Загружаем профиль...</div>;
-  }
-
-  const completedFields = [form.organizationName, form.organizationInn, form.organizationAddress, form.organizationDescription].filter((value) => value.trim()).length;
-  const completionLabel = completedFields >= 3 ? "Заполнен" : completedFields > 0 ? "Нужно дополнить" : "Не заполнен";
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!identity || !form) {
-      return;
-    }
-
-    if (profileError) {
-      setMessage("Профиль не загружен. Обновите страницу перед сохранением.");
-      return;
-    }
-
-    const organizationName = form.organizationName.trim();
-    const organizationInn = form.organizationInn.replace(/\D/g, "");
-    const organizationOgrn = form.organizationOgrn.replace(/\D/g, "");
-
-    if (!organizationName) {
-      setMessage("Укажите название организации или ИП.");
-      return;
-    }
-
-    if (organizationInn && organizationInn.length !== 10 && organizationInn.length !== 12) {
-      setMessage("ИНН должен содержать 10 цифр для организации или 12 цифр для ИП.");
-      return;
-    }
-
-    if (organizationOgrn && organizationOgrn.length !== 13 && organizationOgrn.length !== 15) {
-      setMessage("ОГРН должен содержать 13 цифр, ОГРНИП — 15 цифр.");
-      return;
-    }
-
-    const nextProfile: CabinetProfile = {
-      ...form,
-      organizationName: organizationName.slice(0, 120),
-      organizationInn,
-      organizationOgrn,
-      organizationAddress: form.organizationAddress.trim().slice(0, 160),
-      organizationWebsite: form.organizationWebsite.trim().slice(0, 120),
-      organizationDescription: form.organizationDescription.trim().slice(0, 500),
-    };
-
-    setSaving(true);
-    setMessage("");
-
-    try {
-      const saved = saveProfile ? await saveProfile(nextProfile) : await saveCabinetProfile(identity.ownerKey, nextProfile);
-      setForm(saved);
-      setMessage("Профиль организации сохранен.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Не удалось сохранить профиль организации.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold text-[#060b27]">{form.organizationName || "Профиль организации"}</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Заполните данные работодателя один раз, чтобы при размещении вакансий было понятно, от чьего имени публикуется предложение.
-          </p>
-        </div>
-        <StatusPill>{completionLabel}</StatusPill>
-      </div>
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-xs font-bold uppercase text-slate-500">Город</p>
-          <p className="mt-2 font-bold text-[#060b27]">{profile.city}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-xs font-bold uppercase text-slate-500">Телефон</p>
-          <p className="mt-2 font-bold text-[#060b27]">{profile.phone || "Не указан"}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-xs font-bold uppercase text-slate-500">Email</p>
-          <p className="mt-2 break-words font-bold text-[#060b27]">{profile.email || "Не указан"}</p>
-        </div>
-      </div>
-      {profileError ? <p role="alert" className="mt-4 text-sm font-semibold text-amber-700">{profileError}</p> : null}
-      <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
-        <CabinetFormValidation/>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="grid gap-1.5 text-sm font-bold text-slate-700">
-            Название организации или ИП
-            <input
-              className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
-              value={form.organizationName}
-              name="organizationName"
-              onChange={(event) => setForm({ ...form, organizationName: event.target.value.slice(0, 120) })}
-              placeholder="ООО РемДом"
-              minLength={2}
-              maxLength={120}
-              required
-            />
-          </label>
-          <label className="grid gap-1.5 text-sm font-bold text-slate-700">
-            Сайт или профиль
-            <input
-              className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
-              value={form.organizationWebsite}
-              name="organizationWebsite"
-              type="url"
-              onChange={(event) => setForm({ ...form, organizationWebsite: event.target.value.slice(0, 120) })}
-              placeholder="https://example.ru"
-              maxLength={120}
-            />
-          </label>
-          <label className="grid gap-1.5 text-sm font-bold text-slate-700">
-            ИНН
-            <input
-              className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
-              value={form.organizationInn}
-              name="organizationInn"
-              pattern="([0-9]{10}|[0-9]{12})"
-              onChange={(event) => setForm({ ...form, organizationInn: event.target.value.replace(/\D/g, "").slice(0, 12) })}
-              placeholder="10 или 12 цифр"
-              inputMode="numeric"
-              maxLength={12}
-            />
-          </label>
-          <label className="grid gap-1.5 text-sm font-bold text-slate-700">
-            ОГРН / ОГРНИП
-            <input
-              className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
-              value={form.organizationOgrn}
-              name="organizationOgrn"
-              pattern="([0-9]{13}|[0-9]{15})"
-              onChange={(event) => setForm({ ...form, organizationOgrn: event.target.value.replace(/\D/g, "").slice(0, 15) })}
-              placeholder="13 или 15 цифр"
-              inputMode="numeric"
-              maxLength={15}
-            />
-          </label>
-        </div>
-        <label className="grid gap-1.5 text-sm font-bold text-slate-700">
-          Адрес
-          <input
-            className="h-11 min-w-0 rounded-lg border border-slate-300 px-3 font-normal outline-none focus:border-[#0875d1]"
-            value={form.organizationAddress}
-            name="organizationAddress"
-            onChange={(event) => setForm({ ...form, organizationAddress: event.target.value.slice(0, 160) })}
-            placeholder="Краснодар, ул. Красная, 1"
-            maxLength={160}
-          />
-        </label>
-        <label className="grid gap-1.5 text-sm font-bold text-slate-700">
-          Краткое описание
-          <textarea
-            className="min-h-28 resize-y rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-[#0875d1]"
-            value={form.organizationDescription}
-            name="organizationDescription"
-            onChange={(event) => setForm({ ...form, organizationDescription: event.target.value.slice(0, 500) })}
-            placeholder="Чем занимается компания, кого обычно нанимаете, важные условия для соискателей."
-            maxLength={500}
-          />
-        </label>
-        <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" disabled={saving || Boolean(profileError)} className="inline-flex h-11 items-center justify-center rounded-lg bg-[#0875d1] px-5 text-sm font-bold text-white transition hover:bg-[#0664b3] disabled:cursor-wait disabled:opacity-60">
-            {saving ? "Сохраняем..." : "Сохранить профиль организации"}
-          </button>
-          {message ? <p className="text-sm font-semibold text-slate-600">{message}</p> : null}
-        </div>
-      </form>
-    </section>
-  );
+  const data=useUserCabinetData(),owner=data.identity?.ownerKey;
+  return <CabinetOrganizationView key={data.identity?.ownerKey??"unresolved"} data={{...data,
+    saveProfile:data.saveProfile??(owner?(profile=>saveCabinetProfile(owner,profile)):undefined)}}/>;
 }
 
 type SpecialistCompletenessPayload = {
@@ -4136,32 +3911,7 @@ function LegacyCabinetSpecialistClient() {
   );
 }
 
-export function CabinetCapabilities() {
-  return (
-    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
-        <UserRound className="h-5 w-5 text-[#0875d1]" />
-        <h3 className="mt-3 font-bold text-[#060b27]">Профиль</h3>
-        <p className="mt-1 text-sm leading-6 text-slate-600">Имя, телефон, email и город хранятся в настройках.</p>
-      </article>
-      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
-        <LockKeyhole className="h-5 w-5 text-[#0875d1]" />
-        <h3 className="mt-3 font-bold text-[#060b27]">Безопасность</h3>
-        <p className="mt-1 text-sm leading-6 text-slate-600">Пароль меняется только через защищенную ссылку из письма.</p>
-      </article>
-      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
-        <Bell className="h-5 w-5 text-[#0875d1]" />
-        <h3 className="mt-3 font-bold text-[#060b27]">Уведомления</h3>
-        <p className="mt-1 text-sm leading-6 text-slate-600">Можно включить или выключить события по броням, оплатам и сообщениям.</p>
-      </article>
-      <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-card">
-        <CheckCircle2 className="h-5 w-5 text-[#0875d1]" />
-        <h3 className="mt-3 font-bold text-[#060b27]">Публикации</h3>
-        <p className="mt-1 text-sm leading-6 text-slate-600">Новые пользователи начинают с нулевых счетчиков и понятных действий.</p>
-      </article>
-    </section>
-  );
-}
+export { CabinetCapabilities } from "./CabinetCapabilities";
 
 export function CabinetContactsHint() {
   return (

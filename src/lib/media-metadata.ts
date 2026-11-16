@@ -1,3 +1,4 @@
+import {mediaOwnerByteLimit,mediaOwnerObjectLimit} from "./media-upload-contract.ts";
 import { AppSessionAccessError, withAppSessionTransaction } from "./app-session-transaction";
 import { assertMediaRuntime } from "./media-runtime-policy.ts";
 import type { MediaFileRecord, MediaFileObservation } from "./media-files";
@@ -9,7 +10,7 @@ export type MediaReservation = MediaFileRecord & { state: "pending" | "ready" };
 export type MediaWriteClaim = { attemptId: string; record: MediaFileRecord };
 export type MediaWriteAttempt = { attemptId: string; claimedAt: Date };
 export type MediaWriteObservation = { state: MediaReservation["state"]; files: MediaFileObservation };
-type ErrorCode = "INVALID_MEDIA_METADATA" | "MEDIA_ACCESS_DENIED" | "MEDIA_NOT_FOUND" | "MEDIA_INTENT_CONFLICT" | "MEDIA_IN_PROGRESS" | "MEDIA_QUOTA_EXCEEDED" | "MEDIA_METADATA_UNAVAILABLE";
+type ErrorCode = "INVALID_MEDIA_METADATA" | "MEDIA_ACCESS_DENIED" | "MEDIA_NOT_FOUND" | "MEDIA_INTENT_CONFLICT" | "MEDIA_IN_PROGRESS" | "MEDIA_QUOTA_EXCEEDED" | "MEDIA_OWNER_QUOTA_EXCEEDED" | "MEDIA_METADATA_UNAVAILABLE";
 export class MediaMetadataError extends Error {
   constructor(readonly code: ErrorCode) { super("Media metadata operation failed"); this.name = "MediaMetadataError"; }
 }
@@ -32,14 +33,20 @@ const fileRecord = (row: MediaReservation): MediaFileRecord => ({ id: row.id, mi
 
 /** Guarded SQL/FS boundary. Production requires explicit root-managed policy. No HTTP or retries. */
 export class MediaMetadataRepository {
-  constructor(private readonly db: Pick<PostgresDatabase, "transaction">, private readonly files: { read(record: MediaFileRecord): Promise<Buffer> }) { this.assertLocal(); }
+  constructor(private readonly db: Pick<PostgresDatabase, "transaction">, private readonly files: { read(record: MediaFileRecord): Promise<Buffer> },
+    private readonly retention = false) {
+    this.assertLocal(); if (typeof retention !== "boolean") throw new MediaMetadataError("MEDIA_METADATA_UNAVAILABLE");
+  }
   private assertLocal(): void {
     if (typeof window !== "undefined") throw new MediaMetadataError("MEDIA_METADATA_UNAVAILABLE");
     try { assertMediaRuntime(process); } catch { throw new MediaMetadataError("MEDIA_METADATA_UNAVAILABLE"); }
   }
   private async owned<T>(token: string, work: (tx: PostgresQueries, ownerId: string) => Promise<T>): Promise<T> {
     this.assertLocal();
-    try { return await withAppSessionTransaction(this.db, token, (tx, user) => work(tx, user.id)); }
+    try { return await withAppSessionTransaction(this.db, token, async (tx, user) => {
+      if (this.retention) await this.readCommitted(tx);
+      return work(tx, user.id);
+    }); }
     catch (error) {
       if (error instanceof MediaMetadataError) throw error;
       if (error instanceof AppSessionAccessError) throw new MediaMetadataError("MEDIA_ACCESS_DENIED");
@@ -47,15 +54,32 @@ export class MediaMetadataRepository {
       throw new MediaMetadataError("MEDIA_METADATA_UNAVAILABLE");
     }
   }
+  private async readCommitted(tx: PostgresQueries): Promise<void> {
+    const isolation = (await tx.query<{isolation:string}>("select current_setting('transaction_isolation') as isolation")).rows[0];
+    if (isolation?.isolation !== "read committed") throw new MediaMetadataError("MEDIA_METADATA_UNAVAILABLE");
+  }
+  private async terminal(tx: PostgresQueries, id: string): Promise<boolean> {
+    if (!this.retention) return false;
+    return (await tx.query<{terminal:boolean}>("select exists(select 1 from app.media_retirement_requests where media_id=$1) as terminal",[id])).rows[0]?.terminal !== false;
+  }
   async reserve(token: string, intentId: string, input: unknown): Promise<MediaReservation> {
     this.assertLocal(); const intent = identifier(intentId), image = imageMetadata(input);
     return this.owned(token, async (tx, ownerId) => {
+      // The user lock taken by owned() serializes uploads; a stale RR snapshot must not admit another reservation.
+      if (!this.retention) await this.readCommitted(tx);
+      if (this.retention) {
+        const prior = (await tx.query<MediaReservation>(`select ${columns} from app.media_objects where owner_id=$1 and intent_id=$2 for update`,[ownerId,intent])).rows[0];
+        if (prior && await this.terminal(tx,prior.id)) throw new MediaMetadataError("MEDIA_INTENT_CONFLICT");
+      }
+      const usage = this.retention
+        ? "select coalesce(max(charged_objects),0)<$8::integer and coalesce(max(charged_bytes),0)<=$9::bigint-$6::integer from app.media_active_usage where owner_id=$1"
+        : "select count(*)<$8::integer and coalesce(sum(size),0)<=$9::bigint-$6::integer from app.media_objects where owner_id=$1";
       const { rows: [inserted] } = await tx.query<MediaReservation>(`insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256)
-        values($1,$2,$3,$4,$5,$6,$7) on conflict(owner_id,intent_id) do nothing returning ${columns}`,
-      [ownerId, intent, image.mimeType, image.width, image.height, image.size, image.sha256]);
+        select $1,$2,$3,$4,$5,$6,$7 where (${usage}) on conflict(owner_id,intent_id) do nothing returning ${columns}`,
+      [ownerId, intent, image.mimeType, image.width, image.height, image.size, image.sha256, mediaOwnerObjectLimit, mediaOwnerByteLimit]);
       if (inserted) return inserted;
       const { rows: [existing] } = await tx.query<MediaReservation>(`select ${columns} from app.media_objects where owner_id=$1 and intent_id=$2`, [ownerId, intent]);
-      if (!existing) throw new MediaMetadataError("MEDIA_METADATA_UNAVAILABLE");
+      if (!existing) throw new MediaMetadataError("MEDIA_OWNER_QUOTA_EXCEEDED");
       if (existing.mimeType !== image.mimeType || existing.width !== image.width || existing.height !== image.height || existing.size !== image.size || existing.sha256 !== image.sha256) throw new MediaMetadataError("MEDIA_INTENT_CONFLICT");
       if (existing.state !== "ready") throw new MediaMetadataError("MEDIA_IN_PROGRESS");
       return existing;
@@ -64,7 +88,8 @@ export class MediaMetadataRepository {
   async getByIntent(token: string, intentId: string): Promise<MediaReservation | null> {
     this.assertLocal(); const intent = identifier(intentId);
     return this.owned(token, async (tx, ownerId) => {
-      const { rows: [row] } = await tx.query<MediaReservation>(`select ${columns} from app.media_objects where owner_id=$1 and intent_id=$2`, [ownerId, intent]);
+      const { rows: [row] } = await tx.query<MediaReservation>(`select ${columns} from app.media_objects where owner_id=$1 and intent_id=$2${this.retention?" for update":""}`, [ownerId, intent]);
+      if (row && await this.terminal(tx,row.id)) throw new MediaMetadataError("MEDIA_INTENT_CONFLICT");
       return row ?? null;
     });
   }
@@ -74,6 +99,7 @@ export class MediaMetadataRepository {
     return this.owned(token, async (tx, ownerId) => {
       const { rows: [row] } = await tx.query<MediaReservation>(`select ${columns} from app.media_objects where id=$1 and owner_id=$2 for update`, [id, ownerId]);
       if (!row) throw new MediaMetadataError("MEDIA_NOT_FOUND");
+      if (await this.terminal(tx,row.id)) throw new MediaMetadataError("MEDIA_INTENT_CONFLICT");
       if (row.mimeType !== image.mimeType || row.width !== image.width || row.height !== image.height || row.size !== image.size || row.sha256 !== image.sha256) throw new MediaMetadataError("MEDIA_INTENT_CONFLICT");
       if (row.state !== "pending") throw new MediaMetadataError("MEDIA_IN_PROGRESS");
       const { rows: [attempt] } = await tx.query<{ attemptId: string }>(`insert into app.media_write_attempts(media_id) values($1)
@@ -86,6 +112,10 @@ export class MediaMetadataRepository {
   async getWriteAttempt(token: string, fileId: string): Promise<MediaWriteAttempt | null> {
     this.assertLocal(); const id = identifier(fileId);
     return this.owned(token, async (tx, ownerId) => {
+      if (this.retention) {
+        const row=(await tx.query<{id:string}>("select id from app.media_objects where id=$1 and owner_id=$2 for update",[id,ownerId])).rows[0];
+        if (!row || await this.terminal(tx,id)) return null;
+      }
       const { rows: [row] } = await tx.query<MediaWriteAttempt>(`select a.id as "attemptId",a.claimed_at as "claimedAt"
         from app.media_objects m join app.media_write_attempts a on a.media_id=m.id where m.id=$1 and m.owner_id=$2`, [id, ownerId]);
       return row ?? null;
@@ -98,6 +128,7 @@ export class MediaMetadataRepository {
       return await worker.observe(inspect => this.owned(token, async (tx, ownerId) => {
         const { rows: [row] } = await tx.query<MediaReservation>(`select ${columns} from app.media_objects where id=$1 and owner_id=$2 for update`, [id, ownerId]);
         if (!row) throw new MediaMetadataError("MEDIA_NOT_FOUND");
+        if (await this.terminal(tx,row.id)) throw new MediaMetadataError("MEDIA_INTENT_CONFLICT");
         const { rows: [attempt] } = await tx.query<{ attemptId: string }>(`select id as "attemptId" from app.media_write_attempts where media_id=$1`, [id]);
         if (!attempt) throw new MediaMetadataError("MEDIA_NOT_FOUND");
         return { state: row.state, files: await inspect(fileRecord(row), attempt.attemptId) };
@@ -113,6 +144,7 @@ export class MediaMetadataRepository {
     return this.owned(token, async (tx, ownerId) => {
       const { rows: [row] } = await tx.query<MediaReservation>(`select ${columns} from app.media_objects where id=$1 and owner_id=$2 for update`, [id, ownerId]);
       if (!row) throw new MediaMetadataError("MEDIA_NOT_FOUND");
+      if (await this.terminal(tx,row.id)) throw new MediaMetadataError("MEDIA_INTENT_CONFLICT");
       await this.files.read(fileRecord(row));
       if (row.state === "ready") return row;
       const { rows: [ready] } = await tx.query<MediaReservation>(`update app.media_objects set state='ready',ready_at=clock_timestamp()
@@ -124,8 +156,9 @@ export class MediaMetadataRepository {
   async readOwned(token: string, fileId: string): Promise<{ record: MediaFileRecord; bytes: Buffer } | null> {
     this.assertLocal(); const id = identifier(fileId);
     return this.owned(token, async (tx, ownerId) => {
-      const { rows: [row] } = await tx.query<MediaReservation>(`select ${columns} from app.media_objects where id=$1 and owner_id=$2 and state='ready'`, [id, ownerId]);
+      const { rows: [row] } = await tx.query<MediaReservation>(`select ${columns} from app.media_objects where id=$1 and owner_id=$2 and state='ready'${this.retention?" for update":""}`, [id, ownerId]);
       if (!row || row.state !== "ready") return null;
+      if (await this.terminal(tx,row.id)) return null;
       const record = fileRecord(row), bytes = await this.files.read(record);
       return { record, bytes };
     });

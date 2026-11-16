@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AuthPage } from "@/components/MvpDashboard";
+import { AuthPage } from "@/components/auth/AuthPage";
 import { ProductionAuthPage } from "@/components/auth/ProductionAuthPage";
 
 export const dynamic = "force-dynamic";

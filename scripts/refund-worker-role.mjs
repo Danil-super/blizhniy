@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {getBootstrapPlan} from './postgres-migration-plan.mjs';
 import {getCabinetMigrationPlan} from './cabinet-release-plan.mjs';
 import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.mjs';
+import {getMediaRetentionMigration} from './media-retention-release.mjs';
 import {assertRefundSchema} from './refund-worker-schema.mjs';
 
 const role='blizhniy_refund_worker',locks=['users','payment_checkout_intents','payment_orders'];
@@ -39,15 +40,15 @@ const functions=[
  'app.assert_placement_refund_job(text,uuid,uuid)',
 ];
 const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
-function journal(){return[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan(),...suffix.map(name=>{
+function journal(schema=54){return[...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan(),...[...suffix,...(schema>=55?['0055-refund-operator-locks.sql']:[]),...(schema>=56?['0056-placement-renewals.sql']:[]),...(schema>=57?['0057-service-payment-terms.sql']:[])].map(name=>{
  const source=readFileSync(new URL('../database/migrations/'+name,import.meta.url),'utf8');
  if(!/^begin;$/m.test(source)||!/commit;\s*$/.test(source))throw Error('Invalid refund migration');
  return{name,sha256:createHash('sha256').update(source).digest('hex')};
-})].map(({name,sha256})=>({name,sha256}));}
+}),...(schema===58?[getMediaRetentionMigration()]:[])].map(({name,sha256})=>({name,sha256}));}
 
-export function getRefundWorkerRolePlan(database){
- if(!validDatabase(database))throw Error('Invalid refund database');
- return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(),
+export function getRefundWorkerRolePlan(database,{schema=54,localPrimary=false}={}){
+ if(typeof localPrimary!=='boolean'||(schema===58&&!localPrimary)||!validDatabase(database)||![54,55,56,57,58].includes(schema))throw Error('Invalid refund database');
+ return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(schema),
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
    ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`)),
    ...functions.map(signature=>`grant execute on function ${signature} to ${role}`)]};
@@ -57,9 +58,9 @@ export function getRefundWorkerRolePlan(database){
  * Trusted TEST financial process; merchant isolation is enforced by the stores, not SQL RLS.
  * No managed membership exception, production runtime wiring or automatic activation.
  */
-export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
+export async function verifyRefundWorkerDatabase(db,{database,merchant,localPrimary=false}={}){
  try{
-  if(!validDatabase(database)||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
+  if(!validDatabase(database)||typeof localPrimary!=='boolean'||(localPrimary&&database!=='blizhniy_prod')||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
   const expectedJournal=journal();
   await db.transaction(async tx=>{
    await tx.query("set local statement_timeout='5s'");
@@ -77,8 +78,9 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   if(JSON.stringify(actualJournal)!==JSON.stringify(expectedJournal))throw Error('Invalid refund journal');
-   await assertRefundSchema(tx);
+   const schema=localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:actualJournal.length===55?55:54;
+   if(JSON.stringify(actualJournal)!==JSON.stringify(schema>=55?journal(schema):expectedJournal))throw Error('Invalid refund journal');
+   await assertRefundSchema(tx,schema,{localPrimary});
    await assertFinancialCatalogPrivileges(tx);
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable

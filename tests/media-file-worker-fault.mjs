@@ -13,4 +13,4 @@ const { createLocalMediaFileStore } = loadMediaModule("media-files", {}, { ...fs
   };
   return file;
 } });
-try { await runFileWorker(createLocalMediaFileStore); } finally { clearTimeout(deadline); }
+try { await runFileWorker(createLocalMediaFileStore, process.argv[3] ?? "write"); } finally { clearTimeout(deadline); }

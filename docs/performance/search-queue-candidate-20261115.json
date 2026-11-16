@@ -1,0 +1,79 @@
+{
+  "scope": "Owned PG58 runtime role, real SQL/store and same max5 pool; standalone loopback HTTP + Node client, no Next render, no browser, no auth login, no mutations, no provider calls or production. Pool probes are SELECT1, not an auth SLA.",
+  "reports": [
+    {
+      "name": "before",
+      "run": 1,
+      "requests": 25,
+      "success": 3,
+      "failed": 22,
+      "p95Ms": 37.339,
+      "maxPhysicalReaders": 2,
+      "maxSqlScopes": 2,
+      "overlapProbes": 10,
+      "poolProbeP95Ms": 6.367
+    },
+    {
+      "name": "before",
+      "run": 2,
+      "requests": 25,
+      "success": 2,
+      "failed": 23,
+      "p95Ms": 16.871,
+      "maxPhysicalReaders": 2,
+      "maxSqlScopes": 2,
+      "overlapProbes": 10,
+      "poolProbeP95Ms": 0.343
+    },
+    {
+      "name": "before",
+      "run": 3,
+      "requests": 25,
+      "success": 2,
+      "failed": 23,
+      "p95Ms": 16.109,
+      "maxPhysicalReaders": 2,
+      "maxSqlScopes": 2,
+      "overlapProbes": 10,
+      "poolProbeP95Ms": 0.382
+    },
+    {
+      "name": "candidate",
+      "run": 1,
+      "requests": 25,
+      "success": 25,
+      "failed": 0,
+      "p95Ms": 226.605,
+      "maxPhysicalReaders": 2,
+      "maxSqlScopes": 2,
+      "overlapProbes": 10,
+      "poolProbeP95Ms": 0.367
+    },
+    {
+      "name": "candidate",
+      "run": 2,
+      "requests": 25,
+      "success": 25,
+      "failed": 0,
+      "p95Ms": 275.898,
+      "maxPhysicalReaders": 2,
+      "maxSqlScopes": 2,
+      "overlapProbes": 10,
+      "poolProbeP95Ms": 0.557
+    },
+    {
+      "name": "candidate",
+      "run": 3,
+      "requests": 25,
+      "success": 25,
+      "failed": 0,
+      "p95Ms": 226.17,
+      "maxPhysicalReaders": 2,
+      "maxSqlScopes": 2,
+      "overlapProbes": 10,
+      "poolProbeP95Ms": 0.321
+    }
+  ],
+  "date": "2026-11-15",
+  "candidateActive": false
+}

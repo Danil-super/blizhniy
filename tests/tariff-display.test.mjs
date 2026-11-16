@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { test } from "node:test";
 import { fairCategories } from "../src/lib/data.ts";
+import { nextFairEvent } from "../src/lib/fair-calendar.ts";
 
 const require = createRequire(import.meta.url), ts = require("typescript"), React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
@@ -25,6 +26,7 @@ function page(kind, tariffs) {
     "@/components/FairApplicationForm": { FairApplicationForm: () => React.createElement("form") },
     "@/components/LocationMap": { LocationMap: () => React.createElement("div") },
     "@/lib/data": { fairCategories },
+    "@/lib/fair-calendar": { nextFairEvent },
     "@/lib/fair-application-store": { listStoredFairApplications: async () => [] },
     "@/lib/storage-upload": { publicMediaUrl: () => assert.fail("empty fixture must not fetch media") },
   };

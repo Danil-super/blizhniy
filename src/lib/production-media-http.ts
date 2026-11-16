@@ -103,7 +103,7 @@ export function createProductionMediaHandler(config: { origin: string }, getRunt
     } catch (error) {
       if (error instanceof ListingDraftInputError || error instanceof MediaInputError) error = new AuthRequestError(422, "INVALID_INPUT");
       const codes: Record<string, number> = { MEDIA_ACCESS_DENIED: 401, MEDIA_NOT_FOUND: 404, MEDIA_INTENT_CONFLICT: 409,
-        MEDIA_IN_PROGRESS: 409, MEDIA_QUOTA_EXCEEDED: 503, INVALID_IMAGE: 422, IMAGE_TOO_LARGE: 413, UNSUPPORTED_IMAGE: 415, MEDIA_BUSY: 503 };
+        MEDIA_IN_PROGRESS: 409, MEDIA_QUOTA_EXCEEDED: 503, MEDIA_OWNER_QUOTA_EXCEEDED: 409, INVALID_IMAGE: 422, IMAGE_TOO_LARGE: 413, UNSUPPORTED_IMAGE: 415, MEDIA_BUSY: 503 };
       if (!(error instanceof AuthRequestError) && error && typeof error === "object" && "code" in error &&
           typeof error.code === "string" && Object.hasOwn(codes, error.code)) error = new AuthRequestError(codes[error.code], error.code);
       status = error instanceof AuthRequestError ? error.status : 503;code = error instanceof AuthRequestError ? error.code : "MEDIA_UNAVAILABLE";

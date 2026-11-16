@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 import { connection } from "next/server";
 import { headers } from "next/headers";
 import { AccountCaptchaProvider } from "@/components/auth/AccountCaptchaProvider";
@@ -17,6 +18,8 @@ import {readTelegramPhoneConfig} from '@/lib/telegram-phone-config';
 import {PhonePlacementProvider} from '@/components/phone/PhonePlacementProvider';
 import {CookieNotice} from '@/components/CookieNotice';
 import {readWorkOwnerActionsEnabled} from '@/lib/work-owner-actions-contract';
+import {readPlacementRenewalsEnabled} from '@/lib/placement-renewal-config';
+import {readServiceCheckoutEnabled} from '@/lib/service-checkout-config';
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -56,12 +59,13 @@ export default async function RootLayout({
       </head>
       <body className="antialiased">
         <AccountAuthProvider backend={backend}>
-        <ListingWorkflowProvider postmoderation={postmoderation} localSimulation={postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'} workOwnerActions={readWorkOwnerActionsEnabled()}>
+        <ListingWorkflowProvider postmoderation={postmoderation} localSimulation={postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'} workOwnerActions={readWorkOwnerActionsEnabled()} renewals={readPlacementRenewalsEnabled()} serviceCheckout={readServiceCheckoutEnabled()}>
         <AccountCaptchaProvider expiresAt={proofExpiry}>
         <PhonePlacementProvider>
         <BookingLegacyStorageCleanup />
         <CookieNotice />
-        <div className="app-shell">{children}</div>
+        {/* Isolate lazy Flight children from host replay in Next 15's bundled renderer. */}
+        <div className="app-shell"><Fragment key="route-content">{children}</Fragment></div>
         <MobileBottomNav />
         <SiteFooter />
         </PhonePlacementProvider>

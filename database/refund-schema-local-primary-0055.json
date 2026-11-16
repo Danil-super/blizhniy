@@ -1,0 +1,42 @@
+{
+  "column": {
+    "count": 732,
+    "sha256": "ea770287dad8ef7c87505ca6041fc5fe74ac124a03733d192d123217f06cc44b"
+  },
+  "constraint": {
+    "count": 900,
+    "sha256": "db9b8eb05907ef276b488d3b79529e88cdc680dead11416b47b95cb6b68a14bc"
+  },
+  "external_foreign_key": {
+    "count": 3,
+    "sha256": "2e6e00d09d511b963f0446c64e101bba4aaae19c1dfff3e8e6b0bc6f786b91fd"
+  },
+  "function": {
+    "count": 85,
+    "sha256": "54020bee74fa215d771af6589332e4ad8fdc39e6156207da6dddfba0f74d196f"
+  },
+  "index": {
+    "count": 178,
+    "sha256": "e79c21ff43b8bf98eec84253604ab0258925003bc4187e6d8c71b485d47782d4"
+  },
+  "policy": {
+    "count": 2,
+    "sha256": "a89c5ad889d5cf4df8f6a1f7794be5d920f6c3e8e2d9c62f038222fb0bb94f0a"
+  },
+  "relation": {
+    "count": 244,
+    "sha256": "081eac85b4b3b3c2c52bd3dbe81c15e66bb4123c52254f1b1abe3aebdba74b43"
+  },
+  "trigger": {
+    "count": 480,
+    "sha256": "dfd9a927a73ef9a3e11ab23f0f621af387e8cd11684e90da35112a63869ef096"
+  },
+  "type": {
+    "count": 132,
+    "sha256": "69ec55d145fd4ddc1f58a080a97a2dbaa43b2ca9aeb3dc6f0b24988bcf810f3a"
+  },
+  "unsupported": {
+    "count": 1,
+    "sha256": "fce708b25e7e2572e23fe66f314932a52e0fb0a473bb3b11d1e86331378e9b66"
+  }
+}

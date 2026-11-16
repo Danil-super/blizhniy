@@ -20,7 +20,7 @@ export function createServicePublicationSave(owner:string,kind:ServicePublicatio
  if(ids.length+files.length>max||files.reduce((sum,file)=>sum+file.size,0)>maxListingMediaTotalSize||files.some(file=>file.size<1||file.size>maxListingImageFileSize||!mediaUploadTypes.some(type=>type===file.type)))throw Error('Выберите допустимые изображения до 10 МБ каждое.');
  const creationKey=crypto.randomUUID(),uploads=files.map(file=>({file,intent:crypto.randomUUID(),ready:null as UploadedImage|null}));
  const order=parsePhotoOrder(photoOrder,ids,files.length);
- let base=initial??null,remote:ServicePublicationSnapshot|null=null,unknown=false,busy=false,complete:ServicePublicationSnapshot|null=null;
+ let base=initial?{id:initial.id,revision:initial.revision}:null,remote:ServicePublicationSnapshot|null=null,unknown=false,busy=false,complete:ServicePublicationSnapshot|null=null;
  const payload=()=>form.kind==='marquee'?form:parseServicePublicationForm(kind,{...form,photoIds:resolvePhotoOrder(order,uploads.map(item=>{if(!item.ready)throw Error('Загрузка не подтверждена.');return item.ready.id;}))});
  const comparable=(value:ServicePublicationForm)=>identitySource==='profile'?{...value,title:''}:value;
  const matches=(row:ServicePublicationSnapshot)=>uploads.every(item=>item.ready)&&sameProfessionForm(comparable(parseServicePublicationForm(kind,row.form)),comparable(payload()));
@@ -38,7 +38,7 @@ export function createServicePublicationSave(owner:string,kind:ServicePublicatio
     if(!remote){unknown=false;return null;}if(matches(remote)){complete=remote;unknown=false;}return remote;
    }finally{busy=false;}
   },
-  acceptRemoteRevision(){if(busy||!remote)throw Error('Сначала прочитайте сохранённую версию.');base=remote;unknown=false;},
+  acceptRemoteRevision(){if(busy||!remote)throw Error('Сначала прочитайте сохранённую версию.');base={id:base?.id??remote.id,revision:remote.revision};unknown=false;},
  };
 }
 export function readServicePublicationFormData(kind:ServicePublicationKind,data:FormData){

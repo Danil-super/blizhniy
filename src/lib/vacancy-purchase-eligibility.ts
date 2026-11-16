@@ -3,7 +3,7 @@ import {checkWorkCheckoutForm} from './work-checkout-validation';
 import type {WorkPublicationKind} from './work-publication-contract';
 import type {PostgresDatabase,PostgresQueries} from './postgres';
 /** User is already locked by session/worker. Hold references through the final write. */
-export async function inspectWorkPurchase(db:Pick<PostgresDatabase,'transaction'>,tx:PostgresQueries,owner:string,id:string,revision:string,kind:WorkPublicationKind,lockReferences=true){
+export async function inspectWorkPurchase(db:Pick<PostgresDatabase,'transaction'>,tx:PostgresQueries,owner:string,id:string,revision:string,kind:WorkPublicationKind,lockReferences=true,allowPlaced=false){
  const row=(await tx.query<{revision:string;city:string|null;profession:string|null}>(`select revision::text,city_id as city,profession_id as profession
   from app.work_publications where id=$1 and author_id=$2 and kind=$3 and deleted_at is null for update`,[id,owner,kind])).rows[0];
  if(!row)throw new WorkPublicationAccessError();if(row.revision!==revision)throw new WorkPublicationConflictError();
@@ -14,7 +14,10 @@ export async function inspectWorkPurchase(db:Pick<PostgresDatabase,'transaction'
  if(lockReferences)await tx.query(`select m.id from app.media_objects m join app.work_publication_photos p on p.media_id=m.id
   where p.publication_id=$1 order by m.id limit 21 for share of m`,[id]);
  const {snapshot,issues}=await new PostgresWorkPublicationStore(db).inspectInTransaction(tx,owner,kind,id,revision);
- if(snapshot.status!=='draft'||snapshot.paid||snapshot.publishedAt||snapshot.expiresAt)issues.push('Публикация уже не является неоплаченным черновиком.');
+ const initial=snapshot.status==='draft'&&!snapshot.paid&&!snapshot.publishedAt&&!snapshot.expiresAt;
+ const renewable=allowPlaced&&snapshot.paid&&snapshot.publishedAt&&snapshot.expiresAt&&
+  (['published','expired'].includes(snapshot.status)||snapshot.status==='archived'&&Date.parse(snapshot.expiresAt)<=Date.now());
+ if(!initial&&!renewable)issues.push(allowPlaced?'Публикация недоступна для оплаты нового срока.':'Публикация уже не является неоплаченным черновиком.');
  if(city?.name!==snapshot.form.cityName||!profession?.active)issues.push('Город или профессия изменились. Выберите их заново.');
  issues.push(...checkWorkCheckoutForm(snapshot.form));
  return {snapshot,issues};

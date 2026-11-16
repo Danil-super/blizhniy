@@ -171,3 +171,19 @@ for (const [file, before, after] of deploymentAssertionPairs) {
     assert.equal(run(['--base', 'HEAD']).status, 1, 'an approved pair cannot conceal another removed assertion');
   });
 }
+
+for(const boundary of [56,57])test(`reviewed service boundary changes only one exact${boundary} rejection to unknown58`,t=>{
+ const {put,git,run}=fixture(t),target='tests/refund-operator-role.test.mjs',other='tests/another-role.test.mjs';
+ const before=` for(const schema of [53,${boundary},'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));`,after=before.replace(`53,${boundary}`,'53,58');
+ put(target,before+'\n');put(other,before+'\n');git('add','.');git('commit','-qm','known service boundary');const base=git('rev-parse','HEAD').toString().trim();
+ put(target,after+'\n');assert.equal(run(['--base',base]).status,0);
+ put(target,after.replace('53,58','53,59')+'\n');assert.equal(run(['--base',base]).status,1);
+ put(target,after+'\n'+after+'\n');assert.equal(run(['--base',base]).status,1);
+ put(target,after+'\n');put(other,after+'\n');assert.equal(run(['--base',base]).status,1);
+});
+test('two service boundary assertions cannot collapse into one reviewed replacement',t=>{
+ const {put,git,run}=fixture(t),target='tests/refund-operator-role.test.mjs';
+ const line=schema=>` for(const schema of [53,${schema},'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));`;
+ put(target,line(56)+'\n'+line(57)+'\n');git('add','.');git('commit','-qm','two assertions');
+ put(target,line(58)+'\n');assert.equal(run(['--base','HEAD']).status,1);
+});

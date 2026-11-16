@@ -8,26 +8,14 @@ import { listStoredFairApplications } from "@/lib/fair-application-store";
 import { publicMediaUrl } from "@/lib/storage-upload";
 import { getPublicTariffs } from "@/lib/public-tariffs";
 import { formatTariffPrice } from "@/lib/tariff-display";
-
-function nextFairDate(today = new Date()) {
-  const year = today.getFullYear();
-  const month = today.getMonth();
-
-  function lastSunday(dateYear: number, dateMonth: number) {
-    const date = new Date(dateYear, dateMonth + 1, 0);
-    date.setDate(date.getDate() - date.getDay());
-    return date;
-  }
-
-  const thisMonth = lastSunday(year, month);
-  return today <= thisMonth ? thisMonth : lastSunday(year, month + 1);
-}
+import { nextFairEvent } from "@/lib/fair-calendar";
 
 function formatFairDate(date: Date) {
   return new Intl.DateTimeFormat("ru-RU", {
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: "UTC",
   }).format(date);
 }
 
@@ -41,7 +29,7 @@ function fairPhotoUrl(photo: string) {
 }
 
 export async function FairHomePage() {
-  const fairDate = nextFairDate();
+  const fairDate = new Date(nextFairEvent().date + "T00:00:00Z");
   const tariffs = await getPublicTariffs();
   const fairTariff = tariffs.find((tariff) => tariff.action === "fair_participation");
   const publishedApplications = await listStoredFairApplications("published");

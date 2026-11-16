@@ -15,7 +15,12 @@ function fixture(fault = {}) {
     complete: async () => { events.push("ready"); if (fault.ready) throw fault.ready; return { ...image, id, state: "ready" }; },
   };
   const files = { write: async (record, payload, attempt) => { events.push("file"); assert.equal(attempt, attemptId); assert.equal(record.id, id); assert.deepEqual(payload, bytes); if (fault.file) throw fault.file; } };
-  return { writer: new LocalMediaWriter(repository, files), events, records };
+  const claimedFiles = { writeClaimed: async (payload, claim) => {
+    if (fault.busy) throw Object.assign(new Error("busy"),{code:"MEDIA_FILE_WORKER_BUSY"});
+    const {record,attemptId:attempt}=await claim();
+    await files.write(record,payload,attempt);
+  } };
+  return { writer: new LocalMediaWriter(repository, claimedFiles), events, records };
 }
 const fail = (promise, code) => assert.rejects(promise, error => error.name === "MediaWriteError" && error.code === code && error.message === "Media write operation failed" && !error.cause);
 test("normalized bytes are written only after a committed claim and before guarded ready", async () => {
@@ -43,6 +48,9 @@ test("unknown claim outcome never starts FS and never retries", async () => {
 test("an in-flight duplicate keeps its finite error and never reaches FS", async () => {
   const app = fixture({ claim: Object.assign(new Error("private"), { code: "MEDIA_IN_PROGRESS" }) });
   await fail(app.writer.write(token, id, image), "MEDIA_IN_PROGRESS"); assert.deepEqual(app.events, ["claim"]);
+});
+test("file fence conflict returns in-progress without consuming SQL write authority",async()=>{
+  const app=fixture({busy:true});await fail(app.writer.write(token,id,image),"MEDIA_IN_PROGRESS");assert.deepEqual(app.events,[]);
 });
 test("unknown FS or ready outcomes are not compensated by delete, reset, or a second write", async () => {
   for (const phase of ["file", "ready"]) {

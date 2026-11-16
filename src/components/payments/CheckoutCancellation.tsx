@@ -1,14 +1,14 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {checkoutCancellation,CheckoutCancellationClientError} from '@/lib/client-checkout-cancellation';
+import {checkoutCancellation,serviceCheckoutCancellation,CheckoutCancellationClientError} from '@/lib/client-checkout-cancellation';
 import type {CheckoutCancellationInput} from '@/lib/checkout-cancellation-contract';
-export function CheckoutCancellation({owner,paymentId,targetType,visible,onCancelled,onPendingChange}:{owner:string;paymentId:string;targetType:CheckoutCancellationInput['targetType'];visible:boolean;onCancelled:()=>void;onPendingChange:(pending:boolean)=>void}){
+export function CheckoutCancellation({owner,paymentId,targetType,visible,service=false,onCancelled,onPendingChange}:{owner:string;paymentId:string;targetType:CheckoutCancellationInput['targetType'];visible:boolean;service?:boolean;onCancelled:()=>void;onPendingChange:(pending:boolean)=>void}){
  const [busy,setBusy]=useState(false),[unknown,setUnknown]=useState(false),[message,setMessage]=useState<string|null>(null),pending=useRef(false),scope=useRef<AbortController|null>(null),live=useRef(visible);live.current=visible;
  useEffect(()=>{const controller=new AbortController();scope.current=controller;pending.current=false;setBusy(false);return()=>controller.abort();},[owner,paymentId,visible]);
  async function perform(read:boolean){
   const controller=scope.current;if(pending.current||!live.current||!controller||controller.signal.aborted)return;pending.current=true;setBusy(true);if(!read)setUnknown(true);setMessage(null);onPendingChange(true);
   try{
-   const result=await checkoutCancellation[read?'read':'cancel'](owner,{paymentId,targetType},{signal:controller.signal});if(controller.signal.aborted||!live.current)return;
+   const result=await (service?serviceCheckoutCancellation:checkoutCancellation)[read?'read':'cancel'](owner,{paymentId,targetType},{signal:controller.signal});if(controller.signal.aborted||!live.current)return;
    setUnknown(false);onPendingChange(false);
    if(result)onCancelled();else setMessage('Отмена не подтверждена. Можно повторить отмену этой же подготовки.');
   }catch(error){if(!controller.signal.aborted&&live.current){const uncertain=!(error instanceof CheckoutCancellationClientError)||error.code==='UNKNOWN';setUnknown(uncertain);onPendingChange(uncertain);setMessage(error instanceof Error?error.message:'Не удалось проверить отмену.');}}

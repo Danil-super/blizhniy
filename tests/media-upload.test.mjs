@@ -80,6 +80,11 @@ test("unknown write or missing ready file is not compensated, reset or retried",
   await fail(replay.upload.upload(token, intent, source, "image/png"), "MEDIA_UPLOAD_UNAVAILABLE");
   assert.deepEqual(replay.events, ["auth", "decode", "reserve", "read"]);
 });
+test("owner quota rejection survives the upload boundary without filesystem writes or retry", async () => {
+  const app = fixture({ reserve: coded("MEDIA_OWNER_QUOTA_EXCEEDED") });
+  await fail(app.upload.upload(token, intent, source, "image/png"), "MEDIA_OWNER_QUOTA_EXCEEDED");
+  assert.deepEqual(app.events, ["auth", "decode", "reserve"]);
+});
 test("abort before authentication, after decode and before reservation does not start storage writes", async () => {
   const abort = new AbortController(); abort.abort(); const app = fixture();
   await fail(app.upload.upload(token, intent, source, "image/png", abort.signal), "MEDIA_UPLOAD_UNAVAILABLE"); assert.deepEqual(app.events, []);

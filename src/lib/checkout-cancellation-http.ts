@@ -1,3 +1,4 @@
+import {readServiceCheckoutEnabled} from './service-checkout-config.ts';
 import {authJson,readAuthJson,AuthRequestError,type AuthRateLimiter} from './auth-http';
 import {readAccountSessionToken} from './account-cookie';import {getTrustedProxyIp} from './trusted-proxy-ip';
 import {AppSessionAccessError} from './app-session-transaction';
@@ -10,7 +11,7 @@ export function createCheckoutCancellationHandler(config:{origin:string},runtime
   if(!['POST','PUT'].includes(request.method))throw new AuthRequestError(405,'METHOD_NOT_ALLOWED');
   const raw=await readAuthJson(request,config,2000,request.method==='PUT'?'PUT':'POST',4096);
   if(!raw||typeof raw!=='object'||Array.isArray(raw)||!Object.hasOwn(raw,'expectedOwnerId'))throw new CheckoutCancellationInputError();
-  const {expectedOwnerId,...rest}=raw as Record<string,unknown>,owner=parseListingDraftId(expectedOwnerId),input=parseCheckoutCancellation(rest);
+  const {expectedOwnerId,...rest}=raw as Record<string,unknown>,owner=parseListingDraftId(expectedOwnerId),input=parseCheckoutCancellation(rest,{services:readServiceCheckoutEnabled()});
   const ip=getTrustedProxyIp(request.headers);if(!ip)throw new AuthRequestError(403,'UNTRUSTED_INGRESS');
   const token=readAccountSessionToken(request);if(!token)throw new AuthRequestError(401,'UNAUTHENTICATED');
   const {store,limiter}=await runtime();if(!await limiter.allowProduction('session',ip))throw new AuthRequestError(429,'RATE_LIMITED');

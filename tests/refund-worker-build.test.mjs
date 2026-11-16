@@ -25,11 +25,16 @@ test('isolated refund artifact loads both canonical consumers and its complete s
    const forbidden=()=>{network++;throw Error('Network forbidden');};
    globalThis.fetch=forbidden;net.Socket.prototype.connect=forbidden;
    const require=createRequire(import.meta.url),pg=require('pg');
+   require('node:child_process').execFile=()=>{network++;throw Error('Process launch forbidden');};
    pg.Pool.prototype.query=pg.Pool.prototype.connect=()=>{poolCalls++;throw Error('Database forbidden');};
    const {PostgresDatabase}=require('./compiled/lib/postgres.js');
    const {createPlacementRefundWorker}=require('./compiled/lib/placement-refund-worker.js');
    const {createApplicationCompensationWorker}=require('./compiled/lib/application-compensation-worker.js');
    const {getRefundWorkerRolePlan,verifyRefundWorkerDatabase}=await import('./scripts/refund-worker-role.mjs');
+   const {createLocalRefundWorkerRuntime}=await import('./scripts/local-refund-worker-runtime.mjs');
+   const {runRefundWorkerService}=await import('./scripts/refund-worker-service.mjs');
+   const {startLocalRefundServices}=await import('./scripts/local-refund-services.mjs');assert.equal(typeof startLocalRefundServices,'function');
+   assert.equal(typeof createLocalRefundWorkerRuntime,'function');assert.equal(typeof runRefundWorkerService,'function');
    const db={transaction:async()=>{queries++;throw Error('synthetic');}};
    const fetcher=async()=>{http++;throw Error('Network forbidden');};
    const merchant={shopId:'synthetic',isTest:true,secretKey:'test_synthetic'};

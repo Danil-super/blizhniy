@@ -1,3 +1,4 @@
+import {readPlacementRenewalsEnabled} from './placement-renewal-config';
 import {authJson} from './auth-http';
 import {readProductionAuthConfig} from './production-auth-config';
 import {getProductionAccountDatabase} from './production-auth-runtime';
@@ -9,7 +10,7 @@ export async function handleWorkCabinetRequest(request:Request){
   const config=readProductionAuthConfig();if(!config)return authJson({error:{code:'NOT_FOUND'}},404);
   return await createWorkCabinetHandler(config,async()=>{
    const {db,limiter}=await getProductionAccountDatabase(config);
-   return{store:new PostgresWorkCabinetStore(db),limiter};
+   return{store:new PostgresWorkCabinetStore(db,readPlacementRenewalsEnabled()),limiter};
   })(request);
  }catch{return authJson({error:{code:'WORK_PUBLICATIONS_UNAVAILABLE'}},503);}
 }

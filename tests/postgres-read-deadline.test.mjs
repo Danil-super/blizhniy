@@ -172,3 +172,29 @@ test('a detached asynchronous continuation cannot use a read handle after its le
  assert.equal(f.calls.length,before);assert.equal(f.calls.some(call=>call.text==='SELECT detached_after_complete'),false);
  assert.equal(complete,1);assert.deepEqual(f.releases,[false]);
 });
+
+for(const deadline of [null,-1,'100',NaN,Infinity])test(`read transaction rejects invalid absolute deadline ${String(deadline)} before pool checkout`,async()=>{
+ const f=fakePool();let complete=0;
+ await assert.rejects(f.db.readTransaction(async()=>assert.fail('invalid deadline'),{timeoutMs:1000,deadline,onComplete:()=>complete++}));
+ assert.deepEqual(f.events,[]);assert.equal(complete,0);
+});
+
+test('an already expired absolute deadline releases admission without even acquiring a connection',async()=>{
+ const f=fakePool();let complete=0;
+ await assert.rejects(f.db.readTransaction(async()=>assert.fail('expired deadline'),{timeoutMs:1000,deadline:performance.now()-1,onComplete:()=>complete++}),{code:'ETIMEDOUT'});
+ assert.deepEqual(f.events,[]);assert.equal(complete,1);
+});
+
+test('an earlier absolute deadline shortens the SQL budget and is never reset at the database boundary',async()=>{
+ const f=fakePool();
+ await f.db.readTransaction(tx=>tx.query('SELECT bounded_absolute'),{timeoutMs:1000,deadline:performance.now()+100});
+ assert.ok(f.calls.length>0);assert.ok(f.calls.every(call=>call.query_timeout<=100));assert.equal(f.releases.length,1);
+});
+
+test('a delayed acquisition callback checks the absolute clock before issuing BEGIN even if the timer has not run',async t=>{
+ let now=1000; t.mock.method(performance,'now',()=>now);
+ const f=fakePool({holdAcquire:true});let complete=0;
+ const pending=f.db.readTransaction(async()=>assert.fail('late acquisition ran work'),{timeoutMs:1000,deadline:1100,onComplete:()=>complete++});
+ now=1100;f.settle();await assert.rejects(pending,{code:'ETIMEDOUT'});
+ assert.deepEqual(f.calls,[]);assert.deepEqual(f.releases,[true]);assert.equal(complete,1);
+});

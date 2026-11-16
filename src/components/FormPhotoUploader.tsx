@@ -4,10 +4,13 @@ import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Camera, Images, Plus, X } from "lucide-react";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { StoredMediaImage } from "@/components/StoredMedia";
+import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import { filterFormPhotoFiles, formPhotoLimitText } from "@/lib/media-limits";
+import {mediaOwnerQuotaText} from "@/lib/media-upload-contract";
 import {productionListingMedia} from '@/lib/client-listing-media';
 import {createListingThumbnailQueue} from '@/lib/listing-thumbnail-queue';
 import type {ListingDraftPhoto} from '@/lib/listing-photo-contract';
+import {imageDataUrlToBlob} from '@/lib/image-data-url';
 const readPrivatePhoto=createListingThumbnailQueue(productionListingMedia.read);
 
 type PreviewPhoto = {
@@ -36,8 +39,7 @@ function syncFileInput(input: HTMLInputElement | null, photos: PreviewPhoto[]) {
 }
 
 async function dataUrlToImageFile(dataUrl: string, name: string) {
-  const response = await fetch(dataUrl);
-  const blob = await response.blob();
+  const blob = imageDataUrlToBlob(dataUrl);
   const base = name.replace(/\.[^.]+$/, "") || "photo";
   return new File([blob], `${base}-crop.png`, { type: blob.type || "image/png" });
 }
@@ -61,6 +63,7 @@ export function FormPhotoUploader({
   required?: boolean;
   savedMedia?: {owner:string;photos:ListingDraftPhoto[];fieldName?:string};
 }) {
+  const primary=usePrimaryAccountAuth();
   const normalizedMaxPhotos = Math.max(1, maxPhotos);
   const [photos, setPhotos] = useState<PreviewPhoto[]>(
     savedMedia?savedMedia.photos.map((photo,index)=>({id:photo.id,mediaId:photo.id,name:`Фото ${index+1}`,persisted:true,sourceUrl:'',url:''})):
@@ -210,6 +213,7 @@ export function FormPhotoUploader({
         ) : null}
       </div>
       <p className="mt-2 text-xs text-slate-600">{formPhotoLimitText()}</p>
+      {primary&&<p className="mt-1 text-xs text-slate-600">{mediaOwnerQuotaText}</p>}
       {message ? <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{message}</p> : null}
       {removed&&<div className="mt-3 flex flex-wrap items-center gap-3 text-sm"><p role="status">Фото убрано из формы. Изменения применятся после сохранения.</p><button type="button" disabled={photos.length>=normalizedMaxPhotos} className="min-h-11 font-semibold text-blue-800 underline" onClick={()=>{const next=[...currentPhotos.current];next.splice(Math.min(removed.index,next.length),0,removed.photo);commit(next);if(removed.photo.mediaId&&!removed.photo.url)loadSaved(removed.photo);setRemoved(null);}}>Вернуть фото</button></div>}
       {photos

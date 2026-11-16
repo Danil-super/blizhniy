@@ -1,4 +1,4 @@
-import { CabinetResponsesPage } from "@/components/MvpDashboard";
+import { CabinetResponsesPage } from "@/components/cabinet/CabinetPages";
 
 export const dynamic = "force-dynamic";
 

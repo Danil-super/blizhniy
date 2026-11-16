@@ -1,3 +1,4 @@
+import {readMediaRetentionEnabled} from '../src/lib/media-retention-config.ts';
 // Local manual-review ingress. All application data is in the owned disposable
 // loopback PG18 fixture; no production secrets, SMTP or merchant are loaded.
 import {createServer} from 'node:https';
@@ -16,14 +17,26 @@ const {loadLocalPrimaryModule:load}=require('./local-primary-modules.cjs');
 const canonical='https://xn----9sbphbgks4a4a.xn--p1ai';
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const html=(body,status=200)=>new Response(`<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>БЛИЖНИЙ — локальный стенд</title><style>body{font:16px system-ui;max-width:900px;margin:32px auto;padding:0 20px;color:#16304a}a{color:#0668bb}article{border:1px solid #dde5ee;border-radius:12px;padding:18px;margin:14px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere}code{background:#eff5fa;padding:4px}nav{display:flex;gap:20px;flex-wrap:wrap}</style>${body}</html>`,{status,headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff','content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"}});
-async function readBody(req){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>12*1024*1024)throw Error('Local request too large');chunks.push(chunk);}return Buffer.concat(chunks);}
-export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
+export async function readBody(req,limit=12*1024*1024,deadlineMs){
+ let size=0;const chunks=[],timer=deadlineMs===undefined?undefined:setTimeout(()=>req.destroy(Error('Local body deadline')),deadlineMs);
+ try{for await(const chunk of req){size+=chunk.length;if(size>limit)throw Error('Local request too large');chunks.push(chunk);}return Buffer.concat(chunks);}
+ finally{clearTimeout(timer);}
+}
+export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperatorSocket}={}){
  if(state.origin!=='https://127.0.0.1:3045'||state.upstreamPort!==localPrimaryUpstreamPort)throw Error('Invalid local ingress target');
  if(process.env.NODE_ENV!=='test')throw Error('Local proxy requires isolated test process');
  validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
  const {PostgresDatabase}=load('postgres');
- const runtimeDb=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state),max:5}));
- const ownerDb=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state,'owner'),max:2}));
+ let runtimeDb,ownerDb,timer,server,mailRunning,closing,closed=false;
+ const close=()=>closing??=(async()=>{
+  closed=true;clearInterval(timer);
+  try{if(server?.listening)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
+  finally{try{await mailRunning;}finally{try{await runtimeDb?.close();}finally{await ownerDb?.close();}}}
+ })();
+ try{
+ const tls={key:await readFile(join(stateDirectory,'tls-key.pem')),cert:await readFile(join(stateDirectory,'tls-cert.pem'))};
+ runtimeDb=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state),max:5}));
+ ownerDb=new PostgresDatabase(new pg.Pool({...localPrimaryDatabaseConfig(state,'owner'),max:2}));
  await load('production-auth-database').verifyProductionAuthDatabase(runtimeDb);
  const limiter=new(load('auth-http').AuthRateLimiter)(runtimeDb,state.rateSecret);
  const identity=new(load('identity').IdentityStore)(runtimeDb);
@@ -42,7 +55,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
   },
  })):null;
  const files=await load('media-files').createLocalMediaFileStore(join(stateDirectory,'media'));
- const repository=new(load('media-metadata').MediaMetadataRepository)(runtimeDb,files);
+ const repository=new(load('media-metadata').MediaMetadataRepository)(runtimeDb,files,readMediaRetentionEnabled());
  const writer=await load('media-file-worker').createLocalMediaFileWorker(state.project,join(stateDirectory,'media'));
  const normalizer=load('media-worker').createLocalMediaWorker(state.project);
  const upload=new(load('media-upload').LocalMediaUpload)(repository,normalizer,new(load('media-write').LocalMediaWriter)(repository,writer));
@@ -56,16 +69,20 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
  const adminPhoto=load('admin-listing-moderation-http').createAdminListingModerationHandler({origin:canonical},()=>({identity,limiter,store:new(load('postgres-listing-moderation').PostgresListingModerationStore)(runtimeDb,files,{contactMethod:true})}));
  const key=await readFile(join(stateDirectory,'mail-key.bin'));
  const worker=new(load('mail-delivery').MailDeliveryWorker)(runtimeDb,new(load('mail-outbox').MailPayloadCipher)(key),load('production-auth-config').renderProductionAuthMail,{pendingAccounts:true});key.fill(0);
- let polling=false;
- const timer=setInterval(async()=>{
-  if(polling)return;polling=true;
+ timer=setInterval(()=>{
+  if(closed||mailRunning)return;
+  mailRunning=(async()=>{
   try{await worker.runOne({send:async message=>{
    const captured={...message,text:message.text.replaceAll(canonical,state.origin),capturedAt:new Date().toISOString()};
    const file=join(stateDirectory,`mail-${message.id}.json`);
    try{await writeFile(file,JSON.stringify(captured),{mode:0o600,flag:'wx'});}catch(error){if(error.code!=='EEXIST')throw error;}
-  }});}catch{console.warn('Local mail capture unavailable');}finally{polling=false;}
+  }});}catch{console.warn('Local mail capture unavailable');}
+  })().finally(()=>{mailRunning=undefined;});
  },1000);
  const context={state,ownerDb,runtimeDb,load};
+ const refundAdmin=refundOperatorSocket===undefined?null:load('admin-refund-http').createAdminRefundHandler({origin:canonical},()=>({limiter,
+  command:(token,command,signal)=>load('local-refund-operator-client').callLocalRefundOperator(refundOperatorSocket,token,command,signal),
+ }));
  const localPage=async path=>{
   if(path==='/__local'){
    const accounts=JSON.parse(await readFile(join(stateDirectory,'accounts.json'),'utf8'));
@@ -78,7 +95,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
   }
   return null;
  };
- const server=createServer({key:await readFile(join(stateDirectory,'tls-key.pem')),cert:await readFile(join(stateDirectory,'tls-cert.pem'))},async(req,res)=>{
+ server=createServer(tls,async(req,res)=>{
   try{
    if(typeof req.url!=='string'||!req.url.startsWith('/')||req.url.startsWith('//')||/[\\\x00-\x20]/.test(req.url)){res.writeHead(400,{'cache-control':'no-store'});res.end('Invalid local path');return;}
    if(!allowLocalPrimaryRequest(req,state.origin,process.env.BLIZHNIY_TELEGRAM_PHONE==='enabled')){
@@ -86,7 +103,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
    }
    const path=new URL(req.url,state.origin).pathname;
    let response=req.method==='GET'?await localPage(path):null;
-   const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req);
+   const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req,...(refundAdmin&&path==='/api/admin/refunds'?[4096,2000]:[]));
    const proof=load('account-browser-proof').issueBrowserProof(state.rateSecret,'127.0.0.1',req.headers['user-agent']??'');
    const headers=new Headers(Object.fromEntries(Object.entries(normalizeDocumentPrefetchHeaders(req.headers)).filter(([,value])=>typeof value==='string')));
    headers.set('host',new URL(canonical).host);headers.set('x-real-ip','127.0.0.1');
@@ -100,6 +117,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
     const data=await request.clone().json();
     if(typeof data.email!=='string'||!data.email.endsWith('.invalid'))response=Response.json({error:{code:'SYNTHETIC_EMAIL_REQUIRED'}},{status:422});
    }
+   if(!response&&refundAdmin&&path==='/api/admin/refunds')response=await refundAdmin(request);
    if(!response&&path==='/api/account/profile')response=await profile(request);
    if(!response&&path==='/api/account/media')response=await media(request,'upload');
    if(!response&&path==='/api/account/media/read')response=await media(request,'read');
@@ -127,7 +145,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
     res.writeHead(response.status,responseHeaders);
     res.end(Buffer.from(await response.arrayBuffer()));return;
    }
-   const outgoing=httpRequest({hostname:'127.0.0.1',port:localPrimaryUpstreamPort,path:req.url,method:req.method,headers:{...Object.fromEntries(headers),'accept-encoding':'identity'}},incoming=>{
+   const outgoing=httpRequest({hostname:'127.0.0.1',port:localPrimaryUpstreamPort,path:req.url,method:req.method,headers:Object.fromEntries(headers)},incoming=>{
     const replyHeaders={...incoming.headers};
     if(replyHeaders.location?.startsWith(canonical))replyHeaders.location=replyHeaders.location.replace(canonical,state.origin);
     replyHeaders['set-cookie']=[...(Array.isArray(replyHeaders['set-cookie'])?replyHeaders['set-cookie']:[]),proof.cookie];
@@ -137,5 +155,6 @@ export async function createLocalPrimaryProxy(state,{paymentHandler}={}){
    outgoing.setTimeout(30000,()=>outgoing.destroy());outgoing.end(body);
   }catch(error){console.warn('Local ingress request failed:',error?.code??error?.name??'Error');if(!res.headersSent)res.writeHead(503,{'content-type':'text/plain','cache-control':'no-store'});res.end('Local request unavailable');}
  });
- return {server,close:async()=>{clearInterval(timer);await new Promise(resolve=>server.close(resolve));await runtimeDb.close();await ownerDb.close();}};
+ return {server,close};
+ }catch(error){try{await close();}catch{ /* All acquired resources have been attempted. */ }throw error;}
 }

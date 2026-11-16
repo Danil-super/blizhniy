@@ -1,7 +1,6 @@
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 
-const expected=JSON.parse(readFileSync(new URL('../database/refund-schema-0054.json',import.meta.url),'utf8'));
 
 // One catalog snapshot; no table data, object OIDs, physical layout or owner names.
 export async function readRefundSchema(tx){
@@ -26,6 +25,18 @@ export async function readRefundSchema(tx){
   select 'constraint',c.conrelid::regclass::text||'.'||c.conname,
    jsonb_build_array(pg_get_constraintdef(c.oid,false),c.convalidated,c.conenforced,c.conislocal,c.connoinherit)
   from pg_constraint c join pg_namespace n on n.oid=c.connamespace where n.nspname='app'
+  union all
+  select 'external_foreign_key',c.conrelid::regclass::text||'.'||c.conname,
+   jsonb_build_array(pg_get_constraintdef(c.oid,false),c.convalidated,c.conenforced,c.conislocal,c.connoinherit)
+  from pg_constraint c join pg_namespace n on n.oid=c.connamespace
+   join pg_class target on target.oid=c.confrelid join pg_namespace tn on tn.oid=target.relnamespace
+  where c.contype='f' and n.nspname<>'app' and tn.nspname='app'
+  union all
+  select 'policy',p.polrelid::regclass::text||'.'||p.polname,
+   jsonb_build_array(p.polcmd,p.polpermissive,
+    (select jsonb_agg(case when r=0 then 'PUBLIC' else r::regrole::text end order by case when r=0 then 'PUBLIC' else r::regrole::text end collate "C") from unnest(p.polroles) r),
+    pg_get_expr(p.polqual,p.polrelid,false),pg_get_expr(p.polwithcheck,p.polrelid,false))
+  from pg_policy p join pg_class c on c.oid=p.polrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='app'
   union all
   select 'trigger',t.tgrelid::regclass::text||'.'||case when t.tgisinternal
     then c.conname||'.'||t.tgfoid::regprocedure::text else t.tgname::text end,
@@ -80,6 +91,8 @@ export async function readRefundSchema(tx){
  return Object.fromEntries(Object.entries(groups).map(([kind,items])=>[kind,{count:items.length,sha256:createHash('sha256').update(JSON.stringify(items)).digest('hex')}]));
 }
 
-export async function assertRefundSchema(tx){
+export async function assertRefundSchema(tx,schema=54,{localPrimary=false}={}){
+ if(![54,55,56,57,58].includes(schema)||typeof localPrimary!=='boolean'||(localPrimary&&schema<55)||(schema===58&&!localPrimary))throw Error('Invalid refund schema version');
+ const expected=JSON.parse(readFileSync(new URL(localPrimary?`../database/refund-schema-local-primary-00${schema}.json`:`../database/refund-schema-00${schema}.json`,import.meta.url),'utf8'));
  if(JSON.stringify(await readRefundSchema(tx))!==JSON.stringify(expected))throw Error('Invalid refund schema');
 }

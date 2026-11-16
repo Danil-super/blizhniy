@@ -43,7 +43,7 @@ function SegmentTabs({ activeItem, onChange }: { activeItem: string; onChange: (
           type="button"
           onClick={() => onChange(item)}
           className={`inline-flex h-11 min-w-0 items-center justify-center rounded-xl border px-3 text-center text-sm font-bold leading-tight transition sm:h-12 sm:text-base ${
-            item === activeItem ? "border-[#0aa337] bg-emerald-50 text-[#0a8f32]" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
+            item === activeItem ? "border-[#0aa337] bg-emerald-50 text-[#087f2b]" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-blue-700"
           }`}
         >
           {item}
@@ -66,7 +66,7 @@ function VacancyCard({ vacancy }: { vacancy: JobVacancy }) {
       </VacancyCardMedia>
       <span className="block p-4">
         <span className="block truncate text-xs font-semibold text-slate-500">{vacancy.organization}</span>
-        <span className="mt-1 block line-clamp-2 min-h-10 text-sm font-bold leading-5 text-[#060b27] transition group-hover:text-[#0875d1]">{vacancy.title}</span>
+        <span className="mt-1 block line-clamp-2 min-h-10 text-sm font-bold leading-5 text-[#060b27] transition group-hover:text-blue-700">{vacancy.title}</span>
         <span className="mt-2 block text-base font-bold text-[#060b27]">{vacancy.salary}</span>
         {publishedLabel ? (
           <span className="mt-2 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
@@ -88,7 +88,7 @@ function WorkRequestCard({ request }: { request: WorkRequest }) {
 
   return (
     <Link href={`/rabota/zakazy/${request.id}`} className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
-      <h3 className="mt-1 line-clamp-2 min-h-10 text-sm font-bold leading-5 text-[#060b27] transition group-hover:text-[#0875d1]">{request.title}</h3>
+      <h3 className="mt-1 line-clamp-2 min-h-10 text-sm font-bold leading-5 text-[#060b27] transition group-hover:text-blue-700">{request.title}</h3>
       <p className="mt-2 text-base font-bold text-[#060b27]">{request.budget}</p>
       {publishedLabel ? (
         <p className="mt-2 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
@@ -110,7 +110,7 @@ function SpecialistCard({ specialist }: { specialist: SpecialistProfile }) {
   return (
     <Link href={`/specialist/${specialist.id}`} className="group block min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
       <p className="text-base font-bold text-[#060b27]">{specialist.name}</p>
-      <p className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-[#0875d1]">{specialist.profession}</p>
+      <p className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900 transition group-hover:text-blue-700">{specialist.profession}</p>
       <p className="mt-2 text-base font-bold text-[#060b27]">{specialist.price}</p>
       {publishedLabel ? (
         <p className="mt-2 flex min-w-0 items-center gap-1 text-xs font-semibold text-slate-500">
@@ -143,8 +143,8 @@ export function CanonicalWorkPage({
 
   return (
     <main className="page-container py-6 sm:py-8 lg:py-10">
-      <nav className="mb-4 text-xs text-slate-500 sm:text-sm" aria-label="Хлебные крошки">
-        <Link href="/" className="hover:text-[#0875d1]">Главная</Link>
+      <nav className="mb-4 text-xs text-slate-600 sm:text-sm" aria-label="Хлебные крошки">
+        <Link href="/" className="hover:text-blue-700">Главная</Link>
         <span className="mx-2">/</span>
         <span>Работа</span>
       </nav>
@@ -155,15 +155,15 @@ export function CanonicalWorkPage({
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 sm:text-lg sm:leading-7">Вакансии, заказы и анкеты специалистов на платформе <BrandName />.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Link href="/rabota/vakansii/sozdat" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]">
+          <Link href="/rabota/vakansii/sozdat" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#087f2b] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#087030]">
             <BriefcaseBusiness className="h-4 w-4" />
             Разместить вакансию
           </Link>
-          <Link href="/rabota/zakazy/sozdat" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#078a2e]">
+          <Link href="/rabota/zakazy/sozdat" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#087f2b] px-4 text-sm font-bold text-white shadow-lg shadow-emerald-100 transition hover:bg-[#087030]">
             <ClipboardList className="h-4 w-4" />
             Разместить заказ
           </Link>
-          <Link href="/rabota/specialisty/anketa" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#0aa337] bg-white px-4 text-sm font-bold text-[#0a8f32] transition hover:bg-emerald-50">
+          <Link href="/rabota/specialisty/anketa" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#0aa337] bg-white px-4 text-sm font-bold text-[#087f2b] transition hover:bg-emerald-50">
             <UserRound className="h-4 w-4" />
             Создать анкету
           </Link>
@@ -178,12 +178,12 @@ export function CanonicalWorkPage({
         <section>
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="flex min-w-0 items-center gap-2 text-xl font-bold text-[#060b27] lg:text-xl">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0aa337] text-white">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#087f2b] text-white">
                 {showingWorkRequests ? <ClipboardList className="h-5 w-5" /> : <BriefcaseBusiness className="h-5 w-5" />}
               </span>
               {showingWorkRequests ? "Заказчики" : "Вакансии"}
             </h2>
-            <Link href={showingWorkRequests ? "/rabota/zakazy" : "/rabota/vakansii"} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
+            <Link href={showingWorkRequests ? "/rabota/zakazy" : "/rabota/vakansii"} className="flex shrink-0 items-center gap-1 text-sm font-semibold text-blue-700 sm:text-base">
               Смотреть все
               <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
             </Link>
@@ -203,7 +203,7 @@ export function CanonicalWorkPage({
               </span>
               Специалисты
             </h2>
-            <Link href="/rabota/specialisty" className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#0875d1] sm:text-base">
+            <Link href="/rabota/specialisty" className="flex shrink-0 items-center gap-1 text-sm font-semibold text-blue-700 sm:text-base">
               Смотреть все
               <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
             </Link>

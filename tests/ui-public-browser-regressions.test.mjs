@@ -271,7 +271,7 @@ test('UI listing entry page has exactly one main h1 for all listing filters', as
 });
 
 test('UI standalone authentication page has exactly one main h1 without changing shared form headings', () => {
-  const { AuthPage } = load(functionsFrom('src/components/MvpDashboard.tsx', ['AuthPage']), {}, {
+  const { AuthPage } = load(functionsFrom('src/components/auth/AuthPage.tsx', ['AuthPage']), {}, {
     SiteHeader: () => null,
     AuthForm: authFormPresentation(),
   });

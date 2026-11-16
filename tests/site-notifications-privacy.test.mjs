@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 import vm from 'node:vm';
+import {clearLegacySiteNotificationStorage} from '../src/lib/site-notification-storage.ts';
 
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
@@ -27,6 +28,7 @@ function makeHarness(demoMode) {
     module, exports: module.exports, window, Event: class Event {},
     CustomEvent: class CustomEvent {},
     require: (id) => {
+      if (id === '@/lib/site-notification-storage') return {clearLegacySiteNotificationStorage};
       if (id === '@/lib/client-user-profile') return {};
       if (id === '@/lib/client-runtime-mode') return { shouldShowClientFallbackContent: () => demoMode };
       if (id === '@/lib/supabase-browser') return { getSupabaseBrowserClient: () => ({ auth: { onAuthStateChange(callback) { authChange = callback; } } }) };

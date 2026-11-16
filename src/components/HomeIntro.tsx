@@ -12,7 +12,7 @@ export function HomeIntro() {
         <picture className="pointer-events-none absolute inset-0 z-[1] lg:left-auto lg:w-[72%] lg:[mask-image:linear-gradient(to_right,transparent_0%,black_45%,black_100%)] lg:[-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_45%,black_100%)]">
           <source media="(min-width: 1024px)" srcSet={desktop.srcSet} sizes={desktop.sizes} />
           {/* Native picture selects one composition before scripts; text remains server-rendered. */}
-          <Image src={mobileHero} alt="" fill sizes="(max-width: 639px) 180vw, 100vw" loading="eager" fetchPriority="high" className="object-cover object-[62%_center] lg:object-right" />
+          <Image src={mobileHero} alt="" fill sizes="(max-width: 359px) 800px, (max-width: 379px) 680px, (max-width: 639px) 640px, 100vw" loading="eager" fetchPriority="high" className="object-cover object-[62%_center] lg:object-right" />
         </picture>
         <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-r from-white via-white/86 to-white/12 sm:via-white/80 lg:hidden" />
         <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-b from-white/22 via-transparent to-black/8 lg:hidden" />
@@ -23,14 +23,7 @@ export function HomeIntro() {
               <span className="block text-[#188c32] sm:whitespace-nowrap">Для вас и ваших близких.</span>
             </h1>
             <p className="mt-4 max-w-[20rem] text-[13px] font-semibold leading-6 text-slate-700 sm:max-w-[46rem] sm:text-base sm:leading-7 lg:max-w-[52rem]">
-              <span className="block lg:hidden">
-                Местная платформа демонстрирует устойчивость к развитию услуг и размещению объявлений.
-              </span>
-              <span className="block lg:hidden">Товары, услуги, работа и многое</span>
-              <span className="block lg:hidden">другое рядом с вами.</span>
-              <span className="hidden lg:block">Местная платформа демонстрирует устойчивость</span>
-              <span className="hidden lg:block">к развитию услуг и размещению объявлений.</span>
-              <span className="hidden lg:block">Товары, услуги, работа и многое другое рядом с вами.</span>
+              Покупайте и продавайте вещи, находите работу и специалистов в Краснодарском крае.
             </p>
             <div className="mt-5 flex flex-wrap items-center justify-start gap-2 sm:mt-6">
               <Link

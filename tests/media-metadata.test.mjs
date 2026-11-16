@@ -13,6 +13,7 @@ function fixture(row = { ...metadata, id: randomUUID(), state: "pending" }, opti
     if (sql.startsWith("select u.id")) return { rows: [{ id: "owner", role: "user", isBlocked: false, verified: true, authVersion: "0" }] };
     if (sql.startsWith("select token_hash") || sql.startsWith("update app.sessions")) return { rowCount: 1, rows: [] };
     if (options.error) throw options.error;
+    if (sql.startsWith("select current_setting")) return { rows: [{ isolation: "read committed" }] };
     if (sql.startsWith("insert") && options.conflict) return { rowCount: 0, rows: [] };
     return { rowCount: row ? 1 : 0, rows: row ? [{ ...row, ...(sql.startsWith("update") ? { state: "ready" } : {}) }] : [] };
   } }); } };

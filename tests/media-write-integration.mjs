@@ -13,7 +13,10 @@ import { testFencedMediaWrites } from "./media-file-postgres-integration.mjs";
 const { MediaMetadataRepository } = loadMediaModule("media-metadata");
 const { LocalMediaWriter } = loadMediaModule("media-write");
 const fail = (promise, code) => assert.rejects(promise, error => error.code === code && !error.cause);
-export async function testMediaWrites(suite, db, operator, { repo, store, root, token, otherToken, adminToken, image, bytes, ready }) {
+// Raw FS fault fixtures only; real runtime fencing is exercised below by testFencedMediaWrites.
+const claimedFixture = write => ({writeClaimed:async(bytes,claim)=>{const value=await claim();return write(value.record,bytes,value.attemptId);}});
+export async function testMediaWrites(suite, db, operator, { repo, store:rawStore, root, token, otherToken, adminToken, image, bytes, ready }) {
+  const store={...rawStore,...claimedFixture(rawStore.write)};
   const normalized = { ...image, bytes };
   const reserve = async () => repo.reserve(token, randomUUID(), image);
   const count = async id => (await db.query("select count(*)::integer as n from app.media_write_attempts where media_id=$1", [id])).rows[0].n;
@@ -22,10 +25,10 @@ export async function testMediaWrites(suite, db, operator, { repo, store, root, 
   let written;
   await suite.test("media writer: committed attempt precedes real FS and private ready survives readback", async () => {
     written = await reserve(); let writes = 0;
-    const writer = new LocalMediaWriter(repo, { write: async (record, payload, attempt) => {
+    const writer = new LocalMediaWriter(repo, claimedFixture(async (record, payload, attempt) => {
       writes++; assert.equal((await repo.getWriteAttempt(token, written.id)).attemptId, attempt);
       await store.write(record, payload, attempt);
-    } });
+    }));
     assert.equal((await writer.write(token, written.id, normalized)).state, "ready");
     assert.equal(writes, 1); assert.deepEqual((await repo.readOwned(token, written.id)).bytes, bytes); assert.equal(await count(written.id), 1);
     await fail(writer.write(token, written.id, normalized), "MEDIA_IN_PROGRESS"); assert.equal(writes, 1);
@@ -43,9 +46,9 @@ export async function testMediaWrites(suite, db, operator, { repo, store, root, 
   await suite.test("media writer: concurrent calls for one pending file start exactly one FS write", async () => {
     const pending = await reserve(); let writes = 0, release, entered;
     const barrier = new Promise(resolve => { release = resolve; }), started = new Promise(resolve => { entered = resolve; });
-    const writer = new LocalMediaWriter(repo, { write: async (...args) => { writes++; entered(); await barrier; return store.write(...args); } });
+    const writer = new LocalMediaWriter(repo, claimedFixture(async (...args) => { writes++; entered(); await barrier; return store.write(...args); }));
     const first = writer.write(token, pending.id, normalized);
-    try { await Promise.race([started, first]); await fail(new LocalMediaWriter(repo, store).write(token, pending.id, normalized), "MEDIA_IN_PROGRESS"); }
+    try { await Promise.race([started, first]); await fail(new LocalMediaWriter(repo, claimedFixture(store.write)).write(token, pending.id, normalized), "MEDIA_IN_PROGRESS"); }
     finally { release(); await first; }
     assert.equal(writes, 1); assert.equal(await count(pending.id), 1);
   });
@@ -54,15 +57,15 @@ export async function testMediaWrites(suite, db, operator, { repo, store, root, 
     const lost = new MediaMetadataRepository({ transaction: async work => {
       transactions++; await db.transaction(work); throw Object.assign(new Error("Synthetic lost claim response"), { code: "ECONNRESET" });
     } }, store);
-    await fail(new LocalMediaWriter(lost, { write: async () => { writes++; } }).write(token, pending.id, normalized), "MEDIA_WRITE_UNAVAILABLE");
+    await fail(new LocalMediaWriter(lost, claimedFixture(async () => { writes++; })).write(token, pending.id, normalized), "MEDIA_WRITE_UNAVAILABLE");
     assert.equal(transactions, 1); assert.equal(writes, 0); assert.ok(await repo.getWriteAttempt(token, pending.id));
-    await fail(new LocalMediaWriter(repo, store).write(token, pending.id, normalized), "MEDIA_IN_PROGRESS");
+    await fail(new LocalMediaWriter(repo, claimedFixture(store.write)).write(token, pending.id, normalized), "MEDIA_IN_PROGRESS");
     assert.equal(await count(pending.id), 1); assert.equal((await repo.getByIntent(token, (await db.query("select intent_id from app.media_objects where id=$1", [pending.id])).rows[0].intent_id)).state, "pending");
   });
   await suite.test("media writer: unknown FS result retains claim/file/quota and existing file can be completed without rewriting", async () => {
     const pending = await reserve(); let writes = 0;
     const before = (await db.query("select charged_bytes,charged_objects from app.media_storage_budget")).rows[0];
-    const writer = new LocalMediaWriter(repo, { write: async (...args) => { writes++; await store.write(...args); throw new Error("Synthetic lost FS response"); } });
+    const writer = new LocalMediaWriter(repo, claimedFixture(async (...args) => { writes++; await store.write(...args); throw new Error("Synthetic lost FS response"); }));
     await fail(writer.write(token, pending.id, normalized), "MEDIA_WRITE_UNAVAILABLE");
     assert.equal(await repo.readOwned(token, pending.id), null); assert.deepEqual(await store.read(pending), bytes);
     await fail(writer.write(token, pending.id, normalized), "MEDIA_IN_PROGRESS"); assert.equal(writes, 1);
@@ -76,7 +79,7 @@ export async function testMediaWrites(suite, db, operator, { repo, store, root, 
       if (transactions === 2) throw Object.assign(new Error("Synthetic lost ready response"), { code: "ECONNRESET" });
       return result;
     } }, store);
-    const writer = new LocalMediaWriter(lost, { write: async (...args) => { writes++; return store.write(...args); } });
+    const writer = new LocalMediaWriter(lost, claimedFixture(async (...args) => { writes++; return store.write(...args); }));
     await fail(writer.write(token, pending.id, normalized), "MEDIA_WRITE_UNAVAILABLE");
     assert.equal(transactions, 2); assert.deepEqual((await repo.readOwned(token, pending.id)).bytes, bytes);
     await fail(new LocalMediaWriter(repo, store).write(token, pending.id, normalized), "MEDIA_IN_PROGRESS"); assert.equal(writes, 1);
@@ -105,7 +108,7 @@ export async function testMediaWrites(suite, db, operator, { repo, store, root, 
     const info = await fs.lstat(path.join(root, `.pending-${claim.attemptId}`));
     assert.ok(info.isFile()); assert.equal(info.size, 12); assert.equal(info.mode & 0o7777, 0o600); assert.equal(info.uid, process.getuid());
     assert.equal((await repo.getWriteAttempt(token, pending.id)).attemptId, claim.attemptId);
-    await fail(new LocalMediaWriter(repo, store).write(token, pending.id, normalized), "MEDIA_IN_PROGRESS");
+    await fail(new LocalMediaWriter(repo, claimedFixture(store.write)).write(token, pending.id, normalized), "MEDIA_IN_PROGRESS");
     assert.equal(await repo.readOwned(token, pending.id), null);
     assert.equal((await fs.lstat(path.join(root, `.pending-${claim.attemptId}`))).ino, info.ino);
     assert.deepEqual((await db.query("select charged_bytes,charged_objects from app.media_storage_budget")).rows[0], before);

@@ -3,9 +3,9 @@ import {parseListingDraftId} from './listing-draft-contract.ts';
 import {parseCheckoutCancellation,type CheckoutCancellationInput,type CheckoutCancellationResult} from './checkout-cancellation-contract.ts';
 const messages={UNAUTHENTICATED:'Войдите в аккаунт повторно.',CHECKOUT_NOT_FOUND:'Подготовка оплаты недоступна.',CHECKOUT_STARTED:'Отправка оплаты уже могла начаться. Проверьте статус исходного заказа.',CHECKOUT_BUSY:'Состояние оплаты сейчас обновляется. Повторите проверку.',INVALID_INPUT:'Проверьте данные оплаты.',RATE_LIMITED:'Слишком много запросов. Попробуйте позже.',UNKNOWN:'Результат отмены пока неизвестен. Проверьте эту же подготовку.'};
 export class CheckoutCancellationClientError extends Error{constructor(readonly code:keyof typeof messages){super(messages[code]);this.name='CheckoutCancellationClientError';}}
-export function createCheckoutCancellationClient(transport:typeof fetch){
+export function createCheckoutCancellationClient(transport:typeof fetch,policy:{services?:boolean}={}){
  async function request(owner:string,input:CheckoutCancellationInput,write:boolean,options?:{signal?:AbortSignal}):Promise<CheckoutCancellationResult|null>{
-  let value:CheckoutCancellationInput,expectedOwnerId:string;try{value=parseCheckoutCancellation(input);expectedOwnerId=parseListingDraftId(owner);}catch{throw new CheckoutCancellationClientError('INVALID_INPUT');}
+  let value:CheckoutCancellationInput,expectedOwnerId:string;try{value=parseCheckoutCancellation(input,policy);expectedOwnerId=parseListingDraftId(owner);}catch{throw new CheckoutCancellationClientError('INVALID_INPUT');}
   try{
    const timeout=AbortSignal.timeout(10000),signal=options?.signal?AbortSignal.any([timeout,options.signal]):timeout;signal.throwIfAborted();
    const response=await transport('/api/account/checkout-cancellation',{method:write?'PUT':'POST',credentials:'same-origin',redirect:'error',cache:'no-store',signal,headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1'},body:JSON.stringify({...value,expectedOwnerId})});
@@ -22,3 +22,5 @@ export function createCheckoutCancellationClient(transport:typeof fetch){
  return{read:(owner:string,input:CheckoutCancellationInput,options?:{signal?:AbortSignal})=>request(owner,input,false,options),cancel:(owner:string,input:CheckoutCancellationInput,options?:{signal?:AbortSignal})=>request(owner,input,true,options)};
 }
 export const checkoutCancellation=createCheckoutCancellationClient((...args)=>fetch(...args));
+
+export const serviceCheckoutCancellation=createCheckoutCancellationClient((...args)=>fetch(...args),{services:true});

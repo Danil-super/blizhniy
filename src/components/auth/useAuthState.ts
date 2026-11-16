@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
 
 export type AuthState = "loading" | "signed-out" | "signed-in" | "admin" | "unavailable";
@@ -52,6 +51,8 @@ function prepareSessionState(session: Session | null | undefined) {
 }
 
 async function resolveUserStateFromRoles(user: User, currentRequestId: number) {
+  const { getSupabaseBrowserClient } = await import("@/lib/supabase-browser");
+  if (currentRequestId !== requestId) return;
   const supabase = getSupabaseBrowserClient();
   const { data: roles, error } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
 
@@ -106,7 +107,7 @@ async function resolveSessionState(session: Session | null | undefined, currentR
   }
 }
 
-function ensureAuthStateInitialized() {
+async function ensureAuthStateInitialized() {
   if (initialized) {
     return;
   }
@@ -114,6 +115,7 @@ function ensureAuthStateInitialized() {
   initialized = true;
 
   try {
+    const { getSupabaseBrowserClient } = await import("@/lib/supabase-browser");
     const supabase = getSupabaseBrowserClient();
 
     const initialRequestId = ++requestId;
@@ -160,7 +162,7 @@ export function useAuthState() {
 
   useEffect(() => {
     if (!useLegacy) return;
-    ensureAuthStateInitialized();
+    void ensureAuthStateInitialized();
     listeners.add(setSnapshot);
     setSnapshot(cachedSnapshot);
 

@@ -129,13 +129,32 @@ const deploymentAssertionPairs = [
     "    for (const step of [confirm, rollback]) assert.equal(step.env.REMOTE_DIR, '${{ needs.deploy.outputs.remote_dir }}');"
   ]
 ];
-const reviewedReplacement = (file, text) => [...registrationAssertionPairs, ...deploymentAssertionPairs].some(([path, before, after]) =>
+// Candidate: apply only after owner review of this exact renewal boundary pair.
+const renewalAssertionPairs = [
+  ['tests/placement-renewal-artifacts.test.mjs',
+   "   const rejected=join(owned,name+'-57');assert.throws(()=>build(rejected,{schema:57}));assert.equal(existsSync(rejected),false);",
+   "   const rejected=join(owned,name+'-58');assert.throws(()=>build(rejected,{schema:58}));assert.equal(existsSync(rejected),false);"],
+  ['tests/refund-operator-role.test.mjs',
+   " for(const schema of [53,57,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));",
+   " for(const schema of [53,58,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));"],
+  ['tests/refund-operator-role.test.mjs',
+   " for(const schema of [53,56,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));",
+   " for(const schema of [53,58,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));"],
+];
+const reviewedAssertionPairs = [...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs];
+const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, before, after]) =>
   file === path && text === before &&
-  removed.filter(line => line.file === path && line.text === before).length === 1 &&
+  removed.filter(line => line.file === path && reviewedAssertionPairs.some(([pairPath, pairBefore, pairAfter]) =>
+    pairPath === path && pairAfter === after && line.text === pairBefore)).length === 1 &&
   added.filter(line => line.file === path && line.text === after).length === 1);
 // Exact complete browser-test replacements approved by the owner, 2026-10-20.
 // Content-addressed artifacts, not a blanket permission to remove assertions.
 const reviewedListingArtifacts = [
+  {
+    "file": "tests/public-search-contract.test.mjs",
+    "before": "3920719f3e2bc374a8e90b33a3c6fbd64cd5d32683955e55a65dd8dfc2270ce7",
+    "after": "c2ce3043d5daca4d7b2d6830b7d083b31f39084b050d29cd58c7723e5f937017"
+  },
   {
     "file": "tests/primary-listing-form-browser.mjs",
     "before": "107b019ad1e6dcd5c1d323a179d8ef34a4666aec11746bf6a4bdeca76c1a3b2f",

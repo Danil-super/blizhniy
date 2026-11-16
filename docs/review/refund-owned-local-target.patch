@@ -1,0 +1,241 @@
+diff --git a/scripts/build-refund-operator.mjs b/scripts/build-refund-operator.mjs
+index 23a29d2..ad6efa2 100644
+--- a/scripts/build-refund-operator.mjs
++++ b/scripts/build-refund-operator.mjs
+@@ -30,7 +30,7 @@ export function buildRefundOperator(destination){
+  const emitted=program.emit();
+  if(emitted.emitSkipped||emitted.diagnostics.length)throw Error('Refund operator compilation failed');
+  mkdirSync(join(destination,'scripts'));mkdirSync(join(destination,'database'));mkdirSync(join(destination,'database/migrations'));
+- for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','refund-operator-role.mjs','local-refund-operator-runtime.mjs','local-refund-operator-server.mjs'])
++ for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','refund-operator-role.mjs','local-refund-operator-runtime.mjs','local-refund-operator-server.mjs','local-primary-refund-target.mjs','local-primary-config.mjs'])
+   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
+  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
+  copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
+diff --git a/scripts/local-refund-operator-runtime.mjs b/scripts/local-refund-operator-runtime.mjs
+index 6710d05..092300f 100644
+--- a/scripts/local-refund-operator-runtime.mjs
++++ b/scripts/local-refund-operator-runtime.mjs
+@@ -1,5 +1,6 @@
+ import {isAbsolute} from 'node:path';
+ import {createRequire} from 'node:module';
++import {verifyLocalPrimaryRefundTarget,assertLocalPrimaryRefundTrust} from './local-primary-refund-target.mjs';
+ import {verifyRefundOperatorDatabase} from './refund-operator-role.mjs';
+
+ const require=createRequire(import.meta.url),unavailable=()=>Error('Local refund operator unavailable');
+@@ -13,12 +14,23 @@ function loadCompiledModules(){
+ /** Explicit private local TEST capability. Every command rechecks admission; canonical stores authorize the live admin.
+  * Unknown results require an explicit same-ID call. No HTTP listener, send method, ambient config or command/SQL retry.
+  */
+-export async function createLocalRefundOperatorRuntime(environment,{loadModules=loadCompiledModules,fetcher=globalThis.fetch}={}){
++export async function createLocalRefundOperatorRuntime(environment,options={}){
++ return createRuntime(environment,options,'blizhniy_test');
++}
++/** Separate owned manual-stand entry; default test-database admission above is unchanged. */
++export async function createLocalPrimaryRefundOperatorRuntime(environment,{stateFile,project,...options}={}){
++ try{
++  const env={...environment},certificate=await verifyLocalPrimaryRefundTarget(env,{stateFile,project});
++  return await createRuntime(env,options,'blizhniy_prod',certificate);
++ }catch{throw unavailable();}
++}
++async function createRuntime(environment,options,database,certificate){
+  let db,pool;
+  try{
++  const {loadModules=loadCompiledModules,fetcher=globalThis.fetch}=options;
+   const env={...environment};
+   if(typeof window!=='undefined'||env.NODE_ENV!=='production'||env.BLIZHNIY_REFUND_OPERATOR!=='local-test'||env.BLIZHNIY_PAYMENT_MODE!=='test'||
+-   env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!=='blizhniy_test'||env.BLIZHNIY_DB_USER!=='blizhniy_refund_operator'||
++   env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!==database||env.BLIZHNIY_DB_USER!=='blizhniy_refund_operator'||
+    !/^\d{1,5}$/.test(env.BLIZHNIY_DB_PORT??'')||Number(env.BLIZHNIY_DB_PORT)<1||Number(env.BLIZHNIY_DB_PORT)>65535||!env.BLIZHNIY_DB_PASSWORD||
+    env.BLIZHNIY_DB_SSL_MODE!=='verify-full'||!env.BLIZHNIY_DB_CA_FILE||!isAbsolute(env.BLIZHNIY_DB_CA_FILE)||
+    [env,process.env].some(e=>e.NODE_TLS_REJECT_UNAUTHORIZED==='0'||Object.keys(e).some(k=>k.startsWith('PG')))||
+@@ -28,7 +40,7 @@ export async function createLocalRefundOperatorRuntime(environment,{loadModules=
+   const merchant=Object.freeze({shopId:env.BLIZHNIY_PAYMENT_SHOP_ID,secretKey:env.BLIZHNIY_PAYMENT_SECRET_KEY,isTest:true}),modules=loadModules();
+   let closed=false,active,closing;
+   const readOnlyFetch=(url,init)=>{if(closed||init?.method!=='GET')throw unavailable();init.signal?.throwIfAborted();return fetcher(url,init);};
+-  const config=modules.readPostgresConfig(env);pool=new modules.Pool({...config,max:2,application_name:'blizhniy-local-refund-operator'});db=new modules.PostgresDatabase(pool);
++  const config=modules.readPostgresConfig(env);if(certificate!==undefined)assertLocalPrimaryRefundTrust(config,certificate);pool=new modules.Pool({...config,max:2,application_name:'blizhniy-local-refund-operator'});db=new modules.PostgresDatabase(pool);
+   const journal=new modules.PostgresAdminRefundJournal(db,merchant),approvals=new modules.PostgresRefundApprovalStore(db,merchant),recovery=modules.createPrimaryRefundRecovery(db,merchant,readOnlyFetch);
+   const verify=()=>modules.verifyRefundOperatorDatabase(db,{database:config.database,merchant}),probe=modules.createRefundMerchantPreflight(merchant,readOnlyFetch);
+   async function admitMerchant(){await probe();if(closed)throw unavailable();await verify();if(closed)throw unavailable();}
+diff --git a/scripts/local-primary-refund-target.mjs b/scripts/local-primary-refund-target.mjs
+new file mode 100644
+index 0000000..db197a6
+--- /dev/null
++++ b/scripts/local-primary-refund-target.mjs
+@@ -0,0 +1,22 @@
++import {execFile} from 'node:child_process';
++import {promisify} from 'node:util';
++import {readLocalPrimaryState,validateLocalPrimaryContainerDefinition,validateLocalPrimaryContainer} from './local-primary-config.mjs';
++const execute=promisify(execFile),unavailable=()=>Error('Local refund target unavailable');
++const docker=async args=>(await execute('/usr/bin/docker',['--host','unix:///var/run/docker.sock',...args],{timeout:5000,maxBuffer:131072,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'}})).stdout;
++/** Read-only physical target proof. The fixed public certificate is compared to the actual Pool config, not reopened later. */
++export async function verifyLocalPrimaryRefundTarget(environment,{stateFile,project},run=docker){
++ try{
++  const env={...environment};
++  if(typeof window!=='undefined'||env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!=='blizhniy_prod')throw unavailable();
++  const state=readLocalPrimaryState(stateFile,project);if(env.BLIZHNIY_DB_PORT!==String(state.dbPort)||env.BLIZHNIY_DB_NAME!==state.database)throw unavailable();
++  const rows=JSON.parse(await run(['inspect',state.containerId]));if(!Array.isArray(rows)||rows.length!==1||rows[0].State?.Running!==true)throw unavailable();
++  validateLocalPrimaryContainerDefinition(rows[0],state);validateLocalPrimaryContainer(rows[0],state);
++  const certificate=await run(['exec',state.containerId,'cat','/var/lib/postgresql/refund-server.crt']);
++  if(typeof certificate!=='string'||Buffer.byteLength(certificate)>65536||!certificate.trim())throw unavailable();
++  return certificate.trim();
++ }catch{throw unavailable();}
++}
++export function assertLocalPrimaryRefundTrust(config,certificate){
++ if(!config?.ssl||typeof config.ssl!=='object'||config.ssl.rejectUnauthorized!==true||typeof config.ssl.ca!=='string'||
++  typeof certificate!=='string'||config.ssl.ca.trim()!==certificate.trim())throw unavailable();
++}
+diff --git a/tests/local-primary-refund-runtime-cases.mjs b/tests/local-primary-refund-runtime-cases.mjs
+new file mode 100644
+index 0000000..aa660dd
+--- /dev/null
++++ b/tests/local-primary-refund-runtime-cases.mjs
+@@ -0,0 +1,62 @@
++import assert from 'node:assert/strict';
++import {execFile} from 'node:child_process';
++import {promisify} from 'node:util';
++import {randomBytes,randomUUID} from 'node:crypto';
++import {mkdtemp,readFile,writeFile,chmod,rm} from 'node:fs/promises';
++import {join} from 'node:path';
++import {tmpdir} from 'node:os';
++import {pathToFileURL} from 'node:url';
++import {rootCertificates} from 'node:tls';
++import pg from 'pg';
++import {localPrimaryImage,validateLocalPrimaryContainerDefinition,validateLocalPrimaryContainer} from '../scripts/local-primary-config.mjs';
++import {getRefundOperatorRolePlan} from '../scripts/refund-operator-role.mjs';
++
++/** A new synthetic owned container only; never the persistent manual fixture or production. */
++export async function testOwnedLocalPrimaryRefundRuntime(suite,{artifact,load}){
++ const run=promisify(execFile),project=process.cwd(),owned=await mkdtemp(join(tmpdir(),'blizhniy-owned-refund-runtime-'));
++ const name='blizhniy-primary-local-'+randomBytes(6).toString('hex'),password=randomBytes(32).toString('hex'),rolePassword=randomBytes(32).toString('hex');
++ const docker=async args=>(await run('/usr/bin/docker',['--host','unix:///var/run/docker.sock',...args],{timeout:20000,maxBuffer:1048576,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',POSTGRES_PASSWORD:password}})).stdout.trim();
++ let container,admin,runtime;const ca=join(owned,'server.crt'),key=join(owned,'server.key'),stateFile=join(owned,'state.json');
++ try{
++  container=await docker(['run','--detach','--pull','never','--name',name,'--label','blizhniy.primary-local='+project,'--label','blizhniy.refund-owned-proof='+name,'--memory','512m','--cpus','1','--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB=blizhniy_prod',localPrimaryImage]);
++  const metadata=JSON.parse(await docker(['inspect',container]))[0],port=Number(metadata.NetworkSettings.Ports['5432/tcp'][0].HostPort);
++  const state={version:1,project,origin:'https://127.0.0.1:3045',upstreamPort:3046,containerId:container,containerName:name,dbPort:port,database:'blizhniy_prod',runtimePassword:randomBytes(32).toString('hex'),ownerPassword:randomBytes(32).toString('hex'),rateSecret:randomBytes(32).toString('hex')};
++  validateLocalPrimaryContainerDefinition(metadata,state);validateLocalPrimaryContainer(metadata,state);assert.equal(metadata.Config.Labels['blizhniy.refund-owned-proof'],name);
++  await writeFile(stateFile,JSON.stringify(state),{mode:0o600});const deadline=Date.now()+20000;
++  for(;;){try{await docker(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres','-d','blizhniy_prod']);break;}catch{assert.ok(Date.now()<deadline);}await new Promise(r=>setTimeout(r,100));}
++  admin=new pg.Pool({host:'127.0.0.1',port,database:'blizhniy_prod',user:'postgres',password,ssl:false,max:2,connectionTimeoutMillis:3000});
++  const plan=getRefundOperatorRolePlan('blizhniy_prod');for(const entry of plan.journal)await admin.query(await readFile(new URL('../database/migrations/'+entry.name,import.meta.url),'utf8'));
++  await admin.query("revoke all on database blizhniy_prod from public;create schema blizhniy_meta;revoke all on schema blizhniy_meta from public;create table blizhniy_meta.migrations(name text primary key,sha256 text not null check(sha256 ~ '^[a-f0-9]{64}$'));revoke all on blizhniy_meta.migrations from public");
++  for(const entry of plan.journal)await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[entry.name,entry.sha256]);
++  await admin.query(plan.createRole);await admin.query('alter role blizhniy_refund_operator login password '+pg.escapeLiteral(rolePassword));for(const sql of plan.grants)await admin.query(sql);
++  await run('/usr/bin/openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=owned-local-refund-fixture','-addext','subjectAltName=IP:127.0.0.1','-addext','basicConstraints=critical,CA:TRUE','-keyout',key,'-out',ca],{timeout:10000});await chmod(ca,0o644);
++  for(const [source,base] of [[ca,'server.crt'],[key,'server.key']]){
++   await docker(['cp',source,container+':/tmp/refund-'+base]);await docker(['exec','--user','0',container,'cp','/tmp/refund-'+base,'/var/lib/postgresql/refund-'+base]);
++  }
++  await docker(['exec','--user','0',container,'chown','postgres:postgres','/var/lib/postgresql/refund-server.key']);await docker(['exec','--user','0',container,'chmod','600','/var/lib/postgresql/refund-server.key']);
++  await admin.query("alter system set ssl_cert_file='/var/lib/postgresql/refund-server.crt'");await admin.query("alter system set ssl_key_file='/var/lib/postgresql/refund-server.key'");await admin.query("alter system set ssl='on'");await admin.query('select pg_reload_conf()');
++  const sslDeadline=Date.now()+5000;while((await admin.query("select current_setting('ssl') as ssl")).rows[0].ssl!=='on'){assert.ok(Date.now()<sslDeadline);await new Promise(r=>setTimeout(r,20));}
++  const actor=randomUUID(),token=randomBytes(32).toString('hex');await admin.query("insert into app.users(id,email,password_hash,role,email_verified_at) values($1,$2,$3,'admin',clock_timestamp())",[actor,actor+'@owned.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
++  await admin.query("insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at) values($1,$2,'app',0,clock_timestamp()+interval '1 hour')",[load('identity').hashSessionToken(token),actor]);
++  const environment={NODE_ENV:'production',BLIZHNIY_REFUND_OPERATOR:'local-test',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_DB_HOST:'127.0.0.1',BLIZHNIY_DB_PORT:String(port),BLIZHNIY_DB_NAME:'blizhniy_prod',BLIZHNIY_DB_USER:'blizhniy_refund_operator',BLIZHNIY_DB_PASSWORD:rolePassword,BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:ca,BLIZHNIY_PAYMENT_SHOP_ID:'owned-local-fixture',BLIZHNIY_PAYMENT_SECRET_KEY:'test_synthetic_only'};
++  const modules=await import(pathToFileURL(join(artifact,'scripts/local-refund-operator-runtime.mjs')).href);
++  await suite.test('separate owned entry admits exact local-primary identity and TLS while the default factory still refuses the prod-named database',async()=>{
++   let reads=0;const fetcher=async(url,init)=>{reads++;assert.equal(init.method,'GET');assert.equal(url,'https://api.yookassa.ru/v3/me');return Response.json({account_id:environment.BLIZHNIY_PAYMENT_SHOP_ID,test:true,status:'enabled',fiscalization:{enabled:false}});};
++   await assert.rejects(modules.createLocalRefundOperatorRuntime(environment,{fetcher}),{message:'Local refund operator unavailable'});assert.equal(reads,0);
++   runtime=await modules.createLocalPrimaryRefundOperatorRuntime(environment,{stateFile,project,fetcher});assert.equal(reads,0);
++   assert.deepEqual(await runtime.listForAdmin(token,actor,null),{items:[],nextAfter:null});assert.equal(reads,0);await runtime.preflight();assert.equal(reads,1);
++   const sessions=(await admin.query("select s.ssl from pg_stat_activity a join pg_stat_ssl s using(pid) where a.application_name='blizhniy-local-refund-operator'")).rows;assert.ok(sessions.length>0);assert.ok(sessions.every(row=>row.ssl));await runtime.close();runtime=undefined;
++  });
++  await suite.test('owned entry refuses wrong project, port and a changed Pool CA before creating any connection or provider request',async()=>{
++   let pools=0,http=0;const options={stateFile,project,fetcher:async()=>{http++;throw Error('Unexpected provider I/O');},loadModules:()=>({readPostgresConfig:()=>({database:'blizhniy_prod',ssl:{ca:rootCertificates[0],rejectUnauthorized:true}}),Pool:class{constructor(){pools++;}}})};
++   for(const change of [{project:'/foreign'},{stateFile:join(owned,'absent')}])await assert.rejects(modules.createLocalPrimaryRefundOperatorRuntime(environment,{...options,...change}),{message:'Local refund operator unavailable'});
++   await assert.rejects(modules.createLocalPrimaryRefundOperatorRuntime({...environment,BLIZHNIY_DB_PORT:String(port+1)},options),{message:'Local refund operator unavailable'});
++   await assert.rejects(modules.createLocalPrimaryRefundOperatorRuntime(environment,options),{message:'Local refund operator unavailable'});assert.equal(pools,0);assert.equal(http,0);
++  });
++ }finally{
++  try{await runtime?.close();}finally{try{await admin?.end();}finally{
++   if(container){const ownedMetadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(ownedMetadata.Id,container);assert.equal(ownedMetadata.Config.Labels['blizhniy.refund-owned-proof'],name);await docker(['rm','--force',container]);}
++   await rm(owned,{recursive:true,force:true});
++  }}
++ }
++}
+diff --git a/tests/local-primary-refund-target.test.mjs b/tests/local-primary-refund-target.test.mjs
+new file mode 100644
+index 0000000..1ff98ac
+--- /dev/null
++++ b/tests/local-primary-refund-target.test.mjs
+@@ -0,0 +1,48 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {mkdtemp,writeFile,chmod,rm,symlink} from 'node:fs/promises';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {rootCertificates} from 'node:tls';
++import {createRequire} from 'node:module';
++import {createLocalRefundOperatorRuntime,createLocalPrimaryRefundOperatorRuntime} from '../scripts/local-refund-operator-runtime.mjs';
++import {localPrimaryImage} from '../scripts/local-primary-config.mjs';
++import {verifyLocalPrimaryRefundTarget,assertLocalPrimaryRefundTrust} from '../scripts/local-primary-refund-target.mjs';
++const project=process.cwd(),load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
++async function fixture(){
++ const directory=await mkdtemp(join(tmpdir(),'blizhniy-owned-refund-proof-')),stateFile=join(directory,'state.json'),caFile=join(directory,'ca.crt');
++ const state={version:1,project,origin:'https://127.0.0.1:3045',upstreamPort:3046,containerId:'a'.repeat(64),containerName:'blizhniy-primary-local-'+'b'.repeat(12),dbPort:54321,database:'blizhniy_prod',runtimePassword:'1'.repeat(64),ownerPassword:'2'.repeat(64),rateSecret:'3'.repeat(64)};
++ const metadata={Id:state.containerId,Name:'/'+state.containerName,Config:{Image:localPrimaryImage,Labels:{'blizhniy.primary-local':project}},HostConfig:{NetworkMode:'bridge',PortBindings:{'5432/tcp':[{HostIp:'127.0.0.1',HostPort:''}]}},NetworkSettings:{Ports:{'5432/tcp':[{HostIp:'127.0.0.1',HostPort:String(state.dbPort)}]}},State:{Running:true}};
++ const env={BLIZHNIY_DB_HOST:'127.0.0.1',BLIZHNIY_DB_PORT:String(state.dbPort),BLIZHNIY_DB_NAME:'blizhniy_prod',BLIZHNIY_DB_CA_FILE:caFile};
++ await writeFile(stateFile,JSON.stringify(state),{mode:0o600});await writeFile(caFile,rootCertificates[0],{mode:0o644});const calls=[];
++ const docker=async args=>{calls.push(args);if(args[0]==='inspect')return JSON.stringify([metadata]);assert.deepEqual(args,['exec',state.containerId,'cat','/var/lib/postgresql/refund-server.crt']);return rootCertificates[0];};
++ return{directory,stateFile,caFile,state,metadata,env,calls,docker,close:()=>rm(directory,{recursive:true,force:true})};
++}
++test('owned target proof requires the exact private state, running local Docker binding and matching TLS trust',async()=>{
++ const f=await fixture();try{
++  assert.equal(await verifyLocalPrimaryRefundTarget(f.env,{stateFile:f.stateFile,project},f.docker),rootCertificates[0].trim());assert.equal(f.calls.length,2);assert.deepEqual(f.calls[0],['inspect',f.state.containerId]);
++  for(const change of [{BLIZHNIY_DB_HOST:'217.149.30.35'},{BLIZHNIY_DB_PORT:'54322'},{BLIZHNIY_DB_NAME:'blizhniy_test'}])await assert.rejects(verifyLocalPrimaryRefundTarget({...f.env,...change},{stateFile:f.stateFile,project},f.docker),{message:'Local refund target unavailable'});
++  await assert.rejects(verifyLocalPrimaryRefundTarget(f.env,{stateFile:f.stateFile,project:'/foreign'},f.docker));
++  const original=structuredClone(f.metadata);
++  for(const change of [m=>m.State.Running=false,m=>m.Id='c'.repeat(64),m=>m.Config.Labels['blizhniy.primary-local']='/foreign',m=>m.Config.Image='postgres:latest',m=>m.NetworkSettings.Ports['5432/tcp'][0].HostIp='0.0.0.0',m=>m.NetworkSettings.Ports['5432/tcp'][0].HostPort='54322',m=>m.HostConfig.NetworkMode='host']){
++   Object.assign(f.metadata,structuredClone(original));change(f.metadata);await assert.rejects(verifyLocalPrimaryRefundTarget(f.env,{stateFile:f.stateFile,project},f.docker));
++  }
++  Object.assign(f.metadata,original);const pinned=await verifyLocalPrimaryRefundTarget(f.env,{stateFile:f.stateFile,project},f.docker);assertLocalPrimaryRefundTrust({ssl:{ca:rootCertificates[0],rejectUnauthorized:true}},pinned);
++  for(const ssl of [false,{ca:rootCertificates[1],rejectUnauthorized:true},{ca:rootCertificates[0],rejectUnauthorized:false}])assert.throws(()=>assertLocalPrimaryRefundTrust({ssl},pinned));
++  const configured={...f.env,NODE_ENV:'production',BLIZHNIY_DB_USER:'blizhniy_refund_operator',BLIZHNIY_DB_PASSWORD:'synthetic',BLIZHNIY_DB_SSL_MODE:'verify-full'},config=load('postgres').readPostgresConfig(configured);
++  await writeFile(f.caFile,rootCertificates[1]);assertLocalPrimaryRefundTrust(config,pinned);assert.throws(()=>assertLocalPrimaryRefundTrust(load('postgres').readPostgresConfig(configured),pinned));
++ }finally{await f.close();}
++});
++test('proof rejects unsafe state files and redacts Docker details without modifying a container',async()=>{
++ const f=await fixture();try{
++  await chmod(f.stateFile,0o644);await assert.rejects(verifyLocalPrimaryRefundTarget(f.env,{stateFile:f.stateFile,project},f.docker));assert.equal(f.calls.length,0);await chmod(f.stateFile,0o600);
++  const link=join(f.directory,'state-link');await symlink(f.stateFile,link);await assert.rejects(verifyLocalPrimaryRefundTarget(f.env,{stateFile:link,project},f.docker));
++  await assert.rejects(verifyLocalPrimaryRefundTarget(f.env,{stateFile:f.stateFile,project},async()=>{throw Error('private Docker credential');}),{message:'Local refund target unavailable'});
++  assert.equal(f.calls.some(args=>['start','stop','rm','rename','cp'].includes(args[0])),false);
++ }finally{await f.close();}
++});
++
++test('invalid default options and missing owned proof are redacted before any module or pool admission',async()=>{
++ await assert.rejects(createLocalRefundOperatorRuntime(undefined,null),{message:'Local refund operator unavailable'});
++ let loads=0;await assert.rejects(createLocalPrimaryRefundOperatorRuntime({BLIZHNIY_DB_HOST:'127.0.0.1',BLIZHNIY_DB_NAME:'blizhniy_prod'},{loadModules:()=>{loads++;throw Error('Unexpected module load');}}),{message:'Local refund operator unavailable'});assert.equal(loads,0);
++});
+diff --git a/tests/local-refund-operator-runtime-cases.mjs b/tests/local-refund-operator-runtime-cases.mjs
+index a62a1d4..215af7d 100644
+--- a/tests/local-refund-operator-runtime-cases.mjs
++++ b/tests/local-refund-operator-runtime-cases.mjs
+@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os';
+ import {join} from 'node:path';
+ import {pathToFileURL} from 'node:url';
+ import {rootCertificates} from 'node:tls';
++import {testOwnedLocalPrimaryRefundRuntime} from './local-primary-refund-runtime-cases.mjs';
+ import {testLocalRefundAdmin} from './local-refund-admin-cases.mjs';
+ import {randomBytes,randomUUID} from 'node:crypto';
+
+@@ -87,6 +88,7 @@ export async function testLocalRefundOperatorRuntime(suite,{admin,config,artifac
+    assert.deepEqual((await admin.query('select phase from app.payment_refund_recovery_actions where action_id=$1',[action.id])).rows,[{phase:'requested'}]);
+    assert.equal((await admin.query('select count(*)::int as n from app.payment_refund_effects where operation_id=$1',[id])).rows[0].n,0);await runtime.close();
+   });
++  await testOwnedLocalPrimaryRefundRuntime(suite,{artifact,load});
+   await testLocalRefundAdmin(suite,{admin,artifact,environment,createLocalRefundOperatorRuntime,purchase,load,operator,merchant,provider,refundDb});
+  }finally{try{await runtime?.close();}finally{await rm(owned,{recursive:true,force:true});}}
+ }
+diff --git a/tests/refund-operator-build.test.mjs b/tests/refund-operator-build.test.mjs
+index 55de205..f9e0df4 100644
+--- a/tests/refund-operator-build.test.mjs
++++ b/tests/refund-operator-build.test.mjs
+@@ -19,6 +19,7 @@ test('private operator artifact imports existing approval/recovery without netwo
+   symlinkSync(fileURLToPath(new URL('../node_modules',import.meta.url)),join(artifact,'node_modules'),'dir');
+   const script=`import assert from 'node:assert/strict';import net from 'node:net';import {createRequire} from 'node:module';
+    let calls=0;globalThis.fetch=net.Socket.prototype.connect=()=>{calls++;throw Error('Network forbidden');};
++   createRequire(import.meta.url)('node:child_process').execFile=()=>{calls++;throw Error('Process launch forbidden');};
+    const require=createRequire(import.meta.url),{PostgresRefundApprovalStore}=require('./compiled/lib/postgres-refund-approvals.js'),{createPrimaryRefundRecovery}=require('./compiled/lib/primary-refund-recovery.js');
+    const {verifyRefundOperatorDatabase}=await import('./scripts/refund-operator-role.mjs');
+    const {createLocalRefundOperatorRuntime}=await import('./scripts/local-refund-operator-runtime.mjs');assert.equal(typeof createLocalRefundOperatorRuntime,'function');

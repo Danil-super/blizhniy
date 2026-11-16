@@ -5,7 +5,7 @@ import type {PostgresDatabase} from './postgres';
 type Row={id:string;revision:string;kind:ListingCabinetSummary['kind'];title:string;price:string|null;city:string|null;district:string|null;coverPhotoId:string|null;status:ListingCabinetSummary['card']['status'];blockReason:string|null;updatedAt:string};
 /** Owner's lifecycle projection. Private photos remain cookie-protected, never public draft URLs. */
 export class PostgresListingCabinetStore{
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly postmoderation=false){}
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly postmoderation=false,private readonly renewals=false){}
  list(token:string,expectedOwner:string,after:unknown):Promise<ListingCabinetPage>{
   const expected=parseListingDraftId(expectedOwner),cursor=parseListingDraftCursor(after);
   return withAppSessionTransaction(this.db,token,async(tx,user)=>{
@@ -15,6 +15,7 @@ export class PostgresListingCabinetStore{
     l.title,l.price::text,city.name as city,l.district,
     (select p.media_id from app.listing_photos p join app.media_objects m on m.id=p.media_id and m.owner_id=l.author_id and m.state='ready' where p.listing_id=l.id order by p.position limit 1) as "coverPhotoId",
     case ${this.postmoderation?"when block.listing_id is not null then 'blocked'":""}
+     ${this.renewals?"when l.status='archived' and l.is_paid and l.expires_at<=clock_timestamp() then 'expired'":''}
      when l.status='published' and l.expires_at<=clock_timestamp() then 'expired'
      when l.status='published' and l.is_paid and l.published_at<=clock_timestamp() and l.expires_at>clock_timestamp() then 'published'
      when l.status in ('sold','archived','expired') then l.status::text

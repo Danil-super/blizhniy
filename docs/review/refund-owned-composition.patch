@@ -1,0 +1,487 @@
+diff --git a/scripts/build-refund-operator.mjs b/scripts/build-refund-operator.mjs
+index ad6efa2..c012b22 100644
+--- a/scripts/build-refund-operator.mjs
++++ b/scripts/build-refund-operator.mjs
+@@ -34,6 +34,7 @@ export function buildRefundOperator(destination){
+   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
+  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
+  copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
++ copyFileSync(join(root,'database/refund-schema-local-primary-0055.json'),join(destination,'database/refund-schema-local-primary-0055.json'));
+  for(const {name,bytes} of migrations)writeFileSync(join(destination,'database/migrations',name),bytes,{flag:'wx',mode:0o600});
+  const manifest={version:1,schema:55,typescript:ts.version,sources};
+  writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});
+diff --git a/scripts/build-refund-worker.mjs b/scripts/build-refund-worker.mjs
+index c022bda..1c1b9f7 100644
+--- a/scripts/build-refund-worker.mjs
++++ b/scripts/build-refund-worker.mjs
+@@ -31,10 +31,10 @@ export function buildRefundWorker(destination,{schema=54}={}){
+  const emitted=program.emit();
+  if(emitted.emitSkipped||emitted.diagnostics.length)throw Error('Refund worker compilation failed');
+  mkdirSync(join(destination,'scripts'));mkdirSync(join(destination,'database'));mkdirSync(join(destination,'database/migrations'));
+- for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','local-refund-worker-runtime.mjs','refund-worker-service.mjs'])
++ for(const name of ['cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','local-refund-worker-runtime.mjs','refund-worker-service.mjs','local-primary-refund-target.mjs','local-primary-config.mjs'])
+   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
+  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
+- if(schema===55)copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
++ if(schema===55)for(const name of ['refund-schema-0055.json','refund-schema-local-primary-0055.json'])copyFileSync(join(root,'database',name),join(destination,'database',name));
+  for(const {name,bytes} of migrations)writeFileSync(join(destination,'database/migrations',name),bytes,{flag:'wx',mode:0o600});
+  const manifest={version:1,schema,typescript:ts.version,sources};
+  writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});
+diff --git a/scripts/local-primary-payment.mjs b/scripts/local-primary-payment.mjs
+index 868a256..b2a8d7e 100644
+--- a/scripts/local-primary-payment.mjs
++++ b/scripts/local-primary-payment.mjs
+@@ -1,5 +1,6 @@
+ // Trusted LOCAL provider simulator. It never connects to YooKassa or loads a real merchant.
+ import {randomUUID} from 'node:crypto';
++import {readFile} from 'node:fs/promises';
+ const canonical='https://xn----9sbphbgks4a4a.xn--p1ai',merchant={shopId:'local-fixture-shop',isTest:true,secretKey:'test_local-fixture-never-a-real-key'};
+ const instances=new WeakMap();
+ const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+@@ -18,14 +19,7 @@ export async function lockLocalPaymentTarget(tx,id){
+ async function create(context,targetType){
+  const {state,ownerDb,runtimeDb,load}=context;
+  if(process.env.NODE_ENV!=='test'||!load('listing-workflow-config').readPostmoderationEnabled()||state.origin!==process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN)throw Error('Local provider disabled');
+- await ownerDb.query('create schema if not exists local_primary');
+- await ownerDb.query(`create table if not exists local_primary.provider_payments(
+-  intent_id uuid primary key references app.payment_checkout_intents(id) on delete cascade,
+-  provider_id uuid unique not null,status text not null check(status in ('pending','succeeded','canceled')),captured_at text)`);
+- if(targetType==='application')await ownerDb.query(`create table if not exists local_primary.application_deliveries(
+-  intent_id uuid primary key references app.payment_verifications(intent_id) on delete restrict,
+-  application_id uuid unique not null references app.applications(id) on delete restrict,
+-  sent_at timestamptz not null check(isfinite(sent_at)))`);
++ await ownerDb.query(await readFile(new URL('../database/local-primary-payment.sql',import.meta.url),'utf8'));
+  const policy={postmoderation:true,...(targetType!=='listing'?{targetType}:{})};
+  const store=targetType==='application'?new(load('postgres-application-checkout').PostgresApplicationCheckoutStore)(runtimeDb,async id=>(await ownerDb.query(`select to_char(sent_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as stamp from local_primary.application_deliveries where intent_id=$1`,[id])).rows[0]?.stamp??null,async(token,owner,id)=>{
+   if(await recoverExistingProvider(token,owner,id))await verification.reconcile(id);
+diff --git a/scripts/local-refund-operator-runtime.mjs b/scripts/local-refund-operator-runtime.mjs
+index 092300f..fb146b7 100644
+--- a/scripts/local-refund-operator-runtime.mjs
++++ b/scripts/local-refund-operator-runtime.mjs
+@@ -42,7 +42,7 @@ async function createRuntime(environment,options,database,certificate){
+   const readOnlyFetch=(url,init)=>{if(closed||init?.method!=='GET')throw unavailable();init.signal?.throwIfAborted();return fetcher(url,init);};
+   const config=modules.readPostgresConfig(env);if(certificate!==undefined)assertLocalPrimaryRefundTrust(config,certificate);pool=new modules.Pool({...config,max:2,application_name:'blizhniy-local-refund-operator'});db=new modules.PostgresDatabase(pool);
+   const journal=new modules.PostgresAdminRefundJournal(db,merchant),approvals=new modules.PostgresRefundApprovalStore(db,merchant),recovery=modules.createPrimaryRefundRecovery(db,merchant,readOnlyFetch);
+-  const verify=()=>modules.verifyRefundOperatorDatabase(db,{database:config.database,merchant}),probe=modules.createRefundMerchantPreflight(merchant,readOnlyFetch);
++  const verify=()=>modules.verifyRefundOperatorDatabase(db,{database:config.database,merchant,...(certificate!==undefined?{localPrimary:true}:{})}),probe=modules.createRefundMerchantPreflight(merchant,readOnlyFetch);
+   async function admitMerchant(){await probe();if(closed)throw unavailable();await verify();if(closed)throw unavailable();}
+   function execute(work,merchantAdmission=false){
+    if(closed||active)return Promise.reject(unavailable());
+diff --git a/scripts/local-refund-worker-runtime.mjs b/scripts/local-refund-worker-runtime.mjs
+index 1a741e0..39a5362 100644
+--- a/scripts/local-refund-worker-runtime.mjs
++++ b/scripts/local-refund-worker-runtime.mjs
+@@ -1,5 +1,6 @@
+ import {isAbsolute} from 'node:path';
+ import {createRequire} from 'node:module';
++import {verifyLocalPrimaryRefundTarget,assertLocalPrimaryRefundTrust} from './local-primary-refund-target.mjs';
+ import {verifyRefundWorkerDatabase} from './refund-worker-role.mjs';
+
+ const require=createRequire(import.meta.url);
+@@ -12,12 +13,23 @@ function loadCompiledModules(){
+ /** Local disposable TEST database only; no implicit environment, installer or startup.
+  * Trusted module/fetch seams are for composition tests, never environment-selected paths.
+  */
+-export async function createLocalRefundWorkerRuntime(environment,{loadModules=loadCompiledModules,fetcher=globalThis.fetch}={}){
++export async function createLocalRefundWorkerRuntime(environment,options={}){
++ return createRuntime(environment,options,'blizhniy_test');
++}
++/** Separate owned manual-stand entry; ordinary disposable admission remains unchanged. */
++export async function createLocalPrimaryRefundWorkerRuntime(environment,{stateFile,project,...options}={}){
++ try{
++  const env={...environment},certificate=await verifyLocalPrimaryRefundTarget(env,{stateFile,project});
++  return await createRuntime(env,options,'blizhniy_prod',certificate);
++ }catch{throw Error('Local refund runtime unavailable');}
++}
++async function createRuntime(environment,options,database,certificate){
+  let db,pool;
+  try{
++  const {loadModules=loadCompiledModules,fetcher=globalThis.fetch}=options;
+   const env={...environment};
+   if(typeof window!=='undefined'||env.NODE_ENV!=='production'||env.BLIZHNIY_REFUND_WORKER!=='local-test'||env.BLIZHNIY_PAYMENT_MODE!=='test'||
+-   env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!=='blizhniy_test'||env.BLIZHNIY_DB_USER!=='blizhniy_refund_worker'||
++   env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!==database||env.BLIZHNIY_DB_USER!=='blizhniy_refund_worker'||
+    !/^\d{1,5}$/.test(env.BLIZHNIY_DB_PORT??'')||Number(env.BLIZHNIY_DB_PORT)<1||Number(env.BLIZHNIY_DB_PORT)>65535||!env.BLIZHNIY_DB_PASSWORD||
+    env.BLIZHNIY_DB_SSL_MODE!=='verify-full'||!env.BLIZHNIY_DB_CA_FILE||!isAbsolute(env.BLIZHNIY_DB_CA_FILE)||
+    [env,process.env].some(e=>e.NODE_TLS_REJECT_UNAUTHORIZED==='0'||Object.keys(e).some(k=>k.startsWith('PG')))||
+@@ -26,9 +38,10 @@ export async function createLocalRefundWorkerRuntime(environment,{loadModules=lo
+    typeof fetcher!=='function')throw Error();
+   const merchant=Object.freeze({shopId:env.BLIZHNIY_PAYMENT_SHOP_ID,secretKey:env.BLIZHNIY_PAYMENT_SECRET_KEY,isTest:true});
+   const modules=loadModules(),config=modules.readPostgresConfig(env);
++  if(certificate!==undefined)assertLocalPrimaryRefundTrust(config,certificate);
+   pool=new modules.Pool({...config,max:2,application_name:'blizhniy-local-refund-worker'});db=new modules.PostgresDatabase(pool);
+   const placement=modules.createPlacementRefundWorker(db,merchant,fetcher),application=modules.createApplicationCompensationWorker(db,merchant,fetcher);
+-  const verify=()=>modules.verifyRefundWorkerDatabase(db,{database:config.database,merchant}),probe=modules.createRefundMerchantPreflight(merchant,fetcher);
++  const verify=()=>modules.verifyRefundWorkerDatabase(db,{database:config.database,merchant,...(certificate!==undefined?{localPrimary:true}:{})}),probe=modules.createRefundMerchantPreflight(merchant,fetcher);
+   let admitted=false,closed=false,active,closing;
+   function exclusive(task,admission=false){
+    if(closed||active||(!admission&&!admitted))return Promise.reject(Error('Local refund runtime unavailable'));
+@@ -44,7 +57,7 @@ export async function createLocalRefundWorkerRuntime(environment,{loadModules=lo
+   return{
+    preflight:()=>exclusive(async()=>{await probe();await verify();if(!closed)admitted=true;},true),
+    placement:{tick:()=>exclusive(()=>placement.tick())},application:{sweep:()=>exclusive(()=>application.sweep())},
+-   close:()=>closing??=(async()=>{closed=true;admitted=false;try{await active;}catch{ /* Drain before closing the owned pool. */ }await db.close();})(),
++   close:()=>closing??=(async()=>{closed=true;admitted=false;try{await active;}catch{ /* Drain before closing the owned pool. */ }try{await db.close();}catch{throw Error('Local refund runtime unavailable');}})(),
+   };
+  }catch{
+   try{if(db)await db.close();else if(pool)await pool.end();}catch{ /* Keep credentials and driver details out of errors. */ }
+diff --git a/scripts/refund-operator-role.mjs b/scripts/refund-operator-role.mjs
+index 0ff85a5..689b5ec 100644
+--- a/scripts/refund-operator-role.mjs
++++ b/scripts/refund-operator-role.mjs
+@@ -41,9 +41,9 @@ export function getRefundOperatorRolePlan(database){
+ /** Trusted TEST operator: session/source reads and audited approval/recovery, no send capabilities.
+  * Read-only exact PG18/schema55 admission; never an untrusted-SQL or per-merchant isolation boundary.
+  */
+-export async function verifyRefundOperatorDatabase(db,{database,merchant}={}){
++export async function verifyRefundOperatorDatabase(db,{database,merchant,localPrimary=false}={}){
+  try{
+-  if(!validDatabase(database)||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
++  if(!validDatabase(database)||typeof localPrimary!=='boolean'||(localPrimary&&database!=='blizhniy_prod')||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
+   const expectedJournal=journal();
+   await db.transaction(async tx=>{
+    await tx.query("set local statement_timeout='5s'");
+@@ -62,7 +62,7 @@ export async function verifyRefundOperatorDatabase(db,{database,merchant}={}){
+     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
+    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
+    if(JSON.stringify(actualJournal)!==JSON.stringify(expectedJournal))throw Error('Invalid refund journal');
+-   await assertRefundSchema(tx,55);
++   await assertRefundSchema(tx,55,{localPrimary});
+    await assertFinancialCatalogPrivileges(tx);
+    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
+     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
+diff --git a/scripts/refund-worker-role.mjs b/scripts/refund-worker-role.mjs
+index a9de2f7..647fcb8 100644
+--- a/scripts/refund-worker-role.mjs
++++ b/scripts/refund-worker-role.mjs
+@@ -57,9 +57,9 @@ export function getRefundWorkerRolePlan(database,{schema=54}={}){
+  * Trusted TEST financial process; merchant isolation is enforced by the stores, not SQL RLS.
+  * No managed membership exception, production runtime wiring or automatic activation.
+  */
+-export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
++export async function verifyRefundWorkerDatabase(db,{database,merchant,localPrimary=false}={}){
+  try{
+-  if(!validDatabase(database)||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
++  if(!validDatabase(database)||typeof localPrimary!=='boolean'||(localPrimary&&database!=='blizhniy_prod')||!merchant||merchant.isTest!==true||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId))throw Error('Invalid refund target');
+   const expectedJournal=journal();
+   await db.transaction(async tx=>{
+    await tx.query("set local statement_timeout='5s'");
+@@ -79,7 +79,7 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant}={}){
+    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
+    const schema=actualJournal.length===55?55:54;
+    if(JSON.stringify(actualJournal)!==JSON.stringify(schema===55?journal(55):expectedJournal))throw Error('Invalid refund journal');
+-   await assertRefundSchema(tx,schema);
++   await assertRefundSchema(tx,schema,{localPrimary});
+    await assertFinancialCatalogPrivileges(tx);
+    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
+     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
+diff --git a/scripts/refund-worker-schema.mjs b/scripts/refund-worker-schema.mjs
+index d98d1ee..42a4683 100644
+--- a/scripts/refund-worker-schema.mjs
++++ b/scripts/refund-worker-schema.mjs
+@@ -26,6 +26,18 @@ export async function readRefundSchema(tx){
+    jsonb_build_array(pg_get_constraintdef(c.oid,false),c.convalidated,c.conenforced,c.conislocal,c.connoinherit)
+   from pg_constraint c join pg_namespace n on n.oid=c.connamespace where n.nspname='app'
+   union all
++  select 'external_foreign_key',c.conrelid::regclass::text||'.'||c.conname,
++   jsonb_build_array(pg_get_constraintdef(c.oid,false),c.convalidated,c.conenforced,c.conislocal,c.connoinherit)
++  from pg_constraint c join pg_namespace n on n.oid=c.connamespace
++   join pg_class target on target.oid=c.confrelid join pg_namespace tn on tn.oid=target.relnamespace
++  where c.contype='f' and n.nspname<>'app' and tn.nspname='app'
++  union all
++  select 'policy',p.polrelid::regclass::text||'.'||p.polname,
++   jsonb_build_array(p.polcmd,p.polpermissive,
++    (select jsonb_agg(case when r=0 then 'PUBLIC' else r::regrole::text end order by case when r=0 then 'PUBLIC' else r::regrole::text end collate "C") from unnest(p.polroles) r),
++    pg_get_expr(p.polqual,p.polrelid,false),pg_get_expr(p.polwithcheck,p.polrelid,false))
++  from pg_policy p join pg_class c on c.oid=p.polrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='app'
++  union all
+   select 'trigger',t.tgrelid::regclass::text||'.'||case when t.tgisinternal
+     then c.conname||'.'||t.tgfoid::regprocedure::text else t.tgname::text end,
+    jsonb_build_array(case when not t.tgisinternal then pg_get_triggerdef(t.oid,false) end,
+@@ -79,8 +91,8 @@ export async function readRefundSchema(tx){
+  return Object.fromEntries(Object.entries(groups).map(([kind,items])=>[kind,{count:items.length,sha256:createHash('sha256').update(JSON.stringify(items)).digest('hex')}]));
+ }
+
+-export async function assertRefundSchema(tx,schema=54){
+- if(![54,55].includes(schema))throw Error('Invalid refund schema version');
+- const expected=JSON.parse(readFileSync(new URL(`../database/refund-schema-00${schema}.json`,import.meta.url),'utf8'));
++export async function assertRefundSchema(tx,schema=54,{localPrimary=false}={}){
++ if(![54,55].includes(schema)||typeof localPrimary!=='boolean'||(localPrimary&&schema!==55))throw Error('Invalid refund schema version');
++ const expected=JSON.parse(readFileSync(new URL(localPrimary?'../database/refund-schema-local-primary-0055.json':`../database/refund-schema-00${schema}.json`,import.meta.url),'utf8'));
+  if(JSON.stringify(await readRefundSchema(tx))!==JSON.stringify(expected))throw Error('Invalid refund schema');
+ }
+diff --git a/tests/local-primary-refund-runtime-cases.mjs b/tests/local-primary-refund-runtime-cases.mjs
+index aa660dd..0beeb10 100644
+--- a/tests/local-primary-refund-runtime-cases.mjs
++++ b/tests/local-primary-refund-runtime-cases.mjs
+@@ -1,4 +1,6 @@
+ import assert from 'node:assert/strict';
++import {testOwnedRefundComposition} from './local-primary-refund-composition-cases.mjs';
++import {testLocalPrimaryRefundSchema} from './local-primary-refund-schema-cases.mjs';
+ import {execFile} from 'node:child_process';
+ import {promisify} from 'node:util';
+ import {randomBytes,randomUUID} from 'node:crypto';
+@@ -26,6 +28,10 @@ export async function testOwnedLocalPrimaryRefundRuntime(suite,{artifact,load}){
+   for(;;){try{await docker(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres','-d','blizhniy_prod']);break;}catch{assert.ok(Date.now()<deadline);}await new Promise(r=>setTimeout(r,100));}
+   admin=new pg.Pool({host:'127.0.0.1',port,database:'blizhniy_prod',user:'postgres',password,ssl:false,max:2,connectionTimeoutMillis:3000});
+   const plan=getRefundOperatorRolePlan('blizhniy_prod');for(const entry of plan.journal)await admin.query(await readFile(new URL('../database/migrations/'+entry.name,import.meta.url),'utf8'));
++  await admin.query('create role blizhniy_runtime nologin');
++  await admin.query(await readFile(new URL('../database/local-primary-payment.sql',import.meta.url),'utf8'));
++  await admin.query(await readFile(new URL('../database/permissions/telegram-phone.sql',import.meta.url),'utf8'));
++  await testLocalPrimaryRefundSchema(suite,{admin,plan});
+   await admin.query("revoke all on database blizhniy_prod from public;create schema blizhniy_meta;revoke all on schema blizhniy_meta from public;create table blizhniy_meta.migrations(name text primary key,sha256 text not null check(sha256 ~ '^[a-f0-9]{64}$'));revoke all on blizhniy_meta.migrations from public");
+   for(const entry of plan.journal)await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[entry.name,entry.sha256]);
+   await admin.query(plan.createRole);await admin.query('alter role blizhniy_refund_operator login password '+pg.escapeLiteral(rolePassword));for(const sql of plan.grants)await admin.query(sql);
+@@ -53,6 +59,7 @@ export async function testOwnedLocalPrimaryRefundRuntime(suite,{artifact,load}){
+    await assert.rejects(modules.createLocalPrimaryRefundOperatorRuntime({...environment,BLIZHNIY_DB_PORT:String(port+1)},options),{message:'Local refund operator unavailable'});
+    await assert.rejects(modules.createLocalPrimaryRefundOperatorRuntime(environment,options),{message:'Local refund operator unavailable'});assert.equal(pools,0);assert.equal(http,0);
+   });
++  await testOwnedRefundComposition(suite,{admin,owned,environment,stateFile,project,load,artifact,actor,token});
+  }finally{
+   try{await runtime?.close();}finally{try{await admin?.end();}finally{
+    if(container){const ownedMetadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(ownedMetadata.Id,container);assert.equal(ownedMetadata.Config.Labels['blizhniy.refund-owned-proof'],name);await docker(['rm','--force',container]);}
+diff --git a/tests/local-refund-worker-runtime.test.mjs b/tests/local-refund-worker-runtime.test.mjs
+index ab44b1d..614e4e0 100644
+--- a/tests/local-refund-worker-runtime.test.mjs
++++ b/tests/local-refund-worker-runtime.test.mjs
+@@ -61,3 +61,10 @@ test('encoded processing uncertainty revokes admission for both consumer interfa
+   await assert.rejects(runtime.placement.tick());await assert.rejects(runtime.application.sweep());await runtime.close();
+  }
+ });
++
++test('worker shutdown errors are redacted and cached without reopening or repeating close',async()=>{
++ const f=fixture();f.modules.PostgresDatabase=class{async close(){f.calls.push(['close']);throw Error('private driver shutdown credential');}};
++ const runtime=await createLocalRefundWorkerRuntime(env,{loadModules:()=>f.modules});
++ await assert.rejects(runtime.close(),{message:'Local refund runtime unavailable'});await assert.rejects(runtime.close(),{message:'Local refund runtime unavailable'});
++ assert.equal(f.calls.filter(c=>c[0]==='close').length,1);await assert.rejects(runtime.preflight());await assert.rejects(runtime.placement.tick());
++});
+diff --git a/tests/refund-worker-build.test.mjs b/tests/refund-worker-build.test.mjs
+index 688bec0..0095298 100644
+--- a/tests/refund-worker-build.test.mjs
++++ b/tests/refund-worker-build.test.mjs
+@@ -25,6 +25,7 @@ test('isolated refund artifact loads both canonical consumers and its complete s
+    const forbidden=()=>{network++;throw Error('Network forbidden');};
+    globalThis.fetch=forbidden;net.Socket.prototype.connect=forbidden;
+    const require=createRequire(import.meta.url),pg=require('pg');
++   require('node:child_process').execFile=()=>{network++;throw Error('Process launch forbidden');};
+    pg.Pool.prototype.query=pg.Pool.prototype.connect=()=>{poolCalls++;throw Error('Database forbidden');};
+    const {PostgresDatabase}=require('./compiled/lib/postgres.js');
+    const {createPlacementRefundWorker}=require('./compiled/lib/placement-refund-worker.js');
+diff --git a/database/local-primary-payment.sql b/database/local-primary-payment.sql
+new file mode 100644
+index 0000000..b212aca
+--- /dev/null
++++ b/database/local-primary-payment.sql
+@@ -0,0 +1,9 @@
++-- Synthetic provider state only; never install on a production database.
++create schema if not exists local_primary;
++create table if not exists local_primary.provider_payments(
++ intent_id uuid primary key references app.payment_checkout_intents(id) on delete cascade,
++ provider_id uuid unique not null,status text not null check(status in ('pending','succeeded','canceled')),captured_at text);
++create table if not exists local_primary.application_deliveries(
++ intent_id uuid primary key references app.payment_verifications(intent_id) on delete restrict,
++ application_id uuid unique not null references app.applications(id) on delete restrict,
++ sent_at timestamptz not null check(isfinite(sent_at)));
+diff --git a/database/refund-schema-local-primary-0055.json b/database/refund-schema-local-primary-0055.json
+new file mode 100644
+index 0000000..731b17a
+--- /dev/null
++++ b/database/refund-schema-local-primary-0055.json
+@@ -0,0 +1,42 @@
++{
++  "column": {
++    "count": 732,
++    "sha256": "ea770287dad8ef7c87505ca6041fc5fe74ac124a03733d192d123217f06cc44b"
++  },
++  "constraint": {
++    "count": 900,
++    "sha256": "db9b8eb05907ef276b488d3b79529e88cdc680dead11416b47b95cb6b68a14bc"
++  },
++  "external_foreign_key": {
++    "count": 3,
++    "sha256": "2e6e00d09d511b963f0446c64e101bba4aaae19c1dfff3e8e6b0bc6f786b91fd"
++  },
++  "function": {
++    "count": 85,
++    "sha256": "54020bee74fa215d771af6589332e4ad8fdc39e6156207da6dddfba0f74d196f"
++  },
++  "index": {
++    "count": 178,
++    "sha256": "e79c21ff43b8bf98eec84253604ab0258925003bc4187e6d8c71b485d47782d4"
++  },
++  "policy": {
++    "count": 2,
++    "sha256": "a89c5ad889d5cf4df8f6a1f7794be5d920f6c3e8e2d9c62f038222fb0bb94f0a"
++  },
++  "relation": {
++    "count": 244,
++    "sha256": "081eac85b4b3b3c2c52bd3dbe81c15e66bb4123c52254f1b1abe3aebdba74b43"
++  },
++  "trigger": {
++    "count": 480,
++    "sha256": "dfd9a927a73ef9a3e11ab23f0f621af387e8cd11684e90da35112a63869ef096"
++  },
++  "type": {
++    "count": 132,
++    "sha256": "69ec55d145fd4ddc1f58a080a97a2dbaa43b2ca9aeb3dc6f0b24988bcf810f3a"
++  },
++  "unsupported": {
++    "count": 1,
++    "sha256": "fce708b25e7e2572e23fe66f314932a52e0fb0a473bb3b11d1e86331378e9b66"
++  }
++}
+diff --git a/tests/local-primary-refund-composition-cases.mjs b/tests/local-primary-refund-composition-cases.mjs
+new file mode 100644
+index 0000000..5afd1df
+--- /dev/null
++++ b/tests/local-primary-refund-composition-cases.mjs
+@@ -0,0 +1,81 @@
++import assert from 'node:assert/strict';
++import {randomBytes,randomUUID} from 'node:crypto';
++import {symlink} from 'node:fs/promises';
++import {join} from 'node:path';
++import {pathToFileURL,fileURLToPath} from 'node:url';
++import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
++import {getRefundWorkerRolePlan} from '../scripts/refund-worker-role.mjs';
++
++/** Reuses only the parent's new owned synthetic prod-named database; never the persistent manual stand. */
++export async function testOwnedRefundComposition(suite,{admin,owned,environment,stateFile,project,load,artifact,actor,token}){
++ const plan=getRefundWorkerRolePlan('blizhniy_prod',{schema:55}),password=randomBytes(32).toString('hex'),destination=join(owned,'worker');
++ buildRefundWorker(destination,{schema:55});await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(destination,'node_modules'),'dir');
++ await admin.query(plan.createRole);await admin.query("alter role blizhniy_refund_worker login password '"+password+"'");for(const sql of plan.grants)await admin.query(sql);
++ const workerModule=await import(pathToFileURL(join(destination,'scripts/local-refund-worker-runtime.mjs')).href),operatorModule=await import(pathToFileURL(join(artifact,'scripts/local-refund-operator-runtime.mjs')).href);
++ const {startLocalRefundOperatorServer}=await import(pathToFileURL(join(artifact,'scripts/local-refund-operator-server.mjs')).href),{runRefundWorkerService}=await import(pathToFileURL(join(destination,'scripts/refund-worker-service.mjs')).href);
++ const workerEnvironment={...environment,BLIZHNIY_REFUND_OPERATOR:undefined,BLIZHNIY_REFUND_WORKER:'local-test',BLIZHNIY_DB_USER:'blizhniy_refund_worker',BLIZHNIY_DB_PASSWORD:password};
++ const {PostgresDatabase}=load('postgres'),ownerDb=new PostgresDatabase(admin),{PostgresPaymentIntentStore}=load('postgres-payment-intents');
++ const items=new Map(),refunds=new Map(),posts=[];let runtime,operator,server;const me=()=>Response.json({account_id:environment.BLIZHNIY_PAYMENT_SHOP_ID,test:true,status:'enabled',fiscalization:{enabled:false}});
++ const fetcher=async(url,init)=>{
++  assert.equal(init.cache,'no-store');assert.equal(init.redirect,'error');
++  if(url==='https://api.yookassa.ru/v3/me'){assert.equal(init.method,'GET');return me();}
++  if(init.method==='POST'){
++   assert.equal(url,'https://api.yookassa.ru/v3/refunds');const body=JSON.parse(init.body),item=items.get(body.metadata.localPaymentId);assert.ok(item);const operation=body.metadata.localRefundId;
++   assert.equal(init.headers['Idempotence-Key'],'refund-'+operation);assert.equal(body.payment_id,item.providerPaymentId);assert.deepEqual(body.amount,{value:item.amount,currency:'RUB'});assert.equal(posts.includes(operation),false);posts.push(operation);
++   const refund={id:randomUUID(),payment_id:item.providerPaymentId,amount:body.amount,status:'succeeded',created_at:new Date().toISOString(),metadata:body.metadata};refunds.set(refund.id,refund);return Response.json(refund);
++  }
++  assert.equal(init.method,'GET');
++  const payment=[...items.values()].find(item=>url==='https://api.yookassa.ru/v3/payments/'+item.providerPaymentId);
++  if(payment)return Response.json({id:payment.providerPaymentId,amount:{value:payment.amount,currency:'RUB'},status:'succeeded',paid:true,test:true,refundable:true,captured_at:payment.capturedAt,recipient:{account_id:environment.BLIZHNIY_PAYMENT_SHOP_ID},metadata:payment.metadata});
++  if([...items.values()].some(item=>url==='https://api.yookassa.ru/v3/refunds?payment_id='+item.providerPaymentId+'&limit=100'))return Response.json({type:'list',items:[]});
++  const refund=[...refunds.values()].find(item=>url==='https://api.yookassa.ru/v3/refunds/'+item.id);assert.ok(refund);return Response.json(refund);
++ };
++ const merchant={shopId:environment.BLIZHNIY_PAYMENT_SHOP_ID,isTest:true,secretKey:environment.BLIZHNIY_PAYMENT_SECRET_KEY};
++ async function intent(kind,targetId,ownerId,{age=false}={}){
++  const id=randomUUID(),binding={id,ownerId,targetType:kind,targetId,targetRevision:'1',tariffId:kind==='application'?'job-response':'listing-publication',amount:kind==='application'?'99.00':'199.00',durationDays:kind==='application'?null:30,shopId:merchant.shopId,isTest:true};
++  const providerPaymentId=randomUUID(),metadata={localPaymentId:id,targetId,targetType:kind,tariffId:binding.tariffId},capturedAt=new Date(Date.now()-(age?6*86400000:60000)).toISOString();
++  const requestBody=JSON.stringify({amount:{value:binding.amount,currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:'https://owned.example.invalid/return'},metadata});
++  await ownerDb.transaction(async tx=>{
++   await new PostgresPaymentIntentStore(ownerDb).persistInTransaction(tx,{...binding,requestBody});
++   await tx.query('insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision) values($1,$2,$3,$4,$5,1)',[id,ownerId,randomUUID(),kind,targetId]);
++   await tx.query('insert into app.payment_dispatch_anchors(intent_id) values($1)',[id]);await tx.query('insert into app.payment_provider_links(intent_id,provider_payment_id) values($1,$2)',[id,providerPaymentId]);
++   await tx.query("update app.payment_orders set status='succeeded' where id=$1",[id]);await tx.query("insert into app.payment_verifications(intent_id,provider_payment_id,status,captured_at) values($1,$2,'succeeded',$3)",[id,providerPaymentId,capturedAt]);
++  });
++  const item={...binding,providerPaymentId,metadata,capturedAt};items.set(id,item);return item;
++ }
++ try{
++  await suite.test('owned worker preserves its default prod-name refusal and rejects unowned target or actual Pool CA before a claim',async()=>{
++   let pools=0,http=0;const options={stateFile,project,fetcher:async()=>{http++;throw Error('Unexpected provider');},loadModules:()=>({readPostgresConfig:()=>({database:'blizhniy_prod',ssl:{ca:'foreign certificate',rejectUnauthorized:true}}),Pool:class{constructor(){pools++;}}})};
++   await assert.rejects(workerModule.createLocalRefundWorkerRuntime(workerEnvironment,options),{message:'Local refund runtime unavailable'});
++   await assert.rejects(workerModule.createLocalPrimaryRefundWorkerRuntime(workerEnvironment,{...options,project:'/foreign'}),{message:'Local refund runtime unavailable'});
++   await assert.rejects(workerModule.createLocalPrimaryRefundWorkerRuntime({...workerEnvironment,BLIZHNIY_DB_PORT:String(Number(workerEnvironment.BLIZHNIY_DB_PORT)+1)},options),{message:'Local refund runtime unavailable'});
++   await assert.rejects(workerModule.createLocalPrimaryRefundWorkerRuntime(workerEnvironment,options),{message:'Local refund runtime unavailable'});assert.equal(pools,0);assert.equal(http,0);
++  });
++  await suite.test('owned TLS operator and worker service refund three placements and one unread response exactly once across restart',async()=>{
++   const payer=randomUUID(),phone='+79990000001';await admin.query("insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())",[payer,payer+'@owned.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
++   await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[payer,{name:'Владелец размещения',phone}]);await admin.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[payer,phone,'owned-refund-'+randomUUID()]);
++   await admin.query("insert into app.regions(slug,name) values('krasnodarskiy-kray','Краснодарский край');insert into app.cities(region_id,slug,name) select id,'krasnodar','Краснодар' from app.regions;insert into app.categories(slug,name) values('otdyh','Хобби и отдых')");
++   const listing=(await admin.query("insert into app.listings(author_id,listing_type,category_id,city_id,title,description,contact_phone,created_at) select $1,'sell',c.id,city.id,'Синтетическая публикация','Синтетическое описание для проверки полного локального возврата.',$2,clock_timestamp()-interval '2 minutes' from app.categories c cross join app.cities city returning id",[payer,phone])).rows[0].id;
++   const listingPayment=await intent('listing',listing,payer),placement=[listingPayment];
++   for(const kind of ['vacancy','workRequest']){const target=(await admin.query('insert into app.work_publications(author_id,kind,creation_key,form) values($1,$2,$3,$4) returning id',[payer,kind,randomUUID(),{kind,title:'Синтетическая публикация'}])).rows[0].id;placement.push(await intent(kind,target,payer));}
++   const application=(await admin.query("insert into app.applications(applicant_id,work_publication_id,creation_key,target_revision,specialist_revision,snapshot,is_paid,status,created_at,sent_at) values($1,$2,$3,1,1,'{}',true,'sent',statement_timestamp()-interval '7 days',statement_timestamp()-interval '6 days') returning id",[actor,placement[2].targetId,randomUUID()])).rows[0].id;
++   const response=await intent('application',application,actor,{age:true}),before=(await admin.query('select status,is_paid,snapshot,sent_at from app.applications where id=$1',[application])).rows[0];
++   const fulfilled=await new (load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(ownerDb,merchant,{postmoderation:true}).fulfill(listingPayment.id);assert.equal(fulfilled.state,'fulfilled');
++   operator=await operatorModule.createLocalPrimaryRefundOperatorRuntime(environment,{stateFile,project,fetcher:async(url,init)=>{assert.equal(init.method,'GET');return fetcher(url,init);}});server=await startLocalRefundOperatorServer(operator);
++   const {callLocalRefundOperator}=load('local-refund-operator-client');
++   for(const item of placement)await callLocalRefundOperator(server.socketPath,token,{action:'approve',expectedAdminId:actor,input:{id:randomUUID(),paymentIntentId:item.id,reason:'Полный возврат по обращению владельца.'}});assert.equal(posts.length,0);
++   runtime=await workerModule.createLocalPrimaryRefundWorkerRuntime(workerEnvironment,{stateFile,project,fetcher});await assert.rejects(runtime.placement.tick());assert.equal(posts.length,0);
++   const controller=new AbortController(),events=[];let completed=0,compensated=0;
++   const result=await runRefundWorkerService({mode:'run',signal:controller.signal,createRuntime:async()=>runtime,wait:async()=>{},report:async event=>{
++    events.push(event);if(event.status==='tick'&&event.state==='completed'){if(event.kind==='placement')completed++;else compensated++;}
++    if(completed===3&&compensated===1)controller.abort();if(events.length>30)throw Error('Owned fixture did not converge');
++   }});assert.equal(result,0);assert.equal(completed,3);assert.equal(compensated,1);assert.equal(posts.length,4);assert.equal(new Set(posts).size,4);
++   const page=await callLocalRefundOperator(server.socketPath,token,{action:'list',expectedAdminId:actor,input:null});assert.equal(page.items.length,4);assert.ok(page.items.every(item=>item.status==='refunded'&&item.refundStatus==='succeeded'&&item.appliedAt));
++   assert.deepEqual((await admin.query('select status,is_paid from app.listings where id=$1',[listing])).rows[0],{status:'archived',is_paid:false});
++   assert.equal((await admin.query('select count(*)::int as n from app.payment_refund_effects')).rows[0].n,3);assert.equal((await admin.query('select count(*)::int as n from app.application_compensation_refunds where payment_intent_id=$1',[response.id])).rows[0].n,1);
++   assert.deepEqual((await admin.query('select status,is_paid,snapshot,sent_at from app.applications where id=$1',[application])).rows[0],before);assert.equal((await admin.query('select count(*)::int as n from app.notifications')).rows[0].n,4);
++   runtime=await workerModule.createLocalPrimaryRefundWorkerRuntime(workerEnvironment,{stateFile,project,fetcher});await runtime.preflight();assert.deepEqual(await runtime.placement.tick(),{state:'idle'});assert.equal((await runtime.application.sweep()).processing.state,'idle');assert.equal(posts.length,4);
++   const sessions=(await admin.query("select usename,s.ssl from pg_stat_activity a join pg_stat_ssl s using(pid) where application_name in ('blizhniy-local-refund-worker','blizhniy-local-refund-operator')")).rows;assert.ok(sessions.some(s=>s.usename==='blizhniy_refund_worker'));assert.ok(sessions.some(s=>s.usename==='blizhniy_refund_operator'));assert.ok(sessions.every(s=>s.ssl));
++  });
++ }finally{try{await runtime?.close();}finally{if(server)await server.close();else await operator?.close();}}
++}
+diff --git a/tests/local-primary-refund-schema-cases.mjs b/tests/local-primary-refund-schema-cases.mjs
+new file mode 100644
+index 0000000..0fc828f
+--- /dev/null
++++ b/tests/local-primary-refund-schema-cases.mjs
+@@ -0,0 +1,62 @@
++import assert from 'node:assert/strict';
++import {readFile} from 'node:fs/promises';
++import pg from 'pg';
++import {readRefundSchema,assertRefundSchema} from '../scripts/refund-worker-schema.mjs';
++
++/** The parent owns a new synthetic container; no persistent stand or data is read. */
++export async function testLocalPrimaryRefundSchema(suite,{admin,plan}){
++ const fingerprint=async client=>{
++  await client.query('begin read only');
++  try{return await readRefundSchema(client);}finally{await client.query('rollback');}
++ };
++ await suite.test('local profile reproduces the manual migration order under another owner without accepting the source-only profile',async()=>{
++  const expected=JSON.parse(await readFile(new URL('../database/refund-schema-local-primary-0055.json',import.meta.url),'utf8'));
++  const client=await admin.connect();
++  try{
++   assert.deepEqual(await fingerprint(client),expected);
++   await client.query('begin read only');
++   try{
++    await assert.rejects(assertRefundSchema(client,55),{message:'Invalid refund schema'});
++    await assertRefundSchema(client,55,{localPrimary:true});
++    await assert.rejects(assertRefundSchema(client,54,{localPrimary:true}),{message:'Invalid refund schema version'});
++   }finally{await client.query('rollback');}
++  }finally{client.release();}
++  await admin.query('create role local_refund_reference_owner nologin');
++  await admin.query('create database local_refund_reference owner local_refund_reference_owner');
++  const reference=new pg.Client({...admin.options,password:admin.options.password,database:'local_refund_reference'});
++  try{
++   await reference.connect();await reference.query('set role local_refund_reference_owner');
++   const sparse=plan.journal.filter(({name})=>Number(name.slice(0,4))<=35||/^(0041|0044|0046|0047)-/.test(name));
++   assert.equal(sparse.length,39);
++   for(const {name} of sparse)await reference.query(await readFile(new URL('../database/migrations/'+name,import.meta.url),'utf8'));
++   await reference.query(await readFile(new URL('../database/local-primary-payment.sql',import.meta.url),'utf8'));
++   await reference.query(await readFile(new URL('../database/permissions/telegram-phone.sql',import.meta.url),'utf8'));
++   await reference.query('begin read only');
++   try{await assert.rejects(assertRefundSchema(reference,55,{localPrimary:true}),{message:'Invalid refund schema'});}
++   finally{await reference.query('rollback');}
++   const present=new Set(sparse.map(entry=>entry.name));
++   const additions=plan.journal.filter(entry=>!present.has(entry.name));assert.equal(additions.length,16);
++   for(const {name} of additions)await reference.query(await readFile(new URL('../database/migrations/'+name,import.meta.url),'utf8'));
++   assert.deepEqual(await fingerprint(reference),expected);
++  }finally{await reference.end();await admin.query('drop database local_refund_reference');await admin.query('drop role local_refund_reference_owner');}
++ });
++ const changes=[
++  ['policy USING',"alter policy phone_attempt_server on app.telegram_phone_attempts using(true)"],
++  ['policy WITH CHECK',"alter policy phone_binding_server on app.telegram_phone_bindings with check(true)"],
++  ['policy role',"alter policy phone_attempt_server on app.telegram_phone_attempts to public"],
++  ['policy command',"drop policy phone_attempt_server on app.telegram_phone_attempts;create policy phone_attempt_server on app.telegram_phone_attempts for select to blizhniy_runtime using(user_id=nullif(current_setting('app.phone_user_id',true),'')::uuid)"],
++  ['policy permissiveness',"drop policy phone_attempt_server on app.telegram_phone_attempts;create policy phone_attempt_server on app.telegram_phone_attempts as restrictive to blizhniy_runtime using(user_id=nullif(current_setting('app.phone_user_id',true),'')::uuid) with check(user_id=nullif(current_setting('app.phone_user_id',true),'')::uuid)"],
++  ['extra policy',"create policy local_refund_probe on app.telegram_phone_attempts using(true)"],
++  ['missing policy',"drop policy phone_attempt_server on app.telegram_phone_attempts"],
++  ['external FK action',"alter table local_primary.provider_payments drop constraint provider_payments_intent_id_fkey;alter table local_primary.provider_payments add constraint provider_payments_intent_id_fkey foreign key(intent_id) references app.payment_checkout_intents(id) on delete restrict"],
++  ['external FK source',"alter table local_primary.application_deliveries drop constraint application_deliveries_application_id_fkey;alter table local_primary.application_deliveries add constraint application_deliveries_application_id_fkey foreign key(intent_id) references app.applications(id) on delete restrict"],
++  ['external FK trigger',"alter table app.payment_checkout_intents disable trigger all"],
++ ];
++ for(const [name,change] of changes)await suite.test('local profile refuses changed '+name,async()=>{
++  const client=await admin.connect();
++  try{
++   await client.query('begin');await client.query(change);
++   await assert.rejects(assertRefundSchema(client,55,{localPrimary:true}),{message:'Invalid refund schema'});
++  }finally{await client.query('rollback');client.release();}
++ });
++}

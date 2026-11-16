@@ -1,3 +1,4 @@
+import {servicePlacementRefundTarget} from './service-checkout-config.ts';
 import {validPlainText} from './cabinet-field-validation.ts';
 import {parseListingDraftId} from './listing-draft-contract.ts';
 import {parsePaymentIntent} from './postgres-payment-intents.ts';
@@ -21,7 +22,7 @@ export function parsePlacementRefundApproval(value:unknown):PlacementRefundAppro
 export function describeFullPlacementRefund(value:unknown,merchant:{shopId:string;isTest:boolean}):{policyVersion:'placement-full-admin-v1';fiscalMode:PlacementRefundFiscalMode;amount:string} {
  try{
   const original=parsePaymentIntent(value);
-  if(!merchant||merchant.isTest!==true||!original.isTest||original.shopId!==merchant.shopId||!['listing','vacancy','workRequest'].includes(original.targetType)||original.durationDays===null)throw Error();
+  if(!merchant||merchant.isTest!==true||!original.isTest||original.shopId!==merchant.shopId||!(['listing','vacancy','workRequest'].includes(original.targetType)&&original.durationDays!==null||servicePlacementRefundTarget(original)))throw Error();
   const body=JSON.parse(original.requestBody);
   // The site's server-generated return URL uses an ASCII DNS authority. Keep
   // the same deliberately bounded subset in the independent SQL approval gate.

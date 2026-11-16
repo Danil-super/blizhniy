@@ -5,7 +5,7 @@ import { decodeMediaReply, encodeMediaReply, MEDIA_INPUT_TYPES, MEDIA_MAX_INPUT_
 import { assertMediaRuntime } from "./media-runtime-policy.ts";
 
 export type UploadedMedia = Pick<MediaReservation, "id" | "mimeType" | "width" | "height" | "size">;
-const publicErrors = ["MEDIA_ACCESS_DENIED", "MEDIA_INTENT_CONFLICT", "MEDIA_IN_PROGRESS", "MEDIA_QUOTA_EXCEEDED",
+const publicErrors = ["MEDIA_ACCESS_DENIED", "MEDIA_INTENT_CONFLICT", "MEDIA_IN_PROGRESS", "MEDIA_QUOTA_EXCEEDED", "MEDIA_OWNER_QUOTA_EXCEEDED",
   "INVALID_IMAGE", "IMAGE_TOO_LARGE", "UNSUPPORTED_IMAGE", "MEDIA_BUSY"] as const;
 type UploadErrorCode = (typeof publicErrors)[number] | "INVALID_MEDIA_UPLOAD" | "MEDIA_UPLOAD_UNAVAILABLE";
 export class MediaUploadError extends Error {
