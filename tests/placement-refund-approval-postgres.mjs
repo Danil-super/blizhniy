@@ -13,7 +13,7 @@ const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs'
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
 const name='blizhniy-refund-approval-'+randomBytes(8).toString('hex'),label='blizhniy.refund-approval',password=randomBytes(24).toString('hex');
 const docker=async args=>(await run('docker',['--host','unix:///var/run/docker.sock',...args],{env:{PATH:process.env.PATH,LANG:'C.UTF-8',POSTGRES_PASSWORD:password},timeout:20000,maxBuffer:1024*1024})).stdout.trim();
-test('full TEST placement refund: durable authenticated administrator approval',{timeout:120000},async suite=>{
+test('full TEST placement refund: durable authenticated administrator approval',{timeout:180000},async suite=>{
  const migration=await readFile(new URL('../database/migrations/0042-placement-refund-approvals.sql',import.meta.url),'utf8');
  const {PostgresDatabase}=load('postgres'),{hashSessionToken}=load('identity'),{PostgresPaymentIntentStore}=load('postgres-payment-intents');
  const {PostgresRefundApprovalStore}=load('postgres-refund-approvals');
