@@ -23,6 +23,16 @@ test('private operator uses owned 0700/0600 Unix IPC, validates payloads, redact
     await assert.rejects(callLocalUserAccessOperator(server.socketPath,'bad',command));assert.equal(calls,before);
   }finally{await server.close();await server.close();}
   assert.equal(closed,1);await assert.rejects(lstat(dirname(server.socketPath)),{code:'ENOENT'});
+  assert.equal(await server.done,0);
+});
+test('client disconnect aborts the private runtime signal before deferred dispatch',async()=>{
+  let enter,release,signalSeen;const entered=new Promise(resolve=>{enter=resolve;}),gate=new Promise(resolve=>{release=resolve;});let closed=0;
+  const server=await startLocalUserAccessOperator({execute:async(_token,_command,signal)=>{signalSeen=signal;enter();await gate;return result;},close:async()=>{closed++;}});
+  try{
+    const controller=new AbortController(),pending=callLocalUserAccessOperator(server.socketPath,'a'.repeat(64),command,controller.signal);
+    const rejected=assert.rejects(pending);await entered;controller.abort();await rejected;
+    await new Promise((resolve,reject)=>{if(signalSeen.aborted){resolve();return;}const timer=setTimeout(()=>reject(Error('Runtime abort not delivered')),3000);signalSeen.addEventListener('abort',()=>{clearTimeout(timer);resolve();},{once:true});});
+  }finally{release();await server.close();}assert.equal(closed,1);
 });
 test('failed startup closes its initialized runtime and removes its directory even if close throws',async()=>{
   const owned=await mkdtemp(join(tmpdir(),'blizhniy-user-access-long-'+'x'.repeat(80))),previous=process.env.TMPDIR;

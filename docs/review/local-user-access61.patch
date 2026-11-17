@@ -1,0 +1,539 @@
+diff --git a/database/admin-user-access-schema-v1.json b/database/admin-user-access-schema-v1.json
+new file mode 100644
+--- /dev/null
++++ b/database/admin-user-access-schema-v1.json
+@@ -0,0 +1 @@
++{"column":{"count":19,"sha256":"d38c0e70099f0fe02636f3aed77189130a935af177a742c7fe57ca3f652689bd"},"constraint":{"count":26,"sha256":"2bf4d3d256176d71480c1d284824df952af20f1af875da56cd9de5ed39428949"},"function":{"count":2,"sha256":"986a4d3afad10e2ebbd7162ceb95b8942389bd23b6a7a97827f8c5a8eb363c9f"},"index":{"count":3,"sha256":"989120ca6d6c87122a2a542bfb43d8e423c392200a9779275ca5b060ceb0eb39"},"relation":{"count":5,"sha256":"0513d8c92ace5b00d96d458a33ce66695167e4f542bf87119e2725793ee81dda"},"trigger":{"count":2,"sha256":"4f6e6b404ddbb2e1a782ce0c9282eb25551b8baff1fe8603fe6be0669f4a1139"},"type":{"count":4,"sha256":"e105909a82e08e91110ff22ce6b8f4c021d4599879ede80cf7864094fa19e133"},"unsupported":{"count":1,"sha256":"345cee70cce2ba37f93863a4448418f622ad02b07bbe9a460b03de69a7df5f2d"}}
+diff --git a/database/candidates/0061-admin-user-access.sql b/database/candidates/0061-admin-user-access.sql
+--- a/database/candidates/0061-admin-user-access.sql
++++ b/database/candidates/0061-admin-user-access.sql
+@@ -6 +6,9 @@
+-create table app.admin_user_changes (
++create schema app_admin;
++revoke all on schema app_admin from public;
++create table app_admin.migrations (
++ name text primary key check(name='0061-admin-user-access.sql'),
++ sha256 text not null check(sha256 ~ '^[a-f0-9]{64}$')
++);
++revoke all on app_admin.migrations from public;
++
++create table app_admin.user_changes (
+@@ -23,2 +31,2 @@
+-create index admin_user_changes_target_idx on app.admin_user_changes(target_id,created_at desc,id desc);
+-revoke all on app.admin_user_changes from public;
++create index admin_user_changes_target_idx on app_admin.user_changes(target_id,created_at desc,id desc);
++revoke all on app_admin.user_changes from public;
+@@ -26 +34 @@
+-create function app.guard_admin_user_changes() returns trigger
++create function app_admin.guard_user_changes() returns trigger
+@@ -32,3 +40,5 @@
+-revoke all on function app.guard_admin_user_changes() from public;
+-create trigger admin_user_changes_immutable before update or delete or truncate on app.admin_user_changes
+- for each statement execute function app.guard_admin_user_changes();
++revoke all on function app_admin.guard_user_changes() from public;
++create trigger admin_user_migrations_immutable before update or delete or truncate on app_admin.migrations
++ for each statement execute function app_admin.guard_user_changes();
++create trigger admin_user_changes_immutable before update or delete or truncate on app_admin.user_changes
++ for each statement execute function app_admin.guard_user_changes();
+@@ -36 +46 @@
+-create function app.admin_user_access(p_session_hash text,p_actor uuid,p_action text,p_target uuid,
++create function app_admin.user_access(p_session_hash text,p_actor uuid,p_action text,p_target uuid,
+@@ -40 +50 @@
+- actor app.users%rowtype; target app.users%rowtype; saved app.admin_user_changes%rowtype;
++ actor app.users%rowtype; target app.users%rowtype; saved app_admin.user_changes%rowtype;
+@@ -75 +85 @@
+-  select * into saved from app.admin_user_changes where id=p_operation;
++  select * into saved from app_admin.user_changes where id=p_operation;
+@@ -80 +90 @@
+-  select * into saved from app.admin_user_changes where id=p_operation;
++  select * into saved from app_admin.user_changes where id=p_operation;
+@@ -98 +108 @@
+-   insert into app.admin_user_changes(id,actor_id,target_id,expected_version,previous_role,role,previous_blocked,is_blocked,resulting_version,reason,changed)
++   insert into app_admin.user_changes(id,actor_id,target_id,expected_version,previous_role,role,previous_blocked,is_blocked,resulting_version,reason,changed)
+@@ -106 +116 @@
+-  (select * from app.admin_user_changes where target_id=p_target order by created_at desc,id desc limit 10)
++  (select * from app_admin.user_changes where target_id=p_target order by created_at desc,id desc limit 10)
+@@ -108 +118 @@
+-  (select * from app.admin_user_changes where id=p_operation)
++  (select * from app_admin.user_changes where id=p_operation)
+@@ -126 +136 @@
+-revoke all on function app.admin_user_access(text,uuid,text,uuid,uuid,bigint,text,boolean,text) from public;
++revoke all on function app_admin.user_access(text,uuid,text,uuid,uuid,bigint,text,boolean,text) from public;
+diff --git a/scripts/admin-user-access-release.mjs b/scripts/admin-user-access-release.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/admin-user-access-release.mjs
+@@ -0,0 +1,9 @@
++import {readFileSync} from 'node:fs';
++import {createHash} from 'node:crypto';
++/** Separate admin namespace; the existing app migration journal stays unchanged. */
++export function getAdminUserAccessMigration(){
++ const name='0061-admin-user-access.sql',source=readFileSync(new URL('../database/candidates/'+name,import.meta.url),'utf8');
++ const sha256=createHash('sha256').update(source).digest('hex');
++ if(sha256!=='e69fd3681f2a70db9143e027bb1a23e0d0b3435125bfffa03ea7447230fa36a0')throw Error('Invalid user access migration');
++ return {name,source,sha256};
++}
+diff --git a/scripts/build-user-access-operator.mjs b/scripts/build-user-access-operator.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/build-user-access-operator.mjs
+@@ -0,0 +1,35 @@
++import {copyFileSync,mkdirSync,readFileSync,realpathSync,writeFileSync} from 'node:fs';
++import {createHash} from 'node:crypto';
++import {dirname,isAbsolute,join,relative} from 'node:path';
++import {fileURLToPath} from 'node:url';
++import ts from 'typescript';
++import {getUserAccessRolePlan} from './user-access-role.mjs';
++const root=fileURLToPath(new URL('../',import.meta.url));
++/** Offline source package only; no credentials, role installation or connection. */
++export function buildUserAccessOperator(destination){
++ if(typeof destination!=='string'||!isAbsolute(destination)||destination!==join(realpathSync(dirname(destination)),relative(dirname(destination),destination)))throw Error('Invalid user operator destination');
++ const program=ts.createProgram(['postgres-admin-user-access.ts','admin-user-access-contract.ts','postgres.ts'].map(name=>join(root,'src/lib',name)),{
++  target:ts.ScriptTarget.ES2022,lib:['lib.esnext.d.ts','lib.dom.d.ts'],module:ts.ModuleKind.CommonJS,moduleResolution:ts.ModuleResolutionKind.Node10,
++  strict:true,esModuleInterop:true,skipLibCheck:true,noEmitOnError:true,rewriteRelativeImportExtensions:true,rootDir:join(root,'src'),outDir:join(destination,'compiled'),paths:{'@/*':[join(root,'src/*')]},
++ });
++ if(ts.getPreEmitDiagnostics(program).length)throw Error('User operator compilation failed');
++ const sources=program.getSourceFiles().filter(file=>!file.isDeclarationFile).map(file=>({name:relative(root,file.fileName),sha256:createHash('sha256').update(file.text).digest('hex')}));
++ const plan=getUserAccessRolePlan('blizhniy_prod'),migrations=[...plan.appJournal,...plan.journal].map(row=>{
++  const folder=/^(0058|0060|0061)-/.test(row.name)?'candidates':'migrations',bytes=readFileSync(join(root,'database',folder,row.name));
++  if(createHash('sha256').update(bytes).digest('hex')!==row.sha256)throw Error('User operator migration drift');return {...row,folder,bytes};
++ });
++ mkdirSync(destination,{mode:0o700});writeFileSync(join(destination,'package.json'),'{"private":true,"type":"commonjs"}\n',{flag:'wx',mode:0o600});
++ if(program.emit().emitSkipped)throw Error('User operator compilation failed');
++ for(const folder of ['scripts','database','database/migrations','database/candidates'])mkdirSync(join(destination,folder));
++ for(const name of ['admin-user-access-release.mjs','user-access-role.mjs','local-user-access-runtime.mjs','local-primary-refund-target.mjs','local-primary-config.mjs',
++  'financial-catalog-privileges.mjs','refund-worker-schema.mjs','refund-worker-role.mjs','postgres-migration-plan.mjs','cabinet-release-plan.mjs','media-retention-release.mjs','specialist-checkout-release.mjs'])
++  copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
++ const server=readFileSync(join(root,'scripts/local-user-access-operator.mjs'),'utf8'),dependency="'../src/lib/admin-user-access-contract.ts'";
++ if(server.split(dependency).length!==2)throw Error('User operator server dependency drift');
++ writeFileSync(join(destination,'scripts/local-user-access-operator.mjs'),server.replace(dependency,"'../compiled/lib/admin-user-access-contract.js'"),{flag:'wx',mode:0o600});
++ for(const row of migrations){const file=join(destination,'database',row.folder,row.name);writeFileSync(file,row.bytes,{flag:'wx',mode:0o600});
++  if(createHash('sha256').update(readFileSync(file)).digest('hex')!==row.sha256)throw Error('User operator copied migration drift');}
++ for(const name of ['refund-schema-local-primary-0060.json','admin-user-access-schema-v1.json'])copyFileSync(join(root,'database',name),join(destination,'database',name));
++ const manifest={version:1,typescript:ts.version,sources,appJournal:plan.appJournal,adminJournal:plan.journal};
++ writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});return manifest;
++}
+diff --git a/scripts/check-quality-floor.mjs b/scripts/check-quality-floor.mjs
+--- a/scripts/check-quality-floor.mjs
++++ b/scripts/check-quality-floor.mjs
+@@ -152,0 +153 @@
++  {"file": "tests/admin-user-access-postgres-integration.mjs", "before": "2ea4df91367b5593896e2e8cdac5d3f8e17e04792ad91eb04a3edad4a8bf65b6", "after": "63ee2e31d24960984ba19a5be81a448da006a2a23764b0d44750dbddfd35e8e3"},
+diff --git a/scripts/financial-catalog-privileges.mjs b/scripts/financial-catalog-privileges.mjs
+--- a/scripts/financial-catalog-privileges.mjs
++++ b/scripts/financial-catalog-privileges.mjs
+@@ -11,0 +12,4 @@
++   await assertFinancialSystemPrivileges(tx);
++}
++
++export async function assertFinancialSystemPrivileges(tx){
+diff --git a/scripts/local-primary-proxy.mjs b/scripts/local-primary-proxy.mjs
+--- a/scripts/local-primary-proxy.mjs
++++ b/scripts/local-primary-proxy.mjs
+@@ -5,0 +6 @@
++import {serveLocalUserAccessRequest} from './local-user-access-request.mjs';
+@@ -25 +26 @@
+-export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperatorSocket}={}){
++export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperatorSocket,userAccessOperatorSocket}={}){
+@@ -82,0 +84,3 @@
++ const userAccess=userAccessOperatorSocket===undefined?null:load('admin-user-access-http').createAdminUserAccessHandler({origin:canonical},()=>({limiter,
++  execute:(token,command,signal)=>load('local-user-access-operator-client').callLocalUserAccessOperator(userAccessOperatorSocket,token,command,signal),
++ }));
+@@ -106 +109,0 @@
+-   const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req,...(refundAdmin&&path==='/api/admin/refunds'?[4096,2000]:[]));
+@@ -111,0 +115,2 @@
++   if(userAccess&&path==='/api/admin/user-access'){await serveLocalUserAccessRequest(req,res,headers,userAccess,canonical+req.url);return;}
++   const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req,...(refundAdmin&&path==='/api/admin/refunds'?[4096,2000]:[]));
+diff --git a/scripts/local-primary-services.mjs b/scripts/local-primary-services.mjs
+--- a/scripts/local-primary-services.mjs
++++ b/scripts/local-primary-services.mjs
+@@ -3 +3 @@
+-export async function startLocalPrimaryServices({signal,createRefunds,createProxy,startApplication,startExpiry,onReady}={}){
++export async function startLocalPrimaryServices({signal,createRefunds,createUserAccess,createProxy,startApplication,startExpiry,onReady}={}){
+@@ -5,2 +5,2 @@
+-  (createRefunds!==undefined&&typeof createRefunds!=='function'))throw unavailable();
+- const controller=new AbortController();let refund,proxy,app,expiry,failed=false,ready=false,closing,resolveReady,rejectReady,resolveStop;
++  (createRefunds!==undefined&&typeof createRefunds!=='function')||(createUserAccess!==undefined&&typeof createUserAccess!=='function'))throw unavailable();
++ const controller=new AbortController();let refund,userAccess,proxy,app,expiry,failed=false,ready=false,closing,resolveReady,rejectReady,resolveStop;
+@@ -13,2 +13,3 @@
+-   proxy=await createProxy(refund?.socketPath,controller.signal);controller.signal.throwIfAborted();
+-   app=await startApplication(controller.signal);observe(app,false);controller.signal.throwIfAborted();
++   if(createUserAccess){userAccess=await createUserAccess(controller.signal);observe(userAccess,true);}controller.signal.throwIfAborted();
++   proxy=await createProxy(refund?.socketPath,controller.signal,userAccess?.socketPath);controller.signal.throwIfAborted();
++   app=await startApplication(controller.signal,userAccess?.socketPath);observe(app,false);controller.signal.throwIfAborted();
+@@ -20 +21 @@
+-   for(const resource of [refund,app,expiry,proxy])try{await resource?.close();}catch{failed=true;}
++   for(const resource of [userAccess,refund,app,expiry,proxy])try{await resource?.close();}catch{failed=true;}
+diff --git a/scripts/local-primary-user-access.mjs b/scripts/local-primary-user-access.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/local-primary-user-access.mjs
+@@ -0,0 +1,30 @@
++import {mkdtemp,rm,symlink} from 'node:fs/promises';
++import {join} from 'node:path';
++import {pathToFileURL} from 'node:url';
++import {stateFile,stateDirectory} from './local-primary-fixture.mjs';
++import {readLocalPrimaryState} from './local-primary-config.mjs';
++import {readLocalUserAccessCredentials} from './local-user-access-credentials.mjs';
++import {buildUserAccessOperator} from './build-user-access-operator.mjs';
++const unavailable=()=>Error('Local user operator startup unavailable');
++/** Explicit launcher capability only. The reviewed installer creates its role/credential first. */
++export async function startLocalPrimaryUserAccess(signal){
++ let directory,runtime,server,closing;
++ try{
++  if(!(signal instanceof AbortSignal)||process.env.NODE_ENV!=='test'||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||process.env.BLIZHNIY_LOCAL_USER_ACCESS!=='enabled')throw unavailable();
++  signal.throwIfAborted();const root=process.cwd(),state=readLocalPrimaryState(stateFile,root),credentials=readLocalUserAccessCredentials(join(stateDirectory,'user-access.json'),state);
++  directory=await mkdtemp(join(stateDirectory,'user-operator-package-'));const destination=join(directory,'package');buildUserAccessOperator(destination);
++  await symlink(join(root,'node_modules'),join(destination,'node_modules'),'dir');signal.throwIfAborted();
++  const {createLocalUserAccessRuntime}=await import(pathToFileURL(join(destination,'scripts/local-user-access-runtime.mjs')));
++  runtime=await createLocalUserAccessRuntime({NODE_ENV:'test',BLIZHNIY_DB_HOST:'127.0.0.1',BLIZHNIY_DB_PORT:String(state.dbPort),BLIZHNIY_DB_NAME:state.database,
++   BLIZHNIY_DB_USER:'blizhniy_user_operator',BLIZHNIY_DB_PASSWORD:credentials.password,BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:join(stateDirectory,'refund-db-ca.pem')},{stateFile,project:root});
++  signal.throwIfAborted();const {startLocalUserAccessOperator}=await import(pathToFileURL(join(destination,'scripts/local-user-access-operator.mjs')));
++  const transferred=runtime;runtime=undefined;server=await startLocalUserAccessOperator(transferred);signal.throwIfAborted();
++  return {socketPath:server.socketPath,done:server.done,close:()=>closing??=(async()=>{
++   let failed=false;try{await server.close();}catch{failed=true;}
++   try{await rm(directory,{recursive:true,force:true});}catch{failed=true;}if(failed)throw unavailable();
++  })()};
++ }catch{
++  if(server)await Promise.allSettled([server.close()]);else if(runtime)await Promise.allSettled([runtime.close()]);
++  if(directory)await Promise.allSettled([rm(directory,{recursive:true,force:true})]);throw unavailable();
++ }
++}
+diff --git a/scripts/local-primary.mjs b/scripts/local-primary.mjs
+--- a/scripts/local-primary.mjs
++++ b/scripts/local-primary.mjs
+@@ -17,0 +18,2 @@
++const userAccess=process.env.BLIZHNIY_LOCAL_USER_ACCESS==='enabled';
++if(process.env.BLIZHNIY_LOCAL_USER_ACCESS!==undefined&&!userAccess)throw Error('Invalid local user operator mode');
+@@ -25 +27 @@
+-  cwd:state.project,env:{...(process.env.BLIZHNIY_SPECIALIST_CHECKOUT?{BLIZHNIY_SPECIALIST_CHECKOUT:process.env.BLIZHNIY_SPECIALIST_CHECKOUT}:{}),PATH:process.env.PATH,LANG:'C.UTF-8',...(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG?{BLIZHNIY_LOCAL_TELEGRAM_CONFIG:process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG}:{}),...(process.env.BLIZHNIY_PLACEMENT_RENEWALS?{BLIZHNIY_PLACEMENT_RENEWALS:process.env.BLIZHNIY_PLACEMENT_RENEWALS}:{}),...(process.env.BLIZHNIY_MEDIA_RETENTION?{BLIZHNIY_MEDIA_RETENTION:process.env.BLIZHNIY_MEDIA_RETENTION}:{}),...(process.env.BLIZHNIY_SERVICE_CHECKOUT?{BLIZHNIY_SERVICE_CHECKOUT:process.env.BLIZHNIY_SERVICE_CHECKOUT}:{})},detached:true,stdio:['ignore',log.fd,log.fd],
++  cwd:state.project,env:{...(userAccess?{BLIZHNIY_LOCAL_USER_ACCESS:'enabled'}:{}),...(process.env.BLIZHNIY_SPECIALIST_CHECKOUT?{BLIZHNIY_SPECIALIST_CHECKOUT:process.env.BLIZHNIY_SPECIALIST_CHECKOUT}:{}),PATH:process.env.PATH,LANG:'C.UTF-8',...(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG?{BLIZHNIY_LOCAL_TELEGRAM_CONFIG:process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG}:{}),...(process.env.BLIZHNIY_PLACEMENT_RENEWALS?{BLIZHNIY_PLACEMENT_RENEWALS:process.env.BLIZHNIY_PLACEMENT_RENEWALS}:{}),...(process.env.BLIZHNIY_MEDIA_RETENTION?{BLIZHNIY_MEDIA_RETENTION:process.env.BLIZHNIY_MEDIA_RETENTION}:{}),...(process.env.BLIZHNIY_SERVICE_CHECKOUT?{BLIZHNIY_SERVICE_CHECKOUT:process.env.BLIZHNIY_SERVICE_CHECKOUT}:{})},detached:true,stdio:['ignore',log.fd,log.fd],
+@@ -55,2 +57,3 @@
+-   createProxy:async(socket,signal)=>{
+-    const proxy=await createLocalPrimaryProxy(state,{paymentHandler:localPrimaryPaymentHandler,...(socket?{refundOperatorSocket:socket}:{})});
++   ...(userAccess?{createUserAccess:async signal=>(await import('./local-primary-user-access.mjs')).startLocalPrimaryUserAccess(signal)}:{}),
++   createProxy:async(socket,signal,userSocket)=>{
++    const proxy=await createLocalPrimaryProxy(state,{paymentHandler:localPrimaryPaymentHandler,...(socket?{refundOperatorSocket:socket}:{}),...(userSocket?{userAccessOperatorSocket:userSocket}:{})});
+@@ -60 +63 @@
+-   startApplication:async signal=>{
++   startApplication:async(signal,userSocket)=>{
+@@ -69 +72 @@
+-     signal.throwIfAborted();child=spawn(process.execPath,['--require',join(state.project,'scripts/local-primary-preload.cjs'),join(state.project,'node_modules/next/dist/bin/next'),'start','--hostname','127.0.0.1','--port',String(state.upstreamPort)],{cwd:state.project,env,stdio:['ignore',log.fd,log.fd]});
++     signal.throwIfAborted();child=spawn(process.execPath,['--require',join(state.project,'scripts/local-primary-preload.cjs'),join(state.project,'node_modules/next/dist/bin/next'),'start','--hostname','127.0.0.1','--port',String(state.upstreamPort)],{cwd:state.project,env:{...env,...(userSocket?{BLIZHNIY_USER_ACCESS_OPERATOR:'local-v1',BLIZHNIY_USER_ACCESS_SOCKET:userSocket}:{})},stdio:['ignore',log.fd,log.fd]});
+diff --git a/scripts/local-user-access-credentials.mjs b/scripts/local-user-access-credentials.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/local-user-access-credentials.mjs
+@@ -0,0 +1,20 @@
++import {constants,openSync,closeSync,fstatSync,lstatSync,readSync,realpathSync} from 'node:fs';
++import {dirname,isAbsolute} from 'node:path';
++/** Only the owned local user-operator credential; never a URL, role choice or module path. */
++export function readLocalUserAccessCredentials(file,state){
++ let descriptor;
++ try{
++  if(typeof process.getuid!=='function'||!isAbsolute(file)||state?.origin!=='https://127.0.0.1:3045'||state.database!=='blizhniy_prod')throw Error();
++  const parent=lstatSync(dirname(file));
++  if(!parent.isDirectory()||parent.uid!==process.getuid()||(parent.mode&0o777)!==0o700||realpathSync(dirname(file))!==dirname(file))throw Error();
++  descriptor=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);const info=fstatSync(descriptor);
++  if(!info.isFile()||info.uid!==process.getuid()||(info.mode&0o777)!==0o600||info.nlink!==1||info.size<1||info.size>2048)throw Error();
++  const bytes=Buffer.alloc(2049);let length=0;
++  for(;;){const count=readSync(descriptor,bytes,length,bytes.length-length,null);if(!count)break;length+=count;if(length>2048)throw Error();}
++  const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,length)));
++  if(!value||Object.keys(value).sort().join()!=='containerId,password,project,version'||value.version!==1||value.project!==state.project||value.containerId!==state.containerId||
++   typeof value.password!=='string'||!/^[a-f0-9]{64}$/.test(value.password)||new Set([value.password,state.ownerPassword,state.runtimePassword,state.rateSecret]).size!==4)throw Error();
++  return value;
++ }catch{throw Error('Local user operator credentials unavailable');}
++ finally{if(descriptor!==undefined)closeSync(descriptor);}
++}
+diff --git a/scripts/local-user-access-request.mjs b/scripts/local-user-access-request.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/local-user-access-request.mjs
+@@ -0,0 +1,27 @@
++import {Readable} from 'node:stream';
++/** Cancellation must leave the socket open long enough to deliver the JSON boundary error. */
++export async function serveLocalUserAccessRequest(req,res,headers,handler,url){
++ const controller=new AbortController(),abort=()=>controller.abort();
++ req.once('aborted',abort);res.once('close',abort);
++ let body,reader,canceled=false;
++ try{
++  if(!['GET','HEAD'].includes(req.method)){
++   const strategy={highWaterMark:4096,size:chunk=>chunk.byteLength};
++   reader=Readable.toWeb(req,{strategy}).getReader();
++   body=new ReadableStream({
++    async pull(output){
++     try{const part=await reader.read();if(canceled)return;if(part.done){reader.releaseLock();output.close();}else output.enqueue(part.value);}
++     catch{if(!canceled)output.error(Error('Local body unavailable'));}
++    },
++    cancel(){canceled=true;req.pause();reader.releaseLock();},
++   },strategy);
++  }
++  const request=new Request(url,{method:req.method,headers,signal:controller.signal,...(body?{body,duplex:'half'}:{})});
++  const response=await handler(request);
++  const responseHeaders=Object.fromEntries(response.headers);responseHeaders.connection='close';
++  res.writeHead(response.status,responseHeaders);res.end(Buffer.from(await response.arrayBuffer()));
++ }finally{
++  if(body&&!body.locked)await body.cancel().catch(()=>{});
++  req.removeListener('aborted',abort);if(res.writableFinished)res.removeListener('close',abort);
++ }
++}
+diff --git a/scripts/local-user-access-runtime.mjs b/scripts/local-user-access-runtime.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/local-user-access-runtime.mjs
+@@ -0,0 +1,33 @@
++import {createRequire} from 'node:module';
++import {verifyLocalPrimaryRefundTarget,assertLocalPrimaryRefundTrust} from './local-primary-refund-target.mjs';
++import {verifyUserAccessDatabase} from './user-access-role.mjs';
++const require=createRequire(import.meta.url),unavailable=()=>Error('Local user operator unavailable');
++/** Explicit owned local database only. Import never connects or adopts credentials. */
++export async function createLocalUserAccessRuntime(environment,{stateFile,project}={}){
++ let db,pool;
++ try{
++  const env={...environment};
++  if(typeof window!=='undefined'||process.env.NODE_TLS_REJECT_UNAUTHORIZED==='0'||env.BLIZHNIY_DB_USER!=='blizhniy_user_operator'||
++   env.BLIZHNIY_DB_NAME!=='blizhniy_prod'||env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_SSL_MODE!=='verify-full'||
++   !/^[a-f0-9]{64}$/.test(env.BLIZHNIY_DB_PASSWORD??''))throw unavailable();
++  const certificate=await verifyLocalPrimaryRefundTarget(env,{stateFile,project});
++  const {PostgresDatabase,readPostgresConfig}=require('../compiled/lib/postgres.js'),{PostgresAdminUserAccess}=require('../compiled/lib/postgres-admin-user-access.js');
++  const {AdminUserAccessError}=require('../compiled/lib/admin-user-access-contract.js'),config=readPostgresConfig(env);
++  assertLocalPrimaryRefundTrust(config,certificate);
++  pool=new(require('pg').Pool)({...config,max:3,statement_timeout:3000,application_name:'blizhniy-local-user-operator'});db=new PostgresDatabase(pool);
++  await verifyUserAccessDatabase(db,{database:config.database});
++  const store=new PostgresAdminUserAccess(db);let closed=false,closing;
++  return {execute:async(token,command,signal)=>{
++   try{
++    const deadline=performance.now()+12000,active=()=>{if(closed||signal?.aborted||performance.now()>=deadline)throw unavailable();};active();
++    const current=await verifyLocalPrimaryRefundTarget(env,{stateFile,project});assertLocalPrimaryRefundTrust(config,current);
++    active();await verifyUserAccessDatabase(db,{database:config.database,deadline});active();
++    if(performance.now()+6500>deadline)throw unavailable();
++    return await store.execute(token,command);
++   }catch(error){if(error instanceof AdminUserAccessError)throw error;throw unavailable();}
++  },close:()=>closing??=(async()=>{closed=true;try{await db.close();}catch{throw unavailable();}})()};
++ }catch{
++  if(db)await Promise.allSettled([db.close()]);else if(pool)await Promise.allSettled([pool.end()]);
++  throw unavailable();
++ }
++}
+diff --git a/scripts/refund-worker-schema.mjs b/scripts/refund-worker-schema.mjs
+--- a/scripts/refund-worker-schema.mjs
++++ b/scripts/refund-worker-schema.mjs
+@@ -6 +6,2 @@
+-export async function readRefundSchema(tx){
++export async function readRefundSchema(tx,{namespace='app'}={}){
++ if(!['app','app_admin'].includes(namespace))throw Error('Invalid catalog namespace');
+@@ -13 +14 @@
+-  from pg_class c join pg_namespace n on n.oid=c.relnamespace left join pg_am am on am.oid=c.relam where n.nspname='app'
++  from pg_class c join pg_namespace n on n.oid=c.relnamespace left join pg_am am on am.oid=c.relam where n.nspname=$1::text
+@@ -20 +21 @@
+-  where n.nspname='app' and a.attnum>0 and not a.attisdropped
++  where n.nspname=$1::text and a.attnum>0 and not a.attisdropped
+@@ -23 +24 @@
+-  from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app'
++  from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname=$1::text
+@@ -27 +28 @@
+-  from pg_constraint c join pg_namespace n on n.oid=c.connamespace where n.nspname='app'
++  from pg_constraint c join pg_namespace n on n.oid=c.connamespace where n.nspname=$1::text
+@@ -33 +34 @@
+-  where c.contype='f' and n.nspname<>'app' and tn.nspname='app'
++  where c.contype='f' and n.nspname<>$1::text and tn.nspname=$1::text
+@@ -39 +40 @@
+-  from pg_policy p join pg_class c on c.oid=p.polrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='app'
++  from pg_policy p join pg_class c on c.oid=p.polrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname=$1::text
+@@ -46 +47 @@
+-   left join pg_constraint c on c.oid=t.tgconstraint where n.nspname='app'
++   left join pg_constraint c on c.oid=t.tgconstraint where n.nspname=$1::text
+@@ -50 +51 @@
+-  from pg_index i join pg_class c on c.oid=i.indrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='app'
++  from pg_index i join pg_class c on c.oid=i.indrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname=$1::text
+@@ -53 +54 @@
+-  from pg_rewrite r join pg_class c on c.oid=r.ev_class join pg_namespace n on n.oid=c.relnamespace where n.nspname='app'
++  from pg_rewrite r join pg_class c on c.oid=r.ev_class join pg_namespace n on n.oid=c.relnamespace where n.nspname=$1::text
+@@ -59 +60 @@
+-  from pg_type t join pg_namespace n on n.oid=t.typnamespace where n.nspname='app'
++  from pg_type t join pg_namespace n on n.oid=t.typnamespace where n.nspname=$1::text
+@@ -65 +66 @@
+-  where n.nspname='app' or pn.nspname='app'
++  where n.nspname=$1::text or pn.nspname=$1::text
+@@ -69 +70 @@
+-  from pg_sequence s join pg_class c on c.oid=s.seqrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='app'
++  from pg_sequence s join pg_class c on c.oid=s.seqrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname=$1::text
+@@ -71,11 +72,11 @@
+-  select 'unsupported','app',jsonb_build_array(
+-   (select count(*) from pg_operator where oprnamespace='app'::regnamespace),
+-   (select count(*) from pg_collation where collnamespace='app'::regnamespace),
+-   (select count(*) from pg_opclass where opcnamespace='app'::regnamespace),
+-   (select count(*) from pg_opfamily where opfnamespace='app'::regnamespace),
+-   (select count(*) from pg_conversion where connamespace='app'::regnamespace),
+-   (select count(*) from pg_ts_config where cfgnamespace='app'::regnamespace),
+-   (select count(*) from pg_ts_dict where dictnamespace='app'::regnamespace),
+-   (select count(*) from pg_ts_parser where prsnamespace='app'::regnamespace),
+-   (select count(*) from pg_ts_template where tmplnamespace='app'::regnamespace),
+-   (select count(*) from pg_extension where extnamespace='app'::regnamespace),
++  select 'unsupported',$1::text,jsonb_build_array(
++   (select count(*) from pg_operator where oprnamespace=$1::text::regnamespace),
++   (select count(*) from pg_collation where collnamespace=$1::text::regnamespace),
++   (select count(*) from pg_opclass where opcnamespace=$1::text::regnamespace),
++   (select count(*) from pg_opfamily where opfnamespace=$1::text::regnamespace),
++   (select count(*) from pg_conversion where connamespace=$1::text::regnamespace),
++   (select count(*) from pg_ts_config where cfgnamespace=$1::text::regnamespace),
++   (select count(*) from pg_ts_dict where dictnamespace=$1::text::regnamespace),
++   (select count(*) from pg_ts_parser where prsnamespace=$1::text::regnamespace),
++   (select count(*) from pg_ts_template where tmplnamespace=$1::text::regnamespace),
++   (select count(*) from pg_extension where extnamespace=$1::text::regnamespace),
+@@ -83 +84 @@
+-    where s.typnamespace='app'::regnamespace or t.typnamespace='app'::regnamespace),
++    where s.typnamespace=$1::text::regnamespace or t.typnamespace=$1::text::regnamespace),
+@@ -85,3 +86,3 @@
+-    where s.stxnamespace='app'::regnamespace or c.relnamespace='app'::regnamespace),
+-   (select count(*) from pg_policy p join pg_class c on c.oid=p.polrelid where c.relnamespace='app'::regnamespace))
+- ) select kind,name,definition from objects order by kind collate "C",name collate "C",definition::text collate "C" limit 10001`)).rows;
++    where s.stxnamespace=$1::text::regnamespace or c.relnamespace=$1::text::regnamespace),
++   (select count(*) from pg_policy p join pg_class c on c.oid=p.polrelid where c.relnamespace=$1::text::regnamespace))
++ ) select kind,name,definition from objects order by kind collate "C",name collate "C",definition::text collate "C" limit 10001`,[namespace])).rows;
+diff --git a/scripts/user-access-role.mjs b/scripts/user-access-role.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/user-access-role.mjs
+@@ -0,0 +1,72 @@
++import {readFileSync} from 'node:fs';
++import {getAdminUserAccessMigration} from './admin-user-access-release.mjs';
++import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
++import {readRefundSchema,assertRefundSchema} from './refund-worker-schema.mjs';
++import {assertFinancialSystemPrivileges} from './financial-catalog-privileges.mjs';
++const role='blizhniy_user_operator',signature='app_admin.user_access(text,uuid,text,uuid,uuid,bigint,text,boolean,text)';
++const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
++export function getUserAccessRolePlan(database){
++ if(!validDatabase(database))throw Error('Invalid user operator database');
++ const {name,sha256}=getAdminUserAccessMigration();
++ return {role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,
++  appJournal:getRefundWorkerRolePlan(database,{schema:60,localPrimary:true}).journal,journal:[{name,sha256}],
++  grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,app_admin,blizhniy_meta to ${role}`,
++   `grant select(name,sha256) on blizhniy_meta.migrations,app_admin.migrations to ${role}`,`grant execute on function ${signature} to ${role}`]};
++}
++/** Read-only admission: one application capability, metadata reads and exact independent schema. */
++export async function verifyUserAccessDatabase(db,{database,deadline}={}){
++ try{
++  const plan=getUserAccessRolePlan(database);
++  await db.readTransaction(async tx=>{
++   await tx.query("select set_config('search_path','pg_catalog',true),set_config('statement_timeout','5s',true),set_config('lock_timeout','1s',true)");
++   const identity=(await tx.query(`select current_user as name,session_user as login,current_database() as database,
++    current_setting('server_version_num')::integer as version,current_setting('transaction_read_only') as readonly,current_setting('session_replication_role') as replication,
++    current_setting('default_transaction_read_only') as default_readonly,current_setting('default_transaction_isolation') as default_isolation,
++    rolsuper,rolcreatedb,rolcreaterole,rolinherit,rolreplication,rolbypassrls,rolcanlogin,rolconnlimit,
++    exists(select 1 from pg_auth_members m where m.roleid=r.oid or m.member=r.oid) as membership,
++    has_database_privilege(current_database(),'CONNECT') as connect,has_database_privilege(current_database(),'CREATE,TEMP,CONNECT WITH GRANT OPTION') as database_extra,
++    has_parameter_privilege('session_replication_role','SET,ALTER SYSTEM') as replication_override from pg_roles r where rolname=current_user`)).rows[0];
++   if(!identity||identity.name!==role||identity.login!==role||identity.database!==database||identity.version<180000||identity.version>=190000||identity.readonly!=='on'||identity.replication!=='origin'||identity.default_readonly!=='off'||identity.default_isolation!=='read committed'||
++    identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error();
++   for(const [table,expected] of [['blizhniy_meta.migrations',plan.appJournal],['app_admin.migrations',plan.journal]]){
++    const actual=(await tx.query(`select name,sha256 from ${table} order by name`)).rows;if(JSON.stringify(actual)!==JSON.stringify(expected))throw Error();
++   }
++   await assertRefundSchema(tx,60,{localPrimary:true});
++   const expected=JSON.parse(readFileSync(new URL('../database/admin-user-access-schema-v1.json',import.meta.url),'utf8'));
++   if(JSON.stringify(await readRefundSchema(tx,{namespace:'app_admin'}))!==JSON.stringify(expected))throw Error();
++   const schemas=(await tx.query("select nspname as name,has_schema_privilege(oid,'USAGE') as usage,has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace")).rows;
++   if(!['app','app_admin','blizhniy_meta'].every(name=>schemas.some(row=>row.name===name&&row.usage===true))||
++    schemas.some(row=>row.extra!==false||row.usage&&!['app','app_admin','blizhniy_meta','public','pg_catalog','information_schema'].includes(row.name)))throw Error();
++   await assertFinancialSystemPrivileges(tx);
++   // Global ACLs matter too: this role must not overlook a grant to PUBLIC or another role.
++   const namespaceAcl=await tx.query(`select 1 from pg_namespace n cross join lateral aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a
++    where n.nspname='app_admin' and a.grantee<>n.nspowner and not (a.grantee=(select oid from pg_roles where rolname=current_user)
++     and a.privilege_type='USAGE' and not a.is_grantable) limit 1`);
++   const functionAcl=await tx.query(`select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
++    cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
++    where n.nspname='app_admin' and a.grantee<>p.proowner and not(p.oid=$1::regprocedure and a.grantee=(select oid from pg_roles where rolname=current_user)
++     and a.privilege_type='EXECUTE' and not a.is_grantable) limit 1`,[signature]);
++   const tableAcl=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
++    cross join lateral aclexplode(coalesce(c.relacl,acldefault(case when c.relkind='S' then 's'::"char" else 'r'::"char" end,c.relowner))) a
++    where n.nspname='app_admin' and c.relkind in ('r','p','v','m','f','S') and a.grantee<>c.relowner limit 1`);
++   const columnAcl=await tx.query(`select 1 from pg_attribute c join pg_class t on t.oid=c.attrelid join pg_namespace n on n.oid=t.relnamespace
++    cross join lateral aclexplode(c.attacl) a where n.nspname='app_admin' and c.attnum>0 and not c.attisdropped and a.grantee<>t.relowner
++     and not(t.relname='migrations' and c.attname in ('name','sha256') and a.grantee=(select oid from pg_roles where rolname=current_user)
++      and a.privilege_type='SELECT' and not a.is_grantable) limit 1`);
++   if(namespaceAcl.rows.length||functionAcl.rows.length||tableAcl.rows.length||columnAcl.rows.length)throw Error();
++   const columns=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
++    has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
++    from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid
++    cross join(values('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) p(privilege)
++    where n.nspname not in ('pg_catalog','information_schema') and c.relkind in ('r','p','v','m','f','t') and a.attnum>0 and not a.attisdropped and has_column_privilege(c.oid,a.attnum,p.privilege) limit 10001`)).rows;
++   const allowed=new Set(['app_admin.migrations.name:SELECT','app_admin.migrations.sha256:SELECT','blizhniy_meta.migrations.name:SELECT','blizhniy_meta.migrations.sha256:SELECT']);
++   if(columns.length!==allowed.size||columns.some(row=>row.grantable!==false||!allowed.delete(row.key))||allowed.size)throw Error();
++   const tables=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname not in ('pg_catalog','information_schema') and
++    (has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN') or c.relkind='S' and has_sequence_privilege(c.oid,'USAGE,SELECT,UPDATE')) limit 1`);
++   const callable=(await tx.query(`select n.nspname||'.'||p.proname||'('||oidvectortypes(p.proargtypes)||')' as signature,
++    has_function_privilege(p.oid,'EXECUTE WITH GRANT OPTION') as grantable from pg_proc p join pg_namespace n on n.oid=p.pronamespace
++    where n.nspname not in ('pg_catalog','information_schema') and has_function_privilege(p.oid,'EXECUTE') limit 10001`)).rows;
++   if(tables.rows.length||callable.length!==1||callable[0].grantable!==false||callable[0].signature!==signature.replaceAll(',',', '))throw Error();
++  },{timeoutMs:5000,deadline});
++ }catch{throw Error('User operator database preflight failed');}
++}
+diff --git a/src/lib/postgres-admin-user-access.ts b/src/lib/postgres-admin-user-access.ts
+--- a/src/lib/postgres-admin-user-access.ts
++++ b/src/lib/postgres-admin-user-access.ts
+@@ -12 +12 @@
+-      const {rows}=await this.db.query<{result:unknown}>('select app.admin_user_access($1,$2,$3,$4,$5,$6,$7,$8,$9) as result',
++      const {rows}=await this.db.query<{result:unknown}>('select app_admin.user_access($1,$2,$3,$4,$5,$6,$7,$8,$9) as result',
+diff --git a/tests/admin-user-access-postgres-integration.mjs b/tests/admin-user-access-postgres-integration.mjs
+--- a/tests/admin-user-access-postgres-integration.mjs
++++ b/tests/admin-user-access-postgres-integration.mjs
+@@ -10,0 +11 @@
++import {readRefundSchema} from '../scripts/refund-worker-schema.mjs';
+@@ -17 +18 @@
+-const signature='app.admin_user_access(text,uuid,text,uuid,uuid,bigint,text,boolean,text)';
++const signature='app_admin.user_access(text,uuid,text,uuid,uuid,bigint,text,boolean,text)';
+@@ -29,0 +31 @@
++    await owner.query('begin read only');const originalAppSchema=await readRefundSchema(owner);await owner.query('rollback');
+@@ -30,0 +33 @@
++    await owner.query('begin read only');assert.deepEqual(await readRefundSchema(owner),originalAppSchema);await owner.query('rollback');
+@@ -33 +36 @@
+-      grant usage on schema app to blizhniy_user_operator;grant execute on function ${signature} to blizhniy_user_operator`);
++      grant usage on schema app_admin to blizhniy_user_operator;grant execute on function ${signature} to blizhniy_user_operator`);
+@@ -46 +49 @@
+-    const change=(input,credential=token,admin=actor)=>operator.query('select app.admin_user_access($1,$2,$3,$4,$5,$6,$7,$8,$9) as result',
++    const change=(input,credential=token,admin=actor)=>operator.query('select app_admin.user_access($1,$2,$3,$4,$5,$6,$7,$8,$9) as result',
+@@ -49,2 +52,2 @@
+-      for(const sql of ['select * from app.users','select * from app.sessions','select * from app.admin_user_changes',
+-        "update app.users set role='admin' where false",'delete from app.users where false','truncate app.admin_user_changes','create table app.forbidden(id int)'])
++      for(const sql of ['select * from app.users','select * from app.sessions','select * from app_admin.user_changes',
++        "update app.users set role='admin' where false",'delete from app.users where false','truncate app_admin.user_changes','create table app.forbidden(id int)'])
+@@ -55 +58 @@
+-      await assert.rejects(owner.query('select app.admin_user_access($1,$2,$3,$4,$5,$6,$7,$8,$9)',[hash(token),actor,'inspect',target,null,null,null,null,null]),error=>error.code==='PUA01');
++      await assert.rejects(owner.query('select app_admin.user_access($1,$2,$3,$4,$5,$6,$7,$8,$9)',[hash(token),actor,'inspect',target,null,null,null,null,null]),error=>error.code==='PUA01');
+@@ -57 +60 @@
+-      try{await assert.rejects(owner.query('select app.admin_user_access($1,$2,$3,$4,$5,$6,$7,$8,$9)',[hash(token),actor,'inspect',target,null,null,null,null,null]),error=>error.code==='42501');}
++      try{await assert.rejects(owner.query('select app_admin.user_access($1,$2,$3,$4,$5,$6,$7,$8,$9)',[hash(token),actor,'inspect',target,null,null,null,null,null]),error=>error.code==='42501');}
+@@ -65 +68 @@
+-      assert.equal((await owner.query('select count(*)::int as count from app.admin_user_changes where id=$1',[input.id])).rows[0].count,1);
++      assert.equal((await owner.query('select count(*)::int as count from app_admin.user_changes where id=$1',[input.id])).rows[0].count,1);
+@@ -92 +95 @@
+-      assert.equal((await owner.query('select count(*)::int as count from app.admin_user_changes where id=$1',[input.id])).rows[0].count,0);
++      assert.equal((await owner.query('select count(*)::int as count from app_admin.user_changes where id=$1',[input.id])).rows[0].count,0);
+@@ -119 +122 @@
+-      for(const sql of ['update app.admin_user_changes set reason=reason where false','delete from app.admin_user_changes where false','truncate app.admin_user_changes'])
++      for(const sql of ['update app_admin.user_changes set reason=reason where false','delete from app_admin.user_changes where false','truncate app_admin.user_changes'])
+@@ -131 +134 @@
+-      assert.equal((await owner.query('select count(*)::int as count from app.admin_user_changes where id=$1',[input.id])).rows[0].count,0);
++      assert.equal((await owner.query('select count(*)::int as count from app_admin.user_changes where id=$1',[input.id])).rows[0].count,0);
+@@ -141 +144 @@
+-        await assert.rejects(operator.query('select app.admin_user_access($1,$2,$3,$4,$5,$6,$7,$8,$9)',[hash(token),actor,'change',target,randomUUID(),'0',role,blocked,reason]),error=>error.code==='PUA08');
++        await assert.rejects(operator.query('select app_admin.user_access($1,$2,$3,$4,$5,$6,$7,$8,$9)',[hash(token),actor,'change',target,randomUUID(),'0',role,blocked,reason]),error=>error.code==='PUA08');
+@@ -144 +147 @@
+-        await assert.rejects(connection.query('select app.admin_user_access($1,$2,$3,$4,$5,$6,$7,$8,$9)',[hash(token),actor,'inspect',target,null,null,null,null,null]),error=>error.code==='PUA01');
++        await assert.rejects(connection.query('select app_admin.user_access($1,$2,$3,$4,$5,$6,$7,$8,$9)',[hash(token),actor,'inspect',target,null,null,null,null,null]),error=>error.code==='PUA01');
+@@ -180 +183 @@
+-        assert.equal((await owner.query('select count(*)::int as count from app.admin_user_changes where id=$1',[input.id])).rows[0].count,1);
++        assert.equal((await owner.query('select count(*)::int as count from app_admin.user_changes where id=$1',[input.id])).rows[0].count,1);
+@@ -189 +192 @@
+-          create trigger test_access_delay before insert on app.admin_user_changes for each row execute function app.test_access_delay()`);
++          create trigger test_access_delay before insert on app_admin.user_changes for each row execute function app.test_access_delay()`);
+@@ -191 +194 @@
+-        await assert.rejects(connection.query('select app.admin_user_access($1,$2,$3,$4,$5,$6,$7,$8,$9)',[hash(credential),admin,'change',id,input.id,'0','user',true,input.reason]),error=>error.code==='PUA01');
++        await assert.rejects(connection.query('select app_admin.user_access($1,$2,$3,$4,$5,$6,$7,$8,$9)',[hash(credential),admin,'change',id,input.id,'0','user',true,input.reason]),error=>error.code==='PUA01');
+@@ -193,2 +196,2 @@
+-        assert.equal((await owner.query('select count(*)::int as count from app.admin_user_changes where id=$1',[input.id])).rows[0].count,0);
+-      }finally{connection.removeListener('notice',notice);connection.release();await owner.query('drop trigger if exists test_access_delay on app.admin_user_changes;drop function if exists app.test_access_delay()');}
++        assert.equal((await owner.query('select count(*)::int as count from app_admin.user_changes where id=$1',[input.id])).rows[0].count,0);
++      }finally{connection.removeListener('notice',notice);connection.release();await owner.query('drop trigger if exists test_access_delay on app_admin.user_changes;drop function if exists app.test_access_delay()');}
+@@ -206 +209 @@
+-        assert.equal((await owner.query('select count(*)::int as count from app.admin_user_changes where id=any($1::uuid[])',[commands.map(row=>row.id)])).rows[0].count,1);
++        assert.equal((await owner.query('select count(*)::int as count from app_admin.user_changes where id=any($1::uuid[])',[commands.map(row=>row.id)])).rows[0].count,1);

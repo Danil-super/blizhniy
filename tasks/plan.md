@@ -493,3 +493,63 @@ auth_version, immutable receipt и payload-bound повторы. Аудит — 
 Затем private IPC/HTTP и интерфейс подтверждения; постоянная установка и
 совместимость финансовых guards — точный reviewed пакет. До согласования только
 временная отдельная БД/кандидаты, без изменения owned-стенда3045/production.
+
+
+### R01 — состояние большого этапа после серверного/интерфейсного среза
+
+Серверный кандидат сохранён в3c00b56, затем изолирован в `app_admin`:0061 создаёт
+только новую схему/свой журнал, ledger и функцию; `app`/59 записей основного журнала
+не изменяются. SQL-поведение/IPC/HTTP проверены на временной PG; unknown outcome
+имеет отдельный read-only recover, без автоматического повторного изменения.
+Native2894 и build прошли; интерфейс и endpoint OFF до явного локального opt-in.
+
+Человеческий review guard готовится через НЕПРИМЕНЁННЫЕ `.candidate` в
+`docs/review/user-access61/`: два коротких общих изменения (выделение system ACL
+проверки без изменения financial default; whitelist namespace app/app_admin в
+каталожном fingerprint), новый EXECUTE-only role guard/release и snapshot admin-v1.
+`tests/admin-user-access-role-candidate-integration.mjs` копирует исходники в свой
+закрытый artifact, создаёт отдельный Docker с59 app migrations + phone policies и
+local-provider FK; все4 роли допущены и17 лишних прав отвергнуты. Основная схема
+побайтно fingerprint-равна прежней. PUBLIC execute-пробел нового guard воспроизведён
+RED и закрыт global ACL проверками схемы, функций, таблиц/колонок.
+Независимое review исправило startup runtime.close; UI review без других находок.
+
+До общего пакета: standalone runtime/builder с собственными closed credentials,
+verify-full и owned-target proof; настоящий compiled/TLS прогон во временной БД;
+неприменённая интеграция launcher/services/proxy с жизненным циклом нового ресурса.
+Preload НЕ меняем: он запрещает Unix sockets, поэтому `/api/admin/user-access`
+обрабатывается local-primary-proxy (как refunds), а Next получает только view opt-in
+и socket capability. Для streaming JSON на новом пути сохранить4KiB/2s boundary,
+не превращать malformed/oversized запрос в proxy503.
+После полного trial/backup — один точный пакет на review/локальную установку.
+Постоянная БД/роль61 ещё не менялись. Старый owned Node launcher прерван перезапуском
+хоста инструментов; после финальной bound сборки восстановить прежний3045 с
+refunds/specialist/media/service/renewal/Telegram flags, без нового user-operator до approval.
+
+### R01 — большой локальный пакет готов к review
+
+Завершена интеграция отдельного оператора с lifecycle/proxy без изменения preload.
+Кандидаты и точный patch: `docs/review/local-user-access61.md`, `.patch`, `-plan.json`.
+Активные guards и постоянная схема/роли61 НЕ применены. Исходная схема60/journal59
+остаётся прежней. Пакет проверен в закрытом artifact: floor/types/lint, сборка,
+15 PG-сценариев,27 guard-тестов. Root native2901/2901; основное frontend-изменение
+уже в b20c8ac. Namespace assertion перенос требует одной точной SHA-пары guard.
+
+Полный trial:4 роли допускаются,17 дрейфов отвергаются; HTTPS→handler→UnixIPC→
+compiled8modules→verify-full PG прошёл, recover возвращает одну запись. Отмена
+до dispatch не изменяет данные; oversized/slow/error-body даёт JSON4xx. Mutation
+expiry-check обнаружен rollback-тестом; исходные байты восстановлены. Review без
+обязательных замечаний. Долгий/нагруженный Pool не измерялся отдельно.
+
+Закрытый pg_dump постоянного синтетического стенда по repeatable-read snapshot
+восстановлен на отдельный owned PG18; данные/ACL/roles совпали. Только на этой
+копии нормализованы6 прежних эквивалентных CHECK и применён app_admin кандидат;
+точный app60, все прежние данные/права и59 journal записей сохранились. Доказательства
+в private user-access61-backup-biyXza, ссылка/SHA в плане. Исходный стенд получил
+только read-only запросы; установка0061/роли и включение ещё требуют owner-review.
+Перед установкой повторить свежую копию после остановки verified-owned launcher.
+
+Следующий шаг после одобрения единого пакета: применить patch/проверки, одна owner
+транзакция только0061+newrole, прежние финансовые допуски, local opt-in и приёмка
+на3045. Визуальная/клавиатурная проверка остаётся открытой при недоступном CUA.
+Production/GitHub/LIVE, Ярмарка и2ГИС в этот пакет не входят.
