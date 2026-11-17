@@ -16,7 +16,11 @@ function PrimaryAccountAuth({ children, available }: { children: ReactNode; avai
     if (!available) return;
     const unsubscribe = store.subscribe(setSnapshot);
     const refresh = () => { void store.refresh(); };
-    const revalidate = () => { void store.refresh(true); };
+    const revalidate = () => {
+      // Moderation editors can hide private material and retain the same moderator's unsaved note.
+      const strict = document.querySelector('[data-recheck-moderator]') !== null;
+      void store.refresh(!strict);
+    };
     const visibility = () => { if (document.visibilityState === "visible") revalidate(); };
     const pageshow = (event: PageTransitionEvent) => { if (event.persisted) refresh(); };
     const begin = () => store.beginChange();
