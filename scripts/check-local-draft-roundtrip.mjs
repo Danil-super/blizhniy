@@ -16,6 +16,84 @@ async function profession(){const input=page.getByRole('combobox',{name:'Про�
 async function saved(kind){for(const checkbox of await page.locator('form input[type=checkbox]:visible').all())await checkbox.check();const path=kind==='listing'?'/api/account/listing-form':'/api/account/work-publications',response=page.waitForResponse(response=>new URL(response.url()).pathname===path&&response.request().method()==='PUT');await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();const reply=await response;assert.equal(reply.status(),200);const value=await reply.json();await page.waitForURL(state.origin+'/cabinet/'+(kind==='listing'?'obyavleniya':kind==='vacancy'?'vakansii':'zakazy'));return value;}
 async function open(kind,id){await page.goto(state.origin+(kind==='listing'?'/razmestit/obyavlenie?draft='+id:'/rabota/'+(kind==='vacancy'?'vakansii':'zakazy')+'/'+id+'/edit'));if(kind==='vacancy')await page.getByRole('button',{name:'Продолжить к вакансии',exact:true}).click();await page.locator('input[name="title"]:visible').waitFor();}
 function verify(snapshot,kind,title){assert.equal(snapshot.form.title,title);assert.equal(snapshot.form.cityName,'Армавир');assert.equal(snapshot.form.contactPhone.replace(/\D/g,''),phone.slice(1));assert.equal(snapshot.form.messengerUrl,messenger);assert.equal(snapshot.form[kind==='listing'?'price':kind==='vacancy'?'salary':'budget'],'1250.50');assert.equal(snapshot.form.photoIds.length,2);assert.equal(snapshot.photos.length,2);assert.ok(snapshot.photos.every(photo=>photo.mimeType==='image/webp'));}
+async function checkConcurrentEdit(kind, snapshot, owner) {
+ const stale = await context.newPage();
+ stale.on('pageerror', error => errors.push(error.name));
+ const endpoint = state.origin + (kind === 'listing' ? '/api/account/listing-form' : '/api/account/work-publications');
+ const save = {name:'Сохранить черновик', exact:true};
+ const readback = {name:'Проверить сохранённую форму', exact:true};
+ const titleField = 'input[name="title"]:visible';
+ const winningTitle = snapshot.form.title + ' А';
+ const staleTitle = snapshot.form.title + ' Б';
+ const writes = [];
+ const observe = request => {
+  if (request.url() === endpoint && request.method() === 'PUT') writes.push(request.postDataJSON().expectedRevision);
+ };
+ context.on('request', observe);
+ try {
+  await stale.goto(page.url());
+  if (kind === 'vacancy') await stale.getByRole('button',{name:'Продолжить к вакансии',exact:true}).click();
+  await stale.locator('figure img').nth(1).waitFor();
+  assert.equal(await stale.locator(titleField).inputValue(), snapshot.form.title);
+  await stale.locator(titleField).fill(staleTitle);
+  await page.locator(titleField).fill(winningTitle);
+  await page.locator('textarea[name="description"]').fill('');
+  for (const tab of [page,stale]) {
+   for (const checkbox of await tab.locator('form input[type=checkbox]:visible').all()) await checkbox.check();
+  }
+  // Forward the ordinary write, then drop only its browser response.
+  let committed;
+  await page.route(endpoint, async route => {
+   if (route.request().method() !== 'PUT') return route.continue();
+   const response = await route.fetch({maxRedirects:0});
+   committed = {status:response.status(), data:await response.json()};
+   await response.dispose();
+   await route.abort('failed');
+  });
+  phase='lost-write-'+kind;
+  await page.getByRole('button',save).click();
+  phase='lost-write-readback-'+kind;
+  await page.getByRole('button',readback).click();
+  await page.waitForURL(state.origin + '/cabinet/' + ({listing:'obyavleniya',vacancy:'vakansii',workRequest:'zakazy'}[kind]));
+  await page.getByRole('article').filter({hasText:winningTitle}).getByText('Черновик',{exact:true}).waitFor();
+  assert.equal(committed?.status,200);
+  assert.equal(committed.data.id,snapshot.id);
+  assert.equal(BigInt(committed.data.revision),BigInt(snapshot.revision)+1n);
+  assert.deepEqual(writes,[snapshot.revision]);
+
+  phase='stale-write-'+kind;
+  const [refused] = await Promise.all([
+   stale.waitForResponse(res => res.url() === endpoint && res.request().method() === 'PUT'),
+   stale.getByRole('button',save).click()
+  ]);
+  assert.equal(refused.status(),409);
+  phase='stale-write-readback-'+kind;
+  await stale.getByRole('button',readback).click();
+  const conflict = stale.getByRole('region',{name:'Сохранённая форма'});
+  await conflict.waitFor();
+  assert.equal(JSON.parse(await conflict.locator('pre').innerText()).title,winningTitle);
+  assert.equal(await stale.locator(titleField).inputValue(),staleTitle);
+  const response = await context.request.post(endpoint,{
+   headers:{Origin:state.origin,'X-Blizhniy-Request':'1','X-Blizhniy-Profession-Refs':'1','Sec-Fetch-Site':'same-origin'},
+   data:kind === 'listing' ? {expectedOwnerId:owner,listingId:snapshot.id} :
+    {expectedOwnerId:owner,action:'read',kind,publicationId:snapshot.id}
+  });
+  assert.equal(response.status(),200);
+  const current = await response.json();
+  assert.equal(current.id,snapshot.id);
+  assert.equal(current.revision,committed.data.revision);
+  assert.deepEqual(current.form,{...snapshot.form,title:winningTitle,description:''});
+  if (kind !== 'listing') {
+   assert.equal(current.status,'draft');
+   assert.equal(current.professionId,snapshot.professionId);
+  }
+  assert.deepEqual(writes,[snapshot.revision,snapshot.revision]);
+ } finally {
+  context.off('request',observe);
+  await page.unroute(endpoint);
+  await stale.close();
+ }
+}
 try{
  const user=(await db.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',[email,await load('identity').hashPassword(password)])).rows[0].id;
  await db.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[user,JSON.stringify(load('postgres-profile').parseProductionProfile({name:'Синтетический автор черновиков',phone,city:'Краснодар'}))]);
@@ -35,10 +113,16 @@ try{
   await page.locator('input[name="title"]:visible').fill(title+' — правка');const updated=await saved(kind);verify(updated,kind,title+' — правка');assert.equal(updated.id,initial.id);assert.equal(BigInt(updated.revision),BigInt(initial.revision)+1n);assert.deepEqual(updated.form.photoIds,initial.form.photoIds);assert.equal(updated.form.description,description);
   phase='verify-'+kind;await open(kind,updated.id);assert.equal(await page.locator('input[name="title"]:visible').inputValue(),title+' — правка');await page.locator('figure img').nth(1).waitFor();
   const publicPath=(kind==='listing'?'/obyavlenie/':kind==='vacancy'?'/vakansiya/':'/rabota/zakazy/')+updated.id;assert.equal((await context.request.get(state.origin+publicPath)).status(),404);
-  results.push({kind,id:initial.id,fields:true,photos:2,samePhotosAfterEdit:true,singleRevision:true});
+  phase='competing-edit-'+kind;await checkConcurrentEdit(kind,updated,user);
+  results.push({kind,id:initial.id,fields:true,photos:2,samePhotosAfterEdit:true,singleRevision:true,lostReplyRecovered:true,staleTabDenied:true});
  }
  assert.equal((await db.query('select count(*)::int n from app.payment_orders where owner_id=$1',[user])).rows[0].n,0);assert.deepEqual(payments,[]);assert.deepEqual(errors,[]);assert.deepEqual(external,[]);assert.deepEqual(hydration,[]);
- await writeFile(join(stateDirectory,'draft-roundtrip-'+run+'.json'),JSON.stringify({run,user,results},null,2)+'\n',{flag:'wx',mode:0o600});
+ const owned = (await db.query(`select
+   (select count(*)::int from app.listings where author_id=$1) as listings,
+   (select count(*)::int from app.work_publications where author_id=$1 and kind='vacancy') as vacancies,
+   (select count(*)::int from app.work_publications where author_id=$1 and kind='workRequest') as orders`,[user])).rows[0];
+ assert.deepEqual(owned,{listings:1,vacancies:1,orders:1});
+ await writeFile(join(stateDirectory,'draft-roundtrip-'+run+'.json'),JSON.stringify({run,user,results,owned},null,2)+'\n',{flag:'wx',mode:0o600});
  console.log(JSON.stringify({status:'passed',types:results.map(row=>row.kind),drafts:3,edited:3,photosPreserved:true,paymentOrders:0,pageErrors:0,productionTouched:false}));
 }catch(error){await Promise.allSettled([page.screenshot({path:join(stateDirectory,'draft-roundtrip-'+run+'-failure.png'),fullPage:true}),writeFile(join(stateDirectory,'draft-roundtrip-'+run+'-errors.json'),JSON.stringify({errors,hydration},null,2)+'\n',{flag:'wx',mode:0o600})]);console.error(JSON.stringify({status:'failed',phase,error:error?.name,check:error?.code==='ERR_ASSERTION'?error.message.slice(0,800):String(error?.message).split('\n')[0].slice(0,400)}));process.exitCode=1;}
 finally{await context.close();await browser.close();await db.end();}
