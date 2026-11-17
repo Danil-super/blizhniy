@@ -33,7 +33,7 @@ const MAX_PIXELS = 24_000_000;
 const MAX_EDGE = 2048;
 let decoding = false;
 
-function detectFormat(bytes: Buffer): "jpeg" | "png" | "webp" | "gif" | null {
+export function detectMediaImageFormat(bytes: Buffer): "jpeg" | "png" | "webp" | "gif" | null {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpeg";
   if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
     // libvips can expose only the default PNG image, hiding APNG frame metadata.
@@ -68,7 +68,7 @@ export async function normalizeMediaImage(input: Uint8Array, claimedType: string
   try {
     // Copy before the first await: the caller cannot change bytes after validation.
     const bytes = Buffer.from(input);
-    const format = detectFormat(bytes);
+    const format = detectMediaImageFormat(bytes);
     if (!format || claimedType !== `image/${format}`) throw new MediaImageError("UNSUPPORTED_IMAGE");
     const { default: sharp } = await import("sharp");
     const decoder = sharp(bytes, {
