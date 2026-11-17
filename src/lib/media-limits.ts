@@ -1,4 +1,5 @@
 const bytesInMegabyte = 1024 * 1024;
+export {preparePhotoFiles} from './prepare-photo.ts';
 
 export const maxListingImageFileSize = 10 * bytesInMegabyte;
 export const maxListingVideoFileSize = 80 * bytesInMegabyte;
@@ -18,7 +19,7 @@ export function listingMediaLimitText() {
 }
 
 export function formPhotoLimitText() {
-  return `Фото до ${formatFileSize(maxFormPhotoFileSize)}.`;
+  return 'Фото сжимаются автоматически. JPEG, PNG и WebP до 50 МБ; статичный GIF до 8 МБ.';
 }
 
 function fileLimitForType(file: File) {

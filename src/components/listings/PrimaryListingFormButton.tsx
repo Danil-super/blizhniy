@@ -3,7 +3,7 @@ import {ensurePhoneForPlacement} from '@/lib/phone-placement';
 import {useEffect,useId,useRef,useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {productionDrafts} from '@/lib/client-listing-drafts';
-import {productionListingMedia} from '@/lib/client-listing-media';
+import {productionListingMedia,ListingMediaClientError} from '@/lib/client-listing-media';
 import {productionListingForm,ListingFormClientError} from '@/lib/client-listing-form';
 import {createListingFormSave} from '@/lib/listing-form-save';
 import {createListingFormModeration} from '@/lib/listing-form-moderation';
@@ -62,12 +62,25 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
  async function run(work:()=>Promise<void>){
   if(pending.current||!owner)return;pending.current=true;setBusy(true);setMessage(null);setCheckoutBlocked(false);const generation=epoch.current;
   try{await work();}catch(error){if(generation===epoch.current){setMessage(error instanceof ListingDraftInputError?'Проверьте поля объявления: цену, контакты, координаты и параметры аренды.':error instanceof Error?error.message:'Не удалось подтвердить сохранение.');
+   if(error instanceof ListingMediaClientError&&['INVALID_INPUT','MEDIA_OWNER_QUOTA_EXCEEDED'].includes(error.code)&&attempt.current&&!attempt.current.uncertain&&!attempt.current.completed){
+    setRejected(true);
+    try{
+     const id=attempt.current.id;
+     if(id){const snapshot=await productionListingForm.read(owner!,id,{signal:controller.current?.signal});
+      if(generation===epoch.current&&snapshot.revision===(baseline.current?.revision??'1')){
+       baseline.current=snapshot;attempt.current=null;setActive(false);setRejected(false);
+       if(formRef.current)delete formRef.current.dataset.primaryIntent;
+      }
+     }
+    }catch{if(generation===epoch.current)setMessage('Фото не принято. Не удалось проверить черновик; повторите проверку перед исправлением.');}
+   }
    if(error instanceof ListingFormClientError&&['INVALID_INPUT','RATE_LIMITED','CHECKOUT_ACTIVE'].includes(error.code))setRejected(true);
    if(error instanceof ListingFormClientError&&error.code==='CHECKOUT_ACTIVE')setCheckoutBlocked(true);
   }}
   finally{if(generation===epoch.current){pending.current=false;setBusy(false);if(formRef.current)delete formRef.current.dataset.primarySaving;}}
  }
  async function save(form:HTMLFormElement){
+  if(form.querySelector('[data-photo-preparing="true"]')){setMessage('Дождитесь подготовки фотографий.');return;}
   if(form.dataset.primaryIntent&&form.dataset.primaryIntent!==intentKey){setMessage('В этой форме уже выполняется сохранение. Сначала проверьте его результат.');return;}
   if(form.dataset.primarySaving==='1')return;form.dataset.primarySaving='1';formRef.current=form;
   await run(async()=>{

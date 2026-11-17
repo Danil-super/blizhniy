@@ -1,9 +1,10 @@
 "use client";
 import {useEffect,useRef,useState} from 'react';
 import {accountTestPayment} from '@/lib/client-account-test-payment';
+import {specialistPayment} from '@/lib/client-specialist-payment';
 import {useLocalPaymentSimulation} from '@/components/listings/ListingWorkflowProvider';
 import {vacancyPayment,workRequestPayment} from '@/lib/client-vacancy-payment';
-export function TestPaymentLaunch({owner,paymentId,visible,vacancy=false,workRequest=false,disabled=false,publishes=false}:{owner:string;paymentId:string;visible:boolean;vacancy?:boolean;workRequest?:boolean;disabled?:boolean;publishes?:boolean}){
+export function TestPaymentLaunch({owner,paymentId,visible,vacancy=false,workRequest=false,specialist=false,disabled=false,publishes=false}:{owner:string;paymentId:string;visible:boolean;vacancy?:boolean;workRequest?:boolean;specialist?:boolean;disabled?:boolean;publishes?:boolean}){
  const localPreview=useLocalPaymentSimulation();
  const [busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[message,setMessage]=useState<string|null>(null);
  const allowed=useRef(visible),locked=useRef(false),scope=useRef<AbortController|null>(null);allowed.current=visible;
@@ -11,9 +12,9 @@ export function TestPaymentLaunch({owner,paymentId,visible,vacancy=false,workReq
  async function launch(){
   if(disabled||!allowed.current||locked.current)return;locked.current=true;setBusy(true);setUncertain(true);setMessage(null);const controller=scope.current;
   try{
-   const result=await (workRequest?workRequestPayment:vacancy?vacancyPayment:accountTestPayment).dispatch(owner,paymentId,{signal:controller?.signal});
+   const result=await (specialist?specialistPayment:workRequest?workRequestPayment:vacancy?vacancyPayment:accountTestPayment).dispatch(owner,paymentId,{signal:controller?.signal});
    if(!allowed.current||controller?.signal.aborted)return;
-   if(result.confirmationUrl)window.location.assign(localPreview?`/__local/payment?intent=${paymentId}${workRequest?'&type=workRequest':vacancy?'&type=vacancy':''}`:result.confirmationUrl);
+   if(result.confirmationUrl)window.location.assign(localPreview?`/__local/payment?intent=${paymentId}${specialist?'&type=specialist':workRequest?'&type=workRequest':vacancy?'&type=vacancy':''}`:result.confirmationUrl);
    else{setUncertain(false);setMessage('Ссылка оплаты больше не требуется или недоступна. Проверьте статус этого заказа.');}
   }catch{if(allowed.current&&!controller?.signal.aborted)setMessage('Переход не подтверждён. Восстановите оплату этого же заказа — новый заказ не создаётся.');}
   finally{if(!controller?.signal.aborted){locked.current=false;setBusy(false);}}

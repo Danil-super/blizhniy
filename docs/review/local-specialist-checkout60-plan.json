@@ -1,0 +1,316 @@
+{
+  "version": 1,
+  "status": "installed-local-only",
+  "baseCommit": "bd37c2d6d6395d0e4ceb73ba82f8fee7b9165923",
+  "project": "/home/danil/Рабочий стол/БЛИЖНИЙ",
+  "origin": "https://127.0.0.1:3045",
+  "containerId": "9ded4be65598847166ef21350a812b9eeba263e4db0274a48e355e677c9070bb",
+  "database": "blizhniy_prod",
+  "readOnlyPreflight": "2026-11-17: verified owned existing local58 container, exact58 journal/catalog and media runtime access; no new schema or privileges installed",
+  "expectedJournal": [
+    {
+      "name": "0001-identity.sql",
+      "sha256": "29e643c68d04bf7e65c03a01d3dba422d18ddd9e5a1db0cb47b0b26f94ce4eb9"
+    },
+    {
+      "name": "0002-registration.sql",
+      "sha256": "436f44b48d268bd245c39c0d60575c7c8cf8b54947243036f44c101126d9a37c"
+    },
+    {
+      "name": "0003-auth-rate-limits.sql",
+      "sha256": "a5b51a099e1195393c8f27ece46d7430f10a2a706b206324947877f9cdcc671a"
+    },
+    {
+      "name": "0004-password-recovery.sql",
+      "sha256": "1ad17aabac57b9cbcd75fe830a15c4aafa0c6869aef0acb1ecb61f4ab04ab9e9"
+    },
+    {
+      "name": "0005-reference-catalog.sql",
+      "sha256": "2bd9ffc0583ae9e86b842e8915c286b4b9d02298f5dd39b9c1d08c765e94fb4f"
+    },
+    {
+      "name": "0006-media-reservations.sql",
+      "sha256": "2ec281c1cebd2b83ee1178ad100f2001f58a3aa78d0dbcd0d33f807656cdf69d"
+    },
+    {
+      "name": "0007-media-write-attempts.sql",
+      "sha256": "442d1b4bbd3bf45ba75dc5b2759a166a5f7e0de60645df3e5f4d583f5d7c6913"
+    },
+    {
+      "name": "0008-mail-outbox.sql",
+      "sha256": "b96e214de93080a9bf9de2901c51c44377ad77cc0589ebfc5ffaac4788d3460b"
+    },
+    {
+      "name": "0009-mail-delivery.sql",
+      "sha256": "1a011d2e2f9b2cdadf2509d96d474a3776a54161ab4d972358aec6cf3c81eb19"
+    },
+    {
+      "name": "0010-production-rate-limits.sql",
+      "sha256": "c7c46a9fcb3a8d619098189445f99fed186c512520f357a5391a80c32564efa9"
+    },
+    {
+      "name": "0011-cabinet-profiles.sql",
+      "sha256": "c077437b5d6f3680419b0e77afc75c2dca8804ffd96710853286d377627e9ce0"
+    },
+    {
+      "name": "0012-listings.sql",
+      "sha256": "f3d41113e258200c6b817b579f877d13549bec7930a2b8c2f50c35fcee4eb8bf"
+    },
+    {
+      "name": "0013-listing-photos.sql",
+      "sha256": "cae45d3590330a14f551fe108dac5a111566d2949d23fc9127606da3b75fe122"
+    },
+    {
+      "name": "0014-listing-moderation.sql",
+      "sha256": "980b52941924611ae322a8ddb727ec0545d6955123cb6af2dd89d8a751474fbd"
+    },
+    {
+      "name": "0015-confirmation-notice.sql",
+      "sha256": "06c36253a0459bff98243ae231146fb1eba709053502e52d1f4b927c8707393b"
+    },
+    {
+      "name": "0016-work-publications.sql",
+      "sha256": "5ec2f8b6a2b541d99f45d9973a795523450a42aa16e6751f5b68c32df65e0777"
+    },
+    {
+      "name": "0017-service-publications.sql",
+      "sha256": "40fe30319432f2fffbb1dc2bda9985df32516d27ed498b055ee6c4f5c6dfdc55"
+    },
+    {
+      "name": "0018-interactions.sql",
+      "sha256": "b9e7e89977b0b5a0d456d336cc480d21217b40e845b51cbf3d302bc02b6df017"
+    },
+    {
+      "name": "0019-payment-intents.sql",
+      "sha256": "7c318ca7accebf7326e4de95daad8205e95a579598b64e2f2720f444a8741a12"
+    },
+    {
+      "name": "0020-payment-orders.sql",
+      "sha256": "1dce3372a0a26a345f74dd82f86e87363fa3c216a6320015f9e59be6bc77c422"
+    },
+    {
+      "name": "0021-payment-verification.sql",
+      "sha256": "a2b663aae6f03b8252ac801b815cbdfbce43447ad0ed2a0eed332088b2572c2b"
+    },
+    {
+      "name": "0022-listing-payment-fulfillment.sql",
+      "sha256": "78c8d9a096732913cf0b3cf19c9d2ece88eff55f04942d5c56831446a606f56a"
+    },
+    {
+      "name": "0023-payment-reconciliation.sql",
+      "sha256": "6c1a08d1848a349b38eab329f64899ac7f8bf239a7464987de6113599a1116e8"
+    },
+    {
+      "name": "0024-reconciliation-lock-guards.sql",
+      "sha256": "b64a34831a1685a1774f7c1fbe6130530b2a93baf6217f363373a25a442a3aee"
+    },
+    {
+      "name": "0025-listing-contact-method.sql",
+      "sha256": "c44ca6eaf43a1143f29d175707e348725627beefdadacf815f49d6855ae4a230"
+    },
+    {
+      "name": "0026-listing-blocks.sql",
+      "sha256": "96d37a38b0d1013de4c5e379f6b7cd1116775716e6f66f7d16f5386d11c6e81e"
+    },
+    {
+      "name": "0027-listing-owner-visibility.sql",
+      "sha256": "2392ee037bf2a0b8299cdcb132060f9f8bcc43aeb068fa3fb7058dc621fbd15d"
+    },
+    {
+      "name": "0028-listing-restore-entitlement.sql",
+      "sha256": "f8289025a041dcab70d861dd4b21c739c94b60475f9fb801c0fb8b6be41a54ee"
+    },
+    {
+      "name": "0029-listing-owner-removals.sql",
+      "sha256": "db2dc29910c133a9fbb3a133b89fed5311dceccaf59faac0730ddeb2992526d5"
+    },
+    {
+      "name": "0030-application-withdrawals.sql",
+      "sha256": "539c6440e06d588a55dfa64c52c7d120342940e52603f68ec1e5e4b0c92a29fa"
+    },
+    {
+      "name": "0031-telegram-phone.sql",
+      "sha256": "c316af6963d83544b2c79b4b7576984164ee42af1dd2b08e9a2badd0f9558b53"
+    },
+    {
+      "name": "0032-phone-publication-wait.sql",
+      "sha256": "7b937747f5b06f00c268dbbc83f51887a08fb3bb8df47b6ba7ee84e08f4a14a0"
+    },
+    {
+      "name": "0033-account-deletion.sql",
+      "sha256": "8d0159c6af65c4c66aabb123695110f402fd5eac268fa2a879d97c85e628ed2f"
+    },
+    {
+      "name": "0034-checkout-edit-fence.sql",
+      "sha256": "365cdd4a850aa67d334cff3dbed68cbfd6eff69e5c06643740bc1be02ad63df3"
+    },
+    {
+      "name": "0035-application-contact-views.sql",
+      "sha256": "b1fa39ecfda0d9bcfb7dce27650e7950fc652db58af88b9756ed5979636ac937"
+    },
+    {
+      "name": "0036-placement-refund-reservations.sql",
+      "sha256": "3ec8c25243195d8b9d9c36e2c738249c815060c436dbcc4860eb263faf48ef16"
+    },
+    {
+      "name": "0037-refund-requests.sql",
+      "sha256": "6914c52b6f50153c63068f01ad14fad69a54b121c10d977986766249593742c3"
+    },
+    {
+      "name": "0038-refund-journal.sql",
+      "sha256": "fbab09446f30129bbc4fe59fbd4432f0e5d1ec76429b16bc5220cca7f15da240"
+    },
+    {
+      "name": "0039-refund-dispatch.sql",
+      "sha256": "e29f2cecbf97930c9c8c7be9aaa6d6031902ef44c232cabfd1517c839f285bd4"
+    },
+    {
+      "name": "0040-placement-refund-effects.sql",
+      "sha256": "470b5106cf78ad96f5005eda6744e962c557c4cff2582fbf1adeca6cc5cb9b41"
+    },
+    {
+      "name": "0041-booking-lifecycle.sql",
+      "sha256": "e1c4e29db17d7ae0f61e440d0dc42433dff9bd2854142a9c59f236d97bc13748"
+    },
+    {
+      "name": "0042-placement-refund-approvals.sql",
+      "sha256": "99defa302ee7201e5a0968005c3aab04a9fa95a13fee8c1e7620925ac595959d"
+    },
+    {
+      "name": "0043-application-compensation-cases.sql",
+      "sha256": "a6d295cde1792350ebceca844a5999f9ff7ec56949bc180081ea001dc4aee39e"
+    },
+    {
+      "name": "0044-work-owner-actions.sql",
+      "sha256": "4e3f137c8dbc2e98ceece3ca4025e64f0270467c69774bd890c20f28d5c1a04f"
+    },
+    {
+      "name": "0045-customer-closure-compensation.sql",
+      "sha256": "6fd9cef91fff541cb8dc8c67500ef467e93c594e3ae145d3f500d4cc93ce9621"
+    },
+    {
+      "name": "0046-response-checkout-fence.sql",
+      "sha256": "d3313c7bc349ec8c93d7927bc0b69ed9fbb1a19c69b169af4181f482d03c8d5f"
+    },
+    {
+      "name": "0047-checkout-cancellation.sql",
+      "sha256": "345d57e5b76bb36784260fdd49c56820323eda97bbc19e61bee06179cdf19d3d"
+    },
+    {
+      "name": "0048-application-compensation-refunds.sql",
+      "sha256": "69ee78403b4a7f1ac40366b4802d0930b8f9919f2f5a93cd30a9b1946c3afe77"
+    },
+    {
+      "name": "0049-application-compensation-queue.sql",
+      "sha256": "7840ca52cb4dda2285baf9bf117fa465f5903994902888a9963c98d51b748959"
+    },
+    {
+      "name": "0050-application-compensation-discovery.sql",
+      "sha256": "70f8b364629be26a61758e8de0e0a05d4094d512094c968a1e03a4be0987054d"
+    },
+    {
+      "name": "0051-refund-recovery.sql",
+      "sha256": "e24c75dc7183483c041e1679482968767a34aea04d1706464d1cf20e0c30a164"
+    },
+    {
+      "name": "0052-placement-refund-queue.sql",
+      "sha256": "d075baa1eef117dc9b2db0588c6886af7fb7a0b3ed14482a0a1989b4110aedc4"
+    },
+    {
+      "name": "0053-application-compensation-lease.sql",
+      "sha256": "fae70f623c932cccf8b3af5b0db6bcc02d362be804ffda3ba04ef8a3c54bb12d"
+    },
+    {
+      "name": "0054-refund-worker-locks.sql",
+      "sha256": "58e0541d6519d37ade73c8b1cf14e28aaeb4846266c4618bad7186a52c3ec43b"
+    },
+    {
+      "name": "0055-refund-operator-locks.sql",
+      "sha256": "eccf6f5c4208cbe48fa8d97e67528a14a8b169929ba19605422000385ffda79c"
+    },
+    {
+      "name": "0056-placement-renewals.sql",
+      "sha256": "da97d79898e6f0b1471824822c60dead94a5f92c33f526127b230616d09c12e0"
+    },
+    {
+      "name": "0057-service-payment-terms.sql",
+      "sha256": "564a485f53754b34293ccd25d664d4dfeea94379c149381218ff69bc728731da"
+    },
+    {
+      "name": "0058-media-reference-journal.sql",
+      "sha256": "37920d33783e949fb5ec5c4fae1c9167656ce11b001447b2701d966c1d9493b1"
+    }
+  ],
+  "migration": {
+    "name": "0060-local-specialist-checkout.sql",
+    "sha256": "2b1079685ec39dbc4c67db86b6bca4aefac31682cf6892fab046fde22a59c8bd"
+  },
+  "afterJournalEntries": 59,
+  "afterSemanticSchema": 60,
+  "absentMigration": "0059",
+  "compatibilityPatch": {
+    "path": "docs/review/local-specialist-checkout60-compat.patch",
+    "sha256": "8fcd03fd1a32f755fef91512af2293d5bf03e21167c86e76e88d079c15f59f5c",
+    "format": "git diff --unified=0; apply with --unidiff-zero on pinned code base"
+  },
+  "roles": [],
+  "grants": [
+    "grant select(intent_id,created_at),insert(intent_id) on app.specialist_checkout_terms to blizhniy_runtime"
+  ],
+  "schemaProfiles": {
+    "before": {
+      "path": "database/refund-schema-local-primary-0058.json",
+      "sha256": "a0d65d203c35cdf0869fa9ba6a8ebe6cc0ccb056f4629cf14bc72a770015c033"
+    },
+    "after": {
+      "path": "database/refund-schema-local-primary-0060.json",
+      "sha256": "522d606e9df30bcd3d81e3d4294688ed96c3f430f1b346bed972f2c12a87fe82"
+    }
+  },
+  "before": [
+    "Apply only the reviewed compatibility patch on the pinned source base, repeat floor/types/native and changed PostgreSQL checks; keep specialist flag disabled",
+    "Verify closed state/credential files, exact owned container definition and loopback bindings, CA and verify-full TLS; refuse remote endpoints or unknown state",
+    "Stop only the verified owned launcher and drain its financial sessions; require exact local58 journal/catalog and unchanged current web/refund/media roles and memberships",
+    "Create closed pg_dump backup and private catalog/data/ACL/role evidence; verify SHA256 and archive index",
+    "Restore that backup into a separately owned disposable local PG18 target; verify exact58 profile, row digests and previous ACLs using the existing58 restore-check procedure; retain backup privately"
+  ],
+  "transaction": [
+    "Use one owner transaction with bounded lock/statement time; apply only0060, the listed existing-web column grant and exact migration journal row",
+    "Compare all pre-existing table contents, role attributes/memberships and ACLs; require unchanged values; only the new relation/web column access is allowed",
+    "Require exact local60 catalog, exact59-entry journal and exact new-web access before COMMIT",
+    "Unknown COMMIT outcome requires read-only reconciliation against exact58 or exact60; never automatically reapply or repair unknown objects"
+  ],
+  "after": [
+    "Before feature activation require read-only admission using actual unchanged refund worker/operator and media cleanup roles; verify runtime new-table rights and no new function execution",
+    "Start owned synthetic services with specialist mode disabled first, then BLIZHNIY_SPECIALIST_CHECKOUT=local-v1 only on this local origin; preserve current other flags",
+    "Exercise synthetic draft/moderation/prepare/cancel-at-provider/capture/publication/replay and one receipt on restart; no real provider network",
+    "Inspect cabinet and public specialist card in a real browser, including auth return and status; unavailable browser remains an open acceptance item, not a pass",
+    "Verify existing listing/vacancy/order draft/publication paths, refund startup with specialist disabled, health/build identity; preserve all synthetic payment history"
+  ],
+  "rollback": [
+    "Any failure before COMMIT rolls back the single installation transaction",
+    "After COMMIT keep compatibility guards, disable specialist mode and stop new purchases; preserve terms, receipts and all history; do not drop0060 or recreate the database automatically",
+    "Existing services must continue to admit exact local60 with specialist disabled; restore backup only through the verified operator recovery procedure, not as an automatic retry"
+  ],
+  "excluded": [
+    "production and both Russian servers",
+    "push/deploy",
+    "real YooKassa TEST/LIVE requests or money",
+    "new roles or existing financial/media grants",
+    "specialist renewals/refunds",
+    "Fair/Ярмарка and 2GIS"
+  ],
+  "ownerApproval": "2026-11-17: Одобряю пакет и установку только локально",
+  "installation": {
+    "date": "2026-11-17",
+    "proofDirectory": "/home/danil/.local/state/blizhniy/local-primary-private/specialist60-install-Hcs6XD",
+    "backupSha256": "93c8f4caa1c7c710effb378af08725eef000bd437c9cb3fba03a39dc14a72f68",
+    "restoreVerified": true,
+    "journalEntries": 59,
+    "sourceBuildId": "4302c7028a655be464f2e8b469877a01958f216d",
+    "httpAcceptance": "passed",
+    "restartAcceptance": "passed",
+    "browserAcceptance": "unavailable",
+    "productionTouched": false
+  }
+}

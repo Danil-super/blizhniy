@@ -1,0 +1,97 @@
+{
+  "migrationSha256": "3550a4d1859bd09df3c8d6a9d234beb14562dd6170c13345a92f86094cbd296a",
+  "schema": {
+    "app": {
+      "column": {
+        "count": 785,
+        "sha256": "e7dc7016fe4eafbbc64def6a202a72ffc2ddcd3722574482a57b2dc3a370af93"
+      },
+      "constraint": {
+        "count": 964,
+        "sha256": "4859a5a93ea0cdc135e5d78a277025fd33086a1444bb4ac8fe19306b89636a37"
+      },
+      "external_foreign_key": {
+        "count": 4,
+        "sha256": "dc652757d9a919fbf59c2f8b06b7acd0962616c56ddc8f79e452201db3340ffe"
+      },
+      "function": {
+        "count": 114,
+        "sha256": "ad4502845f405df21b15e43dd3d2b1ed11fdb8520f7609d5748039c8ec915f74"
+      },
+      "index": {
+        "count": 190,
+        "sha256": "152c8296e83660172c373fb224bf62e0886e8622c7abcabf24ddbf428af5582d"
+      },
+      "policy": {
+        "count": 2,
+        "sha256": "a89c5ad889d5cf4df8f6a1f7794be5d920f6c3e8e2d9c62f038222fb0bb94f0a"
+      },
+      "relation": {
+        "count": 265,
+        "sha256": "68e7c19ed3d9e9ad2f2f846776ef79bbb78b63b6ef2e67f54874e5c21605007c"
+      },
+      "rule": {
+        "count": 1,
+        "sha256": "d719f82ddc11f20f94f0c08a02d8bc60b0be8e1d6cf1931d5ef88d83e4889d96"
+      },
+      "sequence": {
+        "count": 1,
+        "sha256": "4afb13696d8a5696047dfbae4ddce5eb35127e88c18ef93a10c73a7bbf29c59c"
+      },
+      "trigger": {
+        "count": 559,
+        "sha256": "e22ad92fd5164ac967ef269c16ace0dd46f932ce5af614a68a14f35ef5ef1ee8"
+      },
+      "type": {
+        "count": 148,
+        "sha256": "a83579ed10616be5ddaec54612ae5a45bf87d034a8e2058d9b1a9229546cdb8f"
+      },
+      "unsupported": {
+        "count": 1,
+        "sha256": "fce708b25e7e2572e23fe66f314932a52e0fb0a473bb3b11d1e86331378e9b66"
+      }
+    },
+    "admin": {
+      "column": {
+        "count": 46,
+        "sha256": "856e0cfa5ea15a623e5b78edc2f2411db722f4eef6a576cc22fe18c900e78b9f"
+      },
+      "constraint": {
+        "count": 63,
+        "sha256": "5d2ec36cc7ef0f90e7f8eb989519ec00bf13597c078b50e58f325f396cd44aef"
+      },
+      "function": {
+        "count": 6,
+        "sha256": "24b7219ef30f1d2ae1528b70832d53282915bb65395322e2d9c6abc55fca868e"
+      },
+      "index": {
+        "count": 9,
+        "sha256": "459fbb28af5149ec1c04a016849a014af347d907131948f591387b65dbffd3d9"
+      },
+      "relation": {
+        "count": 14,
+        "sha256": "9dbe884c3910b2aaab5e853b4c4c959c90c645cd2d85636c5e983ad7b3176a88"
+      },
+      "sequence": {
+        "count": 1,
+        "sha256": "2a96e1f452b6a910b2960ceef5f330accce46d8a20cda24a2a8ddc7068752f11"
+      },
+      "trigger": {
+        "count": 6,
+        "sha256": "0062b73a9fc7ca097c021ffd1b82371bca6e23a5807f8dbe6834121a8d901d2d"
+      },
+      "type": {
+        "count": 8,
+        "sha256": "e9f25d1798ad12d1407d084ef9adf4b0d7549f58ddd8a46d2de1cdb896e9399d"
+      },
+      "unsupported": {
+        "count": 1,
+        "sha256": "345cee70cce2ba37f93863a4448418f622ad02b07bbe9a460b03de69a7df5f2d"
+      }
+    },
+    "local": {
+      "count": 79,
+      "sha256": "c8d3bd5286f2dc4ab958b29aeaa9255ed81cc17e7b2235da10189718f8afca4b"
+    }
+  }
+}

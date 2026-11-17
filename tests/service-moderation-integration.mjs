@@ -55,6 +55,17 @@ export async function testServiceModeration(suite,admin,config,credentials){
     assert.equal((await store.decide(reviewer.token,'specialist',current.id,'rejected','Выберите действующую профессию.',reviewer.id)).state,'rejected');}
    finally{await admin.query('update app.specialist_categories set active=true where name=$1',[after.form.professionName]);}
   });
+  await suite.test('profile-bound single-about specialist reaches current admin approval without becoming paid or public',async()=>{
+   await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb) on conflict(user_id) do update set profile=excluded.profile',[owner.id,JSON.stringify({name:'Тестовый специалист'})]);
+   const boundForms=new formsModule.PostgresServicePublicationStore(db,{specialistProfileIdentity:true}),before=saved.get('specialist');
+   const row=await boundForms.update(owner.token,owner.id,'specialist',before.id,before.revision,before.form);
+   assert.equal(row.form.skills,null);assert.equal(row.form.experience,null);
+   const review=await store.submit(owner.token,owner.id,'specialist',row.id,row.revision);
+   assert.deepEqual((await store.inspect(reviewer.token,'specialist',review.id,reviewer.id)).issues,[]);
+   assert.equal((await store.decide(reviewer.token,'specialist',review.id,'approved',null,reviewer.id)).state,'approved');
+   const unchanged=await boundForms.read(owner.token,owner.id,'specialist',row.id);
+   assert.deepEqual(unchanged,row);assert.equal(unchanged.status,'draft');assert.equal(unchanged.paid,false);assert.equal(unchanged.publishedAt,null);assert.equal(unchanged.expiresAt,null);
+  });
   await suite.test('service moderation HTTP executes real current-admin decisions and owner readback under restricted SQL without payment side effects',async()=>{
    const {createProductionServiceModerationHandler}=workPublicationModule('production-service-moderation-http',{
     'node:crypto':createRequire(import.meta.url)('node:crypto'),'./auth-http':http,'./account-cookie':cookie,'./trusted-proxy-ip':proxy,'./app-session-transaction':loadAdminModule('app-session-transaction'),

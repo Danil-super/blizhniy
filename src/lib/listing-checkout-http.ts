@@ -9,6 +9,7 @@ import {parseListingCheckout,ListingCheckoutInputError,ListingCheckoutConflictEr
 import type {PostgresListingCheckoutStore} from './postgres-listing-checkout';
 import type {createAccountTestListingPayment} from './account-test-listing-payment';
 import {WorkPublicationAccessError,WorkPublicationConflictError} from './postgres-work-publications';
+import {ServicePublicationAccessError,ServicePublicationConflictError} from './postgres-service-publications';
 
 type Runtime={store:Pick<PostgresListingCheckoutStore,'preview'|'prepare'|'readIntent'|'readOrder'>;payments?:ReturnType<typeof createAccountTestListingPayment>|null;limiter:Pick<AuthRateLimiter,'allowProduction'>};
 type Audit={event:'listing_checkout';requestId:string;status:number;durationMs:number;code?:string};
@@ -53,12 +54,15 @@ export function createListingCheckoutHandler(config:{origin:string},runtime:()=>
    const current=await runtime();if(!await current.limiter.allowProduction('session',ip))throw new AuthRequestError(429,'RATE_LIMITED');
    return reply(await execute(current,token),200);
   }catch(error){
+   if(error&&typeof error==='object'&&'code'in error&&error.code==='PCA02')error=new AuthRequestError(409,'CHECKOUT_NOT_READY');
    if(error&&typeof error==='object'&&'code'in error&&error.code==='P7601')error=new AuthRequestError(403,'PHONE_REQUIRED');
    if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
    if(error instanceof ListingDraftAccessError)error=new AuthRequestError(404,'DRAFT_NOT_FOUND');
    if(error instanceof ListingDraftConflictError)error=new AuthRequestError(409,'DRAFT_CHANGED');
    if(error instanceof WorkPublicationAccessError)error=new AuthRequestError(404,'DRAFT_NOT_FOUND');
    if(error instanceof WorkPublicationConflictError)error=new AuthRequestError(409,'DRAFT_CHANGED');
+   if(error instanceof ServicePublicationAccessError)error=new AuthRequestError(404,'DRAFT_NOT_FOUND');
+   if(error instanceof ServicePublicationConflictError)error=new AuthRequestError(409,'DRAFT_CHANGED');
    if(error instanceof ListingCheckoutConflictError)error=new AuthRequestError(409,'CHECKOUT_CHANGED');
    if(error instanceof ListingCheckoutUnavailableError)error=new AuthRequestError(409,'CHECKOUT_NOT_READY');
    if(error instanceof ListingDraftInputError||error instanceof ListingCheckoutInputError)error=new AuthRequestError(422,'INVALID_INPUT');

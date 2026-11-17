@@ -1,3 +1,4 @@
+import {getSpecialistCheckoutMigration} from './specialist-checkout-release.mjs';
 // Dormant operator library: sources/SQL only, no connection, role adoption or grant executor.
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
@@ -44,10 +45,10 @@ function journal(schema=54){return[...getBootstrapPlan({includeListingContactMet
  const source=readFileSync(new URL('../database/migrations/'+name,import.meta.url),'utf8');
  if(!/^begin;$/m.test(source)||!/commit;\s*$/.test(source))throw Error('Invalid refund migration');
  return{name,sha256:createHash('sha256').update(source).digest('hex')};
-}),...(schema===58?[getMediaRetentionMigration()]:[])].map(({name,sha256})=>({name,sha256}));}
+}),...(schema>=58?[getMediaRetentionMigration()]:[]),...(schema===60?[getSpecialistCheckoutMigration()]:[])].map(({name,sha256})=>({name,sha256}));}
 
 export function getRefundWorkerRolePlan(database,{schema=54,localPrimary=false}={}){
- if(typeof localPrimary!=='boolean'||(schema===58&&!localPrimary)||!validDatabase(database)||![54,55,56,57,58].includes(schema))throw Error('Invalid refund database');
+ if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||!validDatabase(database)||![54,55,56,57,58,60].includes(schema))throw Error('Invalid refund database');
  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(schema),
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
    ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`)),
@@ -78,7 +79,7 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant,localPrim
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   const schema=localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:actualJournal.length===55?55:54;
+   const schema=localPrimary&&actualJournal.length===59?60:localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:actualJournal.length===55?55:54;
    if(JSON.stringify(actualJournal)!==JSON.stringify(schema>=55?journal(schema):expectedJournal))throw Error('Invalid refund journal');
    await assertRefundSchema(tx,schema,{localPrimary});
    await assertFinancialCatalogPrivileges(tx);

@@ -8,6 +8,9 @@ import {parseListingCheckout,ListingCheckoutConflictError,ListingCheckoutUnavail
 import type {PostgresDatabase,PostgresQueries} from './postgres';
 import {inspectWorkPurchase} from './vacancy-purchase-eligibility';
 import {readPostmoderationEnabled} from './listing-workflow-config';
+import {inspectSpecialistPurchase} from './specialist-purchase-eligibility';
+import {readSpecialistCheckoutEnabled} from './specialist-checkout-config';
+import {hashSessionToken} from './identity';
 
 export type ListingCheckoutConfig={shopId:string;isTest:boolean;siteOrigin:string;receiptVatCode:number|null};
 export type ListingPaymentOrder={id:string;creationKey:string;targetId:string;targetRevision:string;tariffId:string;amount:string;durationDays:number;status:'created'|'pending'|'succeeded'|'failed'|'refunded';createdAt:string};
@@ -30,12 +33,15 @@ export class PostgresListingCheckoutStore{
  private readonly forms:PostgresListingFormStore;
  private readonly intents:PostgresPaymentIntentStore;
  private readonly config:ListingCheckoutConfig;
- private readonly targetType:'listing'|'vacancy'|'workRequest';
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,config:ListingCheckoutConfig,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest';renewals?:boolean;publicationTestOwner?:string;testModeHistory?:boolean}={}){
+ private readonly targetType:'listing'|'vacancy'|'workRequest'|'specialist';
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,config:ListingCheckoutConfig,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest'|'specialist';renewals?:boolean;publicationTestOwner?:string;testModeHistory?:boolean}={}){
   if(typeof window!=='undefined')throw new ListingCheckoutUnavailableError();
   if(policy.publicationTestOwner!==undefined&&(!config.isTest||parseListingDraftId(policy.publicationTestOwner)!==policy.publicationTestOwner||!policy.postmoderation||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
   this.targetType=policy.targetType??'listing';
-  if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!config.isTest||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
+  if(this.targetType==='specialist'){
+   readSpecialistCheckoutEnabled();
+   if(process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!=='https://127.0.0.1:3045'||!readPostmoderationEnabled()||!config.isTest||config.shopId!=='local-fixture-shop'||policy.renewals||policy.publicationTestOwner)throw new ListingCheckoutUnavailableError();
+  }else if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!config.isTest||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
   if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!config.isTest||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
   this.forms=new PostgresListingFormStore(db,{postmoderation:policy.renewals===true,renewals:policy.renewals===true});this.intents=new PostgresPaymentIntentStore(db);this.config={...config};
  }
@@ -57,6 +63,12 @@ export class PostgresListingCheckoutStore{
   if(!row?.available)throw new ListingCheckoutUnavailableError();
  }
  private async inspected(tx:PostgresQueries,owner:string,id:string,revision:string):Promise<Offer>{
+  if(this.targetType==='specialist'){
+   if((await inspectSpecialistPurchase(this.db,tx,owner,id,revision,false)).issues.length)throw new ListingCheckoutUnavailableError();
+   const offer=(await tx.query<Offer>(`select id,name,price::text as amount,'RUB' as currency,duration_days as "durationDays" from app.tariffs
+    where id='specialist-publication' and action='specialist_publication' and active and price>0 and duration_days between 1 and 3650`)).rows[0];
+   if(!offer)throw new ListingCheckoutUnavailableError();return offer;
+  }
   if(this.targetType!=='listing'){
    const {issues}=await inspectWorkPurchase(this.db,tx,owner,id,revision,this.targetType,false,this.policy.renewals===true);
    if(issues.length)throw new ListingCheckoutUnavailableError();
@@ -91,6 +103,7 @@ export class PostgresListingCheckoutStore{
    ${this.policy.renewals?"(o.status in ('created','pending') or o.status='succeeded' and not exists(select 1 from app.payment_fulfillments f where f.intent_id=o.id))":"o.status in ('created','pending','succeeded')"}`,[owner,id])).rows[0];
  }
  async preview(token:string,owner:string,listingId:unknown,expectedRevision:unknown){
+  if(this.targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw new ListingCheckoutUnavailableError();
   const id=parseListingDraftId(listingId),revision=parseListingDraftRevision(expectedRevision);
   return this.owner(token,owner,async(tx,actor)=>{
    const tariff=await this.inspected(tx,actor,id,revision),active=await this.active(tx,actor,id);
@@ -106,6 +119,7 @@ export class PostgresListingCheckoutStore{
   * A known provider ID remains recoverable after edits or tariff changes, never a new purchase.
   */
  async authorizeDispatch(token:string,owner:string,paymentId:unknown,requireCurrent=false):Promise<PaymentIntentBinding>{
+  if(this.targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw new ListingCheckoutUnavailableError();
   const id=parseListingDraftId(paymentId);
   return this.owner(token,owner,async(tx,actor)=>{
    const row=(await tx.query<PaymentIntent&{status:string}>(`select i.id,i.owner_id as "ownerId",i.target_type as "targetType",i.target_id as "targetId",
@@ -116,6 +130,7 @@ export class PostgresListingCheckoutStore{
     where o.id=$1 and o.owner_id=$2 and o.target_type='${this.targetType}' and i.merchant_shop_id=$3 and i.is_test=$4`,
    [id,actor,this.config.shopId,this.config.isTest])).rows[0];
    if(!row)throw new ListingDraftAccessError();
+   if(this.targetType==='specialist'&&(await tx.query('select intent_id from app.specialist_checkout_terms where intent_id=$1',[id])).rowCount!==1)throw new ListingCheckoutUnavailableError();
    const {status,...input}=row,intent=parsePaymentIntent(input);
    if(this.policy.publicationTestOwner&&JSON.parse(intent.requestBody).metadata.publicationMode!=='account-test-v1')throw new ListingCheckoutUnavailableError();
    if(requireCurrent){
@@ -134,7 +149,7 @@ export class PostgresListingCheckoutStore{
  async readOrder(token:string,owner:string,paymentId:unknown):Promise<ListingPaymentSnapshot|null>{
   const id=parseListingDraftId(paymentId);return this.owner(token,owner,async(tx,actor)=>{
    const row=(await tx.query<OrderRow&{publishedAt:string|null;expiresAt:string|null;testPublication:boolean;testOnly:boolean}>(`select ${columns},i.is_test as "testOnly",
-    coalesce(i.is_test and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1',false) as "testPublication",
+    coalesce(i.is_test and (i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'${this.targetType==='specialist'?' or exists(select 1 from app.specialist_checkout_terms admitted where admitted.intent_id=i.id)':''}),false) as "testPublication",
     to_char(${this.policy.renewals?"greatest(f.published_at,f.expires_at-i.duration_days*interval '24 hours')":'f.published_at'} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
     to_char(f.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "expiresAt"
     ${source} left join app.payment_fulfillments f on f.intent_id=o.id
@@ -150,7 +165,7 @@ export class PostgresListingCheckoutStore{
    if(site.protocol!=='https:'||site.username||site.password||site.port||site.pathname!=='/'||site.search||site.hash||/[\s\\\u0000-\u001f\u007f]/.test(this.config.siteOrigin))throw new Error('Invalid checkout origin');
    origin=site.origin;
   }catch{throw new ListingCheckoutUnavailableError();}
-  const amount={value:offer.amount,currency:'RUB'},description=this.targetType==='vacancy'?'Размещение вакансии':this.targetType==='workRequest'?'Размещение заказа':'Размещение объявления';
+  const amount={value:offer.amount,currency:'RUB'},description=this.targetType==='specialist'?'Размещение анкеты специалиста':this.targetType==='vacancy'?'Размещение вакансии':this.targetType==='workRequest'?'Размещение заказа':'Размещение объявления';
   let receipt:object|undefined;
   if(this.config.receiptVatCode!==null){
    const vat=this.config.receiptVatCode;
@@ -165,6 +180,7 @@ export class PostgresListingCheckoutStore{
     metadata:{localPaymentId:id,targetId:input.listingId,targetType:this.targetType,tariffId:offer.id,...(this.policy.publicationTestOwner?{publicationMode:'account-test-v1'}:{})},...(receipt?{receipt}:{})})});
  }
  async prepare(token:string,owner:string,value:unknown){
+  if(this.targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw new ListingCheckoutUnavailableError();
   const input=parseListingCheckout(value);return this.owner(token,owner,async(tx,actor)=>{
    // A readback never rebuilds old receipts or silently swaps the original expected offer.
    const prior=await this.keyed(tx,actor,input.creationKey);
@@ -180,6 +196,10 @@ export class PostgresListingCheckoutStore{
    }
    const intent=await this.intent(tx,actor,id,input,offer);
    await this.intents.persistInTransaction(tx,intent);
+   if(this.targetType==='specialist'){
+    await tx.query("select set_config('blizhniy.specialist_checkout_session',$1,true)",[hashSessionToken(token)]);
+    await tx.query('insert into app.specialist_checkout_terms(intent_id) values($1)',[id]);
+   }
    const saved=await this.keyed(tx,actor,input.creationKey);if(!saved)throw new ListingCheckoutUnavailableError();return display(saved,this.targetType);
   });
  }

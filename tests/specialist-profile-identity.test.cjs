@@ -43,6 +43,19 @@ test('profile-bound write preserves former description, skills and experience in
  assert.equal(f.form.description,'Работаю аккуратно.\n\nНавыки: Монтаж труб\n\nОпыт и квалификация: 5 лет');
  assert.equal(f.form.skills,null);assert.equal(f.form.experience,null);
 });
+test('inspection accepts the profile-bound single about form and preserves required fields and active references',async()=>{
+ const form=parseServicePublicationForm('specialist',{title:'Анна',description:'Выполняю монтаж и ремонт сантехники.',cityName:'Краснодар',professionName:'Сантехник',price:'1500',contactPhone:'+79990000000',placementRightConfirmed:true});
+ const db={transaction:()=>{throw Error('Inspection must use the supplied transaction');}};
+ const inspect=async(input,active=true,profileBound=true)=>new PostgresServicePublicationStore(db,{specialistProfileIdentity:profileBound}).inspectInTransaction({query:async sql=>{
+  if(sql.includes('as "referencesActive"'))return{rows:[{revision:'1',referencesActive:active}],rowCount:1};
+  if(sql.includes('from app.service_publication_photos'))return{rows:[],rowCount:0};
+  return{rows:[{id,kind:'specialist',form:input,revision:'1',status:'draft',paid:false}],rowCount:1};
+ }},owner,'specialist',id,'1');
+ assert.deepEqual((await inspect(form)).issues,[]);
+ assert.ok((await inspect(form,true,false)).issues.length,'legacy validation remains explicit');
+ assert.ok((await inspect(form,false)).issues.length,'inactive references still block');
+ for(const patch of [{description:'Мало'},{price:null},{contactPhone:null},{placementRightConfirmed:false}])assert.ok((await inspect({...form,...patch})).issues.length);
+});
 test('single-about profile keeps paid catalogue eligibility without legacy skills, never without payment or within an expired window',()=>{
  const now=Date.parse('2026-10-25T12:00:00Z');
  const row={id,kind:'specialist',form:parseServicePublicationForm('specialist',{title:'Анна',description:'Выполняю монтаж и ремонт сантехники.',cityName:'Краснодар',professionName:'Сантехник',price:'1500',contactPhone:'+79990000000',placementRightConfirmed:true}),mediaIds:[],status:'published',paid:true,createdAt:'2026-10-01T00:00:00Z',publishedAt:'2026-10-01T00:00:00Z',expiresAt:'2027-01-01T00:00:00Z',profileIdentity:{name:'Анна-Мария',avatarDataUrl:png}};

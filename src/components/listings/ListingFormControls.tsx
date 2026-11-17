@@ -14,7 +14,7 @@ import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import { categories as fallbackCategories, cities, region } from "@/lib/data";
 import { extractListingPriceDigits } from "@/lib/listing-price";
 import { getRentalSubcategories, isRentalCategorySlug, isRentalSubcategorySlug } from "@/lib/listing-rental";
-import { filterListingMediaFiles, listingMediaLimitText } from "@/lib/media-limits";
+import { filterListingMediaFiles, formPhotoLimitText, preparePhotoFiles } from "@/lib/media-limits";
 import { mediaOwnerQuotaText } from "@/lib/media-upload-contract";
 import { hasMapCoordinates } from "@/lib/map-location";
 import type { BookingDetails, Category, ListingKind } from "@/lib/types";
@@ -718,6 +718,7 @@ export function ListingKindAndCategoryFields({
 
 export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) {
   const primary=usePrimaryAccountAuth();
+  const [preparing,setPreparing]=useState(false),preparingRef=useRef(false),mounted=useRef(true);
   const [media, setMedia] = useState<PreviewMedia[]>([]);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const libraryDialogRef=useRef<HTMLDialogElement>(null);
@@ -737,16 +738,24 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
   const cropEditorMedia = media.find((item) => item.id === cropEditorId && item.kind === "image");
 
   useEffect(() => {
+    mounted.current=true;
     return () => {
+      mounted.current=false;
       urlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       urlsRef.current = [];
     };
   }, []);
 
-  function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+  async function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+    if(preparingRef.current)return;
+    const input=event.currentTarget;input.dataset.photoPreparing='true';
     const selectedFiles = Array.from(event.target.files ?? []).slice(0, availableSlots);
+    preparingRef.current=true;setPreparing(true);
+    let prepared:Awaited<ReturnType<typeof preparePhotoFiles>>;
+    try{prepared=await preparePhotoFiles(selectedFiles);}finally{preparingRef.current=false;delete input.dataset.photoPreparing;if(mounted.current)setPreparing(false);}
+    if(!mounted.current)return;
     const currentTotalSize = media.reduce((sum, item) => sum + item.file.size, 0);
-    const { accepted, rejectedMessages } = filterListingMediaFiles(selectedFiles, currentTotalSize);
+    const filtered=filterListingMediaFiles(prepared.accepted,currentTotalSize),accepted=filtered.accepted,rejectedMessages=[...prepared.rejectedMessages,...filtered.rejectedMessages];
     const files = accepted.slice(0, availableSlots);
 
     setMediaMessage(rejectedMessages[0] ?? "");
@@ -869,18 +878,18 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <input ref={inputRef} className="sr-only" type="file" accept="image/*" name="photos" aria-label="Фотографии объявления" multiple onChange={handleFiles} />
+      <input ref={inputRef} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/gif" name="photos" aria-label="Фотографии объявления" data-photo-preparing={preparing?'true':undefined} disabled={preparing} multiple onChange={handleFiles} />
       {savedPhotos}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <Camera className="h-5 w-5 shrink-0 text-[#0875d1]" />
           <div>
             <h2 className="font-bold text-slate-800">Фото объявления</h2>
-            <p className="mt-1 text-sm text-slate-500">{media.length ? `${media.length} из ${maxFiles}` : "Файлы не выбраны"}. {listingMediaLimitText()} Единый кадр 4:3; рекомендуемый размер — 1600×1200. Кадр можно настроить перед сохранением.</p>
+            <p className="mt-1 text-sm text-slate-500">{media.length ? `${media.length} из ${maxFiles}` : "Файлы не выбраны"}. {formPhotoLimitText()} Единый кадр 4:3; рекомендуемый размер — 1600×1200. Кадр можно настроить перед сохранением.</p>
             {primary&&<p className="mt-1 text-sm text-slate-500">{mediaOwnerQuotaText}</p>}
           </div>
         </div>
-        <button type="button" onClick={openFileDialog} disabled={availableSlots <= 0} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#d92d20] px-4 text-sm font-bold text-white transition hover:bg-[#b42318] disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="button" onClick={openFileDialog} disabled={preparing||availableSlots <= 0} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#d92d20] px-4 text-sm font-bold text-white transition hover:bg-[#b42318] disabled:cursor-not-allowed disabled:opacity-50">
           <ImagePlus className="h-4 w-4" />
           Добавить файлы
         </button>
@@ -906,6 +915,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
       </button>
 
       {mediaMessage ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{mediaMessage}</p> : null}
+      {preparing&&<p role="status" className="mt-2 text-sm text-blue-800">Подготавливаем фотографии…</p>}
 
       {media.length ? (
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
@@ -963,7 +973,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
               <div className="min-w-0">
                 <h2 className="text-base font-bold text-[#060b27] sm:text-lg">Медиатека</h2>
-                <p className="mt-0.5 text-xs font-semibold text-slate-500 sm:text-sm">{media.length} из {maxFiles}. {listingMediaLimitText()}</p>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500 sm:text-sm">{media.length} из {maxFiles}. {formPhotoLimitText()}</p>
               </div>
               <div className="flex shrink-0 gap-2">
                 <button type="button" onClick={openFileDialog} disabled={availableSlots <= 0} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#0875d1] px-3 text-sm font-bold text-white transition hover:bg-[#0669bd] disabled:cursor-not-allowed disabled:opacity-50">

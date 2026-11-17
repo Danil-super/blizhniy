@@ -7,6 +7,9 @@ import {inspectWorkPurchase} from './vacancy-purchase-eligibility';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {WorkPublicationAccessError,WorkPublicationConflictError} from './postgres-work-publications';
 import {WorkPublicationInputError} from './work-publication-contract';
+import {inspectSpecialistPurchase} from './specialist-purchase-eligibility';
+import {readSpecialistCheckoutEnabled} from './specialist-checkout-config';
+import {ServicePublicationAccessError,ServicePublicationConflictError} from './postgres-service-publications';
 
 type Result={state:'fulfilled';period:PaymentPublicationPeriod}|{state:'not_ready'|'blocked';reason:string};
 type MerchantScope={shopId:string;isTest:boolean};
@@ -20,13 +23,15 @@ export class PostgresListingPaymentFulfillmentStore{
  private readonly intents:PostgresPaymentIntentStore;
  private readonly forms:PostgresListingFormStore;
  private readonly merchant:MerchantScope;
- private readonly targetType:'listing'|'vacancy'|'workRequest';
- constructor(db:Pick<PostgresDatabase,'transaction'>,merchant:MerchantScope,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest';renewals?:boolean;publicationTestOwner?:string}={}){
+ private readonly targetType:'listing'|'vacancy'|'workRequest'|'specialist';
+ constructor(db:Pick<PostgresDatabase,'transaction'>,merchant:MerchantScope,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest'|'specialist';renewals?:boolean;publicationTestOwner?:string}={}){
   if(typeof window!=='undefined'||!merchant||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId)||typeof merchant.isTest!=='boolean')throw new PaymentPublicationError();
   this.merchant={...merchant};
   if(policy.publicationTestOwner!==undefined&&(!merchant.isTest||parseListingDraftId(policy.publicationTestOwner)!==policy.publicationTestOwner||!policy.postmoderation||!readPostmoderationEnabled()))throw new PaymentPublicationError();
   this.targetType=policy.targetType??'listing';
-  if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!merchant.isTest||!readPostmoderationEnabled()))throw new PaymentPublicationError();
+  if(this.targetType==='specialist'){
+   if(!readSpecialistCheckoutEnabled()||!merchant.isTest||merchant.shopId!=='local-fixture-shop'||policy.renewals||policy.publicationTestOwner)throw new PaymentPublicationError();
+  }else if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!merchant.isTest||!readPostmoderationEnabled()))throw new PaymentPublicationError();
   if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!merchant.isTest||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled()))throw new PaymentPublicationError();
   this.db=db;this.intents=new PostgresPaymentIntentStore(db);this.forms=new PostgresListingFormStore(db,{postmoderation:policy.renewals===true,renewals:policy.renewals===true});
  }
@@ -44,6 +49,7 @@ export class PostgresListingPaymentFulfillmentStore{
   if(!period)throw new PaymentPublicationError();return{state:'fulfilled',period};
  }
  async fulfill(value:unknown):Promise<Result>{
+  if(this.targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw new PaymentPublicationError();
   const id=parseListingDraftId(value);
   return this.db.transaction(async tx=>{
    // Detect the actual installed trigger, never a separately configured flag.
@@ -65,6 +71,13 @@ export class PostgresListingPaymentFulfillmentStore{
    if(order.status!=='succeeded'||verified?.status!=='succeeded'||verified.capturedAt===null)return{state:'not_ready',reason:'capture_required'};
    if(verified.providerId!==intent.providerPaymentId)throw new PaymentPublicationError();
    if(!user||user.blocked||!user.verified)return{state:'blocked',reason:'account_unavailable'};
+   if(this.targetType==='specialist'){
+    try{if((await inspectSpecialistPurchase(this.db,tx,intent.ownerId,intent.targetId,intent.targetRevision)).issues.length)return{state:'blocked',reason:'content_unavailable'};}
+    catch(error){if(error instanceof ServicePublicationAccessError||error instanceof ServicePublicationConflictError)return{state:'blocked',reason:'target_changed'};throw error;}
+    if(!readSpecialistCheckoutEnabled())throw new PaymentPublicationError();
+    const period=(await tx.query<PaymentPublicationPeriod>(`insert into app.payment_fulfillments(intent_id) values($1) returning ${receiptColumns}`,[id])).rows[0];
+    if(!period)throw new PaymentPublicationError();return{state:'fulfilled',period};
+   }
    if(this.targetType!=='listing'){
     let inspected:Awaited<ReturnType<typeof inspectWorkPurchase>>;
     try{inspected=await inspectWorkPurchase(this.db,tx,intent.ownerId,intent.targetId,intent.targetRevision,this.targetType,true,this.policy.renewals===true);}

@@ -1,0 +1,16 @@
+diff --git a/scripts/check-quality-floor.mjs b/scripts/check-quality-floor.mjs
+index 2a0db0c..68303ee 100644
+--- a/scripts/check-quality-floor.mjs
++++ b/scripts/check-quality-floor.mjs
+@@ -152,0 +153 @@ const reviewedListingArtifacts = [
++  {"file": "tests/profession-select-primary.test.cjs", "before": "c45990b531f16109ac9adcf76edc195d6de3363ce7c60e6c093dc332d9f5fb87", "after": "756f6b32fa43d4be06ecddd037ba96a70e14e185a6f6f9dedb79b2347446da70"},
+diff --git a/tests/profession-select-primary.test.cjs b/tests/profession-select-primary.test.cjs
+index 26743ef..6c31c9c 100644
+--- a/tests/profession-select-primary.test.cjs
++++ b/tests/profession-select-primary.test.cjs
+@@ -25 +25 @@ function harness(initial){
+-test('primary selector requires an explicit UUID choice for duplicate labels and shows distinguishing category and slug',()=>{
++test('primary selector requires an explicit UUID choice for duplicate labels and shows distinguishing categories without technical slugs',()=>{
+@@ -29 +29 @@ test('primary selector requires an explicit UUID choice for duplicate labels and
+- assert.equal(options.length,2);assert.match(content(options[0]),/Первая категория.*synthetic-one/);assert.match(content(options[1]),/Вторая категория.*synthetic-two/);
++ assert.equal(options.length,2);assert.match(content(options[0]),/Первая категория/);assert.match(content(options[1]),/Вторая категория/);assert.doesNotMatch(content(options[0]),/synthetic-one/);assert.doesNotMatch(content(options[1]),/synthetic-two/);

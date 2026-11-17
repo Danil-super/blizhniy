@@ -31,16 +31,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - name: Show scan target
+      - name: Prepare scan reports
         run: |
           echo "Scanning: ${TARGET_URL}"
+          install -d -m 2770 "${RUNNER_TEMP}/zap-reports"
+          echo "ZAP_REPORT_DIR=${RUNNER_TEMP}/zap-reports" >> "${GITHUB_ENV}"
 
       - name: Run ZAP baseline scan
         id: zap
         run: |
           set +e
           docker run --rm \
-            -v "${PWD}:/zap/wrk/:rw" \
+            --group-add "$(id -g)" \
+            -v "${ZAP_REPORT_DIR}:/zap/wrk/:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
               -t "${TARGET_URL}" \
@@ -60,8 +63,8 @@ jobs:
             echo "Target: ${TARGET_URL}"
             echo "ZAP exit code: ${{ steps.zap.outputs.exit_code }}"
             echo ""
-            if [ -f zap-report.md ]; then
-              cat zap-report.md
+            if [ -f "${ZAP_REPORT_DIR}/zap-report.md" ]; then
+              cat "${ZAP_REPORT_DIR}/zap-report.md"
             else
               echo "ZAP report was not generated."
             fi
@@ -73,9 +76,9 @@ jobs:
         with:
           name: zap-baseline-report
           path: |
-            zap-report.html
-            zap-report.json
-            zap-report.md
+            ${{ env.ZAP_REPORT_DIR }}/zap-report.html
+            ${{ env.ZAP_REPORT_DIR }}/zap-report.json
+            ${{ env.ZAP_REPORT_DIR }}/zap-report.md
           if-no-files-found: error
           retention-days: 14
 

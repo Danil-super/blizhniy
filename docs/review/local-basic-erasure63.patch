@@ -1,0 +1,580 @@
+diff --git a/database/basic-account-erasure-schema63.json b/database/basic-account-erasure-schema63.json
+new file mode 100644
+index 0000000..4c9e847
+--- /dev/null
++++ b/database/basic-account-erasure-schema63.json
+@@ -0,0 +1,97 @@
++{
++  "migrationSha256": "3550a4d1859bd09df3c8d6a9d234beb14562dd6170c13345a92f86094cbd296a",
++  "schema": {
++    "app": {
++      "column": {
++        "count": 785,
++        "sha256": "e7dc7016fe4eafbbc64def6a202a72ffc2ddcd3722574482a57b2dc3a370af93"
++      },
++      "constraint": {
++        "count": 964,
++        "sha256": "4859a5a93ea0cdc135e5d78a277025fd33086a1444bb4ac8fe19306b89636a37"
++      },
++      "external_foreign_key": {
++        "count": 4,
++        "sha256": "dc652757d9a919fbf59c2f8b06b7acd0962616c56ddc8f79e452201db3340ffe"
++      },
++      "function": {
++        "count": 114,
++        "sha256": "ad4502845f405df21b15e43dd3d2b1ed11fdb8520f7609d5748039c8ec915f74"
++      },
++      "index": {
++        "count": 190,
++        "sha256": "152c8296e83660172c373fb224bf62e0886e8622c7abcabf24ddbf428af5582d"
++      },
++      "policy": {
++        "count": 2,
++        "sha256": "a89c5ad889d5cf4df8f6a1f7794be5d920f6c3e8e2d9c62f038222fb0bb94f0a"
++      },
++      "relation": {
++        "count": 265,
++        "sha256": "68e7c19ed3d9e9ad2f2f846776ef79bbb78b63b6ef2e67f54874e5c21605007c"
++      },
++      "rule": {
++        "count": 1,
++        "sha256": "d719f82ddc11f20f94f0c08a02d8bc60b0be8e1d6cf1931d5ef88d83e4889d96"
++      },
++      "sequence": {
++        "count": 1,
++        "sha256": "4afb13696d8a5696047dfbae4ddce5eb35127e88c18ef93a10c73a7bbf29c59c"
++      },
++      "trigger": {
++        "count": 559,
++        "sha256": "e22ad92fd5164ac967ef269c16ace0dd46f932ce5af614a68a14f35ef5ef1ee8"
++      },
++      "type": {
++        "count": 148,
++        "sha256": "a83579ed10616be5ddaec54612ae5a45bf87d034a8e2058d9b1a9229546cdb8f"
++      },
++      "unsupported": {
++        "count": 1,
++        "sha256": "fce708b25e7e2572e23fe66f314932a52e0fb0a473bb3b11d1e86331378e9b66"
++      }
++    },
++    "admin": {
++      "column": {
++        "count": 46,
++        "sha256": "856e0cfa5ea15a623e5b78edc2f2411db722f4eef6a576cc22fe18c900e78b9f"
++      },
++      "constraint": {
++        "count": 63,
++        "sha256": "5d2ec36cc7ef0f90e7f8eb989519ec00bf13597c078b50e58f325f396cd44aef"
++      },
++      "function": {
++        "count": 6,
++        "sha256": "24b7219ef30f1d2ae1528b70832d53282915bb65395322e2d9c6abc55fca868e"
++      },
++      "index": {
++        "count": 9,
++        "sha256": "459fbb28af5149ec1c04a016849a014af347d907131948f591387b65dbffd3d9"
++      },
++      "relation": {
++        "count": 14,
++        "sha256": "9dbe884c3910b2aaab5e853b4c4c959c90c645cd2d85636c5e983ad7b3176a88"
++      },
++      "sequence": {
++        "count": 1,
++        "sha256": "2a96e1f452b6a910b2960ceef5f330accce46d8a20cda24a2a8ddc7068752f11"
++      },
++      "trigger": {
++        "count": 6,
++        "sha256": "0062b73a9fc7ca097c021ffd1b82371bca6e23a5807f8dbe6834121a8d901d2d"
++      },
++      "type": {
++        "count": 8,
++        "sha256": "e9f25d1798ad12d1407d084ef9adf4b0d7549f58ddd8a46d2de1cdb896e9399d"
++      },
++      "unsupported": {
++        "count": 1,
++        "sha256": "345cee70cce2ba37f93863a4448418f622ad02b07bbe9a460b03de69a7df5f2d"
++      }
++    },
++    "local": {
++      "count": 79,
++      "sha256": "c8d3bd5286f2dc4ab958b29aeaa9255ed81cc17e7b2235da10189718f8afca4b"
++    }
++  }
++}
+diff --git a/database/candidates/0063-basic-account-erasure.sql b/database/candidates/0063-basic-account-erasure.sql
+new file mode 100644
+index 0000000..9008a89
+--- /dev/null
++++ b/database/candidates/0063-basic-account-erasure.sql
+@@ -0,0 +1,53 @@
++-- Candidate only: basic-account primary erasure receipts and late-writer fences.
++-- No installed role, grants, automatic startup or production activation.
++begin;
++set local lock_timeout='3s';
++set local statement_timeout='10s';
++alter table app_admin.migrations drop constraint migrations_name_check;
++alter table app_admin.migrations add constraint migrations_name_check
++ check(name in ('0061-admin-user-access.sql','0062-admin-tariffs.sql','0063-basic-account-erasure.sql'));
++create table app_admin.basic_account_erasures (
++ operation_id uuid primary key,
++ request_id uuid not null unique references app.account_deletion_requests(id),
++ subject_id uuid not null unique,
++ actor_id uuid not null,
++ expected_auth_version bigint not null check(expected_auth_version>=0),
++ expected_request_revision bigint not null check(expected_request_revision>=1),
++ completed_at timestamptz not null default clock_timestamp() check(isfinite(completed_at))
++);
++revoke all on app_admin.basic_account_erasures from public;
++create function app_admin.guard_basic_account_erasure() returns trigger language plpgsql
++set search_path='' as $$
++begin
++ raise exception 'Erasure receipt is append-only' using errcode='42501';
++end;
++$$;
++revoke all on function app_admin.guard_basic_account_erasure() from public;
++create trigger basic_account_erasure_immutable before update or delete on app_admin.basic_account_erasures
++ for each row execute function app_admin.guard_basic_account_erasure();
++alter table app_admin.basic_account_erasures enable always trigger basic_account_erasure_immutable;
++create function app_admin.fence_erased_identity() returns trigger language plpgsql security definer
++set search_path='' as $$
++declare subject uuid;
++begin
++ if pg_catalog.current_setting('transaction_isolation')<>'read committed' then
++  raise exception 'Erasure-fenced writes require read committed' using errcode='23514';end if;
++ if tg_table_schema='app' and tg_table_name='users' then subject:=new.id;
++ elsif tg_table_schema='app' and tg_table_name in ('payment_checkout_intents','payment_orders') then subject:=new.owner_id;
++ else raise exception 'Unsupported erasure fence target' using errcode='42501';end if;
++ if exists(select 1 from app_admin.basic_account_erasures where subject_id=subject) then
++  raise exception 'Erased identity cannot receive new operations' using errcode='23514';end if;
++ return new;
++end;
++$$;
++revoke all on function app_admin.fence_erased_identity() from public;
++create trigger users_erasure_fence before insert or update of id on app.users
++ for each row execute function app_admin.fence_erased_identity();
++create trigger checkout_intents_erasure_fence before insert or update of owner_id on app.payment_checkout_intents
++ for each row execute function app_admin.fence_erased_identity();
++create trigger payment_orders_erasure_fence before insert or update of owner_id on app.payment_orders
++ for each row execute function app_admin.fence_erased_identity();
++alter table app.users enable always trigger users_erasure_fence;
++alter table app.payment_checkout_intents enable always trigger checkout_intents_erasure_fence;
++alter table app.payment_orders enable always trigger payment_orders_erasure_fence;
++commit;
+diff --git a/docs/account-deletion-basic63.md b/docs/account-deletion-basic63.md
+new file mode 100644
+index 0000000..d3affb9
+--- /dev/null
++++ b/docs/account-deletion-basic63.md
+@@ -0,0 +1,100 @@
++# Базовый аккаунт: исполнитель на временной БД
++
++17.11.2026. Продолжение [проверки заявок62](account-deletion-preflight62.md).
++Это проверенный кандидат, **не установленная возможность сайта**. Постоянный
++стенд остаётся app60/admin62; production и настоящие платежи не затронуты.
++
++## Граница и результат
++
++Кандидат допускает только NODE_ENV=test, одноразовый контейнер с проверенными
++label/name, закреплённым образом PostgreSQL18, loopback-портом, tmpfs без
++постоянных mount/bind, совпавшими SQL fixture-marker и адресом сервера. БД должна
++называться blizhniy_erasure_test, роль — postgres. Удаляемый пользователь обязан
++иметь адрес вида `<его UUID>@synthetic.invalid`. CLI, HTTP-маршрута, установленной
++роли или автоматического задания нет. Администратор подтверждается настоящей
++сессией; её истечение в конце откатывает даже уже выполненный DELETE.
++
++В одной транзакции удаляются основные данные простого аккаунта без доменной
++истории. Заявка закрывается как partly_retained, сохраняются псевдонимный аудит
++и квитанция операции. Ответ явно содержит completeErasure=false. Это не
++утверждение об уничтожении всех персональных данных и внешних копий.
++
++| Категория | Поведение кандидата |
++|---|---|
++| Пользователь, профиль/организация, сессии, email/recovery-токены, Telegram attempt/binding | Удаление через проверенные существующие CASCADE; две сессии перестают действовать |
++| Версии принятых документов, личные уведомления и готовая/завершённая почта | Удаление связанных основных записей; уже отправленное письмо во внешнем ящике не отзывается |
++| Публикации, анкеты, отклики, брони, платежи любого статуса, возвраты, медиа, внешний аудит | При наличии связанных UUID — отказ и отдельный ручной план; ничего не стирается |
++| reserved/sending/unknown почта | Отказ до удаления, проверка под блокировкой строк |
++| Заявки/события удаления и новая квитанция | Сохраняются без email/телефона; UUID остаётся псевдонимным идентификатором, а не анонимными данными |
++| Файлы, SMTP/внешние получатели, логи, индексы/кеш и backup | Полнота удаления не доказана; постоянное включение до проверки этих контуров не разрешено этим кандидатом |
++
++Таблица описывает технический охват синтетического кандидата, **не утверждает
++правовые основания или сроки хранения реальных сведений**. Для аккаунтов с
++финансовой/спорной историей требуется отдельная политика по категориям.
++
++## Идемпотентность и конкуренция
++
++Предлагаемая0063 добавляет append-only app_admin.basic_account_erasures с
++уникальными operation/request/subject ID. Повтор связан также с исходным
++администратором, версиями аккаунта и заявки. Другой пользователь или payload
++с тем же номером операции отклоняется; потерянный ответ COMMIT восстанавливается
++по исходной квитанции без нового удаления. При отказе транзакция не оставляет
++квитанцию или новых событий рассмотрения.
++
++Существующего пользовательского row lock недостаточно: финансовые owner UUID
++намеренно не имеют FK, а новый INSERT пользователя может ждать удаления
++предыдущей строки. Поэтому **этот ограниченный кандидат** удерживает SHARE ROW
++EXCLUSIVE на users и всех бизнес-таблицах до COMMIT. Это сериализует записи всего
++контура и может закончиться bounded busy/rollback; такая цена приемлема только
++для изолированного испытания, не для фоновой production-очереди.
++
++0063 запрещает новые users/payment-intent/payment-order записи с удалённым
++subject ID. Пишущие транзакции этих трёх таблиц обязаны использовать read committed:
++иначе старый repeatable-read snapshot мог бы не увидеть новую квитанцию.
++Семантика блокировок и снимков сверена с официальной документацией
++[PostgreSQL18 locking](https://www.postgresql.org/docs/18/explicit-locking.html) и
++[transaction isolation](https://www.postgresql.org/docs/18/transaction-iso.html).
++Context7 в этой сессии вернул исчерпанную месячную квоту.
++
++До операции сверяются точные main59/admin3 journals и структуры app/app_admin
++с кандидатом63, а также отдельный каталог local_primary. Неизвестная таблица
++local_primary с текстовым user ID не принимается. Скан UUID намеренно
++консервативный: совпадение даже независимого ID отправляет случай на review.
++
++## Проверка
++
++16 проверок PostgreSQL на временном контейнере: реальное стирание базовых
++записей, две сессии, сохранение чужого аккаунта, исходная/изменённая заявка,
++закрытое ручное дело, неподходящие роли/версии, финансовая история и публикация,
++unknown mail, позднее истечение сессии после DELETE, потерянный COMMIT,
++повтор operation ID на другом аккаунте, поздняя FK-сессия, конкурентный INSERT
++того же пользователя, поздняя финансовая запись без FK, старый RR-снимок,
++дрейф manifest/app/local_primary, другая БД/fixture и несинтетический адрес.
++Триггеры и проверки не отключались. Контейнер после прогона удалён.
++
++Доказательства закрыты в
++`~/.local/state/blizhniy/local-primary-private/basic-erasure63-73p1mfdj/`.
++Native2938/2938, без skipped/cancelled; fast прошёл, прежний warning targetType
++не подавлялся. Три инженерных review-цикла завершены: исправлены перенос
++operation ID между аккаунтами, неполная проверка local_primary, финансовая
++запись без FK после снимка, слабая граница fixture, конкурентное восстановление
++users.id и обход через старый RR-снимок/UPDATE id. Дополнительная внешняя
++CLI-проверка другой моделью не запускалась.
++Код приложения/зависимости не менялись: повторная сборка и рестарт не выполнялись.
++Постоянный стенд повторно принят прежней проверкой app60/admin62; ready200,
++BUILD_ID pKXcWwLHSCJmVgOEleDPN. Кандидат63 туда не устанавливался.
++Браузерная приёмка не относится к этому кандидату: интерфейс не менялся.
++
++## До установки и завершения аудита
++
++- Human review точного SQL guard/diff; отдельное решение для установки,
++  минимальные права и координированная совместимость всех обработчиков.
++  Старые финансовые guard намеренно не допущены к новой структуре этим этапом.
++- Политика реальных категорий/сроков и отдельный исполнитель сложных аккаунтов.
++- Проверенный процесс ответа заявителю до потери доступа к кабинету.
++- Внешний защищённый журнал исполненных удалений, его доставка в восстановленный
++  контур и повторное очищение **до открытия** после старого backup. Один SQL
++  INSERT fence не очищает старую копию без актуального журнала и не доказывает
++  достижение RPO/RTO.
++
++R01/R03 и полное исполнение права на удаление пока не закрыты.
+diff --git a/scripts/basic-account-erasure.mjs b/scripts/basic-account-erasure.mjs
+new file mode 100644
+index 0000000..3ae37e3
+--- /dev/null
++++ b/scripts/basic-account-erasure.mjs
+@@ -0,0 +1,107 @@
++// Candidate confined to a disposable test database; no CLI, route or installed capability.
++import assert from 'node:assert/strict';import{createRequire}from'node:module';import{readFile}from'node:fs/promises';import{createHash}from'node:crypto';import{execFile}from'node:child_process';import{promisify}from'node:util';import pg from'pg';
++import{getUserAccessRolePlan}from'./user-access-role.mjs';import{readRefundSchema}from'./refund-worker-schema.mjs';import{localPrimaryImage}from'./local-primary-config.mjs';
++const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
++const{deletionId,deletionRevision,deletionObject,DeletionConflictError,DeletionAccessError}=load('account-deletion-contract');
++const{withAppSessionTransaction}=load('app-session-transaction');
++export class BasicErasureReviewRequired extends Error{constructor(){super('Account requires a separate erasure plan');this.name='BasicErasureReviewRequired';}}
++export function parseBasicErasure(input){
++ const row=deletionObject(input,['requestId','expectedRevision','expectedOwnerId','expectedAuthVersion','operationId']);
++ return{requestId:deletionId(row.requestId),expectedRevision:deletionRevision(row.expectedRevision),expectedOwnerId:deletionId(row.expectedOwnerId),
++  expectedAuthVersion:row.expectedAuthVersion==='0'?'0':deletionRevision(row.expectedAuthVersion),operationId:deletionId(row.operationId)};
++}
++const erasable=new Set(['app.users.id','app.cabinet_profiles.user_id','app.sessions.user_id','app.email_confirmations.user_id','app.password_recoveries.user_id',
++ 'app.registration_legal.user_id','app.telegram_phone_attempts.user_id','app.telegram_phone_bindings.user_id','app.mail_outbox.user_id','app.notifications.user_id',
++ 'app.account_deletion_requests.user_id']);
++function receipt(row,input){return{requestId:input.requestId,operationId:input.operationId,subjectId:input.expectedOwnerId,
++ requestRevision:row.revision,completedAt:row.completedAt,primaryAccountErased:true,completeErasure:false,retained:['pseudonymous-case-audit','erasure-receipt','external-copies-unverified']};}
++
++export async function readBasicErasureSchema(tx){
++ const app=await readRefundSchema(tx),admin=await readRefundSchema(tx,{namespace:'app_admin'});
++ const local=(await tx.query(`with objects as (
++  select 'relation' kind,c.relname name,jsonb_build_array(c.relkind,c.relpersistence,c.relrowsecurity,c.relforcerowsecurity,c.reloptions,c.relowner=n.nspowner) definition
++   from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='local_primary'
++  union all select 'column',c.relname||'.'||a.attname,jsonb_build_array(a.attnum,format_type(a.atttypid,a.atttypmod),a.attnotnull,a.attidentity,a.attgenerated,pg_get_expr(d.adbin,d.adrelid,false))
++   from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace left join pg_attrdef d on d.adrelid=c.oid and d.adnum=a.attnum where n.nspname='local_primary' and a.attnum>0 and not a.attisdropped
++  union all select 'constraint',c.conname,jsonb_build_array(pg_get_constraintdef(c.oid,false),c.convalidated,c.conenforced) from pg_constraint c join pg_namespace n on n.oid=c.connamespace where n.nspname='local_primary'
++  union all select 'index',c.relname,jsonb_build_array(pg_get_indexdef(i.indexrelid,0,false),i.indisvalid,i.indisready,i.indislive) from pg_index i join pg_class c on c.oid=i.indexrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='local_primary'
++  union all select 'trigger',c.relname||'.'||case when t.tgisinternal then k.conname||'.'||t.tgfoid::regprocedure::text else t.tgname end,jsonb_build_array(case when not t.tgisinternal then pg_get_triggerdef(t.oid,false) end,t.tgenabled,t.tgtype,t.tgdeferrable,t.tginitdeferred)
++   from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace left join pg_constraint k on k.oid=t.tgconstraint where n.nspname='local_primary'
++  union all select 'function',p.oid::regprocedure::text,jsonb_build_array(pg_get_functiondef(p.oid)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='local_primary'
++  union all select 'type',t.typname,jsonb_build_array(t.typtype,t.typcategory,t.typnotnull,t.typdefault) from pg_type t join pg_namespace n on n.oid=t.typnamespace where n.nspname='local_primary'
++  union all select 'rule',c.relname||'.'||r.rulename,jsonb_build_array(pg_get_ruledef(r.oid,false),r.ev_enabled) from pg_rewrite r join pg_class c on c.oid=r.ev_class join pg_namespace n on n.oid=c.relnamespace where n.nspname='local_primary'
++ ) select kind,name,definition from objects order by kind collate "C",name collate "C",definition::text collate "C" limit 1001`)).rows;
++ assert.ok(local.length>0&&local.length<1001);return{app,admin,local:{count:local.length,sha256:createHash('sha256').update(JSON.stringify(local)).digest('hex')}};
++}
++
++export async function eraseBasicAccount(db,token,expectedAdminId,value,containerId){
++ const input=parseBasicErasure(value),adminId=deletionId(expectedAdminId);assert.equal(process.env.NODE_ENV,'test');
++ if(adminId===input.expectedOwnerId)throw new DeletionAccessError();
++ assert.match(containerId,/^[a-f0-9]{64}$/);
++ const meta=JSON.parse((await promisify(execFile)('docker',['--host','unix:///var/run/docker.sock','inspect',containerId],{timeout:5000,maxBuffer:1048576,env:{PATH:process.env.PATH,LANG:'C.UTF-8'}})).stdout)[0];
++ const fixture=meta.Config?.Labels?.['blizhniy.erasure-test'];assert.match(fixture,/^blizhniy-erasure-[a-f0-9]{12}$/);
++ assert.equal(meta.Id,containerId);assert.equal(meta.Name,'/'+fixture);assert.equal(meta.Config.Image,localPrimaryImage);assert.equal(meta.State.Running,true);
++ assert.deepEqual(meta.Config.Cmd,['postgres','-c','blizhniy.erasure_fixture='+fixture]);
++ assert.deepEqual(meta.HostConfig.Tmpfs,{'/var/lib/postgresql':'rw,size=268435456'});assert.equal(meta.HostConfig.Binds,null);
++ assert.equal(meta.Mounts.length,0);
++ const bindings=meta.NetworkSettings.Ports;assert.deepEqual(Object.keys(bindings),['5432/tcp']);assert.equal(bindings['5432/tcp'].length,1);assert.equal(bindings['5432/tcp'][0].HostIp,'127.0.0.1');
++ const address=meta.NetworkSettings.Networks.bridge.IPAddress;assert.ok(address);
++ const reference=`B1_${input.operationId.replaceAll('-','')}_${input.expectedAuthVersion}_${input.expectedRevision}`;
++ return db.transaction(async tx=>{
++  await tx.query("select set_config('lock_timeout','2s',true),set_config('statement_timeout','3s',true),set_config('transaction_timeout','10s',true)");
++  const context=(await tx.query("select current_database() as database,current_user as role,session_user as login,current_setting('session_replication_role') as replication,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation,current_setting('blizhniy.erasure_fixture',true) as fixture,host(inet_server_addr()) as address,inet_server_port() as port")).rows[0];
++  assert.deepEqual(context,{database:'blizhniy_erasure_test',role:'postgres',login:'postgres',replication:'origin',readonly:'off',isolation:'read committed',fixture,address,port:5432});
++  const tables=(await tx.query("select n.nspname as schema,c.relname as name from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('app','app_admin','local_primary') and c.relkind='r' and c.relname not in ('sessions','cabinet_profiles','email_confirmations','password_recoveries','registration_legal','telegram_phone_attempts','telegram_phone_bindings','mail_outbox','notifications') order by 1,2")).rows;
++  // Confined/offline candidate: fence non-FK writers as well as normal user-locked callers.
++  await tx.query('lock table '+tables.map(row=>pg.escapeIdentifier(row.schema)+'.'+pg.escapeIdentifier(row.name)).join(',')+' in share row exclusive mode');
++  const plan=getUserAccessRolePlan(context.database,{tariffs:true});
++  assert.deepEqual((await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows,plan.appJournal);
++  const migration=await readFile(new URL('../database/candidates/0063-basic-account-erasure.sql',import.meta.url));
++  const expected=JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema63.json',import.meta.url),'utf8'));
++  assert.equal(createHash('sha256').update(migration).digest('hex'),expected.migrationSha256);
++  assert.deepEqual((await tx.query('select name,sha256 from app_admin.migrations order by name')).rows,[...plan.journal,{name:'0063-basic-account-erasure.sql',sha256:expected.migrationSha256}]);
++  assert.deepEqual(await readBasicErasureSchema(tx),expected.schema);
++  return withAppSessionTransaction({transaction:work=>work(tx)},token,async(_tx,admin)=>{
++   if(admin.id!==adminId)throw new DeletionAccessError();
++   // User -> request lock order also fences ordinary create/edit/checkout transactions.
++   const saved=(await tx.query('select operation_id,request_id,subject_id,actor_id,expected_auth_version::text,expected_request_revision::text from app_admin.basic_account_erasures where operation_id=$1 or request_id=$2',[input.operationId,input.requestId])).rows;
++   if(saved.length&&(saved.length!==1||saved[0].operation_id!==input.operationId||saved[0].request_id!==input.requestId||saved[0].subject_id!==input.expectedOwnerId||saved[0].actor_id!==adminId||saved[0].expected_auth_version!==input.expectedAuthVersion||saved[0].expected_request_revision!==input.expectedRevision))throw new DeletionConflictError();
++   const subject=(await tx.query("select id,role,auth_version::text as version,email=id::text||'@synthetic.invalid' as synthetic from app.users where id=$1 for update",[input.expectedOwnerId])).rows[0];
++   let row=(await tx.query(`select id,user_id,status,revision::text,resolution,case_reference,
++    to_char(resolved_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "completedAt"
++    from app.account_deletion_requests where id=$1 for update`,[input.requestId])).rows[0];
++   if(!row)throw new DeletionConflictError();
++   const original=(await tx.query("select actor_id from app.account_deletion_events where request_id=$1 and status='requested' order by created_at,id",[input.requestId])).rows;
++   if(original.length!==1||original[0].actor_id!==input.expectedOwnerId)throw new DeletionConflictError();
++   if(saved.length&&!subject&&row.user_id===null&&row.status==='resolved'&&row.resolution==='partly_retained'&&row.case_reference===reference)return receipt(row,input);
++   if(saved.length)throw new DeletionConflictError();
++   if(!subject||row.user_id!==subject.id||row.revision!==input.expectedRevision||!['requested','in_review'].includes(row.status)||subject.version!==input.expectedAuthVersion)throw new DeletionConflictError();
++   if(subject.role!=='user'||subject.synthetic!==true)throw new BasicErasureReviewRequired();
++   // Lock every owned mail row before checking state so a queued dispatch cannot cross erasure.
++   const mail=(await tx.query('select state from app.mail_outbox where user_id=$1 order by id for update',[subject.id])).rows;
++   if(mail.some(row=>['reserved','sending','unknown'].includes(row.state)))throw new BasicErasureReviewRequired();
++   const columns=(await tx.query(`select n.nspname as schema,c.relname as relation,a.attname as column
++    from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
++    where n.nspname in ('app','app_admin','local_primary') and c.relkind in ('r','p') and a.attnum>0 and not a.attisdropped and a.atttypid='uuid'::regtype
++    order by 1,2,3`)).rows;
++   assert.ok(columns.length>=150);
++   const predicates=columns.filter(row=>!erasable.has(`${row.schema}.${row.relation}.${row.column}`)).map(row=>{
++    const table=pg.escapeIdentifier(row.schema)+'.'+pg.escapeIdentifier(row.relation),column=pg.escapeIdentifier(row.column);
++    const ownRequestAudit=row.schema==='app'&&row.relation==='account_deletion_events'&&row.column==='actor_id'
++     ?" and not(t.status='requested' and t.request_id in(select id from app.account_deletion_requests where user_id=$1))":'';
++    return`exists(select 1 from ${table} t where t.${column}=$1${ownRequestAudit})`;
++   });
++   // UUID equality is deliberately conservative: even an unrelated ID collision requires review.
++   if((await tx.query(`select (${predicates.join(' or ')}) as blocked`,[subject.id])).rows[0]?.blocked!==false)throw new BasicErasureReviewRequired();
++   await tx.query("select set_config('blizhniy.deletion_actor',$1,true)",[admin.id]);
++   if(row.status==='requested')await tx.query("update app.account_deletion_requests set status='in_review' where id=$1",[row.id]);
++   await tx.query("update app.account_deletion_requests set status='resolved',resolution='partly_retained',case_reference=$2 where id=$1",[row.id,reference]);
++   await tx.query('insert into app_admin.basic_account_erasures(operation_id,request_id,subject_id,actor_id,expected_auth_version,expected_request_revision) values($1,$2,$3,$4,$5,$6)',[input.operationId,row.id,subject.id,admin.id,input.expectedAuthVersion,input.expectedRevision]);
++   if((await tx.query("delete from app.users where id=$1 and role='user' and auth_version=$2 returning id",[subject.id,input.expectedAuthVersion])).rowCount!==1)throw new DeletionConflictError();
++   row=(await tx.query(`select user_id,status,revision::text,resolution,case_reference,
++    to_char(resolved_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "completedAt" from app.account_deletion_requests where id=$1`,[row.id])).rows[0];
++   assert.ok(row?.user_id===null&&row.status==='resolved'&&row.resolution==='partly_retained'&&row.case_reference===reference&&row.completedAt);
++   return receipt(row,input);
++  },{requireAdmin:true});
++ });
++}
+diff --git a/tasks/audit-launch-20261116.md b/tasks/audit-launch-20261116.md
+index 2e2a89a..bd740d8 100644
+--- a/tasks/audit-launch-20261116.md
++++ b/tasks/audit-launch-20261116.md
+@@ -383,3 +383,17 @@ Native2936/2936, PostgreSQL9/9, четыре настоящих CLI-сценар
+ Runtime build теперь pKXcWwLHSCJmVgOEleDPN. Guard,
+ DDL/GRANT, production, реальные провайдеры и push не менялись. Открыты правила
+ хранения, полный план удаления и его идемпотентное исполнение; R01/R03 не закрыты.
++
++### Базовый исполнитель удаления: кандидат63 на временной БД
++
++[Охват и оставшиеся ограничения](../docs/account-deletion-basic63.md).
++Реальное удаление простого синтетического аккаунта, две отозванные сессии,
++уникальная квитанция и восстановление после потерянного COMMIT. Любая
++бизнес/финансовая/медиа-история требует отдельного ручного плана. Предложенная0063
++добавляет журнал и запрет новых записей на удалённый ID, включая конкурентный
++INSERT, UPDATE id и старый RR-снимок. Весь результат — partly_retained,
++completeErasure=false; сроки хранения и полнота внешней очистки не выдумываются.
++Native2938/2938, PostgreSQL16/16, fast и три review-цикла; выявленные гонки
++исправлены. Схема/SQL guard пока кандидат для отдельного просмотра владельцем,
++на постоянный стенд не применены. Тот по-прежнему app60/admin62, ready200 и
++прежний BUILD_ID. Нет push/production/реальных платежей; R01/R03 не закрыты.
+diff --git a/tests/basic-account-erasure-postgres.mjs b/tests/basic-account-erasure-postgres.mjs
+new file mode 100644
+index 0000000..7f38e03
+--- /dev/null
++++ b/tests/basic-account-erasure-postgres.mjs
+@@ -0,0 +1,152 @@
++// Destructive candidate acceptance on one owned disposable synthetic database only.
++import assert from 'node:assert/strict';import{test}from'node:test';
++import{execFile}from'node:child_process';import{promisify}from'node:util';import{randomBytes,randomUUID}from'node:crypto';
++import{readFile}from'node:fs/promises';import{createHash}from'node:crypto';import{createRequire}from'node:module';import pg from'pg';
++import{getUserAccessRolePlan}from'../scripts/user-access-role.mjs';import{getAdminUserAccessMigration}from'../scripts/admin-user-access-release.mjs';import{getAdminTariffMigration}from'../scripts/admin-tariff-release.mjs';
++import{localPrimaryImage}from'../scripts/local-primary-config.mjs';import{eraseBasicAccount,readBasicErasureSchema}from'../scripts/basic-account-erasure.mjs';
++const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,run=promisify(execFile);
++test('basic erasure is atomic, replayable and refuses domain history on disposable PG18',{timeout:90000},async suite=>{
++ const name='blizhniy-erasure-'+randomBytes(6).toString('hex'),password=randomBytes(32).toString('hex'),label='blizhniy.erasure-test',database='blizhniy_erasure_test';let container,owner,db;
++ const prior=process.env.NODE_ENV;process.env.NODE_ENV='test';
++ const docker=async args=>(await run('docker',['--host','unix:///var/run/docker.sock',...args],{timeout:20000,maxBuffer:1048576,env:{PATH:process.env.PATH,LANG:'C.UTF-8',POSTGRES_PASSWORD:password}})).stdout.trim();
++ try{
++  container=await docker(['run','--detach','--pull','never','--name',name,'--label',label+'='+name,'--memory','512m','--cpus','1','--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB='+database,localPrimaryImage,'postgres','-c','blizhniy.erasure_fixture='+name]);
++  const meta=JSON.parse(await docker(['inspect',container]))[0];assert.equal(meta.Id,container);assert.equal(meta.Config.Labels[label],name);assert.equal(meta.Config.Image,localPrimaryImage);const port=meta.NetworkSettings.Ports['5432/tcp'][0];assert.equal(port.HostIp,'127.0.0.1');
++  for(const end=Date.now()+20000;;){try{await docker(['exec',container,'pg_isready','-h','127.0.0.1','-U','postgres']);break;}catch{assert.ok(Date.now()<end);}await new Promise(resolve=>setTimeout(resolve,100));}
++  const config={host:'127.0.0.1',port:Number(port.HostPort),database,user:'postgres',password,ssl:false,connectionTimeoutMillis:2000};owner=new pg.Client(config);await owner.connect();
++  await owner.query('create schema blizhniy_meta;create table blizhniy_meta.migrations(name text primary key,sha256 text not null);revoke all on schema blizhniy_meta from public');
++  const plan=getUserAccessRolePlan(database,{tariffs:true});
++  for(const row of plan.appJournal){await owner.query(await readFile(new URL('../database/'+(/^(0058|0060)-/.test(row.name)?'candidates/':'migrations/')+row.name,import.meta.url),'utf8'));await owner.query('insert into blizhniy_meta.migrations values($1,$2)',[row.name,row.sha256]);}
++  await owner.query('create role blizhniy_runtime nologin');
++  for(const file of ['permissions/telegram-phone.sql','local-primary-payment.sql','local-primary-refunds.sql'])await owner.query(await readFile(new URL('../database/'+file,import.meta.url),'utf8'));
++  for(const migration of [getAdminUserAccessMigration(),getAdminTariffMigration()])await owner.query(migration.source);
++  for(const row of plan.journal)await owner.query('insert into app_admin.migrations values($1,$2)',[row.name,row.sha256]);
++  const migration=await readFile(new URL('../database/candidates/0063-basic-account-erasure.sql',import.meta.url),'utf8'),migrationSha256=createHash('sha256').update(migration).digest('hex');await owner.query(migration);
++  await owner.query('insert into app_admin.migrations values($1,$2)',['0063-basic-account-erasure.sql',migrationSha256]);
++  const candidate={migrationSha256,schema:await readBasicErasureSchema(owner)};
++  assert.deepEqual(candidate,JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema63.json',import.meta.url),'utf8')));
++  db=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,max:4}));const requests=new(load('postgres-account-deletion').PostgresAccountDeletionStore)(db),hash=load('identity').hashSessionToken;
++  async function session(id){const token=randomBytes(32).toString('hex');await owner.query('insert into app.sessions(token_hash,user_id,auth_version) select $1,id,auth_version from app.users where id=$2',[hash(token),id]);return token;}
++  async function person(role='user'){
++   const id=randomUUID(),email=id+'@synthetic.invalid';await owner.query('insert into app.users(id,email,password_hash,role,email_verified_at) values($1,$2,$3,$4,clock_timestamp())',[id,email,'scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128),role]);
++   await owner.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[id,{name:'Синтетический пользователь',city:'Краснодар'}]);
++   const token=await session(id),request=(await requests.request(token,id)).request;return{id,email,token,request};
++  }
++  const admin=await person('admin'),input=actor=>({requestId:actor.request.id,expectedRevision:actor.request.revision,expectedOwnerId:actor.id,expectedAuthVersion:'0',operationId:randomUUID()}),erase=(value,connection=db,token=admin.token,actor=admin.id)=>eraseBasicAccount(connection,token,actor,value,container);
++  const exists=async actor=>(await owner.query('select count(*)::int n from app.users where id=$1',[actor.id])).rows[0].n;
++  const events=async actor=>(await owner.query('select count(*)::int n from app.account_deletion_events where request_id=$1',[actor.request.id])).rows[0].n;
++  const wrapping=hook=>({transaction:work=>db.transaction(tx=>work({query:async(sql,values)=>{const result=await tx.query(sql,values);await hook(sql,result);return result;}}))});
++  await suite.test('ordinary, mismatched, blocked and self principals cannot erase',async()=>{
++   const ordinary=await person(),target=await person(),blocked=await person('admin'),value=input(target);
++   await owner.query('update app.users set is_blocked=true where id=$1',[blocked.id]);await assert.rejects(erase(value,db,blocked.token,blocked.id));
++   await assert.rejects(erase(value,db,ordinary.token,ordinary.id));await assert.rejects(erase(value,db,admin.token,ordinary.id));await assert.rejects(erase(input(admin)));assert.equal(await exists(target),1);assert.equal(await events(target),1);
++  });
++  await suite.test('exact request, owner, revision and auth version are required',async()=>{
++   const target=await person(),other=await person(),value=input(target);
++   for(const patch of [{expectedRevision:'2'},{expectedOwnerId:other.id},{expectedAuthVersion:'1'}])await assert.rejects(erase({...value,...patch}));
++   assert.equal(await exists(target),1);assert.equal(await events(target),1);
++  });
++  await suite.test('basic identity, two sessions, recovery, consent and mail are removed; pseudonymous case stays',async()=>{
++   const target=await person(),other=await person(),second=await session(target.id),value=input(target);
++   await owner.query("insert into app.registration_legal(user_id,document,version) values($1,'agreement','2026-10-01')",[target.id]);
++   for(const table of ['email_confirmations','password_recoveries'])await owner.query('insert into app.'+table+'(user_id,token_hash,email,auth_version) values($1,$2,$3,0)',[target.id,randomBytes(32).toString('hex'),target.email]);
++   await owner.query("insert into app.mail_outbox(id,user_id,purpose,key_id,payload,created_at,expires_at) values($1,$2,'confirm',$3,$4,date_trunc('milliseconds',clock_timestamp()),date_trunc('milliseconds',clock_timestamp())+interval '30 minutes')",[randomUUID(),target.id,'a'.repeat(32),Buffer.concat([Buffer.from([1]),Buffer.alloc(29)])]);
++   const result=await erase(value);assert.equal(result.primaryAccountErased,true);assert.equal(result.completeErasure,false);assert.equal(result.requestRevision,'3');assert.equal(await exists(target),0);assert.equal(await exists(other),1);
++   for(const table of ['sessions','cabinet_profiles','registration_legal','email_confirmations','password_recoveries','mail_outbox'])assert.equal((await owner.query('select count(*)::int n from app.'+table+' where user_id=$1',[target.id])).rows[0].n,0);
++   for(const token of [target.token,second])assert.equal(await new(load('identity').IdentityStore)(db).resolveSession(token),null);
++   assert.equal(await events(target),3);const row=(await owner.query('select user_id,resolution from app.account_deletion_requests where id=$1',[target.request.id])).rows[0];assert.deepEqual(row,{user_id:null,resolution:'partly_retained'});
++   assert.deepEqual(await erase(value),result);assert.equal(await events(target),3);await assert.rejects(erase({...value,operationId:randomUUID()}));await assert.rejects(erase({...value,expectedAuthVersion:'1'}));
++   await assert.rejects(erase({...input(other),operationId:value.operationId}),{name:'DeletionConflictError'});assert.equal(await exists(other),1);assert.equal(await events(other),1);
++   assert.equal((await owner.query('select count(*)::int n from app_admin.basic_account_erasures where operation_id=$1',[value.operationId])).rows[0].n,1);
++   await assert.rejects(owner.query('delete from app_admin.basic_account_erasures where operation_id=$1',[value.operationId]),error=>error.code==='42501');
++   await assert.rejects(owner.query('insert into app.users(id,email,password_hash) values($1,$2,$3)',[target.id,target.email,'scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]),error=>error.code==='23514');
++   const newId=randomUUID();await owner.query('insert into app.users(id,email,password_hash) values($1,$2,$3)',[newId,target.email,'scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
++   await assert.rejects(owner.query('update app.users set id=$2 where id=$1',[newId,target.id]),error=>error.code==='23514');assert.equal(await exists(target),0);assert.deepEqual(await erase(value),result);
++  });
++  await suite.test('an already reviewed case uses its current revision; a closed manual case is never repurposed',async()=>{
++   const target=await person();await requests.begin(admin.token,admin.id,target.request.id,'1');
++   await assert.rejects(erase(input(target)));const value={...input(target),expectedRevision:'2'},result=await erase(value);assert.equal(result.requestRevision,'3');assert.deepEqual(await erase(value),result);
++   const closed=await person();await requests.begin(admin.token,admin.id,closed.request.id,'1');await requests.resolve(admin.token,admin.id,closed.request.id,'2',{resolution:'declined',caseReference:'SYNTHETIC_DECLINED',confirmedManualDecision:true});
++   await assert.rejects(erase({...input(closed),expectedRevision:'3'}));assert.equal(await exists(closed),1);assert.equal(await events(closed),3);
++  });
++  await suite.test('administrator, publication, immutable payment identity and unknown mail require review',async()=>{
++   await assert.rejects(erase(input(await person('admin'))),{name:'BasicErasureReviewRequired'});
++   const publication=await person();await owner.query("insert into app.work_publications(author_id,kind,creation_key,form) values($1,'workRequest',$2,$3)",[publication.id,randomUUID(),load('work-publication-contract').parseWorkPublicationForm('workRequest',{title:'Синтетический заказ',description:'Синтетическая проверка отказа удаления.'})]);
++   await assert.rejects(erase(input(publication)),{name:'BasicErasureReviewRequired'});assert.equal(await exists(publication),1);
++   const financial=await person(),id=randomUUID();
++   const targetId=randomUUID(),body=JSON.stringify({amount:{value:'199.00',currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:'https://example.invalid/'},metadata:{localPaymentId:id,targetId,targetType:'listing',tariffId:'listing-publication'}});
++   await db.transaction(tx=>new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db).persistInTransaction(tx,{id,ownerId:financial.id,targetType:'listing',targetId,targetRevision:'1',tariffId:'listing-publication',amount:'199.00',durationDays:30,shopId:'fixture-shop',isTest:true,requestBody:body}));
++   await assert.rejects(erase(input(financial)),{name:'BasicErasureReviewRequired'});assert.equal((await owner.query('select request_body from app.payment_checkout_intents where id=$1',[id])).rows[0].request_body,body);assert.equal(await events(financial),1);
++   const mail=await person();await owner.query("insert into app.mail_outbox(id,user_id,purpose,key_id,payload,created_at,expires_at,state) values($1,$2,'confirm',$3,$4,date_trunc('milliseconds',clock_timestamp()),date_trunc('milliseconds',clock_timestamp())+interval '30 minutes','unknown')",[randomUUID(),mail.id,'a'.repeat(32),Buffer.concat([Buffer.from([1]),Buffer.alloc(29)])]);
++   await assert.rejects(erase(input(mail)),{name:'BasicErasureReviewRequired'});assert.equal(await exists(mail),1);
++  });
++  await suite.test('expired final admin session rolls back the actual DELETE and all new case events',async()=>{
++   const actor=await person('admin'),target=await person();await owner.query("update app.sessions set expires_at=clock_timestamp()+interval '1 second' where token_hash=$1",[hash(actor.token)]);let deleted=false;
++   const connection=wrapping(async(sql,result)=>{if(sql.startsWith('delete from app.users')){assert.equal(result.rowCount,1);deleted=true;await new Promise(resolve=>setTimeout(resolve,1200));}});
++   await assert.rejects(erase(input(target),connection,actor.token,actor.id));assert.equal(deleted,true);assert.equal(await exists(target),1);assert.equal(await events(target),1);assert.equal((await owner.query('select status from app.account_deletion_requests where id=$1',[target.request.id])).rows[0].status,'requested');
++  });
++  await suite.test('a lost COMMIT response recovers the same receipt instead of erasing another account',async()=>{
++   const target=await person(),value=input(target);let saved;
++   const lost={transaction:async work=>{saved=await db.transaction(work);throw Error('Synthetic lost acknowledgement');}};
++   await assert.rejects(erase(value,lost));assert.equal(await exists(target),0);assert.deepEqual(await erase(value),saved);assert.equal(await events(target),3);
++  });
++  await suite.test('a user lock committed with new domain history is rechecked before deletion',async()=>{
++   const target=await person(),value=input(target);let reached;const waiting=new Promise(resolve=>{reached=resolve;});
++   const connection={transaction:work=>db.transaction(tx=>work({query:async(sql,values)=>{if(sql.startsWith('lock table'))reached();return tx.query(sql,values);}}))};
++   await owner.query('begin');await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[target.id]);await owner.query("insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,'+79991234567',$2)",[target.id,'test-'+target.id]);const attempt=erase(value,connection);const result=attempt.then(()=>({deleted:true}),error=>({error}));
++   try{await Promise.race([waiting,result.then(()=>{throw Error('Erasure failed before table fence');}),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('Table fence hook deadline')),3000);timer.unref();})]);await owner.query('commit');}catch(error){await owner.query('rollback');throw error;}
++   assert.equal((await result).error?.name,'DeletionConflictError');assert.equal(await exists(target),1);
++  });
++  await suite.test('a new FK-bound session cannot appear after erasure wins the user lock',async()=>{
++   const target=await person();let pending,started=false;
++   const connection=wrapping(async sql=>{if(sql.startsWith('delete from app.users')){started=true;pending=owner.query("insert into app.sessions(token_hash,user_id,auth_version) values($1,$2,0)",[randomBytes(32).toString('hex'),target.id]).then(()=>null,error=>error.code);}});
++   await erase(input(target),connection);assert.equal(started,true);assert.equal(await pending,'23503');assert.equal(await exists(target),0);
++  });
++  await suite.test('a same-ID user INSERT already waiting on erasure cannot revive the account after commit',async()=>{
++   const target=await person();let pending,started=false;
++   const connection=wrapping(async sql=>{if(sql.startsWith('delete from app.users')){started=true;pending=owner.query('insert into app.users(id,email,password_hash) values($1,$2,$3)',[target.id,target.email,'scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]).then(()=>null,error=>error.code);}});
++   const value=input(target),receipt=await erase(value,connection);assert.equal(started,true);assert.equal(await pending,'23514');assert.equal(await exists(target),0);assert.deepEqual(await erase(value),receipt);
++  });
++  await suite.test('a non-FK financial writer started after the empty scan is fenced by the receipt',async()=>{
++   const target=await person(),id=randomUUID(),targetId=randomUUID(),body=JSON.stringify({amount:{value:'199.00',currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:'https://example.invalid/'},metadata:{localPaymentId:id,targetId,targetType:'listing',tariffId:'listing-publication'}});let pending;
++   const connection=wrapping(async sql=>{if(sql.startsWith('select (exists')){
++    let signal;const started=new Promise(resolve=>{signal=resolve;});
++    pending=db.transaction(tx=>new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db).persistInTransaction({query:(statement,values)=>{if(statement.startsWith('insert into app.payment_checkout_intents'))signal();return tx.query(statement,values);}},
++     {id,ownerId:target.id,targetType:'listing',targetId,targetRevision:'1',tariffId:'listing-publication',amount:'199.00',durationDays:30,shopId:'fixture-shop',isTest:true,requestBody:body})).then(()=>null,error=>error.code);
++    await started;
++   }});
++   await erase(input(target),connection);assert.equal(await pending,'23514');assert.equal((await owner.query('select count(*)::int n from app.payment_checkout_intents where id=$1',[id])).rows[0].n,0);assert.equal(await exists(target),0);
++  });
++  await suite.test('a repeatable-read writer with an old snapshot cannot bypass a newly committed receipt',async()=>{
++   const target=await person(),id=randomUUID(),targetId=randomUUID(),body=JSON.stringify({amount:{value:'199.00',currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:'https://example.invalid/'},metadata:{localPaymentId:id,targetId,targetType:'listing',tariffId:'listing-publication'}});
++   await owner.query('begin isolation level repeatable read');await owner.query('select id from app.users where id=$1',[target.id]);
++   try{
++    await erase(input(target));
++    await assert.rejects(owner.query("insert into app.payment_checkout_intents(id,owner_id,target_type,target_id,target_revision,tariff_id,amount,duration_days,merchant_shop_id,is_test,request_body) values($1,$2,'listing',$3,1,'listing-publication',199,30,'fixture-shop',true,$4)",[id,target.id,targetId,body]),error=>error.code==='23514');
++   }finally{await owner.query('rollback');}
++   assert.equal(await exists(target),0);assert.equal((await owner.query('select count(*)::int n from app.payment_checkout_intents where id=$1',[id])).rows[0].n,0);
++  });
++  await suite.test('incorrect journal and unknown schema are refused without changing the account',async()=>{
++   const target=await person(),row=plan.appJournal[0];await owner.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[row.name,'0'.repeat(64)]);
++   try{await assert.rejects(erase(input(target)));}finally{await owner.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[row.name,row.sha256]);}
++   await owner.query('create table app.unreviewed_erasure_test(id uuid)');try{await assert.rejects(erase(input(target)));}finally{await owner.query('drop table app.unreviewed_erasure_test');}
++   await owner.query('create table local_primary.unreviewed_erasure_test(user_id text)');await owner.query('insert into local_primary.unreviewed_erasure_test values($1)',[target.id]);
++   try{await assert.rejects(erase(input(target)));}finally{await owner.query('drop table local_primary.unreviewed_erasure_test');}
++   assert.equal(await exists(target),1);assert.equal(await events(target),1);
++  });
++  await suite.test('a different database is rejected before any application/session query',async()=>{
++   const wrong=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database:'postgres',max:1}));
++   try{await assert.rejects(erase(input(await person()),wrong),{name:'AssertionError'});}finally{await wrong.close();}
++  });
++  await suite.test('a matching database without the owned fixture identity is rejected',async()=>{
++   const target=await person(),connection={transaction:work=>db.transaction(async tx=>{await tx.query("select set_config('blizhniy.erasure_fixture','foreign-fixture',true)");return work(tx);})};
++   await assert.rejects(erase(input(target),connection),{name:'AssertionError'});assert.equal(await exists(target),1);assert.equal(await events(target),1);
++   await assert.rejects(eraseBasicAccount(db,admin.token,admin.id,input(target),'0'.repeat(64)));assert.equal(await exists(target),1);
++   const nonSynthetic=await person();await owner.query("update app.users set email='contact@example.invalid' where id=$1",[nonSynthetic.id]);
++   await assert.rejects(erase({...input(nonSynthetic),expectedAuthVersion:'1'}),{name:'BasicErasureReviewRequired'});assert.equal(await exists(nonSynthetic),1);
++  });
++ }finally{
++  await db?.close();await owner?.end();if(container){const meta=JSON.parse(await docker(['inspect',container]))[0];assert.equal(meta.Config.Labels[label],name);await docker(['rm','--force',container]);}
++  if(prior===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=prior;
++ }
++});
+diff --git a/tests/basic-account-erasure.test.mjs b/tests/basic-account-erasure.test.mjs
+new file mode 100644
+index 0000000..4e50b63
+--- /dev/null
++++ b/tests/basic-account-erasure.test.mjs
+@@ -0,0 +1,13 @@
++import assert from 'node:assert/strict';import{test}from'node:test';
++import{parseBasicErasure,eraseBasicAccount}from'../scripts/basic-account-erasure.mjs';
++const id='11111111-1111-4111-8111-111111111111';
++const input={requestId:id,expectedRevision:'1',expectedOwnerId:id,expectedAuthVersion:'0',operationId:id};
++test('basic erasure binds request, subject, versions and operation without coercing values',()=>{
++ assert.deepEqual(parseBasicErasure(input),input);
++ for(const value of [null,{}, {...input,extra:true},{...input,expectedRevision:'0'},{...input,expectedAuthVersion:'01'},{...input,expectedAuthVersion:'9223372036854775808'},{...input,expectedOwnerId:'contact@example.invalid'},{...input,operationId:id+'\n'}])assert.throws(()=>parseBasicErasure(value));
++});
++test('basic erasure rejects malformed inputs and non-test execution before opening a transaction',async()=>{
++ let touched=false;const db={transaction:async()=>{touched=true;throw Error('Should not connect');}};
++ await assert.rejects(eraseBasicAccount(db,'invalid',id,{}));assert.equal(touched,false);
++ const before=process.env.NODE_ENV;process.env.NODE_ENV='production';try{await assert.rejects(eraseBasicAccount(db,'a'.repeat(64),id,input));assert.equal(touched,false);}finally{if(before===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=before;}
++});

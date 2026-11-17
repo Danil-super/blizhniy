@@ -12,6 +12,7 @@ import {ServiceModerationStatus} from './ServiceModerationStatus';
 import {SpecialistApplicationStatus} from './SpecialistApplicationStatus';
 import {useCookieCabinetProfile,CabinetProfileFailure} from '@/components/cabinet/CookieCabinetProfileProvider';
 import {PublicationPlacementPeriod} from '@/components/PublicationPlacementPeriod';
+import {useSpecialistCheckout} from '@/components/listings/ListingWorkflowProvider';
 
 /** Mount uncontrolled fields only after defaults load; never remount a dirty form on a transient recheck. */
 function ProfileReadyForm(props:ComponentProps<typeof ServicePublicationForm>){
@@ -22,6 +23,7 @@ function ProfileReadyForm(props:ComponentProps<typeof ServicePublicationForm>){
 }
 
 function Editor({owner,kind,id,visible,embedded}:{owner:string;kind:ServicePublicationKind;id?:string;visible:boolean;embedded:boolean}){
+ const specialistCheckout=useSpecialistCheckout();
  const [snapshot,setSnapshot]=useState<ServicePublicationSnapshot|undefined>(),[ready,setReady]=useState(!id&&kind!=='specialist'),[error,setError]=useState<string|null>(null),[retry,setRetry]=useState(0),[dirty,setDirty]=useState(false),[saved,setSaved]=useState(false);
  useEffect(()=>{if(saved)window.location.assign(servicePublicationNavigation[kind].cabinet);},[saved,kind]);
  useEffect(()=>{if(!id&&kind!=='specialist')return;const controller=new AbortController();setError(null);
@@ -41,7 +43,7 @@ function Editor({owner,kind,id,visible,embedded}:{owner:string;kind:ServicePubli
    ready?<div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">{snapshot&&<PublicationPlacementPeriod publishedAt={snapshot.publishedAt} expiresAt={snapshot.expiresAt} status={snapshot.status}/>}
     <ProfileReadyForm owner={owner} kind={kind} initial={snapshot} onDirtyChange={setDirty}
     onSaved={()=>setSaved(true)}/>
-    {snapshot&&!dirty&&(kind==='specialist'?<SpecialistApplicationStatus form={snapshot.form}/>:<ServiceModerationStatus owner={owner} snapshot={snapshot}/>)}</div>:<p role="status">Загружаем сохранённую форму…</p>}
+    {snapshot&&!dirty&&(kind==='specialist'?<><SpecialistApplicationStatus form={snapshot.form}/>{specialistCheckout&&<ServiceModerationStatus owner={owner} snapshot={snapshot}/>}</>:<ServiceModerationStatus owner={owner} snapshot={snapshot}/>)}</div>:<p role="status">Загружаем сохранённую форму…</p>}
  </section>;
 }
 

@@ -1,7 +1,10 @@
+import {readLocalTariffOperatorConfig} from '@/lib/local-user-access-config';
+import {PrimaryAdminTariffsClient} from './PrimaryAdminTariffsClient';
 import { AdminTariffsClient } from "@/components/admin/AdminTariffsClient";
-import { AdminShell } from "@/components/admin/AdminShell";
+import { AdminShell,AdminWorkspaceShell } from "@/components/admin/AdminShell";
 
 export function AdminTariffsPage() {
+  if(readLocalTariffOperatorConfig())return <AdminWorkspaceShell activeHref="/admin/tariffs" description="Цены и сроки размещений. Каждое изменение сохраняется в журнале." title="Тарифы"><PrimaryAdminTariffsClient/></AdminWorkspaceShell>;
   return (
     <AdminShell
       activeHref="/admin/tariffs"

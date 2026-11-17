@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {readFile,writeFile,readdir} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {startLocalPrimaryRefunds} from '../scripts/local-primary-refunds.mjs';
+import {testSpecialistCheckoutRefundActivation} from './specialist-checkout-refund-activation-cases.mjs';
 
 export async function testLocalPrimaryRefundActivation(suite,{admin,ownerDb,load,intent,environment,workerEnvironment,stateFile,actor,token}){
  await suite.test('manual activation builds fresh artifacts and connects the real HTTP boundary to TLS roles and durable fake refunds',async()=>{
@@ -42,4 +43,5 @@ export async function testLocalPrimaryRefundActivation(suite,{admin,ownerDb,load
    try{await services?.close();}finally{for(const key of keys)if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];}
   }
  });
+ await testSpecialistCheckoutRefundActivation(suite,{admin,stateFile,load,actor,token});
 }

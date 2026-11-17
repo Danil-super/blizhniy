@@ -1,0 +1,501 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 70a264f308e7a3d4b791115c8ec47bd3f5065fc1..e64a8ccb61303c3c8aa691f91d578ac0f741fbf5 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -129 +129,3 @@ jobs:
+-            tests/publication-test-release-postgres.mjs
++            tests/publication-test-release-postgres.mjs \
++            tests/specialist-checkout-postgres.mjs \
++            tests/specialist-checkout-guards-postgres.mjs
+diff --git a/database/refund-schema-local-primary-0060.json b/database/refund-schema-local-primary-0060.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..4507e2104be94e6f8dc34fd03c0061c7943f5102
+--- /dev/null
++++ b/database/refund-schema-local-primary-0060.json
+@@ -0,0 +1,50 @@
++{
++  "column": {
++    "count": 785,
++    "sha256": "e7dc7016fe4eafbbc64def6a202a72ffc2ddcd3722574482a57b2dc3a370af93"
++  },
++  "constraint": {
++    "count": 964,
++    "sha256": "4859a5a93ea0cdc135e5d78a277025fd33086a1444bb4ac8fe19306b89636a37"
++  },
++  "external_foreign_key": {
++    "count": 3,
++    "sha256": "2e6e00d09d511b963f0446c64e101bba4aaae19c1dfff3e8e6b0bc6f786b91fd"
++  },
++  "function": {
++    "count": 114,
++    "sha256": "ad4502845f405df21b15e43dd3d2b1ed11fdb8520f7609d5748039c8ec915f74"
++  },
++  "index": {
++    "count": 190,
++    "sha256": "152c8296e83660172c373fb224bf62e0886e8622c7abcabf24ddbf428af5582d"
++  },
++  "policy": {
++    "count": 2,
++    "sha256": "a89c5ad889d5cf4df8f6a1f7794be5d920f6c3e8e2d9c62f038222fb0bb94f0a"
++  },
++  "relation": {
++    "count": 265,
++    "sha256": "68e7c19ed3d9e9ad2f2f846776ef79bbb78b63b6ef2e67f54874e5c21605007c"
++  },
++  "rule": {
++    "count": 1,
++    "sha256": "d719f82ddc11f20f94f0c08a02d8bc60b0be8e1d6cf1931d5ef88d83e4889d96"
++  },
++  "sequence": {
++    "count": 1,
++    "sha256": "4afb13696d8a5696047dfbae4ddce5eb35127e88c18ef93a10c73a7bbf29c59c"
++  },
++  "trigger": {
++    "count": 554,
++    "sha256": "8139178ca18118fcf348f80145906d75e1d01921fcb11b94341c9b29125f89c8"
++  },
++  "type": {
++    "count": 148,
++    "sha256": "a83579ed10616be5ddaec54612ae5a45bf87d034a8e2058d9b1a9229546cdb8f"
++  },
++  "unsupported": {
++    "count": 1,
++    "sha256": "fce708b25e7e2572e23fe66f314932a52e0fb0a473bb3b11d1e86331378e9b66"
++  }
++}
+diff --git a/scripts/build-payment-worker.mjs b/scripts/build-payment-worker.mjs
+index 9e2764569a533a15a98bf5fed9373c96f21a9b6c..ee82563da7d5a0ea8d67bd25073e00f9528521aa 100644
+--- a/scripts/build-payment-worker.mjs
++++ b/scripts/build-payment-worker.mjs
+@@ -34 +34 @@ export function buildPaymentWorker(destination,{schema=54,publicationTest=false}
+- for(const name of ['media-retention-release.mjs','cabinet-release-plan.mjs','financial-catalog-privileges.mjs','publication-test-release-plan.mjs','payment-reconciliation-role.mjs','payment-reconciliation-service.mjs','postgres-migration-plan.mjs','payment-worker-runtime.mjs','payment-worker.mjs','refund-worker-role.mjs','refund-worker-schema.mjs'])
++ for(const name of ['specialist-checkout-release.mjs','media-retention-release.mjs','cabinet-release-plan.mjs','financial-catalog-privileges.mjs','publication-test-release-plan.mjs','payment-reconciliation-role.mjs','payment-reconciliation-service.mjs','postgres-migration-plan.mjs','payment-worker-runtime.mjs','payment-worker.mjs','refund-worker-role.mjs','refund-worker-schema.mjs'])
+diff --git a/scripts/build-refund-operator.mjs b/scripts/build-refund-operator.mjs
+index 98c47e3b172f6a1275d873d24b1f20fb70fc3103..f4833ec3c9644c2477fe6b21119a49374404308e 100644
+--- a/scripts/build-refund-operator.mjs
++++ b/scripts/build-refund-operator.mjs
+@@ -11 +11 @@ export function buildRefundOperator(destination,{schema=55,localPrimary=false}={
+- if(typeof localPrimary!=='boolean'||(schema===58&&!localPrimary)||![55,56,57,58].includes(schema))throw Error('Invalid refund operator schema');
++ if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||![55,56,57,58,60].includes(schema))throw Error('Invalid refund operator schema');
+@@ -23 +23 @@ export function buildRefundOperator(destination,{schema=55,localPrimary=false}={
+-  const bytes=readFileSync(join(root,'database',name.startsWith('0058-')?'candidates':'migrations',name));
++  const bytes=readFileSync(join(root,'database',/^(0058|0060)-/.test(name)?'candidates':'migrations',name));
+@@ -27 +27 @@ export function buildRefundOperator(destination,{schema=55,localPrimary=false}={
+- if(migrations.length!==schema||migrations.at(-1).name!==(schema===55?'0055-refund-operator-locks.sql':schema===56?'0056-placement-renewals.sql':schema===57?'0057-service-payment-terms.sql':'0058-media-reference-journal.sql'))throw Error('Unexpected refund migration boundary');
++ if(migrations.length!==(schema===60?59:schema)||migrations.at(-1).name!==(schema===55?'0055-refund-operator-locks.sql':schema===56?'0056-placement-renewals.sql':schema===57?'0057-service-payment-terms.sql':schema===58?'0058-media-reference-journal.sql':'0060-local-specialist-checkout.sql'))throw Error('Unexpected refund migration boundary');
+@@ -34 +34 @@ export function buildRefundOperator(destination,{schema=55,localPrimary=false}={
+- for(const name of ['media-retention-release.mjs','cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','refund-operator-role.mjs','local-refund-operator-runtime.mjs','local-refund-operator-server.mjs','local-primary-refund-target.mjs','local-primary-config.mjs'])
++ for(const name of ['specialist-checkout-release.mjs','media-retention-release.mjs','cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','refund-operator-role.mjs','local-refund-operator-runtime.mjs','local-refund-operator-server.mjs','local-primary-refund-target.mjs','local-primary-config.mjs'])
+@@ -39,3 +39,3 @@ export function buildRefundOperator(destination,{schema=55,localPrimary=false}={
+- if(schema===58)mkdirSync(join(destination,'database/candidates'));
+- for(const {name,bytes} of migrations)writeFileSync(join(destination,'database',name.startsWith('0058-')?'candidates':'migrations',name),bytes,{flag:'wx',mode:0o600});
+- if(schema>=56)for(const name of ['refund-schema-0056.json','refund-schema-local-primary-0056.json',...(schema>=57?['refund-schema-0057.json','refund-schema-local-primary-0057.json']:[]),...(schema===58?['refund-schema-local-primary-0058.json']:[])])copyFileSync(join(root,'database',name),join(destination,'database',name));
++ if(schema>=58)mkdirSync(join(destination,'database/candidates'));
++ for(const {name,bytes} of migrations)writeFileSync(join(destination,'database',/^(0058|0060)-/.test(name)?'candidates':'migrations',name),bytes,{flag:'wx',mode:0o600});
++ if(schema>=56)for(const name of ['refund-schema-0056.json','refund-schema-local-primary-0056.json',...(schema>=57?['refund-schema-0057.json','refund-schema-local-primary-0057.json']:[]),...(schema>=58?['refund-schema-local-primary-0058.json']:[]),...(schema===60?['refund-schema-local-primary-0060.json']:[])])copyFileSync(join(root,'database',name),join(destination,'database',name));
+diff --git a/scripts/build-refund-worker.mjs b/scripts/build-refund-worker.mjs
+index be65f6329efd8a2dd61b9dc9b1da6403eb74ab8a..d94e09cbfc63c997668b402c92effe3a46f5d0f1 100644
+--- a/scripts/build-refund-worker.mjs
++++ b/scripts/build-refund-worker.mjs
+@@ -11 +11 @@ export function buildRefundWorker(destination,{schema=54,localPrimary=false}={})
+- if(typeof localPrimary!=='boolean'||(schema===58&&!localPrimary)||![54,55,56,57,58].includes(schema))throw Error('Invalid refund worker schema');
++ if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||![54,55,56,57,58,60].includes(schema))throw Error('Invalid refund worker schema');
+@@ -23 +23 @@ export function buildRefundWorker(destination,{schema=54,localPrimary=false}={})
+-  const bytes=readFileSync(join(root,'database',name.startsWith('0058-')?'candidates':'migrations',name));
++  const bytes=readFileSync(join(root,'database',/^(0058|0060)-/.test(name)?'candidates':'migrations',name));
+@@ -27 +27 @@ export function buildRefundWorker(destination,{schema=54,localPrimary=false}={})
+- if(migrations.length!==schema||migrations.at(-1).name!==(schema===54?'0054-refund-worker-locks.sql':schema===55?'0055-refund-operator-locks.sql':schema===56?'0056-placement-renewals.sql':schema===57?'0057-service-payment-terms.sql':'0058-media-reference-journal.sql'))throw Error('Unexpected refund migration boundary');
++ if(migrations.length!==(schema===60?59:schema)||migrations.at(-1).name!==(schema===54?'0054-refund-worker-locks.sql':schema===55?'0055-refund-operator-locks.sql':schema===56?'0056-placement-renewals.sql':schema===57?'0057-service-payment-terms.sql':schema===58?'0058-media-reference-journal.sql':'0060-local-specialist-checkout.sql'))throw Error('Unexpected refund migration boundary');
+@@ -34 +34 @@ export function buildRefundWorker(destination,{schema=54,localPrimary=false}={})
+- for(const name of ['media-retention-release.mjs','cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','local-refund-worker-runtime.mjs','refund-worker-service.mjs','local-primary-refund-target.mjs','local-primary-config.mjs','local-refund-services.mjs'])
++ for(const name of ['specialist-checkout-release.mjs','media-retention-release.mjs','cabinet-release-plan.mjs','postgres-migration-plan.mjs','financial-catalog-privileges.mjs','refund-worker-role.mjs','refund-worker-schema.mjs','local-refund-worker-runtime.mjs','refund-worker-service.mjs','local-primary-refund-target.mjs','local-primary-config.mjs','local-refund-services.mjs'])
+@@ -37,3 +37,3 @@ export function buildRefundWorker(destination,{schema=54,localPrimary=false}={})
+- if(schema>=55)for(const name of ['refund-schema-0055.json','refund-schema-local-primary-0055.json',...(schema>=56?['refund-schema-0056.json','refund-schema-local-primary-0056.json']:[]),...(schema>=57?['refund-schema-0057.json','refund-schema-local-primary-0057.json']:[]),...(schema===58?['refund-schema-local-primary-0058.json']:[])])copyFileSync(join(root,'database',name),join(destination,'database',name));
+- if(schema===58)mkdirSync(join(destination,'database/candidates'));
+- for(const {name,bytes} of migrations)writeFileSync(join(destination,'database',name.startsWith('0058-')?'candidates':'migrations',name),bytes,{flag:'wx',mode:0o600});
++ if(schema>=55)for(const name of ['refund-schema-0055.json','refund-schema-local-primary-0055.json',...(schema>=56?['refund-schema-0056.json','refund-schema-local-primary-0056.json']:[]),...(schema>=57?['refund-schema-0057.json','refund-schema-local-primary-0057.json']:[]),...(schema>=58?['refund-schema-local-primary-0058.json']:[]),...(schema===60?['refund-schema-local-primary-0060.json']:[])])copyFileSync(join(root,'database',name),join(destination,'database',name));
++ if(schema>=58)mkdirSync(join(destination,'database/candidates'));
++ for(const {name,bytes} of migrations)writeFileSync(join(destination,'database',/^(0058|0060)-/.test(name)?'candidates':'migrations',name),bytes,{flag:'wx',mode:0o600});
+diff --git a/scripts/check-local-media-retention.mjs b/scripts/check-local-media-retention.mjs
+index 67ae0b5c069bc5dc8844b2ec46f993def9a85954..b416f627f54e1170f6b123c0c53e3cbd174ba84b 100644
+--- a/scripts/check-local-media-retention.mjs
++++ b/scripts/check-local-media-retention.mjs
+@@ -1 +1 @@
+-// Local57/58 read-only inventory; --files adds fenced observation, never apply/delete.
++// Local57/58/60 read-only inventory; --files adds fenced observation, never apply/delete.
+@@ -30 +30 @@ try{
+-  const schema=journal.length===58?58:57;
++  const schema=journal.length===59?60:journal.length===58?58:57;
+@@ -34 +34 @@ try{
+-  const report=await readMediaRetentionInventory(tx,{retention:schema===58});
++  const report=await readMediaRetentionInventory(tx,{retention:schema>=58});
+@@ -36 +36 @@ try{
+-  assert.equal(schema,58);phase='files';
++  assert.ok(schema===58||schema===60);phase='files';
+diff --git a/scripts/local-primary-fixture.mjs b/scripts/local-primary-fixture.mjs
+index 3a75ceb33a5bbdd8a1b32be091f814781ce06238..0882a88690951050abb814346a4fde1f7d957bdc 100644
+--- a/scripts/local-primary-fixture.mjs
++++ b/scripts/local-primary-fixture.mjs
+@@ -0,0 +1,2 @@
++import {readSpecialistCheckoutEnabled} from '../src/lib/specialist-checkout-config.ts';
++import {verifySpecialistCheckoutRuntimeAccess} from './specialist-checkout-release.mjs';
+@@ -80,2 +82,3 @@ export async function verifyLocalPrimarySchema(state){
+-  const schema=readMediaRetentionEnabled(local)?58:readServiceCheckoutEnabled(local)?57:readPlacementRenewalsEnabled(local)?56:55;
+-  const refundSchema=journal.length===schema&&JSON.stringify(journal)===JSON.stringify(getRefundOperatorRolePlan(state.database,{schema,localPrimary:schema===58}).journal);
++  const specialist=readSpecialistCheckoutEnabled(local);
++  const schema=journal.length===59||specialist?60:readMediaRetentionEnabled(local)?58:readServiceCheckoutEnabled(local)?57:readPlacementRenewalsEnabled(local)?56:55;
++  const refundSchema=(schema===60?journal.length===59:journal.length===schema)&&JSON.stringify(journal)===JSON.stringify(getRefundOperatorRolePlan(state.database,{schema,localPrimary:[58,60].includes(schema)}).journal);
+@@ -85 +88,2 @@ export async function verifyLocalPrimarySchema(state){
+-  if(schema===58)await verifyMediaRetentionRuntimeAccess(owner);
++  if(schema>=58)await verifyMediaRetentionRuntimeAccess(owner);
++  if(schema===60)await verifySpecialistCheckoutRuntimeAccess(owner);
+diff --git a/scripts/local-primary-refunds.mjs b/scripts/local-primary-refunds.mjs
+index 07170f902b43d6c4bdb563f31213dbeaa7204685..25f81455ebf10dcf0f702de52005f20322b416c5 100644
+--- a/scripts/local-primary-refunds.mjs
++++ b/scripts/local-primary-refunds.mjs
+@@ -0,0 +1 @@
++import {readSpecialistCheckoutEnabled} from '../src/lib/specialist-checkout-config.ts';
+@@ -36 +37,2 @@ export async function startLocalPrimaryRefunds({stateFile,signal,report}={}){
+-  const schema=readMediaRetentionEnabled()?58:readServiceCheckoutEnabled()?57:readPlacementRenewalsEnabled()?56:55;
++  const specialist=readSpecialistCheckoutEnabled();
++  let schema=specialist?60:readMediaRetentionEnabled()?58:readServiceCheckoutEnabled()?57:readPlacementRenewalsEnabled()?56:55;
+@@ -42,4 +44 @@ export async function startLocalPrimaryRefunds({stateFile,signal,report}={}){
+-  const operatorPath=join(directory,'operator'),workerPath=join(directory,'worker');
+-  buildRefundOperator(operatorPath,{schema,localPrimary:schema===58});signal.throwIfAborted();buildRefundWorker(workerPath,{schema,localPrimary:schema===58});signal.throwIfAborted();
+-  for(const destination of [operatorPath,workerPath])await symlink(join(root,'node_modules'),join(destination,'node_modules'),'dir');
+-  const require=createRequire(join(workerPath,'package.json')),{PostgresDatabase,readPostgresConfig}=require('./compiled/lib/postgres.js');
++  const {PostgresDatabase,readPostgresConfig}=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule('postgres');
+@@ -52 +51,2 @@ export async function startLocalPrimaryRefunds({stateFile,signal,report}={}){
+-   if(JSON.stringify(journal)!==JSON.stringify(getRefundOperatorRolePlan(state.database,{schema,localPrimary:schema===58}).journal))throw unavailable();
++   if(journal.length===59)schema=60;
++   if(JSON.stringify(journal)!==JSON.stringify(getRefundOperatorRolePlan(state.database,{schema,localPrimary:[58,60].includes(schema)}).journal))throw unavailable();
+@@ -54,0 +55,4 @@ export async function startLocalPrimaryRefunds({stateFile,signal,report}={}){
++  const operatorPath=join(directory,'operator'),workerPath=join(directory,'worker');
++  buildRefundOperator(operatorPath,{schema,localPrimary:[58,60].includes(schema)});signal.throwIfAborted();
++  buildRefundWorker(workerPath,{schema,localPrimary:[58,60].includes(schema)});signal.throwIfAborted();
++  for(const destination of [operatorPath,workerPath])await symlink(join(root,'node_modules'),join(destination,'node_modules'),'dir');
+diff --git a/scripts/media-retention-role.mjs b/scripts/media-retention-role.mjs
+index f3f6777d8b1e00008c6a742e1609573af417a624..e70883166b3a3f1c945bbb207d7a83d41074e2e9 100644
+--- a/scripts/media-retention-role.mjs
++++ b/scripts/media-retention-role.mjs
+@@ -15,2 +15,2 @@ const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.tes
+-export function getMediaRetentionRolePlan(database){
+- if(!validDatabase(database))throw Error('Invalid media retention database');
++export function getMediaRetentionRolePlan(database,{schema=58}={}){
++ if(!validDatabase(database)||![58,60].includes(schema))throw Error('Invalid media retention database');
+@@ -19 +19 @@ export function getMediaRetentionRolePlan(database){
+-  journal:[...getRefundWorkerRolePlan(database,{schema:57}).journal,{name,sha256}],
++  journal:schema===60?getRefundWorkerRolePlan(database,{schema:60,localPrimary:true}).journal:[...getRefundWorkerRolePlan(database,{schema:57}).journal,{name,sha256}],
+@@ -30 +30 @@ export async function verifyMediaRetentionDatabase(db,{database}={}){
+-  if(database!=='blizhniy_prod')throw Error();const plan=getMediaRetentionRolePlan(database);
++  if(database!=='blizhniy_prod')throw Error();
+@@ -45,0 +46 @@ export async function verifyMediaRetentionDatabase(db,{database}={}){
++   const schema=journal.length===59?60:58,plan=getMediaRetentionRolePlan(database,{schema});
+@@ -47 +48 @@ export async function verifyMediaRetentionDatabase(db,{database}={}){
+-   await assertRefundSchema(tx,58,{localPrimary:true});await assertFinancialCatalogPrivileges(tx);
++   await assertRefundSchema(tx,schema,{localPrimary:true});await assertFinancialCatalogPrivileges(tx);
+diff --git a/scripts/refund-operator-role.mjs b/scripts/refund-operator-role.mjs
+index c005c883308f98e6712e31cc06859dbc56c8ae8c..f8ef7aa3effb108bde8a12d9bac526bab70c693f 100644
+--- a/scripts/refund-operator-role.mjs
++++ b/scripts/refund-operator-role.mjs
+@@ -31 +31 @@ const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.tes
+-const journal=(schema=55)=>getRefundWorkerRolePlan('operator',{schema,localPrimary:schema===58}).journal;
++const journal=(schema=55)=>getRefundWorkerRolePlan('operator',{schema,localPrimary:[58,60].includes(schema)}).journal;
+@@ -34 +34 @@ export function getRefundOperatorRolePlan(database,{schema=55,localPrimary=false
+- if(typeof localPrimary!=='boolean'||(schema===58&&!localPrimary)||!validDatabase(database)||![55,56,57,58].includes(schema))throw Error('Invalid refund database');
++ if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||!validDatabase(database)||![55,56,57,58,60].includes(schema))throw Error('Invalid refund database');
+@@ -64 +64 @@ export async function verifyRefundOperatorDatabase(db,{database,merchant,localPr
+-   const schema=localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:55;
++   const schema=localPrimary&&actualJournal.length===59?60:localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:55;
+diff --git a/scripts/refund-worker-role.mjs b/scripts/refund-worker-role.mjs
+index 1e78480c4972151b40ed10f7dbbff833eb0dc7c3..2a15d328ab6895a62d71241f9601fac6faef66ca 100644
+--- a/scripts/refund-worker-role.mjs
++++ b/scripts/refund-worker-role.mjs
+@@ -0,0 +1 @@
++import {getSpecialistCheckoutMigration} from './specialist-checkout-release.mjs';
+@@ -47 +48 @@ function journal(schema=54){return[...getBootstrapPlan({includeListingContactMet
+-}),...(schema===58?[getMediaRetentionMigration()]:[])].map(({name,sha256})=>({name,sha256}));}
++}),...(schema>=58?[getMediaRetentionMigration()]:[]),...(schema===60?[getSpecialistCheckoutMigration()]:[])].map(({name,sha256})=>({name,sha256}));}
+@@ -50 +51 @@ export function getRefundWorkerRolePlan(database,{schema=54,localPrimary=false}=
+- if(typeof localPrimary!=='boolean'||(schema===58&&!localPrimary)||!validDatabase(database)||![54,55,56,57,58].includes(schema))throw Error('Invalid refund database');
++ if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||!validDatabase(database)||![54,55,56,57,58,60].includes(schema))throw Error('Invalid refund database');
+@@ -81 +82 @@ export async function verifyRefundWorkerDatabase(db,{database,merchant,localPrim
+-   const schema=localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:actualJournal.length===55?55:54;
++   const schema=localPrimary&&actualJournal.length===59?60:localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:actualJournal.length===55?55:54;
+diff --git a/scripts/refund-worker-schema.mjs b/scripts/refund-worker-schema.mjs
+index f742ea6ed7347473a9fec0ff863e73f32353ff59..1c47b67866e163565d1e1996d2f3f9b03c75dc3d 100644
+--- a/scripts/refund-worker-schema.mjs
++++ b/scripts/refund-worker-schema.mjs
+@@ -95 +95 @@ export async function assertRefundSchema(tx,schema=54,{localPrimary=false}={}){
+- if(![54,55,56,57,58].includes(schema)||typeof localPrimary!=='boolean'||(localPrimary&&schema<55)||(schema===58&&!localPrimary))throw Error('Invalid refund schema version');
++ if(![54,55,56,57,58,60].includes(schema)||typeof localPrimary!=='boolean'||(localPrimary&&schema<55)||([58,60].includes(schema)&&!localPrimary))throw Error('Invalid refund schema version');
+diff --git a/scripts/specialist-checkout-release.mjs b/scripts/specialist-checkout-release.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b021cae95cd987ac493806bec8488406bbae1596
+--- /dev/null
++++ b/scripts/specialist-checkout-release.mjs
+@@ -0,0 +1,29 @@
++import {readFileSync} from 'node:fs';
++import {createHash} from 'node:crypto';
++/** Candidate only; no installation or automatic bootstrap. */
++export function getSpecialistCheckoutMigration(){
++ const name='0060-local-specialist-checkout.sql',source=readFileSync(new URL('../database/candidates/'+name,import.meta.url),'utf8');
++ const sha256=createHash('sha256').update(source).digest('hex');
++ if(sha256!=='2b1079685ec39dbc4c67db86b6bca4aefac31682cf6892fab046fde22a59c8bd')throw Error('Invalid specialist checkout migration');
++ return{name,source,sha256};
++}
++
++export const specialistCheckoutRuntimeGrants=[
++ 'grant select(intent_id,created_at),insert(intent_id) on app.specialist_checkout_terms to blizhniy_runtime',
++];
++/** Only the new object family; existing runtime rights are checked separately. */
++export async function verifySpecialistCheckoutRuntimeAccess(tx){
++ const expected=new Set(['intent_id:SELECT','created_at:SELECT','intent_id:INSERT']);
++ const actual=(await tx.query(`select a.attname||':'||p.privilege as key,
++  has_column_privilege('blizhniy_runtime',a.attrelid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
++  from pg_attribute a cross join(values('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) p(privilege)
++  where a.attrelid='app.specialist_checkout_terms'::regclass and a.attnum>0 and not a.attisdropped
++   and has_column_privilege('blizhniy_runtime',a.attrelid,a.attnum,p.privilege)`)).rows;
++ if(actual.length!==expected.size||actual.some(row=>row.grantable!==false||!expected.delete(row.key))||expected.size)throw Error('Invalid specialist checkout web access');
++ const extra=(await tx.query(`select 1 where has_table_privilege('blizhniy_runtime','app.specialist_checkout_terms','DELETE,TRUNCATE,TRIGGER,MAINTAIN')
++  or exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.proname in
++   ('specialist_checkout_ready','guard_specialist_checkout_terms','guard_specialist_checkout_edit','guard_specialist_checkout_photo',
++    'guard_specialist_payment_fulfillment','apply_specialist_payment_fulfillment','guard_specialist_publication_window')
++   and has_function_privilege('blizhniy_runtime',p.oid,'EXECUTE'))`)).rows;
++ if(extra.length)throw Error('Invalid specialist checkout web access');
++}
+diff --git a/tests/local-primary-refund-activation-cases.mjs b/tests/local-primary-refund-activation-cases.mjs
+index c1d17985f86f1b2263c514fd848230554e268411..3601758a8e2b6dd370214f869bce95af92116af7 100644
+--- a/tests/local-primary-refund-activation-cases.mjs
++++ b/tests/local-primary-refund-activation-cases.mjs
+@@ -5,0 +6 @@ import {startLocalPrimaryRefunds} from '../scripts/local-primary-refunds.mjs';
++import {testSpecialistCheckoutRefundActivation} from './specialist-checkout-refund-activation-cases.mjs';
+@@ -44,0 +46 @@ export async function testLocalPrimaryRefundActivation(suite,{admin,ownerDb,load
++ await testSpecialistCheckoutRefundActivation(suite,{admin,stateFile,load,actor,token});
+diff --git a/tests/postgres-ci-gate.test.mjs b/tests/postgres-ci-gate.test.mjs
+index 511cf0183f95240433a6770e40038ee342b990b5..9ee7301f87f19be49ff894518efb744323bf0a72 100644
+--- a/tests/postgres-ci-gate.test.mjs
++++ b/tests/postgres-ci-gate.test.mjs
+@@ -19,0 +20,2 @@ const suites=[
++ 'specialist-checkout-postgres.mjs',
++ 'specialist-checkout-guards-postgres.mjs',
+diff --git a/tests/specialist-checkout-artifacts.test.mjs b/tests/specialist-checkout-artifacts.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3bb6099fb36a79eea39c9a38b27b11352547d22e
+--- /dev/null
++++ b/tests/specialist-checkout-artifacts.test.mjs
+@@ -0,0 +1,57 @@
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {mkdtempSync,readFileSync,rmSync,appendFileSync} from 'node:fs';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {pathToFileURL} from 'node:url';
++import {createHash} from 'node:crypto';
++import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
++import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
++import {getRefundWorkerRolePlan} from '../scripts/refund-worker-role.mjs';
++import {getRefundOperatorRolePlan} from '../scripts/refund-operator-role.mjs';
++import {buildPaymentWorker} from '../scripts/build-payment-worker.mjs';
++
++test('local60 financial packages pin 59 exact migrations and preserve previous rights',async()=>{
++ const owned=mkdtempSync(join(tmpdir(),'blizhniy-specialist60-artifacts-'));
++ try{
++  for(const [name,build,plan] of [['worker',buildRefundWorker,getRefundWorkerRolePlan],['operator',buildRefundOperator,getRefundOperatorRolePlan]]){
++   assert.throws(()=>plan('artifact',{schema:60}));
++   assert.throws(()=>plan('artifact',{schema:59,localPrimary:true}));
++   assert.throws(()=>plan('artifact',{schema:61,localPrimary:true}));
++   assert.throws(()=>build(join(owned,name+'-denied'),{schema:60}));
++   const expected=plan('artifact',{schema:60,localPrimary:true});
++   assert.deepEqual(expected.grants,plan('artifact',{schema:58,localPrimary:true}).grants);
++   assert.equal(expected.journal.length,59);assert.equal(expected.journal.at(-2).name,'0058-media-reference-journal.sql');
++   assert.equal(expected.journal.at(-1).name,'0060-local-specialist-checkout.sql');
++   assert.equal(expected.journal.some(row=>row.name.startsWith('0059-')),false);
++   const path=join(owned,name),manifest=build(path,{schema:60,localPrimary:true});assert.equal(manifest.schema,60);
++   const module=await import(pathToFileURL(join(path,'scripts/refund-'+name+'-role.mjs')));
++   const copied=module[name==='worker'?'getRefundWorkerRolePlan':'getRefundOperatorRolePlan'];
++   assert.deepEqual(copied('artifact',{schema:60,localPrimary:true}),expected);
++   for(const {name,sha256} of expected.journal){
++    const directory=/^(0058|0060)-/.test(name)?'candidates':'migrations';
++    assert.equal(createHash('sha256').update(readFileSync(join(path,'database',directory,name))).digest('hex'),sha256);
++   }
++   assert.deepEqual(readFileSync(join(path,'database/refund-schema-local-primary-0060.json')),readFileSync(new URL('../database/refund-schema-local-primary-0060.json',import.meta.url)));
++   const {assertRefundSchema}=await import(pathToFileURL(join(path,'scripts/refund-worker-schema.mjs')));
++   await assert.rejects(assertRefundSchema({query(){throw Error('unexpected SQL');}},60),/version/);
++   appendFileSync(join(path,'database/candidates/0060-local-specialist-checkout.sql'),'-- changed copied candidate\n');
++   assert.throws(()=>copied('artifact',{schema:60,localPrimary:true}),/migration/);
++  }
++ }finally{rmSync(owned,{recursive:true,force:true});}
++});
++
++test('existing payment packages load shared guards while local60 remains unavailable to that worker',async()=>{
++ const owned=mkdtempSync(join(tmpdir(),'blizhniy-specialist60-old-worker-'));
++ try{
++  assert.throws(()=>buildPaymentWorker(join(owned,'denied'),{schema:60}));
++  for(const [name,options] of [['schema54',{schema:54}],['production36',{publicationTest:true}]]){
++   const target=join(owned,name);buildPaymentWorker(target,options);
++   const module=await import(pathToFileURL(join(target,'scripts/payment-reconciliation-role.mjs')));
++   assert.equal(typeof module.verifyPaymentReconciliationDatabase,'function');
++   const {getRefundWorkerRolePlan:plan}=await import(pathToFileURL(join(target,'scripts/refund-worker-role.mjs')));
++   if(name==='schema54')assert.equal(plan('artifact').journal.length,54);
++   assert.throws(()=>plan('artifact',{schema:60}));
++  }
++ }finally{rmSync(owned,{recursive:true,force:true});}
++});
+diff --git a/tests/specialist-checkout-guards-postgres.mjs b/tests/specialist-checkout-guards-postgres.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..79b1f205be05f7e13b5abcb6b15332deaedc08a2
+--- /dev/null
++++ b/tests/specialist-checkout-guards-postgres.mjs
+@@ -0,0 +1,103 @@
++// Fresh disposable PostgreSQL only; never opens an existing stand or merchant.
++import assert from 'node:assert/strict';
++import {test} from 'node:test';
++import {execFile} from 'node:child_process';
++import {promisify} from 'node:util';
++import {randomBytes} from 'node:crypto';
++import {readFile,mkdtemp,rm,writeFile} from 'node:fs/promises';
++import {tmpdir} from 'node:os';
++import {join} from 'node:path';
++import {pathToFileURL} from 'node:url';
++import pg from 'pg';
++import {PostgresDatabase} from '../src/lib/postgres.ts';
++import {getRefundWorkerRolePlan,verifyRefundWorkerDatabase} from '../scripts/refund-worker-role.mjs';
++import {getRefundOperatorRolePlan,verifyRefundOperatorDatabase} from '../scripts/refund-operator-role.mjs';
++import {getMediaRetentionRolePlan,verifyMediaRetentionDatabase,mediaRetentionRuntimeGrants} from '../scripts/media-retention-role.mjs';
++import {assertRefundSchema} from '../scripts/refund-worker-schema.mjs';
++import {verifyLocalPrimarySchema} from '../scripts/local-primary-fixture.mjs';
++import {getSpecialistCheckoutMigration} from '../scripts/specialist-checkout-release.mjs';
++import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
++import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
++import {readMediaRetentionInventory} from '../scripts/media-retention-inventory.mjs';
++
++const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
++const name='blizhniy-specialist-guards-'+randomBytes(8).toString('hex'),label='blizhniy.specialist-guards-fixture',password=randomBytes(32).toString('hex');
++const docker=async args=>(await run('/usr/bin/docker',['--host','unix:///var/run/docker.sock',...args],{timeout:20000,maxBuffer:1048576,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',POSTGRES_PASSWORD:password}})).stdout.trim();
++test('local60 exact catalog, installed-mode recovery and unchanged financial/media authority',{timeout:120000},async suite=>{
++ let id,owner;const dbs=[],checks=[],owned=await mkdtemp(join(tmpdir(),'blizhniy-specialist-guards-'));
++ const env={NODE_ENV:'test',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:3045',BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_MEDIA_RETENTION:'local-v1',BLIZHNIY_SERVICE_CHECKOUT:'local-v1'};
++ const saved={};for(const key of [...Object.keys(env),'BLIZHNIY_SPECIALIST_CHECKOUT'])saved[key]=process.env[key];Object.assign(process.env,env);delete process.env.BLIZHNIY_SPECIALIST_CHECKOUT;
++ try{
++  id=await docker(['run','--detach','--pull','never','--name',name,'--label',label+'='+name,'--memory','512m','--cpus','1','--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB=blizhniy_prod',image]);
++  const metadata=JSON.parse(await docker(['inspect',id]))[0],binding=metadata.NetworkSettings.Ports['5432/tcp'][0];assert.equal(binding.HostIp,'127.0.0.1');
++  const config={host:'127.0.0.1',port:Number(binding.HostPort),database:'blizhniy_prod',user:'postgres',password,ssl:false,connectionTimeoutMillis:3000};
++  const until=Date.now()+20000;for(;;){try{await docker(['exec',id,'pg_isready','-h','127.0.0.1','-U','postgres']);break;}catch{assert.ok(Date.now()<until);}await new Promise(r=>setTimeout(r,100));}
++  owner=new pg.Client(config);await owner.connect();
++  const old=getRefundWorkerRolePlan('blizhniy_prod',{schema:58,localPrimary:true});
++  for(const {name} of old.journal.filter(row=>!row.name.startsWith('0058-')))await owner.query(await readFile(new URL('../database/migrations/'+name,import.meta.url),'utf8'));
++  await owner.query('create role blizhniy_runtime login nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls;revoke all on database blizhniy_prod from public;revoke create on schema public from public;create schema blizhniy_meta;create table blizhniy_meta.migrations(name text primary key,sha256 text not null);revoke all on schema blizhniy_meta from public;revoke all on blizhniy_meta.migrations from public');
++  await owner.query(await readFile(new URL('../database/local-primary-payment.sql',import.meta.url),'utf8'));
++  await owner.query(await readFile(new URL('../database/permissions/telegram-phone.sql',import.meta.url),'utf8'));
++  await owner.query(await readFile(new URL('../database/candidates/0058-media-reference-journal.sql',import.meta.url),'utf8'));
++  for(const {name,sha256} of old.journal)await owner.query('insert into blizhniy_meta.migrations values($1,$2)',[name,sha256]);
++  for(const sql of mediaRetentionRuntimeGrants)await owner.query(sql);
++  const options={database:'blizhniy_prod',merchant:{shopId:'local-fixture-shop',isTest:true},localPrimary:true};
++  for(const [plan,verify] of [[old,verifyRefundWorkerDatabase],[getRefundOperatorRolePlan('blizhniy_prod',{schema:58,localPrimary:true}),verifyRefundOperatorDatabase],[getMediaRetentionRolePlan('blizhniy_prod'),verifyMediaRetentionDatabase]]){
++   await owner.query(plan.createRole);await owner.query('alter role '+plan.role+' login password '+pg.escapeLiteral(password));for(const sql of plan.grants)await owner.query(sql);
++   const db=new PostgresDatabase(new pg.Pool({...config,user:plan.role,max:1}));dbs.push(db);checks.push(()=>verify(db,options));
++  }
++  const state={database:'blizhniy_prod',dbPort:config.port,ownerPassword:password,origin:env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN};
++  const check=async()=>{await verifyLocalPrimarySchema(state);for(const fn of checks)await fn();};
++  await suite.test('previous local58 remains accepted, enabled specialist mode requires installation',async()=>{
++   await check();process.env.BLIZHNIY_SPECIALIST_CHECKOUT='local-v1';try{await assert.rejects(verifyLocalPrimarySchema(state));}finally{delete process.env.BLIZHNIY_SPECIALIST_CHECKOUT;}
++  });
++  const migration=getSpecialistCheckoutMigration();await owner.query(migration.source);await owner.query('insert into blizhniy_meta.migrations values($1,$2)',[migration.name,migration.sha256]);
++  await suite.test('launcher requires the new web grants before allowing schema60',async()=>{await assert.rejects(verifyLocalPrimarySchema(state));});
++  await owner.query('grant select(intent_id,created_at),insert(intent_id) on app.specialist_checkout_terms to blizhniy_runtime');
++  await suite.test('all three roles and launcher accept exact local60 with feature enabled or disabled',async()=>{
++   await check();process.env.BLIZHNIY_SPECIALIST_CHECKOUT='local-v1';await check();delete process.env.BLIZHNIY_SPECIALIST_CHECKOUT;await check();
++   for(const [plan,oldSchema] of [[getRefundWorkerRolePlan,58],[getRefundOperatorRolePlan,58]])assert.deepEqual(plan('blizhniy_prod',{schema:60,localPrimary:true}).grants,plan('blizhniy_prod',{schema:oldSchema,localPrimary:true}).grants);
++   assert.deepEqual(getMediaRetentionRolePlan('blizhniy_prod',{schema:60}).grants,getMediaRetentionRolePlan('blizhniy_prod').grants);
++   await assert.rejects(verifyRefundWorkerDatabase(dbs[0],{...options,localPrimary:false}));await assert.rejects(verifyRefundOperatorDatabase(dbs[1],{...options,localPrimary:false}));
++  });
++  for(const [title,change,undo] of [
++   ['missing58',"delete from blizhniy_meta.migrations where name='0058-media-reference-journal.sql'",null],
++   ['wrong60 hash',"update blizhniy_meta.migrations set sha256=repeat('0',64) where name='0060-local-specialist-checkout.sql'",null],
++   ['unexpected59',"insert into blizhniy_meta.migrations values('0059-production-publication-test.sql',repeat('a',64))","delete from blizhniy_meta.migrations where name like '0059-%'"],
++   ['unknown61',"insert into blizhniy_meta.migrations values('0061-unknown.sql',repeat('a',64))","delete from blizhniy_meta.migrations where name='0061-unknown.sql'"],
++   ['disabled new trigger','alter table app.specialist_checkout_terms disable trigger specialist_checkout_terms_guard','alter table app.specialist_checkout_terms enable trigger specialist_checkout_terms_guard'],
++   ['changed new function','alter function app.specialist_checkout_ready(uuid,uuid,bigint) security invoker','alter function app.specialist_checkout_ready(uuid,uuid,bigint) security definer'],
++  ])await suite.test(title+' rejects every guard without modifying the database',async()=>{
++   await owner.query(change);try{await assert.rejects(verifyLocalPrimarySchema(state));for(const fn of checks)await assert.rejects(fn());}
++   finally{if(undo)await owner.query(undo);else{await owner.query('delete from blizhniy_meta.migrations');for(const {name,sha256} of getRefundWorkerRolePlan('blizhniy_prod',{schema:60,localPrimary:true}).journal)await owner.query('insert into blizhniy_meta.migrations values($1,$2)',[name,sha256]);}}
++   await check();
++  });
++  for(let index=0;index<dbs.length;index++)await suite.test('role '+index+' cannot acquire specialist reads or new callable functions',async()=>{
++   const role=['blizhniy_refund_worker','blizhniy_refund_operator','blizhniy_media_cleanup'][index];
++   await assert.rejects(dbs[index].query('select * from app.specialist_checkout_terms'),{code:'42501'});
++   await assert.rejects(dbs[index].query('select app.specialist_checkout_ready(null,null,null)'),{code:'42501'});
++   for(const [grant,revoke] of [['grant select(intent_id) on app.specialist_checkout_terms to '+role,'revoke select(intent_id) on app.specialist_checkout_terms from '+role],['grant execute on function app.specialist_checkout_ready(uuid,uuid,bigint) to '+role,'revoke execute on function app.specialist_checkout_ready(uuid,uuid,bigint) from '+role]]){
++    await owner.query(grant);try{await assert.rejects(checks[index]());}finally{await owner.query(revoke);}await checks[index]();
++   }
++  });
++  await suite.test('web admission rejects missing grants, financial writes and direct execution of new guards',async()=>{
++   for(const [change,undo] of [
++    ['revoke insert(intent_id) on app.specialist_checkout_terms from blizhniy_runtime','grant insert(intent_id) on app.specialist_checkout_terms to blizhniy_runtime'],
++    ['grant update(created_at) on app.specialist_checkout_terms to blizhniy_runtime','revoke update(created_at) on app.specialist_checkout_terms from blizhniy_runtime'],
++    ['grant execute on function app.specialist_checkout_ready(uuid,uuid,bigint) to blizhniy_runtime','revoke execute on function app.specialist_checkout_ready(uuid,uuid,bigint) from blizhniy_runtime'],
++   ]){await owner.query(change);try{await assert.rejects(verifyLocalPrimarySchema(state));}finally{await owner.query(undo);}await check();}
++  });
++  await suite.test('retention inventory stays read-only and reconciles after specialist schema addition',async()=>{
++   await owner.query('begin isolation level repeatable read read only');try{await assertRefundSchema(owner,60,{localPrimary:true});const report=await readMediaRetentionInventory(owner,{retention:true});assert.equal(report.summary.accountingMatches,true);assert.equal(report.cleanupAuthorized,false);await assert.rejects(owner.query('delete from app.specialist_checkout_terms'),{code:'25006'});}finally{await owner.query('rollback');}
++  });
++  await suite.test('built financial guards admit current catalog and reject changed copied migration bytes',async()=>{
++   for(const [name,build,index] of [['worker',buildRefundWorker,0],['operator',buildRefundOperator,1]]){
++    const target=join(owned,name);build(target,{schema:60,localPrimary:true});const module=await import(pathToFileURL(join(target,'scripts/refund-'+name+'-role.mjs'))),verify=module[name==='worker'?'verifyRefundWorkerDatabase':'verifyRefundOperatorDatabase'];
++    await verify(dbs[index],options);const path=join(target,'database/candidates/0060-local-specialist-checkout.sql'),bytes=await readFile(path);await writeFile(path,Buffer.concat([bytes,Buffer.from('-- changed\n')]));await assert.rejects(verify(dbs[index],options));await writeFile(path,bytes);await verify(dbs[index],options);
++   }
++  });
++ }finally{
++  for(const db of dbs)await db.close();await owner?.end();await rm(owned,{recursive:true,force:true});for(const [key,value] of Object.entries(saved))if(value===undefined)delete process.env[key];else process.env[key]=value;
++  if(id){const metadata=JSON.parse(await docker(['inspect',id]))[0];assert.equal(metadata.Id,id);assert.equal(metadata.Config.Image,image);assert.equal(metadata.Config.Labels[label],name);await docker(['rm','--force',id]);}
++ }
++});
+diff --git a/tests/specialist-checkout-refund-activation-cases.mjs b/tests/specialist-checkout-refund-activation-cases.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..454850f60927609aa2b8b7c537fb85a4d6bcc2b2
+--- /dev/null
++++ b/tests/specialist-checkout-refund-activation-cases.mjs
+@@ -0,0 +1,42 @@
++import assert from 'node:assert/strict';
++import {readFile,readdir} from 'node:fs/promises';
++import {dirname} from 'node:path';
++import {startLocalPrimaryRefunds} from '../scripts/local-primary-refunds.mjs';
++import {getRefundWorkerRolePlan} from '../scripts/refund-worker-role.mjs';
++import {assertRefundSchema} from '../scripts/refund-worker-schema.mjs';
++import {mediaRetentionRuntimeGrants} from '../scripts/media-retention-role.mjs';
++import {specialistCheckoutRuntimeGrants} from '../scripts/specialist-checkout-release.mjs';
++
++/** Extend only the parent's disposable TLS fixture after all its schema55 assertions. */
++export async function testSpecialistCheckoutRefundActivation(suite,{admin,stateFile,load,actor,token}){
++ const local={NODE_ENV:'test',BLIZHNIY_LOCAL_PRIMARY:'enabled',BLIZHNIY_LOCAL_PRIMARY_ORIGIN:'https://127.0.0.1:3045',BLIZHNIY_LISTING_WORKFLOW:'postmoderation',BLIZHNIY_SERVICE_CHECKOUT:'local-v1',BLIZHNIY_MEDIA_RETENTION:'local-v1',BLIZHNIY_SPECIALIST_CHECKOUT:'disabled'};
++ const saved=Object.fromEntries(Object.keys(local).map(key=>[key,process.env[key]]));let service;
++ try{
++  Object.assign(process.env,local);
++  for(const {name,sha256} of getRefundWorkerRolePlan('blizhniy_prod',{schema:60,localPrimary:true}).journal.slice(55)){
++   await admin.query(await readFile(new URL('../database/'+(/^(0058|0060)-/.test(name)?'candidates/':'migrations/')+name,import.meta.url),'utf8'));
++   await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[name,sha256]);
++  }
++  for(const grant of [...mediaRetentionRuntimeGrants,...specialistCheckoutRuntimeGrants])await admin.query(grant);
++  const snapshot=await admin.connect();try{await snapshot.query('begin read only');await assertRefundSchema(snapshot,60,{localPrimary:true});}finally{await snapshot.query('rollback');snapshot.release();}
++  await suite.test('actual owned TLS refund launcher restarts on installed60 with specialist mode disabled or enabled',async()=>{
++   for(const mode of ['disabled','local-v1']){
++    process.env.BLIZHNIY_SPECIALIST_CHECKOUT=mode;const events=[];
++    service=await startLocalPrimaryRefunds({stateFile,signal:new AbortController().signal,report:async event=>events.push(event)});
++    assert.equal(events[0].status,'ready');
++    assert.ok((await load('local-refund-operator-client').callLocalRefundOperator(service.socketPath,token,{action:'list',expectedAdminId:actor,input:null})).items.length>0);
++    const sessions=(await admin.query("select s.ssl from pg_stat_activity a join pg_stat_ssl s using(pid) where a.application_name in('blizhniy-local-refund-provider','blizhniy-local-refund-worker','blizhniy-local-refund-operator')")).rows;
++    assert.ok(sessions.length>=3);assert.ok(sessions.every(row=>row.ssl));
++    await service.close();assert.equal(await service.done,0);service=undefined;
++    assert.equal((await readdir(dirname(stateFile))).filter(name=>name.startsWith('refund-runtime-')).length,0);
++   }
++  });
++  await suite.test('actual launcher rejects changed60 before readiness and removes temporary artifacts/connections',async()=>{
++   let events=0;await admin.query("update blizhniy_meta.migrations set sha256=repeat('0',64) where name='0060-local-specialist-checkout.sql'");
++   try{await assert.rejects(startLocalPrimaryRefunds({stateFile,signal:new AbortController().signal,report:async()=>events++}),{message:'Local primary refunds unavailable'});assert.equal(events,0);}
++   finally{const row=getRefundWorkerRolePlan('blizhniy_prod',{schema:60,localPrimary:true}).journal.at(-1);await admin.query('update blizhniy_meta.migrations set sha256=$1 where name=$2',[row.sha256,row.name]);}
++   assert.equal((await readdir(dirname(stateFile))).filter(name=>name.startsWith('refund-runtime-')).length,0);
++   assert.equal((await admin.query("select count(*)::int n from pg_stat_activity where application_name='blizhniy-local-refund-provider'")).rows[0].n,0);
++  });
++ }finally{try{await service?.close();}finally{for(const [key,value] of Object.entries(saved))if(value===undefined)delete process.env[key];else process.env[key]=value;}}
++}

@@ -12,11 +12,11 @@ const policy={
  'blizhniy_meta.migrations':{select:columns('name,sha256')},
 };
 const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
-export function getMediaRetentionRolePlan(database){
- if(!validDatabase(database))throw Error('Invalid media retention database');
+export function getMediaRetentionRolePlan(database,{schema=58}={}){
+ if(!validDatabase(database)||![58,60].includes(schema))throw Error('Invalid media retention database');
  const {name,sha256}=getMediaRetentionMigration();
  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 2`,
-  journal:[...getRefundWorkerRolePlan(database,{schema:57}).journal,{name,sha256}],
+  journal:schema===60?getRefundWorkerRolePlan(database,{schema:60,localPrimary:true}).journal:[...getRefundWorkerRolePlan(database,{schema:57}).journal,{name,sha256}],
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
    ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`))]};
 }
@@ -27,7 +27,7 @@ export const mediaRetentionRuntimeGrants=[
 /** Dedicated local role only; exact journal, schema and ACL. No owner fallback or object repair. */
 export async function verifyMediaRetentionDatabase(db,{database}={}){
  try{
-  if(database!=='blizhniy_prod')throw Error();const plan=getMediaRetentionRolePlan(database);
+  if(database!=='blizhniy_prod')throw Error();
   await db.transaction(async tx=>{
    await tx.query("set local statement_timeout='5s'");await tx.query("set local lock_timeout='1s'");await tx.query("set local search_path=pg_catalog");
    const identity=(await tx.query(`select current_user as name,session_user as login,current_database() as database,
@@ -43,8 +43,9 @@ export async function verifyMediaRetentionDatabase(db,{database}={}){
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==2||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','ownership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error();
    const journal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
+   const schema=journal.length===59?60:58,plan=getMediaRetentionRolePlan(database,{schema});
    if(JSON.stringify(journal)!==JSON.stringify(plan.journal))throw Error();
-   await assertRefundSchema(tx,58,{localPrimary:true});await assertFinancialCatalogPrivileges(tx);
+   await assertRefundSchema(tx,schema,{localPrimary:true});await assertFinancialCatalogPrivileges(tx);
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
     from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid

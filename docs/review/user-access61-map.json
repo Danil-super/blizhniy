@@ -1,0 +1,19 @@
+{
+  "database/candidates/0061-admin-user-access.sql": "docs/review/user-access61/0061-admin-user-access.sql.candidate",
+  "tests/admin-user-access-postgres-integration.mjs": "docs/review/user-access61/admin-user-access-postgres-integration.mjs.candidate",
+  "scripts/admin-user-access-release.mjs": "docs/review/user-access61/admin-user-access-release.mjs.candidate",
+  "database/admin-user-access-schema-v1.json": "docs/review/user-access61/admin-user-access-schema-v1.json.candidate",
+  "scripts/build-user-access-operator.mjs": "docs/review/user-access61/build-user-access-operator.mjs.candidate",
+  "scripts/check-quality-floor.mjs": "docs/review/user-access61/check-quality-floor.mjs.candidate",
+  "scripts/financial-catalog-privileges.mjs": "docs/review/user-access61/financial-catalog-privileges.mjs.candidate",
+  "scripts/local-primary-proxy.mjs": "docs/review/user-access61/local-primary-proxy.mjs.candidate",
+  "scripts/local-primary-services.mjs": "docs/review/user-access61/local-primary-services.mjs.candidate",
+  "scripts/local-primary-user-access.mjs": "docs/review/user-access61/local-primary-user-access.mjs.candidate",
+  "scripts/local-primary.mjs": "docs/review/user-access61/local-primary.mjs.candidate",
+  "scripts/local-user-access-credentials.mjs": "docs/review/user-access61/local-user-access-credentials.mjs.candidate",
+  "scripts/local-user-access-request.mjs": "docs/review/user-access61/local-user-access-request.mjs.candidate",
+  "scripts/local-user-access-runtime.mjs": "docs/review/user-access61/local-user-access-runtime.mjs.candidate",
+  "src/lib/postgres-admin-user-access.ts": "docs/review/user-access61/postgres-admin-user-access.ts.candidate",
+  "scripts/refund-worker-schema.mjs": "docs/review/user-access61/refund-worker-schema.mjs.candidate",
+  "scripts/user-access-role.mjs": "docs/review/user-access61/user-access-role.mjs.candidate"
+}

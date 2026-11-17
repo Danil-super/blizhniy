@@ -71,7 +71,7 @@ export function ProfessionSelect({defaultValue='',defaultId,required=false,catal
    {matches.map((item,index)=><li key={item.slug} id={`${listId}-${index}`} role="option" aria-selected={selected?.slug===item.slug}
     className={`flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm ${active===index?'bg-blue-50 text-blue-800':'text-slate-800 hover:bg-slate-50'}`}
     onMouseDown={event=>event.preventDefault()} onMouseMove={()=>setActive(index)} onClick={()=>choose(item)}>
-    <span className="min-w-0 break-words">{item.name}{primary&&<span className="block text-xs text-slate-600">{item.parent} · {item.slug}</span>}</span>
+    <span className="min-w-0 break-words">{item.name}{primary&&item.parent&&<span className="block text-xs text-slate-600">{item.parent}</span>}</span>
     {selected?.slug===item.slug&&<Check aria-hidden="true" className="h-4 w-4 shrink-0"/>}
    </li>)}
    {!matches.length&&<li role="presentation" className="p-3 text-sm text-slate-500">Ничего не найдено. Измените запрос.</li>}

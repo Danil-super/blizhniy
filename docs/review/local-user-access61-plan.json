@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "status": "installed-and-admitted-local-only",
+  "project": "/home/danil/Рабочий стол/БЛИЖНИЙ",
+  "origin": "https://127.0.0.1:3045",
+  "database": "blizhniy_prod",
+  "sourceBase": "b20c8ac857831515af1e3c24443014051b32c51d",
+  "patch": {
+    "path": "docs/review/local-user-access61.patch",
+    "sha256": "2ba6bbff34c071c115fd7852641f069d245c677f9c66aef69aba61056f035db2",
+    "format": "git unified=0 patch; apply/check with --unidiff-zero on pinned source base"
+  },
+  "targets": [
+    {
+      "path": "database/admin-user-access-schema-v1.json",
+      "beforeSha256": null,
+      "afterSha256": "a62a3b38e7829c7a087816f35af3c6a803caeb696a325316fdf75f6ae564252f"
+    },
+    {
+      "path": "database/candidates/0061-admin-user-access.sql",
+      "beforeSha256": "bd776845f7da1c7245022d96ef11e547b4a64a3b8c6ab77a72cbb3bb15791400",
+      "afterSha256": "e69fd3681f2a70db9143e027bb1a23e0d0b3435125bfffa03ea7447230fa36a0"
+    },
+    {
+      "path": "scripts/admin-user-access-release.mjs",
+      "beforeSha256": null,
+      "afterSha256": "5229befc35c45b716d26470f52c7fb0681eeb80dc76a06ea5d264f55c9c90b89"
+    },
+    {
+      "path": "scripts/build-user-access-operator.mjs",
+      "beforeSha256": null,
+      "afterSha256": "55969d69592b7fc13445de1d7665beed1fc84354b6b3212fb01a47f31c8ecba5"
+    },
+    {
+      "path": "scripts/check-quality-floor.mjs",
+      "beforeSha256": "3b1f2ea5a2cd8b8090d1d9bed0035573cd064dc7a31ec621f8aa29d8e5f1c00c",
+      "afterSha256": "ae7671075efafa3a8b413815c707f4fc9695f5f881ecd3f9b29e167ee644c51b"
+    },
+    {
+      "path": "scripts/financial-catalog-privileges.mjs",
+      "beforeSha256": "91bde4f04f60dcea274c797e4603d49489b3d91279e64ae0a365f44f144e28f9",
+      "afterSha256": "730acfdad522f6a3baaf8ba62c0a95420451095d4a3225613b299fe3806bc28f"
+    },
+    {
+      "path": "scripts/local-primary-proxy.mjs",
+      "beforeSha256": "f00fe750c826bc2bbd71a10a99ee6a84ce804cc8c7b52963827f16be578c9a39",
+      "afterSha256": "f5981596844acb0471aa4e3c9c71087b4438b3b2d5982cc32a99eba763b76809"
+    },
+    {
+      "path": "scripts/local-primary-services.mjs",
+      "beforeSha256": "ddf7bdd549ca369792400dbdb9d27a1e35adc7645fc5eab7025aff32be6d5e12",
+      "afterSha256": "50addde201b62b1133d57e0a55babcb8a7927c881781eae7c711586606da0bbb"
+    },
+    {
+      "path": "scripts/local-primary-user-access.mjs",
+      "beforeSha256": null,
+      "afterSha256": "c2a44795797ba5970d90e0444904839cd9e13001342ad4ed2241f8019cdd9d5b"
+    },
+    {
+      "path": "scripts/local-primary.mjs",
+      "beforeSha256": "180d23f27b84fd6f99c2aaa3602609a832413348305ce54c379188f4f9aa7e90",
+      "afterSha256": "a9dfebfa731494fe659a1b822d6ab0d2ffde4a43527941bba335194d1e3b829e"
+    },
+    {
+      "path": "scripts/local-user-access-credentials.mjs",
+      "beforeSha256": null,
+      "afterSha256": "9fab0dd861252374a62d76c3c6515e4ae217c684746d097a706b0297df1a33e4"
+    },
+    {
+      "path": "scripts/local-user-access-request.mjs",
+      "beforeSha256": null,
+      "afterSha256": "fae90532f0ee6af9716518a0c6b499f1e513718057715a9c38b61110ca58e965"
+    },
+    {
+      "path": "scripts/local-user-access-runtime.mjs",
+      "beforeSha256": null,
+      "afterSha256": "6116c18a7f674261783c4520a59e23babeca58fcfe0bd10db24186fb5ca1ebab"
+    },
+    {
+      "path": "scripts/refund-worker-schema.mjs",
+      "beforeSha256": "7810c84ae4a8a47c1b158b60645dd1777f40ccd13d589d18d85ef4d1512d54a8",
+      "afterSha256": "c2910ba1df7f0b3465946112d3651f4b90b9a6534444df466bfd6e644dca0be1"
+    },
+    {
+      "path": "scripts/user-access-role.mjs",
+      "beforeSha256": null,
+      "afterSha256": "443db6b25c205035e55dd43ec77f28b61886ef992eff2f3121ac7767693b9d26"
+    },
+    {
+      "path": "src/lib/postgres-admin-user-access.ts",
+      "beforeSha256": "ae4aaf044b42623cc9f377c8cd05dcae15b6704917951a673bc516eed80f4b6d",
+      "afterSha256": "0cf22a02a1ae049b5b35b21c37fdb2320eb955d800300116d8b461727fabb4f7"
+    },
+    {
+      "path": "tests/admin-user-access-postgres-integration.mjs",
+      "beforeSha256": "2ea4df91367b5593896e2e8cdac5d3f8e17e04792ad91eb04a3edad4a8bf65b6",
+      "afterSha256": "63ee2e31d24960984ba19a5be81a448da006a2a23764b0d44750dbddfd35e8e3"
+    }
+  ],
+  "sourceDependencies": [
+    {
+      "path": "scripts/local-user-access-operator.mjs",
+      "sha256": "354b7366b7d5b22fe5d70e6f56a334e069fcc3caecb92e1c0e7c9a419643e1cc"
+    },
+    {
+      "path": "scripts/local-primary-preload.cjs",
+      "sha256": "50d4aeff6e0571c8bb977f9c9529135bd2ced8eebe6134bee6fceed255c10cb7"
+    },
+    {
+      "path": "src/lib/admin-user-access-contract.ts",
+      "sha256": "7c18700797aeac6523c885940747c9366f8108f2269cb21484368b15b6105e81"
+    },
+    {
+      "path": "src/lib/admin-user-access-http.ts",
+      "sha256": "be93be662f456768d23b13571835746867357d99a6666d2fd40b2ab03004dd26"
+    },
+    {
+      "path": "src/lib/local-user-access-operator-client.ts",
+      "sha256": "369c9b230e8e4eae32dca21808342dead0c087e09918535c13d47ebdadbb0561"
+    }
+  ],
+  "mainSchema": {
+    "semanticVersion": 60,
+    "journalEntries": 59,
+    "unchanged": true,
+    "absentMigration": "0059"
+  },
+  "adminSchema": {
+    "namespace": "app_admin",
+    "journalEntries": 1,
+    "migration": "0061-admin-user-access.sql",
+    "sha256": "e69fd3681f2a70db9143e027bb1a23e0d0b3435125bfffa03ea7447230fa36a0",
+    "snapshot": "database/admin-user-access-schema-v1.json"
+  },
+  "role": {
+    "name": "blizhniy_user_operator",
+    "create": "create role blizhniy_user_operator nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4",
+    "grants": [
+      "grant connect on database \"blizhniy_prod\" to blizhniy_user_operator",
+      "grant usage on schema app,app_admin,blizhniy_meta to blizhniy_user_operator",
+      "grant select(name,sha256) on blizhniy_meta.migrations,app_admin.migrations to blizhniy_user_operator",
+      "grant execute on function app_admin.user_access(text,uuid,text,uuid,uuid,bigint,text,boolean,text) to blizhniy_user_operator"
+    ],
+    "activate": "LOGIN with a generated distinct 64-hex password, never printed or stored in this plan",
+    "credentials": "/home/danil/.local/state/blizhniy/local-primary-private/user-access.json (0600, owned 0700 parent, exact project/container binding)",
+    "credentialWrite": "Create with wx/0600 only after absence proof; refuse existing or uncertain config; preserve unknown-commit credentials for read-only reconciliation"
+  },
+  "configuration": {
+    "newBootFlag": "BLIZHNIY_LOCAL_USER_ACCESS=enabled",
+    "newApplicationCapability": "BLIZHNIY_USER_ACCESS_OPERATOR=local-v1 and private socket only; no operator password in Next",
+    "existingFlags": "Preserve refunds/specialist/media/services/renewals/Telegram settings",
+    "preload": "Unchanged; application Unix socket connections remain prohibited. Only canonical validated proxy requests reach the operator."
+  },
+  "backupTrial": {
+    "proofDirectory": "/home/danil/.local/state/blizhniy/local-primary-private/user-access61-backup-biyXza",
+    "archiveSha256": "4ada4e4422c4c25a20aab8d730c6d6dd42f2e88050dfdba95967307b71d7de10",
+    "sourceReadOnly": true,
+    "restoreVerified": true,
+    "disposableTrial": "App60 schema, all saved rows/sequences, ACLs and roles unchanged after new namespace DDL. Six equivalent CHECK expressions normalized only on restore using existing reviewed SQL; exact fingerprint checked afterwards."
+  },
+  "before": [
+    "Apply only the reviewed patch on pinned compatible source after owner approval; repeat floor/types/native/PG/build and verify exact source hashes",
+    "Verify owned container identity, loopback binding and verify-full CA; refuse foreign/remote targets or unknown schema/role",
+    "Stop only the verified local launcher and drain its sessions; take a fresh closed backup with catalog/data/ACL/role evidence and verify its restoration before installation",
+    "Require main59 migration rows and exact local60 schema, no app_admin schema and no blizhniy_user_operator role; existing web/financial/media roles must pass admission"
+  ],
+  "ownerTransaction": [
+    "Use bounded lock and statement time; create only independent app_admin schema/objects by executing the pinned0061 payload within one owner transaction",
+    "Create the exact new NOLOGIN role and grants; insert only the new app_admin migration row (do not append to main journal)",
+    "Compare all prior data, main schema/journal, role attributes/memberships and ACLs with baseline; verify exact new admin snapshot and minimum rights",
+    "Generate private bound credential file and enable LOGIN for only this new role with the distinct secret; COMMIT. An uncertain COMMIT requires read-only reconciliation, never automatic replay"
+  ],
+  "after": [
+    "Admit the actual new role over verify-full TLS and all three existing financial/media roles before enabling the feature",
+    "Start the owned local stand with explicit opt-in and all existing flags; require correct readiness/build identity and successful operator startup",
+    "Run canonical HTTPS login/inspect/change/recover/replay with synthetic identities: block/unblock, promote/demote, stale version, self/last-admin refusal, session revocation and immutable audit; retain audit history",
+    "Check startup failure and restart cleanup; existing cabinet/payment draft routes must remain available; no requests to real providers",
+    "Real browser keyboard/focus/modal/error/refresh acceptance remains required; unavailable browser is recorded as unverified, never passed"
+  ],
+  "rollback": [
+    "Before COMMIT: rollback the whole owner transaction and close unused credentials",
+    "After COMMIT: stop the new service, remove the feature opt-in and set only the new operator role NOLOGIN; retain audit/schema/history and existing role rights",
+    "Do not drop the new schema, reset users or restore a database automatically; uncertain commands are reconciled by their original operation UUID"
+  ],
+  "excluded": [
+    "production and both Russian servers",
+    "push/deploy",
+    "YooKassa TEST/LIVE provider requests and money",
+    "existing web/financial/media grants",
+    "Fair/Ярмарка and 2GIS",
+    "background retries or bulk changes of user access"
+  ],
+  "verification": {
+    "native": {
+      "passed": 2901,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "postgresBehavior": {
+      "passed": 15
+    },
+    "qualityFloor": {
+      "passed": 27
+    },
+    "admission": {
+      "existingAndNewRoles": 4,
+      "rejectedDrifts": 17
+    },
+    "compiledTlsHttpsIpc": true,
+    "mutationDetectedAndRestored": true,
+    "candidateBuild": true,
+    "fast": true,
+    "stagedGitleaksFindings": 0,
+    "currentStandHttps": {
+      "passed": 13,
+      "buildId": "b20c8ac857831515af1e3c24443014051b32c51d"
+    },
+    "browser": "unavailable",
+    "poolSaturation": "not measured"
+  },
+  "ownerApproval": {
+    "date": "2026-11-17",
+    "answer": "Одобряю пакет и установку только локально",
+    "scope": "Exact patch, app_admin/0061 and new restricted local role; no production, push or provider requests"
+  },
+  "installation": {
+    "date": "2026-11-17",
+    "proofDirectory": "/home/danil/.local/state/blizhniy/local-primary-private/user-access61-install-MXxvRw",
+    "backupSha256": "6aa9c8ae4fea1845d765db0395fee993ce35727fbcf5af50b6b057d00e76c9f9",
+    "restoreVerified": true,
+    "mainJournalEntries": 59,
+    "adminJournalEntries": 1,
+    "existingRightsPreserved": true,
+    "roleAdmissions": 4,
+    "buildId": "58411d6732300cec3c00c115a2fd6d7d164d0e34",
+    "httpsChecks": 22,
+    "readDirectoryChecks": 13,
+    "restartVerified": true,
+    "browserAcceptance": "unavailable",
+    "productionTouched": false,
+    "finalSmokeBuildId": "54518b1b681372a6e26e7f30a044f74e88841e93",
+    "finalProofDirectory": "/home/danil/.local/state/blizhniy/local-primary-private/audit-stage-20261117-final-diq_bzok"
+  }
+}

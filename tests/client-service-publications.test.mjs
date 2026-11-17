@@ -38,3 +38,8 @@ test('owner review replies remain bound to the requested revision and submit can
   const client=createServiceModerationClient(async()=>Response.json(row));await assert.rejects(client.submit(owner,'fair',id,'1'),ServiceClientError);
  }
 });
+test('specialist save preserves the checkout conflict code and explains how to continue without retrying',async()=>{
+ let writes=0;const client=createServicePublicationClient(async()=>{writes++;return Response.json({error:{code:'CHECKOUT_ACTIVE'}},{status:409});});
+ await assert.rejects(client.update(owner,'specialist',id,'1',snapshot('specialist').form),error=>error instanceof ServiceClientError&&error.code==='CHECKOUT_ACTIVE'&&/оплат/.test(error.message));
+ assert.equal(writes,1);
+});

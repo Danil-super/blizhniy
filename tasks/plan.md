@@ -460,3 +460,110 @@ L01b.1: добавлен воспроизводимый Node22 direct-import cov
 - Инженерная оценка срока появляется после L01–L04 и первого полного сценария L05–L10: нынешний локальный прогресс не даёт честного календарного срока всего запуска.
 
 Ближайший результат реализации после согласования: российский staging, production-safe авторизация и работающий путь «регистрация → подтверждение → кабинет → фото → черновик объявления», затем sandbox checkout. Текущий запрос завершает **планирование**, а не эти работы.
+
+
+## Аудит 17.11.2026 — primary пользователи админки
+
+Причина: действующий PostgreSQL admin получает403 от старого Supabase users API.
+1. Законченный read-срез: текущая admin-сессия, минимальный DTO, буквальный поиск,
+   фильтры роли/блокировки/подтверждения email, ограниченная keyset-пагинация, UI.
+2. Изменения доступа: отдельный ограниченный оператор, причина и неизменяемый журнал,
+   защита текущего/последнего администратора, отзыв сессий, конкурентные проверки.
+3. Совместимость guards и точный пакет установки для отдельного review владельца.
+
+Web-роли не выдаём UPDATE(role,is_blocked). Сначала read-срез без миграций/GRANT;
+новые schema/role/guards устанавливаются на постоянный локальный стенд только после
+точного согласования. Production, push, LIVE этим этапом не разрешаются.
+Проверки: native, настоящая ограниченная PostgreSQL-роль, HTTP, types/lint/build,
+identity/stale-response UI fixtures; браузерную приёмку не подменяем fixtures.
+
+
+### R01 — команды доступа, локальный кандидат 17.11.2026
+
+Повторно используем текущую app-сессию и строгие cookie/HTTP границы. Новый
+привилегированный путь — отдельная EXECUTE-only роль оператора и атомарная
+SECURITY DEFINER функция с фиксированным search_path. Web-роль не меняется.
+Функция inspect/change: проверка live verified admin, ожидаемой версии,
+reason3..500, сериализация изменений, запрет self/last-admin, повышение
+auth_version, immutable receipt и payload-bound повторы. Аудит — ID/причина/
+состояния, без копирования контактов или токенов. После неопределённого ответа
+повторяем только исходный operation ID; автоматических повторов нет.
+Проверить настоящий PostgreSQL: права, отрицательные случаи, rollback при
+истечении сессии, конкурентные администраторы и replay после следующей операции.
+Затем private IPC/HTTP и интерфейс подтверждения; постоянная установка и
+совместимость финансовых guards — точный reviewed пакет. До согласования только
+временная отдельная БД/кандидаты, без изменения owned-стенда3045/production.
+
+
+### R01 — состояние большого этапа после серверного/интерфейсного среза
+
+Серверный кандидат сохранён в3c00b56, затем изолирован в `app_admin`:0061 создаёт
+только новую схему/свой журнал, ledger и функцию; `app`/59 записей основного журнала
+не изменяются. SQL-поведение/IPC/HTTP проверены на временной PG; unknown outcome
+имеет отдельный read-only recover, без автоматического повторного изменения.
+Native2894 и build прошли; интерфейс и endpoint OFF до явного локального opt-in.
+
+Человеческий review guard готовится через НЕПРИМЕНЁННЫЕ `.candidate` в
+`docs/review/user-access61/`: два коротких общих изменения (выделение system ACL
+проверки без изменения financial default; whitelist namespace app/app_admin в
+каталожном fingerprint), новый EXECUTE-only role guard/release и snapshot admin-v1.
+`tests/admin-user-access-role-candidate-integration.mjs` копирует исходники в свой
+закрытый artifact, создаёт отдельный Docker с59 app migrations + phone policies и
+local-provider FK; все4 роли допущены и17 лишних прав отвергнуты. Основная схема
+побайтно fingerprint-равна прежней. PUBLIC execute-пробел нового guard воспроизведён
+RED и закрыт global ACL проверками схемы, функций, таблиц/колонок.
+Независимое review исправило startup runtime.close; UI review без других находок.
+
+До общего пакета: standalone runtime/builder с собственными closed credentials,
+verify-full и owned-target proof; настоящий compiled/TLS прогон во временной БД;
+неприменённая интеграция launcher/services/proxy с жизненным циклом нового ресурса.
+Preload НЕ меняем: он запрещает Unix sockets, поэтому `/api/admin/user-access`
+обрабатывается local-primary-proxy (как refunds), а Next получает только view opt-in
+и socket capability. Для streaming JSON на новом пути сохранить4KiB/2s boundary,
+не превращать malformed/oversized запрос в proxy503.
+После полного trial/backup — один точный пакет на review/локальную установку.
+Постоянная БД/роль61 ещё не менялись. Старый owned Node launcher прерван перезапуском
+хоста инструментов; после финальной bound сборки восстановить прежний3045 с
+refunds/specialist/media/service/renewal/Telegram flags, без нового user-operator до approval.
+
+### R01 — большой локальный пакет готов к review
+
+Завершена интеграция отдельного оператора с lifecycle/proxy без изменения preload.
+Кандидаты и точный patch: `docs/review/local-user-access61.md`, `.patch`, `-plan.json`.
+Активные guards и постоянная схема/роли61 НЕ применены. Исходная схема60/journal59
+остаётся прежней. Пакет проверен в закрытом artifact: floor/types/lint, сборка,
+15 PG-сценариев,27 guard-тестов. Root native2901/2901; основное frontend-изменение
+уже в b20c8ac. Namespace assertion перенос требует одной точной SHA-пары guard.
+
+Полный trial:4 роли допускаются,17 дрейфов отвергаются; HTTPS→handler→UnixIPC→
+compiled8modules→verify-full PG прошёл, recover возвращает одну запись. Отмена
+до dispatch не изменяет данные; oversized/slow/error-body даёт JSON4xx. Mutation
+expiry-check обнаружен rollback-тестом; исходные байты восстановлены. Review без
+обязательных замечаний. Долгий/нагруженный Pool не измерялся отдельно.
+
+Закрытый pg_dump постоянного синтетического стенда по repeatable-read snapshot
+восстановлен на отдельный owned PG18; данные/ACL/roles совпали. Только на этой
+копии нормализованы6 прежних эквивалентных CHECK и применён app_admin кандидат;
+точный app60, все прежние данные/права и59 journal записей сохранились. Доказательства
+в private user-access61-backup-biyXza, ссылка/SHA в плане. Исходный стенд получил
+только read-only запросы; установка0061/роли и включение ещё требуют owner-review.
+Перед установкой повторить свежую копию после остановки verified-owned launcher.
+
+Следующий шаг после одобрения единого пакета: применить patch/проверки, одна owner
+транзакция только0061+newrole, прежние финансовые допуски, local opt-in и приёмка
+на3045. Визуальная/клавиатурная проверка остаётся открытой при недоступном CUA.
+Production/GitHub/LIVE, Ярмарка и2ГИС в этот пакет не входят.
+
+
+### R01 — одобренная установка61 завершена локально
+
+Владелец одобрил exact package+установку. Patch17files применён по SHA; native2902,
+PG15, fast/build/Gitleaks прошли. Fresh backup/restore trial и одна owner-транзакция
+создали только app_admin/0061 и новую роль. App60/main59 прежние; старые права/данные
+сохранены.4 actual-role admissions, HTTPS22/22 и старыйdirectory13/13, настоящий
+restart с тем же admin-cookie/receipt прошли. Build58411d6; local opt-in включён,
+preload не ослаблен. До запуска исправлена найденная review ошибка классификации
+post-COMMIT proof failure; actual-source failure injection4/4. Полный протокол:
+`docs/audit-admin-user-access-local61.md`. Browser/CUA недоступен; visual acceptance
+остаётся. Production/push/LIVE не менялись. Soak перезапущен на новой конфигурации;
+первый прерванный прогон не считается успехом.

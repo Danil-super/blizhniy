@@ -14,7 +14,7 @@ function display() {
   new Function("exports", ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(exports);
   return exports;
 }
-function page(kind, tariffs) {
+function page(kind, tariffs, specialistCheckout = false) {
   const paths = { fair: "src/components/FairPages.tsx", tariffs: "src/app/tarify/page.tsx" };
   assert.ok(Object.hasOwn(paths, kind));
   const source = readFileSync(new URL(`../${paths[kind]}`, import.meta.url), "utf8"), exports = {};
@@ -22,6 +22,7 @@ function page(kind, tariffs) {
     "next/link": { __esModule: true, default: ({ children, ...props }) => React.createElement("a", props, children) },
     "next/image": { __esModule: true, default: props => React.createElement("img", props) },
     "@/lib/public-tariffs": { getPublicTariffs: async () => tariffs },
+    "@/lib/specialist-checkout-config": { readSpecialistCheckoutEnabled: () => specialistCheckout },
     "@/components/SiteHeader": { SiteHeader: () => React.createElement("header") },
     "@/components/FairApplicationForm": { FairApplicationForm: () => React.createElement("form") },
     "@/components/LocationMap": { LocationMap: () => React.createElement("div") },
@@ -72,6 +73,34 @@ test("active public tariff keeps its stored display price and existing action", 
   const html = renderToStaticMarkup(await page("tariffs", [fair]).default());
   assert.match(html, /7\.29\s*₽/);
   assert.match(html, /href="\/yarmarka-masterov\/zayavka"/);
+});
+for (const [action, href, label] of [
+  ["listing_publication", "/razmestit/obyavlenie", "Создать объявление"],
+  ["vacancy_publication", "/rabota/vakansii/sozdat", "Разместить вакансию"],
+  ["work_request_publication", "/rabota/zakazy/sozdat", "Разместить заказ"],
+  ["specialist_publication", "/rabota/specialisty/anketa", "Подготовить черновик анкеты"],
+  ["job_response", "/rabota/vakansii", "Найти вакансию"],
+  ["fair_participation", "/yarmarka-masterov/zayavka", "Подать заявку"],
+  ["ad_marquee", "/reklama/begushchaya-stroka", "Разместить текст"],
+]) test(`public ${action} tariff opens its matching action`, async () => {
+  const html = renderToStaticMarkup(await page("tariffs", [{ ...fair, action }]).default());
+  assert.ok(html.includes(`href="${href}"`));
+  assert.ok(html.includes(label));
+});
+test("public tariffs explain the limited TEST release before offering placement actions", async () => {
+  const html = renderToStaticMarkup(await page("tariffs", [{ ...fair, action: "listing_publication" }]).default());
+  assert.match(html, /Оплата пока доступна только участникам тестирования/);
+  assert.match(html, /Реальные деньги не списываются/);
+  assert.match(html, /Результат теста указан на экране оплаты/);
+  assert.doesNotMatch(html, /После подтверждения платежа размещение становится активным/);
+});
+test("local specialist tariff describes moderation and synthetic placement only when enabled", async () => {
+  const tariffs = [{ ...fair, action: "specialist_publication", id: "specialist-publication" }];
+  const html = renderToStaticMarkup(await page("tariffs", tariffs, true).default());
+  assert.match(html, /Локальная проверка: модерация, симуляция оплаты и публикация анкеты/);
+  assert.doesNotMatch(html, /Публикация и оплата анкеты временно недоступны/);
+  const disabled = renderToStaticMarkup(await page("tariffs", tariffs).default());
+  assert.match(disabled, /Публикация и оплата анкеты временно недоступны/);
 });
 test("price labels distinguish active zero from missing or inactive tariffs", () => {
   const { formatTariffPrice } = display();

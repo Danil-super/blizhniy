@@ -22,11 +22,11 @@ function harness(initial){
  }};
 }
 
-test('primary selector requires an explicit UUID choice for duplicate labels and shows distinguishing category and slug',()=>{
+test('primary selector requires an explicit UUID choice for duplicate labels and shows distinguishing categories without technical slugs',()=>{
  const h=harness({defaultValue:first.name});let tree=h.render();
  assert.equal(hidden(tree).props.value,'');assert.equal(find(tree,'combobox').props['data-reference-state'],'unknown');assert.notEqual(h.input.validity,'');
  find(tree,'combobox').props.onFocus();tree=h.render();const options=nodes(tree).filter(node=>node.props?.role==='option');
- assert.equal(options.length,2);assert.match(content(options[0]),/Первая категория.*synthetic-one/);assert.match(content(options[1]),/Вторая категория.*synthetic-two/);
+ assert.equal(options.length,2);assert.match(content(options[0]),/Первая категория/);assert.match(content(options[1]),/Вторая категория/);assert.doesNotMatch(content(options[0]),/synthetic-one/);assert.doesNotMatch(content(options[1]),/synthetic-two/);
  options[1].props.onClick();tree=h.render();assert.equal(hidden(tree).props.value,second.id);assert.equal(find(tree,'combobox').props.value,second.name);
  assert.equal(find(tree,'combobox').props['data-reference-state'],'selected');assert.equal(h.input.validity,'');
 });

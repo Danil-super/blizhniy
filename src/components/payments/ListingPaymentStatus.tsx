@@ -1,6 +1,6 @@
 import type {ListingPaymentSnapshot} from '@/lib/postgres-listing-checkout';
 
-export function ListingPaymentStatus({snapshot,testMode=false}:{snapshot:ListingPaymentSnapshot;testMode?:boolean}){
+export function ListingPaymentStatus({snapshot,testMode=false,specialist=false}:{snapshot:ListingPaymentSnapshot;testMode?:boolean;specialist?:boolean}){
  const {order,fulfillment}=snapshot;
  let title:string,message:string;
  if(order.status==='refunded'){title='Средства возвращены';message='Возврат отмечен сервером. Актуальное состояние объявления можно посмотреть в кабинете.';}
@@ -9,6 +9,7 @@ export function ListingPaymentStatus({snapshot,testMode=false}:{snapshot:Listing
  else if(order.status==='succeeded'){title='Оплата подтверждена';message=testMode?'TEST-платёж успешно проверен. Реальные деньги не списывались. Объявление не публикуется за тестовую оплату.':'Размещение ещё не подтверждено. Не оплачивайте повторно; проверьте статус позже.';}
  else if(order.status==='pending'){title='Платёж обрабатывается';message='Окончательный ответ ещё не получен. Не создавайте новый платёж — проверьте этот заказ позже.';}
  else{title='Заказ подготовлен';message='Переход к оплате ещё не начат. Само создание заказа не означает списания денег.';}
+ if(specialist)message=message.replaceAll("объявления","анкеты").replaceAll("Объявление","Анкета");
  return <div role="status" aria-live="polite">
   <h2 className="text-xl font-bold text-slate-950">{title}</h2>
   <p className="mt-2 text-sm leading-6 text-slate-700">{message}</p>

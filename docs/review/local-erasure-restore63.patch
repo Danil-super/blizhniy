@@ -1,0 +1,516 @@
+diff --git a/database/basic-erasure-restored-schema63.json b/database/basic-erasure-restored-schema63.json
+new file mode 100644
+index 0000000..9a62906
+--- /dev/null
++++ b/database/basic-erasure-restored-schema63.json
+@@ -0,0 +1,94 @@
++{
++  "app": {
++    "column": {
++      "count": 785,
++      "sha256": "e7dc7016fe4eafbbc64def6a202a72ffc2ddcd3722574482a57b2dc3a370af93"
++    },
++    "constraint": {
++      "count": 964,
++      "sha256": "d632f479c61baf5a6c3a8e96aa97113d4d826a156d4cd87870d27aed944295d0"
++    },
++    "external_foreign_key": {
++      "count": 4,
++      "sha256": "dc652757d9a919fbf59c2f8b06b7acd0962616c56ddc8f79e452201db3340ffe"
++    },
++    "function": {
++      "count": 114,
++      "sha256": "ad4502845f405df21b15e43dd3d2b1ed11fdb8520f7609d5748039c8ec915f74"
++    },
++    "index": {
++      "count": 190,
++      "sha256": "152c8296e83660172c373fb224bf62e0886e8622c7abcabf24ddbf428af5582d"
++    },
++    "policy": {
++      "count": 2,
++      "sha256": "a89c5ad889d5cf4df8f6a1f7794be5d920f6c3e8e2d9c62f038222fb0bb94f0a"
++    },
++    "relation": {
++      "count": 265,
++      "sha256": "68e7c19ed3d9e9ad2f2f846776ef79bbb78b63b6ef2e67f54874e5c21605007c"
++    },
++    "rule": {
++      "count": 1,
++      "sha256": "d719f82ddc11f20f94f0c08a02d8bc60b0be8e1d6cf1931d5ef88d83e4889d96"
++    },
++    "sequence": {
++      "count": 1,
++      "sha256": "4afb13696d8a5696047dfbae4ddce5eb35127e88c18ef93a10c73a7bbf29c59c"
++    },
++    "trigger": {
++      "count": 559,
++      "sha256": "e22ad92fd5164ac967ef269c16ace0dd46f932ce5af614a68a14f35ef5ef1ee8"
++    },
++    "type": {
++      "count": 148,
++      "sha256": "a83579ed10616be5ddaec54612ae5a45bf87d034a8e2058d9b1a9229546cdb8f"
++    },
++    "unsupported": {
++      "count": 1,
++      "sha256": "fce708b25e7e2572e23fe66f314932a52e0fb0a473bb3b11d1e86331378e9b66"
++    }
++  },
++  "admin": {
++    "column": {
++      "count": 46,
++      "sha256": "856e0cfa5ea15a623e5b78edc2f2411db722f4eef6a576cc22fe18c900e78b9f"
++    },
++    "constraint": {
++      "count": 63,
++      "sha256": "212c0838ad2ca840ee5931d2c63236b07a71a39bbbb10f4d561597be0d3d69da"
++    },
++    "function": {
++      "count": 6,
++      "sha256": "24b7219ef30f1d2ae1528b70832d53282915bb65395322e2d9c6abc55fca868e"
++    },
++    "index": {
++      "count": 9,
++      "sha256": "459fbb28af5149ec1c04a016849a014af347d907131948f591387b65dbffd3d9"
++    },
++    "relation": {
++      "count": 14,
++      "sha256": "9dbe884c3910b2aaab5e853b4c4c959c90c645cd2d85636c5e983ad7b3176a88"
++    },
++    "sequence": {
++      "count": 1,
++      "sha256": "2a96e1f452b6a910b2960ceef5f330accce46d8a20cda24a2a8ddc7068752f11"
++    },
++    "trigger": {
++      "count": 6,
++      "sha256": "0062b73a9fc7ca097c021ffd1b82371bca6e23a5807f8dbe6834121a8d901d2d"
++    },
++    "type": {
++      "count": 8,
++      "sha256": "e9f25d1798ad12d1407d084ef9adf4b0d7549f58ddd8a46d2de1cdb896e9399d"
++    },
++    "unsupported": {
++      "count": 1,
++      "sha256": "345cee70cce2ba37f93863a4448418f622ad02b07bbe9a460b03de69a7df5f2d"
++    }
++  },
++  "local": {
++    "count": 79,
++    "sha256": "c8d3bd5286f2dc4ab958b29aeaa9255ed81cc17e7b2235da10189718f8afca4b"
++  }
++}
+diff --git a/database/restore/basic-erasure63-checks.sql b/database/restore/basic-erasure63-checks.sql
+new file mode 100644
+index 0000000..a09fff4
+--- /dev/null
++++ b/database/restore/basic-erasure63-checks.sql
+@@ -0,0 +1,24 @@
++-- Candidate internal payload; never install/run automatically.
++-- Restore the original grouping of eight unchanged CHECK expressions after pg_dump.
++do $$begin
++ if current_database()<>'blizhniy_erasure_test' or current_user<>'postgres' or session_user<>'postgres'
++  or current_setting('blizhniy.restore_basic63',true) is distinct from 'owned-basic63'
++ then raise exception 'Owned basic63 restore required' using errcode='BR063';end if;
++alter table app.users drop constraint users_email_check,
++ add constraint users_email_check check(char_length(email) between 3 and 254 and email=lower(btrim(email)) and email ~ '^[^[:space:]@]+@[^[:space:]@]+$');
++alter table app.email_confirmations drop constraint email_confirmations_email_check,
++ add constraint email_confirmations_email_check check(char_length(email) between 3 and 254 and email=lower(btrim(email)));
++alter table app.password_recoveries drop constraint password_recoveries_email_check,
++ add constraint password_recoveries_email_check check(char_length(email) between 3 and 254 and email=lower(btrim(email)) and email ~ '^[^[:space:]@]+@[^[:space:]@]+$');
++alter table app.mail_outbox drop constraint mail_outbox_payload_check,
++ add constraint mail_outbox_payload_check check(octet_length(payload) between 30 and 2048 and get_byte(payload,0)=1);
++alter table app.telegram_phone_bindings drop constraint telegram_phone_bindings_telegram_subject_check,
++ add constraint telegram_phone_bindings_telegram_subject_check check(char_length(telegram_subject) between 1 and 128 and telegram_subject !~ '[[:space:][:cntrl:]]');
++alter table app.telegram_phone_attempts drop constraint telegram_phone_attempts_candidate_subject_check,
++ add constraint telegram_phone_attempts_candidate_subject_check check(char_length(candidate_subject) between 1 and 128 and candidate_subject !~ '[[:space:][:cntrl:]]');
++alter table app_admin.user_changes drop constraint user_changes_reason_check,
++ add constraint user_changes_reason_check check(char_length(reason) between 3 and 500 and reason=btrim(reason)
++  and reason !~ U&'[\0001-\001F\007F-\009F\061C\200E\200F\202A-\202E\2066-\2069]');
++alter table app_admin.tariff_changes drop constraint tariff_changes_reason_check,
++ add constraint tariff_changes_reason_check check(char_length(reason) between 3 and 500 and reason=btrim(reason));
++end$$;
+diff --git a/docs/account-deletion-restore63.md b/docs/account-deletion-restore63.md
+new file mode 100644
+index 0000000..4fcfc12
+--- /dev/null
++++ b/docs/account-deletion-restore63.md
+@@ -0,0 +1,106 @@
++# Журнал удалений и повтор после восстановления — кандидат63
++
++17.11.2026. Продолжение [базового исполнителя](account-deletion-basic63.md),
++одобренного для локального сохранения в610f523. Его SQL, fingerprint и код
++исполнителя этим этапом не менялись. Новые средства работают только в
++синтетическом offline-прогоне; установки на постоянный стенд и production нет.
++
++## Что реализовано
++
++`basic-erasure-ledger.mjs` выгружает завершённые квитанции в read-only
++repeatable-read снимке с проверкой точной схемы и main59/admin3 журналов.
++Для каждой квитанции сверяются отделённая завершённая заявка, исходный субъект,
++отсутствие живого аккаунта и привязка номера операции. Экспорт не трогает сессии.
++
++Документ имеет фиксированную структуру, scope и sourceId; максимум1000 записей
++и2МБ. ID и версии строго проверяются, записи сортируются, повторные operation,
++request или subject ID отклоняются. В нём нет email, телефона, токенов и тел
++платежей; UUID остаются псевдонимными данными и требуют закрытого хранения.
++
++HMAC-SHA256 подписывает канонический payload. Верификатор требует32-байтовый
++ключ и **отдельно доверенные** sourceId/SHA256 всего документа; подмена,
++перестановка, дубли JSON-полей и старый подписанный документ с новым checkpoint
++отклоняются. Используются стандартные
++[Node22 createHmac/timingSafeEqual](https://nodejs.org/docs/latest-v22.x/api/crypto.html).
++Context7 вернул исчерпанную квоту, использована официальная документация.
++HMAC не шифрует содержимое.
++
++Повторная обработка сначала проверяет весь документ и действующие сессии
++**всех** указанных администраторов в read-only снимке. Затем каждая операция
++снова проходит существующую авторизацию исполнителя. При частичном либо
++неизвестном результате обработка прекращается; confirmedOperations считает
++только подтверждённые ответы, а не предположительно завершённые COMMIT.
++Явный повтор использует исходные квитанции и не создаёт второе удаление.
++Успех и все ошибки повторной обработки имеют reopenAuthorized=false:
++этот модуль не разрешает открывать восстановленный сайт.
++
++## Настоящий backup/restore
++
++Два owned Docker-контейнера с закреплённым PG18, loopback и tmpfs; только
++синтетические пользователи. Файлы создаются в закрытом local-state с0600,
++file sync и sync каталога. Тестовый ключ остаётся вне Git, журналов и stdout.
++
++1. Созданы два администратора, два удаляемых аккаунта и отдельный сохраняемый.
++   Сделан настоящий custom-format pg_dump со всеми ACL.
++2. На исходной БД выполнены два удаления разными администраторами и подписан
++   актуальный журнал. Экспорт не изменил last_seen_at.
++3. Старый dump восстановлен pg_restore в другом пустом контейнере. Доказано,
++   что оба аккаунта и их прежние сессии действительно вернулись.
++4. Восстановленные сессии администраторов отозваны; для прогона созданы новые.
++   Неверная, чужая или заблокированная вторая сессия останавливает весь batch
++   до первой операции удаления.
++5. Воспроизведён потерянный ответ второго COMMIT: известен один ответ, реально
++   завершены две операции. Повтор восстановил обе квитанции; аккаунты/сессии
++   отсутствуют, третье лицо сохранилось, событий рассмотрения осталось по3.
++6. Для журнала с заявкой, которой ещё не было в backup, получен отказ с
++   confirmedOperations=2. Такой случай нельзя молча пропускать.
++
++## Представление CHECK после pg_dump
++
++Логический dump разворачивает BETWEEN в AND и при разборе меняет группировку
++восьми CHECK-выражений. Строгий schema guard правильно отказал, как в прежних
++локальных restore57/58. Добавлен отдельный dormant helper
++`restore-basic-erasure63-checks.mjs` с внутренним SQL payload:
++
++- Только test, postgres/current+session role, фиксированная синтетическая БД,
++  fixture-marker и origin replication; caller обязан сначала доказать owned
++  одноразовую цель и offline-состояние.
++- Проверяется весь журнал миграций и **точный** fingerprint восстановленного
++  app/app_admin/local_primary до DDL, затем восемь исходных выражений
++  пересоздаются в одной транзакции с прежними порогами/форматами.
++- После DDL требуется исходный канонический fingerprint63. Неизвестный объект
++  или неверный SHA журнала отклоняется до изменения; ошибка откатывает DDL.
++  Проверен и неверный SQL payload: намеренная замена минимальной длины email3→2
++  обнаружена итоговой сверкой и откатилась к точной восстановленной схеме.
++- Данные семи таблиц сверены по количеству/SHA до и после. Права схем, объектов,
++  функций и колонок сравниваются по реальным privilege/grantor/grantee, включая
++  права по умолчанию при NULL ACL. Для последовательностей используется
++  [acldefault('s')](https://www.postgresql.org/docs/18/functions-info.html#FUNCTIONS-ACLITEM-FUNCS);
++  заглавная S обозначает foreign server. Новые GRANT не выдавались.
++
++Helper не выключает триггеры и не принимает произвольную схему. Это новый
++кандидат защиты восстановления, требующий отдельного human review до сохранения.
++Никакого допуска новой структуры в прежние финансовые guard не добавлено.
++
++## Подтверждённые проверки и оставшаяся работа
++
++Native2943/2943, без skipped/cancelled; focused5 native +7 PostgreSQL=12/12.
++Прежний исполнитель дополнительно прошёл16/16 PostgreSQL. Fast прошёл,
++прежнее предупреждение targetType не скрывалось. Приложение и зависимости
++не менялись, повторная сборка/рестарт не требовались.
++Два инженерных review-цикла завершены: форматной проверки токенов оказалось
++недостаточно, поэтому добавлена предварительная проверка всех администраторов
++по восстановленной БД; старые административные сессии из backup в тесте
++заменены новыми. Дополнительная проверка другой моделью пропущена владельцем.
++
++Закрытый успешный прогон:
++`~/.local/state/blizhniy/local-primary-private/erasure-restore63-bLluk4/`.
++В нём только синтетические dump/ключ/журнал и отчёт; в Git их нет.
++
++Это проверяет применение **переданного** журнала. Откат самого доверенного
++checkpoint, сохранность ключа, доставка самой последней операции вне БД и
++производственный backup-контур ещё не реализованы. Если удаление произошло
++после последнего экспорта, старая копия с устаревшим checkpoint всё ещё опасна.
++До открытия после аварии нужны актуальный внешний журнал, отзыв остальных
++восстановленных сессий, обработка отсутствующих/изменённых дел, медиа/кеш/логи,
++проверка реальных ролей и измеренный RPO/RTO. Полное удаление и DR не закрыты.
+diff --git a/scripts/basic-erasure-ledger.mjs b/scripts/basic-erasure-ledger.mjs
+new file mode 100644
+index 0000000..b709d70
+--- /dev/null
++++ b/scripts/basic-erasure-ledger.mjs
+@@ -0,0 +1,83 @@
++// Offline synthetic restore candidate; signed evidence never authorizes reopening the site.
++import assert from'node:assert/strict';import{createHash,createHmac,timingSafeEqual}from'node:crypto';import{readFile}from'node:fs/promises';import{createRequire}from'node:module';
++import{eraseBasicAccount,parseBasicErasure,readBasicErasureSchema}from'./basic-account-erasure.mjs';
++import{getUserAccessRolePlan}from'./user-access-role.mjs';
++const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
++const{deletionId,deletionObject}=load('account-deletion-contract'),{hashSessionToken}=load('identity'),scope='blizhniy-basic-erasure-test',maximumBytes=2097152;
++const hex=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
++const digest=text=>createHash('sha256').update(text).digest('hex');
++export class ErasureLedgerValidationError extends Error{constructor(){super('Invalid or untrusted erasure ledger');this.name='ErasureLedgerValidationError';this.reopenAuthorized=false;}}
++function secret(key){assert.ok(Buffer.isBuffer(key)&&key.length===32);return key;}
++function normalizedRecord(value){
++ const row=deletionObject(value,['operationId','requestId','subjectId','actorId','authVersion','requestRevision','completedAt']);
++ const input=parseBasicErasure({operationId:row.operationId,requestId:row.requestId,expectedOwnerId:row.subjectId,expectedAuthVersion:row.authVersion,expectedRevision:row.requestRevision});
++ assert.ok(typeof row.completedAt==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(row.completedAt)&&new Date(row.completedAt).toISOString()===row.completedAt);
++ return{operationId:input.operationId,requestId:input.requestId,subjectId:input.expectedOwnerId,actorId:deletionId(row.actorId),authVersion:input.expectedAuthVersion,requestRevision:input.expectedRevision,completedAt:row.completedAt};
++}
++function payload(records,sourceId){
++ assert.ok(Array.isArray(records)&&records.length<=1000);const rows=Array.from(records,normalizedRecord);
++ for(const name of ['operationId','requestId','subjectId'])assert.equal(new Set(rows.map(row=>row[name])).size,rows.length);
++ rows.sort((a,b)=>a.operationId<b.operationId?-1:1);return{version:1,scope,sourceId:deletionId(sourceId),records:rows};
++}
++export function sealBasicErasureLedger(records,key,sourceId){
++ const body=payload(records,sourceId),signature=createHmac('sha256',secret(key)).update(JSON.stringify(body)).digest('hex');
++ const document=JSON.stringify({payload:body,signature});assert.ok(Buffer.byteLength(document)<=maximumBytes);return document;
++}
++export function verifyBasicErasureLedger(document,key,trustedCheckpoint){
++ try{
++ secret(key);const checkpoint=deletionObject(trustedCheckpoint,['sourceId','sha256']);deletionId(checkpoint.sourceId);assert.ok(hex(checkpoint.sha256));
++ assert.ok(typeof document==='string'&&Buffer.byteLength(document)<=maximumBytes&&digest(document)===checkpoint.sha256);
++ const envelope=deletionObject(JSON.parse(document),['payload','signature']),body=deletionObject(envelope.payload,['version','scope','sourceId','records']);
++ assert.equal(body.version,1);assert.equal(body.scope,scope);assert.equal(body.sourceId,checkpoint.sourceId);assert.ok(hex(envelope.signature));
++ const normalized=payload(body.records,body.sourceId);assert.equal(document,JSON.stringify({payload:normalized,signature:envelope.signature}));
++ const expected=createHmac('sha256',key).update(JSON.stringify(normalized)).digest();assert.ok(timingSafeEqual(expected,Buffer.from(envelope.signature,'hex')));return normalized;
++ }catch{throw new ErasureLedgerValidationError();}
++}
++export async function exportBasicErasureLedger(db,key,sourceId){
++ assert.equal(process.env.NODE_ENV,'test');secret(key);deletionId(sourceId);
++ return db.readTransaction(async tx=>{
++  const context=(await tx.query("select current_database() as database,current_user as role,session_user as login,current_setting('session_replication_role') as replication,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation")).rows[0];
++  assert.deepEqual(context,{database:'blizhniy_erasure_test',role:'postgres',login:'postgres',replication:'origin',readonly:'on',isolation:'repeatable read'});
++  const expected=JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema63.json',import.meta.url),'utf8'));assert.deepEqual(await readBasicErasureSchema(tx),expected.schema);
++  const plan=getUserAccessRolePlan(context.database,{tariffs:true});assert.deepEqual((await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows,plan.appJournal);
++  assert.deepEqual((await tx.query('select name,sha256 from app_admin.migrations order by name')).rows,[...plan.journal,{name:'0063-basic-account-erasure.sql',sha256:expected.migrationSha256}]);
++  const rows=(await tx.query(`select e.operation_id as "operationId",e.request_id as "requestId",e.subject_id as "subjectId",e.actor_id as "actorId",
++   e.expected_auth_version::text as "authVersion",e.expected_request_revision::text as "requestRevision",
++   to_char(e.completed_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "completedAt",
++   r.user_id,r.status,r.resolution,r.case_reference,exists(select 1 from app.users u where u.id=e.subject_id) as present,
++   (select count(*)::text from app.account_deletion_events a where a.request_id=e.request_id and a.status='requested' and a.actor_id=e.subject_id) as original
++   from app_admin.basic_account_erasures e left join app.account_deletion_requests r on r.id=e.request_id order by e.operation_id limit 1001`)).rows;
++  assert.ok(rows.length<=1000);
++  const records=rows.map(({user_id,status,resolution,case_reference,present,original,...record})=>{
++   assert.ok(user_id===null&&status==='resolved'&&resolution==='partly_retained'&&present===false&&original==='1');
++   assert.equal(case_reference,`B1_${record.operationId.replaceAll('-','')}_${record.authVersion}_${record.requestRevision}`);return record;
++  });
++  const document=sealBasicErasureLedger(records,key,sourceId);return{document,checkpoint:{sourceId,sha256:digest(document)}};
++ },{timeoutMs:5000});
++}
++export class ErasureRestoreIncompleteError extends Error{
++ constructor(confirmed){super('Erasure replay incomplete; restored site must stay closed');this.name='ErasureRestoreIncompleteError';this.confirmedOperations=confirmed;this.reopenAuthorized=false;}
++}
++export async function reapplyBasicErasureLedger(db,document,key,checkpoint,actorSessions,containerId){
++ try{
++ assert.equal(process.env.NODE_ENV,'test');const body=verifyBasicErasureLedger(document,key,checkpoint);assert.ok(actorSessions instanceof Map);
++ const sessions=new Map();for(const row of body.records){const token=actorSessions.get(row.actorId);assert.ok(hex(token));sessions.set(row.actorId,token);}
++ await db.readTransaction(async tx=>{
++  const context=(await tx.query("select current_database() as database,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation")).rows[0];
++  assert.deepEqual(context,{database:'blizhniy_erasure_test',readonly:'on',isolation:'repeatable read'});
++  for(const[actor,token]of sessions){
++   const row=(await tx.query(`select exists(select 1 from app.sessions s join app.users u on u.id=s.user_id
++    where s.token_hash=$1 and s.user_id=$2 and s.auth_version=u.auth_version and s.scope='app'
++    and u.role='admin' and not u.is_blocked and u.email_verified_at is not null
++    and s.expires_at>clock_timestamp() and s.last_seen_at>clock_timestamp()-interval '30 minutes') as allowed`,[hashSessionToken(token),actor])).rows[0];
++   assert.equal(row?.allowed,true);
++  }
++ },{timeoutMs:5000});
++ const receipts=[];
++ for(const row of body.records){
++  try{receipts.push(await eraseBasicAccount(db,sessions.get(row.actorId),row.actorId,{operationId:row.operationId,requestId:row.requestId,expectedOwnerId:row.subjectId,expectedAuthVersion:row.authVersion,expectedRevision:row.requestRevision},containerId));}
++  catch{throw new ErasureRestoreIncompleteError(receipts.length);}
++ }
++ return{listedOperations:body.records.length,receipts,reopenAuthorized:false};
++ }catch(error){if(error instanceof ErasureRestoreIncompleteError)throw error;throw new ErasureRestoreIncompleteError(0);}
++}
+diff --git a/scripts/restore-basic-erasure63-checks.mjs b/scripts/restore-basic-erasure63-checks.mjs
+new file mode 100644
+index 0000000..468efbc
+--- /dev/null
++++ b/scripts/restore-basic-erasure63-checks.mjs
+@@ -0,0 +1,21 @@
++// Dormant restore drill helper. Caller proves an owned disposable target, offline, first.
++import assert from'node:assert/strict';import{readFile}from'node:fs/promises';import{createHash}from'node:crypto';
++import{getUserAccessRolePlan}from'./user-access-role.mjs';import{readBasicErasureSchema}from'./basic-account-erasure.mjs';
++export async function restoreBasicErasure63Checks(db){
++ try{
++  assert.equal(process.env.NODE_ENV,'test');
++  await db.transaction(async tx=>{
++   await tx.query("select set_config('statement_timeout','3s',true),set_config('lock_timeout','2s',true),set_config('transaction_timeout','10s',true)");
++   const context=(await tx.query("select current_database() as database,current_user as role,session_user as login,current_setting('transaction_read_only') as readonly,current_setting('session_replication_role') as replication,current_setting('blizhniy.erasure_fixture',true) as fixture")).rows[0];
++   assert.equal(context?.database,'blizhniy_erasure_test');assert.equal(context.role,'postgres');assert.equal(context.login,'postgres');assert.equal(context.readonly,'off');assert.equal(context.replication,'origin');assert.match(context.fixture,/^blizhniy-erasure-[a-f0-9]{12}$/);
++   const plan=getUserAccessRolePlan(context.database,{tariffs:true}),expected=JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema63.json',import.meta.url),'utf8'));
++   const migration=await readFile(new URL('../database/candidates/0063-basic-account-erasure.sql',import.meta.url));assert.equal(createHash('sha256').update(migration).digest('hex'),expected.migrationSha256);
++   assert.deepEqual((await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows,plan.appJournal);
++   assert.deepEqual((await tx.query('select name,sha256 from app_admin.migrations order by name')).rows,[...plan.journal,{name:'0063-basic-account-erasure.sql',sha256:expected.migrationSha256}]);
++   assert.deepEqual(await readBasicErasureSchema(tx),JSON.parse(await readFile(new URL('../database/basic-erasure-restored-schema63.json',import.meta.url),'utf8')));
++   await tx.query("select set_config('blizhniy.restore_basic63','owned-basic63',true)");
++   await tx.query(await readFile(new URL('../database/restore/basic-erasure63-checks.sql',import.meta.url),'utf8'));
++   assert.deepEqual(await readBasicErasureSchema(tx),expected.schema);
++  });
++ }catch{throw Error('Basic63 restore preflight failed');}
++}
+diff --git a/tasks/audit-launch-20261116.md b/tasks/audit-launch-20261116.md
+index bd740d8..a0826ef 100644
+--- a/tasks/audit-launch-20261116.md
++++ b/tasks/audit-launch-20261116.md
+@@ -394,6 +394,19 @@ DDL/GRANT, production, реальные провайдеры и push не мен
+ INSERT, UPDATE id и старый RR-снимок. Весь результат — partly_retained,
+ completeErasure=false; сроки хранения и полнота внешней очистки не выдумываются.
+ Native2938/2938, PostgreSQL16/16, fast и три review-цикла; выявленные гонки
+-исправлены. Схема/SQL guard пока кандидат для отдельного просмотра владельцем,
+-на постоянный стенд не применены. Тот по-прежнему app60/admin62, ready200 и
++исправлены. Владелец одобрил точный кандидат только для локального сохранения;
++сверенные исходники/patch сохранены в610f523. На постоянный стенд не применены.
++Тот по-прежнему app60/admin62, ready200 и
+ прежний BUILD_ID. Нет push/production/реальных платежей; R01/R03 не закрыты.
++
++### Большой этап восстановления после удаления63
++
++[Прогон и ограничения](../docs/account-deletion-restore63.md): настоящий
++pg_dump/pg_restore двух синтетических аккаунтов, подписанный внешний документ,
++независимый sourceId/SHA checkpoint, предварительная проверка обоих администраторов,
++потерянный COMMIT и явный повтор без дублей. Проверены сохранность данных/прав
++и точное восстановление восьми CHECK после особенностей логического dump.
++Native2943/2943, новые7 и прежние16 PostgreSQL прошли. Весь новый код остаётся
++dormant-кандидатом; новый restore guard требует просмотра владельца. Постоянный
++стенд/production, роли, реальные платежи не менялись. Внешняя актуальность
++checkpoint, медиа/кеш/логи и полный RPO/RTO остаются открытыми; reopenAuthorized=false.
+diff --git a/tests/basic-erasure-ledger.test.mjs b/tests/basic-erasure-ledger.test.mjs
+new file mode 100644
+index 0000000..6524743
+--- /dev/null
++++ b/tests/basic-erasure-ledger.test.mjs
+@@ -0,0 +1,30 @@
++import assert from'node:assert/strict';import{test}from'node:test';import{randomBytes,randomUUID,createHash}from'node:crypto';
++import{sealBasicErasureLedger,verifyBasicErasureLedger,reapplyBasicErasureLedger}from'../scripts/basic-erasure-ledger.mjs';
++const key=randomBytes(32),sourceId=randomUUID();
++const record=()=>({operationId:randomUUID(),requestId:randomUUID(),subjectId:randomUUID(),actorId:randomUUID(),authVersion:'0',requestRevision:'1',completedAt:'2026-11-17T10:00:00.000Z'});
++const checkpoint=document=>({sourceId,sha256:createHash('sha256').update(document).digest('hex')});
++test('signed ledger binds the exact canonical document to an independently trusted source/checkpoint',()=>{
++ const row=record(),sealed=sealBasicErasureLedger([row],key,sourceId),payload=verifyBasicErasureLedger(sealed,key,checkpoint(sealed));assert.deepEqual(payload.records,[row]);assert.equal(payload.sourceId,sourceId);
++ assert.equal(sealed.includes(key.toString('hex')),false);
++ for(const [document,secret,head]of [[sealed,randomBytes(32),checkpoint(sealed)],[sealed,key,{...checkpoint(sealed),sourceId:randomUUID()}],[sealed+'\n',key,checkpoint(sealed)],['{}',key,checkpoint('{}')]])assert.throws(()=>verifyBasicErasureLedger(document,secret,head));
++});
++test('tampering, duplicate fields, old valid snapshots and record truncation cannot reuse the current checkpoint',()=>{
++ const a=record(),b=record(),old=sealBasicErasureLedger([a],key,sourceId),current=sealBasicErasureLedger([a,b],key,sourceId),head=checkpoint(current);
++ assert.throws(()=>verifyBasicErasureLedger(old,key,head));
++ const forged=JSON.parse(current);forged.payload.records[0].subjectId=randomUUID();const text=JSON.stringify(forged);assert.throws(()=>verifyBasicErasureLedger(text,key,checkpoint(text)));
++ const duplicate=current.replace('"version":1','"version":1,"version":1');assert.throws(()=>verifyBasicErasureLedger(duplicate,key,checkpoint(duplicate)));
++ const privateText='private@example.invalid';assert.throws(()=>verifyBasicErasureLedger(privateText,key,checkpoint(privateText)),error=>error.name==='ErasureLedgerValidationError'&&!error.message.includes(privateText));
++});
++test('ledger rejects duplicate identities, invalid counts/versions, unknown fields and unbounded inputs',()=>{
++ const a=record();for(const rows of [Array(1),[a,a],[a,{...record(),subjectId:a.subjectId}],[a,{...record(),requestId:a.requestId}],[{...a,email:'private@example.invalid'}],[{...a,authVersion:'01'}],[{...a,completedAt:'yesterday'}],Array.from({length:1001},record)])assert.throws(()=>sealBasicErasureLedger(rows,key,sourceId));
++ assert.throws(()=>sealBasicErasureLedger([a],Buffer.alloc(1),sourceId));assert.throws(()=>verifyBasicErasureLedger('x'.repeat(2097153),key,checkpoint('x')));
++});
++test('replay authenticates the entire ledger and all actor sessions before opening the database',async()=>{
++ let touched=false;const db={transaction:async()=>{touched=true;throw Error('Do not connect');}},row=record(),sealed=sealBasicErasureLedger([row],key,sourceId),old=process.env.NODE_ENV;process.env.NODE_ENV='test';
++ try{await assert.rejects(reapplyBasicErasureLedger(db,sealed,key,checkpoint(sealed),new Map(),'0'.repeat(64)));assert.equal(touched,false);await assert.rejects(reapplyBasicErasureLedger(db,sealed,key,{...checkpoint(sealed),sha256:'0'.repeat(64)},new Map([[row.actorId,'a'.repeat(64)]]),'0'.repeat(64)));assert.equal(touched,false);}finally{if(old===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=old;}
++});
++test('a well-formed but invalid second actor session fails read-only preflight before either erasure',async()=>{
++ const rows=[record(),record()],document=sealBasicErasureLedger(rows,key,sourceId),ordered=verifyBasicErasureLedger(document,key,checkpoint(document)).records;let writes=0,checks=0;
++ const db={readTransaction:work=>work({query:async(sql,values)=>({rows:sql.includes('current_database')?[{database:'blizhniy_erasure_test',readonly:'on',isolation:'repeatable read'}]:[{allowed:++checks===1&&values[1]===ordered[0].actorId}]})}),transaction:async()=>{writes++;}};
++ const before=process.env.NODE_ENV;process.env.NODE_ENV='test';try{await assert.rejects(reapplyBasicErasureLedger(db,document,key,checkpoint(document),new Map(ordered.map(row=>[row.actorId,'a'.repeat(64)])),'0'.repeat(64)));assert.equal(checks,2);assert.equal(writes,0);}finally{if(before===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=before;}
++});
+diff --git a/tests/basic-erasure-restore-postgres.mjs b/tests/basic-erasure-restore-postgres.mjs
+new file mode 100644
+index 0000000..3bbb916
+--- /dev/null
++++ b/tests/basic-erasure-restore-postgres.mjs
+@@ -0,0 +1,90 @@
++// Real custom-format backup and restore, restricted to owned tmpfs synthetic containers.
++import assert from'node:assert/strict';import{test}from'node:test';import{randomBytes,randomUUID,createHash}from'node:crypto';import{createRequire}from'node:module';import{execFile}from'node:child_process';import{promisify}from'node:util';import{readFile,mkdtemp,open}from'node:fs/promises';import{join}from'node:path';import pg from'pg';
++import{localPrimaryImage}from'../scripts/local-primary-config.mjs';import{stateDirectory}from'../scripts/local-primary-fixture.mjs';import{getUserAccessRolePlan}from'../scripts/user-access-role.mjs';import{getAdminUserAccessMigration}from'../scripts/admin-user-access-release.mjs';import{getAdminTariffMigration}from'../scripts/admin-tariff-release.mjs';
++import{eraseBasicAccount,readBasicErasureSchema}from'../scripts/basic-account-erasure.mjs';import{exportBasicErasureLedger,reapplyBasicErasureLedger,verifyBasicErasureLedger}from'../scripts/basic-erasure-ledger.mjs';
++import{restoreBasicErasure63Checks}from'../scripts/restore-basic-erasure63-checks.mjs';
++const run=promisify(execFile),load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,database='blizhniy_erasure_test',sha=bytes=>createHash('sha256').update(bytes).digest('hex');
++test('a signed erasure ledger removes resurrected basic identities after real backup/restore',{timeout:90000},async suite=>{
++ const password=randomBytes(32).toString('hex'),key=randomBytes(32),sourceId=randomUUID(),containers=[],clients=[],databases=[],checks=[],directory=await mkdtemp(join(stateDirectory,'erasure-restore63-')),old=process.env.NODE_ENV;process.env.NODE_ENV='test';let report;
++ const check=async(name,work)=>suite.test(name,async()=>{await work();checks.push(name);});
++ const docker=async(args,options={})=>(await run('docker',['--host','unix:///var/run/docker.sock',...args],{timeout:20000,maxBuffer:16777216,env:{PATH:process.env.PATH,LANG:'C.UTF-8',POSTGRES_PASSWORD:password},...options})).stdout;
++ async function fixture(){
++  const name='blizhniy-erasure-'+randomBytes(6).toString('hex'),id=(await docker(['run','--detach','--pull','never','--name',name,'--label','blizhniy.erasure-test='+name,'--memory','512m','--cpus','1','--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB='+database,localPrimaryImage,'postgres','-c','blizhniy.erasure_fixture='+name])).trim();containers.push({id,name});
++  const meta=JSON.parse(await docker(['inspect',id]))[0];assert.equal(meta.Id,id);assert.equal(meta.Config.Labels['blizhniy.erasure-test'],name);assert.equal(meta.Config.Image,localPrimaryImage);const bind=meta.NetworkSettings.Ports['5432/tcp'][0];assert.equal(bind.HostIp,'127.0.0.1');
++  for(const end=Date.now()+20000;;){try{await docker(['exec',id,'pg_isready','-h','127.0.0.1','-U','postgres']);break;}catch{assert.ok(Date.now()<end);}await new Promise(resolve=>setTimeout(resolve,100));}
++  const config={host:'127.0.0.1',port:Number(bind.HostPort),database,user:'postgres',password,ssl:false,connectionTimeoutMillis:2000},owner=new pg.Client(config);await owner.connect();clients.push(owner);const db=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,max:3}));databases.push(db);return{id,owner,db};
++ }
++ async function durable(name,bytes){const f=await open(join(directory,name),'wx',0o600);try{await f.writeFile(bytes);await f.sync();}finally{await f.close();}const parent=await open(directory,'r');try{await parent.sync();}finally{await parent.close();}}
++ const acls=async db=>(await db.query(`with objects as (
++  select 'schema' kind,nspname name,coalesce(nspacl,acldefault('n',nspowner)) acl from pg_namespace where nspname in ('app','app_admin','local_primary','blizhniy_meta')
++  union all select 'relation',n.nspname||'.'||c.relname,coalesce(c.relacl,acldefault(case when c.relkind='S' then 's'::"char" else 'r'::"char" end,c.relowner)) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('app','app_admin','local_primary','blizhniy_meta')
++  union all select 'column',n.nspname||'.'||c.relname||'.'||a.attname,coalesce(a.attacl,'{}'::aclitem[]) from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace where a.attnum>0 and not a.attisdropped and n.nspname in ('app','app_admin','local_primary','blizhniy_meta')
++  union all select 'function',p.oid::regprocedure::text,coalesce(p.proacl,acldefault('f',p.proowner)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('app','app_admin','local_primary','blizhniy_meta')
++ ) select o.kind,o.name,a.grantor::regrole::text grantor,case when a.grantee=0 then 'PUBLIC' else a.grantee::regrole::text end grantee,a.privilege_type,a.is_grantable from objects o cross join lateral aclexplode(case when cardinality(o.acl)>0 then o.acl else null::aclitem[] end) a order by 1,2,3,4,5,6`)).rows;
++ async function dataDigest(db){const out=[];for(const table of ['app.users','app.sessions','app.cabinet_profiles','app.account_deletion_requests','app.account_deletion_events','app.registration_legal','app_admin.basic_account_erasures'])out.push({table,...(await db.query(`select count(*)::text as count,encode(sha256(convert_to(coalesce(string_agg(to_jsonb(t)::text,E'\\n' order by to_jsonb(t)::text),''),'UTF8')),'hex') as sha256 from ${table} t`)).rows[0]});return out;}
++ try{
++  const source=await fixture(),plan=getUserAccessRolePlan(database,{tariffs:true});await source.owner.query('create schema blizhniy_meta;create table blizhniy_meta.migrations(name text primary key,sha256 text not null);revoke all on schema blizhniy_meta from public');
++  for(const row of plan.appJournal){await source.owner.query(await readFile(new URL('../database/'+(/^(0058|0060)-/.test(row.name)?'candidates/':'migrations/')+row.name,import.meta.url),'utf8'));await source.owner.query('insert into blizhniy_meta.migrations values($1,$2)',[row.name,row.sha256]);}
++  await source.owner.query('create role blizhniy_runtime nologin');for(const file of ['permissions/telegram-phone.sql','local-primary-payment.sql','local-primary-refunds.sql'])await source.owner.query(await readFile(new URL('../database/'+file,import.meta.url),'utf8'));
++  for(const migration of [getAdminUserAccessMigration(),getAdminTariffMigration()])await source.owner.query(migration.source);for(const row of plan.journal)await source.owner.query('insert into app_admin.migrations values($1,$2)',[row.name,row.sha256]);
++  const sql=await readFile(new URL('../database/candidates/0063-basic-account-erasure.sql',import.meta.url));await source.owner.query(sql.toString());await source.owner.query('insert into app_admin.migrations values($1,$2)',['0063-basic-account-erasure.sql',sha(sql)]);
++  assert.deepEqual({migrationSha256:sha(sql),schema:await readBasicErasureSchema(source.owner)},JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema63.json',import.meta.url),'utf8')));
++  const requests=new(load('postgres-account-deletion').PostgresAccountDeletionStore)(source.db),hash=load('identity').hashSessionToken;
++  async function person(role='user'){
++   const id=randomUUID(),token=randomBytes(32).toString('hex');await source.owner.query('insert into app.users(id,email,password_hash,role,email_verified_at) values($1,$2,$3,$4,clock_timestamp())',[id,id+'@synthetic.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128),role]);
++   await source.owner.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[id,{name:'Синтетическая проверка восстановления',city:'Краснодар'}]);await source.owner.query('insert into app.sessions(token_hash,user_id,auth_version) values($1,$2,0)',[hash(token),id]);return{id,token,request:(await requests.request(token,id)).request};
++  }
++  const admin=await person('admin'),peer=await person('admin'),targets=[await person(),await person()],untouched=await person(),command=(actor,operationId)=>({operationId,requestId:actor.request.id,expectedOwnerId:actor.id,expectedAuthVersion:'0',expectedRevision:'1'});
++  const empty=await exportBasicErasureLedger(source.db,key,sourceId);assert.equal(verifyBasicErasureLedger(empty.document,key,empty.checkpoint).records.length,0);
++  const beforeAcl=await acls(source.owner),beforeData=await dataDigest(source.owner);
++  const bytes=await docker(['exec',source.id,'pg_dump','--username=postgres','--format=custom','--no-owner',database],{encoding:'buffer'});assert.ok(bytes.length>10000);const backupSha256=sha(bytes);await durable('before.dump',bytes);
++  const beforeLastSeen=(await source.owner.query('select last_seen_at::text t from app.sessions where token_hash=$1',[hash(admin.token)])).rows[0].t;
++  const operations=['10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000002'];
++  for(let i=0;i<targets.length;i++){const actor=i===0?admin:peer;await eraseBasicAccount(source.db,actor.token,actor.id,command(targets[i],operations[i]),source.id);}
++  const afterEraseSeen=(await source.owner.query('select last_seen_at::text t from app.sessions where token_hash=$1',[hash(admin.token)])).rows[0].t;assert.notEqual(afterEraseSeen,beforeLastSeen);
++  const ledger=await exportBasicErasureLedger(source.db,key,sourceId);assert.equal(verifyBasicErasureLedger(ledger.document,key,ledger.checkpoint).records.length,2);assert.equal((await source.owner.query('select last_seen_at::text t from app.sessions where token_hash=$1',[hash(admin.token)])).rows[0].t,afterEraseSeen);
++  await durable('ledger.json',ledger.document);await durable('checkpoint.json',JSON.stringify(ledger.checkpoint));await durable('synthetic-key.bin',key);
++  const clone=await fixture();await clone.owner.query('create role blizhniy_runtime nologin');assert.equal(sha(await readFile(join(directory,'before.dump'))),backupSha256);
++  await docker(['cp',join(directory,'before.dump'),clone.id+':/tmp/owned-before.dump']);await docker(['exec',clone.id,'pg_restore','--username=postgres','--dbname='+database,'--single-transaction','--exit-on-error','--no-owner','/tmp/owned-before.dump']);
++  await check('exact restore repair rejects drift then preserves schema, all saved rows and ACLs',async()=>{
++   const restored=JSON.parse(await readFile(new URL('../database/basic-erasure-restored-schema63.json',import.meta.url),'utf8'));assert.deepEqual(await readBasicErasureSchema(clone.owner),restored);
++   const first=plan.appJournal[0];await clone.owner.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[first.name,'0'.repeat(64)]);await assert.rejects(restoreBasicErasure63Checks(clone.db));assert.deepEqual(await readBasicErasureSchema(clone.owner),restored);await clone.owner.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[first.name,first.sha256]);
++   await clone.owner.query('create table local_primary.unreviewed_restore_test(user_id text)');try{await assert.rejects(restoreBasicErasure63Checks(clone.db));}finally{await clone.owner.query('drop table local_primary.unreviewed_restore_test');}
++   let mutated=false;const wrongPayload={transaction:work=>clone.db.transaction(tx=>work({query:(sql,values)=>{
++    if(sql.startsWith('-- Candidate internal payload')){const changed=sql.replace('char_length(email) between 3 and 254','char_length(email) between 2 and 254');assert.notEqual(changed,sql);sql=changed;mutated=true;}return tx.query(sql,values);
++   }}))};
++   await assert.rejects(restoreBasicErasure63Checks(wrongPayload));assert.equal(mutated,true);assert.deepEqual(await readBasicErasureSchema(clone.owner),restored);
++   await restoreBasicErasure63Checks(clone.db);assert.deepEqual(await dataDigest(clone.owner),beforeData);
++   assert.deepEqual(await acls(clone.owner),beforeAcl);
++  });
++  const sessions=new Map();await clone.owner.query('delete from app.sessions where user_id=any($1::uuid[])',[[admin.id,peer.id]]);
++  for(const actor of [admin,peer]){const token=randomBytes(32).toString('hex');await clone.owner.query('insert into app.sessions(token_hash,user_id,auth_version) select $1,id,auth_version from app.users where id=$2',[hash(token),actor.id]);sessions.set(actor.id,token);}
++  const present=async()=>(await clone.owner.query('select count(*)::int n from app.users where id=any($1::uuid[])',[targets.map(row=>row.id)])).rows[0].n;
++  await check('old backup really resurrects both deleted identities and original sessions',async()=>{assert.equal(await present(),2);for(const target of targets)assert.ok(await new(load('identity').IdentityStore)(clone.db).resolveSession(target.token));});
++  await check('old signed checkpoint, changed signature and missing actor credential stop before mutation',async()=>{
++   await assert.rejects(reapplyBasicErasureLedger(clone.db,empty.document,key,ledger.checkpoint,sessions,clone.id));
++   const forged=JSON.parse(ledger.document);forged.signature='0'.repeat(64);const text=JSON.stringify(forged);await assert.rejects(reapplyBasicErasureLedger(clone.db,text,key,{...ledger.checkpoint,sha256:sha(text)},sessions,clone.id));
++   await assert.rejects(reapplyBasicErasureLedger(clone.db,ledger.document,key,ledger.checkpoint,new Map(),clone.id));assert.equal(await present(),2);
++   for(const invalid of ['0'.repeat(64),sessions.get(admin.id)]){const bad=new Map(sessions);bad.set(peer.id,invalid);await assert.rejects(reapplyBasicErasureLedger(clone.db,ledger.document,key,ledger.checkpoint,bad,clone.id));assert.equal(await present(),2);}
++   await clone.owner.query('update app.users set is_blocked=true where id=$1',[peer.id]);await assert.rejects(reapplyBasicErasureLedger(clone.db,ledger.document,key,ledger.checkpoint,sessions,clone.id));await clone.owner.query('update app.users set is_blocked=false where id=$1',[peer.id]);assert.equal(await present(),2);
++  });
++  await check('lost acknowledgement in a partially replayed batch keeps restoration closed',async()=>{
++   let calls=0;const interrupted={readTransaction:clone.db.readTransaction.bind(clone.db),transaction:async work=>{const result=await clone.db.transaction(work);if(++calls===2)throw Error('Synthetic lost COMMIT response');return result;}};
++   await assert.rejects(reapplyBasicErasureLedger(interrupted,ledger.document,key,ledger.checkpoint,sessions,clone.id),error=>error.name==='ErasureRestoreIncompleteError'&&error.confirmedOperations===1&&error.reopenAuthorized===false);assert.equal(await present(),0);
++  });
++  await check('explicit repeat recovers two receipts; no identities/sessions return and third user survives',async()=>{
++   const result=await reapplyBasicErasureLedger(clone.db,ledger.document,key,ledger.checkpoint,sessions,clone.id);assert.equal(result.listedOperations,2);assert.equal(result.reopenAuthorized,false);assert.deepEqual(await reapplyBasicErasureLedger(clone.db,ledger.document,key,ledger.checkpoint,sessions,clone.id),result);
++   assert.equal(await present(),0);for(const target of targets){assert.equal(await new(load('identity').IdentityStore)(clone.db).resolveSession(target.token),null);assert.equal((await clone.owner.query('select count(*)::int n from app.account_deletion_events where request_id=$1',[target.request.id])).rows[0].n,3);}
++   assert.equal((await clone.owner.query('select count(*)::int n from app.users where id=$1',[untouched.id])).rows[0].n,1);assert.equal((await clone.owner.query('select count(*)::int n from app_admin.basic_account_erasures')).rows[0].n,2);
++  });
++  await check('an older backup missing an entire case remains incomplete rather than skipping evidence',async()=>{
++   const late=await person();await eraseBasicAccount(source.db,admin.token,admin.id,command(late,'30000000-0000-4000-8000-000000000003'),source.id);const expanded=await exportBasicErasureLedger(source.db,key,sourceId);
++   await assert.rejects(reapplyBasicErasureLedger(clone.db,expanded.document,key,expanded.checkpoint,sessions,clone.id),error=>error.name==='ErasureRestoreIncompleteError'&&error.confirmedOperations===2&&error.reopenAuthorized===false);
++  });
++  assert.equal(checks.length,6);report={passed:true,backupSha256,restoredActualBackup:true,exactRestoredData:true,exactRestoredAcl:true,freshActorSessions:true,identitiesResurrectedBeforeReplay:2,identitiesAfterReplay:await present(),receiptCount:2,duplicateCaseEvents:false,reopenAuthorized:false,productionTouched:false,permanentStandChanged:false};
++  await durable('report.json',JSON.stringify(report,null,2));console.log(JSON.stringify({passed:true,backupRestore:true,report:join(directory,'report.json')}));
++ }finally{
++  await Promise.all(databases.map(db=>db.close()));await Promise.all(clients.map(client=>client.end()));for(const row of containers){const meta=JSON.parse(await docker(['inspect',row.id]))[0];assert.equal(meta.Config.Labels['blizhniy.erasure-test'],row.name);assert.equal(meta.Config.Image,localPrimaryImage);await docker(['rm','--force',row.id]);}
++  if(old===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=old;
++ }
++});

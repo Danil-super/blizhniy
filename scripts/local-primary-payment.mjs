@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {readPlacementRenewalsEnabled} from '../src/lib/placement-renewal-config.ts';
 import {readServiceCheckoutEnabled} from '../src/lib/service-checkout-config.ts';
+import {readSpecialistCheckoutEnabled} from '../src/lib/specialist-checkout-config.ts';
 export const localPrimaryMerchant=Object.freeze({shopId:'local-fixture-shop',isTest:true,secretKey:'test_local-fixture-never-a-real-key'});
 const canonical='https://xn----9sbphbgks4a4a.xn--p1ai',merchant=localPrimaryMerchant;
 const instances=new WeakMap();
@@ -24,7 +25,8 @@ async function create(context,targetType){
  if(process.env.NODE_ENV!=='test'||!load('listing-workflow-config').readPostmoderationEnabled()||state.origin!==process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN)throw Error('Local provider disabled');
  await ownerDb.query(await readFile(new URL('../database/local-primary-payment.sql',import.meta.url),'utf8'));
  const service=['fair','marquee'].includes(targetType);if(service&&!readServiceCheckoutEnabled())throw Error('Local service checkout disabled');
- const policy={postmoderation:true,...(readPlacementRenewalsEnabled()?{renewals:true}:{}),...(targetType!=='listing'?{targetType}:{})};
+ if(targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw Error('Local specialist checkout disabled');
+ const policy={postmoderation:true,...(targetType!=='specialist'&&readPlacementRenewalsEnabled()?{renewals:true}:{}),...(targetType!=='listing'?{targetType}:{})};
  const store=service?new(load('postgres-service-checkout').PostgresServiceCheckoutStore)(runtimeDb,{...merchant,siteOrigin:canonical,receiptVatCode:1},targetType):targetType==='application'?new(load('postgres-application-checkout').PostgresApplicationCheckoutStore)(runtimeDb,async id=>(await ownerDb.query(`select to_char(sent_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as stamp from local_primary.application_deliveries where intent_id=$1`,[id])).rows[0]?.stamp??null,async(token,owner,id)=>{
   if(await recoverExistingProvider(token,owner,id))await verification.reconcile(id);
  }):new(load('postgres-listing-checkout').PostgresListingCheckoutStore)(runtimeDb,{...merchant,siteOrigin:canonical,receiptVatCode:1},policy);
@@ -36,6 +38,7 @@ async function create(context,targetType){
    ...(row.status==='succeeded'?{captured_at:row.captured_at}:row.status==='pending'?{confirmation:{type:'redirect',confirmation_url:`https://yookassa.ru/local-fixture/${row.provider_id}`}}:{})};
  }
  const fakeFetch=async(input,init={})=>{
+  if(targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw Error('Local specialist checkout disabled');
   const url=new URL(String(input));
   if(url.origin!=='https://api.yookassa.ru'||!/^\/v3\/payments(?:\/[a-f0-9-]{36})?$/.test(url.pathname))throw Error('External provider disabled');
   const headers=new Headers(init.headers);
@@ -46,7 +49,15 @@ async function create(context,targetType){
    const original=(await ownerDb.query('select request_body,merchant_shop_id,is_test from app.payment_checkout_intents where id=$1',[intent])).rows[0];
    if(!original||original.request_body!==init.body||original.merchant_shop_id!==merchant.shopId||original.is_test!==true)throw Error('Local intent mismatch');
    row=await ownerDb.transaction(async tx=>{
+    if(targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw Error('Local specialist checkout disabled');
     const existing=(await tx.query('select * from local_primary.provider_payments where intent_id=$1',[intent])).rows[0];if(existing)return existing;
+    if(targetType==='specialist'){
+     const purchase=(await tx.query('select owner_id as owner,target_id as target,target_revision::text as revision from app.payment_checkout_intents where id=$1',[intent])).rows[0];
+     if(!purchase)throw Error('Local specialist purchase unavailable');
+     await tx.query('select id from app.users where id=$1 for update',[purchase.owner]);
+     const committed=(await tx.query('select * from local_primary.provider_payments where intent_id=$1',[intent])).rows[0];if(committed)return committed;
+     if((await load('specialist-purchase-eligibility').inspectSpecialistPurchase(ownerDb,tx,purchase.owner,purchase.target,purchase.revision)).issues.length)throw Error('Local specialist purchase changed');
+    }
     await lockLocalPaymentTarget(tx,intent);
     await tx.query("insert into local_primary.provider_payments(intent_id,provider_id,status) values($1,$2,'pending') on conflict(intent_id) do nothing",[intent,randomUUID()]);
     return(await tx.query('select * from local_primary.provider_payments where intent_id=$1',[intent])).rows[0];
@@ -78,18 +89,25 @@ async function create(context,targetType){
  }})};
  const handler=load('listing-checkout-http').createListingCheckoutHandler({origin:canonical},()=>({store,limiter,payments:{
   preview:(...args)=>store.preview(...args),
-  dispatch:async(token,owner,id)=>{const binding=await store.authorizeDispatch(token,owner,id);const result=await dispatch.dispatch(binding,()=>store.authorizeDispatch(token,owner,id,true));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};},
+  dispatch:async(token,owner,id)=>{const binding=(targetType==='specialist'?await recoverExistingProvider(token,owner,id):null)??await store.authorizeDispatch(token,owner,id);const result=await dispatch.dispatch(binding,()=>store.authorizeDispatch(token,owner,id,true));await store.authorizeDispatch(token,owner,id);return{confirmationUrl:result.confirmationUrl,isTest:true};},
  }}));
  return{handler,store,identity,verification,fulfillment};
 }
 export async function localPrimaryPaymentHandler(request,context){
  const url=new URL(request.url);
- if(!['/api/account/fair-checkout','/api/account/marquee-checkout','/api/account/application-checkout','/api/account/listing-checkout','/api/account/vacancy-checkout','/api/account/work-request-checkout','/__local/payment'].includes(url.pathname))return null;
- if(url.pathname==='/__local/payment'&&url.searchParams.has('type')&&!['vacancy','workRequest','application','fair','marquee'].includes(url.searchParams.get('type')))return html('<p>Неизвестный тип заказа.</p>',422);
- const targetType=url.pathname==='/api/account/fair-checkout'?'fair':url.pathname==='/api/account/marquee-checkout'?'marquee':url.pathname==='/api/account/application-checkout'?'application':url.pathname==='/api/account/work-request-checkout'?'workRequest':url.pathname==='/api/account/vacancy-checkout'?'vacancy':url.pathname==='/__local/payment'?url.searchParams.get('type')??'listing':'listing';
+ if(!['/api/account/specialist-checkout','/api/account/fair-checkout','/api/account/marquee-checkout','/api/account/application-checkout','/api/account/listing-checkout','/api/account/vacancy-checkout','/api/account/work-request-checkout','/__local/payment'].includes(url.pathname))return null;
+ if(url.pathname==='/__local/payment'&&url.searchParams.has('type')&&!['specialist','vacancy','workRequest','application','fair','marquee'].includes(url.searchParams.get('type')))return html('<p>Неизвестный тип заказа.</p>',422);
+ const targetType=url.pathname==='/api/account/specialist-checkout'?'specialist':url.pathname==='/api/account/fair-checkout'?'fair':url.pathname==='/api/account/marquee-checkout'?'marquee':url.pathname==='/api/account/application-checkout'?'application':url.pathname==='/api/account/work-request-checkout'?'workRequest':url.pathname==='/api/account/vacancy-checkout'?'vacancy':url.pathname==='/__local/payment'?url.searchParams.get('type')??'listing':'listing';
+ if(targetType==='specialist'&&!readSpecialistCheckoutEnabled()){
+  if(process.env.NODE_ENV!=='test'||context.state.origin!==process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN||url.pathname==='/__local/payment'||request.method!=='POST')return html('<p>Оплата анкеты отключена.</p>',404);
+  return context.load('listing-checkout-http').createListingCheckoutHandler({origin:canonical},()=>({
+   store:new(context.load('postgres-listing-checkout').PostgresListingCheckoutStore)(context.runtimeDb,{...merchant,siteOrigin:canonical,receiptVatCode:1},{postmoderation:true,targetType:'specialist',testModeHistory:true}),
+   limiter:new(context.load('auth-http').AuthRateLimiter)(context.runtimeDb,context.state.rateSecret),
+  }),undefined,{readOnly:true})(request);
+ }
  const service=['fair','marquee'].includes(targetType);if(service&&!readServiceCheckoutEnabled())return html('<p>Оплата услуги отключена.</p>',404);
  const paymentPath=service?'/oplata/uslugi':'/oplata';
- const returnQuery=targetType==='listing'?'':'?type='+targetType,formQuery=targetType==='listing'?'':'&amp;type='+targetType,cabinet=targetType==='fair'?'/cabinet/fair-applications':targetType==='marquee'?'/reklama/begushchaya-stroka?view=list':targetType==='application'?'/cabinet/otkliki':targetType==='workRequest'?'/cabinet/zakazy':targetType==='vacancy'?'/cabinet/vakansii':'/cabinet/obyavleniya';
+ const returnQuery=targetType==='listing'?'':'?type='+targetType,formQuery=targetType==='listing'?'':'&amp;type='+targetType,cabinet=targetType==='specialist'?'/cabinet/specialist':targetType==='fair'?'/cabinet/fair-applications':targetType==='marquee'?'/reklama/begushchaya-stroka?view=list':targetType==='application'?'/cabinet/otkliki':targetType==='workRequest'?'/cabinet/zakazy':targetType==='vacancy'?'/cabinet/vakansii':'/cabinet/obyavleniya';
  let group=instances.get(context.ownerDb);if(!group){group=new Map();instances.set(context.ownerDb,group);}
  let instance=group.get(targetType);
  if(!instance){instance=create(context,targetType);group.set(targetType,instance);}
@@ -117,10 +135,12 @@ export async function localPrimaryPaymentHandler(request,context){
    const data=await request.formData(),action=data.get('action');
    if([...data.keys()].join()!=='action'||!['succeed','cancel','pending'].includes(action))return html('<p>Неизвестное действие.</p>',422);
    await context.ownerDb.transaction(async tx=>{
+    if(targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw Error('Local specialist checkout disabled');
     const original=(await tx.query('select status from local_primary.provider_payments where intent_id=$1',[id])).rows[0];
     // Never capture a row inserted after this read by a concurrent first dispatch.
     if(original?.status!=='pending')return;
     if(action==='succeed')await lockLocalPaymentTarget(tx,id);
+    if(targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw Error('Local specialist checkout disabled');
     await tx.query(`update local_primary.provider_payments set status=$2,captured_at=case when $2='succeeded' then to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') else null end where intent_id=$1 and status='pending'`,[id,action==='succeed'?'succeeded':action==='cancel'?'canceled':'pending']);
    });
    await state.verification.reconcile(id);

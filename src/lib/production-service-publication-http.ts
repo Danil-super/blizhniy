@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {authJson,readAuthJson,AuthRequestError,type AuthRateLimiter} from './auth-http';
 import {readAccountSessionToken} from './account-cookie';import {getTrustedProxyIp} from './trusted-proxy-ip';
 import {AppSessionAccessError} from './app-session-transaction';
-import {ServicePublicationAccessError,ServicePublicationConflictError,type PostgresServicePublicationStore} from './postgres-service-publications';
+import {ServicePublicationAccessError,ServicePublicationConflictError,ServicePublicationCheckoutActiveError,type PostgresServicePublicationStore} from './postgres-service-publications';
 import {parseServicePublicationForm,ServicePublicationInputError,type ServicePublicationKind} from './service-publication-contract.ts';
 import {ListingDraftInputError,parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor} from './listing-draft-contract.ts';
 type Runtime={store:Pick<PostgresServicePublicationStore,'create'|'read'|'readIntent'|'list'|'update'>;limiter:Pick<AuthRateLimiter,'allowProduction'>};
@@ -37,6 +37,7 @@ export function createProductionServicePublicationHandler(config:{origin:string}
    if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
    if(error instanceof ServicePublicationAccessError)error=new AuthRequestError(404,'PUBLICATION_NOT_FOUND');
    if(error instanceof ServicePublicationConflictError)error=new AuthRequestError(409,'PUBLICATION_CHANGED');
+   if(error instanceof ServicePublicationCheckoutActiveError)error=new AuthRequestError(409,'CHECKOUT_ACTIVE');
    if(error instanceof ServicePublicationInputError||error instanceof ListingDraftInputError)error=new AuthRequestError(422,'INVALID_INPUT');
    code=error instanceof AuthRequestError?error.code:'SERVICE_PUBLICATIONS_UNAVAILABLE';const next=error instanceof AuthRequestError?error.status:503;
    return reply({error:{code}},next,next===429?{'Retry-After':'900'}:next===405?{Allow:'POST, PUT'}:undefined);
