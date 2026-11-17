@@ -3,7 +3,8 @@ import {ensurePhoneForPlacement} from '@/lib/phone-placement';
 import {useEffect,useRef,useState,type RefObject} from 'react';
 import {createWorkPublicationSave} from '@/lib/work-publication-save';
 import {productionWorkPublications} from '@/lib/client-work-publications';
-import {productionListingMedia} from '@/lib/client-listing-media';
+import {productionListingMedia,ListingMediaClientError} from '@/lib/client-listing-media';
+import type {UploadedImage} from '@/lib/media-upload-contract';
 import {workModeration} from '@/lib/client-work-moderation';
 import {readWorkPublicationFormData} from '@/lib/work-publication-form-data';
 import {checkWorkPublicationForm,type WorkPublicationKind} from '@/lib/work-publication-contract';
@@ -16,6 +17,7 @@ import {startListingPayment,type ListingCheckoutAttempt} from '@/lib/listing-pay
 
 export function useWorkPublicationSave(owner:string,kind:WorkPublicationKind,formRef:RefObject<HTMLFormElement|null>,dirty:boolean,initial?:WorkPublicationSnapshot,onSaved?:(value:WorkPublicationSnapshot)=>void){
  const attempt=useRef<ReturnType<typeof createWorkPublicationSave>|null>(null),pending=useRef(false),scope=useRef<AbortController|null>(null);
+ const readyFiles=useRef(new Map<Blob,UploadedImage>());
  const submission=useRef(false),draft=useRef(true);
  const localPayment=useListingPostmoderation(),payment=kind==='vacancy'?vacancyPayment:workRequestPayment,checkout=useRef<ListingCheckoutAttempt>({input:null,uncertain:false});
  const [busy,setBusy]=useState(false),[active,setActive]=useState(false),[done,setDone]=useState(false),[uncertain,setUncertain]=useState(false);
@@ -40,19 +42,25 @@ export function useWorkPublicationSave(owner:string,kind:WorkPublicationKind,for
  }
  async function run(work:()=>Promise<void>){
   if(pending.current)return;pending.current=true;setBusy(true);setMessage(null);
-  try{await work();}catch(error){if(!scope.current?.signal.aborted)setMessage(error instanceof Error?error.message:'Не удалось подтвердить сохранение.');}
+  try{await work();}catch(error){if(!scope.current?.signal.aborted){
+   if(error instanceof ListingMediaClientError&&['INVALID_INPUT','MEDIA_OWNER_QUOTA_EXCEEDED'].includes(error.code)&&attempt.current&&!attempt.current.uncertain&&!attempt.current.completed){attempt.current=null;setActive(false);}
+   setMessage(error instanceof Error?error.message:'Не удалось подтвердить сохранение.');}}
   finally{pending.current=false;if(!scope.current?.signal.aborted){setBusy(false);setUncertain(!!attempt.current?.uncertain||submission.current||checkout.current.uncertain);}}
  }
  async function start(asDraft:boolean){
   if(pending.current||uncertain||!formRef.current)return;
   const form=formRef.current;
+  if(form.querySelector('[data-photo-preparing="true"]')){setMessage('Дождитесь подготовки фотографий.');return;}
   if(!attempt.current&&!asDraft&&!form.reportValidity())return;
   await run(async()=>{
    if(!attempt.current){
     const data=new FormData(form),parsed=readWorkPublicationFormData(kind,data),input={...parsed,photoIds:data.getAll('keepPhotoIds').map(String)};
     if(!asDraft){const issues=localPayment?checkWorkCheckoutForm(input):checkWorkPublicationForm(input);if(issues.length)throw Error(issues.join(' '));}
     const files=data.getAll('photos').filter((item):item is File=>item instanceof File&&item.size>0);
-    draft.current=asDraft;attempt.current=createWorkPublicationSave(owner,kind,input,files,{...productionWorkPublications,upload:productionListingMedia.upload},initial,data.get('photoOrder'));setActive(true);
+    draft.current=asDraft;attempt.current=createWorkPublicationSave(owner,kind,input,files,{...productionWorkPublications,upload:async(user,intent,file,options)=>{
+     const cached=readyFiles.current.get(file);if(cached)return cached;
+     const uploaded=await productionListingMedia.upload(user,intent,file,options);readyFiles.current.set(file,uploaded);return uploaded;
+    }},initial,data.get('photoOrder'));setActive(true);
    }
    const saved=await attempt.current.save({signal:scope.current?.signal});await submitOrFinish(saved);
   });

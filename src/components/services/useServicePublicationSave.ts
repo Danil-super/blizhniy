@@ -24,6 +24,7 @@ export function useServicePublicationSave(owner:string,kind:ServicePublicationKi
  }
  async function start(asDraft:boolean){
   if(pending.current||uncertain||!formRef.current)return;const element=formRef.current;if(!attempt.current&&!asDraft&&!element.reportValidity())return;
+  if(element.querySelector('[data-photo-preparing="true"]')){setMessage('Дождитесь подготовки фотографий.');return;}
   await run(async()=>{
    if(!attempt.current){const data=new FormData(element),form=readServicePublicationFormData(kind,data);if(kind==='specialist'&&!checkSpecialistApplicationForm(form).length)await ensurePhoneForPlacement(owner);if(!asDraft){const issues=kind==='specialist'?checkSpecialistApplicationForm(form):checkServicePublicationForm(form);if(issues.length)throw Error(issues.join(' '));}
     const files=data.getAll('photos').filter((value):value is File=>value instanceof File&&value.size>0);draft.current=asDraft;

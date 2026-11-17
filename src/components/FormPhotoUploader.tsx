@@ -5,7 +5,7 @@ import { Camera, Images, Plus, X } from "lucide-react";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
 import { StoredMediaImage } from "@/components/StoredMedia";
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
-import { filterFormPhotoFiles, formPhotoLimitText } from "@/lib/media-limits";
+import { filterFormPhotoFiles, formPhotoLimitText, preparePhotoFiles } from "@/lib/media-limits";
 import {mediaOwnerQuotaText} from "@/lib/media-upload-contract";
 import {productionListingMedia} from '@/lib/client-listing-media';
 import {createListingThumbnailQueue} from '@/lib/listing-thumbnail-queue';
@@ -77,6 +77,7 @@ export function FormPhotoUploader({
   );
   const [cropEditorId, setCropEditorId] = useState("");
   const [message, setMessage] = useState("");
+  const [preparing,setPreparing]=useState(false),preparingRef=useRef(false);
   const [removed,setRemoved]=useState<{photo:PreviewPhoto;index:number}|null>(null);
   const currentPhotos=useRef(photos);currentPhotos.current=photos;
   const scope=useRef<AbortController|null>(null);
@@ -103,16 +104,24 @@ export function FormPhotoUploader({
     };
   }, [loadSaved]);
 
-  function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+  async function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+    if(preparingRef.current)return;
+    const input=event.currentTarget;
     const availableSlots = Math.max(0, normalizedMaxPhotos - photos.length);
     const selectedFiles = Array.from(event.target.files ?? []).slice(0, availableSlots);
-    const { accepted, rejectedMessages } = filterFormPhotoFiles(selectedFiles);
+    if(!availableSlots){setMessage(`Можно добавить не больше ${normalizedMaxPhotos} фото.`);syncFileInput(inputRef.current,currentPhotos.current);return;}
+    preparingRef.current=true;setPreparing(true);input.dataset.photoPreparing='true';
+    const controller=scope.current;
+    let prepared:Awaited<ReturnType<typeof preparePhotoFiles>>;
+    try{prepared=await preparePhotoFiles(selectedFiles);}finally{preparingRef.current=false;delete input.dataset.photoPreparing;if(!controller?.signal.aborted)setPreparing(false);}
+    if(controller?.signal.aborted)return;
+    const filtered=filterFormPhotoFiles(prepared.accepted),accepted=filtered.accepted,rejectedMessages=[...prepared.rejectedMessages,...filtered.rejectedMessages];
     const files = accepted.slice(0, availableSlots);
 
     setMessage(rejectedMessages[0] ?? (availableSlots <= 0 ? `Можно добавить не больше ${normalizedMaxPhotos} фото.` : ""));
 
     if (!files.length) {
-      event.currentTarget.value = "";
+      input.value = "";
       syncFileInput(inputRef.current, photos);
       return;
     }
@@ -130,7 +139,7 @@ export function FormPhotoUploader({
       };
     });
 
-    event.currentTarget.value = "";
+    input.value = "";
     commit([...currentPhotos.current,...nextPhotos].slice(0,normalizedMaxPhotos));
     if (autoOpenCropper) {
       setCropEditorId(nextPhotos[0]?.id ?? "");
@@ -170,7 +179,7 @@ export function FormPhotoUploader({
             <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600" aria-live="polite"><Images aria-hidden="true" className="h-3.5 w-3.5"/>{photos.length}/{normalizedMaxPhotos}</span>
           </div>
           <label className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-800 transition hover:bg-blue-100 focus-within:ring-2 focus-within:ring-blue-600">
-            <input ref={inputRef} className="sr-only" name={name} type="file" accept="image/*" multiple={normalizedMaxPhotos > 1} required={required && !photos.length} onChange={handleFiles}/>
+            <input ref={inputRef} className="sr-only" name={name} type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-photo-preparing={preparing?'true':undefined} disabled={preparing} multiple={normalizedMaxPhotos > 1} required={required && !photos.length} onChange={handleFiles}/>
             <Plus aria-hidden="true" className="h-4 w-4"/>Добавить файлы
           </label>
         </div>
@@ -213,6 +222,7 @@ export function FormPhotoUploader({
         ) : null}
       </div>
       <p className="mt-2 text-xs text-slate-600">{formPhotoLimitText()}</p>
+      {preparing&&<p role="status" className="mt-2 text-sm text-blue-800">Подготавливаем фотографии…</p>}
       {primary&&<p className="mt-1 text-xs text-slate-600">{mediaOwnerQuotaText}</p>}
       {message ? <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{message}</p> : null}
       {removed&&<div className="mt-3 flex flex-wrap items-center gap-3 text-sm"><p role="status">Фото убрано из формы. Изменения применятся после сохранения.</p><button type="button" disabled={photos.length>=normalizedMaxPhotos} className="min-h-11 font-semibold text-blue-800 underline" onClick={()=>{const next=[...currentPhotos.current];next.splice(Math.min(removed.index,next.length),0,removed.photo);commit(next);if(removed.photo.mediaId&&!removed.photo.url)loadSaved(removed.photo);setRemoved(null);}}>Вернуть фото</button></div>}
