@@ -64,7 +64,7 @@ export class PostgresListingCheckoutStore{
  }
  private async inspected(tx:PostgresQueries,owner:string,id:string,revision:string):Promise<Offer>{
   if(this.targetType==='specialist'){
-   if((await inspectSpecialistPurchase(this.db,tx,owner,id,revision)).issues.length)throw new ListingCheckoutUnavailableError();
+   if((await inspectSpecialistPurchase(this.db,tx,owner,id,revision,false)).issues.length)throw new ListingCheckoutUnavailableError();
    const offer=(await tx.query<Offer>(`select id,name,price::text as amount,'RUB' as currency,duration_days as "durationDays" from app.tariffs
     where id='specialist-publication' and action='specialist_publication' and active and price>0 and duration_days between 1 and 3650`)).rows[0];
    if(!offer)throw new ListingCheckoutUnavailableError();return offer;

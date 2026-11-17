@@ -39,6 +39,7 @@ for(const full of [false,true])test('specialist synthetic checkout on '+(full?'f
    grant insert(intent_id,provider_payment_id) on app.payment_provider_links to specialist_web;
    grant insert(intent_id) on app.payment_fulfillments to specialist_worker;
    grant execute on function app.phone_is_confirmed(uuid) to specialist_web,specialist_worker;`);
+  await admin.query('revoke update(id) on app.cities,app.specialist_categories from specialist_web');
   const DB=load('postgres').PostgresDatabase;web=new DB(new pg.Pool({...config,user:'specialist_web',max:4}));worker=new DB(new pg.Pool({...config,user:'specialist_worker',max:4}));ownerDb=new DB(new pg.Pool({...config,max:4}));
   const profession=(await admin.query('select id from app.specialist_categories')).rows[0].id;
   async function draft(){
@@ -105,6 +106,31 @@ for(const full of [false,true])test('specialist synthetic checkout on '+(full?'f
     const oversized=new Request(endpoint+'/api/account/specialist-checkout',{method:'POST',headers:{...headers,'content-length':'999999'},body:'invalid-json'});assert.equal((await localPrimaryPaymentHandler(oversized,context)).status,413);
    }
    finally{process.env.BLIZHNIY_SPECIALIST_CHECKOUT='local-v1';}
+  });
+  await suite.test('read-only web references retain the privileged first-POST fence and committed idempotency recovery',async()=>{
+   const {localPrimaryPaymentHandler}=await import('../scripts/local-primary-payment.mjs');
+   for(const mode of ['changed-before-post','committed-before-user-lock']){
+    const d=await draft(),{order}=await prepare(d);let interleaved=false;
+    const providerOwner={query:(...args)=>ownerDb.query(...args),transaction:async work=>{
+     if(mode==='changed-before-post'&&!interleaved){interleaved=true;await admin.query('update app.specialist_categories set active=false where id=$1',[profession]);}
+     return ownerDb.transaction(tx=>work({query:async(sql,values)=>{
+      if(mode==='committed-before-user-lock'&&!interleaved&&sql==='select id from app.users where id=$1 for update'){
+       interleaved=true;await admin.query("insert into local_primary.provider_payments(intent_id,provider_id,status) values($1,$2,'pending')",[order.id,randomUUID()]);
+       await admin.query('update app.specialist_categories set active=false where id=$1',[profession]);
+      }
+      return tx.query(sql,values);
+     }}));
+    }};
+    const context={ownerDb:providerOwner,runtimeDb:web,state:{origin:'https://127.0.0.1:3045',rateSecret:'s'.repeat(64)},load:name=>name==='auth-http'?{...load(name),AuthRateLimiter:class{async allowProduction(){return true;}}}:load(name)};
+    const origin='https://xn----9sbphbgks4a4a.xn--p1ai',request=()=>new Request(origin+'/api/account/specialist-checkout',{method:'POST',headers:{host:new URL(origin).host,origin,'x-real-ip':'192.0.2.4','x-blizhniy-request':'1','content-type':'application/json',cookie:'__Host-blizhniy_session='+d.token},body:JSON.stringify({expectedOwnerId:d.owner,action:'dispatch',paymentId:order.id})});
+    try{
+     const response=await localPrimaryPaymentHandler(request(),context);assert.equal(interleaved,true);
+     const committed=mode==='committed-before-user-lock';assert.equal(response.status,committed?200:409);
+     if(!committed)assert.equal((await response.json()).error.code,'CHECKOUT_NOT_READY');
+     assert.equal((await admin.query('select count(*)::int n from local_primary.provider_payments where intent_id=$1',[order.id])).rows[0].n,committed?1:0);
+     assert.equal((await admin.query('select count(*)::int n from app.payment_provider_links where intent_id=$1',[order.id])).rows[0].n,committed?1:0);
+    }finally{await admin.query('update app.specialist_categories set active=true where id=$1',[profession]);}
+   }
   });
   await suite.test('stale photo snapshots and cached fulfillment cannot mutate after preparation or disabling',async()=>{
    const d=await draft(),media=(await admin.query("insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256) values($1,$2,'image/webp',40,20,12,$3) returning id",[d.owner,randomUUID(),'a'.repeat(64)])).rows[0].id;

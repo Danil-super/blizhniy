@@ -51,6 +51,13 @@ async function create(context,targetType){
    row=await ownerDb.transaction(async tx=>{
     if(targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw Error('Local specialist checkout disabled');
     const existing=(await tx.query('select * from local_primary.provider_payments where intent_id=$1',[intent])).rows[0];if(existing)return existing;
+    if(targetType==='specialist'){
+     const purchase=(await tx.query('select owner_id as owner,target_id as target,target_revision::text as revision from app.payment_checkout_intents where id=$1',[intent])).rows[0];
+     if(!purchase)throw Error('Local specialist purchase unavailable');
+     await tx.query('select id from app.users where id=$1 for update',[purchase.owner]);
+     const committed=(await tx.query('select * from local_primary.provider_payments where intent_id=$1',[intent])).rows[0];if(committed)return committed;
+     if((await load('specialist-purchase-eligibility').inspectSpecialistPurchase(ownerDb,tx,purchase.owner,purchase.target,purchase.revision)).issues.length)throw Error('Local specialist purchase changed');
+    }
     await lockLocalPaymentTarget(tx,intent);
     await tx.query("insert into local_primary.provider_payments(intent_id,provider_id,status) values($1,$2,'pending') on conflict(intent_id) do nothing",[intent,randomUUID()]);
     return(await tx.query('select * from local_primary.provider_payments where intent_id=$1',[intent])).rows[0];

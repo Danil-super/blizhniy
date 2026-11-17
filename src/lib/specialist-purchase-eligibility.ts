@@ -1,12 +1,13 @@
 import {PostgresServicePublicationStore,ServicePublicationAccessError,ServicePublicationConflictError} from './postgres-service-publications';
 import type {PostgresDatabase,PostgresQueries} from './postgres';
-/** The caller holds the user lock; retain references and approval through the purchase write. */
-export async function inspectSpecialistPurchase(db:Pick<PostgresDatabase,'transaction'>,tx:PostgresQueries,owner:string,id:string,revision:string){
+/** The caller holds the user lock; SQL purchase triggers also lock and recheck references. */
+export async function inspectSpecialistPurchase(db:Pick<PostgresDatabase,'transaction'>,tx:PostgresQueries,owner:string,id:string,revision:string,lockReferences=true){
  const row=(await tx.query<{revision:string;city:string|null;profession:string|null}>(`select revision::text,city_id as city,profession_id as profession from app.service_publications
   where id=$1 and author_id=$2 and kind='specialist' and deleted_at is null for update`,[id,owner])).rows[0];
  if(!row)throw new ServicePublicationAccessError();if(row.revision!==revision)throw new ServicePublicationConflictError();
- const city=(await tx.query<{name:string}>('select name from app.cities where id=$1 for share',[row.city])).rows[0];
- const profession=(await tx.query<{active:boolean}>('select active from app.specialist_categories where id=$1 for share',[row.profession])).rows[0];
+ const lock=lockReferences?' for share':'';
+ const city=(await tx.query<{name:string}>(`select name from app.cities where id=$1${lock}`,[row.city])).rows[0];
+ const profession=(await tx.query<{active:boolean}>(`select active from app.specialist_categories where id=$1${lock}`,[row.profession])).rows[0];
  const profile=(await tx.query<{name:string}>("select profile->>'name' as name from app.cabinet_profiles where user_id=$1 for share",[owner])).rows[0];
  const {snapshot,issues}=await new PostgresServicePublicationStore(db,{specialistProfileIdentity:true}).inspectInTransaction(tx,owner,'specialist',id,revision);
  if(snapshot.status!=='draft'||snapshot.paid||snapshot.publishedAt!==null||snapshot.expiresAt!==null)issues.push('Анкета уже не является неоплаченным черновиком.');
