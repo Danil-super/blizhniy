@@ -57,7 +57,7 @@ export default async function Page() {
           <p className="text-sm font-bold uppercase tracking-wide text-[#087f2b]">Оплата публикаций</p>
           <h1 className="mt-3 text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">Тарифы</h1>
           <p className="mt-4 text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-            Выберите нужное действие и сохраните черновик. Доступность оплаты и условия размещения будут показаны перед оплатой. Анкету специалиста пока можно сохранить как черновик.
+            Выберите нужное действие и сохраните черновик. Доступность оплаты и условия размещения будут показаны перед оплатой.
           </p>
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
             Оплата пока доступна только участникам тестирования. Реальные деньги не списываются. Остальные пользователи могут сохранять черновики.

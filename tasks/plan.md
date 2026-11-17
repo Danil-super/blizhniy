@@ -553,3 +553,17 @@ expiry-check обнаружен rollback-тестом; исходные байт
 транзакция только0061+newrole, прежние финансовые допуски, local opt-in и приёмка
 на3045. Визуальная/клавиатурная проверка остаётся открытой при недоступном CUA.
 Production/GitHub/LIVE, Ярмарка и2ГИС в этот пакет не входят.
+
+
+### R01 — одобренная установка61 завершена локально
+
+Владелец одобрил exact package+установку. Patch17files применён по SHA; native2902,
+PG15, fast/build/Gitleaks прошли. Fresh backup/restore trial и одна owner-транзакция
+создали только app_admin/0061 и новую роль. App60/main59 прежние; старые права/данные
+сохранены.4 actual-role admissions, HTTPS22/22 и старыйdirectory13/13, настоящий
+restart с тем же admin-cookie/receipt прошли. Build58411d6; local opt-in включён,
+preload не ослаблен. До запуска исправлена найденная review ошибка классификации
+post-COMMIT proof failure; actual-source failure injection4/4. Полный протокол:
+`docs/audit-admin-user-access-local61.md`. Browser/CUA недоступен; visual acceptance
+остаётся. Production/push/LIVE не менялись. Soak перезапущен на новой конфигурации;
+первый прерванный прогон не считается успехом.

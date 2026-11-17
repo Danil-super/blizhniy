@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "owner-approved-local-install-pending",
+  "status": "installed-and-admitted-local-only",
   "project": "/home/danil/Рабочий стол/БЛИЖНИЙ",
   "origin": "https://127.0.0.1:3045",
   "database": "blizhniy_prod",
@@ -223,5 +223,21 @@
     "date": "2026-11-17",
     "answer": "Одобряю пакет и установку только локально",
     "scope": "Exact patch, app_admin/0061 and new restricted local role; no production, push or provider requests"
+  },
+  "installation": {
+    "date": "2026-11-17",
+    "proofDirectory": "/home/danil/.local/state/blizhniy/local-primary-private/user-access61-install-MXxvRw",
+    "backupSha256": "6aa9c8ae4fea1845d765db0395fee993ce35727fbcf5af50b6b057d00e76c9f9",
+    "restoreVerified": true,
+    "mainJournalEntries": 59,
+    "adminJournalEntries": 1,
+    "existingRightsPreserved": true,
+    "roleAdmissions": 4,
+    "buildId": "58411d6732300cec3c00c115a2fd6d7d164d0e34",
+    "httpsChecks": 22,
+    "readDirectoryChecks": 13,
+    "restartVerified": true,
+    "browserAcceptance": "unavailable",
+    "productionTouched": false
   }
 }

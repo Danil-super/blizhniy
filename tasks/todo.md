@@ -753,5 +753,5 @@ Primary schema/grants/key/worker и новый Auth не включены, уд�
 ### Аудит 17.11.2026 — пользователи текущей БД
 
 - [x] Read-срез пользователей: контракт → store → HTTP/client → primary UI; restricted PG и проверки границ. Commit e1eb073; native2877, 5 PostgreSQL и13 HTTPS, fast/build/Gitleaks. Браузерное подключение недоступно; визуальная приёмка отдельно.
-- [ ] Команды доступа: отдельный оператор/журнал, self/last-admin, отзыв сессий, повторы/гонки.
-- [ ] Кандидат совместимости и установки; точный review до permanent role/schema/guard.
+- [x] Команды доступа локально: отдельный оператор/журнал, self/last-admin, отзыв сессий, повторы/гонки; SQL/HTTPS проверены, визуальная приёмка отдельно.
+- [x] Точный пакет одобрен,0061/app_admin и роль установлены только локально;4 роли допущены, HTTPS22+13 и restart. [Протокол](../docs/audit-admin-user-access-local61.md).
