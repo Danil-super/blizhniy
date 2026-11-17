@@ -15,6 +15,10 @@ const journal=(await db.query('select name,sha256 from blizhniy_meta.migrations 
 const adminJournal=(await db.query('select name,sha256 from app_admin.migrations order by name')).rows;assert.deepEqual(adminJournal,plan.journal);
 await assertRefundSchema(db,60,{localPrimary:true});
 assert.deepEqual(await readRefundSchema(db,{namespace:'app_admin'}),JSON.parse(await readFile(new URL('../database/admin-user-access-schema-v2.json',import.meta.url),'utf8')));
+// Aggregate counters and configuration can lack both identity columns and user FKs.
+const relations=(await db.query(`select n.nspname||'.'||c.relname as relation
+ from pg_class c join pg_namespace n on n.oid=c.relnamespace
+ where c.relkind in ('r','p') and n.nspname in ('app','app_admin','local_primary') order by 1`)).rows.map(row=>row.relation);
 const foreignKeys=(await db.query(`select n.nspname||'.'||t.relname as source,rn.nspname||'.'||r.relname as target,c.conname as name,
  array(select a.attname from unnest(c.conkey) with ordinality k(num,ord) join pg_attribute a on a.attrelid=t.oid and a.attnum=k.num order by ord) as columns,
  case c.confdeltype when 'a' then 'NO ACTION' when 'r' then 'RESTRICT' when 'c' then 'CASCADE' when 'n' then 'SET NULL' when 'd' then 'SET DEFAULT' end as on_delete
@@ -34,6 +38,6 @@ await db.query('commit');
 const reached=new Set(['app.users']);for(let n=-1;n!==reached.size;){n=reached.size;for(const edge of foreignKeys)if(reached.has(edge.target))reached.add(edge.source);}
 const direct=foreignKeys.filter(row=>row.target==='app.users'),edges=foreignKeys.filter(row=>reached.has(row.source)&&reached.has(row.target));
 const directory=await mkdtemp(join(stateDirectory,'deletion-inventory62-'));await chmod(directory,0o700);
-const report={version:2,date:new Date().toISOString(),project:root,mainJournal:journal,adminJournal,direct,dependentRelations:[...reached].sort(),foreignKeys:edges,potentialSensitiveColumns:columns,identityColumns,triggers,method:'read-only catalogs; all text/JSON/bytea and UUID columns are candidates, not proven user references; no user rows or values inspected',deletionExecuted:false,productionTouched:false};
-await writeFile(join(directory,'catalog.json'),JSON.stringify(report,null,2)+'\n',{mode:0o600});console.log(JSON.stringify({report:join(directory,'catalog.json'),directForeignKeys:direct.length,dependentRelations:reached.size,dependentEdges:edges.length,identityColumnsWithoutUserFk:identityColumns.filter(row=>!row.direct_user_fk).length,directDeleteActions:direct.reduce((all,row)=>(all[row.on_delete]=(all[row.on_delete]??0)+1,all),{}),deletionExecuted:false}));
+const report={version:2,relations,date:new Date().toISOString(),project:root,mainJournal:journal,adminJournal,direct,dependentRelations:[...reached].sort(),foreignKeys:edges,potentialSensitiveColumns:columns,identityColumns,triggers,method:'read-only catalogs; all text/JSON/bytea and UUID columns are candidates, not proven user references; no user rows or values inspected',deletionExecuted:false,productionTouched:false};
+await writeFile(join(directory,'catalog.json'),JSON.stringify(report,null,2)+'\n',{mode:0o600});console.log(JSON.stringify({report:join(directory,'catalog.json'),tableCount:relations.length,directForeignKeys:direct.length,dependentRelations:reached.size,dependentEdges:edges.length,identityColumnsWithoutUserFk:identityColumns.filter(row=>!row.direct_user_fk).length,directDeleteActions:direct.reduce((all,row)=>(all[row.on_delete]=(all[row.on_delete]??0)+1,all),{}),deletionExecuted:false}));
 }finally{await db.end();}
