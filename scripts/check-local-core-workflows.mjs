@@ -150,6 +150,12 @@ try{
  }
  const profile=await specialist.api('/api/account/service-publications',{action:'create',kind:'specialist',creationKey:randomUUID(),form:{description:'Выполняю монтаж и ремонт сантехники, соблюдаю согласованные сроки.',professionName:'Сантехник',cityName:'Краснодар',price:'1500',contactPhone:'+79991112233',email:'synthetic@example.invalid',placementRightConfirmed:true}},'PUT');
  assert.equal(profile.form.title,'Тестовый специалист');assert.equal(profile.paid,false);
+ await specialist.page.goto(origin+'/cabinet/specialist');
+ const questionnaire=specialist.page.getByRole('region',{name:'Моя анкета',exact:true});
+ await questionnaire.getByRole('heading',{name:profile.form.title,exact:true}).waitFor();
+ await specialist.page.reload();
+ await questionnaire.getByText(profile.form.description,{exact:true}).waitFor();
+ assert.equal(await questionnaire.getByRole('link',{name:'Редактировать',exact:true}).getAttribute('href'),'/rabota/specialisty/anketa?draft='+profile.id);
  assert.equal((await owner.query("select count(*)::int n from app.payment_orders where target_type='specialist' and owner_id=$1",[specialist.id])).rows[0].n,0);
  const target=results.find(r=>r.kind==='workRequest');await specialist.page.goto(origin+'/rabota/zakazy/'+target.targetId);
  const composer=specialist.page.getByRole('region',{name:'Отклик на публикацию'});await composer.getByLabel('Сообщение',{exact:true}).fill('Могу выполнить работу завтра. Инструменты есть.');
@@ -174,8 +180,25 @@ try{
  assert.equal((await owner.query('select count(*)::int n from local_primary.application_deliveries where intent_id=$1',[applicationPayment])).rows[0].n,1);
  assert.deepEqual(await paymentRows(applicationPayment),{anchors:1,links:1,providers:1});
  assert.equal((await owner.query('select count(*)::int n from app.notifications where user_id=$1 and event_key=$2',[author.id,'application_paid:'+application.id])).rows[0].n,1);
+ await author.page.goto(origin+'/cabinet/otkliki');
+ await author.page.getByRole('button',{name:'Входящие отклики',exact:true}).click();
+ const incoming=author.page.getByRole('list',{name:'Список входящих откликов',exact:true});
+ const workPath='/rabota/zakazy/'+target.targetId;
+ await incoming.locator('li').filter({has:author.page.locator(`a[href="${workPath}"]`)}).getByRole('button',{name:'Подробнее',exact:true}).click();
+ const detail=author.page.getByRole('region',{name:'Детали отклика',exact:true});
+ await detail.getByText('Просмотрен',{exact:true}).waitFor();
+ await detail.getByRole('button',{name:'Выбрать исполнителя',exact:true}).click();
+ await detail.getByRole('button',{name:'Подтвердить выбор',exact:true}).click();
+ await detail.getByText('Исполнитель выбран',{exact:true}).waitFor();
+ const selected=await specialist.api('/api/account/applications',{action:'read',applicationId:application.id});
+ assert.equal(selected.status,'selected');
+ assert.equal(selected.message,application.message);
+ assert.equal((await specialist.context.request.get(origin+workPath)).status(),404);
+ assert.equal((await owner.query('select count(*)::int n from app.notifications where user_id=$1 and event_key=$2',[specialist.id,'application_decision:'+application.id+':selected'])).rows[0].n,1);
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);assert.deepEqual(hydration.flat(),[]);
  const result={status:'passed',run,results,specialist:{id:profile.id,free:true,applicationId:application.id,paymentId:applicationPayment,lostPrepareReplyRecovered:true,lostDispatchReplyRecovered:true,lostCaptureReplyRecovered:true,singleNotification:true},realProviderCalls:false,productionTouched:false};
+ result.specialist.profileSurvivesReload=true;
+ result.specialist.selectionConfirmed=true;
  await writeFile(join(stateDirectory,'core-workflows-'+run+'.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});
  console.log(JSON.stringify({status:'passed',types:results.map(r=>r.kind),publications:results.length,paidEdits:results.length,cancellations:results.length,lostReplyRecoveries:(results.length+1)*3,phoneGate:true,invalidFieldsRejected:true,workWithdrawRestore:true,freeProfile:true,paidResponseDelivered:true,singleResponseNotification:true,realProviderCalls:false,productionTouched:false}));
 }catch(error){await Promise.allSettled([writeFile(join(stateDirectory,'core-workflows-'+run+'-errors.json'),JSON.stringify({errors,hydration:hydration.flat()},null,2)+'\n',{flag:'wx',mode:0o600}),...contexts.flatMap((context,index)=>context.pages().map(page=>page.screenshot({path:join(stateDirectory,'core-workflows-'+run+'-failure-'+index+'.png'),fullPage:true})))]);throw error;}
