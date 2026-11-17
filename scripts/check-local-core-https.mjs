@@ -10,7 +10,8 @@ import {stateFile,stateDirectory,localPrimaryDatabaseConfig,docker} from './loca
 import {readLocalPrimaryState,validateLocalPrimaryContainer} from './local-primary-config.mjs';
 import {createLocalPrimaryHttpsClient} from './local-primary-https.mjs';
 
-assert.deepEqual(process.argv.slice(2),['--run']);assert.equal(process.env.NODE_ENV,'test');
+const browserReturn=process.argv.includes('--browser-return');
+assert.deepEqual(process.argv.slice(2),browserReturn?['--run','--browser-return']:['--run']);assert.equal(process.env.NODE_ENV,'test');
 const root=process.cwd(),state=readLocalPrimaryState(stateFile,root);assert.equal(state.origin,'https://127.0.0.1:3045');
 validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
 const ca=await readFile(join(stateDirectory,'tls-cert.pem')),load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
@@ -45,6 +46,7 @@ async function approve(author,admin,item){
  const review=await api(author,'/api/account/service-moderation',{kind:'specialist',publicationId:item.id,expectedRevision:item.revision},'PUT');assert.equal(review.state,'pending');
  const result=await admin.api('/api/admin/service-moderation',{method:'PUT',body:{expectedAdminId:admin.id,kind:'specialist',requestId:review.id,state:'approved',note:null}});assert.equal(result.data.state,'approved');
 }
+let browser,page;
 async function journey(author,peer,admin,kind){
  stage=kind+'-draft';const prefix=name=>check(kind+'-'+name),key=randomUUID(),specialist=kind==='specialist',listing=kind==='listing';
  const resource=listing?'/api/account/listing-form':specialist?'/api/account/service-publications':'/api/account/work-publications';
@@ -88,6 +90,12 @@ async function journey(author,peer,admin,kind){
  await author.api(payment,{body:{action:'pending'},form:true});assert.deepEqual(await period(order.id),[]);prefix('pending-not-published');
  await author.api(payment,{body:{action:'succeed'},form:true,loseBody:true});
  const paid=await api(author,checkout,{action:'order',paymentId:order.id}),before=await period(order.id);assert.equal(paid.order.status,'succeeded');assert.ok(paid.fulfillment);assert.equal(before.length,1);prefix('capture-publishes-once');
+ if(browserReturn&&!specialist){
+  stage=kind+'-browser-return';
+  const {checkBrowserReturn}=await import('./local-core-browser-return.mjs');
+  await checkBrowserReturn(page,state.origin,author,kind,order,item.form.title);
+  assert.deepEqual(await period(order.id),before);prefix('browser-returns-to-published-card-after-lost-capture');
+ }
  await author.api(payment,{body:{action:'succeed'},form:true});assert.deepEqual(await period(order.id),before);assert.deepEqual(await rows(order.id),{anchors:1,links:1,providers:1});prefix('capture-replay-keeps-term');
  const visible=await publicApi(target.publicPath,{method:'GET'});assert.ok(visible.data.includes(item.form.title));
  if(kind==='vacancy'||kind==='workRequest'){assert.equal(visible.data.includes(author.phone.slice(1)),false);assert.equal(visible.data.includes(author.email),false);}prefix('public-after-payment-with-safe-contacts');
@@ -131,6 +139,11 @@ try{
   const used=(await db.query('select attempts from app.auth_rate_limits where key_hash=$1 and window_start=to_timestamp(floor(extract(epoch from clock_timestamp())/900)*900)',[digest])).rows[0]?.attempts??0;
   assert.ok(used+needed<=limit,'Wait for the existing local auth window before running this suite');
  }
+ if(browserReturn){
+  const {chromium}=await import('playwright');browser=await chromium.launch();
+  page=await browser.newPage({ignoreHTTPSErrors:true,serviceWorkers:'block'});page.setDefaultTimeout(12000);
+  await page.route('**/*',route=>new URL(route.request().url()).origin===state.origin?route.continue():route.abort());
+ }
  const author=await account('Синтетический Автор'),peer=await account('Синтетический Специалист'),admin=await account('Синтетический Администратор','admin'),unconfirmed=await account('Синтетический Новичок','user',false);
  stage='phone-admission';
  const restricted=await api(unconfirmed,'/api/account/work-publications',{action:'create',kind:'workRequest',creationKey:randomUUID(),form:{kind:'workRequest',title:'Проверка подтверждения телефона',description:'Синтетический заказ для проверки обязательного телефона.',professionName:'Сантехник',cityName:'Краснодар',contactPhone:unconfirmed.phone,placementRightConfirmed:true,budget:'3500'}},'PUT');
@@ -149,5 +162,5 @@ try{
  console.log(JSON.stringify({passed:true,checks:checks.length,requestCount,buildId:build,report:join(directory,'report.json')}));
 }catch(error){failure={stage,code:error?.code??error?.name??'Error',...(Number.isInteger(error?.actual)&&Number.isInteger(error?.expected)?{actual:error.actual,expected:error.expected}:{}),frames:String(error?.stack??'').split('\n').filter(line=>line.trim().startsWith('at ')).slice(0,4)};await put('failed.json',{...failure,checks,targets});throw Error('Local core HTTPS acceptance failed; inspect private report');}
 finally{
- try{if(!cleaned&&actors.length)await cleanup();}finally{await put('fixtures.json',{actorIds:actors.map(actor=>actor.id),targets,cleaned,failure});await db.end();}
+ try{try{await browser?.close();}finally{if(!cleaned&&actors.length)await cleanup();}}finally{await put('fixtures.json',{actorIds:actors.map(actor=>actor.id),targets,cleaned,failure});await db.end();}
 }

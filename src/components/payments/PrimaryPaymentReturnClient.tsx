@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import {useRouter} from 'next/navigation';
 import {useEffect,useRef,useState} from 'react';
+import {useLocalPaymentSimulation} from '@/components/listings/ListingWorkflowProvider';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {listingPayment,ListingPaymentClientError} from '@/lib/client-listing-payment';
 import {notifyAccountSessionChange} from '@/lib/local-account';
@@ -30,7 +31,8 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
   }).finally(()=>{if(!controller.signal.aborted)setBusy(false);});
   return()=>controller.abort();
  },[owner,paymentId,visible,retry,vacancy,workRequest,specialist,cancellationPending]);
- const verificationOnly=!!snapshot&&(snapshot.testOnly||testCheckout)&&!snapshot.testPublication;
+ const localSimulation=useLocalPaymentSimulation();
+ const verificationOnly=!!snapshot&&(snapshot.testOnly||testCheckout)&&!snapshot.testPublication&&!localSimulation;
  const confirmed=!!snapshot&&snapshot.order.status==='succeeded'&&(verificationOnly||!!snapshot.fulfillment);
  const terminal=confirmed||snapshot?.order.status==='failed'||snapshot?.order.status==='refunded';
  useEffect(()=>{
@@ -44,7 +46,7 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
  return <div hidden={!visible} inert={!visible} aria-busy={busy} className="min-w-0">
   {busy&&<p role="status" className="mb-4 text-sm text-slate-700">Получаем статус заказа…</p>}
   {error&&<p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm leading-6 text-rose-800">{error}</p>}
-  {snapshot&&<>{(snapshot.testOnly||snapshot.testPublication)&&<p className="mb-3 text-sm font-semibold text-amber-800">Тестовый платёж · Без списания денег</p>}{(error||busy)&&<p className="mb-3 text-sm text-slate-700">Последний полученный статус. Актуальность пока не подтверждена.</p>}<ListingPaymentStatus snapshot={snapshot} testMode={verificationOnly} specialist={specialist}/></>}
+  {snapshot&&<>{(localSimulation||snapshot.testOnly||snapshot.testPublication)&&<p className="mb-3 text-sm font-semibold text-amber-800">Тестовый платёж · Без списания денег</p>}{(error||busy)&&<p className="mb-3 text-sm text-slate-700">Последний полученный статус. Актуальность пока не подтверждена.</p>}<ListingPaymentStatus snapshot={snapshot} testMode={verificationOnly} specialist={specialist}/></>}
   {testCheckout&&snapshot&&(snapshot.order.status==='created'||snapshot.order.status==='pending')&&<TestPaymentLaunch publishes={snapshot.testPublication} disabled={cancellationPending} owner={owner} paymentId={paymentId} visible={visible} vacancy={vacancy} workRequest={workRequest} specialist={specialist}/>}
   {cancellationEnabled&&!specialist&&snapshot?.order.status==='created'&&!busy&&!error&&<CheckoutCancellation owner={owner} paymentId={paymentId} targetType={workRequest?'workRequest':vacancy?'vacancy':'listing'} visible={visible} onPendingChange={setCancellationPending} onCancelled={()=>{setSnapshot(null);setLoaded(false);setRetry(value=>value+1);}}/>}
   {snapshot?.order.status==='succeeded'&&!verificationOnly&&!snapshot.fulfillment&&<PhonePaymentNotice owner={owner} onVerified={()=>setRetry(value=>value+1)}/>}

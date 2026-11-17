@@ -17,6 +17,7 @@ function mount(options={}){
   if(name==='@/lib/client-listing-payment')return{listingPayment:{read},ListingPaymentClientError:class extends Error{}};
   if(name==='@/lib/client-specialist-payment')return{specialistPaymentStatus:{read}};
   if(name==='@/lib/client-vacancy-payment')return{vacancyPaymentStatus:{read},workRequestPaymentStatus:{read}};
+  if(name==='@/components/listings/ListingWorkflowProvider')return{useLocalPaymentSimulation:()=>options.localSimulation===true};
   if(name==='@/lib/local-account')return{notifyAccountSessionChange(){}};
   if(name==='./ListingPaymentStatus')return{ListingPaymentStatus:({snapshot})=>jsx('h2',{children:snapshot.order.status})};
   if(name==='./TestPaymentLaunch'||name==='./CheckoutCancellation'||name==='@/components/phone/PhonePaymentNotice')return new Proxy({},{get:()=>()=>null});
@@ -59,4 +60,17 @@ test('a different owner, null readback and late old response cannot navigate',as
 });
 test('unmount cancels a confirmed success timer',async()=>{
  const h=mount();await h.settle();assert.equal(h.timerCount,1);h.stop();assert.equal(h.timerCount,0);assert.deepEqual(h.navigation,[]);
+});
+
+test('a simulated capture waits for the purchased placement before returning to the cabinet',async()=>{
+ const h=mount({localSimulation:true});
+ try{
+  await h.settle();await h.tick();
+  assert.deepEqual(h.navigation,[]);
+  assert.ok(h.buttons().includes('Проверить статус'));
+  h.setResult({order:{id:payment,status:'succeeded'},fulfillment:{publishedAt:'2026-11-16T12:00:00Z'}});
+  await h.tick();await h.tick();
+  assert.deepEqual(h.navigation,['/cabinet/obyavleniya']);
+  assert.equal(h.timerCount,0);
+ }finally{h.stop();}
 });
