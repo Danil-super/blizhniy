@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "review-candidate-not-installed",
+  "status": "installed-local-awaiting-acceptance",
   "project": "/home/danil/Рабочий стол/БЛИЖНИЙ",
   "origin": "https://127.0.0.1:3045",
   "database": "blizhniy_prod",
@@ -109,5 +109,27 @@
     "real TEST/LIVE YooKassa requests or money",
     "Fair and 2GIS",
     "persistent browser storage of administrative reasons/commands"
-  ]
+  ],
+  "ownerApproval": {
+    "date": "2026-11-17",
+    "answer": "Одобряю пакет и установку только локально",
+    "scope": "Exact pinned guard patch, app_admin/0062 and one EXECUTE on existing local role; no new roles, production, push or provider requests",
+    "extraModelReview": "declined"
+  },
+  "installation": {
+    "date": "2026-11-17",
+    "proofDirectory": "/home/danil/.local/state/blizhniy/local-primary-private/tariff62-install-m51k5l0c",
+    "freshBackupSha256": "7db782d234eeebe1646b831485769db44607bf1741f7709069a193b869f8d5f4",
+    "restoreVerified": true,
+    "restoredTables": 76,
+    "priorDataPreserved": true,
+    "priorRightsPreserved": true,
+    "mainJournal": 59,
+    "adminJournal": 2,
+    "newRoles": 0,
+    "roleAdmissions": 4,
+    "verifiedTls": true,
+    "acceptance": "pending",
+    "productionTouched": false
+  }
 }

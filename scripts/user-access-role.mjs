@@ -1,22 +1,25 @@
 import {readFileSync} from 'node:fs';
+import {getAdminTariffMigration} from './admin-tariff-release.mjs';
 import {getAdminUserAccessMigration} from './admin-user-access-release.mjs';
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 import {readRefundSchema,assertRefundSchema} from './refund-worker-schema.mjs';
 import {assertFinancialSystemPrivileges} from './financial-catalog-privileges.mjs';
 const role='blizhniy_user_operator',signature='app_admin.user_access(text,uuid,text,uuid,uuid,bigint,text,boolean,text)';
+const tariffSignature='app_admin.tariff_access(text,uuid,text,text,uuid,text,text,text,integer,boolean,text)';
 const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.test(value);
-export function getUserAccessRolePlan(database){
- if(!validDatabase(database))throw Error('Invalid user operator database');
- const {name,sha256}=getAdminUserAccessMigration();
+export function getUserAccessRolePlan(database,{tariffs=false}={}){
+ if(typeof tariffs!=='boolean'||!validDatabase(database))throw Error('Invalid user operator database');
+ const {name,sha256}=getAdminUserAccessMigration(),tariff=tariffs?getAdminTariffMigration():null;
  return {role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,
-  appJournal:getRefundWorkerRolePlan(database,{schema:60,localPrimary:true}).journal,journal:[{name,sha256}],
+  appJournal:getRefundWorkerRolePlan(database,{schema:60,localPrimary:true}).journal,journal:[{name,sha256},...(tariff?[{name:tariff.name,sha256:tariff.sha256}]:[])],
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,app_admin,blizhniy_meta to ${role}`,
-   `grant select(name,sha256) on blizhniy_meta.migrations,app_admin.migrations to ${role}`,`grant execute on function ${signature} to ${role}`]};
+   `grant select(name,sha256) on blizhniy_meta.migrations,app_admin.migrations to ${role}`,`grant execute on function ${signature} to ${role}`,...(tariffs?[`grant execute on function ${tariffSignature} to ${role}`]:[])]};
 }
-/** Read-only admission: one application capability, metadata reads and exact independent schema. */
-export async function verifyUserAccessDatabase(db,{database,deadline}={}){
+/** Read-only admission: exact reviewed admin capability set, metadata reads and independent schema. */
+export async function verifyUserAccessDatabase(db,{database,deadline,tariffs=false}={}){
  try{
-  const plan=getUserAccessRolePlan(database);
+  if(typeof tariffs!=='boolean')throw Error();
+  let plan=getUserAccessRolePlan(database);
   await db.readTransaction(async tx=>{
    await tx.query("select set_config('search_path','pg_catalog',true),set_config('statement_timeout','5s',true),set_config('lock_timeout','1s',true)");
    const identity=(await tx.query(`select current_user as name,session_user as login,current_database() as database,
@@ -28,11 +31,14 @@ export async function verifyUserAccessDatabase(db,{database,deadline}={}){
     has_parameter_privilege('session_replication_role','SET,ALTER SYSTEM') as replication_override from pg_roles r where rolname=current_user`)).rows[0];
    if(!identity||identity.name!==role||identity.login!==role||identity.database!==database||identity.version<180000||identity.version>=190000||identity.readonly!=='on'||identity.replication!=='origin'||identity.default_readonly!=='off'||identity.default_isolation!=='read committed'||
     identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error();
-   for(const [table,expected] of [['blizhniy_meta.migrations',plan.appJournal],['app_admin.migrations',plan.journal]]){
-    const actual=(await tx.query(`select name,sha256 from ${table} order by name`)).rows;if(JSON.stringify(actual)!==JSON.stringify(expected))throw Error();
-   }
+   const main=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
+   const admin=(await tx.query('select name,sha256 from app_admin.migrations order by name')).rows;
+   const tariffProfile=admin.length===2;if(tariffs&&!tariffProfile)throw Error();
+   plan=getUserAccessRolePlan(database,{tariffs:tariffProfile});
+   if(JSON.stringify(main)!==JSON.stringify(plan.appJournal)||JSON.stringify(admin)!==JSON.stringify(plan.journal))throw Error();
+   const signatures=tariffProfile?[signature,tariffSignature]:[signature];
    await assertRefundSchema(tx,60,{localPrimary:true});
-   const expected=JSON.parse(readFileSync(new URL('../database/admin-user-access-schema-v1.json',import.meta.url),'utf8'));
+   const expected=JSON.parse(readFileSync(new URL(tariffProfile?'../database/admin-user-access-schema-v2.json':'../database/admin-user-access-schema-v1.json',import.meta.url),'utf8'));
    if(JSON.stringify(await readRefundSchema(tx,{namespace:'app_admin'}))!==JSON.stringify(expected))throw Error();
    const schemas=(await tx.query("select nspname as name,has_schema_privilege(oid,'USAGE') as usage,has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace")).rows;
    if(!['app','app_admin','blizhniy_meta'].every(name=>schemas.some(row=>row.name===name&&row.usage===true))||
@@ -44,8 +50,8 @@ export async function verifyUserAccessDatabase(db,{database,deadline}={}){
      and a.privilege_type='USAGE' and not a.is_grantable) limit 1`);
    const functionAcl=await tx.query(`select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
-    where n.nspname='app_admin' and a.grantee<>p.proowner and not(p.oid=$1::regprocedure and a.grantee=(select oid from pg_roles where rolname=current_user)
-     and a.privilege_type='EXECUTE' and not a.is_grantable) limit 1`,[signature]);
+    where n.nspname='app_admin' and a.grantee<>p.proowner and not(p.oid=any($1::regprocedure[]) and a.grantee=(select oid from pg_roles where rolname=current_user)
+     and a.privilege_type='EXECUTE' and not a.is_grantable) limit 1`,[signatures]);
    const tableAcl=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
     cross join lateral aclexplode(coalesce(c.relacl,acldefault(case when c.relkind='S' then 's'::"char" else 'r'::"char" end,c.relowner))) a
     where n.nspname='app_admin' and c.relkind in ('r','p','v','m','f','S') and a.grantee<>c.relowner limit 1`);
@@ -66,7 +72,8 @@ export async function verifyUserAccessDatabase(db,{database,deadline}={}){
    const callable=(await tx.query(`select n.nspname||'.'||p.proname||'('||oidvectortypes(p.proargtypes)||')' as signature,
     has_function_privilege(p.oid,'EXECUTE WITH GRANT OPTION') as grantable from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname not in ('pg_catalog','information_schema') and has_function_privilege(p.oid,'EXECUTE') limit 10001`)).rows;
-   if(tables.rows.length||callable.length!==1||callable[0].grantable!==false||callable[0].signature!==signature.replaceAll(',',', '))throw Error();
+   const permitted=new Set(signatures.map(value=>value.replaceAll(',',', ')));
+   if(tables.rows.length||callable.length!==permitted.size||callable.some(row=>row.grantable!==false||!permitted.delete(row.signature))||permitted.size)throw Error();
   },{timeoutMs:5000,deadline});
  }catch{throw Error('User operator database preflight failed');}
 }
