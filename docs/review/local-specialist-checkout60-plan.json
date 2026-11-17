@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "owner-approved-local-install-pending",
+  "status": "installed-local-only",
   "baseCommit": "bd37c2d6d6395d0e4ceb73ba82f8fee7b9165923",
   "project": "/home/danil/Рабочий стол/БЛИЖНИЙ",
   "origin": "https://127.0.0.1:3045",
@@ -300,5 +300,17 @@
     "specialist renewals/refunds",
     "Fair/Ярмарка and 2GIS"
   ],
-  "ownerApproval": "2026-11-17: Одобряю пакет и установку только локально"
+  "ownerApproval": "2026-11-17: Одобряю пакет и установку только локально",
+  "installation": {
+    "date": "2026-11-17",
+    "proofDirectory": "/home/danil/.local/state/blizhniy/local-primary-private/specialist60-install-Hcs6XD",
+    "backupSha256": "93c8f4caa1c7c710effb378af08725eef000bd437c9cb3fba03a39dc14a72f68",
+    "restoreVerified": true,
+    "journalEntries": 59,
+    "sourceBuildId": "4302c7028a655be464f2e8b469877a01958f216d",
+    "httpAcceptance": "passed",
+    "restartAcceptance": "passed",
+    "browserAcceptance": "unavailable",
+    "productionTouched": false
+  }
 }
