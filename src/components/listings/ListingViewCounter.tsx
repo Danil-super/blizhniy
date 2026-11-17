@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import lottie, { type AnimationItem } from "lottie-web";
+import lottie, { type AnimationItem } from "lottie-web/build/player/lottie_light";
 import { getBaseViews, getListingTotalViews, listingViewCountsUpdatedEvent } from "@/lib/listing-views";
 import eyesAnimation from "../../../eyes.json";
 

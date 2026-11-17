@@ -183,7 +183,7 @@ function viewModule(window) {
 function counterModule(hooks, views, window) {
   return load(source('src/components/listings/ListingViewCounter.tsx'), {
     react: hooks,
-    'lottie-web': { default: { loadAnimation() { throw new Error('animation not mounted in small test'); } } },
+    'lottie-web/build/player/lottie_light': { default: { loadAnimation() { throw new Error('animation not mounted in small test'); } } },
     '@/lib/listing-views': views,
     '../../../eyes.json': { default: {} },
   }, { window, CustomEvent });

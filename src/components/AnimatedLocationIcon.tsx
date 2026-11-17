@@ -18,7 +18,7 @@ export function AnimatedLocationIcon({ className = "h-5 w-5" }: { className?: st
     let cancelled = false;
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    import("lottie-web")
+    import("lottie-web/build/player/lottie_light")
       .then(({ default: lottie }) => {
         if (cancelled || !containerRef.current) {
           return;
