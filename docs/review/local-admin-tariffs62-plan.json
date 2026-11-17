@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "installed-local-awaiting-acceptance",
+  "status": "installed-and-accepted-local-api",
   "project": "/home/danil/Рабочий стол/БЛИЖНИЙ",
   "origin": "https://127.0.0.1:3045",
   "database": "blizhniy_prod",
@@ -89,18 +89,20 @@
     "fast": true,
     "build": true,
     "browser": "unverified",
-    "permanentTariffFeature": "off",
+    "permanentTariffFeature": "on",
     "stagedGitleaks": 0,
     "currentStand": {
-      "sourceCommit": "0750b44732c86cf33ece7264b584fda076bb0987",
-      "buildId": "F25wTLqpABY2jjdITsoXD",
-      "userAccessHttpsChecks": 22,
-      "userDirectoryHttpsChecks": 13,
-      "publicAndOffChecks": 5,
-      "restart": true,
-      "newTariffFeature": "off",
+      "sourceCommit": "387168193d839262da43c67693bc343e80fb3f39",
+      "buildId": "387168193d839262da43c67693bc343e80fb3f39",
+      "tariffHttpsChecks": 25,
+      "directoryHttpsChecks": 13,
+      "modeOffHttpsChecks": 12,
+      "modeOnHttpsChecks": 12,
+      "newTariffFeature": "on",
       "mainJournal": 59,
-      "adminJournal": 1
+      "adminJournal": 2,
+      "browser": "unavailable",
+      "startupRetryPassed": true
     }
   },
   "excluded": [
@@ -129,7 +131,24 @@
     "newRoles": 0,
     "roleAdmissions": 4,
     "verifiedTls": true,
-    "acceptance": "pending",
-    "productionTouched": false
+    "acceptance": "local-api-passed-browser-unavailable",
+    "productionTouched": false,
+    "sourceCommit": "387168193d839262da43c67693bc343e80fb3f39",
+    "buildId": "387168193d839262da43c67693bc343e80fb3f39",
+    "tariffHttpsChecks": 25,
+    "directoryHttpsChecks": 13,
+    "modeOffHttpsChecks": 12,
+    "modeOnHttpsChecks": 12,
+    "syntheticFinancialChecks": 25,
+    "tariffAuditRows": 5,
+    "catalogValuesRestored": true,
+    "frozenPaymentIntentsUnchanged": true,
+    "previousFlagsPreserved": true,
+    "tariffFlagEnabled": true,
+    "startupAttemptFailedDuringConcurrentIndex": true,
+    "startupRetryPassed": true,
+    "startupFailureCause": "not yet established; local cold-start diagnostics remains open",
+    "limitsChanged": false,
+    "browser": "unavailable"
   }
 }
