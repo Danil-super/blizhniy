@@ -2932,7 +2932,7 @@ export function SettingsPanel({ identity, profile, onClose, saveProfile }: { ide
           <div className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
             <span className="flex min-h-4 items-center justify-between gap-2 leading-4">
               <span>Телефон</span>
-              <span className={`truncate text-[11px] font-bold ${phoneIsVerified ? "text-[#0a8f32]" : "text-amber-700"}`}>
+              <span className={`truncate text-[11px] font-bold ${phoneIsVerified ? "text-green-800" : "text-amber-700"}`}>
                 {!form.phone ? "не указан" : phoneIsVerified ? "подтвержден" : "не подтвержден"}
               </span>
             </span>
