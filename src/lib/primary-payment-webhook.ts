@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';import {BlockList,isIP} from 'node:net';
 import {authJson,AuthRequestError} from './auth-http.ts';
 import {getTrustedProxyIp,normalizeRemoteIp} from './trusted-proxy-ip.ts';
 import {parseListingDraftId} from './listing-draft-contract.ts';
-import type {PostgresPaymentReconciliationQueue} from './postgres-payment-reconciliation';
+import type {PostgresPaymentReconciliationQueue, QueueAdmission} from './postgres-payment-reconciliation';
 
 // Documented sender ranges, verified 2026-10-19. Defense in depth, not financial proof.
 const senders=new BlockList();
@@ -28,11 +28,12 @@ async function readNotification(request:Request){
   if(!complete)void reader.cancel().catch(()=>undefined);reader.releaseLock();
  }
 }
-type Event={event:'primary_payment_webhook';entryPoint:'webhook';requestId:string;status:number;durationMs:number;code?:string};
+type Event={event:'primary_payment_webhook';entryPoint:'webhook';requestId:string;status:number;durationMs:number;code?:string;queueOutcome?:QueueAdmission};
 /** Incoming JSON is a hint only. No merchant calls, finance or publication in this handler. */
 export function createPrimaryPaymentWebhook(config:{origin:string},runtime:()=>Promise<Pick<PostgresPaymentReconciliationQueue,'enqueue'>>|Pick<PostgresPaymentReconciliationQueue,'enqueue'>,audit:(event:Event)=>void=event=>console.info(JSON.stringify(event))){
  return async(request:Request)=>{
   const requestId=randomUUID(),start=performance.now();let status=503,code:string|undefined;
+  let queueOutcome: QueueAdmission | undefined;
   const reply=(body:unknown,next:number)=>{status=next;return authJson(body,next,{'X-Request-ID':requestId,...(next===405?{Allow:'POST'}:{})});};
   try{
    if(request.method!=='POST')throw new AuthRequestError(405,'METHOD_NOT_ALLOWED');
@@ -43,9 +44,10 @@ export function createPrimaryPaymentWebhook(config:{origin:string},runtime:()=>P
    const row=raw as Record<string,unknown>,object=row.object;
    if(row.type!=='notification'||typeof row.event!=='string'||!['payment.succeeded','payment.waiting_for_capture','payment.canceled'].includes(row.event)||!object||typeof object!=='object'||Array.isArray(object))throw new AuthRequestError(400,'INVALID_NOTIFICATION');
    let id:string;try{id=parseListingDraftId((object as Record<string,unknown>).id);}catch{throw new AuthRequestError(400,'INVALID_NOTIFICATION');}
-   const queue=await runtime();if(!await queue.enqueue(id))throw new AuthRequestError(503,'WEBHOOK_UNAVAILABLE');
+   const queue=await runtime();
+   if(!await queue.enqueue(id, outcome => { queueOutcome = outcome; }))throw new AuthRequestError(503,'WEBHOOK_UNAVAILABLE');
    return reply({ok:true},200);
   }catch(error){status=error instanceof AuthRequestError?error.status:503;code=error instanceof AuthRequestError?error.code:'WEBHOOK_UNAVAILABLE';return reply({error:{code}},status);}
-  finally{audit({event:'primary_payment_webhook',entryPoint:'webhook',requestId,status,durationMs:Math.round(performance.now()-start),code});}
+  finally{audit({event:'primary_payment_webhook',entryPoint:'webhook',requestId,status,durationMs:Math.round(performance.now()-start),code,...(queueOutcome && {queueOutcome})});}
  };
 }

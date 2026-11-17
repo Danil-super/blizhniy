@@ -3,6 +3,7 @@ import {parseListingDraftId} from './listing-draft-contract.ts';
 import type {PostgresDatabase} from './postgres';
 
 export type ReconciliationClaim={intentId:string;claimId:string;attempts:number;targetType?:'listing'|'vacancy'|'workRequest'};
+export type QueueAdmission = 'queued' | 'already_present';
 type Scope={shopId:string;isTest:boolean;publicationTestOwner?:string};
 type Code='provider_pending'|'capture_required'|'processing_unavailable'|'publication_blocked'|'attempts_exhausted'|'phone_required';
 /** Already-known payment IDs only. No payment data, provider POST or financial writes. */
@@ -27,14 +28,18 @@ export class PostgresPaymentReconciliationQueue{
     and not exists(select 1 from app.payment_fulfillments f where f.intent_id=i.id)
    order by i.id limit 5 on conflict(intent_id) do nothing`,this.values());});
  }
- async enqueue(providerId:string):Promise<boolean>{
-  const id=parseListingDraftId(providerId);return this.db.transaction(async tx=>{
+ async enqueue(providerId:string, onCommit?: (outcome: QueueAdmission) => void):Promise<boolean>{
+  const id=parseListingDraftId(providerId);
+  const outcome = await this.db.transaction(async tx=>{
    const found=(await tx.query<{id:string}>(`select i.id from app.payment_checkout_intents i join app.payment_provider_links p on p.intent_id=i.id
     where ${this.scoped(4)} and p.provider_payment_id=$3`,this.values(id))).rows[0];
-   if(!found)return false;
-   await tx.query('insert into app.payment_reconciliation_jobs(intent_id) values($1) on conflict(intent_id) do nothing',[found.id]);
-   return true;
+   if(!found)return null;
+   const inserted = await tx.query('insert into app.payment_reconciliation_jobs(intent_id) values($1) on conflict(intent_id) do nothing',[found.id]);
+   return inserted.rowCount === 1 ? 'queued' : 'already_present';
   });
+  if(outcome === null)return false;
+  onCommit?.(outcome);
+  return true;
  }
  async claim():Promise<ReconciliationClaim|{exhausted:true}|null>{
   return this.db.transaction(async tx=>{
