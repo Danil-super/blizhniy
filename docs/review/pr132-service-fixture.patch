@@ -1,0 +1,44 @@
+--- a/tests/bootstrap-postgres-integration.mjs
++++ b/tests/bootstrap-postgres-integration.mjs
+@@ -228,10 +228,6 @@
+     await testServicePublicationSchema(suite, client, config, credentials);
+     const { testServicePublicationGrants } = await import("./service-publication-grants-integration.mjs");
+     await testServicePublicationGrants(suite, client, config, credentials);
+-    const { testServicePublications } = await import("./service-publications-integration.mjs");
+-    await testServicePublications(suite, client, config, credentials);
+-    const { testServiceModeration } = await import("./service-moderation-integration.mjs");
+-    await testServiceModeration(suite, client, config, credentials);
+     const { testPublicServiceStore } = await import("./public-service-store-integration.mjs");
+     await testPublicServiceStore(suite, client, config, credentials);
+     const { testInteractionsSchema } = await import("./interactions-schema-integration.mjs");
+@@ -270,6 +266,10 @@
+     await testAdminOverview(suite, client, config, credentials);
+     const { testListingContactMethod } = await import("./listing-contact-method-integration.mjs");
+     await testListingContactMethod(suite, client, config, credentials);
++    const { testServicePublications } = await import("./service-publications-integration.mjs");
++    await testServicePublications(suite, client, config, credentials);
++    const { testServiceModeration } = await import("./service-moderation-integration.mjs");
++    await testServiceModeration(suite, client, config, credentials);
+   } finally {
+     if(runtime)await runtime.close();
+     await Promise.all(otherClients.map(x=>x.end()));
+--- a/tests/service-publications-integration.mjs
++++ b/tests/service-publications-integration.mjs
+@@ -3,7 +3,7 @@
+ import * as contract from '../src/lib/service-publication-contract.ts';import {workPublicationModule} from './work-publication-module.mjs';
+ import {createRequire} from 'node:module';import * as http from '../src/lib/auth-http.ts';import * as cookie from '../src/lib/account-cookie.ts';import * as proxy from '../src/lib/trusted-proxy-ip.ts';
+ import * as drafts from '../src/lib/listing-draft-contract.ts';import {loadAdminModule} from './admin-module.mjs';
+-const {PostgresServicePublicationStore,ServicePublicationAccessError,ServicePublicationConflictError}=workPublicationModule('postgres-service-publications',{'./service-publication-contract.ts':contract});
++const {PostgresServicePublicationStore,ServicePublicationAccessError,ServicePublicationConflictError,ServicePublicationCheckoutActiveError}=workPublicationModule('postgres-service-publications',{'./service-publication-contract.ts':contract});
+ export async function testServicePublications(suite,admin,config,credentials){
+  assert.equal(config.host,'127.0.0.1');const db=createPostgresDatabase({NODE_ENV:'test',BLIZHNIY_DB_HOST:config.host,BLIZHNIY_DB_PORT:String(config.port),BLIZHNIY_DB_NAME:config.database,
+   BLIZHNIY_DB_USER:credentials.user,BLIZHNIY_DB_PASSWORD:credentials.password,BLIZHNIY_DB_SSL_MODE:'disable'}),store=new PostgresServicePublicationStore(db);
+@@ -68,7 +68,7 @@
+   await suite.test('service HTTP composes real cookie authorization, restricted SQL and stable readback rather than trusting caller ownership',async()=>{
+    const {createProductionServicePublicationHandler}=workPublicationModule('production-service-publication-http',{
+     'node:crypto':createRequire(import.meta.url)('node:crypto'),'./auth-http':http,'./account-cookie':cookie,'./trusted-proxy-ip':proxy,
+-    './app-session-transaction':loadAdminModule('app-session-transaction'),'./postgres-service-publications':{PostgresServicePublicationStore,ServicePublicationAccessError,ServicePublicationConflictError},
++    './app-session-transaction':loadAdminModule('app-session-transaction'),'./postgres-service-publications':{PostgresServicePublicationStore,ServicePublicationAccessError,ServicePublicationConflictError,ServicePublicationCheckoutActiveError},
+     './service-publication-contract.ts':contract,'./listing-draft-contract.ts':drafts});
+    const events=[],origin='https://owned-service.example.invalid',handle=createProductionServicePublicationHandler({origin},()=>({store,limiter:{allowProduction:async()=>true}}),event=>events.push(event));
+    const key=randomUUID(),form=contract.parseServicePublicationForm('fair',{title:'Заявка через настоящий HTTP',category:'Посуда',comment:'Приватное пожелание'});

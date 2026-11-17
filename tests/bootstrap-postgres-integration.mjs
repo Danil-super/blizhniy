@@ -228,10 +228,6 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testServicePublicationSchema(suite, client, config, credentials);
     const { testServicePublicationGrants } = await import("./service-publication-grants-integration.mjs");
     await testServicePublicationGrants(suite, client, config, credentials);
-    const { testServicePublications } = await import("./service-publications-integration.mjs");
-    await testServicePublications(suite, client, config, credentials);
-    const { testServiceModeration } = await import("./service-moderation-integration.mjs");
-    await testServiceModeration(suite, client, config, credentials);
     const { testPublicServiceStore } = await import("./public-service-store-integration.mjs");
     await testPublicServiceStore(suite, client, config, credentials);
     const { testInteractionsSchema } = await import("./interactions-schema-integration.mjs");
@@ -270,6 +266,10 @@ test("plain PostgreSQL bootstrap: atomic schema, clean references, journal and g
     await testAdminOverview(suite, client, config, credentials);
     const { testListingContactMethod } = await import("./listing-contact-method-integration.mjs");
     await testListingContactMethod(suite, client, config, credentials);
+    const { testServicePublications } = await import("./service-publications-integration.mjs");
+    await testServicePublications(suite, client, config, credentials);
+    const { testServiceModeration } = await import("./service-moderation-integration.mjs");
+    await testServiceModeration(suite, client, config, credentials);
   } finally {
     if(runtime)await runtime.close();
     await Promise.all(otherClients.map(x=>x.end()));

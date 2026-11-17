@@ -3,7 +3,7 @@ import {createPostgresDatabase} from '../src/lib/postgres.ts';import {hashSessio
 import * as contract from '../src/lib/service-publication-contract.ts';import {workPublicationModule} from './work-publication-module.mjs';
 import {createRequire} from 'node:module';import * as http from '../src/lib/auth-http.ts';import * as cookie from '../src/lib/account-cookie.ts';import * as proxy from '../src/lib/trusted-proxy-ip.ts';
 import * as drafts from '../src/lib/listing-draft-contract.ts';import {loadAdminModule} from './admin-module.mjs';
-const {PostgresServicePublicationStore,ServicePublicationAccessError,ServicePublicationConflictError}=workPublicationModule('postgres-service-publications',{'./service-publication-contract.ts':contract});
+const {PostgresServicePublicationStore,ServicePublicationAccessError,ServicePublicationConflictError,ServicePublicationCheckoutActiveError}=workPublicationModule('postgres-service-publications',{'./service-publication-contract.ts':contract});
 export async function testServicePublications(suite,admin,config,credentials){
  assert.equal(config.host,'127.0.0.1');const db=createPostgresDatabase({NODE_ENV:'test',BLIZHNIY_DB_HOST:config.host,BLIZHNIY_DB_PORT:String(config.port),BLIZHNIY_DB_NAME:config.database,
   BLIZHNIY_DB_USER:credentials.user,BLIZHNIY_DB_PASSWORD:credentials.password,BLIZHNIY_DB_SSL_MODE:'disable'}),store=new PostgresServicePublicationStore(db);
@@ -68,7 +68,7 @@ export async function testServicePublications(suite,admin,config,credentials){
   await suite.test('service HTTP composes real cookie authorization, restricted SQL and stable readback rather than trusting caller ownership',async()=>{
    const {createProductionServicePublicationHandler}=workPublicationModule('production-service-publication-http',{
     'node:crypto':createRequire(import.meta.url)('node:crypto'),'./auth-http':http,'./account-cookie':cookie,'./trusted-proxy-ip':proxy,
-    './app-session-transaction':loadAdminModule('app-session-transaction'),'./postgres-service-publications':{PostgresServicePublicationStore,ServicePublicationAccessError,ServicePublicationConflictError},
+    './app-session-transaction':loadAdminModule('app-session-transaction'),'./postgres-service-publications':{PostgresServicePublicationStore,ServicePublicationAccessError,ServicePublicationConflictError,ServicePublicationCheckoutActiveError},
     './service-publication-contract.ts':contract,'./listing-draft-contract.ts':drafts});
    const events=[],origin='https://owned-service.example.invalid',handle=createProductionServicePublicationHandler({origin},()=>({store,limiter:{allowProduction:async()=>true}}),event=>events.push(event));
    const key=randomUUID(),form=contract.parseServicePublicationForm('fair',{title:'Заявка через настоящий HTTP',category:'Посуда',comment:'Приватное пожелание'});
