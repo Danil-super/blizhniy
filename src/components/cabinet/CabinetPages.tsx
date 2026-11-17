@@ -4,27 +4,19 @@ import {CabinetAuthGate} from "@/components/auth/CabinetAuthGate";
 import {CabinetDraftWorkspace} from "@/components/listings/CabinetDraftWorkspace";
 import {CabinetPublicationWorkspace} from "./CabinetPublicationWorkspace";
 import {BookingsPanel} from "@/components/bookings/BookingsPanel";
-import {CabinetCapabilities,CabinetOverviewClient,CabinetOrganizationClient,CabinetPaymentsClient,CabinetPublicationsClient,CabinetResponsesClient,CabinetSpecialistClient,type CabinetPaymentHistoryItem} from "./CabinetEntryClients";
+import {CabinetOrganizationClient,CabinetPaymentsClient,CabinetPublicationsClient,CabinetResponsesClient,CabinetSpecialistClient,type CabinetPaymentHistoryItem} from "./CabinetEntryClients";
 import {paymentRows,responseRows} from "./dashboard-rows";
 
 export function CabinetPage() {
-  const footer = <>
-    <div className="mt-8"><CabinetCapabilities /></div>
-    <div className="mt-8 border-t border-slate-200 pt-5 text-sm">
-      <Link href="/cabinet/udalit-akkaunt" className="font-semibold text-[#0875d1] underline">Запросить удаление аккаунта</Link>
-    </div>
-  </>;
-  return (
-    <Shell title="Личный кабинет" description="Панель пользователя для публикаций, откликов и рабочих разделов." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet">
-      <CabinetDraftWorkspace overview footer={footer}><CabinetOverviewClient /></CabinetDraftWorkspace>
-    </Shell>
-  );
+  return <CabinetListingsPage/>;
 }
 
 export function CabinetListingsPage() {
   return (
     <Shell title="Мои объявления" description="Статусы публикаций, просмотры и быстрые действия по объявлениям пользователя." eyebrow="Кабинет" nav={cabinetNav} activeHref="/cabinet/obyavleniya" createHref="/razmestit/obyavlenie" createLabel="Создать объявление">
-      <CabinetDraftWorkspace><CabinetPublicationsClient type="listing" /></CabinetDraftWorkspace>
+      <CabinetDraftWorkspace footer={<div className="mt-8 border-t border-slate-200 pt-5 text-sm">
+        <Link href="/cabinet/udalit-akkaunt" className="font-semibold text-[#0875d1] underline">Запросить удаление аккаунта</Link>
+      </div>}><CabinetPublicationsClient type="listing" /></CabinetDraftWorkspace>
     </Shell>
   );
 }

@@ -1,13 +1,12 @@
 import type React from "react";
 import Link from "next/link";
-import {BriefcaseBusiness,CircleUserRound,ClipboardList,FileText,Gauge,MessageSquare,Plus,Store} from "lucide-react";
+import {BriefcaseBusiness,CircleUserRound,ClipboardList,FileText,MessageSquare,Plus,Store} from "lucide-react";
 import {SiteHeader} from "@/components/SiteHeader";
 import {CabinetShellActions} from "@/components/cabinet/CabinetShellActions";
 import {CabinetProfileBar} from "@/components/cabinet/CabinetProfileBar";
 
 export const cabinetNav = [
-  { href: "/cabinet", label: "Обзор", icon: Gauge },
-  { href: "/cabinet/obyavleniya", label: "Объявления", icon: FileText },
+  { href: "/cabinet/obyavleniya", label: "Мои объявления", icon: FileText },
   { href: "/cabinet/vakansii", label: "Вакансии", icon: BriefcaseBusiness },
   { href: "/cabinet/zakazy", label: "Заказы", icon: ClipboardList },
   { href: "/cabinet/specialist", label: "Анкета", icon: CircleUserRound },
@@ -59,7 +58,7 @@ export function Shell({
             <h1 className="text-2xl font-bold leading-tight text-[#060b27] sm:text-4xl">{title}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 [overflow-wrap:anywhere] sm:mt-3 sm:text-lg sm:leading-7">{description}</p>
           </div>
-          <div className={nav ? "grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3" : "grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:gap-3"}>
+          {nav!==cabinetNav&&<div className={nav ? "grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3" : "grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:gap-3"}>
             {nav ? (
               <CabinetShellActions createHref={createHref} createLabel={createLabel} />
             ) : createHref ? (
@@ -68,7 +67,7 @@ export function Shell({
                 {createLabel}
               </ActionLink>
             ) : null}
-          </div>
+          </div>}
         </div>
         {nav ? <NavPills items={nav} activeHref={activeHref} /> : null}
         {nav === cabinetNav ? <CabinetProfileBar /> : null}
@@ -81,6 +80,7 @@ export function Shell({
 export function NavPills({ items, activeHref }: { items: typeof cabinetNav; activeHref?: string }) {
   return (
     <nav className="mt-5 grid grid-cols-2 gap-2 pb-1 min-[430px]:grid-cols-3 sm:mt-7 sm:flex sm:flex-wrap sm:overflow-visible sm:pb-0" aria-label="Разделы">
+      {items===cabinetNav&&<CabinetShellActions mode="create" createHref="/razmestit"/>}
       {items.map((item) => {
         const Icon = item.icon;
         const active = item.href === activeHref;
@@ -98,6 +98,7 @@ export function NavPills({ items, activeHref }: { items: typeof cabinetNav; acti
           </Link>
         );
       })}
+      {items===cabinetNav&&<CabinetShellActions mode="logout"/>}
     </nav>
   );
 }
