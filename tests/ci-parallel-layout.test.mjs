@@ -11,7 +11,7 @@ test('layout checks run independently while both reusable CI jobs remain mandato
   assert.deepEqual(Object.keys(ci.jobs).sort(),['category_heroes','validate']);
   for(const job of Object.values(ci.jobs)){
     assert.equal(job.needs,undefined);assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);
-    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');
+    assert.equal(job['timeout-minutes'],job===ci.jobs.validate?25:20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');
     for(const step of job.steps.filter(step=>step.name!=='Upload the verified production artifact')){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}
     const guard=job.steps.findIndex(step=>step.name==='Guard quality floor'),install=job.steps.findIndex(step=>step.name==='Install dependencies');
     assert.ok(guard>=0&&guard<install);assert.equal(job.steps[install].run,'npm ci');

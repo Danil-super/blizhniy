@@ -24,7 +24,7 @@ test('real PostgreSQL is a mandatory gate before packaging and is inherited by d
  assert.ok(ci.on.workflow_call);assert.deepEqual(ci.on.pull_request.branches,['main']);assert.ok(Object.hasOwn(ci.on,'workflow_dispatch'));
  assert.deepEqual(ci.permissions,{contents:'read'});
  const job=ci.jobs.validate,step=job.steps.find(s=>s.name==='Run isolated PostgreSQL 18 integration gate');assert.ok(step);assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);assert.equal(step.env,undefined);
- assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);assert.equal(job['runs-on'],'ubuntu-24.04');assert.equal(job['timeout-minutes'],20);
+ assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);assert.equal(job['runs-on'],'ubuntu-24.04');assert.equal(job['timeout-minutes'],25);
  assert.ok(job.steps.indexOf(step)>job.steps.findIndex(s=>s.name==='Install dependencies'));assert.ok(job.steps.indexOf(step)<job.steps.findIndex(s=>s.name==='Build the production artifact on GitHub'));assert.ok(job.steps.indexOf(step)<job.steps.findIndex(s=>s.name==='Upload the verified production artifact'));
  assert.equal(deploy.jobs.validate.uses,'./.github/workflows/ci.yml');assert.ok(deploy.jobs.deploy.needs.includes('validate'));assert.equal(deploy.jobs.deploy.if,undefined);
  assert.match(step.run,/^set -euo pipefail\n/);for(const file of suites)assert.ok(readFileSync(new URL('./'+file,import.meta.url),'utf8').includes(image),file+' must use the pinned PG18 image');

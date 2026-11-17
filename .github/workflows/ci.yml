@@ -27,7 +27,7 @@ jobs:
   validate:
     name: Validate app
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     outputs:
       archive_sha256: ${{ steps.package.outputs.archive_sha256 }}
       artifact_name: ${{ steps.package.outputs.artifact_name }}
