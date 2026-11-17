@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Ban, CheckCircle2, Eye, Mail, Phone, Search, ShieldCheck, UserRound, UsersRound } from "lucide-react";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
+import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
+import {PrimaryAdminUsersClient} from './PrimaryAdminUsersClient';
 
 export type AdminUserRow = {
   createdAt: string;
@@ -98,6 +100,11 @@ async function getAccessToken() {
 }
 
 export function AdminUsersClient() {
+  const auth=usePrimaryAccountAuth();
+  return auth?<PrimaryAdminUsersClient/>:<LegacyAdminUsersClient/>;
+}
+
+function LegacyAdminUsersClient() {
   const [loadedUsers, setLoadedUsers] = useState<AdminUserRow[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [actionUserId, setActionUserId] = useState("");
