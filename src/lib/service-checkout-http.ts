@@ -33,6 +33,7 @@ export function createServiceCheckoutHandler(config:{origin:string},kind:PaidSer
    if(!await current.limiter.allowProduction('session',ip))throw new AuthRequestError(429,'RATE_LIMITED');
    return reply(await execute(token),200);
   }catch(error){
+   if(error&&typeof error==='object'&&'code'in error&&error.code==='PCA02')error=new AuthRequestError(409,'CHECKOUT_NOT_READY');
    if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
    if(error instanceof ServicePublicationAccessError)error=new AuthRequestError(404,'PUBLICATION_NOT_FOUND');
    if(error instanceof ServicePublicationConflictError||error instanceof ServiceCheckoutConflictError)error=new AuthRequestError(409,'CHECKOUT_CHANGED');

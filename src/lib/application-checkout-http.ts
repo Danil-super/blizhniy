@@ -23,6 +23,7 @@ export function createApplicationCheckoutHandler(origin:string,runtime:Runtime){
   const ip=getTrustedProxyIp(request.headers);if(!ip)throw new AuthRequestError(403,'UNTRUSTED_INGRESS');const token=readAccountSessionToken(request);if(!token)throw new AuthRequestError(401,'UNAUTHENTICATED');
   if(!await runtime.limiter.allowProduction('session',ip))throw new AuthRequestError(429,'RATE_LIMITED');return authJson(await work(token),200);
  }catch(error){
+  if(error&&typeof error==='object'&&'code'in error&&error.code==='PCA02')error=new AuthRequestError(409,'CHECKOUT_CHANGED');
   const status=error instanceof AuthRequestError?error.status:error instanceof AppSessionAccessError?401:error instanceof ApplicationAccessError?404:error instanceof ApplicationConflictError||error instanceof ApplicationCheckoutConflictError||error instanceof ApplicationEligibilityError||error instanceof ApplicationBusyError||error instanceof ApplicationCheckoutUnavailableError?409:error instanceof ApplicationCheckoutInputError||error instanceof ListingDraftInputError?422:503;
   const code=error instanceof AuthRequestError?error.code:status===401?'UNAUTHENTICATED':status===404?'APPLICATION_NOT_FOUND':status===409?'CHECKOUT_CHANGED':status===422?'INVALID_INPUT':'CHECKOUT_UNAVAILABLE';
   return authJson({error:{code}},status,status===429?{'Retry-After':'900'}:undefined);
