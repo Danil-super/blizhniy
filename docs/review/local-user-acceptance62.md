@@ -1,6 +1,6 @@
 # Review: приёмочный рестарт после установки62
 
-Статус: кандидат проверен отдельно, **к исходному runner ещё не применён**.
+Статус: владелец одобрил точный diff17.11.2026; **применён только локально**.
 Точный diff: [local-user-acceptance62.patch](local-user-acceptance62.patch).
 
 Старый `scripts/check-local-admin-user-access.mjs` при рестарте передаёт фиксированный
@@ -32,8 +32,28 @@ owned launcher; финальные12 HTTPS-проверок прошли. Отр
 Закрытые отчёты: `user-access61-acceptance-jNvrXh/report.json` (on),
 `user-access61-acceptance-XJXHIS/report.json` (off) в каталоге local-primary-private.
 
-Просьба к владельцу: одобрить только применение этого точного diff локально.
+Разрешение владельца: только применение этого точного diff локально.
 Push/deploy, DDL/GRANT, новые роли и реальные платежи не входят.
 Причина отдельного review — [CONSTRAINTS.md:25](../../CONSTRAINTS.md):
 «Тесты: не пропускать, удалять или ослаблять проверки; обоснованный рефакторинг
 требует явного review, а не автоматического обхода guard».
+
+## Применённый результат
+
+До применения сверены исходный SHA и SHA patch, после — точный SHA кандидата
+`80fb72831cb3be7d4246ac11fbcaef4446e04d9d2befcbcfa28f6dc6d7207ecb`.
+Дополнительных изменений runner не внесено. Уже установленный файл из проекта,
+без преобразования импортов, прошёл24 HTTPS-проверки при on и24 при off на
+BUILD_ID `281e9f5a96ea30e92f567544bdd092989e1b3638`. Финальные12 после возврата
+в on также прошли. Все прежние feature flags сверены с owned launcher и сохранены.
+
+Native2930/2930 без skipped/cancelled, floor/types/lint прошли. Старый lint warning
+`targetType` остаётся. Приложение и зависимости не менялись, повторная сборка не
+требовалась; прежний runtime build281e9f5 сохранён. Guard, роли, миграции и GRANT
+не менялись. Push/deploy и провайдеры не вызывались.
+
+Закрытые отчёты установленного runner:
+`user-access61-acceptance-D3McFz/report.json` (on),
+`user-access61-acceptance-mM7N0U/report.json` (off).
+Сводка и финальная приёмка:
+`~/.local/state/blizhniy/local-primary-private/acceptance62-approved-fahv2oy4/`.
