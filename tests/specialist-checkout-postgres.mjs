@@ -82,6 +82,18 @@ for(const full of [false,true])test('specialist synthetic checkout on '+(full?'f
    await admin.query("insert into app.service_moderation(publication_id,revision,state,decided_by,decided_at) values($1,$2,'approved',$3,clock_timestamp())",[d.id,edited.revision,other.owner]);assert.ok(await catalogue.read('specialist',d.id));
    assert.deepEqual((await store.readOrder(d.token,d.owner,order.id)).fulfillment,snapshot.fulfillment);
   });
+  await suite.test('active specialist orders return a typed edit conflict while failed orders release the form',async()=>{
+   for(const status of ['created','pending','succeeded','failed']){
+    const d=await draft(),{order}=await prepare(d),before=await d.forms.read(d.token,d.owner,'specialist',d.id);
+    if(status!=='created')await admin.query('update app.payment_orders set status=$2 where id=$1',[order.id,status]);
+    const form={...before.form,description:'Изменённое описание для проверки активной оплаты.'};
+    if(status==='failed')assert.equal((await d.forms.update(d.token,d.owner,'specialist',d.id,before.revision,form)).form.description,form.description);
+    else{
+     await assert.rejects(d.forms.update(d.token,d.owner,'specialist',d.id,before.revision,form),{name:'ServicePublicationCheckoutActiveError'});
+     assert.deepEqual(await d.forms.read(d.token,d.owner,'specialist',d.id),before);
+    }
+   }
+  });
   await suite.test('lost simulator response recovers one provider identity after reference change; disabled mode retains read-only history',async()=>{
    const {localPrimaryPaymentHandler}=await import('../scripts/local-primary-payment.mjs'),d=await draft(),{order}=await prepare(d);let lose=true,postTransactions=0;
    const providerOwner={query:(...args)=>ownerDb.query(...args),transaction:async work=>{

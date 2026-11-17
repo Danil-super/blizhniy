@@ -9,6 +9,7 @@ import {effectivePublicationStatusSql} from './publication-effective-status';
 import {resolveProfession,professionFormSql,ProfessionReferenceError} from './profession-reference';
 export class ServicePublicationAccessError extends Error{constructor(){super('Service publication not found');}}
 export class ServicePublicationConflictError extends Error{constructor(){super('Service publication changed');}}
+export class ServicePublicationCheckoutActiveError extends Error{constructor(){super('Service publication checkout active');this.name='ServicePublicationCheckoutActiveError';}}
 export type ServicePublicationSnapshot={id:string;kind:ServicePublicationKind;form:ServicePublicationForm;photos:ListingDraftPhoto[];revision:string;status:string;paid:boolean;professionId?:string|null;
  createdAt:string;updatedAt:string;publishedAt:string|null;expiresAt:string|null};
 type Row=Omit<ServicePublicationSnapshot,'form'|'photos'>&{form:unknown};
@@ -101,6 +102,9 @@ export class PostgresServicePublicationStore{
   const row=(await tx.query<{revision:string;professionId:string|null;professionName:string|null}>(`select revision::text as revision,profession_id as "professionId",form->>'professionName' as "professionName"
    from app.service_publications where id=$1 and author_id=$2 and kind=$3 and deleted_at is null for update`,[id,owner,kind])).rows[0];
   if(!row)throw new ServicePublicationAccessError();if(row.revision!==revision||revision==='9223372036854775807')throw new ServicePublicationConflictError();
+  // The shared user lock also serializes checkout preparation; SQL keeps its independent guard.
+  if(kind==='specialist'&&(await tx.query(`select 1 from app.payment_orders o where o.target_type='specialist' and o.target_id=$1 and o.owner_id=$2
+   and (o.status in ('created','pending') or o.status='succeeded' and not exists(select 1 from app.payment_fulfillments f where f.intent_id=o.id)) limit 1`,[id,owner])).rowCount)throw new ServicePublicationCheckoutActiveError();
   const refs=await this.references(tx,form,{id:row.professionId,name:row.professionName}),canonical=form.kind==='specialist'?{...form,professionName:refs.professionName}:form,ids=photoIds(form);await this.checkPhotos(tx,owner,ids);
   const result=await tx.query(`update app.service_publications set form=$4::jsonb,city_id=$5,profession_id=$6,revision=revision+1,updated_at=clock_timestamp()
    where id=$1 and author_id=$2 and kind=$3 and revision=$7::bigint and deleted_at is null`,[id,owner,kind,JSON.stringify(canonical),refs.city,refs.profession,revision]);

@@ -42,3 +42,8 @@ test('service HTTP maps foreign, conflict, invalid-session and infrastructure fa
   const f=fixture(error),response=await f.handler(f.request());assert.equal(response.status,status);assert.deepEqual(await response.json(),{error:{code}});assert.equal(f.calls.length,1);
  }
 });
+test('service HTTP reports an active specialist checkout as a conflict without retrying the write',async()=>{
+ const f=fixture(new storage.ServicePublicationCheckoutActiveError()),value={action:'update',kind:'specialist',expectedOwnerId:owner,publicationId:id,expectedRevision:'1',form:{}};
+ const response=await f.handler(f.request(value,{},'PUT'));
+ assert.equal(response.status,409);assert.deepEqual(await response.json(),{error:{code:'CHECKOUT_ACTIVE'}});assert.equal(f.calls.length,1);
+});
