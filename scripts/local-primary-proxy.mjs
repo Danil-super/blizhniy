@@ -114,8 +114,15 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
    const deletionMatch=/^\/api\/(account|admin)\/deletion\/([a-z]+)$/.exec(path);
    if(!response&&deletionMatch)response=await deletion(request,deletionMatch[2],deletionMatch[1]==='admin');
    if(!response&&['/api/account/register','/api/account/resend','/api/account/recover'].includes(path)){
-    const data=await request.clone().json();
-    if(typeof data.email!=='string'||!data.email.endsWith('.invalid'))response=Response.json({error:{code:'SYNTHETIC_EMAIL_REQUIRED'}},{status:422});
+    const auth=load('auth-http');
+    try{
+     const data=await auth.readAuthJson(request.clone(),{origin:canonical});
+     if(!data||typeof data!=='object'||Array.isArray(data))response=auth.authJson({error:{code:'INVALID_INPUT'}},422);
+     else if(typeof data.email!=='string'||!data.email.endsWith('.invalid'))response=auth.authJson({error:{code:'SYNTHETIC_EMAIL_REQUIRED'}},422);
+    }catch(error){
+     if(!(error instanceof auth.AuthRequestError))throw error;
+     response=auth.authJson({error:{code:error.code}},error.status);
+    }
    }
    if(!response&&refundAdmin&&path==='/api/admin/refunds')response=await refundAdmin(request);
    if(!response&&path==='/api/account/profile')response=await profile(request);
