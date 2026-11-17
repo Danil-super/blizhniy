@@ -238,6 +238,8 @@
     "readDirectoryChecks": 13,
     "restartVerified": true,
     "browserAcceptance": "unavailable",
-    "productionTouched": false
+    "productionTouched": false,
+    "finalSmokeBuildId": "54518b1b681372a6e26e7f30a044f74e88841e93",
+    "finalProofDirectory": "/home/danil/.local/state/blizhniy/local-primary-private/audit-stage-20261117-final-diq_bzok"
   }
 }
