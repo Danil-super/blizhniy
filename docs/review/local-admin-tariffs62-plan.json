@@ -44,7 +44,12 @@
     "tables": 76,
     "backupSha256": "efc3f519b67e108132ffd409680ec8e54a20053f265a372faf37323a8100652c",
     "backupBytes": 1358766,
-    "restoreVerified": false
+    "restoreVerified": true,
+    "restoredTables": 76,
+    "restoredExactSchemas": true,
+    "restoredRoleAdmissions": 4,
+    "restoreReport": "/home/danil/.local/state/blizhniy/local-primary-private/tariff62-preflight-9zG6bI/restore-report.json",
+    "normalizedRestoreChecks": "six existing app checks from reviewed local58 payload and original admin user_changes reason CHECK; disposable clone only"
   },
   "beforeInstallation": [
     "Verify exact patch/source/migration digests and owner approval; stop only owned local services",
@@ -85,7 +90,18 @@
     "build": true,
     "browser": "unverified",
     "permanentTariffFeature": "off",
-    "stagedGitleaks": 0
+    "stagedGitleaks": 0,
+    "currentStand": {
+      "sourceCommit": "0750b44732c86cf33ece7264b584fda076bb0987",
+      "buildId": "F25wTLqpABY2jjdITsoXD",
+      "userAccessHttpsChecks": 22,
+      "userDirectoryHttpsChecks": 13,
+      "publicAndOffChecks": 5,
+      "restart": true,
+      "newTariffFeature": "off",
+      "mainJournal": 59,
+      "adminJournal": 1
+    }
   },
   "excluded": [
     "production and both Russian servers",
