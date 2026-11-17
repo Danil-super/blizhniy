@@ -1,0 +1,11 @@
+--- a/tests/profession-catalog-postgres-integration.mjs
++++ b/tests/profession-catalog-postgres-integration.mjs
+@@ -58,6 +58,8 @@
+    grant select on app.users,app.sessions,app.cities,app.specialist_categories,app.media_objects,
+     app.work_publications,app.work_publication_photos,app.work_moderation,app.applications,
+     app.service_publications,app.service_publication_photos,app.service_moderation,app.cabinet_profiles to profession_runtime;
++   grant select(id,target_type,target_id,owner_id,status) on app.payment_orders to profession_runtime;
++   grant select(intent_id) on app.payment_fulfillments to profession_runtime;
+    grant update(auth_version) on app.users to profession_runtime;
+    grant update(last_seen_at) on app.sessions to profession_runtime;
+    grant insert(author_id,kind,creation_key,form,city_id,profession_id) on app.work_publications,app.service_publications to profession_runtime;
