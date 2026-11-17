@@ -15,6 +15,8 @@ import {readPlacementRenewalsEnabled} from '../src/lib/placement-renewal-config.
 
 async function main(){
 const refunds=process.argv[3]==='--refunds';
+const userAccess=process.env.BLIZHNIY_LOCAL_USER_ACCESS==='enabled';
+if(process.env.BLIZHNIY_LOCAL_USER_ACCESS!==undefined&&!userAccess)throw Error('Invalid local user operator mode');
 if(!['--prepare','--start','--background'].includes(process.argv[2])||!(process.argv.length===3||process.argv.length===4&&refunds&&process.argv[2]!=='--prepare'))throw Error('Invalid local primary command');
 const state=await prepareLocalPrimaryFixture();
 if(process.argv[2]==='--prepare')console.log(JSON.stringify({ready:true,origin:state.origin}));
@@ -22,7 +24,7 @@ else if(process.argv[2]==='--background'){
  if(Number(process.versions.node.split('.')[0])!==22)throw Error('Local primary requires Node22');
  const log=await open(join(stateDirectory,'launcher.log'),'a',0o600);
  const child=spawn(process.execPath,['--experimental-strip-types',join(state.project,'scripts/local-primary.mjs'),'--start',...(refunds?['--refunds']:[])],{
-  cwd:state.project,env:{...(process.env.BLIZHNIY_SPECIALIST_CHECKOUT?{BLIZHNIY_SPECIALIST_CHECKOUT:process.env.BLIZHNIY_SPECIALIST_CHECKOUT}:{}),PATH:process.env.PATH,LANG:'C.UTF-8',...(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG?{BLIZHNIY_LOCAL_TELEGRAM_CONFIG:process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG}:{}),...(process.env.BLIZHNIY_PLACEMENT_RENEWALS?{BLIZHNIY_PLACEMENT_RENEWALS:process.env.BLIZHNIY_PLACEMENT_RENEWALS}:{}),...(process.env.BLIZHNIY_MEDIA_RETENTION?{BLIZHNIY_MEDIA_RETENTION:process.env.BLIZHNIY_MEDIA_RETENTION}:{}),...(process.env.BLIZHNIY_SERVICE_CHECKOUT?{BLIZHNIY_SERVICE_CHECKOUT:process.env.BLIZHNIY_SERVICE_CHECKOUT}:{})},detached:true,stdio:['ignore',log.fd,log.fd],
+  cwd:state.project,env:{...(userAccess?{BLIZHNIY_LOCAL_USER_ACCESS:'enabled'}:{}),...(process.env.BLIZHNIY_SPECIALIST_CHECKOUT?{BLIZHNIY_SPECIALIST_CHECKOUT:process.env.BLIZHNIY_SPECIALIST_CHECKOUT}:{}),PATH:process.env.PATH,LANG:'C.UTF-8',...(process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG?{BLIZHNIY_LOCAL_TELEGRAM_CONFIG:process.env.BLIZHNIY_LOCAL_TELEGRAM_CONFIG}:{}),...(process.env.BLIZHNIY_PLACEMENT_RENEWALS?{BLIZHNIY_PLACEMENT_RENEWALS:process.env.BLIZHNIY_PLACEMENT_RENEWALS}:{}),...(process.env.BLIZHNIY_MEDIA_RETENTION?{BLIZHNIY_MEDIA_RETENTION:process.env.BLIZHNIY_MEDIA_RETENTION}:{}),...(process.env.BLIZHNIY_SERVICE_CHECKOUT?{BLIZHNIY_SERVICE_CHECKOUT:process.env.BLIZHNIY_SERVICE_CHECKOUT}:{})},detached:true,stdio:['ignore',log.fd,log.fd],
  });
  await once(child,'spawn');await log.close();child.unref();
  await writeFile(join(stateDirectory,'launcher-process.json'),JSON.stringify({version:1,pid:child.pid,project:state.project,origin:state.origin}),{mode:0o600});
@@ -52,12 +54,13 @@ else{
  try{
   const services=await startLocalPrimaryServices({signal:controller.signal,
    ...(refunds?{createRefunds:async signal=>(await import('./local-primary-refunds.mjs')).startLocalPrimaryRefunds({stateFile,signal,report:async event=>console.info(JSON.stringify(event))})}:{}),
-   createProxy:async(socket,signal)=>{
-    const proxy=await createLocalPrimaryProxy(state,{paymentHandler:localPrimaryPaymentHandler,...(socket?{refundOperatorSocket:socket}:{})});
+   ...(userAccess?{createUserAccess:async signal=>(await import('./local-primary-user-access.mjs')).startLocalPrimaryUserAccess(signal)}:{}),
+   createProxy:async(socket,signal,userSocket)=>{
+    const proxy=await createLocalPrimaryProxy(state,{paymentHandler:localPrimaryPaymentHandler,...(socket?{refundOperatorSocket:socket}:{}),...(userSocket?{userAccessOperatorSocket:userSocket}:{})});
     try{signal.throwIfAborted();proxy.server.listen(Number(new URL(state.origin).port),'127.0.0.1');await once(proxy.server,'listening');signal.throwIfAborted();return proxy;}
     catch(error){await proxy.close();throw error;}
    },
-   startApplication:async signal=>{
+   startApplication:async(signal,userSocket)=>{
     const log=await open(join(stateDirectory,'next.log'),'a',0o600);let child,done,closing;
     const close=()=>closing??=(async()=>{
      if(!child)return;
@@ -66,7 +69,7 @@ else{
      try{await done;}finally{clearTimeout(timer);}
     })();
     try{
-     signal.throwIfAborted();child=spawn(process.execPath,['--require',join(state.project,'scripts/local-primary-preload.cjs'),join(state.project,'node_modules/next/dist/bin/next'),'start','--hostname','127.0.0.1','--port',String(state.upstreamPort)],{cwd:state.project,env,stdio:['ignore',log.fd,log.fd]});
+     signal.throwIfAborted();child=spawn(process.execPath,['--require',join(state.project,'scripts/local-primary-preload.cjs'),join(state.project,'node_modules/next/dist/bin/next'),'start','--hostname','127.0.0.1','--port',String(state.upstreamPort)],{cwd:state.project,env:{...env,...(userSocket?{BLIZHNIY_USER_ACCESS_OPERATOR:'local-v1',BLIZHNIY_USER_ACCESS_SOCKET:userSocket}:{})},stdio:['ignore',log.fd,log.fd]});
      done=new Promise(resolve=>{child.once('error',()=>resolve(1));child.once('exit',code=>resolve(code??1));});
      const spawned=once(child,'spawn').then(()=>true,()=>false);await log.close();if(!await spawned)throw Error('Local app spawn failed');signal.throwIfAborted();return{done,close};
     }catch(error){try{await log.close();}finally{await close();}throw error;}

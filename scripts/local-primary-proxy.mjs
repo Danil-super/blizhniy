@@ -3,6 +3,7 @@ import {readMediaRetentionEnabled} from '../src/lib/media-retention-config.ts';
 // loopback PG18 fixture; no production secrets, SMTP or merchant are loaded.
 import {createServer} from 'node:https';
 import {request as httpRequest} from 'node:http';
+import {serveLocalUserAccessRequest} from './local-user-access-request.mjs';
 import {readFile,writeFile,readdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createRequire} from 'node:module';
@@ -22,7 +23,7 @@ export async function readBody(req,limit=12*1024*1024,deadlineMs){
  try{for await(const chunk of req){size+=chunk.length;if(size>limit)throw Error('Local request too large');chunks.push(chunk);}return Buffer.concat(chunks);}
  finally{clearTimeout(timer);}
 }
-export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperatorSocket}={}){
+export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperatorSocket,userAccessOperatorSocket}={}){
  if(state.origin!=='https://127.0.0.1:3045'||state.upstreamPort!==localPrimaryUpstreamPort)throw Error('Invalid local ingress target');
  if(process.env.NODE_ENV!=='test')throw Error('Local proxy requires isolated test process');
  validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
@@ -80,6 +81,9 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
   })().finally(()=>{mailRunning=undefined;});
  },1000);
  const context={state,ownerDb,runtimeDb,load};
+ const userAccess=userAccessOperatorSocket===undefined?null:load('admin-user-access-http').createAdminUserAccessHandler({origin:canonical},()=>({limiter,
+  execute:(token,command,signal)=>load('local-user-access-operator-client').callLocalUserAccessOperator(userAccessOperatorSocket,token,command,signal),
+ }));
  const refundAdmin=refundOperatorSocket===undefined?null:load('admin-refund-http').createAdminRefundHandler({origin:canonical},()=>({limiter,
   command:(token,command,signal)=>load('local-refund-operator-client').callLocalRefundOperator(refundOperatorSocket,token,command,signal),
  }));
@@ -103,12 +107,13 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
    }
    const path=new URL(req.url,state.origin).pathname;
    let response=req.method==='GET'?await localPage(path):null;
-   const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req,...(refundAdmin&&path==='/api/admin/refunds'?[4096,2000]:[]));
    const proof=load('account-browser-proof').issueBrowserProof(state.rateSecret,'127.0.0.1',req.headers['user-agent']??'');
    const headers=new Headers(Object.fromEntries(Object.entries(normalizeDocumentPrefetchHeaders(req.headers)).filter(([,value])=>typeof value==='string')));
    headers.set('host',new URL(canonical).host);headers.set('x-real-ip','127.0.0.1');
    headers.set('cookie',(req.headers.cookie??'').split(';').filter(part=>!part.trim().startsWith('__Host-blizhniy_human=')).concat(proof.cookie.split(';')[0]).filter(Boolean).join('; '));
    if(req.headers.origin)headers.set('origin',canonical);
+   if(userAccess&&path==='/api/admin/user-access'){await serveLocalUserAccessRequest(req,res,headers,userAccess,canonical+req.url);return;}
+   const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req,...(refundAdmin&&path==='/api/admin/refunds'?[4096,2000]:[]));
    const request=new Request(canonical+req.url,{method:req.method,headers,...(body?{body}:{}),redirect:'error'});
    if(!response&&phoneCallback&&path==='/api/account/phone/telegram/callback')response=await phoneCallback(request,'callback');
    const deletionMatch=/^\/api\/(account|admin)\/deletion\/([a-z]+)$/.exec(path);

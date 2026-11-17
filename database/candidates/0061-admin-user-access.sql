@@ -3,7 +3,15 @@ begin;
 set local lock_timeout='3s';
 set local statement_timeout='10s';
 
-create table app.admin_user_changes (
+create schema app_admin;
+revoke all on schema app_admin from public;
+create table app_admin.migrations (
+ name text primary key check(name='0061-admin-user-access.sql'),
+ sha256 text not null check(sha256 ~ '^[a-f0-9]{64}$')
+);
+revoke all on app_admin.migrations from public;
+
+create table app_admin.user_changes (
  id uuid primary key,
  actor_id uuid not null,
  target_id uuid not null,
@@ -20,24 +28,26 @@ create table app.admin_user_changes (
  check(changed=(previous_role<>role or previous_blocked<>is_blocked)),
  check(resulting_version::numeric=expected_version::numeric+case when changed then 1 else 0 end)
 );
-create index admin_user_changes_target_idx on app.admin_user_changes(target_id,created_at desc,id desc);
-revoke all on app.admin_user_changes from public;
+create index admin_user_changes_target_idx on app_admin.user_changes(target_id,created_at desc,id desc);
+revoke all on app_admin.user_changes from public;
 
-create function app.guard_admin_user_changes() returns trigger
+create function app_admin.guard_user_changes() returns trigger
  language plpgsql set search_path=pg_catalog as $$
 begin
  raise exception using errcode='23514',message='User access receipts are immutable';
 end;
 $$;
-revoke all on function app.guard_admin_user_changes() from public;
-create trigger admin_user_changes_immutable before update or delete or truncate on app.admin_user_changes
- for each statement execute function app.guard_admin_user_changes();
+revoke all on function app_admin.guard_user_changes() from public;
+create trigger admin_user_migrations_immutable before update or delete or truncate on app_admin.migrations
+ for each statement execute function app_admin.guard_user_changes();
+create trigger admin_user_changes_immutable before update or delete or truncate on app_admin.user_changes
+ for each statement execute function app_admin.guard_user_changes();
 
-create function app.admin_user_access(p_session_hash text,p_actor uuid,p_action text,p_target uuid,
+create function app_admin.user_access(p_session_hash text,p_actor uuid,p_action text,p_target uuid,
  p_operation uuid,p_expected bigint,p_role text,p_blocked boolean,p_reason text) returns jsonb
  language plpgsql security definer set search_path=pg_catalog,pg_temp as $$
 declare
- actor app.users%rowtype; target app.users%rowtype; saved app.admin_user_changes%rowtype;
+ actor app.users%rowtype; target app.users%rowtype; saved app_admin.user_changes%rowtype;
  did_change boolean; answer jsonb; refresh_count integer;
 begin
  if session_user<>'blizhniy_user_operator' or current_setting('transaction_isolation')<>'read committed' then
@@ -72,12 +82,12 @@ begin
  if not found then raise exception using errcode='PUA06',message='User unavailable';end if;
 
  if p_action='recover' then
-  select * into saved from app.admin_user_changes where id=p_operation;
+  select * into saved from app_admin.user_changes where id=p_operation;
   if found and (saved.actor_id<>actor.id or saved.target_id<>target.id) then
    raise exception using errcode='PUA02',message='Operation ID already used';end if;
  end if;
  if p_action='change' then
-  select * into saved from app.admin_user_changes where id=p_operation;
+  select * into saved from app_admin.user_changes where id=p_operation;
   if found then
    if saved.actor_id<>actor.id or saved.target_id<>target.id or saved.expected_version<>p_expected or
     saved.role<>p_role or saved.is_blocked<>p_blocked or saved.reason<>p_reason then
@@ -95,7 +105,7 @@ begin
     if target.auth_version=9223372036854775807 then raise exception using errcode='PUA03',message='User access changed';end if;
     update app.users set role=p_role,is_blocked=p_blocked,auth_version=auth_version+1 where id=target.id;
    end if;
-   insert into app.admin_user_changes(id,actor_id,target_id,expected_version,previous_role,role,previous_blocked,is_blocked,resulting_version,reason,changed)
+   insert into app_admin.user_changes(id,actor_id,target_id,expected_version,previous_role,role,previous_blocked,is_blocked,resulting_version,reason,changed)
     values(p_operation,actor.id,target.id,p_expected,target.role,p_role,target.is_blocked,p_blocked,
      target.auth_version+case when did_change then 1 else 0 end,p_reason,did_change);
   end if;
@@ -103,9 +113,9 @@ begin
 
  -- Shape one bounded set for the recent journal and any historical replay receipt.
  with bounded as (
-  (select * from app.admin_user_changes where target_id=p_target order by created_at desc,id desc limit 10)
+  (select * from app_admin.user_changes where target_id=p_target order by created_at desc,id desc limit 10)
   union
-  (select * from app.admin_user_changes where id=p_operation)
+  (select * from app_admin.user_changes where id=p_operation)
  ), receipts as (
   select id,actor_id as "actorId",target_id as "targetId",expected_version::text as "expectedVersion",previous_role as "previousRole",role,
    previous_blocked as "previousBlocked",is_blocked as "isBlocked",resulting_version::text as "resultingVersion",reason,changed,
@@ -123,5 +133,5 @@ begin
  return answer;
 end;
 $$;
-revoke all on function app.admin_user_access(text,uuid,text,uuid,uuid,bigint,text,boolean,text) from public;
+revoke all on function app_admin.user_access(text,uuid,text,uuid,uuid,bigint,text,boolean,text) from public;
 commit;

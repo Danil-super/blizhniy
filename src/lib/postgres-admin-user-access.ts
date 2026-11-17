@@ -9,7 +9,7 @@ export class PostgresAdminUserAccess{
     if(!hash)throw new AdminUserAccessError('ADMIN_REQUIRED');
     try{
       const input=command.action==='change'?command.input:null;
-      const {rows}=await this.db.query<{result:unknown}>('select app.admin_user_access($1,$2,$3,$4,$5,$6,$7,$8,$9) as result',
+      const {rows}=await this.db.query<{result:unknown}>('select app_admin.user_access($1,$2,$3,$4,$5,$6,$7,$8,$9) as result',
         [hash,command.expectedAdminId,command.action,input?.targetId??(command.action!=='change'?command.targetId:null),input?.id??(command.action==='recover'?command.id:null),input?.expectedVersion??null,input?.role??null,input?.isBlocked??null,input?.reason??null]);
       if(rows.length!==1)throw Error();return parseAdminUserAccessResult(command,rows[0].result);
     }catch(error){

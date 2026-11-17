@@ -9,6 +9,10 @@ export async function assertFinancialCatalogPrivileges(tx){
     `)).rows;
    if(!['app','blizhniy_meta'].every(name=>schemas.some(item=>item.name===name&&item.usage===true))||
     schemas.some(item=>item.extra!==false||(item.usage&&!['app','blizhniy_meta','public','pg_catalog','information_schema'].includes(item.name))))throw Error('Invalid schema privileges');
+   await assertFinancialSystemPrivileges(tx);
+}
+
+export async function assertFinancialSystemPrivileges(tx){
    if((await tx.query("select 1 from pg_parameter_acl where has_parameter_privilege(parname,'SET,ALTER SYSTEM') limit 1")).rows.length)throw Error('Invalid parameter privileges');
    // A direct built-in EXECUTE grant can bypass table ACLs without any role membership.
    const catalogExtra=await tx.query(`with catalog_acl as (
