@@ -18,17 +18,25 @@ function harness(){
       useEffect(work,deps){const slot=effectIndex++,old=effects[slot];if(!old||deps.some((value,i)=>!Object.is(value,old.deps[i])))pending.push(()=>{old?.cleanup?.();effects[slot]={deps,cleanup:work()};});}};
     if(name==='@/components/auth/AccountAuthProvider')return {usePrimaryAccountAuth:()=>auth};
     if(name==='@/lib/local-account')return {notifyAccountSessionChange:()=>changes++};
+    if(name==='./AdminUserAccessPanel')return {AdminUserAccessPanel:'access-panel'};
     if(name==='@/lib/client-admin-user-directory')return {AdminUserDirectoryClientError:ClientError,adminUserDirectory:{list(input,options){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});requests.push({input,options,resolve,reject});return promise;}}};
     throw Error('Unexpected directory UI import: '+name);
   }});
   const initial={expectedAdminId:'admin-a',query:'',role:'all',status:'all',cursor:null};
   return {requests,state,ClientError,changes:()=>changes,setAuth:next=>auth=next,entry:()=>exports.PrimaryAdminUsersClient(),
-    form(){index=0;return exports.UserDirectory({actor:'admin-a'});},
+    form(accessManagement=false){index=0;return exports.UserDirectory({actor:'admin-a',accessManagement});},
     render(input=initial){index=0;effectIndex=0;const tree=exports.DirectoryPage({input,onNext:()=>{},onFirst:()=>{},onRefresh:()=>{}});pending.splice(0).forEach(work=>work());return tree;},stop(){effects.forEach(effect=>effect.cleanup?.());}};
 }
 test('primary directory hides private data on authority recheck and remounts for a different admin',()=>{
   const h=harness();assert.equal(h.entry().key,'admin-a');h.setAuth({state:'admin',userId:'admin-b'});assert.equal(h.entry().key,'admin-b');
   for(const state of ['loading','unavailable','signed-out','signed-in']){h.setAuth({state,userId:'admin-a'});assert.equal(h.entry().type,'p');assert.equal(h.entry().props.role,'status');}
+});
+test('directory exposes access actions only when enabled and refreshes after a decision',()=>{
+  const h=harness();let tree=h.form();assert.equal(nodes(tree).some(node=>node.props?.onManage),false);
+  tree=h.form(true);let reader=nodes(tree).find(node=>node.props?.onManage);reader.props.onManage({id:'target',name:'Пользователь',email:'user@example.invalid'});
+  tree=h.form(true);const panel=nodes(tree).find(node=>node.type==='access-panel');assert.equal(panel.props.targetId,'target');assert.equal(panel.props.actor,'admin-a');
+  reader=nodes(tree).find(node=>node.props?.onManage);const old=reader.key;panel.props.onChanged();tree=h.form(true);assert.notEqual(nodes(tree).find(node=>node.props?.onManage).key,old);
+  panel.props.onClose();assert.equal(nodes(h.form(true)).some(node=>node.type==='access-panel'),false);
 });
 test('directory offers retry for failures, aborts reads and ignores late private responses',async()=>{
   const h=harness();h.render();h.requests[0].reject(new h.ClientError('ADMIN_REQUIRED'));await flush();const tree=h.render();

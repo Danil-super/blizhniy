@@ -99,9 +99,9 @@ async function getAccessToken() {
   return data.session?.access_token ?? "";
 }
 
-export function AdminUsersClient() {
+export function AdminUsersClient({accessManagement=false}:{accessManagement?:boolean}={}) {
   const auth=usePrimaryAccountAuth();
-  return auth?<PrimaryAdminUsersClient/>:<LegacyAdminUsersClient/>;
+  return auth?<PrimaryAdminUsersClient accessManagement={accessManagement}/>:<LegacyAdminUsersClient/>;
 }
 
 function LegacyAdminUsersClient() {

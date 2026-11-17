@@ -3,12 +3,13 @@ import {useEffect,useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {adminUserDirectory,AdminUserDirectoryClientError} from '@/lib/client-admin-user-directory';
 import {notifyAccountSessionChange} from '@/lib/local-account';
-import type {AdminUserQuery,AdminUserPage} from '@/lib/admin-user-directory-contract';
+import type {AdminUserQuery,AdminUserPage,AdminDirectoryUser} from '@/lib/admin-user-directory-contract';
+import {AdminUserAccessPanel} from './AdminUserAccessPanel';
 
 const button='min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50';
 const field='mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600';
 
-function DirectoryPage({input,onNext,onFirst,onRefresh}:{input:AdminUserQuery;onNext:(cursor:AdminUserPage['nextCursor'])=>void;onFirst:()=>void;onRefresh:()=>void}) {
+function DirectoryPage({input,onNext,onFirst,onRefresh,onManage}:{input:AdminUserQuery;onNext:(cursor:AdminUserPage['nextCursor'])=>void;onFirst:()=>void;onRefresh:()=>void;onManage?:(user:AdminDirectoryUser)=>void}) {
   const [page,setPage]=useState<AdminUserPage|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
   useEffect(()=>{
     const controller=new AbortController();let active=true;
@@ -45,6 +46,7 @@ function DirectoryPage({input,onNext,onFirst,onRefresh}:{input:AdminUserQuery;on
           <div><dt className="text-xs text-slate-500">Телефон в профиле</dt><dd className="mt-1 break-words text-slate-900">{user.phone||'Не указан'}</dd></div>
           <div><dt className="text-xs text-slate-500">Дата регистрации</dt><dd className="mt-1 text-slate-900"><time dateTime={user.createdAt}>{new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeZone:'Europe/Moscow'}).format(new Date(user.createdAt))}</time></dd></div>
         </dl>
+        {onManage&&<div className="mt-4 flex justify-end"><button type="button" id={'user-access-'+user.id} className={button} onClick={()=>onManage(user)}>Управление доступом</button></div>}
       </li>;
     })}</ul>}
     <nav aria-label="Страницы пользователей" className="mt-4 flex flex-wrap gap-3">
@@ -53,25 +55,30 @@ function DirectoryPage({input,onNext,onFirst,onRefresh}:{input:AdminUserQuery;on
     </nav>
   </section>;
 }
-function UserDirectory({actor}:{actor:string}) {
+function UserDirectory({actor,accessManagement=false}:{actor:string;accessManagement?:boolean}) {
   const [query,setQuery]=useState(''),[role,setRole]=useState<AdminUserQuery['role']>('all'),[status,setStatus]=useState<AdminUserQuery['status']>('all');
   const [input,setInput]=useState<AdminUserQuery>({expectedAdminId:actor,query:'',role:'all',status:'all',cursor:null}),[revision,setRevision]=useState(0);
+  const [selected,setSelected]=useState<{id:string;label:string}|null>(null);
   return <div>
     <p className="text-sm leading-6 text-slate-600">Аккаунты сайта. Статус «Активен» означает подтверждённый email и отсутствие блокировки.</p>
     <form className="mt-4 grid items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_auto]" onSubmit={event=>{event.preventDefault();setInput({expectedAdminId:actor,query:query.trim(),role,status,cursor:null});setRevision(value=>value+1);}}>
-      <label className="text-xs font-bold text-slate-600">Поиск<input type="search" maxLength={120} value={query} onChange={event=>setQuery(event.target.value)} placeholder="Имя, email, телефон или ID" className={field}/></label>
+      <label className="text-xs font-bold text-slate-600">Поиск<input id="admin-user-search" type="search" maxLength={120} value={query} onChange={event=>setQuery(event.target.value)} placeholder="Имя, email, телефон или ID" className={field}/></label>
       <label className="text-xs font-bold text-slate-600">Роль<select value={role} onChange={event=>setRole(event.target.value as AdminUserQuery['role'])} className={field}>
         <option value="all">Все роли</option><option value="user">Пользователь</option><option value="admin">Администратор</option></select></label>
       <label className="text-xs font-bold text-slate-600">Статус<select value={status} onChange={event=>setStatus(event.target.value as AdminUserQuery['status'])} className={field}>
         <option value="all">Все статусы</option><option value="active">Активен</option><option value="blocked">Заблокирован</option><option value="pending">Ожидает email</option></select></label>
       <button type="submit" className={button}>Найти</button>
     </form>
-    <DirectoryPage key={JSON.stringify([input,revision])} input={input} onRefresh={()=>setRevision(value=>value+1)} onFirst={()=>setInput({...input,cursor:null})} onNext={cursor=>setInput({...input,cursor})}/>
-    <p className="mt-4 text-xs text-slate-500">Изменение доступа пока недоступно.</p>
+    {accessManagement&&selected&&<AdminUserAccessPanel actor={actor} targetId={selected.id} targetLabel={selected.label} onChanged={()=>setRevision(value=>value+1)} onClose={()=>{
+      setSelected(null);if(typeof document!=='undefined')(document.getElementById('user-access-'+selected.id)??document.getElementById('admin-user-search'))?.focus();
+    }}/>}
+    <DirectoryPage key={JSON.stringify([input,revision])} input={input} onRefresh={()=>setRevision(value=>value+1)} onFirst={()=>setInput({...input,cursor:null})} onNext={cursor=>setInput({...input,cursor})}
+      onManage={accessManagement?user=>setSelected({id:user.id,label:user.name||user.email}):undefined}/>
+    {!accessManagement&&<p className="mt-4 text-xs text-slate-500">Изменение доступа пока недоступно.</p>}
   </div>;
 }
-export function PrimaryAdminUsersClient() {
+export function PrimaryAdminUsersClient({accessManagement=false}:{accessManagement?:boolean}={}) {
   const auth=usePrimaryAccountAuth();
   if(auth?.state!=='admin'||!auth.userId)return <p role="status" className="text-sm text-slate-600">{auth?.state==='loading'?'Проверяем права администратора…':'Доступ администратора не подтверждён.'}</p>;
-  return <UserDirectory key={auth.userId} actor={auth.userId}/>;
+  return <UserDirectory key={auth.userId} actor={auth.userId} accessManagement={accessManagement}/>;
 }

@@ -67,14 +67,14 @@ export function parseAdminUserAccessResult(input:AdminUserAccessCommand,value:un
   }
   return {user,receipt:saved,history};
 }
-export const userAccessErrorStatus={ADMIN_REQUIRED:403,OPERATION_CONFLICT:409,STALE_ACCESS:409,LAST_ADMIN:409,SELF_CHANGE:409,USER_UNAVAILABLE:404,USER_NOT_READY:409,ACCESS_BUSY:409,ACCESS_UNAVAILABLE:503} as const;
+export const userAccessErrorStatus={ADMIN_REQUIRED:403,OPERATION_CONFLICT:409,STALE_ACCESS:409,LAST_ADMIN:409,SELF_CHANGE:409,USER_UNAVAILABLE:404,USER_NOT_READY:409,ACCESS_BUSY:409,ACCESS_UNAVAILABLE:503,RATE_LIMITED:429} as const;
 export type UserAccessErrorCode=keyof typeof userAccessErrorStatus;
 export class AdminUserAccessError extends Error{
   readonly code:UserAccessErrorCode;
   constructor(code:UserAccessErrorCode){
     const messages:Record<UserAccessErrorCode,string>={ADMIN_REQUIRED:'Доступ администратора не подтверждён.',OPERATION_CONFLICT:'Этот номер операции уже использован. Обновите данные.',
       STALE_ACCESS:'Доступ пользователя изменился. Обновите данные и проверьте решение.',LAST_ADMIN:'Нельзя лишить сайт последнего администратора.',SELF_CHANGE:'Нельзя изменить собственный доступ.',
-      USER_UNAVAILABLE:'Пользователь недоступен.',USER_NOT_READY:'Администратором может стать только пользователь с подтверждённым email.',ACCESS_BUSY:'Данные сейчас изменяются. Повторите позже.',ACCESS_UNAVAILABLE:'Не удалось получить результат операции. Проверьте его перед новым изменением.'};
+      USER_UNAVAILABLE:'Пользователь недоступен.',USER_NOT_READY:'Администратором может стать пользователь с подтверждённым email и без блокировки.',ACCESS_BUSY:'Данные сейчас изменяются. Повторите позже.',ACCESS_UNAVAILABLE:'Не удалось получить результат операции. Проверьте его перед новым изменением.',RATE_LIMITED:'Слишком много запросов. Повторите позже.'};
     super(messages[code]);this.code=code;
   }
 }
