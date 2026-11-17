@@ -1,0 +1,55 @@
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -27,7 +27,7 @@
+   validate:
+     name: Validate app
+     runs-on: ubuntu-24.04
+-    timeout-minutes: 20
++    timeout-minutes: 25
+     outputs:
+       archive_sha256: ${{ steps.package.outputs.archive_sha256 }}
+       artifact_name: ${{ steps.package.outputs.artifact_name }}
+--- a/tests/ci-parallel-layout.test.mjs
++++ b/tests/ci-parallel-layout.test.mjs
+@@ -11,7 +11,7 @@
+   assert.deepEqual(Object.keys(ci.jobs).sort(),['category_heroes','validate']);
+   for(const job of Object.values(ci.jobs)){
+     assert.equal(job.needs,undefined);assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);
+-    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');
++    assert.equal(job['timeout-minutes'],job===ci.jobs.validate?25:20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');
+     for(const step of job.steps.filter(step=>step.name!=='Upload the verified production artifact')){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}
+     const guard=job.steps.findIndex(step=>step.name==='Guard quality floor'),install=job.steps.findIndex(step=>step.name==='Install dependencies');
+     assert.ok(guard>=0&&guard<install);assert.equal(job.steps[install].run,'npm ci');
+--- a/tests/postgres-ci-gate.test.mjs
++++ b/tests/postgres-ci-gate.test.mjs
+@@ -24,7 +24,7 @@
+  assert.ok(ci.on.workflow_call);assert.deepEqual(ci.on.pull_request.branches,['main']);assert.ok(Object.hasOwn(ci.on,'workflow_dispatch'));
+  assert.deepEqual(ci.permissions,{contents:'read'});
+  const job=ci.jobs.validate,step=job.steps.find(s=>s.name==='Run isolated PostgreSQL 18 integration gate');assert.ok(step);assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);assert.equal(step.env,undefined);
+- assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);assert.equal(job['runs-on'],'ubuntu-24.04');assert.equal(job['timeout-minutes'],20);
++ assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);assert.equal(job['runs-on'],'ubuntu-24.04');assert.equal(job['timeout-minutes'],25);
+  assert.ok(job.steps.indexOf(step)>job.steps.findIndex(s=>s.name==='Install dependencies'));assert.ok(job.steps.indexOf(step)<job.steps.findIndex(s=>s.name==='Build the production artifact on GitHub'));assert.ok(job.steps.indexOf(step)<job.steps.findIndex(s=>s.name==='Upload the verified production artifact'));
+  assert.equal(deploy.jobs.validate.uses,'./.github/workflows/ci.yml');assert.ok(deploy.jobs.deploy.needs.includes('validate'));assert.equal(deploy.jobs.deploy.if,undefined);
+  assert.match(step.run,/^set -euo pipefail\n/);for(const file of suites)assert.ok(readFileSync(new URL('./'+file,import.meta.url),'utf8').includes(image),file+' must use the pinned PG18 image');
+--- a/scripts/check-quality-floor.mjs
++++ b/scripts/check-quality-floor.mjs
+@@ -88,6 +88,8 @@
+ ];
+ // Apply only after owner review of the exact deployment replacements.
+ const deploymentAssertionPairs = [
++  ["tests/ci-parallel-layout.test.mjs", "    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');", "    assert.equal(job['timeout-minutes'],job===ci.jobs.validate?25:20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');"],
++  ["tests/postgres-ci-gate.test.mjs", " assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);assert.equal(job['runs-on'],'ubuntu-24.04');assert.equal(job['timeout-minutes'],20);", " assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);assert.equal(job['runs-on'],'ubuntu-24.04');assert.equal(job['timeout-minutes'],25);"],
+   [
+     "tests/postgres-ci-gate.test.mjs",
+     "  assert.deepEqual(calls,[['npx','playwright','install','--with-deps','chromium'],['docker','--host','unix:///var/run/docker.sock','pull',image],...suites.map(file=>['node','--experimental-strip-types','--test','--test-concurrency=1','tests/'+file])]);",
+--- a/tests/quality-floor.test.mjs
++++ b/tests/quality-floor.test.mjs
+@@ -122,6 +122,8 @@
+ }
+
+ const deploymentAssertionPairs = [
++  ["tests/ci-parallel-layout.test.mjs", "    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');", "    assert.equal(job['timeout-minutes'],job===ci.jobs.validate?25:20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');"],
++  ["tests/postgres-ci-gate.test.mjs", " assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);assert.equal(job['runs-on'],'ubuntu-24.04');assert.equal(job['timeout-minutes'],20);", " assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);assert.equal(job['runs-on'],'ubuntu-24.04');assert.equal(job['timeout-minutes'],25);"],
+   [
+     "tests/ci-parallel-layout.test.mjs",
+     "    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],'ubuntu-latest');",

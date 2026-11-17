@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {realpathSync} from 'node:fs';
+import {realpathSync,readFileSync} from 'node:fs';
+import {assertPrebuiltImageConfig} from './prebuilt-image-config-policy.mjs';
 import {pathToFileURL} from 'node:url';
 import {createServer} from 'node:net';
 import {spawn} from 'node:child_process';
@@ -8,6 +9,7 @@ import {once} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
 
 const root=realpathSync(process.argv[2]),require=createRequire(root+'/server.js');
+assertPrebuiltImageConfig(readFileSync(root+'/server.js','utf8'));
 for(const name of ['pg','nodemailer','sharp'])assert.ok(require.resolve(name).startsWith(root+'/node_modules/'));
 assert.equal(typeof require('pg').Pool,'function');
 assert.equal(typeof require('nodemailer').createTransport,'function');

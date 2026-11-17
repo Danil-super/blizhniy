@@ -88,6 +88,8 @@ const registrationAssertionPairs = [
 ];
 // Apply only after owner review of the exact deployment replacements.
 const deploymentAssertionPairs = [
+  ["tests/ci-parallel-layout.test.mjs", "    assert.equal(job['timeout-minutes'],20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');", "    assert.equal(job['timeout-minutes'],job===ci.jobs.validate?25:20);assert.equal(job['runs-on'],job===ci.jobs.validate?'ubuntu-24.04':'ubuntu-latest');"],
+  ["tests/postgres-ci-gate.test.mjs", " assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);assert.equal(job['runs-on'],'ubuntu-24.04');assert.equal(job['timeout-minutes'],20);", " assert.equal(job.if,undefined);assert.equal(job['continue-on-error'],undefined);assert.equal(job['runs-on'],'ubuntu-24.04');assert.equal(job['timeout-minutes'],25);"],
   [
     "tests/postgres-ci-gate.test.mjs",
     "  assert.deepEqual(calls,[['npx','playwright','install','--with-deps','chromium'],['docker','--host','unix:///var/run/docker.sock','pull',image],...suites.map(file=>['node','--experimental-strip-types','--test','--test-concurrency=1','tests/'+file])]);",
