@@ -23,7 +23,8 @@ export async function readBody(req,limit=12*1024*1024,deadlineMs){
  try{for await(const chunk of req){size+=chunk.length;if(size>limit)throw Error('Local request too large');chunks.push(chunk);}return Buffer.concat(chunks);}
  finally{clearTimeout(timer);}
 }
-export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperatorSocket,userAccessOperatorSocket}={}){
+export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperatorSocket,userAccessOperatorSocket,tariffs=false}={}){
+ if(typeof tariffs!=='boolean'||tariffs&&(!userAccessOperatorSocket||process.env.BLIZHNIY_ADMIN_TARIFFS!=='local-v1'))throw Error('Invalid local tariff ingress');
  if(state.origin!=='https://127.0.0.1:3045'||state.upstreamPort!==localPrimaryUpstreamPort)throw Error('Invalid local ingress target');
  if(process.env.NODE_ENV!=='test')throw Error('Local proxy requires isolated test process');
  validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
@@ -84,6 +85,9 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
  const userAccess=userAccessOperatorSocket===undefined?null:load('admin-user-access-http').createAdminUserAccessHandler({origin:canonical},()=>({limiter,
   execute:(token,command,signal)=>load('local-user-access-operator-client').callLocalUserAccessOperator(userAccessOperatorSocket,token,command,signal),
  }));
+ const tariffAdmin=!tariffs?null:load('admin-tariff-http').createAdminTariffHandler({origin:canonical},()=>({limiter,
+  execute:(token,command,signal)=>load('local-user-access-operator-client').callLocalTariffOperator(userAccessOperatorSocket,token,command,signal),
+ }));
  const refundAdmin=refundOperatorSocket===undefined?null:load('admin-refund-http').createAdminRefundHandler({origin:canonical},()=>({limiter,
   command:(token,command,signal)=>load('local-refund-operator-client').callLocalRefundOperator(refundOperatorSocket,token,command,signal),
  }));
@@ -112,6 +116,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
    headers.set('host',new URL(canonical).host);headers.set('x-real-ip','127.0.0.1');
    headers.set('cookie',(req.headers.cookie??'').split(';').filter(part=>!part.trim().startsWith('__Host-blizhniy_human=')).concat(proof.cookie.split(';')[0]).filter(Boolean).join('; '));
    if(req.headers.origin)headers.set('origin',canonical);
+   if(tariffAdmin&&path==='/api/admin/tariff-management'){await serveLocalUserAccessRequest(req,res,headers,tariffAdmin,canonical+req.url);return;}
    if(userAccess&&path==='/api/admin/user-access'){await serveLocalUserAccessRequest(req,res,headers,userAccess,canonical+req.url);return;}
    const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req,...(refundAdmin&&path==='/api/admin/refunds'?[4096,2000]:[]));
    const request=new Request(canonical+req.url,{method:req.method,headers,...(body?{body}:{}),redirect:'error'});

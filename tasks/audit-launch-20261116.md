@@ -285,3 +285,16 @@ B02: убрана лишняя неизменяемая фраза про нед
 Native2904, fast/build/Gitleaks0; role/schema/flags сохранены. Runtime-пакет только
 локальный, push/deploy/LIVE не выполнялись. Точные доказательства и границы —
 `docs/audit-admin-user-access-local61.md` и `docs/audit-local-mixed-soak61.md`.
+
+### Большой локальный этап R01 — тарифы primary, кандидат62
+
+[Код, точный guard patch, план установки и ограничения](../docs/review/local-admin-tariffs62.md).
+Подготовлен cookie→закрытый оператор→EXECUTE-only путь без UPDATE web-роли:
+точные копейки, срок/активность, причина/подтверждение, CAS/ABA, immutable audit,
+повтор/recovery и сохранение pending при same-actor recheck. Default-off.
+Native2921, PostgreSQL10, четыре роли на61 и62,24 отказа дрейфа прав,
+compiled TLS/IPC/HTTPS и default-off на62,2 мутации, fast/build прошли.
+Только read-only preflight/закрытый backup постоянного стенда; guard62/DDL/GRANT
+ещё не установлены и требуют точного review владельца по CONSTRAINTS.md:47.
+После него — свежий backup+restore, локальная установка и HTTPS/browser приёмка.
+Production, LIVE/TEST-провайдер и push не затронуты; R01 целиком не закрыт.

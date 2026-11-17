@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {parseUserAccessEnvelope,parseAdminUserAccessResult,userAccessErrorStatus} from '../src/lib/admin-user-access-contract.ts';
 /** Explicit owned runtime only. Import never connects, installs a role or starts a listener. */
-export async function startLocalUserAccessOperator(runtime){
+export async function startLocalUserAccessOperator(runtime,{parseEnvelope=parseUserAccessEnvelope,parseResult=parseAdminUserAccessResult,errorStatus=userAccessErrorStatus}={}){
   let directory,server,closed=false,closing,resolveDone;const done=new Promise(resolve=>{resolveDone=resolve;});
   const unavailable=()=>Error('User access operator unavailable');
   try{
@@ -21,12 +21,12 @@ export async function startLocalUserAccessOperator(runtime){
         bodyTimer=setTimeout(()=>req.destroy(),2000);let size=0,text='';const decoder=new TextDecoder('utf-8',{fatal:true});
         for await(const chunk of req){size+=chunk.length;if(size>4096)throw unavailable();text+=decoder.decode(chunk,{stream:true});}
         clearTimeout(bodyTimer);text+=decoder.decode();if(closed||req.aborted||res.destroyed)throw unavailable();
-        const {token,command}=parseUserAccessEnvelope(JSON.parse(text));
-        const result=parseAdminUserAccessResult(command,await runtime.execute(token,command,controller.signal)),body=JSON.stringify(result);
+        const {token,command}=parseEnvelope(JSON.parse(text));
+        const result=parseResult(command,await runtime.execute(token,command,controller.signal)),body=JSON.stringify(result);
         if(Buffer.byteLength(body)>65536)throw unavailable();reply(200,body);
       }catch(error){
-        const code=typeof error?.code==='string'&&Object.hasOwn(userAccessErrorStatus,error.code)?error.code:'ACCESS_UNAVAILABLE';
-        reply(userAccessErrorStatus[code],JSON.stringify({error:{code}}));
+        const code=typeof error?.code==='string'&&Object.hasOwn(errorStatus,error.code)?error.code:'ACCESS_UNAVAILABLE';
+        reply(errorStatus[code],JSON.stringify({error:{code}}));
       }finally{clearTimeout(bodyTimer);clearTimeout(lifetime);res.removeListener('close',abort);req.removeListener('aborted',abort);}
     });
     server.maxConnections=8;server.timeout=16000;server.on('timeout',socket=>socket.destroy());server.on('clientError',(_error,socket)=>socket.destroy());

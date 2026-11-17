@@ -2,11 +2,13 @@ import {request} from 'node:http';
 import {lstat,realpath} from 'node:fs/promises';
 import {basename,dirname,isAbsolute,join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {AdminUserAccessError,parseUserAccessEnvelope,parseAdminUserAccessResult,userAccessErrorStatus,type UserAccessErrorCode} from './admin-user-access-contract.ts';
+import {AdminUserAccessError,parseAdminUserAccessCommand,parseAdminUserAccessResult} from './admin-user-access-contract.ts';
+import {AdminTariffError,parseAdminTariffCommand,parseAdminTariffResult} from './admin-tariff-contract.ts';
+import {parseAdminOperatorEnvelope,parseAdminOperatorResult,adminOperatorErrorStatus,adminOperatorError} from './admin-operator-contract.ts';
 /** Owned Unix IPC only; timeout never retries a mutation. Recover its original operation ID. */
-export async function callLocalUserAccessOperator(socketPath:string,token:string,value:unknown,signal?:AbortSignal){
+async function callLocalAdminOperator(socketPath:string,token:string,value:unknown,signal?:AbortSignal){
   try{
-    const envelope=parseUserAccessEnvelope({token,command:value}),body=JSON.stringify(envelope);
+    const envelope=parseAdminOperatorEnvelope({token,command:value}),body=JSON.stringify(envelope);
     if(Buffer.byteLength(body)>4096||typeof process.getuid!=='function'||!isAbsolute(socketPath)||Buffer.byteLength(socketPath)>100||basename(socketPath)!=='operator.sock'||
       !/^blizhniy-user-operator-[a-zA-Z0-9]+$/.test(basename(dirname(socketPath)))||dirname(dirname(socketPath))!==tmpdir())throw Error();
     signal?.throwIfAborted();const [parent,socket]=await Promise.all([lstat(dirname(socketPath)),lstat(socketPath)]);
@@ -22,13 +24,22 @@ export async function callLocalUserAccessOperator(socketPath:string,token:string
           if(incoming.headers['content-type']!=='application/json')throw Error();const result=JSON.parse(text+decoder.decode());
           if(incoming.statusCode!==200){
             const code=result?.error?.code;
-            if(typeof code==='string'&&Object.hasOwn(userAccessErrorStatus,code)&&userAccessErrorStatus[code as UserAccessErrorCode]===incoming.statusCode&&
-              Object.keys(result).join()==='error'&&Object.keys(result.error).join()==='code')throw new AdminUserAccessError(code as UserAccessErrorCode);
+            if(typeof code==='string'&&Object.hasOwn(adminOperatorErrorStatus,code)&&adminOperatorErrorStatus[code as keyof typeof adminOperatorErrorStatus]===incoming.statusCode&&
+              Object.keys(result).join()==='error'&&Object.keys(result.error).join()==='code')throw adminOperatorError(envelope.command,code);
             throw Error();
           }
           resolve(result);
         }catch(error){reject(error);}});
       });outgoing.on('error',reject);outgoing.end(body);
-    });return parseAdminUserAccessResult(envelope.command,payload);
-  }catch(error){if(error instanceof AdminUserAccessError)throw error;throw new AdminUserAccessError('ACCESS_UNAVAILABLE');}
+    });return parseAdminOperatorResult(envelope.command,payload);
+  }catch(error){if(error instanceof AdminUserAccessError||error instanceof AdminTariffError)throw error;throw new AdminUserAccessError('ACCESS_UNAVAILABLE');}
+}
+
+export async function callLocalUserAccessOperator(socketPath:string,token:string,value:unknown,signal?:AbortSignal){
+ try{const command=parseAdminUserAccessCommand(value);return parseAdminUserAccessResult(command,await callLocalAdminOperator(socketPath,token,command,signal));}
+ catch(error){if(error instanceof AdminUserAccessError)throw error;throw new AdminUserAccessError('ACCESS_UNAVAILABLE');}
+}
+export async function callLocalTariffOperator(socketPath:string,token:string,value:unknown,signal?:AbortSignal){
+ try{const command=parseAdminTariffCommand(value);return parseAdminTariffResult(command,await callLocalAdminOperator(socketPath,token,command,signal));}
+ catch(error){if(error instanceof AdminTariffError)throw error;throw new AdminTariffError('TARIFF_UNAVAILABLE');}
 }

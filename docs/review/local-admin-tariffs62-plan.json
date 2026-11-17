@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "status": "review-candidate-not-installed",
+  "project": "/home/danil/Рабочий стол/БЛИЖНИЙ",
+  "origin": "https://127.0.0.1:3045",
+  "database": "blizhniy_prod",
+  "sourceBase": "fdbfea813b502449c3e6bb4d6f73a6387c0ad5e9",
+  "guard": {
+    "path": "scripts/user-access-role.mjs",
+    "beforeSha256": "443db6b25c205035e55dd43ec77f28b61886ef992eff2f3121ac7767693b9d26",
+    "candidate": "docs/review/admin-tariffs62/user-access-role.mjs.candidate",
+    "afterSha256": "c647f1d1df36735bb30f187548e52abd492a5a1f161d4194bc4932988ad53048"
+  },
+  "patch": {
+    "path": "docs/review/local-admin-tariffs62.patch",
+    "sha256": "d11e2155fca206ecb2ffa5a0d4a0c105a733394e3fb706d1ffc60abf81942bff"
+  },
+  "migration": {
+    "name": "0062-admin-tariffs.sql",
+    "path": "database/candidates/0062-admin-tariffs.sql",
+    "sha256": "5bc16545770869c9c22fbe48b5d1986ee76fcb027723900b3720b1a330796537",
+    "journal": "app_admin.migrations",
+    "mainAppJournalUnchanged": 59
+  },
+  "schema": {
+    "path": "database/admin-user-access-schema-v2.json",
+    "sha256": "d3d1361fe95e58d5a86fc23847b3e6470adf60f1314c1217e80a040e24cd04fe"
+  },
+  "grants": [
+    "grant execute on function app_admin.tariff_access(text,uuid,text,text,uuid,text,text,text,integer,boolean,text) to blizhniy_user_operator"
+  ],
+  "newRoles": 0,
+  "webRightsChanged": false,
+  "financialRightsChanged": false,
+  "activation": {
+    "BLIZHNIY_LOCAL_USER_ACCESS": "enabled",
+    "BLIZHNIY_ADMIN_TARIFFS": "local-v1"
+  },
+  "readOnlyPreflight": {
+    "directory": "/home/danil/.local/state/blizhniy/local-primary-private/tariff62-preflight-9zG6bI",
+    "tls": true,
+    "mainJournalEntries": 59,
+    "adminJournalEntries": 1,
+    "tables": 76,
+    "backupSha256": "efc3f519b67e108132ffd409680ec8e54a20053f265a372faf37323a8100652c",
+    "backupBytes": 1358766,
+    "restoreVerified": false
+  },
+  "beforeInstallation": [
+    "Verify exact patch/source/migration digests and owner approval; stop only owned local services",
+    "Take a fresh private consistent backup and baseline; restore to an owned isolated disposable PostgreSQL and verify prior data before any installation",
+    "In one owner transaction prove exact old admin61 and app60 profile, install only0062, append its exact admin journal hash, and grant only the single listed EXECUTE",
+    "Compare existing data/main schema/journal/role attributes and rights before COMMIT; new admin62 must match exact v2 snapshot; reconcile uncertain COMMIT read-only, never replay automatically"
+  ],
+  "afterInstallation": [
+    "Admit all four roles over verify-full TLS; preserve every existing flag",
+    "Build/start owned local services with explicit tariff opt-in; require expected build/readiness",
+    "Synthetic HTTPS list/change/recover/replay/stale/ordinary-user denial, immutable receipt and exact money; restore initial tariff via audited change",
+    "Repeat user-access/directory and cabinet/payment smoke, then verify restart with tariffs both on and off",
+    "Real browser keyboard/focus/network/reauth acceptance; if browser unavailable record unverified"
+  ],
+  "rollback": [
+    "Before COMMIT rollback owner transaction",
+    "After COMMIT retain journal/schema/audit and reviewed compatible guard; disable tariff UI/dispatch opt-in and restart default operator, which packages both known profiles",
+    "Do not revoke an admitted capability independently of its exact profile, drop tables/history or restore the main database automatically"
+  ],
+  "verification": {
+    "native": {
+      "passed": 2921,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "postgresBehaviorPassed": 10,
+    "roleProfiles": [
+      61,
+      62
+    ],
+    "rolesAdmittedPerProfile": 4,
+    "rejectedRoleDrifts": 24,
+    "compiledDefaultOffOnSchema62": true,
+    "compiledTlsHttpsIpc": true,
+    "mutationDetectedAndRestored": 2,
+    "fast": true,
+    "build": true,
+    "browser": "unverified",
+    "permanentTariffFeature": "off",
+    "stagedGitleaks": 0
+  },
+  "excluded": [
+    "production and both Russian servers",
+    "push/deploy",
+    "real TEST/LIVE YooKassa requests or money",
+    "Fair and 2GIS",
+    "persistent browser storage of administrative reasons/commands"
+  ]
+}

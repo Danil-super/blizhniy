@@ -11,3 +11,9 @@ export function readLocalUserAccessOperatorConfig(env:NodeJS.ProcessEnv=process.
     dirname(dirname(socketPath))!==tmpdir()||socketPath!==join(dirname(socketPath),'operator.sock'))throw Error('Invalid local user access configuration');
   return {socketPath};
 }
+
+export function readLocalTariffOperatorConfig(env:NodeJS.ProcessEnv=process.env){
+ if(env.BLIZHNIY_ADMIN_TARIFFS===undefined)return null;
+ if(env.BLIZHNIY_ADMIN_TARIFFS!=='local-v1')throw Error('Invalid local tariff configuration');
+ const config=readLocalUserAccessOperatorConfig(env);if(!config)throw Error('Local tariff operator unavailable');return config;
+}
