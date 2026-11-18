@@ -3186,11 +3186,11 @@ function LegacyCabinetResponsesClient({ responses = [] }: { responses?: CabinetR
         }
 
         const payload = (await response.json().catch(() => null)) as CabinetServerApplicationsPayload | null;
-        return (payload?.applications ?? []).map((application) => ({
+        return (payload?.applications ?? []).map((application): CabinetResponseItem => ({
           ...application,
           href: application.targetType === "workRequest" && application.workRequestId ? `/rabota/zakazy/${application.workRequestId}` : application.vacancyId ? `/vakansiya/${application.vacancyId}` : "/rabota/vakansii",
           paymentHref: application.paymentId ? `/oplata/${application.paymentId}` : "/cabinet/oplata",
-        })) satisfies CabinetResponseItem[];
+        }));
       })
       .then((items) => {
         if (active && items) {

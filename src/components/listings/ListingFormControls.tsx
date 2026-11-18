@@ -755,7 +755,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
       return;
     }
 
-    const nextMedia = files.map((file) => {
+    const nextMedia = files.map((file): PreviewMedia => {
       const url = URL.createObjectURL(file);
       urlsRef.current.push(url);
       const kind = file.type.startsWith("video/") ? "video" : "image";
@@ -768,7 +768,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
         name: file.name,
         sourceUrl: url,
         url,
-      } satisfies PreviewMedia;
+      };
     });
     setMedia((current) => {
       const updated = [...current, ...nextMedia];
