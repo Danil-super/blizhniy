@@ -55,3 +55,15 @@ test('work save validates photo count/types/owner and captured edit identity bef
  assert.throws(()=>createWorkPublicationSave('bad','workRequest',input,[],f.dependencies));
  assert.throws(()=>createWorkPublicationSave(owner,'workRequest',input,[],f.dependencies,{id,kind:'vacancy',revision:'1'}));assert.deepEqual(f.calls,[]);
 });
+
+test('an offline edit retries only its original revision after reading the unchanged work draft',async()=>{
+ const f=fixture(),initial={id,kind:'workRequest',revision:'4',form:parseWorkPublicationForm('workRequest',{...input,title:'До правки'}),photos:[]};
+ f.saved=initial;const revisions=[];
+ f.dependencies.update=async(_owner,_kind,_id,revision)=>{revisions.push(revision);throw Error('No acknowledgement');};
+ const save=createWorkPublicationSave(owner,'workRequest',input,[],f.dependencies,initial);
+ await assert.rejects(save.save());await save.readback();
+ assert.equal(save.uncertain,false);assert.equal(save.completed,null);assert.deepEqual(revisions,['4']);
+ f.saved={...initial,revision:'5',form:parseWorkPublicationForm('workRequest',{...input,title:'Правка второй вкладки'})};
+ await assert.rejects(save.save());await save.readback();
+ assert.equal(save.uncertain,true);await assert.rejects(save.save());assert.deepEqual(revisions,['4','4']);
+});

@@ -37,7 +37,12 @@ export function createListingFormSave(owner:string,input:unknown,files:Blob[],de
   async readback(options?:Options){
    if(busy||!created)throw new Error('Дождитесь завершения запроса.');busy=true;
    try{remote=await dependencies.read(owner,created.id,options);
-    if(uploads.every(item=>item.ready)&&sameListingForm(remote.form,payload())){complete=remote;unknown=false;}return remote;
+    if(uploads.every(item=>item.ready)&&sameListingForm(remote.form,payload())){
+     complete=remote;unknown=false;
+    }else if(existing&&remote.revision===created.revision&&remote.revision===existing.revision&&sameListingForm(remote.form,existing.form)){
+     unknown=false;
+    }
+    return remote;
    }finally{busy=false;}
   },
   acceptRemoteRevision(){if(busy||!remote||!created)throw new Error('Сначала прочитайте сохранённую версию.');created.revision=remote.revision;unknown=false;},

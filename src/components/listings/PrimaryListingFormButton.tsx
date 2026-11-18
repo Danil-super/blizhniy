@@ -120,7 +120,10 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
   })}>Вернуться к исправлению полей</button>}
   {(attempt.current?.uncertain||moderation.current?.uncertain)&&<button type="button" data-primary-control="readback" className={draftButton} disabled={busy} onClick={()=>void run(async()=>{
    if(moderation.current?.uncertain){await moderation.current.readback({signal:controller.current?.signal});if(moderation.current.completed)setDone(true);else setMessage('Отправка не подтверждена. Нажмите «Отправить на модерацию», чтобы отправить сохранённую версию.');}
-   else{const value=await attempt.current!.readback({signal:controller.current?.signal});if(attempt.current!.completed){if(draft)await finish();else setMessage(`Форма сохранена. Нажмите «${submitLabel}», чтобы продолжить.`);}else setRemote(value);}
+   else{const value=await attempt.current!.readback({signal:controller.current?.signal});if(attempt.current!.completed){if(draft)await finish();else setMessage(`Форма сохранена. Нажмите «${submitLabel}», чтобы продолжить.`);}
+    else if(attempt.current!.uncertain)setRemote(value);
+    else{setRemote(null);setMessage('На сервере прежняя версия. Ваши правки остались в форме. Повторите сохранение.');}
+   }
   })}>{moderation.current?.uncertain?'Проверить отправку':'Проверить сохранённую форму'}</button>}
   {!draft&&attempt.current?.completed&&!done&&<a href={returnHref} className="text-sm text-[#0875d1] underline md:col-span-full">Открыть сохранённое объявление в кабинете</a>}
   {remote&&<section className="min-w-0 rounded-lg border border-amber-400 bg-amber-50 p-4 md:col-span-full" aria-label="Сохранённая форма">

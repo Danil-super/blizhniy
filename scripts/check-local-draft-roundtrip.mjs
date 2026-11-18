@@ -16,6 +16,63 @@ async function profession(){const input=page.getByRole('combobox',{name:'Про�
 async function saved(kind){for(const checkbox of await page.locator('form input[type=checkbox]:visible').all())await checkbox.check();const path=kind==='listing'?'/api/account/listing-form':'/api/account/work-publications',response=page.waitForResponse(response=>new URL(response.url()).pathname===path&&response.request().method()==='PUT');await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();const reply=await response;assert.equal(reply.status(),200);const value=await reply.json();await page.waitForURL(state.origin+'/cabinet/'+(kind==='listing'?'obyavleniya':kind==='vacancy'?'vakansii':'zakazy'));return value;}
 async function open(kind,id){await page.goto(state.origin+(kind==='listing'?'/razmestit/obyavlenie?draft='+id:'/rabota/'+(kind==='vacancy'?'vakansii':'zakazy')+'/'+id+'/edit'));if(kind==='vacancy')await page.getByRole('button',{name:'Продолжить к вакансии',exact:true}).click();await page.locator('input[name="title"]:visible').waitFor();}
 function verify(snapshot,kind,title){assert.equal(snapshot.form.title,title);assert.equal(snapshot.form.cityName,'Армавир');assert.equal(snapshot.form.contactPhone.replace(/\D/g,''),phone.slice(1));assert.equal(snapshot.form.messengerUrl,messenger);assert.equal(snapshot.form[kind==='listing'?'price':kind==='vacancy'?'salary':'budget'],'1250.50');assert.equal(snapshot.form.photoIds.length,2);assert.equal(snapshot.photos.length,2);assert.ok(snapshot.photos.every(photo=>photo.mimeType==='image/webp'));}
+async function saveAfterDisconnect(kind, initial) {
+ const endpoint = state.origin + (kind === 'listing' ? '/api/account/listing-form' : '/api/account/work-publications');
+ const save = page.getByRole('button',{name:'Сохранить черновик',exact:true});
+ const readback = page.getByRole('button',{name:'Проверить сохранённую форму',exact:true});
+ const title = page.locator('input[name="title"]:visible');
+ const intended = await title.inputValue();
+ const revisions = [];
+ const observe = request => {
+  if (request.url() === endpoint && request.method() === 'PUT') revisions.push(request.postDataJSON().expectedRevision);
+ };
+ for (const checkbox of await page.locator('form input[type=checkbox]:visible').all()) await checkbox.check();
+ const held = Promise.withResolvers();
+ const intercept = async route => {
+  if (route.request().method() !== 'PUT') return route.continue();
+  await held.promise;
+  await route.abort('internetdisconnected');
+ };
+ page.on('request', observe);
+ await page.route(endpoint, intercept);
+ try {
+  phase='double-click-'+kind;
+  const attempted = page.waitForRequest(r=>r.url()===endpoint&&r.method()==='PUT');
+  await save.dblclick();
+  await attempted;
+  assert.deepEqual(revisions,[initial.revision]);
+  phase='offline-'+kind;
+  await context.setOffline(true);
+  held.resolve();
+  await readback.waitFor();
+  const failedRead = page.waitForEvent('requestfailed',r=>r.url()===endpoint&&r.method()==='POST');
+  await readback.click();await failedRead;
+  assert.equal(await title.inputValue(),intended);
+  assert.equal(await page.locator('figure').count(),2);
+  assert.deepEqual(revisions,[initial.revision]);
+
+  phase='reconnect-'+kind;
+  await context.setOffline(false);
+  await page.unroute(endpoint,intercept);
+  await readback.click();
+  await page.getByText('На сервере прежняя версия. Ваши правки остались в форме. Повторите сохранение.',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('region',{name:'Сохранённая форма'}).count(),0);
+  assert.equal(await title.inputValue(),intended);
+  const success = page.waitForResponse(r=>r.url()===endpoint&&r.request().method()==='PUT');
+  await save.click();
+  const response=await success;
+  assert.equal(response.status(),200);
+  const snapshot=await response.json();
+  await page.waitForURL(state.origin+'/cabinet/'+({listing:'obyavleniya',vacancy:'vakansii',workRequest:'zakazy'}[kind]));
+  assert.deepEqual(revisions,[initial.revision,initial.revision]);
+  return snapshot;
+ } finally {
+  held.resolve();
+  await context.setOffline(false);
+  await page.unroute(endpoint,intercept);
+  page.off('request',observe);
+ }
+}
 async function checkConcurrentEdit(kind, snapshot, owner) {
  const stale = await context.newPage();
  stale.on('pageerror', error => errors.push(error.name));
@@ -110,11 +167,11 @@ try{
   const initial=await saved(kind);verify(initial,kind,title);assert.equal(initial.form.description,description);if(kind==='vacancy'){assert.equal(initial.form.employerType,'person');assert.equal(initial.form.organization,'Синтетический работодатель');assert.equal(initial.form.schedule,'5/2');assert.equal(initial.form.workFormat,'Удалённо');}
   phase='reopen-'+kind;await open(kind,initial.id);assert.equal(await page.locator('input[name="title"]:visible').inputValue(),title);assert.equal(await page.locator('textarea[name="description"]').inputValue(),description);await page.locator('figure img').nth(1).waitFor();assert.equal(await page.locator('figure').count(),2);
   if(kind!=='listing')assert.equal(await page.locator('input[name="professionId"]').inputValue(),initial.professionId);assert.equal(Number((await page.locator(`input[name="${kind==='listing'?'price':kind==='vacancy'?'salary':'budget'}"]`).inputValue()).replace(',','.')),1250.5);
-  await page.locator('input[name="title"]:visible').fill(title+' — правка');const updated=await saved(kind);verify(updated,kind,title+' — правка');assert.equal(updated.id,initial.id);assert.equal(BigInt(updated.revision),BigInt(initial.revision)+1n);assert.deepEqual(updated.form.photoIds,initial.form.photoIds);assert.equal(updated.form.description,description);
+  await page.locator('input[name="title"]:visible').fill(title+' — правка');const updated=await saveAfterDisconnect(kind,initial);verify(updated,kind,title+' — правка');assert.equal(updated.id,initial.id);assert.equal(BigInt(updated.revision),BigInt(initial.revision)+1n);assert.deepEqual(updated.form.photoIds,initial.form.photoIds);assert.equal(updated.form.description,description);
   phase='verify-'+kind;await open(kind,updated.id);assert.equal(await page.locator('input[name="title"]:visible').inputValue(),title+' — правка');await page.locator('figure img').nth(1).waitFor();
   const publicPath=(kind==='listing'?'/obyavlenie/':kind==='vacancy'?'/vakansiya/':'/rabota/zakazy/')+updated.id;assert.equal((await context.request.get(state.origin+publicPath)).status(),404);
   phase='competing-edit-'+kind;await checkConcurrentEdit(kind,updated,user);
-  results.push({kind,id:initial.id,fields:true,photos:2,samePhotosAfterEdit:true,singleRevision:true,lostReplyRecovered:true,staleTabDenied:true});
+  results.push({kind,id:initial.id,fields:true,photos:2,samePhotosAfterEdit:true,singleRevision:true,doubleClickSingleWrite:true,offlineReadFailed:true,explicitRetryAfterReconnect:true,lostReplyRecovered:true,staleTabDenied:true});
  }
  assert.equal((await db.query('select count(*)::int n from app.payment_orders where owner_id=$1',[user])).rows[0].n,0);assert.deepEqual(payments,[]);assert.deepEqual(errors,[]);assert.deepEqual(external,[]);assert.deepEqual(hydration,[]);
  const owned = (await db.query(`select

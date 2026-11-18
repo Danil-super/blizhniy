@@ -80,7 +80,9 @@ export function useWorkPublicationSave(owner:string,kind:WorkPublicationKind,for
   }
   const value=await attempt.current!.readback({signal:scope.current?.signal});
   if(attempt.current!.completed)await submitOrFinish(attempt.current!.completed);
-  else if(value)setRemote(value);else setMessage('Запись не найдена. Можно повторить сохранение с тем же идентификатором.');
+  else if(value&&attempt.current!.uncertain)setRemote(value);
+  else if(value){setRemote(null);setMessage('На сервере прежняя версия. Ваши правки остались в форме. Повторите сохранение.');}
+  else setMessage('Запись не найдена. Можно повторить сохранение с тем же идентификатором.');
  });}
  return{start,readback,busy,active,done,uncertain,lockedAction:attempt.current?(draft.current?'draft':'submit'):null,paymentUncertain:checkout.current.uncertain,message,remote,acceptRemote:()=>{attempt.current!.acceptRemoteRevision();setRemote(null);setUncertain(false);}};
 }

@@ -35,7 +35,13 @@ export function createWorkPublicationSave(owner:string,kind:WorkPublicationKind,
   async readback(options?:Options){
    if(busy)throw Error('Дождитесь завершения запроса.');busy=true;
    try{remote=base?await dependencies.read(owner,kind,base.id,options):await dependencies.intent(owner,kind,creationKey,options);
-    if(!remote){unknown=false;return null;}if(matches(remote)){complete=remote;unknown=false;}return remote;
+    if(!remote){unknown=false;return null;}
+    if(matches(remote)){
+     complete=remote;unknown=false;
+    }else if(initial&&base?.revision===remote.revision&&remote.revision===initial.revision&&sameProfessionForm(remote.form,initial.form)){
+     unknown=false;
+    }
+    return remote;
    }finally{busy=false;}
   },
   acceptRemoteRevision(){if(busy||!remote)throw Error('Сначала прочитайте сохранённую версию.');base={id:base?.id??remote.id,revision:remote.revision};unknown=false;},
