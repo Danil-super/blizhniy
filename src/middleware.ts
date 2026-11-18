@@ -26,6 +26,7 @@ export function middleware(request: NextRequest) {
     headers.delete("Content-Security-Policy-Report-Only");
     const response = NextResponse.next({ request: { headers } });
     response.headers.set(mode === "enforce" ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only", policy);
+    response.headers.set("Reporting-Endpoints", 'csp="/api/csp-report"');
     response.headers.set("Cache-Control", "private, no-store, max-age=0");
     return response;
   } catch {

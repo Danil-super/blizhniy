@@ -143,7 +143,12 @@ const renewalAssertionPairs = [
    " for(const schema of [53,56,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));",
    " for(const schema of [53,58,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));"],
 ];
-const reviewedAssertionPairs = [...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs];
+const reportingAssertionPair = [
+  "tests/html-csp.test.mjs",
+  " for(const directive of [\"script-src-attr 'none'\",\"object-src 'none'\",\"base-uri 'none'\",\"frame-ancestors 'self'\",'report-uri /api/csp-report',\"worker-src 'self' blob:\"])assert.ok(value.includes(directive));",
+  " for(const directive of [\"script-src-attr 'none'\",\"object-src 'none'\",\"base-uri 'none'\",\"frame-ancestors 'self'\",'report-to csp',\"worker-src 'self' blob:\"])assert.ok(value.includes(directive));"
+];
+const reviewedAssertionPairs = [...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs, reportingAssertionPair];
 const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, before, after]) =>
   file === path && text === before &&
   removed.filter(line => line.file === path && reviewedAssertionPairs.some(([pairPath, pairBefore, pairAfter]) =>

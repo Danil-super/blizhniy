@@ -29,6 +29,6 @@ export function createHtmlCsp(nonce: string, options: { development?: boolean; l
     "frame-src https://challenges.cloudflare.com",
     "worker-src 'self' blob:", "media-src 'self' blob:", "manifest-src 'self'",
     "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'self'",
-    "report-uri /api/csp-report",
+    "report-to csp",
   ].join('; ');
 }

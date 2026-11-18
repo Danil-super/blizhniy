@@ -11,8 +11,9 @@ test('CSP uses fresh 192-bit nonces and refuses malformed nonce/mode',()=>{
 });
 test('production scripts need a nonce, forbid attributes and eval, and use explicit resource categories',()=>{
  const nonce=createCspNonce(),value=createHtmlCsp(nonce,{mapEnabled:true}),script=value.split(';').find(part=>part.trim().startsWith('script-src '));
+ assert.ok(!value.includes('report-uri'));
  assert.ok(script.includes(`'nonce-${nonce}'`));assert.ok(script.includes("'strict-dynamic'"));assert.ok(!script.includes('unsafe-inline'));assert.ok(!script.includes('unsafe-eval'));
- for(const directive of ["script-src-attr 'none'","object-src 'none'","base-uri 'none'","frame-ancestors 'self'",'report-uri /api/csp-report',"worker-src 'self' blob:"])assert.ok(value.includes(directive));
+ for(const directive of ["script-src-attr 'none'","object-src 'none'","base-uri 'none'","frame-ancestors 'self'",'report-to csp',"worker-src 'self' blob:"])assert.ok(value.includes(directive));
  assert.ok(value.includes("style-src 'self' 'unsafe-inline'"));assert.ok(!value.includes('https:;'));assert.ok(!value.includes('https://oauth.telegram.org'));assert.ok(!value.includes('yookassa'));
  assert.ok(createHtmlCsp(nonce,{development:true}).includes("'unsafe-eval'"));
 });
