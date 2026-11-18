@@ -52,7 +52,7 @@ import { BookingCalculator } from "./BookingCalculator";
 import { DemoListingEditClient } from "./DemoListingEditClient";
 import { ListingKindAndCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
-import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "./CategoryPageDesign";
+import { CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "./CategoryPageDesign";
 import { ListingMediaGallery, type ListingGalleryMedia } from "./ListingMediaGallery";
 import { ListingResultsPanel } from "./ListingResultsPanel";
 import { ListingPagination } from "./ListingPagination";
@@ -1544,7 +1544,7 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug, page
     <>
       <SiteHeader />
       <HomeHero />
-      <main className="bg-[var(--category-page)] pb-8" style={categoryPageStyle(category?.slug ?? categorySlug)}>
+      <main className="bg-[var(--category-page)] pb-8" data-category-colors={category?.slug ?? categorySlug}>
         <div className="page-container py-3 sm:py-4 lg:py-5">
           <BackLink fallbackHref={backFallbackHref} className="inline-flex items-center gap-2 text-sm font-bold text-[#d92d20] transition hover:text-[#b42318]">
             Назад

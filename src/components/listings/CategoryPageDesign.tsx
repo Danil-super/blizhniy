@@ -1,6 +1,5 @@
-import Image, { getImageProps } from "next/image";
+import { getImageProps } from "next/image";
 import Link from "next/link";
-import type { CSSProperties } from "react";
 import { ArrowRight, ChevronRight, ClipboardList } from "lucide-react";
 import { SubcategoryShareButton } from "@/components/listings/SubcategoryShareButton";
 
@@ -8,20 +7,6 @@ function optimizedCategoryPhoto(src: string, width = 1672, height = 941) {
   const { props } = getImageProps({ src, width, height, alt: "", sizes: "100vw" });
   return { src: props.src, srcSet: props.srcSet, sizes: props.sizes, loading: "eager" as const };
 }
-
-type CategoryVisual = {
-  accent: string;
-  border: string;
-  card: string;
-  cardOpen: string;
-  page: string;
-  primary?: string;
-  primaryHover?: string;
-  secondary?: string;
-  secondaryBorder?: string;
-  soft: string;
-  title?: string;
-};
 
 type CategoryHeaderBandProps = {
   categorySlug: string;
@@ -40,84 +25,6 @@ type SubcategoryCardProps = {
   title: string;
   visualSlug: string;
 };
-
-const defaultVisual: CategoryVisual = {
-  accent: "#075f9f",
-  border: "#8fc8f4",
-  card: "#dcefff",
-  cardOpen: "#eaf6ff",
-  page: "#eef7ff",
-  soft: "#cfeaff",
-};
-
-const categoryVisuals: Record<string, CategoryVisual> = {
-  biznes: { accent: "#16636b", border: "#72cec5", card: "#cef3ef", cardOpen: "#e2f8f5", page: "#edfbfb", soft: "#b9ece8" },
-  "dlya-doma-i-dachi": { accent: "#526a14", border: "#b3cf55", card: "#eaf4bf", cardOpen: "#f3f8d9", page: "#f7fbe9", soft: "#e0ef9f" },
-  elektronika: { accent: "#2453a0", border: "#7fa8ee", card: "#d3e3ff", cardOpen: "#e4edff", page: "#eef4ff", soft: "#bcd5ff" },
-  instrumenty: { accent: "#2d6577", border: "#7fb7c9", card: "#d0e9f1", cardOpen: "#e2f2f6", page: "#edf8fb", soft: "#b9deea" },
-  "krasota-i-uhod": { accent: "#8a3159", border: "#e58ab0", card: "#fbd6e6", cardOpen: "#fde7f0", page: "#fff1f7", soft: "#f8c4da" },
-  "menyayu-ili-otdam-darom": { accent: "#2f6f38", border: "#83ca87", card: "#d4efd4", cardOpen: "#e6f7e6", page: "#effaf0", soft: "#bde7be" },
-  nedvizhimost: { accent: "#17657a", border: "#6ec6d8", card: "#ccecf2", cardOpen: "#e0f4f7", page: "#edfafd", soft: "#b1e3eb" },
-  "odezhda-obuv-aksessuary": { accent: "#873f50", border: "#df94a6", card: "#f6d7de", cardOpen: "#fae8ec", page: "#fff3f5", soft: "#f2c2cd" },
-  otdyh: { accent: "#26704a", border: "#75c79d", card: "#ccefdc", cardOpen: "#e0f7ea", page: "#eefbf4", soft: "#afe5c8" },
-  posuda: { accent: "#78601a", border: "#d7b94f", card: "#f7e9ad", cardOpen: "#fbf2cf", page: "#fffbea", soft: "#f2dc83" },
-  rabota: { accent: "#237142", border: "#75ca94", card: "#ccefd8", cardOpen: "#dff7e8", page: "#eefbf3", soft: "#afe4c2" },
-  raznoe: { accent: "#3c6075", border: "#8bb8ce", card: "#d8eaf2", cardOpen: "#e8f3f7", page: "#f0f8fb", soft: "#c5e0eb" },
-  "ritualnye-uslugi": {
-    accent: "#36545f",
-    border: "#9fb1bd",
-    card: "#e6eee9",
-    cardOpen: "#f1f6f2",
-    page: "#f2f7f4",
-    primary: "#25313a",
-    primaryHover: "#111820",
-    secondary: "#25313a",
-    secondaryBorder: "#a8b5bd",
-    soft: "#d4e2d9",
-    title: "#111820",
-  },
-  "sad-i-rasteniya": {
-    accent: "#24752f",
-    border: "#7fbd4f",
-    card: "#cfeaac",
-    cardOpen: "#dff3c7",
-    page: "#e7f6dc",
-    primary: "#d92d20",
-    primaryHover: "#b42318",
-    secondary: "#c6251a",
-    secondaryBorder: "#e6857d",
-    soft: "#b2c887",
-    title: "#176b2a",
-  },
-  transport: { accent: "#1f6182", border: "#75b9d7", card: "#cee9f5", cardOpen: "#e2f3fa", page: "#eef9fd", soft: "#b7deef" },
-  "tovary-dlya-detey": { accent: "#92551c", border: "#e4a85f", card: "#f9dfbd", cardOpen: "#fcebd5", page: "#fff6eb", soft: "#f5c98f" },
-  "uslugi-dlya-doma": { accent: "#116a70", border: "#68c3c4", card: "#c8eceb", cardOpen: "#dcf5f3", page: "#ecfaf9", soft: "#ace0df" },
-  zhivotnye: { accent: "#536716", border: "#b0ca54", card: "#e7f2b9", cardOpen: "#f0f7d3", page: "#f7fbe8", soft: "#d9e991" },
-};
-
-function visualForCategory(slug: string) {
-  return categoryVisuals[slug] ?? defaultVisual;
-}
-
-function visualStyle(visual: CategoryVisual): CSSProperties {
-  return {
-    "--category-accent": visual.accent,
-    "--category-border": visual.border,
-    "--category-card": visual.card,
-    "--category-card-open": visual.cardOpen,
-    "--category-page": visual.page,
-    "--category-primary": visual.primary ?? "#0aa337",
-    "--category-primary-hover": visual.primaryHover ?? "#078a2e",
-    "--category-secondary": visual.secondary ?? visual.accent,
-    "--category-secondary-border": visual.secondaryBorder ?? visual.border,
-    "--category-soft": visual.soft,
-    "--category-title": visual.title ?? "#060b27",
-  } as CSSProperties;
-}
-
-export function categoryPageStyle(categorySlug: string): CSSProperties {
-  return visualStyle(visualForCategory(categorySlug));
-}
 
 export function subcategoryGridClassName(
   itemCount: number,
@@ -159,7 +66,6 @@ export function subcategoryGridClassName(
 }
 
 export function CategoryHeaderBand({ categorySlug, createHref, description, title }: CategoryHeaderBandProps) {
-  const visual = visualForCategory(categorySlug);
   const isGardenCategory = categorySlug === "sad-i-rasteniya";
   const isRitualCategory = categorySlug === "ritualnye-uslugi";
   const isRealEstateCategory = categorySlug === "nedvizhimost";
@@ -230,54 +136,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       }`}
       data-category-theme={categorySlug}
       data-image-hero={hasImageHero ? "true" : undefined}
-      style={visualStyle(visual)}
+      data-category-colors={categorySlug}
     >
-      {hasImageHero ? (
-        <style>{`
-          @media (max-width: 639px) {
-            [data-image-hero="true"] [data-hero-copy],
-            [data-image-hero="true"] [data-hero-actions] {
-              min-width: 0;
-              max-width: 100%;
-            }
-
-            [data-image-hero="true"] [data-hero-actions] > a,
-            [data-image-hero="true"] [data-hero-actions] > div,
-            [data-image-hero="true"] [data-hero-actions] > div > a {
-              min-width: 0;
-              max-width: 100%;
-            }
-          }
-
-          [data-category-theme="instrumenty"] [data-hero-copy] h1,
-          [data-category-theme="instrumenty"] [data-hero-copy] p {
-            color: #fff !important;
-            text-shadow: 0 2px 8px rgba(8, 27, 22, 0.96), 0 1px 2px rgba(8, 27, 22, 0.96);
-          }
-
-          [data-category-theme="elektronika"] [data-hero-copy] h1,
-          [data-category-theme="elektronika"] [data-hero-copy] p {
-            color: #fff !important;
-            text-shadow: 0 2px 8px rgba(6, 11, 39, 0.96), 0 1px 2px rgba(6, 11, 39, 0.96);
-          }
-
-          @media (min-width: 1024px) {
-            [data-category-theme="zhivotnye"] h1,
-            [data-category-theme="zhivotnye"] p,
-            [data-category-theme="dlya-doma-i-dachi"] h1,
-            [data-category-theme="dlya-doma-i-dachi"] p,
-            [data-category-theme="menyayu-ili-otdam-darom"] h1,
-            [data-category-theme="menyayu-ili-otdam-darom"] p,
-            [data-category-theme="nedvizhimost"] h1,
-            [data-category-theme="nedvizhimost"] p,
-            [data-category-theme="sad-i-rasteniya"] h1,
-            [data-category-theme="sad-i-rasteniya"] p {
-              color: #fff !important;
-              text-shadow: 0 2px 8px rgba(8, 27, 22, 0.96), 0 1px 2px rgba(8, 27, 22, 0.96);
-            }
-          }
-        `}</style>
-      ) : null}
       {isGardenCategory ? (
         <picture className="pointer-events-none absolute inset-0">
           <source media="(min-width: 1024px)" srcSet="/images/categories/garden-category-hero-desktop-v1.webp" />
@@ -422,7 +282,13 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       {isHomeAndDachaCategory ? (
         <picture className="pointer-events-none absolute inset-0">
           <source media="(min-width: 1024px)" srcSet={optimizedCategoryPhoto("/images/categories/home-dacha-category-hero-desktop-v1.webp", 2172, 724).srcSet} sizes="100vw" />
-          <Image alt="" className="object-cover object-[68%_center] lg:object-center" fill loading="eager" fetchPriority="high" sizes="100vw" src="/images/categories/home-dacha-category-hero.png" />
+          <img
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover object-[68%_center] text-transparent lg:object-center"
+            decoding="async"
+            fetchPriority="high"
+            {...optimizedCategoryPhoto("/images/categories/home-dacha-category-hero.png")}
+          />
         </picture>
       ) : null}
       {isExchangeOrFreeCategory ? (
@@ -452,35 +318,6 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
             width={1672}
           />
         </picture>
-      ) : null}
-      {isBeautyCategory ? (
-        <style>{`
-          [data-category-theme="krasota-i-uhod"] > [data-hero-copy] {
-            position: relative;
-            z-index: 10;
-          }
-
-          [data-category-theme="krasota-i-uhod"] h1,
-          [data-category-theme="krasota-i-uhod"] p {
-            color: #fff !important;
-            text-shadow: 0 2px 8px rgba(57, 30, 13, 0.92), 0 1px 2px rgba(57, 30, 13, 0.92);
-          }
-
-        `}</style>
-      ) : null}
-      {isBusinessCategory ? (
-        <style>{`
-          [data-category-theme="biznes"] > [data-hero-copy] {
-            position: relative;
-            z-index: 10;
-          }
-
-          [data-category-theme="biznes"] h1,
-          [data-category-theme="biznes"] p {
-            color: #fff !important;
-            text-shadow: 0 2px 8px rgba(6, 30, 43, 0.96), 0 1px 2px rgba(6, 30, 43, 0.96);
-          }
-        `}</style>
       ) : null}
       <div
         data-hero-copy
@@ -587,7 +424,6 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
 }
 
 export function SubcategoryCard({ compact = false, createHref, description, href, items = [], spanClassName = "", title, visualSlug }: SubcategoryCardProps) {
-  const visual = visualForCategory(visualSlug);
   const isWorkCategory = visualSlug === "rabota";
   const actionButtonClassName = `${
     compact
@@ -599,7 +435,7 @@ export function SubcategoryCard({ compact = false, createHref, description, href
   return (
     <details
       className={`group min-w-0 overflow-hidden rounded-xl border border-[var(--category-border)] bg-[var(--category-card)] shadow-sm transition-colors duration-200 hover:bg-[var(--category-card-open)] hover:shadow-md open:bg-[var(--category-card-open)] ${spanClassName}`}
-      style={visualStyle(visual)}
+      data-category-colors={visualSlug}
     >
       <summary className={`flex cursor-pointer list-none items-center justify-between marker:hidden [&::-webkit-details-marker]:hidden ${compact ? "min-h-12 gap-2 p-2.5" : "min-h-14 gap-3 p-3"}`}>
         <span className={`min-w-0 self-center break-words font-bold text-[#142315] [overflow-wrap:anywhere] ${compact ? "text-xs leading-4 sm:text-[15px] sm:leading-5" : "text-sm leading-5 sm:text-[15px]"}`}>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
+import { getImageProps } from "next/image";
 import type { StaticImageData } from "next/image";
 import type { ComponentType } from "react";
 import {
@@ -64,9 +64,9 @@ type CategoryTile = {
   description: string;
   bullets: string[];
   tone: "blue" | "green";
-  accentColor: string;
+  markerClassName: string;
   ageRating?: string;
-  imagePosition?: string;
+  imagePositionClassName?: string;
   iconClassName?: string;
 };
 
@@ -98,7 +98,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Питомцы, товары для ухода и объявления от владельцев рядом с вами.",
     bullets: ["Домашние питомцы", "Корма и уход", "Товары для животных"],
     tone: "green",
-    accentColor: "#5f7f1f",
+    markerClassName: "bg-[#5f7f1f]",
     ageRating: "7+",
   },
   "sad-i-ogorod": {
@@ -107,7 +107,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Все для участка, сада, растений и сезонных работ.",
     bullets: ["Рассада и саженцы", "Инвентарь", "Цветы и огород"],
     tone: "green",
-    accentColor: "#4f8f1f",
+    markerClassName: "bg-[#4f8f1f]",
   },
   "tovary-dlya-detey": {
     icon: Baby,
@@ -115,7 +115,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Игрушки, вещи и полезные товары для детей.",
     bullets: ["Игрушки", "Детская комната", "Спорт и развитие"],
     tone: "green",
-    accentColor: "#c1842e",
+    markerClassName: "bg-[#c1842e]",
     ageRating: "7+",
   },
   "ritualnye-uslugi": {
@@ -124,7 +124,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Деликатные услуги, организация и сопутствующие товары.",
     bullets: ["Организация", "Транспорт", "Уход и принадлежности"],
     tone: "green",
-    accentColor: "#3f8f18",
+    markerClassName: "bg-[#3f8f18]",
     iconClassName: "h-10 w-10 sm:h-11 sm:w-11",
   },
   "nedvizhimost": {
@@ -133,7 +133,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Квартиры, дома и коммерческие объекты в вашем городе.",
     bullets: ["Продажа", "Покупка", "Аренда и объекты"],
     tone: "blue",
-    accentColor: "#1f78b6",
+    markerClassName: "bg-[#1f78b6]",
   },
   "rabota": {
     icon: BriefcaseBusiness,
@@ -141,7 +141,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Вакансии, заказы и анкеты специалистов рядом с домом.",
     bullets: ["Вакансии", "Заказы", "Анкеты специалистов"],
     tone: "green",
-    accentColor: "#438a25",
+    markerClassName: "bg-[#438a25]",
     ageRating: "14+",
   },
   "odezhda-obuv-aksessuary": {
@@ -150,7 +150,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Гардероб, обувь, сумки и аксессуары на каждый день.",
     bullets: ["Одежда и обувь", "Аксессуары", "Текстиль и разное"],
     tone: "green",
-    accentColor: "#6f8434",
+    markerClassName: "bg-[#6f8434]",
   },
   "hobbi-i-otdyh": {
     icon: TentTree,
@@ -158,7 +158,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Отдых, турбазы, гостиницы и походы рядом с вами.",
     bullets: ["Турбазы", "Гостиницы", "Походы"],
     tone: "green",
-    accentColor: "#3f8427",
+    markerClassName: "bg-[#3f8427]",
   },
   "transport": {
     icon: Car,
@@ -166,7 +166,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Автомобили, мототехника и транспортные объявления.",
     bullets: ["Авто", "Мототехника", "Запчасти"],
     tone: "blue",
-    accentColor: "#267da7",
+    markerClassName: "bg-[#267da7]",
   },
   "biznes": {
     icon: Store,
@@ -174,7 +174,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Готовый бизнес, оборудование и рабочие решения.",
     bullets: ["Оборудование", "Готовый бизнес", "Партнерство"],
     tone: "blue",
-    accentColor: "#2f75a8",
+    markerClassName: "bg-[#2f75a8]",
   },
   "uslugi": {
     icon: Wrench,
@@ -182,7 +182,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Мастера, ремонт, уборка и бытовая помощь рядом.",
     bullets: ["Проверенные мастера", "Ремонт и сервис", "Отзывы и рейтинг"],
     tone: "blue",
-    accentColor: "#1f82b8",
+    markerClassName: "bg-[#1f82b8]",
   },
   "elektronika": {
     icon: Smartphone,
@@ -190,7 +190,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Гаджеты, техника, ноутбуки и аудио для дома и работы.",
     bullets: ["Смартфоны", "Ноутбуки", "Аудио и видео"],
     tone: "blue",
-    accentColor: "#2d6fb2",
+    markerClassName: "bg-[#2d6fb2]",
   },
   "dlya-doma-i-dachi": {
     icon: Sofa,
@@ -198,7 +198,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Мебель, декор, освещение и вещи для уютного дома.",
     bullets: ["Мебель", "Декор", "Дача и баня"],
     tone: "green",
-    accentColor: "#6c8c3b",
+    markerClassName: "bg-[#6c8c3b]",
   },
   "instrumenty": {
     icon: Cog,
@@ -206,7 +206,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Ручной и электрический инструмент для ремонта и сада.",
     bullets: ["Ручной инструмент", "Электроинструмент", "Для сада"],
     tone: "blue",
-    accentColor: "#3b78a5",
+    markerClassName: "bg-[#3b78a5]",
   },
   "posuda": {
     icon: Utensils,
@@ -214,7 +214,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Кухонная посуда, сервировка и предметы для хранения.",
     bullets: ["Кухня", "Столовая", "Хранение"],
     tone: "green",
-    accentColor: "#7d8f32",
+    markerClassName: "bg-[#7d8f32]",
   },
   "menyayu-ili-otdam-darom": {
     icon: Gift,
@@ -222,7 +222,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Обмен вещей рядом с вами",
     bullets: ["Меняю", "Отдам даром", "Полезные находки"],
     tone: "green",
-    accentColor: "#638b3f",
+    markerClassName: "bg-[#638b3f]",
   },
   "krasota-i-zdorove": {
     icon: HeartPulse,
@@ -230,7 +230,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Красота, уход, здоровье и специалисты рядом с вами.",
     bullets: ["Косметика", "Уход", "Здоровье"],
     tone: "green",
-    accentColor: "#5d9564",
+    markerClassName: "bg-[#5d9564]",
   },
   "raznoe": {
     icon: Ellipsis,
@@ -238,8 +238,8 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
     description: "Редкие находки, коллекции, книги и полезные мелочи.",
     bullets: ["Винтаж", "Коллекции", "Разные находки"],
     tone: "blue",
-    accentColor: "#3f7fa3",
-    imagePosition: "center 68%",
+    markerClassName: "bg-[#3f7fa3]",
+    imagePositionClassName: "object-[center_68%]",
   },
 };
 
@@ -308,6 +308,12 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
         {categoryTiles.map((category, index) => {
           const tone = toneClasses[category.tone];
           const isLastOddCard = categoryTiles.length % 2 === 1 && index === categoryTiles.length - 1;
+          const { props: image } = getImageProps({
+            src: category.imageUrl,
+            alt: "",
+            sizes: isLastOddCard ? "(min-width: 1524px) 1500px, 124vw" : "(min-width: 1524px) 780px, (min-width: 1024px) 52vw, (min-width: 640px) 108vw, 124vw",
+          });
+
 
           return (
             <Link
@@ -316,16 +322,20 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
               data-category-card
               className={`group relative isolate block min-h-[320px] overflow-hidden rounded-[22px] border border-slate-200/90 bg-white shadow-[0_14px_42px_rgba(15,23,42,0.06)] ring-1 ring-white transition duration-300 [clip-path:inset(0_round_22px)] [transform:translateZ(0)] hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_24px_70px_rgba(15,23,42,0.12)] sm:min-h-[400px] sm:rounded-[26px] sm:[clip-path:inset(0_round_26px)] lg:min-h-[430px] xl:min-h-[440px] ${isLastOddCard ? "lg:col-span-2 lg:min-h-[540px]" : ""} ${tone.hover}`}
             >
-              <Image
-                aria-hidden="true"
-                alt=""
-                className="absolute inset-y-0 right-0 h-full w-[124%] max-w-none rounded-[22px] object-cover brightness-[1.04] contrast-[1.12] saturate-[1.16] transition duration-500 [clip-path:inset(0_round_22px)] [transform:translateZ(0)] group-hover:scale-[1.02] sm:w-[108%] sm:rounded-[26px] sm:[clip-path:inset(0_round_26px)] lg:w-[104%]"
-                decoding="async"
-                sizes={isLastOddCard ? "(min-width: 1524px) 1500px, 124vw" : "(min-width: 1524px) 780px, (min-width: 1024px) 52vw, (min-width: 640px) 108vw, 124vw"}
-                loading="lazy"
-                src={category.imageUrl}
-                style={{ objectPosition: category.imagePosition ?? "right center" }}
-              />
+              <picture className="contents">
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className={`absolute inset-y-0 right-0 h-full w-[124%] max-w-none rounded-[22px] object-cover brightness-[1.04] contrast-[1.12] saturate-[1.16] transition duration-500 [clip-path:inset(0_round_22px)] [transform:translateZ(0)] group-hover:scale-[1.02] sm:w-[108%] sm:rounded-[26px] sm:[clip-path:inset(0_round_26px)] lg:w-[104%] text-transparent ${category.imagePositionClassName ?? "object-right"}`}
+                  decoding="async"
+                  height={image.height}
+                  loading="lazy"
+                  sizes={image.sizes}
+                  srcSet={image.srcSet}
+                  src={image.src}
+                  width={image.width}
+                />
+              </picture>
               <span
                 aria-hidden="true"
                 className={`absolute inset-y-0 left-0 bg-gradient-to-r from-white via-white/96 to-white/0 ${
@@ -347,7 +357,7 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
                 <span className="mt-3 grid gap-1.5 text-[13px] font-bold leading-[18px] text-slate-700 sm:mt-5 sm:gap-2 sm:text-base sm:leading-6">
                   {category.bullets.slice(0, 3).map((bullet) => (
                     <span key={bullet} className="flex min-w-0 items-start gap-2">
-                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: category.accentColor }} />
+                      <span className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${category.markerClassName}`} />
                       <span className="min-w-0 [overflow-wrap:anywhere]">{bullet}</span>
                     </span>
                   ))}

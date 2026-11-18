@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { BackLink } from "@/components/BackLink";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
-import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "@/components/listings/CategoryPageDesign";
+import { CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "@/components/listings/CategoryPageDesign";
 import { CatalogSeoContent } from "@/components/listings/CatalogSeoContent";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import { ListingPagination } from "@/components/listings/ListingPagination";
@@ -74,130 +74,7 @@ export default async function InstrumentsCategoryPage({ searchParams }: { search
     <>
       <SiteHeader />
       <HomeHero />
-      <style>{`
-        [data-category-theme="instrumenty"] {
-          position: relative;
-          min-height: 0 !important;
-          aspect-ratio: 1362 / 1155;
-          overflow: hidden;
-          background-color: #4e3829 !important;
-          background-image: none !important;
-          background-repeat: no-repeat !important;
-          background-size: cover !important;
-          background-position: center center !important;
-        }
-
-        [data-category-theme="instrumenty"] > [data-hero-copy] {
-          position: static;
-          display: block !important;
-          width: 100%;
-          max-width: 100%;
-          text-shadow: none;
-        }
-
-        [data-category-theme="instrumenty"] > [data-hero-copy] > div:first-child {
-          display: inline-block;
-          max-width: 17.5rem;
-          padding: 0;
-          border: 0;
-          border-radius: 0;
-          background: transparent;
-          box-shadow: none;
-        }
-
-        [data-category-theme="instrumenty"] > [data-hero-copy] h1,
-        [data-category-theme="instrumenty"] > [data-hero-copy] p {
-          position: relative;
-          z-index: 10;
-          max-width: none !important;
-          color: #fff !important;
-          text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.95);
-        }
-
-        [data-category-theme="instrumenty"] > [data-hero-copy] h1 {
-          white-space: nowrap;
-        }
-
-        [data-category-theme="instrumenty"] > [data-hero-copy] p {
-          margin-top: 0.35rem;
-        }
-
-        [data-category-theme="instrumenty"] [data-hero-actions] {
-          position: absolute;
-          left: 1rem;
-          right: 1rem;
-          bottom: 1rem;
-          z-index: 20;
-          display: flex;
-          flex-flow: row nowrap;
-          align-items: center;
-          gap: 0.5rem;
-          margin-top: 0;
-          text-shadow: none;
-        }
-
-        [data-category-theme="instrumenty"] [data-hero-actions] > a {
-          flex: 0 0 auto;
-          min-height: 40px;
-          height: 40px;
-          padding-left: 0.65rem;
-          padding-right: 0.65rem;
-          font-size: 0.75rem;
-          white-space: nowrap;
-        }
-
-
-        @media (max-width: 374px) {
-          [data-category-theme="instrumenty"] [data-hero-actions] {
-            left: 0.75rem !important;
-            right: 0.75rem !important;
-            bottom: 0.75rem !important;
-            flex-flow: column nowrap;
-            align-items: stretch;
-            gap: 0.4rem;
-          }
-
-          [data-category-theme="instrumenty"] [data-hero-actions] > a {
-            width: 100%;
-            justify-content: center;
-          }
-        }
-
-        @media (min-width: 768px) {
-          [data-category-theme="instrumenty"] {
-            min-height: 0 !important;
-            aspect-ratio: 8 / 3;
-          }
-
-          [data-category-theme="instrumenty"] > [data-hero-copy] > div:first-child {
-            max-width: 17rem;
-          }
-
-          [data-category-theme="instrumenty"] [data-hero-actions] {
-            left: 1.25rem;
-            right: auto;
-            bottom: 1.25rem;
-          }
-
-          [data-category-theme="instrumenty"] [data-hero-actions] > a {
-            padding-left: 1rem;
-            padding-right: 1rem;
-            font-size: 0.875rem;
-          }
-        }
-
-        @media (min-width: 1024px) {
-          [data-category-theme="instrumenty"] > [data-hero-copy] > div:first-child {
-            max-width: 19rem;
-          }
-
-          [data-category-theme="instrumenty"] [data-hero-actions] {
-            left: 1.75rem;
-            bottom: 1.5rem;
-          }
-        }
-      `}</style>
-      <main className="bg-[var(--category-page)] pb-8" style={categoryPageStyle("instrumenty")}>
+      <main data-category-index="" className="bg-[var(--category-page)] pb-8" data-category-colors="instrumenty">
         <div className="page-container py-3 sm:py-4 lg:py-5">
           <nav className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-600 sm:text-sm" aria-label="Хлебные крошки">
             <Link href="/katalog" className="hover:text-[#0875d1]">

@@ -17,6 +17,7 @@ function load(name){
 }
 test('hero text is rendered before scripts and one responsive picture loads eagerly',()=>{
  const html=renderToStaticMarkup(load('HomeIntro').HomeIntro());
+ assert.doesNotMatch(html,/\sstyle=/i,'Homepage markup must work with inline styles disabled');
  assert.match(html,/Все нужное рядом/);assert.match(html,/<picture/);assert.equal((html.match(/<img /g)??[]).length,1);
  assert.match(html,/fetchPriority="high"/i);assert.match(html,/loading="eager"/);
  assert.match(html,/media="\(min-width: 1024px\)"/);assert.match(html,/srcSet=/i);
@@ -24,6 +25,7 @@ test('hero text is rendered before scripts and one responsive picture loads eage
 });
 test('every category including the final odd card is lazy and uses responsive WebP sources',async()=>{
  const html=renderToStaticMarkup(await load('CategoryGrid').CategoryGrid({}));
+ assert.doesNotMatch(html,/\sstyle=/i,'Homepage markup must work with inline styles disabled');
  const images=html.match(/<img [^>]+>/g)??[];assert.equal(images.length,3);
  for(const image of images){assert.match(image,/loading="lazy"/);assert.match(image,/srcSet=/i);assert.match(image,/sizes=/);assert.doesNotMatch(image,/fetchPriority="high"/i);assert.match(image,/\.webp/);}
  assert.match(html,/Животные/);assert.match(html,/Услуги/);assert.doesNotMatch(html,/services\.png/);
