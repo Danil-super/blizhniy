@@ -8,7 +8,7 @@ import { Camera, ImagePlus, Trash2, X } from "lucide-react";
 import { DropdownSelect } from "@/components/DropdownSelect";
 import { SquareImageCropper } from "@/components/SquareImageCropper";
 import {containDialogTab,openDialog} from '@/lib/dialog-keyboard';
-import {imageDataUrlToBlob} from '@/lib/image-data-url';
+import {croppedPhotoFile} from '@/lib/image-data-url';
 import { YandexMapPicker } from "@/components/YandexMapPicker";
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import { categories as fallbackCategories, cities, region } from "@/lib/data";
@@ -181,16 +181,6 @@ function getCategoryOptionForDefaults(options: ListingCategoryOption[], category
   }
 
   return getCategoryOptionByCategorySlug(options, categorySlug);
-}
-
-function cropFileName(name: string) {
-  const base = name.replace(/\.[^.]+$/, "") || "photo";
-  return `${base}-crop.png`;
-}
-
-async function dataUrlToImageFile(dataUrl: string, name: string) {
-  const blob = imageDataUrlToBlob(dataUrl);
-  return new File([blob], cropFileName(name), { type: blob.type || "image/png" });
 }
 
 export function ListingLocationFields({
@@ -848,7 +838,7 @@ export function ListingPhotoUploader({savedPhotos}:{savedPhotos?:ReactNode}={}) 
   }
 
   async function applySquareCrop(item: PreviewMedia, dataUrl: string) {
-    const croppedFile = await dataUrlToImageFile(dataUrl, item.name);
+    const croppedFile = croppedPhotoFile(dataUrl, item.name);
     const croppedUrl = URL.createObjectURL(croppedFile);
     urlsRef.current.push(croppedUrl);
 

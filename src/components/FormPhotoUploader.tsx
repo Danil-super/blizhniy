@@ -10,7 +10,7 @@ import {mediaOwnerQuotaText} from "@/lib/media-upload-contract";
 import {productionListingMedia} from '@/lib/client-listing-media';
 import {createListingThumbnailQueue} from '@/lib/listing-thumbnail-queue';
 import type {ListingDraftPhoto} from '@/lib/listing-photo-contract';
-import {imageDataUrlToBlob} from '@/lib/image-data-url';
+import {croppedPhotoFile} from '@/lib/image-data-url';
 const readPrivatePhoto=createListingThumbnailQueue(productionListingMedia.read);
 
 type PreviewPhoto = {
@@ -36,12 +36,6 @@ function syncFileInput(input: HTMLInputElement | null, photos: PreviewPhoto[]) {
     }
   });
   input.files = transfer.files;
-}
-
-async function dataUrlToImageFile(dataUrl: string, name: string) {
-  const blob = imageDataUrlToBlob(dataUrl);
-  const base = name.replace(/\.[^.]+$/, "") || "photo";
-  return new File([blob], `${base}-crop.png`, { type: blob.type || "image/png" });
 }
 
 export function FormPhotoUploader({
@@ -153,7 +147,7 @@ export function FormPhotoUploader({
 
   async function applySquareCrop(photo: PreviewPhoto, dataUrl: string) {
     const controller=scope.current;
-    const file = await dataUrlToImageFile(dataUrl, photo.name);
+    const file = croppedPhotoFile(dataUrl, photo.name);
     if(controller?.signal.aborted||!currentPhotos.current.some(item=>item.id===photo.id))return;
     commit(currentPhotos.current.map((item) =>
         item.id === photo.id

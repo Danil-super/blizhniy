@@ -9,7 +9,8 @@ import { ValidatedInput } from "@/components/ValidatedInput";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
-import { storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
+import { croppedPhotoFile } from "@/lib/image-data-url";
+import { storeMediaFile } from "@/lib/client-media-store";
 import { appendPublicationHistory, DemoPublication, readStoredDemoPublications, writeStoredDemoPublications } from "@/lib/demo-publications";
 import { cities } from "@/lib/data";
 import { formatBookingPrice, validateBookingDetailsForPublication } from "@/lib/booking-details";
@@ -350,7 +351,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
   }
 
   async function applySquareCrop(index: number, dataUrl: string) {
-    const storedImage = await storeMediaDataUrl(dataUrl, `listing-crop-${index + 1}.png`);
+    const storedImage = await storeMediaFile(croppedPhotoFile(dataUrl, `listing-${index + 1}`));
     setImages((current) => current.map((image, imageIndex) => (imageIndex === index ? storedImage : image)));
     setCropEditorIndex(null);
   }

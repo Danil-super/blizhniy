@@ -79,7 +79,7 @@ async function cropSquareImage(src: string, draft: CropDraft, imageSize: ImageSi
   const context = canvas.getContext("2d");
 
   if (!context) {
-    return src;
+    throw new Error("Не удалось обработать фото.");
   }
 
   context.fillStyle = "#ffffff";
@@ -87,7 +87,7 @@ async function cropSquareImage(src: string, draft: CropDraft, imageSize: ImageSi
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize / aspectRatio, 0, 0, outputSize, outputHeight);
-  return canvas.toDataURL("image/png");
+  return canvas.toDataURL("image/webp", 0.86);
 }
 
 export function SquareImageCropper({ alt, aspectRatio = 1, description = "Перетащите фото внутри кадра и настройте масштаб.", onApply, onCancel, outputSize = 2400, src, title = "Выберите кадр" }: SquareImageCropperProps) {
