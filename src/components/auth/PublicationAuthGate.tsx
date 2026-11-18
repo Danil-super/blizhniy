@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, ReactNode, useEffect, useState } from "react";
+import { Fragment, ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { useAuthState } from "@/components/auth/useAuthState";
 import { usePrimaryAccountAuth } from "@/components/auth/AccountAuthProvider";
@@ -15,6 +16,17 @@ type PublicationAuthGateProps = {
   expectedOwnerId?:string;
 };
 
+// Keep unsaved fields mounted for their owner, outside the document during a session check.
+function DraftFields({children, visible}: {children: ReactNode; visible: boolean}) {
+  const host = useRef<HTMLDivElement>(null);
+  const [fields] = useState(() => document.createElement("div"));
+  useLayoutEffect(() => {
+    if (visible) host.current?.appendChild(fields);
+    return () => fields.remove();
+  }, [fields, visible]);
+  return <div ref={host}>{createPortal(children, fields)}</div>;
+}
+
 function PrimaryDraftGate({children,title,expectedOwnerId}:{children:ReactNode;title:string;expectedOwnerId?:string}){
   const auth=usePrimaryAccountAuth(),owner=auth?.state==='signed-in'||auth?.state==='admin'?auth.userId:null;
   const [scopeOwner,setScopeOwner]=useState(owner);
@@ -26,7 +38,7 @@ function PrimaryDraftGate({children,title,expectedOwnerId}:{children:ReactNode;t
     {auth?.state==='signed-out'?<LocalAccountForm production headingLevel="h2"/>:<p role="status">Проверяем вход…</p>}</section></main>;
   return <>{!visible&&<div className="page-container py-6" role="status"><p>Проверяем вход. Заполненная форма скрыта до подтверждения аккаунта.</p>
     {auth?.state==='unavailable'&&<button type="button" onClick={()=>notifyAccountSessionChange(false)}>Повторить проверку входа</button>}</div>}
-    <div key={scopeOwner} hidden={!visible} inert={!visible}>{children}</div></>;
+    <DraftFields key={scopeOwner} visible={visible}>{children}</DraftFields></>;
 }
 
 export function PublicationAuthGate({ children, title = "Войдите, чтобы разместить публикацию",preserveDraftDuringRecheck=false,expectedOwnerId }: PublicationAuthGateProps) {

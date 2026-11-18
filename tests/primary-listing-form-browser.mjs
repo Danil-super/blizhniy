@@ -5,8 +5,9 @@ import {tmpdir} from 'node:os';import {join} from 'node:path';import {rootCertif
 import {chromium} from 'playwright';import sharp from 'sharp';
 import {parseListingFormDraft} from '../src/lib/listing-form-contract.ts';
 import {createDefaultCabinetProfile} from '../src/lib/cabinet-profile.ts';
+import {testCachedCabinetScreen} from './cabinet-history-cache-browser-cases.mjs';
 import {testAccountCheckoutBrowser} from './account-test-checkout-browser-cases.mjs';
-test('ordinary placement form saves all existing fields/photos with cookie API and preserves input through account rechecks', {timeout:90000},async()=>{
+test('ordinary placement form saves all existing fields/photos with cookie API and preserves input through account rechecks', {timeout:90000},async t=>{
  const directory=await mkdtemp(join(tmpdir(),'blizhniy-form-browser-'));let app,browser;
  try{
   const key=join(directory,'key'),ca=join(directory,'ca');await writeFile(key,randomBytes(32),{mode:0o600});await writeFile(ca,rootCertificates[0],{mode:0o600});
@@ -96,6 +97,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
    address:'Улица 1',latitude:43.6,longitude:39.7,showExactAddress:false,contactMethod:'messenger',booking:{mode:'stay',priceWeekday:1250.5,extraGuestPrice:0,
     availableFrom:'2026-01-01',availableTo:'2026-01-03',blockedDates:['2026-01-02'],rules:'Без шума'}})};await persist();
   const editHref=await firstCard.getByRole('link',{name:'Редактировать',exact:true}).getAttribute('href');assert.equal(editHref,`/razmestit/obyavlenie?draft=${id}`);
+  await t.test('cached draft detaches fields and restores unsaved edits only to their owner',()=>testCachedCabinetScreen(origin,editHref));
   const editResponse=await page.goto(origin+editHref);assert.equal(editResponse.status(),200);
   assert.match(editResponse.headers()['cache-control']??'',/no-store|private/);
   const editHtml=await editResponse.text();
