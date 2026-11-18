@@ -142,7 +142,7 @@ export function DetailImageGallery({ compactMobile = false, fallbackIcon, images
               {validImages.length ? (
                 <span
                   className="flex h-full w-full transition-transform duration-300 ease-out motion-reduce:transition-none"
-                  style={{ transform: `translateX(-${safeActiveIndex * 100}%)` }}
+                  style={{ transform: safeActiveIndex === 0 ? undefined : `translateX(-${safeActiveIndex * 100}%)` }}
                 >
                   {validImages.map((image, index) => (
                     <span key={`${image}-${index}`} className="flex h-full w-full shrink-0 items-center justify-center bg-slate-100">
