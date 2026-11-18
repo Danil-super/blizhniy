@@ -48,6 +48,28 @@ async function assertFieldCorrected(field) {
 }
 
 export async function testResetValidationScenarios({ run, origin, password }) {
+  await run('a transient reset failure keeps input and a consumed link offers a fresh email', async ({ page, calls, state }) => {
+    await page.goto(origin + '/auth/reset#token=' + token);
+    await passwordInput(page).fill(password);
+    await repeatInput(page).fill(password);
+    state.override = route => route.fulfill({ status: 503, json: { error: { code: 'AUTH_UNAVAILABLE' } } });
+    await save(page).click();
+    await page.getByRole('alert').filter({ hasText: 'Результат запроса не подтверждён' }).waitFor();
+    assert.equal(await passwordInput(page).inputValue(), password);
+    assert.equal(await repeatInput(page).inputValue(), password);
+    state.override = route => route.fulfill({ status: 400, json: { error: { code: 'INVALID_RECOVERY' } } });
+    await save(page).click();
+    const fresh = page.getByRole('link', { name: 'Запросить новую ссылку' });
+    await fresh.waitFor();
+    assert.equal(await passwordInput(page).count(), 0);
+    assert.equal(await save(page).count(), 0);
+    const writes = calls.filter(call => call.action === 'reset').length;
+    assert.equal(writes, 2);
+    await fresh.click();
+    await page.getByRole('heading', { name: 'Восстановление доступа' }).waitFor();
+    assert.equal(calls.filter(call => call.action === 'recover').length, 0);
+  });
+
   await run('a stalled reset CAPTCHA has a bounded wait and keeps the retry action inside the mobile form', async ({ page, calls }) => {
     await page.setViewportSize({ width: 320, height: 900 });
     await page.clock.install();

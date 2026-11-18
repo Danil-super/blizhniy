@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useAccountCaptcha } from "./AccountCaptchaProvider";
 
 const inputStyle = "mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-brand-ink focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue";
-const invalidLink = "Ссылка недействительна или устарела. Запросите новое письмо восстановления.";
+const invalidLink = "Ссылка недействительна или устарела.";
 const issues: Record<string, string> = {
   INVALID_RECOVERY: invalidLink,
   INVALID_INPUT: "Проверьте email и пароль: пароль должен содержать от 8 до 128 символов.",
@@ -89,6 +89,9 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
         body: JSON.stringify(mode === "recover" ? { email, captchaToken } : { token, password, captchaToken }) });
       consumeAccountCaptchaResponse(response);
       const payload = await response.json();
+      if (mode === "reset" && response.status === 400 && payload?.error?.code === "INVALID_RECOVERY" && mounted.current && current === version.current) {
+        setToken(null); setPassword(""); setRepeat("");
+      }
       if (!response.ok) throw new Error(typeof payload?.error?.code === "string" ? payload.error.code : "AUTH_UNAVAILABLE");
       if (response.status !== (mode === "recover" ? 202 : 200) || Object.keys(payload).length !== 1 || payload.status !== (mode === "recover" ? "accepted" : "password_reset")) throw new Error("AUTH_UNAVAILABLE");
       if (mounted.current && current === version.current) { setDone(true); setToken(null); setPassword(""); setRepeat(""); }
@@ -103,8 +106,10 @@ export function ProductionRecoveryForm({ mode }: { mode: "recover" | "reset" }) 
 
   return <>
     <h1 className="text-2xl font-bold text-brand-ink">{mode === "recover" ? "Восстановление доступа" : "Новый пароль"}</h1>
-    <p role="status" className="mt-3 text-sm leading-6 text-slate-600">{!ready ? "Подготавливаем ссылку…" : busy ? "Обрабатываем запрос…" : done ? mode === "recover" ? "Если адрес зарегистрирован и восстановление доступно, мы отправим письмо. Проверьте входящие и папку «Спам»." : "Пароль изменён. Предыдущие сессии закрыты. Войдите с новым паролем." : mode === "recover" ? "Введите email, указанный при регистрации." : "Задайте новый пароль. Если почта ещё не подтверждена, она подтвердится при сохранении. Открытие ссылки ничего не меняет."}</p>
-    {issue && <p ref={alert} role="alert" tabIndex={-1} className="mt-5 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{issue}</p>}
+    {(mode === "recover" || !ready || busy || done || token) && <p role="status" className="mt-3 text-sm leading-6 text-slate-600">{!ready ? "Подготавливаем ссылку…" : busy ? "Обрабатываем запрос…" : done ? mode === "recover" ? "Если адрес зарегистрирован и восстановление доступно, мы отправим письмо. Проверьте входящие и папку «Спам»." : "Пароль изменён. Предыдущие сессии закрыты. Войдите с новым паролем." : mode === "recover" ? "Введите email, указанный при регистрации." : "Задайте новый пароль. Если почта ещё не подтверждена, она подтвердится при сохранении. Открытие ссылки ничего не меняет."}</p>}
+    {issue && <p ref={alert} role="alert" tabIndex={-1} className="mt-5 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">{issue}{" "}
+      {mode === "reset" && !token && <Link href="/auth/recover" prefetch={false} className="font-semibold underline">Запросить новую ссылку</Link>}
+    </p>}
     {done && mode === "reset" && <Link href="/auth" prefetch={false} className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline">Перейти к входу</Link>}
     {!done && ready && (mode === "recover" || token) && <form ref={form} key={token ?? mode} noValidate={mode === "reset"} onSubmit={submit} aria-busy={busy} className="mt-4 space-y-3">
       {mode === "recover" ? <label className="block font-semibold text-brand-ink">Email
