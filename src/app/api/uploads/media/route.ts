@@ -1,5 +1,5 @@
 import { LegacyBodyError, readLegacyFormData } from "@/lib/legacy-request-body";
-import { detectMediaImageFormat } from "@/lib/media-image";
+import { getLegacyPhotoNormalizer } from "@/lib/legacy-photo-normalizer";
 import { NextResponse } from "next/server";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
 import { canUploadMediaToStorage, removeUploadedMedia, type UploadFolder, uploadMediaFile, validateMediaFile } from "@/lib/storage-upload";
@@ -58,18 +58,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Выберите фотографии для загрузки." }, { status: 400 });
   }
   try {
-    for (const file of files) {
-      validateMediaFile(file);
-      const format = detectMediaImageFormat(Buffer.from(await file.arrayBuffer()));
-      if (!format || file.type !== `image/${format}`) {
-        return NextResponse.json({ error: "Формат файла не соответствует изображению." }, { status: 400 });
-      }
-    }
+    for (const file of files) validateMediaFile(file);
   } catch {
     return NextResponse.json({ error: "Выберите JPEG, PNG, WebP или статический GIF размером до 10 МБ." }, { status: 400 });
   }
 
-  const results = await Promise.allSettled(files.map((file) => uploadMediaFile(file, folder, auth.user.id)));
+  const prepared: File[] = [];
+  try {
+    const normalizer = await getLegacyPhotoNormalizer();
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(30000)]);
+    for (const file of files) {
+      const image = await normalizer.normalize(new Uint8Array(await file.arrayBuffer()), file.type, signal);
+      prepared.push(new File([new Uint8Array(image.bytes)], file.name, { type: image.mimeType }));
+    }
+    signal.throwIfAborted();
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    if (code === "INVALID_IMAGE" || code === "IMAGE_TOO_LARGE" || code === "UNSUPPORTED_IMAGE") {
+      return NextResponse.json({ error: "Выберите исправное статическое фото JPEG, PNG, WebP или GIF до 10 МБ и 24 Мп." }, { status: 400 });
+    }
+    if (code === "MEDIA_BUSY") {
+      return NextResponse.json({ error: "Обработка фотографий занята. Повторите попытку." }, { status: 429 });
+    }
+    return NextResponse.json({ error: "Обработка фотографий временно недоступна. Повторите попытку." }, { status: 503 });
+  }
+
+  const results = await Promise.allSettled(prepared.map((file) => uploadMediaFile(file, folder, auth.user.id)));
   const uploaded = results.flatMap(result => result.status === "fulfilled" ? [result.value] : []);
   if (uploaded.length !== files.length) {
     if (uploaded.length) {

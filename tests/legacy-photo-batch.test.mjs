@@ -21,7 +21,7 @@ function load(path, dependencies, env = {}) {
   return exports;
 }
 
-function fixture(storageFailure, overrides = {}) {
+function fixture(storageFailure, overrides = {}, normalize = image.normalizeMediaImage) {
   const calls = [];
   const storage = load('../src/lib/storage-upload.ts', {
     '@/lib/server-request-timeout': {}, '@/lib/supabase-rest': {}
@@ -30,6 +30,7 @@ function fixture(storageFailure, overrides = {}) {
     'next/server': {NextResponse:Response},
     '@/lib/legacy-request-body': parser,
     '@/lib/media-image': image,
+    '@/lib/legacy-photo-normalizer': {getLegacyPhotoNormalizer: async () => ({normalize})},
     '@/lib/server-auth': {isSupabaseServerConfigured:()=>true,getAuthenticatedRequestUser:async()=>({user:{id:owner}})},
     '@/lib/storage-upload': {...storage, canUploadMediaToStorage:()=>true, uploadMediaFile:async (file, folder, userId)=>{
       calls.push({name:file.name,folder,userId});
@@ -146,6 +147,27 @@ test('partial Storage HTTP failure rolls back new objects and a retry returns re
   assert.equal(receipts.length, 2);
   assert.equal(objects.size, 3);
   for (const [index, file] of files.entries()) {
-    assert.deepEqual(objects.get(receipts[index].path), Buffer.from(await file.arrayBuffer()));
+    const stored = objects.get(receipts[index].path);
+    const expected = await sharp(Buffer.from(await file.arrayBuffer())).webp({quality:80,effort:3}).toBuffer();
+    assert.deepEqual(stored,expected);
+    assert.equal(receipts[index].mimeType,'image/webp');
+    assert.match(receipts[index].path,/\.webp$/);
+  }
+});
+
+test('a batch with broken pixels after a valid photo performs zero storage writes', async () => {
+  const png = await sharp({create:{width:25,height:30,channels:3,background:'green'}}).png().toBuffer();
+  const {send,calls} = fixture();
+  const res = await send([png,png.subarray(0,38)].map(bytes=>new File([bytes],'photo.png',{type:'image/png'})));
+  assert.equal(res.status,400);
+  assert.deepEqual(calls,[]);
+});
+
+test('decoder unavailable and busy keep the whole group out of Storage', async () => {
+  const png = await sharp({create:{width:2,height:3,channels:3,background:'red'}}).png().toBuffer();
+  for(const [code,status] of [['MEDIA_UNAVAILABLE',503],['MEDIA_BUSY',429]]) {
+    const {send,calls}=fixture(null,{},async()=>{throw new image.MediaImageError(code)});
+    assert.equal((await send([new File([png],'photo.png',{type:'image/png'})])).status,status);
+    assert.deepEqual(calls,[]);
   }
 });
