@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
+import {createServer} from 'node:http';
 import {test} from 'node:test';
 import sharp from 'sharp';
 import * as image from '../src/lib/media-image.ts';
@@ -9,18 +10,18 @@ import * as parser from '../src/lib/legacy-request-body.ts';
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
 const owner = '11111111-1111-4111-8111-111111111111';
-function load(path, dependencies) {
+function load(path, dependencies, env = {}) {
   const source = readFileSync(new URL(path, import.meta.url), 'utf8');
   const {outputText} = ts.transpileModule(source, {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}});
   const exports = {};
-  new Function('require', 'exports', outputText)(name => {
+  new Function('require', 'exports', 'process', outputText)(name => {
     assert.ok(Object.hasOwn(dependencies, name), 'Unexpected dependency '+name);
     return dependencies[name];
-  }, exports);
+  }, exports, {env});
   return exports;
 }
 
-function fixture(storageFailure) {
+function fixture(storageFailure, overrides = {}) {
   const calls = [];
   const storage = load('../src/lib/storage-upload.ts', {
     '@/lib/server-request-timeout': {}, '@/lib/supabase-rest': {}
@@ -34,7 +35,7 @@ function fixture(storageFailure) {
       calls.push({name:file.name,folder,userId});
       if (storageFailure) throw storageFailure;
       return {path:file.name,mimeType:file.type,size:file.size,publicUrl:'https://static.invalid/'+file.name};
-    }}
+    }, ...overrides}
   });
   const send = entries => {
     const form = new FormData();
@@ -71,4 +72,80 @@ test('a storage failure returns a retryable response with a generic message', as
   const response = await send([new File([bytes],'photo.png',{type:'image/png'})]);
   assert.equal(response.status,502);
   assert.deepEqual(await response.json(), {error:'Не удалось загрузить фотографии. Повторите попытку.'});
+});
+
+test('failed batch cleans only confirmed writes including a success acknowledged after another file failed', async () => {
+  const completed = Promise.withResolvers();
+  const failed = Promise.withResolvers();
+  const cleanup = [];
+  const {send} = fixture(null, {
+    async uploadMediaFile(file) {
+      if (file.name === 'failed.png') {
+        failed.resolve();
+        throw Error('synthetic provider failure');
+      }
+      if (file.name === 'late.png') await completed.promise;
+      return {path:'listings/'+owner+'/'+file.name,mimeType:file.type,size:file.size,publicUrl:'synthetic'};
+    },
+    async removeUploadedMedia(paths,folder,userId) { cleanup.push({paths,folder,userId}); }
+  });
+  const pixels = await sharp({create:{width:2,height:2,channels:3,background:'green'}}).png().toBuffer();
+  const names = ['first.png','failed.png','late.png'];
+  const pending = send(names.map(name=>new File([pixels],name,{type:'image/png'})));
+  await failed.promise;
+  assert.equal(cleanup.length,0);
+  completed.resolve();
+  const response = await pending;
+  assert.equal(response.status,502);
+  assert.deepEqual(cleanup,[{paths:['listings/'+owner+'/first.png','listings/'+owner+'/late.png'],folder:'listings',userId:owner}]);
+});
+
+test('partial Storage HTTP failure rolls back new objects and a retry returns readable images', async (t) => {
+  const prefix = '/storage/v1/object/blizhniy-media';
+  const original = 'listings/'+owner+'/previous.png';
+  const objects = new Map([[original, Buffer.from('existing')]]);
+  let failNextWebp = true;
+  const server = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const body = Buffer.concat(chunks);
+    if (req.method === 'DELETE' && req.url === prefix) {
+      for (const key of JSON.parse(body).prefixes) objects.delete(key);
+      res.writeHead(200).end('[]');
+      return;
+    }
+    if (req.method === 'POST' && req.url.startsWith(prefix+'/')) {
+      if (failNextWebp && req.headers['content-type'] === 'image/webp') {
+        failNextWebp = false;
+        res.writeHead(503).end();
+        return;
+      }
+      objects.set(req.url.slice(prefix.length+1), body);
+      res.writeHead(200).end('{}');
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const storage = load('../src/lib/storage-upload.ts', {
+    '@/lib/server-request-timeout': await import('../src/lib/server-request-timeout.ts'),
+    '@/lib/supabase-rest': {isSupabaseServiceRoleConfigured: () => true},
+  }, {NEXT_PUBLIC_SUPABASE_URL:'http://127.0.0.1:'+server.address().port, SUPABASE_SERVICE_ROLE_KEY:'fixture'});
+  const {send} = fixture(null, storage);
+  const image = sharp({create:{width:3,height:2,channels:3,background:'navy'}});
+  const files = await Promise.all(['png','webp'].map(async format =>
+    new File([await image.clone().toFormat(format).toBuffer()], 'image.'+format, {type:'image/'+format})
+  ));
+
+  assert.equal((await send(files)).status, 502);
+  assert.deepEqual([...objects.keys()], [original]);
+  const retry = await send(files);
+  assert.equal(retry.status, 201);
+  const receipts = (await retry.json()).files;
+  assert.equal(receipts.length, 2);
+  assert.equal(objects.size, 3);
+  for (const [index, file] of files.entries()) {
+    assert.deepEqual(objects.get(receipts[index].path), Buffer.from(await file.arrayBuffer()));
+  }
 });

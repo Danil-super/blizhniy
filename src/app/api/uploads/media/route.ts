@@ -2,7 +2,7 @@ import { LegacyBodyError, readLegacyFormData } from "@/lib/legacy-request-body";
 import { detectMediaImageFormat } from "@/lib/media-image";
 import { NextResponse } from "next/server";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
-import { canUploadMediaToStorage, type UploadFolder, uploadMediaFile, validateMediaFile } from "@/lib/storage-upload";
+import { canUploadMediaToStorage, removeUploadedMedia, type UploadFolder, uploadMediaFile, validateMediaFile } from "@/lib/storage-upload";
 
 const allowedFolders = new Set<UploadFolder>(["fair-applications", "listings", "specialists", "vacancies", "work-requests"]);
 const maxFilesPerRequest = 10;
@@ -69,12 +69,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Выберите JPEG, PNG, WebP или статический GIF размером до 10 МБ." }, { status: 400 });
   }
 
-  try {
-    const uploaded = await Promise.all(files.map((file) => uploadMediaFile(file, folder, auth.user.id)));
-    const response: UploadResponse = { files: uploaded };
-
-    return NextResponse.json(response, { status: 201 });
-  } catch {
+  const results = await Promise.allSettled(files.map((file) => uploadMediaFile(file, folder, auth.user.id)));
+  const uploaded = results.flatMap(result => result.status === "fulfilled" ? [result.value] : []);
+  if (uploaded.length !== files.length) {
+    if (uploaded.length) {
+      try {
+        await removeUploadedMedia(uploaded.map(file => file.path), folder, auth.user.id);
+      } catch {
+        console.warn("Legacy media batch cleanup failed");
+      }
+    }
     return NextResponse.json({ error: "Не удалось загрузить фотографии. Повторите попытку." }, { status: 502 });
   }
+  const response: UploadResponse = { files: uploaded };
+  return NextResponse.json(response, { status: 201 });
 }

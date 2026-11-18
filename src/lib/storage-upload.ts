@@ -86,6 +86,26 @@ export function validateMediaStoragePathsForUser(paths: string[], folder: Upload
   });
 }
 
+/** Only newly created objects acknowledged by this batch are eligible for cleanup. */
+export async function removeUploadedMedia(paths: string[], folder: UploadFolder, userId: string) {
+  const prefix = `${folder}/${userId}/`;
+  const generatedName = /^\d{4}-\d{2}-\d{2}\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\.(jpg|png|webp|gif)$/;
+  if (!canUploadMediaToStorage() || !paths.length || paths.length > 10 ||
+      !paths.every(path => path.startsWith(prefix) && generatedName.test(path.slice(prefix.length)))) {
+    throw new Error("Invalid media cleanup");
+  }
+  const key = getServiceRoleKey();
+  await withServerRequestTimeout(mediaUploadTimeoutMs, async signal => {
+    const response = await fetch(`${getSupabaseUrl()}/storage/v1/object/${mediaBucketName}`, {
+      method: "DELETE", redirect: "error", signal,
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ prefixes: paths }),
+    });
+    void response.body?.cancel().catch(() => undefined);
+    if (!response.ok) throw new Error("Storage cleanup failed");
+  });
+}
+
 export async function uploadMediaFile(file: File, folder: UploadFolder, userId: string): Promise<UploadedMedia> {
   if (!canUploadMediaToStorage()) {
     throw new Error("Supabase Storage is not configured");
@@ -111,11 +131,12 @@ export async function uploadMediaFile(file: File, folder: UploadFolder, userId: 
           "x-upsert": "false",
         },
         method: "POST",
+        redirect: "error",
         signal,
       });
 
+      void response.body?.cancel().catch(() => undefined);
       if (!response.ok) {
-        await response.text().catch(() => null);
         throw new Error("Storage upload failed");
       }
     });

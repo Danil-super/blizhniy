@@ -95,3 +95,45 @@ test("Storage timeout and upstream errors expose a safe retry message", async ()
   );
   assert.match(source, /withServerRequestTimeout\(mediaUploadTimeoutMs/);
 });
+
+test("cleanup submits only this owner's generated keys to Storage", async (t) => {
+  const owner = "11111111-1111-4111-8111-111111111111";
+  const objectKey = "listings/" + owner + "/2026-11-18/11111111-1111-4111-8111-111111111111.png";
+  const storage = loadStorage({
+    withServerRequestTimeout: (timeout, callback) => {
+      assert.equal(timeout, 20000);
+      return callback(new AbortController().signal);
+    },
+  });
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    calls.push({ url, init });
+    return new Response(null, { status: 200 });
+  });
+
+  for (const paths of [[], Array(11).fill(objectKey), [objectKey, "listings/other/photo.png"],
+      [objectKey.replace("listings/", "vacancies/")], [objectKey + "/../photo.png"]]) {
+    await assert.rejects(storage.removeUploadedMedia(paths, "listings", owner), /Invalid media cleanup/);
+  }
+  assert.equal(calls.length, 0);
+  await storage.removeUploadedMedia([objectKey], "listings", owner);
+  assert.equal(calls.length, 1);
+  const [{ url, init }] = calls;
+  assert.equal(url, environment.NEXT_PUBLIC_SUPABASE_URL + "/storage/v1/object/blizhniy-media");
+  assert.equal(init.method, "DELETE");
+  assert.equal(init.redirect, "error");
+  assert.deepEqual(JSON.parse(init.body), { prefixes: [objectKey] });
+  assert.equal(init.headers.Authorization, "Bearer " + environment.SUPABASE_SERVICE_ROLE_KEY);
+});
+
+test("confirmed upload retains its receipt even if discarding the response body fails", async (t) => {
+  const storage = loadStorage({
+    withServerRequestTimeout: (_timeout, callback) => callback(new AbortController().signal),
+  });
+  t.mock.method(globalThis, "fetch", async () => ({
+    ok: true,
+    body: { cancel: async () => { throw Error("connection closed"); } },
+  }));
+  const receipt = await storage.uploadMediaFile(imageFile(), "listings", "owner");
+  assert.equal(receipt.size, 3);
+});
