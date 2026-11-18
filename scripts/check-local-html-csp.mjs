@@ -31,7 +31,7 @@ function verifyPolicy(response,label,expectedStatus=200){
  for(const [name,expected] of [['script-src-attr',["'none'"]],['object-src',["'none'"]],['base-uri',["'none'"]],['frame-ancestors',["'self'"]],['report-uri',['/api/csp-report']]]){
   assert.ok(JSON.stringify(directives.get(name))===JSON.stringify(expected),label+': '+name+' must use its restrictive contract');
  }
- assert.ok(directives.get('style-src')?.includes("'unsafe-inline'"),label+': current SDK style compatibility remains explicit');
+ assert.deepEqual(directives.get('style-src'),["'self'"],label+': the local build without a map key restricts styles to the site');
  assert.ok(/\bprivate\b/.test(headers['cache-control']??'')&&/\bno-store\b/.test(headers['cache-control']??''),label+': nonce HTML must not be shared or stored');
  return nonce;
 }

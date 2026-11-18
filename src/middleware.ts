@@ -10,6 +10,7 @@ export function middleware(request: NextRequest) {
     const legacy = !authMode || authMode === "local";
     const nonce = createCspNonce();
     const policy = createHtmlCsp(nonce, { development: process.env.NODE_ENV === "development",
+      mapEnabled: Boolean(getPublicRuntimeSetting("dgis-key")),
       legacyOrigin: legacy ? getPublicRuntimeSetting("legacy-url") : undefined });
     const headers = new Headers(request.headers);
     // Best effort for adapters exposing these headers. Next 15 hides/replays

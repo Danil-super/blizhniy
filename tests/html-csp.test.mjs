@@ -10,7 +10,7 @@ test('CSP uses fresh 192-bit nonces and refuses malformed nonce/mode',()=>{
  for(const bad of ['',"a'.repeat(32)",'x'.repeat(31),'x'.repeat(33)])assert.throws(()=>createHtmlCsp(bad,{}));
 });
 test('production scripts need a nonce, forbid attributes and eval, and use explicit resource categories',()=>{
- const nonce=createCspNonce(),value=createHtmlCsp(nonce,{}),script=value.split(';').find(part=>part.trim().startsWith('script-src '));
+ const nonce=createCspNonce(),value=createHtmlCsp(nonce,{mapEnabled:true}),script=value.split(';').find(part=>part.trim().startsWith('script-src '));
  assert.ok(script.includes(`'nonce-${nonce}'`));assert.ok(script.includes("'strict-dynamic'"));assert.ok(!script.includes('unsafe-inline'));assert.ok(!script.includes('unsafe-eval'));
  for(const directive of ["script-src-attr 'none'","object-src 'none'","base-uri 'none'","frame-ancestors 'self'",'report-uri /api/csp-report',"worker-src 'self' blob:"])assert.ok(value.includes(directive));
  assert.ok(value.includes("style-src 'self' 'unsafe-inline'"));assert.ok(!value.includes('https:;'));assert.ok(!value.includes('https://oauth.telegram.org'));assert.ok(!value.includes('yookassa'));
@@ -30,4 +30,13 @@ test('valid legacy trailing slash is normalized; only development admits an HTTP
   assert.throws(()=>createHtmlCsp(nonce,{legacyOrigin:origin}));
  }
  assert.throws(()=>createHtmlCsp(nonce,{development:true,legacyOrigin:'http://external.example.invalid'}));
+});
+
+test('documents use only same-origin styles unless development or the map SDK needs inline styles',()=>{
+ const nonce=createCspNonce();
+ for(const options of [{},{mapEnabled:false},{legacyOrigin:'https://legacy.example.invalid'},{development:true},{mapEnabled:true}]){
+  const policy=createHtmlCsp(nonce,options).split('; ');
+  const styles=policy.filter(directive=>directive.startsWith('style-src'));
+  assert.deepEqual(styles,[options.development||options.mapEnabled?"style-src 'self' 'unsafe-inline'":"style-src 'self'"]);
+ }
 });

@@ -8,7 +8,7 @@ export function createCspNonce(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   return btoa(String.fromCharCode(...bytes));
 }
-export function createHtmlCsp(nonce: string, options: { development?: boolean; legacyOrigin?: string } = {}): string {
+export function createHtmlCsp(nonce: string, options: { development?: boolean; legacyOrigin?: string; mapEnabled?: boolean } = {}): string {
   if (!/^[A-Za-z0-9+/]{32}$/.test(nonce)) throw new Error("Invalid CSP nonce");
   let legacy = "", realtime = "";
   if (options.legacyOrigin) {
@@ -21,8 +21,8 @@ export function createHtmlCsp(nonce: string, options: { development?: boolean; l
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com https://mapgl.2gis.com${options.development ? " 'unsafe-eval'" : ""}`,
     "script-src-attr 'none'",
-    // Existing React transforms and the map SDK use inline styles; JS stays nonce-only.
-    "style-src 'self' 'unsafe-inline'",
+    // The map SDK and development style loader still need inline CSS.
+    options.development || options.mapEnabled ? "style-src 'self' 'unsafe-inline'" : "style-src 'self'",
     `img-src 'self' data: blob: https://*.2gis.com https://*.2gis.ru${legacy}`,
     "font-src 'self' data: https://*.2gis.com https://*.2gis.ru",
     `connect-src 'self' https://challenges.cloudflare.com https://*.2gis.com https://*.2gis.ru${legacy}${realtime}${options.development ? " ws://localhost:* ws://127.0.0.1:*" : ""}`,
