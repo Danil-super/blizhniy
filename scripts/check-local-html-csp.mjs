@@ -122,6 +122,11 @@ try{
  assert.deepEqual(await page.evaluate(()=>window.__blizhniyCspAcceptanceViolations),[],'Forged incoming headers do not disrupt trusted hydration');
  await page.setExtraHTTPHeaders({});
  const missingNonce=verifyPolicy(await page.goto(origin+'/__csp-acceptance-missing.foo',{waitUntil:'networkidle'}),'unknown dotted path',404);
+ const missingPage=page.getByRole('main');
+ await missingPage.getByRole('heading',{level:1,name:'Страница не найдена',exact:true}).waitFor();
+ assert.equal(await missingPage.getByRole('link',{name:'На главную',exact:true}).getAttribute('href'),'/');
+ assert.equal(await missingPage.locator('[style], style').count(),0,'Missing pages use the shared stylesheet');
+ assert.ok(await page.locator('meta[name="robots"]').evaluateAll(nodes=>nodes.some(node=>node.content.split(/[,\s]+/).includes('noindex'))));
  await assertDocumentScripts(page,missingNonce,'unknown dotted path');
  assert.deepEqual(await page.evaluate(()=>window.__blizhniyCspAcceptanceViolations),[],'404 framework HTML keeps a working nonce policy');
  const api=await context.request.post(origin+'/api/account/session',{headers:{Origin:origin,'X-Blizhniy-Request':'1','Sec-Fetch-Site':'same-origin'},data:{}});
