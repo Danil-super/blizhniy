@@ -35,7 +35,7 @@ test('service moderator pages use current cookie rights and recover lost decisio
     assert.equal(body.action,'inspect');assert.equal(body.requestId,id);return route.fulfill({json:{request:{id,revision,state:state.decision,note:state.note},snapshot,issues:[]}});
    });
    try{
-    await page.goto(origin+paths[kind]);await page.getByRole('heading',{name:'Модерация материалов',exact:true}).waitFor();
+    await page.goto(origin+paths[kind]);await page.getByRole('heading',{name:{specialist:'Анкета специалиста',fair:'Заявка на ярмарку',marquee:'Рекламный текст'}[kind],exact:true}).waitFor();
     await page.getByRole('button',{name:form.title,exact:true}).click();
     if(kind!=='marquee'){await page.getByRole('img',{name:'Фотография 1 из 1',exact:true}).waitFor();assert.equal(state.photos,1);await page.getByText('+79990000000',{exact:true}).waitFor();}
     if(kind==='fair')await page.getByText('Приватный комментарий организатору',{exact:true}).waitFor();

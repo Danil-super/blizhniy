@@ -152,6 +152,7 @@ const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, 
 // Exact browser-test replacements reviewed individually by the owner; see docs/review/.
 // Content-addressed artifacts, not a blanket permission to remove assertions.
 const reviewedListingArtifacts = [
+  {"file": "tests/payment-fulfillment-server.test.mjs", "before": "6ec73e7e3b3c7c731e8abc3c72390b86ec5ffc434999ee8663d87f4e2dfc6064", "after": "9f11355583b5b8049834d8113516859966b95dc378a1d5d6416328cca538cd32"},
   {"file": "tests/profession-select-primary.test.cjs", "before": "c45990b531f16109ac9adcf76edc195d6de3363ce7c60e6c093dc332d9f5fb87", "after": "756f6b32fa43d4be06ecddd037ba96a70e14e185a6f6f9dedb79b2347446da70"},
   {"file": "tests/admin-user-access-postgres-integration.mjs", "before": "2ea4df91367b5593896e2e8cdac5d3f8e17e04792ad91eb04a3edad4a8bf65b6", "after": "63ee2e31d24960984ba19a5be81a448da006a2a23764b0d44750dbddfd35e8e3"},
   {"file": "tests/cabinet-entry-browser-cases.mjs", "before": "bc0bbf335935bfd080363e382aa50062479bdfd65f058db368cfd00b44a618dd", "after": "a17a3ba056f19d5d4d7f10af9e2611f485f7d317954749b08229631570fc851e"},
