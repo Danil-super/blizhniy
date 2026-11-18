@@ -41,3 +41,20 @@ test('TEST success explains that real money and production publication are not i
  const ordinaryHtml=renderToStaticMarkup(React.createElement(ListingPaymentStatus,{snapshot}));
  assert.match(ordinaryHtml,/Размещение ещё не подтверждено/);assert.doesNotMatch(ordinaryHtml,/TEST-платёж/);
 });
+
+test('payment results name the placement that the owner paid for', () => {
+ const {ListingPaymentStatus}=load('src/components/payments/ListingPaymentStatus.tsx',{});
+ for(const [target,subject,genitive] of [
+  ['listing','Объявление','объявления'],['vacancy','Вакансия','вакансии'],
+  ['workRequest','Заказ','заказа'],['specialist','Анкета','анкеты'],
+ ]){
+  for(const [status,fulfilled,expected] of [
+   ['refunded',true,'состояние '+genitive],['failed',false,'состояние '+genitive],
+   ['succeeded',true,'состояние '+genitive],['succeeded',false,subject+' не публикуется за тестовую оплату'],
+  ]){
+   const snapshot={order:{status,amount:'199.00',durationDays:30},fulfillment:fulfilled?{publishedAt:'2026-11-01',expiresAt:'2026-12-01'}:null};
+   const html=renderToStaticMarkup(React.createElement(ListingPaymentStatus,{snapshot,target,testMode:!fulfilled}));
+   assert.ok(html.includes(expected),target+' '+status+' '+expected);
+  }
+ }
+});
