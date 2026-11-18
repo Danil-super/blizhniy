@@ -30,3 +30,20 @@ test('a delayed phone read cannot overwrite a newer profile save or another acco
   await assert.rejects(pending,{code:'SESSION_CHANGED'});const next=f.render(changeOwner?other:owner);if(changeOwner)assert.equal(next.profile,null);else assert.equal(next.profile.name,'New saved name');
  }
 });
+test('a same-owner session recheck keeps the draft tied to its original revision until explicit conflict recovery',async()=>{
+ const f=fixture();
+ f.render();await tick();
+ f.render().setSettingsDraft({...initial,name:'Draft name'});
+ f.render(null);
+ f.setRead(async()=>({profile:{...initial,city:'Армавир'},revision:'r2'}));
+ f.render();await tick();
+ const conflicted=f.render();
+ assert.equal(conflicted.settingsDraft.name,'Draft name');
+ assert.equal(conflicted.conflict,true);
+ await assert.rejects(conflicted.saveProfile(conflicted.settingsDraft),{code:'PROFILE_CHANGED'});
+ assert.equal(f.writes.length,0);
+ conflicted.clearSettingsDraft();
+ const recovered=f.render();
+ assert.equal(recovered.settingsDraft,null);
+ assert.equal(recovered.profile.city,'Армавир');
+});
