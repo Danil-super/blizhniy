@@ -2470,7 +2470,7 @@ function AvatarEditor({
     const nextProfile = { ...profile, ...patch };
 
     const saved = saveProfile ? await saveProfile(nextProfile) : await saveCabinetProfile(ownerKey, nextProfile);
-    if (saveProfile && avatarContext) avatarContext.clearSettingsDraft();
+    if (saveProfile && avatarContext) avatarContext.clearSavedSettings(profile);
     else onChange(saved);
   }
 
@@ -2731,7 +2731,7 @@ export function SettingsPanel({ identity, profile, onClose, saveProfile }: { ide
         const nextProfile = { ...form, name: sanitizePersonName(form.name).trim(), phone: form.phone.trim(), city: form.city.trim(), email: identity.email };
         if (!sortedCities.some(city => city.name === nextProfile.city)) throw new Error("Выберите город из списка.");
         const saved = await saveProfile(nextProfile);
-        if (cookie) cookie.clearSettingsDraft();
+        if (cookie) cookie.clearSavedSettings(form);
         else setForm(saved);
         setMessage("Настройки сохранены.");
         return;

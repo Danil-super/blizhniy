@@ -47,3 +47,16 @@ test('a same-owner session recheck keeps the draft tied to its original revision
  assert.equal(recovered.settingsDraft,null);
  assert.equal(recovered.profile.city,'Армавир');
 });
+test('a completed settings write only clears the draft that was submitted',async()=>{
+ const f=fixture();f.render();await tick();
+ const value=f.render(),first={...initial,name:'First edit'},later={...initial,name:'Further edit'};
+ value.setSettingsDraft(first);
+ const selection={draft:{src:'fixture',zoom:1,offsetX:0,offsetY:0},imageSize:{width:50,height:50}};
+ value.setAvatarDraft(selection);
+ value.setSettingsDraft(later);
+ value.clearSavedSettings(first);
+ assert.equal(f.render().settingsDraft,later);
+ value.clearSavedSettings(later);
+ assert.equal(f.render().settingsDraft,null);
+ assert.equal(f.render().avatarDraft,selection);
+});

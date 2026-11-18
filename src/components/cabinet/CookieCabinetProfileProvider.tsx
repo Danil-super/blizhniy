@@ -11,7 +11,7 @@ export type AvatarCropSelection = {draft:{src:string;zoom:number;offsetX:number;
 type AvatarPreparation = {loading:boolean;message:string};
 type Value = Snapshot & { saveProfile: (profile: CabinetProfile) => Promise<CabinetProfile>; reload: () => void;
   refreshVerifiedPhone: () => Promise<void>;
-  settingsDraft: CabinetProfile | null; setSettingsDraft: (profile: CabinetProfile) => void; clearSettingsDraft: () => void;
+  settingsDraft: CabinetProfile | null; setSettingsDraft: (profile: CabinetProfile) => void; clearSettingsDraft: () => void; clearSavedSettings: (submitted: CabinetProfile) => void;
   avatarDraft: AvatarCropSelection|null; setAvatarDraft:(value:AvatarCropSelection|null)=>void;
   avatarPreparation:AvatarPreparation|null;
   prepareAvatarSelection:(prepare:()=>Promise<AvatarCropSelection>)=>Promise<AvatarCropSelection|null> };
@@ -137,6 +137,9 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
       setSettings(current => ({owner, profile, revision: current?.owner === owner ? current.revision : revision}));
     },
     clearSettingsDraft,
+    clearSavedSettings: submitted => {
+      setSettings(current => current?.owner === owner && current?.profile === submitted ? null : current);
+    },
     // Selection is private, owner-scoped UI memory, never a saved profile or a
     // write authorization. Unknown writes still require a fresh profile read.
     avatarDraft: owner&&avatar?.owner===owner?avatar.value:null,
