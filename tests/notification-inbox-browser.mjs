@@ -34,6 +34,18 @@ test('primary notification inbox renders real production components with isolate
    await page.goto(origin+'/tarify');await page.getByRole('button',{name:'Уведомления',exact:true}).click();
    const panel=page.getByRole('region',{name:'Личные уведомления',exact:true});await panel.getByText('Синтетическое событие',{exact:true}).waitFor();return{context,page,state,panel};
   }
+  await suite.test('reopening the bell displays events received while it was closed',async()=>{
+   const {context,page,state,panel}=await fixture();
+   try{
+    await panel.getByRole('button',{name:'Закрыть уведомления'}).click();
+    const readsBeforeOpen=state.reads;
+    state.items.unshift(item(other,'Новая заявка на бронирование'));
+    await page.getByRole('button',{name:'Уведомления',exact:true}).click();
+    await panel.getByText('Новая заявка на бронирование',{exact:true}).waitFor();
+    assert.equal(state.reads,readsBeforeOpen+1);
+    assert.equal(state.writes.length,0);
+   }finally{await context.close();}
+  });
   await suite.test('read/dismiss affect only shown events and refresh real server state without legacy traffic',async()=>{
    const {context,page,state,panel}=await fixture();try{
     await panel.getByRole('button',{name:'Прочитать показанные',exact:true}).click();await page.waitForFunction(()=>document.querySelector('[aria-label="Личные уведомления"]')?.textContent.includes('Прочитано'));
