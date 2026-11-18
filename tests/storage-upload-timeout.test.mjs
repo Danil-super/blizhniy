@@ -137,3 +137,45 @@ test("confirmed upload retains its receipt even if discarding the response body 
   const receipt = await storage.uploadMediaFile(imageFile(), "listings", "owner");
   assert.equal(receipt.size, 3);
 });
+
+test("a dropped upload response is recovered only from matching object metadata", async (t) => {
+  const storage = loadStorage({
+    withServerRequestTimeout: (_timeout, callback) => callback(new AbortController().signal),
+  });
+  let current;
+  let fault;
+  let failStatus;
+  let writes = 0;
+  let reads = 0;
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    if (init.method === "POST") {
+      writes++;
+      const prefix = environment.NEXT_PUBLIC_SUPABASE_URL + "/storage/v1/object/blizhniy-media/";
+      current = { name: url.slice(prefix.length), bucket_id: "blizhniy-media", content_type: "image/png",
+        size: 3, metadata: JSON.parse(Buffer.from(init.headers["x-metadata"], "base64").toString()) };
+      if (failStatus) return new Response(null, {status: failStatus});
+      throw Error("reply lost after commit");
+    }
+    reads++;
+    assert.equal(init.redirect, "error");
+    assert.equal(init.cache, "no-store");
+    assert.equal(url, environment.NEXT_PUBLIC_SUPABASE_URL + "/storage/v1/object/info/authenticated/blizhniy-media/" + current.name);
+    if (fault === "missing") return new Response(null, {status:404});
+    if (fault === "bad-json") return new Response("truncated json");
+    if (fault === "oversize") return Response.json({...current, padding:"x".repeat(32768)});
+    if (fault === "different") return Response.json({...current, metadata:{uploadAttempt:"other"}});
+    if (fault === "wrong-size") return Response.json({...current, size:42});
+    return Response.json(current);
+  });
+  const upload = () => storage.uploadMediaFile(imageFile(), "listings", "owner");
+  for (failStatus of [0, 502]) {
+    assert.equal((await upload()).path, current.name);
+  }
+  for (fault of ["missing", "bad-json", "oversize", "different", "wrong-size"]) {
+    await assert.rejects(upload(), /Не удалось загрузить файл/);
+  }
+  failStatus = 409;
+  await assert.rejects(upload(), /Не удалось загрузить файл/);
+  assert.equal(writes, 8);
+  assert.equal(reads, 7);
+});

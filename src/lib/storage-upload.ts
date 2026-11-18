@@ -106,6 +106,39 @@ export async function removeUploadedMedia(paths: string[], folder: UploadFolder,
   });
 }
 
+async function confirmStoredPhoto(path: string, file: File, attempt: string, headers: HeadersInit) {
+  return withServerRequestTimeout(3000, async signal => {
+    const url = getSupabaseUrl() + "/storage/v1/object/info/authenticated/" + mediaBucketName + "/" + path;
+    const response = await fetch(url, { headers, signal, cache: "no-store", redirect: "error" });
+    if (!response.ok || !response.body) {
+      void response.body?.cancel().catch(() => undefined);
+      return false;
+    }
+
+    // Metadata for our upload is small; a proxy error page must also stay bounded.
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > 8192) {
+          void reader.cancel().catch(() => undefined);
+          return false;
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const info = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return info?.metadata?.uploadAttempt === attempt && info.name === path &&
+      info.bucket_id === mediaBucketName && info.size === file.size && info.content_type === file.type;
+  });
+}
+
 export async function uploadMediaFile(file: File, folder: UploadFolder, userId: string): Promise<UploadedMedia> {
   if (!canUploadMediaToStorage()) {
     throw new Error("Supabase Storage is not configured");
@@ -119,13 +152,15 @@ export async function uploadMediaFile(file: File, folder: UploadFolder, userId: 
   const uploadUrl = `${baseUrl}/storage/v1/object/${mediaBucketName}/${path}`;
   const fileBody = await file.arrayBuffer();
 
+  const attempt = crypto.randomUUID();
+  const credentials = { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` };
   try {
-    await withServerRequestTimeout(mediaUploadTimeoutMs, async (signal) => {
+    const status = await withServerRequestTimeout(mediaUploadTimeoutMs, async (signal) => {
       const response = await fetch(uploadUrl, {
         body: fileBody,
         headers: {
-          apikey: serviceRoleKey,
-          Authorization: `Bearer ${serviceRoleKey}`,
+          ...credentials,
+          "x-metadata": Buffer.from(JSON.stringify({ uploadAttempt: attempt })).toString("base64"),
           "Cache-Control": "31536000",
           "Content-Type": file.type,
           "x-upsert": "false",
@@ -136,10 +171,14 @@ export async function uploadMediaFile(file: File, folder: UploadFolder, userId: 
       });
 
       void response.body?.cancel().catch(() => undefined);
-      if (!response.ok) {
-        throw new Error("Storage upload failed");
+      return response.ok ? 200 : response.status;
+    }).catch(() => 0);
+    if (status !== 200) {
+      const uncertain = status === 0 || status === 408 || status >= 500;
+      if (!uncertain || !await confirmStoredPhoto(path, file, attempt, credentials)) {
+        throw new Error("Storage upload unconfirmed");
       }
-    });
+    }
   } catch {
     // The provider response is not user-facing and can contain infrastructure
     // details. Keep both timeouts and upstream failures safe to retry.
