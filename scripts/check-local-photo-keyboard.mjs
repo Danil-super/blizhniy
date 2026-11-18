@@ -69,9 +69,21 @@ try{
  phase='avatar';await page.goto(state.origin+'/cabinet');await page.getByRole('button',{name:'Настройки',exact:true}).click();
  const avatarOpener=page.getByRole('button',{name:'Выбрать',exact:true});await avatarOpener.focus();await page.locator('input[type=file]').setInputFiles({name:'avatar-keyboard.png',mimeType:'image/png',buffer:png});
  const avatar=page.getByRole('dialog',{name:'Выберите область аватарки',exact:true});await moveAndReset(avatar);await tabCycle(avatar);await audit(avatar);await page.keyboard.press('Escape');await avatar.waitFor({state:'detached'});assert.equal(await avatarOpener.evaluate(node=>node===document.activeElement),true);results.push({flow:'avatar-cancel'});
- phase='gallery';await page.goto(state.origin+'/rabota/zakazy');const links=await page.locator('a[href^="/rabota/zakazy/"]').evaluateAll(nodes=>[...new Set(nodes.map(node=>node.getAttribute('href')))].slice(0,24));
- let galleryUrl;
- for(const link of links){if(!/^\/rabota\/zakazy\/[a-f0-9-]{36}$/.test(link))continue;await page.goto(state.origin+link);if(await page.getByRole('button',{name:'Показать фото 2',exact:true}).count()){galleryUrl=link;break;}}
+ phase='gallery';
+ let galleryUrl, catalogPath='/rabota/zakazy';
+ const visited=new Set(), deadline=performance.now()+60_000;
+ while(catalogPath&&!galleryUrl){
+  assert.ok(performance.now()<deadline,'find a published two-photo fixture within one minute');
+  assert.ok(!visited.has(catalogPath),'catalog pagination advances');visited.add(catalogPath);
+  await page.goto(state.origin+catalogPath);
+  const links=await page.locator('a[href^="/rabota/zakazy/"]').evaluateAll(nodes=>[...new Set(nodes.map(node=>node.getAttribute('href')).filter(href=>/^\/rabota\/zakazy\/[a-f0-9-]{36}$/.test(href)))]);
+  const next=page.getByRole('navigation',{name:'Страницы заказов',exact:true}).getByRole('link',{name:'Далее',exact:true});
+  catalogPath=await next.count()?await next.getAttribute('href'):null;
+  if(catalogPath)assert.match(catalogPath,/^\/rabota\/zakazy\?page=\d+$/);
+  for(const link of links){
+   assert.ok(performance.now()<deadline,'find a published two-photo fixture within one minute');
+   await page.goto(state.origin+link);if(await page.getByRole('button',{name:'Показать фото 2',exact:true}).count()){galleryUrl=link;break;}}
+ }
  assert.ok(galleryUrl,'owned fixture needs a published order with two photos');
  for(const width of [320,1440]){
   await page.setViewportSize({width,height:700});await page.goto(state.origin+galleryUrl);
