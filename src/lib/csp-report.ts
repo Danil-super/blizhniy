@@ -4,6 +4,32 @@ type ReportEvent = {event:'csp_violation';source:'untrusted-browser';directive:t
 class ReportFailure extends Error { constructor(readonly status:number){super('Invalid CSP report');} }
 const reply=(status:number)=>new Response(null,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"}});
 
+function isRecord(value:unknown):value is Record<string,unknown>{
+  return typeof value==='object'&&value!==null&&!Array.isArray(value);
+}
+
+function readEvent(body:unknown,modern:boolean):ReportEvent{
+  if(!isRecord(body))throw new ReportFailure(400);
+  const directive=directives.find(item=>item===body[modern?'effectiveDirective':'effective-directive']);
+  const disposition=body.disposition;
+  if(!directive||disposition!=='report'&&disposition!=='enforce')throw new ReportFailure(400);
+  const blocked=body[modern?'blockedURL':'blocked-uri'];
+  return {event:'csp_violation',source:'untrusted-browser',directive,disposition,
+    blocked:blocked==='inline'||blocked==='eval'?blocked:typeof blocked==='string'&&/^https?:\/\//.test(blocked)?'url':'other'};
+}
+
+function readEvents(value:unknown,modern:boolean):ReportEvent[]{
+  if(modern){
+    if(!Array.isArray(value)||!value.length)throw new ReportFailure(400);
+    return value.map(report=>{
+      if(!isRecord(report)||report.type!=='csp-violation')throw new ReportFailure(400);
+      return readEvent(report.body,true);
+    });
+  }
+  if(!isRecord(value)||Object.keys(value).length!==1||!Object.hasOwn(value,'csp-report'))throw new ReportFailure(400);
+  return [readEvent(value['csp-report'],false)];
+}
+
 /** Public, untrusted observations only. No URL/sample/policy/IP/cookie is retained or logged. */
 export function createCspReportHandler(config:{origin:string},audit:(event:ReportEvent)=>void=event=>console.info(JSON.stringify(event)),now=Date.now,deadlineMs=1000){
   if(typeof window!=='undefined'||!Number.isInteger(deadlineMs)||deadlineMs<10||deadlineMs>1000)throw new Error('Invalid report runtime');
@@ -16,7 +42,8 @@ export function createCspReportHandler(config:{origin:string},audit:(event:Repor
       if(request.headers.get('host')!==host||new URL(request.url).search)throw new ReportFailure(403);
       const origin=request.headers.get('origin'),site=request.headers.get('sec-fetch-site');
       if(origin&&origin!==config.origin||site&&site!=='same-origin'||!origin&&site!=='same-origin')throw new ReportFailure(403);
-      if(!/^application\/csp-report(?:\s*;\s*charset=utf-8)?$/i.test(request.headers.get('content-type')??''))throw new ReportFailure(415);
+      const media=/^application\/(csp-report|reports\+json)(?:\s*;\s*charset=utf-8)?$/i.exec(request.headers.get('content-type')??'');
+      if(!media)throw new ReportFailure(415);
       const length=request.headers.get('content-length');
       if(length&&(!/^\d+$/.test(length)||Number(length)>8192))throw new ReportFailure(413);
       if(!request.body)throw new ReportFailure(400);
@@ -33,13 +60,12 @@ export function createCspReportHandler(config:{origin:string},audit:(event:Repor
         try{value=JSON.parse(text);}catch{throw new ReportFailure(400);}
       }catch(error){if(error instanceof ReportFailure)throw error;throw new ReportFailure(400);}
       finally{if(timer)clearTimeout(timer);if(!complete)void reader.cancel().catch(()=>{});reader.releaseLock();}
-      if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==1||!Object.hasOwn(value,'csp-report'))throw new ReportFailure(400);
-      const raw=(value as Record<string,unknown>)['csp-report'];if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new ReportFailure(400);
-      const report=raw as Record<string,unknown>,directive=directives.find(item=>item===report['effective-directive']),disposition=report.disposition;
-      if(!directive||disposition!=='report'&&disposition!=='enforce')throw new ReportFailure(400);
-      const blocked=report['blocked-uri'],category=blocked==='inline'||blocked==='eval'?blocked:typeof blocked==='string'&&/^https?:\/\//.test(blocked)?'url':'other';
-      const key=`${directive}:${disposition}`,time=now(),previous=last.get(key);
-      if(previous===undefined||time-previous>=60000){audit({event:'csp_violation',source:'untrusted-browser',directive,disposition,blocked:category});last.set(key,time);}
+      const events=readEvents(value,media[1].toLowerCase()==='reports+json');
+      const time=now();
+      for(const event of events){
+        const key=`${event.directive}:${event.disposition}`,previous=last.get(key);
+        if(previous===undefined||time-previous>=60000){audit(event);last.set(key,time);}
+      }
       return reply(204);
     }catch(error){return reply(error instanceof ReportFailure?error.status:503);}
     finally{if(admitted)active--;}
