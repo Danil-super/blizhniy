@@ -36,3 +36,16 @@ test('both unoptimized hero source files are real WebP and remain below300KiB',(
   assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,12),'WEBP');assert.ok(statSync(file).size<300*1024);
  }
 });
+
+test('only the first image on the catalog landing page loads with high priority', async () => {
+  const {CategoryGrid} = load('CategoryGrid');
+  const html = renderToStaticMarkup(await CategoryGrid({variant: 'grid'}));
+  const images = html.match(/<img [^>]+>/g) ?? [];
+  assert.equal(images.length, 3);
+  assert.match(images[0], /loading="eager"/);
+  assert.match(images[0], /fetchPriority="high"/i);
+  for (const image of images.slice(1)) {
+    assert.match(image, /loading="lazy"/);
+    assert.doesNotMatch(image, /fetchPriority="high"/i);
+  }
+});

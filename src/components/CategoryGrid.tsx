@@ -307,6 +307,7 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2">
         {categoryTiles.map((category, index) => {
           const tone = toneClasses[category.tone];
+          const isFirstCatalogImage = variant === "grid" && index === 0;
           const isLastOddCard = categoryTiles.length % 2 === 1 && index === categoryTiles.length - 1;
           const { props: image } = getImageProps({
             src: category.imageUrl,
@@ -329,7 +330,8 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
                   className={`absolute inset-y-0 right-0 h-full w-[124%] max-w-none rounded-[22px] object-cover brightness-[1.04] contrast-[1.12] saturate-[1.16] transition duration-500 [clip-path:inset(0_round_22px)] [transform:translateZ(0)] group-hover:scale-[1.02] sm:w-[108%] sm:rounded-[26px] sm:[clip-path:inset(0_round_26px)] lg:w-[104%] text-transparent ${category.imagePositionClassName ?? "object-right"}`}
                   decoding="async"
                   height={image.height}
-                  loading="lazy"
+                  fetchPriority={isFirstCatalogImage ? "high" : undefined}
+                  loading={isFirstCatalogImage ? "eager" : "lazy"}
                   sizes={image.sizes}
                   srcSet={image.srcSet}
                   src={image.src}
