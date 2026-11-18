@@ -37,13 +37,14 @@ export function SpecialistProfilePanel({owner,visible}:{owner:string;visible:boo
   return()=>controller.abort();
  },[owner,retry]);
  const form=snapshot?.form.kind==='specialist'?snapshot.form:null;
+ const profileReady=!!profile&&!context?.loading&&!context?.error;
  const messenger=form?normalizeMessengerHref(form.messengerUrl??undefined):null;
  return <div hidden={!visible} inert={!visible} className="mx-auto w-full min-w-0 max-w-3xl">
   {busy?<p role="status" className="py-4 text-slate-700">Загружаем вашу анкету…</p>:error?<div className="max-w-3xl rounded-xl border border-rose-200 bg-white p-4">
    <p role="alert" className="break-words text-rose-800">{error}</p><button type="button" className={`${draftButton} mt-3`} onClick={()=>{if(visible)setRetry(value=>value+1);}}>Повторить загрузку</button>
-  </div>:!loaded?null:!profile||context?.loading||context?.error?context?.ownerId===owner&&context.error?
+  </div>:!loaded?null:!profileReady?context?.ownerId===owner&&context.error?
    <CabinetProfileFailure message={context.error} reload={context.reload}/>:<p role="status">Загружаем данные профиля…</p>:
-   !snapshot?<PrimaryServicePublicationEditor kind="specialist" embedded/>:form&&<section aria-label="Моя анкета" className="max-w-3xl rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+   snapshot&&form&&<section aria-label="Моя анкета" className="max-w-3xl rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
     <header className="flex min-w-0 flex-wrap items-center gap-3">
      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-50 text-2xl font-bold text-blue-800">
       {profile.avatarDataUrl?<StoredMediaImage src={profile.avatarDataUrl} alt="Фото из профиля" width={64} height={64} className="h-full w-full object-cover"/>:<span aria-hidden="true">{profile.name.slice(0,1)}</span>}
@@ -60,5 +61,8 @@ export function SpecialistProfilePanel({owner,visible}:{owner:string;visible:boo
     <SpecialistApplicationStatus form={{...form,title:profile.name}}/>
     {checkout&&<><PublicationPlacementPeriod publishedAt={snapshot.publishedAt} expiresAt={snapshot.expiresAt} status={snapshot.status}/><ServiceModerationStatus owner={owner} snapshot={snapshot}/></>}
    </section>}
+  {loaded&&!busy&&!error&&!snapshot&&<div hidden={!profileReady} inert={!profileReady}>
+   <PrimaryServicePublicationEditor kind="specialist" embedded/>
+  </div>}
  </div>;
 }
