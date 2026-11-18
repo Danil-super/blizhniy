@@ -53,7 +53,13 @@ export function WorkPublicationForm({owner,kind,initial,onSaved,onDirtyChange}:{
    <button type="button" data-cabinet-save className={draftButton} disabled={save.busy||save.uncertain||save.lockedAction==='submit'} onClick={()=>void save.start(true)}>{save.busy?'Сохраняем…':paidEdit?'Сохранить изменения':'Сохранить черновик'}</button>
    {(!initial||localPayment&&!initial.paid)&&<button type="submit" className={`${draftButton} bg-brand-blue text-white`} disabled={save.busy||save.uncertain||save.lockedAction==='draft'||localPayment&&!simulation}>{save.busy?'Сохраняем…':localPayment?(kind==='workRequest'?'Оплатить':'Перейти к оплате'):'Отправить на модерацию'}</button>}
   </div>
-  <p className="text-sm text-slate-600">{paidEdit?'Изменения сохранятся без повторной оплаты. Срок размещения не изменится.':localPayment?`Сначала сохраним данные и фотографии, затем откроем оплату. ${kind==='vacancy'?'Вакансия появится':'Заказ появится'} после подтверждения оплаты. ${simulation?'На локальном стенде списаний нет.':'TEST-оплата новых вакансий и заказов пока не включена.'}`:'Сначала бесплатная проверка модератором. Сохранение и отправка не списывают деньги и не публикуют материал.'}</p>
+  <p className="text-sm text-slate-600">{paidEdit
+   ? 'Изменения сохранятся без повторной оплаты. Срок размещения не изменится.'
+   : !localPayment
+   ? 'Сначала бесплатная проверка модератором. Сохранение и отправка не списывают деньги и не публикуют материал.'
+   : simulation
+   ? 'Сначала сохраним данные и фотографии, затем откроем тестовую оплату без списания денег.'
+   : 'Сохраните черновик. Оплата из этой формы пока недоступна.'}</p>
  </>;
  return <form ref={formRef} className="grid min-w-0 gap-4 [&_a]:text-blue-800 [&_.uppercase]:text-blue-800" aria-label={initial?'Редактирование публикации':kind==='vacancy'?'Создание вакансии':'Создание заказа'}
   onInput={()=>{setDirty(true);onDirtyChange?.(true);}} onChange={()=>{setDirty(true);onDirtyChange?.(true);}} onSubmit={event=>{event.preventDefault();void save.start(paidEdit||(!localPayment&&!!initial));}}>
