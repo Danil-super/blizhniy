@@ -1,6 +1,7 @@
 import {withAppSessionTransaction,AppSessionAccessError} from './app-session-transaction';
 import {parseListingDraftId} from './listing-draft-contract.ts';
 import {parsePaymentHistoryCursor,parsePaymentHistoryPage,paymentHistoryPageSize,type PaymentHistoryItem,type PaymentHistoryCursor} from './payment-history-contract.ts';
+import {specialistTestShop} from './specialist-checkout-config.ts';
 import type {PostgresDatabase} from './postgres';
 
 /** History reads never dispatch, verify or refund a payment. */
@@ -11,7 +12,7 @@ export class PostgresPaymentHistoryStore{
   return withAppSessionTransaction(this.db,token,async(tx,user)=>{
    if(user.id!==owner)throw new AppSessionAccessError();
    const {readPlacementOrder}=await import('./postgres-listing-checkout');
-   return readPlacementOrder(tx,user.id,id,'specialist',{includeTestFlag:true});
+   return readPlacementOrder(tx,user.id,id,'specialist',{includeTestFlag:true,specialistShop:specialistTestShop(user.id)});
   });
  }
  async list(token:string,expectedOwnerId:string,cursor:PaymentHistoryCursor|null){

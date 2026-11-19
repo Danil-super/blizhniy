@@ -2,9 +2,10 @@
 import {getCabinetMigrationPlan} from './cabinet-release-plan.mjs';
 import {getBootstrapPlan} from './postgres-migration-plan.mjs';
 import {assertFinancialCatalogPrivileges} from './financial-catalog-privileges.mjs';
+import {getSpecialistCheckoutMigration,hasSpecialistCheckoutObjects} from './specialist-checkout-release.mjs';
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 import {assertRefundSchema} from './refund-worker-schema.mjs';
-import {getPublicationTestMigrationPlan,assertPublicationTestSchema} from './publication-test-release-plan.mjs';
+import {getPublicationTestMigrationPlan,assertPublicationTestSchema,assertExtendedPublicationTestSchema,hasInboxPreferenceObjects,getInboxPreferenceMigration,getSpecialistAccountTestMigration} from './publication-test-release-plan.mjs';
 
 const role='blizhniy_payment_reconciler';
 const locks=['users','payment_checkout_intents','categories','cities','media_objects','listing_moderation'];
@@ -52,11 +53,12 @@ export function getPaymentReconciliationRolePlan(database,{cabinet=false,publica
  * Approved managed-PG exception: bootstrap postgres -> gen_user ADMIN only, never INHERIT/SET.
  * It does not authenticate a merchant or turn TEST into database row-level isolation.
  */
-export async function verifyPaymentReconciliationDatabase(db,{database,publicationTest=false}={}) {
+export async function verifyPaymentReconciliationDatabase(db,{database,publicationTest=false,specialistAccountTest=false}={}) {
  try {
-  if(!validDatabase(database)||typeof publicationTest!=='boolean')throw new Error('Invalid reconciliation target');
+  if(!validDatabase(database)||typeof publicationTest!=='boolean'||typeof specialistAccountTest!=='boolean'||specialistAccountTest&&!publicationTest)throw new Error('Invalid reconciliation target');
   const plan=approved();
   await db.transaction(async tx=>{
+   if(publicationTest)await tx.query('set transaction isolation level repeatable read');
    await tx.query("set local statement_timeout='5s'");
    await tx.query("set local lock_timeout='1s'");
    await tx.query('set local search_path=pg_catalog');
@@ -87,9 +89,18 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
    if(identity.refund_installed!==refundSchema)throw new Error('Refund schema and journal disagree');
    const cabinetSchema=publicationTest||refundSchema||journal.length===cabinetJournal.length||journal.length===deletionJournal.length;
    const expectedJournal=publicationTest?getPublicationTestMigrationPlan():refundSchema?refundJournal:journal.length===deletionJournal.length?deletionJournal:journal.length===cabinetJournal.length?cabinetJournal:journal.length===plan.length+1?getBootstrapPlan({includeListingContactMethod:true}):plan;
+   const specialistTerms=publicationTest&&await hasSpecialistCheckoutObjects(tx);
+   const inbox=publicationTest&&await hasInboxPreferenceObjects(tx);
+   const enrollment=publicationTest&&(await tx.query(`select to_regclass('app.specialist_test_enrollment') is not null
+    or exists(select 1 from pg_proc where pronamespace='app'::regnamespace and proname in ('check_specialist_test_dispatch','require_specialist_test_terms')) as installed`)).rows[0].installed;
+   if(enrollment&&!specialistTerms||specialistAccountTest&&!enrollment)throw Error('Missing specialist TEST schema');
+   if(specialistTerms)expectedJournal.push(getSpecialistCheckoutMigration());
+   if(inbox)expectedJournal.push(getInboxPreferenceMigration());
+   if(enrollment)expectedJournal.push(getSpecialistAccountTestMigration());
    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
    if(refundSchema)await assertRefundSchema(tx,schema);
    if(publicationTest)await assertPublicationTestSchema(tx);
+   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment});
    await assertFinancialCatalogPrivileges(tx);
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable
@@ -98,6 +109,9 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
     where n.nspname not in ('pg_catalog','information_schema') and c.relkind in ('r','p','v','m','f','t')
      and a.attnum>0 and not a.attisdropped and has_column_privilege(c.oid,a.attnum,p.privilege) limit 10001`)).rows;
    const expected=new Set(Object.entries(publicationTest?publicationPolicy:cabinetSchema?cabinetPolicy:policy).flatMap(([table,access])=>Object.entries(access).flatMap(([privilege,names])=>names.map(name=>`${table}.${name}:${privilege.toUpperCase()}`))));
+   // While rolling out or disabling specialist purchases, only this single additional read is permitted.
+   const termsRead='app.specialist_checkout_terms.intent_id:SELECT';
+   if(enrollment&&(specialistAccountTest||actual.some(item=>item.key===termsRead)))expected.add(termsRead);
    if(actual.length!==expected.size||actual.some(item=>item.grantable!==false||!expected.delete(item.key))||expected.size)throw new Error('Invalid column privileges');
    const dangerous=await tx.query(`select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname not in ('pg_catalog','information_schema') and

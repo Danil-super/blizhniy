@@ -1,4 +1,5 @@
 "use client";
+import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {createContext,useContext,type ReactNode} from 'react';
 const Context=createContext(false),SimulationContext=createContext(false),WorkActionsContext=createContext(false);
 const RenewalContext=createContext(false),ServiceCheckoutContext=createContext(false),SpecialistCheckoutContext=createContext(false);
@@ -11,4 +12,4 @@ export function usePlacementRenewals(){return useContext(RenewalContext);}
 
 export function useServiceCheckout(){return useContext(ServiceCheckoutContext);}
 
-export function useSpecialistCheckout(){return useContext(SpecialistCheckoutContext);}
+export function useSpecialistCheckout(){const local=useContext(SpecialistCheckoutContext),account=usePrimaryAccountAuth();return local||account?.specialistTest===true;}

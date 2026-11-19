@@ -3,6 +3,7 @@ import type { LocalAccountUser } from "./local-account";
 export type AccountAuthSnapshot = {
   state: "loading" | "signed-out" | "signed-in" | "admin" | "unavailable";
   userId: string | null;
+  specialistTest?: true;
 };
 
 /** Display state only: resource permissions remain server-owned, never inferred from this cache. */
@@ -10,9 +11,9 @@ export function createAccountSessionState(session: () => Promise<LocalAccountUse
   let snapshot: AccountAuthSnapshot = { state: "loading", userId: null };
   let version = 0, changing = 0;
   const listeners = new Set<(value: AccountAuthSnapshot) => void>();
-  function publish(state: AccountAuthSnapshot["state"], userId: string | null = null) {
-    if (snapshot.state === state && snapshot.userId === userId) return;
-    snapshot = { state, userId };
+  function publish(state: AccountAuthSnapshot["state"], userId: string | null = null, specialistTest?:true) {
+    if (snapshot.state === state && snapshot.userId === userId && snapshot.specialistTest===specialistTest) return;
+    snapshot = { state, userId, ...(specialistTest?{specialistTest}:{}) };
     listeners.forEach(listener => listener(snapshot));
   }
   async function refresh(background = false) {
@@ -26,7 +27,7 @@ export function createAccountSessionState(session: () => Promise<LocalAccountUse
     try {
       const user = await session();
       if (user && (user.isBlocked !== false || !["user", "admin"].includes(user.role))) throw new Error("Invalid session view");
-      if (current === version) publish(user ? user.role === "admin" ? "admin" : "signed-in" : "signed-out", user?.id ?? null);
+      if (current === version) publish(user ? user.role === "admin" ? "admin" : "signed-in" : "signed-out", user?.id ?? null,user?.specialistTest);
     } catch {
       if (current === version && !anonymous) publish("unavailable");
     }

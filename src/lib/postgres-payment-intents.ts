@@ -36,7 +36,12 @@ export function parsePaymentIntent(input:unknown):PaymentIntent{
  if(amount.value!==intent.amount||amount.currency!=='RUB'||body.capture!==true)fail();
  const metadata=object(body.metadata);keys(metadata,['localPaymentId','targetId','targetType','tariffId'],['publicationMode']);
  if(metadata.localPaymentId!==intent.id||metadata.targetId!==intent.targetId||metadata.targetType!==intent.targetType||metadata.tariffId!==intent.tariffId)fail();
- if(Object.hasOwn(metadata,'publicationMode')&&(metadata.publicationMode!=='account-test-v1'||!intent.isTest||!['listing','vacancy','workRequest'].includes(intent.targetType)))fail();
+ if(Object.hasOwn(metadata,'publicationMode')){
+  const hostedSpecialist=metadata.publicationMode==='specialist-account-test-v1'&&intent.targetType==='specialist'&&
+   intent.tariffId==='specialist-publication'&&intent.durationDays!==null&&/^[1-9][0-9]{0,63}$/.test(intent.shopId)&&body.receipt!==undefined;
+  const otherPlacement=metadata.publicationMode==='account-test-v1'&&['listing','vacancy','workRequest'].includes(intent.targetType);
+  if(!intent.isTest||(!hostedSpecialist&&!otherPlacement))fail();
+ }
  const confirmation=object(body.confirmation);keys(confirmation,['type','return_url']);
  if(confirmation.type!=='redirect')fail();https(confirmation.return_url);
  if(body.description!==undefined&&(typeof body.description!=='string'||!body.description.isWellFormed()||body.description.length>128||/[\u0000-\u001f\u007f]/.test(body.description)))fail();

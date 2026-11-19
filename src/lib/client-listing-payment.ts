@@ -43,7 +43,10 @@ export function createListingPaymentClient(transport:typeof fetch,action:'order'
    const value=JSON.parse(text);
    if(response.status!==200){const codes:Record<string,number>={UNAUTHENTICATED:401,CHECKOUT_DISABLED:503,RATE_LIMITED:429},code=value?.error?.code;
     throw new ListingPaymentClientError(typeof code==='string'&&Object.hasOwn(codes,code)&&codes[code]===response.status?code:'UNKNOWN');}
-   return snapshot(value,id);
+   const result=snapshot(value,id);
+   if(action==='specialistOrder'&&result?.testPublication&&response.headers.get('X-Blizhniy-Specialist-Resume')==='1')
+    return {...result,canResumeSpecialist:true};
+   return result;
   }catch(error){if(error instanceof ListingPaymentClientError)throw error;throw new ListingPaymentClientError('UNKNOWN');}
  },
 };}

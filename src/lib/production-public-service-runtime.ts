@@ -2,7 +2,7 @@ import 'server-only';import {readProductionAuthConfig} from './production-auth-c
 import {PostgresPublicServiceStore} from './postgres-public-service';import {authJson} from './auth-http';import {getProductionMediaFileReader} from './production-media-runtime';
 import {createProductionPublicWorkPhotoHandler} from './production-public-work-photo-http';
 export async function getProductionPublicServiceStore(){
- const config=readProductionAuthConfig();if(!config)throw Error('Public services unavailable');const {db}=await getProductionAccountDatabase(config);return new PostgresPublicServiceStore(db,{specialistProfileIdentity:true});
+ const config=readProductionAuthConfig();if(!config)throw Error('Public services unavailable');const {db}=await getProductionAccountDatabase(config);return new PostgresPublicServiceStore(db,{specialistProfileIdentity:true,testPublicationLabels:true});
 }
 export async function handleProductionPublicServicePhoto(request:Request,publicationId:unknown,fileId:unknown){
  try{

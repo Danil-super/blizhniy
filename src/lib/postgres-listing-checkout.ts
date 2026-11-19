@@ -9,12 +9,12 @@ import type {PostgresDatabase,PostgresQueries} from './postgres';
 import {inspectWorkPurchase} from './vacancy-purchase-eligibility';
 import {readPostmoderationEnabled} from './listing-workflow-config';
 import {inspectSpecialistPurchase} from './specialist-purchase-eligibility';
-import {readSpecialistCheckoutEnabled} from './specialist-checkout-config';
+import {readSpecialistCheckoutEnabled,readSpecialistAccountTest} from './specialist-checkout-config';
 import {hashSessionToken} from './identity';
 
 export type ListingCheckoutConfig={shopId:string;isTest:boolean;siteOrigin:string;receiptVatCode:number|null};
 export type ListingPaymentOrder={id:string;creationKey:string;targetId:string;targetRevision:string;tariffId:string;amount:string;durationDays:number;status:'created'|'pending'|'succeeded'|'failed'|'refunded';createdAt:string};
-export type ListingPaymentSnapshot={order:ListingPaymentOrder;fulfillment:{publishedAt:string;expiresAt:string}|null;testPublication?:true;testOnly?:true};
+export type ListingPaymentSnapshot={order:ListingPaymentOrder;fulfillment:{publishedAt:string;expiresAt:string}|null;testPublication?:true;testOnly?:true;canResumeSpecialist?:true};
 type OrderRow=ListingPaymentOrder&{targetType:string};
 const columns=`o.id,o.creation_key as "creationKey",o.target_type as "targetType",o.target_id as "targetId",o.target_revision::text as "targetRevision",o.status,
  i.tariff_id as "tariffId",i.amount::text,i.duration_days as "durationDays",to_char(o.created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "createdAt"`;
@@ -26,7 +26,7 @@ function display(row:OrderRow,targetType='listing'):ListingPaymentOrder{
 
 /** Reads the purchased period and fulfillment from durable records, independently of checkout availability. */
 export async function readPlacementOrder(tx:PostgresQueries,owner:string,id:string,target:'listing'|'vacancy'|'workRequest'|'specialist',
- options:{merchant?:{shopId:string;isTest:boolean};renewals?:boolean;includeTestFlag?:boolean}):Promise<ListingPaymentSnapshot|null>{
+ options:{merchant?:{shopId:string;isTest:boolean};renewals?:boolean;includeTestFlag?:boolean;specialistShop?:string}):Promise<ListingPaymentSnapshot|null>{
  const merchant=options.merchant;
  // Owner history also runs on databases from before the optional specialist migration.
  const specialistTerms=target==='specialist'&&(merchant!==undefined||
@@ -34,7 +34,8 @@ export async function readPlacementOrder(tx:PostgresQueries,owner:string,id:stri
  const publicationMarker=target==='specialist'
   ?(specialistTerms?'exists(select 1 from app.specialist_checkout_terms admitted where admitted.intent_id=i.id)':'false')
   :"i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'";
- const row=(await tx.query<OrderRow&{publishedAt:string|null;expiresAt:string|null;testPublication:boolean;testOnly:boolean}>(`select ${columns},i.is_test as "testOnly",
+ const row=(await tx.query<OrderRow&{publishedAt:string|null;expiresAt:string|null;testPublication:boolean;testOnly:boolean;storedShop?:string;publicationMode?:string}>(`select ${columns},i.is_test as "testOnly",
+  ${options.specialistShop?`i.merchant_shop_id as "storedShop",i.request_body::jsonb#>>'{metadata,publicationMode}' as "publicationMode",`:''}
   coalesce(i.is_test and (${publicationMarker}),false) as "testPublication",
   to_char(${options.renewals?"greatest(f.published_at,f.expires_at-i.duration_days*interval '24 hours')":'f.published_at'} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
   to_char(f.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "expiresAt"
@@ -44,6 +45,7 @@ export async function readPlacementOrder(tx:PostgresQueries,owner:string,id:stri
   merchant?[id,owner,target,merchant.shopId,merchant.isTest]:[id,owner,target])).rows[0];
  if(!row)return null;
  return{order:display(row,target),fulfillment:row.publishedAt&&row.expiresAt?{publishedAt:row.publishedAt,expiresAt:row.expiresAt}:null,
+  ...(options.specialistShop&&row.testPublication&&row.storedShop===options.specialistShop&&row.publicationMode==='specialist-account-test-v1'&&['created','pending'].includes(row.status)?{canResumeSpecialist:true as const}:{}),
   ...(row.testPublication?{testPublication:true as const}:{}),...(options.includeTestFlag&&row.testOnly?{testOnly:true as const}:{})};
 }
 type Offer={id:string;name:string;amount:string;currency:'RUB';durationDays:number};
@@ -61,12 +63,20 @@ export class PostgresListingCheckoutStore{
   if(typeof window!=='undefined')throw new ListingCheckoutUnavailableError();
   if(policy.publicationTestOwner!==undefined&&(!config.isTest||parseListingDraftId(policy.publicationTestOwner)!==policy.publicationTestOwner||!policy.postmoderation||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
   this.targetType=policy.targetType??'listing';
-  if(this.targetType==='specialist'){
+  if(this.targetType==='specialist'&&policy.publicationTestOwner){
+   if(policy.renewals||!this.specialistEnabled(config))throw new ListingCheckoutUnavailableError();
+  }else if(this.targetType==='specialist'){
    readSpecialistCheckoutEnabled();
    if(process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||process.env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!=='https://127.0.0.1:3045'||!readPostmoderationEnabled()||!config.isTest||config.shopId!=='local-fixture-shop'||policy.renewals||policy.publicationTestOwner)throw new ListingCheckoutUnavailableError();
   }else if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!config.isTest||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
   if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!config.isTest||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled()))throw new ListingCheckoutUnavailableError();
   this.forms=new PostgresListingFormStore(db,{postmoderation:policy.renewals===true,renewals:policy.renewals===true});this.intents=new PostgresPaymentIntentStore(db);this.config={...config};
+ }
+ private specialistEnabled(config=this.config){
+  if(!this.policy.publicationTestOwner)return readSpecialistCheckoutEnabled();
+  const hosted=readSpecialistAccountTest();
+  return !!hosted&&hosted.merchant.ownerId===this.policy.publicationTestOwner&&hosted.checkout.shopId===config.shopId&&
+   hosted.checkout.siteOrigin===config.siteOrigin&&hosted.checkout.receiptVatCode===config.receiptVatCode&&config.isTest;
  }
  private owner<T>(token:string,expectedOwner:string,work:(tx:PostgresQueries,owner:string)=>Promise<T>){
   const owner=parseListingDraftId(expectedOwner);
@@ -126,7 +136,7 @@ export class PostgresListingCheckoutStore{
    ${this.policy.renewals?"(o.status in ('created','pending') or o.status='succeeded' and not exists(select 1 from app.payment_fulfillments f where f.intent_id=o.id))":"o.status in ('created','pending','succeeded')"}`,[owner,id])).rows[0];
  }
  async preview(token:string,owner:string,listingId:unknown,expectedRevision:unknown){
-  if(this.targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw new ListingCheckoutUnavailableError();
+  if(this.targetType==='specialist'&&!this.specialistEnabled())throw new ListingCheckoutUnavailableError();
   const id=parseListingDraftId(listingId),revision=parseListingDraftRevision(expectedRevision);
   return this.owner(token,owner,async(tx,actor)=>{
    const tariff=await this.inspected(tx,actor,id,revision),active=await this.active(tx,actor,id);
@@ -142,7 +152,7 @@ export class PostgresListingCheckoutStore{
   * A known provider ID remains recoverable after edits or tariff changes, never a new purchase.
   */
  async authorizeDispatch(token:string,owner:string,paymentId:unknown,requireCurrent=false):Promise<PaymentIntentBinding>{
-  if(this.targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw new ListingCheckoutUnavailableError();
+  if(this.targetType==='specialist'&&!this.specialistEnabled())throw new ListingCheckoutUnavailableError();
   const id=parseListingDraftId(paymentId);
   return this.owner(token,owner,async(tx,actor)=>{
    const row=(await tx.query<PaymentIntent&{status:string}>(`select i.id,i.owner_id as "ownerId",i.target_type as "targetType",i.target_id as "targetId",
@@ -155,7 +165,7 @@ export class PostgresListingCheckoutStore{
    if(!row)throw new ListingDraftAccessError();
    if(this.targetType==='specialist'&&(await tx.query('select intent_id from app.specialist_checkout_terms where intent_id=$1',[id])).rowCount!==1)throw new ListingCheckoutUnavailableError();
    const {status,...input}=row,intent=parsePaymentIntent(input);
-   if(this.policy.publicationTestOwner&&JSON.parse(intent.requestBody).metadata.publicationMode!=='account-test-v1')throw new ListingCheckoutUnavailableError();
+   if(this.policy.publicationTestOwner&&JSON.parse(intent.requestBody).metadata.publicationMode!==(this.targetType==='specialist'?'specialist-account-test-v1':'account-test-v1'))throw new ListingCheckoutUnavailableError();
    if(requireCurrent){
     const known=(await tx.query('select provider_payment_id from app.payment_provider_links where intent_id=$1',[id])).rowCount===1;
     if(!known){
@@ -192,10 +202,10 @@ export class PostgresListingCheckoutStore{
   return parsePaymentIntent({id,ownerId:owner,targetType:this.targetType,targetId:input.listingId,targetRevision:input.expectedRevision,
    tariffId:offer.id,amount:offer.amount,durationDays:offer.durationDays,shopId:this.config.shopId,isTest:this.config.isTest,
    requestBody:JSON.stringify({amount,capture:true,confirmation:{type:'redirect',return_url:`${origin}/oplata/${id}${this.targetType!=='listing'?'?type='+this.targetType:''}`},description,
-    metadata:{localPaymentId:id,targetId:input.listingId,targetType:this.targetType,tariffId:offer.id,...(this.policy.publicationTestOwner?{publicationMode:'account-test-v1'}:{})},...(receipt?{receipt}:{})})});
+    metadata:{localPaymentId:id,targetId:input.listingId,targetType:this.targetType,tariffId:offer.id,...(this.policy.publicationTestOwner?{publicationMode:this.targetType==='specialist'?'specialist-account-test-v1':'account-test-v1'}:{})},...(receipt?{receipt}:{})})});
  }
  async prepare(token:string,owner:string,value:unknown){
-  if(this.targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw new ListingCheckoutUnavailableError();
+  if(this.targetType==='specialist'&&!this.specialistEnabled())throw new ListingCheckoutUnavailableError();
   const input=parseListingCheckout(value);return this.owner(token,owner,async(tx,actor)=>{
    // A readback never rebuilds old receipts or silently swaps the original expected offer.
    const prior=await this.keyed(tx,actor,input.creationKey);

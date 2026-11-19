@@ -2,9 +2,9 @@ import {randomUUID} from 'node:crypto';
 import {parseListingDraftId} from './listing-draft-contract.ts';
 import type {PostgresDatabase} from './postgres';
 
-export type ReconciliationClaim={intentId:string;claimId:string;attempts:number;targetType?:'listing'|'vacancy'|'workRequest'};
+export type ReconciliationClaim={intentId:string;claimId:string;attempts:number;targetType?:'listing'|'vacancy'|'workRequest'|'specialist'};
 export type QueueAdmission = 'queued' | 'already_present';
-type Scope={shopId:string;isTest:boolean;publicationTestOwner?:string};
+type Scope={shopId:string;isTest:boolean;publicationTestOwner?:string;specialistAccountTest?:true};
 type Code='provider_pending'|'capture_required'|'processing_unavailable'|'publication_blocked'|'attempts_exhausted'|'phone_required';
 /** Already-known payment IDs only. No payment data, provider POST or financial writes. */
 export class PostgresPaymentReconciliationQueue{
@@ -13,11 +13,18 @@ export class PostgresPaymentReconciliationQueue{
  constructor(db:Pick<PostgresDatabase,'transaction'>,scope:Scope){
   if(typeof window!=='undefined'||!scope||typeof scope.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(scope.shopId)||typeof scope.isTest!=='boolean')throw new Error('Invalid reconciliation scope');
   if(scope.publicationTestOwner!==undefined&&(!scope.isTest||parseListingDraftId(scope.publicationTestOwner)!==scope.publicationTestOwner))throw new Error('Invalid publication TEST scope');
+  if(scope.specialistAccountTest!==undefined&&(scope.specialistAccountTest!==true||!scope.publicationTestOwner||!/^[1-9][0-9]{0,63}$/.test(scope.shopId)))throw new Error('Invalid specialist TEST scope');
   this.db=db;this.merchant={...scope};
  }
  private scope(){return[this.merchant.shopId,this.merchant.isTest];}
- private scoped(ownerParameter:number){return `i.merchant_shop_id=$1 and i.is_test=$2 and ${this.merchant.publicationTestOwner?
-  `i.target_type in ('listing','vacancy','workRequest') and i.owner_id=$${ownerParameter} and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'`:"i.target_type='listing'"}`;}
+ private scoped(ownerParameter:number){
+  const merchant='i.merchant_shop_id=$1 and i.is_test=$2';
+  if(!this.merchant.publicationTestOwner)return merchant+" and i.target_type='listing'";
+  const standard="i.target_type in ('listing','vacancy','workRequest') and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'";
+  const specialist=this.merchant.specialistAccountTest?` or (i.target_type='specialist' and i.request_body::jsonb->'metadata'->>'publicationMode'='specialist-account-test-v1'
+   and exists(select 1 from app.specialist_checkout_terms t where t.intent_id=i.id))`:'';
+  return `${merchant} and i.owner_id=$${ownerParameter} and ((${standard})${specialist})`;
+ }
  private values(...tail:unknown[]){return [...this.scope(),...tail,...(this.merchant.publicationTestOwner?[this.merchant.publicationTestOwner]:[])];}
  async discover():Promise<void>{
   if(!this.merchant.publicationTestOwner)throw new Error('Publication TEST scope required');
@@ -43,7 +50,7 @@ export class PostgresPaymentReconciliationQueue{
  }
  async claim():Promise<ReconciliationClaim|{exhausted:true}|null>{
   return this.db.transaction(async tx=>{
-   const row=(await tx.query<{intentId:string;claimId:string|null;attempts:number;targetType?:'listing'|'vacancy'|'workRequest'}>(`with candidate as (
+   const row=(await tx.query<{intentId:string;claimId:string|null;attempts:number;targetType?:ReconciliationClaim['targetType']}>(`with candidate as (
     select q.intent_id${this.merchant.publicationTestOwner?',i.target_type':''} from app.payment_reconciliation_jobs q join app.payment_checkout_intents i on i.id=q.intent_id
     where ${this.scoped(4)} and ((q.state='queued' and q.next_attempt_at<=clock_timestamp()) or (q.state='processing' and q.lease_until<=clock_timestamp()))
     order by case when q.state='processing' then q.lease_until else q.next_attempt_at end,q.intent_id limit 1 for update of q skip locked)
@@ -52,7 +59,7 @@ export class PostgresPaymentReconciliationQueue{
      lease_until=case when attempts>=12 then null else clock_timestamp()+interval '120 seconds' end,
      last_code=case when attempts>=12 then 'attempts_exhausted' else last_code end,attempts=least(12,attempts+1)
     from candidate c where q.intent_id=c.intent_id returning q.intent_id as "intentId",q.claim_id as "claimId",q.attempts${this.merchant.publicationTestOwner?',c.target_type as "targetType"':''}`,this.values(randomUUID()))).rows[0];
-   if(row?.claimId&&this.merchant.publicationTestOwner&&!['listing','vacancy','workRequest'].includes(row.targetType??''))throw new Error('Invalid publication TEST target');
+   if(row?.claimId&&this.merchant.publicationTestOwner&&!(row.targetType==='specialist'&&this.merchant.specialistAccountTest)&&!['listing','vacancy','workRequest'].includes(row.targetType??''))throw new Error('Invalid publication TEST target');
    return !row?null:row.claimId?{intentId:row.intentId,claimId:row.claimId,attempts:row.attempts,...(this.merchant.publicationTestOwner?{targetType:row.targetType}:{})}:{exhausted:true};
   });
  }

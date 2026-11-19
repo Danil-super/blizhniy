@@ -1,4 +1,4 @@
-export type LocalAccountUser = { id: string; email: string; role: "user" | "admin"; isBlocked: false };
+export type LocalAccountUser = { id: string; email: string; role: "user" | "admin"; isBlocked: false; specialistTest?:true };
 
 const errorStatuses: Record<string, number> = { UNAUTHENTICATED: 401, INVALID_CREDENTIALS: 401, RATE_LIMITED: 429,
   HTTPS_REQUIRED: 503, INVALID_INPUT: 422, AUTH_UNAVAILABLE: 503, SYNTHETIC_EMAIL_REQUIRED: 422, CAPTCHA_REQUIRED: 403 };
@@ -28,7 +28,7 @@ function userView(value: unknown, production: boolean): LocalAccountUser {
       !["user", "admin"].includes(row.role as string) || row.isBlocked !== false) throw new LocalAccountError("AUTH_UNAVAILABLE");
   return { id: row.id, email: row.email, role: row.role as "user" | "admin", isBlocked: false };
 }
-async function request(action: "login" | "session" | "logout", body: unknown, anonymousView = false): Promise<Record<string, unknown>> {
+async function request(action: "login" | "session" | "logout", body: unknown, anonymousView = false, onSuccess?: (response:Response)=>void): Promise<Record<string, unknown>> {
   try {
     const response = await fetch(`/api/account/${action}`, { method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error",
       signal: AbortSignal.timeout(10000), headers: { "Content-Type": "application/json", "X-Blizhniy-Request": "1", ...(anonymousView ? { "X-Blizhniy-Session-View": "1" } : {}) }, body: JSON.stringify(body) });
@@ -40,6 +40,7 @@ async function request(action: "login" | "session" | "logout", body: unknown, an
       throw new LocalAccountError(error.code);
     }
     if (response.status !== 200) throw new LocalAccountError("AUTH_UNAVAILABLE");
+    onSuccess?.(response);
     return payload;
   } catch (error) {
     if (error instanceof LocalAccountError) throw error;
@@ -56,10 +57,12 @@ function accountClient(production: boolean) { return {
   },
   async session(): Promise<LocalAccountUser | null> {
     try {
-      const payload = await request("session", {}, production);
+      let specialistTest=false;
+      const payload = await request("session", {}, production, response=>{specialistTest=production&&response.headers?.get("X-Blizhniy-Specialist-Test")==="1";});
       if (Object.keys(payload).length !== 1) throw new LocalAccountError("AUTH_UNAVAILABLE");
       if (production && payload.user === null) return null;
-      return userView(payload.user, production);
+      const user=userView(payload.user, production);
+      return specialistTest?{...user,specialistTest:true}:user;
     } catch (error) {
       if (error instanceof LocalAccountError && error.code === "UNAUTHENTICATED") return null;
       throw error;

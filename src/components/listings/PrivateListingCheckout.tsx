@@ -8,10 +8,12 @@ import {accountTestPayment} from '@/lib/client-account-test-payment';
 import {specialistPayment} from '@/lib/client-specialist-payment';
 import {ListingPaymentClientError} from '@/lib/client-listing-payment';
 import {startListingPayment,type ListingCheckoutAttempt} from '@/lib/listing-payment-start';
+import {useLocalPaymentSimulation} from './ListingWorkflowProvider';
 import {draftButton} from './PrivateDraftEditor';
 
 export type {ListingCheckoutAttempt} from '@/lib/listing-payment-start';
-export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=false,specialist=false}:{owner:string;id:string;revision:string;attempt:ListingCheckoutAttempt;localPreview?:boolean;specialist?:boolean}){
+export function PrivateListingCheckout({owner,id,revision,attempt,localPreview:localListing=false,specialist=false}:{owner:string;id:string;revision:string;attempt:ListingCheckoutAttempt;localPreview?:boolean;specialist?:boolean}){
+ const localSimulation=useLocalPaymentSimulation(),localPreview=specialist?localSimulation:localListing;
  const payment=specialist?specialistPayment:accountTestPayment;
  const auth=usePrimaryAccountAuth(),visible=!!auth&&(auth.state==='signed-in'||auth.state==='admin')&&auth.userId===owner;
  const [quote,setQuote]=useState<Awaited<ReturnType<typeof accountTestPayment.preview>>|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[uncertain,setUncertain]=useState(attempt.uncertain);
@@ -23,7 +25,7 @@ export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=f
   try{await work({signal:controller?.signal});}catch(failure){if(live.current&&!controller?.signal.aborted){
    if(failure instanceof PhoneClientError){setError(failure.message);return;}
    const code=failure instanceof ListingPaymentClientError?failure.code:'UNKNOWN';
-   setError(code==='PHONE_REQUIRED'?'Подтвердите номер телефона, чтобы перейти к оплате размещения.':code==='CHECKOUT_DISABLED'||code==='CHECKOUT_NOT_READY'?localPreview?specialist?'Анкета пока не готова к оплате: проверьте профиль, телефон и одобрение модератора.':'Объявление пока не готово к оплате: проверьте обязательные поля и статус блокировки.':'TEST-оплата доступна только согласованному тестовому аккаунту. Для остальных оплата ещё не включена.':code==='CHECKOUT_CHANGED'||code==='DRAFT_CHANGED'?'Объявление или тариф изменились. Обновите сохранённую версию.':'Не удалось подтвердить результат. Не создавайте новый заказ: проверьте сохранённый.');
+   setError(code==='PHONE_REQUIRED'?'Подтвердите номер телефона, чтобы перейти к оплате размещения.':code==='CHECKOUT_DISABLED'||code==='CHECKOUT_NOT_READY'?specialist?'Оплата анкеты сейчас недоступна. Проверьте подтверждение телефона и статус модерации.':localPreview?'Объявление пока не готово к оплате: проверьте обязательные поля и статус блокировки.':'TEST-оплата доступна только согласованному тестовому аккаунту. Для остальных оплата ещё не включена.':code==='CHECKOUT_CHANGED'||code==='DRAFT_CHANGED'?specialist?'Анкета или тариф изменились. Обновите сохранённую версию.':'Объявление или тариф изменились. Обновите сохранённую версию.':'Не удалось подтвердить результат. Не создавайте новый заказ: проверьте сохранённый.');
   }}finally{if(!controller?.signal.aborted){locked.current=false;setBusy(false);}}
  }
  function open(paymentId:string,signal?:AbortSignal){if(live.current&&!signal?.aborted)window.location.assign(`/oplata/${paymentId}${specialist?'?type=specialist':''}`);}
@@ -34,7 +36,7 @@ export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=f
   })}>Оплатить размещение</button>}
   {quote&&<>
    <h3 className="font-semibold">{localPreview?'Оплата размещения — локальный стенд':'Тестирование оплаты'}</h3>
-   <p className="mt-2 text-sm">{localPreview?`Симуляция: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. После подтверждения объявление опубликуется только на этом локальном стенде. Списаний нет.`:`TEST-заказ: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. Реальные деньги не списываются, публикация не выполняется.`}</p>
+   <p className="mt-2 text-sm">{localPreview?`Симуляция: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. После подтверждения объявление опубликуется только на этом локальном стенде. Списаний нет.`:specialist?`Тестовое размещение анкеты: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. После подтверждения оплаты анкета появится в каталоге. Деньги не списываются.`:`TEST-заказ: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. Реальные деньги не списываются, публикация не выполняется.`}</p>
    {quote.activePayment?<Link href={`/oplata/${quote.activePayment.id}${specialist?'?type=specialist':''}`} className={`${draftButton} mt-3`}>Открыть существующий заказ</Link>:<>
     <button type="button" className={`${draftButton} mt-3 bg-blue-700 text-white`} disabled={busy||uncertain} onClick={()=>void run(async options=>{
      attempt.input??={listingId:id,expectedRevision:revision,creationKey:crypto.randomUUID(),expectedTariffId:quote.tariff.id,expectedAmount:quote.tariff.amount,expectedDurationDays:quote.tariff.durationDays};

@@ -4,8 +4,9 @@ import {createHash} from 'node:crypto';
 import {dirname,isAbsolute,join,relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import ts from 'typescript';
+import {getSpecialistCheckoutMigration} from './specialist-checkout-release.mjs';
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
-import {getPublicationTestMigrationPlan} from './publication-test-release-plan.mjs';
+import {getSpecialistAccountTestMigration,getInboxPreferenceMigration,getPublicationTestMigrationPlan,paymentMigrationDirectory} from './publication-test-release-plan.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 export function buildPaymentWorker(destination,{schema=54,publicationTest=false}={}){
@@ -20,10 +21,12 @@ export function buildPaymentWorker(destination,{schema=54,publicationTest=false}
  if(ts.getPreEmitDiagnostics(program).length)throw Error('Worker compilation failed');
  const sources=program.getSourceFiles().filter(file=>!file.isDeclarationFile).map(file=>relative(join(root,'src'),file.fileName).replace(/\.ts$/,'.js')).sort();
  if(sources.some(path=>!/^lib\/[a-z0-9-]+\.js$/.test(path)))throw Error('Unexpected worker source');
- const migrations=(publicationTest?getPublicationTestMigrationPlan():getRefundWorkerRolePlan('artifact',{schema}).journal).map(({name,sha256})=>{
-  const bytes=readFileSync(join(root,'database',name.startsWith('0059-')?'candidates':'migrations',name));
+ const journal=publicationTest?[...getPublicationTestMigrationPlan(),getSpecialistCheckoutMigration(),getInboxPreferenceMigration(),getSpecialistAccountTestMigration()]:getRefundWorkerRolePlan('artifact',{schema}).journal;
+ const migrations=journal.map(({name,sha256})=>{
+  const directory=paymentMigrationDirectory(name);
+  const bytes=readFileSync(join(root,'database',directory,name));
   if(createHash('sha256').update(bytes).digest('hex')!==sha256)throw Error('Worker migration changed during build');
-  return{name,bytes};
+  return{name,directory,bytes};
  });
  // mkdir without recursive/overwrite is the ownership boundary; failures never erase a target.
  mkdirSync(destination,{mode:0o700});
@@ -36,7 +39,7 @@ export function buildPaymentWorker(destination,{schema=54,publicationTest=false}
  copyFileSync(join(root,'database/refund-schema-0054.json'),join(destination,'database/refund-schema-0054.json'));
  if(schema===55)copyFileSync(join(root,'database/refund-schema-0055.json'),join(destination,'database/refund-schema-0055.json'));
  if(publicationTest)mkdirSync(join(destination,'database/candidates'));
- for(const {name,bytes} of migrations)writeFileSync(join(destination,'database',name.startsWith('0059-')?'candidates':'migrations',name),bytes,{flag:'wx',mode:0o600});
+ for(const {name,directory,bytes} of migrations)writeFileSync(join(destination,'database',directory,name),bytes,{flag:'wx',mode:0o600});
  const manifest={version:1,typescript:ts.version,sources};
  writeFileSync(join(destination,'manifest.json'),JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});
  return manifest;

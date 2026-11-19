@@ -34,7 +34,7 @@ export class PostgresPublicSearchStore{
     }};
     const listings=new PostgresPublicListingStore(tx,{postmoderation:this.options.postmoderation}),
      work=new PostgresPublicWorkStore(tx,{vacancyPostmoderation:this.options.postmoderation}),
-     services=new PostgresPublicServiceStore(tx,{specialistProfileIdentity:this.options.specialistProfileIdentity});
+     services=new PostgresPublicServiceStore(tx,{specialistProfileIdentity:this.options.specialistProfileIdentity,testPublicationLabels:true});
     const scopes={listing:listings.searchScope(),work:work.searchScope(),service:services.searchScope()};
     let position:PublicSearchAnchor|null=cursor?anchorOf({...cursor,metadata:{}}):null,skip=cursor?0:(input.page-1)*24,exhausted=false;
     const accepted:Array<{candidate:Candidate;result:PublicSearchResult}>=[];

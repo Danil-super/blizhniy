@@ -1,4 +1,5 @@
 import {readPostmoderationEnabled} from './listing-workflow-config';
+import {readSpecialistAccountTest} from './specialist-checkout-config';
 import {authJson} from './auth-http';
 import {readProductionAuthConfig} from './production-auth-config';
 import {getProductionAccountDatabase} from './production-auth-runtime';
@@ -13,16 +14,19 @@ export function handleWorkCheckoutRequest(request:Request,targetType:'vacancy'|'
  if(!['vacancy','workRequest'].includes(targetType))return Promise.resolve(authJson({error:{code:'CHECKOUT_DISABLED'}},503));
  return handleCheckout(request,targetType);
 }
-async function handleCheckout(request:Request,targetType?:'vacancy'|'workRequest'){
+export function handleSpecialistCheckoutRequest(request:Request){return handleCheckout(request,'specialist');}
+async function handleCheckout(request:Request,targetType?:'vacancy'|'workRequest'|'specialist'){
  try{
   // Disabled before opening a database or loading account/merchant credentials.
   if(process.env.BLIZHNIY_LISTING_CHECKOUT===undefined||process.env.BLIZHNIY_LISTING_CHECKOUT==='disabled')return authJson({error:{code:'CHECKOUT_DISABLED'}},503);
+  const hosted=targetType==='specialist'?readSpecialistAccountTest():null;
+  if(targetType==='specialist'&&!hosted)return authJson({error:{code:'CHECKOUT_DISABLED'}},503);
   const auth=readProductionAuthConfig();if(!auth)return authJson({error:{code:'NOT_FOUND'}},404);
-  const config=readListingCheckoutConfig(process.env,auth.origin);
+  const config=hosted?.checkout??readListingCheckoutConfig(process.env,auth.origin);
   if(!config)return authJson({error:{code:'CHECKOUT_DISABLED'}},503);
   return await createListingCheckoutHandler(auth,async()=>{
    const {db,limiter}=await getProductionAccountDatabase(auth);
-   const dispatch=targetType&&process.env.BLIZHNIY_LISTING_PAYMENT!=='account-publication-test'?null:readAccountTestPaymentConfig(process.env,config);
+   const dispatch=hosted?.merchant??(targetType&&process.env.BLIZHNIY_LISTING_PAYMENT!=='account-publication-test'?null:readAccountTestPaymentConfig(process.env,config));
    const store=new PostgresListingCheckoutStore(db,config,{postmoderation:readPostmoderationEnabled(),testModeHistory:true,...(targetType?{targetType}:{}),...(dispatch?.publication?{publicationTestOwner:dispatch.ownerId}:{})});
    return{store,limiter,payments:dispatch?createAccountTestListingPayment(db,store,dispatch):null};
   },undefined,{readOnly:process.env.BLIZHNIY_LISTING_PAYMENT==='disabled'||!!targetType&&process.env.BLIZHNIY_LISTING_PAYMENT!=='account-publication-test'})(request);

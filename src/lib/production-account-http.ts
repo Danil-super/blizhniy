@@ -66,7 +66,7 @@ function view(user: IdentityUser): IdentityUser {
 /** Runtime is lazy: invalid requests cannot create a pool, read keys or call an external provider.
  * Valid recovery is committed before acceptance; no volatile fire-and-forget job or SMTP in HTTP. */
 export function createProductionAccountHandler(config: ProductionAuthConfig, getRuntime: () => ProductionAccountRuntime | Promise<ProductionAccountRuntime>,
-  audit: (event: AuthEvent) => void = event => console.info(JSON.stringify(event))) {
+  audit: (event: AuthEvent) => void = event => console.info(JSON.stringify(event)), canShowSpecialistTest?: (ownerId:string)=>boolean) {
   if (typeof window !== "undefined" || config.origin !== productionAuthOrigin) throw new Error("Invalid production account boundary");
   return async (request: Request, operation: string): Promise<Response> => {
     const requestId = randomUUID();
@@ -142,7 +142,7 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
           if (anonymousView) return respond({ user: null }, 200);
           throw new AuthRequestError(401, "UNAUTHENTICATED");
         }
-        return respond({ user: view(user) }, 200);
+        return respond({ user: view(user) }, 200, canShowSpecialistTest?.(user.id) ? { "X-Blizhniy-Specialist-Test": "1" } : undefined);
       }
       if (action === "confirm") {
         if (!await state.store.confirmEmail(input.token as string)) throw new AuthRequestError(400, "INVALID_CONFIRMATION");

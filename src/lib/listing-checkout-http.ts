@@ -54,7 +54,7 @@ export function createListingCheckoutHandler(config:{origin:string},runtime:()=>
    const current=await runtime();if(!await current.limiter.allowProduction('session',ip))throw new AuthRequestError(429,'RATE_LIMITED');
    return reply(await execute(current,token),200);
   }catch(error){
-   if(error&&typeof error==='object'&&'code'in error&&error.code==='PCA02')error=new AuthRequestError(409,'CHECKOUT_NOT_READY');
+   if(error&&typeof error==='object'&&'code'in error&&(error.code==='PCA02'||error.code==='PSP01'))error=new AuthRequestError(409,'CHECKOUT_NOT_READY');
    if(error&&typeof error==='object'&&'code'in error&&error.code==='P7601')error=new AuthRequestError(403,'PHONE_REQUIRED');
    if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
    if(error instanceof ListingDraftAccessError)error=new AuthRequestError(404,'DRAFT_NOT_FOUND');
