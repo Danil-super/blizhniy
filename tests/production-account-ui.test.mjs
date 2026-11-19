@@ -116,6 +116,7 @@ test("shared root selects public backend and CAPTCHA settings after the request 
     "@/components/auth/AccountAuthProvider": { AccountAuthProvider: ({ backend, children }) => { backends.push(backend); return children; } },
     "@/components/SiteFooter": { SiteFooter: () => null },
     "@/components/CookieNotice": { CookieNotice: () => null },
+    "@/lib/cookie-notice": load("src/lib/cookie-notice.ts", {}),
     "@/components/MobileBottomNav": { MobileBottomNav: () => null },
     "@/components/BookingLegacyStorageCleanup": { BookingLegacyStorageCleanup: () => null },
     "./globals.css": {},
