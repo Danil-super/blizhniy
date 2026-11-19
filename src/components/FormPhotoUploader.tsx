@@ -227,7 +227,10 @@ export function FormPhotoUploader({
         ))}
       {photos.filter(photo=>photo.persisted&&photo.mediaId).map(photo=><input key={`saved-${photo.id}`} type="hidden" name={savedMedia?.fieldName??'keepPhotoIds'} value={photo.mediaId}/>)}
       {savedMedia&&<input type="hidden" name="photoOrder" value={JSON.stringify(photos.map(photo=>photo.persisted&&photo.mediaId?{savedId:photo.mediaId}:{uploadIndex:photos.filter(item=>item.file).findIndex(item=>item.id===photo.id)}))}/>}
-      <input type="hidden" name={`${name}Refs`} value={JSON.stringify(photos.map((photo) => photo.url))} />
+      {!savedMedia && name === "photos" ? <>
+        <input type="hidden" name="localPhotoOrder" value={photos.map(photo => photo.persisted ? "saved" : "new").join(",")} />
+        {preparing && <input type="hidden" name="photosPreparing" value="1" />}
+      </> : <input type="hidden" name={`${name}Refs`} value={JSON.stringify(photos.map(photo => photo.url))} />}
       {cropEditorPhoto ? (<div onInput={event=>event.stopPropagation()} onChange={event=>event.stopPropagation()}>
         <SquareImageCropper
           alt={cropEditorPhoto.name}

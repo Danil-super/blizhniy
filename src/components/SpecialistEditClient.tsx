@@ -6,7 +6,7 @@ import { DropdownSelect } from "@/components/DropdownSelect";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { ListingLocationFields } from "@/components/listings/ListingFormControls";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
-import { isStoredMediaReference, storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
+import { storeFormPhotos } from "@/lib/client-media-store";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { professions } from "@/lib/data";
 import { appendPublicationHistory, readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
@@ -43,66 +43,6 @@ function readValue(formData: FormData, name: string, fallback = "") {
 
 function readOptionalValue(formData: FormData, name: string) {
   return String(formData.get(name) ?? "").trim();
-}
-
-function readPhotoRefs(formData: FormData) {
-  const rawValue = String(formData.get("photosRefs") ?? "").trim();
-
-  if (!rawValue) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue) as unknown;
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.flatMap((value) => {
-      const photo = String(value ?? "").trim();
-
-      return photo ? [photo] : [];
-    });
-  } catch {
-    return [];
-  }
-}
-
-async function storeImageReference(source: string, index: number) {
-  if (isStoredMediaReference(source) || /^https?:\/\//i.test(source)) {
-    return source;
-  }
-
-  if (/^data:image\//i.test(source)) {
-    return storeMediaDataUrl(source, `specialist-photo-${index + 1}.png`);
-  }
-
-  if (/^blob:/i.test(source)) {
-    const response = await fetch(source);
-    const blob = await response.blob();
-    const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
-
-    return storeMediaFile(new File([blob], `specialist-photo-${index + 1}.${extension}`, { type: blob.type || "image/jpeg" }));
-  }
-
-  return source;
-}
-
-async function readLocalImageReferences(formData: FormData) {
-  const previewRefs = readPhotoRefs(formData).slice(0, 12);
-
-  if (previewRefs.length) {
-    const storedRefs = await Promise.allSettled(previewRefs.map((source, index) => storeImageReference(source, index)));
-
-    return storedRefs.flatMap((result) => (result.status === "fulfilled" && result.value ? [result.value] : [])).slice(0, 12);
-  }
-
-  return formData
-    .getAll("existingPhotos")
-    .map((value) => String(value ?? "").trim())
-    .filter(Boolean)
-    .slice(0, 12);
 }
 
 function parseCoordinate(formData: FormData, name: string) {
@@ -174,7 +114,7 @@ export function SpecialistEditClient({ specialistId }: { specialistId: string })
         city: readValue(formData, "city", specialist.city),
         price: normalizeListingPrice(readValue(formData, "price", specialist.price ?? ""), specialist.price ?? "по договоренности"),
         description: readValue(formData, "description", specialist.description ?? ""),
-        images: await readLocalImageReferences(formData),
+        images: await storeFormPhotos(formData, 12),
         address,
         hasMapPoint,
         lat,

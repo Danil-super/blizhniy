@@ -10,7 +10,7 @@ import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { croppedPhotoFile } from "@/lib/image-data-url";
-import { storeMediaFile } from "@/lib/client-media-store";
+import { storeMediaFile, storeMediaFiles } from "@/lib/client-media-store";
 import { appendPublicationHistory, DemoPublication, readStoredDemoPublications, writeStoredDemoPublications } from "@/lib/demo-publications";
 import { cities } from "@/lib/data";
 import { formatBookingPrice, validateBookingDetailsForPublication } from "@/lib/booking-details";
@@ -245,20 +245,13 @@ function inferCityFromFormData(formData: FormData, fallback = "Краснода�
   return location.split(",")[0]?.trim() || cities.find((city) => address.toLowerCase().includes(city.name.toLowerCase()))?.name || fallback;
 }
 
-async function readOriginalImage(file: File) {
-  return storeMediaFile(file);
-}
-
-async function readOriginalMedia(file: File) {
-  return storeMediaFile(file);
-}
-
 export function DemoListingEditClient({ slug }: { slug: string }) {
   const [items, setItems] = useState<DemoPublication[]>([]);
   const [images, setImages] = useState<string[]>([]);
   const [videos, setVideos] = useState<string[]>([]);
   const [cropEditorIndex, setCropEditorIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [storingPhotos, setStoringPhotos] = useState(false);
   const [message, setMessage] = useState("");
   const [mediaMessage, setMediaMessage] = useState("");
   const mediaCount = images.length + videos.length;
@@ -317,21 +310,16 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
       return;
     }
 
-    const nextMedia = await Promise.allSettled(
-      files.map(async (file) => ({
-        kind: file.type.startsWith("video/") ? "video" : "image",
-        value: file.type.startsWith("video/") ? await readOriginalMedia(file) : await readOriginalImage(file),
-      })),
-    );
-    const fulfilled = nextMedia.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
-    const nextImages = fulfilled.filter((item) => item.kind === "image").map((item) => item.value);
-
-    setImages((current) => {
-      const next = [...current, ...nextImages].slice(0, maxMediaFiles);
-      setCropEditorIndex(nextImages.length ? current.length : null);
-      return next;
-    });
-    setVideos((current) => [...current, ...fulfilled.filter((item) => item.kind === "video").map((item) => item.value)].slice(0, maxMediaFiles));
+    setStoringPhotos(true);
+    try {
+      const nextImages = await storeMediaFiles(files);
+      setImages(current => [...current, ...nextImages].slice(0, maxMediaFiles));
+      setCropEditorIndex(images.length);
+    } catch (error) {
+      setMediaMessage(error instanceof Error ? error.message : "Не удалось добавить фотографии.");
+    } finally {
+      setStoringPhotos(false);
+    }
   }
 
   function removeImage(index: number) {
@@ -376,7 +364,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
     event.preventDefault();
     const form = event.currentTarget;
 
-    if (!listing) {
+    if (!listing || storingPhotos) {
       return;
     }
 
@@ -587,7 +575,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
             </div>
             <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-blue-200 bg-white px-4 text-sm font-bold text-[#0875d1] transition hover:bg-blue-50">
               Добавить файлы
-              <input type="file" accept="image/*" multiple className="sr-only" onChange={handleMediaChange} />
+              <input type="file" accept="image/*" disabled={saving || storingPhotos} multiple className="sr-only" onChange={handleMediaChange} />
             </label>
           </div>
           {mediaMessage ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{mediaMessage}</p> : null}
@@ -668,7 +656,7 @@ export function DemoListingEditClient({ slug }: { slug: string }) {
         {message ? <p className="rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-700">{message}</p> : null}
 
         <div className="flex flex-wrap gap-3">
-          <button type="submit" disabled={saving} className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:bg-slate-300">
+          <button type="submit" disabled={saving || storingPhotos} className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0aa337] px-6 font-bold text-white transition hover:bg-[#078a2e] disabled:cursor-wait disabled:bg-slate-300">
             <Save className="h-5 w-5" />
             {saving ? "Сохраняем..." : "Сохранить изменения"}
           </button>

@@ -9,7 +9,7 @@ import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPa
 import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
-import { isStoredMediaReference, storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
+import { storeFormPhotos } from "@/lib/client-media-store";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, type DemoPublication, withPublicationHistory } from "@/lib/demo-publications";
@@ -52,79 +52,6 @@ function readValue(formData: FormData, name: string) {
 
 function createWorkRequestId() {
   return crypto.randomUUID();
-}
-
-function readExistingPhotos(formData: FormData) {
-  return formData
-    .getAll("existingPhotos")
-    .flatMap((value) => {
-      const photo = String(value ?? "").trim();
-
-      return photo ? [photo] : [];
-    })
-    .slice(0, 6);
-}
-
-function readPhotoRefs(formData: FormData) {
-  const rawValue = String(formData.get("photosRefs") ?? "").trim();
-
-  if (!rawValue) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue) as unknown;
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.flatMap((value) => {
-      const photo = String(value ?? "").trim();
-
-      return photo ? [photo] : [];
-    });
-  } catch {
-    return [];
-  }
-}
-
-async function storeImageReference(source: string, index: number) {
-  if (isStoredMediaReference(source) || /^https?:\/\//i.test(source)) {
-    return source;
-  }
-
-  if (/^data:image\//i.test(source)) {
-    return storeMediaDataUrl(source, `work-request-photo-${index + 1}.png`);
-  }
-
-  if (/^blob:/i.test(source)) {
-    const response = await fetch(source);
-    const blob = await response.blob();
-    const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
-
-    return storeMediaFile(new File([blob], `work-request-photo-${index + 1}.${extension}`, { type: blob.type || "image/jpeg" }));
-  }
-
-  return source;
-}
-
-async function readLocalImageReferences(formData: FormData) {
-  const previewRefs = readPhotoRefs(formData).slice(0, 6);
-
-  if (previewRefs.length) {
-    const storedRefs = await Promise.allSettled(previewRefs.map((source, index) => storeImageReference(source, index)));
-
-    return storedRefs.flatMap((result) => (result.status === "fulfilled" && result.value ? [result.value] : [])).slice(0, 6);
-  }
-
-  const files = formData
-    .getAll("photos")
-    .filter((item): item is File => item instanceof File && item.size > 0 && item.type.startsWith("image/"))
-    .slice(0, 6);
-  const storedImages = await Promise.allSettled(files.map((file) => storeMediaFile(file)));
-
-  return [...readExistingPhotos(formData), ...storedImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))].slice(0, 6);
 }
 
 function mergeSavedImages(serverImages: string[] | undefined, localImages: string[]) {
@@ -207,7 +134,7 @@ export function WorkRequestCreateClient() {
       const profession = readValue(formData, "profession") || "Заказ исполнителю";
       const city = readValue(formData, "city") || "Краснодар";
       const rawBudget = readValue(formData, "budget");
-      const images = await readLocalImageReferences(formData);
+      const images = await storeFormPhotos(formData, 6);
       const result = await createSupabaseWorkRequest(formData, {
         accessToken: identity.accessToken ?? "",
         images,
