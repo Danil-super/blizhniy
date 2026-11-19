@@ -62,7 +62,7 @@ export function SpecialistProfilePanel({owner,visible}:{owner:string;visible:boo
     {checkout&&<><PublicationPlacementPeriod publishedAt={snapshot.publishedAt} expiresAt={snapshot.expiresAt} status={snapshot.status}/><ServiceModerationStatus owner={owner} snapshot={snapshot}/></>}
    </section>}
   {loaded&&!busy&&!error&&!snapshot&&<div hidden={!profileReady} inert={!profileReady}>
-   <PrimaryServicePublicationEditor kind="specialist" embedded/>
+   <PrimaryServicePublicationEditor kind="specialist" embedded={{emptyForOwner:owner}}/>
   </div>}
  </div>;
 }

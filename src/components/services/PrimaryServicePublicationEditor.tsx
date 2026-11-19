@@ -22,11 +22,12 @@ function ProfileReadyForm(props:ComponentProps<typeof ServicePublicationForm>){
  return <ServicePublicationForm {...props}/>;
 }
 
-function Editor({owner,kind,id,visible,embedded}:{owner:string;kind:ServicePublicationKind;id?:string;visible:boolean;embedded:boolean}){
+function Editor({owner,kind,id,visible,embedded}:{owner:string;kind:ServicePublicationKind;id?:string;visible:boolean;embedded?:{emptyForOwner:string}}){
  const specialistCheckout=useSpecialistCheckout();
- const [snapshot,setSnapshot]=useState<ServicePublicationSnapshot|undefined>(),[ready,setReady]=useState(!id&&kind!=='specialist'),[error,setError]=useState<string|null>(null),[retry,setRetry]=useState(0),[dirty,setDirty]=useState(false),[saved,setSaved]=useState(false);
+ const needsLookup=!!id||(kind==='specialist'&&embedded?.emptyForOwner!==owner);
+ const [snapshot,setSnapshot]=useState<ServicePublicationSnapshot|undefined>(),[ready,setReady]=useState(!needsLookup),[error,setError]=useState<string|null>(null),[retry,setRetry]=useState(0),[dirty,setDirty]=useState(false),[saved,setSaved]=useState(false);
  useEffect(()=>{if(saved)window.location.assign(servicePublicationNavigation[kind].cabinet);},[saved,kind]);
- useEffect(()=>{if(!id&&kind!=='specialist')return;const controller=new AbortController();setError(null);
+ useEffect(()=>{if(!needsLookup)return;const controller=new AbortController();setError(null);
   void(async()=>{
    // One durable specialist profile per owner: reopen it instead of a conflicting second create.
    const target=id??(await servicePublications.list(owner,kind,null,{signal:controller.signal})).items[0]?.id;
@@ -36,7 +37,7 @@ function Editor({owner,kind,id,visible,embedded}:{owner:string;kind:ServicePubli
    if(controller.signal.aborted)return;setError(failure instanceof Error?failure.message:'Не удалось открыть материал.');
    if(failure?.code==='UNAUTHENTICATED')notifyAccountSessionChange(false);
   });return()=>controller.abort();
- },[owner,kind,id,retry]);
+ },[owner,kind,id,retry,needsLookup]);
  return <section hidden={!visible} inert={!visible} aria-label="Редактор материала">
   {!embedded&&<Link href={servicePublicationNavigation[kind].cabinet} prefetch={false} className="mb-4 inline-flex min-h-11 items-center font-semibold text-blue-800 underline">← Вернуться в кабинет</Link>}
   {error?<div><p role="alert" className="mb-3 text-rose-800">{error}</p><button type="button" className="min-h-11 font-semibold text-blue-800 underline" onClick={()=>setRetry(value=>value+1)}>Повторить загрузку</button></div>:
@@ -47,7 +48,7 @@ function Editor({owner,kind,id,visible,embedded}:{owner:string;kind:ServicePubli
  </section>;
 }
 
-export function PrimaryServicePublicationEditor({kind,initialId,embedded=false}:{kind:ServicePublicationKind;initialId?:string;embedded?:boolean}){
+export function PrimaryServicePublicationEditor({kind,initialId,embedded}:{kind:ServicePublicationKind;initialId?:string;embedded?:{emptyForOwner:string}}){
  const auth=usePrimaryAccountAuth(),owner=auth?.state==='signed-in'||auth?.state==='admin'?auth.userId:null,[scope,setScope]=useState(owner);
  if(owner&&owner!==scope)setScope(owner);if(auth?.state==='signed-out'&&scope)setScope(null);const visible=!!owner&&owner===scope;
  return <>{!visible&&<div role="status"><p>{auth?.state==='signed-out'?'Войдите в аккаунт.':'Проверяем вход. Введённые данные временно скрыты.'}</p>
