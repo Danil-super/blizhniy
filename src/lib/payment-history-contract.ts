@@ -3,6 +3,12 @@ import {parseListingDraftCursor,parseListingDraftId} from './listing-draft-contr
 export const paymentHistoryPageSize=50;
 export const paymentHistoryTargets=['listing','vacancy','workRequest','specialist','application','fair_application','ad_marquee'] as const;
 export const paymentHistoryStatuses=['created','pending','succeeded','failed','refunded'] as const;
+export type WorkPaymentReceipt={id:string;targetType:'vacancy'|'workRequest'|'application'};
+export function parseWorkPaymentReceipt(value:unknown):WorkPaymentReceipt{
+ const row=exact(value,['id','targetType']);
+ if(row.targetType!=='vacancy'&&row.targetType!=='workRequest'&&row.targetType!=='application')throw Error('Invalid receipt type');
+ return{id:parseListingDraftId(row.id),targetType:row.targetType};
+}
 export type PaymentHistoryCursor={id:string;createdAt:string};
 export type PaymentHistoryItem={id:string;targetType:typeof paymentHistoryTargets[number];amount:string;status:typeof paymentHistoryStatuses[number];isTest:boolean;createdAt:string};
 export type PaymentHistoryPage={items:PaymentHistoryItem[];nextCursor:PaymentHistoryCursor|null};
@@ -15,10 +21,17 @@ export function parsePaymentHistoryCursor(value:unknown):PaymentHistoryCursor|nu
  const row=exact(value,['id','createdAt']),parsed=parseListingDraftCursor({id:row.id,updatedAt:row.createdAt})!;
  return{id:parsed.id,createdAt:parsed.updatedAt};
 }
-export function parsePaymentHistoryRequest(value:unknown){
+type PaymentHistoryRequest=ReturnType<typeof parsePaymentHistoryInput>
+ | {expectedOwnerId:string;paymentId:string}
+ | {expectedOwnerId:string;receipt:WorkPaymentReceipt};
+export function parsePaymentHistoryRequest(value:unknown):PaymentHistoryRequest{
  if(value&&typeof value==='object'&&'action' in value&&value.action==='specialistOrder'){
   const row=exact(value,['action','expectedOwnerId','paymentId']);
   return{expectedOwnerId:parseListingDraftId(row.expectedOwnerId),paymentId:parseListingDraftId(row.paymentId)};
+ }
+ if(value&&typeof value==='object'&&'receipt' in value){
+  const row=exact(value,['expectedOwnerId','receipt']);
+  return{expectedOwnerId:parseListingDraftId(row.expectedOwnerId),receipt:parseWorkPaymentReceipt(row.receipt)};
  }
  return parsePaymentHistoryInput(value);
 }

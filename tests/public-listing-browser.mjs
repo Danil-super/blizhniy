@@ -34,6 +34,23 @@ test('ordinary Russian public pages render the primary DTO without hidden/privat
    if(url.pathname.startsWith('/api/')&&url.pathname!=='/api/health'){legacy.push(url.pathname);return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});}return route.continue();
   });
   page.on('pageerror',error=>errors.push(error.message));page.on('console',event=>{if(['warning','error'].includes(event.type())&&!event.text().startsWith('Failed to load resource:'))errors.push(event.text());});
+  await suite.test('the first document includes the cookie notice only when needed',async()=>{
+   const notice=page.getByRole('region',{name:'Файлы cookie',exact:true});
+   const heading=/<h2 id="cookie-notice-heading"/;
+   const first=await page.goto(origin+'/obyavleniya');
+   assert.match(await first.text(),heading);
+   await notice.getByRole('button',{name:'Понятно'}).click();
+   await notice.waitFor({state:'detached'});
+   const repeat=await page.reload();
+   assert.doesNotMatch(await repeat.text(),heading);
+   assert.match(repeat.headers()['cache-control'],/private/);
+   await page.getByRole('button',{name:'О файлах cookie'}).click();
+   await notice.waitFor();
+   await notice.getByRole('button',{name:'Понятно'}).click();
+   await context.clearCookies();
+   const phone=await page.goto(origin+'/cabinet/phone');
+   assert.doesNotMatch(await phone.text(),heading);
+  });
   for(const row of rows)await suite.test(row.form.kind+' public detail preserves title, seller, price and local image without a hidden map point',async()=>{
    const response=await page.goto(`${origin}/obyavlenie/${row.id}`);assert.equal(response.status(),200);const html=await response.text();for(const sentinel of ['PRIVATE_HIDDEN_STREET','55.123456','37.123456'])assert.equal(html.includes(sentinel),false);
    await page.getByRole('heading',{name:row.form.title,exact:true}).waitFor();await page.getByText('Синтетический продавец',{exact:true}).first().waitFor();

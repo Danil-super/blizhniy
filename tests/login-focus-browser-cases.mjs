@@ -21,6 +21,26 @@ const lifecycle = page => page.evaluate(() => {
 const waitCaptcha = page => page.locator('[data-fixture-widget="captcha"]').waitFor();
 
 export async function testLoginFocusScenarios({ run, origin, password }) {
+  await run("login from a saved work payment returns to that purchase", async ({ page, calls }) => {
+    const payment = "/oplata/12345678-1234-4321-8765-123456789abc?type=vacancy";
+    await page.route('**/api/account/payments', route => {
+      const {expectedOwnerId,receipt}=route.request().postDataJSON();
+      assert.equal(expectedOwnerId,identity(false).id);
+      assert.deepEqual(receipt,{id:identity(false).id,targetType:'vacancy'});
+      return route.fulfill({json:{items:[{...receipt,amount:'199.00',status:'succeeded',createdAt:'2026-11-01T00:00:00.000000Z',isTest:true}],nextCursor:null}});
+    });
+    await page.goto(origin + payment);
+    await page.getByRole('link',{name:'Войти и посмотреть платёж'}).click();
+    await waitCaptcha(page);
+    await page.getByLabel("Email", { exact: true }).fill("owner@example.invalid");
+    await page.getByLabel("Пароль", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Войти", exact: true }).click();
+    await page.waitForURL(origin + payment);
+    await page.getByText('Оплачено',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('link',{name:'Перейти в раздел'}).getAttribute('href'),'/cabinet/vakansii');
+    assert.equal(calls.filter(row => row.action === "login").length, 1);
+  });
+
   await run("standalone login opens home after verification, replaces login history and retains cabinet navigation", async ({ page, calls }) => {
     await page.setViewportSize({ width: 320, height: 900 });
     await page.goto(origin + "/auth/recover");
