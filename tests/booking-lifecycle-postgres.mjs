@@ -53,6 +53,51 @@ test('booking lifecycle: real restricted PostgreSQL expiry, cancellation, audit 
   const input=(id,patch={})=>({listingId:id,creationKey:randomUUID(),expectedListingRevision:'1',mode:'stay',startDate:day(2),endDate:day(3),guests:2,...patch});
   const events=async id=>(await admin.query('select status,actor_id,reason,revision from app.booking_events where booking_id=$1 order by revision',[id])).rows;
   const inject=async(id,assignment,values=[])=>{await admin.query('alter table app.booking_requests disable trigger user');try{await admin.query('update app.booking_requests set '+assignment+' where id=$1',[id,...values]);}finally{await admin.query('alter table app.booking_requests enable trigger user;alter table app.booking_requests enable always trigger booking_lifecycle_guard;alter table app.booking_requests enable always trigger booking_lifecycle_event');}};
+  await suite.test('stored preferences apply at delivery for booking requests and database-generated cancellations',async()=>{
+   const {PostgresNotificationInbox}=load('postgres-notification-inbox');
+   const inbox=new PostgresNotificationInbox(db);
+   const visible=async(user)=>(await inbox.list(user.token,user.id,null)).items;
+   const id=await listing();
+   const previous=await store.create(guest.token,guest.id,input(id));
+   await store.cancel(guest.token,guest.id,previous.id,'1','Изменились планы.');
+   const before=await visible(host);
+   assert.equal(before.filter(item=>item.bookingRequestId===previous.id).length,2);
+   await admin.query(await readFile(new URL('../database/candidates/0064-inbox-notification-preferences.sql',import.meta.url),'utf8'));
+   await admin.query("insert into app.cabinet_profiles(user_id,profile) values($1,$2)",[host.id,{notifyBookings:false}]);
+   const data=input(id),muted=await store.create(guest.token,guest.id,data);
+   assert.equal((await store.create(guest.token,guest.id,data)).id,muted.id);
+   await store.decide(host.token,host.id,muted.id,'1','accepted');
+   await store.cancel(guest.token,guest.id,muted.id,'2','Поездка отменилась.');
+   assert.deepEqual(await visible(host),before);
+   assert.equal((await visible(guest)).filter(item=>item.bookingRequestId===muted.id).length,1);
+   await admin.query("update app.cabinet_profiles set profile=$2 where user_id=$1",[host.id,{notifyBookings:true}]);
+   await store.cancel(guest.token,guest.id,muted.id,'2','Поездка отменилась.');
+   assert.deepEqual(await visible(host),before);
+   const next=await store.create(guest.token,guest.id,input(id));
+   assert.equal((await visible(host)).filter(item=>item.bookingRequestId===next.id).length,1);
+   assert.deepEqual((await events(muted.id)).map(event=>event.status),['pending','accepted','cancelled']);
+   await store.cancel(guest.token,guest.id,next.id,'1','Изменились планы.');
+  });
+  await suite.test('all inbox categories follow their own saved toggle and a retried event keeps its original delivery',async()=>{
+   const {enqueueNotificationInTransaction,PostgresNotificationInbox}=load('postgres-notification-inbox');
+   const inbox=new PostgresNotificationInbox(db);
+   const categories={booking:'notifyBookings',message:'notifyMessages',payment:'notifyPayments',publication:'notifyPublicationStatus',system:'notifySystem'};
+   const delivery=(key,category)=>db.transaction(tx=>enqueueNotificationInTransaction(tx,fifth.id,{
+    eventKey:key,category,tone:'info',title:'Проверка настройки',body:'Синтетическое событие',actionHref:null,bookingRequestId:null
+   }));
+   for(const [muted,key] of Object.entries(categories)){
+    await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2) on conflict(user_id) do update set profile=excluded.profile',[fifth.id,{[key]:false}]);
+    const ids=new Map();
+    for(const category of Object.keys(categories))ids.set(category,await delivery(muted+':'+category,category));
+    const visible=new Set((await inbox.list(fifth.token,fifth.id,null)).items.map(item=>item.id));
+    for(const [category,id] of ids)assert.equal(visible.has(id),category!==muted);
+    await admin.query('delete from app.cabinet_profiles where user_id=$1',[fifth.id]);
+    assert.equal(await delivery(muted+':'+muted,muted),ids.get(muted));
+    assert.equal((await inbox.list(fifth.token,fifth.id,null)).items.some(item=>item.id===ids.get(muted)),false);
+   }
+   assert.equal((await admin.query('select count(*)::int as n from app.notifications where user_id=$1',[fifth.id])).rows[0].n,25);
+   assert.equal((await admin.query("select has_table_privilege('blizhniy_runtime','app.cabinet_profiles','SELECT') as profile,has_function_privilege('blizhniy_runtime','app.apply_inbox_preference()','EXECUTE') as fn")).rows.some(row=>row.profile||row.fn),false);
+  });
   await suite.test('server freezes Moscow start and six-hour deadline, immutable quote and private original host',async()=>{
    const id=await listing(),request=await store.create(guest.token,guest.id,input(id));
    assert.equal(request.lifecycle.startsAt,day(2)+'T11:00:00.000000Z');assert.equal(request.total,'100.00');
