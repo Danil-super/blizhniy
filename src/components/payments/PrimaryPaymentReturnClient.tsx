@@ -15,6 +15,9 @@ import {specialistPaymentStatus} from '@/lib/client-specialist-payment';
 import {PhonePaymentNotice} from '@/components/phone/PhonePaymentNotice';
 
 const button='inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:opacity-60';
+// Keep early confirmation fast and cover the worker's 30s and 60s retry intervals.
+const statusCheckDelaysMs = [2000, 2000, 2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000];
+
 function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,specialist,cancellationEnabled}:{owner:string;paymentId:string;visible:boolean;testCheckout:boolean;vacancy:boolean;workRequest:boolean;specialist:boolean;cancellationEnabled:boolean}){
  const router=useRouter(),cabinet=specialist?'/cabinet/specialist':workRequest?'/cabinet/zakazy':vacancy?'/cabinet/vakansii':'/cabinet/obyavleniya';
  const automaticChecks=useRef(0);
@@ -39,8 +42,8 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
  useEffect(()=>{
   if(!visible||busy||error||cancellationPending||!snapshot)return;
   if(confirmed){const timer=setTimeout(()=>router.replace(cabinet),2000);return()=>clearTimeout(timer);}
-  if(!terminal&&automaticChecks.current<10){
-   const timer=setTimeout(()=>{automaticChecks.current++;setRetry(value=>value+1);},2000);
+  if(!terminal&&automaticChecks.current<statusCheckDelaysMs.length){
+   const timer=setTimeout(()=>{automaticChecks.current++;setRetry(value=>value+1);},statusCheckDelaysMs[automaticChecks.current]);
    return()=>clearTimeout(timer);
   }
  },[visible,busy,error,cancellationPending,snapshot,confirmed,terminal,router,cabinet]);
