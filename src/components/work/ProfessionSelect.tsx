@@ -35,7 +35,7 @@ export function ProfessionSelect({defaultValue='',defaultId,required=false,catal
    input.current.dispatchEvent(new Event('input',{bubbles:true}));
   }
  }
- function reveal(){if(catalogState!=='ready')return;setFilter('');setActive(Math.max(0,options.findIndex(item=>item===selected)));setOpen(true);}
+ function reveal(){setFilter('');setActive(Math.max(0,options.findIndex(item=>item===selected)));setOpen(true);}
  return <div ref={root} className="relative min-w-0">
   <label htmlFor={id} className="mb-2 block text-sm font-bold text-slate-700">Профессия / специализация</label>
   {primary&&<input type="hidden" name="professionId" value={selectedId??''}/>}
@@ -47,7 +47,7 @@ export function ProfessionSelect({defaultValue='',defaultId,required=false,catal
     required={required} value={shown} maxLength={200} placeholder="Выберите или найдите профессию" autoComplete="off"
     className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white py-2 pl-3 pr-11 text-base text-slate-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
     onFocus={reveal} onChange={event=>{
-     setValue(event.target.value);setSelection(null);setEdited(true);setFilter(event.target.value);setActive(0);setOpen(catalogState==='ready');setError('');
+     setValue(event.target.value);setSelection(null);setEdited(true);setFilter(event.target.value);setActive(0);setOpen(true);setError('');
      if(primary){event.target.dataset.referenceState=event.target.value?'unknown':'empty';event.target.setCustomValidity(event.target.value?'Выберите профессию из списка.':'');}
     }}
     onBlur={event=>{if(!root.current?.contains(event.relatedTarget as Node)){setOpen(false);if(shown&&!selected)setError(referenceIssue);}}}

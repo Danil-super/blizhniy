@@ -26,3 +26,20 @@ test('retry shows the current validation issue and clears the previous error onc
  const f=fixture({defaultId:first.id,defaultValue:first.name,catalogState:'loading'});let tree=f.render();find(tree,'combobox').props.onInvalid();tree=f.render();assert.match(find(tree,'alert').props.children,/загрузки/);
  tree=f.render({catalogState:'error'});assert.match(find(tree,'alert').props.children,/ещё раз/);tree=f.render({catalogState:'ready'});assert.equal(find(tree,'alert'),undefined);assert.equal(find(tree,'combobox').props['aria-invalid'],undefined);assert.equal(hidden(tree),first.id);assert.equal(f.input.validity,'');
 });
+
+test('typing before the first catalogue arrives opens the matching results unless the user dismissed them',()=>{
+ for(const dismiss of [false,true]){
+  const f=fixture({catalog:[],catalogState:'loading'});let tree=f.render();
+  const field=find(tree,'combobox');field.props.onFocus();
+  f.input.value='Второй';field.props.onChange({target:f.input});tree=f.render();
+  assert.equal(find(tree,'listbox'),undefined);assert.equal(hidden(tree),'');
+  if(dismiss)key(tree,'Escape');
+  tree=f.render({catalog:[first,second],catalogState:'ready'});
+  assert.equal(find(tree,'combobox').props.value,'Второй');
+  assert.equal(hidden(tree),'');
+  if(dismiss){assert.equal(find(tree,'listbox'),undefined);continue;}
+  const options=nodes(tree).filter(n=>n.props?.role==='option');
+  assert.equal(options.length,1);options[0].props.onClick();
+  assert.equal(hidden(f.render()),second.id);
+ }
+});
