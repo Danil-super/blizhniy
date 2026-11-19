@@ -14,6 +14,8 @@ import type {
   WorkRequest,
 } from "./types";
 
+export const cityPreferenceKey = "blizhniy-city";
+
 export const region = {
   slug: "krasnodarskiy-kray",
   name: "Краснодарский край",

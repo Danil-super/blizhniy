@@ -8,6 +8,7 @@ import { readStoredDemoPublications, isDemoPublicationPubliclyVisible, type Demo
 import { publicationTimestamp } from "@/lib/publication-time";
 
 type HomeListingsFeedProps = {
+  city?: string;
   kind?: ListingKind;
   listings: DemoListing[];
 };
@@ -55,7 +56,7 @@ function readStoredListings() {
   return [];
 }
 
-export function HomeListingsFeed({ kind, listings }: HomeListingsFeedProps) {
+export function HomeListingsFeed({ city, kind, listings }: HomeListingsFeedProps) {
   const [storedListings, setStoredListings] = useState<DemoPublication[]>([]);
 
   useEffect(() => {
@@ -80,6 +81,7 @@ export function HomeListingsFeed({ kind, listings }: HomeListingsFeedProps) {
 
   const entries = useMemo(() => {
     const storedEntries: FeedEntry[] = storedListings
+      .filter((item) => !city || item.city === city)
       .filter((item) => !kind || (item.listingKind ?? "prodam") === kind)
       .map((item) => ({
         id: `stored-${item.id}`,
@@ -96,7 +98,7 @@ export function HomeListingsFeed({ kind, listings }: HomeListingsFeedProps) {
     }));
 
     return [...storedEntries, ...demoEntries].sort((left, right) => right.timestamp - left.timestamp);
-  }, [kind, listings, storedListings]);
+  }, [city, kind, listings, storedListings]);
 
   return (
     <>

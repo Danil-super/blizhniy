@@ -2,12 +2,31 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, MapPin, Search } from "lucide-react";
-import { cities, region } from "@/lib/data";
+import { useRouter } from "next/navigation";
+import { cities, cityPreferenceKey, region } from "@/lib/data";
 
 const sortedCities = [...cities].sort((left, right) => left.name.localeCompare(right.name, "ru"));
 const cityOptions = [{ slug: region.slug, name: region.name }, ...sortedCities];
 
+function savedCityCookie() {
+  const key = cityPreferenceKey + "=";
+  return document.cookie.split("; ").find(item => item.startsWith(key))?.slice(key.length);
+}
+
+function writeCityCookie(slug: string) {
+  document.cookie = `${cityPreferenceKey}=${slug}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
+}
+
+function resetFeedPage() {
+  const url = new URL(window.location.href);
+  if (url.pathname !== "/obyavleniya" || !url.searchParams.has("page")) return false;
+  url.searchParams.delete("page");
+  window.location.replace(url.href);
+  return true;
+}
+
 export function HeaderControls({ placement = "desktop" }: { placement?: "desktop" | "mobile" }) {
+  const router = useRouter();
   const [selectedCity, setSelectedCity] = useState(region.slug);
   const [cityMenuOpen, setCityMenuOpen] = useState(false);
   const [cityQuery, setCityQuery] = useState("");
@@ -36,12 +55,31 @@ export function HeaderControls({ placement = "desktop" }: { placement?: "desktop
   }, [cityMenuOpen]);
 
   useEffect(() => {
-    const savedCity = window.localStorage.getItem("blizhniy-city");
-
-    if (savedCity && cityOptions.some((city) => city.slug === savedCity)) {
-      setSelectedCity(savedCity);
+    function syncCity() {
+      let slug = savedCityCookie();
+      if (!slug) {
+        try { slug = localStorage.getItem(cityPreferenceKey) ?? undefined; } catch { /* Storage may be disabled. */ }
+        if (slug && cityOptions.some(city => city.slug === slug)) {
+          writeCityCookie(slug);
+          if (savedCityCookie() === slug && !resetFeedPage()) router.refresh();
+        }
+      }
+      setSelectedCity(cityOptions.find(city => city.slug === slug)?.slug ?? region.slug);
     }
-  }, []);
+    function onStorage(event: StorageEvent) {
+      if (event.key === cityPreferenceKey) {
+        syncCity();
+        if (!resetFeedPage()) router.refresh();
+      }
+    }
+    syncCity();
+    window.addEventListener(cityPreferenceKey, syncCity);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(cityPreferenceKey, syncCity);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [router]);
 
   useEffect(() => {
     function handleDocumentClick(event: MouseEvent) {
@@ -55,10 +93,12 @@ export function HeaderControls({ placement = "desktop" }: { placement?: "desktop
   }, []);
 
   function handleRegionChange(citySlug: string) {
-    setSelectedCity(citySlug);
-    window.localStorage.setItem("blizhniy-city", citySlug);
+    writeCityCookie(citySlug);
+    try { localStorage.setItem(cityPreferenceKey, citySlug); } catch { /* The cookie still stores the preference. */ }
+    window.dispatchEvent(new Event(cityPreferenceKey));
     setCityQuery("");
     setCityMenuOpen(false);
+    if (!resetFeedPage()) router.refresh();
   }
 
   const mobile = placement === "mobile";

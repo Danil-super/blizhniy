@@ -1,7 +1,7 @@
 import {mapPublicListing,type PublicListingRow} from './public-listings';import {publicListingSource,publicListingLive,publicListingPhotos,postmoderationListingSource,postmoderationListingLive} from './listing-public-eligibility';
 import {parseListingDraftId,ListingDraftInputError} from './listing-draft-contract.ts';import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {Listing,ListingKind} from './types';import type {ListingFormDraft} from './listing-form-contract';import type {PostgresQueries} from './postgres';import type {MediaFileRecord} from './media-files';
-export type PublicListingQuery={kind?:ListingKind;ownerId?:string;categorySlug?:string;subcategoryName?:string;limit?:number;offset?:number};
+export type PublicListingQuery={kind?:ListingKind;city?:string;ownerId?:string;categorySlug?:string;subcategoryName?:string;limit?:number;offset?:number};
 export type PublicListingPhoto={record:MediaFileRecord;revision:string;expiresAt:string};
 type Row=Omit<PublicListingRow,'form'>&{form:Omit<ListingFormDraft,'photoIds'>};
 const dbKinds={prodam:'sell',kuplyu:'buy','otdam-darom':'free',arenda:'rent'} as const;
@@ -19,12 +19,13 @@ const columns=(coverOnly=false,postmoderation=false)=>`l.id,l.author_id as "owne
  array(select p.media_id::text from app.listing_photos p where p.listing_id=l.id order by p.position ${coverOnly?'limit 1':''}) as "mediaIds"`;
 function queryOptions(value:PublicListingQuery){
  if(!value||typeof value!=='object'||Array.isArray(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value))||
-  Reflect.ownKeys(value).some(key=>typeof key!=='string'||!['kind','ownerId','categorySlug','subcategoryName','limit','offset'].includes(key)))throw new ListingDraftInputError();
- const {kind,ownerId,categorySlug,subcategoryName,limit=24,offset=0}=value;
+  Reflect.ownKeys(value).some(key=>typeof key!=='string'||!['kind','city','ownerId','categorySlug','subcategoryName','limit','offset'].includes(key)))throw new ListingDraftInputError();
+ const {kind,city,ownerId,categorySlug,subcategoryName,limit=24,offset=0}=value;
  if(kind!==undefined&&!Object.hasOwn(dbKinds,kind)||!Number.isSafeInteger(limit)||limit<1||limit>1000||!Number.isSafeInteger(offset)||offset<0||offset>1000000||
+  city!==undefined&&(typeof city!=='string'||!city||city.length>120||city.trim()!==city)||
   categorySlug!==undefined&&(typeof categorySlug!=='string'||categorySlug.length>150||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(categorySlug))||
   subcategoryName!==undefined&&(!categorySlug||typeof subcategoryName!=='string'||!subcategoryName||subcategoryName.length>160||subcategoryName.trim()!==subcategoryName||/[\x00-\x1f\x7f]/.test(subcategoryName)))throw new ListingDraftInputError();
- return{kind:kind===undefined?null:dbKinds[kind],ownerId:ownerId===undefined?null:parseListingDraftId(ownerId),categorySlug:categorySlug??null,subcategoryName:subcategoryName??null,limit,offset};
+ return{city:city??null,kind:kind===undefined?null:dbKinds[kind],ownerId:ownerId===undefined?null:parseListingDraftId(ownerId),categorySlug:categorySlug??null,subcategoryName:subcategoryName??null,limit,offset};
 }
 /** Anonymous read-only projection. No owner access, finance/view-count writes, legacy fallback or swallowed SQL failures. */
 export class PostgresPublicListingStore{
@@ -49,7 +50,8 @@ export class PostgresPublicListingStore{
    and ($1::text is null or l.listing_type=$1) and ($3::uuid is null or l.author_id=$3)
    and ($4::text is null or coalesce(parent.slug,c.slug)=$4)
    and ($5::text is null or c.parent_id is not null and c.name=$5)
-   order by l.published_at desc,l.created_at desc,l.id desc limit $6 offset $7`,[query.kind,maxListingMediaTotalSize,query.ownerId,query.categorySlug,query.subcategoryName,query.limit,query.offset])).rows;
+   and ($8::text is null or city.name=$8)
+   order by l.published_at desc,l.created_at desc,l.id desc limit $6 offset $7`,[query.kind,maxListingMediaTotalSize,query.ownerId,query.categorySlug,query.subcategoryName,query.limit,query.offset,query.city])).rows;
   return rows;
  }
  async list(options:PublicListingQuery={}):Promise<Listing[]>{

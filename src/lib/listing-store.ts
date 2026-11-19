@@ -671,10 +671,10 @@ export async function recordStoredListingView(listingId: string, viewerKey: stri
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 }
 
-export async function listStoredListings(limit = 24, options: { kind?: ListingKind; offset?: number } = {}) {
+export async function listStoredListings(limit = 24, options: { kind?: ListingKind; city?: string; offset?: number } = {}) {
   if (process.env.BLIZHNIY_AUTH_MODE === 'postgres') {
     const {getProductionPublicListingStore} = await import('./production-public-listing-runtime');
-    return (await getProductionPublicListingStore()).list({limit, kind: options.kind, offset: options.offset ?? 0});
+    return (await getProductionPublicListingStore()).list({limit, kind: options.kind, city: options.city, offset: options.offset ?? 0});
   }
   if (!isSupabaseRestConfigured()) {
     return [];
@@ -685,8 +685,11 @@ export async function listStoredListings(limit = 24, options: { kind?: ListingKi
   const kindFilter = options.kind ? `&listing_type=eq.${dbTypeByListingKind[options.kind]}` : "";
 
   try {
+    const cityRow = options.city ? await findCity(options.city) : undefined;
+    if (options.city && !cityRow) return [];
+    const cityFilter = cityRow ? `&city_id=eq.${encodeURIComponent(cityRow.id)}` : "";
     const rows = await fetchListingRows(
-      `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}${kindFilter}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${offset}`,
+      `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}${kindFilter}${cityFilter}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${offset}`,
     );
 
     return rows.map(mapListing).map(publicListing);

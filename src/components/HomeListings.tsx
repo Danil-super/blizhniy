@@ -15,9 +15,9 @@ const kindLabels: Record<ListingKind, string> = {
   "otdam-darom": "Отдам даром",
 };
 
-export async function HomeListings({ kind, page = 1 }: { kind?: ListingKind; page?: number }) {
+export async function HomeListings({ kind, page = 1, city }: { kind?: ListingKind; page?: number; city?: string }) {
   const pageSize = 24;
-  const storedListings = await listStoredListings(pageSize + 1, { kind, offset: (page - 1) * pageSize });
+  const storedListings = await listStoredListings(pageSize + 1, { kind, city, offset: (page - 1) * pageSize });
 
   if (page > 1 && !storedListings.length) notFound();
   const storedCards = storedListings.map((listing) => ({ ...toDemoListing(listing), images: listing.images }));
@@ -27,6 +27,7 @@ export async function HomeListings({ kind, page = 1 }: { kind?: ListingKind; pag
   const title = kind ? kindLabels[kind] : "Свежие объявления";
   const listings = uniqueListings
     .filter((listing) => listing.status === "published")
+    .filter((listing) => !city || listing.city === city)
     .filter((listing) => !kind || listing.kind === kind)
     .sort((left, right) => publicationTimestamp(right.publishedAt) - publicationTimestamp(left.publishedAt));
   const hasMore = storedListings.length > pageSize;
@@ -49,7 +50,7 @@ export async function HomeListings({ kind, page = 1 }: { kind?: ListingKind; pag
         ) : null}
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-        <HomeListingsFeed kind={kind} listings={visibleListings} />
+        <HomeListingsFeed city={city} kind={kind} listings={visibleListings} />
       </div>
       {page > 1 || hasMore ? (
         <nav aria-label="Страницы объявлений" className="mt-6 flex items-center justify-center gap-3">
