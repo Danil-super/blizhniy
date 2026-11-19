@@ -12,7 +12,7 @@ import type { LocalMediaUpload } from "./media-upload";
 import type { MediaMetadataRepository } from "./media-metadata";
 
 type Runtime = { identity: Pick<IdentityStore, "resolveSession">; limiter: Pick<AuthRateLimiter, "allowProduction">;
-  upload: Pick<LocalMediaUpload, "upload">; repository: Pick<MediaMetadataRepository, "readOwned"> };
+  upload?: Pick<LocalMediaUpload, "upload">; repository: Pick<MediaMetadataRepository, "readOwned"> };
 type Event = { event: "media_request"; requestId: string; operation: string; status: number; durationMs: number; code?: string };
 const shared = globalThis as typeof globalThis & { blizhniyMediaAdmission?: { upload: boolean; reads: number } };
 const admission = shared.blizhniyMediaAdmission ??= { upload: false, reads: 0 };
@@ -87,6 +87,7 @@ export function createProductionMediaHandler(config: { origin: string }, getRunt
         if(!releaseRead)throw new AuthRequestError(503,'MEDIA_BUSY');request.signal.throwIfAborted();
       }
       if (operation === "upload") {
+        if (!runtime.upload) throw new Error("Media uploader unavailable");
         const bytes = await readUpload(request);
         const result = await runtime.upload.upload(token, intent!, bytes, mimeType!, request.signal);
         let view;

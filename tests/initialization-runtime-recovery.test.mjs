@@ -45,9 +45,9 @@ test('real auth runtime never retries schema, privilege or TLS failures as trans
 });
 function mediaFixture(unsafe=false,missingParent=false,unsafeParent=false){
  delete globalThis.blizhniyProductionMedia;
- let now=0,socketReady=false,checks=0,stores=0;
+ let now=0,socketReady=false,checks=0,stores=0,writers=0;
  const source=readFileSync(new URL('../src/lib/production-media-runtime.ts',import.meta.url),'utf8');
- const read=async()=>Buffer.alloc(0),exports={};
+ const read=async()=>Buffer.alloc(0),normalize=async()=>Object.freeze({}),exports={};
  const modules={
   'node:crypto':{randomUUID},'node:fs':{realpathSync:path=>path,lstatSync:path=>{
    checks++;
@@ -62,8 +62,8 @@ function mediaFixture(unsafe=false,missingParent=false,unsafeParent=false){
   './media-runtime-policy':{assertMediaRuntime:()=>({root:'/synthetic/media',app:'/synthetic/app',socket:'/run/blizhniy-media/decoder.sock'})},
   './production-auth-runtime':{getProductionAccountDatabase:async()=>({db:{query:async()=>({rows:[]})},limiter:{}})},
   './media-files':{createLocalMediaFileStore:async()=>{stores++;return {read};}},
-  './media-file-worker':{createLocalMediaFileWorker:async()=>({})},
-  './media-socket':{createMediaSocketClient:()=>({})},
+  './media-file-worker':{createLocalMediaFileWorker:async()=>{writers++;return {};}},
+  './media-socket':{createMediaSocketClient:()=>({normalize})},
   './media-metadata':{MediaMetadataRepository:class{}},'./media-write':{LocalMediaWriter:class{}},
   './media-upload':{LocalMediaUpload:class{}},'./identity':{IdentityStore:class{}},
   './auth-http':{},'./production-auth-config':{},'./production-media-http':{},
@@ -71,16 +71,17 @@ function mediaFixture(unsafe=false,missingParent=false,unsafeParent=false){
  new Function('require','exports',ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText)(name=>{
   assert.ok(Object.hasOwn(modules,name),`Unexpected import: ${name}`);return modules[name];
  },exports);
- return {runtime:exports,read,time:value=>{now=value;},ready:()=>{socketReady=true;},counts:()=>({checks,stores})};
+ return {runtime:exports,read,normalize,time:value=>{now=value;},ready:()=>{socketReady=true;},counts:()=>({checks,stores,writers})};
 }
 function randomUUID(){return '11111111-1111-4111-8111-111111111111';}
 test('real media runtime recovers after its absent decoder socket appears without restarting the process',async()=>{
  const f=mediaFixture();
  try{
-  await assert.rejects(f.runtime.getProductionMediaFileReader(config),DependencyNotReadyError);
-  const before=f.counts();f.ready();f.time(4999);await assert.rejects(f.runtime.getProductionMediaFileReader(config));assert.deepEqual(f.counts(),before);
-  f.time(5000);const results=await Promise.all(Array.from({length:20},()=>f.runtime.getProductionMediaFileReader(config)));
-  assert.ok(results.every(value=>value.read===f.read));assert.equal(f.counts().stores,1);
+  assert.equal((await f.runtime.getProductionMediaFileReader(config)).read,f.read);
+  await assert.rejects(f.runtime.getProductionMediaNormalizer(config),DependencyNotReadyError);
+  const before=f.counts();f.ready();f.time(4999);await assert.rejects(f.runtime.getProductionMediaNormalizer(config));assert.deepEqual(f.counts(),before);
+  f.time(5000);const results=await Promise.all(Array.from({length:20},()=>f.runtime.getProductionMediaNormalizer(config)));
+  assert.ok(results.every(value=>value.normalize===f.normalize));assert.equal(f.counts().stores,1);
  }finally{delete globalThis.blizhniyProductionMedia;}
 });
 test('real media runtime keeps unsafe socket permissions closed despite later requests',async()=>{
@@ -93,8 +94,9 @@ test('real media runtime keeps unsafe socket permissions closed despite later re
 test('real media runtime recovers when systemd creates the previously missing socket parent',async()=>{
  const f=mediaFixture(false,true);
  try{
-  await assert.rejects(f.runtime.getProductionMediaFileReader(config),DependencyNotReadyError);
-  f.ready();f.time(5000);assert.equal((await f.runtime.getProductionMediaFileReader(config)).read,f.read);
+  assert.equal((await f.runtime.getProductionMediaFileReader(config)).read,f.read);
+  await assert.rejects(f.runtime.getProductionMediaNormalizer(config),DependencyNotReadyError);
+  f.ready();f.time(5000);assert.equal((await f.runtime.getProductionMediaNormalizer(config)).normalize,f.normalize);
   assert.equal(f.counts().stores,1);
  }finally{delete globalThis.blizhniyProductionMedia;}
 });
@@ -104,5 +106,16 @@ test('real media runtime never retries an existing socket parent with an unsafe 
   await assert.rejects(f.runtime.getProductionMediaFileReader(config));const before=f.counts();f.time(999999);
   await assert.rejects(f.runtime.getProductionMediaFileReader(config));assert.deepEqual(f.counts(),before);
   assert.equal(f.counts().stores,0);
+ }finally{delete globalThis.blizhniyProductionMedia;}
+});
+test('reading existing photos does not start a writer; a missing decoder blocks only new uploads',async()=>{
+ const f=mediaFixture();
+ try{
+  await assert.rejects(f.runtime.getProductionMediaNormalizer(config),DependencyNotReadyError);
+  assert.equal((await f.runtime.getProductionMediaFileReader(config)).read,f.read);
+  assert.equal(f.counts().writers,0);
+  f.ready();f.time(5000);
+  assert.equal((await f.runtime.getProductionMediaNormalizer(config)).normalize,f.normalize);
+  assert.equal(f.counts().writers,1);
  }finally{delete globalThis.blizhniyProductionMedia;}
 });
