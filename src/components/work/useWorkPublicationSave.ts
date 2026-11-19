@@ -40,11 +40,11 @@ export function useWorkPublicationSave(owner:string,kind:WorkPublicationKind,for
    if(!['pending','approved'].includes(result.state))throw Error('Проверьте статус модерации в кабинете.');}
   if(!scope.current?.signal.aborted)finish(value);
  }
- async function run(work:()=>Promise<void>){
+ async function run(work:()=>Promise<void>,firstSaveAttempt=false){
   if(pending.current)return;pending.current=true;setBusy(true);setMessage(null);
   try{await work();}catch(error){if(!scope.current?.signal.aborted){
-   if(error instanceof ListingMediaClientError&&['INVALID_INPUT','MEDIA_OWNER_QUOTA_EXCEEDED'].includes(error.code)&&attempt.current&&!attempt.current.uncertain&&!attempt.current.completed){attempt.current=null;setActive(false);}
-   setMessage(error instanceof Error?error.message:'Не удалось подтвердить сохранение.');}}
+   if(error instanceof ListingMediaClientError&&error.allowsDraftEdit(firstSaveAttempt)&&attempt.current&&!attempt.current.uncertain&&!attempt.current.completed){attempt.current=null;setActive(false);}
+   setMessage(error instanceof ListingMediaClientError?error.draftMessage:error instanceof Error?error.message:'Не удалось подтвердить сохранение.');}}
   finally{pending.current=false;if(!scope.current?.signal.aborted){setBusy(false);setUncertain(!!attempt.current?.uncertain||submission.current||checkout.current.uncertain);}}
  }
  async function start(asDraft:boolean){
@@ -63,7 +63,7 @@ export function useWorkPublicationSave(owner:string,kind:WorkPublicationKind,for
     }},initial,data.get('photoOrder'));setActive(true);
    }
    const saved=await attempt.current.save({signal:scope.current?.signal});await submitOrFinish(saved);
-  });
+  },!attempt.current);
  }
  async function readback(){await run(async()=>{
   if(checkout.current.uncertain&&checkout.current.input){

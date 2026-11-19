@@ -35,3 +35,18 @@ test('private image reads use POST and enforce type, bounded bytes, abort and no
  const controller=new AbortController();controller.abort();
  await assert.rejects(createListingMediaClient(async()=>assert.fail('aborted fetch')).read(owner,id,{signal:controller.signal}));
 });
+
+test('a busy first upload can be edited, while a retry after an uncertain upload keeps its original intent',async()=>{
+ const file=new Blob(['photo'],{type:'image/png'});
+ for(const code of ['MEDIA_BUSY','MEDIA_UNAVAILABLE','MEDIA_IN_PROGRESS','INVALID_IMAGE','MEDIA_OWNER_QUOTA_EXCEEDED']){
+  const status={MEDIA_BUSY:503,MEDIA_UNAVAILABLE:503,MEDIA_IN_PROGRESS:409,INVALID_IMAGE:422,MEDIA_OWNER_QUOTA_EXCEEDED:409}[code];
+  const api=createListingMediaClient(async()=>Response.json({error:{code}},{status}));
+  await assert.rejects(api.upload(owner,id,file),error=>{
+   const rejected=code==='INVALID_IMAGE'||code==='MEDIA_OWNER_QUOTA_EXCEEDED';
+   assert.equal(error.allowsDraftEdit(true),rejected||code==='MEDIA_BUSY');
+   assert.equal(error.allowsDraftEdit(false),rejected);
+   if(code==='MEDIA_UNAVAILABLE')assert.match(error.draftMessage,/повторите сохранение/i);
+   return true;
+  });
+ }
+});

@@ -59,10 +59,10 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
   }
   if(!controller.current?.signal.aborted)setDone(true);
  }
- async function run(work:()=>Promise<void>){
+ async function run(work:()=>Promise<void>,firstSaveAttempt=false){
   if(pending.current||!owner)return;pending.current=true;setBusy(true);setMessage(null);setCheckoutBlocked(false);const generation=epoch.current;
-  try{await work();}catch(error){if(generation===epoch.current){setMessage(error instanceof ListingDraftInputError?'Проверьте поля объявления: цену, контакты, координаты и параметры аренды.':error instanceof Error?error.message:'Не удалось подтвердить сохранение.');
-   if(error instanceof ListingMediaClientError&&['INVALID_INPUT','MEDIA_OWNER_QUOTA_EXCEEDED'].includes(error.code)&&attempt.current&&!attempt.current.uncertain&&!attempt.current.completed){
+  try{await work();}catch(error){if(generation===epoch.current){setMessage(error instanceof ListingDraftInputError?'Проверьте поля объявления: цену, контакты, координаты и параметры аренды.':error instanceof ListingMediaClientError?error.draftMessage:error instanceof Error?error.message:'Не удалось подтвердить сохранение.');
+   if(error instanceof ListingMediaClientError&&error.allowsDraftEdit(firstSaveAttempt)&&attempt.current&&!attempt.current.uncertain&&!attempt.current.completed){
     setRejected(true);
     try{
      const id=attempt.current.id;
@@ -97,14 +97,14 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
     },read:productionListingForm.read,write:productionListingForm.write},baseline.current,data.get('photoOrder'));form.dataset.primaryIntent=intentKey;setActive(true);
    }
    await attempt.current.save({signal:controller.current?.signal});await finish();
-  });
+  },!attempt.current);
  }
  return <fieldset ref={controlsRef} data-primary-group className="grid min-w-0 gap-3 md:contents">
   <button type="button" data-primary-control={draft?'save':'submit'} className={className??`${draftButton} bg-[#0875d1] text-white`} disabled={busy||!owner||!!attempt.current?.uncertain||!!moderation.current?.uncertain||paymentUncertain} onClick={event=>{
    if(event.currentTarget.form)void save(event.currentTarget.form);
   }}>{busy?(draft?'Сохраняем поля и фотографии…':'Сохраняем объявление…'):(draft?label:submitLabel)}</button>
   {!draft&&!active&&<p className="min-w-0 flex-1 basis-64 self-center text-sm text-slate-600 md:col-span-full">{postmoderation?'Сначала проверим поля и сохраним фотографии. Перед тестовой оплатой вы увидите, предусмотрена ли публикация объявления.':'Сначала бесплатная проверка модератором. Отправка не публикует объявление и не списывает деньги.'}</p>}
-  {active&&!done&&!checkoutBlocked&&<p className="text-sm text-slate-600 md:col-span-full" role="status">Сохраняется снимок формы на момент нажатия. До подтверждения результата не создавайте объявление повторно.</p>}
+  {busy&&active&&!done&&!checkoutBlocked&&<p className="text-sm text-slate-600 md:col-span-full" role="status">Сохраняется снимок формы на момент нажатия. До подтверждения результата не создавайте объявление повторно.</p>}
   {message&&<p className="break-words text-sm font-semibold text-rose-700 md:col-span-full" role="alert">{message}</p>}
   {checkoutBlocked&&<a href={returnHref} className="text-sm font-semibold text-[#0875d1] underline md:col-span-full">К начатой оплате в личном кабинете</a>}
   {paymentUncertain&&<button type="button" className={draftButton} disabled={busy||!owner} onClick={()=>void run(async()=>{
