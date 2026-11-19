@@ -2,6 +2,7 @@ import {parseListingFormDraft} from './listing-form-contract.ts';
 import {fairCategories} from './data.ts';
 import {validPlainText,validEmail,validWebUrl} from './cabinet-field-validation.ts';
 import {parseListingDraftId} from './listing-draft-contract.ts';
+export const servicePublicationStatuses = ['draft','pending_payment','paid','published','archived','expired','rejected'] as const;
 export type ServicePublicationKind='specialist'|'fair'|'marquee';
 type Consent={title:string;placementRightConfirmed:boolean};
 type Details=Consent&{description:string;cityName:string|null;district:string|null;address:string|null;latitude:number|null;longitude:number|null;
