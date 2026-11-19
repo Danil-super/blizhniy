@@ -1,4 +1,4 @@
-export type LocalAccountUser = { id: string; email: string; role: "user" | "admin"; isBlocked: false; specialistTest?:true; workPublicationTest?:true };
+export type LocalAccountUser = { id: string; email: string; role: "user" | "admin"; isBlocked: false; specialistTest?:true; workPublicationTest?:true; listingVerificationTest?:true };
 
 const errorStatuses: Record<string, number> = { UNAUTHENTICATED: 401, INVALID_CREDENTIALS: 401, RATE_LIMITED: 429,
   HTTPS_REQUIRED: 503, INVALID_INPUT: 422, AUTH_UNAVAILABLE: 503, SYNTHETIC_EMAIL_REQUIRED: 422, CAPTCHA_REQUIRED: 403 };
@@ -57,11 +57,12 @@ function accountClient(production: boolean) { return {
   },
   async session(): Promise<LocalAccountUser | null> {
     try {
-      const capabilities: Pick<LocalAccountUser,"specialistTest"|"workPublicationTest"> = {};
+      const capabilities: Pick<LocalAccountUser,"specialistTest"|"workPublicationTest"|"listingVerificationTest"> = {};
       const payload = await request("session", {}, production, response=>{
         if (!production) return;
         if (response.headers?.get("X-Blizhniy-Specialist-Test")==="1") capabilities.specialistTest=true;
         if (response.headers?.get("X-Blizhniy-Work-Publication-Test")==="1") capabilities.workPublicationTest=true;
+        else if (response.headers?.get("X-Blizhniy-Listing-Verification-Test")==="1") capabilities.listingVerificationTest=true;
       });
       if (Object.keys(payload).length !== 1) throw new LocalAccountError("AUTH_UNAVAILABLE");
       if (production && payload.user === null) return null;

@@ -5,7 +5,13 @@ export type AccountAuthSnapshot = {
   userId: string | null;
   specialistTest?: true;
   workPublicationTest?: true;
+  listingVerificationTest?: true;
 };
+
+export function canStartListingTest(account: AccountAuthSnapshot | null, owner: string | null): boolean {
+  return !!account && !!owner && account.userId === owner && (account.state === "signed-in" || account.state === "admin")
+    && (account.workPublicationTest === true || account.listingVerificationTest === true);
+}
 
 /** Display state only: resource permissions remain server-owned, never inferred from this cache. */
 export function createAccountSessionState(session: () => Promise<LocalAccountUser | null>) {
@@ -14,8 +20,9 @@ export function createAccountSessionState(session: () => Promise<LocalAccountUse
   const listeners = new Set<(value: AccountAuthSnapshot) => void>();
   function publish(state: AccountAuthSnapshot["state"], user?: LocalAccountUser | null) {
     const userId=user?.id??null, specialistTest=user?.specialistTest, workPublicationTest=user?.workPublicationTest;
-    if (snapshot.state === state && snapshot.userId === userId && snapshot.specialistTest===specialistTest && snapshot.workPublicationTest===workPublicationTest) return;
-    snapshot = { state, userId, ...(specialistTest?{specialistTest}:{}), ...(workPublicationTest?{workPublicationTest}:{}) };
+    const listingVerificationTest=user?.listingVerificationTest;
+    if (snapshot.state === state && snapshot.userId === userId && snapshot.specialistTest===specialistTest && snapshot.workPublicationTest===workPublicationTest && snapshot.listingVerificationTest===listingVerificationTest) return;
+    snapshot = { state, userId, ...(specialistTest?{specialistTest}:{}), ...(workPublicationTest?{workPublicationTest}:{}), ...(listingVerificationTest?{listingVerificationTest}:{}) };
     listeners.forEach(listener => listener(snapshot));
   }
   async function refresh(background = false) {

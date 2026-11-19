@@ -67,7 +67,7 @@ function view(user: IdentityUser): IdentityUser {
  * Valid recovery is committed before acceptance; no volatile fire-and-forget job or SMTP in HTTP. */
 export function createProductionAccountHandler(config: ProductionAuthConfig, getRuntime: () => ProductionAccountRuntime | Promise<ProductionAccountRuntime>,
   audit: (event: AuthEvent) => void = event => console.info(JSON.stringify(event)), canShowSpecialistTest?: (ownerId:string)=>boolean,
-  canShowWorkPublicationTest?: (ownerId:string)=>boolean) {
+  canShowWorkPublicationTest?: (ownerId:string)=>boolean, canShowListingVerificationTest?: (ownerId:string)=>boolean) {
   if (typeof window !== "undefined" || config.origin !== productionAuthOrigin) throw new Error("Invalid production account boundary");
   return async (request: Request, operation: string): Promise<Response> => {
     const requestId = randomUUID();
@@ -146,6 +146,7 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
         const headers: Record<string,string> = {};
         if (canShowSpecialistTest?.(user.id)) headers["X-Blizhniy-Specialist-Test"] = "1";
         if (canShowWorkPublicationTest?.(user.id)) headers["X-Blizhniy-Work-Publication-Test"] = "1";
+        else if (canShowListingVerificationTest?.(user.id)) headers["X-Blizhniy-Listing-Verification-Test"] = "1";
         return respond({ user: view(user) }, 200, headers);
       }
       if (action === "confirm") {

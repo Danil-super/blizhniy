@@ -14,7 +14,8 @@ import type {ListingFormSnapshot} from '@/lib/listing-form-contract';
 import {ListingDraftInputError} from '@/lib/listing-draft-contract';
 import {useDraftLeaveGuard} from './useDraftLeaveGuard';
 import {draftButton} from './PrivateDraftEditor';
-import {useListingPostmoderation} from './ListingWorkflowProvider';
+import {canStartListingTest} from '@/lib/account-session-state';
+import {useListingPostmoderation,useLocalPaymentSimulation} from './ListingWorkflowProvider';
 import {accountTestPayment} from '@/lib/client-account-test-payment';
 import {startListingPayment,type ListingCheckoutAttempt} from '@/lib/listing-payment-start';
 
@@ -22,6 +23,8 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
  const postmoderation=useListingPostmoderation(),submitLabel=postmoderation?'Перейти к оплате':'Отправить на модерацию';
  const auth=usePrimaryAccountAuth(),identity=auth?.state==='signed-in'||auth?.state==='admin'?auth.userId:null;
  const owner=identity&&(!expectedOwnerId||identity===expectedOwnerId)?identity:null;
+ const simulation=useLocalPaymentSimulation();
+ const paymentUnavailable=!draft&&postmoderation&&!simulation&&!canStartListingTest(auth,owner);
  const attempt=useRef<ReturnType<typeof createListingFormSave>|null>(null),formRef=useRef<HTMLFormElement|null>(null),pending=useRef(false),epoch=useRef(0);
  const moderation=useRef<ReturnType<typeof createListingFormModeration>|null>(null),controlsRef=useRef<HTMLFieldSetElement|null>(null),intentKey=useId();
  const [busy,setBusy]=useState(false),[message,setMessage]=useState<string|null>(null),[remote,setRemote]=useState<ListingFormSnapshot|null>(null),[active,setActive]=useState(false),[done,setDone]=useState(false);
@@ -79,6 +82,7 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
   finally{if(generation===epoch.current){pending.current=false;setBusy(false);if(formRef.current)delete formRef.current.dataset.primarySaving;}}
  }
  async function save(form:HTMLFormElement){
+  if(paymentUnavailable)return;
   if(form.querySelector('[data-photo-preparing="true"]')){setMessage('Дождитесь подготовки фотографий.');return;}
   if(form.dataset.primaryIntent&&form.dataset.primaryIntent!==intentKey){setMessage('В этой форме уже выполняется сохранение. Сначала проверьте его результат.');return;}
   if(form.dataset.primarySaving==='1')return;form.dataset.primarySaving='1';formRef.current=form;
@@ -100,10 +104,10 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
   },!attempt.current);
  }
  return <fieldset ref={controlsRef} data-primary-group className="grid min-w-0 gap-3 md:contents">
-  <button type="button" data-primary-control={draft?'save':'submit'} className={className??`${draftButton} bg-[#0875d1] text-white`} disabled={busy||!owner||!!attempt.current?.uncertain||!!moderation.current?.uncertain||paymentUncertain} onClick={event=>{
+  <button type="button" data-primary-control={draft?'save':'submit'} className={className??`${draftButton} bg-[#0875d1] text-white`} disabled={busy||!owner||paymentUnavailable||!!attempt.current?.uncertain||!!moderation.current?.uncertain||paymentUncertain} onClick={event=>{
    if(event.currentTarget.form)void save(event.currentTarget.form);
   }}>{busy?(draft?'Сохраняем поля и фотографии…':'Сохраняем объявление…'):(draft?label:submitLabel)}</button>
-  {!draft&&!active&&<p className="min-w-0 flex-1 basis-64 self-center text-sm text-slate-600 md:col-span-full">{postmoderation?'Сначала проверим поля и сохраним фотографии. Перед тестовой оплатой вы увидите, предусмотрена ли публикация объявления.':'Сначала бесплатная проверка модератором. Отправка не публикует объявление и не списывает деньги.'}</p>}
+  {!draft&&!active&&<p className="min-w-0 flex-1 basis-64 self-center text-sm text-slate-600 md:col-span-full">{paymentUnavailable?'Можно сохранить черновик. Оплата пока недоступна для этого аккаунта.':postmoderation?'Сначала проверим поля и сохраним фотографии. Перед тестовой оплатой вы увидите, предусмотрена ли публикация объявления.':'Сначала бесплатная проверка модератором. Отправка не публикует объявление и не списывает деньги.'}</p>}
   {busy&&active&&!done&&!checkoutBlocked&&<p className="text-sm text-slate-600 md:col-span-full" role="status">Сохраняется снимок формы на момент нажатия. До подтверждения результата не создавайте объявление повторно.</p>}
   {message&&<p className="break-words text-sm font-semibold text-rose-700 md:col-span-full" role="alert">{message}</p>}
   {checkoutBlocked&&<a href={returnHref} className="text-sm font-semibold text-[#0875d1] underline md:col-span-full">К начатой оплате в личном кабинете</a>}

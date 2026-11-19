@@ -17,10 +17,17 @@ export function readAccountTestPaymentConfig(env:NodeJS.ProcessEnv,checkout:List
 }
 
 /** Display eligibility for an authenticated session. Checkout authorizes each purchase separately. */
-export function canShowWorkPublicationTest(owner:string,env:NodeJS.ProcessEnv=process.env):boolean{
- if(env.BLIZHNIY_LISTING_PAYMENT!=='account-publication-test'||env.BLIZHNIY_PAYMENT_TEST_USER_ID!==owner||!env.BLIZHNIY_AUTH_ORIGIN)return false;
+function hasHostedTestMode(owner:string,env:NodeJS.ProcessEnv,mode:'account-test'|'account-publication-test'):boolean{
+ if(env.BLIZHNIY_LISTING_PAYMENT!==mode||env.BLIZHNIY_PAYMENT_TEST_USER_ID!==owner||!env.BLIZHNIY_AUTH_ORIGIN)return false;
  try{
   const checkout=readListingCheckoutConfig(env,env.BLIZHNIY_AUTH_ORIGIN);
-  return !!checkout&&readAccountTestPaymentConfig(env,checkout)?.publication===true;
+  return !!checkout&&readAccountTestPaymentConfig(env,checkout)!==null;
  }catch{return false;} // A misconfigured merchant must leave the account session usable.
+}
+
+export function canShowWorkPublicationTest(owner:string,env:NodeJS.ProcessEnv=process.env){
+ return hasHostedTestMode(owner,env,'account-publication-test');
+}
+export function canShowListingVerificationTest(owner:string,env:NodeJS.ProcessEnv=process.env){
+ return hasHostedTestMode(owner,env,'account-test');
 }
