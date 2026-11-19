@@ -15,6 +15,13 @@ export function parsePaymentHistoryCursor(value:unknown):PaymentHistoryCursor|nu
  const row=exact(value,['id','createdAt']),parsed=parseListingDraftCursor({id:row.id,updatedAt:row.createdAt})!;
  return{id:parsed.id,createdAt:parsed.updatedAt};
 }
+export function parsePaymentHistoryRequest(value:unknown){
+ if(value&&typeof value==='object'&&'action' in value&&value.action==='specialistOrder'){
+  const row=exact(value,['action','expectedOwnerId','paymentId']);
+  return{expectedOwnerId:parseListingDraftId(row.expectedOwnerId),paymentId:parseListingDraftId(row.paymentId)};
+ }
+ return parsePaymentHistoryInput(value);
+}
 export function parsePaymentHistoryInput(value:unknown){
  const row=exact(value,['expectedOwnerId','cursor']);
  return{expectedOwnerId:parseListingDraftId(row.expectedOwnerId),cursor:parsePaymentHistoryCursor(row.cursor)};

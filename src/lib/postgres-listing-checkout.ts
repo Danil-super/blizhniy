@@ -16,7 +16,6 @@ export type ListingCheckoutConfig={shopId:string;isTest:boolean;siteOrigin:strin
 export type ListingPaymentOrder={id:string;creationKey:string;targetId:string;targetRevision:string;tariffId:string;amount:string;durationDays:number;status:'created'|'pending'|'succeeded'|'failed'|'refunded';createdAt:string};
 export type ListingPaymentSnapshot={order:ListingPaymentOrder;fulfillment:{publishedAt:string;expiresAt:string}|null;testPublication?:true;testOnly?:true};
 type OrderRow=ListingPaymentOrder&{targetType:string};
-type Offer={id:string;name:string;amount:string;currency:'RUB';durationDays:number};
 const columns=`o.id,o.creation_key as "creationKey",o.target_type as "targetType",o.target_id as "targetId",o.target_revision::text as "targetRevision",o.status,
  i.tariff_id as "tariffId",i.amount::text,i.duration_days as "durationDays",to_char(o.created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "createdAt"`;
 const source='from app.payment_orders o join app.payment_checkout_intents i on i.id=o.id';
@@ -24,6 +23,30 @@ function display(row:OrderRow,targetType='listing'):ListingPaymentOrder{
  if(row.targetType!==targetType||row.durationDays===null)throw new ListingCheckoutUnavailableError();
  return{id:row.id,creationKey:row.creationKey,targetId:row.targetId,targetRevision:row.targetRevision,tariffId:row.tariffId,amount:row.amount,durationDays:row.durationDays,status:row.status,createdAt:row.createdAt};
 }
+
+/** Reads the purchased period and fulfillment from durable records, independently of checkout availability. */
+export async function readPlacementOrder(tx:PostgresQueries,owner:string,id:string,target:'listing'|'vacancy'|'workRequest'|'specialist',
+ options:{merchant?:{shopId:string;isTest:boolean};renewals?:boolean;includeTestFlag?:boolean}):Promise<ListingPaymentSnapshot|null>{
+ const merchant=options.merchant;
+ // Owner history also runs on databases from before the optional specialist migration.
+ const specialistTerms=target==='specialist'&&(merchant!==undefined||
+  (await tx.query<{installed:boolean}>(`select to_regclass('app.specialist_checkout_terms') is not null as installed`)).rows[0].installed);
+ const publicationMarker=target==='specialist'
+  ?(specialistTerms?'exists(select 1 from app.specialist_checkout_terms admitted where admitted.intent_id=i.id)':'false')
+  :"i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'";
+ const row=(await tx.query<OrderRow&{publishedAt:string|null;expiresAt:string|null;testPublication:boolean;testOnly:boolean}>(`select ${columns},i.is_test as "testOnly",
+  coalesce(i.is_test and (${publicationMarker}),false) as "testPublication",
+  to_char(${options.renewals?"greatest(f.published_at,f.expires_at-i.duration_days*interval '24 hours')":'f.published_at'} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
+  to_char(f.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "expiresAt"
+  ${source} and i.owner_id=o.owner_id and i.target_type=o.target_type and i.target_id=o.target_id and i.target_revision=o.target_revision
+  left join app.payment_fulfillments f on f.intent_id=o.id
+  where o.id=$1 and o.owner_id=$2 and o.target_type=$3 ${merchant?'and i.merchant_shop_id=$4 and i.is_test=$5':''}`,
+  merchant?[id,owner,target,merchant.shopId,merchant.isTest]:[id,owner,target])).rows[0];
+ if(!row)return null;
+ return{order:display(row,target),fulfillment:row.publishedAt&&row.expiresAt?{publishedAt:row.publishedAt,expiresAt:row.expiresAt}:null,
+  ...(row.testPublication?{testPublication:true as const}:{}),...(options.includeTestFlag&&row.testOnly?{testOnly:true as const}:{})};
+}
+type Offer={id:string;name:string;amount:string;currency:'RUB';durationDays:number};
 function matches(row:OrderRow,input:ListingCheckoutInput,targetType='listing'){
  return row.targetType===targetType&&row.targetId===input.listingId&&row.targetRevision===input.expectedRevision&&row.creationKey===input.creationKey&&
   row.tariffId===input.expectedTariffId&&row.amount===input.expectedAmount&&row.durationDays===input.expectedDurationDays;
@@ -145,19 +168,11 @@ export class PostgresListingCheckoutStore{
     tariffId:intent.tariffId,amount:intent.amount,durationDays:intent.durationDays,shopId:intent.shopId,isTest:intent.isTest};
   });
  }
- /** Historical purchased period (only its added interval for renewals), not current visibility. No provider I/O. */
  async readOrder(token:string,owner:string,paymentId:unknown):Promise<ListingPaymentSnapshot|null>{
-  const id=parseListingDraftId(paymentId);return this.owner(token,owner,async(tx,actor)=>{
-   const row=(await tx.query<OrderRow&{publishedAt:string|null;expiresAt:string|null;testPublication:boolean;testOnly:boolean}>(`select ${columns},i.is_test as "testOnly",
-    coalesce(i.is_test and (i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'${this.targetType==='specialist'?' or exists(select 1 from app.specialist_checkout_terms admitted where admitted.intent_id=i.id)':''}),false) as "testPublication",
-    to_char(${this.policy.renewals?"greatest(f.published_at,f.expires_at-i.duration_days*interval '24 hours')":'f.published_at'} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "publishedAt",
-    to_char(f.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "expiresAt"
-    ${source} left join app.payment_fulfillments f on f.intent_id=o.id
-    where o.id=$1 and o.owner_id=$2 and o.target_type='${this.targetType}' and i.merchant_shop_id=$3 and i.is_test=$4`,
-    [id,actor,this.config.shopId,this.config.isTest])).rows[0];
-   if(!row)return null;
-   return{order:display(row,this.targetType),fulfillment:row.publishedAt&&row.expiresAt?{publishedAt:row.publishedAt,expiresAt:row.expiresAt}:null,...(row.testPublication?{testPublication:true as const}:{}),...(this.policy.testModeHistory&&row.testOnly?{testOnly:true as const}:{})};
-  });
+  const id=parseListingDraftId(paymentId);
+  return this.owner(token,owner,(tx,actor)=>readPlacementOrder(tx,actor,id,this.targetType,{
+   merchant:this.config,renewals:this.policy.renewals,includeTestFlag:this.policy.testModeHistory,
+  }));
  }
  private async intent(tx:PostgresQueries,owner:string,id:string,input:ListingCheckoutInput,offer:Offer):Promise<PaymentIntent>{
   let origin:string;try{

@@ -6,6 +6,14 @@ import type {PostgresDatabase} from './postgres';
 /** History reads never dispatch, verify or refund a payment. */
 export class PostgresPaymentHistoryStore{
  constructor(private readonly db:Pick<PostgresDatabase,'transaction'>){}
+ async readSpecialistOrder(token:string,expectedOwnerId:string,paymentId:string){
+  const owner=parseListingDraftId(expectedOwnerId),id=parseListingDraftId(paymentId);
+  return withAppSessionTransaction(this.db,token,async(tx,user)=>{
+   if(user.id!==owner)throw new AppSessionAccessError();
+   const {readPlacementOrder}=await import('./postgres-listing-checkout');
+   return readPlacementOrder(tx,user.id,id,'specialist',{includeTestFlag:true});
+  });
+ }
  async list(token:string,expectedOwnerId:string,cursor:PaymentHistoryCursor|null){
   const owner=parseListingDraftId(expectedOwnerId),before=parsePaymentHistoryCursor(cursor);
   return withAppSessionTransaction(this.db,token,async(tx,user)=>{

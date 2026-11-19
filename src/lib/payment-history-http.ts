@@ -3,9 +3,9 @@ import {authJson,readAuthJson,AuthRequestError,type AuthRateLimiter} from './aut
 import {readAccountSessionToken} from './account-cookie';
 import {getTrustedProxyIp} from './trusted-proxy-ip';
 import {AppSessionAccessError} from './app-session-transaction';
-import {parsePaymentHistoryInput} from './payment-history-contract.ts';
+import {parsePaymentHistoryRequest} from './payment-history-contract.ts';
 import type {PostgresPaymentHistoryStore} from './postgres-payment-history';
-type Runtime={store:Pick<PostgresPaymentHistoryStore,'list'>;limiter:Pick<AuthRateLimiter,'allowProduction'>};
+type Runtime={store:Pick<PostgresPaymentHistoryStore,'list'|'readSpecialistOrder'>;limiter:Pick<AuthRateLimiter,'allowProduction'>};
 type Event={event:'payment_history';requestId:string;status:number;durationMs:number;code?:string};
 export function createPaymentHistoryHandler(config:{origin:string},runtime:()=>Promise<Runtime>|Runtime,audit:(event:Event)=>void=event=>console.info(JSON.stringify(event))){
  return async(request:Request)=>{
@@ -13,12 +13,13 @@ export function createPaymentHistoryHandler(config:{origin:string},runtime:()=>P
   const reply=(body:unknown,next:number,headers?:Record<string,string>)=>{status=next;return authJson(body,next,{'X-Request-ID':requestId,...headers});};
   try{
    if(request.method!=='POST')throw new AuthRequestError(405,'METHOD_NOT_ALLOWED');
-   const raw=await readAuthJson(request,config);let input:ReturnType<typeof parsePaymentHistoryInput>;
-   try{input=parsePaymentHistoryInput(raw);}catch{throw new AuthRequestError(422,'INVALID_INPUT');}
+   const raw=await readAuthJson(request,config);let input:ReturnType<typeof parsePaymentHistoryRequest>;
+   try{input=parsePaymentHistoryRequest(raw);}catch{throw new AuthRequestError(422,'INVALID_INPUT');}
    const ip=getTrustedProxyIp(request.headers);if(!ip)throw new AuthRequestError(403,'UNTRUSTED_INGRESS');
    const token=readAccountSessionToken(request);if(!token)throw new AuthRequestError(401,'UNAUTHENTICATED');
    const {store,limiter}=await runtime();if(!await limiter.allowProduction('session',ip))throw new AuthRequestError(429,'RATE_LIMITED');
-   return reply(await store.list(token,input.expectedOwnerId,input.cursor),200);
+   const result='paymentId' in input?await store.readSpecialistOrder(token,input.expectedOwnerId,input.paymentId):await store.list(token,input.expectedOwnerId,input.cursor);
+   return reply(result,200);
   }catch(error){
    if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
    code=error instanceof AuthRequestError?error.code:'PAYMENT_HISTORY_UNAVAILABLE';const next=error instanceof AuthRequestError?error.status:503;

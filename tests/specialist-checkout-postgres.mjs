@@ -24,6 +24,11 @@ for(const full of [false,true])test('specialist synthetic checkout on '+(full?'f
   if(full){for(const file of (await readdir(new URL('../database/migrations/',import.meta.url))).filter(n=>/^\d{4}-[a-z-]+\.sql$/.test(n)&&n<'0058').sort())await admin.query(await readFile(new URL('../database/migrations/'+file,import.meta.url),'utf8'));
    await admin.query(await readFile(new URL('../database/candidates/0058-media-reference-journal.sql',import.meta.url),'utf8'));
   }else for(const {sql} of getPublicationTestMigrationPlan())await admin.query(sql);
+  await suite.test('specialist history can read a database that has never installed specialist checkout',async()=>{
+   const {readPlacementOrder}=load('postgres-listing-checkout');
+   assert.equal((await admin.query("select to_regclass('app.specialist_checkout_terms') as terms")).rows[0].terms,null);
+   assert.equal(await readPlacementOrder(admin,randomUUID(),randomUUID(),'specialist',{includeTestFlag:true}),null);
+  });
   await admin.query(await readFile(new URL('../database/candidates/0060-local-specialist-checkout.sql',import.meta.url),'utf8'));
   await admin.query("insert into app.regions(slug,name) values('krasnodarskiy-kray','Краснодарский край');insert into app.cities(region_id,slug,name) select id,'krasnodar','Краснодар' from app.regions;insert into app.specialist_categories(slug,name,parent_name) values('plumber','Сантехник','Строительство');insert into app.tariffs(id,action,name,price,duration_days) values('specialist-publication','specialist_publication','Анкета',299,30)");
   await admin.query(`create role specialist_web login password '${password}';create role specialist_worker login password '${password}';grant usage on schema app to specialist_web,specialist_worker;grant select on all tables in schema app to specialist_web,specialist_worker;
@@ -81,6 +86,38 @@ for(const full of [false,true])test('specialist synthetic checkout on '+(full?'f
    assert.deepEqual((await fulfillment.fulfill(order.id)).period,snapshot.fulfillment,'replay never renews or republishes edited revision');
    await admin.query("insert into app.service_moderation(publication_id,revision,state,decided_by,decided_at) values($1,$2,'approved',$3,clock_timestamp())",[d.id,edited.revision,other.owner]);assert.ok(await catalogue.read('specialist',d.id));
    assert.deepEqual((await store.readOrder(d.token,d.owner,order.id)).fulfillment,snapshot.fulfillment);
+  });
+  await suite.test('ordinary account payment history reads bookmarked specialist orders with checkout disabled',async()=>{
+   const owner=await draft(),peer=await draft(),{order}=await prepare(owner);
+   const history=new(load('postgres-payment-history').PostgresPaymentHistoryStore)(web);
+   const origin='https://example.invalid';
+   const handle=load('payment-history-http').createPaymentHistoryHandler({origin},()=>({store:history,limiter:{allowProduction:async()=>true}}),()=>{});
+   function read(actor,id=order.id,expectedOwnerId=actor.owner){
+    return handle(new Request(origin+'/api/account/payments',{method:'POST',headers:{host:'example.invalid',origin,'content-type':'application/json','x-blizhniy-request':'1','x-real-ip':'127.0.0.1',cookie:'__Host-blizhniy_session='+actor.token},
+     body:JSON.stringify({action:'specialistOrder',expectedOwnerId,paymentId:id})}));
+   }
+   async function snapshot(){
+    const response=await read(owner);
+    assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);
+    return load('client-listing-payment').parseListingPaymentSnapshot(await response.json(),order.id);
+   }
+   async function withPurchasesOff(work){
+    const checkout=process.env.BLIZHNIY_SPECIALIST_CHECKOUT,workflow=process.env.BLIZHNIY_LISTING_WORKFLOW;
+    delete process.env.BLIZHNIY_SPECIALIST_CHECKOUT;delete process.env.BLIZHNIY_LISTING_WORKFLOW;
+    try{await work();}finally{process.env.BLIZHNIY_SPECIALIST_CHECKOUT=checkout;process.env.BLIZHNIY_LISTING_WORKFLOW=workflow;}
+   }
+   await withPurchasesOff(async()=>{
+    const pending=await snapshot();assert.deepEqual(pending.order,order);assert.equal(pending.fulfillment,null);assert.equal(pending.testPublication,true);
+    const foreign=await read(peer),missing=await read(owner,randomUUID());
+    assert.equal(foreign.status,200);assert.equal(missing.status,200);assert.deepEqual(await foreign.json(),null);assert.deepEqual(await missing.json(),null);
+    assert.equal((await read(peer,order.id,owner.owner)).status,401);assert.equal((await read({...owner,token:''})).status,401);
+   });
+   await capture(owner,order);const result=await fulfillment.fulfill(order.id);
+   await withPurchasesOff(async()=>{
+    const paid=await snapshot();assert.equal(paid.order.status,'succeeded');assert.equal(paid.testOnly,true);
+    assert.deepEqual(paid.fulfillment,result.period);assert.deepEqual(await snapshot(),paid);
+    assert.equal((await admin.query('select count(*)::int as n from app.payment_fulfillments where intent_id=$1',[order.id])).rows[0].n,1);
+   });
   });
   await suite.test('active specialist orders return a typed edit conflict while failed orders release the form',async()=>{
    for(const status of ['created','pending','succeeded','failed']){

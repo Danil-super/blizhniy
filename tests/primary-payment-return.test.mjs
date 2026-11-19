@@ -58,3 +58,21 @@ test('payment results name the placement that the owner paid for', () => {
   }
  }
 });
+
+test('a specialist bookmark keeps its identity even with the whole postmoderation workflow off',async()=>{
+ const previous=process.env.BLIZHNIY_AUTH_MODE;
+ try{
+  process.env.BLIZHNIY_AUTH_MODE='postgres';
+  const primary=()=>null;
+  const {default:Page}=load('src/app/oplata/[paymentId]/page.tsx',{
+   '@/components/payments/PaymentReturnClient':{PaymentReturnClient:()=>null},
+   '@/components/payments/PrimaryPaymentReturnClient':{PrimaryPaymentReturnClient:primary},
+   '@/components/payments/ApplicationPaymentReturnClient':{ApplicationPaymentReturnClient:()=>null},
+   '@/lib/listing-workflow-config':{readPostmoderationEnabled:()=>false},
+   '@/lib/specialist-checkout-config':{readSpecialistCheckoutEnabled:()=>true},
+   '@/lib/checkout-cancellation-contract':{readCheckoutCancellationEnabled:()=>true},
+  });
+  const result=await Page({params:Promise.resolve({paymentId:'22222222-2222-4222-8222-222222222222'}),searchParams:Promise.resolve({type:'specialist'})});
+  assert.equal(result.type,primary);assert.equal(result.props.specialist,true);assert.equal(result.props.testCheckout,false);assert.equal(result.props.cancellationEnabled,false);
+ }finally{if(previous===undefined)delete process.env.BLIZHNIY_AUTH_MODE;else process.env.BLIZHNIY_AUTH_MODE=previous;}
+});
