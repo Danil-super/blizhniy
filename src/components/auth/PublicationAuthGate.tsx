@@ -34,6 +34,16 @@ function PrimaryDraftGate({children,title,expectedOwnerId}:{children:ReactNode;t
   if(auth?.state==='signed-out'&&scopeOwner)setScopeOwner(null);
   const visible=owner!==null&&owner===scopeOwner;
   if(owner&&expectedOwnerId&&owner!==expectedOwnerId)return <main className="page-container py-10"><p role="alert">Аккаунт изменился. Откройте своё объявление из личного кабинета.</p><Link href="/cabinet/obyavleniya">Мои объявления</Link></main>;
+  if (!scopeOwner && auth?.state === 'unavailable') {
+    // No editor is mounted yet. Reload also recovers when the auth provider could not initialize.
+    return <main className="page-container py-10"><section className="mx-auto max-w-2xl">
+      <h1 className="mb-5 text-2xl font-bold">{title}</h1>
+      <p role="alert">Не удалось проверить вход.</p>
+      <button type="button" className="mt-3 min-h-11 font-semibold text-brand-blue underline" onClick={() => window.location.reload()}>
+        Повторить проверку входа
+      </button>
+    </section></main>;
+  }
   if(!scopeOwner)return <main className="page-container py-10"><section className="mx-auto max-w-2xl"><h1 className="mb-5 text-2xl font-bold">{title}</h1>
     {auth?.state==='signed-out'?<LocalAccountForm production headingLevel="h2"/>:<p role="status">Проверяем вход…</p>}</section></main>;
   return <>{!visible&&<div className="page-container py-6" role="status"><p>Проверяем вход. Заполненная форма скрыта до подтверждения аккаунта.</p>

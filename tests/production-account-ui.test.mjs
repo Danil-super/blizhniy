@@ -177,6 +177,23 @@ test("primary publication login retains one main h1 and does not render the lega
   assert.match(html, /<h2[^>]*>Вход<\/h2>/);
 });
 
+test("draft gate offers a retry when the first session check fails, without mounting the editor", () => {
+  const auth = { state: "unavailable", userId: null };
+  const { PublicationAuthGate } = load("src/components/auth/PublicationAuthGate.tsx", {
+    ...dependencies,
+    "@/components/auth/useAuthState": { useAuthState: () => auth },
+    "@/components/auth/AccountAuthProvider": { usePrimaryAccountAuth: () => auth },
+    "@/components/auth/LocalAccountForm": { LocalAccountForm: () => assert.fail("session is unknown") },
+    "@/components/auth/AuthForm": { AuthForm: () => assert.fail("unexpected legacy login") },
+  });
+  const editor = () => assert.fail("unverified editor must stay hidden");
+  const render = () => renderToStaticMarkup(React.createElement(PublicationAuthGate,
+    { preserveDraftDuringRecheck: true }, React.createElement(editor)));
+  assert.match(render(), /<button[^>]*>Повторить проверку входа<\/button>/);
+  auth.state = "loading";
+  assert.doesNotMatch(render(), /Повторить проверку входа/);
+});
+
 test("verified standalone login returns only to an exact local payment URL", () => {
   const id = "12345678-1234-4321-8765-123456789abc", location = { search: "" }, visits = [];
   const { ProductionLoginForm } = load("src/components/auth/ProductionLoginForm.tsx", {
