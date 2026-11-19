@@ -43,7 +43,11 @@ function tariffCta(tariff: Tariff, specialistCheckout = false) {
   return { href: "/cabinet", label: "Открыть кабинет" };
 }
 
-export const metadata: Metadata = { title: "Тарифы", alternates: { canonical: "/tarify" } };
+export const metadata: Metadata = {
+  title: "Тарифы",
+  description: "Стоимость и сроки размещения объявлений, вакансий, заказов и анкет специалистов на БЛИЖНИЙ.",
+  alternates: { canonical: "/tarify" },
+};
 
 export default async function Page() {
   const tariffs = await getPublicTariffs();

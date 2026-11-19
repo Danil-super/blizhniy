@@ -21,6 +21,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 
   return {
     title: profession ? `Специалисты: ${profession.name}` : "Профессия",
+    description: profession ? `Анкеты по профессии «${profession.name}» в разделе «${profession.parent}». Поиск специалистов в Краснодарском крае на БЛИЖНИЙ.` : undefined,
     alternates: { canonical: page > 1 ? `/rabota/specialisty/${professionSlug}?page=${page}` : `/rabota/specialisty/${professionSlug}` },
   };
 }
