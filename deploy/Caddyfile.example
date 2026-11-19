@@ -1,5 +1,5 @@
 # Direct public ingress, not behind a CDN or another load balancer.
-# See captcha-boundary.md before installing. This is not the live configuration.
+# Adapt this template with Caddy 2.10.2. See captcha-boundary.md for older servers.
 example.com {
     # Next 15 hides/replays Flight headers around middleware. Normalize the
     # invalid document-prefetch combination before it reaches that adapter.
@@ -11,7 +11,7 @@ example.com {
 
     @versioned_assets {
         method GET HEAD
-        path_regexp versioned ^/_next/static/(chunks/.+[-.][a-f0-9]{16}\.js|css/[a-f0-9]{16}\.css|media/[^/]+\.[a-f0-9]{8}\.webp)$
+        path_regexp versioned ^/_next/static/(chunks/.+[-.][a-f0-9]{16}\.js|css/[a-f0-9]{16}\.css|media/[^/]+\.[a-f0-9]{8}\.webp|[a-f0-9]{40}/_(buildManifest|ssgManifest)\.js)$
     }
     route @versioned_assets {
         uri strip_prefix /_next/static

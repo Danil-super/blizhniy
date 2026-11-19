@@ -46,3 +46,15 @@ test('the Caddy route selects an incoming file before its unconditional running 
   const template = readFileSync(new URL('../deploy/Caddyfile.example', import.meta.url), 'utf8');
   assert.match(template, /root @incoming \/var\/www\/blizhniy-static\/incoming\s+root \* \/var\/www\/blizhniy-static\/running/);
 });
+
+test('both Next build manifests remain available across a release switch', () => {
+  const template = readFileSync(new URL('../deploy/Caddyfile.example', import.meta.url), 'utf8');
+  const pattern = template.match(/path_regexp versioned (.+)/)[1];
+  const versioned = new RegExp(pattern);
+  const build = 'a'.repeat(40);
+  for (const name of ['_buildManifest.js', '_ssgManifest.js']) {
+    assert.ok(versioned.test(`/_next/static/${build}/${name}`));
+    assert.equal(versioned.test(`/_next/static/current/${name}`), false);
+  }
+  assert.equal(versioned.test(`/_next/static/${build}/other.js`), false);
+});
