@@ -3,10 +3,10 @@ import {parseListingDraftCursor,parseListingDraftId} from './listing-draft-contr
 export const paymentHistoryPageSize=50;
 export const paymentHistoryTargets=['listing','vacancy','workRequest','specialist','application','fair_application','ad_marquee'] as const;
 export const paymentHistoryStatuses=['created','pending','succeeded','failed','refunded'] as const;
-export type WorkPaymentReceipt={id:string;targetType:'vacancy'|'workRequest'|'application'};
-export function parseWorkPaymentReceipt(value:unknown):WorkPaymentReceipt{
+export type PaymentHistoryReceipt={id:string;targetType:'listing'|'vacancy'|'workRequest'|'application'};
+export function parsePaymentHistoryReceipt(value:unknown):PaymentHistoryReceipt{
  const row=exact(value,['id','targetType']);
- if(row.targetType!=='vacancy'&&row.targetType!=='workRequest'&&row.targetType!=='application')throw Error('Invalid receipt type');
+ if(row.targetType!=='listing'&&row.targetType!=='vacancy'&&row.targetType!=='workRequest'&&row.targetType!=='application')throw Error('Invalid receipt type');
  return{id:parseListingDraftId(row.id),targetType:row.targetType};
 }
 export type PaymentHistoryCursor={id:string;createdAt:string};
@@ -23,7 +23,7 @@ export function parsePaymentHistoryCursor(value:unknown):PaymentHistoryCursor|nu
 }
 type PaymentHistoryRequest=ReturnType<typeof parsePaymentHistoryInput>
  | {expectedOwnerId:string;paymentId:string}
- | {expectedOwnerId:string;receipt:WorkPaymentReceipt};
+ | {expectedOwnerId:string;receipt:PaymentHistoryReceipt};
 export function parsePaymentHistoryRequest(value:unknown):PaymentHistoryRequest{
  if(value&&typeof value==='object'&&'action' in value&&value.action==='specialistOrder'){
   const row=exact(value,['action','expectedOwnerId','paymentId']);
@@ -31,7 +31,7 @@ export function parsePaymentHistoryRequest(value:unknown):PaymentHistoryRequest{
  }
  if(value&&typeof value==='object'&&'receipt' in value){
   const row=exact(value,['expectedOwnerId','receipt']);
-  return{expectedOwnerId:parseListingDraftId(row.expectedOwnerId),receipt:parseWorkPaymentReceipt(row.receipt)};
+  return{expectedOwnerId:parseListingDraftId(row.expectedOwnerId),receipt:parsePaymentHistoryReceipt(row.receipt)};
  }
  return parsePaymentHistoryInput(value);
 }

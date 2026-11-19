@@ -14,9 +14,10 @@ test('payment result distinguishes preparation, confirmed finance and actual ful
 });
 test('primary return page never mounts the legacy payment component in postgres or unknown auth modes',async()=>{
  const {default:Page}=load('src/app/oplata/[paymentId]/page.tsx',{'@/lib/specialist-checkout-config':{readSpecialistCheckoutEnabled:()=>false},'@/components/payments/PaymentReturnClient':{PaymentReturnClient:()=>React.createElement('p',null,'legacy')},'@/components/payments/PrimaryPaymentReturnClient':{PrimaryPaymentReturnClient:()=>React.createElement('p',null,'primary')},'@/components/payments/ApplicationPaymentReturnClient':{ApplicationPaymentReturnClient:()=>React.createElement('p',null,'application')},'@/lib/checkout-cancellation-contract':{readCheckoutCancellationEnabled:()=>false},'@/lib/listing-workflow-config':load('src/lib/listing-workflow-config.ts',{})});
- const previous=process.env.BLIZHNIY_AUTH_MODE;
+ const previous=process.env.BLIZHNIY_AUTH_MODE,checkout=process.env.BLIZHNIY_LISTING_CHECKOUT;
+ process.env.BLIZHNIY_LISTING_CHECKOUT='prepare-only';
  try{for(const mode of ['postgres','unknown','local','']){process.env.BLIZHNIY_AUTH_MODE=mode;assert.equal(renderToStaticMarkup(await Page({params:Promise.resolve({paymentId:'synthetic'})})),`<p>${!mode||mode==='local'?'legacy':'primary'}</p>`);}}
- finally{if(previous===undefined)delete process.env.BLIZHNIY_AUTH_MODE;else process.env.BLIZHNIY_AUTH_MODE=previous;}
+ finally{if(previous===undefined)delete process.env.BLIZHNIY_AUTH_MODE;else process.env.BLIZHNIY_AUTH_MODE=previous;if(checkout===undefined)delete process.env.BLIZHNIY_LISTING_CHECKOUT;else process.env.BLIZHNIY_LISTING_CHECKOUT=checkout;}
 });
 test('specialist return preserves its target when disabled and never offers unsupported cancellation or dispatch',async()=>{
  const names=['BLIZHNIY_AUTH_MODE','BLIZHNIY_LISTING_PAYMENT'],before=Object.fromEntries(names.map(name=>[name,process.env[name]]));let enabled=false;
@@ -75,4 +76,50 @@ test('a specialist bookmark keeps its identity even with the whole postmoderatio
   const result=await Page({params:Promise.resolve({paymentId:'22222222-2222-4222-8222-222222222222'}),searchParams:Promise.resolve({type:'specialist'})});
   assert.equal(result.type,primary);assert.equal(result.props.specialist,true);assert.equal(result.props.testCheckout,false);assert.equal(result.props.cancellationEnabled,false);
  }finally{if(previous===undefined)delete process.env.BLIZHNIY_AUTH_MODE;else process.env.BLIZHNIY_AUTH_MODE=previous;}
+});
+
+test('closed hosted checkout shows saved receipts while active and local placements keep their return screen', async () => {
+ const primary = () => null, history = () => null;
+ let postmoderation = true;
+ const {default: Page} = load('src/app/oplata/[paymentId]/page.tsx', {
+  '@/components/payments/PaymentReturnClient': {PaymentReturnClient: () => null},
+  '@/components/payments/PrimaryPaymentReturnClient': {PrimaryPaymentReturnClient: primary},
+  '@/components/payments/ApplicationPaymentReturnClient': {ApplicationPaymentReturnClient: () => null},
+  '@/components/cabinet/PrimaryPaymentHistory': {PrimaryPaymentHistory: history},
+  '@/lib/listing-workflow-config': {readPostmoderationEnabled: () => postmoderation},
+  '@/lib/specialist-checkout-config': {readSpecialistCheckoutEnabled: () => false},
+  '@/lib/checkout-cancellation-contract': {readCheckoutCancellationEnabled: () => false},
+ });
+ const keys = ['BLIZHNIY_AUTH_MODE', 'BLIZHNIY_LISTING_CHECKOUT', 'BLIZHNIY_LOCAL_PRIMARY'];
+ const before = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+ const id = '11111111-1111-4111-8111-111111111111';
+ const open = type => Page({params: Promise.resolve({paymentId: id}), searchParams: Promise.resolve({type})});
+ try {
+  process.env.BLIZHNIY_AUTH_MODE = 'postgres';
+  delete process.env.BLIZHNIY_LOCAL_PRIMARY;
+  for (const type of [undefined, 'listing', 'vacancy', 'workRequest']) {
+   for (const closed of [undefined, 'disabled']) {
+    if (closed === undefined) delete process.env.BLIZHNIY_LISTING_CHECKOUT;
+    else process.env.BLIZHNIY_LISTING_CHECKOUT = closed;
+    for (const workflowEnabled of [false, true]) {
+     postmoderation = workflowEnabled;
+     const view = (await open(type)).props.children[1];
+     assert.equal(view.type, history);
+     assert.deepEqual(view.props.receipt, {id, targetType: type ?? 'listing'});
+    }
+   }
+   postmoderation = true;
+   process.env.BLIZHNIY_LISTING_CHECKOUT = 'prepare-only';
+   assert.equal((await open(type)).type, primary);
+   process.env.BLIZHNIY_LOCAL_PRIMARY = 'enabled';
+   delete process.env.BLIZHNIY_LISTING_CHECKOUT;
+   assert.equal((await open(type)).type, primary);
+   delete process.env.BLIZHNIY_LOCAL_PRIMARY;
+  }
+ } finally {
+  for (const key of keys) {
+   if (before[key] === undefined) delete process.env[key];
+   else process.env[key] = before[key];
+  }
+ }
 });

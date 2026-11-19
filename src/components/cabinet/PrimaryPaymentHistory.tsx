@@ -4,7 +4,7 @@ import {useEffect,useState} from 'react';
 import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {notifyAccountSessionChange} from '@/lib/local-account';
 import {paymentHistory,PaymentHistoryClientError} from '@/lib/client-payment-history';
-import type {PaymentHistoryCursor,PaymentHistoryPage,WorkPaymentReceipt} from '@/lib/payment-history-contract';
+import type {PaymentHistoryCursor,PaymentHistoryPage,PaymentHistoryReceipt} from '@/lib/payment-history-contract';
 
 const targets={listing:{label:'Размещение объявления',href:'/cabinet/obyavleniya'},vacancy:{label:'Размещение вакансии',href:'/cabinet/vakansii'},workRequest:{label:'Размещение заказа',href:'/cabinet/zakazy'},specialist:{label:'Анкета специалиста',href:'/cabinet/specialist'},application:{label:'Отклик',href:'/cabinet/otkliki'},fair_application:{label:'Участие в ярмарке',href:'/cabinet/fair-applications'},ad_marquee:{label:'Бегущая строка',href:'/reklama/begushchaya-stroka?view=list'}};
 const statuses={created:{label:'Ожидает оплаты',tone:'border-amber-200 bg-amber-50 text-amber-800'},pending:{label:'Обрабатывается',tone:'border-blue-200 bg-blue-50 text-blue-800'},succeeded:{label:'Оплачено',tone:'border-emerald-200 bg-emerald-50 text-emerald-800'},failed:{label:'Отменён',tone:'border-slate-200 bg-slate-50 text-slate-700'},refunded:{label:'Возвращён',tone:'border-violet-200 bg-violet-50 text-violet-800'}};
@@ -12,15 +12,15 @@ const button='inline-flex min-h-11 items-center justify-center rounded-lg border
 const money=new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',minimumFractionDigits:0,maximumFractionDigits:2});
 const date=new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
 
-export function PrimaryPaymentHistory({receipt}:{receipt?:WorkPaymentReceipt}={}){
+export function PrimaryPaymentHistory({receipt}:{receipt?:PaymentHistoryReceipt}={}){
  const auth=usePrimaryAccountAuth(),owner=auth&&(auth.state==='signed-in'||auth.state==='admin')?auth.userId:null;
  if(receipt&&auth?.state==='signed-out'){
-  const returnTo='/oplata/'+encodeURIComponent(receipt.id)+'?type='+receipt.targetType;
+  const returnTo='/oplata/'+encodeURIComponent(receipt.id)+(receipt.targetType==='listing'?'':'?type='+receipt.targetType);
   return <Link href={'/auth?returnTo='+encodeURIComponent(returnTo)} className={button}>Войти и посмотреть платёж</Link>;
  }
  return owner?<History key={receipt?`${owner}:${receipt.targetType}:${receipt.id}`:owner} owner={owner} receipt={receipt}/>:<p role="status">Проверяем доступ к платежам…</p>;
 }
-function History({owner,receipt}:{owner:string;receipt?:WorkPaymentReceipt}){
+function History({owner,receipt}:{owner:string;receipt?:PaymentHistoryReceipt}){
  const [page,setPage]=useState<PaymentHistoryPage|null>(null),[cursor,setCursor]=useState<PaymentHistoryCursor|null>(null);
  const [busy,setBusy]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0);
  useEffect(()=>{

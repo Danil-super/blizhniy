@@ -1,6 +1,6 @@
 import {withAppSessionTransaction,AppSessionAccessError} from './app-session-transaction';
 import {parseListingDraftId} from './listing-draft-contract.ts';
-import {parseWorkPaymentReceipt,type WorkPaymentReceipt,parsePaymentHistoryCursor,parsePaymentHistoryPage,paymentHistoryPageSize,type PaymentHistoryItem,type PaymentHistoryCursor} from './payment-history-contract.ts';
+import {parsePaymentHistoryReceipt,type PaymentHistoryReceipt,parsePaymentHistoryCursor,parsePaymentHistoryPage,paymentHistoryPageSize,type PaymentHistoryItem,type PaymentHistoryCursor} from './payment-history-contract.ts';
 import {specialistTestShop} from './specialist-checkout-config.ts';
 import type {PostgresDatabase} from './postgres';
 
@@ -15,9 +15,9 @@ export class PostgresPaymentHistoryStore{
    return readPlacementOrder(tx,user.id,id,'specialist',{includeTestFlag:true,specialistShop:specialistTestShop(user.id)});
   });
  }
- async list(token:string,expectedOwnerId:string,selection:PaymentHistoryCursor|WorkPaymentReceipt|null){
+ async list(token:string,expectedOwnerId:string,selection:PaymentHistoryCursor|PaymentHistoryReceipt|null){
   const owner=parseListingDraftId(expectedOwnerId);
-  const receipt=selection&&'targetType' in selection?parseWorkPaymentReceipt(selection):null;
+  const receipt=selection&&'targetType' in selection?parsePaymentHistoryReceipt(selection):null;
   const before=receipt?null:parsePaymentHistoryCursor(selection);
   return withAppSessionTransaction(this.db,token,async(tx,user)=>{
    if(user.id!==owner)throw new AppSessionAccessError();

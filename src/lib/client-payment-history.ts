@@ -1,13 +1,13 @@
 "use client";
-import {parseWorkPaymentReceipt,type WorkPaymentReceipt,parsePaymentHistoryInput,parsePaymentHistoryPage,type PaymentHistoryCursor} from './payment-history-contract.ts';
+import {parsePaymentHistoryReceipt,type PaymentHistoryReceipt,parsePaymentHistoryInput,parsePaymentHistoryPage,type PaymentHistoryCursor} from './payment-history-contract.ts';
 export class PaymentHistoryClientError extends Error{
  constructor(readonly code:string){super(code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='RATE_LIMITED'?'Слишком много запросов. Повторите позже.':'Не удалось загрузить историю платежей. Повторите загрузку.');}
 }
 export function createPaymentHistoryClient(transport:typeof fetch){return{
- async list(owner:string,cursor:PaymentHistoryCursor|null,options:{signal?:AbortSignal;receipt?:WorkPaymentReceipt}={}){
+ async list(owner:string,cursor:PaymentHistoryCursor|null,options:{signal?:AbortSignal;receipt?:PaymentHistoryReceipt}={}){
   try{
    options.signal?.throwIfAborted();const pageInput=parsePaymentHistoryInput({expectedOwnerId:owner,cursor});
-   const receipt=options.receipt===undefined?null:parseWorkPaymentReceipt(options.receipt);
+   const receipt=options.receipt===undefined?null:parsePaymentHistoryReceipt(options.receipt);
    if(receipt&&cursor)throw Error();
    const input=receipt?{expectedOwnerId:pageInput.expectedOwnerId,receipt}:pageInput;
    const timeout=AbortSignal.timeout(15000),signal=options.signal?AbortSignal.any([timeout,options.signal]):timeout;

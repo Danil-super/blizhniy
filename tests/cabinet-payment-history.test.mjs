@@ -88,9 +88,9 @@ test('history cannot read data for blocked, unverified or expired sessions and f
  }
 });
 
-test('a work payment bookmark reads only the requested purchase through the owner history API',async()=>{
+test('a payment bookmark reads only the requested purchase through the owner history API',async()=>{
  const {createPaymentHistoryHandler}=load('payment-history-http'),{createPaymentHistoryClient}=load('client-payment-history');
- for(const targetType of ['vacancy','workRequest','application']){
+ for(const targetType of ['listing','vacancy','workRequest','application']){
   const receipt={id,targetType},row=item({targetType});let reads=0;
   const handler=createPaymentHistoryHandler({origin},()=>({limiter:{allowProduction:async()=>true},store:{list:async(...args)=>{
    assert.deepEqual(args,[token,owner,receipt]);reads++;return {items:[row],nextCursor:null};
@@ -100,11 +100,11 @@ test('a work payment bookmark reads only the requested purchase through the owne
    return handler(request(JSON.parse(init.body)));
   });
   assert.deepEqual(await client.list(owner,null,{receipt}),{items:[row],nextCursor:null});assert.equal(reads,1);
-  for(const body of [{expectedOwnerId:owner,receipt,cursor:null},{expectedOwnerId:owner,receipt:{id,targetType:'listing'}},{expectedOwnerId:owner,receipt:{id:'broken',targetType}}]){
+  for(const body of [{expectedOwnerId:owner,receipt,cursor:null},{expectedOwnerId:owner,receipt:{id,targetType:'specialist'}},{expectedOwnerId:owner,receipt:{id:'broken',targetType}}]){
    assert.equal((await handler(request(body))).status,422);
   }
   assert.equal(reads,1);
-  for(const items of [[item({id:owner,targetType})],[item({targetType:'listing'})],[row,row]]){
+  for(const items of [[item({id:owner,targetType})],[item({targetType:targetType==='listing'?'vacancy':'listing'})],[row,row]]){
    await assert.rejects(createPaymentHistoryClient(async()=>Response.json({items,nextCursor:null})).list(owner,null,{receipt}));
   }
  }

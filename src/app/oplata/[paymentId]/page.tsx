@@ -13,12 +13,18 @@ export default async function Page({ params,searchParams }: { params: Promise<{ 
   const { paymentId } = await params;
   const requestedType=(await searchParams)?.type,postmoderation=readPostmoderationEnabled();
   const mode = process.env.BLIZHNIY_AUTH_MODE;
-  const workPlacement=requestedType==='vacancy'||requestedType==='workRequest';
-  const responsePayment=requestedType==='application';
-  if(mode==='postgres'&&((workPlacement&&!postmoderation)||(responsePayment&&(!postmoderation||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled')))){
+  const target = requestedType ?? 'listing';
+  const localPayments = process.env.BLIZHNIY_LOCAL_PRIMARY === 'enabled';
+  const checkout = process.env.BLIZHNIY_LISTING_CHECKOUT;
+  const hostedCheckoutClosed = !localPayments && (checkout === undefined || checkout === 'disabled');
+  const savedReceipt =
+    (target === 'listing' && hostedCheckoutClosed) ||
+    ((target === 'vacancy' || target === 'workRequest') && (!postmoderation || hostedCheckoutClosed)) ||
+    (target === 'application' && (!postmoderation || !localPayments));
+  if (mode === 'postgres' && savedReceipt) {
     const {PrimaryPaymentHistory}=await import('@/components/cabinet/PrimaryPaymentHistory');
     return <main className="page-container max-w-3xl py-8"><h1 className="mb-4 text-2xl font-bold">Статус оплаты</h1>
-      <PrimaryPaymentHistory receipt={{id:paymentId,targetType:requestedType}}/>
+      <PrimaryPaymentHistory receipt={{id:paymentId,targetType:target}}/>
     </main>;
   }
   const type=postmoderation?requestedType:undefined,vacancy=type==='vacancy',workRequest=type==='workRequest',specialist=requestedType==='specialist';
