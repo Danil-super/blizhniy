@@ -30,3 +30,16 @@ export async function prepareLegacyDraftMedia(
     throw error;
   }
 }
+
+export const draftRetryMessage = "Ответ о сохранении не получен. Нажмите «Сохранить черновик» ещё раз.";
+
+export async function sendLegacyCreation(url: string, options: RequestInit, creationKey?: string) {
+  if (!creationKey) return fetch(url, options);
+  const headers = new Headers(options.headers);
+  headers.set("Idempotency-Key", creationKey);
+  try {
+    return await fetch(url, { ...options, headers });
+  } catch {
+    throw new Error(draftRetryMessage);
+  }
+}

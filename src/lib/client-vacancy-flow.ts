@@ -1,5 +1,6 @@
 "use client";
 
+import { draftRetryMessage, sendLegacyCreation } from "@/lib/legacy-draft-attempt";
 import { getSupabaseBrowserClient, isSupabaseBrowserConfigured } from "@/lib/supabase-browser";
 import type { JobVacancy, Payment } from "@/lib/types";
 
@@ -62,15 +63,15 @@ async function getAuthHeaders(accessToken?: string): Promise<Record<string, stri
 
 export async function createStoredVacancyPublication(input: CreateStoredVacancyInput) {
   const { accessToken, creationKey, ...payloadBody } = input;
-  const response = await fetch("/api/vacancies", {
+  const response = await sendLegacyCreation("/api/vacancies", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(await getAuthHeaders(accessToken)), ...(creationKey ? { "Idempotency-Key": creationKey } : {}) },
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders(accessToken)) },
     body: JSON.stringify(payloadBody),
-  });
+  }, creationKey);
   const payload = (await response.json().catch(() => null)) as (CreateStoredVacancyResponse & { error?: string }) | null;
 
   if (!response.ok || !payload?.vacancy?.id) {
-    throw new Error(payload?.error ?? "Не удалось создать вакансию.");
+    throw new Error(payload?.error ?? (creationKey ? draftRetryMessage : "Не удалось создать вакансию."));
   }
 
   return payload;

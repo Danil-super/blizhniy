@@ -8,7 +8,7 @@ import { CitySelectField } from "@/components/CitySelectField";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
-import { prepareLegacyDraftMedia } from "@/lib/legacy-draft-attempt";
+import { draftRetryMessage, prepareLegacyDraftMedia, sendLegacyCreation } from "@/lib/legacy-draft-attempt";
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { storeFormPhotos } from "@/lib/client-media-store";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
@@ -67,9 +67,9 @@ type SaveMode = "draft" | "publish";
 
 async function createSupabaseWorkRequest(formData: FormData, options: { accessToken: string; mediaPaths: string[]; creationKey?: string; status?: "draft"; tariffId?: string }) {
   const mediaPaths = options.mediaPaths;
-  const response = await fetch("/api/work-requests", {
+  const response = await sendLegacyCreation("/api/work-requests", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${options.accessToken}`, ...(options.creationKey ? { "Idempotency-Key": options.creationKey } : {}) },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${options.accessToken}` },
     body: JSON.stringify({
       budget: readValue(formData, "budget"),
       city: readValue(formData, "city") || "Краснодар",
@@ -83,14 +83,14 @@ async function createSupabaseWorkRequest(formData: FormData, options: { accessTo
       tariffId: options.tariffId,
       title: readValue(formData, "title"),
     }),
-  });
+  }, options.creationKey);
   const payload = (await response.json().catch(() => null)) as CreatedWorkRequestResponse | null;
 
-  if (!response.ok) {
-    throw new Error(payload?.error ?? "Не удалось создать заказ.");
+  if (!response.ok || !payload?.workRequest?.id) {
+    throw new Error(payload?.error ?? (options.creationKey ? draftRetryMessage : "Не удалось создать заказ."));
   }
 
-  return payload ?? {};
+  return payload;
 }
 
 export function WorkRequestCreateClient() {
