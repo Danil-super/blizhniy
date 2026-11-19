@@ -2,7 +2,6 @@
 
 import { readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
-import { getStoredMediaFile } from "@/lib/client-media-store";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { addCurrentUserNotification } from "@/lib/site-notifications";
@@ -97,11 +96,6 @@ type CreatedWorkRequestPaymentPayload = {
   };
 };
 
-type MediaUploadResponse = {
-  files?: Array<{ path?: string }>;
-  error?: string;
-};
-
 type CabinetListingsPayload = {
   listings?: Listing[];
 };
@@ -109,66 +103,10 @@ type CabinetListingsPayload = {
 const confirmationRetryDelayMs = 1500;
 const confirmationRetryAttempts = 20;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
-const publicMediaPathMarker = "/storage/v1/object/public/blizhniy-media/";
 const clientDraftPaymentFallbackEnabled = process.env.NODE_ENV !== "production" || shouldShowClientFallbackContent();
 
 function isUuid(value?: string) {
   return Boolean(value && uuidPattern.test(value));
-}
-
-function storagePathFromMediaSource(source: string) {
-  const cleanSource = source.trim();
-
-  if (/^(vacancies|work-requests)\/.+/i.test(cleanSource)) {
-    return cleanSource;
-  }
-
-  const markerIndex = cleanSource.indexOf(publicMediaPathMarker);
-
-  if (markerIndex < 0) {
-    return "";
-  }
-
-  const encodedPath = cleanSource.slice(markerIndex + publicMediaPathMarker.length).split(/[?#]/)[0] ?? "";
-
-  try {
-    return decodeURIComponent(encodedPath);
-  } catch {
-    return encodedPath;
-  }
-}
-
-function fileNameForImageSource(source: string, index: number, mimeType: string) {
-  const extension = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : mimeType === "image/gif" ? "gif" : "jpg";
-  const sourceName = source.split(/[/?#]/).filter(Boolean).at(-1)?.replace(/\.[^.]+$/, "") || `vacancy-photo-${index + 1}`;
-
-  return `${sourceName}.${extension}`;
-}
-
-async function imageSourceToFile(source: string, index: number) {
-  const storedFile = await getStoredMediaFile(source);
-
-  if (storedFile?.type.startsWith("image/")) {
-    return storedFile;
-  }
-
-  if (!/^(data:image\/|blob:|https?:\/\/)/i.test(source)) {
-    return undefined;
-  }
-
-  const response = await fetch(source).catch(() => null);
-
-  if (!response?.ok) {
-    return undefined;
-  }
-
-  const blob = await response.blob();
-
-  if (!blob.type.startsWith("image/")) {
-    return undefined;
-  }
-
-  return new File([blob], fileNameForImageSource(source, index, blob.type), { type: blob.type });
 }
 
 function readStoredPublications() {
@@ -248,46 +186,6 @@ function apiListingPayloadFromDraft(item: DemoPublication, tariffId: string, med
   };
 }
 
-async function uploadDraftListingImages(item: DemoPublication) {
-  const imageFiles = (
-    await Promise.all(
-      (item.images ?? []).slice(0, 20).map(async (source) => {
-        const file = await getStoredMediaFile(source);
-
-        return file?.type.startsWith("image/") ? file : undefined;
-      }),
-    )
-  ).filter((file): file is File => Boolean(file));
-
-  if (!imageFiles.length) {
-    return [];
-  }
-
-  const uploadedPaths: string[] = [];
-
-  for (let index = 0; index < imageFiles.length; index += 10) {
-    const uploadFormData = new FormData();
-
-    uploadFormData.set("folder", "listings");
-    imageFiles.slice(index, index + 10).forEach((file) => uploadFormData.append("files", file));
-
-    const response = await fetch("/api/uploads/media", {
-      body: uploadFormData,
-      headers: await getAuthHeaders(),
-      method: "POST",
-    });
-    const payload = (await response.json().catch(() => null)) as MediaUploadResponse | null;
-
-    if (!response.ok) {
-      throw new Error(payload?.error ?? "Не удалось загрузить фото объявления.");
-    }
-
-    uploadedPaths.push(...(payload?.files ?? []).map((file) => file.path).filter((path): path is string => Boolean(path)));
-  }
-
-  return uploadedPaths;
-}
-
 function apiVacancyPayloadFromDraft(item: DemoPublication, tariffId: string, mediaPaths: string[] = []) {
   return {
     address: item.hasMapPoint ? item.address : undefined,
@@ -342,47 +240,6 @@ function mergeWorkRequestServerImages(serverImages: string[] | undefined, localI
   return [...serverImages, ...local.slice(serverImages.length)].slice(0, 6);
 }
 
-async function uploadDraftVacancyImage(item: DemoPublication) {
-  const sources = (item.images ?? []).slice(0, 12);
-
-  if (!sources.length) {
-    return [];
-  }
-
-  const existingStoragePaths = sources.map(storagePathFromMediaSource).filter(Boolean);
-  const sourcesToUpload = sources.filter((source) => !storagePathFromMediaSource(source));
-
-  const imageFiles = (
-    await Promise.all(
-      sourcesToUpload.map((source, index) => imageSourceToFile(source, index)),
-    )
-  ).filter((file): file is File => Boolean(file));
-
-  if (!imageFiles.length) {
-    return existingStoragePaths.slice(0, 12);
-  }
-
-  const uploadFormData = new FormData();
-
-  uploadFormData.set("folder", "vacancies");
-  imageFiles.forEach((file) => uploadFormData.append("files", file));
-
-  const response = await fetch("/api/uploads/media", {
-    body: uploadFormData,
-    headers: await getAuthHeaders(),
-    method: "POST",
-  });
-  const payload = (await response.json().catch(() => null)) as MediaUploadResponse | null;
-
-  if (!response.ok) {
-    throw new Error(payload?.error ?? "Не удалось загрузить фото вакансии.");
-  }
-
-  const uploadedPaths = (payload?.files ?? []).map((uploadedFile) => uploadedFile.path).filter((path): path is string => Boolean(path));
-
-  return [...existingStoragePaths, ...uploadedPaths].slice(0, 12);
-}
-
 function apiWorkRequestPayloadFromDraft(item: DemoPublication, tariffId: string, mediaPaths: string[] = []) {
   return {
     address: item.hasMapPoint ? item.address : undefined,
@@ -401,42 +258,10 @@ function apiWorkRequestPayloadFromDraft(item: DemoPublication, tariffId: string,
   };
 }
 
-async function uploadDraftWorkRequestImage(item: DemoPublication) {
-  const sources = (item.images ?? []).slice(0, 6);
-
-  if (!sources.length) {
-    return [];
-  }
-
-  const existingStoragePaths = sources.map(storagePathFromMediaSource).filter(Boolean);
-  const sourcesToUpload = sources.filter((source) => !storagePathFromMediaSource(source));
-  const imageFiles = (
-    await Promise.all(sourcesToUpload.map((source, index) => imageSourceToFile(source, index)))
-  ).filter((file): file is File => Boolean(file));
-
-  if (!imageFiles.length) {
-    return existingStoragePaths.slice(0, 6);
-  }
-
-  const uploadFormData = new FormData();
-
-  uploadFormData.set("folder", "work-requests");
-  imageFiles.forEach((file) => uploadFormData.append("files", file));
-
-  const response = await fetch("/api/uploads/media", {
-    body: uploadFormData,
-    headers: await getAuthHeaders(),
-    method: "POST",
-  });
-  const payload = (await response.json().catch(() => null)) as MediaUploadResponse | null;
-
-  if (!response.ok) {
-    throw new Error(payload?.error ?? "Не удалось загрузить фото заказа.");
-  }
-
-  const uploadedPaths = (payload?.files ?? []).map((uploadedFile) => uploadedFile.path).filter((path): path is string => Boolean(path));
-
-  return [...existingStoragePaths, ...uploadedPaths].slice(0, 6);
+async function uploadDraftImages(sources: string[], folder: "listings" | "vacancies" | "work-requests") {
+  if (!sources.length) return [];
+  const { uploadPublicationImageSources } = await import("@/lib/client-publication-media");
+  return uploadPublicationImageSources(sources, folder, await getAccessToken());
 }
 
 async function findMatchingServerListing(draft: DemoPublication) {
@@ -564,14 +389,18 @@ export async function confirmClientPayment(paymentId: string, options?: ClientPa
   return payload;
 }
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
+async function getAccessToken() {
   if (!isSupabaseBrowserConfigured()) {
-    return {};
+    return undefined;
   }
 
   const supabase = getSupabaseBrowserClient();
   const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  return data.session?.access_token;
+}
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken();
 
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -650,7 +479,7 @@ async function createListingPaymentFromLocalDraft(input: CreatePaymentInput) {
     return payment;
   }
 
-  const mediaPaths = await uploadDraftListingImages(draft);
+  const mediaPaths = await uploadDraftImages((draft.images ?? []).slice(0, 20), "listings");
   const response = await fetch("/api/listings", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
@@ -720,7 +549,7 @@ async function createVacancyPaymentFromLocalDraft(input: CreatePaymentInput) {
     return payment;
   }
 
-  const mediaPaths = await uploadDraftVacancyImage(draft);
+  const mediaPaths = await uploadDraftImages((draft.images ?? []).slice(0, 12), "vacancies");
 
   if (!mediaPaths.length) {
     throw new Error("Добавьте фото работодателя или рабочего места перед оплатой вакансии.");
@@ -789,7 +618,7 @@ async function createWorkRequestPaymentFromLocalDraft(input: CreatePaymentInput)
     return payment;
   }
 
-  const mediaPaths = await uploadDraftWorkRequestImage(draft);
+  const mediaPaths = await uploadDraftImages((draft.images ?? []).slice(0, 6), "work-requests");
   const response = await fetch("/api/work-requests", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
