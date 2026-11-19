@@ -43,6 +43,10 @@ if [[ ! -f "$ROLLBACK_CHECK" || -L "$ROLLBACK_CHECK" ]] || ! PREVIOUS_BUILD_ID="
   exit 4
 fi
 
+if [[ -e "${APP_DIR}-static" || -L "${APP_DIR}-static" ]]; then
+  node "$SCRIPT_DIR/retain-web-assets.mjs" "${APP_DIR}-static" "$CURRENT_RELEASE" "$PREVIOUS_RELEASE"
+fi
+
 echo "[rollback] restoring previous release"
 ln -sfn "$PREVIOUS_RELEASE" "${APP_DIR}.next"
 mv -Tf "${APP_DIR}.next" "$APP_DIR"

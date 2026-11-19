@@ -9,6 +9,37 @@ example.com {
     request_header @document_not_rsc -Next-Router-Prefetch
     request_header @document_not_rsc -Next-Router-Segment-Prefetch
 
+    @versioned_assets {
+        method GET HEAD
+        path_regexp versioned ^/_next/static/(chunks/.+[-.][a-f0-9]{16}\.js|css/[a-f0-9]{16}\.css|media/[^/]+\.[a-f0-9]{8}\.webp)$
+    }
+    route @versioned_assets {
+        uri strip_prefix /_next/static
+        @incoming file {
+            root /var/www/blizhniy-static/incoming
+            try_files {path}
+        }
+        # Caddy takes the first matching root in a route.
+        root @incoming /var/www/blizhniy-static/incoming
+        root * /var/www/blizhniy-static/running
+        @available file {path}
+        route @available {
+            header {
+                Cache-Control "public, max-age=31536000, immutable"
+                match status 2xx 304
+            }
+            header {
+                X-Content-Type-Options nosniff
+                Strict-Transport-Security max-age=31536000
+                X-Frame-Options SAMEORIGIN
+                Referrer-Policy strict-origin-when-cross-origin
+                Permissions-Policy "camera=(), microphone=(), geolocation=()"
+            }
+            file_server
+        }
+        rewrite * {http.request.orig_uri}
+    }
+
     reverse_proxy 127.0.0.1:3000 {
         header_up X-Real-IP {remote_host}
         header_up -CF-Connecting-IP

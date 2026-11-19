@@ -183,6 +183,10 @@ fi
 log "preparing managed web runtime permissions"
 node "$RELEASE_DIR/scripts/web-runtime.cjs" --prepare "$RELEASE_DIR"
 
+if [[ -e "${APP_DIR}-static" || -L "${APP_DIR}-static" ]]; then
+  node "$RELEASE_DIR/scripts/retain-web-assets.mjs" "${APP_DIR}-static" "$PREVIOUS_RELEASE" "$RELEASE_DIR"
+fi
+
 log "starting ${APP_NAME} from ${RELEASE_DIR}"
 mkdir -p "${RELEASE_DIR}/.pm2"
 if [[ -n "${DEPLOY_RECORD:-}" ]]; then

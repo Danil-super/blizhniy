@@ -72,3 +72,9 @@ even development requires a valid IP. The two existing server actions now forwar
 - [Caddy remote_host placeholder](https://caddyserver.com/docs/caddyfile/concepts): the request's remote socket host, not a client-supplied header.
 - [Next start hostname option](https://nextjs.org/docs/app/api-reference/cli/next#next-start-options): `-H` selects the listening host; the default is public `0.0.0.0`.
 - [Turnstile server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/): the token maximum is 2048 characters; provider token validity/reuse checks remain authoritative.
+
+### Static files during a release switch
+
+The Caddy template can serve versioned JavaScript, CSS and WebP files from the running and incoming builds. The operator enables retention by creating the dedicated directory next to the managed application path. With the default layout this is `/var/www/blizhniy-static`. Its owner must be the deployment account. Caddy needs read and traversal access to the published files and their parent directories. Keep write access with the deployment account. Set both static roots in the Caddyfile to the actual directory when using a different application path.
+
+Deploy and manual rollback populate the two links before replacing the process. The automatic rollback uses the same prepared pair. A conflict between the contents of the same static path stops preparation before the process switch. A request missing in both builds continues to Next with its original URL. This covers the immediately preceding build. On first activation, verify a known old-only chunk through the public entry after the next release and check that a missing chunk returns 404 without an immutable cache lifetime.
