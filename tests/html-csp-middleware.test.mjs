@@ -64,6 +64,8 @@ function assertNextPolicy(response, header) {
   assert.equal(forwarded(response, 'content-security-policy-report-only'), null);
   assert.equal(response.headers.get('x-nonce'), null);
   assert.match(response.headers.get('cache-control'), /private/);
+  assert.match(response.headers.get('cache-control'), /\bno-cache\b/);
+  assert.match(response.headers.get('cache-control'), /\bmust-revalidate\b/);
   assert.match(response.headers.get('cache-control'), /no-store/);
   return { nonce, policy };
 }

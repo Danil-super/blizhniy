@@ -27,7 +27,7 @@ export function middleware(request: NextRequest) {
     const response = NextResponse.next({ request: { headers } });
     response.headers.set(mode === "enforce" ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only", policy);
     response.headers.set("Reporting-Endpoints", 'csp="/api/csp-report"');
-    response.headers.set("Cache-Control", "private, no-store, max-age=0");
+    response.headers.set("Cache-Control", "private, no-store, no-cache, max-age=0, must-revalidate");
     return response;
   } catch {
     return new NextResponse("Page security configuration unavailable", { status: 503, headers: {

@@ -87,3 +87,13 @@ test('the exact www alias redirects every path to the HTTPS canonical host witho
   assert.equal(matchHas({headers:{host:other},cookies:{}},{},rule.has),false);
  }
 });
+
+test('robots and sitemap responses require a fresh copy', async () => {
+  const rules = await load('next.config.ts').default.headers();
+  for (const path of ['/robots.txt', '/sitemap.xml']) {
+    const rule = rules.find(rule => rule.source === path);
+    const header = rule?.headers.find(entry => entry.key.toLowerCase() === 'cache-control');
+    assert.ok(header, path);
+    assert.deepEqual(new Set(header.value.split(/,\s*/)), new Set(['no-store', 'no-cache', 'must-revalidate']));
+  }
+});
