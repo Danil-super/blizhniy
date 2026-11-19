@@ -360,24 +360,6 @@ function listingWithMediaFallback(listing: Listing, mediaPaths?: string[]) {
   return { ...listing, images };
 }
 
-async function insertListingImages(listingId: string, mediaPaths?: string[]) {
-  const paths = cleanMediaPaths(mediaPaths);
-
-  if (!paths.length) {
-    return;
-  }
-
-  await supabaseRest("/rest/v1/listing_images", {
-    method: "POST",
-    prefer: "return=minimal",
-    body: paths.map((path, index) => ({
-      listing_id: listingId,
-      storage_path: path,
-      sort_order: index,
-    })),
-  });
-}
-
 export async function createStoredListing(input: CreateStoredListingInput) {
   if (!isSupabaseRestConfigured()) {
     return undefined;
@@ -388,30 +370,33 @@ export async function createStoredListing(input: CreateStoredListingInput) {
   const regionId = await findRegionId(cityRow);
 
   const status = input.status ?? "pending_payment";
-  const rows = await supabaseRest<ListingRow[]>(`/rest/v1/listings?select=${listingSelect}`, {
+  const fields = {
+    address: input.address ?? null,
+    author_id: input.authorId,
+    category_id: categoryId ?? null,
+    city_id: cityRow?.id ?? null,
+    contact_phone: input.phone ?? null,
+    description: input.description || "Описание будет дополнено.",
+    booking: input.booking ?? null,
+    district: input.district ?? null,
+    is_paid: status === "published",
+    latitude: input.lat ?? null,
+    listing_type: dbTypeByListingKind[input.kind] ?? "sell",
+    longitude: input.lng ?? null,
+    messenger_url: input.messengerUrl ?? null,
+    price: priceToNumber(input.price),
+    published_at: status === "published" ? new Date().toISOString() : null,
+    region_id: regionId ?? null,
+    show_exact_address: resolveShowExactAddress(input),
+    status,
+    title: input.title,
+  };
+  const paths = cleanMediaPaths(input.mediaPaths);
+  const endpoint = paths.length ? "rpc/create_listing_with_gallery" : "listings";
+  const rows = await supabaseRest<ListingRow[]>(`/rest/v1/${endpoint}?select=${listingSelect}`, {
     method: "POST",
     prefer: "return=representation",
-    body: {
-      address: input.address ?? null,
-      author_id: input.authorId,
-      category_id: categoryId ?? null,
-      city_id: cityRow?.id ?? null,
-      contact_phone: input.phone ?? null,
-      description: input.description || "Описание будет дополнено.",
-      booking: input.booking ?? null,
-      district: input.district ?? null,
-      is_paid: status === "published",
-      latitude: input.lat ?? null,
-      listing_type: dbTypeByListingKind[input.kind] ?? "sell",
-      longitude: input.lng ?? null,
-      messenger_url: input.messengerUrl ?? null,
-      price: priceToNumber(input.price),
-      published_at: status === "published" ? new Date().toISOString() : null,
-      region_id: regionId ?? null,
-      show_exact_address: resolveShowExactAddress(input),
-      status,
-      title: input.title,
-    },
+    body: paths.length ? { p_fields: fields, p_paths: paths } : fields,
   });
 
   const listing = rows[0];
@@ -419,8 +404,6 @@ export async function createStoredListing(input: CreateStoredListingInput) {
   if (!listing) {
     return undefined;
   }
-
-  await insertListingImages(listing.id, input.mediaPaths);
 
   return listingWithMediaFallback((await getStoredListingById(listing.id)) ?? mapListing((await withCategoryParents([listing]))[0]), input.mediaPaths);
 }

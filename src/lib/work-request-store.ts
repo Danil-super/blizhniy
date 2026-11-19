@@ -261,30 +261,6 @@ function isMissingWorkRequestImagesError(error: unknown) {
   return message.includes("work_request_images");
 }
 
-async function insertWorkRequestImages(requestId: string, mediaPaths?: string[]) {
-  const paths = cleanMediaPaths(mediaPaths);
-
-  if (!paths.length) {
-    return;
-  }
-
-  try {
-    await supabaseRest("/rest/v1/work_request_images", {
-      method: "POST",
-      prefer: "return=minimal",
-      body: paths.map((path, index) => ({
-        sort_order: index,
-        storage_path: path,
-        work_request_id: requestId,
-      })),
-    });
-  } catch (error) {
-    if (!isMissingWorkRequestImagesError(error)) {
-      throw error;
-    }
-  }
-}
-
 async function storedWorkRequestBody(input: CreateStoredWorkRequestInput, status: PublicationStatus, publishedAt?: string | null) {
   const cityRow = await findCity(input.city);
   const regionId = await findRegionId(cityRow);
@@ -332,18 +308,19 @@ export async function createStoredWorkRequest(input: CreateStoredWorkRequestInpu
   }
 
   const status = input.status ?? "pending_payment";
-  const rows = await supabaseRest<WorkRequestRow[]>(`/rest/v1/work_requests?select=${legacyWorkRequestSelect}`, {
+  const fields = await storedWorkRequestBody(input, status);
+  const paths = cleanMediaPaths(input.mediaPaths);
+  const endpoint = paths.length ? "rpc/create_work_request_with_gallery" : "work_requests";
+  const rows = await supabaseRest<WorkRequestRow[]>(`/rest/v1/${endpoint}?select=${legacyWorkRequestSelect}`, {
     method: "POST",
     prefer: "return=representation",
-    body: await storedWorkRequestBody(input, status),
+    body: paths.length ? { p_fields: fields, p_paths: paths } : fields,
   });
   const request = rows[0];
 
   if (!request) {
     return undefined;
   }
-
-  await insertWorkRequestImages(request.id, input.mediaPaths);
 
   return workRequestWithMediaFallback((await getStoredWorkRequestById(request.id)) ?? mapWorkRequest(request), input.mediaPaths);
 }

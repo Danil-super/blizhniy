@@ -52,6 +52,7 @@ grant select, insert, update, delete on public.ad_marquee_placements to service_
 \ir migrations/20261008062202_snapshot_yookassa_checkout_intents.sql
 \ir migrations/20261008063110_restore_listing_and_vacancy_within_paid_window.sql
 \ir migrations/20261119010000_replace_gallery_with_parent_update.sql
+\ir migrations/20261119020000_create_publication_with_gallery.sql
 \ir migrations/20260615_create_public_media_storage_bucket.sql
 \ir migrations/20260615_ensure_public_media_bucket_safe_access.sql
 \ir migrations/20260615_remove_public_media_bucket_listing_policy.sql

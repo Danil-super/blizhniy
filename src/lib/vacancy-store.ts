@@ -184,24 +184,6 @@ function vacancyWithMediaFallback(vacancy: JobVacancy, mediaPaths?: string[]) {
   return { ...vacancy, images };
 }
 
-async function insertVacancyImages(vacancyId: string, mediaPaths?: string[]) {
-  const paths = cleanMediaPaths(mediaPaths);
-
-  if (!paths.length) {
-    return;
-  }
-
-  await supabaseRest("/rest/v1/vacancy_images", {
-    method: "POST",
-    prefer: "return=minimal",
-    body: paths.map((path, index) => ({
-      vacancy_id: vacancyId,
-      storage_path: path,
-      sort_order: index,
-    })),
-  });
-}
-
 function normalizeEmployerType(value?: string) {
   return value === "ip" || value === "person" || value === "private" ? (value === "private" ? "person" : value) : "organization";
 }
@@ -392,10 +374,13 @@ export async function createStoredVacancy(input: CreateStoredVacancyInput) {
   }
 
   const status = input.status ?? "pending_payment";
-  const rows = await supabaseRest<VacancyRow[]>(`/rest/v1/vacancies?select=${vacancySelect}`, {
+  const fields = await storedVacancyBody(input, status);
+  const paths = cleanMediaPaths(input.mediaPaths);
+  const endpoint = paths.length ? "rpc/create_vacancy_with_gallery" : "vacancies";
+  const rows = await supabaseRest<VacancyRow[]>(`/rest/v1/${endpoint}?select=${vacancySelect}`, {
     method: "POST",
     prefer: "return=representation",
-    body: await storedVacancyBody(input, status),
+    body: paths.length ? { p_fields: fields, p_paths: paths } : fields,
   });
 
   const vacancy = rows[0];
@@ -403,8 +388,6 @@ export async function createStoredVacancy(input: CreateStoredVacancyInput) {
   if (!vacancy) {
     return undefined;
   }
-
-  await insertVacancyImages(vacancy.id, input.mediaPaths);
 
   return vacancyWithMediaFallback((await getStoredVacancyById(vacancy.id)) ?? mapVacancy(vacancy), input.mediaPaths);
 }

@@ -56,6 +56,27 @@ test('legacy publication edits commit the parent, cover and ordered images toget
         assert.equal(last.cover, cover ? path(last.title) : null);
         await update('Cleared', []);
         assert.deepEqual(await read(), { title: 'Cleared', input: null, cover: null, images: [] });
+
+        const fn = {
+          listings: 'create_listing_with_gallery', vacancies: 'create_vacancy_with_gallery',
+          work_requests: 'create_work_request_with_gallery',
+        }[parent];
+        const privileges = await db.sql(`select has_function_privilege('anon', 'public.${fn}(jsonb,text[])', 'EXECUTE'),
+          has_function_privilege('authenticated', 'public.${fn}(jsonb,text[])', 'EXECUTE'),
+          has_function_privilege('service_role', 'public.${fn}(jsonb,text[])', 'EXECUTE')`);
+        assert.equal(privileges, 'f|f|t');
+        const create = second => asService(`select id from public.${fn}(
+          (select to_jsonb(p) || '{"title":"First save"}'::jsonb from ${parent} p where id='${id}'),
+          array['${path('one')}','${path(second)}'])`);
+        const count = () => db.sql(`select count(*) from ${parent} where author_id='${owner}' and title='First save'`);
+        await assert.rejects(create('broken'), /check constraint/);
+        assert.equal(await count(), '0', 'a failed first save must leave no parent');
+        const created = await create('two');
+        assert.notEqual(created, id, 'the database assigns a new identity');
+        assert.equal(await count(), '1');
+        assert.equal(await db.sql(`select string_agg(storage_path, ',' order by sort_order) from ${child}
+          where ${key}='${created}'`), [path('one'), path('two')].join(','));
+        if (cover) assert.equal(await db.sql(`select ${cover} from ${parent} where id='${created}'`), path('one'));
       });
     }
   } finally {
