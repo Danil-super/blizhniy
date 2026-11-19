@@ -174,3 +174,25 @@ test("primary publication login retains one main h1 and does not render the lega
   assert.equal((html.match(/<h1(?:\s|>)/g) ?? []).length, 1);
   assert.match(html, /<h2[^>]*>Вход<\/h2>/);
 });
+
+test("verified standalone login returns only to an exact local payment URL", () => {
+  const id = "12345678-1234-4321-8765-123456789abc", location = { search: "" }, visits = [];
+  const { ProductionLoginForm } = load("src/components/auth/ProductionLoginForm.tsx", {
+    react: { useCallback: fn => fn },
+    "next/navigation": { useRouter: () => ({ replace: value => visits.push(value) }) },
+    "./LocalAccountForm": { LocalAccountForm: () => null },
+  }, { window: { location }, URLSearchParams });
+  const base = "/oplata/" + id;
+  for (const suffix of ["", "?type=vacancy", "?type=workRequest", "?type=application", "?type=specialist"]) {
+    location.search = new URLSearchParams({ returnTo: base + suffix }).toString();
+    ProductionLoginForm().props.onLoginVerified();
+    assert.equal(visits.pop(), base + suffix);
+  }
+  for (const search of ["", "returnTo=//example.invalid", "returnTo=/oplata/bad",
+    new URLSearchParams({ returnTo: base + "?type=other" }).toString(),
+    new URLSearchParams([["returnTo", base], ["returnTo", base]]).toString()]) {
+    location.search = search;
+    ProductionLoginForm().props.onLoginVerified();
+    assert.equal(visits.pop(), "/");
+  }
+});

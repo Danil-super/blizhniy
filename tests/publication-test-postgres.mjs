@@ -74,6 +74,26 @@ test('production-shaped TEST admission: new marked payments publish each placeme
    const fulfillment=new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(db,merchant,{postmoderation:true,publicationTestOwner:current.owner});assert.deepEqual(await fulfillment.fulfill(order.id),{state:'blocked',reason:'publication_not_admitted'});
    assert.equal((await admin.query('select count(*)::int n from app.payment_fulfillments where intent_id=$1',[order.id])).rows[0].n,0);
   });
+  await suite.test('disabled work payments remain readable only by their owner and exact bookmark type',async()=>{
+   const history=new(load('postgres-payment-history').PostgresPaymentHistoryStore)(db);
+   const applicationId=randomUUID(),targetId=randomUUID(),tariffId='job-response';
+   const body=JSON.stringify({capture:true,amount:{value:'99.00',currency:'RUB'},metadata:{localPaymentId:applicationId,targetId,targetType:'application',tariffId}});
+   await admin.query(`insert into app.payment_checkout_intents(id,owner_id,target_type,target_id,target_revision,tariff_id,amount,merchant_shop_id,is_test,request_body)
+    values($1,$2,'application',$3,1,$4,99,'local-fixture-shop',true,$5)`,[applicationId,current.owner,targetId,tariffId,body]);
+   await admin.query("insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision) values($1,$2,$3,'application',$4,1)",[applicationId,current.owner,randomUUID(),targetId]);
+   const orders=(await admin.query("select id,target_type,status from app.payment_orders where owner_id=$1 and target_type in ('vacancy','workRequest','application')",[current.owner])).rows;
+   assert.equal(orders.length,3);
+   process.env.BLIZHNIY_LISTING_WORKFLOW='pre-moderation';
+   for(const order of orders){
+    const receipt={id:order.id,targetType:order.target_type};
+    const page=await history.list(current.token,current.owner,receipt);
+    assert.equal(page.items.length,1);assert.equal(page.items[0].id,order.id);assert.equal(page.items[0].status,order.status);
+    assert.equal(page.items[0].isTest,true);assert.equal(page.nextCursor,null);
+    assert.deepEqual(await history.list(other.token,other.owner,receipt),{items:[],nextCursor:null});
+    assert.deepEqual(await history.list(current.token,current.owner,{...receipt,targetType:receipt.targetType==='application'?'vacancy':'application'}),{items:[],nextCursor:null});
+    await assert.rejects(history.list(other.token,current.owner,receipt),{name:'AppSessionAccessError',message:'App session access required'});
+   }
+  });
   assert.equal(posts,3);assert.equal(gets,3);
  }finally{
   for(const key of variables){if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];}globalThis.fetch=originalFetch;

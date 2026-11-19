@@ -18,7 +18,7 @@ export function createPaymentHistoryHandler(config:{origin:string},runtime:()=>P
    const ip=getTrustedProxyIp(request.headers);if(!ip)throw new AuthRequestError(403,'UNTRUSTED_INGRESS');
    const token=readAccountSessionToken(request);if(!token)throw new AuthRequestError(401,'UNAUTHENTICATED');
    const {store,limiter}=await runtime();if(!await limiter.allowProduction('session',ip))throw new AuthRequestError(429,'RATE_LIMITED');
-   const result='paymentId' in input?await store.readSpecialistOrder(token,input.expectedOwnerId,input.paymentId):await store.list(token,input.expectedOwnerId,input.cursor);
+   const result='paymentId' in input?await store.readSpecialistOrder(token,input.expectedOwnerId,input.paymentId):await store.list(token,input.expectedOwnerId,'receipt' in input?input.receipt:input.cursor);
    return reply(result,200);
   }catch(error){
    if(error instanceof AppSessionAccessError)error=new AuthRequestError(401,'UNAUTHENTICATED');
