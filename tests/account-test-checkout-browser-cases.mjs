@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';import {createRequire} from 'node:module';
 export async function testAccountCheckoutBrowser({context,page,origin,owner,id,revision,title}){
  const paymentId='a2345678-1234-4321-8765-123456789abc',calls=[];let saved=null,losePreview=true,losePrepare=true,loseDispatch=true,status='created';
+ let statusBarrier=null;
  await context.route('**/api/account/listing-checkout',async route=>{
   const request=route.request(),body=request.postDataJSON();calls.push({method:request.method(),body});assert.equal(body.expectedOwnerId,owner);
   if(request.method()==='PUT'){
@@ -15,6 +16,10 @@ export async function testAccountCheckoutBrowser({context,page,origin,owner,id,r
    return route.fulfill({json:{listingId:id,revision,tariff:{id:'listing-standard',name:'Размещение',amount:'199.99',currency:'RUB',durationDays:30},activePayment:null}});
   }
   if(body.action==='intent'){assert.equal(body.creationKey,saved.creationKey);return route.fulfill({json:saved});}
+  if(body.action==='order'&&statusBarrier){
+   assert.equal(body.paymentId,paymentId);await statusBarrier;
+   return route.fulfill({status:503,json:{error:{code:'CHECKOUT_UNAVAILABLE'}}});
+  }
   if(body.action==='order'){assert.equal(body.paymentId,paymentId);return route.fulfill({json:{order:{...saved,status},fulfillment:null}});}
   assert.equal(body.action,'dispatch');assert.equal(body.paymentId,paymentId);
   if(loseDispatch){loseDispatch=false;return route.abort();}
@@ -46,6 +51,21 @@ export async function testAccountCheckoutBrowser({context,page,origin,owner,id,r
  await page.getByRole('heading',{name:'Заказ подготовлен',exact:true}).waitFor();assert.equal(calls.filter(call=>call.body.action==='dispatch').length,0);
  await page.getByRole('button',{name:'Перейти в ЮKassa (TEST)',exact:true}).click();await page.getByRole('button',{name:'Восстановить переход к оплате',exact:true}).waitFor();
  await page.getByRole('alert').filter({hasText:'Переход не подтверждён'}).waitFor();
+ // A lost dispatch response is recoverable only while the order can still be paid.
+ const resume=page.getByRole('button',{name:'Восстановить переход к оплате',exact:true});
+ let releaseStatus;
+ statusBarrier=new Promise(resolve=>{releaseStatus=resolve;});
+ try{
+  await page.getByText('Последний полученный статус. Актуальность пока не подтверждена.',{exact:true}).waitFor();
+  assert.equal(await resume.isDisabled(),true,'payment must wait for the current order status');
+  releaseStatus();
+  await page.getByRole('alert').filter({hasText:'Не удалось получить актуальный статус'}).waitFor();
+  assert.equal(await resume.isDisabled(),true,'a failed status read must not enable another dispatch');
+ }finally{releaseStatus();statusBarrier=null;}
+ await page.getByRole('button',{name:'Проверить статус',exact:true}).click();
+ await resume.and(page.locator(':enabled')).waitFor();
+ assert.equal(await resume.isEnabled(),true);
+ assert.equal(calls.filter(call=>call.body.action==='dispatch').length,1);
  await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
  for(const width of [320,768,1024,1440]){
   await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
