@@ -157,6 +157,8 @@ const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, 
 // Exact browser-test replacements reviewed individually by the owner; see docs/review/.
 // Content-addressed artifacts, not a blanket permission to remove assertions.
 const reviewedListingArtifacts = [
+  {"file": "tests/selector-parser-backport.test.mjs", "before": "75e56141d83109c37616e9faf1d253007e325f3a306e37db683b5f552c147543", "after": "2e81a155de3424a075e29129fa5f5bdb38093b8b5207f7178e1677bd7a319852"},
+  {"file": "tests/selector-upstream-equivalence.test.mjs", "before": "906351112d3ed550c88c0e51783bb273267d20da90fe5866c09d2045c8dbc97f", "after": "0f6b2251eb07100fdf1c84dbae5bd44d062c901ee67ef1f147d0b0d64d805617"},
   {"file": "tests/service-offline-browser.mjs", "before": "5371d8f7530e0a23d585087805aa888671c8d45c476b2d8bb8b99dfd297fc1d6", "after": "ff50df01fc483095dc4d42395bf1bd76145cda730e71bce1fba1723ea2eb6ae0"},
   {"file": "tests/legacy-photo-batch.test.mjs", "before": "900d5b3dff1388fb0110bd31a416ea720f121c4a21d441ff70b454eab3be95e3", "after": "049707ec99a5a11bf7ba807e3445398566fa65d9ade33708034a6bc1d6c9e9b0"},
   {"file": "tests/local-supabase-integration.mjs", "before": "a631f82475514fef30ddc1fbfad4eea92db2e352da98dd806b6686f0989e9b9f", "after": "81941855d2262ef6a35c22a34df5c7758254e2d3b9a2a01222f31169e0152c93"},
