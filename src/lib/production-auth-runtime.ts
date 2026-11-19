@@ -42,14 +42,15 @@ function runtime(config: ProductionAuthConfig): Promise<Runtime> {
 }
 
 /** No imports connect, send SMTP, run migrations or load a key. Restart is required after configuration changes. */
-export async function handleProductionAccountRequest(request: Request, action: string, canShowSpecialistTest?: (ownerId:string)=>boolean): Promise<Response> {
+export async function handleProductionAccountRequest(request: Request, action: string, canShowSpecialistTest?: (ownerId:string)=>boolean,
+  canShowWorkPublicationTest?: (ownerId:string)=>boolean): Promise<Response> {
   try {
     const config = readProductionAuthConfig();
     if (!config) return authJson({ error: { code: "NOT_FOUND" } }, 404);
     return await createProductionAccountHandler(config, async () => {
       const state = await runtime(config);
       return state.account;
-    }, undefined, canShowSpecialistTest)(request, action);
+    }, undefined, canShowSpecialistTest, canShowWorkPublicationTest)(request, action);
   } catch {
     const requestId = randomUUID();
     console.warn(JSON.stringify({ event: "account_configuration_failed", requestId, code: "AUTH_UNAVAILABLE" }));

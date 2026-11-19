@@ -11,7 +11,7 @@ import {WorkPublicationForm} from './WorkPublicationForm';
 import {WorkModerationStatus} from './WorkModerationStatus';
 import {PublicationPlacementPeriod} from '@/components/PublicationPlacementPeriod';
 
-function Editor({owner,kind,id,visible}:{owner:string;kind:WorkPublicationKind;id:string;visible:boolean}){
+function Editor({owner,kind,id,visible,hostedTest}:{hostedTest:boolean;owner:string;kind:WorkPublicationKind;id:string;visible:boolean}){
  const [snapshot,setSnapshot]=useState<WorkPublicationSnapshot|null>(null),[error,setError]=useState<string|null>(null),[retry,setRetry]=useState(0),[dirty,setDirty]=useState(false);
  const localVacancy=useListingPostmoderation();
  useEffect(()=>{const controller=new AbortController();setError(null);
@@ -24,7 +24,7 @@ function Editor({owner,kind,id,visible}:{owner:string;kind:WorkPublicationKind;i
   <Link href={kind==='vacancy'?'/cabinet/vakansii':'/cabinet/zakazy'} prefetch={false} className="inline-flex min-h-11 items-center font-semibold text-blue-800 underline">← Вернуться в кабинет</Link>
   {error?<div><p role="alert" className="my-3 text-rose-800">{error}</p><button type="button" className="min-h-11 font-semibold text-blue-800 underline" onClick={()=>setRetry(value=>value+1)}>Повторить загрузку</button></div>:
    snapshot?<div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-6"><PublicationPlacementPeriod publishedAt={snapshot.publishedAt} expiresAt={snapshot.expiresAt} status={snapshot.status}/>
-    <WorkPublicationForm owner={owner} kind={kind} initial={snapshot} onDirtyChange={setDirty}/>
+    <WorkPublicationForm hostedTest={hostedTest} owner={owner} kind={kind} initial={snapshot} onDirtyChange={setDirty}/>
     {!localVacancy&&!dirty&&<WorkModerationStatus owner={owner} snapshot={snapshot}/>}</div>:<p role="status" className="mt-4">Загружаем сохранённую форму…</p>}
  </section>;
 }
@@ -35,5 +35,5 @@ export function PrimaryWorkPublicationEditor({kind,initialId}:{kind:WorkPublicat
  if(owner&&owner!==scope)setScope(owner);if(auth?.state==='signed-out'&&scope)setScope(null);const visible=!!owner&&owner===scope;
  return <>{!visible&&<div role="status"><p>{auth?.state==='signed-out'?'Войдите в аккаунт.':'Проверяем вход. Введённые данные временно скрыты.'}</p>
   {auth?.state==='unavailable'&&<button type="button" onClick={()=>notifyAccountSessionChange(false)}>Повторить проверку входа</button>}</div>}
-  {scope&&<Editor key={`${scope}:${kind}:${initialId}`} owner={scope} kind={kind} id={initialId} visible={visible}/>}</>;
+  {scope&&<Editor key={`${scope}:${kind}:${initialId}`} owner={scope} kind={kind} id={initialId} visible={visible} hostedTest={visible&&auth?.workPublicationTest===true}/>}</>;
 }

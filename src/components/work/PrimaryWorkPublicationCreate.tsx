@@ -11,6 +11,6 @@ export function PrimaryWorkPublicationCreate({kind}:{kind:WorkPublicationKind}){
  const [scope]=useState(owner);
  return <main className="page-container py-6"><FormPanel title={kind==='vacancy'?'Разместить вакансию':'Разместить заказ'}
   description={kind==='vacancy'?'Укажите работодателя, условия работы и требования к кандидату.':'Опишите задачу и укажите, где нужно выполнить работу.'}>
-  {scope?<WorkPublicationForm key={scope} owner={scope} kind={kind}/>:<p role="status">Проверяем вход…</p>}
+  {scope?<WorkPublicationForm key={scope} owner={scope} kind={kind} hostedTest={owner===scope&&auth?.workPublicationTest===true}/>:<p role="status">Проверяем вход…</p>}
  </FormPanel></main>;
 }
