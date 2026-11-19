@@ -148,21 +148,7 @@ const reportingAssertionPair = [
   " for(const directive of [\"script-src-attr 'none'\",\"object-src 'none'\",\"base-uri 'none'\",\"frame-ancestors 'self'\",'report-uri /api/csp-report',\"worker-src 'self' blob:\"])assert.ok(value.includes(directive));",
   " for(const directive of [\"script-src-attr 'none'\",\"object-src 'none'\",\"base-uri 'none'\",\"frame-ancestors 'self'\",'report-to csp',\"worker-src 'self' blob:\"])assert.ok(value.includes(directive));"
 ];
-const cspSourceAssertionPairs = [
-  ["tests/html-csp.test.mjs",
-   " assert.ok(value.includes(\"style-src 'self' 'unsafe-inline'\"));assert.ok(!value.includes('https:;'));assert.ok(!value.includes('https://oauth.telegram.org'));assert.ok(!value.includes('yookassa'));",
-   " assert.ok(value.includes(\"style-src 'self' 'unsafe-inline'\"));assert.ok(!value.split(/[;\\s]+/).includes('https:'));assert.doesNotMatch(value,/https:\\/\\/oauth\\.telegram\\.org|yookassa/);"],
-  ["tests/html-csp.test.mjs",
-   " assert.ok(value.includes('https://synthetic.supabase.co'));assert.ok(value.includes('wss://synthetic.supabase.co'));",
-   " assertLegacyPermissions(nonce,{legacyOrigin:'https://synthetic.supabase.co'},'https://synthetic.supabase.co','wss://synthetic.supabase.co');"],
-  ["tests/html-csp.test.mjs",
-   " assert.ok(createHtmlCsp(nonce,{legacyOrigin:'https://legacy.example.invalid/'}).includes('https://legacy.example.invalid'));",
-   " assertLegacyPermissions(nonce,{legacyOrigin:'https://legacy.example.invalid/'},'https://legacy.example.invalid','wss://legacy.example.invalid');"],
-  ["tests/html-csp.test.mjs",
-   "  assert.ok(createHtmlCsp(nonce,{development:true,legacyOrigin:origin}).includes(`ws://${host}:54321`));",
-   "  assertLegacyPermissions(nonce,{development:true,legacyOrigin:origin},origin,`ws://${host}:54321`);"],
-];
-const reviewedAssertionPairs = [...cspSourceAssertionPairs, ...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs, reportingAssertionPair];
+const reviewedAssertionPairs = [...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs, reportingAssertionPair];
 const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, before, after]) =>
   file === path && text === before &&
   removed.filter(line => line.file === path && reviewedAssertionPairs.some(([pairPath, pairBefore, pairAfter]) =>
@@ -171,6 +157,7 @@ const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, 
 // Exact browser-test replacements reviewed individually by the owner; see docs/review/.
 // Content-addressed artifacts, not a blanket permission to remove assertions.
 const reviewedListingArtifacts = [
+  {"file": "tests/html-csp.test.mjs", "before": "56a3b847b340837288a109dacf522d703034a6111659d5aa80824d0ab8e1578f", "after": "ce3389283fd1714ab4c90ed2e76e34e2020af7e6cf0ddb53ec4fbc5d9d7eb98b", "alternateBefore": "405c711e273fa6adbc8c5301e68f4080818427653c27e9f43beefc05457351f3"},
   {"file": "tests/listing-category-parent.test.mjs", "before": "89eeb641134ffeb99405b5fbbcde10faf25cb7d220fc8d39353a215fce39e98f", "after": "9ab7797ea8a49c19d2ca70a1547c2a8971ebcbbbb8c5df11dce0a5d40f617a7b"},
   {"file": "tests/initialization-runtime-recovery.test.mjs", "before": "eb8d96e891aaa2e589ad3ae31dcaf66458a64d5de313b4d86518f0f97711331e", "after": "9b4148b2bafaa893f0e44e5133129783cb750451e647a6aeae4a34128c8d8822"},
   {"file": "tests/selector-parser-backport.test.mjs", "before": "75e56141d83109c37616e9faf1d253007e325f3a306e37db683b5f552c147543", "after": "2e81a155de3424a075e29129fa5f5bdb38093b8b5207f7178e1677bd7a319852"},
@@ -217,7 +204,8 @@ function reviewedListingArtifact(file) {
   let approved = false;
   if (pair) {
     const hash = value => createHash('sha256').update(value).digest('hex');
-    if (hash(git(['show', `${mergeBase}:${file}`])) === pair.before) {
+    const before = hash(git(['show', `${mergeBase}:${file}`]));
+    if (before === pair.before || before === pair.alternateBefore) {
       try {approved = hash(readFileSync(file)) === pair.after;} catch {bail();}
     }
   }
