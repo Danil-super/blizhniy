@@ -126,6 +126,47 @@ test('candidate production TEST release: exact schema/ACL, compiled worker, orig
    await assert.rejects(workerDb.query("update app.specialist_categories set name='Изменение' where id=$1",[profession]),{code:'42501'});
    await assert.rejects(workerDb.query('delete from app.work_publications'),{code:'42501'});await preflight();
   });
+  await suite.test('restored pending TEST purchases publish once without sending a second charge request',async()=>{
+   const pending=[];
+   for(const kind of ['listing','vacancy','workRequest']){
+    const item=await draft(kind),checkoutStore=store(kind);
+    const quote=await checkoutStore.preview(item.token,item.owner,item.id,item.revision);
+    const order=await checkoutStore.prepare(item.token,item.owner,{
+     listingId:item.id,expectedRevision:item.revision,creationKey:randomUUID(),
+     expectedTariffId:quote.tariff.id,expectedAmount:quote.tariff.amount,expectedDurationDays:quote.tariff.durationDays,
+    });
+    const payment=load('account-test-listing-payment').createAccountTestListingPayment(db,checkoutStore,{...merchant,ownerId:current.owner},fetcher);
+    await payment.dispatch(item.token,item.owner,order.id);
+    const original=await checkoutStore.readOrder(item.token,item.owner,order.id);
+    assert.ok(original);assert.equal(original.fulfillment,null);
+    pending.push({kind,item,order,original});
+   }
+
+   const database='publication_restore';
+   await admin.query('create database publication_restore template template0');
+   await admin.query('revoke all on database publication_restore from public;grant connect on database publication_restore to blizhniy_payment_reconciler');
+   await docker(['exec',container,'bash','-euo','pipefail','-c',
+    'pg_dump --format=custom --username=postgres --no-password --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --no-password --dbname="$2"',
+    'restore-fixture',config.database,database]);
+   const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,max:2}));
+   const restoredWorker=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+   try{
+    await copiedGuard.verifyPaymentReconciliationDatabase(restoredWorker,{database,publicationTest:true});
+    const resumed=compiledWorker(restoredWorker,merchant,fetcher,current.owner),previousPosts=posts,previousGets=gets;
+    for(let i=0;i<pending.length;i++)assert.deepEqual(await resumed.tick(),{state:'completed'});
+    assert.deepEqual(await resumed.tick(),{state:'idle'});assert.equal(posts,previousPosts);assert.equal(gets-previousGets,pending.length);
+    for(const {kind,item,order,original} of pending){
+     const checkoutStore=new Store(restored,checkout,{postmoderation:true,publicationTestOwner:current.owner,...(kind==='listing'?{}:{targetType:kind})});
+     const recovered=await checkoutStore.readOrder(item.token,item.owner,order.id);
+     assert.equal(recovered.order.status,'succeeded');assert.ok(recovered.fulfillment);
+     assert.equal((await restored.query('select count(*)::int n from app.payment_fulfillments where intent_id=$1',[order.id])).rows[0].n,1);
+     const card=kind==='listing'?await new(load('postgres-public-listings').PostgresPublicListingStore)(restored,{postmoderation:true}).read(item.id)
+      :await new(load('postgres-public-work').PostgresPublicWorkStore)(restored,{vacancyPostmoderation:true}).read(kind,item.id);
+     assert.ok(card);assert.match(card.title,/^ТЕСТ · /);
+     assert.deepEqual(await store(kind).readOrder(item.token,item.owner,order.id),original);
+    }
+   }finally{await restoredWorker.close();await restored.close();}
+  });
  }finally{
   for(const key of variables){if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];}globalThis.fetch=originalFetch;
   await workerDb?.close();await db?.close();await admin?.end();if(container){const metadata=JSON.parse(await docker(['inspect',container]))[0];assert.equal(metadata.Id,container);assert.equal(metadata.Config.Labels[label],name);await docker(['rm','--force','--volumes',container]);}if(artifactDirectory)await rm(artifactDirectory,{recursive:true});
