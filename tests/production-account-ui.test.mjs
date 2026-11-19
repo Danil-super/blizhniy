@@ -184,11 +184,15 @@ test("verified standalone login returns only to an exact local payment URL", () 
     "next/navigation": { useRouter: () => ({ replace: value => visits.push(value) }) },
     "./LocalAccountForm": { LocalAccountForm: () => null },
   }, { window: { location }, URLSearchParams });
+  const restored = [];
+  location.replace = value => restored.push(value);
   const base = "/oplata/" + id;
   for (const suffix of ["", "?type=vacancy", "?type=workRequest", "?type=application", "?type=specialist"]) {
     location.search = new URLSearchParams({ returnTo: base + suffix }).toString();
     ProductionLoginForm().props.onLoginVerified();
     assert.equal(visits.pop(), base + suffix);
+    ProductionLoginForm().props.onLoginVerified("session");
+    assert.equal(restored.pop(), base + suffix);
   }
   for (const search of ["", "returnTo=//example.invalid", "returnTo=/oplata/bad",
     new URLSearchParams({ returnTo: base + "?type=other" }).toString(),
@@ -196,5 +200,8 @@ test("verified standalone login returns only to an exact local payment URL", () 
     location.search = search;
     ProductionLoginForm().props.onLoginVerified();
     assert.equal(visits.pop(), "/");
+    ProductionLoginForm().props.onLoginVerified("session");
+    assert.deepEqual(visits, []);
+    assert.deepEqual(restored, []);
   }
 });

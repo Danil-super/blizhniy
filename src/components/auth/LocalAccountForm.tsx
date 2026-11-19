@@ -24,7 +24,7 @@ const errors: Record<string, string> = {
 };
 
 export function LocalAccountForm({ production = false, headingLevel = "h1", onLoginVerified }: {
-  production?: boolean; headingLevel?: "h1" | "h2"; onLoginVerified?: () => void;
+  production?: boolean; headingLevel?: "h1" | "h2"; onLoginVerified?: (source: "login" | "session") => void;
 } = {}) {
   const Heading = headingLevel;
   const account = production ? productionAccount : localAccount;
@@ -72,7 +72,7 @@ export function LocalAccountForm({ production = false, headingLevel = "h1", onLo
           setIssue("Не удалось сохранить сессию входа. Разрешите необходимые cookie для этого сайта и проверьте сессию ещё раз.");
         } else if (user) {
           setEmail(""); setPassword(""); setIssue(""); show({ kind: "active", user });
-          if (expectedOwnerId) onLoginVerified?.();
+          onLoginVerified?.(expectedOwnerId ? "login" : "session");
         } else if (!preserveForm) show({ kind: "anonymous" });
       }
     } catch {
