@@ -132,16 +132,29 @@ test('primary backend never grants legacy access even when stale legacy configur
 test('selected legacy backend adds only the configured canonical HTTPS and WSS origin', { concurrency: false }, async () => {
   for (const authMode of [undefined, 'local']) {
     await withEnvironment({ BLIZHNIY_AUTH_MODE: authMode, NEXT_PUBLIC_SUPABASE_URL: 'https://legacy.example.invalid' }, () => {
-      const { policy } = assertNextPolicy(middleware(request()), 'content-security-policy-report-only');
-      const directives = new Map(policy.split(';').map(value => {
-        const [name, ...sources] = value.trim().split(/\s+/);
-        return [name, sources];
-      }));
-      assert.ok(directives.get('connect-src').includes('https://legacy.example.invalid'));
-      assert.ok(directives.get('connect-src').includes('wss://legacy.example.invalid'));
-      assert.ok(directives.get('img-src').includes('https://legacy.example.invalid'));
-      assert.ok(!directives.get('script-src').includes('https://legacy.example.invalid'));
-      assert.ok(!directives.get('frame-src').includes('https://legacy.example.invalid'));
+      const { nonce, policy } = assertNextPolicy(middleware(request()), 'content-security-policy-report-only');
+      const legacy = 'https://legacy.example.invalid';
+      const realtime = 'wss://legacy.example.invalid';
+      const challenge = 'https://challenges.cloudflare.com';
+      const maps = ['https://*.2gis.com', 'https://*.2gis.ru'];
+      const expected = new Map([
+        ['connect-src', ["'self'", challenge, ...maps, legacy, realtime]],
+        ['img-src', ["'self'", 'data:', 'blob:', ...maps, legacy]],
+        ['script-src', ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", challenge, 'https://mapgl.2gis.com']],
+        ['frame-src', [challenge]],
+      ]);
+      const seen = new Set();
+      for (const directive of policy.split(';')) {
+        const [name, ...sources] = directive.trim().split(/\s+/);
+        assert.ok(!seen.has(name), `duplicate directive: ${name}`);
+        seen.add(name);
+        if (expected.has(name)) {
+          assert.deepEqual(sources.sort(), expected.get(name).sort(), name);
+        } else {
+          assert.ok(sources.every(source => source !== legacy && source !== realtime), name);
+        }
+      }
+      for (const name of expected.keys()) assert.ok(seen.has(name), name);
     });
   }
 });

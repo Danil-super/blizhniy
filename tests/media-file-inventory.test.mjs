@@ -1,3 +1,4 @@
+import { readFixtureFile } from './read-fixture-file.mjs';
 import assert from 'node:assert/strict';import {test} from 'node:test';
 import fs from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import{randomUUID,createHash}from'node:crypto';import sharp from 'sharp';
 import {readMediaFileInventory} from '../scripts/media-file-inventory.mjs';
@@ -11,10 +12,15 @@ async function fixture(t){
 }
 test('inventory recognizes complete and incomplete known leaves and never changes their contents',async t=>{
  const f=await fixture(t),final=join(f.root,f.record.id+'.webp'),temp=join(f.root,'.pending-'+f.attemptId);
- await fs.writeFile(final,bytes,{mode:0o600});await fs.writeFile(temp,bytes.subarray(0,12),{mode:0o600});const before=await fs.lstat(temp,{bigint:true});
+ await fs.writeFile(final,bytes,{mode:0o600});await fs.writeFile(temp,bytes.subarray(0,12),{mode:0o600});
+ const { stat: before } = await readFixtureFile(temp);
  const report=await readMediaFileInventory(f.root,[{record:f.record,attemptId:f.attemptId}]);
  assert.equal(report.cleanupAuthorized,false);assert.equal(report.objects[0].final,'complete');assert.equal(report.objects[0].temporary,'incomplete');assert.equal(report.summary.manualReview,1);assert.equal(report.summary.unknownEntries,0);
- assert.deepEqual(await fs.readFile(final),bytes);assert.deepEqual(await fs.readFile(temp),bytes.subarray(0,12));assert.equal((await fs.lstat(temp,{bigint:true})).ino,before.ino);
+ const after = await readFixtureFile(temp);
+ assert.deepEqual(await fs.readFile(final),bytes);
+ assert.deepEqual(after.bytes, bytes.subarray(0,12));
+ assert.equal(after.stat.ino, before.ino);
+ assert.equal(after.stat.dev, before.dev);
 });
 test('unknown names and symlinks are retained, not opened or exposed in a report',async t=>{
  const f=await fixture(t),name='private-owner@example.invalid',outside=join(f.root,name);await fs.writeFile(outside,'private-content',{mode:0o600});await fs.symlink(outside,join(f.root,'unknown-link'));

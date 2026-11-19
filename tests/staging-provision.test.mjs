@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { readFixtureFile } from './read-fixture-file.mjs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -31,16 +32,21 @@ test('SCRAM verifier accepts only generated ASCII hex passwords, has fresh salt 
   for (const value of ['', 'simple-password', 'аб'.repeat(32), undefined]) assert.throws(() => createScramVerifier(value));
 });
 
-test('credentials are created privately without overwriting existing files', (t) => {
+test('credentials are created privately without overwriting existing files', async (t) => {
   const directory = mkdtempSync(path.join(tmpdir(), 'blizhniy-staging-credentials-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const file = path.join(directory, 'credentials.json');
   const contents = { runtime: 'synthetic-fixture-only' };
   saveStagingCredentials(file, contents);
-  assert.equal(statSync(file).mode & 0o777, 0o600);
-  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), contents);
+  const before = await readFixtureFile(file);
+  assert.equal(before.stat.mode & 0o777n, 0o600n);
+  assert.deepEqual(JSON.parse(before.bytes.toString('utf8')), contents);
   assert.throws(() => saveStagingCredentials(file, { runtime: 'different-fixture' }));
-  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), contents);
+  const after = await readFixtureFile(file);
+  assert.equal(after.stat.dev, before.stat.dev);
+  assert.equal(after.stat.ino, before.stat.ino);
+  assert.equal(after.stat.mode, before.stat.mode);
+  assert.deepEqual(after.bytes, before.bytes);
 });
 
 test('credentials refuse symlink destinations, non-private folders and repository paths', (t) => {

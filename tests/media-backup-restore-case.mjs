@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
 import {createHash, randomBytes, randomUUID} from 'node:crypto';
-import {mkdtemp, stat, writeFile} from 'node:fs/promises';
+import {constants} from 'node:fs';
+import {mkdtemp, open, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {promisify} from 'node:util';
 import sharp from 'sharp';
@@ -45,14 +46,21 @@ export async function verifyRestoredPrivatePhoto(db, transactions, directory, ba
   const extract = () => run('/usr/bin/tar',['-x','-f',backup.archive,'-C',target,'--',backup.file]);
   await extract();
   const path = join(target,backup.file);
-  assert.equal((await stat(path)).mode & 0o777,0o600);
-  const restored = await read();
-  assert.deepEqual(restored.bytes,backup.bytes);
-  assert.equal(restored.record.sha256,backup.photo.sha256);
-  assert.equal(await repo.readOwned(otherToken,backup.id),null);
-  const damaged = Buffer.from(backup.bytes);
-  damaged[damaged.length-1] ^= 1;
-  await writeFile(path,damaged,{flag:'r+'});
+  const file = await open(path, constants.O_RDWR | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const stat = await file.stat();
+    assert.ok(stat.isFile());
+    assert.equal(stat.mode & 0o777,0o600);
+    const restored = await read();
+    assert.deepEqual(restored.bytes,backup.bytes);
+    assert.equal(restored.record.sha256,backup.photo.sha256);
+    assert.equal(await repo.readOwned(otherToken,backup.id),null);
+    const damaged = Buffer.from(backup.bytes);
+    damaged[damaged.length-1] ^= 1;
+    await file.writeFile(damaged);
+  } finally {
+    await file.close();
+  }
   await assert.rejects(read(),{code:'MEDIA_METADATA_UNAVAILABLE'});
   await extract();
   assert.deepEqual((await read()).bytes,backup.bytes);

@@ -107,7 +107,8 @@ test("listing pagination filters before offset and redacts hidden location", asy
   assert.ok(page.every((item) => item.address === undefined && item.lat === undefined && item.lng === undefined));
 });
 
-test("sitemap spans batches, includes paid active URLs, and omits redirects and unsupported routes", async () => {
+test("sitemap spans batches, includes paid active URLs, and omits redirects and unsupported routes", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-10-01T00:00:00Z") });
   const source = readFileSync(new URL("../src/app/sitemap.ts", import.meta.url), "utf8");
   const exports = {};
   const requests = [];
@@ -147,12 +148,21 @@ test("sitemap spans batches, includes paid active URLs, and omits redirects and 
   };
   vm.runInNewContext(compile(source), { exports, require: (id) => mockModules[id], process: { env: {} }, Date, Promise, encodeURIComponent, Set, Array, Number });
   const sitemap = await exports.default();
-  const urls = sitemap.map((entry) => entry.url);
-
-  assert.equal(urls.filter((url) => url.includes("/obyavlenie/")).length, 501);
-  assert.ok(urls.includes("https://example.test/obyavlenie/listing-500"));
-  assert.ok(urls.includes("https://example.test/katalog/dom/mebel"));
-  assert.ok(urls.includes("https://example.test/rabota/specialisty/active"));
+  const urls = Array.from(sitemap, (entry) => entry.url);
+  const expectedOrigin = "https://example.test";
+  const paths = urls.map((url) => {
+    if (url === expectedOrigin) return "/";
+    const parsed = new URL(url);
+    assert.equal(url, expectedOrigin + parsed.pathname);
+    return parsed.pathname;
+  });
+  const listingPaths = paths.filter((path) => path.startsWith("/obyavlenie/"));
+  const expectedListings = Array.from({ length: 501 }, (_, index) => `/obyavlenie/listing-${index}`);
+  assert.deepEqual(listingPaths.sort(), expectedListings.sort());
+  const publicPaths = new Set(paths);
+  assert.equal(publicPaths.size, paths.length);
+  assert.ok(publicPaths.has("/katalog/dom/mebel"));
+  assert.ok(publicPaths.has("/rabota/specialisty/active"));
   assert.ok(!urls.some((url) => /unpaid|expired|inactive|Missing|\/obyavleniya\/prodam|\/katalog\/rabota/.test(url)));
   assert.ok(requests.every((path) => /\/(listings|vacancies)\?/.test(path) && path.includes("is_paid=eq.true") && path.includes("expires_at=gt.")));
 });

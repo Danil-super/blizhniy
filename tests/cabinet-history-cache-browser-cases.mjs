@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import {createServer} from 'node:http';
+import {createServer, get} from 'node:http';
+import {pipeline} from 'node:stream/promises';
 import {once} from 'node:events';
 import {chromium} from 'playwright';
 import sharp from 'sharp';
@@ -8,11 +9,15 @@ const first='12345678-1234-4321-8765-123456789abc', second='22345678-1234-4321-8
 const payment='32345678-1234-4321-8765-123456789abc', editedTitle='Черновик до перехода';
 
 export async function testCachedCabinetScreen(origin, draftPath) {
-  assert.equal(new URL(origin).hostname,'127.0.0.1');
+  const app = new URL(origin);
+  assert.equal(app.protocol, 'http:');
+  assert.equal(app.hostname, '127.0.0.1');
+  assert.equal(app.origin, origin);
   let active=first;
   const photo=await sharp({create:{width:8,height:8,channels:3,background:'navy'}}).webp().toBuffer();
   const browser=await chromium.launch({channel:'chromium',ignoreDefaultArgs:['--disable-back-forward-cache']});
   const fixture=createServer(async(req,res)=>{
+    let upstream;
     try {
       const target=new URL(req.url,origin);
       assert.equal(target.origin,origin);
@@ -27,16 +32,25 @@ export async function testCachedCabinetScreen(origin, draftPath) {
       if(target.pathname.startsWith('/api/account/')){res.writeHead(404).end('{"error":{"code":"NOT_FOUND"}}');return;}
       const headers={...req.headers};delete headers.host;delete headers.connection;
       if(draftPath && target.pathname==='/razmestit/obyavlenie')headers.cookie='__Host-blizhniy_session='+'a'.repeat(64);
-      const upstream=await fetch(target,{headers,redirect:'manual'});
-      const reply=Object.fromEntries(upstream.headers);
-      for(const field of ['content-length','transfer-encoding','content-encoding','connection'])delete reply[field];
+      const request = get({
+        hostname: '127.0.0.1', port: app.port, path: target.pathname + target.search, headers,
+      });
+      [upstream] = await once(request, 'response');
+      const reply = { ...upstream.headers };
+      delete reply.connection;
+      delete reply['transfer-encoding'];
       // Test the cached-document branch even in Chromium versions that evict no-store pages.
       if(req.headers['sec-fetch-dest']==='document'){
         assert.match(reply['cache-control']??'',/no-store/);
         reply['cache-control']='private, no-cache';
       }
-      res.writeHead(upstream.status,reply).end(Buffer.from(await upstream.arrayBuffer()));
-    } catch {res.writeHead(502).end();}
+      res.writeHead(upstream.statusCode, reply);
+      await pipeline(upstream, res);
+    } catch {
+      upstream?.destroy();
+      if (res.headersSent) res.destroy();
+      else res.writeHead(502).end();
+    }
   });
   try {
     fixture.listen(0,'127.0.0.1');await once(fixture,'listening');
