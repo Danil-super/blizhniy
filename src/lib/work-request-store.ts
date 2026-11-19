@@ -3,7 +3,7 @@ import { hasMapCoordinates } from "@/lib/map-location";
 import { effectivePublicationStatus } from "@/lib/publication-time";
 import { publicMediaUrl } from "@/lib/storage-upload";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
-import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
+import { createLegacyPublicationRow, isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { PublicationStatus, WorkRequest } from "@/lib/types";
 
 type WorkRequestStatusRow = {
@@ -256,11 +256,6 @@ function workRequestWithMediaFallback(request: WorkRequest, mediaPaths?: string[
   return { ...request, images };
 }
 
-function isMissingWorkRequestImagesError(error: unknown) {
-  const message = error instanceof Error ? error.message : "";
-  return message.includes("work_request_images");
-}
-
 async function storedWorkRequestBody(input: CreateStoredWorkRequestInput, status: PublicationStatus, publishedAt?: string | null) {
   const cityRow = await findCity(input.city);
   const regionId = await findRegionId(cityRow);
@@ -309,13 +304,9 @@ export async function createStoredWorkRequest(input: CreateStoredWorkRequestInpu
 
   const status = input.status ?? "pending_payment";
   const fields = await storedWorkRequestBody(input, status);
-  const paths = cleanMediaPaths(input.mediaPaths);
-  const endpoint = paths.length ? "rpc/create_work_request_with_gallery" : "work_requests";
-  const rows = await supabaseRest<WorkRequestRow[]>(`/rest/v1/${endpoint}?select=${legacyWorkRequestSelect}`, {
-    method: "POST",
-    prefer: "return=representation",
-    body: paths.length ? { p_fields: fields, p_paths: paths } : fields,
-  });
+  const rows = await createLegacyPublicationRow<WorkRequestRow>(
+    "work_requests", legacyWorkRequestSelect, fields, cleanMediaPaths(input.mediaPaths),
+  );
   const request = rows[0];
 
   if (!request) {

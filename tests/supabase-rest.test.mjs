@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { after, before, test } from 'node:test';
-import { supabaseRest, getSupabaseRestConfig, isSupabaseRestConfigured, isSupabaseServiceRoleConfigured, buildSupabaseRestUrl } from '../src/lib/supabase-rest.ts';
+import { createLegacyPublicationRow, supabaseRest, getSupabaseRestConfig, isSupabaseRestConfigured, isSupabaseServiceRoleConfigured, buildSupabaseRestUrl } from '../src/lib/supabase-rest.ts';
 
 let server;
 const calls = new Map();
@@ -12,6 +12,11 @@ before(async () => {
     if (req.url === '/body') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.write('['); // never completes the response body
+      return;
+    }
+    if (req.url === '/rest/v1/rpc/create_listing_with_gallery?select=id') {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message: 'internal database detail' }));
       return;
     }
     if (req.url === '/write') {
@@ -92,4 +97,13 @@ test('PostgreSQL or invalid auth mode blocks legacy reads and writes before netw
     if (previousMode === undefined) delete process.env.BLIZHNIY_AUTH_MODE;
     else process.env.BLIZHNIY_AUTH_MODE = previousMode;
   }
+});
+
+test('first save returns an actionable message and sends only one write when the gallery is rejected', async () => {
+  const target = '/rest/v1/rpc/create_listing_with_gallery?select=id';
+  const beforeCalls = calls.get(target) ?? 0;
+  await assert.rejects(createLegacyPublicationRow('listings', 'id', { title: 'Draft' }, ['photo.webp']), {
+    message: 'Не удалось подтвердить сохранение. Перед повторной попыткой проверьте карточку в личном кабинете.',
+  });
+  assert.equal(calls.get(target) - beforeCalls, 1);
 });

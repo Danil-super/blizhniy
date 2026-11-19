@@ -3,7 +3,7 @@ import { formatBookingPrice } from "@/lib/booking-details";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { effectivePublicationStatus } from "@/lib/publication-time";
 import { publicMediaUrl } from "@/lib/storage-upload";
-import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
+import { createLegacyPublicationRow, isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { BookingDetails, Listing, ListingKind, PublicationStatus } from "@/lib/types";
 
 type ListingTypeRow = "sell" | "buy" | "free" | "rent";
@@ -391,13 +391,9 @@ export async function createStoredListing(input: CreateStoredListingInput) {
     status,
     title: input.title,
   };
-  const paths = cleanMediaPaths(input.mediaPaths);
-  const endpoint = paths.length ? "rpc/create_listing_with_gallery" : "listings";
-  const rows = await supabaseRest<ListingRow[]>(`/rest/v1/${endpoint}?select=${listingSelect}`, {
-    method: "POST",
-    prefer: "return=representation",
-    body: paths.length ? { p_fields: fields, p_paths: paths } : fields,
-  });
+  const rows = await createLegacyPublicationRow<ListingRow>(
+    "listings", listingSelect, fields, cleanMediaPaths(input.mediaPaths),
+  );
 
   const listing = rows[0];
 

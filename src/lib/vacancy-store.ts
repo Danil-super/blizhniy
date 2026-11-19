@@ -3,7 +3,7 @@ import { hasMapCoordinates } from "@/lib/map-location";
 import { effectivePublicationStatus } from "@/lib/publication-time";
 import { publicMediaUrl } from "@/lib/storage-upload";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
-import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
+import { createLegacyPublicationRow, isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { JobVacancy, PublicationStatus } from "@/lib/types";
 
 type VacancyRow = {
@@ -375,13 +375,9 @@ export async function createStoredVacancy(input: CreateStoredVacancyInput) {
 
   const status = input.status ?? "pending_payment";
   const fields = await storedVacancyBody(input, status);
-  const paths = cleanMediaPaths(input.mediaPaths);
-  const endpoint = paths.length ? "rpc/create_vacancy_with_gallery" : "vacancies";
-  const rows = await supabaseRest<VacancyRow[]>(`/rest/v1/${endpoint}?select=${vacancySelect}`, {
-    method: "POST",
-    prefer: "return=representation",
-    body: paths.length ? { p_fields: fields, p_paths: paths } : fields,
-  });
+  const rows = await createLegacyPublicationRow<VacancyRow>(
+    "vacancies", vacancySelect, fields, cleanMediaPaths(input.mediaPaths),
+  );
 
   const vacancy = rows[0];
 
