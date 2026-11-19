@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, MapPin, Search } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { cities, cityPreferenceKey, region } from "@/lib/data";
 
 const sortedCities = [...cities].sort((left, right) => left.name.localeCompare(right.name, "ru"));
@@ -17,16 +16,7 @@ function writeCityCookie(slug: string) {
   document.cookie = `${cityPreferenceKey}=${slug}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
 }
 
-function resetFeedPage() {
-  const url = new URL(window.location.href);
-  if (url.pathname !== "/obyavleniya" || !url.searchParams.has("page")) return false;
-  url.searchParams.delete("page");
-  window.location.replace(url.href);
-  return true;
-}
-
 export function HeaderControls({ placement = "desktop" }: { placement?: "desktop" | "mobile" }) {
-  const router = useRouter();
   const [selectedCity, setSelectedCity] = useState(region.slug);
   const [cityMenuOpen, setCityMenuOpen] = useState(false);
   const [cityQuery, setCityQuery] = useState("");
@@ -61,7 +51,7 @@ export function HeaderControls({ placement = "desktop" }: { placement?: "desktop
         try { slug = localStorage.getItem(cityPreferenceKey) ?? undefined; } catch { /* Storage may be disabled. */ }
         if (slug && cityOptions.some(city => city.slug === slug)) {
           writeCityCookie(slug);
-          if (savedCityCookie() === slug && !resetFeedPage()) router.refresh();
+          if (savedCityCookie() === slug) window.dispatchEvent(new Event(cityPreferenceKey));
         }
       }
       setSelectedCity(cityOptions.find(city => city.slug === slug)?.slug ?? region.slug);
@@ -69,7 +59,6 @@ export function HeaderControls({ placement = "desktop" }: { placement?: "desktop
     function onStorage(event: StorageEvent) {
       if (event.key === cityPreferenceKey) {
         syncCity();
-        if (!resetFeedPage()) router.refresh();
       }
     }
     syncCity();
@@ -79,7 +68,7 @@ export function HeaderControls({ placement = "desktop" }: { placement?: "desktop
       window.removeEventListener(cityPreferenceKey, syncCity);
       window.removeEventListener("storage", onStorage);
     };
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     function handleDocumentClick(event: MouseEvent) {
@@ -98,7 +87,6 @@ export function HeaderControls({ placement = "desktop" }: { placement?: "desktop
     window.dispatchEvent(new Event(cityPreferenceKey));
     setCityQuery("");
     setCityMenuOpen(false);
-    if (!resetFeedPage()) router.refresh();
   }
 
   const mobile = placement === "mobile";

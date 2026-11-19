@@ -1,5 +1,3 @@
-import { cookies } from "next/headers";
-import { cities, cityPreferenceKey } from "@/lib/data";
 import type { Metadata } from "next";
 import { HomeListings } from "@/components/HomeListings";
 import { ListingEntryNav } from "@/components/ListingEntryNav";
@@ -41,8 +39,6 @@ function normalizeListingKind(value?: string): ListingKind | undefined {
 
 export default async function Page({ searchParams }: PageProps) {
   const params = searchParams ? await searchParams : undefined;
-  const citySlug = (await cookies()).get(cityPreferenceKey)?.value;
-  const city = cities.find(item => item.slug === citySlug);
   const activeKind = normalizeListingKind(params?.kind);
   const page = parseListingPage(params?.page);
 
@@ -52,7 +48,7 @@ export default async function Page({ searchParams }: PageProps) {
       <main className="py-6 sm:py-8">
         <ListingEntryNav activeKind={activeKind} />
         <div className="mt-6 sm:mt-8">
-          <HomeListings kind={activeKind} page={page} city={city?.name} />
+          <HomeListings kind={activeKind} page={page} />
         </div>
       </main>
     </>

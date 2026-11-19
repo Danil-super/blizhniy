@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+import { cities, cityPreferenceKey } from "@/lib/data";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { HomeListingsFeed } from "@/components/HomeListingsFeed";
@@ -15,7 +17,9 @@ const kindLabels: Record<ListingKind, string> = {
   "otdam-darom": "Отдам даром",
 };
 
-export async function HomeListings({ kind, page = 1, city }: { kind?: ListingKind; page?: number; city?: string }) {
+export async function HomeListings({ kind, page = 1 }: { kind?: ListingKind; page?: number }) {
+  const citySlug = (await cookies()).get(cityPreferenceKey)?.value;
+  const city = cities.find(item => item.slug === citySlug)?.name;
   const pageSize = 24;
   const storedListings = await listStoredListings(pageSize + 1, { kind, city, offset: (page - 1) * pageSize });
 
