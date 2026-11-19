@@ -39,7 +39,7 @@ export default async function SpecialistDetailPage({ params }: { params: Promise
     <>
       <SiteHeader />
       <ListingViewTracker listingId={`work-specialist-${specialist.id}`} />
-      <SpecialistProfileDetail specialist={{ ...specialist, hasMapPoint }} />
+      <SpecialistProfileDetail publicPage specialist={{ ...specialist, hasMapPoint }} />
     </>
   );
 }
