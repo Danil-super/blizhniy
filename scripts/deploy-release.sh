@@ -202,6 +202,12 @@ check_endpoint "$HEALTH_URL"
 log "checking ${READY_URL}"
 check_endpoint "$READY_URL"
 
+log "checking public homepage"
+homepage_status="$(curl --noproxy '*' --silent --show-error --max-time 10 --output /dev/null \
+  --write-out '%{http_code}' "http://127.0.0.1:${PORT}/")" || homepage_status=unavailable
+log "public homepage HTTP status: ${homepage_status}"
+[[ "$homepage_status" == 200 ]]
+
 log "promoting release"
 # The CI job can run browser checks only after the public endpoint switches.
 # Keep the exact previous release so a failed post-deploy check can reverse it.
