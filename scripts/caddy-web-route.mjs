@@ -19,12 +19,12 @@ export function createCaddyWebRoute({socketPath,ports,deadlineMs=5000,peerUid=pr
  };
  const read=async()=>{
   const response=await send('GET');
-  if(response.status!==200||!etag(response.headers.etag))throw failure('HANDOFF_READ');
+  if(response.status!==200||!etag(response.etag))throw failure('HANDOFF_READ');
   let value;try{value=JSON.parse(response.body.toString('utf8'));}catch{throw failure('HANDOFF_READ');}
   if(!Array.isArray(value)||value.length!==1||!value[0]||Object.keys(value[0]).join()!=='dial')throw failure('HANDOFF_READ');
   const port=allowed.find(p=>value[0].dial===`127.0.0.1:${p}`);
   if(port===undefined)throw failure('HANDOFF_READ');
-  return Object.freeze({port,etag:response.headers.etag});
+  return Object.freeze({port,etag:response.etag});
  };
  return {read,async switch(expected,target){
   if(!expected||!allowed.includes(expected.port)||!etag(expected.etag)||!allowed.includes(target)||target===expected.port)throw failure('HANDOFF_CONFIGURATION');

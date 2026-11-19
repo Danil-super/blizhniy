@@ -1,5 +1,11 @@
 # Direct public ingress, not behind a CDN or another load balancer.
 # Adapt this template with Caddy 2.10.2. See captcha-boundary.md for older servers.
+(origin_headers) {
+    header_up X-Real-IP {remote_host}
+    header_up -CF-Connecting-IP
+    header_up X-Forwarded-For {remote_host}
+}
+
 example.com {
     # Next 15 hides/replays Flight headers around middleware. Normalize the
     # invalid document-prefetch combination before it reaches that adapter.
@@ -41,8 +47,25 @@ example.com {
     }
 
     reverse_proxy 127.0.0.1:3000 {
-        header_up X-Real-IP {remote_host}
-        header_up -CF-Connecting-IP
-        header_up X-Forwarded-For {remote_host}
+        # A missing dynamic category needs the server-rendered 404 document.
+        @missing_html {
+            status 404
+            header Content-Type text/html*
+        }
+        handle_response @missing_html {
+            @category_document {
+                method GET HEAD
+                path /katalog/*
+                not header RSC 1
+            }
+            route {
+                reverse_proxy @category_document {http.reverse_proxy.upstream.address} {
+                    rewrite /_not-found?
+                    import origin_headers
+                }
+                copy_response
+            }
+        }
+        import origin_headers
     }
 }
