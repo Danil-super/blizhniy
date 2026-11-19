@@ -8,6 +8,21 @@ type Dependencies={create:(owner:string,key:string,options?:Options)=>Promise<{i
  upload:(owner:string,intent:string,file:Blob,options?:Options)=>Promise<UploadedImage>;
  read:(owner:string,id:string,options?:Options)=>Promise<ListingFormSnapshot>;
  write:(owner:string,id:string,revision:string,form:ListingFormDraft,options?:Options)=>Promise<ListingFormSnapshot>};
+// Both actions belong to the same editor. A new form or account starts with its own draft and uploads.
+type ListingEditor = {
+ owner:string;
+ sourceId:string|undefined;
+ baseline:ListingFormSnapshot|undefined;
+ readyFiles:WeakMap<Blob,UploadedImage>;
+};
+const editors=new WeakMap<HTMLFormElement,ListingEditor>();
+export function getListingEditor(form:HTMLFormElement,owner:string,existing?:ListingFormSnapshot):ListingEditor {
+ const editor=editors.get(form);
+ if(editor&&editor.owner===owner&&editor.sourceId===existing?.id)return editor;
+ const next={owner,sourceId:existing?.id,baseline:existing,readyFiles:new WeakMap<Blob,UploadedImage>()};
+ editors.set(form,next);
+ return next;
+}
 export function sameListingForm(a:ListingFormDraft,b:ListingFormDraft):boolean{
  const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?
   Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,canonical(item)])):value;

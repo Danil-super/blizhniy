@@ -5,13 +5,12 @@ import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {productionDrafts} from '@/lib/client-listing-drafts';
 import {productionListingMedia,ListingMediaClientError} from '@/lib/client-listing-media';
 import {productionListingForm,ListingFormClientError} from '@/lib/client-listing-form';
-import {createListingFormSave} from '@/lib/listing-form-save';
+import {createListingFormSave,getListingEditor} from '@/lib/listing-form-save';
 import {createListingFormModeration} from '@/lib/listing-form-moderation';
 import {listingModeration} from '@/lib/client-listing-moderation';
 import {checkListingFormContent} from '@/lib/listing-publication-check';
 import {readListingFormData} from '@/lib/listing-form-data';
 import type {ListingFormSnapshot} from '@/lib/listing-form-contract';
-import type {UploadedImage} from '@/lib/media-upload-contract';
 import {ListingDraftInputError} from '@/lib/listing-draft-contract';
 import {useDraftLeaveGuard} from './useDraftLeaveGuard';
 import {draftButton} from './PrivateDraftEditor';
@@ -28,7 +27,6 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
  const [busy,setBusy]=useState(false),[message,setMessage]=useState<string|null>(null),[remote,setRemote]=useState<ListingFormSnapshot|null>(null),[active,setActive]=useState(false),[done,setDone]=useState(false);
  const [checkoutBlocked,setCheckoutBlocked]=useState(false);
  const controller=useRef<AbortController|null>(null);
- const baseline=useRef(existing),readyFiles=useRef(new Map<Blob,UploadedImage>());
  const [rejected,setRejected]=useState(false);
  const checkout=useRef<ListingCheckoutAttempt>({input:null,uncertain:false}),paymentId=useRef<string|null>(null);
  const [paymentUncertain,setPaymentUncertain]=useState(false);
@@ -66,9 +64,10 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
     setRejected(true);
     try{
      const id=attempt.current.id;
-     if(id){const snapshot=await productionListingForm.read(owner!,id,{signal:controller.current?.signal});
-      if(generation===epoch.current&&snapshot.revision===(baseline.current?.revision??'1')){
-       baseline.current=snapshot;attempt.current=null;setActive(false);setRejected(false);
+     if(id&&formRef.current){const editor=getListingEditor(formRef.current,owner!,existing);
+      const snapshot=await productionListingForm.read(owner!,id,{signal:controller.current?.signal});
+      if(generation===epoch.current&&snapshot.revision===(editor.baseline?.revision??'1')){
+       editor.baseline=snapshot;attempt.current=null;setActive(false);setRejected(false);
        if(formRef.current)delete formRef.current.dataset.primaryIntent;
       }
      }
@@ -91,10 +90,11 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
     const data=new FormData(form),files=data.getAll('photos').filter((item):item is File=>item instanceof File&&item.size>0);
     const input=readListingFormData(data);
     if(!draft){const issues=checkListingFormContent(input,true);if(issues.length)throw Error(issues.map(issue=>issue.message).join(' '));}
+    const editor=getListingEditor(form,owner!,existing);
     attempt.current=createListingFormSave(owner!,input,files,{create:productionDrafts.createEmpty,upload:async(user,intent,file,options)=>{
-     const cached=readyFiles.current.get(file);if(cached)return cached;
-     const uploaded=await productionListingMedia.upload(user,intent,file,options);readyFiles.current.set(file,uploaded);return uploaded;
-    },read:productionListingForm.read,write:productionListingForm.write},baseline.current,data.get('photoOrder'));form.dataset.primaryIntent=intentKey;setActive(true);
+     const cached=editor.readyFiles.get(file);if(cached)return cached;
+     const uploaded=await productionListingMedia.upload(user,intent,file,options);editor.readyFiles.set(file,uploaded);return uploaded;
+    },read:productionListingForm.read,write:productionListingForm.write},editor.baseline,data.get('photoOrder'));form.dataset.primaryIntent=intentKey;setActive(true);
    }
    await attempt.current.save({signal:controller.current?.signal});await finish();
   },!attempt.current);
@@ -115,7 +115,8 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
   })}>Проверить сохранённый заказ</button>}
   {rejected&&attempt.current?.id&&<button type="button" className={draftButton} disabled={busy||!owner} onClick={()=>void run(async()=>{
    const snapshot=await productionListingForm.read(owner!,attempt.current!.id!,{signal:controller.current?.signal});
-   baseline.current=snapshot;attempt.current=null;moderation.current=null;setActive(false);setRejected(false);setRemote(null);setMessage('Поля доступны для исправления. Изменения ещё не сохранены.');
+   if(controller.current?.signal.aborted||!formRef.current)return;
+   getListingEditor(formRef.current,owner!,existing).baseline=snapshot;attempt.current=null;moderation.current=null;setActive(false);setRejected(false);setRemote(null);setMessage('Поля доступны для исправления. Изменения ещё не сохранены.');
    if(formRef.current)delete formRef.current.dataset.primaryIntent;
   })}>Вернуться к исправлению полей</button>}
   {(attempt.current?.uncertain||moderation.current?.uncertain)&&<button type="button" data-primary-control="readback" className={draftButton} disabled={busy} onClick={()=>void run(async()=>{
