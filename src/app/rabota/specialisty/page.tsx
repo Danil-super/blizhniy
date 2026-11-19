@@ -56,6 +56,7 @@ export default async function Page({ searchParams }: PageProps) {
           </details>
         )}
         <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {specialists.length === 0 && <p className="col-span-full text-sm text-slate-600">Опубликованных анкет пока нет.</p>}
           {specialists.map((specialist) => (
             <SpecialistListCard key={specialist.id} specialist={specialist} />
           ))}
