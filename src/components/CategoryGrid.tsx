@@ -312,6 +312,7 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
           const { props: image } = getImageProps({
             src: category.imageUrl,
             alt: "",
+            quality: 60,
             sizes: isLastOddCard ? "(min-width: 1524px) 1500px, 124vw" : "(min-width: 1524px) 780px, (min-width: 1024px) 52vw, (min-width: 640px) 108vw, 124vw",
           });
 

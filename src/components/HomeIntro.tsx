@@ -5,7 +5,7 @@ import mobileHero from "../../public/images/categories/home-hero-main.webp";
 import desktopHero from "../../public/images/categories/home-hero-desktop.webp";
 
 export function HomeIntro() {
-  const { props: mobile } = getImageProps({ src: mobileHero, alt: "", fill: true, sizes: "(max-width: 359px) 800px, (max-width: 379px) 680px, (max-width: 639px) 640px, 100vw" });
+  const { props: mobile } = getImageProps({ src: mobileHero, alt: "", fill: true, quality: 60, sizes: "(max-width: 359px) 800px, (max-width: 379px) 680px, (max-width: 639px) 640px, 100vw" });
   const { props: desktop } = getImageProps({ src: desktopHero, alt: "", sizes: "(min-width: 1524px) 1080px, 72vw" });
   return (
     <section className="page-container pb-3 pt-3 sm:pb-4 sm:pt-4 lg:pb-5" aria-label="Главный экран">
