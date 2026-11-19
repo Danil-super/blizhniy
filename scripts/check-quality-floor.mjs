@@ -148,7 +148,21 @@ const reportingAssertionPair = [
   " for(const directive of [\"script-src-attr 'none'\",\"object-src 'none'\",\"base-uri 'none'\",\"frame-ancestors 'self'\",'report-uri /api/csp-report',\"worker-src 'self' blob:\"])assert.ok(value.includes(directive));",
   " for(const directive of [\"script-src-attr 'none'\",\"object-src 'none'\",\"base-uri 'none'\",\"frame-ancestors 'self'\",'report-to csp',\"worker-src 'self' blob:\"])assert.ok(value.includes(directive));"
 ];
-const reviewedAssertionPairs = [...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs, reportingAssertionPair];
+const cspSourceAssertionPairs = [
+  ["tests/html-csp.test.mjs",
+   " assert.ok(value.includes(\"style-src 'self' 'unsafe-inline'\"));assert.ok(!value.includes('https:;'));assert.ok(!value.includes('https://oauth.telegram.org'));assert.ok(!value.includes('yookassa'));",
+   " assert.ok(value.includes(\"style-src 'self' 'unsafe-inline'\"));assert.ok(!value.split(/[;\\s]+/).includes('https:'));assert.doesNotMatch(value,/https:\\/\\/oauth\\.telegram\\.org|yookassa/);"],
+  ["tests/html-csp.test.mjs",
+   " assert.ok(value.includes('https://synthetic.supabase.co'));assert.ok(value.includes('wss://synthetic.supabase.co'));",
+   " assertLegacyPermissions(nonce,{legacyOrigin:'https://synthetic.supabase.co'},'https://synthetic.supabase.co','wss://synthetic.supabase.co');"],
+  ["tests/html-csp.test.mjs",
+   " assert.ok(createHtmlCsp(nonce,{legacyOrigin:'https://legacy.example.invalid/'}).includes('https://legacy.example.invalid'));",
+   " assertLegacyPermissions(nonce,{legacyOrigin:'https://legacy.example.invalid/'},'https://legacy.example.invalid','wss://legacy.example.invalid');"],
+  ["tests/html-csp.test.mjs",
+   "  assert.ok(createHtmlCsp(nonce,{development:true,legacyOrigin:origin}).includes(`ws://${host}:54321`));",
+   "  assertLegacyPermissions(nonce,{development:true,legacyOrigin:origin},origin,`ws://${host}:54321`);"],
+];
+const reviewedAssertionPairs = [...cspSourceAssertionPairs, ...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs, reportingAssertionPair];
 const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, before, after]) =>
   file === path && text === before &&
   removed.filter(line => line.file === path && reviewedAssertionPairs.some(([pairPath, pairBefore, pairAfter]) =>

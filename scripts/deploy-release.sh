@@ -89,7 +89,7 @@ rollback() {
     pm2 delete "$APP_NAME" || true
     mkdir -p "${PREVIOUS_RELEASE}/.pm2" || return 1
     pm2 start "${PREVIOUS_RELEASE}/ecosystem.config.cjs" --update-env </dev/null || return 1
-    node "$ROLLBACK_CHECK" --probe "$PORT" "$previous_build_id" || return 1
+    NODE_PATH="$RELEASE_DIR/node_modules" node "$ROLLBACK_CHECK" --probe "$PORT" "$previous_build_id" || return 1
     [[ "$(readlink -f "$APP_DIR")" == "$PREVIOUS_RELEASE" ]] || return 1
     pm2 save </dev/null || return 1
     log "previous release passed readiness checks"

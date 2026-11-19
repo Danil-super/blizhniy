@@ -1,17 +1,17 @@
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {boundedHandoffRequest} from './handoff-http.mjs';
 import {webSlot} from './rolling-web-handoff.mjs';
 
-// Next 15 App Router initial Flight record. Parse data, never execute scripts.
-// A changed wire format fails closed and requires a reviewed probe update.
-function htmlBuildId(body){
- const chunks=[];
- for(const script of body.toString('utf8').matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)){
-  const chunk=/^self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\);?$/.exec(script[1]);
-  if(chunk)chunks.push(JSON.parse(chunk[1]));
- }
- const records=chunks.join('').split('\n').filter(line=>line.startsWith('0:'));
- if(records.length!==1)return null;
- return JSON.parse(records[0].slice(2)).b;
+const identityReader = fileURLToPath(new URL('./read-next-html-identity.cjs', import.meta.url));
+function postgresBuildId(body, deadline) {
+  const timeout = Math.ceil(deadline - performance.now());
+  if (timeout <= 0) return null;
+  // Parsing shares the probe deadline and has its own heap, separate from the operator process.
+  return execFileSync(process.execPath, ['--max-old-space-size=96', identityReader], {
+    input: body, encoding: 'utf8', timeout, killSignal: 'SIGKILL', maxBuffer: 256,
+    stdio: ['pipe','pipe','ignore'], env: {NODE_PATH: process.env.NODE_PATH ?? ''},
+  });
 }
 
 /** Read-only readiness + application/build check, sharing one overall deadline. */
@@ -29,7 +29,7 @@ export async function probeWebSlot(input,{deadlineMs=10000}={}){
   const ready=JSON.parse((await read('/api/ready',1024)).body.toString());
   if(ready.ok!==true||ready.service!=='blizhniy')return {ready:false,buildId:slot.buildId};
   const page=await read('/',4*1024*1024);
-  if(!String(page.headers['content-type']).startsWith('text/html')||!page.body.includes(Buffer.from('name="blizhniy-auth-backend" content="postgres"'))||htmlBuildId(page.body)!==slot.buildId)return {ready:false,buildId:slot.buildId};
+  if(!String(page.headers['content-type']).startsWith('text/html')||postgresBuildId(page.body,end)!==slot.buildId)return {ready:false,buildId:slot.buildId};
   const manifest=await read(`/_next/static/${slot.buildId}/_buildManifest.js`,1024*1024);
   if(!/^(?:application|text)\/javascript/.test(String(manifest.headers['content-type']))||!manifest.body.includes(Buffer.from('__BUILD_MANIFEST')))return {ready:false,buildId:slot.buildId};
   return {ready:true,buildId:slot.buildId};

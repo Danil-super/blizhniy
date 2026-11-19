@@ -41,6 +41,22 @@ test('probe requires all four real HTTP stages, using GET once without mutation'
   assert.deepEqual(await probeWebSlot(f.slot),proof(true));
   assert.deepEqual(f.requests,paths.map(path => ({method:'GET',path})));
 });
+test('probe accepts equivalent HTML serialization and reads split Flight data in document order', async t => {
+  const payload = '0:' + JSON.stringify({b:buildId}) + '\n';
+  const script = text => '<SCRIPT type="text/javascript">self.__next_f.push(' + JSON.stringify([1,text]) + ')</SCRIPT>';
+  const body = '<!doctype html><html><head><META content="postgres" name="blizhniy-auth-backend"></head>' +
+    '<body><section>' + script(payload.slice(0,5)) + '</section>' + script(payload.slice(5)) + '</body></html>';
+  const f = await fixture(t, (req,res) => send(req,res,req.url === '/' ? {body} : {}));
+  assert.deepEqual(await probeWebSlot(f.slot),proof(true));
+});
+
+test('probe requires one backend marker in the document head', async t => {
+  const marker = '<meta name="blizhniy-auth-backend" content="postgres">';
+  const body = htmlForBuild(buildId).replace(marker, marker + marker);
+  const f = await fixture(t,(req,res) => send(req,res,req.url === '/' ? {body} : {}));
+  assert.deepEqual(await probeWebSlot(f.slot), proof(false));
+});
+
 test('probe rejects another HTML build even when the expected retained manifest exists',async t => {
   const f = await fixture(t,(req,res) => send(req,res,req.url === '/' ? {body:htmlForBuild('other-build')} : {}));
   assert.deepEqual(await probeWebSlot(f.slot),proof(false));
