@@ -46,7 +46,7 @@ test('probe accepts equivalent HTML serialization and reads split Flight data in
   const script = text => '<SCRIPT type="text/javascript">self.__next_f.push(' + JSON.stringify([1,text]) + ')</SCRIPT>';
   const body = '<!doctype html><html><head><META content="postgres" name="blizhniy-auth-backend"></head>' +
     '<body><section>' + script(payload.slice(0,5)) + '</section>' + script(payload.slice(5)) + '</body></html>';
-  const f = await fixture(t, (req,res) => send(req,res,req.url === '/' ? {body} : {}));
+  const f = await fixture(t, (req,res) => send(req,res,req.url === '/' ? {body, type:'Text/HTML; charset=UTF-8'} : {}));
   assert.deepEqual(await probeWebSlot(f.slot),proof(true));
 });
 

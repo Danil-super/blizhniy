@@ -1,6 +1,9 @@
 // Input comes from the bounded loopback homepage response in handoff-probe.
 const {readFileSync} = require('node:fs');
-const {parse, html} = require('parse5');
+const {isAbsolute, join} = require('node:path');
+const modules = process.argv[2];
+if (typeof modules !== 'string' || !isAbsolute(modules)) process.exit(1);
+const {parse, html} = require(join(modules, 'parse5/dist/index.js'));
 
 // The operator reads inert HTML and decodes the Next 15 inline Flight records as data.
 function postgresBuildId(body) {

@@ -4,8 +4,10 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // The release probe runs outside Next's server module graph.
   outputFileTracingIncludes: {
-    "/": ["./node_modules/parse5/package.json", "./node_modules/parse5/dist/**/*.js",
-          "./node_modules/entities/package.json", "./node_modules/entities/dist/**/*.js"],
+    "/": [
+      "./node_modules/parse5/package.json", "./node_modules/parse5/LICENSE", "./node_modules/parse5/dist/**/*.js",
+      "./node_modules/entities/package.json", "./node_modules/entities/LICENSE", "./node_modules/entities/dist/**/*.js",
+    ],
   },
   // Opt-in trusted-builder binding. Source deploys retain Next's default build ID.
   async generateBuildId() {

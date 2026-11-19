@@ -54,7 +54,7 @@ pm2 delete "$APP_NAME" || true
 mkdir -p "${PREVIOUS_RELEASE}/.pm2"
 pm2 start "${PREVIOUS_RELEASE}/ecosystem.config.cjs" --update-env </dev/null
 
-if ! NODE_PATH="$CURRENT_RELEASE/node_modules" node "$ROLLBACK_CHECK" --probe "$PORT" "$PREVIOUS_BUILD_ID"; then
+if ! BLIZHNIY_PROBE_MODULES="$CURRENT_RELEASE/node_modules" node "$ROLLBACK_CHECK" --probe "$PORT" "$PREVIOUS_BUILD_ID"; then
   echo "[rollback] previous release started but readiness failed; intervention required" >&2
   exit 5
 fi
