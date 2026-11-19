@@ -157,6 +157,7 @@ const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, 
 // Exact browser-test replacements reviewed individually by the owner; see docs/review/.
 // Content-addressed artifacts, not a blanket permission to remove assertions.
 const reviewedListingArtifacts = [
+  {"file": "tests/listing-category-parent.test.mjs", "before": "89eeb641134ffeb99405b5fbbcde10faf25cb7d220fc8d39353a215fce39e98f", "after": "9ab7797ea8a49c19d2ca70a1547c2a8971ebcbbbb8c5df11dce0a5d40f617a7b"},
   {"file": "tests/initialization-runtime-recovery.test.mjs", "before": "eb8d96e891aaa2e589ad3ae31dcaf66458a64d5de313b4d86518f0f97711331e", "after": "9b4148b2bafaa893f0e44e5133129783cb750451e647a6aeae4a34128c8d8822"},
   {"file": "tests/selector-parser-backport.test.mjs", "before": "75e56141d83109c37616e9faf1d253007e325f3a306e37db683b5f552c147543", "after": "2e81a155de3424a075e29129fa5f5bdb38093b8b5207f7178e1677bd7a319852"},
   {"file": "tests/selector-upstream-equivalence.test.mjs", "before": "906351112d3ed550c88c0e51783bb273267d20da90fe5866c09d2045c8dbc97f", "after": "0f6b2251eb07100fdf1c84dbae5bd44d062c901ee67ef1f147d0b0d64d805617"},

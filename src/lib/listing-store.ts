@@ -378,19 +378,6 @@ async function insertListingImages(listingId: string, mediaPaths?: string[]) {
   });
 }
 
-async function replaceListingImages(listingId: string, mediaPaths?: string[]) {
-  const paths = cleanMediaPaths(mediaPaths);
-
-  await supabaseRest(`/rest/v1/listing_images?listing_id=eq.${encodeURIComponent(listingId)}`, {
-    method: "DELETE",
-    prefer: "return=minimal",
-  });
-
-  if (paths.length) {
-    await insertListingImages(listingId, paths);
-  }
-}
-
 export async function createStoredListing(input: CreateStoredListingInput) {
   if (!isSupabaseRestConfigured()) {
     return undefined;
@@ -511,6 +498,7 @@ export async function updateStoredListingForUser(listingId: string, userId: stri
       method: "PATCH",
       prefer: "return=representation",
       body: {
+        replacement_image_paths: cleanMediaPaths(input.mediaPaths),
         address: input.address ?? null,
         category_id: categoryId ?? null,
         city_id: cityRow?.id ?? null,
@@ -535,8 +523,6 @@ export async function updateStoredListingForUser(listingId: string, userId: stri
     return undefined;
   }
 
-  await replaceListingImages(listingId, input.mediaPaths);
-
   return listingWithMediaFallback((await getStoredListingById(listingId)) ?? mapListing((await withCategoryParents([rows[0]]))[0]), input.mediaPaths);
 }
 
@@ -558,7 +544,7 @@ async function storedListingBody(input: CreateStoredListingInput, status: Public
     longitude: input.lng ?? null,
     messenger_url: input.messengerUrl ?? null,
     price: priceToNumber(input.price),
-    ...(options.preserveMedia && input.mediaPaths === undefined ? {} : {}),
+    ...(options.clearMedia || input.mediaPaths !== undefined ? { replacement_image_paths: cleanMediaPaths(input.mediaPaths) } : {}),
     region_id: regionId ?? null,
     show_exact_address: resolveShowExactAddress(input),
     status,
@@ -604,10 +590,6 @@ export async function saveStoredListingForUser(
 
   if (!rows[0]?.id) {
     return undefined;
-  }
-
-  if (options.clearMedia || input.mediaPaths !== undefined) {
-    await replaceListingImages(listingId, input.mediaPaths);
   }
 
   return listingWithMediaFallback((await getStoredListingById(listingId)) ?? mapListing((await withCategoryParents([rows[0]]))[0]), input.mediaPaths);

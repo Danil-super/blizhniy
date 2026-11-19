@@ -202,19 +202,6 @@ async function insertVacancyImages(vacancyId: string, mediaPaths?: string[]) {
   });
 }
 
-async function replaceVacancyImages(vacancyId: string, mediaPaths?: string[]) {
-  const paths = cleanMediaPaths(mediaPaths);
-
-  await supabaseRest(`/rest/v1/vacancy_images?vacancy_id=eq.${encodeURIComponent(vacancyId)}`, {
-    method: "DELETE",
-    prefer: "return=minimal",
-  });
-
-  if (paths.length) {
-    await insertVacancyImages(vacancyId, paths);
-  }
-}
-
 function normalizeEmployerType(value?: string) {
   return value === "ip" || value === "person" || value === "private" ? (value === "private" ? "person" : value) : "organization";
 }
@@ -451,15 +438,13 @@ export async function updateStoredVacancyForUser(vacancyId: string, userId: stri
     {
       method: "PATCH",
       prefer: "return=representation",
-      body: await storedVacancyBody(input, status),
+      body: { ...(await storedVacancyBody(input, status)), replacement_image_paths: cleanMediaPaths(input.mediaPaths) },
     },
   );
 
   if (!rows[0]?.id) {
     return undefined;
   }
-
-  await replaceVacancyImages(vacancyId, input.mediaPaths);
 
   return vacancyWithMediaFallback((await getStoredVacancyById(vacancyId)) ?? mapVacancy(rows[0]), input.mediaPaths);
 }
@@ -488,6 +473,10 @@ export async function saveStoredVacancyForUser(
   // Content edits never grant payment or renew the publication date.
   delete body.is_paid;
   delete body.published_at;
+  delete body.logo_path;
+  if (options.clearMedia || input.mediaPaths !== undefined) {
+    body.replacement_image_paths = cleanMediaPaths(input.mediaPaths);
+  }
 
   const rows = await supabaseRest<VacancyRow[]>(
     `/rest/v1/vacancies?select=${vacancySelect}&id=eq.${encodeURIComponent(vacancyId)}&author_id=eq.${encodeURIComponent(userId)}&status=eq.${encodeURIComponent(existingVacancy.status)}`,
@@ -500,10 +489,6 @@ export async function saveStoredVacancyForUser(
 
   if (!rows[0]?.id) {
     return undefined;
-  }
-
-  if (options.clearMedia || input.mediaPaths !== undefined) {
-    await replaceVacancyImages(vacancyId, input.mediaPaths);
   }
 
   return vacancyWithMediaFallback((await getStoredVacancyById(vacancyId)) ?? mapVacancy(rows[0]), input.mediaPaths);

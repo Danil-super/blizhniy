@@ -356,7 +356,8 @@ for (const mode of ["create", "update", "save"]) {
     assert.equal(value?.subcategory, miscChild.name);
     assert.equal(value?.ownerKey, ownerId);
     assert.equal(value?.address, "Hidden Street, 18", "internal write response remains owner-private");
-    assert.deepEqual(runtime.writes.map((write) => write.method), mode === "create" ? ["POST"] : mode === "update" ? ["PATCH", "DELETE"] : ["PATCH"]);
+    assert.deepEqual(runtime.writes.map((write) => write.method), mode === "create" ? ["POST"] : ["PATCH"]);
+    assert.deepEqual(runtime.writes[0].body.replacement_image_paths, mode === "update" ? [] : undefined);
     assert.ok(runtime.calls.some((url) => url.pathname === "/rest/v1/listings" && url.searchParams.get("limit") === "1" && url.searchParams.get("select").includes("listing_images(")), "ordinary detail reader actually ran");
     assert.equal(runtime.calls.at(-1).searchParams.get("id"), `in.(${miscRoot.id})`, "raw fallback lazily resolves its stored parent");
     assert.equal(runtime.errors.length, 0);

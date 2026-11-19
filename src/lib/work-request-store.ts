@@ -285,25 +285,6 @@ async function insertWorkRequestImages(requestId: string, mediaPaths?: string[])
   }
 }
 
-async function replaceWorkRequestImages(requestId: string, mediaPaths?: string[]) {
-  const paths = cleanMediaPaths(mediaPaths);
-
-  try {
-    await supabaseRest(`/rest/v1/work_request_images?work_request_id=eq.${encodeURIComponent(requestId)}`, {
-      method: "DELETE",
-      prefer: "return=minimal",
-    });
-
-    if (paths.length) {
-      await insertWorkRequestImages(requestId, paths);
-    }
-  } catch (error) {
-    if (!isMissingWorkRequestImagesError(error)) {
-      throw error;
-    }
-  }
-}
-
 async function storedWorkRequestBody(input: CreateStoredWorkRequestInput, status: PublicationStatus, publishedAt?: string | null) {
   const cityRow = await findCity(input.city);
   const regionId = await findRegionId(cityRow);
@@ -325,7 +306,7 @@ async function storedWorkRequestBody(input: CreateStoredWorkRequestInput, status
     latitude: input.lat ?? null,
     longitude: input.lng ?? null,
     messenger_url: input.messengerUrl ?? null,
-    photo_path: mediaPaths[0] ?? null,
+    ...(input.mediaPaths === undefined ? {} : { photo_path: mediaPaths[0] ?? null }),
     published_at: status === "published" ? (publishedAt ?? new Date().toISOString()) : null,
     region_id: regionId,
     request_type: "private_request",
@@ -416,16 +397,12 @@ export async function updateStoredWorkRequestForUser(requestId: string, userId: 
     {
       method: "PATCH",
       prefer: "return=representation",
-      body,
+      body: input.mediaPaths === undefined ? body : { ...body, replacement_image_paths: cleanMediaPaths(input.mediaPaths) },
     },
   );
 
   if (!rows[0]?.id) {
     return undefined;
-  }
-
-  if (input.mediaPaths !== undefined) {
-    await replaceWorkRequestImages(requestId, input.mediaPaths);
   }
 
   return workRequestWithMediaFallback((await getStoredWorkRequestById(requestId)) ?? mapWorkRequest(rows[0]), input.mediaPaths);
