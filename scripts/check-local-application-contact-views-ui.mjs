@@ -1,7 +1,7 @@
 // Actual local Chromium. Only new synthetic identities/direct paid delivery
 // fixtures; no provider, refund execution or deletion of financial history.
 import assert from 'node:assert/strict';
-import {randomBytes, randomUUID, createHash} from 'node:crypto';
+import {randomInt, randomUUID, createHash} from 'node:crypto';
 import {mkdir, readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
@@ -25,7 +25,7 @@ async function account(name) {
   const email = 'contact-view-ui-' + randomUUID() + '@local.invalid', password = 'SyntheticContactViews-' + randomUUID() + '!';
   const id = (await db.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',
     [email, await load('identity').hashPassword(password)])).rows[0].id;
-  const phone = '+7999' + String(randomBytes(4).readUInt32BE() % 10000000).padStart(7, '0');
+  const phone = '+7999' + String(randomInt(10_000_000)).padStart(7, '0');
   await db.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)', [id, JSON.stringify({name, phone})]);
   await db.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)', [id, phone, 'synthetic-contact-views-ui-' + randomUUID()]);
   const context = await browser.newContext({ignoreHTTPSErrors: true, serviceWorkers: 'block', viewport: {width: 1440, height: 1000}});

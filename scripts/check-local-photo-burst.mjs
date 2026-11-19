@@ -1,6 +1,6 @@
 // Owned loopback PostgreSQL + actual WebP files/HTTP handlers. No production or external traffic.
 import assert from 'node:assert/strict';
-import {createHash,randomBytes,randomUUID} from 'node:crypto';
+import {createHash,randomInt,randomBytes,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {execFileSync,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -39,7 +39,7 @@ try{
  const region=(await db.query("insert into app.regions(slug,name) values('burst-region','Синтетический регион') returning id")).rows[0].id;
  const city=(await db.query("insert into app.cities(region_id,slug,name) values($1,'burst-city','Краснодар') returning id",[region])).rows[0].id;
  user=(await db.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',[email,'scrypt$131072$8$1$'+'0'.repeat(32)+'$'+'0'.repeat(128)])).rows[0].id;
- const phone='+7999'+String(randomBytes(4).readUInt32BE()%10000000).padStart(7,'0');
+ const phone='+7999'+String(randomInt(10_000_000)).padStart(7,'0');
  await db.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[user,JSON.stringify({name:'Проверка фотографий',phone})]);
  category=(await db.query("insert into app.categories(slug,name) values($1,'Синтетические фотографии') returning id",['photo-burst-'+suffix])).rows[0].id;
  for(const [width,height]of[[512,384],[1280,960],[1920,1440]]){
