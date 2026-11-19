@@ -14,7 +14,7 @@ export function canStartListingTest(account: AccountAuthSnapshot | null, owner: 
 }
 
 /** Display state only: resource permissions remain server-owned, never inferred from this cache. */
-export function createAccountSessionState(session: () => Promise<LocalAccountUser | null>) {
+export function createAccountSessionState(session: (retryInitialRead?: () => boolean) => Promise<LocalAccountUser | null>) {
   let snapshot: AccountAuthSnapshot = { state: "loading", userId: null };
   let version = 0, changing = 0;
   const listeners = new Set<(value: AccountAuthSnapshot) => void>();
@@ -29,12 +29,13 @@ export function createAccountSessionState(session: () => Promise<LocalAccountUse
     const current = ++version;
     // Anonymous UI holds no private identity. Publishing loading here would
     // unmount an embedded login form on focus or during its own submission.
+    const initialRead = snapshot.state === "loading";
     const anonymous = snapshot.state === "signed-out";
     // Focus checks retain the last verified view; explicit account changes still fence it immediately.
     if (!anonymous && !background) publish("loading");
     if (changing) return;
     try {
-      const user = await session();
+      const user = await session(initialRead ? () => current === version && changing === 0 : undefined);
       if (user && (user.isBlocked !== false || !["user", "admin"].includes(user.role))) throw new Error("Invalid session view");
       if (current === version) publish(user ? user.role === "admin" ? "admin" : "signed-in" : "signed-out", user);
     } catch {
