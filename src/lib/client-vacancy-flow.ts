@@ -5,6 +5,7 @@ import type { JobVacancy, Payment } from "@/lib/types";
 
 type CreateStoredVacancyInput = {
   accessToken?: string;
+  creationKey?: string;
   address?: string;
   city?: string;
   conditions?: string;
@@ -60,10 +61,10 @@ async function getAuthHeaders(accessToken?: string): Promise<Record<string, stri
 }
 
 export async function createStoredVacancyPublication(input: CreateStoredVacancyInput) {
-  const { accessToken, ...payloadBody } = input;
+  const { accessToken, creationKey, ...payloadBody } = input;
   const response = await fetch("/api/vacancies", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(await getAuthHeaders(accessToken)) },
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders(accessToken)), ...(creationKey ? { "Idempotency-Key": creationKey } : {}) },
     body: JSON.stringify(payloadBody),
   });
   const payload = (await response.json().catch(() => null)) as (CreateStoredVacancyResponse & { error?: string }) | null;

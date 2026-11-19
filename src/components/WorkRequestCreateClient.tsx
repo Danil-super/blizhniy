@@ -8,6 +8,7 @@ import { CitySelectField } from "@/components/CitySelectField";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
+import { prepareLegacyDraftMedia } from "@/lib/legacy-draft-attempt";
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { storeFormPhotos } from "@/lib/client-media-store";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
@@ -64,11 +65,11 @@ function mergeSavedImages(serverImages: string[] | undefined, localImages: strin
 
 type SaveMode = "draft" | "publish";
 
-async function createSupabaseWorkRequest(formData: FormData, options: { accessToken: string; images: string[]; status?: "draft"; tariffId?: string }) {
-  const mediaPaths = options.images.length ? await uploadPublicationImageSources(options.images, "work-requests", options.accessToken) : [];
+async function createSupabaseWorkRequest(formData: FormData, options: { accessToken: string; mediaPaths: string[]; creationKey?: string; status?: "draft"; tariffId?: string }) {
+  const mediaPaths = options.mediaPaths;
   const response = await fetch("/api/work-requests", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${options.accessToken}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${options.accessToken}`, ...(options.creationKey ? { "Idempotency-Key": options.creationKey } : {}) },
     body: JSON.stringify({
       budget: readValue(formData, "budget"),
       city: readValue(formData, "city") || "Краснодар",
@@ -134,10 +135,17 @@ export function WorkRequestCreateClient() {
       const profession = readValue(formData, "profession") || "Заказ исполнителю";
       const city = readValue(formData, "city") || "Краснодар";
       const rawBudget = readValue(formData, "budget");
-      const images = await storeFormPhotos(formData, 6);
+      const upload = async () => {
+        const images = await storeFormPhotos(formData, 6);
+        return { images, paths: await uploadPublicationImageSources(images, "work-requests", identity.accessToken) };
+      };
+      const media = mode === "draft"
+        ? await prepareLegacyDraftMedia(form, identity.ownerKey, formData, upload)
+        : { ...await upload(), creationKey: undefined };
       const result = await createSupabaseWorkRequest(formData, {
         accessToken: identity.accessToken ?? "",
-        images,
+        mediaPaths: media.paths,
+        creationKey: media.creationKey,
         status: mode === "draft" ? "draft" : undefined,
         tariffId: mode === "publish" ? "work-request-publication" : undefined,
       });
@@ -153,7 +161,7 @@ export function WorkRequestCreateClient() {
           city,
           price: normalizeListingPrice(rawBudget, "по договоренности"),
           description: readValue(formData, "description"),
-          images: mergeSavedImages(result.workRequest?.images, images),
+          images: mergeSavedImages(result.workRequest?.images, media.images ?? []),
           phone,
           messengerUrl,
           status: mode === "publish" ? "Ждет оплаты" : "Черновик",

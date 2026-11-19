@@ -368,7 +368,7 @@ async function storedVacancyBody(input: CreateStoredVacancyInput, status: Public
   };
 }
 
-export async function createStoredVacancy(input: CreateStoredVacancyInput) {
+export async function createStoredVacancy(input: CreateStoredVacancyInput, creationKey?: string) {
   if (!isSupabaseRestConfigured()) {
     return undefined;
   }
@@ -376,7 +376,7 @@ export async function createStoredVacancy(input: CreateStoredVacancyInput) {
   const status = input.status ?? "pending_payment";
   const fields = await storedVacancyBody(input, status);
   const rows = await createLegacyPublicationRow<VacancyRow>(
-    "vacancies", vacancySelect, fields, cleanMediaPaths(input.mediaPaths),
+    "vacancies", vacancySelect, fields, cleanMediaPaths(input.mediaPaths), creationKey,
   );
 
   const vacancy = rows[0];

@@ -2,7 +2,7 @@ import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { createPayment, validatePaymentCreationPrerequisites } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
-import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
+import { isSupabaseServiceRoleConfigured, isUuid, LegacyDraftConflict } from "@/lib/supabase-rest";
 import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
 import {
   createStoredWorkRequest,
@@ -83,6 +83,10 @@ export async function POST(request: Request) {
   }
 
   const isDraft = body.status === "draft";
+  const creationKey = request.headers.get("Idempotency-Key");
+  if (creationKey !== null && (!isUuid(creationKey) || !isDraft || body.tariffId)) {
+    return NextResponse.json({ error: "Некорректный запрос сохранения черновика." }, { status: 400 });
+  }
   const title = cleanString(body.title) || (isDraft ? "Черновик заказа" : "");
   const description = cleanString(body.description);
   const phone = cleanString(body.phone);
@@ -154,7 +158,7 @@ export async function POST(request: Request) {
     const reusableRequest = tariffId ? await findReusableStoredWorkRequestForPayment(workRequestInput) : undefined;
     const workRequest = reusableRequest
       ? await updateStoredWorkRequestForUser(reusableRequest.id, auth.user.id, workRequestInput)
-      : await createStoredWorkRequest(workRequestInput);
+      : await createStoredWorkRequest(workRequestInput, creationKey ?? undefined);
 
     if (!workRequest?.id) {
       return NextResponse.json({ error: "Не удалось создать заказ в Supabase" }, { status: 500 });
@@ -175,6 +179,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ workRequest, payment }, { status: 201 });
   } catch (error) {
+    if (error instanceof LegacyDraftConflict) return NextResponse.json({ error: error.message }, { status: 409 });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Work request creation failed" }, { status: 400 });
   }
 }

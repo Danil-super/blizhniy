@@ -8,6 +8,7 @@ import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { createStoredListingPublication } from "@/lib/client-listing-flow";
 import { confirmClientPayment } from "@/lib/client-payment-flow";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
+import { prepareLegacyDraftMedia } from "@/lib/legacy-draft-attempt";
 import { createStoredVacancyPublication } from "@/lib/client-vacancy-flow";
 import { storeFormPhotos } from "@/lib/client-media-store";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
@@ -292,7 +293,11 @@ async function uploadPublicationMedia(formData: FormData, folder: "fair-applicat
       throw new Error(payload?.error ?? "Не удалось загрузить фото.");
     }
 
-    uploadedPaths.push(...(payload?.files?.map((file) => file.path).filter((path): path is string => Boolean(path)) ?? []));
+    const paths = Array.isArray(payload?.files) ? payload.files.map(file => file?.path) : [];
+    if (paths.length !== files.slice(index, index + 10).length || !paths.every((path): path is string => typeof path === "string" && path.trim().length > 0)) {
+      throw new Error("Не все фотографии загружены. Повторите попытку.");
+    }
+    uploadedPaths.push(...paths);
   }
 
   return uploadedPaths;
@@ -413,7 +418,7 @@ async function createSupabaseListing(formData: FormData, options: { accessToken:
   return result;
 }
 
-async function createSupabaseVacancy(formData: FormData, options: { accessToken: string; status?: "draft"; tariffId?: string }) {
+async function createSupabaseVacancy(formData: FormData, options: { draftForm?: HTMLFormElement; owner?: string; accessToken: string; status?: "draft"; tariffId?: string }) {
   const isDraft = options.status === "draft";
   const email = readEmailOrMessengerEmail(formData) || readRawValue(formData, "email");
   const messengerUrl = readEmailOrMessengerUrl(formData);
@@ -434,7 +439,10 @@ async function createSupabaseVacancy(formData: FormData, options: { accessToken:
     throw new Error("Укажите хотя бы один контакт вакансии: телефон, email или Telegram/WhatsApp.");
   }
 
-  const mediaPaths = await uploadPublicationMedia(formData, "vacancies", options.accessToken);
+  const upload = async () => ({ paths: await uploadPublicationMedia(formData, "vacancies", options.accessToken) });
+  const media = options.draftForm && options.owner
+    ? await prepareLegacyDraftMedia(options.draftForm, options.owner, formData, upload)
+    : { ...await upload(), creationKey: undefined };
   const result = await createStoredVacancyPublication({
     accessToken: options.accessToken,
     address: hasSelectedMapPoint(formData) ? readValue(formData, "address") : undefined,
@@ -449,7 +457,8 @@ async function createSupabaseVacancy(formData: FormData, options: { accessToken:
     ogrnip: requisites.ogrnip || undefined,
     lat: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lat") : undefined,
     lng: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lng") : undefined,
-    mediaPaths,
+    mediaPaths: media.paths,
+    creationKey: media.creationKey,
     messengerUrl: messengerUrl || undefined,
     organization: readValue(formData, "organization", "Работодатель"),
     placementRightConfirmed: readRawValue(formData, "placementRightConfirmed") === "1",
@@ -581,7 +590,7 @@ function LegacyPublicationButton({
         if (identity.accessToken && isDraftStatus(status)) {
           const fallbackPublication = clientFallbackContentEnabled
             ? await buildFallbackPublication(formData, publicationType, status) : undefined;
-          const result = await createSupabaseVacancy(formData, { accessToken: identity.accessToken, status: "draft" });
+          const result = await createSupabaseVacancy(formData, { draftForm: form, owner: identity.ownerKey, accessToken: identity.accessToken, status: "draft" });
 
           if (!fallbackPublication) {
             markCabinetDataChanged();

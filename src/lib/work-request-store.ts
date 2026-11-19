@@ -297,7 +297,7 @@ function workRequestMatchesReusableInput(request: WorkRequest, input: CreateStor
   );
 }
 
-export async function createStoredWorkRequest(input: CreateStoredWorkRequestInput) {
+export async function createStoredWorkRequest(input: CreateStoredWorkRequestInput, creationKey?: string) {
   if (!isSupabaseRestConfigured()) {
     return undefined;
   }
@@ -305,7 +305,7 @@ export async function createStoredWorkRequest(input: CreateStoredWorkRequestInpu
   const status = input.status ?? "pending_payment";
   const fields = await storedWorkRequestBody(input, status);
   const rows = await createLegacyPublicationRow<WorkRequestRow>(
-    "work_requests", legacyWorkRequestSelect, fields, cleanMediaPaths(input.mediaPaths),
+    "work_requests", legacyWorkRequestSelect, fields, cleanMediaPaths(input.mediaPaths), creationKey,
   );
   const request = rows[0];
 
