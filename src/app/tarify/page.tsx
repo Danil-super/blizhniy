@@ -7,8 +7,11 @@ import type { Tariff } from "@/lib/types";
 import { formatTariffPrice } from "@/lib/tariff-display";
 import { readSpecialistCheckoutEnabled } from "@/lib/specialist-checkout-config";
 
-function tariffDetail(durationDays: number | null) {
-  return durationDays ? `${durationDays} дней размещения` : "Разовое действие";
+function tariffDetail(tariff: Tariff) {
+  if (tariff.durationDays !== null) return `Срок размещения — ${tariff.durationDays} дн.`;
+  return tariff.action === "job_response" || tariff.action === "fair_participation"
+    ? "Разовое действие"
+    : "Срок размещения не указан";
 }
 
 function tariffCta(tariff: Tariff, specialistCheckout = false) {
@@ -80,7 +83,7 @@ export default async function Page() {
                   <CreditCard className="h-5 w-5 shrink-0 text-[#0875d1]" />
                 </div>
                 {tariff.active ? <p className="mt-4 text-2xl font-bold text-[#0875d1]">{formatTariffPrice(tariff)}</p> : null}
-                <p className="mt-2 text-sm leading-6 text-slate-600">{tariffDetail(tariff.durationDays)}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{tariffDetail(tariff)}</p>
                 {tariff.action === "specialist_publication" ? (
                   <p className="mt-2 text-sm font-semibold leading-6 text-amber-700">{specialistCheckout ? "Локальная проверка: модерация, симуляция оплаты и публикация анкеты. Реальные деньги не списываются." : "Публикация и оплата анкеты временно недоступны. Черновик можно сохранить."}</p>
                 ) : null}
