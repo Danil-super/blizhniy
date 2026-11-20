@@ -1,8 +1,25 @@
 # F16 — CSP для HTML
 
+## Рабочий релиз 4a0e4cf, 21 ноября 2026
+
+На главной, в каталоге и на странице 404 сайт отдаёт `Content-Security-Policy-Report-Only`. Для отправки сообщений браузер использует директиву `report-to csp` и заголовок `Reporting-Endpoints: csp="/api/csp-report"`. При таком режиме браузер регистрирует нарушения и продолжает загрузку. Если браузер не поддерживает этот способ доставки, сведения о нарушениях из него могут отсутствовать.
+
+`POST /api/csp-report` принимает массив событий `csp-violation` с типом `application/reports+json`. Обработчик также понимает прежний одиночный отчёт `application/csp-report`. При успехе он возвращает HTTP 204. В журнал попадают директива, режим и категория заблокированного ресурса. События одной директивы и режима выводятся максимум раз в минуту на процесс. Число записей в журнале нельзя использовать как число затронутых пользователей.
+
+В рабочей сборке без ключа карты действует `style-src 'self'`. При настроенной карте и в режиме разработки политика дополнительно разрешает встроенные стили. Для проверки текущего режима и адреса приёма отчётов достаточно обычного запроса документа.
+
+```sh
+curl -fsS -D - -o /dev/null https://xn----9sbphbgks4a4a.xn--p1ai/ \
+  | grep -Ei '^(content-security-policy(-report-only)?|reporting-endpoints):'
+```
+
+На изолированной копии этой сборки с `BLIZHNIY_CSP_MODE=enforce` проверены 28 документов, включая регистрацию, восстановление пароля и сохранение четырёх типов черновиков. Chromium зарегистрировал ноль нарушений. Почту и CAPTCHA обслуживали локальные тестовые службы. Для включения блокировки на рабочем сервере ещё нужна приёмка внешних интеграций.
+
+## Исходная реализация и приёмка 1 ноября
+
 Локальный инкремент от `a24f5f1`, начат 31.10.2026, приёмка продолжена 01.11.2026. Отсутствие HTML CSP воспроизведено на действительном локальном ответе, без заявления об обнаруженной XSS в пользовательском поле. API уже возвращает собственную deny-all policy; она сохранена.
 
-## Политика и nonce
+### Политика и nonce
 
 `src/middleware.ts` создаёт отдельный 192-bit nonce через Web Crypto для каждого SSR/Flight запроса. Входящие `x-nonce`, CSP и report-only policy не определяют доверенный nonce. Next получает policy в request headers и автоматически назначает nonce своим framework, bundle и inline Flight scripts. Собственный JSON-LD получает тот же nonce. Динамические загрузчики Turnstile и 2GIS берут nonce из свойства уже отрисованного script в документе, а не из URL/формы; после клиентской навигации используют nonce текущего документа.
 
@@ -16,15 +33,15 @@ Script policy требует nonce и `strict-dynamic`, запрещает inlin
 
 Ресурсы ограничены своим origin, нужными data/blob images/workers, Turnstile и доменами провайдера 2GIS. Wildcard относится к доменам 2GIS, общего `*`/`https:` разрешения нет. Отдельный HTTPS/WSS origin legacy backend добавляется только при реально выбранном legacy режиме; PostgreSQL режим игнорирует даже оставшийся старый URL. Валидный URL со slash нормализуется, credentials/path/query/fragment не допускаются. HTTP loopback разрешён только для development, сохраняя прежний локальный сценарий; production требует HTTPS. Telegram OIDC и YooKassa используют top-level navigation и серверный обмен, новых общих connect/frame разрешений для них нет.
 
-## Отчёты без URL и персональных данных
+### Отчёты без URL и персональных данных
 
 `POST /api/csp-report` принимает недоверенные браузерные наблюдения. Проверяются Host, origin/fetch metadata и тип `application/csp-report`. Ограничения: 8 KiB, 64 чанка, 1 секунда чтения, до четырёх in-flight bodies и 240 приёмов в минуту на процесс. Эти бюджеты не расходуют auth/IP/email/global counters и не требуют БД. Они ограничивают затраты и достоверность диагностики, а не подтверждают автора отчёта. После перезапуска/при нескольких процессах бюджеты независимы.
 
 В журнал попадают только фиксированные directive/disposition и категория inline/eval/url/other, с меткой `untrusted-browser`. Для каждой пары directive/disposition — не чаще одного события в минуту; память ограничена 36 ключами. Document/source/blocked URL, referrer, nonce/original policy, script sample, IP, cookies и личные данные не сохраняются и не выводятся. Raw JSON существует только в ограниченном чтении запроса. Невалидные UTF-8/JSON отклоняются; некооперативный body cancellation не удерживает обработчик после deadline. При переполнении — 429, при сбое audit sink — пустой 503. Это best-effort наблюдение в существующем журнале, не неизменяемый журнал безопасности.
 
-Использован совместимый `report-uri`; современный Reporting API не подключён. `report-uri` deprecated, но пока поддерживается браузерами; при будущем подключении `report-to` нужно отдельно согласовать тот же origin/формат/приватность. `report-sample` не используется.
+В первоначальной версии использован совместимый `report-uri`; современный Reporting API не подключён. `report-uri` deprecated, но пока поддерживается браузерами; при будущем подключении `report-to` нужно отдельно согласовать тот же origin/формат/приватность. `report-sample` не используется.
 
-## Проверки
+### Проверки
 
 ```sh
 npm test
@@ -57,6 +74,6 @@ node --experimental-strip-types scripts/check-local-normalized-avatar.mjs
 
 Изменения остаются локальными; стенд запущен на https://127.0.0.1:3045. Реальные Turnstile, 2GIS с рабочим ключом, Telegram token exchange и merchant не вызываются этими тестами. Рабочую конфигурацию, доступность каждого провайдера и период report-only наблюдения необходимо проверить перед production enforcement; локальная приёмка не подменяет этот этап.
 
-## Источники решения
+### Источники решения
 
 Актуальная документация Next 15 получена через Context7: [CSP/nonces](https://nextjs.org/docs/15/app/guides/content-security-policy), [middleware](https://nextjs.org/docs/15/app/api-reference/file-conventions/middleware). Дополнительно проверены [Cloudflare Turnstile CSP](https://developers.cloudflare.com/turnstile/reference/content-security-policy/) и [MDN report-uri](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/report-uri): nonce/strict-dynamic, разрешения iframe и недоверенный характер отчётов. Ограничения внешнего MapGL подтверждаются наблюдением перед enforcement, без автоматического добавления eval или широких источников.
