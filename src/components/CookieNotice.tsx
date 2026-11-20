@@ -13,6 +13,7 @@ function remember(){
 }
 export function CookieNotice({initiallyAcknowledged}:{initiallyAcknowledged:boolean}){
  const [canDismiss,setCanDismiss]=useState(false);
+ const [docked,setDocked]=useState(false);
  const pathname=usePathname(),[visible,setVisible]=useState(!initiallyAcknowledged),[manual,setManual]=useState(false);
  const dismissed=useRef(false),openedManually=useRef(false),opener=useRef<HTMLElement|null>(null);
  const panel=useRef<HTMLElement|null>(null);
@@ -22,9 +23,13 @@ export function CookieNotice({initiallyAcknowledged}:{initiallyAcknowledged:bool
   const open=()=>{opener.current=document.activeElement instanceof HTMLElement?document.activeElement:null;openedManually.current=true;setManual(true);setVisible(true);};
   const refresh=()=>{if(!openedManually.current&&(dismissed.current||acknowledged()))setVisible(false);};
   const visibility=()=>{if(document.visibilityState==='visible')refresh();};
+  const onFocus=(event:FocusEvent)=>{
+   if(panel.current && event.target instanceof HTMLElement && !panel.current.contains(event.target) && event.target.matches(':focus-visible'))setDocked(true);
+  };
   window.addEventListener(cookieNoticeOpenEvent,open);window.addEventListener('focus',refresh);window.addEventListener('pageshow',refresh);
   document.addEventListener('visibilitychange',visibility);
-  return()=>{window.removeEventListener(cookieNoticeOpenEvent,open);window.removeEventListener('focus',refresh);window.removeEventListener('pageshow',refresh);document.removeEventListener('visibilitychange',visibility);};
+  document.addEventListener('focusin',onFocus);
+  return()=>{window.removeEventListener(cookieNoticeOpenEvent,open);window.removeEventListener('focus',refresh);window.removeEventListener('pageshow',refresh);document.removeEventListener('visibilitychange',visibility);document.removeEventListener('focusin',onFocus);};
  },[]);
  useEffect(()=>{if(manual&&visible)panel.current?.focus();},[manual,visible]);
  // The short-lived verification window has its own completion/close flow.
@@ -32,7 +37,7 @@ export function CookieNotice({initiallyAcknowledged}:{initiallyAcknowledged:bool
  const placement=pathname==='/auth'||pathname.startsWith('/auth/')
   ? 'relative mx-3 my-3 sm:mx-auto'
   : 'cookie-notice-floating fixed inset-x-3 bottom-[calc(var(--mobile-nav-clearance)+env(safe-area-inset-bottom))] mx-auto md:inset-x-auto md:bottom-5 md:left-5 md:right-5 md:mx-0';
- return <aside ref={panel} tabIndex={-1} aria-labelledby="cookie-notice-heading" className={`${placement} [@media(scripting:none)]:static z-[60] max-h-[calc(100dvh-var(--mobile-nav-clearance)-2rem)] max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg`} role="region">
+ return <aside ref={panel} data-docked={docked&&!manual?'true':undefined} tabIndex={-1} aria-labelledby="cookie-notice-heading" className={`${placement} [@media(scripting:none)]:static z-[60] max-h-[calc(100dvh-var(--mobile-nav-clearance)-2rem)] max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg`} role="region">
   <div className="flex items-start gap-3">
    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-brand-blue"><Cookie aria-hidden="true" className="h-5 w-5"/></span>
    <div className="min-w-0 flex-1"><h2 id="cookie-notice-heading" className="text-sm font-bold text-brand-ink">Файлы cookie</h2>
