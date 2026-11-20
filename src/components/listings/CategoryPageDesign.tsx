@@ -399,6 +399,8 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
           {!hasImageHero ? (
             <div
               data-hero-actions
+              role="group"
+              aria-label="Действия категории"
               className="mt-5 flex min-w-0 max-w-full flex-wrap gap-2"
             >
               {createAction()}
@@ -410,6 +412,7 @@ export function CategoryHeaderBand({ categorySlug, createHref, description, titl
       {hasImageHero ? (
         <div
           data-hero-actions
+          role="group"
           aria-label="Действия категории"
           className={`pointer-events-auto !absolute !bottom-4 !left-4 !right-4 z-30 flex min-w-0 gap-2 sm:!bottom-5 sm:!left-5 sm:!right-5 lg:!bottom-7 lg:!left-7 lg:!right-7 ${
             isTransportCategory || isBusinessCategory || isDishesCategory ? "flex-nowrap items-center" : "flex-wrap items-start sm:flex-nowrap sm:items-center"
