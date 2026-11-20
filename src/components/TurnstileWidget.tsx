@@ -173,7 +173,7 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
         <div ref={containerRef} className="min-h-[65px]" />
         {manualRetry && !token && <div className="mt-2 max-w-xs text-sm leading-5" role={failure ? "alert" : "status"}>
           <p className={failure ? "text-red-800" : "text-slate-600"}>{failure ? "Проверка не завершена или срок истёк. Введённые данные сохранены." : "Ожидаем проверку безопасности."}</p>
-          <button type="button" className="min-h-11 font-semibold text-brand-blue underline" onClick={() => setRetryVersion(value => value + 1)}>Повторить проверку</button>
+          <button type="button" className="min-h-11 font-semibold text-blue-700 underline" onClick={() => setRetryVersion(value => value + 1)}>Повторить проверку</button>
         </div>}
       </div>}
       {!turnstileSiteKey && requireProvider && <p role="alert" className="text-sm text-red-800">Проверка безопасности временно недоступна. Попробуйте позже.</p>}
