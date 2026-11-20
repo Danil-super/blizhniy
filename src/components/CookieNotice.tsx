@@ -12,11 +12,13 @@ function remember(){
  try{document.cookie=cookieNoticeAcknowledgement();return acknowledged();}catch{return false;}
 }
 export function CookieNotice({initiallyAcknowledged}:{initiallyAcknowledged:boolean}){
+ const [canDismiss,setCanDismiss]=useState(false);
  const pathname=usePathname(),[visible,setVisible]=useState(!initiallyAcknowledged),[manual,setManual]=useState(false);
  const dismissed=useRef(false),openedManually=useRef(false),opener=useRef<HTMLElement|null>(null);
  const panel=useRef<HTMLElement|null>(null);
  useEffect(()=>{
   setVisible(!acknowledged());
+  setCanDismiss(true);
   const open=()=>{opener.current=document.activeElement instanceof HTMLElement?document.activeElement:null;openedManually.current=true;setManual(true);setVisible(true);};
   const refresh=()=>{if(!openedManually.current&&(dismissed.current||acknowledged()))setVisible(false);};
   const visibility=()=>{if(document.visibilityState==='visible')refresh();};
@@ -37,7 +39,7 @@ export function CookieNotice({initiallyAcknowledged}:{initiallyAcknowledged:bool
     <p className="mt-1 text-sm leading-5 text-slate-600">Используем cookie для входа и защиты аккаунта. Настройки сайта сохраняются в вашем браузере.{' '}<Link href="/legal/privacy#cookies" prefetch={false} className="font-semibold text-brand-blue underline underline-offset-2">Подробнее</Link></p>
    </div>
   </div>
-  <div className="mt-3 flex justify-end [@media(scripting:none)]:hidden"><button type="button" onClick={()=>{remember();dismissed.current=true;openedManually.current=false;setManual(false);setVisible(false);opener.current?.focus();}} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-blue px-5 py-2 text-sm font-semibold text-white transition hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue">Понятно</button></div>
+  <div className="mt-3 flex justify-end [@media(scripting:none)]:hidden"><button type="button" disabled={!canDismiss} onClick={()=>{remember();dismissed.current=true;openedManually.current=false;setManual(false);setVisible(false);opener.current?.focus();}} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-brand-blue px-5 py-2 text-sm font-semibold text-white transition disabled:opacity-60 enabled:hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue">Понятно</button></div>
  </aside>;
 }
 export function CookieNoticeButton(){
