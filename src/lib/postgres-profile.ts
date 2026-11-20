@@ -76,9 +76,6 @@ async function profileEmail(tx: PostgresQueries, userId: string): Promise<string
   if (!row) throw new Error("Profile identity unavailable");
   return row.email;
 }
-function view(profile: StoredCabinetProfile, email: string): CabinetProfile {
-  return { ...profile, email, phoneVerified: false, verifiedPhone: "" };
-}
 function profileRevision(profile: StoredCabinetProfile): string {
   const entries = Object.entries(profile).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
   return createHash("sha256").update(JSON.stringify(Object.fromEntries(entries))).digest("hex");
@@ -89,11 +86,15 @@ export class PostgresProfileStore {
     if (typeof window !== "undefined") throw new Error("Profile storage is server-only");
   }
   private async phoneView(tx: PostgresQueries, owner: string, profile: StoredCabinetProfile, email: string): Promise<CabinetProfile> {
-    if (!this.options.phoneVerification) return view(profile,email);
+    const visible = {
+      ...createDefaultCabinetProfile({ name: "Пользователь", email }),
+      ...profile, email, phoneVerified: false, verifiedPhone: "",
+    };
+    if (!this.options.phoneVerification) return visible;
     await tx.query("select set_config('app.phone_user_id',$1,true)",[owner]);
     const binding=(await tx.query<{phone:string}>('select phone from app.telegram_phone_bindings where user_id=$1',[owner])).rows[0];
-    const verified=Boolean(binding&&binding.phone===normalizeProfilePhone(profile.phone));
-    return {...profile,email,phoneVerified:verified,verifiedPhone:verified?profile.phone:''};
+    const verified=Boolean(binding&&binding.phone===normalizeProfilePhone(visible.phone));
+    return { ...visible, phoneVerified: verified, verifiedPhone: verified ? visible.phone : "" };
   }
   async read(token: string, expectedOwnerId: string): Promise<{ exists: boolean; profile: CabinetProfile; revision: string | null }> {
     return withAppSessionTransaction(this.db, token, async (tx, user) => {
