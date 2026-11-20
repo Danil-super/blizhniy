@@ -62,6 +62,8 @@ const fingerprints={
   'be6b6dcdd791e894ca73e64dd4e1dacaf941011eb3912dca3fcdb70f1c8c4b0e',
  ],
  specialistTestInbox:[
+  // Hosted PostgreSQL with both owner-scoped policies from permissions/telegram-phone.sql.
+  '3a578e10cdf00668dfc78d3966fda0e5d1c513162587ef9826744d70cc38696c',
   'dc37198d436e0a28308687825a0089810709bdc2251a78c4f07b3abb5f798a3b',
   '9a0a35503e808d42b70095e607abd2ca67db80c2d52c9fe6f0ea1d52f9ed0d87',
  ],

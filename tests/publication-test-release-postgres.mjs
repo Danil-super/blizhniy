@@ -116,6 +116,13 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
   if(account){
    await checkSpecialistServiceStartup({suite,admin,config,workerDb,copiedGuard,artifact,docker,container,
     connect:database=>new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}))});
+   if(inbox)await suite.test('hosted checkout requires the exact pair of Telegram owner policies when present',async()=>{
+    await admin.query(await readFile(new URL('../database/permissions/telegram-phone.sql',import.meta.url),'utf8'));
+    const verify=()=>copiedGuard.verifyPaymentReconciliationDatabase(workerDb,{database:config.database,publicationTest:true,specialistAccountTest:true});
+    await check();await verify();
+    await admin.query('alter policy phone_binding_server on app.telegram_phone_bindings with check(true)');
+    await assert.rejects(verify());
+   });
    return;
   }
   await admin.query("insert into app.regions(slug,name) values('krasnodarskiy-kray','Краснодарский край');insert into app.cities(region_id,slug,name) select id,'krasnodar','Краснодар' from app.regions;insert into app.categories(slug,name) values('otdyh','Хобби и отдых');insert into app.specialist_categories(slug,name,parent_name) values('plumber','Сантехник','Строительство');insert into app.tariffs(id,action,name,price,duration_days) values('listing-publication','listing_publication','Объявление',199,30),('vacancy-publication','vacancy_publication','Вакансия',199,30),('work-request-publication','work_request_publication','Заказ',199,30)");
