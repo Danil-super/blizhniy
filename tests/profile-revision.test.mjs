@@ -179,3 +179,21 @@ test("session expiry before commit rolls back a matching profile save", async ()
   await assert.rejects(f.store.write(token, owner, parseProductionProfile({ name: "Rolled back change" }), contentHash(initial)), AppSessionAccessError);
   assert.deepEqual(f.stored(), initial);
 });
+
+test("reading a sparse stored profile supplies missing settings without changing the saved revision", async () => {
+  const stored = { name: "Synthetic owner", notifyBookings: false };
+  const f = databaseFixture(stored);
+  const result = await f.store.read(token, owner);
+  assert.deepEqual(result.profile, {
+    ...parseProductionProfile(stored),
+    email: "synthetic@example.invalid",
+    phoneVerified: false,
+    verifiedPhone: "",
+  });
+  assert.equal(result.revision, contentHash(stored));
+  assert.deepEqual(f.stored(), stored);
+  const edit = parseProductionProfile({ ...result.profile, city: "Анапа" });
+  const saved = await f.store.write(token, owner, edit, result.revision);
+  assert.equal(saved.revision, contentHash(edit));
+  assert.equal(saved.profile.notifyBookings, false);
+});
