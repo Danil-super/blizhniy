@@ -41,9 +41,13 @@ test('primary payment return reads only its owner order, survives loss of respon
   assert.equal((await page.goto(origin+`/oplata/${id}`,{waitUntil:'domcontentloaded'})).status(),200);
   await page.getByRole('heading',{name:'Заказ подготовлен',exact:true}).waitFor();assert.equal(calls.length,1);
   snapshot={order:{...order,status:'pending'},fulfillment:null};await page.getByRole('button',{name:'Проверить статус',exact:true}).click();await page.getByRole('heading',{name:'Платёж обрабатывается',exact:true}).waitFor();
+  const automaticMessage=page.getByText('Проверяем статус автоматически. Повторно платить не нужно.',{exact:true});
+  await automaticMessage.waitFor();
   fail=true;await page.getByRole('button',{name:'Проверить статус',exact:true}).click();await page.getByRole('region',{name:'Статус оплаты',exact:true}).getByRole('alert').waitFor();assert.equal(await page.getByRole('heading',{name:'Платёж обрабатывается',exact:true}).isVisible(),true);
   assert.equal(await page.getByText('Последний полученный статус. Актуальность пока не подтверждена.',{exact:true}).isVisible(),true,await page.getByRole('region',{name:'Статус оплаты',exact:true}).innerText());
+  await page.getByText('Повторно платить не нужно. Нажмите «Проверить статус», чтобы узнать результат.',{exact:true}).waitFor();
   fail=false;await page.getByRole('button',{name:'Проверить статус',exact:true}).click();await page.getByRole('region',{name:'Статус оплаты',exact:true}).getByRole('alert').waitFor({state:'hidden'});
+  await automaticMessage.waitFor();
   await page.addScriptTag({path:createRequire(import.meta.url).resolve('axe-core/axe.min.js')});
   for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);
    assert.deepEqual(await page.evaluate(async()=>{const result=await window.axe.run(document.querySelector('section[aria-label="Статус оплаты"]'));return result.violations.filter(item=>['serious','critical'].includes(item.impact)).map(item=>item.id);}),[]);}

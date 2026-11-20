@@ -123,3 +123,14 @@ test('closed hosted checkout shows saved receipts while active and local placeme
   }
  }
 });
+
+test('pending payment instructions distinguish active polling from manual recovery',()=>{
+ const {ListingPaymentStatus}=load('src/components/payments/ListingPaymentStatus.tsx',{});
+ const snapshot={order:{status:'pending',amount:'199.00',durationDays:30},fulfillment:null};
+ for(const checkingAutomatically of [true,false]){
+  const html=renderToStaticMarkup(React.createElement(ListingPaymentStatus,{snapshot,checkingAutomatically}));
+  assert.match(html,/Повторно платить не нужно/);
+  assert.ok(html.includes('Проверяем статус автоматически')===checkingAutomatically);
+  assert.ok(html.includes('Проверить статус')===!checkingAutomatically);
+ }
+});
