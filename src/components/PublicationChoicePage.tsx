@@ -59,17 +59,21 @@ export function PublicationChoicePage({ adminMode = false }: { adminMode?: boole
             : "Выберите тип публикации. После заполнения формы сайт создаст черновик или заказ на оплату, если для публикации нужен тариф."}
         </p>
         <section className="mt-5 grid gap-2.5 sm:mt-6 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
-          {publicationTypes.map((type) => {
+          {publicationTypes.map((type, index) => {
             const Icon = type.icon;
+            const descriptionId = `placement-description-${index}`;
 
             return (
-              <Link key={type.href} href={`${type.href}${querySuffix}`} className="group rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-[#9bd6a6] hover:shadow-card sm:p-5">
+              <Link key={type.href} href={`${type.href}${querySuffix}`}
+                aria-label={type.title}
+                aria-describedby={type.restriction ? `${descriptionId} ${descriptionId}-restriction` : descriptionId}
+                className="group rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-[#9bd6a6] hover:shadow-card sm:p-5">
                 <span className="grid grid-cols-[2.5rem_minmax(0,1fr)] items-start gap-2.5 sm:grid-cols-[2.75rem_minmax(0,1fr)] sm:gap-3">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#effaf0] text-[#0aa337] transition group-hover:bg-[#0aa337] group-hover:text-white sm:h-11 sm:w-11">
                     <Icon className="h-5 w-5" />
                   </span>
                   {type.restriction ? (
-                    <span className="grid min-w-0 grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-2 rounded-lg border border-rose-100 bg-rose-50/80 p-2 text-left">
+                    <span id={`${descriptionId}-restriction`} className="grid min-w-0 grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-2 rounded-lg border border-rose-100 bg-rose-50/80 p-2 text-left">
                       <span className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-rose-100">
                         <Image src={type.restriction.image} alt="" width={64} height={64} className="h-full w-full object-cover" aria-hidden="true" />
                       </span>
@@ -81,7 +85,7 @@ export function PublicationChoicePage({ adminMode = false }: { adminMode?: boole
                   ) : null}
                 </span>
                 <h2 className="mt-2.5 text-base font-bold text-[#060b27] sm:mt-4 sm:text-xl">{type.title}</h2>
-                <p className="mt-1.5 text-[13px] leading-5 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{type.description}</p>
+                <p id={descriptionId} className="mt-1.5 text-[13px] leading-5 text-slate-600 sm:mt-2 sm:text-sm sm:leading-6">{type.description}</p>
               </Link>
             );
           })}
