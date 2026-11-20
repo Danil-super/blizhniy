@@ -1,3 +1,4 @@
+import {expireBookingRequests} from './postgres-booking-expiry.ts';
 import {withAppSessionTransaction,AppSessionAccessError} from './app-session-transaction';
 import {parseBookingRequest,quoteBookingRequest,BookingRequestInputError,BookingQuoteError,type BookingRequestInput} from './booking-request-contract.ts';
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,type ListingDraftCursor} from './listing-draft-contract.ts';
@@ -58,10 +59,6 @@ const columns=`b.id,b.guest_id as guest,l.author_id as host,b.listing_id as "lis
  b.details_snapshot as terms,b.revision::text as revision,b.status,${stamp('b.created_at')} as "createdAt",${stamp('b.updated_at')} as "updatedAt",${stamp('b.decided_at')} as "decidedAt"`;
 const display=(row:Row,actor:string):BookingSnapshot=>({id:row.id,revision:row.revision,view:row.guest===actor?'guest':'host',listing:{id:row.listingId,title:row.terms.title},mode:row.mode,startDate:row.startDate,endDate:row.endDate,guests:row.guests,total:row.total,status:row.status,booking:row.terms.booking,createdAt:row.createdAt,updatedAt:row.updatedAt,decidedAt:row.decidedAt,...(row.lifecycle?{lifecycle:row.lifecycle}:{})});
 /** Caller owns the parent listing lock. The DB trigger independently checks the deadline. */
-export async function expireBookingRequests(tx:PostgresQueries,listingId:string,id:string|null=null){
- return tx.query(`update app.booking_requests set status='expired',revision=revision+1,updated_at=clock_timestamp(),decided_at=clock_timestamp()
-  where id in (select id from app.booking_requests where listing_id=$1 and ($2::uuid is null or id=$2) and status='pending' and expires_at<=clock_timestamp() and revision<9223372036854775807 order by id limit 100)`,[listingId,id]);
-}
 /** All create/decision operations serialize on the listing row. No payment, identity or quoted amount updates. */
 export class PostgresBookingStore{
  constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly options:Options={}){}
