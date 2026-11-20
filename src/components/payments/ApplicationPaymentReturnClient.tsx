@@ -18,10 +18,30 @@ function Reader({owner,paymentId,visible,cancellationEnabled}:{owner:string;paym
  const live=useRef(visible),launchScope=useRef<AbortController|null>(null),pending=useRef(false);live.current=visible;
  useEffect(()=>{const controller=new AbortController();launchScope.current=controller;return()=>controller.abort();},[owner,paymentId]);
  useEffect(()=>{
-  if(!visible||cancellationPending)return;const controller=new AbortController();setBusy(true);setError(null);
-  void applicationPayment.read(owner,paymentId,{signal:controller.signal}).then(value=>{if(!controller.signal.aborted){setSnapshot(value);setLoaded(true);}}).catch(cause=>{
-   if(!controller.signal.aborted){setError(cause instanceof Error?cause.message:'Не удалось проверить заказ.');if(cause instanceof ApplicationPaymentClientError&&cause.code==='UNAUTHENTICATED')notifyAccountSessionChange(false);}
-  }).finally(()=>{if(!controller.signal.aborted)setBusy(false);});return()=>controller.abort();
+  if(!visible||cancellationPending)return;
+  const controller=new AbortController();
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  let checks=0;
+  async function read(){
+   try{
+    const value=await applicationPayment.read(owner,paymentId,{signal:controller.signal});
+    if(controller.signal.aborted)return;
+    setSnapshot(value);setLoaded(true);
+    if(value?.order.status==='succeeded'&&value.deliveredAt){
+     timer=setTimeout(()=>{if(live.current)window.location.replace('/cabinet/otkliki');},2000);
+    }else if(value&&!value.targetClosed&&['pending','succeeded'].includes(value.order.status)&&checks<8){
+     const delay=Math.min(2000*2**checks,30000);
+     checks++;
+     timer=setTimeout(()=>void read(),delay);
+    }
+   }catch(cause){
+    if(controller.signal.aborted)return;
+    setError(cause instanceof Error?cause.message:'Не удалось проверить заказ.');
+    if(cause instanceof ApplicationPaymentClientError&&cause.code==='UNAUTHENTICATED')notifyAccountSessionChange(false);
+   }finally{if(!controller.signal.aborted)setBusy(false);}
+  }
+  setBusy(true);setError(null);void read();
+  return()=>{controller.abort();clearTimeout(timer);};
  },[owner,paymentId,visible,refresh,cancellationPending]);
  async function launch(){
   const controller=launchScope.current;if(cancellationPending||!live.current||pending.current||busy||error||!controller||controller.signal.aborted||!snapshot||snapshot.targetClosed||!['created','pending'].includes(snapshot.order.status))return;
@@ -32,6 +52,7 @@ function Reader({owner,paymentId,visible,cancellationEnabled}:{owner:string;paym
   }catch(cause){if(!controller.signal.aborted){setLaunchError('Переход не подтверждён. Проверьте статус или восстановите переход для этого же заказа — новый не создаётся.');if(cause instanceof ApplicationPaymentClientError&&cause.code==='UNAUTHENTICATED')notifyAccountSessionChange(false);}}
   finally{if(!controller.signal.aborted){pending.current=false;setLaunchBusy(false);}}
  }
+ const delivered=snapshot?.order.status==='succeeded'&&!!snapshot.deliveredAt&&!error;
  return <div hidden={!visible} inert={!visible} aria-busy={busy||launchBusy} className="min-w-0">
   {busy&&<p role="status" className="mb-3 text-sm text-slate-700">Получаем статус TEST-заказа…</p>}
   {error&&<p role="alert" className="mb-3 break-words rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
@@ -39,7 +60,7 @@ function Reader({owner,paymentId,visible,cancellationEnabled}:{owner:string;paym
    {(busy||error)&&<p className="mb-3 text-sm text-slate-600">Последний полученный статус. Актуальность пока не подтверждена.</p>}
    <h2 className="text-xl font-bold text-slate-950">{headline(snapshot)}</h2>
    <dl className="mt-4 border-y border-slate-200 py-4 text-sm"><dt className="text-slate-600">Стоимость отклика</dt><dd className="mt-1 font-bold text-slate-950">{new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(Number(snapshot.order.amount))} ₽</dd></dl>
-   <p className="mt-3 text-sm text-slate-700">{snapshot.order.status==='refunded'?'Оплата возвращена. Учитывайте актуальный статус отклика в кабинете.':snapshot.order.status==='failed'?'Отклик не отправлен по этому платежу. Реальных списаний на локальном стенде нет.':snapshot.order.status==='succeeded'?snapshot.deliveredAt?'Доставка подтверждена сервером. Отклик доступен получателю на локальном стенде.':snapshot.targetClosed?'Оплата подтверждена, но заказчик уже выбрал исполнителя. Отклик не доставлен; возврат не выполнен. История платежа сохранена. Реальных списаний на локальном стенде нет.':'Не создавайте повторный платёж. Проверьте этот заказ позже: подтверждения доставки ещё нет.':snapshot.targetClosed?'Новая оплата недоступна: заказ закрыт. История этого платежа сохранена.':'После успешной симуляции сервер доставит отклик владельцу публикации. Реальных списаний нет.'}</p>
+   <p className="mt-3 text-sm text-slate-700">{snapshot.order.status==='refunded'?'Оплата возвращена. Учитывайте актуальный статус отклика в кабинете.':snapshot.order.status==='failed'?'Отклик не отправлен по этому платежу. Реальных списаний на локальном стенде нет.':snapshot.order.status==='succeeded'?snapshot.deliveredAt?'Отклик доступен получателю. Возвращаемся в «Мои отклики».':snapshot.targetClosed?'Оплата подтверждена, но заказчик уже выбрал исполнителя. Отклик не доставлен; возврат не выполнен. История платежа сохранена. Реальных списаний на локальном стенде нет.':'Повторно платить не нужно. Ожидаем подтверждения доставки.':snapshot.targetClosed?'Новая оплата недоступна: заказ закрыт. История этого платежа сохранена.':'После успешной симуляции сервер доставит отклик владельцу публикации. Реальных списаний нет.'}</p>
    {!busy&&!error&&!snapshot.targetClosed&&['created','pending'].includes(snapshot.order.status)&&<section aria-label="Локальная TEST-оплата" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4"><h3 className="font-semibold text-slate-950">Локальная TEST-оплата</h3><p className="mt-2 text-sm text-slate-800">Симулятор успеха, отмены и ожидания. Без перехода в банк и без реальных денег.</p>
     <button type="button" className={`${button} mt-3`} disabled={launchBusy||cancellationPending} onClick={()=>void launch()}>{launchBusy?'Получаем переход…':uncertain?'Восстановить локальную TEST-оплату':'Открыть локальную TEST-оплату'}</button>
     {launchError&&<p role="alert" className="mt-3 break-words text-sm text-slate-800">{launchError}</p>}
@@ -47,7 +68,7 @@ function Reader({owner,paymentId,visible,cancellationEnabled}:{owner:string;paym
   </>}
   {cancellationEnabled&&snapshot?.order.status==='created'&&!busy&&!error&&<CheckoutCancellation owner={owner} paymentId={paymentId} targetType="application" visible={visible} onPendingChange={setCancellationPending} onCancelled={()=>{setSnapshot(null);setLoaded(false);setRefresh(value=>value+1);}}/>}
   {loaded&&!snapshot&&!error&&!busy&&<p role="status" className="text-sm text-slate-700">TEST-заказ недоступен. Проверьте ссылку и аккаунт, из которого оформляли оплату.</p>}
-  <div className="mt-5 flex flex-wrap gap-2"><button type="button" className={button} disabled={busy||launchBusy||cancellationPending} onClick={()=>{if(live.current)setRefresh(value=>value+1);}}>Проверить статус</button><Link href="/cabinet/otkliki" className={button}>Мои отклики</Link></div>
+  <div className="mt-5 flex flex-wrap gap-2">{!delivered&&<button type="button" className={button} disabled={busy||launchBusy||cancellationPending} onClick={()=>{if(live.current)setRefresh(value=>value+1);}}>Проверить статус</button>}<Link href="/cabinet/otkliki" className={button}>Мои отклики</Link></div>
  </div>;
 }
 export function ApplicationPaymentReturnClient({paymentId,cancellationEnabled=false}:{paymentId:string;cancellationEnabled?:boolean}){
