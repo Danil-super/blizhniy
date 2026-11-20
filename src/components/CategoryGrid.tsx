@@ -283,14 +283,14 @@ function categoryTilesFromCategories(categories: Category[]): CategoryTile[] {
 
 const toneClasses: Record<CategoryTile["tone"], { button: string; buttonIcon: string; hover: string; icon: string; marker: string }> = {
   blue: {
-    button: "border-[#f2b8b3] bg-white/92 text-[#c6251a] shadow-rose-100 group-hover:border-[#d92d20] group-hover:bg-[#fff5f4]",
+    button: "border-[#f2b8b3] bg-white/95 text-[#c6251a] shadow-rose-100 group-hover:border-[#d92d20] group-hover:bg-[#fff5f4]",
     buttonIcon: "bg-[#d92d20] text-white",
     hover: "hover:border-blue-200",
     icon: "bg-[#0875d1] text-white shadow-blue-100",
     marker: "bg-[#0875d1]",
   },
   green: {
-    button: "border-[#f2b8b3] bg-white/92 text-[#c6251a] shadow-rose-100 group-hover:border-[#d92d20] group-hover:bg-[#fff5f4]",
+    button: "border-[#f2b8b3] bg-white/95 text-[#c6251a] shadow-rose-100 group-hover:border-[#d92d20] group-hover:bg-[#fff5f4]",
     buttonIcon: "bg-[#d92d20] text-white",
     hover: "hover:border-lime-200",
     icon: "bg-[#3f8f18] text-white shadow-lime-100",
@@ -341,8 +341,8 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
               </picture>
               <span
                 aria-hidden="true"
-                className={`absolute inset-y-0 left-0 bg-gradient-to-r from-white via-white/96 to-white/0 ${
-                  isLastOddCard ? "w-[72%] sm:w-[44%] lg:w-[28%]" : "w-[72%] sm:w-[52%] lg:w-[36%]"
+                className={`absolute inset-y-0 left-0 bg-gradient-to-r from-white via-white/90 via-[80%] to-transparent ${
+                  isLastOddCard ? "w-[94%] sm:w-[65%] lg:w-[39%]" : "w-[94%] sm:w-[77%] lg:w-[53%]"
                 }`}
               />
               {category.ageRating ? (
