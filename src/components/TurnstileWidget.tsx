@@ -92,7 +92,7 @@ function loadTurnstileScript() {
 export function TurnstileWidget({ inline = false, name = "captchaToken", onVerify, resetKey, requireProvider = false, size, manualRetry = false }: TurnstileWidgetProps) {
   const turnstileSiteKey = getTurnstileSiteKey();
   const [token, setToken] = useState("");
-  const [failure, setFailure] = useState(false);
+  const [notice, setNotice] = useState<"slow" | "failed" | null>(null);
   const [retryVersion, setRetryVersion] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -111,12 +111,14 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
     };
 
     setToken("");
-    setFailure(false);
+    setNotice(null);
     onVerify?.("");
-    const failed = () => { if (!cancelled) { clearChallengeTimer(); publish(""); setFailure(true); } };
+    const failed = () => { if (!cancelled) { clearChallengeTimer(); publish(""); setNotice("failed"); } };
 
     if (turnstileSiteKey) {
-      if (manualRetry) challengeTimer = window.setTimeout(failed, 30000);
+      if (manualRetry) challengeTimer = window.setTimeout(() => {
+        if (!cancelled) setNotice("slow");
+      }, 30000);
       loadTurnstileScript()
         .then(() => {
           if (cancelled) return;
@@ -132,7 +134,7 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
             theme: "light",
             size: size ?? (requireProvider ? "compact" : undefined),
             ...(manualRetry ? { retry: "never" as const, "refresh-expired": "manual" as const, "refresh-timeout": "manual" as const } : {}),
-            callback: value => { if (!cancelled) { clearChallengeTimer(); setFailure(false); } publish(value); },
+            callback: value => { if (!cancelled) { clearChallengeTimer(); setNotice(null); } publish(value); },
             "expired-callback": manualRetry ? failed : () => publish(""),
             "error-callback": manualRetry ? failed : () => publish(""),
             "timeout-callback": manualRetry ? failed : undefined,
@@ -171,8 +173,12 @@ export function TurnstileWidget({ inline = false, name = "captchaToken", onVerif
       <input type="hidden" name={name} value={token} />
       {turnstileSiteKey && <div className={`${inline ? "" : "mt-3 "}min-w-0 max-w-full`}>
         <div ref={containerRef} className="min-h-[65px]" />
-        {manualRetry && !token && <div className="mt-2 max-w-xs text-sm leading-5" role={failure ? "alert" : "status"}>
-          <p className={failure ? "text-red-800" : "text-slate-600"}>{failure ? "Проверка не завершена или срок истёк. Введённые данные сохранены." : "Ожидаем проверку безопасности."}</p>
+        {manualRetry && !token && <div className="mt-2 max-w-xs text-sm leading-5" role={notice ? "alert" : "status"}>
+          <p className={notice === "failed" ? "text-red-800" : "text-slate-600"}>{
+            notice === "slow" ? "Проверка не завершена за 30 секунд. Можно подождать или повторить проверку."
+              : notice === "failed" ? "Проверка не завершена или срок истёк. Введённые данные сохранены."
+              : "Ожидаем проверку безопасности."
+          }</p>
           <button type="button" className="min-h-11 font-semibold text-blue-700 underline" onClick={() => setRetryVersion(value => value + 1)}>Повторить проверку</button>
         </div>}
       </div>}
