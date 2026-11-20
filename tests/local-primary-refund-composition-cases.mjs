@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { remainingRefundSessions } from './refund-session-observation.mjs';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {symlink} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -97,7 +98,7 @@ export async function testOwnedRefundComposition(suite,{admin,owned,environment,
      assert.equal(page.items.length,4);assert.ok(page.items.every(item=>item.status==='refunded'));assert.equal(posts.length,4);
     }finally{await services.close();}
     assert.equal(await services.done,0);await assert.rejects(callLocalRefundOperator(services.socketPath,token,{action:'list',expectedAdminId:actor,input:null}));
-    assert.equal((await admin.query("select count(*)::int as n from pg_stat_activity where application_name in ('blizhniy-local-refund-worker','blizhniy-local-refund-operator')")).rows[0].n,0);
+    assert.equal(await remainingRefundSessions(admin, ['blizhniy-local-refund-worker', 'blizhniy-local-refund-operator']), 0);
    }
    assert.equal(posts.length,4);assert.equal((await admin.query('select count(*)::int as n from app.notifications')).rows[0].n,4);
   });

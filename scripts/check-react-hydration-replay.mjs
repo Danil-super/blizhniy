@@ -14,8 +14,21 @@ try{
   try{
    await page.route('**/*',route=>route.abort());
    await page.setContent('<div id="root"><div id="outer"><p id="before">before</p><div id="target"><section id="child">lazy child</section></div><p id="after">after</p></div></div>');
-   await page.evaluate(()=>{window.syntheticModules={};window.syntheticErrors=[];window.serverChild=document.getElementById('child');});
-   for(let index=0;index<sources.length;index++)await page.addScriptTag({content:`(function(exports,require){${sources[index]}\n})(window.syntheticModules[${JSON.stringify('next/dist/compiled/'+modules[index])}]={},name=>{if(!(name in window.syntheticModules))throw Error('Unexpected module');return window.syntheticModules[name];});`});
+   await page.evaluate(()=>{
+    window.syntheticModules=Object.create(null);
+    window.syntheticErrors=[];
+    window.serverChild=document.getElementById('child');
+    window.syntheticRequire=name=>{
+     if (!Object.hasOwn(window.syntheticModules,name)) throw Error('Unexpected module');
+     return window.syntheticModules[name];
+    };
+   });
+   for (const [index, source] of sources.entries()) {
+    await page.evaluate(name => {
+     window.currentExports = window.syntheticModules[name] = {};
+    }, 'next/dist/compiled/' + modules[index]);
+    await page.addScriptTag({content: `(function(exports,require){${source}\n})(window.currentExports,window.syntheticRequire);`});
+   }
    await page.evaluate(keyed=>{
     const React=window.syntheticModules['next/dist/compiled/react'],client=window.syntheticModules['next/dist/compiled/react-dom-client'],h=React.createElement;
     const chunk={status:'pending',value:null,listeners:[],then(resolve){if(this.status==='fulfilled')resolve(this.value);else this.listeners.push(resolve);}};

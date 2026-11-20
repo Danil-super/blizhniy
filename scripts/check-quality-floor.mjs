@@ -157,6 +157,11 @@ const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, 
 // Exact browser-test replacements reviewed individually by the owner; see docs/review/.
 // Content-addressed artifacts, not a blanket permission to remove assertions.
 const reviewedListingArtifacts = [
+  {"file": "tests/local-primary-refund-composition-cases.mjs", "before": "fa13ec1b3ed85c01d4f8a2c09d15aaa18807d5dd6c8d1e52a2876945cebe9102", "after": "75aec2e99a1d35505843e4f76e5b2df9d2645a70a00efc7f6adbda1f417778ce"},
+  {"file": "tests/local-primary-refund-activation-cases.mjs", "before": "2813fb003ebea562a78c97225c4b938c88fb1b9e4dc2c8566ee5442763f3a312", "after": "74fe6a803134d2aa35f66010b3b561527bca486e109c055ee61218d5a9eb9346"},
+  {"file": "tests/specialist-checkout-refund-activation-cases.mjs", "before": "b924673663f56eec35fc8d0c0cb0a7bd851d639ced5a5192c9c70ae1c755de39", "after": "83f6cab95da8cd6c3691ad68f70f105b914c8436a9b0a6ca87f27ad8d9f09c56"},
+  {"file": "tests/placement-renewal-artifacts.test.mjs", "before": "f9594827130e82032981c367943e92be94f2b5caeb9cafa278182d821d80d60e", "after": "d75e78827353cb373858e27dbff77caefe85bc33de0198202d3df7a6c405e42f"},
+  {"file": "tests/service-payment-artifacts.test.mjs", "before": "eb5017d8ab378a28d1005056cd5c28b1d257f007db819321b79085cd64804dd9", "after": "c86c1c1ecb2fe71a0636ff025ad7af0c00e2fdd9f8f7ee0182ae5c6f2ab70a2f"},
   {"file": "tests/html-csp.test.mjs", "before": "56a3b847b340837288a109dacf522d703034a6111659d5aa80824d0ab8e1578f", "after": "ce3389283fd1714ab4c90ed2e76e34e2020af7e6cf0ddb53ec4fbc5d9d7eb98b", "alternateBefore": "405c711e273fa6adbc8c5301e68f4080818427653c27e9f43beefc05457351f3"},
   {"file": "tests/listing-category-parent.test.mjs", "before": "89eeb641134ffeb99405b5fbbcde10faf25cb7d220fc8d39353a215fce39e98f", "after": "9ab7797ea8a49c19d2ca70a1547c2a8971ebcbbbb8c5df11dce0a5d40f617a7b"},
   {"file": "tests/initialization-runtime-recovery.test.mjs", "before": "eb8d96e891aaa2e589ad3ae31dcaf66458a64d5de313b4d86518f0f97711331e", "after": "9b4148b2bafaa893f0e44e5133129783cb750451e647a6aeae4a34128c8d8822"},

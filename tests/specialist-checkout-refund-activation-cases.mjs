@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { remainingRefundSessions } from './refund-session-observation.mjs';
 import {readFile,readdir} from 'node:fs/promises';
 import {dirname} from 'node:path';
 import {startLocalPrimaryRefunds} from '../scripts/local-primary-refunds.mjs';
@@ -36,7 +37,7 @@ export async function testSpecialistCheckoutRefundActivation(suite,{admin,stateF
    try{await assert.rejects(startLocalPrimaryRefunds({stateFile,signal:new AbortController().signal,report:async()=>events++}),{message:'Local primary refunds unavailable'});assert.equal(events,0);}
    finally{const row=getRefundWorkerRolePlan('blizhniy_prod',{schema:60,localPrimary:true}).journal.at(-1);await admin.query('update blizhniy_meta.migrations set sha256=$1 where name=$2',[row.sha256,row.name]);}
    assert.equal((await readdir(dirname(stateFile))).filter(name=>name.startsWith('refund-runtime-')).length,0);
-   assert.equal((await admin.query("select count(*)::int n from pg_stat_activity where application_name='blizhniy-local-refund-provider'")).rows[0].n,0);
+   assert.equal(await remainingRefundSessions(admin, ['blizhniy-local-refund-provider']), 0);
   });
  }finally{try{await service?.close();}finally{for(const [key,value] of Object.entries(saved))if(value===undefined)delete process.env[key];else process.env[key]=value;}}
 }

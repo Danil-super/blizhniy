@@ -80,3 +80,29 @@ test('public photo galleries start on the first slide without inline CSS', () =>
   assert.doesNotMatch(html, /\sstyle=/i);
  }
 });
+
+test('listing grid displays the Moscow publication day on either side of local midnight', () => {
+  const load = runtime({
+    './ListingShareButton': { ListingShareButton: noop },
+    './ListingViewCounter': { ListingViewCounter: noop },
+    '@/components/StoredMedia': { StoredMediaImage: noop },
+  });
+  const { ListingGridCard } = load('src/components/listings/ListingCard.tsx');
+  const listing = { slug: 'table', kind: 'prodam', title: 'Стол', price: '500 ₽', city: 'Анапа' };
+  const previousZone = process.env.TZ;
+  try {
+    for (const zone of ['UTC', 'Europe/Moscow', 'America/Los_Angeles']) {
+      process.env.TZ = zone;
+      for (const [publishedAt, expected] of [
+        ['2026-12-31T20:59:59Z', '31 декабря 2026'],
+        ['2026-12-31T21:00:00Z', '1 января 2027'],
+      ]) {
+        const markup = renderToStaticMarkup(React.createElement(ListingGridCard, { listing: { ...listing, publishedAt } }));
+        assert.ok(markup.includes(expected), `${zone}: ${publishedAt} should display ${expected}`);
+      }
+    }
+  } finally {
+    if (previousZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousZone;
+  }
+});
