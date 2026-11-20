@@ -3,6 +3,7 @@ import {createPrimaryYooKassaReader} from './primary-yookassa-reader.ts';
 import {mergePaymentVerification,PaymentVerificationError,type PaymentVerificationState} from './payment-verification-contract.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres.ts';
 
+export type VerificationStage='load_order'|'provider_get'|'validate_response'|'record_verification';
 type OrderStatus='created'|'pending'|'succeeded'|'failed'|'refunded';
 export type StoredPaymentVerification=PaymentVerificationState&{id:string;providerPaymentId:string;orderStatus:OrderStatus};
 type Merchant=Parameters<typeof createPrimaryYooKassaReader>[0];
@@ -32,10 +33,13 @@ export class PostgresPaymentVerificationStore {
       return state?{id,providerPaymentId:intent.providerPaymentId,...state,orderStatus}:null;
     });
   }
-  async reconcile(id:string):Promise<StoredPaymentVerification>{
+  async reconcile(id:string,onStage?:(stage:VerificationStage)=>void):Promise<StoredPaymentVerification>{
+    onStage?.('load_order');
     const original=await this.db.transaction(async tx=>(await this.known(tx,id)).intent);
     // Remote I/O never keeps a database transaction or row lock open.
-    const verified=await this.reader.read(original);
+    onStage?.('provider_get');
+    const verified=await this.reader.read(original,undefined,()=>onStage?.('validate_response'));
+    onStage?.('record_verification');
     return this.db.transaction(async tx=>{
       const {intent,orderStatus:previousOrderStatus}=await this.known(tx,id);
       if(intent.providerPaymentId!==original.providerPaymentId)throw new PaymentVerificationError();

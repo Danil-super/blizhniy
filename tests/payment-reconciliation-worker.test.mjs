@@ -45,3 +45,18 @@ test('refund reservations stop publication retries without erasing capture; phon
   assert.equal(JSON.stringify(f.calls).includes('private'),false);
  }
 });
+
+test('a failed financial operation reports its stage only after the queue accepts the outcome',async()=>{
+ const stages=[];
+ const verifier={reconcile:async (_id,observe)=>{
+  observe('record_verification');
+  throw Error('synthetic private details');
+ }};
+ const accepted=fixture({verifier});
+ assert.deepEqual(await accepted.worker.tick(stage=>stages.push(stage)),{state:'deferred',code:'processing_unavailable'});
+ const lost=fixture({verifier,queue:{finish:async()=>false}});
+ assert.deepEqual(await lost.worker.tick(stage=>stages.push(stage)),{state:'lost'});
+ const failedPublication=fixture({fulfillment:{fulfill:async()=>{throw Error('synthetic private details');}}});
+ assert.deepEqual(await failedPublication.worker.tick(stage=>stages.push(stage)),{state:'deferred',code:'processing_unavailable'});
+ assert.deepEqual(stages,['record_verification','fulfillment']);
+});

@@ -130,3 +130,25 @@ test('invalid dependencies or incomplete runtimes fail before work; process adap
   assert.equal(closed,1);assert.deepEqual(count(),before);
  }
 });
+
+test('only an approved processing stage from the current failed tick enters telemetry',async()=>{
+ const f=fixture();
+ const steps=[
+  ['validate_response','deferred','processing_unavailable'],
+  [undefined,'deferred','processing_unavailable'],
+  ['private-provider-detail','deferred','processing_unavailable'],
+  ['record_verification','blocked','attempts_exhausted'],
+  ['fulfillment','completed',undefined],
+ ];
+ let index=0;
+ f.runtime.worker.tick=async reportFailure=>{
+  const [stage,state,code]=steps[index++];
+  if(stage)reportFailure(stage);
+  if(index===steps.length)f.controller.abort();
+  return code?{state,code}:{state};
+ };
+ assert.equal(await f.run(),0);
+ const ticks=f.events.filter(e=>e.status==='tick');
+ assert.deepEqual(ticks.map(e=>e.processingStage),['validate_response',undefined,undefined,'record_verification',undefined]);
+ assert.ok(!JSON.stringify(f.events).includes('private-provider-detail'));
+});

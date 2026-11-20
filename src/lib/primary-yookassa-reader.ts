@@ -18,7 +18,7 @@ export function createPrimaryYooKassaReader(config: Merchant, fetcher: typeof fe
   }
   const transport = createYooKassaTransport({ fetch: fetcher, monotonicNow: () => performance.now(), setTimeout, clearTimeout });
   return {
-    async read(value: KnownPayment, budget?: YooKassaRequestBudget) {
+    async read(value: KnownPayment, budget?: YooKassaRequestBudget, onResponse?: () => void) {
       const expected = { ...value };
       assertPrimaryYooKassaBinding(expected, Date.now());
       if (!expected.providerPaymentId || expected.shopId !== merchant.shopId || expected.isTest !== merchant.isTest) {
@@ -28,6 +28,7 @@ export function createPrimaryYooKassaReader(config: Merchant, fetcher: typeof fe
       const { payload } = await transport.fetchYooKassaJson(`https://api.yookassa.ru/v3/payments/${expected.providerPaymentId}`, {
         method: 'GET', cache: 'no-store', headers: { Authorization: authorization },
       }, budget);
+      onResponse?.();
       return validatePrimaryYooKassaPayment(payload, expected, Date.now());
     },
   };
