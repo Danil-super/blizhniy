@@ -78,8 +78,15 @@ canvas {
   margin: 0 auto;
 }
 
-/* Keep the focused link visible while the cookie notice is open. */
-body:has(:focus-visible) .cookie-notice-floating {
+/* When keyboard focus puts the notice in the flow, keep it below the page.
+   Moving it above the form on blur can move a button between press and release. */
+body:has(.cookie-notice-floating) {
+  display: flex;
+  flex-direction: column;
+}
+
+.cookie-notice-floating[data-docked="true"] {
+  order: 1;
   position: static;
   margin: 0.75rem auto;
 }

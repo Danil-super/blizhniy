@@ -13,6 +13,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const specialist = (await getStoredSpecialistProfileById(slug)) ?? (shouldShowFallbackContent() ? listSpecialists().find((item) => item.id === slug) : undefined);
 
   return {
+    ...(specialist?.testPublication ? { robots: { index: false, follow: true } } : {}),
     title: specialist ? `${specialist.name} — ${specialist.profession}` : "Специалист",
     description: specialist ? `${specialist.skills || specialist.profession}. ${specialist.city}.` : "Карточка специалиста на платформе БЛИЖНИЙ.",
     alternates: {

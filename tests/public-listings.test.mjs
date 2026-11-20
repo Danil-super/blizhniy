@@ -33,3 +33,13 @@ test('explicitly public zero coordinates remain valid and anonymous booking fiel
  const base=row(),point=mapPublicListing({...base,form:{...base.form,showExactAddress:true,latitude:0,longitude:0}},now);assert.equal(point.hasMapPoint,true);assert.equal(point.lat,0);assert.equal(point.lng,0);
  assert.equal(mapPublicListing({...base,form:{...base.form,booking:form('arenda').booking}},now),null);
 });
+
+test('search engines can identify a TEST publication from the payment flag independently of its title',()=>{
+ for(const kind of ['prodam']){
+  const base=row(kind);
+  const ordinary=mapPublicListing({...base,form:{...base.form,title:'ТЕСТ · Проверка воды'}},now);
+  assert.ok(ordinary);
+  assert.equal(ordinary.testPublication,undefined);
+  assert.equal(mapPublicListing({...base,testPublication:true},now)?.testPublication,true);
+ }
+});

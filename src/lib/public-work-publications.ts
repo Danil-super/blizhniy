@@ -13,7 +13,7 @@ export function mapPublicWorkPublication(row:PublicWorkRow,now:number):JobVacanc
   if(row.status!=='published'||row.paid!==true||!Number.isFinite(now)||!Number.isFinite(published)||!Number.isFinite(expires)||published>now||expires<=now||expires<=published||
    !Number.isFinite(Date.parse(row.createdAt))||checkWorkPublicationForm(form).length||!form.cityName||!form.professionName||!Array.isArray(row.mediaIds)||JSON.stringify(row.mediaIds)!==JSON.stringify(form.photoIds))return null;
   const images=form.photoIds.map(photo=>`/api/work-publications/${id}/photos/${photo}`);
-  const common={id,title:row.testPublication===true?`ТЕСТ · ${form.title}`:form.title,description:form.description,profession:form.professionName,...(row.professionId?{professionId:parseListingDraftId(row.professionId)}:{}),city:form.cityName,
+  const common={id,...(row.testPublication===true?{testPublication:true}:{}),title:row.testPublication===true?`ТЕСТ · ${form.title}`:form.title,description:form.description,profession:form.professionName,...(row.professionId?{professionId:parseListingDraftId(row.professionId)}:{}),city:form.cityName,
    ...(form.district?{district:form.district}:{}),showExactAddress:form.showExactAddress,
    ...(form.showExactAddress?{address:form.address!,lat:form.latitude!,lng:form.longitude!}:{}),images,status:'published' as const,createdAt:row.createdAt,publishedAt:row.publishedAt!};
   if(form.kind==='workRequest')return{...common,author:'Автор заказа',budget:money(form.budget),...(row.contentEdited!==false&&row.updatedAt&&Number.isFinite(Date.parse(row.updatedAt))&&Date.parse(row.updatedAt)>published?{updatedAt:row.updatedAt}:{})};

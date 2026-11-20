@@ -56,7 +56,7 @@ export class PostgresPublicServiceStore{
  }
  async sitemapPage(limit=100,offset=0){
   const rows=await this.listRows('specialist',limit,offset);
-  const entries=rows.map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is SpecialistProfile=>row!==null&&'profession' in row)
+  const entries=rows.filter(row=>row.testPublication!==true).map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is SpecialistProfile=>row!==null&&'profession' in row)
    .map(({id,publishedAt})=>({id,publishedAt}));
   return{entries,hasMore:rows.length===limit};
  }

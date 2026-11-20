@@ -24,3 +24,13 @@ test('public exact location appears only after the author explicitly opts in',()
  assert.equal(visible.address,'Скрытый адрес');assert.equal(visible.lat,45);assert.equal(visible.lng,38);assert.equal(visible.showExactAddress,true);
  assert.equal(Object.hasOwn(visible,'email'),false);
 });
+
+test('search engines can identify a TEST publication from the payment flag independently of its title',()=>{
+ for(const kind of ['vacancy', 'workRequest']){
+  const base=row(kind);
+  const ordinary=mapPublicWorkPublication({...base,form:{...base.form,title:'ТЕСТ · Проверка воды'}},now);
+  assert.ok(ordinary);
+  assert.equal(ordinary.testPublication,undefined);
+  assert.equal(mapPublicWorkPublication({...base,testPublication:true},now)?.testPublication,true);
+ }
+});

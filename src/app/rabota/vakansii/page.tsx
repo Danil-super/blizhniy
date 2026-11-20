@@ -14,7 +14,7 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
   return {
     alternates: { canonical: page > 1 ? `/rabota/vakansii?page=${page}` : "/rabota/vakansii" },
     title: "Вакансии",
-    description: "Каталог вакансий и заказчиков на БЛИЖНИЙ.",
+    description: "Вакансии на БЛИЖНИЙ. Условия работы и требования работодателей.",
   };
 }
 
@@ -34,7 +34,7 @@ export default async function Page({ searchParams }: PageProps) {
       <main className="page-container py-10">
         <BackLink fallbackHref="/rabota">Назад к работе</BackLink>
         <h1 className="mt-3 text-2xl font-bold text-[#060b27] sm:text-3xl">Все вакансии</h1>
-        <p className="mt-3 max-w-2xl text-slate-600">Каталог вакансий и заказов с быстрым переходом к карточке и оплате отклика.</p>
+        <p className="mt-3 max-w-2xl text-slate-600">Откройте вакансию, чтобы посмотреть условия работы и требования работодателя.</p>
         <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
           {vacancies.length === 0 && <p className="col-span-full text-sm text-slate-600">Открытых вакансий пока нет.</p>}
           {vacancies.map((vacancy) => (

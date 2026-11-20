@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { getImageProps } from "next/image";
 import type { StaticImageData } from "next/image";
 import type { ComponentType } from "react";
 import {
@@ -25,23 +24,59 @@ import {
 import { getPublicCategories } from "@/lib/category-store";
 import type { Category } from "@/lib/types";
 import animalsImage from "../../public/images/categories/animals.webp";
+import animals640 from "../../public/images/categories/previews/animals-640.webp";
+import animals1080 from "../../public/images/categories/previews/animals-1080.webp";
 import gardenImage from "../../public/images/categories/garden.webp";
+import garden640 from "../../public/images/categories/previews/garden-640.webp";
+import garden1080 from "../../public/images/categories/previews/garden-1080.webp";
 import kidsImage from "../../public/images/categories/kids.webp";
+import kids640 from "../../public/images/categories/previews/kids-640.webp";
+import kids1080 from "../../public/images/categories/previews/kids-1080.webp";
 import ritualImage from "../../public/images/categories/ritual.webp";
+import ritual640 from "../../public/images/categories/previews/ritual-640.webp";
+import ritual1080 from "../../public/images/categories/previews/ritual-1080.webp";
 import realEstateImage from "../../public/images/categories/real-estate.webp";
+import realEstate640 from "../../public/images/categories/previews/real-estate-640.webp";
+import realEstate1080 from "../../public/images/categories/previews/real-estate-1080.webp";
 import jobsImage from "../../public/images/categories/jobs.webp";
+import jobs640 from "../../public/images/categories/previews/jobs-640.webp";
+import jobs1080 from "../../public/images/categories/previews/jobs-1080.webp";
 import clothingImage from "../../public/images/categories/clothing.webp";
+import clothing640 from "../../public/images/categories/previews/clothing-640.webp";
+import clothing1080 from "../../public/images/categories/previews/clothing-1080.webp";
 import hobbyImage from "../../public/images/categories/hobby.webp";
+import hobby640 from "../../public/images/categories/previews/hobby-640.webp";
+import hobby1080 from "../../public/images/categories/previews/hobby-1080.webp";
 import autoImage from "../../public/images/categories/auto.webp";
+import auto640 from "../../public/images/categories/previews/auto-640.webp";
+import auto1080 from "../../public/images/categories/previews/auto-1080.webp";
 import businessImage from "../../public/images/categories/business-equipment.webp";
+import business640 from "../../public/images/categories/previews/business-equipment-640.webp";
+import business1080 from "../../public/images/categories/previews/business-equipment-1080.webp";
 import servicesImage from "../../public/images/categories/services.webp";
+import services640 from "../../public/images/categories/previews/services-640.webp";
+import services1080 from "../../public/images/categories/previews/services-1080.webp";
 import electronicsImage from "../../public/images/categories/electronics.webp";
+import electronics640 from "../../public/images/categories/previews/electronics-640.webp";
+import electronics1080 from "../../public/images/categories/previews/electronics-1080.webp";
 import homeImage from "../../public/images/categories/home-dacha.webp";
+import home640 from "../../public/images/categories/previews/home-dacha-640.webp";
+import home1080 from "../../public/images/categories/previews/home-dacha-1080.webp";
 import toolsImage from "../../public/images/categories/tools.webp";
+import tools640 from "../../public/images/categories/previews/tools-640.webp";
+import tools1080 from "../../public/images/categories/previews/tools-1080.webp";
 import dishesImage from "../../public/images/categories/dishes.webp";
+import dishes640 from "../../public/images/categories/previews/dishes-640.webp";
+import dishes1080 from "../../public/images/categories/previews/dishes-1080.webp";
 import exchangeFreeImage from "../../public/images/categories/exchange-free.webp";
+import exchangeFree640 from "../../public/images/categories/previews/exchange-free-640.webp";
+import exchangeFree1080 from "../../public/images/categories/previews/exchange-free-1080.webp";
 import beautyImage from "../../public/images/categories/beauty-health.webp";
+import beauty640 from "../../public/images/categories/previews/beauty-health-640.webp";
+import beauty1080 from "../../public/images/categories/previews/beauty-health-1080.webp";
 import otherImage from "../../public/images/categories/other.webp";
+import other640 from "../../public/images/categories/previews/other-640.webp";
+import other1080 from "../../public/images/categories/previews/other-1080.webp";
 
 function CandleIcon({ className }: { className?: string }) {
   return (
@@ -60,7 +95,7 @@ type CategoryTile = {
   label: string;
   href: string;
   icon: ComponentType<{ className?: string }>;
-  imageUrl: StaticImageData;
+  image: { original: StaticImageData; small: StaticImageData; medium: StaticImageData };
   description: string;
   bullets: string[];
   tone: "blue" | "green";
@@ -71,30 +106,30 @@ type CategoryTile = {
 };
 
 const categoryImages = {
-  animals: animalsImage,
-  garden: gardenImage,
-  kids: kidsImage,
-  ritual: ritualImage,
-  realEstate: realEstateImage,
-  jobs: jobsImage,
-  clothing: clothingImage,
-  hobby: hobbyImage,
-  auto: autoImage,
-  business: businessImage,
-  services: servicesImage,
-  electronics: electronicsImage,
-  home: homeImage,
-  tools: toolsImage,
-  dishes: dishesImage,
-  exchangeFree: exchangeFreeImage,
-  beauty: beautyImage,
-  other: otherImage,
+  animals: { original: animalsImage, small: animals640, medium: animals1080 },
+  garden: { original: gardenImage, small: garden640, medium: garden1080 },
+  kids: { original: kidsImage, small: kids640, medium: kids1080 },
+  ritual: { original: ritualImage, small: ritual640, medium: ritual1080 },
+  realEstate: { original: realEstateImage, small: realEstate640, medium: realEstate1080 },
+  jobs: { original: jobsImage, small: jobs640, medium: jobs1080 },
+  clothing: { original: clothingImage, small: clothing640, medium: clothing1080 },
+  hobby: { original: hobbyImage, small: hobby640, medium: hobby1080 },
+  auto: { original: autoImage, small: auto640, medium: auto1080 },
+  business: { original: businessImage, small: business640, medium: business1080 },
+  services: { original: servicesImage, small: services640, medium: services1080 },
+  electronics: { original: electronicsImage, small: electronics640, medium: electronics1080 },
+  home: { original: homeImage, small: home640, medium: home1080 },
+  tools: { original: toolsImage, small: tools640, medium: tools1080 },
+  dishes: { original: dishesImage, small: dishes640, medium: dishes1080 },
+  exchangeFree: { original: exchangeFreeImage, small: exchangeFree640, medium: exchangeFree1080 },
+  beauty: { original: beautyImage, small: beauty640, medium: beauty1080 },
+  other: { original: otherImage, small: other640, medium: other1080 },
 };
 
 const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "href">> = {
   "zhivotnye": {
     icon: PawPrint,
-    imageUrl: categoryImages.animals,
+    image: categoryImages.animals,
     description: "Питомцы, товары для ухода и объявления от владельцев рядом с вами.",
     bullets: ["Домашние питомцы", "Корма и уход", "Товары для животных"],
     tone: "green",
@@ -103,7 +138,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "sad-i-ogorod": {
     icon: Sprout,
-    imageUrl: categoryImages.garden,
+    image: categoryImages.garden,
     description: "Все для участка, сада, растений и сезонных работ.",
     bullets: ["Рассада и саженцы", "Инвентарь", "Цветы и огород"],
     tone: "green",
@@ -111,7 +146,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "tovary-dlya-detey": {
     icon: Baby,
-    imageUrl: categoryImages.kids,
+    image: categoryImages.kids,
     description: "Игрушки, вещи и полезные товары для детей.",
     bullets: ["Игрушки", "Детская комната", "Спорт и развитие"],
     tone: "green",
@@ -120,7 +155,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "ritualnye-uslugi": {
     icon: CandleIcon,
-    imageUrl: categoryImages.ritual,
+    image: categoryImages.ritual,
     description: "Деликатные услуги, организация и сопутствующие товары.",
     bullets: ["Организация", "Транспорт", "Уход и принадлежности"],
     tone: "green",
@@ -129,7 +164,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "nedvizhimost": {
     icon: Building2,
-    imageUrl: categoryImages.realEstate,
+    image: categoryImages.realEstate,
     description: "Квартиры, дома и коммерческие объекты в вашем городе.",
     bullets: ["Продажа", "Покупка", "Аренда и объекты"],
     tone: "blue",
@@ -137,7 +172,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "rabota": {
     icon: BriefcaseBusiness,
-    imageUrl: categoryImages.jobs,
+    image: categoryImages.jobs,
     description: "Вакансии, заказы и анкеты специалистов рядом с домом.",
     bullets: ["Вакансии", "Заказы", "Анкеты специалистов"],
     tone: "green",
@@ -146,7 +181,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "odezhda-obuv-aksessuary": {
     icon: Shirt,
-    imageUrl: categoryImages.clothing,
+    image: categoryImages.clothing,
     description: "Гардероб, обувь, сумки и аксессуары на каждый день.",
     bullets: ["Одежда и обувь", "Аксессуары", "Текстиль и разное"],
     tone: "green",
@@ -154,7 +189,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "hobbi-i-otdyh": {
     icon: TentTree,
-    imageUrl: categoryImages.hobby,
+    image: categoryImages.hobby,
     description: "Отдых, турбазы, гостиницы и походы рядом с вами.",
     bullets: ["Турбазы", "Гостиницы", "Походы"],
     tone: "green",
@@ -162,7 +197,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "transport": {
     icon: Car,
-    imageUrl: categoryImages.auto,
+    image: categoryImages.auto,
     description: "Автомобили, мототехника и транспортные объявления.",
     bullets: ["Авто", "Мототехника", "Запчасти"],
     tone: "blue",
@@ -170,7 +205,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "biznes": {
     icon: Store,
-    imageUrl: categoryImages.business,
+    image: categoryImages.business,
     description: "Готовый бизнес, оборудование и рабочие решения.",
     bullets: ["Оборудование", "Готовый бизнес", "Партнерство"],
     tone: "blue",
@@ -178,7 +213,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "uslugi": {
     icon: Wrench,
-    imageUrl: categoryImages.services,
+    image: categoryImages.services,
     description: "Мастера, ремонт, уборка и бытовая помощь рядом.",
     bullets: ["Проверенные мастера", "Ремонт и сервис", "Отзывы и рейтинг"],
     tone: "blue",
@@ -186,7 +221,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "elektronika": {
     icon: Smartphone,
-    imageUrl: categoryImages.electronics,
+    image: categoryImages.electronics,
     description: "Гаджеты, техника, ноутбуки и аудио для дома и работы.",
     bullets: ["Смартфоны", "Ноутбуки", "Аудио и видео"],
     tone: "blue",
@@ -194,7 +229,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "dlya-doma-i-dachi": {
     icon: Sofa,
-    imageUrl: categoryImages.home,
+    image: categoryImages.home,
     description: "Мебель, декор, освещение и вещи для уютного дома.",
     bullets: ["Мебель", "Декор", "Дача и баня"],
     tone: "green",
@@ -202,7 +237,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "instrumenty": {
     icon: Cog,
-    imageUrl: categoryImages.tools,
+    image: categoryImages.tools,
     description: "Ручной и электрический инструмент для ремонта и сада.",
     bullets: ["Ручной инструмент", "Электроинструмент", "Для сада"],
     tone: "blue",
@@ -210,7 +245,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "posuda": {
     icon: Utensils,
-    imageUrl: categoryImages.dishes,
+    image: categoryImages.dishes,
     description: "Кухонная посуда, сервировка и предметы для хранения.",
     bullets: ["Кухня", "Столовая", "Хранение"],
     tone: "green",
@@ -218,7 +253,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "menyayu-ili-otdam-darom": {
     icon: Gift,
-    imageUrl: categoryImages.exchangeFree,
+    image: categoryImages.exchangeFree,
     description: "Обмен вещей рядом с вами",
     bullets: ["Меняю", "Отдам даром", "Полезные находки"],
     tone: "green",
@@ -226,7 +261,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "krasota-i-zdorove": {
     icon: HeartPulse,
-    imageUrl: categoryImages.beauty,
+    image: categoryImages.beauty,
     description: "Красота, уход, здоровье и специалисты рядом с вами.",
     bullets: ["Косметика", "Уход", "Здоровье"],
     tone: "green",
@@ -234,7 +269,7 @@ const categoryTileVisuals: Record<string, Omit<CategoryTile, "id" | "label" | "h
   },
   "raznoe": {
     icon: Ellipsis,
-    imageUrl: categoryImages.other,
+    image: categoryImages.other,
     description: "Редкие находки, коллекции, книги и полезные мелочи.",
     bullets: ["Винтаж", "Коллекции", "Разные находки"],
     tone: "blue",
@@ -309,13 +344,8 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
           const tone = toneClasses[category.tone];
           const isFirstCatalogImage = variant === "grid" && index === 0;
           const isLastOddCard = categoryTiles.length % 2 === 1 && index === categoryTiles.length - 1;
-          const { props: image } = getImageProps({
-            src: category.imageUrl,
-            alt: "",
-            quality: 60,
-            sizes: isLastOddCard ? "(min-width: 1524px) 1500px, 124vw" : "(min-width: 1524px) 780px, (min-width: 1024px) 52vw, (min-width: 640px) 108vw, 124vw",
-          });
-
+          const { original, small, medium } = category.image;
+          const sizes = isLastOddCard ? "(min-width: 1524px) 1500px, 124vw" : "(min-width: 1524px) 780px, (min-width: 1024px) 52vw, (min-width: 640px) 108vw, 124vw";
 
           return (
             <Link
@@ -330,13 +360,13 @@ export async function CategoryGrid({ variant = "scroll" }: { variant?: "scroll" 
                   aria-hidden="true"
                   className={`absolute inset-y-0 right-0 h-full w-[124%] max-w-none rounded-[22px] object-cover brightness-[1.04] contrast-[1.12] saturate-[1.16] transition duration-500 [clip-path:inset(0_round_22px)] [transform:translateZ(0)] group-hover:scale-[1.02] sm:w-[108%] sm:rounded-[26px] sm:[clip-path:inset(0_round_26px)] lg:w-[104%] text-transparent ${category.imagePositionClassName ?? "object-right"}`}
                   decoding="async"
-                  height={image.height}
+                  height={original.height}
                   fetchPriority={isFirstCatalogImage ? "high" : undefined}
                   loading={isFirstCatalogImage ? "eager" : "lazy"}
-                  sizes={image.sizes}
-                  srcSet={image.srcSet}
-                  src={image.src}
-                  width={image.width}
+                  sizes={sizes}
+                  srcSet={`${small.src} 640w, ${medium.src} 1080w, ${original.src} ${original.width}w`}
+                  src={medium.src}
+                  width={original.width}
                 />
               </picture>
               <span

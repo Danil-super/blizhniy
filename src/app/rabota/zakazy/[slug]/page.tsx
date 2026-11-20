@@ -24,6 +24,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const request = (await getStoredWorkRequestById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listWorkRequestsWithStored(listWorkRequests()).find((item) => item.id === slug) : undefined);
 
   return {
+    ...(request?.testPublication ? { robots: { index: false, follow: true } } : {}),
     title: request ? `${request.title} — заказ` : "Заказ",
     description: request?.description ?? "Карточка заказа на платформе БЛИЖНИЙ.",
     alternates: { canonical: `/rabota/zakazy/${slug}` },

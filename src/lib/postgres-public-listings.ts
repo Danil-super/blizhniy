@@ -68,7 +68,7 @@ export class PostgresPublicListingStore{
  }
  async sitemapPage(limit=100,offset=0){
   const rows=await this.listRows({limit,offset});
-  const entries=rows.map(row=>this.project(row)).filter((row):row is Listing=>row!==null)
+  const entries=rows.filter(row=>row.testPublication!==true).map(row=>this.project(row)).filter((row):row is Listing=>row!==null)
    .map(({id,publishedAt})=>({id,publishedAt}));
   return{entries,hasMore:rows.length===limit};
  }
