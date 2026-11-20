@@ -34,6 +34,22 @@ test('ordinary Russian public pages render the primary DTO without hidden/privat
    if(url.pathname.startsWith('/api/')&&url.pathname!=='/api/health'){legacy.push(url.pathname);return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});}return route.continue();
   });
   page.on('pageerror',error=>errors.push(error.message));page.on('console',event=>{if(['warning','error'].includes(event.type())&&!event.text().startsWith('Failed to load resource:'))errors.push(event.text());});
+  await suite.test('cookie notice accepts the first click after its browser handler is ready',async()=>{
+   const cold=await context.newPage();
+   try{
+    await cold.route('**/_next/static/**/*.js*',route=>route.abort());
+    await cold.goto(origin+'/obyavleniya');
+    const notice=cold.getByRole('region',{name:'Файлы cookie',exact:true});
+    const dismiss=notice.getByRole('button',{name:'Понятно',exact:true});
+    assert.equal(await dismiss.isDisabled(),true);
+    await cold.unroute('**/_next/static/**/*.js*');
+    await cold.reload({waitUntil:'commit'});
+    await dismiss.click();
+    await notice.waitFor({state:'detached'});
+    const nextDocument=await cold.reload();
+    assert.doesNotMatch(await nextDocument.text(),/<h2 id="cookie-notice-heading"/);
+   }finally{await cold.close();await context.clearCookies();}
+  });
   await suite.test('the first document includes the cookie notice only when needed',async()=>{
    const notice=page.getByRole('region',{name:'Файлы cookie',exact:true});
    const heading=/<h2 id="cookie-notice-heading"/;
