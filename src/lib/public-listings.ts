@@ -16,7 +16,7 @@ export function mapPublicListing(row:PublicListingRow,now:number,options:{postmo
   let author='Автор объявления';if(row.authorName!==null){
    if(typeof row.authorName!=='string'||!row.authorName.trim()||row.authorName.length>120||!row.authorName.isWellFormed()||/[\x00-\x1f\x7f]/.test(row.authorName))return null;author=row.authorName.trim();
   }
-  return{id,slug:id,ownerKey,kind:form.kind,categorySlug:form.categorySlug!,subcategory:form.subcategoryName??'',isSubcategory:row.isSubcategory,author,title:row.testPublication===true?`ТЕСТ · ${form.title}`:form.title,description:form.description,city:form.cityName!,
+  return{id,...(row.testPublication===true?{testPublication:true}:{}),slug:id,ownerKey,kind:form.kind,categorySlug:form.categorySlug!,subcategory:form.subcategoryName??'',isSubcategory:row.isSubcategory,author,title:row.testPublication===true?`ТЕСТ · ${form.title}`:form.title,description:form.description,city:form.cityName!,
    ...(form.district?{district:form.district}:{}),showExactAddress:form.showExactAddress,hasMapPoint:form.showExactAddress,
    ...(form.showExactAddress?{...(form.address?{address:form.address}:{}),lat:form.latitude!,lng:form.longitude!}:{}),
    price:form.booking?formatBookingPrice(form.booking):money(form.price),images:form.photoIds.map(photo=>`/api/listings/${id}/photos/${photo}`),

@@ -16,6 +16,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const listing = storedListing ? toDemoListing(storedListing) : shouldShowFallbackContent() ? findListingBySlug(slug) : undefined;
 
   return {
+    ...(storedListing?.testPublication ? { robots: { index: false, follow: true } } : {}),
     title: listing?.title ?? "Объявление",
     description: listing?.description ?? "Карточка объявления на БЛИЖНИЙ.",
     alternates: {

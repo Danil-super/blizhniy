@@ -24,6 +24,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const vacancy = (await getStoredVacancyById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listVacanciesWithStored(listVacancies()).find((item) => item.id === slug) : undefined);
 
   return {
+    ...(vacancy?.testPublication ? { robots: { index: false, follow: true } } : {}),
     title: vacancy ? `${vacancy.title} — вакансия` : "Вакансия",
     description: vacancy?.description ?? "Карточка вакансии на платформе БЛИЖНИЙ.",
     alternates: {

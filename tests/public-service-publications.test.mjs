@@ -24,3 +24,13 @@ test('public service exact location requires explicit opt-in and never exposes p
  const base=row('fair'),visible=mapPublicServicePublication({...base,form:{...base.form,showExactAddress:true}},now);
  assert.equal(visible.address,'Приватная улица');assert.equal(visible.lat,45.123456);assert.equal(visible.lng,39.123456);assert.equal(visible.phone,'');assert.equal(visible.email,'');assert.equal(Object.hasOwn(visible,'comment'),false);
 });
+
+test('search engines can identify a TEST publication from the payment flag independently of its title',()=>{
+ for(const kind of ['specialist']){
+  const base=row(kind);
+  const ordinary=mapPublicServicePublication({...base,form:{...base.form,title:'ТЕСТ · Проверка воды'}},now);
+  assert.ok(ordinary);
+  assert.equal(ordinary.testPublication,undefined);
+  assert.equal(mapPublicServicePublication({...base,testPublication:true},now)?.testPublication,true);
+ }
+});

@@ -75,7 +75,7 @@ export class PostgresPublicWorkStore{
  }
  async sitemapPage(kind:WorkPublicationKind,limit=100,offset=0){
   const rows=await this.listRows(kind,limit,offset);
-  const entries=rows.map(row=>mapPublicWorkPublication(row,Date.now())).filter((item):item is JobVacancy|WorkRequest=>item!==null)
+  const entries=rows.filter(row=>row.testPublication!==true).map(row=>mapPublicWorkPublication(row,Date.now())).filter((item):item is JobVacancy|WorkRequest=>item!==null)
    .map(({id,publishedAt})=>({id,publishedAt}));
   return{entries,hasMore:rows.length===limit};
  }
