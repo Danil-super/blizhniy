@@ -29,7 +29,7 @@ export function CookieNotice({initiallyAcknowledged}:{initiallyAcknowledged:bool
  if(!visible||pathname==='/cabinet/phone'&&!manual)return null;
  const placement=pathname==='/auth'||pathname.startsWith('/auth/')
   ? 'relative mx-3 my-3 sm:mx-auto'
-  : 'fixed inset-x-3 bottom-[calc(var(--mobile-nav-clearance)+env(safe-area-inset-bottom))] mx-auto md:inset-x-auto md:bottom-5 md:left-5 md:right-5 md:mx-0';
+  : 'cookie-notice-floating fixed inset-x-3 bottom-[calc(var(--mobile-nav-clearance)+env(safe-area-inset-bottom))] mx-auto md:inset-x-auto md:bottom-5 md:left-5 md:right-5 md:mx-0';
  return <aside ref={panel} tabIndex={-1} aria-labelledby="cookie-notice-heading" className={`${placement} [@media(scripting:none)]:static z-[60] max-h-[calc(100dvh-var(--mobile-nav-clearance)-2rem)] max-w-2xl overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-lg`} role="region">
   <div className="flex items-start gap-3">
    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-brand-blue"><Cookie aria-hidden="true" className="h-5 w-5"/></span>

@@ -78,7 +78,17 @@ canvas {
   margin: 0 auto;
 }
 
+/* Keep the focused link visible while the cookie notice is open. */
+body:has(:focus-visible) .cookie-notice-floating {
+  position: static;
+  margin: 0.75rem auto;
+}
+
 @media (max-width: 767px) {
+  html {
+    scroll-padding-bottom: calc(var(--mobile-nav-clearance) + env(safe-area-inset-bottom));
+  }
+
   .app-shell main {
     padding-bottom: var(--mobile-nav-clearance);
   }
