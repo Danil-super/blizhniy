@@ -5,7 +5,20 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { getPublicTariffs } from "@/lib/public-tariffs";
 import type { Tariff } from "@/lib/types";
 import { formatTariffPrice } from "@/lib/tariff-display";
-import { readSpecialistCheckoutEnabled } from "@/lib/specialist-checkout-config";
+import { readSpecialistAccountTest, readSpecialistCheckoutEnabled } from "@/lib/specialist-checkout-config";
+
+function specialistCheckoutNotice(): string | undefined {
+  try {
+    if (readSpecialistAccountTest()) {
+      return "Тестовая оплата анкеты доступна участникам с допуском. Черновик можно сохранить без оплаты.";
+    }
+    if (readSpecialistCheckoutEnabled()) {
+      return "Локальная проверка: модерация, симуляция оплаты и публикация анкеты. Реальные деньги не списываются.";
+    }
+  } catch {
+    // Keep the draft link usable when checkout configuration is invalid.
+  }
+}
 
 function tariffDetail(tariff: Tariff) {
   if (tariff.durationDays !== null) return `Срок размещения — ${tariff.durationDays} дн.`;
@@ -54,7 +67,7 @@ export const metadata: Metadata = {
 
 export default async function Page() {
   const tariffs = await getPublicTariffs();
-  const specialistCheckout = readSpecialistCheckoutEnabled();
+  const specialistNotice = specialistCheckoutNotice();
 
   return (
     <>
@@ -74,7 +87,7 @@ export default async function Page() {
         {tariffs.length ? (
         <section className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {tariffs.map((tariff) => {
-            const cta = tariffCta(tariff, specialistCheckout);
+            const cta = tariffCta(tariff, Boolean(specialistNotice));
 
             return (
               <article key={tariff.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
@@ -84,8 +97,8 @@ export default async function Page() {
                 </div>
                 {tariff.active ? <p className="mt-4 text-2xl font-bold text-[#0875d1]">{formatTariffPrice(tariff)}</p> : null}
                 <p className="mt-2 text-sm leading-6 text-slate-600">{tariffDetail(tariff)}</p>
-                {tariff.action === "specialist_publication" ? (
-                  <p className="mt-2 text-sm font-semibold leading-6 text-amber-700">{specialistCheckout ? "Локальная проверка: модерация, симуляция оплаты и публикация анкеты. Реальные деньги не списываются." : "Публикация и оплата анкеты временно недоступны. Черновик можно сохранить."}</p>
+                {tariff.active && tariff.action === "specialist_publication" ? (
+                  <p className="mt-2 text-sm font-semibold leading-6 text-amber-700">{specialistNotice ?? "Публикация и оплата анкеты временно недоступны. Черновик можно сохранить."}</p>
                 ) : null}
                 {tariff.active ? <Link href={cta.href} className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-lg bg-[#087f2b] text-sm font-bold text-white">
                   {cta.label}

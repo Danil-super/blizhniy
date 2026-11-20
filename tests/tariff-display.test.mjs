@@ -14,7 +14,7 @@ function display() {
   new Function("exports", ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(exports);
   return exports;
 }
-function page(kind, tariffs, specialistCheckout = false) {
+function page(kind, tariffs, specialistCheckout = false, readSpecialistAccountTest = () => null) {
   const paths = { fair: "src/components/FairPages.tsx", tariffs: "src/app/tarify/page.tsx" };
   assert.ok(Object.hasOwn(paths, kind));
   const source = readFileSync(new URL(`../${paths[kind]}`, import.meta.url), "utf8"), exports = {};
@@ -22,7 +22,7 @@ function page(kind, tariffs, specialistCheckout = false) {
     "next/link": { __esModule: true, default: ({ children, ...props }) => React.createElement("a", props, children) },
     "next/image": { __esModule: true, default: props => React.createElement("img", props) },
     "@/lib/public-tariffs": { getPublicTariffs: async () => tariffs },
-    "@/lib/specialist-checkout-config": { readSpecialistCheckoutEnabled: () => specialistCheckout },
+    "@/lib/specialist-checkout-config": { readSpecialistCheckoutEnabled: () => specialistCheckout, readSpecialistAccountTest },
     "@/components/SiteHeader": { SiteHeader: () => React.createElement("header") },
     "@/components/FairApplicationForm": { FairApplicationForm: () => React.createElement("form") },
     "@/components/LocationMap": { LocationMap: () => React.createElement("div") },
@@ -102,6 +102,28 @@ test("local specialist tariff describes moderation and synthetic placement only 
   const disabled = renderToStaticMarkup(await page("tariffs", tariffs).default());
   assert.match(disabled, /Публикация и оплата анкеты временно недоступны/);
 });
+test("hosted specialist tariff explains restricted TEST access and keeps the draft entry point", async () => {
+  const tariffs = [{ ...fair, action: "specialist_publication" }];
+  const hosted = () => ({ merchant: { ownerId: "private-owner-fixture", secretKey: "private-merchant-fixture" } });
+  const render = async rows => renderToStaticMarkup(await page("tariffs", rows, false, hosted).default());
+  const active = await render(tariffs);
+  assert.match(active, /Тестовая оплата анкеты доступна участникам с допуском/);
+  assert.match(active, /Черновик можно сохранить без оплаты/);
+  assert.match(active, /href="\/rabota\/specialisty\/anketa"[^>]*>Подготовить анкету</);
+  assert.doesNotMatch(active, /временно недоступны|симуляция|private-owner-fixture|private-merchant-fixture/);
+  const inactive = await render([{ ...tariffs[0], active: false }]);
+  assert.match(inactive, /Тариф временно недоступен/);
+  assert.doesNotMatch(inactive, /Тестовая оплата анкеты доступна|href="\/rabota\/specialisty\/anketa"/);
+});
+
+test("invalid hosted specialist settings leave the public tariff and draft route available", async () => {
+  const invalid = () => { throw new Error("private-configuration-fixture"); };
+  const html = renderToStaticMarkup(await page("tariffs", [{ ...fair, action: "specialist_publication" }], false, invalid).default());
+  assert.match(html, /Публикация и оплата анкеты временно недоступны/);
+  assert.match(html, /Подготовить черновик анкеты/);
+  assert.doesNotMatch(html, /private-configuration-fixture|Тестовая оплата анкеты доступна/);
+});
+
 test("price labels distinguish active zero from missing or inactive tariffs", () => {
   const { formatTariffPrice } = display();
   assert.equal(formatTariffPrice({ ...fair, price: 0 }), "0 ₽");
