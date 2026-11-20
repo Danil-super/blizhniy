@@ -30,7 +30,11 @@ test("catalog pages consolidate pagination and expose crawlable category context
 
 test("all catalogue subcategory slugs are stable latin URLs and legacy slugs redirect", () => {
   const listingPagesSource = readFileSync(new URL("../src/components/listings/ListingPages.tsx", import.meta.url), "utf8");
-  const slugFunction = listingPagesSource.match(/export function slugifySubcategory\([\s\S]*?(?=\nfunction Breadcrumbs)/)?.[0];
+  const source = ts.createSourceFile("ListingPages.tsx", listingPagesSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const slugFunction = source.statements.find(node =>
+    ts.isFunctionDeclaration(node) && node.name?.text === "slugifySubcategory" &&
+    node.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)
+  )?.getText(source);
   assert.ok(slugFunction);
 
   const exports = {};
