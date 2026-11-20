@@ -16,6 +16,21 @@ type PublicationAuthGateProps = {
   expectedOwnerId?:string;
 };
 
+function PlacementLogin() {
+  const linkStyle = "inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline";
+  return <>
+    <LocalAccountForm production headingLevel="h2" />
+    <nav aria-label="Помощь со входом" className="mt-3 flex flex-wrap gap-x-5">
+      <a href="/auth/register" target="_blank" rel="noopener noreferrer" className={linkStyle}>
+        Зарегистрироваться<span className="sr-only"> (в новой вкладке)</span>
+      </a>
+      <a href="/auth/recover" target="_blank" rel="noopener noreferrer" className={linkStyle}>
+        Забыли пароль?<span className="sr-only"> (в новой вкладке)</span>
+      </a>
+    </nav>
+  </>;
+}
+
 // Keep unsaved fields mounted for their owner, outside the document during a session check.
 function DraftFields({children, visible}: {children: ReactNode; visible: boolean}) {
   const host = useRef<HTMLDivElement>(null);
@@ -45,7 +60,7 @@ function PrimaryDraftGate({children,title,expectedOwnerId}:{children:ReactNode;t
     </section></main>;
   }
   if(!scopeOwner)return <main className="page-container py-10"><section className="mx-auto max-w-2xl"><h1 className="mb-5 text-2xl font-bold">{title}</h1>
-    {auth?.state==='signed-out'?<LocalAccountForm production headingLevel="h2"/>:<p role="status">Проверяем вход…</p>}</section></main>;
+    {auth?.state==='signed-out'?<PlacementLogin/>:<p role="status">Проверяем вход…</p>}</section></main>;
   return <>{!visible&&<div className="page-container py-6" role="status"><p>Проверяем вход. Заполненная форма скрыта до подтверждения аккаунта.</p>
     {auth?.state==='unavailable'&&<button type="button" onClick={()=>notifyAccountSessionChange(false)}>Повторить проверку входа</button>}</div>}
     <DraftFields key={scopeOwner} visible={visible}>{children}</DraftFields></>;
@@ -89,7 +104,7 @@ export function PublicationAuthGate({ children, title = "Войдите, что�
             Размещать объявления, вакансии, заказы и заявки могут только зарегистрированные пользователи. После входа вы вернетесь к этой форме.
           </p>
         </div>
-        {primary ? <LocalAccountForm production headingLevel="h2" /> : <AuthForm
+        {primary ? <PlacementLogin /> : <AuthForm
           initialMessage="Зарегистрируйтесь или войдите, чтобы продолжить размещение."
           returnHref={returnHref}
           successLinkLabel="Вернуться к размещению"

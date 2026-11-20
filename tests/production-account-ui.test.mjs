@@ -175,6 +175,12 @@ test("primary publication login retains one main h1 and does not render the lega
   const html = renderToStaticMarkup(React.createElement(PublicationAuthGate));
   assert.equal((html.match(/<h1(?:\s|>)/g) ?? []).length, 1);
   assert.match(html, /<h2[^>]*>Вход<\/h2>/);
+  for (const preserveDraftDuringRecheck of [false, true]) {
+    const guest = renderToStaticMarkup(React.createElement(PublicationAuthGate, { preserveDraftDuringRecheck }));
+    for (const href of ["/auth/register", "/auth/recover"]) {
+      assert.ok(guest.includes('href="' + href + '" target="_blank" rel="noopener noreferrer"'));
+    }
+  }
 });
 
 test("draft gate offers a retry when the first session check fails, without mounting the editor", () => {
