@@ -17,7 +17,7 @@ type PublicationAuthGateProps = {
 };
 
 function PlacementLogin() {
-  const linkStyle = "inline-flex min-h-11 items-center text-sm font-semibold text-brand-blue underline";
+  const linkStyle = "inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 underline";
   return <>
     <LocalAccountForm production headingLevel="h2" />
     <nav aria-label="Помощь со входом" className="mt-3 flex flex-wrap gap-x-5">
@@ -54,7 +54,7 @@ function PrimaryDraftGate({children,title,expectedOwnerId}:{children:ReactNode;t
     return <main className="page-container py-10"><section className="mx-auto max-w-2xl">
       <h1 className="mb-5 text-2xl font-bold">{title}</h1>
       <p role="alert">Не удалось проверить вход.</p>
-      <button type="button" className="mt-3 min-h-11 font-semibold text-brand-blue underline" onClick={() => window.location.reload()}>
+      <button type="button" className="mt-3 min-h-11 font-semibold text-blue-700 underline" onClick={() => window.location.reload()}>
         Повторить проверку входа
       </button>
     </section></main>;
@@ -82,7 +82,7 @@ export function PublicationAuthGate({ children, title = "Войдите, что�
   }
 
   if (state === "unavailable") return <main className="page-container py-10"><div role="alert" className="rounded-xl border border-slate-200 bg-white p-6 text-slate-700 shadow-card">
-    Не удалось проверить вход. <Link href="/auth" className="font-semibold text-brand-blue underline">Проверить сессию</Link>
+    Не удалось проверить вход. <Link href="/auth" className="font-semibold text-blue-700 underline">Проверить сессию</Link>
   </div></main>;
 
   if (state === "loading" || state === "signed-in" || state === "admin") {
