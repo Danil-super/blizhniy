@@ -3,7 +3,7 @@ import { hasMapCoordinates } from "@/lib/map-location";
 import { effectivePublicationStatus } from "@/lib/publication-time";
 import { publicMediaUrl } from "@/lib/storage-upload";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
-import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
+import { createLegacyPublicationRow, isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { PublicationStatus, WorkRequest } from "@/lib/types";
 
 type WorkRequestStatusRow = {
@@ -256,54 +256,6 @@ function workRequestWithMediaFallback(request: WorkRequest, mediaPaths?: string[
   return { ...request, images };
 }
 
-function isMissingWorkRequestImagesError(error: unknown) {
-  const message = error instanceof Error ? error.message : "";
-  return message.includes("work_request_images");
-}
-
-async function insertWorkRequestImages(requestId: string, mediaPaths?: string[]) {
-  const paths = cleanMediaPaths(mediaPaths);
-
-  if (!paths.length) {
-    return;
-  }
-
-  try {
-    await supabaseRest("/rest/v1/work_request_images", {
-      method: "POST",
-      prefer: "return=minimal",
-      body: paths.map((path, index) => ({
-        sort_order: index,
-        storage_path: path,
-        work_request_id: requestId,
-      })),
-    });
-  } catch (error) {
-    if (!isMissingWorkRequestImagesError(error)) {
-      throw error;
-    }
-  }
-}
-
-async function replaceWorkRequestImages(requestId: string, mediaPaths?: string[]) {
-  const paths = cleanMediaPaths(mediaPaths);
-
-  try {
-    await supabaseRest(`/rest/v1/work_request_images?work_request_id=eq.${encodeURIComponent(requestId)}`, {
-      method: "DELETE",
-      prefer: "return=minimal",
-    });
-
-    if (paths.length) {
-      await insertWorkRequestImages(requestId, paths);
-    }
-  } catch (error) {
-    if (!isMissingWorkRequestImagesError(error)) {
-      throw error;
-    }
-  }
-}
-
 async function storedWorkRequestBody(input: CreateStoredWorkRequestInput, status: PublicationStatus, publishedAt?: string | null) {
   const cityRow = await findCity(input.city);
   const regionId = await findRegionId(cityRow);
@@ -325,7 +277,7 @@ async function storedWorkRequestBody(input: CreateStoredWorkRequestInput, status
     latitude: input.lat ?? null,
     longitude: input.lng ?? null,
     messenger_url: input.messengerUrl ?? null,
-    photo_path: mediaPaths[0] ?? null,
+    ...(input.mediaPaths === undefined ? {} : { photo_path: mediaPaths[0] ?? null }),
     published_at: status === "published" ? (publishedAt ?? new Date().toISOString()) : null,
     region_id: regionId,
     request_type: "private_request",
@@ -345,24 +297,21 @@ function workRequestMatchesReusableInput(request: WorkRequest, input: CreateStor
   );
 }
 
-export async function createStoredWorkRequest(input: CreateStoredWorkRequestInput) {
+export async function createStoredWorkRequest(input: CreateStoredWorkRequestInput, creationKey?: string) {
   if (!isSupabaseRestConfigured()) {
     return undefined;
   }
 
   const status = input.status ?? "pending_payment";
-  const rows = await supabaseRest<WorkRequestRow[]>(`/rest/v1/work_requests?select=${legacyWorkRequestSelect}`, {
-    method: "POST",
-    prefer: "return=representation",
-    body: await storedWorkRequestBody(input, status),
-  });
+  const fields = await storedWorkRequestBody(input, status);
+  const rows = await createLegacyPublicationRow<WorkRequestRow>(
+    "work_requests", legacyWorkRequestSelect, fields, cleanMediaPaths(input.mediaPaths), creationKey,
+  );
   const request = rows[0];
 
   if (!request) {
     return undefined;
   }
-
-  await insertWorkRequestImages(request.id, input.mediaPaths);
 
   return workRequestWithMediaFallback((await getStoredWorkRequestById(request.id)) ?? mapWorkRequest(request), input.mediaPaths);
 }
@@ -416,16 +365,12 @@ export async function updateStoredWorkRequestForUser(requestId: string, userId: 
     {
       method: "PATCH",
       prefer: "return=representation",
-      body,
+      body: input.mediaPaths === undefined ? body : { ...body, replacement_image_paths: cleanMediaPaths(input.mediaPaths) },
     },
   );
 
   if (!rows[0]?.id) {
     return undefined;
-  }
-
-  if (input.mediaPaths !== undefined) {
-    await replaceWorkRequestImages(requestId, input.mediaPaths);
   }
 
   return workRequestWithMediaFallback((await getStoredWorkRequestById(requestId)) ?? mapWorkRequest(rows[0]), input.mediaPaths);

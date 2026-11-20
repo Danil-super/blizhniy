@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { readFixtureFile } from './read-fixture-file.mjs';
 import sharp from "sharp";
 import { createLocalMediaFileWorker } from "../src/lib/media-file-worker.ts";
 import { loadMediaModule } from "./media-module.mjs";
@@ -36,19 +37,22 @@ test("fenced inspection observes absence without creating, publishing or enumera
 });
 test("fenced inspection observes a completed object and leaves its contents and inode intact", async t => {
   const f = await fixture(t); await f.worker.write(f.record, bytes, f.attemptId);
-  const before = await fs.lstat(f.final, { bigint: true });
+  const { stat: before } = await readFixtureFile(f.final);
   assert.deepEqual(await f.worker.inspect(f.record, f.attemptId), expected("complete", "absent"));
-  const after = await fs.lstat(f.final, { bigint: true });
+  const { stat: after, bytes: contents } = await readFixtureFile(f.final);
   for (const field of ["ino", "dev", "size", "mode", "nlink", "mtimeNs", "ctimeNs"]) assert.equal(after[field], before[field]);
-  assert.deepEqual(await fs.readFile(f.final), bytes);
+  assert.deepEqual(contents, bytes);
 });
 test("temporary complete, incomplete and empty leaves are observations, never cleanup authority", async t => {
   const f = await fixture(t);
   for (const content of [bytes, bytes.subarray(0, 12), Buffer.alloc(0)]) {
     await fs.writeFile(f.temporary, content, { mode: 0o600 });
-    const before = await fs.lstat(f.temporary, { bigint: true });
+    const { stat: before } = await readFixtureFile(f.temporary);
     assert.deepEqual(await f.worker.inspect(f.record, f.attemptId), expected("absent", content.length === bytes.length ? "complete" : "incomplete"));
-    assert.equal((await fs.lstat(f.temporary, { bigint: true })).ino, before.ino); assert.deepEqual(await fs.readFile(f.temporary), content);
+    const after = await readFixtureFile(f.temporary);
+    assert.equal(after.stat.dev, before.dev);
+    assert.equal(after.stat.ino, before.ino);
+    assert.deepEqual(after.bytes, content);
   }
 });
 test("only the two known leaves can explain a two-link inode; unrelated hardlinks are unsafe", async t => {

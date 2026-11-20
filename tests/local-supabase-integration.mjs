@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
@@ -82,7 +83,7 @@ test('real local Auth, PostgREST, Storage and application routes', { timeout: 18
     await t.test('server uploads a photo to the real bucket and the public image URL serves its bytes', async () => {
       const form = new FormData();
       form.set('folder', 'listings');
-      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aEDsAAAAASUVORK5CYII=', 'base64');
+      const png = await sharp({create:{width:8,height:12,channels:3,background:'red'}}).withMetadata({orientation:6}).png().toBuffer();
       form.append('files', new Blob([png], { type: 'image/png' }), 'synthetic.png');
       const response = await request(`${site}/api/uploads/media`, { method: 'POST', headers: { Authorization: `Bearer ${owner.token}` }, body: form });
       assert.equal(response.status, 201);
@@ -92,8 +93,11 @@ test('real local Auth, PostgREST, Storage and application routes', { timeout: 18
       assert.equal(new URL(uploaded.publicUrl).origin, api);
       const image = await request(uploaded.publicUrl);
       assert.equal(image.status, 200);
-      assert.equal(image.headers.get('content-type'), 'image/png');
-      assert.deepEqual(Buffer.from(await image.arrayBuffer()), png);
+      assert.equal(image.headers.get('content-type'), 'image/webp');
+      const stored = Buffer.from(await image.arrayBuffer());
+      assert.deepEqual(stored, await sharp(png).autoOrient().webp({quality:80,effort:3}).toBuffer());
+      const metadata = await sharp(stored).metadata();
+      assert.deepEqual([metadata.width,metadata.height,metadata.exif,metadata.icc],[12,8,undefined,undefined]);
     });
     await t.test('draft with the uploaded photo is stored through the authenticated Next.js route', async () => {
       const response = await post('/api/listings/draft', { title: `Локальная проверка ${randomUUID()}`, kind: 'prodam',
@@ -167,7 +171,7 @@ test('real local Auth, PostgREST, Storage and application routes', { timeout: 18
         await page.locator('input[name="title"]').fill(title);
         await page.locator('textarea[name="description"]').fill('Синтетическая проверка через настоящий браузер.');
         await page.locator('input[name="phone"]').fill('+79995550123');
-        const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aEDsAAAAASUVORK5CYII=', 'base64');
+        const png = await sharp({create:{width:8,height:12,channels:3,background:'red'}}).withMetadata({orientation:6}).png().toBuffer();
         await page.locator('input[type="file"][name="photos"]').setInputFiles({ name: 'browser.png', mimeType: 'image/png', buffer: png });
         await page.locator('input[name="placementRightsAccepted"]').check();
         const [uploadResponse, draftResponse] = await Promise.all([

@@ -109,13 +109,16 @@ test("shared root selects public backend and CAPTCHA settings after the request 
     '@/lib/placement-renewal-config': {readPlacementRenewalsEnabled:()=>false},
     '@/lib/service-checkout-config': {readServiceCheckoutEnabled:()=>false},
     '@/lib/specialist-checkout-config': {readSpecialistCheckoutEnabled:()=>false},
-    '@/components/listings/ListingWorkflowProvider': load('src/components/listings/ListingWorkflowProvider.tsx', {}),
+    '@/components/listings/ListingWorkflowProvider': load('src/components/listings/ListingWorkflowProvider.tsx', {
+      '@/components/auth/AccountAuthProvider': {usePrimaryAccountAuth:()=>null},
+    }),
     "@/lib/site-url": { getPublicSiteUrl: () => "https://example.invalid" },
     "@/lib/turnstile-public-config": load("src/lib/turnstile-public-config.ts", {}, { process: { env: environment } }),
     "@/lib/public-runtime-config": load("src/lib/public-runtime-config.ts", {}, { process: { env: environment } }),
     "@/components/auth/AccountAuthProvider": { AccountAuthProvider: ({ backend, children }) => { backends.push(backend); return children; } },
     "@/components/SiteFooter": { SiteFooter: () => null },
     "@/components/CookieNotice": { CookieNotice: () => null },
+    "@/lib/cookie-notice": load("src/lib/cookie-notice.ts", {}),
     "@/components/MobileBottomNav": { MobileBottomNav: () => null },
     "@/components/BookingLegacyStorageCleanup": { BookingLegacyStorageCleanup: () => null },
     "./globals.css": {},
@@ -172,4 +175,50 @@ test("primary publication login retains one main h1 and does not render the lega
   const html = renderToStaticMarkup(React.createElement(PublicationAuthGate));
   assert.equal((html.match(/<h1(?:\s|>)/g) ?? []).length, 1);
   assert.match(html, /<h2[^>]*>Вход<\/h2>/);
+});
+
+test("draft gate offers a retry when the first session check fails, without mounting the editor", () => {
+  const auth = { state: "unavailable", userId: null };
+  const { PublicationAuthGate } = load("src/components/auth/PublicationAuthGate.tsx", {
+    ...dependencies,
+    "@/components/auth/useAuthState": { useAuthState: () => auth },
+    "@/components/auth/AccountAuthProvider": { usePrimaryAccountAuth: () => auth },
+    "@/components/auth/LocalAccountForm": { LocalAccountForm: () => assert.fail("session is unknown") },
+    "@/components/auth/AuthForm": { AuthForm: () => assert.fail("unexpected legacy login") },
+  });
+  const editor = () => assert.fail("unverified editor must stay hidden");
+  const render = () => renderToStaticMarkup(React.createElement(PublicationAuthGate,
+    { preserveDraftDuringRecheck: true }, React.createElement(editor)));
+  assert.match(render(), /<button[^>]*>Повторить проверку входа<\/button>/);
+  auth.state = "loading";
+  assert.doesNotMatch(render(), /Повторить проверку входа/);
+});
+
+test("verified standalone login returns only to an exact local payment URL", () => {
+  const id = "12345678-1234-4321-8765-123456789abc", location = { search: "" }, visits = [];
+  const { ProductionLoginForm } = load("src/components/auth/ProductionLoginForm.tsx", {
+    react: { useCallback: fn => fn },
+    "next/navigation": { useRouter: () => ({ replace: value => visits.push(value) }) },
+    "./LocalAccountForm": { LocalAccountForm: () => null },
+  }, { window: { location }, URLSearchParams });
+  const restored = [];
+  location.replace = value => restored.push(value);
+  const base = "/oplata/" + id;
+  for (const suffix of ["", "?type=vacancy", "?type=workRequest", "?type=application", "?type=specialist"]) {
+    location.search = new URLSearchParams({ returnTo: base + suffix }).toString();
+    ProductionLoginForm().props.onLoginVerified();
+    assert.equal(visits.pop(), base + suffix);
+    ProductionLoginForm().props.onLoginVerified("session");
+    assert.equal(restored.pop(), base + suffix);
+  }
+  for (const search of ["", "returnTo=//example.invalid", "returnTo=/oplata/bad",
+    new URLSearchParams({ returnTo: base + "?type=other" }).toString(),
+    new URLSearchParams([["returnTo", base], ["returnTo", base]]).toString()]) {
+    location.search = search;
+    ProductionLoginForm().props.onLoginVerified();
+    assert.equal(visits.pop(), "/");
+    ProductionLoginForm().props.onLoginVerified("session");
+    assert.deepEqual(visits, []);
+    assert.deepEqual(restored, []);
+  }
 });

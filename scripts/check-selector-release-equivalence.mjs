@@ -3,14 +3,28 @@
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash, createPublicKey, verify} from 'node:crypto';
-import {readFileSync, statSync} from 'node:fs';
+import {closeSync, constants, fstatSync, openSync, readFileSync, readSync} from 'node:fs';
 
 const certificate = JSON.parse(readFileSync(new URL('../docs/selector-upstream-6.1.5.json', import.meta.url)));
 assert.equal(process.argv.length, 3, 'Pass the downloaded official 6.1.5 .tgz');
-const file = process.argv[2];
-const info = statSync(file);
-assert.ok(info.isFile() && info.size > 0 && info.size < 1024 * 1024, 'Bounded regular archive required');
-const archive = readFileSync(file);
+const descriptor = openSync(process.argv[2], constants.O_RDONLY | constants.O_NONBLOCK);
+let archive;
+try {
+  const info = fstatSync(descriptor);
+  assert.ok(info.isFile() && info.size > 0 && info.size < 1024 * 1024, 'Bounded regular archive required');
+  // The extra byte detects growth while keeping the read within the archive size limit.
+  const bytes = Buffer.alloc(info.size + 1);
+  let offset = 0;
+  while (offset < bytes.length) {
+    const count = readSync(descriptor, bytes, offset, bytes.length - offset, null);
+    if (count === 0) break;
+    offset += count;
+  }
+  assert.equal(offset, info.size, 'Archive size changed during read');
+  archive = bytes.subarray(0, offset);
+} finally {
+  closeSync(descriptor);
+}
 const digest = (bytes, algorithm = 'sha256', encoding = 'hex') => createHash(algorithm).update(bytes).digest(encoding);
 assert.equal(digest(archive), certificate.tarballSha256);
 assert.equal('sha512-' + digest(archive, 'sha512', 'base64'), certificate.integrity);

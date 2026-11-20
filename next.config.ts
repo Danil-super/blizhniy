@@ -2,6 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // The release probe runs outside Next's server module graph.
+  outputFileTracingIncludes: {
+    "/": [
+      "./node_modules/parse5/package.json", "./node_modules/parse5/LICENSE", "./node_modules/parse5/dist/**/*.js",
+      "./node_modules/entities/package.json", "./node_modules/entities/LICENSE", "./node_modules/entities/dist/**/*.js",
+    ],
+  },
   // Opt-in trusted-builder binding. Source deploys retain Next's default build ID.
   async generateBuildId() {
     const commit = process.env.BLIZHNIY_BUILD_COMMIT;
@@ -55,6 +62,10 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      ...["/robots.txt", "/sitemap.xml"].map((source) => ({
+        source,
+        headers: [{ key: "Cache-Control", value: "no-store, no-cache, must-revalidate" }],
+      })),
       // Next config headers override route response headers: put auth-specific privacy rules last.
       ...["/api/account/:path*", "/api/admin/local/:path*", "/auth/local/:path*", "/auth", "/auth/:path*"].map((source) => ({
         source,

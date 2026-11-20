@@ -8,8 +8,9 @@ import { CitySelectField } from "@/components/CitySelectField";
 import { Field, FormPanel, PhotoField, TextAreaField } from "@/components/FormPanel";
 import { LegalConsentCheckbox, LegalLink } from "@/components/LegalConsentCheckbox";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
+import { draftRetryMessage, prepareLegacyDraftMedia, sendLegacyCreation } from "@/lib/legacy-draft-attempt";
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
-import { isStoredMediaReference, storeMediaDataUrl, storeMediaFile } from "@/lib/client-media-store";
+import { storeFormPhotos } from "@/lib/client-media-store";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
 import { readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, type DemoPublication, withPublicationHistory } from "@/lib/demo-publications";
@@ -54,79 +55,6 @@ function createWorkRequestId() {
   return crypto.randomUUID();
 }
 
-function readExistingPhotos(formData: FormData) {
-  return formData
-    .getAll("existingPhotos")
-    .flatMap((value) => {
-      const photo = String(value ?? "").trim();
-
-      return photo ? [photo] : [];
-    })
-    .slice(0, 6);
-}
-
-function readPhotoRefs(formData: FormData) {
-  const rawValue = String(formData.get("photosRefs") ?? "").trim();
-
-  if (!rawValue) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue) as unknown;
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.flatMap((value) => {
-      const photo = String(value ?? "").trim();
-
-      return photo ? [photo] : [];
-    });
-  } catch {
-    return [];
-  }
-}
-
-async function storeImageReference(source: string, index: number) {
-  if (isStoredMediaReference(source) || /^https?:\/\//i.test(source)) {
-    return source;
-  }
-
-  if (/^data:image\//i.test(source)) {
-    return storeMediaDataUrl(source, `work-request-photo-${index + 1}.png`);
-  }
-
-  if (/^blob:/i.test(source)) {
-    const response = await fetch(source);
-    const blob = await response.blob();
-    const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
-
-    return storeMediaFile(new File([blob], `work-request-photo-${index + 1}.${extension}`, { type: blob.type || "image/jpeg" }));
-  }
-
-  return source;
-}
-
-async function readLocalImageReferences(formData: FormData) {
-  const previewRefs = readPhotoRefs(formData).slice(0, 6);
-
-  if (previewRefs.length) {
-    const storedRefs = await Promise.allSettled(previewRefs.map((source, index) => storeImageReference(source, index)));
-
-    return storedRefs.flatMap((result) => (result.status === "fulfilled" && result.value ? [result.value] : [])).slice(0, 6);
-  }
-
-  const files = formData
-    .getAll("photos")
-    .filter((item): item is File => item instanceof File && item.size > 0 && item.type.startsWith("image/"))
-    .slice(0, 6);
-  const storedImages = await Promise.allSettled(files.map((file) => storeMediaFile(file)));
-
-  return [...readExistingPhotos(formData), ...storedImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))].slice(0, 6);
-}
-
 function mergeSavedImages(serverImages: string[] | undefined, localImages: string[]) {
   if (!serverImages?.length) {
     return localImages;
@@ -137,9 +65,9 @@ function mergeSavedImages(serverImages: string[] | undefined, localImages: strin
 
 type SaveMode = "draft" | "publish";
 
-async function createSupabaseWorkRequest(formData: FormData, options: { accessToken: string; images: string[]; status?: "draft"; tariffId?: string }) {
-  const mediaPaths = options.images.length ? await uploadPublicationImageSources(options.images, "work-requests", options.accessToken) : [];
-  const response = await fetch("/api/work-requests", {
+async function createSupabaseWorkRequest(formData: FormData, options: { accessToken: string; mediaPaths: string[]; creationKey?: string; status?: "draft"; tariffId?: string }) {
+  const mediaPaths = options.mediaPaths;
+  const response = await sendLegacyCreation("/api/work-requests", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${options.accessToken}` },
     body: JSON.stringify({
@@ -155,14 +83,14 @@ async function createSupabaseWorkRequest(formData: FormData, options: { accessTo
       tariffId: options.tariffId,
       title: readValue(formData, "title"),
     }),
-  });
+  }, options.creationKey);
   const payload = (await response.json().catch(() => null)) as CreatedWorkRequestResponse | null;
 
-  if (!response.ok) {
-    throw new Error(payload?.error ?? "Не удалось создать заказ.");
+  if (!response.ok || !payload?.workRequest?.id) {
+    throw new Error(payload?.error ?? (options.creationKey ? draftRetryMessage : "Не удалось создать заказ."));
   }
 
-  return payload ?? {};
+  return payload;
 }
 
 export function WorkRequestCreateClient() {
@@ -207,10 +135,17 @@ export function WorkRequestCreateClient() {
       const profession = readValue(formData, "profession") || "Заказ исполнителю";
       const city = readValue(formData, "city") || "Краснодар";
       const rawBudget = readValue(formData, "budget");
-      const images = await readLocalImageReferences(formData);
+      const upload = async () => {
+        const images = await storeFormPhotos(formData, 6);
+        return { images, paths: await uploadPublicationImageSources(images, "work-requests", identity.accessToken) };
+      };
+      const media = mode === "draft"
+        ? await prepareLegacyDraftMedia(form, identity.ownerKey, formData, upload)
+        : { ...await upload(), creationKey: undefined };
       const result = await createSupabaseWorkRequest(formData, {
         accessToken: identity.accessToken ?? "",
-        images,
+        mediaPaths: media.paths,
+        creationKey: media.creationKey,
         status: mode === "draft" ? "draft" : undefined,
         tariffId: mode === "publish" ? "work-request-publication" : undefined,
       });
@@ -226,7 +161,7 @@ export function WorkRequestCreateClient() {
           city,
           price: normalizeListingPrice(rawBudget, "по договоренности"),
           description: readValue(formData, "description"),
-          images: mergeSavedImages(result.workRequest?.images, images),
+          images: mergeSavedImages(result.workRequest?.images, media.images ?? []),
           phone,
           messengerUrl,
           status: mode === "publish" ? "Ждет оплаты" : "Черновик",

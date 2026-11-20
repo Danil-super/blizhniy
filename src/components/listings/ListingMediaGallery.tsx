@@ -65,7 +65,7 @@ export function ListingMediaGallery({ media, title }: { media: ListingGalleryMed
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        <div className="flex h-full w-full transition-transform duration-300 ease-out motion-reduce:transition-none" style={{ transform: `translateX(-${activeIndex * 100}%)` }}>
+        <div className="flex h-full w-full transition-transform duration-300 ease-out motion-reduce:transition-none" style={{ transform: activeIndex === 0 ? undefined : `translateX(-${activeIndex * 100}%)` }}>
           {media.map((item, index) => (
             <div className="flex h-full w-full shrink-0 items-center justify-center bg-slate-100" key={`${item.src}-${index}`}>
               {item.kind === "video" ? (

@@ -89,7 +89,7 @@ rollback() {
     pm2 delete "$APP_NAME" || true
     mkdir -p "${PREVIOUS_RELEASE}/.pm2" || return 1
     pm2 start "${PREVIOUS_RELEASE}/ecosystem.config.cjs" --update-env </dev/null || return 1
-    node "$ROLLBACK_CHECK" --probe "$PORT" "$previous_build_id" || return 1
+    BLIZHNIY_PROBE_MODULES="$RELEASE_DIR/node_modules" node "$ROLLBACK_CHECK" --probe "$PORT" "$previous_build_id" || return 1
     [[ "$(readlink -f "$APP_DIR")" == "$PREVIOUS_RELEASE" ]] || return 1
     pm2 save </dev/null || return 1
     log "previous release passed readiness checks"
@@ -183,6 +183,10 @@ fi
 log "preparing managed web runtime permissions"
 node "$RELEASE_DIR/scripts/web-runtime.cjs" --prepare "$RELEASE_DIR"
 
+if [[ -e "${APP_DIR}-static" || -L "${APP_DIR}-static" ]]; then
+  node "$RELEASE_DIR/scripts/retain-web-assets.mjs" "${APP_DIR}-static" "$PREVIOUS_RELEASE" "$RELEASE_DIR"
+fi
+
 log "starting ${APP_NAME} from ${RELEASE_DIR}"
 mkdir -p "${RELEASE_DIR}/.pm2"
 if [[ -n "${DEPLOY_RECORD:-}" ]]; then
@@ -197,6 +201,12 @@ check_endpoint "$HEALTH_URL"
 
 log "checking ${READY_URL}"
 check_endpoint "$READY_URL"
+
+log "checking public homepage"
+homepage_status="$(curl --noproxy '*' --silent --show-error --max-time 10 --output /dev/null \
+  --write-out '%{http_code}' "http://127.0.0.1:${PORT}/")" || homepage_status=unavailable
+log "public homepage HTTP status: ${homepage_status}"
+[[ "$homepage_status" == 200 ]]
 
 log "promoting release"
 # The CI job can run browser checks only after the public endpoint switches.

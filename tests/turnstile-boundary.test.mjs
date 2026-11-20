@@ -201,6 +201,19 @@ test("provider exceptions do not leak slots, and negative provider results fail 
   assert.equal(harness.requests.length, 21);
 });
 
+test("Siteverify accepts only an explicit boolean success in an OK response", async () => {
+  let payload;
+  let ok = true;
+  const harness = makeHarness({ fetchImpl: async () => ({ ok, json: async () => payload }) });
+  for (payload of [null, {}, { success: "false" }, { success: 1 }, { success: {} }]) {
+    assert.equal(await harness.verify(token, testIp(1)), false);
+  }
+  payload = { success: true };
+  assert.equal(await harness.verify(token, testIp(1)), true);
+  ok = false;
+  assert.equal(await harness.verify(token, testIp(1)), false);
+});
+
 test("missing and malformed production identities fail before allocation or provider I/O", async () => {
   const harness = makeHarness();
   for (const ip of [undefined, "", "not-an-ip", "203.0.113.1,203.0.113.2", "203.0.113.1:80", "[2001:db8::1]", "fe80::1%eth0", {}, 123]) {

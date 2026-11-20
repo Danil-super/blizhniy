@@ -1,6 +1,6 @@
 // Real Chromium against the owned loopback fixture; random synthetic records only.
 import assert from 'node:assert/strict';
-import {randomBytes} from 'node:crypto';
+import {randomInt,randomBytes} from 'node:crypto';
 import pg from 'pg';
 import {chromium} from 'playwright';
 import {stateFile,localPrimaryDatabaseConfig,docker} from './local-primary-fixture.mjs';
@@ -15,7 +15,7 @@ try{
  const city=name=>{const row=cities.find(item=>item.name===name);assert.ok(row,'owned fixture city');return row.id;};
  user=(await db.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',[
   email,'scrypt$131072$8$1$'+'0'.repeat(32)+'$'+'0'.repeat(128)])).rows[0].id;
- const phone='+7999'+String(randomBytes(4).readUInt32BE()%10000000).padStart(7,'0');
+ const phone='+7999'+String(randomInt(10_000_000)).padStart(7,'0');
  await db.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[user,JSON.stringify({name:'Синтетический Автор',phone})]);
  // Operator attestation for this random fixture only; publication phone guards remain enabled.
  await db.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[user,phone,'synthetic-search-'+suffix]);

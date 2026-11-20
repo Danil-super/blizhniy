@@ -11,6 +11,8 @@ import {setTimeout as delay} from 'node:timers/promises';
 const root=realpathSync(process.argv[2]),require=createRequire(root+'/server.js');
 assertPrebuiltImageConfig(readFileSync(root+'/server.js','utf8'));
 for(const name of ['pg','nodemailer','sharp'])assert.ok(require.resolve(name).startsWith(root+'/node_modules/'));
+assert.ok(require.resolve('parse5').startsWith(root+'/node_modules/parse5/'));
+assert.equal(require('parse5').parse('<!doctype html>').nodeName,'#document');
 assert.equal(typeof require('pg').Pool,'function');
 assert.equal(typeof require('nodemailer').createTransport,'function');
 assert.equal(typeof (await import(pathToFileURL(root+'/scripts/auth-mail-worker-runtime.mjs'))).runAuthMailWorker,'function');

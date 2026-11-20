@@ -1,0 +1,426 @@
+[data-category-colors] {
+  --category-accent: #075f9f;
+  --category-border: #8fc8f4;
+  --category-card: #dcefff;
+  --category-card-open: #eaf6ff;
+  --category-page: #eef7ff;
+  --category-soft: #cfeaff;
+  --category-primary: #0aa337;
+  --category-primary-hover: #078a2e;
+  --category-secondary: var(--category-accent);
+  --category-secondary-border: var(--category-border);
+  --category-title: #060b27;
+}
+
+[data-category-colors="biznes"] {
+  --category-accent: #16636b;
+  --category-border: #72cec5;
+  --category-card: #cef3ef;
+  --category-card-open: #e2f8f5;
+  --category-page: #edfbfb;
+  --category-soft: #b9ece8;
+}
+
+[data-category-colors="dlya-doma-i-dachi"] {
+  --category-accent: #526a14;
+  --category-border: #b3cf55;
+  --category-card: #eaf4bf;
+  --category-card-open: #f3f8d9;
+  --category-page: #f7fbe9;
+  --category-soft: #e0ef9f;
+}
+
+[data-category-colors="elektronika"] {
+  --category-accent: #2453a0;
+  --category-border: #7fa8ee;
+  --category-card: #d3e3ff;
+  --category-card-open: #e4edff;
+  --category-page: #eef4ff;
+  --category-soft: #bcd5ff;
+}
+
+[data-category-colors="instrumenty"] {
+  --category-accent: #2d6577;
+  --category-border: #7fb7c9;
+  --category-card: #d0e9f1;
+  --category-card-open: #e2f2f6;
+  --category-page: #edf8fb;
+  --category-soft: #b9deea;
+}
+
+[data-category-colors="krasota-i-uhod"] {
+  --category-accent: #8a3159;
+  --category-border: #e58ab0;
+  --category-card: #fbd6e6;
+  --category-card-open: #fde7f0;
+  --category-page: #fff1f7;
+  --category-soft: #f8c4da;
+}
+
+[data-category-colors="menyayu-ili-otdam-darom"] {
+  --category-accent: #2f6f38;
+  --category-border: #83ca87;
+  --category-card: #d4efd4;
+  --category-card-open: #e6f7e6;
+  --category-page: #effaf0;
+  --category-soft: #bde7be;
+}
+
+[data-category-colors="nedvizhimost"] {
+  --category-accent: #17657a;
+  --category-border: #6ec6d8;
+  --category-card: #ccecf2;
+  --category-card-open: #e0f4f7;
+  --category-page: #edfafd;
+  --category-soft: #b1e3eb;
+}
+
+[data-category-colors="odezhda-obuv-aksessuary"] {
+  --category-accent: #873f50;
+  --category-border: #df94a6;
+  --category-card: #f6d7de;
+  --category-card-open: #fae8ec;
+  --category-page: #fff3f5;
+  --category-soft: #f2c2cd;
+}
+
+[data-category-colors="otdyh"] {
+  --category-accent: #26704a;
+  --category-border: #75c79d;
+  --category-card: #ccefdc;
+  --category-card-open: #e0f7ea;
+  --category-page: #eefbf4;
+  --category-soft: #afe5c8;
+}
+
+[data-category-colors="posuda"] {
+  --category-accent: #78601a;
+  --category-border: #d7b94f;
+  --category-card: #f7e9ad;
+  --category-card-open: #fbf2cf;
+  --category-page: #fffbea;
+  --category-soft: #f2dc83;
+}
+
+[data-category-colors="rabota"] {
+  --category-accent: #237142;
+  --category-border: #75ca94;
+  --category-card: #ccefd8;
+  --category-card-open: #dff7e8;
+  --category-page: #eefbf3;
+  --category-soft: #afe4c2;
+}
+
+[data-category-colors="raznoe"] {
+  --category-accent: #3c6075;
+  --category-border: #8bb8ce;
+  --category-card: #d8eaf2;
+  --category-card-open: #e8f3f7;
+  --category-page: #f0f8fb;
+  --category-soft: #c5e0eb;
+}
+
+[data-category-colors="ritualnye-uslugi"] {
+  --category-accent: #36545f;
+  --category-border: #9fb1bd;
+  --category-card: #e6eee9;
+  --category-card-open: #f1f6f2;
+  --category-page: #f2f7f4;
+  --category-primary: #25313a;
+  --category-primary-hover: #111820;
+  --category-secondary: #25313a;
+  --category-secondary-border: #a8b5bd;
+  --category-soft: #d4e2d9;
+  --category-title: #111820;
+}
+
+[data-category-colors="sad-i-rasteniya"] {
+  --category-accent: #24752f;
+  --category-border: #7fbd4f;
+  --category-card: #cfeaac;
+  --category-card-open: #dff3c7;
+  --category-page: #e7f6dc;
+  --category-primary: #d92d20;
+  --category-primary-hover: #b42318;
+  --category-secondary: #c6251a;
+  --category-secondary-border: #e6857d;
+  --category-soft: #b2c887;
+  --category-title: #176b2a;
+}
+
+[data-category-colors="transport"] {
+  --category-accent: #1f6182;
+  --category-border: #75b9d7;
+  --category-card: #cee9f5;
+  --category-card-open: #e2f3fa;
+  --category-page: #eef9fd;
+  --category-soft: #b7deef;
+}
+
+[data-category-colors="tovary-dlya-detey"] {
+  --category-accent: #92551c;
+  --category-border: #e4a85f;
+  --category-card: #f9dfbd;
+  --category-card-open: #fcebd5;
+  --category-page: #fff6eb;
+  --category-soft: #f5c98f;
+}
+
+[data-category-colors="uslugi-dlya-doma"] {
+  --category-accent: #116a70;
+  --category-border: #68c3c4;
+  --category-card: #c8eceb;
+  --category-card-open: #dcf5f3;
+  --category-page: #ecfaf9;
+  --category-soft: #ace0df;
+}
+
+[data-category-colors="zhivotnye"] {
+  --category-accent: #536716;
+  --category-border: #b0ca54;
+  --category-card: #e7f2b9;
+  --category-card-open: #f0f7d3;
+  --category-page: #f7fbe8;
+  --category-soft: #d9e991;
+}
+
+:where([data-category-index]) [data-category-theme="posuda"] > div:last-child {
+  position: static;
+}
+
+:where([data-category-index]) [data-category-theme="posuda"] > div:last-child h1,
+:where([data-category-index]) [data-category-theme="posuda"] > div:last-child p {
+  position: relative;
+  z-index: 10;
+}
+
+:where([data-category-index]) [data-category-theme="posuda"] > div:last-child > div > div:last-child {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 20;
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0;
+}
+
+:where([data-category-index]) [data-category-theme="posuda"] > div:last-child > div > div:last-child > a {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  :where([data-category-index]) [data-category-theme="posuda"] > div:last-child > div > div:last-child {
+    left: 1.25rem;
+    right: auto;
+    bottom: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  :where([data-category-index]) [data-category-theme="posuda"] > div:last-child > div > div:last-child {
+    left: 1.75rem;
+    bottom: 1.5rem;
+  }
+}
+
+:where([data-category-index]) [data-category-theme="instrumenty"] {
+  position: relative;
+  min-height: 0 !important;
+  aspect-ratio: 1362 / 1155;
+  overflow: hidden;
+  background-color: #4e3829 !important;
+  background-image: none !important;
+  background-repeat: no-repeat !important;
+  background-size: cover !important;
+  background-position: center center !important;
+}
+
+:where([data-category-index]) [data-category-theme="instrumenty"] > [data-hero-copy] {
+  position: static;
+  display: block !important;
+  width: 100%;
+  max-width: 100%;
+  text-shadow: none;
+}
+
+:where([data-category-index]) [data-category-theme="instrumenty"] > [data-hero-copy] > div:first-child {
+  display: inline-block;
+  max-width: 17.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:where([data-category-index]) [data-category-theme="instrumenty"] > [data-hero-copy] h1,
+:where([data-category-index]) [data-category-theme="instrumenty"] > [data-hero-copy] p {
+  position: relative;
+  z-index: 10;
+  max-width: none !important;
+  color: #fff !important;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.95);
+}
+
+:where([data-category-index]) [data-category-theme="instrumenty"] > [data-hero-copy] h1 {
+  white-space: nowrap;
+}
+
+:where([data-category-index]) [data-category-theme="instrumenty"] > [data-hero-copy] p {
+  margin-top: 0.35rem;
+}
+
+:where([data-category-index]) [data-category-theme="instrumenty"] [data-hero-actions] {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 20;
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0;
+  text-shadow: none;
+}
+
+:where([data-category-index]) [data-category-theme="instrumenty"] [data-hero-actions] > a {
+  flex: 0 0 auto;
+  min-height: 40px;
+  height: 40px;
+  padding-left: 0.65rem;
+  padding-right: 0.65rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+
+@media (max-width: 374px) {
+  :where([data-category-index]) [data-category-theme="instrumenty"] [data-hero-actions] {
+    left: 0.75rem !important;
+    right: 0.75rem !important;
+    bottom: 0.75rem !important;
+    flex-flow: column nowrap;
+    align-items: stretch;
+    gap: 0.4rem;
+  }
+
+  :where([data-category-index]) [data-category-theme="instrumenty"] [data-hero-actions] > a {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (min-width: 768px) {
+  :where([data-category-index]) [data-category-theme="instrumenty"] {
+    min-height: 0 !important;
+    aspect-ratio: 8 / 3;
+  }
+
+  :where([data-category-index]) [data-category-theme="instrumenty"] > [data-hero-copy] > div:first-child {
+    max-width: 17rem;
+  }
+
+  :where([data-category-index]) [data-category-theme="instrumenty"] [data-hero-actions] {
+    left: 1.25rem;
+    right: auto;
+    bottom: 1.25rem;
+  }
+
+  :where([data-category-index]) [data-category-theme="instrumenty"] [data-hero-actions] > a {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    font-size: 0.875rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  :where([data-category-index]) [data-category-theme="instrumenty"] > [data-hero-copy] > div:first-child {
+    max-width: 19rem;
+  }
+
+  :where([data-category-index]) [data-category-theme="instrumenty"] [data-hero-actions] {
+    left: 1.75rem;
+    bottom: 1.5rem;
+  }
+}
+
+@media (max-width: 639px) {
+  [data-image-hero="true"] [data-hero-copy],
+  [data-image-hero="true"] [data-hero-actions] {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  [data-image-hero="true"] [data-hero-actions] > a,
+  [data-image-hero="true"] [data-hero-actions] > div,
+  [data-image-hero="true"] [data-hero-actions] > div > a {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+[data-category-theme="instrumenty"] [data-hero-copy] h1,
+[data-category-theme="instrumenty"] [data-hero-copy] p {
+  color: #fff !important;
+  text-shadow: 0 2px 8px rgba(8, 27, 22, 0.96), 0 1px 2px rgba(8, 27, 22, 0.96);
+}
+
+[data-category-theme="elektronika"] [data-hero-copy] h1,
+[data-category-theme="elektronika"] [data-hero-copy] p {
+  color: #fff !important;
+  text-shadow: 0 2px 8px rgba(6, 11, 39, 0.96), 0 1px 2px rgba(6, 11, 39, 0.96);
+}
+
+[data-category-theme="zhivotnye"] > [data-hero-copy] > div {
+  --hero-copy-background: rgb(255 255 255 / 92%);
+  background: var(--hero-copy-background);
+  border-radius: 0.25rem;
+  box-shadow: 0 0 0 0.375rem var(--hero-copy-background);
+}
+
+@media (min-width: 1024px) {
+  [data-category-theme="zhivotnye"] > [data-hero-copy] > div {
+    --hero-copy-background: rgb(8 27 22 / 82%);
+  }
+
+  [data-category-theme="zhivotnye"] h1,
+  [data-category-theme="zhivotnye"] p,
+  [data-category-theme="dlya-doma-i-dachi"] h1,
+  [data-category-theme="dlya-doma-i-dachi"] p,
+  [data-category-theme="menyayu-ili-otdam-darom"] h1,
+  [data-category-theme="menyayu-ili-otdam-darom"] p,
+  [data-category-theme="nedvizhimost"] h1,
+  [data-category-theme="nedvizhimost"] p,
+  [data-category-theme="sad-i-rasteniya"] h1,
+  [data-category-theme="sad-i-rasteniya"] p {
+    color: #fff !important;
+    text-shadow: 0 2px 8px rgba(8, 27, 22, 0.96), 0 1px 2px rgba(8, 27, 22, 0.96);
+  }
+}
+
+[data-category-theme="krasota-i-uhod"] > [data-hero-copy] {
+  position: relative;
+  z-index: 10;
+}
+
+[data-category-theme="krasota-i-uhod"] h1,
+[data-category-theme="krasota-i-uhod"] p {
+  color: #fff !important;
+  text-shadow: 0 2px 8px rgba(57, 30, 13, 0.92), 0 1px 2px rgba(57, 30, 13, 0.92);
+}
+
+[data-category-theme="biznes"] > [data-hero-copy] {
+  position: relative;
+  z-index: 10;
+}
+
+[data-category-theme="biznes"] h1,
+[data-category-theme="biznes"] p {
+  color: #fff !important;
+  text-shadow: 0 2px 8px rgba(6, 30, 43, 0.96), 0 1px 2px rgba(6, 30, 43, 0.96);
+}

@@ -1,6 +1,6 @@
 // Opt-in owned local PostgreSQL check. Entire financial fixtures roll back; no provider network.
 import assert from 'node:assert/strict';
-import {randomUUID,randomBytes} from 'node:crypto';
+import {randomUUID,randomInt,randomBytes} from 'node:crypto';
 import {createRequire} from 'node:module';
 import pg from 'pg';
 import {stateFile,localPrimaryDatabaseConfig,docker} from './local-primary-fixture.mjs';
@@ -20,7 +20,7 @@ try{
  const tx={query:(sql,values)=>owner.query(sql,values)},database={...tx,transaction:work=>work(tx)},context={state,ownerDb:database,runtimeDb:database,load};
  const user=(await owner.query('insert into app.users(email,password_hash,email_verified_at,role) values($1,$2,clock_timestamp(),$3) returning id',[`pay-local-${randomUUID()}@example.invalid`,`scrypt$131072$8$1$${'a'.repeat(32)}$${'b'.repeat(128)}`,'admin'])).rows[0].id;
  const token=randomBytes(32).toString('hex');await owner.query("insert into app.sessions(token_hash,user_id,auth_version,scope) values($1,$2,0,'app')",[load('identity').hashSessionToken(token),user]);
- const phone='+7999'+String(randomBytes(4).readUInt32BE()%10000000).padStart(7,'0');
+ const phone='+7999'+String(randomInt(10_000_000)).padStart(7,'0');
  await owner.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[user,JSON.stringify({name:'Синтетический автор',phone})]);
  await owner.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[user,phone,'synthetic-listing-payment-'+randomUUID()]);
  assert.equal((await owner.query('select app.phone_is_confirmed($1) as confirmed',[user])).rows[0].confirmed,true);

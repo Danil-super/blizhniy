@@ -26,7 +26,11 @@ const points = [
   },
 ];
 
-export const metadata: Metadata = { title: "О проекте", alternates: { canonical: "/o-proekte" } };
+export const metadata: Metadata = {
+  title: "О проекте",
+  description: "Как устроен БЛИЖНИЙ и почему площадка для местных объявлений, работы и услуг начала с Краснодарского края.",
+  alternates: { canonical: "/o-proekte" },
+};
 
 export default function Page() {
   return (

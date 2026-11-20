@@ -11,9 +11,21 @@ const unavailable = () => new Error("Restricted media runtime unavailable");
 export function assertMediaRuntime(context: Context, rootDirectory?: string, appDirectory?: string): MediaPolicy | null {
   if (typeof window !== "undefined") throw unavailable();
   if (["development", "test"].includes(context.env.NODE_ENV ?? "")) return null;
+  if (context.env.BLIZHNIY_AUTH_MODE !== "postgres") throw unavailable();
+  return readProductionMediaPolicy(context, rootDirectory, appDirectory);
+}
+
+/** The legacy uploader may access the decoder socket only, never the PostgreSQL file store. */
+export function getLegacyDecoderSocket(context: Context): string {
+  const mode = context.env.BLIZHNIY_AUTH_MODE;
+  if (typeof window !== "undefined" || (mode && mode !== "local")) throw unavailable();
+  return readProductionMediaPolicy(context).socket;
+}
+
+function readProductionMediaPolicy(context: Context, rootDirectory?: string, appDirectory?: string): MediaPolicy {
   let descriptor: number | undefined;
   try {
-    if (context.env.NODE_ENV !== "production" || context.env.BLIZHNIY_AUTH_MODE !== "postgres" || context.platform !== "linux" ||
+    if (context.env.NODE_ENV !== "production" || context.platform !== "linux" ||
         !/^22\.(?:1[89]|[2-9]\d)\.\d+$/.test(context.versions?.node ?? "") ||
         context.execPath !== "/opt/blizhniy-node22/bin/node") throw unavailable();
     const uid = context.getuid?.(), gid = context.getgid?.();

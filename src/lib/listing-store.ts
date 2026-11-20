@@ -3,7 +3,7 @@ import { formatBookingPrice } from "@/lib/booking-details";
 import { hasMapCoordinates } from "@/lib/map-location";
 import { effectivePublicationStatus } from "@/lib/publication-time";
 import { publicMediaUrl } from "@/lib/storage-upload";
-import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
+import { createLegacyPublicationRow, isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { BookingDetails, Listing, ListingKind, PublicationStatus } from "@/lib/types";
 
 type ListingTypeRow = "sell" | "buy" | "free" | "rent";
@@ -360,37 +360,6 @@ function listingWithMediaFallback(listing: Listing, mediaPaths?: string[]) {
   return { ...listing, images };
 }
 
-async function insertListingImages(listingId: string, mediaPaths?: string[]) {
-  const paths = cleanMediaPaths(mediaPaths);
-
-  if (!paths.length) {
-    return;
-  }
-
-  await supabaseRest("/rest/v1/listing_images", {
-    method: "POST",
-    prefer: "return=minimal",
-    body: paths.map((path, index) => ({
-      listing_id: listingId,
-      storage_path: path,
-      sort_order: index,
-    })),
-  });
-}
-
-async function replaceListingImages(listingId: string, mediaPaths?: string[]) {
-  const paths = cleanMediaPaths(mediaPaths);
-
-  await supabaseRest(`/rest/v1/listing_images?listing_id=eq.${encodeURIComponent(listingId)}`, {
-    method: "DELETE",
-    prefer: "return=minimal",
-  });
-
-  if (paths.length) {
-    await insertListingImages(listingId, paths);
-  }
-}
-
 export async function createStoredListing(input: CreateStoredListingInput) {
   if (!isSupabaseRestConfigured()) {
     return undefined;
@@ -401,39 +370,36 @@ export async function createStoredListing(input: CreateStoredListingInput) {
   const regionId = await findRegionId(cityRow);
 
   const status = input.status ?? "pending_payment";
-  const rows = await supabaseRest<ListingRow[]>(`/rest/v1/listings?select=${listingSelect}`, {
-    method: "POST",
-    prefer: "return=representation",
-    body: {
-      address: input.address ?? null,
-      author_id: input.authorId,
-      category_id: categoryId ?? null,
-      city_id: cityRow?.id ?? null,
-      contact_phone: input.phone ?? null,
-      description: input.description || "Описание будет дополнено.",
-      booking: input.booking ?? null,
-      district: input.district ?? null,
-      is_paid: status === "published",
-      latitude: input.lat ?? null,
-      listing_type: dbTypeByListingKind[input.kind] ?? "sell",
-      longitude: input.lng ?? null,
-      messenger_url: input.messengerUrl ?? null,
-      price: priceToNumber(input.price),
-      published_at: status === "published" ? new Date().toISOString() : null,
-      region_id: regionId ?? null,
-      show_exact_address: resolveShowExactAddress(input),
-      status,
-      title: input.title,
-    },
-  });
+  const fields = {
+    address: input.address ?? null,
+    author_id: input.authorId,
+    category_id: categoryId ?? null,
+    city_id: cityRow?.id ?? null,
+    contact_phone: input.phone ?? null,
+    description: input.description || "Описание будет дополнено.",
+    booking: input.booking ?? null,
+    district: input.district ?? null,
+    is_paid: status === "published",
+    latitude: input.lat ?? null,
+    listing_type: dbTypeByListingKind[input.kind] ?? "sell",
+    longitude: input.lng ?? null,
+    messenger_url: input.messengerUrl ?? null,
+    price: priceToNumber(input.price),
+    published_at: status === "published" ? new Date().toISOString() : null,
+    region_id: regionId ?? null,
+    show_exact_address: resolveShowExactAddress(input),
+    status,
+    title: input.title,
+  };
+  const rows = await createLegacyPublicationRow<ListingRow>(
+    "listings", listingSelect, fields, cleanMediaPaths(input.mediaPaths),
+  );
 
   const listing = rows[0];
 
   if (!listing) {
     return undefined;
   }
-
-  await insertListingImages(listing.id, input.mediaPaths);
 
   return listingWithMediaFallback((await getStoredListingById(listing.id)) ?? mapListing((await withCategoryParents([listing]))[0]), input.mediaPaths);
 }
@@ -511,6 +477,7 @@ export async function updateStoredListingForUser(listingId: string, userId: stri
       method: "PATCH",
       prefer: "return=representation",
       body: {
+        replacement_image_paths: cleanMediaPaths(input.mediaPaths),
         address: input.address ?? null,
         category_id: categoryId ?? null,
         city_id: cityRow?.id ?? null,
@@ -535,8 +502,6 @@ export async function updateStoredListingForUser(listingId: string, userId: stri
     return undefined;
   }
 
-  await replaceListingImages(listingId, input.mediaPaths);
-
   return listingWithMediaFallback((await getStoredListingById(listingId)) ?? mapListing((await withCategoryParents([rows[0]]))[0]), input.mediaPaths);
 }
 
@@ -558,7 +523,7 @@ async function storedListingBody(input: CreateStoredListingInput, status: Public
     longitude: input.lng ?? null,
     messenger_url: input.messengerUrl ?? null,
     price: priceToNumber(input.price),
-    ...(options.preserveMedia && input.mediaPaths === undefined ? {} : {}),
+    ...(options.clearMedia || input.mediaPaths !== undefined ? { replacement_image_paths: cleanMediaPaths(input.mediaPaths) } : {}),
     region_id: regionId ?? null,
     show_exact_address: resolveShowExactAddress(input),
     status,
@@ -604,10 +569,6 @@ export async function saveStoredListingForUser(
 
   if (!rows[0]?.id) {
     return undefined;
-  }
-
-  if (options.clearMedia || input.mediaPaths !== undefined) {
-    await replaceListingImages(listingId, input.mediaPaths);
   }
 
   return listingWithMediaFallback((await getStoredListingById(listingId)) ?? mapListing((await withCategoryParents([rows[0]]))[0]), input.mediaPaths);
@@ -710,10 +671,10 @@ export async function recordStoredListingView(listingId: string, viewerKey: stri
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 }
 
-export async function listStoredListings(limit = 24, options: { kind?: ListingKind; offset?: number } = {}) {
+export async function listStoredListings(limit = 24, options: { kind?: ListingKind; city?: string; offset?: number } = {}) {
   if (process.env.BLIZHNIY_AUTH_MODE === 'postgres') {
     const {getProductionPublicListingStore} = await import('./production-public-listing-runtime');
-    return (await getProductionPublicListingStore()).list({limit, kind: options.kind, offset: options.offset ?? 0});
+    return (await getProductionPublicListingStore()).list({limit, kind: options.kind, city: options.city, offset: options.offset ?? 0});
   }
   if (!isSupabaseRestConfigured()) {
     return [];
@@ -724,8 +685,11 @@ export async function listStoredListings(limit = 24, options: { kind?: ListingKi
   const kindFilter = options.kind ? `&listing_type=eq.${dbTypeByListingKind[options.kind]}` : "";
 
   try {
+    const cityRow = options.city ? await findCity(options.city) : undefined;
+    if (options.city && !cityRow) return [];
+    const cityFilter = cityRow ? `&city_id=eq.${encodeURIComponent(cityRow.id)}` : "";
     const rows = await fetchListingRows(
-      `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}${kindFilter}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${offset}`,
+      `&status=eq.published&is_paid=eq.true&expires_at=gt.${encodeURIComponent(new Date().toISOString())}${kindFilter}${cityFilter}&order=published_at.desc.nullslast,created_at.desc,id.desc&limit=${pageSize}&offset=${offset}`,
     );
 
     return rows.map(mapListing).map(publicListing);

@@ -72,3 +72,18 @@ even development requires a valid IP. The two existing server actions now forwar
 - [Caddy remote_host placeholder](https://caddyserver.com/docs/caddyfile/concepts): the request's remote socket host, not a client-supplied header.
 - [Next start hostname option](https://nextjs.org/docs/app/api-reference/cli/next#next-start-options): `-H` selects the listening host; the default is public `0.0.0.0`.
 - [Turnstile server-side validation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/): the token maximum is 2048 characters; provider token validity/reuse checks remain authoritative.
+
+### Static files during a release switch
+
+The Caddy template can serve versioned JavaScript, CSS, WebP and the two build-specific Next.js manifests from the running and incoming builds. The operator enables retention by creating the dedicated directory next to the managed application path. With the default layout this is `/var/www/blizhniy-static`. Its owner must be the deployment account. Caddy needs read and traversal access to the published files and their parent directories. Keep write access with the deployment account. Set both static roots in the Caddyfile to the actual directory when using a different application path.
+
+Deploy and manual rollback populate the two links before replacing the process. The automatic rollback uses the same prepared pair. A conflict between the contents of the same static path stops preparation before the process switch. A request missing in both builds continues to Next with its original URL. This covers the immediately preceding build. On first activation, verify a known old-only chunk through the public entry after the next release and check that a missing chunk returns 404 without an immutable cache lifetime.
+
+
+The template was tested with the Caddyfile adapter from Caddy 2.10.2. The Ubuntu 2.6.2 adapter accepts this file but can send incoming-only assets to Next and attach immutable caching to HTTP 416. Its successful configuration validation alone does not establish compatibility.
+
+For a 2.6.2 server, retain the live site's hostnames, compression, proxy headers and other routes in the source Caddyfile. Use the tested 2.10.2 adapter to generate native JSON from that source. Validate the JSON using the installed daemon. Configure service startup and reload to read the same JSON, including after reboot. Keep the former configuration and unit settings available for rollback. In a rehearsal, compare the bytes of an old-only and an incoming-only file, check 304 and 206, and check that 404 and 416 responses have no immutable cache lifetime.
+
+For a missing catalogue category, the proxy serves the application's 404 page from the backend that answered the original request. During a port switch, keep the previous backend alive until its in-flight responses finish. Verify that an unknown category returns HTTP 404, a noindex directive and a visible link to the homepage with JavaScript disabled. Check an existing category and client-side navigation in both directions.
+
+The optional Unix-socket handoff operator expects a private directory (0700) and socket (0600). Caddy 2.6.2 treats a socket mode suffix as part of its filename. When rehearsing with that version, use a plain socket path and create it with process umask 0177 in the private directory. The read and conditional switch use the single strong ETag supplied by Caddy, including when it arrives in the HTTP trailer.

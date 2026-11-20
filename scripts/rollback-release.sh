@@ -43,6 +43,10 @@ if [[ ! -f "$ROLLBACK_CHECK" || -L "$ROLLBACK_CHECK" ]] || ! PREVIOUS_BUILD_ID="
   exit 4
 fi
 
+if [[ -e "${APP_DIR}-static" || -L "${APP_DIR}-static" ]]; then
+  node "$SCRIPT_DIR/retain-web-assets.mjs" "${APP_DIR}-static" "$CURRENT_RELEASE" "$PREVIOUS_RELEASE"
+fi
+
 echo "[rollback] restoring previous release"
 ln -sfn "$PREVIOUS_RELEASE" "${APP_DIR}.next"
 mv -Tf "${APP_DIR}.next" "$APP_DIR"
@@ -50,7 +54,7 @@ pm2 delete "$APP_NAME" || true
 mkdir -p "${PREVIOUS_RELEASE}/.pm2"
 pm2 start "${PREVIOUS_RELEASE}/ecosystem.config.cjs" --update-env </dev/null
 
-if ! node "$ROLLBACK_CHECK" --probe "$PORT" "$PREVIOUS_BUILD_ID"; then
+if ! BLIZHNIY_PROBE_MODULES="$CURRENT_RELEASE/node_modules" node "$ROLLBACK_CHECK" --probe "$PORT" "$PREVIOUS_BUILD_ID"; then
   echo "[rollback] previous release started but readiness failed; intervention required" >&2
   exit 5
 fi

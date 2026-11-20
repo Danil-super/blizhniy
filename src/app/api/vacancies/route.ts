@@ -2,7 +2,7 @@ import { readLegacyJson } from "@/lib/legacy-request-body";
 import { NextResponse } from "next/server";
 import { createPayment, validatePaymentCreationPrerequisites } from "@/lib/payment-provider";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
-import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
+import { isSupabaseServiceRoleConfigured, isUuid, LegacyDraftConflict } from "@/lib/supabase-rest";
 import { validateMediaStoragePathsForUser } from "@/lib/storage-upload";
 import { normalizeVacancyRequisites, validateVacancyRequisites } from "@/lib/vacancy-requisites";
 import {
@@ -112,6 +112,10 @@ export async function POST(request: Request) {
   }
 
   const isDraft = body.status === "draft";
+  const creationKey = request.headers.get("Idempotency-Key");
+  if (creationKey !== null && (!isUuid(creationKey) || !isDraft || body.tariffId)) {
+    return NextResponse.json({ error: "Некорректный запрос сохранения черновика." }, { status: 400 });
+  }
   const title = cleanString(body.title) || (isDraft ? "Черновик вакансии" : "");
   const organization = cleanString(body.organization);
   const city = cleanString(body.city) || "Краснодар";
@@ -225,7 +229,7 @@ export async function POST(request: Request) {
     const reusableVacancy = tariffId ? await findReusableStoredVacancyForPayment(vacancyInput) : undefined;
     const vacancy = reusableVacancy
       ? await updateStoredVacancyForUser(reusableVacancy.id, auth.user.id, vacancyInput)
-      : await createStoredVacancy(vacancyInput);
+      : await createStoredVacancy(vacancyInput, creationKey ?? undefined);
 
     if (!vacancy?.id) {
       return NextResponse.json({ error: "Не удалось создать вакансию в Supabase" }, { status: 500 });
@@ -246,6 +250,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ vacancy, payment }, { status: 201 });
   } catch (error) {
+    if (error instanceof LegacyDraftConflict) return NextResponse.json({ error: error.message }, { status: 409 });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Vacancy creation failed" }, { status: 400 });
   }
 }

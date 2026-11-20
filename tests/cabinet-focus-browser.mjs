@@ -2,8 +2,9 @@
 import assert from 'node:assert/strict';import {test} from 'node:test';import {spawn} from 'node:child_process';
 import {once} from 'node:events';import {createServer} from 'node:net';import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';import {join} from 'node:path';import {rootCertificates} from 'node:tls';import {randomBytes} from 'node:crypto';import {chromium} from 'playwright';
+import {testCachedCabinetScreen} from './cabinet-history-cache-browser-cases.mjs';
 import {testCabinetCardBrowser} from './cabinet-card-browser-cases.mjs';
-test('ordinary tab focus keeps cabinet cards/photos/dialog stable; explicit auth invalidation hides private data',{timeout:90000},async()=>{
+test('ordinary tab focus keeps cabinet cards/photos/dialog stable; explicit auth invalidation hides private data',{timeout:90000},async t=>{
  const directory=await mkdtemp(join(tmpdir(),'blizhniy-payment-return-browser-'));let app,browser;
  try{
   const key=join(directory,'key'),ca=join(directory,'ca');await writeFile(key,randomBytes(32),{mode:0o600});await writeFile(ca,rootCertificates[0],{mode:0o600});
@@ -19,5 +20,6 @@ test('ordinary tab focus keeps cabinet cards/photos/dialog stable; explicit auth
   browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:1440,height:900}}),page=await context.newPage();
   page.setDefaultTimeout(10000);
   await testCabinetCardBrowser({context,page,origin});
+  await t.test('cached payment history waits for identity before restoring rows',()=>testCachedCabinetScreen(origin));
  }finally{await browser?.close();if(app&&app.exitCode===null){process.kill(-app.pid,'SIGTERM');await once(app,'exit');}await rm(directory,{recursive:true});}
 });

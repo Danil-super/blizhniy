@@ -8,6 +8,21 @@ type Dependencies={create:(owner:string,key:string,options?:Options)=>Promise<{i
  upload:(owner:string,intent:string,file:Blob,options?:Options)=>Promise<UploadedImage>;
  read:(owner:string,id:string,options?:Options)=>Promise<ListingFormSnapshot>;
  write:(owner:string,id:string,revision:string,form:ListingFormDraft,options?:Options)=>Promise<ListingFormSnapshot>};
+// Both actions belong to the same editor. A new form or account starts with its own draft and uploads.
+type ListingEditor = {
+ owner:string;
+ sourceId:string|undefined;
+ baseline:ListingFormSnapshot|undefined;
+ readyFiles:WeakMap<Blob,UploadedImage>;
+};
+const editors=new WeakMap<HTMLFormElement,ListingEditor>();
+export function getListingEditor(form:HTMLFormElement,owner:string,existing?:ListingFormSnapshot):ListingEditor {
+ const editor=editors.get(form);
+ if(editor&&editor.owner===owner&&editor.sourceId===existing?.id)return editor;
+ const next={owner,sourceId:existing?.id,baseline:existing,readyFiles:new WeakMap<Blob,UploadedImage>()};
+ editors.set(form,next);
+ return next;
+}
 export function sameListingForm(a:ListingFormDraft,b:ListingFormDraft):boolean{
  const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?
   Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,canonical(item)])):value;
@@ -37,7 +52,12 @@ export function createListingFormSave(owner:string,input:unknown,files:Blob[],de
   async readback(options?:Options){
    if(busy||!created)throw new Error('Дождитесь завершения запроса.');busy=true;
    try{remote=await dependencies.read(owner,created.id,options);
-    if(uploads.every(item=>item.ready)&&sameListingForm(remote.form,payload())){complete=remote;unknown=false;}return remote;
+    if(uploads.every(item=>item.ready)&&sameListingForm(remote.form,payload())){
+     complete=remote;unknown=false;
+    }else if(existing&&remote.revision===created.revision&&remote.revision===existing.revision&&sameListingForm(remote.form,existing.form)){
+     unknown=false;
+    }
+    return remote;
    }finally{busy=false;}
   },
   acceptRemoteRevision(){if(busy||!remote||!created)throw new Error('Сначала прочитайте сохранённую версию.');created.revision=remote.revision;unknown=false;},

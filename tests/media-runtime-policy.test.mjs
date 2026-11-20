@@ -42,3 +42,16 @@ test('production policy refuses alternate storage/source paths and local mode ne
   }
   const f2=fixture();f2.context.env.NODE_ENV='';assert.throws(()=>f2.exports.assertMediaRuntime(f2.context),/Restricted media runtime unavailable/);
 });
+
+test('legacy production can obtain only the protected socket name under the full operator policy',()=>{
+  for(const mode of [undefined,'','local']){
+    const f=fixture(); f.context.env.BLIZHNIY_AUTH_MODE=mode;
+    assert.equal(f.exports.getLegacyDecoderSocket(f.context),f.config.socket);
+    assert.throws(()=>f.exports.assertMediaRuntime(f.context));
+    f.info.mode=0o644;assert.throws(()=>f.exports.getLegacyDecoderSocket(f.context));
+  }
+  for(const mode of ['postgres','unknown']){
+    const f=fixture(); f.context.env.BLIZHNIY_AUTH_MODE=mode;
+    assert.throws(()=>f.exports.getLegacyDecoderSocket(f.context));
+  }
+});

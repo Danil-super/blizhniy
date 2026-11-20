@@ -40,9 +40,11 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   const category = categories.find((item) => item.slug === categorySlug);
   const { subcategory, canonicalSlug } = resolveSubcategory(category, decodedSubcategorySlug);
 
+  const section = category && subcategory === category.name ? "Другие объявления" : subcategory;
+
   return {
-    title: subcategory ?? "Подкатегория",
-    description: `Объявления подкатегории ${subcategory ?? subcategorySlug} на БЛИЖНИЙ.`,
+    title: category && section ? `${section} — ${category.name}` : "Подкатегория",
+    description: category && subcategory ? `Объявления в подкатегории «${subcategory}» раздела «${category.name}» на БЛИЖНИЙ.` : undefined,
     alternates: {
       canonical: `/katalog/${categorySlug}/${canonicalSlug}`,
     },

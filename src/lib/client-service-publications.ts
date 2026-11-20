@@ -1,5 +1,5 @@
 "use client";
-import {parseServicePublicationForm,type ServicePublicationKind,type ServicePublicationForm} from './service-publication-contract.ts';
+import {parseServicePublicationForm,servicePublicationStatuses,type ServicePublicationKind,type ServicePublicationForm} from './service-publication-contract.ts';
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,type ListingDraftCursor} from './listing-draft-contract.ts';
 import {parseUploadedImage} from './media-upload-contract.ts';
 import type {ServicePublicationSnapshot} from './postgres-service-publications';import type {ServiceModerationState} from './postgres-service-moderation';
@@ -9,7 +9,6 @@ export type ServicePage={items:ServiceSummary[];nextCursor:ListingDraftCursor|nu
 export type ServiceReviewItem={id:string;publicationId:string;kind:ServicePublicationKind;revision:string;title:string;updatedAt:string};
 export type ServiceReviewQueue={items:ServiceReviewItem[];nextCursor:ListingDraftCursor|null};
 export type ServiceReviewDetail={request:ServiceModerationState;snapshot:ServicePublicationSnapshot;issues:string[]};
-const statuses=['draft','pending_payment','paid','published','archived','expired','rejected'];
 export class ServiceClientError extends Error{
  readonly code:string;
  constructor(code:string){super(code==='CHECKOUT_ACTIVE'?'Для анкеты уже начата оплата. Вернитесь к ней в личном кабинете; после её завершения повторите сохранение.':code==='PHONE_REQUIRED'?'Подтвердите номер телефона, чтобы разместить публикацию.':code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='ADMIN_REQUIRED'?'Недостаточно прав для модерации.':
@@ -21,7 +20,11 @@ function exact(value:unknown,keys:string[]):Record<string,unknown>{if(!value||ty
 function kind(value:unknown):ServicePublicationKind{if(value!=='specialist'&&value!=='fair'&&value!=='marquee')throw Error();return value;}
 const timestamp=(value:unknown)=>parseListingDraftCursor({id:'00000000-0000-4000-8000-000000000000',updatedAt:value})!.updatedAt;
 function title(value:unknown){if(typeof value!=='string'||value.length>160||!value.isWellFormed()||/[\x00-\x1f\x7f]/.test(value))throw Error();return value;}
-function financial(row:Record<string,unknown>){if(typeof row.status!=='string'||!statuses.includes(row.status)||typeof row.paid!=='boolean')throw Error();return{status:row.status,paid:row.paid};}
+function financial(row:Record<string,unknown>){
+ const status=servicePublicationStatuses.find(value=>value===row.status);
+ if(!status||typeof row.paid!=='boolean')throw Error();
+ return {status,paid:row.paid};
+}
 export function parseServicePublicationSnapshot(value:unknown,chosen:ServicePublicationKind,expectedId?:string):ServicePublicationSnapshot{
  try{
   const reference=!!value&&typeof value==='object'&&Object.hasOwn(value,'professionId');

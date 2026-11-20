@@ -159,7 +159,7 @@ function LegacyAdminUsersClient() {
     }
 
     window.requestAnimationFrame(() => {
-      selectedPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      selectedPanelRef.current?.scrollIntoView({ block: "start" });
     });
   }, [selectedUserId]);
 

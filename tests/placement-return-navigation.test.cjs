@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const owner='10000000-0000-4000-8000-000000000001',payment='20000000-0000-4000-8000-000000000002';
 const jsx=(type,props,key)=>({type,props:props||{},key}),walk=n=>Array.isArray(n)?n.flatMap(walk):!n||typeof n!=='object'?[]:[n,...walk(n.props.children)];
 const text=n=>Array.isArray(n)?n.map(text).join(''):n==null||typeof n==='boolean'?'':typeof n==='object'?text(n.props.children):String(n);
-function mount(options={}){
+function mount(options={},onTimer=()=>{}){
  const instances=new Map(),effects=[],timers=new Map(),reads=[],navigation=[];let current,dirty=false,tree,timerId=0;
  let auth={state:'signed-in',userId:owner},result={order:{id:payment,status:'succeeded'},fulfillment:null},readOverride=null;
  const router={replace:href=>navigation.push(href)};
@@ -17,11 +17,12 @@ function mount(options={}){
   if(name==='@/lib/client-listing-payment')return{listingPayment:{read},ListingPaymentClientError:class extends Error{}};
   if(name==='@/lib/client-specialist-payment')return{specialistPaymentStatus:{read}};
   if(name==='@/lib/client-vacancy-payment')return{vacancyPaymentStatus:{read},workRequestPaymentStatus:{read}};
+  if(name==='@/components/listings/ListingWorkflowProvider')return{useLocalPaymentSimulation:()=>options.localSimulation===true};
   if(name==='@/lib/local-account')return{notifyAccountSessionChange(){}};
   if(name==='./ListingPaymentStatus')return{ListingPaymentStatus:({snapshot})=>jsx('h2',{children:snapshot.order.status})};
   if(name==='./TestPaymentLaunch'||name==='./CheckoutCancellation'||name==='@/components/phone/PhonePaymentNotice')return new Proxy({},{get:()=>()=>null});
   throw Error('Unapproved return dependency '+name);
- },exports,callback=>{timers.set(++timerId,callback);return timerId;},id=>timers.delete(id));
+ },exports,(callback,ms)=>{timers.set(++timerId,()=>{onTimer(ms);callback();});return timerId;},id=>timers.delete(id));
  function expand(node,location,used){if(Array.isArray(node))return node.map((v,i)=>expand(v,location+':'+i,used));if(!node||typeof node!=='object')return node;
   if(typeof node.type==='function'){location+=':'+String(node.key??'');used.add(location);const i=instances.get(location)||{values:[],cursor:0};instances.set(location,i);i.cursor=0;const old=current;current=i;const child=node.type(node.props);current=old;return expand(child,location+':render',used);}
   return{...node,props:{...node.props,children:expand(node.props.children,location+':children',used)}};}
@@ -59,4 +60,30 @@ test('a different owner, null readback and late old response cannot navigate',as
 });
 test('unmount cancels a confirmed success timer',async()=>{
  const h=mount();await h.settle();assert.equal(h.timerCount,1);h.stop();assert.equal(h.timerCount,0);assert.deepEqual(h.navigation,[]);
+});
+
+test('a simulated capture waits for the purchased placement before returning to the cabinet',async()=>{
+ const h=mount({localSimulation:true});
+ try{
+  await h.settle();await h.tick();
+  assert.deepEqual(h.navigation,[]);
+  assert.ok(h.buttons().includes('Проверить статус'));
+  h.setResult({order:{id:payment,status:'succeeded'},fulfillment:{publishedAt:'2026-11-16T12:00:00Z'}});
+  await h.tick();await h.tick();
+  assert.deepEqual(h.navigation,['/cabinet/obyavleniya']);
+  assert.equal(h.timerCount,0);
+ }finally{h.stop();}
+});
+
+test('return stays automatic when the worker needs its first 30-second retry', async () => {
+ let elapsed = 0;
+ const h = mount({testCheckout:false}, ms => { elapsed += ms; });
+ h.setRead(() => elapsed < 30000
+  ? {order:{id:payment,status:'pending'},fulfillment:null}
+  : {order:{id:payment,status:'succeeded'},fulfillment:{publishedAt:'2026-11-16T12:00:00Z'}});
+ await h.settle();
+ while (h.timerCount && !h.navigation.length && h.reads.length <= 11) await h.tick();
+ assert.deepEqual(h.navigation, ['/cabinet/obyavleniya']);
+ assert.ok(h.reads.length <= 11);
+ h.stop();
 });

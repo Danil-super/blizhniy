@@ -5,13 +5,17 @@ import { isSupabaseServiceRoleConfigured } from "@/lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
 
+function reply(body: object, status = 200) {
+  return NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
+}
+
 export async function POST(request: Request) {
   const mode = process.env.BLIZHNIY_AUTH_MODE;
   if (mode && mode !== "local") {
-    return NextResponse.json({ error: { code: "LEGACY_WEBHOOK_DISABLED" } }, { status: 503, headers: { "Cache-Control": "no-store" } });
+    return reply({ error: { code: "LEGACY_WEBHOOK_DISABLED" } }, 503);
   }
   if (!isSupabaseServiceRoleConfigured()) {
-    return NextResponse.json({ ok: false, error: "Payment storage is unavailable" }, { status: 503 });
+    return reply({ ok: false, error: "Payment storage is unavailable" }, 503);
   }
 
   const payload = (await readLegacyJson(request).catch(() => null)) as unknown;
@@ -29,7 +33,7 @@ export async function POST(request: Request) {
     !("id" in payload.object) ||
     typeof payload.object.id !== "string"
   ) {
-    return NextResponse.json({ ok: false, error: "Invalid YooKassa notification payload" }, { status: 400 });
+    return reply({ ok: false, error: "Invalid YooKassa notification payload" }, 400);
   }
 
   try {
@@ -42,13 +46,11 @@ export async function POST(request: Request) {
       && payment.fulfillmentStatus !== "applied" && payment.fulfillmentStatus !== "blocked") {
       // Finance was committed but fulfillment is unresolved. A 2xx would lose
       // YooKassa's genuine retry; terminal durable blocked/applied is safe to ACK.
-      return NextResponse.json({ ok: false, error: "Payment fulfillment is pending" }, { status: 503 });
+      return reply({ ok: false, error: "Payment fulfillment is pending" }, 503);
     }
 
-    return NextResponse.json({ ok: true, ...result });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "YooKassa webhook processing failed";
-
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return reply({ ok: true });
+  } catch {
+    return reply({ ok: false, error: "YooKassa webhook processing failed" }, 500);
   }
 }

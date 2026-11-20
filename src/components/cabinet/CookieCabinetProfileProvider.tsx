@@ -11,7 +11,7 @@ export type AvatarCropSelection = {draft:{src:string;zoom:number;offsetX:number;
 type AvatarPreparation = {loading:boolean;message:string};
 type Value = Snapshot & { saveProfile: (profile: CabinetProfile) => Promise<CabinetProfile>; reload: () => void;
   refreshVerifiedPhone: () => Promise<void>;
-  settingsDraft: CabinetProfile | null; setSettingsDraft: (profile: CabinetProfile) => void; clearSettingsDraft: () => void;
+  settingsDraft: CabinetProfile | null; setSettingsDraft: (profile: CabinetProfile) => void; clearSettingsDraft: () => void; clearSavedSettings: (submitted: CabinetProfile) => void;
   avatarDraft: AvatarCropSelection|null; setAvatarDraft:(value:AvatarCropSelection|null)=>void;
   avatarPreparation:AvatarPreparation|null;
   prepareAvatarSelection:(prepare:()=>Promise<AvatarCropSelection>)=>Promise<AvatarCropSelection|null> };
@@ -26,7 +26,7 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
   const [snapshot, setSnapshot] = useState<Snapshot>(empty);
   // Unsaved settings belong to this owner, not to the temporary form DOM. Never
   // persist private input in browser storage or carry it through a real logout.
-  const [settings, setSettings] = useState<{ owner: string; profile: CabinetProfile } | null>(null);
+  const [settings, setSettings] = useState<{ owner: string; profile: CabinetProfile; revision: string | null } | null>(null);
   const [avatar, setAvatar] = useState<{owner:string;value:AvatarCropSelection}|null>(null);
   const [avatarPreparation, setAvatarPreparation] = useState<{owner:string;value:AvatarPreparation}|null>(null);
   const avatarEpoch = useRef(0), avatarOwner = useRef(owner);
@@ -52,11 +52,14 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
     return () => { version.current = generation+1; controller.abort(); pendingWrite.current = null; };
   }, [owner]);
 
+  const staleSettings = !!owner && settings?.owner === owner && snapshot.ownerId === owner &&
+    snapshot.revision !== undefined && settings.revision !== snapshot.revision;
+  const conflict = snapshot.conflict || staleSettings;
   async function saveProfile(profile: CabinetProfile): Promise<CabinetProfile> {
     if (!owner || latestOwner.current !== owner || snapshot.ownerId !== owner || !snapshot.profile || snapshot.loading || snapshot.error) {
       throw new CookieProfileError("SESSION_CHANGED");
     }
-    if (snapshot.conflict) throw new CookieProfileError("PROFILE_CHANGED");
+    if (conflict) throw new CookieProfileError("PROFILE_CHANGED");
     if (snapshot.revision === undefined) throw new CookieProfileError("UNKNOWN");
     if (pendingWrite.current) throw new Error("Сохранение профиля уже выполняется.");
     const generation = ++version.current, attempt = {};
@@ -79,9 +82,20 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
   }
   // In-flight data is never displayed for a changed or unverified identity, even before effect cleanup.
   const visible = owner && snapshot.ownerId === owner ? snapshot : empty;
-  const reload = () => notifyAccountSessionChange(false);
+  function clearSettingsDraft() {
+    if (!owner || latestOwner.current !== owner) return;
+    setSettings(null);
+    avatarEpoch.current++;
+    setAvatarPreparation(null);
+    setAvatar(null);
+  }
+  function reload() {
+    if (conflict) clearSettingsDraft();
+    notifyAccountSessionChange(false);
+  }
   async function refreshVerifiedPhone() {
     if (!owner || latestOwner.current !== owner || !snapshot.profile || snapshot.loading || pendingWrite.current) throw new CookieProfileError('SESSION_CHANGED');
+    if (conflict) throw new CookieProfileError('PROFILE_CHANGED');
     const before=snapshot, generation=version.current;
     const saved=await productionProfile.read(owner,{signal:scope.current?.signal});
     if (generation!==version.current || latestOwner.current!==owner || pendingWrite.current) throw new CookieProfileError('SESSION_CHANGED');
@@ -91,7 +105,7 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
       throw new CookieProfileError('PROFILE_CHANGED');
     }
     setSnapshot({ownerId:owner,...saved,loading:false});
-    setSettings(current=>current?.owner===owner?{...current,profile:{...current.profile,phone:saved.profile.phone,
+    setSettings(current=>current?.owner===owner?{...current,revision:saved.revision,profile:{...current.profile,phone:saved.profile.phone,
       phoneVerified:saved.profile.phoneVerified,verifiedPhone:saved.profile.verifiedPhone}}:current);
   }
   async function prepareAvatarSelection(prepare:()=>Promise<AvatarCropSelection>):Promise<AvatarCropSelection|null> {
@@ -115,12 +129,16 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
       return null;
     }
   }
-  return <Context.Provider value={{ ...visible, saveProfile, reload, refreshVerifiedPhone,
+  return <Context.Provider value={{ ...visible, conflict: owner && visible.profile ? conflict : undefined, saveProfile, reload, refreshVerifiedPhone,
     settingsDraft: owner && settings?.owner === owner ? settings.profile : null,
-    setSettingsDraft: profile => { if (owner && latestOwner.current === owner) setSettings({ owner, profile }); },
-    clearSettingsDraft: () => {
-      if (!owner || latestOwner.current !== owner) return;
-      setSettings(null);avatarEpoch.current++;setAvatarPreparation(null);setAvatar(null);
+    setSettingsDraft: profile => {
+      const revision = visible.revision;
+      if (!owner || latestOwner.current !== owner || revision === undefined) return;
+      setSettings(current => ({owner, profile, revision: current?.owner === owner ? current.revision : revision}));
+    },
+    clearSettingsDraft,
+    clearSavedSettings: submitted => {
+      setSettings(current => current?.owner === owner && current?.profile === submitted ? null : current);
     },
     // Selection is private, owner-scoped UI memory, never a saved profile or a
     // write authorization. Unknown writes still require a fresh profile read.
@@ -130,7 +148,7 @@ function ProfileScope({ auth, children }: { auth: AccountAuthSnapshot; children:
     }},
     avatarPreparation:owner&&avatarPreparation?.owner===owner?avatarPreparation.value:null,
     prepareAvatarSelection }}>
-    {visible.conflict ? <CabinetProfileFailure message="Профиль изменён в другой вкладке. Скопируйте несохранённые изменения и обновите профиль." reload={reload} /> : null}
+    {visible.profile && conflict ? <CabinetProfileFailure message="Профиль изменён в другой вкладке. Скопируйте несохранённые изменения и обновите профиль." reload={reload} /> : null}
     {children}
   </Context.Provider>;
 }

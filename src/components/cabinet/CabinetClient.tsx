@@ -2470,7 +2470,8 @@ function AvatarEditor({
     const nextProfile = { ...profile, ...patch };
 
     const saved = saveProfile ? await saveProfile(nextProfile) : await saveCabinetProfile(ownerKey, nextProfile);
-    onChange(saved);
+    if (saveProfile && avatarContext) avatarContext.clearSavedSettings(profile);
+    else onChange(saved);
   }
 
   function updateCropDraft(patch: Partial<AvatarCropDraft>) {
@@ -2730,7 +2731,9 @@ export function SettingsPanel({ identity, profile, onClose, saveProfile }: { ide
         const nextProfile = { ...form, name: sanitizePersonName(form.name).trim(), phone: form.phone.trim(), city: form.city.trim(), email: identity.email };
         if (!sortedCities.some(city => city.name === nextProfile.city)) throw new Error("Выберите город из списка.");
         const saved = await saveProfile(nextProfile);
-        setForm(saved); setMessage("Настройки сохранены.");
+        if (cookie) cookie.clearSavedSettings(form);
+        else setForm(saved);
+        setMessage("Настройки сохранены.");
         return;
       }
       const origin = await captureClientUserOperation(identity.ownerKey);
@@ -2932,7 +2935,7 @@ export function SettingsPanel({ identity, profile, onClose, saveProfile }: { ide
           <div className="grid min-w-0 gap-1.5 text-sm font-bold text-slate-700">
             <span className="flex min-h-4 items-center justify-between gap-2 leading-4">
               <span>Телефон</span>
-              <span className={`truncate text-[11px] font-bold ${phoneIsVerified ? "text-[#0a8f32]" : "text-amber-700"}`}>
+              <span className={`truncate text-[11px] font-bold ${phoneIsVerified ? "text-green-800" : "text-amber-700"}`}>
                 {!form.phone ? "не указан" : phoneIsVerified ? "подтвержден" : "не подтвержден"}
               </span>
             </span>
@@ -3183,11 +3186,11 @@ function LegacyCabinetResponsesClient({ responses = [] }: { responses?: CabinetR
         }
 
         const payload = (await response.json().catch(() => null)) as CabinetServerApplicationsPayload | null;
-        return (payload?.applications ?? []).map((application) => ({
+        return (payload?.applications ?? []).map((application): CabinetResponseItem => ({
           ...application,
           href: application.targetType === "workRequest" && application.workRequestId ? `/rabota/zakazy/${application.workRequestId}` : application.vacancyId ? `/vakansiya/${application.vacancyId}` : "/rabota/vakansii",
           paymentHref: application.paymentId ? `/oplata/${application.paymentId}` : "/cabinet/oplata",
-        })) satisfies CabinetResponseItem[];
+        }));
       })
       .then((items) => {
         if (active && items) {

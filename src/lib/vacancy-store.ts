@@ -3,7 +3,7 @@ import { hasMapCoordinates } from "@/lib/map-location";
 import { effectivePublicationStatus } from "@/lib/publication-time";
 import { publicMediaUrl } from "@/lib/storage-upload";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
-import { isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
+import { createLegacyPublicationRow, isSupabaseRestConfigured, isUuid, supabaseRest } from "@/lib/supabase-rest";
 import type { JobVacancy, PublicationStatus } from "@/lib/types";
 
 type VacancyRow = {
@@ -182,37 +182,6 @@ function vacancyWithMediaFallback(vacancy: JobVacancy, mediaPaths?: string[]) {
   }
 
   return { ...vacancy, images };
-}
-
-async function insertVacancyImages(vacancyId: string, mediaPaths?: string[]) {
-  const paths = cleanMediaPaths(mediaPaths);
-
-  if (!paths.length) {
-    return;
-  }
-
-  await supabaseRest("/rest/v1/vacancy_images", {
-    method: "POST",
-    prefer: "return=minimal",
-    body: paths.map((path, index) => ({
-      vacancy_id: vacancyId,
-      storage_path: path,
-      sort_order: index,
-    })),
-  });
-}
-
-async function replaceVacancyImages(vacancyId: string, mediaPaths?: string[]) {
-  const paths = cleanMediaPaths(mediaPaths);
-
-  await supabaseRest(`/rest/v1/vacancy_images?vacancy_id=eq.${encodeURIComponent(vacancyId)}`, {
-    method: "DELETE",
-    prefer: "return=minimal",
-  });
-
-  if (paths.length) {
-    await insertVacancyImages(vacancyId, paths);
-  }
 }
 
 function normalizeEmployerType(value?: string) {
@@ -399,25 +368,22 @@ async function storedVacancyBody(input: CreateStoredVacancyInput, status: Public
   };
 }
 
-export async function createStoredVacancy(input: CreateStoredVacancyInput) {
+export async function createStoredVacancy(input: CreateStoredVacancyInput, creationKey?: string) {
   if (!isSupabaseRestConfigured()) {
     return undefined;
   }
 
   const status = input.status ?? "pending_payment";
-  const rows = await supabaseRest<VacancyRow[]>(`/rest/v1/vacancies?select=${vacancySelect}`, {
-    method: "POST",
-    prefer: "return=representation",
-    body: await storedVacancyBody(input, status),
-  });
+  const fields = await storedVacancyBody(input, status);
+  const rows = await createLegacyPublicationRow<VacancyRow>(
+    "vacancies", vacancySelect, fields, cleanMediaPaths(input.mediaPaths), creationKey,
+  );
 
   const vacancy = rows[0];
 
   if (!vacancy) {
     return undefined;
   }
-
-  await insertVacancyImages(vacancy.id, input.mediaPaths);
 
   return vacancyWithMediaFallback((await getStoredVacancyById(vacancy.id)) ?? mapVacancy(vacancy), input.mediaPaths);
 }
@@ -451,15 +417,13 @@ export async function updateStoredVacancyForUser(vacancyId: string, userId: stri
     {
       method: "PATCH",
       prefer: "return=representation",
-      body: await storedVacancyBody(input, status),
+      body: { ...(await storedVacancyBody(input, status)), replacement_image_paths: cleanMediaPaths(input.mediaPaths) },
     },
   );
 
   if (!rows[0]?.id) {
     return undefined;
   }
-
-  await replaceVacancyImages(vacancyId, input.mediaPaths);
 
   return vacancyWithMediaFallback((await getStoredVacancyById(vacancyId)) ?? mapVacancy(rows[0]), input.mediaPaths);
 }
@@ -488,6 +452,10 @@ export async function saveStoredVacancyForUser(
   // Content edits never grant payment or renew the publication date.
   delete body.is_paid;
   delete body.published_at;
+  delete body.logo_path;
+  if (options.clearMedia || input.mediaPaths !== undefined) {
+    body.replacement_image_paths = cleanMediaPaths(input.mediaPaths);
+  }
 
   const rows = await supabaseRest<VacancyRow[]>(
     `/rest/v1/vacancies?select=${vacancySelect}&id=eq.${encodeURIComponent(vacancyId)}&author_id=eq.${encodeURIComponent(userId)}&status=eq.${encodeURIComponent(existingVacancy.status)}`,
@@ -500,10 +468,6 @@ export async function saveStoredVacancyForUser(
 
   if (!rows[0]?.id) {
     return undefined;
-  }
-
-  if (options.clearMedia || input.mediaPaths !== undefined) {
-    await replaceVacancyImages(vacancyId, input.mediaPaths);
   }
 
   return vacancyWithMediaFallback((await getStoredVacancyById(vacancyId)) ?? mapVacancy(rows[0]), input.mediaPaths);

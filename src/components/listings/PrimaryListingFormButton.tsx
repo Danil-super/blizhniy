@@ -5,17 +5,17 @@ import {usePrimaryAccountAuth} from '@/components/auth/AccountAuthProvider';
 import {productionDrafts} from '@/lib/client-listing-drafts';
 import {productionListingMedia,ListingMediaClientError} from '@/lib/client-listing-media';
 import {productionListingForm,ListingFormClientError} from '@/lib/client-listing-form';
-import {createListingFormSave} from '@/lib/listing-form-save';
+import {createListingFormSave,getListingEditor} from '@/lib/listing-form-save';
 import {createListingFormModeration} from '@/lib/listing-form-moderation';
 import {listingModeration} from '@/lib/client-listing-moderation';
 import {checkListingFormContent} from '@/lib/listing-publication-check';
 import {readListingFormData} from '@/lib/listing-form-data';
 import type {ListingFormSnapshot} from '@/lib/listing-form-contract';
-import type {UploadedImage} from '@/lib/media-upload-contract';
 import {ListingDraftInputError} from '@/lib/listing-draft-contract';
 import {useDraftLeaveGuard} from './useDraftLeaveGuard';
 import {draftButton} from './PrivateDraftEditor';
-import {useListingPostmoderation} from './ListingWorkflowProvider';
+import {canStartListingTest} from '@/lib/account-session-state';
+import {useListingPostmoderation,useLocalPaymentSimulation} from './ListingWorkflowProvider';
 import {accountTestPayment} from '@/lib/client-account-test-payment';
 import {startListingPayment,type ListingCheckoutAttempt} from '@/lib/listing-payment-start';
 
@@ -23,12 +23,13 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
  const postmoderation=useListingPostmoderation(),submitLabel=postmoderation?'Перейти к оплате':'Отправить на модерацию';
  const auth=usePrimaryAccountAuth(),identity=auth?.state==='signed-in'||auth?.state==='admin'?auth.userId:null;
  const owner=identity&&(!expectedOwnerId||identity===expectedOwnerId)?identity:null;
+ const simulation=useLocalPaymentSimulation();
+ const paymentUnavailable=!draft&&postmoderation&&!simulation&&!canStartListingTest(auth,owner);
  const attempt=useRef<ReturnType<typeof createListingFormSave>|null>(null),formRef=useRef<HTMLFormElement|null>(null),pending=useRef(false),epoch=useRef(0);
  const moderation=useRef<ReturnType<typeof createListingFormModeration>|null>(null),controlsRef=useRef<HTMLFieldSetElement|null>(null),intentKey=useId();
  const [busy,setBusy]=useState(false),[message,setMessage]=useState<string|null>(null),[remote,setRemote]=useState<ListingFormSnapshot|null>(null),[active,setActive]=useState(false),[done,setDone]=useState(false);
  const [checkoutBlocked,setCheckoutBlocked]=useState(false);
  const controller=useRef<AbortController|null>(null);
- const baseline=useRef(existing),readyFiles=useRef(new Map<Blob,UploadedImage>());
  const [rejected,setRejected]=useState(false);
  const checkout=useRef<ListingCheckoutAttempt>({input:null,uncertain:false}),paymentId=useRef<string|null>(null);
  const [paymentUncertain,setPaymentUncertain]=useState(false);
@@ -59,16 +60,17 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
   }
   if(!controller.current?.signal.aborted)setDone(true);
  }
- async function run(work:()=>Promise<void>){
+ async function run(work:()=>Promise<void>,firstSaveAttempt=false){
   if(pending.current||!owner)return;pending.current=true;setBusy(true);setMessage(null);setCheckoutBlocked(false);const generation=epoch.current;
-  try{await work();}catch(error){if(generation===epoch.current){setMessage(error instanceof ListingDraftInputError?'Проверьте поля объявления: цену, контакты, координаты и параметры аренды.':error instanceof Error?error.message:'Не удалось подтвердить сохранение.');
-   if(error instanceof ListingMediaClientError&&['INVALID_INPUT','MEDIA_OWNER_QUOTA_EXCEEDED'].includes(error.code)&&attempt.current&&!attempt.current.uncertain&&!attempt.current.completed){
+  try{await work();}catch(error){if(generation===epoch.current){setMessage(error instanceof ListingDraftInputError?'Проверьте поля объявления: цену, контакты, координаты и параметры аренды.':error instanceof ListingMediaClientError?error.draftMessage:error instanceof Error?error.message:'Не удалось подтвердить сохранение.');
+   if(error instanceof ListingMediaClientError&&error.allowsDraftEdit(firstSaveAttempt)&&attempt.current&&!attempt.current.uncertain&&!attempt.current.completed){
     setRejected(true);
     try{
      const id=attempt.current.id;
-     if(id){const snapshot=await productionListingForm.read(owner!,id,{signal:controller.current?.signal});
-      if(generation===epoch.current&&snapshot.revision===(baseline.current?.revision??'1')){
-       baseline.current=snapshot;attempt.current=null;setActive(false);setRejected(false);
+     if(id&&formRef.current){const editor=getListingEditor(formRef.current,owner!,existing);
+      const snapshot=await productionListingForm.read(owner!,id,{signal:controller.current?.signal});
+      if(generation===epoch.current&&snapshot.revision===(editor.baseline?.revision??'1')){
+       editor.baseline=snapshot;attempt.current=null;setActive(false);setRejected(false);
        if(formRef.current)delete formRef.current.dataset.primaryIntent;
       }
      }
@@ -80,6 +82,7 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
   finally{if(generation===epoch.current){pending.current=false;setBusy(false);if(formRef.current)delete formRef.current.dataset.primarySaving;}}
  }
  async function save(form:HTMLFormElement){
+  if(paymentUnavailable)return;
   if(form.querySelector('[data-photo-preparing="true"]')){setMessage('Дождитесь подготовки фотографий.');return;}
   if(form.dataset.primaryIntent&&form.dataset.primaryIntent!==intentKey){setMessage('В этой форме уже выполняется сохранение. Сначала проверьте его результат.');return;}
   if(form.dataset.primarySaving==='1')return;form.dataset.primarySaving='1';formRef.current=form;
@@ -91,20 +94,21 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
     const data=new FormData(form),files=data.getAll('photos').filter((item):item is File=>item instanceof File&&item.size>0);
     const input=readListingFormData(data);
     if(!draft){const issues=checkListingFormContent(input,true);if(issues.length)throw Error(issues.map(issue=>issue.message).join(' '));}
+    const editor=getListingEditor(form,owner!,existing);
     attempt.current=createListingFormSave(owner!,input,files,{create:productionDrafts.createEmpty,upload:async(user,intent,file,options)=>{
-     const cached=readyFiles.current.get(file);if(cached)return cached;
-     const uploaded=await productionListingMedia.upload(user,intent,file,options);readyFiles.current.set(file,uploaded);return uploaded;
-    },read:productionListingForm.read,write:productionListingForm.write},baseline.current,data.get('photoOrder'));form.dataset.primaryIntent=intentKey;setActive(true);
+     const cached=editor.readyFiles.get(file);if(cached)return cached;
+     const uploaded=await productionListingMedia.upload(user,intent,file,options);editor.readyFiles.set(file,uploaded);return uploaded;
+    },read:productionListingForm.read,write:productionListingForm.write},editor.baseline,data.get('photoOrder'));form.dataset.primaryIntent=intentKey;setActive(true);
    }
    await attempt.current.save({signal:controller.current?.signal});await finish();
-  });
+  },!attempt.current);
  }
  return <fieldset ref={controlsRef} data-primary-group className="grid min-w-0 gap-3 md:contents">
-  <button type="button" data-primary-control={draft?'save':'submit'} className={className??`${draftButton} bg-[#0875d1] text-white`} disabled={busy||!owner||!!attempt.current?.uncertain||!!moderation.current?.uncertain||paymentUncertain} onClick={event=>{
+  <button type="button" data-primary-control={draft?'save':'submit'} className={className??`${draftButton} bg-[#0875d1] text-white`} disabled={busy||!owner||paymentUnavailable||!!attempt.current?.uncertain||!!moderation.current?.uncertain||paymentUncertain} onClick={event=>{
    if(event.currentTarget.form)void save(event.currentTarget.form);
   }}>{busy?(draft?'Сохраняем поля и фотографии…':'Сохраняем объявление…'):(draft?label:submitLabel)}</button>
-  {!draft&&!active&&<p className="min-w-0 flex-1 basis-64 self-center text-sm text-slate-600 md:col-span-full">{postmoderation?'Объявление появится в каталоге после подтверждения оплаты. Сначала проверим поля и сохраним фотографии.':'Сначала бесплатная проверка модератором. Отправка не публикует объявление и не списывает деньги.'}</p>}
-  {active&&!done&&!checkoutBlocked&&<p className="text-sm text-slate-600 md:col-span-full" role="status">Сохраняется снимок формы на момент нажатия. До подтверждения результата не создавайте объявление повторно.</p>}
+  {!draft&&!active&&<p className="min-w-0 flex-1 basis-64 self-center text-sm text-slate-600 md:col-span-full">{paymentUnavailable?'Можно сохранить черновик. Оплата пока недоступна для этого аккаунта.':postmoderation?'Сначала проверим поля и сохраним фотографии. Перед тестовой оплатой вы увидите, предусмотрена ли публикация объявления.':'Сначала бесплатная проверка модератором. Отправка не публикует объявление и не списывает деньги.'}</p>}
+  {busy&&active&&!done&&!checkoutBlocked&&<p className="text-sm text-slate-600 md:col-span-full" role="status">Сохраняется снимок формы на момент нажатия. До подтверждения результата не создавайте объявление повторно.</p>}
   {message&&<p className="break-words text-sm font-semibold text-rose-700 md:col-span-full" role="alert">{message}</p>}
   {checkoutBlocked&&<a href={returnHref} className="text-sm font-semibold text-[#0875d1] underline md:col-span-full">К начатой оплате в личном кабинете</a>}
   {paymentUncertain&&<button type="button" className={draftButton} disabled={busy||!owner} onClick={()=>void run(async()=>{
@@ -115,12 +119,16 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
   })}>Проверить сохранённый заказ</button>}
   {rejected&&attempt.current?.id&&<button type="button" className={draftButton} disabled={busy||!owner} onClick={()=>void run(async()=>{
    const snapshot=await productionListingForm.read(owner!,attempt.current!.id!,{signal:controller.current?.signal});
-   baseline.current=snapshot;attempt.current=null;moderation.current=null;setActive(false);setRejected(false);setRemote(null);setMessage('Поля доступны для исправления. Изменения ещё не сохранены.');
+   if(controller.current?.signal.aborted||!formRef.current)return;
+   getListingEditor(formRef.current,owner!,existing).baseline=snapshot;attempt.current=null;moderation.current=null;setActive(false);setRejected(false);setRemote(null);setMessage('Поля доступны для исправления. Изменения ещё не сохранены.');
    if(formRef.current)delete formRef.current.dataset.primaryIntent;
   })}>Вернуться к исправлению полей</button>}
   {(attempt.current?.uncertain||moderation.current?.uncertain)&&<button type="button" data-primary-control="readback" className={draftButton} disabled={busy} onClick={()=>void run(async()=>{
    if(moderation.current?.uncertain){await moderation.current.readback({signal:controller.current?.signal});if(moderation.current.completed)setDone(true);else setMessage('Отправка не подтверждена. Нажмите «Отправить на модерацию», чтобы отправить сохранённую версию.');}
-   else{const value=await attempt.current!.readback({signal:controller.current?.signal});if(attempt.current!.completed){if(draft)await finish();else setMessage(`Форма сохранена. Нажмите «${submitLabel}», чтобы продолжить.`);}else setRemote(value);}
+   else{const value=await attempt.current!.readback({signal:controller.current?.signal});if(attempt.current!.completed){if(draft)await finish();else setMessage(`Форма сохранена. Нажмите «${submitLabel}», чтобы продолжить.`);}
+    else if(attempt.current!.uncertain)setRemote(value);
+    else{setRemote(null);setMessage('На сервере прежняя версия. Ваши правки остались в форме. Повторите сохранение.');}
+   }
   })}>{moderation.current?.uncertain?'Проверить отправку':'Проверить сохранённую форму'}</button>}
   {!draft&&attempt.current?.completed&&!done&&<a href={returnHref} className="text-sm text-[#0875d1] underline md:col-span-full">Открыть сохранённое объявление в кабинете</a>}
   {remote&&<section className="min-w-0 rounded-lg border border-amber-400 bg-amber-50 p-4 md:col-span-full" aria-label="Сохранённая форма">

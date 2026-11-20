@@ -11,7 +11,8 @@ function fixture(api={},initialProfile){
  const react={useState(initial){const n=cursor++;if(!Object.hasOwn(values,n))values[n]=typeof initial==='function'?initial():initial;return[values[n],value=>{const next=typeof value==='function'?value(values[n]):value;if(!Object.is(next,values[n])){values[n]=next;dirty=true;}}];},useRef(initial){const n=cursor++;return values[n]??={current:initial};},useEffect(work,deps){const n=cursor++,prior=values[n];if(!prior||deps.some((value,i)=>!Object.is(value,prior.deps[i]))){values[n]={deps};effects.push(()=>{prior?.cleanup?.();values[n].cleanup=work();});}}};
  const Status=moduleAt('SpecialistApplicationStatus.tsx',{'next/link':{__esModule:true,default:link},'@/lib/specialist-application-profile':load('specialist-application-profile')}).SpecialistApplicationStatus;
  const {SpecialistProfilePanel}=moduleAt('SpecialistProfilePanel.tsx',{
-  './ServiceModerationStatus':{ServiceModerationStatus:()=>null},'@/components/listings/ListingWorkflowProvider':{useSpecialistCheckout:()=>false},'@/components/PublicationPlacementPeriod':{PublicationPlacementPeriod:()=>null},
+  './ServiceModerationStatus':{ServiceModerationStatus:()=>null},'@/components/listings/ListingWorkflowProvider':{useSpecialistCheckout:()=>false},'@/components/PublicationPlacementPeriod':moduleAt('../PublicationPlacementPeriod.tsx',{'@/lib/publication-time':load('publication-time')}),
+  '@/components/listings/ListingBadges':moduleAt('../listings/ListingBadges.tsx',{'lucide-react':require('lucide-react')}),
   react,'next/link':{__esModule:true,default:link},'@/lib/client-service-publications':{servicePublications:new Proxy({},{get(_target,key){return async(...args)=>{calls.push({key,args});return api[key]?api[key](...args):key==='list'?{items:[{id}],nextCursor:null}:snapshot;};}})},
   '@/lib/local-account':{notifyAccountSessionChange:()=>calls.push({key:'recheck'})},'@/lib/specialist-application-profile':load('specialist-application-profile'),'@/lib/messenger-url':load('messenger-url'),
   '@/components/cabinet/CookieCabinetProfileProvider':{useCookieCabinetProfile:()=>profile,CabinetProfileFailure:({message})=>React.createElement('p',{role:'alert'},message)},
@@ -69,4 +70,16 @@ test('specialist tab routes to a single questionnaire while fair retains its ind
 });
 test('profile loading error remains recoverable without showing stale questionnaire identity',async()=>{
  const h=fixture({}, {ownerId:owner,profile:null,error:'Профиль недоступен',loading:false,reload(){}});await h.settle();assert.match(h.html,/Профиль недоступен/);assert.doesNotMatch(h.html,/Прежнее имя|Редактировать|data-create-form/);
+});
+
+test('a specialist sees the publication status and the paid period with checkout disabled',async()=>{
+ const publishedAt='2026-10-25T12:00:00.000000Z',expiresAt='2026-11-24T12:00:00.000000Z';
+ for(const [status,label] of [['draft','Черновик'],['published','Опубликовано'],['expired','Истек срок']]){
+  const paid=status!=='draft';
+  const h=fixture({read:async()=>({...snapshot,status,paid,publishedAt:paid?publishedAt:null,expiresAt:paid?expiresAt:null})});
+  await h.settle();
+  assert.ok(h.html.includes('>'+label+'<'),status);
+  assert.equal(h.html.includes('aria-label="Срок размещения"'),paid);
+  if(paid){assert.ok(h.html.includes(publishedAt));assert.ok(h.html.includes(expiresAt));}
+ }
 });

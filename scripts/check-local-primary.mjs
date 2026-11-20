@@ -58,6 +58,7 @@ try{
  assert.equal(upload.status,200,upload.bytes.toString().slice(0,200));const image=JSON.parse(upload.bytes);
  const photo=await send('/api/account/media/read',{expectedOwnerId:user.id,fileId:image.id});assert.equal(photo.status,200);assert.equal(photo.headers['content-type'],'image/webp');
  assert.equal((await sharp(photo.bytes).metadata()).format,'webp');
+ assert.equal(photo.headers['strict-transport-security'],'max-age=31536000');
  assert.equal((await send('/api/account/media/read',{expectedOwnerId:user.id,fileId:image.id},{cookie:''})).status,401);
  assert.equal((await send('/api/account/media/read',{expectedOwnerId:randomUUID(),fileId:image.id})).status,409);
  const email='manual-smoke-'+randomBytes(5).toString('hex')+'@local.invalid';

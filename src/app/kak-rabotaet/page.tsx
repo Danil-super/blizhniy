@@ -32,7 +32,11 @@ const steps = [
   },
 ];
 
-export const metadata: Metadata = { title: "Как работает БЛИЖНИЙ", alternates: { canonical: "/kak-rabotaet" } };
+export const metadata: Metadata = {
+  title: "Как работает БЛИЖНИЙ",
+  description: "Как найти объявление на БЛИЖНИЙ, связаться с автором и разместить свою публикацию.",
+  alternates: { canonical: "/kak-rabotaet" },
+};
 
 export default function Page() {
   return (

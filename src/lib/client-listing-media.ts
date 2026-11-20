@@ -14,6 +14,15 @@ const messages={UNKNOWN:'Результат не подтверждён. Про�
 export class ListingMediaClientError extends Error{
  readonly code:keyof typeof messages;
  constructor(code:keyof typeof messages){super(messages[code]);this.code=code;this.name='ListingMediaClientError';}
+ allowsDraftEdit(firstSaveAttempt:boolean){
+  // A busy response only rules out this request. An earlier upload may have succeeded.
+  return this.code==='INVALID_INPUT'||this.code==='MEDIA_OWNER_QUOTA_EXCEEDED'||(firstSaveAttempt&&this.code==='MEDIA_BUSY');
+ }
+ get draftMessage(){
+  if(this.code==='UNKNOWN')return 'Не удалось подтвердить загрузку фото. Оставьте форму открытой и повторите сохранение.';
+  if(this.code==='MEDIA_BUSY')return 'Обработчик фото занят. Повторите сохранение чуть позже.';
+  return this.message;
+ }
 }
 type Options={signal?:AbortSignal};
 async function bytes(response:Response,signal:AbortSignal,limit:number){

@@ -5,12 +5,11 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
 const projectRequire = createRequire(new URL("../package.json", import.meta.url));
 const parserEntry = projectRequire.resolve("postcss-selector-parser");
 const parser = projectRequire("postcss-selector-parser");
-const vendorRoot = fileURLToPath(new URL("../vendor/postcss-selector-parser", import.meta.url));
+const certificate = JSON.parse(readFileSync(new URL("../docs/selector-upstream-6.1.5.json", import.meta.url), "utf8"));
 
 // Each mutant restores exactly one vulnerable upstream pass in memory, only in
 // its disposable child. Normal installed files and require caches are untouched.
@@ -104,26 +103,16 @@ for (const { name, atom } of runtimeHunks) {
   });
 }
 
-test("selector backport provenance pins published bytes and only the two approved exceptions", () => {
-  const provenance = JSON.parse(readFileSync(join(vendorRoot, "SECURITY-PROVENANCE.json"), "utf8"));
-  assert.equal(provenance.version, "6.1.4");
-  assert.equal(provenance.patch.commit, "62b191792df0a0bc56062e5a875bc74aae2a51cd");
-  assert.equal(Object.keys(provenance.files).length, 37);
-  const changed = [];
-  for (const [file, hashes] of Object.entries(provenance.files)) {
-    const vendoredBytes = readFileSync(join(vendorRoot, file));
-    assert.equal(createHash("sha256").update(vendoredBytes).digest("hex"), hashes.vendoredSha256, file);
-    if (hashes.upstreamSha256 !== hashes.vendoredSha256) changed.push(file);
-    assert.deepEqual(readFileSync(join(dirname(dirname(parserEntry)), file)), vendoredBytes, `Installed ${file} must be the pinned local copy`);
-  }
-  assert.deepEqual(changed.sort(), ["dist/parser.js", "package.json"]);
-  assert.equal(provenance.upstream.unmodifiedPublishedFileCount, 35);
-  const manifest = JSON.parse(readFileSync(join(vendorRoot, "package.json"), "utf8"));
-  assert.equal(manifest.version, "6.1.4");
-  assert.equal(manifest.scripts.prepare, undefined, "Local acquisition must not rebuild the compiled artifact");
+test("installed selector manifest matches the official signed release and installation disables lifecycle scripts", () => {
+  const bytes = readFileSync(join(dirname(dirname(parserEntry)), "package.json"));
+  assert.equal(createHash("sha256").update(bytes).digest("hex"), certificate.files["package.json"]);
+  const manifest = JSON.parse(bytes);
+  assert.equal(manifest.name, certificate.package);
+  assert.equal(manifest.version, certificate.version);
+  assert.match(readFileSync(new URL("../.npmrc", import.meta.url), "utf8"), /^ignore-scripts=true$/m);
 });
 
-test("real Tailwind and postcss-nested resolve one installed local selector backport", () => {
+test("real Tailwind and postcss-nested resolve one installed official selector package", () => {
   for (const name of ["tailwindcss", "postcss-nested"]) {
     const consumerRequire = createRequire(projectRequire.resolve(`${name}/package.json`));
     assert.equal(consumerRequire.resolve("postcss-selector-parser"), parserEntry, name);
@@ -131,10 +120,12 @@ test("real Tailwind and postcss-nested resolve one installed local selector back
   }
   const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
   const entries = Object.entries(lock.packages).filter(([name]) => name.endsWith("/postcss-selector-parser"));
-  assert.equal(entries.length, 1, "No nested or registry parser copy may bypass the backport");
+  assert.equal(entries.length, 1, "Both consumers must use the same verified registry package");
   assert.equal(entries[0][0], "node_modules/postcss-selector-parser");
-  assert.equal(entries[0][1].resolved, "file:vendor/postcss-selector-parser");
-  assert.equal(entries[0][1].version, "6.1.4");
+  assert.equal(entries[0][1].resolved, certificate.tarball);
+  assert.equal(entries[0][1].integrity, certificate.integrity);
+  assert.equal(entries[0][1].dev, true);
+  assert.equal(entries[0][1].version, certificate.version);
 });
 
 test("Tailwind selector mutation preserves class iteration, variants and pseudo-element placement", () => {

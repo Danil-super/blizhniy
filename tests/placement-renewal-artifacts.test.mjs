@@ -18,7 +18,11 @@ test('both local56 artifacts contain exact copied bytes, snapshots and offline-l
    for(const {name,sha256} of getRefundOperatorRolePlan('artifact',{schema:56}).journal)assert.equal(createHash('sha256').update(readFileSync(join(path,'database/migrations',name))).digest('hex'),sha256);
    for(const profile of ['refund-schema-0056.json','refund-schema-local-primary-0056.json'])assert.deepEqual(readFileSync(join(path,'database',profile)),readFileSync(new URL('../database/'+profile,import.meta.url)));
    symlinkSync(fileURLToPath(new URL('../node_modules',import.meta.url)),join(path,'node_modules'),'dir');
-   const proof=execFileSync(process.execPath,['--input-type=module','-e',`import {createRequire} from 'node:module';const require=createRequire(import.meta.url);let calls=0;globalThis.fetch=()=>{calls++;throw Error('network forbidden');};Object.defineProperty(require('pg'),'Pool',{value:class{constructor(){calls++;throw Error('pool forbidden');}}});await import('./scripts/local-refund-${name}-runtime.mjs');for(const file of ${JSON.stringify(result.sources)})require('./compiled/'+file);if(calls!==0)throw Error('Import started work');console.log('offline');`],{cwd:path,env:{PATH:process.env.PATH,LANG:'C.UTF-8'},encoding:'utf8',timeout:10000});assert.equal(proof.trim(),'offline');
+   const probe = fileURLToPath(new URL('./fixtures/check-offline-refund-imports.mjs', import.meta.url));
+   const proof = execFileSync(process.execPath, [probe, name, ...result.sources], {
+    cwd: path, env: {PATH: process.env.PATH, LANG: 'C.UTF-8'}, encoding: 'utf8', timeout: 10000,
+   });
+   assert.equal(proof.trim(), 'offline');
    const rejected=join(owned,name+'-58');assert.throws(()=>build(rejected,{schema:58}));assert.equal(existsSync(rejected),false);
   }
  }finally{rmSync(owned,{recursive:true,force:true});}

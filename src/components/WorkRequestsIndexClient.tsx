@@ -106,6 +106,7 @@ export function WorkRequestsIndexClient({ initialRequests }: { initialRequests: 
 
   return (
     <div className="mt-5 grid grid-cols-1 gap-2.5 sm:mt-6 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+      {requests.length === 0 && <p className="col-span-full text-sm text-slate-600">Открытых заказов пока нет.</p>}
       {requests.map((request) => (
         <WorkRequestListCard key={request.id} request={request} />
       ))}

@@ -24,12 +24,14 @@ export class PostgresListingPaymentFulfillmentStore{
  private readonly forms:PostgresListingFormStore;
  private readonly merchant:MerchantScope;
  private readonly targetType:'listing'|'vacancy'|'workRequest'|'specialist';
- constructor(db:Pick<PostgresDatabase,'transaction'>,merchant:MerchantScope,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest'|'specialist';renewals?:boolean;publicationTestOwner?:string}={}){
+ constructor(db:Pick<PostgresDatabase,'transaction'>,merchant:MerchantScope,private readonly policy:{postmoderation?:boolean;targetType?:'vacancy'|'workRequest'|'specialist';renewals?:boolean;publicationTestOwner?:string;specialistAccountTest?:true}={}){
   if(typeof window!=='undefined'||!merchant||typeof merchant.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(merchant.shopId)||typeof merchant.isTest!=='boolean')throw new PaymentPublicationError();
   this.merchant={...merchant};
   if(policy.publicationTestOwner!==undefined&&(!merchant.isTest||parseListingDraftId(policy.publicationTestOwner)!==policy.publicationTestOwner||!policy.postmoderation||!readPostmoderationEnabled()))throw new PaymentPublicationError();
   this.targetType=policy.targetType??'listing';
-  if(this.targetType==='specialist'){
+  if(policy.specialistAccountTest!==undefined){
+   if(policy.specialistAccountTest!==true||this.targetType!=='specialist'||!policy.publicationTestOwner||policy.renewals||!/^[1-9][0-9]{0,63}$/.test(merchant.shopId))throw new PaymentPublicationError();
+  }else if(this.targetType==='specialist'){
    if(!readSpecialistCheckoutEnabled()||!merchant.isTest||merchant.shopId!=='local-fixture-shop'||policy.renewals||policy.publicationTestOwner)throw new PaymentPublicationError();
   }else if(this.targetType!=='listing'&&(!['vacancy','workRequest'].includes(this.targetType)||!merchant.isTest||!readPostmoderationEnabled()))throw new PaymentPublicationError();
   if(policy.renewals!==undefined&&typeof policy.renewals!=='boolean'||policy.renewals&&(!merchant.isTest||process.env.BLIZHNIY_LOCAL_PRIMARY!=='enabled'||!readPostmoderationEnabled()))throw new PaymentPublicationError();
@@ -49,7 +51,7 @@ export class PostgresListingPaymentFulfillmentStore{
   if(!period)throw new PaymentPublicationError();return{state:'fulfilled',period};
  }
  async fulfill(value:unknown):Promise<Result>{
-  if(this.targetType==='specialist'&&!readSpecialistCheckoutEnabled())throw new PaymentPublicationError();
+  if(this.targetType==='specialist'&&!this.policy.specialistAccountTest&&!readSpecialistCheckoutEnabled())throw new PaymentPublicationError();
   const id=parseListingDraftId(value);
   return this.db.transaction(async tx=>{
    // Detect the actual installed trigger, never a separately configured flag.
@@ -60,7 +62,9 @@ export class PostgresListingPaymentFulfillmentStore{
     from app.users where id=(select owner_id from app.payment_checkout_intents where id=$1) for update`,[id])).rows[0];
    const intent=await this.intents.lockKnownInTransaction(tx,id);
    if(intent.targetType!==this.targetType||intent.durationDays===null||intent.shopId!==this.merchant.shopId||intent.isTest!==this.merchant.isTest)throw new PaymentPublicationError();
-   if(this.policy.publicationTestOwner&&(intent.ownerId!==this.policy.publicationTestOwner||JSON.parse(intent.requestBody).metadata.publicationMode!=='account-test-v1'))return{state:'blocked',reason:'publication_not_admitted'};
+   const requiredMode=this.policy.specialistAccountTest?'specialist-account-test-v1':'account-test-v1';
+   if(this.policy.publicationTestOwner&&(intent.ownerId!==this.policy.publicationTestOwner||JSON.parse(intent.requestBody).metadata.publicationMode!==requiredMode))return{state:'blocked',reason:'publication_not_admitted'};
+   if(this.policy.specialistAccountTest&&(await tx.query('select intent_id from app.specialist_checkout_terms where intent_id=$1',[id])).rowCount!==1)return{state:'blocked',reason:'publication_not_admitted'};
    const order=(await tx.query<{status:string}>('select status from app.payment_orders where id=$1 for update',[id])).rows[0];
    if(!order)throw new PaymentPublicationError();
    // A receipt is historical. Replay must not depend on a target still being a draft or resurrect it.
@@ -72,9 +76,12 @@ export class PostgresListingPaymentFulfillmentStore{
    if(verified.providerId!==intent.providerPaymentId)throw new PaymentPublicationError();
    if(!user||user.blocked||!user.verified)return{state:'blocked',reason:'account_unavailable'};
    if(this.targetType==='specialist'){
-    try{if((await inspectSpecialistPurchase(this.db,tx,intent.ownerId,intent.targetId,intent.targetRevision)).issues.length)return{state:'blocked',reason:'content_unavailable'};}
-    catch(error){if(error instanceof ServicePublicationAccessError||error instanceof ServicePublicationConflictError)return{state:'blocked',reason:'target_changed'};throw error;}
-    if(!readSpecialistCheckoutEnabled())throw new PaymentPublicationError();
+    // The hosted worker cannot read private profile data. The receipt trigger locks and validates the current profile and approved revision.
+    if(!this.policy.specialistAccountTest){
+     try{if((await inspectSpecialistPurchase(this.db,tx,intent.ownerId,intent.targetId,intent.targetRevision)).issues.length)return{state:'blocked',reason:'content_unavailable'};}
+     catch(error){if(error instanceof ServicePublicationAccessError||error instanceof ServicePublicationConflictError)return{state:'blocked',reason:'target_changed'};throw error;}
+     if(!readSpecialistCheckoutEnabled())throw new PaymentPublicationError();
+    }
     const period=(await tx.query<PaymentPublicationPeriod>(`insert into app.payment_fulfillments(intent_id) values($1) returning ${receiptColumns}`,[id])).rows[0];
     if(!period)throw new PaymentPublicationError();return{state:'fulfilled',period};
    }

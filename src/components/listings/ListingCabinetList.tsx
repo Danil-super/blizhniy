@@ -86,7 +86,7 @@ export function ListingCabinetList({owner,visible,enriched=false}:{owner:string;
     const postmoderation='workflow' in page&&page.workflow==='postmoderation';
     return <li key={`${item.id}:${item.revision}`} className="min-w-0"><CabinetListingCard owner={owner} item={item} open={selected===item.id} onToggle={toggle} managePublication={postmoderation} onChanged={()=>setRefresh(value=>value+1)}>
      {postmoderation?(item.card.status==='draft'||item.card.status==='pending_payment'||checkout.uncertain?
-      <PrivateListingCheckout owner={owner} id={item.id} revision={item.revision} attempt={checkout} localPreview/>:
+      <PrivateListingCheckout owner={owner} id={item.id} revision={item.revision} attempt={checkout} postmoderationListing/>:
       <p className="mt-3 border-t border-slate-200 pt-3 text-sm text-slate-600">{item.card.status==='published'?'Объявление опубликовано и доступно в каталоге.':item.card.status==='paid'?'Оплата подтверждена. Текущее состояние объявления указано в карточке. Повторно оплачивать не нужно.':item.card.status==='blocked'?'Объявление скрыто из каталога. Причина блокировки указана выше.':item.card.status==='expired'?'Срок размещения завершён. Объявление больше не показывается в каталоге.':'Объявление не показывается в каталоге.'}</p>):
       <PrivateDraftModeration owner={owner} id={item.id} revision={item.revision} disabled={false} checkoutAttempt={checkout} allowSubmit={false}/>}
     </CabinetListingCard></li>;

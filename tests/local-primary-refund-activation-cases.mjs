@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { remainingRefundSessions } from './refund-session-observation.mjs';
 import {randomUUID} from 'node:crypto';
 import {readFile,writeFile,readdir} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
@@ -38,7 +39,7 @@ export async function testLocalPrimaryRefundActivation(suite,{admin,ownerDb,load
    }
    assert.equal((await admin.query('select count(*)::int as n from app.payment_refund_effects where payment_intent_id=$1',[payment.id])).rows[0].n,1);
    assert.equal((await admin.query('select count(*)::int as n from app.notifications where event_key=$1',['placement_refund:'+payment.id])).rows[0].n,1);
-   assert.equal((await admin.query("select count(*)::int as n from pg_stat_activity where application_name in ('blizhniy-local-refund-provider','blizhniy-local-refund-worker','blizhniy-local-refund-operator')")).rows[0].n,0);
+   assert.equal(await remainingRefundSessions(admin, ['blizhniy-local-refund-provider', 'blizhniy-local-refund-worker', 'blizhniy-local-refund-operator']), 0);
   }finally{
    try{await services?.close();}finally{for(const key of keys)if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];}
   }

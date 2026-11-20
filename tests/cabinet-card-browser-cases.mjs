@@ -15,6 +15,7 @@ export async function testCabinetCardBrowser({context, page, origin}) {
   const pixels = await sharp({create: {width: 480, height: 320, channels: 3, background: '#a05a2c'}}).webp().toBuffer();
   const errors = [], consoleErrors = [], writes = [], foreign = [];
   let holdSession = null, mediaReads = 0, listReads = 0;
+  let enrolled = true;
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {if (message.type() === 'error') consoleErrors.push(message.text());});
   await context.route('**/*', async route => {
@@ -24,7 +25,8 @@ export async function testCabinetCardBrowser({context, page, origin}) {
     assert.equal(request.headers().authorization, undefined);
     if (url.pathname === '/api/account/session') {
       if (holdSession) await holdSession;
-      return route.fulfill({json: {user: {id: owner, email: 'cabinet-ui@example.invalid', role: 'user', isBlocked: false}}});
+      return route.fulfill({headers: enrolled ? {'X-Blizhniy-Work-Publication-Test': '1'} : {},
+        json: {user: {id: owner, email: 'cabinet-ui@example.invalid', role: 'user', isBlocked: false}}});
     }
     if (url.pathname === '/api/account/profile') return route.fulfill({json: {exists: false,
       profile: createDefaultCabinetProfile({name: 'Локальная проверка', email: 'cabinet-ui@example.invalid'}), revision: null}});
@@ -101,6 +103,11 @@ export async function testCabinetCardBrowser({context, page, origin}) {
     assert.deepEqual(violations, []);
   }
   await page.screenshot({path: '/tmp/blizhniy-local-cabinet-cards.png', fullPage: true});
+  enrolled = false;
+  await page.reload();
+  await draft.getByRole('button', {name: 'Статус и оплата', exact: true}).click();
+  await draft.getByText('Оплата пока недоступна для этого аккаунта.', {exact: false}).waitFor();
+  assert.equal(await draft.getByRole('button', {name: 'Оплатить размещение', exact: true}).count(), 0);
   assert.deepEqual(errors, []); assert.deepEqual(consoleErrors, []); assert.deepEqual(foreign, []); assert.deepEqual(writes, []);
 }
 

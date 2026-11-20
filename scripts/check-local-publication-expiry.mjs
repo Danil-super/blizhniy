@@ -1,6 +1,6 @@
 // Synthetic owner acceptance in the owned loopback fixture; no provider or production calls.
 import assert from 'node:assert/strict';
-import {randomBytes,randomUUID} from 'node:crypto';
+import {randomInt,randomBytes,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import pg from 'pg';
 import {chromium} from 'playwright';
@@ -13,7 +13,7 @@ const owner=new pg.Client(localPrimaryDatabaseConfig(state,'owner'));await owner
 const runtime=new(load('postgres').PostgresDatabase)(new pg.Pool({...localPrimaryDatabaseConfig(state),max:3}));
 const email='expiry-ui-'+randomBytes(8).toString('hex')+'@local.invalid',password='Synthetic-expiry-'+randomBytes(16).toString('hex')+'!';
 const hash=await load('identity').hashPassword(password),token=randomBytes(32).toString('hex');
-const phone='+7999'+String(randomBytes(4).readUInt32BE()%10000000).padStart(7,'0');
+const phone='+7999'+String(randomInt(10_000_000)).padStart(7,'0');
 const browser=await chromium.launch({headless:true});let userId,context;
 try{
  userId=(await owner.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',[email,hash])).rows[0].id;

@@ -11,6 +11,7 @@ import {restoreLocalPrimary57Checks} from '../scripts/restore-local-primary57-ch
 import {restoreLocalPrimary58Checks} from '../scripts/restore-local-primary58-checks.mjs';
 import {readMediaRetentionInventory} from '../scripts/media-retention-inventory.mjs';
 import {insertMediaPayment} from './media-retirement-candidate-cases.mjs';
+import {backupPrivatePhoto,verifyRestoredPrivatePhoto} from './media-backup-restore-case.mjs';
 import {getMediaRetentionRolePlan,verifyMediaRetentionDatabase,mediaRetentionRuntimeGrants} from '../scripts/media-retention-role.mjs';
 const {PostgresDatabase}=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule('postgres');
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
@@ -54,6 +55,7 @@ for(const schema of [57,58])test(`logical local${schema} restore reconstructs si
    await db.query("create or replace function app.media_retention_clock() returns timestamptz language sql volatile set search_path=pg_catalog,pg_temp as $$select clock_timestamp()+interval '8 days'$$");
    try{for(const photo of [retired,pending])await db.query('insert into app.media_retirement_requests(media_id,operation_id) values($1,$2)',[photo.id,photo.operation]);await db.query('insert into app.media_retirement_completions(media_id,operation_id) values($1,$2)',[retired.id,retired.operation]);}finally{await db.query(ddl);}
   }
+  const photoBackup=schema===57?await backupPrivatePhoto(db,owner,directory):null;
   const originalSequence=schema===58?(await db.query('select last_value::text,is_called from app.media_reference_events_event_id_seq')).rows:[];
   const originalSchema=await catalog(db,true,schema),originalData=await data(db);
   const dump=(await run('/usr/bin/docker',['--host','unix:///var/run/docker.sock','exec',id,'pg_dump','--username=postgres','--no-password','--format=custom','--dbname=blizhniy_prod'],{encoding:'buffer',timeout:20000,maxBuffer:8*1024*1024})).stdout;
@@ -109,6 +111,9 @@ for(const schema of [57,58])test(`logical local${schema} restore reconstructs si
   });
   await suite.test('changing the restored email threshold is still detected by the unchanged guard',async()=>{
    await db.query('begin');try{await db.query('alter table app.users drop constraint users_email_check,add constraint users_email_check check(char_length(email)>=1)');await assert.rejects(assertRefundSchema(db,schema,{localPrimary:true}),/Invalid refund schema/);}finally{await db.query('rollback');}await catalog(db,true,schema);
+  });
+  if(photoBackup)await suite.test('private media archive matches the restored database and only its owner can read the photo',async()=>{
+   await verifyRestoredPrivatePhoto(db,restorer,directory,photoBackup);
   });
  }finally{
   await restorer?.close();await db?.end();if(id){const proof=JSON.parse(await docker(['inspect',id]))[0];assert.equal(proof.Id,id);assert.equal(proof.Config.Labels[label],name);assert.equal(proof.Config.Image,image);await docker(['rm','--force',id]);}await rm(directory,{recursive:true,force:true});

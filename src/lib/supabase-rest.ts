@@ -120,6 +120,46 @@ export async function supabaseRest<T>(path: string, options: SupabaseRestOptions
   return payload as T;
 }
 
+const galleryCreationEndpoints = {
+  listings: "rpc/create_listing_with_gallery",
+  vacancies: "rpc/create_vacancy_with_gallery",
+  work_requests: "rpc/create_work_request_with_gallery",
+} as const;
+
+export class LegacyDraftConflict extends Error {
+  constructor() { super("Черновик уже обрабатывался. Откройте его в личном кабинете, чтобы проверить или изменить."); }
+}
+
+export async function createLegacyPublicationRow<T>(
+  table: keyof typeof galleryCreationEndpoints,
+  select: string,
+  fields: { author_id: string },
+  paths: string[],
+  creationKey?: string,
+) {
+  const endpoint = paths.length ? galleryCreationEndpoints[table] : table;
+  try {
+    if (creationKey) {
+      const id = await supabaseRest<string | null>("/rest/v1/rpc/create_work_draft_once", {
+        method: "POST", body: { p_kind: table, p_key: creationKey, p_fields: fields, p_paths: paths },
+      });
+      if (!id) throw new LegacyDraftConflict();
+      const rows = await supabaseRest<T[]>(`/rest/v1/${table}?select=${select}&id=eq.${encodeURIComponent(id)}&author_id=eq.${encodeURIComponent(fields.author_id)}&status=eq.draft`);
+      if (!rows.length) throw new LegacyDraftConflict();
+      return rows;
+    }
+    return await supabaseRest<T[]>(`/rest/v1/${endpoint}?select=${select}`, {
+      method: "POST",
+      prefer: "return=representation",
+      body: paths.length ? { p_fields: fields, p_paths: paths } : fields,
+    });
+  } catch (error) {
+    if (error instanceof LegacyDraftConflict) throw error;
+    // A lost response can follow a successful commit.
+    throw new Error("Не удалось подтвердить сохранение. Перед повторной попыткой проверьте карточку в личном кабинете.");
+  }
+}
+
 export function isUuid(value?: string) {
   return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
 }

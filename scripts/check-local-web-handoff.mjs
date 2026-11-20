@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {createServer} from 'node:net';
 import {request} from 'node:http';
-import {randomBytes,randomUUID,createHmac,createHash} from 'node:crypto';
+import {randomInt,randomBytes,randomUUID,createHmac,createHash} from 'node:crypto';
 import {mkdir,mkdtemp,readFile,writeFile,open,cp,lstat,realpath,symlink,readlink,rename,rm,readdir,chmod} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
 import {homedir} from 'node:os';
@@ -79,7 +79,7 @@ async function acceptance(directory,unit){
  const identity=new (load('identity').IdentityStore)(new (load('postgres').PostgresDatabase)(pool));
  let userId,stream,traffic,trafficRun=false,fixtureInfo,proxy;
  const fixture=join(root,'public/images','handoff-fixture-'+randomBytes(8).toString('hex'));
- const ip=`192.0.2.${10+randomBytes(1)[0]%240}`;
+ const ip=`192.0.2.${randomInt(10, 250)}`;
  const key=createHmac('sha256',state.rateSecret).update('production:session:ip:'+ip).digest('hex');
  let ownedRateKey=false;
  async function child(command,args,env,label){

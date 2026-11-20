@@ -64,3 +64,45 @@ test('seller labels and profile link use readable foregrounds in the unified det
  assert.doesNotMatch(html,/text-slate-400/);
  assert.match(html,/<a[^>]+text-blue-800[^>]*>[\s\S]*?Профиль продавца/);
 });
+
+test('public photo galleries start on the first slide without inline CSS', () => {
+ const load = runtime();
+ const images = ['/one.webp', '/two.webp'];
+ const {DetailImageGallery} = load('src/components/DetailImageGallery');
+ const {ListingMediaGallery} = load('src/components/listings/ListingMediaGallery');
+ const galleries = [
+  React.createElement(DetailImageGallery, {images, title: 'Фото', fallbackIcon: null}),
+  React.createElement(ListingMediaGallery, {media: images.map(src => ({kind: 'image', src})), title: 'Фото'}),
+ ];
+ for (const gallery of galleries) {
+  const html = renderToStaticMarkup(gallery);
+  assert.match(html, /transition-transform/);
+  assert.doesNotMatch(html, /\sstyle=/i);
+ }
+});
+
+test('listing grid displays the Moscow publication day on either side of local midnight', () => {
+  const load = runtime({
+    './ListingShareButton': { ListingShareButton: noop },
+    './ListingViewCounter': { ListingViewCounter: noop },
+    '@/components/StoredMedia': { StoredMediaImage: noop },
+  });
+  const { ListingGridCard } = load('src/components/listings/ListingCard.tsx');
+  const listing = { slug: 'table', kind: 'prodam', title: 'Стол', price: '500 ₽', city: 'Анапа' };
+  const previousZone = process.env.TZ;
+  try {
+    for (const zone of ['UTC', 'Europe/Moscow', 'America/Los_Angeles']) {
+      process.env.TZ = zone;
+      for (const [publishedAt, expected] of [
+        ['2026-12-31T20:59:59Z', '31 декабря 2026'],
+        ['2026-12-31T21:00:00Z', '1 января 2027'],
+      ]) {
+        const markup = renderToStaticMarkup(React.createElement(ListingGridCard, { listing: { ...listing, publishedAt } }));
+        assert.ok(markup.includes(expected), `${zone}: ${publishedAt} should display ${expected}`);
+      }
+    }
+  } finally {
+    if (previousZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousZone;
+  }
+});

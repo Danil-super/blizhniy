@@ -153,3 +153,36 @@ test('Caddy refuses replaced, linked or disappeared sockets without exposing loc
   await assert.rejects(() => f.route.read(),error => {assert.ok(!String(error).includes(f.socketPath));return true;});
   assert.equal(f.requests.length,1);
 });
+
+test('Caddy accepts a single strong ETag trailer and uses it for the conditional switch',async t => {
+  let port=3000;
+  const f=await caddy(t,(req,res,body)=>{
+    if(req.method==='PATCH'){
+      assert.equal(req.headers['if-match'],'"port-3000"');
+      port=Number(JSON.parse(body)[0].dial.split(':')[1]);
+      res.writeHead(200);res.end();return;
+    }
+    res.writeHead(200,{'content-type':'application/json',trailer:'ETag'});
+    res.write(JSON.stringify([{dial:'127.0.0.1:'+port}]));
+    res.addTrailers({etag:'"port-'+port+'"'});res.end();
+  });
+  const previous=await f.route.read();
+  assert.deepEqual(previous,{port:3000,etag:'"port-3000"'});
+  assert.deepEqual(await f.route.switch(previous,3001),{port:3001,etag:'"port-3001"'});
+});
+
+test('Caddy rejects malformed or ambiguous ETags before sending a switch',async t => {
+  for (const [header,trailer] of [
+    [undefined,'W/"weak"'], ['"first"','"second"'], ['"same"','"same"'],
+    [['"first"','"second"'],undefined], [undefined,['"first"','"second"']],
+  ]) {
+    const f=await caddy(t,(_req,res)=>{
+      res.writeHead(200,{'content-type':'application/json',...(header?{etag:header}:{}),...(trailer?{trailer:'ETag'}:{})});
+      res.write(JSON.stringify([{dial:'127.0.0.1:3000'}]));
+      if(trailer)res.addTrailers({etag:trailer});
+      res.end();
+    });
+    await assert.rejects(()=>f.route.read(),{code:'HANDOFF_READ'});
+    assert.deepEqual(f.requests.map(request=>request.method),['GET']);
+  }
+});

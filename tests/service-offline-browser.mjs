@@ -17,7 +17,7 @@ import {parseWorkPublicationForm} from '../src/lib/work-publication-contract.ts'
 const owner='10000000-0000-4000-8000-000000000001';
 const render=page=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
 
-test('specialist unsaved title survives a temporary session 503 and same-owner recovery without a write',{timeout:45000},async()=>{
+test('specialist unsaved description survives a temporary session 503 and same-owner recovery without a write',{timeout:45000},async()=>{
  const directory=await mkdtemp(join(tmpdir(),'blizhniy-service-offline-'));let app,browser;
  try{
   const key=join(directory,'key'),ca=join(directory,'ca');
@@ -39,33 +39,38 @@ test('specialist unsaved title survives a temporary session 503 and same-owner r
   }
   browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage();
   page.setDefaultTimeout(7000);
-  const state={unavailable:false,replies:[],puts:[],foreign:[],unexpected:[],errors:[]};
+  const secondOwner='10000000-0000-4000-8000-000000000009';
+  const state={owner,unavailable:false,replies:[],puts:[],foreign:[],unexpected:[],errors:[]};
   page.on('pageerror',()=>state.errors.push('pageerror'));
   await context.route('**/*',async route=>{
    const request=route.request(),url=new URL(request.url());
    if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){state.foreign.push(url.host);return route.abort();}
    if(!url.pathname.startsWith('/api/'))return route.continue();
+   if(url.pathname==='/api/reference/professions'){
+    assert.equal(request.method(),'GET');assert.equal(url.search,'');assert.equal(request.headers().authorization,undefined);
+    return route.fulfill({json:{items:[]}});
+   }
    assert.equal(request.headers().authorization,undefined,'the reproduction never uses legacy Bearer authority');
    if(request.method()==='PUT')state.puts.push(url.pathname);
    const body=request.postDataJSON();
    if(url.pathname==='/api/account/session'){
     assert.equal(request.method(),'POST');assert.deepEqual(body,{});state.replies.push(state.unavailable?503:200);
     return route.fulfill(state.unavailable?{status:503,json:{error:{code:'AUTH_UNAVAILABLE'}}}:
-     {json:{user:{id:owner,email:'fixture@example.invalid',role:'user',isBlocked:false}}});
+     {json:{user:{id:state.owner,email:state.owner===owner?'fixture@example.invalid':'second@example.invalid',role:'user',isBlocked:false}}});
    }
    if(url.pathname==='/api/account/profile'){
-    assert.equal(request.method(),'POST');assert.deepEqual(body,{expectedOwnerId:owner});
-    return route.fulfill({json:{exists:false,revision:null,profile:createDefaultCabinetProfile({name:'Сохранённое техническое имя',email:'fixture@example.invalid'})}});
+    assert.equal(request.method(),'POST');assert.deepEqual(body,{expectedOwnerId:state.owner});
+    return route.fulfill({json:{exists:false,revision:null,profile:createDefaultCabinetProfile({name:state.owner===owner?'Сохранённое техническое имя':'Второй профиль',email:state.owner===owner?'fixture@example.invalid':'second@example.invalid'})}});
    }
    if(url.pathname==='/api/account/service-publications'){
-    assert.equal(request.method(),'POST');assert.deepEqual(body,{action:'list',expectedOwnerId:owner,kind:'specialist',after:null});
+    assert.equal(request.method(),'POST');assert.deepEqual(body,{action:'list',expectedOwnerId:state.owner,kind:'specialist',after:null});
     return route.fulfill({json:{items:[],nextCursor:null}});
    }
    state.unexpected.push(url.pathname);return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
   });
   await page.goto(origin+'/cabinet/specialist');
   const form=page.getByRole('form',{name:'Анкета специалиста',exact:true});await form.waitFor();
-  const title='Несохранённая анкета после краткого обрыва';await form.locator('input[name="title"]').fill(title);
+  const description='Несохранённая анкета после краткого обрыва';await form.locator('textarea[name="description"]').fill(description);
   state.unavailable=true;
   const failed=page.waitForResponse(response=>response.url()===origin+'/api/account/session'&&response.status()===503);
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await failed;await render(page);
@@ -76,8 +81,13 @@ test('specialist unsaved title survives a temporary session 503 and same-owner r
   const recovered=page.waitForResponse(response=>response.url()===origin+'/api/account/session'&&response.status()===200);
   await page.evaluate(()=>window.dispatchEvent(new Event('online')));await recovered;await form.waitFor();await render(page);
   assert.equal(page.url(),origin+'/cabinet/specialist');
-  assert.deepEqual(state.puts,[],'restoring session access does not autosave the unsaved title');
-  assert.equal(await form.locator('input[name="title"]').inputValue(),title,'same-owner recovery restores the exact unsaved title, not a blank or persisted default');
+  assert.deepEqual(state.puts,[],'restoring session access does not autosave the unsaved description');
+  assert.equal(await form.locator('textarea[name="description"]').inputValue(),description,'same-owner recovery restores the exact unsaved description, not a blank or persisted default');
+  assert.equal(await form.locator('input[name="title"]').inputValue(),'Сохранённое техническое имя');
+  state.owner=secondOwner;
+  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  await form.getByText('Второй профиль',{exact:true}).waitFor();
+  assert.equal(await form.locator('textarea[name="description"]').inputValue(),'','another owner gets a fresh form');
   assert.ok(state.replies.includes(503));assert.deepEqual(state.puts,[]);
   assert.deepEqual(state.foreign,[]);assert.deepEqual(state.unexpected,[]);assert.deepEqual(state.errors,[]);
  }finally{
@@ -123,6 +133,10 @@ for(const scenario of [
    const request=route.request(),url=new URL(request.url());
    if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){state.foreign.push(url.host);return route.abort();}
    if(!url.pathname.startsWith('/api/'))return route.continue();
+   if(url.pathname==='/api/reference/professions'){
+    assert.equal(request.method(),'GET');assert.equal(url.search,'');assert.equal(request.headers().authorization,undefined);
+    return route.fulfill({json:{items:[]}});
+   }
    assert.equal(request.headers().authorization,undefined);assert.equal(request.headers()['x-blizhniy-request'],'1');assert.equal(url.search,'');
    if(request.method()==='PUT'){state.puts.push(url.pathname);return route.fulfill({status:503,json:{error:{code:'SYNTHETIC_WRITE_NOT_EXPECTED'}}});}
    assert.equal(request.method(),'POST');const body=request.postDataJSON();
@@ -133,6 +147,11 @@ for(const scenario of [
    if(url.pathname==='/api/account/profile'){
     assert.deepEqual(body,{expectedOwnerId:owner});return route.fulfill({json:{exists:false,revision:null,
      profile:createDefaultCabinetProfile({name:'Технический профиль',email:'fixture@example.invalid'})}});
+   }
+   if(scenario.family==='work'&&url.pathname==='/api/account/work-cabinet'){
+    assert.deepEqual(body,{kind:scenario.kind,expectedOwnerId:owner,after:null});
+    return route.fulfill({json:{items:[{id,kind:scenario.kind,title:scenario.title,revision:snapshot.revision,status:'draft',paid:false,updatedAt:stamp,
+     amount:null,organization:null,city:'Краснодар',district:null,profession:'Сантехник',schedule:null,workFormat:null,coverPhotoId:null}],nextCursor:null}});
    }
    if(url.pathname==='/api/account/'+scenario.family+'-publications'){
     if(body.action==='list'){
@@ -147,7 +166,10 @@ for(const scenario of [
    }
    state.unexpected.push(url.pathname);return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
   });
-  await page.goto(origin+scenario.path);await page.getByRole('button',{name:scenario.title,exact:true}).click();
+  await page.goto(origin+scenario.path);
+  const editUrl=scenario.kind==='fair'?origin+'/yarmarka-masterov/zayavka?draft='+id:origin+'/rabota/'+(scenario.kind==='vacancy'?'vakansii':'zakazy')+'/'+id+'/edit';
+  const edit=page.getByRole('article').filter({hasText:scenario.title}).getByRole('link',{name:'Редактировать',exact:true});
+  await edit.click();await page.waitForURL(editUrl);
   const form=page.getByRole('form',{name:scenario.label,exact:true});await form.waitFor();
   const title='Несохранённые правки '+scenario.kind;await form.locator('input[name="title"]').fill(title);
   state.unavailable=true;
@@ -159,8 +181,8 @@ for(const scenario of [
   state.unavailable=false;
   const recovered=page.waitForResponse(response=>response.url()===origin+'/api/account/session'&&response.status()===200);
   await page.evaluate(()=>window.dispatchEvent(new Event('online')));await recovered;
-  await page.getByRole('button',{name:scenario.title,exact:true}).waitFor();await render(page);
-  assert.equal(page.url(),origin+scenario.path);assert.deepEqual(state.puts,[],'same-owner recovery never autosaves an edit');
+  await form.waitFor();await render(page);
+  assert.equal(page.url(),editUrl);assert.deepEqual(state.puts,[],'same-owner recovery never autosaves an edit');
   assert.equal(await form.isVisible(),true,'same-owner recovery must restore the selected editor without requiring the user to reopen the persisted row');
   assert.equal(await form.locator('input[name="title"]').inputValue(),title,'the exact unsaved title survives the recovered session');
   assert.deepEqual(state.foreign,[]);assert.deepEqual(state.unexpected,[]);assert.deepEqual(state.errors,[]);

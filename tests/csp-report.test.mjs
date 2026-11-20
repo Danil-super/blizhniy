@@ -40,3 +40,25 @@ test('at most four report bodies can be in flight and expired reads release capa
  assert.equal((await handle(request())).status,429);for(const result of await Promise.all(pending))assert.equal(result.status,408);
  assert.equal((await handle(request())).status,204);
 });
+
+test('Reporting API batches validate every report before logging and share sampling with legacy reports',async()=>{
+ const events=[], handle=createCspReportHandler({origin},event=>events.push(event));
+ const headers={'content-type':'application/reports+json; charset=utf-8'};
+ const report={type:'csp-violation',url:origin+'/private',body:{effectiveDirective:'style-src-elem',disposition:'enforce',blockedURL:origin+'/private',sample:'private text'}};
+ const other={...report,body:{effectiveDirective:'script-src-elem',disposition:'enforce',blockedURL:'inline'}};
+ const send=(data,extra={})=>handle(request(JSON.stringify(data),{...headers,...extra}));
+ for(const invalid of [[],[report,{...other,type:'unrelated'}],[report,{...other,body:null}],[report,{...other,body:{...other.body,disposition:'invalid'}}],payload]){
+  assert.equal((await send(invalid)).status,400);
+ }
+ assert.equal((await send([report],{origin:'https://other.invalid'})).status,403);
+ assert.equal((await send([report],{'content-length':'8193'})).status,413);
+ assert.deepEqual(events,[]);
+ // Chromium sends Origin on background deliveries without Sec-Fetch-Site.
+ assert.equal((await send([report,report,other],{'sec-fetch-site':''})).status,204);
+ assert.equal((await handle(request())).status,204);
+ assert.deepEqual(events,[
+  {event:'csp_violation',source:'untrusted-browser',directive:'style-src-elem',disposition:'enforce',blocked:'url'},
+  {event:'csp_violation',source:'untrusted-browser',directive:'script-src-elem',disposition:'enforce',blocked:'inline'},
+ ]);
+ assert.equal((await send([report],{'content-type':'application/csp-report'})).status,400);
+});

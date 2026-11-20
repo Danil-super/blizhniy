@@ -124,3 +124,15 @@ test("duration labels never invent a seven-day advertising term", () => {
   assert.equal(formatTariffDuration(), "временно недоступен");
   assert.equal(formatTariffDuration({ ...fair, active: false, durationDays: 7 }), "временно недоступен");
 });
+
+test("a missing placement term never turns a listing, job, order or profile into a one-off service", async () => {
+  for (const action of ["listing_publication", "vacancy_publication", "work_request_publication", "specialist_publication"]) {
+    const tariff = { ...fair, action, durationDays: null };
+    const html = renderToStaticMarkup(await page("tariffs", [tariff]).default());
+    assert.match(html, /Срок размещения не указан/);
+    assert.doesNotMatch(html, /Разовое действие/);
+    assert.match(html, /<a href=/);
+  }
+  const once = renderToStaticMarkup(await page("tariffs", [{ ...fair, action: "job_response" }]).default());
+  assert.match(once, /Разовое действие/);
+});

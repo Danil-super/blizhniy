@@ -112,7 +112,7 @@ async function verifyCloudflareTurnstileToken(token: string, secret: string, rem
     });
     const payload = (await response.json().catch(() => null)) as TurnstileSiteverifyResponse | null;
 
-    return Boolean(response.ok && payload?.success);
+    return response.ok && payload?.success === true;
   });
 }
 

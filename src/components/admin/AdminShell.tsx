@@ -44,7 +44,7 @@ function AdminNavPills({ activeHref }: { activeHref: string }) {
           <Link
             aria-current={active ? "page" : undefined}
             className={`inline-flex min-h-10 w-[9.25rem] max-w-full items-center justify-start gap-2 rounded-lg border px-3 py-2 text-xs font-bold leading-snug transition sm:min-h-11 sm:w-auto sm:min-w-[9.5rem] sm:flex-none sm:px-4 sm:text-sm ${
-              active ? "border-blue-200 bg-blue-50 text-[#0875d1] ring-1 ring-blue-100" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
+              active ? "border-blue-200 bg-blue-50 text-blue-800 ring-1 ring-blue-100" : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-[#0875d1]"
             }`}
             href={item.href}
             key={item.href}
@@ -85,6 +85,6 @@ export function AdminShell(props:ShellProps){
 /** Primary workspaces keep their own actor-scoped state and remove private DOM during rechecks.
  * Do not wrap their state in a gate that unmounts it on a transient session refresh.
  */
-export function AdminWorkspaceShell(props:ShellProps){
- return <AdminFrame {...props}><AdminAuthGate><AdminNavPills activeHref={props.activeHref}/></AdminAuthGate><div className="mt-5 sm:mt-7">{props.children}</div></AdminFrame>;
+export function AdminWorkspaceShell({recheckModerator=false,...props}:ShellProps & {recheckModerator?:boolean}){
+ return <AdminFrame {...props}><AdminAuthGate><AdminNavPills activeHref={props.activeHref}/></AdminAuthGate><div className="mt-5 sm:mt-7" data-recheck-moderator={recheckModerator || undefined}>{props.children}</div></AdminFrame>;
 }

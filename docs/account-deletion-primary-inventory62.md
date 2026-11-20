@@ -34,6 +34,8 @@ Owned loopback-контейнер, verify-full TLS, repeatable-read/read-only. �
 Доказательства трёх отказов: `startup-diagnostics-i72jq99s/inventory-selfchecks.json`
 в том же закрытом каталоге состояния. Дампов и пользовательских строк в Git нет.
 
+Все таблицы трёх схем перечислены в [карте данных аккаунта](account-deletion-data-map62.md).
+
 ## Следующее действие
 
 Добавлена [операционная проверка конкретной заявки](account-deletion-preflight62.md)

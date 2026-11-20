@@ -26,14 +26,19 @@ export async function createPaymentWorkerRuntime(environment=process.env,{loadMo
    env.BLIZHNIY_PAYMENT_SECRET_KEY.length>2048||/[\s\u0000-\u001f\u007f]/.test(env.BLIZHNIY_PAYMENT_SECRET_KEY))throw Error('Invalid worker configuration');
   if((env.BLIZHNIY_PAYMENT_WORKER==='account-test'||publicationTest)&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(env.BLIZHNIY_PAYMENT_TEST_USER_ID??''))throw Error('Invalid account TEST owner');
   if(publicationTest&&(env.BLIZHNIY_LISTING_WORKFLOW!=='postmoderation'||env.BLIZHNIY_AUTH_MODE!=='postgres'||env.BLIZHNIY_AUTH_ORIGIN!=='https://xn----9sbphbgks4a4a.xn--p1ai'||env.BLIZHNIY_LOCAL_PRIMARY!==undefined))throw Error('Invalid publication TEST deployment');
+  const specialistMode=env.BLIZHNIY_SPECIALIST_PAYMENT;
+  const specialistAccountTest=specialistMode==='account-publication-test';
+  if(specialistMode!==undefined&&specialistMode!=='disabled'&&(!specialistAccountTest||!publicationTest||
+   !/^[1-9][0-9]{0,63}$/.test(env.BLIZHNIY_PAYMENT_SHOP_ID)||env.BLIZHNIY_LOCAL_PRIMARY_ORIGIN!==undefined||
+   (env.BLIZHNIY_SPECIALIST_CHECKOUT!==undefined&&env.BLIZHNIY_SPECIALIST_CHECKOUT!=='disabled')))throw Error('Invalid specialist TEST deployment');
   const merchant=Object.freeze({shopId:env.BLIZHNIY_PAYMENT_SHOP_ID,isTest:true,secretKey:env.BLIZHNIY_PAYMENT_SECRET_KEY});
   const {readPostgresConfig,PostgresDatabase,Pool,createPaymentReconciliationWorker,createAccountTestPaymentVerifier}=loadModules();
   const config=readPostgresConfig(env);
   pool=new Pool({...config,max:2,application_name:'blizhniy-payment-reconciler'});
   db=new PostgresDatabase(pool);
-  const worker=env.BLIZHNIY_PAYMENT_WORKER==='account-test'?createAccountTestPaymentVerifier(db,Object.freeze({...merchant,ownerId:env.BLIZHNIY_PAYMENT_TEST_USER_ID})):publicationTest?createPaymentReconciliationWorker(db,merchant,undefined,env.BLIZHNIY_PAYMENT_TEST_USER_ID):createPaymentReconciliationWorker(db,merchant);
+  const worker=env.BLIZHNIY_PAYMENT_WORKER==='account-test'?createAccountTestPaymentVerifier(db,Object.freeze({...merchant,ownerId:env.BLIZHNIY_PAYMENT_TEST_USER_ID})):publicationTest?createPaymentReconciliationWorker(db,merchant,undefined,env.BLIZHNIY_PAYMENT_TEST_USER_ID,...(specialistAccountTest?[true]:[])):createPaymentReconciliationWorker(db,merchant);
   let closing;
-  return{worker,preflight:()=>verifyPaymentReconciliationDatabase(db,{database:config.database,...(publicationTest?{publicationTest:true}:{})}),
+  return{worker,preflight:()=>verifyPaymentReconciliationDatabase(db,{database:config.database,...(publicationTest?{publicationTest:true}:{}),...(specialistAccountTest?{specialistAccountTest:true}:{})}),
    close:()=>closing??=db.close()};
  }catch {
   try {if(db)await db.close();else if(pool)await pool.end();}catch { /* Never replace the generic configuration error with driver details. */ }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash, createPublicKey, verify} from 'node:crypto';
-import {readFileSync, readdirSync} from 'node:fs';
+import {lstatSync, readFileSync, readdirSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {dirname, join} from 'node:path';
 import test from 'node:test';
@@ -10,13 +10,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const certificate = JSON.parse(readFileSync(join(root, 'docs/selector-upstream-6.1.5.json')));
 const require = createRequire(import.meta.url);
 const installed = dirname(dirname(require.resolve('postcss-selector-parser')));
-const vendor = join(root, 'vendor/postcss-selector-parser');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-
-function insertOnce(source, anchor, insertion) {
-  assert.equal(source.split(anchor).length, 2, 'Expected one exact upstream insertion site');
-  return source.replace(anchor, insertion + anchor);
-}
 
 test('official selector certificate pins registry-signed 6.1.5 integrity', () => {
   assert.equal(certificate.package, 'postcss-selector-parser');
@@ -34,39 +28,16 @@ test('official selector certificate pins registry-signed 6.1.5 integrity', () =>
   assert.equal(verify('sha256', Buffer.from(`${certificate.package}@${certificate.version}:${certificate.integrity}`), publicKey, Buffer.from(signature.sig, 'base64')), true);
 });
 
-for (const [label, directory] of [['vendored', vendor], ['installed', installed]]) {
-  test(`${label} selector executable files equal official 6.1.5, with only two exact comments restored`, () => {
-    const entries = readdirSync(directory, {recursive: true, withFileTypes: true});
-    assert.ok(entries.every(entry => entry.isDirectory() || entry.isFile()), 'No symlink or special-file bypass');
-    const inventory = entries
-      .filter(entry => entry.isFile())
-      .map(entry => join(entry.parentPath, entry.name).slice(directory.length + 1))
-      .filter(file => file !== 'SECURITY-PROVENANCE.json').sort();
-    assert.deepEqual(inventory, Object.keys(certificate.files).sort());
-    assert.equal(inventory.length, 37);
-    for (const file of inventory) {
-      if (file === 'CHANGELOG.md' || file === 'package.json') continue;
-      let bytes = readFileSync(join(directory, file));
-      if (file === 'dist/parser.js') {
-        let source = bytes.toString('utf8');
-        source = insertOnce(source, '  return Array.from(new Set(Array.prototype.concat.apply([], arguments)));',
-          '  // A Set keeps the first-occurrence order the previous filter/indexOf pass\n  // produced, without its quadratic cost on long index lists.\n');
-        source = insertOnce(source, '    var classIndexes = new Set(hasClass);',
-          '    // Membership tests are built once. Scanning the arrays per index would\n    // make a flat selector such as `.a.a.a...` quadratic in its number of\n    // class/id indexes, which is enough to pin a CPU core on\n    // attacker-supplied input.\n');
-        bytes = Buffer.from(source);
-      }
-      assert.equal(hash(bytes), certificate.files[file], `${label} ${file}`);
-    }
-  });
-
-  test(`${label} selector manifest differs from official only by version and absent prepare hook`, () => {
-    const source = readFileSync(join(directory, 'package.json'), 'utf8');
-    const manifest = JSON.parse(source);
-    assert.equal(manifest.version, '6.1.4');
-    assert.equal(manifest.scripts.prepare, undefined);
-    const restored = insertOnce(source.replace('"version": "6.1.4"', '"version": "6.1.5"'),
-      '    "lintfix":',
-      '    "prepare": "del-cli dist && BABEL_ENV=publish babel src --out-dir dist --ignore /__tests__/",\n');
-    assert.equal(hash(restored), certificate.files['package.json']);
-  });
-}
+test('the installed selector package contains exactly the signed release files', () => {
+  assert.equal(installed, join(root, 'node_modules', 'postcss-selector-parser'));
+  assert.ok(lstatSync(installed).isDirectory(), 'The package must be installed as a directory');
+  const entries = readdirSync(installed, {recursive: true, withFileTypes: true});
+  assert.ok(entries.every(entry => entry.isDirectory() || entry.isFile()), 'No symlink or special file');
+  const inventory = entries.filter(entry => entry.isFile())
+    .map(entry => join(entry.parentPath, entry.name).slice(installed.length + 1)).sort();
+  assert.equal(inventory.length, 37);
+  assert.deepEqual(inventory, Object.keys(certificate.files).sort());
+  for (const file of inventory) {
+    assert.equal(hash(readFileSync(join(installed, file))), certificate.files[file], file);
+  }
+});

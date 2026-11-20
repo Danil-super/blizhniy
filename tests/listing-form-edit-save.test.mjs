@@ -19,3 +19,25 @@ test('lost edit response is read back against the same id without another write 
  await assert.rejects(save.save());assert.equal(save.uncertain,true);await assert.rejects(save.save());
  await save.readback();assert.deepEqual(save.completed,stored);assert.equal(writes,1);
 });
+
+test('both actions share the recovered draft and uploads only within the original editor and owner',async()=>{
+ const {getListingEditor}=await import('../src/lib/listing-form-save.ts');
+ const form={},otherForm={},file=new Blob(['photo']),uploaded={id:photo,mimeType:'image/webp',width:80,height:40,size:12};
+ const snapshot={id,revision:'2',form:parseListingFormDraft({kind:'prodam'}),photos:[]};
+ const saving=getListingEditor(form,owner);
+ saving.baseline=snapshot;
+ saving.readyFiles.set(file,uploaded);
+ const submitting=getListingEditor(form,owner);
+ assert.equal(submitting.baseline,snapshot);
+ assert.equal(submitting.readyFiles.get(file),uploaded);
+ const freshForm=getListingEditor(otherForm,owner);
+ assert.equal(freshForm.baseline,undefined);
+ assert.equal(freshForm.readyFiles.has(file),false);
+ const existing=getListingEditor(form,owner,snapshot);
+ assert.equal(existing.baseline,snapshot);
+ assert.equal(existing.readyFiles.has(file),false);
+ existing.readyFiles.set(file,uploaded);
+ const changedOwner=getListingEditor(form,'44444444-4444-4444-8444-444444444444');
+ assert.equal(changedOwner.baseline,undefined);
+ assert.equal(changedOwner.readyFiles.has(file),false);
+});

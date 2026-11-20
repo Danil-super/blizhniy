@@ -1,5 +1,6 @@
 "use client";
 
+import { croppedPhotoFile } from "@/lib/image-data-url";
 import { getStoredMediaFile } from "@/lib/client-media-store";
 import type { UploadFolder } from "@/lib/storage-upload";
 
@@ -39,6 +40,10 @@ async function imageSourceToFile(source: string, index: number) {
     return storedFile;
   }
 
+  if (/^data:image\/(?:png|jpeg|webp);base64,/.test(source)) {
+    return croppedPhotoFile(source, `publication-photo-${index + 1}`);
+  }
+
   if (!/^(data:image\/|blob:|https?:\/\/)/i.test(source)) {
     return undefined;
   }
@@ -62,23 +67,20 @@ async function imageSourceToFile(source: string, index: number) {
 
 export async function uploadPublicationImageSources(sources: string[], folder: UploadFolder, accessToken?: string) {
   const limitedSources = sources.slice(0, 20);
-  const existingStoragePaths = limitedSources.map((source) => storagePathFromPublicMediaSource(source, folder)).filter(Boolean);
-  const sourcesToUpload = limitedSources.filter((source) => !storagePathFromPublicMediaSource(source, folder));
-  const imageFiles = (
-    await Promise.all(sourcesToUpload.map((source, index) => imageSourceToFile(source, index)))
-  ).filter((file): file is File => Boolean(file));
+  const paths = limitedSources.map((source) => storagePathFromPublicMediaSource(source, folder));
+  const resolved = await Promise.all(limitedSources.map(async (source, index) => {
+    if (paths[index]) return;
+    const file = await imageSourceToFile(source, index);
+    if (!file) throw new Error(`Не удалось открыть фото №${index + 1}. Выберите его заново.`);
+    return { index, file };
+  }));
+  const pending = resolved.filter(entry => entry !== undefined);
 
-  if (!imageFiles.length) {
-    return existingStoragePaths;
-  }
-
-  const uploadedPaths: string[] = [];
-
-  for (let index = 0; index < imageFiles.length; index += 10) {
+  for (let offset = 0; offset < pending.length; offset += 10) {
+    const batch = pending.slice(offset, offset + 10);
     const formData = new FormData();
-
     formData.set("folder", folder);
-    imageFiles.slice(index, index + 10).forEach((file) => formData.append("files", file));
+    for (const { file } of batch) formData.append("files", file);
 
     const response = await fetch("/api/uploads/media", {
       body: formData,
@@ -91,8 +93,14 @@ export async function uploadPublicationImageSources(sources: string[], folder: U
       throw new Error(payload?.error ?? "Не удалось загрузить фото.");
     }
 
-    uploadedPaths.push(...(payload?.files ?? []).map((file) => file.path).filter((path): path is string => Boolean(path)));
+    const uploaded = Array.isArray(payload?.files) ? payload.files.map(entry => entry?.path) : [];
+    if (uploaded.length !== batch.length || !uploaded.every((path): path is string => typeof path === "string" && path.trim().length > 0)) {
+      throw new Error("Не все фотографии загружены. Повторите попытку.");
+    }
+    batch.forEach(({ index }, i) => {
+      paths[index] = uploaded[i];
+    });
   }
 
-  return [...existingStoragePaths, ...uploadedPaths].slice(0, 20);
+  return paths;
 }

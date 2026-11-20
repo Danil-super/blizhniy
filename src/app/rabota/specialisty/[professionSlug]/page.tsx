@@ -21,6 +21,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 
   return {
     title: profession ? `Специалисты: ${profession.name}` : "Профессия",
+    description: profession ? `Анкеты по профессии «${profession.name}» в разделе «${profession.parent}». Поиск специалистов в Краснодарском крае на БЛИЖНИЙ.` : undefined,
     alternates: { canonical: page > 1 ? `/rabota/specialisty/${professionSlug}?page=${page}` : `/rabota/specialisty/${professionSlug}` },
   };
 }
@@ -69,6 +70,7 @@ export default async function Page({ params, searchParams }: PageProps) {
         <h1 className="mt-3 text-2xl font-bold text-[#060b27] sm:text-3xl">{profession ? `Специалисты: ${profession.name}` : "Специалисты"}</h1>
         {profession ? <p className="mt-3 max-w-2xl text-slate-600">Раздел: {profession.parent}</p> : null}
         <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {specialists.length === 0 && <p className="col-span-full text-sm text-slate-600">По этой профессии пока нет анкет.</p>}
           {specialists.map((specialist) => (
             <SpecialistListCard key={specialist.id} specialist={specialist} />
           ))}

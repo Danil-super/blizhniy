@@ -35,7 +35,7 @@ function InboxWorkspace({owner,visible,onOpenChange}:{owner:string;visible:boole
   void run(async()=>{setUnknown(true);await notificationInbox.mark(owner,action,ids,{signal:scope.current?.signal});await read(null);});
  }
  return <div className="relative" ref={root} hidden={!visible} inert={!visible}>
-  <button type="button" ref={toggle} className={trigger} aria-label="Уведомления" aria-expanded={open} onClick={()=>{setOpen(value=>!value);if(!open&&!page)refresh();}}>
+  <button type="button" ref={toggle} className={trigger} aria-label="Уведомления" aria-expanded={open} onClick={()=>{setOpen(!open);if(!open)refresh();}}>
    <Bell className="h-[18px] w-[18px]" aria-hidden="true"/>
    {page?.items.some(item=>!item.read)&&<span className="absolute right-0 top-0 h-3 w-3 rounded-full bg-rose-600 ring-2 ring-white" aria-label="На странице есть непрочитанные уведомления"/>}
   </button>

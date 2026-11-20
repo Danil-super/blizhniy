@@ -18,7 +18,7 @@ import {
 import { AdminDemoPublishButton } from "@/components/AdminDemoPublishButton";
 import { BackLink } from "@/components/BackLink";
 import { BrandName } from "@/components/BrandName";
-import { CategoryGrid } from "@/components/CategoryGrid";
+import { Breadcrumbs } from "./Breadcrumbs";
 import { CapitalizedTextarea } from "@/components/CapitalizedTextarea";
 import {CabinetFormValidation} from '@/components/CabinetFormValidation';
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
@@ -52,7 +52,7 @@ import { BookingCalculator } from "./BookingCalculator";
 import { DemoListingEditClient } from "./DemoListingEditClient";
 import { ListingKindAndCategoryFields, ListingLocationFields, ListingPhotoUploader } from "./ListingFormControls";
 import { DemoListing, ListingKind, ListingKindBadge, StatusBadge } from "./ListingCard";
-import { categoryPageStyle, CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "./CategoryPageDesign";
+import { CategoryHeaderBand, SubcategoryCard, subcategoryGridClassName } from "./CategoryPageDesign";
 import { ListingMediaGallery, type ListingGalleryMedia } from "./ListingMediaGallery";
 import { ListingResultsPanel } from "./ListingResultsPanel";
 import { ListingPagination } from "./ListingPagination";
@@ -1325,50 +1325,6 @@ export function slugifySubcategory(name: string) {
   return map[name] ?? name.toLowerCase().replaceAll(" ", "-");
 }
 
-function Breadcrumbs({ items, compact = false }: { items: { label: string; href?: string }[]; compact?: boolean }) {
-  return (
-    <nav className={`${compact ? "mb-2" : "mb-4"} flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:text-sm`} aria-label="Хлебные крошки">
-      <Link href="/obyavleniya/prodam" className="hover:text-[#0875d1]">
-        Краснодар
-      </Link>
-      {items.map((item, index) => (
-        <span key={`${item.href ?? item.label}-${index}`} className="flex items-center gap-2">
-          <span>/</span>
-          {item.href ? (
-            <Link href={item.href} className="hover:text-[#0875d1]">
-              {item.label}
-            </Link>
-          ) : (
-            <span>{item.label}</span>
-          )}
-        </span>
-      ))}
-    </nav>
-  );
-}
-
-export function CategoriesPage() {
-  return (
-    <>
-      <SiteHeader />
-      <main>
-        <HomeHero />
-        <section className="page-container py-2 sm:py-3 lg:py-4">
-          <Breadcrumbs items={[{ label: "Категории" }]} />
-          <BackLink fallbackHref="/" className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-[#0875d1]">
-            Назад
-          </BackLink>
-          <h1 className="mt-3 text-xl font-bold leading-tight text-[#060b27] sm:text-2xl lg:text-3xl">Категории объявлений</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:mt-3 sm:text-base sm:leading-7 lg:mt-4 lg:text-lg lg:leading-8">
-            Первый уровень каталога и подкатегории отображаются плитками. Структура готова для расширения по городам и регионам.
-          </p>
-        </section>
-        <CategoryGrid variant="grid" />
-      </main>
-    </>
-  );
-}
-
 export function ListingKindPage({ kind }: { kind: ListingKind }) {
   const current = listingKinds.find((item) => item.slug === kind) ?? listingKinds[0];
   const listings = listPublicDemoListings().filter((listing) => listing.kind === kind);
@@ -1544,7 +1500,7 @@ export async function CategoryListingsPage({ categorySlug, subcategorySlug, page
     <>
       <SiteHeader />
       <HomeHero />
-      <main className="bg-[var(--category-page)] pb-8" style={categoryPageStyle(category?.slug ?? categorySlug)}>
+      <main className="bg-[var(--category-page)] pb-8" data-category-colors={category?.slug ?? categorySlug}>
         <div className="page-container py-3 sm:py-4 lg:py-5">
           <BackLink fallbackHref={backFallbackHref} className="inline-flex items-center gap-2 text-sm font-bold text-[#d92d20] transition hover:text-[#b42318]">
             Назад

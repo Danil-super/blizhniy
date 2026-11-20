@@ -104,6 +104,7 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
   return null;
  };
  server=createServer(tls,async(req,res)=>{
+  res.setHeader('Strict-Transport-Security','max-age=31536000');
   try{
    if(typeof req.url!=='string'||!req.url.startsWith('/')||req.url.startsWith('//')||/[\\\x00-\x20]/.test(req.url)){res.writeHead(400,{'cache-control':'no-store'});res.end('Invalid local path');return;}
    if(!allowLocalPrimaryRequest(req,state.origin,process.env.BLIZHNIY_TELEGRAM_PHONE==='enabled')){

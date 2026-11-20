@@ -8,17 +8,27 @@ import {readFile,readdir,mkdtemp,symlink,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {getPublicationTestMigrationPlan} from '../scripts/publication-test-release-plan.mjs';
+import {getPublicationTestMigrationPlan,getInboxPreferenceMigration} from '../scripts/publication-test-release-plan.mjs';
 import {getPaymentReconciliationRolePlan,verifyPaymentReconciliationDatabase} from '../scripts/payment-reconciliation-role.mjs';
+import {getSpecialistCheckoutMigration,specialistCheckoutRuntimeGrants} from '../scripts/specialist-checkout-release.mjs';
 import {buildPaymentWorker} from '../scripts/build-payment-worker.mjs';
 import {createRequire} from 'node:module';
+import {checkSpecialistServiceStartup} from './specialist-service-startup-cases.mjs';
 import pg from 'pg';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
 const name='blizhniy-publication-test-'+randomBytes(8).toString('hex'),label='blizhniy.publication-test-fixture',password=randomBytes(32).toString('hex');
 const docker=async args=>(await run('/usr/bin/docker',['--host','unix:///var/run/docker.sock',...args],{timeout:20000,maxBuffer:1048576,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',POSTGRES_PASSWORD:password}})).stdout.trim();
 
-test('candidate production TEST release: exact schema/ACL, compiled worker, original admission and one fulfillment',{timeout:90000},async suite=>{
+const layouts=[
+ {name:'release journal',specialistTerms:false,inbox:false},
+ {name:'specialist terms',specialistTerms:true,inbox:false},
+ {name:'inbox preferences',specialistTerms:false,inbox:true},
+ {name:'specialist terms and inbox preferences',specialistTerms:true,inbox:true},
+ {name:'hosted specialist admission',specialistTerms:true,inbox:false,account:true},
+ {name:'hosted specialist admission and inbox preferences',specialistTerms:true,inbox:true,account:true},
+];
+for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'specialist service startup on ':'candidate production TEST release: exact schema/ACL, compiled worker, original admission and one fulfillment on ')+layout,{timeout:90000},async suite=>{
  let container,admin,db,workerDb,artifactDirectory;const originalFetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error('External network forbidden');};
  const variables=['BLIZHNIY_AUTH_MODE','BLIZHNIY_AUTH_ORIGIN','BLIZHNIY_LISTING_WORKFLOW','BLIZHNIY_LOCAL_PRIMARY'];
  const saved=Object.fromEntries(variables.map(k=>[k,process.env[k]]));Object.assign(process.env,{BLIZHNIY_AUTH_MODE:'postgres',BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_LISTING_WORKFLOW:'postmoderation'});delete process.env.BLIZHNIY_LOCAL_PRIMARY;
@@ -56,6 +66,58 @@ test('candidate production TEST release: exact schema/ACL, compiled worker, orig
    const check=()=>copiedGuard.verifyPaymentReconciliationDatabase(workerDb,{database:config.database,publicationTest:true});await check();
    const path=join(artifact,'database/candidates/0059-test-placement-guards.sql'),bytes=await readFile(path);await writeFile(path,Buffer.concat([bytes,Buffer.from('\n-- changed bytes\n')]));await assert.rejects(check());await writeFile(path,bytes);await check();
   });
+  if(specialistTerms)await suite.test('compiled worker accepts the exact additive schema with its original role and merchant scope',async()=>{
+   const migrate=getSpecialistCheckoutMigration();
+   const check=()=>copiedGuard.verifyPaymentReconciliationDatabase(workerDb,{database:config.database,publicationTest:true});
+   await admin.query('create role blizhniy_runtime nologin');await admin.query(migrate.source);
+   for(const statement of specialistCheckoutRuntimeGrants)await admin.query(statement);
+   await assert.rejects(check());
+   await admin.query('alter table app.specialist_checkout_terms rename to incomplete_terms');
+   try{await assert.rejects(check());}finally{await admin.query('alter table app.incomplete_terms rename to specialist_checkout_terms');}
+   await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[migrate.name,'0'.repeat(64)]);
+   await assert.rejects(check());
+   await admin.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[migrate.name,migrate.sha256]);
+   await check();await assert.rejects(copiedGuard.verifyPaymentReconciliationDatabase(workerDb,{database:config.database}));
+   const interventions=[
+    ['alter table app.specialist_checkout_terms disable trigger specialist_checkout_terms_guard','alter table app.specialist_checkout_terms enable trigger specialist_checkout_terms_guard'],
+    ['grant update(created_at) on app.specialist_checkout_terms to blizhniy_runtime','revoke update(created_at) on app.specialist_checkout_terms from blizhniy_runtime'],
+    ['grant select(intent_id) on app.specialist_checkout_terms to blizhniy_payment_reconciler','revoke select(intent_id) on app.specialist_checkout_terms from blizhniy_payment_reconciler'],
+   ];
+   for(const [change,restore] of interventions){
+    await admin.query(change);try{await assert.rejects(check());}finally{await admin.query(restore);}await check();
+   }
+   const path=join(artifact,'database/candidates',migrate.name),bytes=await readFile(path);assert.equal(bytes.toString(),migrate.source);
+   await writeFile(path,Buffer.concat([bytes,Buffer.from('\n-- fixture\n')]));
+   try{await assert.rejects(check());}finally{await writeFile(path,bytes);}await check();
+   assert.equal(load('specialist-checkout-config').readSpecialistCheckoutEnabled(),false);
+  });
+  const inboxMigration=getInboxPreferenceMigration();
+  const check=()=>copiedGuard.verifyPaymentReconciliationDatabase(workerDb,{database:config.database,publicationTest:true});
+  if(inbox)await suite.test('the packaged worker admits only the reviewed inbox migration and function grants',async()=>{
+   await admin.query(inboxMigration.sql);
+   await assert.rejects(check());
+   await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[inboxMigration.name,'f'.repeat(64)]);
+   await assert.rejects(check());
+   await admin.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[inboxMigration.name,inboxMigration.sha256]);
+   await check();
+   await admin.query('create role inbox_readonly_fixture nologin');
+   for(const [change,restore] of [
+    ['alter table app.notifications disable trigger apply_inbox_preference','alter table app.notifications enable trigger apply_inbox_preference'],
+    ['grant execute on function app.apply_inbox_preference() to inbox_readonly_fixture','revoke execute on function app.apply_inbox_preference() from inbox_readonly_fixture'],
+    ['grant execute on function app.apply_inbox_preference() to public','revoke execute on function app.apply_inbox_preference() from public'],
+   ]){
+    await admin.query(change);try{await assert.rejects(check());}finally{await admin.query(restore);}await check();
+   }
+   const path=join(artifact,'database/candidates',inboxMigration.name),bytes=await readFile(path);
+   assert.equal(bytes.toString(),inboxMigration.sql);
+   await writeFile(path,Buffer.concat([bytes,Buffer.from('\n-- fixture\n')]));
+   try{await assert.rejects(check());}finally{await writeFile(path,bytes);}await check();
+  });
+  if(account){
+   await checkSpecialistServiceStartup({suite,admin,config,workerDb,copiedGuard,artifact,docker,container,
+    connect:database=>new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}))});
+   return;
+  }
   await admin.query("insert into app.regions(slug,name) values('krasnodarskiy-kray','Краснодарский край');insert into app.cities(region_id,slug,name) select id,'krasnodar','Краснодар' from app.regions;insert into app.categories(slug,name) values('otdyh','Хобби и отдых');insert into app.specialist_categories(slug,name,parent_name) values('plumber','Сантехник','Строительство');insert into app.tariffs(id,action,name,price,duration_days) values('listing-publication','listing_publication','Объявление',199,30),('vacancy-publication','vacancy_publication','Вакансия',199,30),('work-request-publication','work_request_publication','Заказ',199,30)");
   const city=(await admin.query('select id from app.cities')).rows[0].id,category=(await admin.query('select id from app.categories')).rows[0].id,profession=(await admin.query('select id from app.specialist_categories')).rows[0].id;
   async function actor(){
@@ -125,6 +187,73 @@ test('candidate production TEST release: exact schema/ACL, compiled worker, orig
    await assert.rejects(workerDb.query('update app.specialist_categories set id=id where id=$1',[profession]),{code:'23514'});
    await assert.rejects(workerDb.query("update app.specialist_categories set name='Изменение' where id=$1",[profession]),{code:'42501'});
    await assert.rejects(workerDb.query('delete from app.work_publications'),{code:'42501'});await preflight();
+  });
+  await suite.test('restored pending TEST purchases publish once without sending a second charge request',async()=>{
+   const pending=[];
+   for(const kind of ['listing','vacancy','workRequest']){
+    const item=await draft(kind),checkoutStore=store(kind);
+    const quote=await checkoutStore.preview(item.token,item.owner,item.id,item.revision);
+    const order=await checkoutStore.prepare(item.token,item.owner,{
+     listingId:item.id,expectedRevision:item.revision,creationKey:randomUUID(),
+     expectedTariffId:quote.tariff.id,expectedAmount:quote.tariff.amount,expectedDurationDays:quote.tariff.durationDays,
+    });
+    const payment=load('account-test-listing-payment').createAccountTestListingPayment(db,checkoutStore,{...merchant,ownerId:current.owner},fetcher);
+    await payment.dispatch(item.token,item.owner,order.id);
+    const original=await checkoutStore.readOrder(item.token,item.owner,order.id);
+    assert.ok(original);assert.equal(original.fulfillment,null);
+    pending.push({kind,item,order,original});
+   }
+
+   const database='publication_restore';
+   await admin.query('create database publication_restore template template0');
+   await admin.query('revoke all on database publication_restore from public;grant connect on database publication_restore to blizhniy_payment_reconciler');
+   await docker(['exec',container,'bash','-euo','pipefail','-c',
+    'pg_dump --format=custom --username=postgres --no-password --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --no-password --dbname="$2"',
+    'restore-fixture',config.database,database]);
+   const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,max:2}));
+   const restoredWorker=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+   try{
+    await copiedGuard.verifyPaymentReconciliationDatabase(restoredWorker,{database,publicationTest:true});
+    const resumed=compiledWorker(restoredWorker,merchant,fetcher,current.owner),previousPosts=posts,previousGets=gets;
+    for(let i=0;i<pending.length;i++)assert.deepEqual(await resumed.tick(),{state:'completed'});
+    assert.deepEqual(await resumed.tick(),{state:'idle'});assert.equal(posts,previousPosts);assert.equal(gets-previousGets,pending.length);
+    for(const {kind,item,order,original} of pending){
+     const checkoutStore=new Store(restored,checkout,{postmoderation:true,publicationTestOwner:current.owner,...(kind==='listing'?{}:{targetType:kind})});
+     const recovered=await checkoutStore.readOrder(item.token,item.owner,order.id);
+     assert.equal(recovered.order.status,'succeeded');assert.ok(recovered.fulfillment);
+     assert.equal((await restored.query('select count(*)::int n from app.payment_fulfillments where intent_id=$1',[order.id])).rows[0].n,1);
+     const card=kind==='listing'?await new(load('postgres-public-listings').PostgresPublicListingStore)(restored,{postmoderation:true}).read(item.id)
+      :await new(load('postgres-public-work').PostgresPublicWorkStore)(restored,{vacancyPostmoderation:true}).read(kind,item.id);
+     assert.ok(card);assert.match(card.title,/^ТЕСТ · /);
+     assert.deepEqual(await store(kind).readOrder(item.token,item.owner,order.id),original);
+    }
+   }finally{await restoredWorker.close();await restored.close();}
+  });
+  if(!inbox)await suite.test('a rolling inbox migration preserves three pending payments across worker restart',async()=>{
+   const client=await admin.connect();
+   try{
+    const sql=inboxMigration.sql.trimEnd();
+    assert.ok(sql.endsWith('commit;'));
+    await client.query(sql.slice(0,-'commit;'.length));
+    await client.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[inboxMigration.name,inboxMigration.sha256]);
+    let committed=false;
+    const concurrent={transaction:(work,options)=>workerDb.transaction(tx=>work({query:async(sql,values)=>{
+     const result=await tx.query(sql,values);
+     if(!committed&&sql.includes('from blizhniy_meta.migrations order by name')){
+      await client.query('commit');committed=true;
+     }
+     return result;
+    }}),options)};
+    await copiedGuard.verifyPaymentReconciliationDatabase(concurrent,{database:config.database,publicationTest:true});
+    assert.equal(committed,true);
+   }catch(error){await client.query('rollback');throw error;}finally{client.release();}
+   await check();
+   const resumed=compiledWorker(workerDb,merchant,fetcher,current.owner);
+   const receipts=async()=>(await db.query('select count(*)::int as n from app.payment_fulfillments')).rows[0].n;
+   const initial=await receipts(),previousPosts=posts,previousGets=gets;
+   for(let i=0;i<3;i++)assert.deepEqual(await resumed.tick(),{state:'completed'});
+   assert.deepEqual(await resumed.tick(),{state:'idle'});
+   assert.equal(await receipts(),initial+3);assert.equal(posts,previousPosts);assert.equal(gets,previousGets+3);
   });
  }finally{
   for(const key of variables){if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];}globalThis.fetch=originalFetch;

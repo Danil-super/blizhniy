@@ -104,7 +104,9 @@ export class PostgresPhoneVerificationStore {
           : 'insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)', [user, JSON.stringify(profile)]);
         await tx.query(`insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)
          on conflict(user_id) do update set phone=excluded.phone,telegram_subject=excluded.telegram_subject,source='telegram',confirmed_at=clock_timestamp()`, [user, attempt.candidatePhone, attempt.candidateSubject]);
-        await tx.query("update app.telegram_phone_attempts set state='confirmed' where id=$1", [id]);
+        const confirmed = await tx.query(`update app.telegram_phone_attempts set state='confirmed'
+          where id=$1 and state='review' and expires_at>clock_timestamp()`, [id]);
+        if (confirmed.rowCount !== 1) throw new PhoneVerificationError('INVALID_ATTEMPT');
         return { confirmed: true, phone: attempt.candidatePhone, returnTo: phoneReturnPath(attempt.returnPath) };
       });
     } catch (error) {

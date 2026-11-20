@@ -35,6 +35,25 @@ test('Telegram phone: real SQL uniqueness, sessions, RLS, replacement and public
   const clearAttempts=()=>owner.query('delete from app.telegram_phone_attempts');
   await suite.test('migration is inactive and cannot mark existing manual phones verified',async()=>{const policy=(await owner.query('select available,required from app.phone_verification_policy')).rows[0];assert.deepEqual(policy,{available:false,required:false});assert.equal((await profiles.read(a.token,a.id)).profile.phoneVerified,false);await assert.rejects(store.start(a.token,a.id,'12345678','/cabinet'),{code:'UNAVAILABLE'});await owner.query('update app.phone_verification_policy set available=true');});
   await suite.test('ordinary SQL role cannot write attestations without the authenticated owner scope',async()=>{await assert.rejects(db.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[a.id,phone,'forged']),{code:'42501'});assert.equal((await db.query('select * from app.telegram_phone_bindings')).rowCount,0);await assert.rejects(db.query('update app.phone_verification_policy set required=true'),{code:'42501'});});
+  await suite.test('a refused final transition rolls back the profile and phone binding together', async () => {
+    const attempt = await stage(a);
+    const review = await store.review(a.token, a.id, attempt.id);
+    const original = await profiles.read(a.token, a.id);
+    // Model the database declining the final write. No wall-clock sleeps or provider calls.
+    await owner.query(`create function app.test_skip_phone_confirmation() returns trigger
+      language plpgsql as $$ begin return null; end $$;
+      create trigger test_skip_phone_confirmation before update on app.telegram_phone_attempts
+      for each row when (new.state = 'confirmed') execute function app.test_skip_phone_confirmation()`);
+    try {
+      await assert.rejects(store.confirm(a.token, a.id, attempt.id, review.profileRevision, true), {code:'INVALID_ATTEMPT'});
+      assert.deepEqual(await profiles.read(a.token, a.id), original);
+      assert.equal((await owner.query('select phone from app.telegram_phone_bindings where user_id=$1', [a.id])).rowCount, 0);
+      assert.equal((await owner.query('select state from app.telegram_phone_attempts where id=$1', [attempt.id])).rows[0].state, 'review');
+    } finally {
+      await owner.query('drop trigger test_skip_phone_confirmation on app.telegram_phone_attempts; drop function app.test_skip_phone_confirmation()');
+      await clearAttempts();
+    }
+  });
   await suite.test('callback state is single-use and bound to the precise authorized session',async()=>{const attempt=await store.start(a.token,a.id,'12345678','/cabinet');await assert.rejects(store.claim(b.token,attempt.state,'12345678'),{code:'INVALID_ATTEMPT'});const claimed=await store.claim(a.token,attempt.state,'12345678');assert.equal(claimed.id,attempt.id);await assert.rejects(store.claim(a.token,attempt.state,'12345678'),{code:'INVALID_ATTEMPT'});await clearAttempts();});
   await suite.test('successful attestation preserves email and unrelated fields, returning trusted profile claims',async()=>{const attempt=await stage(a);const review=await store.review(a.token,a.id,attempt.id);assert.equal(review.phone,phone);await store.confirm(a.token,a.id,attempt.id,review.profileRevision,false);const saved=await profiles.read(a.token,a.id);assert.equal(saved.profile.phone,phone);assert.equal(saved.profile.verifiedPhone,phone);assert.equal(saved.profile.phoneVerified,true);assert.equal(saved.profile.name,'Synthetic User');assert.equal(saved.profile.email,'phone0@example.invalid');await assert.rejects(store.confirm(a.token,a.id,attempt.id,review.profileRevision,true),{code:'INVALID_ATTEMPT'});await clearAttempts();});
   await suite.test('simultaneous same phone cannot bind to two accounts and errors reveal no account',async()=>{await store.unlink(a.token,a.id);const attempts=await Promise.all([stage(a,phone,'race-a'),stage(b,phone,'race-b')]);const reviews=await Promise.all(attempts.map((v,i)=>store.review(accounts[i].token,accounts[i].id,v.id)));const results=await Promise.allSettled(attempts.map((v,i)=>store.confirm(accounts[i].token,accounts[i].id,v.id,reviews[i].profileRevision,true)));assert.equal(results.filter(r=>r.status==='fulfilled').length,1);const failed=results.find(r=>r.status==='rejected');assert.equal(failed.reason.code,'PHONE_CONFLICT');assert.equal((await owner.query('select * from app.telegram_phone_bindings where phone=$1',[phone])).rowCount,1);await owner.query('delete from app.telegram_phone_bindings');await clearAttempts();});

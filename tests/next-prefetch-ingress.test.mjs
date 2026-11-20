@@ -21,3 +21,10 @@ test('Caddy template normalizes the same hints before the trusted reverse proxy'
  assert.ok(file.indexOf('request_header @document_not_rsc')<file.indexOf('reverse_proxy'));
  assert.ok(file.includes('header_up X-Real-IP {remote_host}'));
 });
+
+test('missing category documents use the same backend as the original lookup',()=>{
+ const file=readFileSync(new URL('../deploy/Caddyfile.example',import.meta.url),'utf8');
+ assert.match(file,/@missing_html\s*\{\s*status 404\s*header Content-Type text\/html\*/);
+ assert.match(file,/@category_document\s*\{\s*method GET HEAD\s*path \/katalog\/\*\s*not header RSC 1/);
+ assert.match(file,/reverse_proxy @category_document \{http\.reverse_proxy\.upstream\.address\}\s*\{\s*rewrite \/_not-found\?\s*import origin_headers\s*\}\s*copy_response/);
+});

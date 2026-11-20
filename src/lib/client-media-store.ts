@@ -27,7 +27,7 @@ function openMediaDatabase() {
     return databasePromise;
   }
 
-  databasePromise = new Promise((resolve, reject) => {
+  databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
     const request = window.indexedDB.open(databaseName, databaseVersion);
 
     request.onerror = () => reject(request.error ?? new Error("Не удалось открыть локальное хранилище медиа."));
@@ -38,56 +38,100 @@ function openMediaDatabase() {
         database.createObjectStore(objectStoreName, { keyPath: "id" });
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const database = request.result;
+      database.onversionchange = () => {
+        database.close();
+        databasePromise = null;
+      };
+      database.onclose = () => { databasePromise = null; };
+      resolve(database);
+    };
+  }).catch(error => {
+    databasePromise = null;
+    throw error;
   });
 
   return databasePromise;
 }
 
-function runMediaTransaction<T>(mode: IDBTransactionMode, action: (store: IDBObjectStore) => IDBRequest<T>) {
-  return openMediaDatabase().then(
-    (database) =>
-      new Promise<T>((resolve, reject) => {
-        const transaction = database.transaction(objectStoreName, mode);
-        const request = action(transaction.objectStore(objectStoreName));
-
-        request.onerror = () => reject(request.error ?? new Error("Не удалось выполнить операцию с локальным медиа."));
-        request.onsuccess = () => resolve(request.result);
-      }),
-  );
+async function runMediaTransaction<T>(mode: IDBTransactionMode, action: (store: IDBObjectStore) => T) {
+  const database = await openMediaDatabase();
+  return new Promise<T>((resolve, reject) => {
+    const transaction = database.transaction(objectStoreName, mode);
+    transaction.onabort = () => reject(transaction.error ?? new Error("Запись была прервана."));
+    try {
+      const result = action(transaction.objectStore(objectStoreName));
+      transaction.oncomplete = () => resolve(result);
+    } catch (error) {
+      transaction.abort();
+      reject(error);
+    }
+  });
 }
 
 export function isStoredMediaReference(value?: string) {
   return Boolean(value?.startsWith(storedMediaPrefix));
 }
 
-export async function storeMediaFile(file: File) {
-  const id = mediaId();
-  const record: StoredMediaRecord = {
+export async function storeMediaFiles(files: File[]) {
+  if (!files.length) return [];
+  const records: StoredMediaRecord[] = files.map(file => ({
     blob: file,
     createdAt: new Date().toISOString(),
-    id,
+    id: mediaId(),
     name: file.name || "media",
     type: file.type || "application/octet-stream",
-  };
+  }));
+  try {
+    await runMediaTransaction("readwrite", store => {
+      for (const record of records) store.add(record);
+    });
+  } catch (cause) {
+    const message = cause instanceof DOMException && cause.name === "QuotaExceededError"
+      ? "В хранилище браузера недостаточно места для фотографий. Освободите место и повторите попытку."
+      : "Не удалось сохранить фотографии в браузере. Повторите попытку.";
+    throw new Error(message, { cause });
+  }
+  return records.map(record => record.id);
+}
 
-  await runMediaTransaction("readwrite", (store) => store.put(record));
+export async function storeMediaFile(file: File) {
+  const [id] = await storeMediaFiles([file]);
   return id;
 }
 
 export async function storeMediaDataUrl(dataUrl: string, name = "media") {
   const blob = imageDataUrlToBlob(dataUrl);
-  const id = mediaId();
-  const record: StoredMediaRecord = {
-    blob,
-    createdAt: new Date().toISOString(),
-    id,
-    name,
-    type: blob.type || "application/octet-stream",
-  };
+  return storeMediaFile(new File([blob], name, { type: blob.type }));
+}
 
-  await runMediaTransaction("readwrite", (store) => store.put(record));
-  return id;
+export async function storeFormPhotos(data: FormData, limit: number) {
+  if (data.has("photosPreparing")) throw new Error("Дождитесь подготовки фотографий.");
+  const existing = data.getAll("existingPhotos");
+  if (!existing.every((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)) {
+    throw new Error("Проверьте сохранённые фотографии.");
+  }
+  const files = data.getAll("photos").filter(entry => !(entry instanceof File && !entry.name && !entry.size));
+  if (!files.every((entry): entry is File => entry instanceof File && entry.size > 0 && entry.type.startsWith("image/"))) {
+    throw new Error("Выберите фотографии заново.");
+  }
+  const order = data.has("localPhotoOrder") ? String(data.get("localPhotoOrder")).split(",").filter(Boolean)
+    : [...existing.map(() => "saved"), ...files.map(() => "new")];
+  if (order.length > limit || order.length !== existing.length + files.length ||
+      order.filter(kind => kind === "saved").length !== existing.length ||
+      order.filter(kind => kind === "new").length !== files.length) {
+    throw new Error("Список фотографий изменился. Проверьте выбранные файлы.");
+  }
+  const stored = await storeMediaFiles(files);
+  let nextSaved = 0;
+  let nextFile = 0;
+  return order.map(kind => kind === "saved" ? existing[nextSaved++] : stored[nextFile++]);
+}
+
+async function readMediaRecord(source: string): Promise<StoredMediaRecord | undefined> {
+  const request = await runMediaTransaction("readonly", store => store.get(source));
+  return request.result;
 }
 
 export async function resolveStoredMediaUrl(source: string) {
@@ -101,7 +145,7 @@ export async function resolveStoredMediaUrl(source: string) {
     return cached;
   }
 
-  const record = await runMediaTransaction<StoredMediaRecord | undefined>("readonly", (store) => store.get(source));
+  const record = await readMediaRecord(source);
 
   if (!record?.blob) {
     return "";
@@ -117,7 +161,7 @@ export async function getStoredMediaFile(source: string) {
     return undefined;
   }
 
-  const record = await runMediaTransaction<StoredMediaRecord | undefined>("readonly", (store) => store.get(source));
+  const record = await readMediaRecord(source);
 
   if (!record?.blob) {
     return undefined;

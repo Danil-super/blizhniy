@@ -16,7 +16,14 @@ export function boundedHandoffRequest(options,{deadlineMs=5000,maxBytes=32768}={
     const chunks=[];let bytes=0;
     res.on('data',chunk=>{bytes+=chunk.length;if(bytes>maxBytes||chunks.length>=4096){res.destroy();fail();}else chunks.push(chunk);});
     res.on('error',fail);res.on('aborted',fail);
-    res.on('end',()=>{if(settled)return;if(!res.complete)return fail();settled=true;clearTimeout(timer);resolve({status:res.statusCode,headers:res.headers,body:Buffer.concat(chunks,bytes)});});
+    res.on('end',()=>{
+      if(settled)return;
+      if(!res.complete)return fail();
+      settled=true;clearTimeout(timer);
+      // Caddy can send the configuration ETag in a trailer after the last body chunk.
+      const tags=[...(res.headersDistinct.etag??[]),...(res.trailersDistinct.etag??[])];
+      resolve({status:res.statusCode,headers:res.headers,etag:tags.length===1?tags[0]:undefined,body:Buffer.concat(chunks,bytes)});
+    });
    });
    timer=setTimeout(fail,deadlineMs);req.on('error',fail);req.end(body);
   }catch{fail();}

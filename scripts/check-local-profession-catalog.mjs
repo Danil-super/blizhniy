@@ -1,6 +1,6 @@
 // Real Chromium + owned loopback fixture. Changes only random synthetic accounts/categories.
 import assert from 'node:assert/strict';
-import {randomBytes,randomUUID} from 'node:crypto';
+import {randomInt,randomBytes,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import pg from 'pg';
 import {chromium} from 'playwright';
@@ -16,7 +16,7 @@ let user,context;
 const browser=await chromium.launch({headless:true});
 try{
  user=(await db.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',[email,await load('identity').hashPassword(password)])).rows[0].id;
- const phone='+7999'+String(randomBytes(4).readUInt32BE()%10000000).padStart(7,'0');
+ const phone='+7999'+String(randomInt(10_000_000)).padStart(7,'0');
  const profile=Object.fromEntries(Object.entries(load('cabinet-profile').createDefaultCabinetProfile({name:'Проверка профессии',email})).filter(([key])=>!['email','phoneVerified','verifiedPhone'].includes(key)));profile.phone=phone;
  await db.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[user,JSON.stringify(profile)]);
  await db.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[user,phone,'synthetic-profession-'+suffix]);

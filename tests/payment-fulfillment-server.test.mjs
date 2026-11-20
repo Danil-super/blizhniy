@@ -347,10 +347,37 @@ test("webhook acknowledges durable applied/blocked financial successes, never re
     const h = harness({ missingCapture });
     const response = await h.load("src/app/api/payments/yookassa/webhook/route.ts").POST(new Request("https://example.invalid/api/payments/yookassa/webhook", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "notification", event: "payment.succeeded", object: { id: providerId } }) }));
     assert.equal(response.status, 200);
-    assert.equal(response.body.result.payment.status, "succeeded");
-    assert.equal(response.body.result.payment.fulfillmentStatus, missingCapture ? "blocked" : "applied");
+    assert.deepEqual(response.body, { ok: true });
+    assert.equal(h.state.row.status, "succeeded");
+    assert.equal(h.state.row.fulfillment_status, missingCapture ? "blocked" : "applied");
     assert.equal(h.state.effects, Number(!missingCapture));
   }
+});
+
+test("legacy webhook acknowledges ignored notifications without revealing local payment lookup", async () => {
+  const h = harness({ row: null });
+  for (const event of ["payment.succeeded", "refund.succeeded"]) {
+    const response = await h.load("src/app/api/payments/yookassa/webhook/route.ts").POST(new Request("https://example.invalid/webhook", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "notification", event, object: { id: providerId } }),
+    }));
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, { ok: true });
+  }
+  assert.equal(h.state.providerFetches.length, 0);
+  assert.equal(h.state.effects, 0);
+});
+
+test("legacy webhook returns a retryable HTTP error without serializing provider diagnostics", async () => {
+  const h = harness({ env: { YOOKASSA_SECRET_KEY: "" } });
+  const response = await h.load("src/app/api/payments/yookassa/webhook/route.ts").POST(new Request("https://example.invalid/webhook", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "notification", event: "payment.succeeded", object: { id: providerId } }),
+  }));
+  assert.equal(response.status, 500);
+  assert.deepEqual(response.body, { ok: false, error: "YooKassa webhook processing failed" });
+  assert.equal(h.state.row.status, "pending");
+  assert.equal(h.state.effects, 0);
 });
 
 test("cabinet retries a genuine unsettled succeeded Yoo payment only through provider verification and RPC", async () => {

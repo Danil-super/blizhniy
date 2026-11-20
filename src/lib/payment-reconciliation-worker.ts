@@ -7,12 +7,13 @@ type Merchant=ConstructorParameters<typeof PostgresPaymentVerificationStore>[1];
 type Code='provider_pending'|'capture_required'|'processing_unavailable'|'publication_blocked'|'attempts_exhausted'|'phone_required';
 type Result={state:'idle'|'lost'|'completed'}|{state:'deferred'|'blocked';code:Code};
 /** Explicit one-job tick. No poller/startup hook, provider POST or caller-supplied financial snapshot. */
-export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'transaction'>,merchant:Merchant,fetcher:typeof fetch=globalThis.fetch,publicationTestOwner?:string){
+export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'transaction'>,merchant:Merchant,fetcher:typeof fetch=globalThis.fetch,publicationTestOwner?:string,specialistAccountTest?:true){
  const mode=process.env.BLIZHNIY_LISTING_WORKFLOW;if(mode!==undefined&&!['pre-moderation','postmoderation'].includes(mode))throw Error('Invalid worker publication mode');
  const publication=publicationTestOwner!==undefined;
- const queue=new PostgresPaymentReconciliationQueue(db,{...merchant,...(publication?{publicationTestOwner}:{})}),verification=new PostgresPaymentVerificationStore(db,merchant,fetcher);
+ const queue=new PostgresPaymentReconciliationQueue(db,{shopId:merchant.shopId,isTest:merchant.isTest,publicationTestOwner,specialistAccountTest}),verification=new PostgresPaymentVerificationStore(db,merchant,fetcher);
  const policy={postmoderation:mode==='postmoderation',...(publication?{publicationTestOwner}:{})};
  const fulfillments={listing:new PostgresListingPaymentFulfillmentStore(db,merchant,policy),...(publication?{
+  ...(specialistAccountTest?{specialist:new PostgresListingPaymentFulfillmentStore(db,merchant,{...policy,targetType:'specialist',specialistAccountTest})}:{}),
   vacancy:new PostgresListingPaymentFulfillmentStore(db,merchant,{...policy,targetType:'vacancy'}),
   workRequest:new PostgresListingPaymentFulfillmentStore(db,merchant,{...policy,targetType:'workRequest'}),
  }:{})};
@@ -40,7 +41,7 @@ export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'tran
    const sql=error&&typeof error==='object'&&'code'in error?error.code:null;
    if(sql==='P7601'){state='waiting_phone';code='phone_required';}
    // A reserved refund is a durable publication fence, not a transient provider failure.
-   else if(sql==='P7602'||sql==='PBR01'){state='blocked';code='publication_blocked';}
+   else if(sql==='P7602'||sql==='PBR01'||(claim.targetType==='specialist'&&sql==='PSP03')){state='blocked';code='publication_blocked';}
    else{state='retry';code='processing_unavailable';}
   }
   if(state==='retry'&&claim.attempts>=12){state='blocked';code='attempts_exhausted';}

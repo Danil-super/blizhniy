@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { productionAccount, openAccountAuthChannel } from "@/lib/local-account";
 import { createAccountSessionState } from "@/lib/account-session-state";
 import type { AccountAuthSnapshot } from "@/lib/account-session-state";
@@ -16,9 +17,26 @@ function PrimaryAccountAuth({ children, available }: { children: ReactNode; avai
     if (!available) return;
     const unsubscribe = store.subscribe(setSnapshot);
     const refresh = () => { void store.refresh(); };
-    const revalidate = () => { void store.refresh(true); };
+    const revalidate = () => {
+      // Moderation editors can hide private material and retain the same moderator's unsaved note.
+      const strict = document.querySelector('[data-recheck-moderator]') !== null;
+      void store.refresh(!strict);
+    };
     const visibility = () => { if (document.visibilityState === "visible") revalidate(); };
-    const pageshow = (event: PageTransitionEvent) => { if (event.persisted) refresh(); };
+    let cached = false;
+    const pagehide = (event: PageTransitionEvent) => {
+      if (!event.persisted || cached) return;
+      cached = true;
+      // React must commit the private view's loading state before the browser freezes it.
+      flushSync(() => store.beginChange());
+    };
+    const pageshow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      if (cached) {
+        cached = false;
+        void store.endChange();
+      } else refresh();
+    };
     const begin = () => store.beginChange();
     const end = () => { void store.endChange(); };
     const channel = openAccountAuthChannel();
@@ -27,6 +45,7 @@ function PrimaryAccountAuth({ children, available }: { children: ReactNode; avai
     };
     window.addEventListener("focus", revalidate);
     window.addEventListener("online", revalidate);
+    window.addEventListener("pagehide", pagehide);
     window.addEventListener("pageshow", pageshow);
     window.addEventListener("blizhniy-account-changing", begin);
     window.addEventListener("blizhniy-account-changed", end);
@@ -36,6 +55,7 @@ function PrimaryAccountAuth({ children, available }: { children: ReactNode; avai
       unsubscribe(); store.stop(); channel?.close();
       window.removeEventListener("focus", revalidate);
       window.removeEventListener("online", revalidate);
+      window.removeEventListener("pagehide", pagehide);
       window.removeEventListener("pageshow", pageshow);
       window.removeEventListener("blizhniy-account-changing", begin);
       window.removeEventListener("blizhniy-account-changed", end);

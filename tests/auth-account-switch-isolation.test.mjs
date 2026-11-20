@@ -200,6 +200,7 @@ function loadGate(fileName, exportName) {
         };
       }
 
+      if (id === "react-dom") return {createPortal:()=>assert.fail("Draft fields are private to the primary backend")};
       if (id === "react") return { Fragment, useEffect() {}, useState: (initialValue) => [initialValue, () => {}] };
       if (id === "@/components/auth/useAuthState") return { useAuthState: () => authSnapshot };
       if (id === "@/components/auth/AccountAuthProvider") return { usePrimaryAccountAuth: () => null };

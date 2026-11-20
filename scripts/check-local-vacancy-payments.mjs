@@ -1,6 +1,6 @@
 // Only the explicitly owned synthetic PostgreSQL18 stand. All fixtures roll back.
 import assert from 'node:assert/strict';
-import {randomUUID,randomBytes} from 'node:crypto';
+import {randomUUID,randomInt,randomBytes} from 'node:crypto';
 import {createRequire} from 'node:module';
 import pg from 'pg';
 import {stateFile,localPrimaryDatabaseConfig,docker} from './local-primary-fixture.mjs';
@@ -26,7 +26,7 @@ try{
  const user=(await owner.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',[
   `vacancy-pay-${randomUUID()}@example.invalid`,`scrypt$131072$8$1$${'a'.repeat(32)}$${'b'.repeat(128)}`])).rows[0].id;
  const token=randomBytes(32).toString('hex');await owner.query("insert into app.sessions(token_hash,user_id,auth_version,scope) values($1,$2,0,'app')",[load('identity').hashSessionToken(token),user]);
- const phone='+7999'+String(randomBytes(4).readUInt32BE()%10000000).padStart(7,'0');
+ const phone='+7999'+String(randomInt(10_000_000)).padStart(7,'0');
  await owner.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[user,JSON.stringify({name:'Синтетический работодатель',phone})]);
  await owner.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[user,phone,'synthetic-vacancy-payment-'+randomUUID()]);
  assert.equal((await owner.query('select app.phone_is_confirmed($1) as confirmed',[user])).rows[0].confirmed,true);

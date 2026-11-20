@@ -281,6 +281,7 @@ test('UI standalone authentication page has exactly one main h1 without changing
 
 test('UI signed-out publication gate retains one main h1 when rendering the shared authentication form', () => {
   const { PublicationAuthGate } = load(source('src/components/auth/PublicationAuthGate.tsx'), {
+    'react-dom': require('react-dom'),
     '@/components/auth/AuthForm': { AuthForm: authFormPresentation() },
     '@/components/auth/useAuthState': { useAuthState: () => ({ state: 'signed-out' }) },
     '@/components/auth/AccountAuthProvider': { usePrimaryAccountAuth: () => null },

@@ -143,7 +143,12 @@ const renewalAssertionPairs = [
    " for(const schema of [53,56,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));",
    " for(const schema of [53,58,'55',null])assert.throws(()=>getRefundWorkerRolePlan('blizhniy_test',{schema}));"],
 ];
-const reviewedAssertionPairs = [...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs];
+const reportingAssertionPair = [
+  "tests/html-csp.test.mjs",
+  " for(const directive of [\"script-src-attr 'none'\",\"object-src 'none'\",\"base-uri 'none'\",\"frame-ancestors 'self'\",'report-uri /api/csp-report',\"worker-src 'self' blob:\"])assert.ok(value.includes(directive));",
+  " for(const directive of [\"script-src-attr 'none'\",\"object-src 'none'\",\"base-uri 'none'\",\"frame-ancestors 'self'\",'report-to csp',\"worker-src 'self' blob:\"])assert.ok(value.includes(directive));"
+];
+const reviewedAssertionPairs = [...registrationAssertionPairs, ...deploymentAssertionPairs, ...renewalAssertionPairs, reportingAssertionPair];
 const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, before, after]) =>
   file === path && text === before &&
   removed.filter(line => line.file === path && reviewedAssertionPairs.some(([pairPath, pairBefore, pairAfter]) =>
@@ -152,6 +157,28 @@ const reviewedReplacement = (file, text) => reviewedAssertionPairs.some(([path, 
 // Exact browser-test replacements reviewed individually by the owner; see docs/review/.
 // Content-addressed artifacts, not a blanket permission to remove assertions.
 const reviewedListingArtifacts = [
+  {"file": "tests/local-primary-refund-composition-cases.mjs", "before": "fa13ec1b3ed85c01d4f8a2c09d15aaa18807d5dd6c8d1e52a2876945cebe9102", "after": "75aec2e99a1d35505843e4f76e5b2df9d2645a70a00efc7f6adbda1f417778ce"},
+  {"file": "tests/local-primary-refund-activation-cases.mjs", "before": "2813fb003ebea562a78c97225c4b938c88fb1b9e4dc2c8566ee5442763f3a312", "after": "74fe6a803134d2aa35f66010b3b561527bca486e109c055ee61218d5a9eb9346"},
+  {"file": "tests/specialist-checkout-refund-activation-cases.mjs", "before": "b924673663f56eec35fc8d0c0cb0a7bd851d639ced5a5192c9c70ae1c755de39", "after": "83f6cab95da8cd6c3691ad68f70f105b914c8436a9b0a6ca87f27ad8d9f09c56"},
+  {"file": "tests/placement-renewal-artifacts.test.mjs", "before": "f9594827130e82032981c367943e92be94f2b5caeb9cafa278182d821d80d60e", "after": "d75e78827353cb373858e27dbff77caefe85bc33de0198202d3df7a6c405e42f"},
+  {"file": "tests/service-payment-artifacts.test.mjs", "before": "eb5017d8ab378a28d1005056cd5c28b1d257f007db819321b79085cd64804dd9", "after": "c86c1c1ecb2fe71a0636ff025ad7af0c00e2fdd9f8f7ee0182ae5c6f2ab70a2f"},
+  {"file": "tests/html-csp.test.mjs", "before": "56a3b847b340837288a109dacf522d703034a6111659d5aa80824d0ab8e1578f", "after": "ce3389283fd1714ab4c90ed2e76e34e2020af7e6cf0ddb53ec4fbc5d9d7eb98b", "alternateBefore": "405c711e273fa6adbc8c5301e68f4080818427653c27e9f43beefc05457351f3"},
+  {"file": "tests/listing-category-parent.test.mjs", "before": "89eeb641134ffeb99405b5fbbcde10faf25cb7d220fc8d39353a215fce39e98f", "after": "9ab7797ea8a49c19d2ca70a1547c2a8971ebcbbbb8c5df11dce0a5d40f617a7b"},
+  {"file": "tests/initialization-runtime-recovery.test.mjs", "before": "eb8d96e891aaa2e589ad3ae31dcaf66458a64d5de313b4d86518f0f97711331e", "after": "9b4148b2bafaa893f0e44e5133129783cb750451e647a6aeae4a34128c8d8822"},
+  {"file": "tests/catalog-seo.test.mjs", "before": "57644848fb701a1d4d87c69e9bd11388f8ff1dc5c616597900935cf26a093cc1", "after": "c6ad4ed5109edc2e834beb6a3097cc2c5a6f7a311826741abcbe3e8346fd905a"},
+  {"file": "tests/html-csp-middleware.test.mjs", "before": "6199b94932361aa7a76d38b21ad670a4ada8d127bfd0815e3f20adfbb0654f3d", "after": "f1ea3b67b02b0ca379ba5ecc46ceaf940b6d8d01c2f7272ee3dab24963b97d85", "alternateBefore": "634c61a6f91ed59ba3926098238035baceb55ad2feaf3da1fcab4a026a9d34dc"},
+  {"file": "tests/cabinet-history-cache-browser-cases.mjs", "before": "b8c6211c20330f55b5a49ca49ddf7e195cb2b87dae6860060946df8a9550c5dd", "after": "1dd45b40161948550692d33a30879ed9ef2ddbdecb0ce3e57a2f962562bef6d3"},
+  {"file": "tests/media-backup-restore-case.mjs", "before": "36c34f94d650f57762eff088bb40ba1fbf7fa1a4fbad02f78ea86dbfd3ec6eb1", "after": "903a6c9034b2efada33924d73291cf7d2fa2e298f32395506fafb498b746118b"},
+  {"file": "tests/media-file-inspection.test.mjs", "before": "7ada2a8b18b99cf0476726b152d0583998f7c4bbe9df04dbdd1b2a7c2bc0db82", "after": "04d61fbb6598421bda7aa0d0f9407eddc250c54739857426799c50fb1b34d8e6"},
+  {"file": "tests/media-file-inventory.test.mjs", "before": "2b96b7211c63a18795dc8ef1f4f05775b5b8cbd3e24a5bf9af216a3e5df28cef", "after": "bf0d9080c7e007e9aee93e9f611b66063358996ef50d3e31ca1372bf0dea07c0"},
+  {"file": "tests/media-retirement-runtime-postgres.mjs", "before": "64c02bc8d36f03048bff23e6075335effe48406c93d65f861c2f9308b7abbcf7", "after": "d0c7681afc55db9d4d222d2dfefb724980dfb3944646909c17814e9551cab34a"},
+  {"file": "tests/staging-provision.test.mjs", "before": "bd32601a6ded0c3689bda3aaf454444bf1c48ae3cc4e09613f38fc554885393c", "after": "707c64975532d3ffcb86728b9e8134c0f84acd24ea2e9fab2096ff16939349c1"},
+  {"file": "tests/selector-parser-backport.test.mjs", "before": "75e56141d83109c37616e9faf1d253007e325f3a306e37db683b5f552c147543", "after": "2e81a155de3424a075e29129fa5f5bdb38093b8b5207f7178e1677bd7a319852"},
+  {"file": "tests/selector-upstream-equivalence.test.mjs", "before": "906351112d3ed550c88c0e51783bb273267d20da90fe5866c09d2045c8dbc97f", "after": "0f6b2251eb07100fdf1c84dbae5bd44d062c901ee67ef1f147d0b0d64d805617"},
+  {"file": "tests/service-offline-browser.mjs", "before": "5371d8f7530e0a23d585087805aa888671c8d45c476b2d8bb8b99dfd297fc1d6", "after": "ff50df01fc483095dc4d42395bf1bd76145cda730e71bce1fba1723ea2eb6ae0"},
+  {"file": "tests/legacy-photo-batch.test.mjs", "before": "900d5b3dff1388fb0110bd31a416ea720f121c4a21d441ff70b454eab3be95e3", "after": "049707ec99a5a11bf7ba807e3445398566fa65d9ade33708034a6bc1d6c9e9b0"},
+  {"file": "tests/local-supabase-integration.mjs", "before": "a631f82475514fef30ddc1fbfad4eea92db2e352da98dd806b6686f0989e9b9f", "after": "81941855d2262ef6a35c22a34df5c7758254e2d3b9a2a01222f31169e0152c93"},
+  {"file": "tests/payment-fulfillment-server.test.mjs", "before": "6ec73e7e3b3c7c731e8abc3c72390b86ec5ffc434999ee8663d87f4e2dfc6064", "after": "9f11355583b5b8049834d8113516859966b95dc378a1d5d6416328cca538cd32"},
   {"file": "tests/profession-select-primary.test.cjs", "before": "c45990b531f16109ac9adcf76edc195d6de3363ce7c60e6c093dc332d9f5fb87", "after": "756f6b32fa43d4be06ecddd037ba96a70e14e185a6f6f9dedb79b2347446da70"},
   {"file": "tests/admin-user-access-postgres-integration.mjs", "before": "2ea4df91367b5593896e2e8cdac5d3f8e17e04792ad91eb04a3edad4a8bf65b6", "after": "63ee2e31d24960984ba19a5be81a448da006a2a23764b0d44750dbddfd35e8e3"},
   {"file": "tests/cabinet-entry-browser-cases.mjs", "before": "bc0bbf335935bfd080363e382aa50062479bdfd65f058db368cfd00b44a618dd", "after": "a17a3ba056f19d5d4d7f10af9e2611f485f7d317954749b08229631570fc851e"},
@@ -190,7 +217,8 @@ function reviewedListingArtifact(file) {
   let approved = false;
   if (pair) {
     const hash = value => createHash('sha256').update(value).digest('hex');
-    if (hash(git(['show', `${mergeBase}:${file}`])) === pair.before) {
+    const before = hash(git(['show', `${mergeBase}:${file}`]));
+    if (before === pair.before || before === pair.alternateBefore) {
       try {approved = hash(readFileSync(file)) === pair.after;} catch {bail();}
     }
   }

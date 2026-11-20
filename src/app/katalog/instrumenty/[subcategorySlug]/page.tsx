@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { BackLink } from "@/components/BackLink";
 import { HomeHero } from "@/components/HomeHero";
 import { SiteHeader } from "@/components/SiteHeader";
-import { categoryPageStyle, CategoryHeaderBand } from "@/components/listings/CategoryPageDesign";
+import { CategoryHeaderBand } from "@/components/listings/CategoryPageDesign";
 import { CatalogSeoContent } from "@/components/listings/CatalogSeoContent";
 import { ListingResultsPanel } from "@/components/listings/ListingResultsPanel";
 import { ListingPagination } from "@/components/listings/ListingPagination";
@@ -84,7 +84,7 @@ export default async function InstrumentSubcategoryPage({ params, searchParams }
     <>
       <SiteHeader />
       <HomeHero />
-      <main className="bg-[var(--category-page)] pb-8" style={categoryPageStyle("instrumenty")}>
+      <main className="bg-[var(--category-page)] pb-8" data-category-colors="instrumenty">
         <div className="page-container py-3 sm:py-4 lg:py-5">
           <nav className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:text-sm" aria-label="Хлебные крошки">
             <Link href="/katalog" className="hover:text-[#0875d1]">

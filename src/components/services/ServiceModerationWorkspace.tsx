@@ -44,7 +44,7 @@ export function ServiceModerationWorkspace({actor,kind,visible}:{actor:string;ki
   },true);
  }
  if(!visible)return null;const form=detail?.snapshot.form,photos=detail?.snapshot.photos??[];
- return <div className="min-w-0"><p className="mt-3 text-slate-600">Проверяйте текст, контакты и фотографии. Одобрение не списывает деньги и не публикует материал.</p>
+ return <div className="min-w-0"><p className="mt-3 text-slate-600">Проверьте текст, контакты и фотографии этой редакции.</p>
   <button type="button" className={`${draftButton} mt-4`} disabled={busy} onClick={()=>void run(signal=>serviceModeration.adminList(actor,kind,null,{signal}),setQueue)}>Обновить очередь</button>
   {busy&&<p className="mt-3" role="status">Проверяем данные…</p>}{message&&<p className="mt-3 break-words text-rose-700" role="alert">{message}</p>}
   {queue&&<section className="mt-5" aria-label="Очередь модерации"><h2 className="text-xl font-bold">Ожидают проверки</h2>
@@ -61,10 +61,10 @@ export function ServiceModerationWorkspace({actor,kind,visible}:{actor:string;ki
     <ReviewPhoto key={`${detail.request.id}:${photo}`} actor={actor} kind={kind} id={detail.request.id!} file={photos[photo].id} index={photo} count={photos.length}/>
     <div className="mt-3 flex flex-wrap gap-3"><button type="button" className={draftButton} disabled={busy||photo===0} onClick={()=>setPhoto(value=>value-1)}>Предыдущая фотография</button>
      <button type="button" className={draftButton} disabled={busy||photo>=photos.length-1} onClick={()=>setPhoto(value=>value+1)}>Следующая фотография</button></div></div>}
-   <p className="mt-5" role="status">{detail.request.state==='approved'?'Одобрено для оплаты. Публикация ещё не размещена.':detail.request.state==='rejected'?`Отклонено: ${detail.request.note}`:'Решение ещё не принято.'}</p>
+   <p className="mt-5" role="status">{detail.request.state==='approved'?'Редакция одобрена.':detail.request.state==='rejected'?`Отклонено: ${detail.request.note}`:'Решение ещё не принято.'}</p>
    {detail.request.state==='pending'&&<div className="mt-4"><label htmlFor={noteId} className="block font-semibold">Причина отказа</label>
     <textarea id={noteId} className="mt-2 min-h-24 w-full rounded-lg border border-slate-500 p-3" maxLength={1000} value={note} disabled={busy} onChange={event=>setNote(event.target.value)}/>
-    <div className="mt-3 flex flex-wrap gap-3"><button type="button" className={draftButton} disabled={busy||uncertain||!!detail.issues.length} onClick={()=>decide('approved')}>Одобрить для оплаты</button>
+    <div className="mt-3 flex flex-wrap gap-3"><button type="button" className={draftButton} disabled={busy||uncertain||!!detail.issues.length} onClick={()=>decide('approved')}>{detail.snapshot.paid?'Одобрить изменения':'Одобрить для оплаты'}</button>
      <button type="button" className={draftButton} disabled={busy||uncertain||!note.trim()} onClick={()=>decide('rejected')}>Отклонить с причиной</button></div></div>}
    <button type="button" className={`${draftButton} mt-4`} disabled={busy} onClick={()=>open(item(),true)}>Сверить решение</button>
   </section>}

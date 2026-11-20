@@ -57,7 +57,7 @@ function Workspace({owner,kind,visible}:{owner:string;kind:WorkPublicationKind;v
    <h2 className="mb-3 text-xl font-bold">{editor.form.title||'Без названия'}</h2>
    <p className="whitespace-pre-wrap break-words">{editor.form.description}</p>
    <p className="mt-3 text-sm text-slate-600">{editor.form.cityName} · {editor.form.professionName} · Фотографий: {editor.photos.length}</p>
-   {localVacancy?<p className="mt-4 text-sm text-slate-600">{editor.paid?'Оплата подтверждена. Текущий статус указан на карточке.':'Для размещения откройте форму и нажмите «Перейти к оплате».'}</p>:<WorkModerationStatus key={`moderation:${editor.id}:${editor.revision}`} owner={owner} snapshot={editor}/>}
+   {localVacancy?<p className="mt-4 text-sm text-slate-600">{editor.paid?'Оплата подтверждена. Текущий статус указан на карточке.':'Черновик сохранён. Его можно открыть для редактирования.'}</p>:<WorkModerationStatus key={`moderation:${editor.id}:${editor.revision}`} owner={owner} snapshot={editor}/>}
    <div className="mt-4 flex flex-wrap gap-3"><Link href={`/rabota/${kind==='vacancy'?'vakansii':'zakazy'}/${editor.id}/edit`} prefetch={false} className={draftButton}>Редактировать</Link>
     <button type="button" className={draftButton} onClick={()=>setEditor(null)}>Закрыть сведения</button></div>
   </section>}

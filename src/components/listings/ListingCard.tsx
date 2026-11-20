@@ -56,18 +56,16 @@ function listingPlaceLabel(listing: DemoListing) {
   return [listing.city, listing.district].filter(Boolean).join(", ") || listing.city;
 }
 
+const listingDateFormatter = new Intl.DateTimeFormat("ru-RU", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "Europe/Moscow",
+});
+
 function formatListingDate(value?: string) {
   const date = value ? new Date(value) : null;
-
-  if (!date || Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(date);
+  return date && Number.isFinite(date.getTime()) ? listingDateFormatter.format(date) : "";
 }
 
 const imageTones = {
@@ -174,6 +172,8 @@ export function ListingGridCard({ listing }: { listing: DemoListing }) {
   const href = `/obyavlenie/${listing.slug}`;
   const viewId = listing.viewId ?? listing.slug;
 
+  const dateLabel = formatListingDate(listing.publishedAt || listing.createdAt);
+
   return (
     <article className="group relative min-w-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-card">
       <Link href={href} className="block min-w-0">
@@ -186,10 +186,10 @@ export function ListingGridCard({ listing }: { listing: DemoListing }) {
             {listing.title}
           </span>
           <span className="mt-0.5 block truncate text-base font-bold leading-5 text-[#060b27]">{listing.price}</span>
-          {formatListingDate(listing.publishedAt || listing.createdAt) ? (
+          {dateLabel ? (
             <span className="mt-1 flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500">
               <CalendarDays className="h-3 w-3 shrink-0" />
-              <span className="truncate">{formatListingDate(listing.publishedAt || listing.createdAt)}</span>
+              <span className="truncate">{dateLabel}</span>
             </span>
           ) : null}
           <span className="mt-1 flex items-end justify-between gap-1.5 text-[11px] text-slate-500">

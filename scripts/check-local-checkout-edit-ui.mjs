@@ -1,7 +1,7 @@
 // Actual Chromium + owned synthetic stand. New fixtures remain for manual review.
 // No provider network, real SMTP/Telegram, existing accounts or financial deletions.
 import assert from 'node:assert/strict';
-import {randomBytes, randomUUID} from 'node:crypto';
+import {randomInt, randomUUID} from 'node:crypto';
 import {mkdir, readFile, readdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {chromium} from 'playwright';
@@ -63,7 +63,7 @@ try {
   await payment.getByLabel('Email', {exact: true}).fill(email); await payment.getByLabel('Пароль', {exact: true}).fill(password);
   await payment.getByRole('button', {name: 'Войти', exact: true}).click(); await payment.waitForURL(origin + '/');
   owner = (await api('/api/account/session', {})).user.id;
-  const phone = '+7999' + String(randomBytes(4).readUInt32BE() % 10000000).padStart(7, '0');
+  const phone = '+7999' + String(randomInt(10_000_000)).padStart(7, '0');
   await db.query(`insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)
     on conflict(user_id) do update set profile=jsonb_set(app.cabinet_profiles.profile,'{phone}',to_jsonb($3::text))`,
   [owner, JSON.stringify({name: 'Проверка оплаты и правок', phone}), phone]);

@@ -8,7 +8,7 @@ import test from 'node:test';
 
 const deployScript = path.resolve('scripts/deploy-release.sh');
 
-function runDeploy(ready, prebuilt = false, checksumValid = true, runtimeFailure = false) {
+function runDeploy(ready, prebuilt = false, checksumValid = true, runtimeFailure = false, homepage = '200') {
   const root = mkdtempSync(path.join(tmpdir(), 'deploy-readiness-'));
   try {
     const bin = path.join(root, 'bin');
@@ -35,6 +35,11 @@ exit 0
     writeFileSync(path.join(bin, 'seq'), '#!/usr/bin/env bash\nprintf "1\\n2\\n3\\n"\n', { mode: 0o755 });
     writeFileSync(path.join(bin, 'curl'), `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$PROBE_LOG"
+if [[ "\${!#}" == "http://127.0.0.1:3000/" ]]; then
+  if [[ "$HOME_RESPONSE" == "incomplete" ]]; then printf '200'; exit 18; fi
+  printf '%s' "$HOME_RESPONSE"
+  exit 0
+fi
 if [[ "$*" == *"/api/ready"* && "$READY_MODE" == "down" ]]; then exit 22; fi
 exit 0
 `, { mode: 0o755 });
@@ -83,6 +88,7 @@ exit 0
         COMMIT_SHA: 'a'.repeat(40),
         PROBE_LOG: probeLog,
         COMMAND_LOG: commandLog,
+        HOME_RESPONSE: homepage,
         READY_MODE: ready ? 'up' : 'down',
         RUNTIME_FAILURE: String(runtimeFailure),
         REAL_NODE: process.execPath,
@@ -148,4 +154,14 @@ test('verified prebuilt code is readable while the runtime environment stays pri
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.equal(releaseMode, 0o755);
   assert.equal(environmentMode, 0o600);
+});
+
+test('release waits for a complete HTTP 200 from the public homepage before promotion', () => {
+  for (const homepage of ['500', '302', 'incomplete']) {
+    const { result, activeRelease, previous, probes } = runDeploy(true, true, true, false, homepage);
+    assert.notEqual(result.status, 0, homepage);
+    assert.equal(activeRelease, previous);
+    assert.match(probes, /http:\/\/127\.0\.0\.1:3000\/\s*$/);
+    assert.doesNotMatch(result.stdout, /promoting release/);
+  }
 });

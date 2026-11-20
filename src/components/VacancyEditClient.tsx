@@ -9,7 +9,7 @@ import { ListingLocationFields } from "@/components/listings/ListingFormControls
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { uploadPublicationImageSources } from "@/lib/client-publication-media";
 import { resolveAuthenticatedClientUserIdentity } from "@/lib/client-user-profile";
-import { storeMediaFile } from "@/lib/client-media-store";
+import { storeFormPhotos } from "@/lib/client-media-store";
 import { appendPublicationHistory, readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, unpublishedVacancyStatus, withPublicationHistory, withPublicationStatusHistory, type DemoPublication } from "@/lib/demo-publications";
 import { normalizeListingPrice } from "@/lib/listing-price";
 import { normalizeVacancyRequisites, validateVacancyRequisites } from "@/lib/vacancy-requisites";
@@ -187,24 +187,6 @@ function normalizeEmployerType(value?: string) {
   return value === "private" ? "person" : value;
 }
 
-function readExistingPhotos(formData: FormData) {
-  return formData.getAll("existingPhotos").flatMap((value) => {
-    const photo = String(value ?? "").trim();
-
-    return photo ? [photo] : [];
-  }).slice(0, 12);
-}
-
-async function readLocalImageReferences(formData: FormData) {
-  const files = formData
-    .getAll("photos")
-    .filter((item): item is File => item instanceof File && item.size > 0 && item.type.startsWith("image/"))
-    .slice(0, 12);
-  const storedImages = await Promise.allSettled(files.map((file) => storeMediaFile(file)));
-
-  return [...readExistingPhotos(formData), ...storedImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))];
-}
-
 function isPendingPaymentStatus(status?: string) {
   const normalized = status?.trim().toLowerCase();
   return normalized === "ждет оплаты" || normalized === "ожидает оплату" || normalized === "pending_payment";
@@ -290,62 +272,62 @@ export function VacancyEditClient({ initialVacancy, vacancyId }: VacancyEditClie
       return;
     }
 
-    const formData = new FormData(form);
-    const identity = await resolveAuthenticatedClientUserIdentity();
-    const employerType = normalizeEmployerType(readRawValue(formData, "employerType") || vacancy.employerType);
-    const email = employerType === "person" ? "" : readEmailOrMessengerEmail(formData);
-    const messengerUrl = employerType === "person" ? readRawValue(formData, "messengerUrl") : readEmailOrMessengerUrl(formData);
-    const requisites = normalizeVacancyRequisites({
-      employerType,
-      inn: readRawValue(formData, "inn"),
-      ogrn: readRawValue(formData, "ogrn"),
-      ogrnip: readRawValue(formData, "ogrnip"),
-    });
-    const requisitesError = validateVacancyRequisites(requisites, { requireInn: true });
-
-    if (requisitesError) {
-      setMessage(requisitesError);
-      setSavingAction("");
-      return;
-    }
-
-    const exactMapPoint = hasSelectedMapPoint(formData);
-    const updatedVacancy: DemoPublication = {
-      ...vacancy,
-      id: canPersist || isUuid(vacancy.id) ? vacancy.id : `demo-vacancy-${Date.now().toString(36)}`,
-      ownerKey: identity.ownerKey,
-      ownerName: identity.name,
-      title: readRawValue(formData, "title"),
-      subtitle: readRawValue(formData, "organization"),
-      city: readRawValue(formData, "city") || vacancy.city,
-      price: normalizeListingPrice(readRawValue(formData, "salary")),
-      description: readRawValue(formData, "description"),
-      status,
-      profession: readRawValue(formData, "profession") || readRawValue(formData, "title"),
-      employerType: requisites.employerType,
-      inn: requisites.inn,
-      ogrn: requisites.ogrn,
-      ogrnip: requisites.ogrnip,
-      contactPerson: readRawValue(formData, "contactPerson"),
-      website: readRawValue(formData, "website"),
-      schedule: readRawValue(formData, "schedule"),
-      workFormat: readRawValue(formData, "workFormat"),
-      requirements: readRawValue(formData, "requirements"),
-      responsibilities: readRawValue(formData, "responsibilities"),
-      conditions: readRawValue(formData, "conditions"),
-      placementRightConfirmed: readRawValue(formData, "placementRightConfirmed") === "1",
-      phone: readRawValue(formData, "phone"),
-      email,
-      messengerUrl,
-      address: exactMapPoint ? readRawValue(formData, "address") : undefined,
-      lat: exactMapPoint ? readCoordinate(formData, "lat") : undefined,
-      lng: exactMapPoint ? readCoordinate(formData, "lng") : undefined,
-      hasMapPoint: exactMapPoint,
-      showExactAddress: exactMapPoint,
-      images: await readLocalImageReferences(formData),
-    };
-
     try {
+      const formData = new FormData(form);
+      const identity = await resolveAuthenticatedClientUserIdentity();
+      const employerType = normalizeEmployerType(readRawValue(formData, "employerType") || vacancy.employerType);
+      const email = employerType === "person" ? "" : readEmailOrMessengerEmail(formData);
+      const messengerUrl = employerType === "person" ? readRawValue(formData, "messengerUrl") : readEmailOrMessengerUrl(formData);
+      const requisites = normalizeVacancyRequisites({
+        employerType,
+        inn: readRawValue(formData, "inn"),
+        ogrn: readRawValue(formData, "ogrn"),
+        ogrnip: readRawValue(formData, "ogrnip"),
+      });
+      const requisitesError = validateVacancyRequisites(requisites, { requireInn: true });
+
+      if (requisitesError) {
+        setMessage(requisitesError);
+        setSavingAction("");
+        return;
+      }
+
+      const exactMapPoint = hasSelectedMapPoint(formData);
+      const updatedVacancy: DemoPublication = {
+        ...vacancy,
+        id: canPersist || isUuid(vacancy.id) ? vacancy.id : `demo-vacancy-${Date.now().toString(36)}`,
+        ownerKey: identity.ownerKey,
+        ownerName: identity.name,
+        title: readRawValue(formData, "title"),
+        subtitle: readRawValue(formData, "organization"),
+        city: readRawValue(formData, "city") || vacancy.city,
+        price: normalizeListingPrice(readRawValue(formData, "salary")),
+        description: readRawValue(formData, "description"),
+        status,
+        profession: readRawValue(formData, "profession") || readRawValue(formData, "title"),
+        employerType: requisites.employerType,
+        inn: requisites.inn,
+        ogrn: requisites.ogrn,
+        ogrnip: requisites.ogrnip,
+        contactPerson: readRawValue(formData, "contactPerson"),
+        website: readRawValue(formData, "website"),
+        schedule: readRawValue(formData, "schedule"),
+        workFormat: readRawValue(formData, "workFormat"),
+        requirements: readRawValue(formData, "requirements"),
+        responsibilities: readRawValue(formData, "responsibilities"),
+        conditions: readRawValue(formData, "conditions"),
+        placementRightConfirmed: readRawValue(formData, "placementRightConfirmed") === "1",
+        phone: readRawValue(formData, "phone"),
+        email,
+        messengerUrl,
+        address: exactMapPoint ? readRawValue(formData, "address") : undefined,
+        lat: exactMapPoint ? readCoordinate(formData, "lat") : undefined,
+        lng: exactMapPoint ? readCoordinate(formData, "lng") : undefined,
+        hasMapPoint: exactMapPoint,
+        showExactAddress: exactMapPoint,
+        images: await storeFormPhotos(formData, 12),
+      };
+
       const uploadedMediaPaths =
         identity.accessToken && isUuid(vacancy.id) && options.validate !== false
           ? await uploadPublicationImageSources(updatedVacancy.images ?? [], "vacancies", identity.accessToken)

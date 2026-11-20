@@ -21,3 +21,20 @@ test('different readback requires an explicit choice, then uses exact new CAS wi
   write:async(user,key,revision,payload)=>{if(++writes===1)throw Error('Conflict');assert.equal(revision,'9007199254740993');assert.equal(payload.title,'Мой текст');return{id,revision:'9007199254740994',form:payload,photos:[]};}});
  await assert.rejects(save.save());await save.readback();await assert.rejects(save.save());save.acceptRemoteRevision();assert.equal((await save.save()).revision,'9007199254740994');
 });
+
+test('offline edit can retry the unchanged draft, but still checks the revision on that retry',async()=>{
+ const initial={id,revision:'4',form:parseListingFormDraft({kind:'prodam',title:'Исходный текст'}),photos:[]};
+ let stored=initial;
+ const revisions=[];
+ const save=createListingFormSave(owner,{kind:'prodam',title:'Моя правка'},[],{
+  read:async()=>stored,
+  write:async(_owner,_id,revision)=>{revisions.push(revision);throw Error('No acknowledgement');},
+ },initial);
+ await assert.rejects(save.save());await save.readback();
+ assert.equal(save.uncertain,false);assert.equal(save.completed,null);
+ assert.deepEqual(revisions,['4']);
+ stored={...initial,revision:'5',form:parseListingFormDraft({kind:'prodam',title:'Другая правка'})};
+ await assert.rejects(save.save());await save.readback();
+ assert.equal(save.uncertain,true);await assert.rejects(save.save());
+ assert.deepEqual(revisions,['4','4']);
+});

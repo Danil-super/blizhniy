@@ -22,6 +22,35 @@ function securitySeverity(result, rule) {
   return Number.isFinite(value) ? value : undefined;
 }
 
+function ruleForResult(tool, result, driverRules) {
+  const reference = result.rule;
+  if (!reference) return driverRules.get(result.ruleId);
+
+  const id = result.ruleId ?? reference.id;
+  assert.ok(!result.ruleId || !reference.id || result.ruleId === reference.id, "Conflicting SARIF rule IDs");
+  let component = tool?.driver;
+  if (reference.toolComponent) {
+    const { index, name, guid } = reference.toolComponent;
+    const extensions = tool?.extensions ?? [];
+    if (index !== undefined && index !== -1) {
+      component = extensions[index];
+      assert.ok(Number.isInteger(index) && component, "Unknown SARIF extension index");
+    } else {
+      const matches = extensions.filter(item => (name || guid) && (!name || item.name === name) && (!guid || item.guid === guid));
+      assert.equal(matches.length, 1, "Unknown or ambiguous SARIF extension");
+      [component] = matches;
+    }
+    assert.ok((!name || name === component.name) && (!guid || guid === component.guid), "Conflicting SARIF extension identity");
+  }
+  const rules = component?.rules ?? [];
+  assert.ok(reference.index === undefined || Number.isInteger(reference.index), "Invalid SARIF rule index");
+  const rule = reference.index !== undefined && reference.index !== -1
+    ? rules[reference.index]
+    : rules.find(item => item.id === id);
+  assert.ok(rule && (!id || rule.id === id), "Unknown or conflicting SARIF rule reference");
+  return rule;
+}
+
 export function collectBlockingFindings(report) {
   assert.ok(Array.isArray(report.runs) && report.runs.length > 0, "CodeQL SARIF has no runs");
 
@@ -29,11 +58,11 @@ export function collectBlockingFindings(report) {
   let checked = 0;
   for (const run of report.runs) {
     assert.ok(Array.isArray(run.results), "CodeQL SARIF has no results list");
-    const rules = new Map((run.tool?.driver?.rules ?? []).map((rule) => [rule.id, rule]));
+    const driverRules = new Map((run.tool?.driver?.rules ?? []).map((rule) => [rule.id, rule]));
 
     for (const result of run.results) {
       checked++;
-      const rule = rules.get(result.ruleId);
+      const rule = ruleForResult(run.tool, result, driverRules);
       const level = result.level ?? rule?.defaultConfiguration?.level;
       const severity = securitySeverity(result, rule);
       if (level !== "error" && !(severity >= HIGH_SEVERITY_SCORE)) continue;
@@ -41,7 +70,7 @@ export function collectBlockingFindings(report) {
       const location = result.locations?.[0]?.physicalLocation;
       blocking.push({
         level: level ?? "unknown",
-        ruleId: result.ruleId ?? "unknown-rule",
+        ruleId: result.ruleId ?? rule?.id ?? "unknown-rule",
         severity,
         uri: location?.artifactLocation?.uri ?? "unknown",
         line: location?.region?.startLine ?? "?",

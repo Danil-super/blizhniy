@@ -8,12 +8,16 @@ import {accountTestPayment} from '@/lib/client-account-test-payment';
 import {specialistPayment} from '@/lib/client-specialist-payment';
 import {ListingPaymentClientError} from '@/lib/client-listing-payment';
 import {startListingPayment,type ListingCheckoutAttempt} from '@/lib/listing-payment-start';
+import {useLocalPaymentSimulation} from './ListingWorkflowProvider';
+import {canStartListingTest} from '@/lib/account-session-state';
 import {draftButton} from './PrivateDraftEditor';
 
 export type {ListingCheckoutAttempt} from '@/lib/listing-payment-start';
-export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=false,specialist=false}:{owner:string;id:string;revision:string;attempt:ListingCheckoutAttempt;localPreview?:boolean;specialist?:boolean}){
+export function PrivateListingCheckout({owner,id,revision,attempt,postmoderationListing=false,specialist=false}:{owner:string;id:string;revision:string;attempt:ListingCheckoutAttempt;postmoderationListing?:boolean;specialist?:boolean}){
+ const localSimulation=useLocalPaymentSimulation(),directCheckout=specialist?localSimulation:postmoderationListing;
  const payment=specialist?specialistPayment:accountTestPayment;
  const auth=usePrimaryAccountAuth(),visible=!!auth&&(auth.state==='signed-in'||auth.state==='admin')&&auth.userId===owner;
+ const paymentUnavailable=postmoderationListing&&!localSimulation&&!canStartListingTest(auth,owner);
  const [quote,setQuote]=useState<Awaited<ReturnType<typeof accountTestPayment.preview>>|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[uncertain,setUncertain]=useState(attempt.uncertain);
  const locked=useRef(false),live=useRef(visible),scope=useRef<AbortController|null>(null);
  live.current=visible;
@@ -23,23 +27,24 @@ export function PrivateListingCheckout({owner,id,revision,attempt,localPreview=f
   try{await work({signal:controller?.signal});}catch(failure){if(live.current&&!controller?.signal.aborted){
    if(failure instanceof PhoneClientError){setError(failure.message);return;}
    const code=failure instanceof ListingPaymentClientError?failure.code:'UNKNOWN';
-   setError(code==='PHONE_REQUIRED'?'Подтвердите номер телефона, чтобы перейти к оплате размещения.':code==='CHECKOUT_DISABLED'||code==='CHECKOUT_NOT_READY'?localPreview?specialist?'Анкета пока не готова к оплате: проверьте профиль, телефон и одобрение модератора.':'Объявление пока не готово к оплате: проверьте обязательные поля и статус блокировки.':'TEST-оплата доступна только согласованному тестовому аккаунту. Для остальных оплата ещё не включена.':code==='CHECKOUT_CHANGED'||code==='DRAFT_CHANGED'?'Объявление или тариф изменились. Обновите сохранённую версию.':'Не удалось подтвердить результат. Не создавайте новый заказ: проверьте сохранённый.');
+   setError(code==='PHONE_REQUIRED'?'Подтвердите номер телефона, чтобы перейти к оплате размещения.':code==='CHECKOUT_DISABLED'||code==='CHECKOUT_NOT_READY'?specialist?'Оплата анкеты сейчас недоступна. Проверьте подтверждение телефона и статус модерации.':directCheckout?'Объявление пока не готово к оплате: проверьте обязательные поля и статус блокировки.':'TEST-оплата доступна только согласованному тестовому аккаунту. Для остальных оплата ещё не включена.':code==='CHECKOUT_CHANGED'||code==='DRAFT_CHANGED'?specialist?'Анкета или тариф изменились. Обновите сохранённую версию.':'Объявление или тариф изменились. Обновите сохранённую версию.':'Не удалось подтвердить результат. Не создавайте новый заказ: проверьте сохранённый.');
   }}finally{if(!controller?.signal.aborted){locked.current=false;setBusy(false);}}
  }
  function open(paymentId:string,signal?:AbortSignal){if(live.current&&!signal?.aborted)window.location.assign(`/oplata/${paymentId}${specialist?'?type=specialist':''}`);}
  return <section aria-label={specialist?"Оплата анкеты":"Оплата объявления"} hidden={!visible} inert={!visible} aria-busy={busy} className="mt-4 min-w-0 border-t border-slate-200 pt-4">
-  {!quote&&!uncertain&&<button type="button" className={draftButton} disabled={busy} onClick={()=>void run(async options=>{
-   if(localPreview){await ensurePhoneForPlacement(owner);try{open(await startListingPayment(payment,owner,id,revision,attempt,options),options.signal);}finally{if(live.current&&!options.signal?.aborted)setUncertain(attempt.uncertain);}}
+  {paymentUnavailable&&!uncertain&&<p className="text-sm text-slate-600">Оплата пока недоступна для этого аккаунта. <Link href="/cabinet/oplata" className="font-semibold underline">История платежей</Link></p>}
+  {!paymentUnavailable&&!quote&&!uncertain&&<button type="button" className={draftButton} disabled={busy} onClick={()=>void run(async options=>{
+   if(directCheckout){await ensurePhoneForPlacement(owner);try{open(await startListingPayment(payment,owner,id,revision,attempt,options),options.signal);}finally{if(live.current&&!options.signal?.aborted)setUncertain(attempt.uncertain);}}
    else{const value=await payment.preview(owner,id,revision,options);if(live.current&&!options.signal?.aborted)setQuote(value);}
   })}>Оплатить размещение</button>}
-  {quote&&<>
-   <h3 className="font-semibold">{localPreview?'Оплата размещения — локальный стенд':'Тестирование оплаты'}</h3>
-   <p className="mt-2 text-sm">{localPreview?`Симуляция: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. После подтверждения объявление опубликуется только на этом локальном стенде. Списаний нет.`:`TEST-заказ: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. Реальные деньги не списываются, публикация не выполняется.`}</p>
+  {!paymentUnavailable&&quote&&<>
+   <h3 className="font-semibold">Тестирование оплаты</h3>
+   <p className="mt-2 text-sm">{specialist?`Тестовое размещение анкеты: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. После подтверждения оплаты анкета появится в каталоге. Деньги не списываются.`:`TEST-заказ: ${quote.tariff.amount.replace('.',',')} ₽ за ${quote.tariff.durationDays} дн. Реальные деньги не списываются, публикация не выполняется.`}</p>
    {quote.activePayment?<Link href={`/oplata/${quote.activePayment.id}${specialist?'?type=specialist':''}`} className={`${draftButton} mt-3`}>Открыть существующий заказ</Link>:<>
     <button type="button" className={`${draftButton} mt-3 bg-blue-700 text-white`} disabled={busy||uncertain} onClick={()=>void run(async options=>{
      attempt.input??={listingId:id,expectedRevision:revision,creationKey:crypto.randomUUID(),expectedTariffId:quote.tariff.id,expectedAmount:quote.tariff.amount,expectedDurationDays:quote.tariff.durationDays};
      await ensurePhoneForPlacement(owner);attempt.uncertain=true;setUncertain(true);const order=await payment.prepare(owner,attempt.input,options);if(!options.signal?.aborted){attempt.uncertain=false;attempt.input=null;setUncertain(false);open(order.id,options.signal);}
-    })}>{localPreview?'Перейти к локальной оплате':'Создать TEST-заказ'}</button>
+    })}>Создать TEST-заказ</button>
    </>}
   </>}
   {uncertain&&<div className="mt-3"><p className="text-sm">Результат сохранения ещё не подтверждён. Сначала проверьте этот заказ.</p><button type="button" className={`${draftButton} mt-2`} disabled={busy} onClick={()=>void run(async options=>{

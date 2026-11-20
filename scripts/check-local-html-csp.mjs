@@ -1,5 +1,6 @@
 // Owned loopback only. No account creation, mail, provider requests or credential reads.
 import assert from 'node:assert/strict';
+import {observeReportDelivery} from './local-csp-report-delivery.mjs';
 import {chromium} from 'playwright';
 import {stateFile,docker} from './local-primary-fixture.mjs';
 import {readLocalPrimaryState,validateLocalPrimaryContainer} from './local-primary-config.mjs';
@@ -20,6 +21,8 @@ function verifyPolicy(response,label,expectedStatus=200){
  const entries=policy.split(';').map(entry=>entry.trim().split(/\s+/)).filter(entry=>entry[0]);
  const directives=new Map(entries.map(([name,...values])=>[name,values]));
  assert.equal(directives.size,entries.length,label+': duplicate directives are ambiguous');
+ assert.equal(headers['reporting-endpoints'],'csp="/api/csp-report"');
+ assert.ok(!directives.has('report-uri'));
  const scripts=directives.get('script-src')??[];
  const nonces=scripts.filter(value=>value.startsWith("'nonce-"));
  assert.equal(nonces.length,1,label+': exactly one script nonce');
@@ -28,10 +31,10 @@ function verifyPolicy(response,label,expectedStatus=200){
  assert.ok(nonce!==incomingNonce,label+': incoming nonce is replaced');
  for(const token of ["'self'","'strict-dynamic'"])assert.ok(scripts.includes(token),label+': required script source '+token);
  for(const token of ["'unsafe-inline'","'unsafe-eval'","'unsafe-hashes'"])assert.ok(!scripts.includes(token),label+': forbidden script source '+token);
- for(const [name,expected] of [['script-src-attr',["'none'"]],['object-src',["'none'"]],['base-uri',["'none'"]],['frame-ancestors',["'self'"]],['report-uri',['/api/csp-report']]]){
+ for(const [name,expected] of [['script-src-attr',["'none'"]],['object-src',["'none'"]],['base-uri',["'none'"]],['frame-ancestors',["'self'"]],['report-to',['csp']]]){
   assert.ok(JSON.stringify(directives.get(name))===JSON.stringify(expected),label+': '+name+' must use its restrictive contract');
  }
- assert.ok(directives.get('style-src')?.includes("'unsafe-inline'"),label+': current SDK style compatibility remains explicit');
+ assert.deepEqual(directives.get('style-src'),["'self'"],label+': the local build without a map key restricts styles to the site');
  assert.ok(/\bprivate\b/.test(headers['cache-control']??'')&&/\bno-store\b/.test(headers['cache-control']??''),label+': nonce HTML must not be shared or stored');
  return nonce;
 }
@@ -76,7 +79,7 @@ async function observeContext(context){
  });
 }
 
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch({channel:'chromium',args:['--short-reporting-delay','--proxy-server=http://127.0.0.1:1']});
 try{
  const context=await browser.newContext({ignoreHTTPSErrors:true,serviceWorkers:'block',viewport:{width:1440,height:1000}});
  await observeContext(context);
@@ -122,6 +125,11 @@ try{
  assert.deepEqual(await page.evaluate(()=>window.__blizhniyCspAcceptanceViolations),[],'Forged incoming headers do not disrupt trusted hydration');
  await page.setExtraHTTPHeaders({});
  const missingNonce=verifyPolicy(await page.goto(origin+'/__csp-acceptance-missing.foo',{waitUntil:'networkidle'}),'unknown dotted path',404);
+ const missingPage=page.getByRole('main');
+ await missingPage.getByRole('heading',{level:1,name:'Страница не найдена',exact:true}).waitFor();
+ assert.equal(await missingPage.getByRole('link',{name:'На главную',exact:true}).getAttribute('href'),'/');
+ assert.equal(await missingPage.locator('[style], style').count(),0,'Missing pages use the shared stylesheet');
+ assert.ok(await page.locator('meta[name="robots"]').evaluateAll(nodes=>nodes.some(node=>node.content.split(/[,\s]+/).includes('noindex'))));
  await assertDocumentScripts(page,missingNonce,'unknown dotted path');
  assert.deepEqual(await page.evaluate(()=>window.__blizhniyCspAcceptanceViolations),[],'404 framework HTML keeps a working nonce policy');
  const api=await context.request.post(origin+'/api/account/session',{headers:{Origin:origin,'X-Blizhniy-Request':'1','Sec-Fetch-Site':'same-origin'},data:{}});
@@ -150,8 +158,8 @@ try{
   const probe='<script>window.__blizhniyCspInlineExecuted=true</script><button type="button" id="blizhniy-csp-attribute-probe" onclick="window.__blizhniyCspAttributeExecuted=true">Synthetic CSP attribute probe</button>';
   await route.fulfill({response,body:html.replace('</body>',probe+'</body>')});
  });
- const probe=await injected.newPage(),reportStatuses=[];
- probe.on('response',response=>{if(response.url()===origin+'/api/csp-report')reportStatuses.push(response.status());});
+ const probe=await injected.newPage();
+ const collect=await observeReportDelivery(probe,origin);
  verifyPolicy(await probe.goto(origin+'/',{waitUntil:'networkidle'}),'synthetic HTML injection');
  await assertHydrates(probe,'synthetic HTML injection');
  await probe.locator('#blizhniy-csp-attribute-probe').click();
@@ -161,9 +169,9 @@ try{
  assert.equal(result.attributeExecuted,false,'Synthetic onclick attribute is blocked');
  for(const directive of ['script-src-elem','script-src-attr'])assert.ok(result.violations.some(event=>event.directive===directive&&event.disposition==='enforce'&&event.inline),'Expected enforced synthetic violation '+directive);
  assert.ok(result.violations.every(event=>['script-src-elem','script-src-attr'].includes(event.directive)&&event.disposition==='enforce'&&event.inline),'Synthetic scenario has only expected inline-script violations');
+ const reportStatuses=await collect();
  const report=await context.request.post(origin+'/api/csp-report',{headers:{Origin:origin,'Content-Type':'application/csp-report'},data:JSON.stringify({'csp-report':{'effective-directive':'script-src-elem','violated-directive':'script-src-elem','blocked-uri':'inline',disposition:'enforce'}})});
  assert.equal(report.status(),204,'Sanitized synthetic CSP report collector');
- await probe.waitForTimeout(150);
  assert.ok(reportStatuses.length>=1&&reportStatuses.every(status=>status===204),'Browser CSP reports reach the local collector');
  console.log(JSON.stringify({passed:true,documentRoutes:routes.length,freshFullReloadNonce:true,nonceBits:192,hydration:true,clientNavigation:true,mobile:true,catalogJsonLd:true,missing404:true,incomingHeadersReplaced:true,apiCspPreserved:true,syntheticInlineBlocked:true,syntheticAttributeBlocked:true,syntheticViolations:result.violations.map(({directive,disposition})=>({directive,disposition})),browserReports:reportStatuses,foreignOriginsAborted:foreignRequests.size,foreignProvidersVerified:false,productionTouched:false}));
 }finally{await browser.close();}

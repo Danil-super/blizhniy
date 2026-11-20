@@ -1,7 +1,8 @@
 import { LegacyBodyError, readLegacyFormData } from "@/lib/legacy-request-body";
+import { getLegacyPhotoNormalizer } from "@/lib/legacy-photo-normalizer";
 import { NextResponse } from "next/server";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
-import { canUploadMediaToStorage, type UploadFolder, uploadMediaFile } from "@/lib/storage-upload";
+import { canUploadMediaToStorage, removeUploadedMedia, type UploadFolder, uploadMediaFile, validateMediaFile } from "@/lib/storage-upload";
 
 const allowedFolders = new Set<UploadFolder>(["fair-applications", "listings", "specialists", "vacancies", "work-requests"]);
 const maxFilesPerRequest = 10;
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Некорректный раздел загрузки" }, { status: 400 });
   }
 
-  const files = formData.getAll("files").filter((item): item is File => item instanceof File && item.size > 0);
+  const files = formData.getAll("files");
 
   if (!files.length) {
     return NextResponse.json({ error: "Добавьте хотя бы один файл" }, { status: 400 });
@@ -53,12 +54,47 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `За один раз можно загрузить не больше ${maxFilesPerRequest} файлов` }, { status: 400 });
   }
 
-  try {
-    const uploaded = await Promise.all(files.map((file) => uploadMediaFile(file, folder, auth.user.id)));
-    const response: UploadResponse = { files: uploaded };
-
-    return NextResponse.json(response, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось загрузить файлы" }, { status: 400 });
+  if (!files.every((item): item is File => item instanceof File)) {
+    return NextResponse.json({ error: "Выберите фотографии для загрузки." }, { status: 400 });
   }
+  try {
+    for (const file of files) validateMediaFile(file);
+  } catch {
+    return NextResponse.json({ error: "Выберите JPEG, PNG, WebP или статический GIF размером до 10 МБ." }, { status: 400 });
+  }
+
+  const prepared: File[] = [];
+  try {
+    const normalizer = await getLegacyPhotoNormalizer();
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(30000)]);
+    for (const file of files) {
+      const image = await normalizer.normalize(new Uint8Array(await file.arrayBuffer()), file.type, signal);
+      prepared.push(new File([new Uint8Array(image.bytes)], file.name, { type: image.mimeType }));
+    }
+    signal.throwIfAborted();
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    if (code === "INVALID_IMAGE" || code === "IMAGE_TOO_LARGE" || code === "UNSUPPORTED_IMAGE") {
+      return NextResponse.json({ error: "Выберите исправное статическое фото JPEG, PNG, WebP или GIF до 10 МБ и 24 Мп." }, { status: 400 });
+    }
+    if (code === "MEDIA_BUSY") {
+      return NextResponse.json({ error: "Обработка фотографий занята. Повторите попытку." }, { status: 429 });
+    }
+    return NextResponse.json({ error: "Обработка фотографий временно недоступна. Повторите попытку." }, { status: 503 });
+  }
+
+  const results = await Promise.allSettled(prepared.map((file) => uploadMediaFile(file, folder, auth.user.id)));
+  const uploaded = results.flatMap(result => result.status === "fulfilled" ? [result.value] : []);
+  if (uploaded.length !== files.length) {
+    if (uploaded.length) {
+      try {
+        await removeUploadedMedia(uploaded.map(file => file.path), folder, auth.user.id);
+      } catch {
+        console.warn("Legacy media batch cleanup failed");
+      }
+    }
+    return NextResponse.json({ error: "Не удалось загрузить фотографии. Повторите попытку." }, { status: 502 });
+  }
+  const response: UploadResponse = { files: uploaded };
+  return NextResponse.json(response, { status: 201 });
 }

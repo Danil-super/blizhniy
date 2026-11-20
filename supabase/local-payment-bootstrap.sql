@@ -42,6 +42,9 @@ grant select, insert, update, delete on public.ad_marquee_placements to service_
 \ir migrations/20261007194452_restore_work_request_within_paid_window.sql
 \ir migrations/20261008062202_snapshot_yookassa_checkout_intents.sql
 \ir migrations/20261008063110_restore_listing_and_vacancy_within_paid_window.sql
+\ir migrations/20261119010000_replace_gallery_with_parent_update.sql
+\ir migrations/20261119020000_create_publication_with_gallery.sql
+\ir migrations/20261119030000_recover_work_draft_creation.sql
 
 \ir local-reference-data.sql
 create schema local_dev;

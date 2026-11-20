@@ -213,5 +213,41 @@ export async function testPaymentReconciliation(suite,admin,config){
    assert.deepEqual(methods,['GET']);assert.equal((await row(f.b.id)).attempts,2);assert.equal((await row(f.b.id)).state,'completed');
    assert.equal((await admin.query('select count(*)::int as n from app.payment_fulfillments where intent_id=$1',[f.b.id])).rows[0].n,1);
   });
+  await suite.test('webhook logs distinguish committed jobs and redeliveries without logging private inputs', async () => {
+   const target = await make();
+   const events = [];
+   const origin = 'https://site.example.invalid';
+   const capture = producer => createPrimaryPaymentWebhook({origin}, () => producer, event => events.push(event));
+   const handle = capture(queue);
+   const envelope = {type: 'notification', event: 'payment.succeeded', object: {
+    id: target.providerId, metadata: {phone: '+70000000000', token: 'synthetic-private-token'}
+   }};
+   const deliver = (processRequest = handle) => processRequest(new Request(origin+'/api/payments/yookassa/primary-webhook', {
+    method: 'POST', headers: {host: new URL(origin).host, 'content-type':'application/json',
+     'x-real-ip':'185.71.76.1', cookie:'fixture=synthetic-private-cookie'}, body: JSON.stringify(envelope)
+   }));
+   const replies = await Promise.all([deliver(), deliver()]);
+   for (const reply of replies) {
+    assert.equal(reply.status, 200);
+    assert.deepEqual(await reply.json(), {ok:true});
+   }
+   assert.deepEqual(events.map(e => e.queueOutcome).sort(), ['already_present','queued']);
+   assert.deepEqual(events.map(e => e.requestId).sort(), replies.map(r => r.headers.get('x-request-id')).sort());
+   const uncertain = new PostgresPaymentReconciliationQueue({transaction: async work => {
+    await db.transaction(work);
+    throw new Error('synthetic-private-commit');
+   }}, merchant);
+   const retry = await deliver(capture(uncertain));
+   assert.equal(retry.status, 503);
+   assert.equal(events.length, 3);
+   assert.equal(events[2].requestId, retry.headers.get('x-request-id'));
+   assert.equal(Object.hasOwn(events[2], 'queueOutcome'), false);
+   const logged = JSON.stringify(events);
+   for (const secret of [target.providerId,target.b.id,'+70000000000','synthetic-private-token','synthetic-private-cookie','synthetic-private-commit']) {
+    assert.equal(logged.includes(secret), false);
+   }
+   assert.equal((await row(target.b.id)).attempts, 0);
+   assert.equal((await admin.query('select count(*)::int as n from app.payment_reconciliation_jobs where intent_id=$1',[target.b.id])).rows[0].n, 1);
+  });
  }finally{await db.close();}
 }

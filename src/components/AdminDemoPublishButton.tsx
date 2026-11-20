@@ -8,8 +8,9 @@ import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { createStoredListingPublication } from "@/lib/client-listing-flow";
 import { confirmClientPayment } from "@/lib/client-payment-flow";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
+import { prepareLegacyDraftMedia } from "@/lib/legacy-draft-attempt";
 import { createStoredVacancyPublication } from "@/lib/client-vacancy-flow";
-import { storeMediaFile } from "@/lib/client-media-store";
+import { storeFormPhotos } from "@/lib/client-media-store";
 import { markCabinetDataChanged } from "@/lib/cabinet-data-cache";
 import { formatBookingPrice, validateBookingDetailsForPublication } from "@/lib/booking-details";
 import { readStoredDemoPublications, writeStoredDemoPublications, demoPublicationsUpdatedEvent, withPublicationHistory, type DemoPublication, type DemoPublicationType } from "@/lib/demo-publications";
@@ -261,23 +262,10 @@ function readStoredPublications() {
   return [];
 }
 
-function readMediaFiles(formData: FormData) {
-  return formData
-    .getAll("photos")
+function readImageFiles(formData: FormData) {
+  return formData.getAll("photos")
     .filter((item): item is File => item instanceof File && item.size > 0 && item.type.startsWith("image/"))
     .slice(0, 20);
-}
-
-function readImageFiles(formData: FormData) {
-  return readMediaFiles(formData).filter((file) => file.type.startsWith("image/"));
-}
-
-function readExistingPhotos(formData: FormData) {
-  return formData.getAll("existingPhotos").flatMap((value) => {
-    const photo = String(value ?? "").trim();
-
-    return photo ? [photo] : [];
-  });
 }
 
 async function uploadPublicationMedia(formData: FormData, folder: "fair-applications" | "listings" | "vacancies", accessToken: string) {
@@ -305,32 +293,14 @@ async function uploadPublicationMedia(formData: FormData, folder: "fair-applicat
       throw new Error(payload?.error ?? "Не удалось загрузить фото.");
     }
 
-    uploadedPaths.push(...(payload?.files?.map((file) => file.path).filter((path): path is string => Boolean(path)) ?? []));
+    const paths = Array.isArray(payload?.files) ? payload.files.map(file => file?.path) : [];
+    if (paths.length !== files.slice(index, index + 10).length || !paths.every((path): path is string => typeof path === "string" && path.trim().length > 0)) {
+      throw new Error("Не все фотографии загружены. Повторите попытку.");
+    }
+    uploadedPaths.push(...paths);
   }
 
   return uploadedPaths;
-}
-
-async function readLocalImageReferences(formData: FormData) {
-  const files = readImageFiles(formData);
-  const storedImages = await Promise.allSettled(files.map((file) => storeMediaFile(file)));
-
-  return [...readExistingPhotos(formData), ...storedImages.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))];
-}
-
-async function readLocalMediaReferences(formData: FormData) {
-  const storedMedia = await Promise.allSettled(
-    readMediaFiles(formData).map(async (file) => ({
-      kind: file.type.startsWith("video/") ? "video" : "image",
-      source: await storeMediaFile(file),
-    })),
-  );
-  const fulfilledMedia = storedMedia.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
-
-  return {
-    images: [...readExistingPhotos(formData), ...fulfilledMedia.filter((item) => item.kind === "image").map((item) => item.source)],
-    videos: fulfilledMedia.filter((item) => item.kind === "video").map((item) => item.source),
-  };
 }
 
 function readEmailOrMessengerEmail(formData: FormData) {
@@ -352,7 +322,7 @@ async function buildFallbackPublication(formData: FormData, type: DemoPublicatio
   const listingKind = readValue(formData, "kind", "prodam") as ListingKind;
   const booking = type === "listing" ? parseListingBooking(formData, categorySlug, listingKind) : undefined;
   const categoryName = categories.find((category) => category.slug === categorySlug)?.name ?? "Категория";
-  const media = type === "listing" ? await readLocalMediaReferences(formData) : { images: await readLocalImageReferences(formData), videos: [] };
+  const images = await storeFormPhotos(formData, 20);
   const isVacancy = type === "vacancy";
   const requisites = isVacancy
     ? normalizeVacancyRequisites({
@@ -399,8 +369,8 @@ async function buildFallbackPublication(formData: FormData, type: DemoPublicatio
     categorySlug,
     subcategorySlug: readValue(formData, "subcategory"),
     booking,
-    images: media.images,
-    videos: media.videos,
+    images,
+    videos: [],
     status,
     createdAt: now,
   });
@@ -448,7 +418,7 @@ async function createSupabaseListing(formData: FormData, options: { accessToken:
   return result;
 }
 
-async function createSupabaseVacancy(formData: FormData, options: { accessToken: string; status?: "draft"; tariffId?: string }) {
+async function createSupabaseVacancy(formData: FormData, options: { draftForm?: HTMLFormElement; owner?: string; accessToken: string; status?: "draft"; tariffId?: string }) {
   const isDraft = options.status === "draft";
   const email = readEmailOrMessengerEmail(formData) || readRawValue(formData, "email");
   const messengerUrl = readEmailOrMessengerUrl(formData);
@@ -469,7 +439,10 @@ async function createSupabaseVacancy(formData: FormData, options: { accessToken:
     throw new Error("Укажите хотя бы один контакт вакансии: телефон, email или Telegram/WhatsApp.");
   }
 
-  const mediaPaths = await uploadPublicationMedia(formData, "vacancies", options.accessToken);
+  const upload = async () => ({ paths: await uploadPublicationMedia(formData, "vacancies", options.accessToken) });
+  const media = options.draftForm && options.owner
+    ? await prepareLegacyDraftMedia(options.draftForm, options.owner, formData, upload)
+    : { ...await upload(), creationKey: undefined };
   const result = await createStoredVacancyPublication({
     accessToken: options.accessToken,
     address: hasSelectedMapPoint(formData) ? readValue(formData, "address") : undefined,
@@ -484,7 +457,8 @@ async function createSupabaseVacancy(formData: FormData, options: { accessToken:
     ogrnip: requisites.ogrnip || undefined,
     lat: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lat") : undefined,
     lng: hasSelectedMapPoint(formData) ? readCoordinate(formData, "lng") : undefined,
-    mediaPaths,
+    mediaPaths: media.paths,
+    creationKey: media.creationKey,
     messengerUrl: messengerUrl || undefined,
     organization: readValue(formData, "organization", "Работодатель"),
     placementRightConfirmed: readRawValue(formData, "placementRightConfirmed") === "1",
@@ -556,20 +530,22 @@ function LegacyPublicationButton({
       }
 
       const formData = new FormData(form);
+      if (form.querySelector('[data-photo-preparing="true"]')) throw new Error("Дождитесь подготовки фотографий.");
 
       if (publicationType === "listing") {
         const identity = await resolveAuthenticatedClientUserIdentity();
 
         if (identity.accessToken && isDraftStatus(status)) {
+          const fallbackPublication = clientFallbackContentEnabled
+            ? await buildFallbackPublication(formData, publicationType, status) : undefined;
           const result = await createSupabaseListing(formData, { accessToken: identity.accessToken, status: "draft" });
 
-          if (!clientFallbackContentEnabled) {
+          if (!fallbackPublication) {
             markCabinetDataChanged();
             window.location.href = returnHref;
             return;
           }
 
-          const fallbackPublication = await buildFallbackPublication(formData, publicationType, status);
           const publication = {
             ...fallbackPublication,
             id: result.listing?.id ?? `demo-${publicationType}-${Date.now().toString(36)}`,
@@ -612,15 +588,16 @@ function LegacyPublicationButton({
         const identity = await resolveAuthenticatedClientUserIdentity();
 
         if (identity.accessToken && isDraftStatus(status)) {
-          const result = await createSupabaseVacancy(formData, { accessToken: identity.accessToken, status: "draft" });
+          const fallbackPublication = clientFallbackContentEnabled
+            ? await buildFallbackPublication(formData, publicationType, status) : undefined;
+          const result = await createSupabaseVacancy(formData, { draftForm: form, owner: identity.ownerKey, accessToken: identity.accessToken, status: "draft" });
 
-          if (!clientFallbackContentEnabled) {
+          if (!fallbackPublication) {
             markCabinetDataChanged();
             window.location.href = returnHref;
             return;
           }
 
-          const fallbackPublication = await buildFallbackPublication(formData, publicationType, status);
           const publication = {
             ...fallbackPublication,
             id: result.vacancy?.id ?? `demo-${publicationType}-${Date.now().toString(36)}`,

@@ -1,6 +1,6 @@
 // Owned loopback PostgreSQL + actual WebP files/HTTP handlers. No production or external traffic.
 import assert from 'node:assert/strict';
-import {createHash,randomBytes,randomUUID} from 'node:crypto';
+import {createHash,randomInt,randomBytes,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {execFileSync,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -31,13 +31,15 @@ try{
  const runtimePassword=randomBytes(24).toString('hex');
  await db.query(`create role burst_runtime login nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls password ${pg.escapeLiteral(runtimePassword)};
   grant connect on database blizhniy_test to burst_runtime;grant usage on schema app to burst_runtime;
-  grant select on app.users,app.cities,app.categories,app.cabinet_profiles,app.listings,app.listing_photos,app.listing_blocks,app.listing_moderation,app.media_objects to burst_runtime`);
+  grant select on app.users,app.cities,app.categories,app.cabinet_profiles,app.listings,app.listing_photos,app.listing_blocks,app.listing_moderation,app.media_objects to burst_runtime;
+  grant select(id,target_type,target_id,owner_id,is_test,request_body) on app.payment_checkout_intents to burst_runtime;
+  grant select(intent_id,published_at,expires_at) on app.payment_fulfillments to burst_runtime`);
  runtime=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:'burst_runtime',password:runtimePassword,max:5}));
  await mkdir(join(stateDirectory,'media'),{mode:0o700});files=await load('media-files').createLocalMediaFileStore(join(stateDirectory,'media'));
  const region=(await db.query("insert into app.regions(slug,name) values('burst-region','Синтетический регион') returning id")).rows[0].id;
  const city=(await db.query("insert into app.cities(region_id,slug,name) values($1,'burst-city','Краснодар') returning id",[region])).rows[0].id;
  user=(await db.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',[email,'scrypt$131072$8$1$'+'0'.repeat(32)+'$'+'0'.repeat(128)])).rows[0].id;
- const phone='+7999'+String(randomBytes(4).readUInt32BE()%10000000).padStart(7,'0');
+ const phone='+7999'+String(randomInt(10_000_000)).padStart(7,'0');
  await db.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2::jsonb)',[user,JSON.stringify({name:'Проверка фотографий',phone})]);
  category=(await db.query("insert into app.categories(slug,name) values($1,'Синтетические фотографии') returning id",['photo-burst-'+suffix])).rows[0].id;
  for(const [width,height]of[[512,384],[1280,960],[1920,1440]]){
@@ -77,7 +79,7 @@ try{
  });
  const measurements=[];
  for(const [name,factory]of[['before',before.createProductionPublicWorkPhotoHandler],['after',load('production-public-work-photo-http').createProductionPublicWorkPhotoHandler]]){
-  handler=factory({origin},composition,()=>{});await get(fixtures[0],'192.0.2.1');peak=0;
+  handler=factory({origin},composition,()=>{});assert.equal((await get(fixtures[0],'192.0.2.1')).status,200,'Warmup must serve a verified WebP');peak=0;
   const samples=[];let rss=process.memoryUsage().rss;const monitor=setInterval(()=>{rss=Math.max(rss,process.memoryUsage().rss);},5);
   try{for(let burst=0;burst<3;burst++){
    const start=performance.now(),result=await Promise.all(Array.from({length:48},(_,index)=>get(fixtures[index%24],'192.0.2.'+(index<24?'1':'2'))));
@@ -107,8 +109,11 @@ try{
  }}}),()=>{});
  assert.equal((await duringRead(request(blocked),blocked.id,blocked.record.id)).status,404);assert.equal(admission.reads,0);
  await new Promise(resolve=>server.close(resolve));server=undefined;
- const report={date:'2026-10-31',scope:'Own PG18.6 1CPU/512MiB, loopback HTTP, real restricted store and private WebP reader; two synthetic trusted IPs, 3 bursts of48requests, 25ms controlled read delay; combined server/client process RSS, not production capacity or leak proof.',files:records.map(({width,height,size})=>({width,height,size})),measurements,withdrawalWhileQueued:'404 without file read',withdrawalDuringFileRead:'404 without bytes'};
- await writeFile('/tmp/blizhniy-f13-photo-burst.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report));
+ const report={date:new Date().toISOString().slice(0,10),scope:'Own PG18.6 1CPU/512MiB, loopback HTTP, real restricted store and private WebP reader; two synthetic trusted IPs, 3 bursts of48requests, 25ms controlled read delay; combined server/client process RSS, not production capacity or leak proof.',files:records.map(({width,height,size})=>({width,height,size})),measurements,withdrawalWhileQueued:'404 without file read',withdrawalDuringFileRead:'404 without bytes'};
+ const reportPath=join(await mkdtemp(join(tmpdir(),'blizhniy-photo-report-')),'blizhniy-f13-photo-burst.json');
+ await writeFile(reportPath,JSON.stringify(report,null,2),{flag:'wx',mode:0o600});
+ console.error('Photo benchmark report:',reportPath);
+ console.log(JSON.stringify(report));
 }finally{
  if(server)await new Promise(resolve=>server.close(resolve));await runtime?.close();await db?.end();
  if(containerId){const metadata=JSON.parse(await docker(['inspect',containerId]))[0];assert.equal(metadata.Id,containerId);assert.equal(metadata.Name,'/'+name);assert.equal(metadata.Config.Labels[label],name);await docker(['rm','--force',containerId]);}

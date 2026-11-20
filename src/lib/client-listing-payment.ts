@@ -30,20 +30,23 @@ function snapshot(value:unknown,id:string):ListingPaymentSnapshot|null{
  }
  return{order,fulfillment,...(marked?{testPublication:true as const}:{}),...(testOnly?{testOnly:true as const}:{})};
 }
-export function createListingPaymentClient(transport:typeof fetch){return{
+export function createListingPaymentClient(transport:typeof fetch,action:'order'|'specialistOrder'='order'){return{
  async read(owner:string,paymentId:string,options:{signal?:AbortSignal}={}):Promise<ListingPaymentSnapshot|null>{
   try{
    const expectedOwnerId=parseListingDraftId(owner),id=parseListingDraftId(paymentId);
    options.signal?.throwIfAborted();const timeout=AbortSignal.timeout(15000),signal=options.signal?AbortSignal.any([timeout,options.signal]):timeout;
    const response=await transport('/api/account/listing-checkout',{method:'POST',credentials:'same-origin',redirect:'error',cache:'no-store',signal,
-    headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1'},body:JSON.stringify({expectedOwnerId,action:'order',paymentId:id})});
+    headers:{'Content-Type':'application/json','X-Blizhniy-Request':'1'},body:JSON.stringify({expectedOwnerId,action,paymentId:id})});
    if(!response.body)throw Error();const reader=response.body.getReader(),decoder=new TextDecoder('utf-8',{fatal:true});let text='',size=0,chunks=0,complete=false;
    try{for(;;){signal.throwIfAborted();const part=await reader.read();signal.throwIfAborted();if(part.done){complete=true;text+=decoder.decode();break;}size+=part.value.byteLength;if(size>16384||++chunks>1024)throw Error();text+=decoder.decode(part.value,{stream:true});}}
    finally{try{if(!complete)await reader.cancel();}finally{reader.releaseLock();}}
    const value=JSON.parse(text);
    if(response.status!==200){const codes:Record<string,number>={UNAUTHENTICATED:401,CHECKOUT_DISABLED:503,RATE_LIMITED:429},code=value?.error?.code;
     throw new ListingPaymentClientError(typeof code==='string'&&Object.hasOwn(codes,code)&&codes[code]===response.status?code:'UNKNOWN');}
-   return snapshot(value,id);
+   const result=snapshot(value,id);
+   if(action==='specialistOrder'&&result?.testPublication&&response.headers.get('X-Blizhniy-Specialist-Resume')==='1')
+    return {...result,canResumeSpecialist:true};
+   return result;
   }catch(error){if(error instanceof ListingPaymentClientError)throw error;throw new ListingPaymentClientError('UNKNOWN');}
  },
 };}

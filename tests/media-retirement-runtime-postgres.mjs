@@ -1,4 +1,5 @@
 // Called only by the fresh owned PG18 candidate fixture; never an installed worker/stand.
+import { readFixtureFile } from './read-fixture-file.mjs';
 import assert from 'node:assert/strict';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
@@ -100,9 +101,15 @@ export async function testMediaRetirementRuntime(suite,{admin,holder,clock,day})
  await suite.test('incomplete temporary evidence quarantines both files and preserves the full accounting charge',async t=>{
   const f=await fixture(t),claim=await f.repo.claimWrite(f.token,f.pending.id,image);
   const final=path.join(f.root,f.pending.id+'.webp'),temporary=path.join(f.root,'.pending-'+claim.attemptId);
-  await fs.writeFile(final,bytes,{mode:0o600});await fs.writeFile(temporary,bytes.subarray(0,8),{mode:0o600});const inode=await fs.lstat(temporary,{bigint:true});
+  await fs.writeFile(final,bytes,{mode:0o600});await fs.writeFile(temporary,bytes.subarray(0,8),{mode:0o600});
+  const { stat: beforeFile } = await readFixtureFile(temporary);
   await clock(7*day);const before=await budget();await assert.rejects(new LocalMediaRetirement(f.db,f.worker).retire(f.pending.id),{code:'MEDIA_RETIREMENT_UNAVAILABLE'});
-  assert.deepEqual(await fs.readFile(final),bytes);assert.deepEqual(await fs.readFile(temporary),bytes.subarray(0,8));assert.equal((await fs.lstat(temporary,{bigint:true})).ino,inode.ino);assert.deepEqual(await budget(),before);
+  const after = await readFixtureFile(temporary);
+  assert.deepEqual(await fs.readFile(final),bytes);
+  assert.deepEqual(after.bytes, bytes.subarray(0,8));
+  assert.equal(after.stat.ino, beforeFile.ino);
+  assert.equal(after.stat.dev, beforeFile.dev);
+  assert.deepEqual(await budget(),before);
   assert.equal((await admin.query('select count(*)::int n from app.media_retirement_requests where media_id=$1',[f.pending.id])).rows[0].n,1);
   assert.equal((await admin.query('select count(*)::int n from app.media_retirement_completions where media_id=$1',[f.pending.id])).rows[0].n,0);
   await assert.rejects(f.repo.reserve(f.token,f.intent,image),{code:'MEDIA_INTENT_CONFLICT'});

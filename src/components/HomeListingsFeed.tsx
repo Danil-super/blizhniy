@@ -5,9 +5,11 @@ import { DemoGridCard } from "@/components/DemoListingFeed";
 import { DemoListing, ListingGridCard, type ListingKind } from "@/components/listings/ListingCard";
 import { shouldShowClientFallbackContent } from "@/lib/client-runtime-mode";
 import { readStoredDemoPublications, isDemoPublicationPubliclyVisible, type DemoPublication } from "@/lib/demo-publications";
+import { cities, cityPreferenceKey } from "@/lib/data";
 import { publicationTimestamp } from "@/lib/publication-time";
 
 type HomeListingsFeedProps = {
+  city?: string;
   kind?: ListingKind;
   listings: DemoListing[];
 };
@@ -55,7 +57,7 @@ function readStoredListings() {
   return [];
 }
 
-export function HomeListingsFeed({ kind, listings }: HomeListingsFeedProps) {
+export function HomeListingsFeed({ city, kind, listings }: HomeListingsFeedProps) {
   const [storedListings, setStoredListings] = useState<DemoPublication[]>([]);
 
   useEffect(() => {
@@ -78,8 +80,30 @@ export function HomeListingsFeed({ kind, listings }: HomeListingsFeedProps) {
     };
   }, []);
 
+  useEffect(() => {
+    function syncFeedCity() {
+      const prefix = cityPreferenceKey + "=";
+      const slug = document.cookie.split("; ").find(part => part.startsWith(prefix))?.slice(prefix.length);
+      if (cities.find(item => item.slug === slug)?.name === city) return;
+      const url = new URL(window.location.href);
+      url.searchParams.delete("page");
+      window.location.replace(url.href);
+    }
+    function onStorage(event: StorageEvent) {
+      if (event.key === cityPreferenceKey) syncFeedCity();
+    }
+    syncFeedCity();
+    window.addEventListener(cityPreferenceKey, syncFeedCity);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(cityPreferenceKey, syncFeedCity);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [city]);
+
   const entries = useMemo(() => {
     const storedEntries: FeedEntry[] = storedListings
+      .filter((item) => !city || item.city === city)
       .filter((item) => !kind || (item.listingKind ?? "prodam") === kind)
       .map((item) => ({
         id: `stored-${item.id}`,
@@ -96,7 +120,7 @@ export function HomeListingsFeed({ kind, listings }: HomeListingsFeedProps) {
     }));
 
     return [...storedEntries, ...demoEntries].sort((left, right) => right.timestamp - left.timestamp);
-  }, [kind, listings, storedListings]);
+  }, [city, kind, listings, storedListings]);
 
   return (
     <>
