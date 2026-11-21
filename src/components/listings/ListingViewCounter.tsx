@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import lottie, { type AnimationItem } from "lottie-web/build/player/lottie_light";
-import { getBaseViews, getListingTotalViews, listingViewCountsUpdatedEvent } from "@/lib/listing-views";
+import { getBaseViews, getListingTotalViews, hasPrimaryListingCount, listingViewCountsUpdatedEvent } from "@/lib/listing-views";
 import eyesAnimation from "../../../eyes.json";
 
 export function ListingViewCounter({ initialViews, listingId }: { initialViews?: number; listingId: string }) {
@@ -20,6 +20,10 @@ export function ListingViewCounter({ initialViews, listingId }: { initialViews?:
         }
       }
 
+      if (hasPrimaryListingCount(listingId)) {
+        if (!event) setViews(getBaseViews(listingId, initialViews));
+        return;
+      }
       setViews(getListingTotalViews(listingId, initialViews));
     }
 

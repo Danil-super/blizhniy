@@ -16,7 +16,7 @@ import type { ProductionAccountRuntime } from "./production-account-http";
 import { verifyProductionAuthDatabase } from "./production-auth-database.ts";
 import { ReadOnlyInitialization } from './read-only-initialization.ts';
 
-type Runtime = { db: PostgresDatabase; cipher: MailPayloadCipher; account: ProductionAccountRuntime };
+type Runtime = { db: PostgresDatabase; cipher: MailPayloadCipher; account: ProductionAccountRuntime & { limiter: AuthRateLimiter } };
 const shared = globalThis as typeof globalThis & { blizhniyProductionAuth?: ReadOnlyInitialization<Runtime> };
 
 async function createRuntime(config: ProductionAuthConfig): Promise<Runtime> {
@@ -29,7 +29,7 @@ async function createRuntime(config: ProductionAuthConfig): Promise<Runtime> {
     cipher = new MailPayloadCipher(key);
   } finally { key.fill(0); }
   const db = createPostgresDatabase();
-  const account: ProductionAccountRuntime = { store: new RegistrationStore(db, cipher, { confirmationNotice }),
+  const account: Runtime["account"] = { store: new RegistrationStore(db, cipher, { confirmationNotice }),
     recovery: new PasswordRecoveryStore(db, cipher,{pendingAccounts:true}), identity: new IdentityStore(db),
     limiter: new AuthRateLimiter(db, config.rateSecret), verifyCaptcha: verifyTurnstileToken };
   try { await verifyProductionAuthDatabase(db); }
