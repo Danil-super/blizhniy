@@ -7,7 +7,7 @@ const ts = require('typescript');
 
 const root = resolve(__dirname, '..');
 const uuid = '11111111-1111-4111-8111-111111111111';
-function harness({ storedViews = 57, failed = false } = {}) {
+function harness({ storedViews = 57, failed = false, backend = "legacy", enabled = false, statuses = [] } = {}) {
   let effect;
   const storage = new Map();
   const calls = [], events = [];
@@ -25,9 +25,11 @@ function harness({ storedViews = 57, failed = false } = {}) {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
     }).outputText;
     vm.runInNewContext(source, { module, exports: module.exports, console, Promise, Event, CustomEvent,
-      window: browserWindow,
+      window: browserWindow, document: { querySelector: selector => ({
+        getAttribute: () => selector.includes("auth-backend") ? backend : (enabled ? "enabled" : "disabled"),
+      }) }, navigator: {}, AbortSignal,
       require: id => { assert.ok(Object.hasOwn(dependencies, id), 'Unexpected dependency: ' + id); return dependencies[id]; },
-      fetch: async (url, request) => { calls.push({ url, request }); return { ok: !failed, json: async () => ({ views: storedViews }) }; },
+      fetch: async (url, request) => { calls.push({ url, request }); return { status: statuses.shift() ?? (failed ? 503 : 200), ok: !failed, json: async () => ({ views: storedViews }) }; },
     });
     return module.exports;
   }
@@ -82,4 +84,33 @@ test('unavailable persisted count keeps existing browser-local fallback', async 
   assert.equal(h.calls.length, 1);
   assert.equal(h.events.at(-1).detail.views, 11);
   cleanup();
+});
+
+test('primary listing keeps the confirmed count when tracking is disabled or the write fails', async () => {
+  for (const enabled of [false, true]) {
+    const h = harness({ backend: 'postgres', enabled, failed: true });
+    await h.mount(uuid);
+    assert.equal(h.authReads(), 0);
+    assert.equal(h.calls.length, enabled ? 1 : 0);
+    assert.equal(h.views.getListingExtraViews(uuid), 0);
+    assert.deepEqual(h.events, []);
+  }
+});
+
+test('primary listing returns the guest cookie once and accepts only a confirmed numeric count', async () => {
+  for (const [statuses, storedViews, expected] of [
+    [[202, 200], 12, [12]], [[202, 202], 0, []], [[200], null, []], [[200], -1, []],
+  ]) {
+    const requests = statuses.length;
+    const h = harness({ backend: 'postgres', enabled: true, statuses, storedViews });
+    await h.mount(uuid);
+    assert.equal(h.calls.length, requests);
+    assert.equal(h.authReads(), 0);
+    for (const {request} of h.calls) {
+      assert.equal(request.credentials, 'same-origin');
+      assert.equal(request.headers.Authorization, undefined);
+      assert.equal(request.headers['X-Blizhniy-Request'], '1');
+    }
+    assert.deepEqual(h.events.map(e => e.detail.views), expected);
+  }
 });

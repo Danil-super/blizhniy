@@ -20,6 +20,7 @@ async function enterPendingReset(page, origin) {
           const frame = document.createElement('div'); frame.dataset.fixtureWidget = 'captcha';
           frame.style.width = '300px'; frame.style.height = '65px';
           container.appendChild(frame);
+          if (window.__fixtureSlowChallenge) setTimeout(() => options.callback('fixture-captcha'), 35000);
           if (window.__fixtureResetRenders > 1) queueMicrotask(() => options.callback('fixture-captcha'));
           const id = 'fixture-reset-widget-' + ++sequence; widgets.set(id, container); return id;
         }, remove(id) { widgets.get(id)?.replaceChildren(); widgets.delete(id); }
@@ -90,6 +91,22 @@ export async function testResetValidationScenarios({ run, origin, password }) {
     assert.equal(await save(page).isEnabled(), true);
     assert.equal(await passwordInput(page).inputValue(), password);
     assert.equal(await repeatInput(page).inputValue(), password);
+  });
+  await run('a slow CAPTCHA can complete without restarting or submitting the form', async ({ page, calls }) => {
+    await page.clock.install();
+    await page.addInitScript(() => { window.__fixtureSlowChallenge = true; });
+    await enterPendingReset(page, origin);
+    await passwordInput(page).fill(password);
+    await repeatInput(page).fill(password);
+    await page.clock.fastForward(31000);
+    await page.getByText(/Можно подождать или повторить проверку/).waitFor({ timeout: 3000 });
+    assert.equal(await save(page).isDisabled(), true);
+    await page.clock.fastForward(5000);
+    await page.waitForFunction(() => document.querySelector('input[name="captchaToken"]')?.value === 'fixture-captcha');
+    assert.equal(await save(page).isEnabled(), true);
+    assert.equal(await passwordInput(page).inputValue(), password);
+    assert.equal(await page.evaluate(() => window.__fixtureResetRenders), 1);
+    assert.deepEqual(calls, []);
   });
   await run('a blank pending reset CAPTCHA explains the disabled save action and offers a manual retry preserving both passwords', async ({ page, calls }) => {
     await enterPendingReset(page, origin);

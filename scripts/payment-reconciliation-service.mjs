@@ -3,6 +3,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 
 const codes=new Set(['provider_pending','capture_required','processing_unavailable','publication_blocked','attempts_exhausted','phone_required']);
 const states=new Set(['idle','lost','completed','deferred','blocked']);
+const processingStages=new Set(['load_order','provider_get','validate_response','record_verification','claim_ownership','fulfillment']);
 const pause=(ms,signal)=>delay(ms,undefined,{signal});
 const stdoutReport=event=>new Promise((resolve,reject)=>{
  process.stdout.write(JSON.stringify(event)+'\n',error=>error?reject(error):resolve());
@@ -41,12 +42,21 @@ export async function runPaymentReconciliationService({mode,createRuntime,signal
     await emit({status:'ready'});
     while(!signal.aborted) {
      stage='delivery';
-     const tickStarted=performance.now(),result=await runtime.worker.tick();
+     const tickStarted=performance.now();
+     let processingStage;
+     const result=await runtime.worker.tick(value=>{
+      if(processingStages.has(value))processingStage=value;
+     });
      if(!states.has(result?.state)||(['deferred','blocked'].includes(result.state)?!codes.has(result.code):result.code!==undefined)) {
       throw new Error('Invalid worker result');
      }
      outcomes[result.state]=(outcomes[result.state]??0)+1;
-     await emit({status:'tick',state:result.state,...(result.code?{code:result.code}:{}),tickDurationMs:Math.round(performance.now()-tickStarted)});
+     const processingFailed=result.code==='processing_unavailable'||result.code==='attempts_exhausted';
+     await emit({
+      status:'tick',state:result.state,...(result.code?{code:result.code}:{}),
+      ...(processingFailed&&processingStage?{processingStage}:{}),
+      tickDurationMs:Math.round(performance.now()-tickStarted),
+     });
      if(signal.aborted)break;
      stage='wait';
      try {await wait(result.state==='idle'?5000:250,signal);}

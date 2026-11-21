@@ -1,10 +1,11 @@
 import {PostgresPaymentReconciliationQueue} from './postgres-payment-reconciliation.ts';
-import {PostgresPaymentVerificationStore} from './postgres-payment-verification.ts';
+import {PostgresPaymentVerificationStore,type VerificationStage} from './postgres-payment-verification.ts';
 import {PostgresListingPaymentFulfillmentStore} from './postgres-listing-payment-fulfillment';
 import type {PostgresDatabase} from './postgres';
 
 type Merchant=ConstructorParameters<typeof PostgresPaymentVerificationStore>[1];
 type Code='provider_pending'|'capture_required'|'processing_unavailable'|'publication_blocked'|'attempts_exhausted'|'phone_required';
+type ProcessingStage=VerificationStage|'claim_ownership'|'fulfillment';
 type Result={state:'idle'|'lost'|'completed'}|{state:'deferred'|'blocked';code:Code};
 /** Explicit one-job tick. No poller/startup hook, provider POST or caller-supplied financial snapshot. */
 export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'transaction'>,merchant:Merchant,fetcher:typeof fetch=globalThis.fetch,publicationTestOwner?:string,specialistAccountTest?:true){
@@ -17,19 +18,22 @@ export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'tran
   vacancy:new PostgresListingPaymentFulfillmentStore(db,merchant,{...policy,targetType:'vacancy'}),
   workRequest:new PostgresListingPaymentFulfillmentStore(db,merchant,{...policy,targetType:'workRequest'}),
  }:{})};
- return{async tick():Promise<Result>{
+ return{async tick(onProcessingFailure?:(stage:ProcessingStage)=>void):Promise<Result>{
   if(publication)await queue.discover();
   // An unknown claim COMMIT is NOT retried: the persisted lease must expire first.
   const claim=await queue.claim();if(!claim)return{state:'idle'};if('exhausted' in claim)return{state:'blocked',code:'attempts_exhausted'};
   let state:'completed'|'retry'|'blocked'|'waiting_phone'='retry',code:Code|null='processing_unavailable';
+  let stage:ProcessingStage='claim_ownership',failureStage:ProcessingStage|undefined;
   try{
    if(!await queue.owns(claim))return{state:'lost'};
-   const verified=await verification.reconcile(claim.intentId);
+   const verified=await verification.reconcile(claim.intentId,value=>{stage=value;});
+   stage='claim_ownership';
    if(!await queue.owns(claim))return{state:'lost'};
    if(verified.orderStatus==='failed'||verified.orderStatus==='refunded'){state='completed';code=null;}
    else if(verified.orderStatus!=='succeeded')code='provider_pending';
    else if(!verified.capturedAt)code='capture_required';
    else{
+    stage='fulfillment';
     const kind=publication?claim.targetType:'listing';
     if(!kind||!Object.hasOwn(fulfillments,kind))throw Error('Invalid publication target');
     const result=await fulfillments[kind]!.fulfill(claim.intentId);
@@ -42,11 +46,12 @@ export function createPaymentReconciliationWorker(db:Pick<PostgresDatabase,'tran
    if(sql==='P7601'){state='waiting_phone';code='phone_required';}
    // A reserved refund is a durable publication fence, not a transient provider failure.
    else if(sql==='P7602'||sql==='PBR01'||(claim.targetType==='specialist'&&sql==='PSP03')){state='blocked';code='publication_blocked';}
-   else{state='retry';code='processing_unavailable';}
+   else{state='retry';code='processing_unavailable';failureStage=stage;}
   }
   if(state==='retry'&&claim.attempts>=12){state='blocked';code='attempts_exhausted';}
   // Outside the catch: never replay acknowledgement after an unknown finish COMMIT.
   if(!await queue.finish(claim,state,code))return{state:'lost'};
+  if(failureStage)onProcessingFailure?.(failureStage);
   return state==='completed'?{state:'completed'}:{state:state==='retry'||state==='waiting_phone'?'deferred':'blocked',code:code!};
  }};
 }

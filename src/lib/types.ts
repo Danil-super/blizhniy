@@ -61,6 +61,7 @@ export type DeliveryOptions = {
 };
 
 export type Listing = {
+  testPublication?: boolean;
   id: string;
   slug: string;
   ownerKey?: string;
@@ -95,6 +96,7 @@ export type Listing = {
 };
 
 export type JobVacancy = {
+  testPublication?: boolean;
   professionId?: string;
   id: string;
   employerType?: "organization" | "ip" | "person" | string;
@@ -133,6 +135,7 @@ export type JobVacancy = {
 };
 
 export type WorkRequest = {
+  testPublication?: boolean;
   professionId?: string;
   id: string;
   author: string;
@@ -156,6 +159,7 @@ export type WorkRequest = {
 };
 
 export type SpecialistProfile = {
+  testPublication?: boolean;
   professionId?: string;
   id: string;
   name: string;

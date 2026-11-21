@@ -1,0 +1,21 @@
+[Unit]
+Description=Expire overdue Blizhniy booking requests
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=blizhniy-web
+Group=blizhniy-web
+WorkingDirectory=/var/www/blizhniy
+Environment=NODE_ENV=production
+ExecStart=/opt/blizhniy-node22/bin/node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON /var/www/blizhniy/scripts/booking-expiry.mjs --run
+TimeoutStartSec=90
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

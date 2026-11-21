@@ -5,7 +5,7 @@ import { BackLink } from "@/components/BackLink";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ListingPagination } from "@/components/listings/ListingPagination";
 import { parseListingPage } from "@/components/listings/ListingPages";
-import { SpecialistListCard } from "@/components/SpecialistListCard";
+import { EmptySpecialistList, SpecialistListCard } from "@/components/SpecialistListCard";
 import { listSpecialists } from "@/lib/mock-store";
 import { getPublicProfessions } from "@/lib/profession-store";
 import { shouldShowFallbackContent } from "@/lib/runtime-mode";
@@ -56,7 +56,7 @@ export default async function Page({ searchParams }: PageProps) {
           </details>
         )}
         <div className="mt-6 grid gap-4 md:grid-cols-2">
-          {specialists.length === 0 && <p className="col-span-full text-sm text-slate-600">Опубликованных анкет пока нет.</p>}
+          {specialists.length === 0 && <EmptySpecialistList>Опубликованных анкет пока нет.</EmptySpecialistList>}
           {specialists.map((specialist) => (
             <SpecialistListCard key={specialist.id} specialist={specialist} />
           ))}

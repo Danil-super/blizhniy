@@ -49,3 +49,20 @@ test('only the first image on the catalog landing page loads with high priority'
     assert.doesNotMatch(image, /fetchPriority="high"/i);
   }
 });
+
+test('category previews load entirely from versioned static files at every size', async () => {
+  const {CategoryGrid} = load('CategoryGrid');
+  const html = renderToStaticMarkup(await CategoryGrid({variant: 'grid'}));
+  const images = html.match(/<img [^>]+>/g) ?? [];
+  assert.equal(images.length, 3);
+  for (const image of images) {
+    assert.doesNotMatch(image, /\/_next\/image\?/);
+    const candidates = image.match(/srcSet="([^"]+)"/i)[1].split(', ');
+    assert.equal(candidates.length, 3);
+    for (const [index, width] of [640, 1080, 1672].entries()) {
+      const [src, descriptor] = candidates[index].split(' ');
+      assert.match(src, /^\/_next\/static\/media\/[\w.-]+\.webp$/);
+      assert.equal(descriptor, width + 'w');
+    }
+  }
+});

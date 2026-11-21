@@ -2,6 +2,11 @@ export function isStoredListingViewId(seed: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(seed);
 }
 
+export function hasPrimaryListingCount(listingId: string) {
+  return isStoredListingViewId(listingId) && typeof document !== "undefined" &&
+    document.querySelector('meta[name="blizhniy-auth-backend"]')?.getAttribute("content") === "postgres";
+}
+
 export function getDemoListingViews(seed: string) {
   if (
     isStoredListingViewId(seed) ||

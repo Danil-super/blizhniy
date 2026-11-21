@@ -3,7 +3,10 @@ const root=path.resolve(__dirname,'..'),owner='10000000-0000-4000-8000-000000000
 const order={id:paymentId,creationKey:key,targetId:id,targetRevision:'4',tariffId:'job-response',amount:'199.00',durationDays:null,status:'created',createdAt:stamp},quote={applicationId:id,revision:'4',tariff:{id:'job-response',name:'Отклик',amount:'199.00',currency:'RUB',durationDays:null},activePayment:null};
 const jsx=(type,props)=>({type,props:props||{}}),walk=node=>Array.isArray(node)?node.flatMap(walk):!node||typeof node!=='object'?[]:[node,...walk(node.props?.children)],text=node=>Array.isArray(node)?node.map(text).join(''):node==null||typeof node==='boolean'?'':typeof node==='object'?text(node.props?.children):String(node);
 class ClientError extends Error{constructor(code){super(code);this.code=code;}}
+const mounted=[];
+test.afterEach(()=>{for(const instances of mounted.splice(0))for(const instance of instances.values())for(const hook of instance.values)hook?.cleanup?.();});
 function mount(kind,api,props={}){const instances=new Map(),effects=[],calls=[],locks=[],redirects=[];let current,tree,dirty=false,auth={state:'signed-in',userId:owner};
+ mounted.push(instances);
  const react={useState(initial){const i=current,n=i.cursor++;if(!Object.hasOwn(i.values,n))i.values[n]=typeof initial==='function'?initial():initial;return[i.values[n],v=>{const next=typeof v==='function'?v(i.values[n]):v;if(!Object.is(next,i.values[n])){i.values[n]=next;dirty=true;}}];},useRef(initial){const i=current,n=i.cursor++;return i.values[n]??={current:initial};},useEffect(work,deps){const i=current,n=i.cursor++,prior=i.values[n];if(!prior||deps.some((v,j)=>!Object.is(v,prior.deps[j]))){i.values[n]={deps};effects.push(()=>{prior?.cleanup?.();i.values[n].cleanup=work();});}},useMemo(work,deps){const i=current,n=i.cursor++,prior=i.values[n];if(!prior||deps.some((v,j)=>!Object.is(v,prior.deps[j])))i.values[n]={deps,value:work()};return i.values[n].value;}};react.useCallback=(fn,deps)=>react.useMemo(()=>fn,deps);
  const client=new Proxy({},{get(_target,name){return async(...args)=>{calls.push({method:name,args});assert.equal(typeof api[name],'function',`Explicit ${name} response`);return api[name](...args);};}}),cache=new Map();
  function load(file){if(cache.has(file))return cache.get(file);const out={};cache.set(file,out);const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{fileName:file,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;new Function('require','exports','window','crypto',code)(name=>{
@@ -13,7 +16,7 @@ function mount(kind,api,props={}){const instances=new Map(),effects=[],calls=[],
   if(name==='@/components/auth/AccountAuthProvider')return{usePrimaryAccountAuth:()=>auth};if(name==='@/lib/local-account')return{notifyAccountSessionChange(){}};if(name==='./ApplicationDetail')return{applicationButton:'button'};
   if(name==='@/lib/client-application-payment')return{applicationPayment:client,ApplicationPaymentClientError:ClientError,applicationPaymentMatchesInput:(saved,input)=>saved.creationKey===input.creationKey&&saved.targetId===input.applicationId&&saved.targetRevision===input.expectedRevision&&saved.tariffId===input.expectedTariffId&&saved.amount===input.expectedAmount};
   throw Error(`Unexpected UI dependency ${name}`);
- },out,{location:{assign:href=>redirects.push(href)}},{randomUUID:()=>key});return out;}
+ },out,{location:{assign:href=>redirects.push(href),replace:href=>redirects.push(href)}},{randomUUID:()=>key});return out;}
  const file=kind==='checkout'?'src/components/applications/ApplicationCheckout.tsx':'src/components/payments/ApplicationPaymentReturnClient.tsx',module=load(path.join(root,file)),component=module.ApplicationCheckout||module.ApplicationPaymentReturnClient;
  function expand(node,keyPath='root'){if(Array.isArray(node))return node.map((v,j)=>expand(v,`${keyPath}:${j}`));if(!node||typeof node!=='object')return node;if(typeof node.type==='function'){const i=instances.get(keyPath)||{values:[],cursor:0};instances.set(keyPath,i);i.cursor=0;const prev=current;current=i;const out=node.type(node.props);current=prev;return expand(out,`${keyPath}:render`);}return{...node,props:{...node.props,children:expand(node.props.children,`${keyPath}:children`)}};}
  function render(){dirty=false;tree=expand(jsx(component,kind==='checkout'?{owner,id,revision:'4',onLockChange:value=>locks.push(value),...props}:{paymentId}));while(effects.length)effects.shift()();}
@@ -54,3 +57,52 @@ for(const [status,deliveredAt,expected] of [['pending',null,'Платёж обр
 });
 
 test('production never starts the local application simulator or calls its proxy-only APIs',async()=>{const f=mount('checkout',{}, {simulation:false});await f.settle();assert.equal(f.button('Оплатить отклик').props.disabled,true);assert.deepEqual(f.calls,[]);assert.deepEqual(f.redirects,[]);});
+
+test('a delayed delivery returns to responses only after server confirmation',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const states=[['pending',null],['succeeded',null],['succeeded',stamp]];
+ const h=mount('return',{read:async()=>{
+  const [status,deliveredAt]=states.shift();
+  return {order:{...order,status},deliveredAt};
+ }});
+ await h.settle();
+ for(const remaining of [1,0]){
+  assert.deepEqual(h.redirects,[]);
+  t.mock.timers.tick(30000);await h.settle();
+  assert.equal(states.length,remaining);
+ }
+ assert.match(text(h.tree),/Отклик доставлен/);
+ assert.doesNotMatch(text(h.tree),/Проверить статус/);
+ assert.ok(walk(h.tree).some(n=>n.type==='a'&&n.props.href==='/cabinet/otkliki'));
+ t.mock.timers.tick(2000);await h.settle();
+ assert.deepEqual(h.redirects,['/cabinet/otkliki']);
+ assert.deepEqual(h.calls.map(c=>c.method),['read','read','read']);
+});
+
+test('losing the verified account cancels a scheduled return',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const h=mount('return',{read:async()=>({order:{...order,status:'succeeded'},deliveredAt:stamp})});
+ await h.settle();h.auth({state:'unavailable'});await h.settle();
+ t.mock.timers.tick(30000);await h.settle();
+ assert.deepEqual(h.redirects,[]);
+});
+
+test('closed, failed and refunded responses stay available for inspection',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ for(const [status,targetClosed,deliveredAt] of [['succeeded',true,null],['failed',false,null],['refunded',false,stamp]]){
+  const h=mount('return',{read:async()=>({order:{...order,status},deliveredAt,targetClosed})});
+  await h.settle();t.mock.timers.tick(30000);await h.settle();
+  assert.deepEqual(h.calls.map(c=>c.method),['read']);assert.deepEqual(h.redirects,[]);
+ }
+});
+
+test('pending reads stop automatically and an explicit retry can resume them',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const h=mount('return',{read:async()=>({order:{...order,status:'pending'},deliveredAt:null})});
+ await h.settle();
+ for(let i=0;i<12;i++){t.mock.timers.tick(30000);await h.settle();}
+ assert.equal(h.calls.length,9);
+ h.button('Проверить статус').props.onClick();await h.settle();
+ assert.equal(h.calls.length,10);
+ assert.ok(h.calls.every(call=>call.method==='read'));assert.deepEqual(h.redirects,[]);
+});

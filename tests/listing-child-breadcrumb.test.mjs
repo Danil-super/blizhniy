@@ -136,6 +136,12 @@ function breadcrumbHtml(listing) {
   return nav;
 }
 
+test("a listing outside Krasnodar links back to listings of every kind", () => {
+  const listing = presentation.toDemoListing({ ...stored("instrumenty", ""), city: "Ейск", kind: "kuplyu" });
+  const nav = breadcrumbHtml(listing);
+  assert.match(nav, /<a\b[^>]*\bhref="\/obyavleniya"[^>]*>Объявления<\/a>/);
+});
+
 test("actual listing form copy does not invent a price or duration when configured tariffs are empty", async () => {
   const tree = await presentation.ListingFormPage({});
   const paragraphs = [];

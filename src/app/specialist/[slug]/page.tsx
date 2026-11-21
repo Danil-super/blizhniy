@@ -1,3 +1,4 @@
+import { publicationOpenGraph } from "@/lib/publication-open-graph";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -12,11 +13,16 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const specialist = (await getStoredSpecialistProfileById(slug)) ?? (shouldShowFallbackContent() ? listSpecialists().find((item) => item.id === slug) : undefined);
 
+  const title = specialist ? `${specialist.name} — ${specialist.profession}` : "Специалист";
+  const description = specialist ? `${specialist.skills || specialist.profession}. ${specialist.city}.` : "Карточка специалиста на платформе БЛИЖНИЙ.";
+  const url = `/specialist/${slug}`;
   return {
-    title: specialist ? `${specialist.name} — ${specialist.profession}` : "Специалист",
-    description: specialist ? `${specialist.skills || specialist.profession}. ${specialist.city}.` : "Карточка специалиста на платформе БЛИЖНИЙ.",
+    ...(specialist?.testPublication ? { robots: { index: false, follow: true } } : {}),
+    title,
+    description,
+    openGraph: specialist ? publicationOpenGraph(title, description, url, specialist.images) : undefined,
     alternates: {
-      canonical: `/specialist/${slug}`,
+      canonical: url,
     },
   };
 }

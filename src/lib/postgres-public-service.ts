@@ -27,7 +27,7 @@ export class PostgresPublicServiceStore{
  private async specialistTestLabel(kind?:ServicePublicationKind){
   if(!this.options.testPublicationLabels||(kind!==undefined&&kind!=='specialist'))return '';
   // Earlier public-reader roles have no financial privileges. Only an installed specialist rollout can have labelled purchases.
-  if(!(await this.db.query<{installed:boolean}>("select to_regclass('app.specialist_test_enrollment') is not null as installed")).rows[0]?.installed)return '';
+  if(!(await this.db.query<{installed:boolean}>("select to_regclass('app.specialist_test_enrollment') is not null as installed", [], "bounded-read")).rows[0]?.installed)return '';
   return `,exists(select 1 from app.payment_checkout_intents i join app.payment_fulfillments f on f.intent_id=i.id
    where s.kind='specialist' and i.target_type=s.kind and i.target_id=s.id and i.owner_id=s.author_id and i.is_test
     and i.request_body::jsonb#>>'{metadata,publicationMode}'='specialist-account-test-v1'
@@ -36,7 +36,7 @@ export class PostgresPublicServiceStore{
  private async listRows(kind:ServicePublicationKind,limit:number,offset:number){
   checkKind(kind);if(!Number.isSafeInteger(limit)||limit<1||limit>(kind==='marquee'?5:1000)||!Number.isSafeInteger(offset)||offset<0||offset>1000000||kind==='marquee'&&offset!==0)throw new ListingDraftInputError();
   const order=kind==='marquee'?'s.published_at,s.created_at,s.id':'s.published_at desc,s.created_at desc,s.id desc';
-  const rows=(await this.db.query<PublicServiceRow>(`select ${columns}${this.identityColumn}${await this.specialistTestLabel(kind)} ${source} where ${live} and s.kind=$1 order by ${order} limit $2 offset $3`,[kind,limit,offset])).rows;
+  const rows=(await this.db.query<PublicServiceRow>(`select ${columns}${this.identityColumn}${await this.specialistTestLabel(kind)} ${source} where ${live} and s.kind=$1 order by ${order} limit $2 offset $3`,[kind,limit,offset], "bounded-read")).rows;
   return rows;
  }
  list(kind:'specialist',limit?:number,offset?:number):Promise<SpecialistProfile[]>;
@@ -56,7 +56,7 @@ export class PostgresPublicServiceStore{
  }
  async sitemapPage(limit=100,offset=0){
   const rows=await this.listRows('specialist',limit,offset);
-  const entries=rows.map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is SpecialistProfile=>row!==null&&'profession' in row)
+  const entries=rows.filter(row=>row.testPublication!==true).map(row=>mapPublicServicePublication(row,Date.now())).filter((row):row is SpecialistProfile=>row!==null&&'profession' in row)
    .map(({id,publishedAt})=>({id,publishedAt}));
   return{entries,hasMore:rows.length===limit};
  }

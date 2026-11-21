@@ -147,7 +147,12 @@ export async function localPrimaryPaymentHandler(request,context){
    let result;
    try{result=await state.fulfillment.fulfill(id);}
    catch(error){if(error?.code==='P7601')return html(`<p>Оплата подтверждена. Для размещения подтвердите номер телефона. Повторно платить не нужно.</p><a href="${paymentPath}/${id}${returnQuery}">Подтвердить телефон и проверить размещение</a>`);throw error;}
-   return html(`<p>${result.state==='fulfilled'?targetType==='application'?'Оплата подтверждена сервером, отклик доставлен.':'Оплата подтверждена сервером, размещение выполнено. Текущий статус смотрите в кабинете.':result.state==='queued'?'Оплата подтверждена. Реклама ожидает свободное место; оплаченный срок ещё не начался.':'Результат записан. Действие не выполнено: '+escape(result.reason)}</p><a href="${paymentPath}/${id}${returnQuery}">Статус заказа</a><a href="${cabinet}">Мои публикации</a>`);
+   if(targetType==='application'&&result.state==='fulfilled'){
+    const receipt=html(`<p>Оплата подтверждена сервером, отклик доставлен.</p><a href="${paymentPath}/${id}${returnQuery}">Статус заказа</a>`);
+    receipt.headers.set('refresh','2; url=/cabinet/otkliki');
+    return receipt;
+   }
+   return html(`<p>${result.state==='fulfilled'?'Оплата подтверждена сервером, размещение выполнено. Текущий статус смотрите в кабинете.':result.state==='queued'?'Оплата подтверждена. Реклама ожидает свободное место; оплаченный срок ещё не начался.':'Результат записан. Действие не выполнено: '+escape(result.reason)}</p><a href="${paymentPath}/${id}${returnQuery}">Статус заказа</a><a href="${cabinet}">Мои публикации</a>`);
   }
   if(request.method!=='GET')return html('<p>Метод недоступен.</p>',405);
   if(order.targetClosed&&!order.deliveredAt)return html(`<p>Заказчик уже выбрал исполнителя. Новая оплата отклика недоступна; история сохранена.</p><a href="${paymentPath}/${id}${returnQuery}">Статус заказа</a>`);

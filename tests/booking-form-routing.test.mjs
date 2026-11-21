@@ -4,6 +4,7 @@ test('primary public listing page never asks the old booking store for availabil
  const source=readFileSync(new URL('../src/app/obyavlenie/[slug]/page.tsx',import.meta.url),'utf8'),code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
  for(const primary of [true,false]){let reads=0;const exports={},row={id,booking:{mode:'stay'}};
   vm.runInNewContext(code,{exports,process:{env:primary?{BLIZHNIY_AUTH_MODE:'postgres'}:{}},require:name=>{
+   if(name==='@/lib/publication-open-graph')return require('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule('publication-open-graph');
    if(name==='react/jsx-runtime')return jsx;
    if(name==='@/components/listings/ListingPages')return{ListingDetailPage:'detail',toDemoListing:value=>value};
    if(name==='@/lib/listing-store')return{getStoredListingById:async()=>row};

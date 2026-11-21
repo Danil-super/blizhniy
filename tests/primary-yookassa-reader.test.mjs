@@ -41,3 +41,15 @@ test('oversized bytes and excessive empty chunks are bounded without retaining p
  await assert.rejects(createPrimaryYooKassaReader(merchant,async()=>new Response(stream)).read(binding));assert.equal(canceled,true);
  await assert.rejects(createPrimaryYooKassaReader(merchant,async()=>new Response('x'.repeat(65537))).read(binding));
 });
+
+test('the response stage starts after transport and before checking payment binding',async()=>{
+ const stages=[];
+ for(const [response,label] of [
+  [()=>new Response(null,{status:404}),'transport'],
+  [()=>Response.json({...payload(),recipient:{account_id:'other'}}),'binding'],
+ ]){
+  const reader=createPrimaryYooKassaReader(merchant,async()=>response());
+  await assert.rejects(reader.read(binding,undefined,()=>stages.push(label)));
+ }
+ assert.deepEqual(stages,['binding']);
+});

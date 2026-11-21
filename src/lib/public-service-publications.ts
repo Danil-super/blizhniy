@@ -28,7 +28,7 @@ export function mapPublicServicePublication(row:PublicServiceRow,now:number):Pub
     identity.avatarDataUrl&&!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(identity.avatarDataUrl))return null;
    name=identity.name;specialistImages=identity.avatarDataUrl?[identity.avatarDataUrl]:[];
   }
-  return{id,name:row.testPublication===true?'ТЕСТ · '+name:name,profession:form.professionName!,...(row.professionId?{professionId:parseListingDraftId(row.professionId)}:{}),skills:profileBound?'':form.skills!,description:profileBound?specialistAbout(form):form.description,city:form.cityName!,price:`от ${display}`,imageSeed:'',images:specialistImages,
+  return{id,...(row.testPublication===true?{testPublication:true}:{}),name:row.testPublication===true?'ТЕСТ · '+name:name,profession:form.professionName!,...(row.professionId?{professionId:parseListingDraftId(row.professionId)}:{}),skills:profileBound?'':form.skills!,description:profileBound?specialistAbout(form):form.description,city:form.cityName!,price:`от ${display}`,imageSeed:'',images:specialistImages,
    ...(form.videoUrl&&!profileBound?{videoUrl:form.videoUrl}:{}),status:'published',createdAt:row.createdAt,publishedAt:row.publishedAt!,hasMapPoint:form.showExactAddress,...location};
  }catch{return null;}
 }

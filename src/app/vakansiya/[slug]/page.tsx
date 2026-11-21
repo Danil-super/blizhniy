@@ -1,3 +1,4 @@
+import { publicationOpenGraph } from "@/lib/publication-open-graph";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { BriefcaseBusiness, MapPin, Wrench } from "lucide-react";
@@ -23,11 +24,16 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const vacancy = (await getStoredVacancyById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listVacanciesWithStored(listVacancies()).find((item) => item.id === slug) : undefined);
 
+  const title = vacancy ? `${vacancy.title} — вакансия` : "Вакансия";
+  const description = vacancy?.description ?? "Карточка вакансии на платформе БЛИЖНИЙ.";
+  const url = `/vakansiya/${slug}`;
   return {
-    title: vacancy ? `${vacancy.title} — вакансия` : "Вакансия",
-    description: vacancy?.description ?? "Карточка вакансии на платформе БЛИЖНИЙ.",
+    ...(vacancy?.testPublication ? { robots: { index: false, follow: true } } : {}),
+    title,
+    description,
+    openGraph: vacancy ? publicationOpenGraph(title, description, url, vacancy.images) : undefined,
     alternates: {
-      canonical: `/vakansiya/${slug}`,
+      canonical: url,
     },
   };
 }

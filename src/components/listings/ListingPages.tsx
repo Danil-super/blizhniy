@@ -2133,10 +2133,10 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2 font-bold text-[#060b27]">
-                <Mail className="h-5 w-5 text-[#0875d1]" />
-                Уведомления
+                <PackageCheck className="h-5 w-5 text-[#0875d1]" />
+                Личный кабинет
               </div>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Статус оплаты и публикации придет на указанный email.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Откройте «Мои объявления», чтобы проверить оплату и статус публикации.</p>
             </div>
           </div>
           </section>
