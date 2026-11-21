@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Clock3, MapPin } from "lucide-react";
+import { servicePublicationNavigation } from "@/lib/service-publication-navigation";
 import type { SpecialistProfile } from "@/lib/types";
 
 function formatPublicationDate(value?: string) {
@@ -14,6 +15,22 @@ function formatPublicationDate(value?: string) {
     month: "long",
     year: "numeric",
   }).format(date);
+}
+
+export function EmptySpecialistList({ children }: { children: string }) {
+  return (
+    <div className="col-span-full rounded-xl border border-slate-200 bg-white p-4">
+      <p className="text-sm text-slate-600">{children}</p>
+      <div className="mt-2 flex flex-wrap gap-x-5">
+        <Link href="/rabota/zakazy/sozdat" prefetch={false} className="inline-flex min-h-11 items-center font-semibold text-blue-700 underline">
+          Создать заказ
+        </Link>
+        <Link href={servicePublicationNavigation.specialist.form} prefetch={false} className="inline-flex min-h-11 items-center font-semibold text-blue-700 underline">
+          {servicePublicationNavigation.specialist.create}
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 export function SpecialistListCard({ specialist }: { specialist: SpecialistProfile }) {
