@@ -1,3 +1,4 @@
+import { handlePrimaryListingView } from "@/lib/primary-listing-view";
 import { NextResponse } from "next/server";
 import { recordStoredListingView } from "@/lib/listing-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
@@ -21,6 +22,7 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Unsupported listing id" }, { status: 400, headers: { "Cache-Control": "no-store" } });
   }
 
+  if (process.env.BLIZHNIY_AUTH_MODE === "postgres") return handlePrimaryListingView(request, listingId);
   if (!isSupabaseServerConfigured() || !isSupabaseServiceRoleConfigured()) {
     return NextResponse.json({ error: "Listing views are not configured" }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }

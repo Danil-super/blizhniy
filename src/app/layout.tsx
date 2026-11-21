@@ -52,6 +52,7 @@ export default async function RootLayout({
     <html lang="ru">
       <head>
         <meta name="blizhniy-auth-backend" content={backend} />
+        {backend === "postgres" && process.env.BLIZHNIY_LISTING_VIEWS === "enabled" && <meta name="blizhniy-listing-views" content="enabled" />}
         <meta name="blizhniy-phone-verification" content={readTelegramPhoneConfig()?'enabled':'disabled'} />
         <meta name="blizhniy-listing-workflow" content={postmoderation?'postmoderation':'pre-moderation'} />
         <meta name="blizhniy-turnstile-site-key" content={getTurnstileSiteKey() ?? ""} />

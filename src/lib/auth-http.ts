@@ -146,6 +146,11 @@ export class AuthRateLimiter {
     return this.consume(`production:credential:${action}:email:${email}`, 5);
   }
 
+  async allowListingView(ip: string): Promise<boolean> {
+    if (!isIP(ip)) throw new Error("Invalid listing view rate limit key");
+    return await this.consume(`listing-view:ip:${ip}`, 300) && await this.consume("listing-view:all", 2000);
+  }
+
   async prune(): Promise<number> {
     const result = await this.db.query(`with candidates as (
       select key_hash, window_start from app.auth_rate_limits where window_start < clock_timestamp()-interval '24 hours'
