@@ -236,6 +236,26 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     }
    }finally{await restoredWorker.close();await restored.close();}
   });
+  if(layout==='specialist terms and inbox preferences')await suite.test('listing views deduplicate without new worker rights and the existing worker rejects the unapproved foreign key',async()=>{
+   await preflight();
+   await admin.query(await readFile(new URL('../database/candidates/0066-listing-views.sql',import.meta.url),'utf8'));
+   await admin.query(await readFile(new URL('../database/permissions/listing-views.sql',import.meta.url),'utf8'));
+   const {id}=await draft('listing');
+   await admin.query("update app.listings set status='published',is_paid=true,published_at=clock_timestamp(),expires_at=clock_timestamp()+interval '1 day',view_count=12 where id=$1",[id]);
+   const first=randomBytes(32),second=randomBytes(32);
+   const record=async(digest,postmoderation=true)=>(await admin.query('select app_stats.record_listing_view($1,$2,$3) as views',[id,digest,postmoderation])).rows[0].views;
+   assert.equal(await record(first,false),null);
+   assert.deepEqual(await Promise.all([record(first),record(first)]),[13,13]);
+   assert.equal(await record(second),14);
+   await admin.query("update app.listings set status='archived' where id=$1",[id]);
+   assert.equal(await record(randomBytes(32)),null);
+   assert.equal((await admin.query('select count(*)::int as n from app_stats.listing_views where listing_id=$1',[id])).rows[0].n,2);
+   const rights=(await admin.query(`select has_table_privilege('blizhniy_runtime','app_stats.listing_views','INSERT') as insert,
+    has_column_privilege('blizhniy_runtime','app.listings','view_count','UPDATE') as update,
+    has_function_privilege('blizhniy_payment_reconciler','app_stats.record_listing_view(uuid,bytea,boolean)','EXECUTE') as worker`)).rows[0];
+   assert.deepEqual(rights,{insert:false,update:false,worker:false});
+   await assert.rejects(preflight(), /Payment reconciliation database preflight failed/);
+  });
   if(!inbox)await suite.test('a rolling inbox migration preserves three pending payments across worker restart',async()=>{
    const client=await admin.connect();
    try{
