@@ -20,7 +20,7 @@ export class PostgresCatalogRepository {
 
   async getPublicCategoriesWithListingScope(): Promise<PublicCategoryWithListingScope[]> {
     // All direct children are needed for listingScope, including inactive ones.
-    const { rows } = await this.db.query<CategoryRow>(`select ${categoryColumns} from app.categories`);
+    const { rows } = await this.db.query<CategoryRow>(`select ${categoryColumns} from app.categories`, [], "bounded-read");
     return mapPublicCategoryRows(rows);
   }
 

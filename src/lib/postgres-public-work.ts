@@ -56,7 +56,7 @@ export class PostgresPublicWorkStore{
  private async listRows(kind:WorkPublicationKind,limit:number,offset:number){
   checkKind(kind);if(!Number.isSafeInteger(limit)||limit<1||limit>1000||!Number.isSafeInteger(offset)||offset<0||offset>1000000)throw new ListingDraftInputError();
    const rows=(await this.db.query<PublicWorkRow>(`select ${this.columns} ${this.source} where ${this.available} and w.kind=$1
-   order by w.published_at desc,w.created_at desc,w.id desc limit $2 offset $3`,[kind,limit,offset])).rows;
+   order by w.published_at desc,w.created_at desc,w.id desc limit $2 offset $3`,[kind,limit,offset], "bounded-read")).rows;
   return rows;
  }
  list(kind:'vacancy',limit?:number,offset?:number):Promise<JobVacancy[]>;

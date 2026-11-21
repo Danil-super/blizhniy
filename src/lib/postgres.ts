@@ -106,7 +106,7 @@ export class PostgresError extends Error {
 }
 
 export interface PostgresQueries {
-  query<Row extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<QueryResult<Row>>;
+  query<Row extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[], mode?: "bounded-read"): Promise<QueryResult<Row>>;
 }
 
 async function query<Row extends QueryResultRow>(
@@ -129,8 +129,9 @@ export class PostgresDatabase implements PostgresQueries {
     pool.on("error", () => { console.error("PostgreSQL idle connection failed"); });
   }
 
-  query<Row extends QueryResultRow = QueryResultRow>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
-    return query<Row>(this.pool, text, values);
+  query<Row extends QueryResultRow = QueryResultRow>(text: string, values: unknown[] = [], mode?: "bounded-read"): Promise<QueryResult<Row>> {
+    // The server statement timeout cannot deliver an error across a stalled connection.
+    return query<Row>(this.pool, text, values, mode === "bounded-read" ? 10000 : undefined);
   }
 
   async transaction<T>(
