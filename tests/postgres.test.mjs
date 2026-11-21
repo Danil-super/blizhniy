@@ -166,3 +166,17 @@ test("only known TLS/network codes and SQLSTATE survive error sanitization", () 
   assert.equal(new PostgresError({ code: "ECONNREFUSED" }).code, "ECONNREFUSED");
   assert.equal(new PostgresError({ code: "contains password" }).code, undefined);
 });
+
+test("only explicitly bounded reads receive the driver response timeout", async () => {
+  const queries = [];
+  const db = new PostgresDatabase({ on() {}, async query(statement) {
+    queries.push(statement);
+    return { rows: [] };
+  } });
+  await db.query("select $1::int", [7], "bounded-read");
+  await db.query("select $1::int", [9]);
+  assert.deepEqual(queries, [
+    { text: "select $1::int", values: [7], queryMode: "extended", query_timeout: 10000 },
+    { text: "select $1::int", values: [9], queryMode: "extended" },
+  ]);
+});

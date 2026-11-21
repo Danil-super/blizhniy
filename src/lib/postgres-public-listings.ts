@@ -51,7 +51,7 @@ export class PostgresPublicListingStore{
    and ($4::text is null or coalesce(parent.slug,c.slug)=$4)
    and ($5::text is null or c.parent_id is not null and c.name=$5)
    and ($8::text is null or city.name=$8)
-   order by l.published_at desc,l.created_at desc,l.id desc limit $6 offset $7`,[query.kind,maxListingMediaTotalSize,query.ownerId,query.categorySlug,query.subcategoryName,query.limit,query.offset,query.city])).rows;
+   order by l.published_at desc,l.created_at desc,l.id desc limit $6 offset $7`,[query.kind,maxListingMediaTotalSize,query.ownerId,query.categorySlug,query.subcategoryName,query.limit,query.offset,query.city], "bounded-read")).rows;
   return rows;
  }
  async list(options:PublicListingQuery={}):Promise<Listing[]>{
