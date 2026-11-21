@@ -8,7 +8,7 @@ import {readFile,readdir,mkdtemp,symlink,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {getPublicationTestMigrationPlan,getInboxPreferenceMigration} from '../scripts/publication-test-release-plan.mjs';
+import {getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,getInboxPreferenceMigration} from '../scripts/publication-test-release-plan.mjs';
 import {getPaymentReconciliationRolePlan,verifyPaymentReconciliationDatabase} from '../scripts/payment-reconciliation-role.mjs';
 import {getSpecialistCheckoutMigration,specialistCheckoutRuntimeGrants} from '../scripts/specialist-checkout-release.mjs';
 import {buildPaymentWorker} from '../scripts/build-payment-worker.mjs';
@@ -122,6 +122,65 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     await check();await verify();
     await admin.query('alter policy phone_binding_server on app.telegram_phone_bindings with check(true)');
     await assert.rejects(verify());
+   });
+   if(inbox)await suite.test('packaged worker accepts the journaled hosted booking schema with its original financial rights',async()=>{
+    await admin.query('drop policy phone_binding_server on app.telegram_phone_bindings;drop policy phone_attempt_server on app.telegram_phone_attempts');
+    await admin.query(await readFile(new URL('../database/permissions/telegram-phone.sql',import.meta.url),'utf8'));
+    await check();
+    const booking=getBookingLifecycleMigration();
+    const packaged=await readFile(join(artifact,'database/migrations',booking.name),'utf8');
+    assert.equal(packaged,booking.sql);
+    await admin.query(packaged);
+    await admin.query(await readFile(new URL('../database/permissions/booking-lifecycle.sql',import.meta.url),'utf8'));
+    await assert.rejects(check());
+    await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[booking.name,booking.sha256]);
+    await check();
+    await copiedGuard.verifyPaymentReconciliationDatabase(workerDb,{database:config.database,publicationTest:true,specialistAccountTest:true});
+    const database='booking_service_restored';
+    await admin.query('create database booking_service_restored template template0');
+    await admin.query('revoke all on database booking_service_restored from public;grant connect on database booking_service_restored to blizhniy_payment_reconciler');
+    await docker(['exec',container,'bash','-euo','pipefail','-c',
+     'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+     'restore-fixture',config.database,database]);
+    const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+    try{
+     for(const specialistAccountTest of [false,true])await copiedGuard.verifyPaymentReconciliationDatabase(restored,{database,publicationTest:true,specialistAccountTest});
+    }finally{await restored.close();}
+    await admin.query('alter table app.booking_requests disable trigger booking_lifecycle_guard');
+    await assert.rejects(check());
+    await admin.query('alter table app.booking_requests enable always trigger booking_lifecycle_guard');
+    await check();
+    await admin.query('grant select on app.booking_events to blizhniy_payment_reconciler');
+    await assert.rejects(check());
+   });
+   if(inbox)await suite.test('packaged worker checks the shared views and bookings schema, exact grants and restored schema',async()=>{
+    await admin.query('revoke select on app.booking_events from blizhniy_payment_reconciler');
+    await check();
+    const migration=getListingViewsMigration();
+    const packaged=await readFile(join(artifact,'database/candidates',migration.name),'utf8');
+    assert.equal(packaged,migration.sql);
+    await admin.query(packaged);
+    await admin.query(await readFile(new URL('../database/permissions/listing-views.sql',import.meta.url),'utf8'));
+    await assert.rejects(check());
+    await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[migration.name,migration.sha256]);
+    await check();
+    for(const [change,undo] of [
+     ['grant select(viewer_digest) on app_stats.listing_views to blizhniy_runtime','revoke select(viewer_digest) on app_stats.listing_views from blizhniy_runtime'],
+     ['grant usage on schema app_stats to public','revoke usage on schema app_stats from public'],
+     ['grant usage on schema app_stats to blizhniy_runtime with grant option','revoke grant option for usage on schema app_stats from blizhniy_runtime'],
+    ]){
+     await admin.query(change);try{await assert.rejects(check());}finally{await admin.query(undo);}
+     await check();
+    }
+    const database='listing_views_service_restored';
+    await admin.query('create database listing_views_service_restored template template0');
+    await admin.query('revoke all on database listing_views_service_restored from public;grant connect on database listing_views_service_restored to blizhniy_payment_reconciler');
+    await docker(['exec',container,'bash','-euo','pipefail','-c',
+     'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+     'restore-fixture',config.database,database]);
+    const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+    try{await copiedGuard.verifyPaymentReconciliationDatabase(restored,{database,publicationTest:true,specialistAccountTest:true});}
+    finally{await restored.close();}
    });
    return;
   }

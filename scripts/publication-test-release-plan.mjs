@@ -11,7 +11,7 @@ const suffix=[
  ['0059-test-placement-guards.sql','8a9402d87aa417242f8cfb8e9200f61b15e9613e35e86de19811d8e8815c6c3c'],
 ];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -21,6 +21,12 @@ function readReleaseMigration(name,sha256){
 }
 export function getSpecialistAccountTestMigration(){
  return readReleaseMigration('0065-specialist-account-test.sql','8c7930b01d332097c50f740f55ca6f7d0566b51127ef79741b2f6bdd494cf8fd');
+}
+export function getListingViewsMigration(){
+ return readReleaseMigration('0066-listing-views.sql','8528c22082f00fe5340f0c9480dec383e7999d75d90c65142f22e5472f83481c');
+}
+export function getBookingLifecycleMigration(){
+ return readReleaseMigration('0041-booking-lifecycle.sql','e1c4e29db17d7ae0f61e440d0dc42433dff9bd2854142a9c59f236d97bc13748');
 }
 export function getInboxPreferenceMigration(){
  return readReleaseMigration('0064-inbox-notification-preferences.sql','eb6c5e253e0776a814daf039276d61a294bda16b680ce9c731eafc3a71da9967');
@@ -57,11 +63,26 @@ export async function assertPublicationTestSchema(tx){
 // PostgreSQL 18 emits different parentheses for six existing CHECK constraints after a logical restore.
 // Each pair pins the full installed and restored app catalog for exactly one reviewed journal.
 const fingerprints={
+ hostedViews:[
+  'c073b3831838b1e1f636ed7ffa9eb6151b1b66c09a8bdfeb8c33c345aa34a134',
+  '87309c9a47de7cbfe8067d5565dac20cbd1fdf6be8eb82bbb29e856da16d4c47',
+ ],
+ hostedBookingsAndViews:[
+  '0dd61d32c5ed846eedee8523f6a488c6b0a16b10cff7108cb330aa7c8badcb02',
+  '9cd81b97983d0d711868826900d536d6f2137814fae50913770a9359f017c534',
+ ],
+ // Installed booking lifecycle on the hosted specialist + inbox schema with both Telegram policies.
+ hostedBookings:[
+  '8862e3be03ed77e651f0dc57895efcc4770a9489af23d57e93c0059f134fb0af',
+  'cc1171a8d97335a845a086bebc66dabe40d10b877bb8f5ebc1d3dcdd2a1ccf3b',
+ ],
  specialistTest:[
   '650acb3a120b7b6766fbc608ad9e406df3b30695fffc83b476a21a22df14ec9e',
   'be6b6dcdd791e894ca73e64dd4e1dacaf941011eb3912dca3fcdb70f1c8c4b0e',
  ],
  specialistTestInbox:[
+  // Logical restore of the hosted schema with the two Telegram policies.
+  'ee0258321a63ac59056a2835694e98885142ad2c35a83f6ff2a09b58a5050bf2',
   // Hosted PostgreSQL with both owner-scoped policies from permissions/telegram-phone.sql.
   '3a578e10cdf00668dfc78d3966fda0e5d1c513162587ef9826744d70cc38696c',
   'dc37198d436e0a28308687825a0089810709bdc2251a78c4f07b3abb5f798a3b',
@@ -85,11 +106,39 @@ export async function hasInboxPreferenceObjects(tx){
   or exists(select 1 from pg_trigger where tgrelid='app.notifications'::regclass and tgname='apply_inbox_preference') as installed`);
  return result.rows[0].installed;
 }
-export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false}){
+async function assertListingViewsAccess(tx){
+ const catalog=await readRefundSchema(tx,{namespace:'app_stats'});
+ const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
+ if(hash!=='4a7de678206ac4c93e294352275bbd540670cec0c04640c8cadcd1b66acb56bb')throw Error('Unexpected listing views schema');
+ // The object fingerprint covers definitions. Audit ACLs separately, including column grants.
+ const {rows:[access]}=await tx.query(`with ns as (
+  select oid,nspowner,nspacl from pg_namespace where nspname='app_stats'
+ ), objects(kind,owner,acl) as (
+  select 'namespace',nspowner,coalesce(nspacl,acldefault('n',nspowner)) from ns
+  union all select 'relation',relowner,coalesce(relacl,acldefault('r',relowner))
+   from pg_class join ns on relnamespace=ns.oid
+  union all select 'column',relowner,attacl from pg_attribute join pg_class on attrelid=pg_class.oid
+   join ns on relnamespace=ns.oid where attacl is not null
+  union all select 'function',proowner,coalesce(proacl,acldefault('f',proowner)) from pg_proc join ns on pronamespace=ns.oid
+ ) select ns.nspowner=(select nspowner from pg_namespace where nspname='app') as same_owner,
+  not exists(select 1 from pg_default_acl where defaclnamespace=ns.oid) as clean_defaults,
+  array(select kind||':'||privilege_type from objects cross join lateral aclexplode(acl) a where grantee<>owner
+   and grantor=owner and grantee='blizhniy_runtime'::regrole and not is_grantable order by 1) as runtime,
+  not exists(select 1 from objects cross join lateral aclexplode(acl) a where grantee<>owner and
+   (grantor<>owner or grantee<>'blizhniy_runtime'::regrole or is_grantable)) as clean_grants
+ from ns`);
+ if(access?.same_owner!==true||access.clean_defaults!==true||access.clean_grants!==true||
+    JSON.stringify(access.runtime)!==JSON.stringify(['function:EXECUTE','namespace:USAGE']))throw Error('Unexpected listing views permissions');
+}
+export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false}){
  const catalog=await readRefundSchema(tx);
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  const key=enrollment?(inbox?'specialistTestInbox':'specialistTest'):specialist&&inbox?'both':specialist?'specialist':'inbox';
- if(!fingerprints[key].includes(hash))throw Error('Unexpected extended publication TEST schema');
+ let accepted=fingerprints[key];
+ if(bookings)accepted=fingerprints.hostedBookings;
+ if(views)accepted=bookings?fingerprints.hostedBookingsAndViews:fingerprints.hostedViews;
+ if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
+ if(views)await assertListingViewsAccess(tx);
  if(specialist)await verifySpecialistCheckoutRuntimeAccess(tx);
  if(enrollment){
   // Catalog fingerprints cover definitions. Ownership-only access also includes explicit column grants.

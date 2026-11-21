@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import ts from 'typescript';
 import {getSpecialistCheckoutMigration} from './specialist-checkout-release.mjs';
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
-import {getSpecialistAccountTestMigration,getInboxPreferenceMigration,getPublicationTestMigrationPlan,paymentMigrationDirectory} from './publication-test-release-plan.mjs';
+import {getListingViewsMigration,getBookingLifecycleMigration,getSpecialistAccountTestMigration,getInboxPreferenceMigration,getPublicationTestMigrationPlan,paymentMigrationDirectory} from './publication-test-release-plan.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 export function buildPaymentWorker(destination,{schema=54,publicationTest=false}={}){
@@ -21,7 +21,7 @@ export function buildPaymentWorker(destination,{schema=54,publicationTest=false}
  if(ts.getPreEmitDiagnostics(program).length)throw Error('Worker compilation failed');
  const sources=program.getSourceFiles().filter(file=>!file.isDeclarationFile).map(file=>relative(join(root,'src'),file.fileName).replace(/\.ts$/,'.js')).sort();
  if(sources.some(path=>!/^lib\/[a-z0-9-]+\.js$/.test(path)))throw Error('Unexpected worker source');
- const journal=publicationTest?[...getPublicationTestMigrationPlan(),getSpecialistCheckoutMigration(),getInboxPreferenceMigration(),getSpecialistAccountTestMigration()]:getRefundWorkerRolePlan('artifact',{schema}).journal;
+ const journal=publicationTest?[...getPublicationTestMigrationPlan(),getSpecialistCheckoutMigration(),getInboxPreferenceMigration(),getSpecialistAccountTestMigration(),getBookingLifecycleMigration(),getListingViewsMigration()]:getRefundWorkerRolePlan('artifact',{schema}).journal;
  const migrations=journal.map(({name,sha256})=>{
   const directory=paymentMigrationDirectory(name);
   const bytes=readFileSync(join(root,'database',directory,name));
