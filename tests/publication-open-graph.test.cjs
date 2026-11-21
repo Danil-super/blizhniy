@@ -22,3 +22,12 @@ test('cards with missing or unsupported images share the site logo', () => {
   assert.deepEqual(preview(links).images, ['/brand/logo.jpg']);
   assert.deepEqual(preview([]).images, ['/brand/logo.jpg']);
 });
+
+test('owner-created listing shares its UUIDv8 cover and requires a UUIDv4 photo', () => {
+  const listing = '875e7118-865b-8f59-ae33-acdb3aa50ba4';
+  const cover = '/api/listings/'+listing+'/photos/'+photo;
+  assert.deepEqual(preview([cover]).images, [cover]);
+  for (const invalid of [cover+'?token=test', cover.replace(photo, listing), cover.replace('listings', 'work-publications')]) {
+    assert.deepEqual(preview([invalid]).images, ['/brand/logo.jpg']);
+  }
+});
