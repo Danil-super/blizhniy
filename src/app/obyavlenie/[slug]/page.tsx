@@ -1,3 +1,4 @@
+import { publicationOpenGraph } from "@/lib/publication-open-graph";
 import type { Metadata } from "next";
 import { findListingBySlug, ListingDetailPage, toDemoListing } from "@/components/listings/ListingPages";
 import { listBookingAvailabilityForListing } from "@/lib/booking-store";
@@ -15,12 +16,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const storedListing = await getStoredListingById(slug, { publicOnly: true });
   const listing = storedListing ? toDemoListing(storedListing) : shouldShowFallbackContent() ? findListingBySlug(slug) : undefined;
 
+  const title = listing?.title ?? "Объявление";
+  const description = listing?.description ?? "Карточка объявления на БЛИЖНИЙ.";
+  const url = `/obyavlenie/${slug}`;
   return {
     ...(storedListing?.testPublication ? { robots: { index: false, follow: true } } : {}),
-    title: listing?.title ?? "Объявление",
-    description: listing?.description ?? "Карточка объявления на БЛИЖНИЙ.",
+    title,
+    description,
+    openGraph: listing ? publicationOpenGraph(title, description, url, listing.images) : undefined,
     alternates: {
-      canonical: `/obyavlenie/${slug}`,
+      canonical: url,
     },
   };
 }

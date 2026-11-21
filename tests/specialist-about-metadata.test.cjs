@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict'),test=require('node:test'),{readFileSync}=require('node:fs'),ts=require('typescript');
 function metadata(specialist){
  const out={},deps={
+  '@/lib/publication-open-graph':require('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule('publication-open-graph'),
   'next/navigation':{},'react/jsx-runtime':{},'@/components/SiteHeader':{},'@/components/SpecialistProfileDetail':{},'@/components/listings/ListingViewTracker':{},'@/lib/map-location':{},
   '@/lib/mock-store':{listSpecialists:()=>[]},'@/lib/runtime-mode':{shouldShowFallbackContent:()=>false},'@/lib/specialist-profile-store':{getStoredSpecialistProfileById:async()=>specialist},
  };

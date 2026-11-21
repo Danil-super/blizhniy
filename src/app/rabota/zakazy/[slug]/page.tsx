@@ -1,3 +1,4 @@
+import { publicationOpenGraph } from "@/lib/publication-open-graph";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ClipboardList, MapPin, Wrench } from "lucide-react";
@@ -23,11 +24,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   const request = (await getStoredWorkRequestById(slug, { publicOnly: true })) ?? (shouldShowFallbackContent() ? listWorkRequestsWithStored(listWorkRequests()).find((item) => item.id === slug) : undefined);
 
+  const title = request ? `${request.title} — заказ` : "Заказ";
+  const description = request?.description ?? "Карточка заказа на платформе БЛИЖНИЙ.";
+  const url = `/rabota/zakazy/${slug}`;
   return {
     ...(request?.testPublication ? { robots: { index: false, follow: true } } : {}),
-    title: request ? `${request.title} — заказ` : "Заказ",
-    description: request?.description ?? "Карточка заказа на платформе БЛИЖНИЙ.",
-    alternates: { canonical: `/rabota/zakazy/${slug}` },
+    title,
+    description,
+    openGraph: request ? publicationOpenGraph(title, description, url, request.images) : undefined,
+    alternates: { canonical: url },
   };
 }
 
