@@ -21,4 +21,4 @@ if bash "$script_dir/check-zap-result.sh" 0 >/dev/null 2>&1; then
   exit 1
 fi
 echo 'ZAP exit code and missing artifact checks passed.'
-python3 "$script_dir/test_zap_cache.py"
+python3 -B "$script_dir/test_zap_cache.py"
