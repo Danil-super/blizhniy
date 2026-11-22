@@ -11,7 +11,7 @@ const suffix=[
  ['0059-test-placement-guards.sql','8a9402d87aa417242f8cfb8e9200f61b15e9613e35e86de19811d8e8815c6c3c'],
 ];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65|66)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66|67)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -22,6 +22,8 @@ function readReleaseMigration(name,sha256){
 export function getSpecialistAccountTestMigration(){
  return readReleaseMigration('0065-specialist-account-test.sql','8c7930b01d332097c50f740f55ca6f7d0566b51127ef79741b2f6bdd494cf8fd');
 }
+export function getPaidResponseMigrations(){return [readReleaseMigration('0046-response-checkout-fence.sql','d3313c7bc349ec8c93d7927bc0b69ed9fbb1a19c69b169af4181f482d03c8d5f'),
+  readReleaseMigration('0067-paid-response-test.sql','c8cf0612d68fe541dc05d74c904b6d855b64166940bc12db1f316ca77c33bd29')];}
 export function getListingViewsMigration(){
  return readReleaseMigration('0066-listing-views.sql','8528c22082f00fe5340f0c9480dec383e7999d75d90c65142f22e5472f83481c');
 }
@@ -130,13 +132,17 @@ async function assertListingViewsAccess(tx){
  if(access?.same_owner!==true||access.clean_defaults!==true||access.clean_grants!==true||
     JSON.stringify(access.runtime)!==JSON.stringify(['function:EXECUTE','namespace:USAGE']))throw Error('Unexpected listing views permissions');
 }
-export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false}){
+export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false}){
  const catalog=await readRefundSchema(tx);
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  const key=enrollment?(inbox?'specialistTestInbox':'specialistTest'):specialist&&inbox?'both':specialist?'specialist':'inbox';
  let accepted=fingerprints[key];
  if(bookings)accepted=fingerprints.hostedBookings;
  if(views)accepted=bookings?fingerprints.hostedBookingsAndViews:fingerprints.hostedViews;
+ if(responses){
+  if(!enrollment||!inbox||bookings||views)throw Error('Unsupported paid response deployment');
+  accepted=['2579247a7ee000f9f19ca48ecd7840943e59ace243fc593d4eb75b911f690193','22da33391304b83654362983c0b4c5cd4953a7c08e859347aa5a5d53e7116ade'];
+ }
  if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
  if(views)await assertListingViewsAccess(tx);
  if(specialist)await verifySpecialistCheckoutRuntimeAccess(tx);

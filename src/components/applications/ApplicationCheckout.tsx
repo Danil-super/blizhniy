@@ -8,8 +8,8 @@ import type {ApplicationCheckoutInput,ApplicationPaymentOrder} from '@/lib/appli
 import {applicationButton} from './ApplicationDetail';
 
 type Attempt={input:ApplicationCheckoutInput;phase:'unknown'|'retry'};
-type Props={owner:string;id:string;revision:string;disabled?:boolean;onLockChange?:(locked:boolean)=>void;autoStart?:boolean};
-function CheckoutWorkspace({owner,id,revision,disabled=false,onLockChange,autoStart=false}:Props){
+type Props={owner:string;id:string;revision:string;disabled?:boolean;onLockChange?:(locked:boolean)=>void;autoStart?:boolean;hosted?:boolean};
+function CheckoutWorkspace({owner,id,revision,disabled=false,onLockChange,autoStart=false,hosted=false}:Props){
  const auth=usePrimaryAccountAuth(),visible=!!auth&&(auth.state==='signed-in'||auth.state==='admin')&&auth.userId===owner;
  const [busy,setBusy]=useState(false),[attempt,setAttempt]=useState<Attempt|null>(null),[saved,setSaved]=useState<ApplicationPaymentOrder|null>(null),[error,setError]=useState<string|null>(null);
  const live=useRef(visible),pending=useRef(false),scope=useRef<AbortController|null>(null),intent=useRef<Attempt|null>(null),notify=useRef(onLockChange);
@@ -45,14 +45,14 @@ function CheckoutWorkspace({owner,id,revision,disabled=false,onLockChange,autoSt
    const timer=setTimeout(()=>{if(!live.current||started.current)return;started.current=true;startCurrent.current();},0);
    return()=>clearTimeout(timer);
   },[autoStart,visible,disabled]);
- return <section hidden={!visible} inert={!visible} aria-label="Локальная TEST-оплата отклика" aria-busy={busy} className="mt-4 min-w-0 rounded-lg border border-amber-300 bg-amber-50 p-4">
-  <h3 className="font-semibold text-slate-950">Локальная TEST-оплата отклика</h3>
-  <p className="mt-2 text-sm text-slate-800">Без реальных списаний и перехода в банк. Сумму проверим по тарифу; после успешной симуляции отклик получит владелец публикации только на локальном стенде.</p>
-  {!attempt&&<button type="button" className={`${applicationButton} mt-3`} disabled={busy||disabled} onClick={start}>{saved?'Открыть существующий заказ':'Оплатить отклик (локальная TEST)'}</button>}
+ return <section hidden={!visible} inert={!visible} aria-label={hosted?"TEST-оплата отклика":"Локальная TEST-оплата отклика"} aria-busy={busy} className="mt-4 min-w-0 rounded-lg border border-amber-300 bg-amber-50 p-4">
+  <h3 className="font-semibold text-slate-950">{hosted?'TEST-оплата отклика':'Локальная TEST-оплата отклика'}</h3>
+  <p className="mt-2 text-sm text-slate-800">{hosted?'После подтверждения тестового платежа в ЮKassa отклик получит автор публикации.':'Без реальных списаний и перехода в банк. Сумму проверим по тарифу; после успешной симуляции отклик получит владелец публикации только на локальном стенде.'}</p>
+  {!attempt&&<button type="button" className={`${applicationButton} mt-3`} disabled={busy||disabled} onClick={start}>{saved?'Открыть существующий заказ':hosted?'Оплатить отклик':'Оплатить отклик (локальная TEST)'}</button>}
   {attempt?.phase==='unknown'&&<div className="mt-3"><p className="text-sm text-slate-800">Результат создания заказа неизвестен. Не создавайте новый: сначала проверьте сохранённый.</p><button type="button" className={`${applicationButton} mt-3`} disabled={busy} onClick={recover}>Проверить сохранённый заказ</button></div>}
   {attempt?.phase==='retry'&&<button type="button" className={`${applicationButton} mt-3`} disabled={busy} onClick={()=>{const original=intent.current;if(original?.phase==='retry')void run(signal=>prepare(original.input,signal,true));}}>Повторить тот же TEST-заказ</button>}
   {busy&&<p role="status" className="mt-3 text-sm text-slate-700">Проверяем TEST-заказ…</p>}
   {error&&<p role="alert" className="mt-3 break-words text-sm text-rose-800">{error}</p>}
  </section>;
 }
-export function ApplicationCheckout(props:Props){const simulation=useLocalPaymentSimulation();if(!simulation)return <section className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4"><p className="text-sm text-slate-800">TEST-оплата откликов на этом сайте пока не включена. Отклик сохранён; получатель получит его после подключения и подтверждения оплаты.</p><button type="button" disabled className={`${applicationButton} mt-3 opacity-60`}>Оплатить отклик</button></section>;return <CheckoutWorkspace key={`${props.owner}:${props.id}`} {...props}/>;}
+export function ApplicationCheckout(props:Props){const simulation=useLocalPaymentSimulation();const auth=usePrimaryAccountAuth();const hosted=auth?.applicationTest===true&&auth.userId===props.owner;if(!simulation&&!hosted)return <section className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4"><p className="text-sm text-slate-800">TEST-оплата откликов на этом сайте пока не включена. Отклик сохранён; получатель получит его после подключения и подтверждения оплаты.</p><button type="button" disabled className={`${applicationButton} mt-3 opacity-60`}>Оплатить отклик</button></section>;return <CheckoutWorkspace key={`${props.owner}:${props.id}`} {...props} hosted={hosted}/>;}

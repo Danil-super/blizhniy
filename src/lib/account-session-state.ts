@@ -3,6 +3,7 @@ import type { LocalAccountUser } from "./local-account";
 export type AccountAuthSnapshot = {
   state: "loading" | "signed-out" | "signed-in" | "admin" | "unavailable";
   userId: string | null;
+  applicationTest?: true;
   specialistTest?: true;
   workPublicationTest?: true;
   listingVerificationTest?: true;
@@ -20,9 +21,9 @@ export function createAccountSessionState(session: (retryInitialRead?: () => boo
   const listeners = new Set<(value: AccountAuthSnapshot) => void>();
   function publish(state: AccountAuthSnapshot["state"], user?: LocalAccountUser | null) {
     const userId=user?.id??null, specialistTest=user?.specialistTest, workPublicationTest=user?.workPublicationTest;
-    const listingVerificationTest=user?.listingVerificationTest;
-    if (snapshot.state === state && snapshot.userId === userId && snapshot.specialistTest===specialistTest && snapshot.workPublicationTest===workPublicationTest && snapshot.listingVerificationTest===listingVerificationTest) return;
-    snapshot = { state, userId, ...(specialistTest?{specialistTest}:{}), ...(workPublicationTest?{workPublicationTest}:{}), ...(listingVerificationTest?{listingVerificationTest}:{}) };
+    const listingVerificationTest=user?.listingVerificationTest, applicationTest=user?.applicationTest;
+    if (snapshot.applicationTest===applicationTest && snapshot.state === state && snapshot.userId === userId && snapshot.specialistTest===specialistTest && snapshot.workPublicationTest===workPublicationTest && snapshot.listingVerificationTest===listingVerificationTest) return;
+    snapshot = { state, userId, ...(applicationTest?{applicationTest}:{}), ...(specialistTest?{specialistTest}:{}), ...(workPublicationTest?{workPublicationTest}:{}), ...(listingVerificationTest?{listingVerificationTest}:{}) };
     listeners.forEach(listener => listener(snapshot));
   }
   async function refresh(background = false) {

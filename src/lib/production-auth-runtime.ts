@@ -30,6 +30,11 @@ async function createRuntime(config: ProductionAuthConfig): Promise<Runtime> {
   } finally { key.fill(0); }
   const db = createPostgresDatabase();
   const account: Runtime["account"] = { store: new RegistrationStore(db, cipher, { confirmationNotice }),
+    async canBuyResponse(owner,token){
+      if(process.env.BLIZHNIY_APPLICATION_PAYMENT!=='account-response-test'||process.env.BLIZHNIY_PAYMENT_TEST_USER_ID!==owner)return false;
+      const {canShowApplicationTest}=await import('./application-test-config');
+      return canShowApplicationTest(db,owner,token);
+    },
     recovery: new PasswordRecoveryStore(db, cipher,{pendingAccounts:true}), identity: new IdentityStore(db),
     limiter: new AuthRateLimiter(db, config.rateSecret), verifyCaptcha: verifyTurnstileToken };
   try { await verifyProductionAuthDatabase(db); }

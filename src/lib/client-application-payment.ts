@@ -5,7 +5,7 @@ type Options={signal?:AbortSignal};
 export class ApplicationPaymentClientError extends Error{
  readonly code:string;
  constructor(code:string){super(code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='RATE_LIMITED'?'Слишком много запросов. Повторите проверку позже.':
-  code==='CHECKOUT_CHANGED'||code==='APPLICATION_CHANGED'?'Отклик или тариф изменились. Проверьте сохранённые данные.':code==='CHECKOUT_DISABLED'||code==='CHECKOUT_NOT_READY'?'Локальная TEST-оплата этого отклика пока недоступна.':'Результат не подтверждён. Проверьте этот заказ перед повторным действием.');this.code=code;}
+  code==='CHECKOUT_CHANGED'||code==='APPLICATION_CHANGED'?'Отклик или тариф изменились. Проверьте сохранённые данные.':code==='CHECKOUT_DISABLED'||code==='CHECKOUT_NOT_READY'?'Оплата этого отклика сейчас недоступна.':'Результат не подтверждён. Проверьте этот заказ перед повторным действием.');this.code=code;}
 }
 function exact(value:unknown,keys:string[]):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).sort().join()!==[...keys].sort().join())throw Error();return value as Record<string,unknown>;}
 const stamp=(id:string,value:unknown)=>parseListingDraftCursor({id,updatedAt:value})!.updatedAt;

@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 
 // One catalog snapshot; no table data, object OIDs, physical layout or owner names.
 export async function readRefundSchema(tx,{namespace='app'}={}){
- if(!['app','app_admin','app_stats'].includes(namespace))throw Error('Invalid catalog namespace');
+ if(!['app','app_admin','app_stats','app_response'].includes(namespace))throw Error('Invalid catalog namespace');
  await tx.query(`select set_config('search_path','pg_catalog',true),set_config('IntervalStyle','postgres',true),
   set_config('DateStyle','ISO, YMD',true),set_config('TimeZone','UTC',true),
   set_config('standard_conforming_strings','on',true),set_config('quote_all_identifiers','off',true),set_config('extra_float_digits','3',true)`);

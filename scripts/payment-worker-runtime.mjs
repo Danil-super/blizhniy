@@ -36,9 +36,13 @@ export async function createPaymentWorkerRuntime(environment=process.env,{loadMo
   const config=readPostgresConfig(env);
   pool=new Pool({...config,max:2,application_name:'blizhniy-payment-reconciler'});
   db=new PostgresDatabase(pool);
-  const worker=env.BLIZHNIY_PAYMENT_WORKER==='account-test'?createAccountTestPaymentVerifier(db,Object.freeze({...merchant,ownerId:env.BLIZHNIY_PAYMENT_TEST_USER_ID})):publicationTest?createPaymentReconciliationWorker(db,merchant,undefined,env.BLIZHNIY_PAYMENT_TEST_USER_ID,...(specialistAccountTest?[true]:[])):createPaymentReconciliationWorker(db,merchant);
-  let closing;
-  return{worker,preflight:()=>verifyPaymentReconciliationDatabase(db,{database:config.database,...(publicationTest?{publicationTest:true}:{}),...(specialistAccountTest?{specialistAccountTest:true}:{})}),
+  const placementWorker=env.BLIZHNIY_PAYMENT_WORKER==='account-test'?createAccountTestPaymentVerifier(db,Object.freeze({...merchant,ownerId:env.BLIZHNIY_PAYMENT_TEST_USER_ID})):publicationTest?createPaymentReconciliationWorker(db,merchant,undefined,env.BLIZHNIY_PAYMENT_TEST_USER_ID,...(specialistAccountTest?[true]:[])):createPaymentReconciliationWorker(db,merchant);
+  let worker=placementWorker,closing;
+  return{get worker(){return worker;},preflight:async()=>{
+   worker=placementWorker;
+   const responses=await verifyPaymentReconciliationDatabase(db,{database:config.database,...(publicationTest?{publicationTest:true}:{}),...(specialistAccountTest?{specialistAccountTest:true}:{})});
+   if(responses===true)worker=createPaymentReconciliationWorker(db,merchant,undefined,env.BLIZHNIY_PAYMENT_TEST_USER_ID,specialistAccountTest||undefined,true);
+  },
    close:()=>closing??=db.close()};
  }catch {
   try {if(db)await db.close();else if(pool)await pool.end();}catch { /* Never replace the generic configuration error with driver details. */ }

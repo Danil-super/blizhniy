@@ -61,3 +61,27 @@ test('invalid specialist rollout is rejected before loading modules or allocatin
     assert.equal(loads, 0, JSON.stringify(patch));
   }
 });
+
+test('a verified response schema drains admitted purchases after web checkout closes', async () => {
+  let responseSchema = false;
+  const runtime = await createPaymentWorkerRuntime({...publicationEnv, BLIZHNIY_APPLICATION_PAYMENT: 'disabled'}, {
+    loadModules: () => ({
+      Pool: class {},
+      readPostgresConfig: () => ({database: publicationEnv.BLIZHNIY_DB_NAME}),
+      PostgresDatabase: class { preflight() { return responseSchema; } async close() {} },
+      createPaymentReconciliationWorker: (...args) => ({tick: async () => args}),
+    }),
+  });
+  try {
+    await runtime.preflight();
+    assert.deepEqual((await runtime.worker.tick()).slice(3), [owner]);
+    responseSchema = true;
+    await runtime.preflight();
+    assert.deepEqual((await runtime.worker.tick()).slice(3), [owner, undefined, true]);
+    responseSchema = false;
+    await runtime.preflight();
+    assert.deepEqual((await runtime.worker.tick()).slice(3), [owner]);
+  } finally {
+    await runtime.close();
+  }
+});
