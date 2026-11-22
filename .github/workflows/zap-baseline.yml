@@ -49,8 +49,10 @@ jobs:
               -t "${TARGET_URL}" \
               -r zap-report.html \
               -J zap-report.json \
-              -w zap-report.md
-          ZAP_EXIT_CODE=$?
+              -w zap-report.md 2>&1 | tee "${ZAP_REPORT_DIR}/zap-baseline.log"
+          statuses=("${PIPESTATUS[@]}")
+          ZAP_EXIT_CODE=${statuses[0]}
+          if [[ "${statuses[1]}" != 0 ]]; then exit 1; fi
           echo "exit_code=${ZAP_EXIT_CODE}" >> "${GITHUB_OUTPUT}"
           set -e
 
@@ -79,6 +81,7 @@ jobs:
             ${{ env.ZAP_REPORT_DIR }}/zap-report.html
             ${{ env.ZAP_REPORT_DIR }}/zap-report.json
             ${{ env.ZAP_REPORT_DIR }}/zap-report.md
+            ${{ env.ZAP_REPORT_DIR }}/zap-baseline.log
           if-no-files-found: error
           retention-days: 14
 
