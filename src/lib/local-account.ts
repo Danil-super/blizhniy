@@ -1,4 +1,4 @@
-export type LocalAccountUser = { id: string; email: string; role: "user" | "admin"; isBlocked: false; specialistTest?:true; workPublicationTest?:true; listingVerificationTest?:true };
+export type LocalAccountUser = { id: string; email: string; role: "user" | "admin"; isBlocked: false; applicationTest?:true; specialistTest?:true; workPublicationTest?:true; listingVerificationTest?:true };
 
 const errorStatuses: Record<string, number> = { UNAUTHENTICATED: 401, INVALID_CREDENTIALS: 401, RATE_LIMITED: 429,
   HTTPS_REQUIRED: 503, INVALID_INPUT: 422, AUTH_UNAVAILABLE: 503, SYNTHETIC_EMAIL_REQUIRED: 422, CAPTCHA_REQUIRED: 403 };
@@ -63,9 +63,10 @@ function accountClient(production: boolean) { return {
   },
   async session(retryInitialRead?: () => boolean): Promise<LocalAccountUser | null> {
     try {
-      const capabilities: Pick<LocalAccountUser,"specialistTest"|"workPublicationTest"|"listingVerificationTest"> = {};
+      const capabilities: Pick<LocalAccountUser,"applicationTest"|"specialistTest"|"workPublicationTest"|"listingVerificationTest"> = {};
       const payload = await request("session", {}, production, response=>{
         if (!production) return;
+        if (response.headers?.get("X-Blizhniy-Application-Test")==="1") capabilities.applicationTest=true;
         if (response.headers?.get("X-Blizhniy-Specialist-Test")==="1") capabilities.specialistTest=true;
         if (response.headers?.get("X-Blizhniy-Work-Publication-Test")==="1") capabilities.workPublicationTest=true;
         else if (response.headers?.get("X-Blizhniy-Listing-Verification-Test")==="1") capabilities.listingVerificationTest=true;

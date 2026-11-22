@@ -3,12 +3,13 @@
 // PG18.6 information_schema.sql creates these public SELECTs after pg_init_privs.
 const publicMetadata='information_schema_catalog_name,applicable_roles,administrable_role_authorizations,attributes,character_sets,check_constraint_routine_usage,check_constraints,collations,collation_character_set_applicability,column_column_usage,column_domain_usage,column_privileges,column_udt_usage,columns,constraint_column_usage,constraint_table_usage,domain_constraints,domain_udt_usage,domains,enabled_roles,key_column_usage,parameters,referential_constraints,role_column_grants,routine_column_usage,routine_privileges,role_routine_grants,routine_routine_usage,routine_sequence_usage,routine_table_usage,routines,schemata,sequences,sql_features,sql_implementation_info,sql_sizing,table_constraints,table_privileges,role_table_grants,tables,triggered_update_columns,triggers,udt_privileges,role_udt_grants,usage_privileges,role_usage_grants,user_defined_types,view_column_usage,view_routine_usage,view_table_usage,views,data_type_privileges,element_types,column_options,foreign_data_wrapper_options,foreign_data_wrappers,foreign_server_options,foreign_servers,foreign_table_options,foreign_tables,user_mapping_options,user_mappings'.split(',');
 
-export async function assertFinancialCatalogPrivileges(tx){
+export async function assertFinancialCatalogPrivileges(tx,{paidResponses=false}={}){
+   const required=paidResponses?['app','blizhniy_meta','app_response']:['app','blizhniy_meta'];
    const schemas=(await tx.query(`select nspname as name,has_schema_privilege(oid,'USAGE') as usage,
     has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') as extra from pg_namespace
     `)).rows;
-   if(!['app','blizhniy_meta'].every(name=>schemas.some(item=>item.name===name&&item.usage===true))||
-    schemas.some(item=>item.extra!==false||(item.usage&&!['app','blizhniy_meta','public','pg_catalog','information_schema'].includes(item.name))))throw Error('Invalid schema privileges');
+   if(!required.every(name=>schemas.some(item=>item.name===name&&item.usage===true))||
+    schemas.some(item=>item.extra!==false||(item.usage&&![...required,'public','pg_catalog','information_schema'].includes(item.name))))throw Error('Invalid schema privileges');
    await assertFinancialSystemPrivileges(tx);
 }
 

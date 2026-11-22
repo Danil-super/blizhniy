@@ -18,6 +18,7 @@ import type { ProductionAuthConfig } from "./production-auth-config";
 import { normalizeRegistrationName } from "./account-validation.ts";
 
 export type ProductionAccountRuntime = {
+  canBuyResponse?: (owner:string,token:string)=>Promise<boolean>;
   store: Pick<RegistrationStore, "register" | "resendConfirmation" | "confirmEmail">;
   recovery: Pick<PasswordRecoveryStore, "requestRecovery" | "resetPassword">;
   identity: Pick<IdentityStore, "login" | "resolveSession" | "revokeSession">;
@@ -144,6 +145,7 @@ export function createProductionAccountHandler(config: ProductionAuthConfig, get
           throw new AuthRequestError(401, "UNAUTHENTICATED");
         }
         const headers: Record<string,string> = {};
+        if (await state.canBuyResponse?.(user.id,presented!)) headers["X-Blizhniy-Application-Test"] = "1";
         if (canShowSpecialistTest?.(user.id)) headers["X-Blizhniy-Specialist-Test"] = "1";
         if (canShowWorkPublicationTest?.(user.id)) headers["X-Blizhniy-Work-Publication-Test"] = "1";
         else if (canShowListingVerificationTest?.(user.id)) headers["X-Blizhniy-Listing-Verification-Test"] = "1";

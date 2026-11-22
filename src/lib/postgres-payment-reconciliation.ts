@@ -2,9 +2,9 @@ import {randomUUID} from 'node:crypto';
 import {parseListingDraftId} from './listing-draft-contract.ts';
 import type {PostgresDatabase} from './postgres';
 
-export type ReconciliationClaim={intentId:string;claimId:string;attempts:number;targetType?:'listing'|'vacancy'|'workRequest'|'specialist'};
+export type ReconciliationClaim={intentId:string;claimId:string;attempts:number;targetType?:'listing'|'vacancy'|'workRequest'|'specialist'|'application'};
 export type QueueAdmission = 'queued' | 'already_present';
-type Scope={shopId:string;isTest:boolean;publicationTestOwner?:string;specialistAccountTest?:true};
+type Scope={shopId:string;isTest:boolean;publicationTestOwner?:string;specialistAccountTest?:true;applicationAccountTest?:true};
 type Code='provider_pending'|'capture_required'|'processing_unavailable'|'publication_blocked'|'attempts_exhausted'|'phone_required';
 /** Already-known payment IDs only. No payment data, provider POST or financial writes. */
 export class PostgresPaymentReconciliationQueue{
@@ -14,6 +14,7 @@ export class PostgresPaymentReconciliationQueue{
   if(typeof window!=='undefined'||!scope||typeof scope.shopId!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(scope.shopId)||typeof scope.isTest!=='boolean')throw new Error('Invalid reconciliation scope');
   if(scope.publicationTestOwner!==undefined&&(!scope.isTest||parseListingDraftId(scope.publicationTestOwner)!==scope.publicationTestOwner))throw new Error('Invalid publication TEST scope');
   if(scope.specialistAccountTest!==undefined&&(scope.specialistAccountTest!==true||!scope.publicationTestOwner||!/^[1-9][0-9]{0,63}$/.test(scope.shopId)))throw new Error('Invalid specialist TEST scope');
+  if(scope.applicationAccountTest!==undefined&&(scope.applicationAccountTest!==true||!scope.publicationTestOwner||!/^[1-9][0-9]{0,63}$/.test(scope.shopId)))throw new Error('Invalid response TEST scope');
   this.db=db;this.merchant={...scope};
  }
  private scope(){return[this.merchant.shopId,this.merchant.isTest];}
@@ -23,7 +24,9 @@ export class PostgresPaymentReconciliationQueue{
   const standard="i.target_type in ('listing','vacancy','workRequest') and i.request_body::jsonb->'metadata'->>'publicationMode'='account-test-v1'";
   const specialist=this.merchant.specialistAccountTest?` or (i.target_type='specialist' and i.request_body::jsonb->'metadata'->>'publicationMode'='specialist-account-test-v1'
    and exists(select 1 from app.specialist_checkout_terms t where t.intent_id=i.id))`:'';
-  return `${merchant} and i.owner_id=$${ownerParameter} and ((${standard})${specialist})`;
+  const application=this.merchant.applicationAccountTest?` or (i.target_type='application' and i.tariff_id='job-response' and i.duration_days is null
+   and exists(select 1 from app_response.admissions a where a.intent_id=i.id and a.applicant_id=i.owner_id and a.shop_id=i.merchant_shop_id))`:'';
+  return `${merchant} and i.owner_id=$${ownerParameter} and ((${standard})${specialist}${application})`;
  }
  private values(...tail:unknown[]){return [...this.scope(),...tail,...(this.merchant.publicationTestOwner?[this.merchant.publicationTestOwner]:[])];}
  async discover():Promise<void>{
@@ -59,7 +62,7 @@ export class PostgresPaymentReconciliationQueue{
      lease_until=case when attempts>=12 then null else clock_timestamp()+interval '120 seconds' end,
      last_code=case when attempts>=12 then 'attempts_exhausted' else last_code end,attempts=least(12,attempts+1)
     from candidate c where q.intent_id=c.intent_id returning q.intent_id as "intentId",q.claim_id as "claimId",q.attempts${this.merchant.publicationTestOwner?',c.target_type as "targetType"':''}`,this.values(randomUUID()))).rows[0];
-   if(row?.claimId&&this.merchant.publicationTestOwner&&!(row.targetType==='specialist'&&this.merchant.specialistAccountTest)&&!['listing','vacancy','workRequest'].includes(row.targetType??''))throw new Error('Invalid publication TEST target');
+   if(row?.claimId&&this.merchant.publicationTestOwner&&!(row.targetType==='application'&&this.merchant.applicationAccountTest)&&!(row.targetType==='specialist'&&this.merchant.specialistAccountTest)&&!['listing','vacancy','workRequest'].includes(row.targetType??''))throw new Error('Invalid publication TEST target');
    return !row?null:row.claimId?{intentId:row.intentId,claimId:row.claimId,attempts:row.attempts,...(this.merchant.publicationTestOwner?{targetType:row.targetType}:{})}:{exhausted:true};
   });
  }

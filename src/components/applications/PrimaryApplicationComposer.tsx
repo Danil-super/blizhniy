@@ -11,7 +11,7 @@ import {ApplicationCheckout} from './ApplicationCheckout';
 import {useListingPostmoderation,useLocalPaymentSimulation} from '@/components/listings/ListingWorkflowProvider';
 
 type Intent={input:ApplicationCreateInput;phase:'unknown'|'retry'};
-function Workspace({owner,kind,targetId,visible}:{owner:string;kind:ApplicationKind;targetId:string;visible:boolean}){
+function Workspace({owner,kind,targetId,visible,hosted}:{owner:string;kind:ApplicationKind;targetId:string;visible:boolean;hosted:boolean}){
  const local=useListingPostmoderation(),simulation=useLocalPaymentSimulation();
  const [review,setReview]=useState<ApplicationPreview|null>(null),[fresh,setFresh]=useState(false),[text,setText]=useState(''),[issue,setIssue]=useState<string|null>(null);
   const [saved,setSaved]=useState<ApplicationSnapshot|null>(null),[intent,setIntent]=useState<Intent|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[needsProfile,setNeedsProfile]=useState(false);
@@ -49,7 +49,7 @@ function Workspace({owner,kind,targetId,visible}:{owner:string;kind:ApplicationK
   {busy&&<p role="status" className="mb-3 text-sm text-slate-700">Проверяем отклик…</p>}
   {error&&<p ref={alert} tabIndex={-1} role="alert" className="mb-3 break-words rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
   {saved?<div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3"><h3 ref={success} tabIndex={-1} className="font-semibold text-slate-950">{saved.withdrawn?'Отклик отозван':saved.targetClosed&&!saved.sentAt?'Заказ закрыт':saved.status==='pending_payment'?'Отклик сохранён. Ожидает оплаты.':`Ваш отклик: ${applicationLabels[saved.status]}.`}</h3>
-   {!saved.sentAt&&!saved.withdrawn&&<p className="mt-2 text-sm text-slate-800">Получатель ещё не получил отклик. {saved.targetClosed?'Заказчик уже выбрал исполнителя. Новая оплата и доставка недоступны; история сохранена.':saved.paid?'Отправку должен подтвердить сервер.':simulation?'Продолжите локальную TEST-оплату для доставки отклика.':'Платёжный сценарий ещё не подключён; деньги не списаны.'}</p>}
+   {!saved.sentAt&&!saved.withdrawn&&<p className="mt-2 text-sm text-slate-800">Получатель ещё не получил отклик. {saved.targetClosed?'Заказчик уже выбрал исполнителя. Новая оплата и доставка недоступны; история сохранена.':saved.paid?'Отправку должен подтвердить сервер.':hosted?'Продолжите TEST-оплату через ЮKassa.':simulation?'Продолжите локальную TEST-оплату для доставки отклика.':'Платёжный сценарий ещё не подключён; деньги не списаны.'}</p>}
     {local&&!saved.targetClosed&&!saved.withdrawn&&!saved.paid&&saved.status==='pending_payment'&&<ApplicationCheckout owner={owner} id={saved.id} revision={saved.revision} autoStart={payAfterSave}/>}
    <Link href="/cabinet/otkliki" className={`${applicationButton} mt-3`}>Мои отклики</Link></div>:<>
    {needsProfile&&<Link href="/cabinet/specialist" className={`${applicationButton} mb-3`}>Заполнить анкету</Link>}
@@ -61,7 +61,7 @@ function Workspace({owner,kind,targetId,visible}:{owner:string;kind:ApplicationK
      <p id={`${prefix}-hint`} className="text-sm text-slate-600">{text.length} / 500 символов. Контакты будут взяты из вашей анкеты.</p>
     {issue&&<p id={`${prefix}-error`} className="text-sm text-rose-800">{issue}</p>}
      {intent?.phase==='unknown'?<><p className="text-sm text-slate-800">Результат сохранения не подтверждён. Сначала проверьте его, чтобы не создавать повторный отклик.</p><button type="button" className={applicationButton} disabled={busy} onClick={recover}>Проверить сохранение</button></>:<div className="flex flex-wrap gap-2"><button type="submit" disabled={busy||!fresh} className={applicationButton} onClick={()=>{if(!intent)setPayAfterSave(false);}}>{intent?'Повторить то же сохранение':'Сохранить отклик'}</button>
-      {local&&!intent&&<button type="submit" disabled={busy||!fresh||!simulation} className={`${applicationButton} border-blue-700 bg-blue-50`} onClick={()=>setPayAfterSave(true)}>Оплатить и отправить</button>}</div>}
+      {local&&!intent&&<button type="submit" disabled={busy||!fresh||(!simulation&&!hosted)} className={`${applicationButton} border-blue-700 bg-blue-50`} onClick={()=>setPayAfterSave(true)}>Оплатить и отправить</button>}</div>}
    </form>}
   </>}
  </div>;
@@ -71,6 +71,6 @@ export function PrimaryApplicationComposer({auth,kind,targetId}:{auth:AccountAut
  if(owner&&owner!==scope)setScope(owner);if(auth.state==='signed-out'&&scope)setScope(null);const visible=!!owner&&owner===scope;
  return <section aria-label="Отклик на публикацию" className="min-w-0 rounded-xl border border-slate-200 bg-white p-4"><h2 className="text-lg font-bold text-slate-950">Откликнуться</h2>
   {!visible&&<div role="status" className="mt-3 text-sm text-slate-700">{auth.state==='signed-out'?<><p>Войдите, чтобы откликнуться своей анкетой специалиста.</p><Link href={`/auth?returnTo=${encodeURIComponent(applicationTargetHref(kind,targetId))}`} className={`${applicationButton} mt-3`}>Войти и откликнуться</Link></>:<><p>Проверяем доступ. Сообщение временно скрыто.</p>{auth.state==='unavailable'&&<button type="button" className={`${applicationButton} mt-3`} onClick={()=>notifyAccountSessionChange(false)}>Повторить проверку входа</button>}</>}</div>}
-  {scope&&<Workspace key={`${kind}:${targetId}:${scope}`} owner={scope} kind={kind} targetId={targetId} visible={visible}/>}
+  {scope&&<Workspace key={`${kind}:${targetId}:${scope}`} owner={scope} kind={kind} targetId={targetId} visible={visible} hosted={visible&&auth?.applicationTest===true}/>}
  </section>;
 }
