@@ -47,6 +47,16 @@ example.com {
     }
 
     reverse_proxy 127.0.0.1:3000 {
+        # Next sends the destination as plain text for trailing-slash redirects.
+        @permanent_redirect {
+            status 308
+            header Location *
+        }
+        handle_response @permanent_redirect {
+            header ?Content-Type "text/plain; charset=utf-8"
+            copy_response
+        }
+
         # A missing dynamic category needs the server-rendered 404 document.
         @missing_html {
             status 404

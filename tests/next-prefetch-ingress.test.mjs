@@ -28,3 +28,9 @@ test('missing category documents use the same backend as the original lookup',()
  assert.match(file,/@category_document\s*\{\s*method GET HEAD\s*path \/katalog\/\*\s*not header RSC 1/);
  assert.match(file,/reverse_proxy @category_document \{http\.reverse_proxy\.upstream\.address\}\s*\{\s*rewrite \/_not-found\?\s*import origin_headers\s*\}\s*copy_response/);
 });
+
+test('Caddy supplies a default media type only to permanent redirects carrying a location', () => {
+ const file=readFileSync(new URL('../deploy/Caddyfile.example',import.meta.url),'utf8');
+ assert.match(file, /@permanent_redirect\s*\{\s*status 308\s*header Location \*\s*\}/);
+ assert.match(file, /handle_response @permanent_redirect\s*\{\s*header \?Content-Type "text\/plain; charset=utf-8"\s*copy_response\s*\}/);
+});
