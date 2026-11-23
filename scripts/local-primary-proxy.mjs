@@ -4,7 +4,7 @@ import {readMediaRetentionEnabled} from '../src/lib/media-retention-config.ts';
 import {createServer} from 'node:https';
 import {request as httpRequest} from 'node:http';
 import {serveLocalUserAccessRequest} from './local-user-access-request.mjs';
-import {archiveRoot,createLocalAccountExportHandler,exportDownloadCsp,exportDownloadForm,exportDownloadScript} from './local-account-export-delivery.mjs';
+import {archiveRoot,createLocalAccountExportHandler,exportDownloadCsp,exportDownloadForm,exportDownloadScript,purgeExpiredLocalAccountArchives} from './local-account-export-delivery.mjs';
 import {readFile,writeFile,readdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createRequire} from 'node:module';
@@ -30,11 +30,11 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
  if(process.env.NODE_ENV!=='test')throw Error('Local proxy requires isolated test process');
  validateLocalPrimaryContainer(JSON.parse(await docker(['inspect',state.containerId]))[0],state);
  const {PostgresDatabase}=load('postgres');
- let runtimeDb,ownerDb,timer,server,mailRunning,closing,closed=false;
+ let runtimeDb,ownerDb,timer,server,mailRunning,archiveCleanupTimer,archiveCleanup,closing,closed=false;
  const close=()=>closing??=(async()=>{
-  closed=true;clearInterval(timer);
+  closed=true;clearInterval(timer);clearInterval(archiveCleanupTimer);
   try{if(server?.listening)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
-  finally{try{await mailRunning;}finally{try{await runtimeDb?.close();}finally{await ownerDb?.close();}}}
+  finally{try{await Promise.all([mailRunning,archiveCleanup]);}finally{try{await runtimeDb?.close();}finally{await ownerDb?.close();}}}
  })();
  try{
  const tls={key:await readFile(join(stateDirectory,'tls-key.pem')),cert:await readFile(join(stateDirectory,'tls-cert.pem'))};
@@ -44,8 +44,13 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
  const limiter=new(load('auth-http').AuthRateLimiter)(runtimeDb,state.rateSecret);
  const identity=new(load('identity').IdentityStore)(runtimeDb);
  const deletionStore=new(load('postgres-account-deletion').PostgresAccountDeletionStore)(runtimeDb);
- const accountExport=createLocalAccountExportHandler({origin:canonical,delivery:archiveRoot(stateDirectory,state.containerId),
+ const exportDelivery=archiveRoot(stateDirectory,state.containerId);
+ const accountExport=createLocalAccountExportHandler({origin:canonical,delivery:exportDelivery,
   session:token=>deletionStore.session(token),allow:ip=>limiter.allowProduction('session',ip)});
+ const sweepExports=()=>{archiveCleanup??=purgeExpiredLocalAccountArchives(exportDelivery)
+  .catch(()=>console.warn('Local export cleanup unavailable')).finally(()=>{archiveCleanup=undefined;});};
+ sweepExports();
+ archiveCleanupTimer=setInterval(sweepExports,60000).unref();
  const deletion=load('account-deletion-http').createAccountDeletionHandler({origin:canonical,rateSecret:state.rateSecret,mailKeyFile:join(stateDirectory,'mail-key.bin'),rememberedCaptcha:true},()=>({
   store:deletionStore,identity,limiter,verifyCaptcha:async()=>false,
  }));

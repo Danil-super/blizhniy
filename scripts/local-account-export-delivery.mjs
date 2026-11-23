@@ -1,6 +1,6 @@
 // Loaded only by the owned synthetic stand and its operator export command.
 import {constants} from 'node:fs';
-import {link,mkdtemp,open,realpath,rm,writeFile} from 'node:fs/promises';
+import {link,lstat,mkdtemp,open,opendir,realpath,rm,unlink,writeFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {createRequire} from 'node:module';
@@ -71,13 +71,42 @@ async function readPrivateFile(path,limit,check=()=>true){
  const file=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{
   const info=await file.stat();
-  if(!info.isFile()||info.uid!==process.getuid()||(info.mode&0o7777)!==0o600||info.nlink!==1||
-    info.size<1||info.size>limit||!check(info))return null;
+  if(!privateSingleFile(info,limit)||!check(info))return null;
   const bytes=Buffer.alloc(info.size+1);
   const {bytesRead}=await file.read({buffer:bytes,length:bytes.length,position:0});
   if(bytesRead!==info.size)return null;
   return bytes.subarray(0,bytesRead);
  }finally{await file.close();}
+}
+
+function privateSingleFile(info,limit){
+ return info.isFile()&&info.uid===process.getuid()&&(info.mode&0o7777)===0o600&&info.nlink===1&&info.size>=1&&info.size<=limit;
+}
+
+export async function purgeExpiredLocalAccountArchives(delivery){
+ if(process.env.NODE_ENV!=='test')throw Error('Archive cleanup requires the synthetic stand');
+ let root;
+ try{root=await privateDirectory(delivery);}
+ catch(error){if(error.code==='ENOENT')return 0;throw error;}
+ try{
+  const cutoff=Date.now()-accessMs,anchor='/proc/self/fd/'+root.fd;
+  let removed=0;
+  for await(const entry of await opendir(anchor)){
+   if(!entry.isFile())continue;
+   const match=/^([a-f0-9-]{36})_([a-f0-9-]{36})\.tar\.gz$/.exec(entry.name);
+   if(!match)continue;
+   try{deletionId(match[1]);deletionId(match[2]);}catch{continue;}
+   const path=join(anchor,entry.name);
+   try{
+    const info=await lstat(path);
+    if(privateSingleFile(info,localArchiveMaximumBytes)&&info.mtimeMs<=cutoff){
+     await unlink(path);removed++;
+    }
+   }catch(error){if(error.code!=='ENOENT')throw error;}
+  }
+  if(removed)await root.sync();
+  return removed;
+ }finally{await root.close();}
 }
 
 export async function publishLocalAccountArchive(input,delivery,ownerId,disclosure){
