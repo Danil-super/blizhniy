@@ -13,7 +13,7 @@ export function parseBasicErasure(input){
 }
 const erasable=new Set(['app.users.id','app.cabinet_profiles.user_id','app.sessions.user_id','app.email_confirmations.user_id','app.password_recoveries.user_id',
  'app.registration_legal.user_id','app.telegram_phone_attempts.user_id','app.telegram_phone_bindings.user_id','app.mail_outbox.user_id','app.notifications.user_id',
- 'app.account_deletion_requests.user_id']);
+ 'app.account_deletion_requests.user_id','app.applications.applicant_id']);
 const draftTables=new Set(['listings','work_publications','service_publications']);
 const draftPhotoLinks=[['listings','listing_photos','listing_id'],['work_publications','work_publication_photos','publication_id'],
  ['service_publications','service_publication_photos','publication_id']];
@@ -147,7 +147,11 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
      union all select id,status,is_paid,published_at,expires_at,deleted_at is null from app.service_publications where author_id=$1
     ) owned limit 101`,[subject.id])).rows;
    const draftIds=drafts.map(draft=>draft.id);
-   if(drafts.length>100||drafts.some(draft=>draft.eligible!==true||draft.id===subject.id)||new Set(draftIds).size!==drafts.length)throw new BasicErasureReviewRequired();
+   const outgoing=(await tx.query(`select id,status='pending_payment' and not is_paid and sent_at is null as eligible
+    from app.applications where applicant_id=$1 limit 101`,[subject.id])).rows;
+   const related=[...drafts,...outgoing],relatedIds=related.map(row=>row.id);
+   if(related.length>100||related.some(row=>row.eligible!==true||row.id===subject.id)||new Set(relatedIds).size!==related.length)
+    throw new BasicErasureReviewRequired();
    let mediaIds=[],detachedLinks=0;
    if(preparePhotos){
     const owned=await tx.query('select id from app.media_objects where owner_id=$1 order by id limit 101 for no key update',[subject.id]);
@@ -183,19 +187,20 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
     const conditions=[];
     if(!erasable.has(field)&&!(draftTable&&row.column==='author_id')&&!(mediaErasure&&field==='app.media_objects.owner_id'))
      conditions.push(`(t.${column}=$1${ownRequestAudit})`);
-    if(draftIds.length){
+    if(relatedIds.length){
      const ownDraft=draftTable&&row.column==='id'?' and t.author_id<>$1':'';
+     const ownOutgoing=(field==='app.applications.id'||field==='app.applications.specialist_publication_id')?' and t.applicant_id<>$1':'';
      const retiredDraftObservation=historicalDraftPhotos&&field==='app.media_reference_events.resource_id'?
-      ` and not(t.media_id=any($3::uuid[])
+      ` and not(t.media_id=any($3::uuid[]) and t.resource_id=any($4::uuid[])
        and t.source in ('listing_photos','work_publication_photos','service_publication_photos','listings','work_publications','service_publications')
        and t.event_type in ('attached','detached','observed_attached'))`:'';
-     conditions.push(`(t.${column}=any($2::uuid[])${ownDraft}${retiredDraftObservation})`);
+     conditions.push(`(t.${column}=any($2::uuid[])${ownDraft}${ownOutgoing}${retiredDraftObservation})`);
     }
     return conditions.length?[`exists(select 1 from ${table} t where ${conditions.join(' or ')})`]:[];
    });
-   // Draft references need review even where the database has no foreign key.
-   const identifiers=draftIds.length?[subject.id,draftIds]:[subject.id];
-   if(historicalDraftPhotos)identifiers.push(mediaIds);
+   // Linked records need review even where the database has no foreign key.
+   const identifiers=relatedIds.length?[subject.id,relatedIds]:[subject.id];
+   if(historicalDraftPhotos)identifiers.push(mediaIds,draftIds);
    if((await tx.query(`select (${predicates.join(' or ')}) as blocked`,identifiers)).rows[0]?.blocked!==false)throw new BasicErasureReviewRequired();
    if(preparePhotos)return{operationId:input.operationId,detachedLinks};
    await tx.query("select set_config('blizhniy.deletion_actor',$1,true)",[admin.id]);
@@ -208,6 +213,7 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
    if(draftIds.length)assert.equal((await tx.query(`select 1 from app.listings where author_id=$1
      union all select 1 from app.work_publications where author_id=$1
      union all select 1 from app.service_publications where author_id=$1 limit 1`,[subject.id])).rowCount,0);
+   if(outgoing.length)assert.equal((await tx.query('select 1 from app.applications where applicant_id=$1 limit 1',[subject.id])).rowCount,0);
    row=(await tx.query(`select user_id,status,revision::text,resolution,case_reference,
     to_char(resolved_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "completedAt" from app.account_deletion_requests where id=$1`,[row.id])).rows[0];
    assert.ok(row?.user_id===null&&row.status==='resolved'&&row.resolution==='partly_retained'&&row.case_reference===reference&&row.completedAt);

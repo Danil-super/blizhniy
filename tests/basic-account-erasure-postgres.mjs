@@ -38,6 +38,9 @@ test('basic erasure is atomic, replayable and refuses domain history on disposab
   const admin=await person('admin'),input=actor=>({requestId:actor.request.id,expectedRevision:actor.request.revision,expectedOwnerId:actor.id,expectedAuthVersion:'0',operationId:randomUUID()}),erase=(value,connection=db,token=admin.token,actor=admin.id)=>eraseBasicAccount(connection,token,actor,value,container);
   const exists=async actor=>(await owner.query('select count(*)::int n from app.users where id=$1',[actor.id])).rows[0].n;
   const events=async actor=>(await owner.query('select count(*)::int n from app.account_deletion_events where request_id=$1',[actor.request.id])).rows[0].n;
+  const application=async(actor,workId,specialistId=null)=>(await owner.query(`insert into app.applications
+   (applicant_id,work_publication_id,specialist_publication_id,creation_key,target_revision,specialist_revision,snapshot,message)
+   values($1,$2,$3,$4,1,1,'{}','Синтетический отклик') returning id`,[actor.id,workId,specialistId,randomUUID()])).rows[0].id;
   const wrapping=hook=>({transaction:work=>db.transaction(tx=>work({query:async(sql,values)=>{const result=await tx.query(sql,values);await hook(sql,result);return result;}}))});
   await suite.test('ordinary, mismatched, blocked and self principals cannot erase',async()=>{
    const ordinary=await person(),target=await person(),blocked=await person('admin'),value=input(target);
@@ -81,15 +84,40 @@ test('basic erasure is atomic, replayable and refuses domain history on disposab
     return {listing,work,service};
    };
    const own=await add(target),foreign=await add(other),value=input(target);
+   const outgoing=await application(target,foreign.work,own.service);
+   const unrelated=await application(await person(),foreign.work);
    const exported=await readAccountExport(db,target.token,target.id);
    for(const [group,key] of [['listings','listing'],['work','work'],['services','service']])assert.deepEqual(exported[group].map(row=>row.id),[own[key]]);
+   assert.deepEqual(exported.applications.map(row=>row.id),[outgoing]);
    const result=await erase(value);
    assert.equal(await exists(target),0);assert.equal(await exists(other),1);
    await assert.rejects(readAccountExport(db,target.token,target.id),{name:'DeletionAccessError'});
    for(const [table,key] of [['listings','listing'],['work_publications','work'],['service_publications','service']]){
     assert.deepEqual((await owner.query('select id from app.'+table+' where id=any($1::uuid[])',[[own[key],foreign[key]]])).rows,[{id:foreign[key]}]);
    }
+   assert.deepEqual((await owner.query('select id from app.applications where id=any($1::uuid[])',[[outgoing,unrelated]])).rows,[{id:unrelated}]);
    assert.deepEqual(await erase(value),result);
+  });
+  await suite.test('delivered applications, payment intents and another applicant’s references keep deletion cases open',async()=>{
+   const peer=await person(),paid=await person(),withIntent=await person(),linked=await person();
+   const form=load('work-publication-contract').parseWorkPublicationForm('workRequest',{title:'Синтетический заказ'});
+   const work=(await owner.query("insert into app.work_publications(author_id,kind,creation_key,form) values($1,'workRequest',$2,$3) returning id",[peer.id,randomUUID(),form])).rows[0].id;
+   const delivered=await application(paid,work),draft=await application(withIntent,work);
+   await owner.query("update app.applications set status='sent',is_paid=true,sent_at=clock_timestamp() where id=$1",[delivered]);
+   const id=randomUUID(),body=JSON.stringify({amount:{value:'99.00',currency:'RUB'},capture:true,
+    confirmation:{type:'redirect',return_url:'https://example.invalid/'},metadata:{localPaymentId:id,targetId:draft,targetType:'application',tariffId:'job-response'}});
+   await db.transaction(tx=>new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db).persistInTransaction(tx,{id,ownerId:peer.id,targetId:draft,
+    targetType:'application',targetRevision:'1',tariffId:'job-response',amount:'99.00',durationDays:null,shopId:'fixture-shop',isTest:true,requestBody:body}));
+   const specialistForm=load('service-publication-contract').parseServicePublicationForm('specialist',{title:'Синтетическая анкета'});
+   const specialist=(await owner.query("insert into app.service_publications(author_id,kind,creation_key,form) values($1,'specialist',$2,$3) returning id",
+    [linked.id,randomUUID(),specialistForm])).rows[0].id;
+   const foreign=await application(await person(),work,specialist);
+   for(const target of [paid,withIntent,linked]){
+    await assert.rejects(erase(input(target)),{name:'BasicErasureReviewRequired'});
+    assert.equal(await exists(target),1);
+    assert.equal(await events(target),1);
+   }
+   assert.equal((await owner.query('select id from app.applications where id=any($1::uuid[])',[[delivered,draft,foreign]])).rowCount,3);
   });
   await suite.test('administrator, non-draft publication, immutable payment identity and unknown mail require review',async()=>{
    await assert.rejects(erase(input(await person('admin'))),{name:'BasicErasureReviewRequired'});
