@@ -1,4 +1,5 @@
 import { handlePrimaryListingView } from "@/lib/primary-listing-view";
+import { isStoredListingViewId } from "@/lib/listing-views";
 import { NextResponse } from "next/server";
 import { recordStoredListingView } from "@/lib/listing-store";
 import { getAuthenticatedRequestUser, isSupabaseServerConfigured } from "@/lib/server-auth";
@@ -17,12 +18,13 @@ function createAnonymousViewerId() {
 
 export async function POST(request: Request, context: RouteContext) {
   const { listingId } = await context.params;
+  const primary = process.env.BLIZHNIY_AUTH_MODE === "postgres";
 
-  if (!isUuid(listingId)) {
+  if (!(primary ? isStoredListingViewId(listingId, true) : isUuid(listingId))) {
     return NextResponse.json({ error: "Unsupported listing id" }, { status: 400, headers: { "Cache-Control": "no-store" } });
   }
 
-  if (process.env.BLIZHNIY_AUTH_MODE === "postgres") return handlePrimaryListingView(request, listingId);
+  if (primary) return handlePrimaryListingView(request, listingId);
   if (!isSupabaseServerConfigured() || !isSupabaseServiceRoleConfigured()) {
     return NextResponse.json({ error: "Listing views are not configured" }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }

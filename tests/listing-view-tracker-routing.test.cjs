@@ -7,6 +7,7 @@ const ts = require('typescript');
 
 const root = resolve(__dirname, '..');
 const uuid = '11111111-1111-4111-8111-111111111111';
+const uuidV8 = '11111111-1111-8111-8111-111111111111';
 function harness({ storedViews = 57, failed = false, backend = "legacy", enabled = false, statuses = [] } = {}) {
   let effect;
   const storage = new Map();
@@ -24,7 +25,7 @@ function harness({ storedViews = 57, failed = false, backend = "legacy", enabled
     const source = ts.transpileModule(readFileSync(resolve(root, path), 'utf8'), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
     }).outputText;
-    vm.runInNewContext(source, { module, exports: module.exports, console, Promise, Event, CustomEvent,
+    vm.runInNewContext(source, { module, exports: module.exports, console, Promise, Event, CustomEvent, process: { env: { BLIZHNIY_AUTH_MODE: backend } },
       window: browserWindow, document: { querySelector: selector => ({
         getAttribute: () => selector.includes("auth-backend") ? backend : (enabled ? "enabled" : "disabled"),
       }) }, navigator: {}, AbortSignal,
@@ -47,7 +48,7 @@ function harness({ storedViews = 57, failed = false, backend = "legacy", enabled
     for (let i = 0; i < 30; i++) await Promise.resolve();
     return cleanup;
   }
-  return { mount, calls, events, views, authReads: () => authReads };
+  return { mount, load, calls, events, views, authReads: () => authReads };
 }
 
 for (const listingId of [`work-vacancy-${uuid}`, `work-request-${uuid}`, `work-specialist-${uuid}`, 'demo-listing-1']) {
@@ -112,5 +113,40 @@ test('primary listing returns the guest cookie once and accepts only a confirmed
       assert.equal(request.headers['X-Blizhniy-Request'], '1');
     }
     assert.deepEqual(h.events.map(e => e.detail.views), expected);
+  }
+});
+
+test('a production UUIDv8 listing uses the Postgres count and skips local storage', async () => {
+  const h = harness({ backend: 'postgres', enabled: true, statuses: [202, 200], storedViews: 2 });
+  await h.mount(uuidV8);
+  assert.deepEqual(h.calls.map(call => call.url), Array(2).fill(`/api/listings/${uuidV8}/views`));
+  assert.equal(h.authReads(), 0);
+  assert.equal(h.views.getListingExtraViews(uuidV8), 0);
+  assert.equal(h.events.at(-1).detail.views, 2);
+
+  const legacy = harness();
+  await legacy.mount(uuidV8);
+  assert.deepEqual(legacy.calls, []);
+});
+
+test('the views route admits UUIDv8 for Postgres and rejects malformed and legacy UUIDv8 values', async () => {
+  for (const [backend, id, expected] of [
+    ['postgres', uuid, 202], ['postgres', uuidV8, 202],
+    ['postgres', uuidV8.replace('-8111-1111', '-0111-1111'), 400],
+    ['postgres', 'work-request-'+uuid, 400], ['legacy', uuidV8, 400],
+  ]) {
+    const h = harness({ backend });
+    const { POST } = h.load('src/app/api/listings/[listingId]/views/route.ts', {
+      '@/lib/listing-views': h.views,
+      '@/lib/primary-listing-view': { handlePrimaryListingView: (_request, listingId) => {
+        assert.equal(listingId, id);
+        return Response.json({ cookieRequired: true }, { status: 202 });
+      } },
+      'next/server': { NextResponse: Response },
+      '@/lib/listing-store': {},
+      '@/lib/server-auth': {},
+      '@/lib/supabase-rest': { isUuid: value => value === uuid },
+    });
+    assert.equal((await POST(new Request('https://example.invalid'), { params: Promise.resolve({ listingId: id }) })).status, expected);
   }
 });
