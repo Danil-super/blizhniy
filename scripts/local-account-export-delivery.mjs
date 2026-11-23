@@ -111,8 +111,11 @@ export async function purgeExpiredLocalAccountArchives(delivery){
 
 export async function publishLocalAccountArchive(input,delivery,ownerId,disclosure){
  deletionId(ownerId);
- const notice=deletionObject(disclosure,['purpose','basis','sources','recipients','retention']);
- if(Object.values(notice).some(text=>typeof text!=='string'||!text.trim()||text.length>1000))throw new DeletionInputError();
+ const notice=deletionObject(disclosure,['processingConfirmed','purpose','basis','methods','operatorName','operatorAddress',
+  'sources','recipients','retention','rights','internationalTransfers','processors','safeguards','otherInformation']);
+ const {processingConfirmed,...details}=notice;
+ if(processingConfirmed!==true||Object.values(details).some(text=>typeof text!=='string'||!text.trim()||text.length>1000))
+  throw new DeletionInputError();
  const source=await privateDirectory(input);
  try{
   const anchor='/proc/self/fd/'+source.fd;

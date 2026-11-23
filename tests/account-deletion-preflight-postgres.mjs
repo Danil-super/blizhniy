@@ -305,8 +305,11 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    await assert.rejects(readFile(join(invalidInput,'account.json')),{code:'ENOENT'});
    await writeFile(photoPath,bytes);
    assert.equal(await writeAccountExportFiles(data,input,mediaRoot),1);
-   const disclosure={purpose:'Синтетическая проверка',basis:'Стендовое дело',sources:'Тестовые записи',
-    recipients:'Владелец',retention:'На время репетиции'};
+   const disclosure={processingConfirmed:true,purpose:'Синтетическая проверка',basis:'Стендовое дело',
+    methods:'Чтение снимка и сборка архива',operatorName:'Стендовый оператор',operatorAddress:'Адрес тестового контура',
+    sources:'Тестовые записи',recipients:'Владелец',retention:'На время репетиции',rights:'Через форму тестового обращения',
+    internationalTransfers:'В репетиции отсутствуют',processors:'В репетиции отсутствуют',
+    safeguards:'Закрытый каталог и проверка сессии',otherInformation:'Для репетиции отсутствует'};
    const {id}=await publishLocalAccountArchive(input,delivery,actor.id,disclosure);
    const origin='https://example.invalid',store=new(load('postgres-account-deletion').PostgresAccountDeletionStore)(db);
    const handler=createLocalAccountExportHandler({origin,delivery,session:token=>store.session(token),allow:async()=>true});
@@ -319,6 +322,7 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    const copy=join(root,'download.tar.gz');
    await writeFile(copy,Buffer.from(await response.arrayBuffer()),{mode:0o600});
    const exported=JSON.parse((await run('/usr/bin/tar',['-xOzf',copy,'--','account.json'])).stdout);
+   assert.deepEqual(JSON.parse((await run('/usr/bin/tar',['-xOzf',copy,'--','processing.json'])).stdout),disclosure);
    assert.equal(exported.account.id,actor.id);
    assert.deepEqual(exported.payments.map(row=>row.id),[own.order.id]);
    assert.deepEqual(exported.payments.map(row=>[row.is_test,row.status,row.verification_status,row.captured_at]),[[true,'succeeded','succeeded',capturedAt]]);

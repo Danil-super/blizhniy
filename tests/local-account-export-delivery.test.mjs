@@ -18,8 +18,15 @@ test('a reviewed archive is downloadable only with its owner session before expi
  await writeFile(join(input,'account.json'),JSON.stringify({account:{id:owner}}),{mode:0o600});
  const image=Buffer.from('524946460400000057454250','hex');
  await writeFile(join(input,'media',mediaId+'.webp'),image,{mode:0o600});
- const notice={purpose:'Синтетическая проверка',basis:'Тестовый стенд',sources:'Данные тестового владельца',
+ const legacy={purpose:'Синтетическая проверка',basis:'Тестовый стенд',sources:'Данные тестового владельца',
   recipients:'Владелец',retention:'Только на время репетиции'};
+ const notice={...legacy,processingConfirmed:true,methods:'Чтение базы и выдача файла',
+  operatorName:'Синтетический оператор',operatorAddress:'Адрес тестового контура',
+  rights:'Через форму синтетического обращения',internationalTransfers:'В репетиции отсутствуют',
+  processors:'В репетиции отсутствуют',safeguards:'Изолированная база и проверка сессии',otherInformation:'Для репетиции отсутствует'};
+ for(const invalid of [legacy,{...notice,operatorAddress:' '},{...notice,processingConfirmed:false},{...notice,unexpected:'Неизвестное поле'}])
+  await assert.rejects(publishLocalAccountArchive(input,delivery,owner,invalid),{name:'DeletionInputError'});
+ await assert.rejects(readFile(join(input,'processing.json')),{code:'ENOENT'});
  await assert.rejects(publishLocalAccountArchive(input,delivery,peer,notice),{name:'DeletionAccessError'});
  const {id}=await publishLocalAccountArchive(input,delivery,owner,notice);
  const origin='https://example.invalid',a='a'.repeat(64),b='b'.repeat(64);
