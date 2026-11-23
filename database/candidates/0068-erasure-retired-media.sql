@@ -7,6 +7,18 @@ lock table app.media_retirement_completions,app_admin.basic_account_erasures in 
 alter table app_admin.migrations drop constraint migrations_name_check;
 alter table app_admin.migrations add constraint migrations_name_check
  check(name in ('0061-admin-user-access.sql','0062-admin-tariffs.sql','0063-basic-account-erasure.sql','0068-erasure-retired-media.sql'));
+create table app_admin.account_erasure_media (
+ operation_id uuid not null references app_admin.basic_account_erasures(operation_id),
+ media_id uuid not null unique references app.media_retirement_completions(media_id),
+ primary key(operation_id,media_id)
+);
+revoke all on app_admin.account_erasure_media from public;
+create trigger account_erasure_media_immutable before update or delete on app_admin.account_erasure_media
+ for each row execute function app_admin.guard_basic_account_erasure();
+create trigger account_erasure_media_no_truncate before truncate on app_admin.account_erasure_media
+ for each statement execute function app_admin.guard_basic_account_erasure();
+alter table app_admin.account_erasure_media enable always trigger account_erasure_media_immutable;
+alter table app_admin.account_erasure_media enable always trigger account_erasure_media_no_truncate;
 alter table app.media_objects alter column owner_id drop not null;
 alter table app.media_objects drop constraint media_objects_owner_id_fkey;
 alter table app.media_objects add constraint media_objects_owner_id_fkey
@@ -34,6 +46,7 @@ begin
    or not exists(select 1 from app.media_retirement_completions c where c.media_id=old.id)
    or not exists(
     select 1 from app_admin.basic_account_erasures e
+    join app_admin.account_erasure_media em on em.operation_id=e.operation_id and em.media_id=old.id
     join app.account_deletion_requests d on d.id=e.request_id
     where e.subject_id=old.owner_id and d.status='resolved' and d.resolution='partly_retained'
      and d.case_reference='B1_'||replace(e.operation_id::text,'-','')||'_'||e.expected_auth_version||'_'||e.expected_request_revision

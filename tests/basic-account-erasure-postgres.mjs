@@ -235,9 +235,20 @@ test('basic erasure is atomic, replayable and refuses domain history on disposab
    assert.deepEqual(await readFile(temporary),bytes);assert.equal(await exists(target),1);
    await unlink(temporary);
    const completed=await eraseWithMedia(value);
+   assert.deepEqual((await owner.query('select media_id from app_admin.account_erasure_media where operation_id=$1',[value.operationId])).rows,[{media_id:photo}]);
+   await assert.rejects(owner.query('update app_admin.account_erasure_media set media_id=media_id'),{code:'42501'});
+   await assert.rejects(owner.query('delete from app_admin.account_erasure_media'),{code:'42501'});
+   await assert.rejects(owner.query('truncate app_admin.account_erasure_media'),{code:'42501'});
    assert.equal(await exists(target),0);
    assert.equal((await owner.query('select owner_id from app.media_objects where id=$1',[photo])).rows[0].owner_id,null);
    assert.equal((await owner.query('select id from app.listings where id=$1',[draft])).rowCount,0);
+   assert.deepEqual(await eraseWithMedia(value),completed);
+   for(const restored of [final,temporary]){
+    await writeFile(restored,bytes,{mode:0o600,flag:'wx'});
+    await assert.rejects(eraseWithMedia(value),{name:'BasicErasureReviewRequired'});
+    assert.deepEqual(await readFile(restored),bytes);
+    await unlink(restored);
+   }
    assert.deepEqual(await eraseWithMedia(value),completed);
   });
  }finally{

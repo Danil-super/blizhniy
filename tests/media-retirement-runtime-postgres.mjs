@@ -144,13 +144,15 @@ export async function testMediaRetirementRuntime(suite,{admin,holder,clock,day,b
   const archivedPeerPhoto=await fs.readFile(path.join(other.root,other.pending.id+'.webp'));
   const operation=randomUUID(),ownerOf=async id=>(await admin.query('select owner_id from app.media_objects where id=$1',[id])).rows[0].owner_id;
   const reference='B1_'+operation.replaceAll('-','')+'_0_1';
-  const erase=(caseReference=reference,target=f.db)=>target.transaction(async tx=>{
+  const erase=(caseReference=reference,target=f.db,mediaId=photo)=>target.transaction(async tx=>{
    await tx.query("select set_config('blizhniy.deletion_actor',$1,true)",[operator]);
    await tx.query("update app.account_deletion_requests set status='in_review' where id=$1",[request]);
    await tx.query("update app.account_deletion_requests set status='resolved',resolution='partly_retained',case_reference=$2 where id=$1",
     [request,caseReference]);
    await tx.query('insert into app_admin.basic_account_erasures(operation_id,request_id,subject_id,actor_id,expected_auth_version,expected_request_revision) values($1,$2,$3,$4,0,1)',
     [operation,request,f.owner,operator]);
+   await tx.query('insert into app_admin.account_erasure_media(operation_id,media_id) select $1,media_id from app.media_retirement_completions where media_id=$2',
+    [operation,mediaId]);
    assert.equal((await tx.query('delete from app.users where id=$1',[f.owner])).rowCount,1);
   });
   await assert.rejects(erase(),{code:'BL003'});
@@ -172,6 +174,7 @@ export async function testMediaRetirementRuntime(suite,{admin,holder,clock,day,b
   await assert.rejects(fs.stat(pathToPhoto),{code:'ENOENT'});
   await assert.rejects(admin.query('delete from app.users where id=$1',[f.owner]),{code:'BL003'});
   await assert.rejects(erase('WRONG_CASE_REFERENCE'),{code:'BL003'});
+  await assert.rejects(erase(reference,f.db,other.pending.id),{code:'BL003'});
   await assert.rejects(admin.query('update app.media_objects set owner_id=null where id=$1',[photo]),{code:'BL003'});
   await assert.rejects(admin.query("insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256) values(null,$1,'image/webp',1,1,$2,$3)",
    [randomUUID(),image.size,image.sha256]),{code:'23514'});
