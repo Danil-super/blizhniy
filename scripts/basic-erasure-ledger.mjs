@@ -1,6 +1,6 @@
 // Offline synthetic restore candidate; signed evidence never authorizes reopening the site.
 import assert from'node:assert/strict';import{createHash,createHmac,timingSafeEqual}from'node:crypto';import{createRequire}from'node:module';
-import{assertBasicErasureProfile,eraseAccountWithRetiredMedia,eraseBasicAccount,parseBasicErasure}from'./basic-account-erasure.mjs';
+import{assertBasicErasureProfile,detachRestoredDraftPhotos,eraseAccountWithRetiredMedia,eraseBasicAccount,parseBasicErasure}from'./basic-account-erasure.mjs';
 const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
 const{deletionId,deletionObject}=load('account-deletion-contract'),{hashSessionToken}=load('identity'),scope='blizhniy-basic-erasure-test',maximumBytes=2097152;
 const hex=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
@@ -75,8 +75,15 @@ export class ErasureRestoreIncompleteError extends Error{
  constructor(confirmed){super('Erasure replay incomplete; restored site must stay closed');this.name='ErasureRestoreIncompleteError';this.confirmedOperations=confirmed;this.reopenAuthorized=false;}
 }
 export async function reapplyBasicErasureLedger(db,document,key,checkpoint,actorSessions,containerId){
+ return processBasicErasureLedger(db,document,key,checkpoint,actorSessions,containerId,false);
+}
+export async function prepareBasicErasurePhotos(db,document,key,checkpoint,actorSessions,containerId){
+ return processBasicErasureLedger(db,document,key,checkpoint,actorSessions,containerId,true);
+}
+async function processBasicErasureLedger(db,document,key,checkpoint,actorSessions,containerId,preparePhotos){
  try{
  assert.equal(process.env.NODE_ENV,'test');const body=verifyBasicErasureLedger(document,key,checkpoint);assert.ok(actorSessions instanceof Map);
+ if(preparePhotos)assert.equal(body.version,2);
  const sessions=new Map();for(const row of body.records){const token=actorSessions.get(row.actorId);assert.ok(hex(token));sessions.set(row.actorId,token);}
  await db.readTransaction(async tx=>{
   const context=(await tx.query("select current_database() as database,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation")).rows[0];
@@ -89,11 +96,13 @@ export async function reapplyBasicErasureLedger(db,document,key,checkpoint,actor
    assert.equal(row?.allowed,true);
   }
  },{timeoutMs:5000});
- const receipts=[],erase=body.version===2?eraseAccountWithRetiredMedia:eraseBasicAccount;
- for(const row of body.records){
-  try{receipts.push(await erase(db,sessions.get(row.actorId),row.actorId,{operationId:row.operationId,requestId:row.requestId,expectedOwnerId:row.subjectId,expectedAuthVersion:row.authVersion,expectedRevision:row.requestRevision},containerId,row.mediaIds));}
+ const records=preparePhotos?body.records.filter(row=>row.mediaIds.length):body.records,receipts=[];
+ const apply=preparePhotos?detachRestoredDraftPhotos:body.version===2?eraseAccountWithRetiredMedia:eraseBasicAccount;
+ for(const row of records){
+  try{receipts.push(await apply(db,sessions.get(row.actorId),row.actorId,{operationId:row.operationId,requestId:row.requestId,expectedOwnerId:row.subjectId,expectedAuthVersion:row.authVersion,expectedRevision:row.requestRevision},containerId,row.mediaIds));}
   catch{throw new ErasureRestoreIncompleteError(receipts.length);}
  }
+ if(preparePhotos)return{listedOperations:records.length,photos:receipts,reopenAuthorized:false};
  return{listedOperations:body.records.length,receipts,reopenAuthorized:false};
  }catch(error){if(error instanceof ErasureRestoreIncompleteError)throw error;throw new ErasureRestoreIncompleteError(0);}
 }

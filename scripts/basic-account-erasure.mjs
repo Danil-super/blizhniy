@@ -15,6 +15,8 @@ const erasable=new Set(['app.users.id','app.cabinet_profiles.user_id','app.sessi
  'app.registration_legal.user_id','app.telegram_phone_attempts.user_id','app.telegram_phone_bindings.user_id','app.mail_outbox.user_id','app.notifications.user_id',
  'app.account_deletion_requests.user_id']);
 const draftTables=new Set(['listings','work_publications','service_publications']);
+const draftPhotoLinks=[['listings','listing_photos','listing_id'],['work_publications','work_publication_photos','publication_id'],
+ ['service_publications','service_publication_photos','publication_id']];
 const mediaMigration='0068-erasure-retired-media.sql';
 function receipt(row,input){return{requestId:input.requestId,operationId:input.operationId,subjectId:input.expectedOwnerId,
  requestRevision:row.revision,completedAt:row.completedAt,primaryAccountErased:true,completeErasure:false,retained:['pseudonymous-case-audit','erasure-receipt','external-copies-unverified']};}
@@ -86,7 +88,12 @@ export async function eraseAccountWithRetiredMedia(db,token,expectedAdminId,valu
  return eraseAccount(db,token,expectedAdminId,value,containerId,true,expectedMediaIds);
 }
 
-async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaErasure,expectedMediaIds){
+export async function detachRestoredDraftPhotos(db,token,expectedAdminId,value,containerId,expectedMediaIds){
+ assert.ok(Array.isArray(expectedMediaIds)&&expectedMediaIds.length>0&&expectedMediaIds.length<=100);
+ return eraseAccount(db,token,expectedAdminId,value,containerId,true,expectedMediaIds,true);
+}
+
+async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaErasure,expectedMediaIds,preparePhotos=false){
  const input=parseBasicErasure(value),adminId=deletionId(expectedAdminId);assert.equal(process.env.NODE_ENV,'test');
  if(adminId===input.expectedOwnerId)throw new DeletionAccessError();
  assert.match(containerId,/^[a-f0-9]{64}$/);
@@ -124,6 +131,7 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
      const linked=await verifiedRetiredMedia(tx,containerId,{operationId:input.operationId});
      if(expectedMediaIds!==undefined)assert.deepEqual(linked,expectedMediaIds);
     }
+    if(preparePhotos)return{operationId:input.operationId,detachedLinks:0};
     return receipt(row,input);
    }
    if(saved.length)throw new DeletionConflictError();
@@ -140,9 +148,27 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
     ) owned limit 101`,[subject.id])).rows;
    const draftIds=drafts.map(draft=>draft.id);
    if(drafts.length>100||drafts.some(draft=>draft.eligible!==true||draft.id===subject.id)||new Set(draftIds).size!==drafts.length)throw new BasicErasureReviewRequired();
-   const retired=mediaErasure?await verifiedRetiredMedia(tx,containerId,{subjectId:subject.id}):[];
-   if(expectedMediaIds!==undefined)assert.deepEqual(retired,expectedMediaIds);
-   const historicalDraftPhotos=draftIds.length>0&&retired.length>0;
+   let mediaIds=[],detachedLinks=0;
+   if(preparePhotos){
+    const owned=await tx.query('select id from app.media_objects where owner_id=$1 order by id limit 101 for no key update',[subject.id]);
+    mediaIds=owned.rows.map(media=>media.id);
+    assert.deepEqual(mediaIds,expectedMediaIds);
+    if(draftIds.length)for(const [draft,table,parent] of draftPhotoLinks){
+     const result=await tx.query(`delete from app.${table} p using app.${draft} d
+      where p.${parent}=d.id and d.author_id=$1 and d.id=any($2::uuid[]) and p.media_id=any($3::uuid[])`,[subject.id,draftIds,mediaIds]);
+     detachedLinks+=result.rowCount;
+    }
+    const active=(await tx.query(`select exists(select 1 from app.media_reference_events
+     where media_id=any($1::uuid[]) and event_type in ('history','observed_history')) or exists(
+      select 1 from (select distinct on (media_id,source,resource_id) event_type from app.media_reference_events
+       where media_id=any($1::uuid[]) and event_type in ('attached','detached','observed_attached')
+       order by media_id,source,resource_id,event_id desc) latest where event_type<>'detached') as blocked`,[mediaIds])).rows[0];
+    if(active?.blocked!==false)throw new BasicErasureReviewRequired();
+   }else if(mediaErasure){
+    mediaIds=await verifiedRetiredMedia(tx,containerId,{subjectId:subject.id});
+    if(expectedMediaIds!==undefined)assert.deepEqual(mediaIds,expectedMediaIds);
+   }
+   const historicalDraftPhotos=draftIds.length>0&&mediaIds.length>0;
    const columns=(await tx.query(`select n.nspname as schema,c.relname as relation,a.attname as column
     from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
     where n.nspname in ('app','app_admin','local_primary') and c.relkind in ('r','p') and a.attnum>0 and not a.attisdropped and a.atttypid='uuid'::regtype
@@ -169,15 +195,16 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
    });
    // Draft references need review even where the database has no foreign key.
    const identifiers=draftIds.length?[subject.id,draftIds]:[subject.id];
-   if(historicalDraftPhotos)identifiers.push(retired);
+   if(historicalDraftPhotos)identifiers.push(mediaIds);
    if((await tx.query(`select (${predicates.join(' or ')}) as blocked`,identifiers)).rows[0]?.blocked!==false)throw new BasicErasureReviewRequired();
+   if(preparePhotos)return{operationId:input.operationId,detachedLinks};
    await tx.query("select set_config('blizhniy.deletion_actor',$1,true)",[admin.id]);
    if(row.status==='requested')await tx.query("update app.account_deletion_requests set status='in_review' where id=$1",[row.id]);
    await tx.query("update app.account_deletion_requests set status='resolved',resolution='partly_retained',case_reference=$2 where id=$1",[row.id,reference]);
    await tx.query('insert into app_admin.basic_account_erasures(operation_id,request_id,subject_id,actor_id,expected_auth_version,expected_request_revision) values($1,$2,$3,$4,$5,$6)',[input.operationId,row.id,subject.id,admin.id,input.expectedAuthVersion,input.expectedRevision]);
-   if(retired.length)await tx.query('insert into app_admin.account_erasure_media(operation_id,media_id) select $1,unnest($2::uuid[])',[input.operationId,retired]);
+   if(mediaIds.length)await tx.query('insert into app_admin.account_erasure_media(operation_id,media_id) select $1,unnest($2::uuid[])',[input.operationId,mediaIds]);
    if((await tx.query("delete from app.users where id=$1 and role='user' and auth_version=$2 returning id",[subject.id,input.expectedAuthVersion])).rowCount!==1)throw new DeletionConflictError();
-   if(retired.length)assert.equal((await tx.query('select id from app.media_objects where id=any($1::uuid[]) and owner_id is null',[retired])).rowCount,retired.length);
+   if(mediaIds.length)assert.equal((await tx.query('select id from app.media_objects where id=any($1::uuid[]) and owner_id is null',[mediaIds])).rowCount,mediaIds.length);
    if(draftIds.length)assert.equal((await tx.query(`select 1 from app.listings where author_id=$1
      union all select 1 from app.work_publications where author_id=$1
      union all select 1 from app.service_publications where author_id=$1 limit 1`,[subject.id])).rowCount,0);

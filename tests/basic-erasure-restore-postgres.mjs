@@ -3,6 +3,7 @@ import assert from'node:assert/strict';import{test}from'node:test';import{random
 import{lstat,mkdir,rm,writeFile}from'node:fs/promises';import{tmpdir}from'node:os';
 import{localPrimaryImage}from'../scripts/local-primary-config.mjs';import{stateDirectory}from'../scripts/local-primary-fixture.mjs';import{getUserAccessRolePlan}from'../scripts/user-access-role.mjs';import{getAdminUserAccessMigration}from'../scripts/admin-user-access-release.mjs';import{getAdminTariffMigration}from'../scripts/admin-tariff-release.mjs';
 import{eraseAccountWithRetiredMedia,eraseBasicAccount,readBasicErasureSchema}from'../scripts/basic-account-erasure.mjs';import{exportBasicErasureLedger,reapplyBasicErasureLedger,sealBasicErasureLedger,verifyBasicErasureLedger}from'../scripts/basic-erasure-ledger.mjs';
+import{prepareBasicErasurePhotos}from'../scripts/basic-erasure-ledger.mjs';
 import{restoreBasicErasure63Checks}from'../scripts/restore-basic-erasure63-checks.mjs';
 import{loadMediaModule}from'./media-module.mjs';import{fileWorkerModule}from'./media-file-worker-module.mjs';
 const run=promisify(execFile),load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,database='blizhniy_erasure_test',sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -114,17 +115,32 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    const media=await storage(source),photoBytes=Buffer.from('524946460400000057454250','hex');
    const image={mimeType:'image/webp',width:1,height:1,size:photoBytes.length,sha256:sha(photoBytes)};
    const clock=(await source.owner.query("select pg_get_functiondef('app.media_retention_clock()'::regprocedure) ddl")).rows[0].ddl;
-   let photo,draftId;
+   const atAge=days=>"create or replace function app.media_retention_clock() returns timestamptz language sql volatile set search_path=pg_catalog,pg_temp as $$select pg_catalog.clock_timestamp()+interval '"+days+" days'$$";
+   let photo,draftId,workId,serviceId;
    try{
-    await source.owner.query("create or replace function app.media_retention_clock() returns timestamptz language sql volatile set search_path=pg_catalog,pg_temp as $$select pg_catalog.clock_timestamp()-interval '8 days'$$");
+    await source.owner.query(atAge(-8));
     photo=(await media.repo.reserve(target.token,randomUUID(),image)).id;
     await new LocalMediaWriter(media.repo,media.worker).write(target.token,photo,{...image,bytes:photoBytes});
     draftId=(await source.owner.query("insert into app.listings(author_id,listing_type) values($1,'sell') returning id",[target.id])).rows[0].id;
     await source.owner.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[draftId,photo]);
+    workId=(await source.owner.query("insert into app.work_publications(author_id,kind,creation_key,form) values($1,'workRequest',$2,$3) returning id",
+     [target.id,randomUUID(),load('work-publication-contract').parseWorkPublicationForm('workRequest',{title:'Синтетический заказ'})])).rows[0].id;
+    serviceId=(await source.owner.query("insert into app.service_publications(author_id,kind,creation_key,form) values($1,'specialist',$2,$3) returning id",
+     [target.id,randomUUID(),load('service-publication-contract').parseServicePublicationForm('specialist',{title:'Синтетическая анкета'})])).rows[0].id;
+    await source.owner.query('insert into app.work_publication_photos(publication_id,media_id,position) values($1,$2,0)',[workId,photo]);
+    await source.owner.query('insert into app.service_publication_photos(publication_id,media_id,position) values($1,$2,0)',[serviceId,photo]);
+   }finally{await source.owner.query(clock);}
+   const backup=()=>docker(['exec',source.id,'pg_dump','--username=postgres','--format=custom','--no-owner',database],{encoding:'buffer'});
+   const attachedArchive=await backup();
+   await durable('attached-photo-before-erasure.dump',attachedArchive);
+   try{
+    await source.owner.query(atAge(-8));
     await source.owner.query('delete from app.listing_photos where listing_id=$1 and media_id=$2',[draftId,photo]);
+    await source.owner.query('delete from app.work_publication_photos where publication_id=$1 and media_id=$2',[workId,photo]);
+    await source.owner.query('delete from app.service_publication_photos where publication_id=$1 and media_id=$2',[serviceId,photo]);
    }finally{await source.owner.query(clock);}
    const archivedPhoto=await readFile(join(media.root,photo+'.webp'));
-   const archive=await docker(['exec',source.id,'pg_dump','--username=postgres','--format=custom','--no-owner',database],{encoding:'buffer'});
+   const archive=await backup();
    await durable('before-photo-erasure.dump',archive);await durable('before-photo-erasure.webp',archivedPhoto);
    const addonName='0068-erasure-retired-media.sql',addon=await readFile(new URL('../database/candidates/'+addonName,import.meta.url));
    async function addMediaSchema(fixture){
@@ -139,11 +155,15 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    assert.deepEqual(verified.records.at(-1).mediaIds,[photo]);
    await durable('ledger-photo.json',signed.document);await durable('checkpoint-photo.json',JSON.stringify(signed.checkpoint));
 
-   const restored=await fixture();
-   await restored.owner.query('create role blizhniy_runtime nologin');
-   await docker(['cp',join(directory,'before-photo-erasure.dump'),restored.id+':/tmp/owned-before.dump']);
-   await docker(['exec',restored.id,'pg_restore','--username=postgres','--dbname='+database,'--single-transaction','--exit-on-error','--no-owner','/tmp/owned-before.dump']);
-   await restoreBasicErasure63Checks(restored.db);await addMediaSchema(restored);
+   async function restore(file){
+    const clone=await fixture();
+    await clone.owner.query('create role blizhniy_runtime nologin');
+    await docker(['cp',join(directory,file),clone.id+':/tmp/owned-before.dump']);
+    await docker(['exec',clone.id,'pg_restore','--username=postgres','--dbname='+database,'--single-transaction','--exit-on-error','--no-owner','/tmp/owned-before.dump']);
+    await restoreBasicErasure63Checks(clone.db);await addMediaSchema(clone);
+    return clone;
+   }
+   const restored=await restore('before-photo-erasure.dump');
    const restoredMedia=await storage(restored),restoredPath=join(restoredMedia.root,photo+'.webp');
    await writeFile(restoredPath,await readFile(join(directory,'before-photo-erasure.webp')),{mode:0o600,flag:'wx'});
    assert.deepEqual((await restoredMedia.repo.readOwned(target.token,photo)).bytes,archivedPhoto);
@@ -164,6 +184,62 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    assert.equal((await restored.owner.query('select id from app.listings where id=$1',[draftId])).rowCount,0);
    await assert.rejects(readFile(restoredPath),{code:'ENOENT'});
    report.signedPhotoReplay={backupSha256:sha(archive),verifiedArchivedPhotos:1,confirmedOperations:4,rejectsDifferentPhotoSet:true};
+
+   const attached=await restore('attached-photo-before-erasure.dump'),attachedStorage=await storage(attached);
+   const attachedPath=join(attachedStorage.root,photo+'.webp');
+   await writeFile(attachedPath,await readFile(join(directory,'before-photo-erasure.webp')),{mode:0o600,flag:'wx'});
+   const prepare=(document=signed.document,checkpoint=signed.checkpoint)=>prepareBasicErasurePhotos(attached.db,document,key,checkpoint,actors,attached.id);
+   const preparedReplay=()=>reapplyBasicErasureLedger(attached.db,signed.document,key,signed.checkpoint,actors,attached.id);
+   const references=async()=>(await attached.owner.query(`select
+    (select count(*)::int from app.listing_photos where media_id=$1)+
+    (select count(*)::int from app.work_publication_photos where media_id=$1)+
+    (select count(*)::int from app.service_publication_photos where media_id=$1) as n`,[photo])).rows[0].n;
+   assert.equal(await references(),3);
+   const unmatched=sealBasicErasureLedger(verified.records.map(row=>row.operationId===value.operationId?{...row,mediaIds:[randomUUID()]}:row),key,sourceId,2);
+   await assert.rejects(prepare(unmatched,{sourceId,sha256:sha(unmatched)}),{name:'ErasureRestoreIncompleteError'});
+   await attached.owner.query("update app.listings set status='pending_payment' where id=$1",[draftId]);
+   await assert.rejects(prepare(),{name:'ErasureRestoreIncompleteError'});
+   assert.equal(await references(),3);
+   await attached.owner.query("update app.listings set status='draft' where id=$1",[draftId]);
+   const peerDraft=(await attached.owner.query("insert into app.listings(author_id,listing_type) values($1,'sell') returning id",[untouched.id])).rows[0].id;
+   await attached.owner.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[peerDraft,photo]);
+   await assert.rejects(prepare(),{name:'ErasureRestoreIncompleteError'});
+   assert.equal(await references(),4);
+   await attached.owner.query('delete from app.listing_photos where listing_id=$1 and media_id=$2',[peerDraft,photo]);
+   const withPaymentHistory={
+    readTransaction:attached.db.readTransaction.bind(attached.db),
+    transaction:work=>attached.db.transaction(async tx=>{
+     await tx.query("insert into app.media_reference_events(media_id,source,resource_id,event_type) values($1,'payment_checkout_intents',$2,'history')",
+      [photo,randomUUID()]);
+     return work(tx);
+    }),
+   };
+   await assert.rejects(prepareBasicErasurePhotos(withPaymentHistory,signed.document,key,signed.checkpoint,actors,attached.id),
+    {name:'ErasureRestoreIncompleteError'});
+   assert.equal(await references(),3);
+   const prepared=await prepare();
+   assert.deepEqual(prepared,{listedOperations:1,photos:[{operationId:value.operationId,detachedLinks:3}],reopenAuthorized:false});
+   assert.equal(await references(),0);
+   assert.deepEqual(await readFile(attachedPath),archivedPhoto);
+   assert.equal((await attached.owner.query('select 1 from app.users where id=$1',[target.id])).rowCount,1);
+   assert.equal((await attached.owner.query('select 1 from app_admin.basic_account_erasures where operation_id=$1',[value.operationId])).rowCount,0);
+   assert.equal((await prepare()).photos[0].detachedLinks,0);
+   await assert.rejects(preparedReplay(),incomplete);
+   const cleanup=new LocalMediaRetirement(attached.db,attachedStorage.worker);
+   await assert.rejects(cleanup.retire(photo),{code:'MEDIA_RETIREMENT_DENIED'});
+   try{
+    await attached.owner.query(atAge(8));
+    await cleanup.retire(photo);
+   }finally{await attached.owner.query(clock);}
+   const resultFromAttached=await preparedReplay();
+   assert.equal(resultFromAttached.listedOperations,4);assert.equal(resultFromAttached.reopenAuthorized,false);
+   assert.deepEqual(await preparedReplay(),resultFromAttached);
+   assert.equal(await new(load('identity').IdentityStore)(attached.db).resolveSession(target.token),null);
+   assert.equal((await attached.owner.query('select 1 from app.listings where id=$1',[peerDraft])).rowCount,1);
+   assert.equal((await attached.owner.query('select 1 from app.work_publications where id=$1 union all select 1 from app.service_publications where id=$2',[workId,serviceId])).rowCount,0);
+   assert.deepEqual(await prepare(),{listedOperations:1,photos:[{operationId:value.operationId,detachedLinks:0}],reopenAuthorized:false});
+   await assert.rejects(readFile(attachedPath),{code:'ENOENT'});
+   report.signedPhotoReplay.attachedSnapshot={backupSha256:sha(attachedArchive),detachedLinks:3,rejectsPaymentHistory:true,retentionElapsedOnSyntheticClock:true};
   });
   assert.ok(report.signedPhotoReplay);
   await durable('report.json',JSON.stringify(report,null,2));console.log(JSON.stringify({passed:true,backupRestore:true,report:join(directory,'report.json')}));
