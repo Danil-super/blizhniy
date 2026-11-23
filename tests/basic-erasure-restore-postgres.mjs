@@ -171,7 +171,18 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    await addMediaSchema(source);
    await new LocalMediaRetirement(source.db,media.worker).retire(photo);
    await eraseAccountWithRetiredMedia(source.db,admin.token,admin.id,value,source.id);
-   const signed=await exportBasicErasureLedger(source.db,key,sourceId,2);
+   const captureLedger=()=>exportBasicErasureLedger(source.db,key,sourceId,2,source.id);
+   const signed=await captureLedger();
+   const attempt=(await source.owner.query('select id from app.media_write_attempts where media_id=$1',[photo])).rows[0].id;
+   for(const name of [photo+'.webp','.pending-'+attempt]){
+    const restoredFile=join(media.root,name);
+    await writeFile(restoredFile,archivedPhoto,{mode:0o600,flag:'wx'});
+    try{
+     await assert.rejects(captureLedger(),{name:'BasicErasureReviewRequired'});
+     assert.deepEqual(await readFile(restoredFile),archivedPhoto);
+    }finally{await rm(restoredFile);}
+   }
+   assert.deepEqual(await captureLedger(),signed);
    const verified=verifyBasicErasureLedger(signed.document,key,signed.checkpoint);
    assert.deepEqual(verified.records.at(-1).mediaIds,[photo]);
    await durable('ledger-photo.json',signed.document);await durable('checkpoint-photo.json',JSON.stringify(signed.checkpoint));
@@ -185,6 +196,7 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
     return clone;
    }
    const restored=await restore('before-photo-erasure.dump');
+   await assert.rejects(exportBasicErasureLedger(restored.db,key,sourceId,2,source.id),{name:'AssertionError'});
    const restoredMedia=await storage(restored),restoredPath=join(restoredMedia.root,photo+'.webp');
    await writeFile(restoredPath,await readFile(join(directory,'before-photo-erasure.webp')),{mode:0o600,flag:'wx'});
    assert.deepEqual((await restoredMedia.repo.readOwned(target.token,photo)).bytes,archivedPhoto);

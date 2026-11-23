@@ -58,16 +58,18 @@ export async function assertBasicErasureProfile(tx,database,mediaErasure){
  assert.deepEqual(await readBasicErasureSchema(tx),schema);
 }
 
-async function verifiedRetiredMedia(tx,containerId,{subjectId,operationId}){
- const filter=operationId
+export async function verifiedRetiredMedia(tx,containerId,{subjectId,operationId,mediaIds}){
+ const filter=mediaIds?'m.id=any($1::uuid[])':operationId
   ?'m.id in (select media_id from app_admin.account_erasure_media where operation_id=$1)'
   :'m.owner_id=$1';
+ const maximum=mediaIds?.length??100;
  const {rows}=await tx.query(`select m.id,m.owner_id,m.mime_type as "mimeType",m.width,m.height,m.size,m.sha256,
   c.media_id is not null as completed,w.id as "attemptId"
   from app.media_objects m left join app.media_retirement_completions c on c.media_id=m.id
   left join app.media_write_attempts w on w.media_id=m.id
-  where ${filter} order by m.id limit 101`,[operationId??subjectId]);
- if(rows.length>100||rows.some(row=>row.completed!==true||!row.attemptId||row.owner_id!==(subjectId??null)))throw new BasicErasureReviewRequired();
+  where ${filter} order by m.id limit $2`,[mediaIds??operationId??subjectId,maximum+1]);
+ if(rows.length>maximum||mediaIds&&rows.length!==maximum||
+  rows.some(row=>row.completed!==true||!row.attemptId||row.owner_id!==(subjectId??null)))throw new BasicErasureReviewRequired();
  if(!rows.length)return [];
  try{
   const root=join(tmpdir(),'blizhniy-erasure-media-'+containerId);
@@ -93,9 +95,8 @@ export async function detachRestoredDraftPhotos(db,token,expectedAdminId,value,c
  return eraseAccount(db,token,expectedAdminId,value,containerId,true,expectedMediaIds,true);
 }
 
-async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaErasure,expectedMediaIds,preparePhotos=false){
- const input=parseBasicErasure(value),adminId=deletionId(expectedAdminId);assert.equal(process.env.NODE_ENV,'test');
- if(adminId===input.expectedOwnerId)throw new DeletionAccessError();
+export async function inspectBasicErasureFixture(containerId){
+ assert.equal(process.env.NODE_ENV,'test');
  assert.match(containerId,/^[a-f0-9]{64}$/);
  const meta=JSON.parse((await promisify(execFile)('docker',['--host','unix:///var/run/docker.sock','inspect',containerId],{timeout:5000,maxBuffer:1048576,env:{PATH:process.env.PATH,LANG:'C.UTF-8'}})).stdout)[0];
  const fixture=meta.Config?.Labels?.['blizhniy.erasure-test'];assert.match(fixture,/^blizhniy-erasure-[a-f0-9]{12}$/);
@@ -105,11 +106,18 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
  assert.equal(meta.Mounts.length,0);
  const bindings=meta.NetworkSettings.Ports;assert.deepEqual(Object.keys(bindings),['5432/tcp']);assert.equal(bindings['5432/tcp'].length,1);assert.equal(bindings['5432/tcp'][0].HostIp,'127.0.0.1');
  const address=meta.NetworkSettings.Networks.bridge.IPAddress;assert.ok(address);
+ return{fixture,address,port:5432};
+}
+
+async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaErasure,expectedMediaIds,preparePhotos=false){
+ const input=parseBasicErasure(value),adminId=deletionId(expectedAdminId);assert.equal(process.env.NODE_ENV,'test');
+ if(adminId===input.expectedOwnerId)throw new DeletionAccessError();
+ const fixture=await inspectBasicErasureFixture(containerId);
  const reference=`B1_${input.operationId.replaceAll('-','')}_${input.expectedAuthVersion}_${input.expectedRevision}`;
  return db.transaction(async tx=>{
   await tx.query("select set_config('lock_timeout','2s',true),set_config('statement_timeout','3s',true),set_config('transaction_timeout','10s',true)");
   const context=(await tx.query("select current_database() as database,current_user as role,session_user as login,current_setting('session_replication_role') as replication,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation,current_setting('blizhniy.erasure_fixture',true) as fixture,host(inet_server_addr()) as address,inet_server_port() as port")).rows[0];
-  assert.deepEqual(context,{database:'blizhniy_erasure_test',role:'postgres',login:'postgres',replication:'origin',readonly:'off',isolation:'read committed',fixture,address,port:5432});
+  assert.deepEqual(context,{database:'blizhniy_erasure_test',role:'postgres',login:'postgres',replication:'origin',readonly:'off',isolation:'read committed',...fixture});
   const tables=(await tx.query("select n.nspname as schema,c.relname as name from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('app','app_admin','local_primary') and c.relkind='r' and c.relname not in ('sessions','cabinet_profiles','email_confirmations','password_recoveries','registration_legal','telegram_phone_attempts','telegram_phone_bindings','mail_outbox','notifications') order by 1,2")).rows;
   // Confined/offline candidate: fence non-FK writers as well as normal user-locked callers.
   await tx.query('lock table '+tables.map(row=>pg.escapeIdentifier(row.schema)+'.'+pg.escapeIdentifier(row.name)).join(',')+' in share row exclusive mode');

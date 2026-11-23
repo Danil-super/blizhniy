@@ -1,6 +1,6 @@
 // Offline synthetic restore candidate; signed evidence never authorizes reopening the site.
 import assert from'node:assert/strict';import{createHash,createHmac,timingSafeEqual}from'node:crypto';import{createRequire}from'node:module';
-import{assertBasicErasureProfile,detachRestoredDraftPhotos,eraseAccountWithRetiredMedia,eraseBasicAccount,parseBasicErasure}from'./basic-account-erasure.mjs';
+import{assertBasicErasureProfile,detachRestoredDraftPhotos,eraseAccountWithRetiredMedia,eraseBasicAccount,inspectBasicErasureFixture,parseBasicErasure,verifiedRetiredMedia}from'./basic-account-erasure.mjs';
 const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
 const{deletionId,deletionObject}=load('account-deletion-contract'),{hashSessionToken}=load('identity'),scope='blizhniy-basic-erasure-test',maximumBytes=2097152;
 const hex=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
@@ -45,17 +45,17 @@ export function verifyBasicErasureLedger(document,key,trustedCheckpoint){
  const expected=createHmac('sha256',key).update(JSON.stringify(normalized)).digest();assert.ok(timingSafeEqual(expected,Buffer.from(envelope.signature,'hex')));return normalized;
  }catch{throw new ErasureLedgerValidationError();}
 }
-export async function exportBasicErasureLedger(db,key,sourceId,version=1){
+export async function exportBasicErasureLedger(db,key,sourceId,version=1,containerId){
  assert.equal(process.env.NODE_ENV,'test');secret(key);deletionId(sourceId);assert.ok(version===1||version===2);
  const mediaErasure=version===2;
+ const fixture=mediaErasure?await inspectBasicErasureFixture(containerId):null;
+ const fixtureFields=fixture?",current_setting('blizhniy.erasure_fixture',true) as fixture,host(inet_server_addr()) as address,inet_server_port() as port":'';
  return db.readTransaction(async tx=>{
-  const context=(await tx.query("select current_database() as database,current_user as role,session_user as login,current_setting('session_replication_role') as replication,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation")).rows[0];
-  assert.deepEqual(context,{database:'blizhniy_erasure_test',role:'postgres',login:'postgres',replication:'origin',readonly:'on',isolation:'repeatable read'});
+  const context=(await tx.query(`select current_database() as database,current_user as role,session_user as login,current_setting('session_replication_role') as replication,current_setting('transaction_read_only') as readonly,current_setting('transaction_isolation') as isolation${fixtureFields}`)).rows[0];
+  assert.deepEqual(context,{database:'blizhniy_erasure_test',role:'postgres',login:'postgres',replication:'origin',readonly:'on',isolation:'repeatable read',...fixture});
   await assertBasicErasureProfile(tx,context.database,mediaErasure);
   const mediaColumns=mediaErasure?`,
-   array(select em.media_id from app_admin.account_erasure_media em where em.operation_id=e.operation_id order by em.media_id limit 101) as "mediaIds",
-   exists(select 1 from app_admin.account_erasure_media em join app.media_objects m on m.id=em.media_id
-    where em.operation_id=e.operation_id and m.owner_id is not null) as invalid_media`:'';
+   array(select em.media_id from app_admin.account_erasure_media em where em.operation_id=e.operation_id order by em.media_id limit 101) as "mediaIds"`:'';
   const rows=(await tx.query(`select e.operation_id as "operationId",e.request_id as "requestId",e.subject_id as "subjectId",e.actor_id as "actorId",
    e.expected_auth_version::text as "authVersion",e.expected_request_revision::text as "requestRevision",
    to_char(e.completed_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "completedAt",
@@ -63,11 +63,15 @@ export async function exportBasicErasureLedger(db,key,sourceId,version=1){
    (select count(*)::text from app.account_deletion_events a where a.request_id=e.request_id and a.status='requested' and a.actor_id=e.subject_id) as original${mediaColumns}
    from app_admin.basic_account_erasures e left join app.account_deletion_requests r on r.id=e.request_id order by e.operation_id limit 1001`)).rows;
   assert.ok(rows.length<=1000);
-  const records=rows.map(({user_id,status,resolution,case_reference,present,original,invalid_media,...record})=>{
+  const records=rows.map(({user_id,status,resolution,case_reference,present,original,...record})=>{
    assert.ok(user_id===null&&status==='resolved'&&resolution==='partly_retained'&&present===false&&original==='1');
-   if(mediaErasure)assert.equal(invalid_media,false);
+   if(mediaErasure)assert.ok(record.mediaIds.length<=100);
    assert.equal(case_reference,`B1_${record.operationId.replaceAll('-','')}_${record.authVersion}_${record.requestRevision}`);return record;
   });
+  if(mediaErasure){
+   const mediaIds=records.flatMap(record=>record.mediaIds).sort();
+   if(mediaIds.length)assert.deepEqual(await verifiedRetiredMedia(tx,containerId,{mediaIds}),mediaIds);
+  }
   const document=sealBasicErasureLedger(records,key,sourceId,version);return{document,checkpoint:{sourceId,sha256:digest(document)}};
  },{timeoutMs:5000});
 }
