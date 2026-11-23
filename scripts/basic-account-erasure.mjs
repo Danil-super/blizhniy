@@ -37,6 +37,25 @@ export async function readBasicErasureSchema(tx){
  assert.ok(local.length>0&&local.length<1001);return{app,admin,local:{count:local.length,sha256:createHash('sha256').update(JSON.stringify(local)).digest('hex')}};
 }
 
+export async function assertBasicErasureProfile(tx,database,mediaErasure){
+ const plan=getUserAccessRolePlan(database,{tariffs:true});
+ assert.deepEqual((await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows,plan.appJournal);
+ const migration=await readFile(new URL('../database/candidates/0063-basic-account-erasure.sql',import.meta.url));
+ const expected=JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema63.json',import.meta.url),'utf8'));
+ assert.equal(createHash('sha256').update(migration).digest('hex'),expected.migrationSha256);
+ const journal=(await tx.query('select name,sha256 from app_admin.migrations order by name')).rows;
+ const expectedJournal=[...plan.journal,{name:'0063-basic-account-erasure.sql',sha256:expected.migrationSha256}];
+ let schema=expected.schema;
+ if(mediaErasure){
+  const addon=JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema68.json',import.meta.url),'utf8'));
+  const bytes=await readFile(new URL('../database/candidates/'+mediaMigration,import.meta.url));
+  assert.equal(createHash('sha256').update(bytes).digest('hex'),addon.migrationSha256);
+  expectedJournal.push({name:mediaMigration,sha256:addon.migrationSha256});schema=addon.schema;
+ }
+ assert.deepEqual(journal,expectedJournal);
+ assert.deepEqual(await readBasicErasureSchema(tx),schema);
+}
+
 async function verifiedRetiredMedia(tx,containerId,{subjectId,operationId}){
  const filter=operationId
   ?'m.id in (select media_id from app_admin.account_erasure_media where operation_id=$1)'
@@ -63,11 +82,11 @@ export async function eraseBasicAccount(db,token,expectedAdminId,value,container
  return eraseAccount(db,token,expectedAdminId,value,containerId,false);
 }
 
-export async function eraseAccountWithRetiredMedia(db,token,expectedAdminId,value,containerId){
- return eraseAccount(db,token,expectedAdminId,value,containerId,true);
+export async function eraseAccountWithRetiredMedia(db,token,expectedAdminId,value,containerId,expectedMediaIds){
+ return eraseAccount(db,token,expectedAdminId,value,containerId,true,expectedMediaIds);
 }
 
-async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaErasure){
+async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaErasure,expectedMediaIds){
  const input=parseBasicErasure(value),adminId=deletionId(expectedAdminId);assert.equal(process.env.NODE_ENV,'test');
  if(adminId===input.expectedOwnerId)throw new DeletionAccessError();
  assert.match(containerId,/^[a-f0-9]{64}$/);
@@ -87,22 +106,7 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
   const tables=(await tx.query("select n.nspname as schema,c.relname as name from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('app','app_admin','local_primary') and c.relkind='r' and c.relname not in ('sessions','cabinet_profiles','email_confirmations','password_recoveries','registration_legal','telegram_phone_attempts','telegram_phone_bindings','mail_outbox','notifications') order by 1,2")).rows;
   // Confined/offline candidate: fence non-FK writers as well as normal user-locked callers.
   await tx.query('lock table '+tables.map(row=>pg.escapeIdentifier(row.schema)+'.'+pg.escapeIdentifier(row.name)).join(',')+' in share row exclusive mode');
-  const plan=getUserAccessRolePlan(context.database,{tariffs:true});
-  assert.deepEqual((await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows,plan.appJournal);
-  const migration=await readFile(new URL('../database/candidates/0063-basic-account-erasure.sql',import.meta.url));
-  const expected=JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema63.json',import.meta.url),'utf8'));
-  assert.equal(createHash('sha256').update(migration).digest('hex'),expected.migrationSha256);
-  const adminJournal=(await tx.query('select name,sha256 from app_admin.migrations order by name')).rows;
-  const expectedJournal=[...plan.journal,{name:'0063-basic-account-erasure.sql',sha256:expected.migrationSha256}];
-  let schema=expected.schema;
-  if(mediaErasure){
-   const addon=JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema68.json',import.meta.url),'utf8'));
-   const bytes=await readFile(new URL('../database/candidates/'+mediaMigration,import.meta.url));
-   assert.equal(createHash('sha256').update(bytes).digest('hex'),addon.migrationSha256);
-   expectedJournal.push({name:mediaMigration,sha256:addon.migrationSha256});schema=addon.schema;
-  }
-  assert.deepEqual(adminJournal,expectedJournal);
-  assert.deepEqual(await readBasicErasureSchema(tx),schema);
+  await assertBasicErasureProfile(tx,context.database,mediaErasure);
   return withAppSessionTransaction({transaction:work=>work(tx)},token,async(_tx,admin)=>{
    if(admin.id!==adminId)throw new DeletionAccessError();
    // User -> request lock order also fences ordinary create/edit/checkout transactions.
@@ -116,7 +120,10 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
    const original=(await tx.query("select actor_id from app.account_deletion_events where request_id=$1 and status='requested' order by created_at,id",[input.requestId])).rows;
    if(original.length!==1||original[0].actor_id!==input.expectedOwnerId)throw new DeletionConflictError();
    if(saved.length&&!subject&&row.user_id===null&&row.status==='resolved'&&row.resolution==='partly_retained'&&row.case_reference===reference){
-    if(mediaErasure)await verifiedRetiredMedia(tx,containerId,{operationId:input.operationId});
+    if(mediaErasure){
+     const linked=await verifiedRetiredMedia(tx,containerId,{operationId:input.operationId});
+     if(expectedMediaIds!==undefined)assert.deepEqual(linked,expectedMediaIds);
+    }
     return receipt(row,input);
    }
    if(saved.length)throw new DeletionConflictError();
@@ -134,6 +141,7 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
    const draftIds=drafts.map(draft=>draft.id);
    if(drafts.length>100||drafts.some(draft=>draft.eligible!==true||draft.id===subject.id)||new Set(draftIds).size!==drafts.length)throw new BasicErasureReviewRequired();
    const retired=mediaErasure?await verifiedRetiredMedia(tx,containerId,{subjectId:subject.id}):[];
+   if(expectedMediaIds!==undefined)assert.deepEqual(retired,expectedMediaIds);
    const historicalDraftPhotos=draftIds.length>0&&retired.length>0;
    const columns=(await tx.query(`select n.nspname as schema,c.relname as relation,a.attname as column
     from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace

@@ -19,6 +19,17 @@ test('ledger rejects duplicate identities, invalid counts/versions, unknown fiel
  const a=record();for(const rows of [Array(1),[a,a],[a,{...record(),subjectId:a.subjectId}],[a,{...record(),requestId:a.requestId}],[{...a,email:'private@example.invalid'}],[{...a,authVersion:'01'}],[{...a,completedAt:'yesterday'}],Array.from({length:1001},record)])assert.throws(()=>sealBasicErasureLedger(rows,key,sourceId));
  assert.throws(()=>sealBasicErasureLedger([a],Buffer.alloc(1),sourceId));assert.throws(()=>verifyBasicErasureLedger('x'.repeat(2097153),key,checkpoint('x')));
 });
+test('version 2 signs the exact set of retired photos for each operation',()=>{
+ const mediaIds=[randomUUID(),randomUUID()].sort(),row={...record(),mediaIds:[...mediaIds].reverse()};
+ const sealed=sealBasicErasureLedger([row],key,sourceId,2),head=checkpoint(sealed);
+ assert.deepEqual(verifyBasicErasureLedger(sealed,key,head).records,[{...row,mediaIds}]);
+ const forged=sealed.replace(mediaIds[0],randomUUID());
+ assert.throws(()=>verifyBasicErasureLedger(forged,key,checkpoint(forged)));
+ for(const records of [[{...row,mediaIds:[mediaIds[0],mediaIds[0]]}],[row,{...record(),mediaIds}],[record()]]){
+  assert.throws(()=>sealBasicErasureLedger(records,key,sourceId,2));
+ }
+ assert.throws(()=>sealBasicErasureLedger([row],key,sourceId));
+});
 test('replay authenticates the entire ledger and all actor sessions before opening the database',async()=>{
  let touched=false;const db={transaction:async()=>{touched=true;throw Error('Do not connect');}},row=record(),sealed=sealBasicErasureLedger([row],key,sourceId),old=process.env.NODE_ENV;process.env.NODE_ENV='test';
  try{await assert.rejects(reapplyBasicErasureLedger(db,sealed,key,checkpoint(sealed),new Map(),'0'.repeat(64)));assert.equal(touched,false);await assert.rejects(reapplyBasicErasureLedger(db,sealed,key,{...checkpoint(sealed),sha256:'0'.repeat(64)},new Map([[row.actorId,'a'.repeat(64)]]),'0'.repeat(64)));assert.equal(touched,false);}finally{if(old===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=old;}
