@@ -85,10 +85,15 @@ test('basic erasure is atomic, replayable and refuses domain history on disposab
    };
    const own=await add(target),foreign=await add(other),value=input(target);
    const outgoing=await application(target,foreign.work,own.service);
-   const unrelated=await application(await person(),foreign.work);
+   const unrelatedOwner=await person(),unrelated=await application(unrelatedOwner,foreign.work);
+   for(const [applicant,id] of [[target,outgoing],[unrelatedOwner,unrelated]])await db.transaction(async tx=>{
+    await tx.query("select set_config('blizhniy.application_session',$1,true)",[hash(applicant.token)]);
+    await tx.query('insert into app.application_withdrawals(application_id,owner_id,withdrawn_revision) values($1,$2,1)',[id,applicant.id]);
+   });
    const exported=await readAccountExport(db,target.token,target.id);
    for(const [group,key] of [['listings','listing'],['work','work'],['services','service']])assert.deepEqual(exported[group].map(row=>row.id),[own[key]]);
    assert.deepEqual(exported.applications.map(row=>row.id),[outgoing]);
+   assert.deepEqual(exported.applicationWithdrawals.map(row=>row.application_id),[outgoing]);
    const result=await erase(value);
    assert.equal(await exists(target),0);assert.equal(await exists(other),1);
    await assert.rejects(readAccountExport(db,target.token,target.id),{name:'DeletionAccessError'});
@@ -96,6 +101,7 @@ test('basic erasure is atomic, replayable and refuses domain history on disposab
     assert.deepEqual((await owner.query('select id from app.'+table+' where id=any($1::uuid[])',[[own[key],foreign[key]]])).rows,[{id:foreign[key]}]);
    }
    assert.deepEqual((await owner.query('select id from app.applications where id=any($1::uuid[])',[[outgoing,unrelated]])).rows,[{id:unrelated}]);
+   assert.deepEqual((await owner.query('select application_id from app.application_withdrawals where application_id=any($1::uuid[])',[[outgoing,unrelated]])).rows,[{application_id:unrelated}]);
    assert.deepEqual(await erase(value),result);
   });
   await suite.test('delivered applications, payment intents and another applicant’s references keep deletion cases open',async()=>{
@@ -104,6 +110,10 @@ test('basic erasure is atomic, replayable and refuses domain history on disposab
    const work=(await owner.query("insert into app.work_publications(author_id,kind,creation_key,form) values($1,'workRequest',$2,$3) returning id",[peer.id,randomUUID(),form])).rows[0].id;
    const delivered=await application(paid,work),draft=await application(withIntent,work);
    await owner.query("update app.applications set status='sent',is_paid=true,sent_at=clock_timestamp() where id=$1",[delivered]);
+   await db.transaction(async tx=>{
+    await tx.query("select set_config('blizhniy.application_session',$1,true)",[hash(withIntent.token)]);
+    await tx.query('insert into app.application_withdrawals(application_id,owner_id,withdrawn_revision) values($1,$2,1)',[draft,withIntent.id]);
+   });
    const id=randomUUID(),body=JSON.stringify({amount:{value:'99.00',currency:'RUB'},capture:true,
     confirmation:{type:'redirect',return_url:'https://example.invalid/'},metadata:{localPaymentId:id,targetId:draft,targetType:'application',tariffId:'job-response'}});
    await db.transaction(tx=>new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db).persistInTransaction(tx,{id,ownerId:peer.id,targetId:draft,
@@ -118,6 +128,7 @@ test('basic erasure is atomic, replayable and refuses domain history on disposab
     assert.equal(await events(target),1);
    }
    assert.equal((await owner.query('select id from app.applications where id=any($1::uuid[])',[[delivered,draft,foreign]])).rowCount,3);
+   assert.equal((await owner.query('select application_id from app.application_withdrawals where application_id=$1',[draft])).rowCount,1);
   });
   await suite.test('administrator, non-draft publication, immutable payment identity and unknown mail require review',async()=>{
    await assert.rejects(erase(input(await person('admin'))),{name:'BasicErasureReviewRequired'});

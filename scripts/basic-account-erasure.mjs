@@ -184,9 +184,11 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
     const field=`${row.schema}.${row.relation}.${row.column}`;
     const ownRequestAudit=row.schema==='app'&&row.relation==='account_deletion_events'&&row.column==='actor_id'
      ?" and not(t.status='requested' and t.request_id in(select id from app.account_deletion_requests where user_id=$1))":'';
+    const ownWithdrawal=(field==='app.application_withdrawals.owner_id'||field==='app.application_withdrawals.application_id')
+     ?' and not(t.owner_id=$1 and exists(select 1 from app.applications a where a.id=t.application_id and a.applicant_id=$1))':'';
     const conditions=[];
     if(!erasable.has(field)&&!(draftTable&&row.column==='author_id')&&!(mediaErasure&&field==='app.media_objects.owner_id'))
-     conditions.push(`(t.${column}=$1${ownRequestAudit})`);
+     conditions.push(`(t.${column}=$1${ownRequestAudit}${ownWithdrawal})`);
     if(relatedIds.length){
      const ownDraft=draftTable&&row.column==='id'?' and t.author_id<>$1':'';
      const ownOutgoing=(field==='app.applications.id'||field==='app.applications.specialist_publication_id')?' and t.applicant_id<>$1':'';
@@ -194,7 +196,7 @@ async function eraseAccount(db,token,expectedAdminId,value,containerId,mediaEras
       ` and not(t.media_id=any($3::uuid[]) and t.resource_id=any($4::uuid[])
        and t.source in ('listing_photos','work_publication_photos','service_publication_photos','listings','work_publications','service_publications')
        and t.event_type in ('attached','detached','observed_attached'))`:'';
-     conditions.push(`(t.${column}=any($2::uuid[])${ownDraft}${ownOutgoing}${retiredDraftObservation})`);
+     conditions.push(`(t.${column}=any($2::uuid[])${ownDraft}${ownOutgoing}${ownWithdrawal}${retiredDraftObservation})`);
     }
     return conditions.length?[`exists(select 1 from ${table} t where ${conditions.join(' or ')})`]:[];
    });
