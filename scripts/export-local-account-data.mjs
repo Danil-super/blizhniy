@@ -35,8 +35,14 @@ const records={
   guests,total::text,status,revision::text,created_at,updated_at,decided_at,starts_at,expires_at,
   case when cancelled_by=$1 then cancellation_reason end as cancellation_reason
   from app.booking_requests where guest_id=$1 or host_id=$1 order by created_at,id`,
- payments:`select i.id,i.target_type,i.target_id,i.tariff_id,i.amount::text,i.duration_days,i.is_test,i.created_at,o.status
+ bookingEvents:`select e.booking_id,e.revision::text,e.status,e.actor_id=$1 as actor_is_owner,
+  case when e.actor_id=$1 then e.reason end as reason,e.origin,e.created_at
+  from app.booking_events e join app.booking_requests b on b.id=e.booking_id
+  where b.guest_id=$1 or b.host_id=$1 order by e.booking_id,e.revision`,
+ payments:`select i.id,i.target_type,i.target_id,i.tariff_id,i.amount::text,i.duration_days,i.is_test,i.created_at,o.status,
+  v.status as verification_status,v.captured_at,f.fulfilled_at
   from app.payment_checkout_intents i left join app.payment_orders o on o.id=i.id and o.owner_id=i.owner_id
+  left join app.payment_verifications v on v.intent_id=o.id left join app.payment_fulfillments f on f.intent_id=v.intent_id
   where i.owner_id=$1 order by i.created_at,i.id`,
  notifications:`select id,category,tone,title,body,action_href,read_at,created_at from app.notifications
   where user_id=$1 order by created_at,id`,
@@ -76,8 +82,16 @@ export async function readAccountExport(db,token,confirmedOwnerId){
   const result={version:1,snapshot:account.snapshot,account:{id:account.id,email:account.email,isBlocked:account.isBlocked,
    emailVerifiedAt:account.email_verified_at,createdAt:account.created_at},profile};
   const optional=(await tx.query(`select to_regclass('app.payment_refund_reservations') is not null as refunds,
-    to_regclass('app.media_retirement_requests') is not null as media_retirement`)).rows[0];
+    to_regclass('app.media_retirement_requests') is not null as media_retirement,
+    to_regclass('app.application_contact_views') is not null as contact_views,
+    to_regclass('app.application_selection_events') is not null as selections`)).rows[0];
   const queries={...records};
+  if(optional.contact_views)queries.applicationContactViews=`select v.application_id,v.evidence,v.recorded_at
+    from app.application_contact_views v join app.applications a on a.id=v.application_id
+    where v.recipient_id=$1 or a.applicant_id=$1 order by v.recorded_at,v.application_id,v.evidence`;
+  if(optional.selections)queries.applicationSelections=`select e.application_id,e.selected_at
+    from app.application_selection_events e join app.applications a on a.id=e.application_id
+    where e.recipient_id=$1 or a.applicant_id=$1 order by e.selected_at,e.application_id`;
   if(optional.refunds)queries.refunds=`select r.id,r.payment_intent_id,r.amount::text,r.created_at,
     (select o.status from app.payment_refund_observations o where o.operation_id=r.id order by o.observed_at desc,o.status limit 1) as status
     from app.payment_refund_reservations r join app.payment_checkout_intents i on i.id=r.payment_intent_id
@@ -102,6 +116,25 @@ export async function readAccountExport(db,token,confirmedOwnerId){
  },{timeoutMs:5000});
 }
 
+export async function writeAccountExportFiles(data,directory,mediaRoot,maximumBytes=Infinity){
+ assert.equal(process.env.NODE_ENV,'test');
+ const retired=new Set(data.mediaRetirement?.map(row=>row.media_id));
+ const ready=data.media.filter(row=>row.state==='ready'&&!retired.has(row.id));
+ if(maximumBytes!==Infinity&&Buffer.byteLength(JSON.stringify(data,null,2))+ready.reduce((total,row)=>total+row.size,0)>maximumBytes)
+  throw Error('Export needs an offline handoff');
+ await mkdir(join(directory,'media'),{mode:0o700});
+ if(ready.length){
+  const files=await load('media-files').createLocalMediaFileStore(mediaRoot);
+  for(const row of ready){
+   const bytes=await files.read(row);
+   row.file='media/'+row.id+'.webp';
+   await writeFile(join(directory,row.file),bytes,{flag:'wx',mode:0o600});
+  }
+ }
+ await writeFile(join(directory,'account.json'),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
+ return ready.length;
+}
+
 async function writeLocalExport(ownerId,token,notice){
  assert.equal(process.env.NODE_ENV,'test');
  const info=await lstat(stateDirectory);
@@ -117,28 +150,15 @@ async function writeLocalExport(ownerId,token,notice){
  }finally{await db.close();}
  const directory=await mkdtemp(join(stateDirectory,'account-export-'));
  try{
-  const media=join(directory,'media');await mkdir(media,{mode:0o700});
-  const retired=new Set(data.mediaRetirement?.map(row=>row.media_id));
-  const ready=data.media.filter(row=>row.state==='ready'&&!retired.has(row.id));
-  if(notice&&Buffer.byteLength(JSON.stringify(data,null,2))+ready.reduce((total,row)=>total+row.size,0)>localArchiveMaximumBytes)
-   throw Error('Export needs an offline handoff');
-  if(ready.length){
-   const files=await load('media-files').createLocalMediaFileStore(join(stateDirectory,'media'));
-   for(const row of ready){
-    const bytes=await files.read(row);
-    row.file='media/'+row.id+'.webp';
-    await writeFile(join(directory,row.file),bytes,{flag:'wx',mode:0o600});
-   }
-  }
-  await writeFile(join(directory,'account.json'),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
+  const verifiedFiles=await writeAccountExportFiles(data,directory,join(stateDirectory,'media'),notice?localArchiveMaximumBytes:Infinity);
   if(notice){
    const delivery=archiveRoot(stateDirectory,state.containerId);
    await mkdir(delivery,{recursive:true,mode:0o700});
    const receipt=await publishLocalAccountArchive(directory,delivery,ownerId,notice);
    await rm(directory,{recursive:true});
-   return {...receipt,verifiedFiles:ready.length};
+   return {...receipt,verifiedFiles};
   }
-  return {directory,verifiedFiles:ready.length};
+  return {directory,verifiedFiles};
  }catch(error){
   await rm(directory,{recursive:true,force:true});
   throw error;

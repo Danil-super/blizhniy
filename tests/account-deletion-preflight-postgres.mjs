@@ -1,14 +1,16 @@
 // Disposable synthetic PostgreSQL only. The planner itself always runs read-only.
 import assert from 'node:assert/strict';import{test}from'node:test';
-import{execFile}from'node:child_process';import{promisify}from'node:util';import{randomBytes,randomUUID,randomInt}from'node:crypto';
+import{execFile}from'node:child_process';import{promisify}from'node:util';import{createHash,randomBytes,randomUUID,randomInt}from'node:crypto';
 import{readFile}from'node:fs/promises';import{createRequire}from'node:module';import pg from'pg';
 import{mkdtemp,mkdir,rm,writeFile}from'node:fs/promises';import{tmpdir}from'node:os';import{join}from'node:path';
 import{getRefundWorkerRolePlan}from'../scripts/refund-worker-role.mjs';
 import{getAdminUserAccessMigration}from'../scripts/admin-user-access-release.mjs';import{getAdminTariffMigration}from'../scripts/admin-tariff-release.mjs';
 import{localPrimaryImage}from'../scripts/local-primary-config.mjs';
-import{readAccountExport}from'../scripts/export-local-account-data.mjs';
+import{readAccountExport,writeAccountExportFiles}from'../scripts/export-local-account-data.mjs';
 import{createLocalAccountExportHandler,publishLocalAccountArchive}from'../scripts/local-account-export-delivery.mjs';
 import{inspectAccountDeletionCase}from'../src/lib/account-deletion-preflight.ts';
+import{loadMediaModule}from'./media-module.mjs';
+import{fileWorkerModule}from'./media-file-worker-module.mjs';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,run=promisify(execFile);
 
 test('deletion advisory plans bind one request and observe real domain blockers without changing data',{timeout:90000},async suite=>{
@@ -92,12 +94,60 @@ test('deletion advisory plans bind one request and observe real domain blockers 
   });
   await suite.test('the approved archive is served only to the matching live PostgreSQL principal',async t=>{
    const actor=await person(),peer=await person(),own=await purchase(actor);
+   const binding=await own.store.authorizeDispatch(actor.token,actor.id,own.order.id),provider=randomUUID();
+   const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);
+   await intents.authorize(binding);await intents.bindProvider(binding,provider);
+   await owner.query("update app.payment_orders set status='succeeded' where id=$1",[own.order.id]);
+   const capturedAt=(await owner.query("select to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') as value")).rows[0].value;
+   await owner.query("insert into app.payment_verifications(intent_id,provider_payment_id,status,captured_at) values($1,$2,'succeeded',$3)",[own.order.id,provider,capturedAt]);
+   const result=await new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(db,own.merchant,{postmoderation:true,renewals:true}).fulfill(own.order.id);
+   assert.equal(result.state,'fulfilled');
    const root=await mkdtemp(join(tmpdir(),'blizhniy-export-db-'));
    t.after(()=>rm(root,{recursive:true}));
-   const input=join(root,'input'),delivery=join(root,'delivery');
-   await mkdir(input,{mode:0o700});await mkdir(delivery,{mode:0o700});await mkdir(join(input,'media'),{mode:0o700});
+   const input=join(root,'input'),delivery=join(root,'delivery'),mediaRoot=join(root,'storage');
+   await mkdir(input,{mode:0o700});await mkdir(delivery,{mode:0o700});await mkdir(mediaRoot,{mode:0o700});
+   await writeFile(join(mediaRoot,'.writer.lock'),'',{flag:'wx',mode:0o600});
+   const files=await loadMediaModule('media-files').createLocalMediaFileStore(mediaRoot);
+   const worker=await fileWorkerModule().createLocalMediaFileWorker(process.cwd(),mediaRoot);
+   const repo=new(loadMediaModule('media-metadata').MediaMetadataRepository)(db,files,true);
+   const writer=new(loadMediaModule('media-write').LocalMediaWriter)(repo,worker);
+   const bytes=Buffer.from('UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA','base64');
+   const image={mimeType:'image/webp',width:1,height:1,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
+   const photos=[];
+   for(const user of [actor,peer]){
+    const photo=(await repo.reserve(user.token,randomUUID(),image)).id;
+    await writer.write(user.token,photo,{...image,bytes});
+    photos.push(photo);
+   }
+   const rental=(await owner.query("insert into app.listings(author_id,listing_type,category_id,city_id,title,description) values($1,'rent',$2,$3,'Синтетическая аренда','Аренда для проверки архива') returning id",[actor.id,category,city])).rows[0].id;
+   await owner.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[rental,photos[0]]);
+   const peerBookingNote='Текст второй стороны, скрытый в выгрузке';
+   const booking=await db.transaction(async tx=>{
+    await tx.query("select set_config('blizhniy.booking_actor',$1,true)",[peer.id]);
+    return(await tx.query("insert into app.booking_requests(listing_id,guest_id,creation_key,mode,start_date,end_date,guests,total,details_snapshot) values($1,$2,$3,'stay',current_date+2,current_date+3,1,100,$4) returning id",
+     [rental,peer.id,randomUUID(),JSON.stringify({hostContact:peerBookingNote})])).rows[0].id;
+   });
+   await db.transaction(async tx=>{
+    await tx.query("select set_config('blizhniy.booking_actor',$1,true)",[actor.id]);
+    await tx.query("update app.booking_requests set status='accepted',revision=revision+1 where id=$1",[booking]);
+   });
+   const workForm=load('work-publication-contract').parseWorkPublicationForm('workRequest',{title:'Синтетический заказ',description:'Синтетический заказ для проверки архива'});
+   const work=(await owner.query("insert into app.work_publications(author_id,kind,creation_key,form) values($1,'workRequest',$2,$3) returning id",
+    [actor.id,randomUUID(),workForm])).rows[0].id;
+   const peerMessage='Текст отклика другой стороны';
+   const application=(await owner.query(`insert into app.applications(applicant_id,work_publication_id,creation_key,target_revision,specialist_revision,snapshot,message,status,is_paid,sent_at,created_at)
+    values($1,$2,$3,1,1,$4,$5,'sent',true,statement_timestamp(),statement_timestamp()) returning id`,
+    [peer.id,work,randomUUID(),JSON.stringify({email:peer.id+'@deletion.invalid',phone:peer.phone}),peerMessage])).rows[0].id;
+   await owner.query("update app.applications set status='selected' where id=$1",[application]);
    const data=await readAccountExport(db,actor.token,actor.id);
-   await writeFile(join(input,'account.json'),JSON.stringify(data),{mode:0o600});
+   const invalidInput=join(root,'invalid-input'),photoPath=join(mediaRoot,photos[0]+'.webp');
+   await mkdir(invalidInput,{mode:0o700});
+   const damaged=Buffer.from(bytes);damaged[damaged.length-1]^=1;
+   await writeFile(photoPath,damaged);
+   await assert.rejects(writeAccountExportFiles(data,invalidInput,mediaRoot));
+   await assert.rejects(readFile(join(invalidInput,'account.json')),{code:'ENOENT'});
+   await writeFile(photoPath,bytes);
+   assert.equal(await writeAccountExportFiles(data,input,mediaRoot),1);
    const disclosure={purpose:'Синтетическая проверка',basis:'Стендовое дело',sources:'Тестовые записи',
     recipients:'Владелец',retention:'На время репетиции'};
    const {id}=await publishLocalAccountArchive(input,delivery,actor.id,disclosure);
@@ -114,6 +164,22 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    const exported=JSON.parse((await run('/usr/bin/tar',['-xOzf',copy,'--','account.json'])).stdout);
    assert.equal(exported.account.id,actor.id);
    assert.deepEqual(exported.payments.map(row=>row.id),[own.order.id]);
+   assert.deepEqual(exported.payments.map(row=>[row.is_test,row.status,row.verification_status,row.captured_at]),[[true,'succeeded','succeeded',capturedAt]]);
+   assert.ok(exported.payments[0].fulfilled_at);
+   assert.deepEqual(exported.listings.map(row=>row.id).sort(),[own.id,rental].sort());
+   assert.deepEqual(exported.bookings.map(row=>[row.id,row.side]),[[booking,'host']]);
+   assert.deepEqual(exported.bookingEvents.map(row=>[row.booking_id,row.status,row.actor_is_owner]),[[booking,'pending',false],[booking,'accepted',true]]);
+   assert.deepEqual(exported.applications.map(row=>[row.id,row.side,row.message,row.profile]),[[application,'recipient',null,null]]);
+   assert.deepEqual(exported.applicationContactViews.map(row=>[row.application_id,row.evidence]),[[application,'recipient_read']]);
+   assert.deepEqual(exported.applicationSelections.map(row=>row.application_id),[application]);
+   assert.deepEqual(exported.listingPhotos.map(row=>[row.listing_id,row.media_id]),[[rental,photos[0]]]);
+   const mediaPath='media/'+photos[0]+'.webp';
+   assert.deepEqual(exported.media.map(row=>row.file),[mediaPath]);
+   const listed=(await run('/usr/bin/tar',['-tzf',copy])).stdout.trim().split('\n');
+   assert.deepEqual(listed.sort(),['account.json','processing.json','media/',mediaPath].sort());
+   assert.deepEqual((await run('/usr/bin/tar',['-xOzf',copy,'--',mediaPath],{encoding:'buffer'})).stdout,bytes);
+   const json=JSON.stringify(exported);
+   for(const privateValue of [peer.id,peer.phone,peerMessage,peerBookingNote,photos[1],provider])assert.equal(json.includes(privateValue),false);
    await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[actor.id]);
    assert.equal((await download(actor.token)).status,401);
   });
