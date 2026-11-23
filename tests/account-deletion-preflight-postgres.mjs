@@ -83,6 +83,25 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[actor.id]);
    await assert.rejects(read(),{name:'DeletionAccessError'});
   });
+  await suite.test('an export fails if the verified session is revoked during snapshot reads',async()=>{
+   for(const revoke of ['session','auth version']){
+    const actor=await person();
+    let revoked=false;
+    const concurrentDb={readTransaction:(read,options)=>db.readTransaction(tx=>read({query:async(sql,values)=>{
+     const result=await tx.query(sql,values);
+     if(!revoked&&sql.includes('from app.notifications')){
+      const invalidated=revoke==='session'?
+       await owner.query('delete from app.sessions where token_hash=$1',[load('identity').hashSessionToken(actor.token)]):
+       await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[actor.id]);
+      assert.equal(invalidated.rowCount,1);
+      revoked=true;
+     }
+     return result;
+    }}),options)};
+    await assert.rejects(readAccountExport(concurrentDb,actor.token,actor.id),{name:'DeletionAccessError'});
+    assert.equal(revoked,true);
+   }
+  });
   await suite.test('the archive includes every notification across multiple batches from one snapshot',async()=>{
    const actor=await person(),peer=await person(),count=1103;
    const insert=async(id,first,last)=>owner.query(`insert into app.notifications(user_id,event_key,category,tone,title,body,created_at)

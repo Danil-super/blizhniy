@@ -83,21 +83,23 @@ const records={
   where p.author_id=$1 and m.owner_id=$1 order by ph.publication_id,ph.position`,
 };
 const applicationProfileKeys=['name','profession','price','skills','about','phone','email','messengerUrl'];
+const verifiedSession=`from app.users u join app.sessions s on s.user_id=u.id and s.auth_version=u.auth_version
+ where s.token_hash=$1 and u.id=$2 and u.email_verified_at is not null and s.scope in ('app','data-subject')
+ and s.expires_at>clock_timestamp() and s.last_seen_at>clock_timestamp()-interval '30 minutes'`;
 
 export async function readAccountExport(db,token,confirmedOwnerId){
  assert.equal(process.env.NODE_ENV,'test');
  const ownerId=deletionId(confirmedOwnerId),hash=hashSessionToken(token);
  if(!hash)throw new DeletionAccessError();
- return db.readTransaction(async tx=>{
+ const credentials=[hash,ownerId],timeoutMs=5000,options={timeoutMs,deadline:performance.now()+timeoutMs};
+ const data=await db.readTransaction(async tx=>{
   const context=(await tx.query(`select current_user='postgres' and session_user='postgres'
     and current_database() in ('blizhniy_test','blizhniy_prod','blizhniy_erasure_test')
     and current_setting('transaction_read_only')='on' and current_setting('transaction_isolation')='repeatable read' as allowed`)).rows[0];
   assert.equal(context?.allowed,true);
   const account=(await tx.query(`select u.id,u.email,u.is_blocked as "isBlocked",u.email_verified_at,u.created_at,
     to_char(transaction_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as snapshot
-    from app.users u join app.sessions s on s.user_id=u.id and s.auth_version=u.auth_version
-    where s.token_hash=$1 and u.id=$2 and u.email_verified_at is not null and s.scope in ('app','data-subject')
-      and s.expires_at>clock_timestamp() and s.last_seen_at>clock_timestamp()-interval '30 minutes'`,[hash,ownerId])).rows[0];
+    ${verifiedSession}`,credentials)).rows[0];
   if(!account)throw new DeletionAccessError();
   const stored=(await tx.query('select profile from app.cabinet_profiles where user_id=$1',[ownerId])).rows[0];
   const profile=stored?load('postgres-profile').parseProductionProfile(stored.profile):null;
@@ -138,10 +140,13 @@ export async function readAccountExport(db,token,confirmedOwnerId){
   }
   for(const row of result.work)row.form=load('work-publication-contract').parseWorkPublicationForm(row.kind,row.form);
   for(const row of result.services)row.form=load('service-publication-contract').parseServicePublicationForm(row.kind,row.form);
-  if(!(await tx.query(`select 1 from app.sessions where token_hash=$1 and user_id=$2
-    and expires_at>clock_timestamp() and last_seen_at>clock_timestamp()-interval '30 minutes'`,[hash,ownerId])).rowCount)throw new DeletionAccessError();
   return result;
- },{timeoutMs:5000});
+ },options);
+ // The earlier snapshot cannot see a session revoked during the export.
+ await db.readTransaction(async tx=>{
+  if((await tx.query('select 1 '+verifiedSession,credentials)).rowCount!==1)throw new DeletionAccessError();
+ },options);
+ return data;
 }
 
 export async function writeAccountExportFiles(data,directory,mediaRoot,maximumBytes=Infinity){
