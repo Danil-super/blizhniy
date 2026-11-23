@@ -9,6 +9,11 @@ for report in zap-report.html zap-report.json zap-report.md; do
   fi
 done
 
+target="${TARGET_URL:-}"
+if [[ "${target%/}" == 'https://xn----9sbphbgks4a4a.xn--p1ai' && ( "${1:-}" == 0 || "${1:-}" == 2 ) ]]; then
+  exec python3 "$(dirname "$0")/check_zap_cache.py" "$report_dir" "$1"
+fi
+
 case "${1:-}" in
   0) echo 'ZAP baseline completed without findings.' ;;
   1) echo 'ZAP reported at least one FAIL finding.' >&2; exit 1 ;;
