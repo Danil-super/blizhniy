@@ -11,26 +11,30 @@ import {loadMediaModule} from './media-module.mjs';
 import {fileWorkerModule} from './media-file-worker-module.mjs';
 import {getAdminUserAccessMigration} from '../scripts/admin-user-access-release.mjs';
 import {getAdminTariffMigration} from '../scripts/admin-tariff-release.mjs';
+import {sealBasicErasureLedger,verifyBasicErasureLedger} from '../scripts/basic-erasure-ledger.mjs';
 const rootProject=path.resolve(fileURLToPath(new URL('..',import.meta.url)));
 const {MediaMetadataRepository}=loadMediaModule('media-metadata'),{LocalMediaWriter}=loadMediaModule('media-write'),{LocalMediaRetirement}=loadMediaModule('media-retirement'),{LocalMediaUpload}=loadMediaModule('media-upload');
 const bytes=Buffer.from('524946460400000057454250','hex'),image={mimeType:'image/webp',width:1,height:1,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
-export async function testMediaRetirementRuntime(suite,{admin,holder,clock,day}){
- const database=(hooks={})=>({transaction:async work=>{
-  const client=await admin.connect();let open=false;
+export async function testMediaRetirementRuntime(suite,{admin,holder,clock,day,backupMediaDatabase}){
+ const database=(hooks={},target=admin)=>({transaction:async work=>{
+  const client=await target.connect();let open=false;
   try{
    await client.query('begin');open=true;await client.query("set local lock_timeout='3s';set local statement_timeout='8s'");await hooks.start?.(client);
    const value=await work(client);await client.query('commit');open=false;await hooks.commit?.();return value;
   }catch(error){if(open)await client.query('rollback');throw error;}finally{client.release();}
  }});
- async function fixture(t,options={}){
-  await clock(0);const root=await fs.mkdtemp(path.join(tmpdir(),'blizhniy-retirement-runtime-')),proof=await fs.lstat(root,{bigint:true});
+ async function fileFixture(t,options={}){
+  const root=await fs.mkdtemp(path.join(tmpdir(),'blizhniy-retirement-runtime-')),proof=await fs.lstat(root,{bigint:true});
   t.after(async()=>{const current=await fs.lstat(root,{bigint:true});assert.equal(current.ino,proof.ino);assert.equal(current.dev,proof.dev);assert.equal(current.uid,BigInt(process.getuid()));assert.ok(current.isDirectory());await fs.rm(root,{recursive:true});});
   await fs.writeFile(path.join(root,'.writer.lock'),'',{mode:0o600,flag:'wx'});
+  return {root,files:await loadMediaModule('media-files').createLocalMediaFileStore(root),worker:await fileWorkerModule(options).createLocalMediaFileWorker(rootProject,root)};
+ }
+ async function fixture(t,options={}){
+  await clock(0);const storage=await fileFixture(t,options);
   const owner=(await admin.query('insert into app.users(email,password_hash,email_verified_at) values($1,$2,clock_timestamp()) returning id',['retention-'+randomUUID()+'@example.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)])).rows[0].id,token=randomBytes(32).toString('hex');
   await admin.query('insert into app.sessions(token_hash,user_id,auth_version) select $1,id,auth_version from app.users where id=$2',[createHash('sha256').update(token).digest('hex'),owner]);
-  const db=database(),files=await loadMediaModule('media-files').createLocalMediaFileStore(root),worker=await fileWorkerModule(options).createLocalMediaFileWorker(rootProject,root);
-  const repo=new MediaMetadataRepository(db,files,true),intent=randomUUID(),pending=await repo.reserve(token,intent,image);
-  return{root,owner,token,db,files,worker,repo,intent,pending};
+  const db=database(),repo=new MediaMetadataRepository(db,storage.files,true),intent=randomUUID(),pending=await repo.reserve(token,intent,image);
+  return{...storage,owner,token,db,repo,intent,pending};
  }
  const budget=async()=> (await admin.query('select charged_bytes::text,charged_objects from app.media_storage_budget')).rows[0];
  async function waiting(pid){const deadline=Date.now()+3000;for(;;){if((await holder.query("select wait_event_type='Lock' waiting from pg_stat_activity where pid=$1",[pid])).rows[0]?.waiting)return;assert.ok(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,10));}}
@@ -136,9 +140,11 @@ export async function testMediaRetirementRuntime(suite,{admin,holder,clock,day})
    await tx.query("select set_config('blizhniy.deletion_actor',$1,true)",[f.owner]);
    return (await tx.query('insert into app.account_deletion_requests(user_id) values($1) returning id',[f.owner])).rows[0].id;
   });
+  const archivedPhoto=await fs.readFile(pathToPhoto);
+  const archivedPeerPhoto=await fs.readFile(path.join(other.root,other.pending.id+'.webp'));
   const operation=randomUUID(),ownerOf=async id=>(await admin.query('select owner_id from app.media_objects where id=$1',[id])).rows[0].owner_id;
   const reference='B1_'+operation.replaceAll('-','')+'_0_1';
-  const erase=(caseReference=reference)=>f.db.transaction(async tx=>{
+  const erase=(caseReference=reference,target=f.db)=>target.transaction(async tx=>{
    await tx.query("select set_config('blizhniy.deletion_actor',$1,true)",[operator]);
    await tx.query("update app.account_deletion_requests set status='in_review' where id=$1",[request]);
    await tx.query("update app.account_deletion_requests set status='resolved',resolution='partly_retained',case_reference=$2 where id=$1",
@@ -149,12 +155,14 @@ export async function testMediaRetirementRuntime(suite,{admin,holder,clock,day})
   });
   await assert.rejects(erase(),{code:'BL003'});
   await clock(7*day);
+  const restoreAttached=await backupMediaDatabase();
   const cleanup=new LocalMediaRetirement(f.db,f.worker);
   await assert.rejects(cleanup.retire(photo),{code:'MEDIA_RETIREMENT_DENIED'});
   assert.equal((await admin.query('select 1 from app.listing_photos where listing_id=$1 and media_id=$2',[draft,photo])).rowCount,1);
   await admin.query('delete from app.listing_photos where listing_id=$1 and media_id=$2',[draft,photo]);
   await assert.rejects(cleanup.retire(photo),{code:'MEDIA_RETIREMENT_DENIED'});
   await clock(14*day);
+  const restoreDetached=await backupMediaDatabase();
   await admin.query('insert into app.media_retirement_requests(media_id,operation_id) values($1,$2)',[photo,randomUUID()]);
   await assert.rejects(erase(),{code:'BL003'});
   assert.deepEqual(await fs.readFile(pathToPhoto),bytes);
@@ -180,5 +188,58 @@ export async function testMediaRetirementRuntime(suite,{admin,holder,clock,day})
   assert.equal((await admin.query('select operation_id from app.media_retirement_completions where media_id=$1',[photo])).rows[0].operation_id,completed.operationId);
   await assert.rejects(admin.query('update app.media_objects set owner_id=$1 where id=$2',[other.owner,photo]),{code:'BL003'});
   await assert.rejects(admin.query('delete from app.media_objects where id=$1',[photo]),{code:'BL003'});
+  const receipt=(await admin.query(`select operation_id as "operationId",request_id as "requestId",subject_id as "subjectId",actor_id as "actorId",
+   expected_auth_version::text as "authVersion",expected_request_revision::text as "requestRevision",
+   to_char(completed_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "completedAt"
+   from app_admin.basic_account_erasures where operation_id=$1`,[operation])).rows[0];
+  const key=randomBytes(32),sourceId=randomUUID(),document=sealBasicErasureLedger([receipt],key,sourceId);
+  const checkpoint={sourceId,sha256:createHash('sha256').update(document).digest('hex')};
+  assert.deepEqual(verifyBasicErasureLedger(document,key,checkpoint).records,[receipt]);
+
+  for(const [restore,attached] of [[restoreAttached,true],[restoreDetached,false]])await restore(async restored=>{
+   const restoredStorage=await fileFixture(t),restoredPhoto=path.join(restoredStorage.root,photo+'.webp');
+   await fs.writeFile(restoredPhoto,archivedPhoto,{mode:0o600,flag:'wx'});
+   await fs.writeFile(path.join(restoredStorage.root,other.pending.id+'.webp'),archivedPeerPhoto,{mode:0o600,flag:'wx'});
+   const db=database({},restored),repo=new MediaMetadataRepository(db,restoredStorage.files,true);
+   const replay=new LocalMediaRetirement(db,restoredStorage.worker);
+   assert.deepEqual((await repo.readOwned(f.token,photo)).bytes,bytes);
+   assert.equal((await restored.query('select 1 from app.listing_photos where listing_id=$1 and media_id=$2',[draft,photo])).rowCount,attached?1:0);
+   await assert.rejects(erase(reference,db),{code:'BL003'});
+   assert.equal((await restored.query('select 1 from app_admin.basic_account_erasures where operation_id=$1',[operation])).rowCount,0);
+   if(attached){
+    await assert.rejects(replay.retire(photo),{code:'MEDIA_RETIREMENT_DENIED'});
+    assert.deepEqual(await fs.readFile(restoredPhoto),bytes);
+    assert.equal((await restored.query('select 1 from app.users where id=$1',[f.owner])).rowCount,1);
+    return;
+   }
+   const recorded=verifyBasicErasureLedger(document,key,checkpoint).records[0];
+   assert.deepEqual([recorded.operationId,recorded.requestId,recorded.subjectId,recorded.actorId],[operation,request,f.owner,operator]);
+   const restoredBudget=async()=> (await restored.query('select charged_bytes::text,charged_objects from app.media_storage_budget')).rows[0];
+   const beforeRetirement=await restoredBudget();
+   const damaged=Buffer.from(archivedPhoto);damaged[damaged.length-1]^=1;
+   await fs.writeFile(restoredPhoto,damaged);
+   await assert.rejects(replay.retire(photo),{code:'MEDIA_RETIREMENT_UNAVAILABLE'});
+   assert.deepEqual(await fs.readFile(restoredPhoto),damaged);
+   assert.deepEqual(await restoredBudget(),beforeRetirement);
+   assert.equal((await restored.query('select 1 from app.media_retirement_completions where media_id=$1',[photo])).rowCount,0);
+   await assert.rejects(erase(reference,db),{code:'BL003'});
+   await fs.writeFile(restoredPhoto,archivedPhoto);
+   await assert.rejects(replay.retire(photo),{code:'MEDIA_RETIREMENT_UNAVAILABLE'});
+   const restarted=await fileWorkerModule().createLocalMediaFileWorker(rootProject,restoredStorage.root);
+   const retry=new LocalMediaRetirement(db,restarted);
+   const restResult=await retry.retire(photo);
+   await assert.rejects(fs.stat(restoredPhoto),{code:'ENOENT'});
+   const afterRetirement=await restoredBudget();
+   assert.equal(beforeRetirement.charged_objects-afterRetirement.charged_objects,1);
+   assert.equal(BigInt(beforeRetirement.charged_bytes)-BigInt(afterRetirement.charged_bytes),BigInt(bytes.length));
+   assert.deepEqual(await retry.retire(photo),restResult);
+   await erase(reference,db);
+   assert.equal((await restored.query('select 1 from app.users where id=$1',[f.owner])).rowCount,0);
+   assert.equal((await restored.query('select 1 from app.listings where id=$1',[draft])).rowCount,0);
+   assert.equal((await restored.query('select owner_id from app.media_objects where id=$1',[photo])).rows[0].owner_id,null);
+   assert.equal((await restored.query('select owner_id from app.media_objects where id=$1',[other.pending.id])).rows[0].owner_id,other.owner);
+   assert.deepEqual((await repo.readOwned(other.token,other.pending.id)).bytes,archivedPeerPhoto);
+   assert.deepEqual(await restoredBudget(),afterRetirement);
+  });
  });
 }

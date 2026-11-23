@@ -8,7 +8,7 @@ export async function insertMediaPayment(db,owner,type,target,revision='1',id=ra
  await db.query(`insert into app.payment_checkout_intents(id,owner_id,target_type,target_id,target_revision,tariff_id,amount,duration_days,merchant_shop_id,is_test,request_body)
   values($1,$2,$3,$4,$5,'fixture-publication',199,30,'local-fixture-shop',true,$6) on conflict(id) do nothing`,[id,owner,type,target,revision,body]);return id;
 }
-export async function testMediaRetirementCandidate(suite,{admin,holder,waiter,owner,ids,legacyIntent}){
+export async function testMediaRetirementCandidate(suite,{admin,holder,waiter,owner,ids,legacyIntent,backupMediaDatabase}){
  const clockDefinition=(await admin.query("select pg_get_functiondef('app.media_retention_clock()'::regprocedure) ddl")).rows[0].ddl;
  const base=new Date((await admin.query('select app.media_retention_clock() stamp')).rows[0].stamp).getTime();
  const clock=async offset=>{const stamp=new Date(base+offset).toISOString();assert.match(stamp,/^[0-9TZ:.-]+$/);await admin.query(`create or replace function app.media_retention_clock() returns timestamptz language sql volatile set search_path=pg_catalog,pg_temp as $$select timestamptz '${stamp}'$$`);};
@@ -123,6 +123,6 @@ export async function testMediaRetirementCandidate(suite,{admin,holder,waiter,ow
    for(const table of ['media_payment_reference_captures','media_retirement_requests','media_retirement_completions'])for(const sql of [`delete from app.${table}`,`truncate app.${table} cascade`])await assert.rejects(admin.query(sql),error=>error.code==='23514');
    await holder.query('begin isolation level repeatable read');try{await assert.rejects(request(holder,ids[0]),error=>error.code==='MRJ01');}finally{await holder.query('rollback');}
   });
-  await testMediaRetirementRuntime(suite,{admin,holder,clock,day});
+  await testMediaRetirementRuntime(suite,{admin,holder,clock,day,backupMediaDatabase});
  }finally{await holder.query('rollback');await waiter.query('rollback');await admin.query(clockDefinition);assert.equal((await admin.query("select pg_get_functiondef('app.media_retention_clock()'::regprocedure) ddl")).rows[0].ddl,clockDefinition);}
 }
