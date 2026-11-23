@@ -41,11 +41,17 @@ const records={
  listingRemovals:`select r.listing_id,r.removed_revision::text,r.removed_at
   from app.listing_owner_removals r join app.listings l on l.id=r.listing_id
   where r.owner_id=$1 and l.author_id=$1 order by r.removed_at,r.listing_id`,
+ workOwnerActions:`select a.publication_id,a.kind,a.expected_revision::text,a.action,a.reason,a.resulting_revision::text,a.status,a.occurred_at
+  from app.work_owner_actions a join app.work_publications w on w.id=a.publication_id
+  where a.owner_id=$1 and w.author_id=$1 order by a.occurred_at,a.publication_id,a.resulting_revision`,
  applications:`select a.id,a.work_publication_id,a.specialist_publication_id,case when a.applicant_id=$1 then 'applicant' else 'recipient' end as side,
   case when a.applicant_id=$1 then a.message end as message,case when a.applicant_id=$1 then a.snapshot end as profile,
   a.status,a.is_paid,a.sent_at,a.created_at,a.updated_at,a.revision::text
   from app.applications a join app.work_publications w on w.id=a.work_publication_id
   where a.applicant_id=$1 or (w.author_id=$1 and a.is_paid and a.sent_at is not null) order by a.created_at,a.id`,
+ applicationWithdrawals:`select r.application_id,r.withdrawn_revision::text,r.withdrawn_at
+  from app.application_withdrawals r join app.applications a on a.id=r.application_id
+  where r.owner_id=$1 and a.applicant_id=$1 order by r.withdrawn_at,r.application_id`,
  bookings:`select id,listing_id,case when guest_id=$1 then 'guest' else 'host' end as side,mode,start_date::text,end_date::text,
   guests,total::text,status,revision::text,created_at,updated_at,decided_at,starts_at,expires_at,
   case when cancelled_by=$1 then cancellation_reason end as cancellation_reason
@@ -55,9 +61,10 @@ const records={
   from app.booking_events e join app.booking_requests b on b.id=e.booking_id
   where b.guest_id=$1 or b.host_id=$1 order by e.booking_id,e.revision`,
  payments:`select i.id,i.target_type,i.target_id,i.tariff_id,i.amount::text,i.duration_days,i.is_test,i.created_at,o.status,
-  v.status as verification_status,v.captured_at,f.fulfilled_at
+  v.status as verification_status,v.captured_at,f.fulfilled_at,c.cancelled_at
   from app.payment_checkout_intents i left join app.payment_orders o on o.id=i.id and o.owner_id=i.owner_id
   left join app.payment_verifications v on v.intent_id=o.id left join app.payment_fulfillments f on f.intent_id=v.intent_id
+  left join app.payment_checkout_cancellations c on c.payment_id=o.id and c.owner_id=i.owner_id and c.target_type=i.target_type
   where i.owner_id=$1 order by i.created_at,i.id`,
  notifications:`select id,category,tone,title,body,action_href,read_at,created_at from app.notifications
   where user_id=$1 order by created_at,id`,

@@ -107,6 +107,39 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    assert.equal(after.notifications.length,count+1);
    assert.equal(after.notifications.at(-1).title,'Notification '+(count+1));
   });
+  await suite.test('the export distinguishes the owner actions from another account’s actions',async()=>{
+   const actor=await person(),peer=await person();
+   const workStore=new(load('postgres-work-owner-actions').PostgresWorkOwnerActions)(db);
+   const applications=new(load('postgres-applications').PostgresApplicationStore)(db,{localActions:true});
+   const cancellation=new(load('postgres-checkout-cancellation').PostgresCheckoutCancellation)(db);
+   const form=load('work-publication-contract').parseWorkPublicationForm('workRequest',{title:'Синтетический черновик'});
+   const createWork=async user=>(await owner.query(`insert into app.work_publications(author_id,kind,creation_key,form)
+    values($1,'workRequest',$2,$3) returning id`,[user.id,randomUUID(),form])).rows[0].id;
+   const work=await createWork(actor),otherWork=await createWork(peer);
+   const createApplication=async(user,target)=>(await owner.query(`insert into app.applications
+    (applicant_id,work_publication_id,creation_key,target_revision,specialist_revision,snapshot)
+    values($1,$2,$3,1,1,'{}') returning id`,[user.id,target,randomUUID()])).rows[0].id;
+   const application=await createApplication(actor,otherWork),otherApplication=await createApplication(peer,work);
+   const payment=await purchase(actor),otherPayment=await purchase(peer);
+   for(const [user,publicationId,applicationId,checkout,reason] of [
+    [actor,work,application,payment,'Мой черновик больше не нужен'],
+    [peer,otherWork,otherApplication,otherPayment,'Причина другой стороны']
+   ]){
+    await applications.withdraw(user.token,user.id,applicationId,'1');
+    await workStore.change(user.token,user.id,{operationId:randomUUID(),publicationId,kind:'workRequest',
+     expectedRevision:'1',action:'remove',reason});
+    await cancellation.cancel(user.token,user.id,{paymentId:checkout.order.id,targetType:'listing'});
+   }
+   const data=await readAccountExport(db,actor.token,actor.id);
+   assert.deepEqual(data.workOwnerActions.map(row=>[row.publication_id,row.action,row.reason,row.resulting_revision,row.status]),
+    [[work,'remove','Мой черновик больше не нужен','2','archived']]);
+   assert.deepEqual(data.applicationWithdrawals.map(row=>[row.application_id,row.withdrawn_revision]),[[application,'1']]);
+   assert.ok(data.applicationWithdrawals[0].withdrawn_at);
+   assert.deepEqual(data.payments.map(row=>[row.id,row.status,Boolean(row.cancelled_at)]),[[payment.order.id,'failed',true]]);
+   const json=JSON.stringify(data);
+   for(const privateValue of [peer.id,otherApplication,otherPayment.order.id,'Причина другой стороны'])
+    assert.equal(json.includes(privateValue),false);
+  });
   await suite.test('completed publication stays in retention review without an unfinished payment',async()=>{
    const actor=await person(),p=await purchase(actor),binding=await p.store.authorizeDispatch(actor.token,actor.id,p.order.id),provider=randomUUID();
    const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);await intents.authorize(binding);await intents.bindProvider(binding,provider);
