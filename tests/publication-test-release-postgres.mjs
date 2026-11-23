@@ -14,6 +14,7 @@ import {getSpecialistCheckoutMigration,specialistCheckoutRuntimeGrants} from '..
 import {buildPaymentWorker} from '../scripts/build-payment-worker.mjs';
 import {createRequire} from 'node:module';
 import {checkSpecialistServiceStartup} from './specialist-service-startup-cases.mjs';
+import {readAccountExport} from '../scripts/export-local-account-data.mjs';
 import pg from 'pg';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
@@ -202,6 +203,46 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
      'restore-fixture',config.database,database]);
     const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
     try{assert.equal(await verify(restored,database),true);}finally{await restored.close();}
+   });
+   if(inbox)await suite.test('account export reads the hosted release without staging financial relations',async t=>{
+    const {rows:[schema]}=await admin.query(`select (select count(*)::int from blizhniy_meta.migrations) as migrations,
+     to_regclass('app.payment_checkout_cancellations') as cancelled_payment_relation,
+     to_regclass('app.payment_renewals') as renewal_relation`);
+    assert.deepEqual(schema,{migrations:43,cancelled_payment_relation:null,renewal_relation:null});
+    const subject=randomUUID(),peer=randomUUID();
+    const token=randomBytes(32).toString('hex'),peerToken=randomBytes(32).toString('hex');
+    const hash=load('identity').hashSessionToken;
+    const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);
+    const payments=[];
+    for(const [id,key] of [[subject,token],[peer,peerToken]]){
+     await admin.query('insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())',
+      [id,id+'@publication.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
+     await admin.query('insert into app.sessions(token_hash,user_id,auth_version) values($1,$2,0)',[hash(key),id]);
+     await admin.query("insert into app.notifications(user_id,event_key,category,tone,title,body) values($1,'export-fixture','system','info','Проверка',$2)",[id,id]);
+     const paymentId=randomUUID(),targetId=randomUUID(),tariffId='listing-publication',amount='199.00';
+     const requestBody=JSON.stringify({amount:{value:amount,currency:'RUB'},capture:true,
+      confirmation:{type:'redirect',return_url:'https://example.invalid/'},
+      metadata:{localPaymentId:paymentId,targetType:'listing',targetId,tariffId}});
+     await db.transaction(tx=>intents.persistInTransaction(tx,{id:paymentId,ownerId:id,targetType:'listing',targetId,
+      targetRevision:'1',tariffId,amount,durationDays:30,shopId:'publication-fixture',isTest:true,requestBody}));
+     payments.push(paymentId);
+    }
+    const previous=process.env.NODE_ENV;process.env.NODE_ENV='test';
+    t.after(()=>{if(previous===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=previous;});
+    const baseline=await readAccountExport(db,token,subject);
+    assert.equal(baseline.account.id,subject);
+    assert.deepEqual(baseline.notifications.map(row=>row.body),[subject]);
+    assert.deepEqual(baseline.payments.map(row=>[row.id,row.cancelled_at]),[[payments[0],null]]);
+    assert.equal(JSON.stringify(baseline).includes(payments[1]),false);
+    assert.equal(JSON.stringify(baseline).includes(peer),false);
+    await admin.query(await readFile(new URL('../database/permissions/local-account-export-reader.sql',import.meta.url),'utf8'));
+    const readerPassword=randomBytes(32).toString('hex');
+    await admin.query('alter role blizhniy_local_export_reader login password '+pg.escapeLiteral(readerPassword));
+    const reader=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:'blizhniy_local_export_reader',password:readerPassword,max:1}));
+    t.after(()=>reader.close());
+    const actual=await readAccountExport(reader,token,subject);
+    assert.deepEqual({...actual,snapshot:null},{...baseline,snapshot:null});
+    await assert.rejects(readAccountExport(reader,peerToken,subject),{name:'DeletionAccessError'});
    });
    return;
   }

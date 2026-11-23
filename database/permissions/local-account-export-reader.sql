@@ -8,6 +8,7 @@ begin
 end
 $$;
 create role blizhniy_local_export_reader nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls;
+grant connect on database blizhniy_test to blizhniy_local_export_reader;
 grant usage on schema app to blizhniy_local_export_reader;
 grant select(id,email,is_blocked,email_verified_at,created_at,auth_version) on app.users to blizhniy_local_export_reader;
 grant select(token_hash,user_id,auth_version,scope,created_at,expires_at,last_seen_at) on app.sessions to blizhniy_local_export_reader;
@@ -35,8 +36,6 @@ grant select(publication_id,owner_id,kind,expected_revision,action,reason,result
 grant select(id,applicant_id,work_publication_id,specialist_publication_id,message,snapshot,status,is_paid,sent_at,created_at,updated_at,revision)
  on app.applications to blizhniy_local_export_reader;
 grant select(application_id,owner_id,withdrawn_revision,withdrawn_at) on app.application_withdrawals to blizhniy_local_export_reader;
-grant select(application_id,recipient_id,evidence,recorded_at) on app.application_contact_views to blizhniy_local_export_reader;
-grant select(application_id,recipient_id,selected_at) on app.application_selection_events to blizhniy_local_export_reader;
 grant select(id,listing_id,guest_id,host_id,mode,start_date,end_date,guests,total,status,revision,created_at,updated_at,decided_at,starts_at,expires_at,cancelled_by,cancellation_reason)
  on app.booking_requests to blizhniy_local_export_reader;
 grant select(booking_id,revision,status,actor_id,reason,origin,created_at) on app.booking_events to blizhniy_local_export_reader;
@@ -45,17 +44,35 @@ grant select(id,owner_id,target_type,target_id,tariff_id,amount,duration_days,is
 grant select(id,owner_id,status) on app.payment_orders to blizhniy_local_export_reader;
 grant select(intent_id,status,captured_at) on app.payment_verifications to blizhniy_local_export_reader;
 grant select(intent_id,fulfilled_at) on app.payment_fulfillments to blizhniy_local_export_reader;
-grant select(payment_id,owner_id,target_type,cancelled_at) on app.payment_checkout_cancellations to blizhniy_local_export_reader;
-grant select(id,payment_intent_id,amount,created_at) on app.payment_refund_reservations to blizhniy_local_export_reader;
-grant select(operation_id,status,observed_at) on app.payment_refund_observations to blizhniy_local_export_reader;
-grant select(intent_id,previous_intent_id,additional_starts_at,additional_expires_at,recorded_at)
- on app.payment_renewals to blizhniy_local_export_reader;
 grant select(id,user_id,category,tone,title,body,action_href,read_at,created_at) on app.notifications to blizhniy_local_export_reader;
 grant select(id,user_id,status,revision,requested_at,review_started_at,resolved_at,resolution)
  on app.account_deletion_requests to blizhniy_local_export_reader;
 grant select(id,owner_id,mime_type,width,height,size,sha256,state,created_at,ready_at) on app.media_objects to blizhniy_local_export_reader;
 grant select(listing_id,media_id,position) on app.listing_photos to blizhniy_local_export_reader;
 grant select(publication_id,media_id,position) on app.work_publication_photos,app.service_publication_photos to blizhniy_local_export_reader;
-grant select(media_id,requested_at) on app.media_retirement_requests to blizhniy_local_export_reader;
-grant select(media_id,completed_at) on app.media_retirement_completions to blizhniy_local_export_reader;
+do $$
+begin
+ if to_regclass('app.application_contact_views') is not null then
+  grant select(application_id,recipient_id,evidence,recorded_at) on app.application_contact_views to blizhniy_local_export_reader;
+ end if;
+ if to_regclass('app.application_selection_events') is not null then
+  grant select(application_id,recipient_id,selected_at) on app.application_selection_events to blizhniy_local_export_reader;
+ end if;
+ if to_regclass('app.payment_checkout_cancellations') is not null then
+  grant select(payment_id,owner_id,target_type,cancelled_at) on app.payment_checkout_cancellations to blizhniy_local_export_reader;
+ end if;
+ if to_regclass('app.payment_refund_reservations') is not null then
+  grant select(id,payment_intent_id,amount,created_at) on app.payment_refund_reservations to blizhniy_local_export_reader;
+  grant select(operation_id,status,observed_at) on app.payment_refund_observations to blizhniy_local_export_reader;
+ end if;
+ if to_regclass('app.payment_renewals') is not null then
+  grant select(intent_id,previous_intent_id,additional_starts_at,additional_expires_at,recorded_at)
+   on app.payment_renewals to blizhniy_local_export_reader;
+ end if;
+ if to_regclass('app.media_retirement_requests') is not null then
+  grant select(media_id,requested_at) on app.media_retirement_requests to blizhniy_local_export_reader;
+  grant select(media_id,completed_at) on app.media_retirement_completions to blizhniy_local_export_reader;
+ end if;
+end
+$$;
 commit;

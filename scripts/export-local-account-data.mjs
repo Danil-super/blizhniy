@@ -60,12 +60,6 @@ const records={
   case when e.actor_id=$1 then e.reason end as reason,e.origin,e.created_at
   from app.booking_events e join app.booking_requests b on b.id=e.booking_id
   where b.guest_id=$1 or b.host_id=$1 order by e.booking_id,e.revision`,
- payments:`select i.id,i.target_type,i.target_id,i.tariff_id,i.amount::text,i.duration_days,i.is_test,i.created_at,o.status,
-  v.status as verification_status,v.captured_at,f.fulfilled_at,c.cancelled_at
-  from app.payment_checkout_intents i left join app.payment_orders o on o.id=i.id and o.owner_id=i.owner_id
-  left join app.payment_verifications v on v.intent_id=o.id left join app.payment_fulfillments f on f.intent_id=v.intent_id
-  left join app.payment_checkout_cancellations c on c.payment_id=o.id and c.owner_id=i.owner_id and c.target_type=i.target_type
-  where i.owner_id=$1 order by i.created_at,i.id`,
  notifications:`select id,category,tone,title,body,action_href,read_at,created_at from app.notifications
   where user_id=$1 order by created_at,id`,
  deletionRequests:`select id,status,revision::text,requested_at,review_started_at,resolved_at,resolution
@@ -108,11 +102,17 @@ export async function readAccountExport(db,token,confirmedOwnerId){
   const result={version:1,snapshot:account.snapshot,account:{id:account.id,email:account.email,isBlocked:account.isBlocked,
    emailVerifiedAt:account.email_verified_at,createdAt:account.created_at},profile};
   const optional=(await tx.query(`select to_regclass('app.payment_refund_reservations') is not null as refunds,
+    to_regclass('app.payment_checkout_cancellations') is not null as checkout_cancellations,
     to_regclass('app.payment_renewals') is not null as renewals,
     to_regclass('app.media_retirement_requests') is not null as media_retirement,
     to_regclass('app.application_contact_views') is not null as contact_views,
     to_regclass('app.application_selection_events') is not null as selections`)).rows[0];
-  const queries={...records};
+  const queries={...records,payments:`select i.id,i.target_type,i.target_id,i.tariff_id,i.amount::text,i.duration_days,i.is_test,i.created_at,o.status,
+    v.status as verification_status,v.captured_at,f.fulfilled_at,${optional.checkout_cancellations?'c.cancelled_at':'null::timestamptz'} as cancelled_at
+    from app.payment_checkout_intents i left join app.payment_orders o on o.id=i.id and o.owner_id=i.owner_id
+    left join app.payment_verifications v on v.intent_id=o.id left join app.payment_fulfillments f on f.intent_id=v.intent_id
+    ${optional.checkout_cancellations?'left join app.payment_checkout_cancellations c on c.payment_id=o.id and c.owner_id=i.owner_id and c.target_type=i.target_type':''}
+    where i.owner_id=$1 order by i.created_at,i.id`};
   if(optional.contact_views)queries.applicationContactViews=`select v.application_id,v.evidence,v.recorded_at
     from app.application_contact_views v join app.applications a on a.id=v.application_id
     where v.recipient_id=$1 or a.applicant_id=$1 order by v.recorded_at,v.application_id,v.evidence`;
