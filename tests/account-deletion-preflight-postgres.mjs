@@ -5,6 +5,7 @@ import{readFile}from'node:fs/promises';import{createRequire}from'node:module';im
 import{getRefundWorkerRolePlan}from'../scripts/refund-worker-role.mjs';
 import{getAdminUserAccessMigration}from'../scripts/admin-user-access-release.mjs';import{getAdminTariffMigration}from'../scripts/admin-tariff-release.mjs';
 import{localPrimaryImage}from'../scripts/local-primary-config.mjs';
+import{readAccountExport}from'../scripts/export-local-account-data.mjs';
 import{inspectAccountDeletionCase}from'../src/lib/account-deletion-preflight.ts';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,run=promisify(execFile);
 
@@ -53,6 +54,31 @@ test('deletion advisory plans bind one request and observe real domain blockers 
     assert.equal((await plan(await person())).counts.payments,'0');
    }
   });
+  await suite.test('a verified data subject exports only their stored records without changing their session',async()=>{
+   const actor=await person(),other=await person(),own=await purchase(actor),foreign=await purchase(other);
+   const token=randomBytes(32).toString('hex'),hash=load('identity').hashSessionToken(token);
+   await owner.query("insert into app.sessions(token_hash,user_id,scope,auth_version) values($1,$2,'data-subject',0)",[hash,actor.id]);
+   const read=()=>readAccountExport(db,token,actor.id);
+   const seen=async()=>(await owner.query('select last_seen_at::text value from app.sessions where token_hash=$1',[hash])).rows[0].value;
+   const before=await seen();
+   const result=await read();
+   assert.equal(result.account.id,actor.id);
+   assert.equal(result.account.email,actor.id+'@deletion.invalid');
+   assert.equal(result.profile.name,'Тестовый пользователь');
+   assert.deepEqual(result.listings.map(row=>row.id),[own.id]);
+   assert.deepEqual(result.payments.map(row=>row.id),[own.order.id]);
+   assert.equal(result.payments[0].amount,'199.00');
+   assert.deepEqual(result.deletionRequests.map(row=>row.id),[actor.request.id]);
+   const serialized=JSON.stringify(result);
+   for(const privateValue of [hash,token,other.id,foreign.id,foreign.order.id,'scrypt','request_body','merchant_shop_id'])
+    assert.equal(serialized.includes(privateValue),false);
+   await assert.rejects(readAccountExport(db,other.token,actor.id),{name:'DeletionAccessError'});
+   await owner.query('update app.users set is_blocked=true where id=$1',[actor.id]);
+   assert.equal((await read()).account.isBlocked,true);
+   assert.equal(await seen(),before);
+   await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[actor.id]);
+   await assert.rejects(read(),{name:'DeletionAccessError'});
+  });
   await suite.test('completed publication stays in retention review without an unfinished payment',async()=>{
    const actor=await person(),p=await purchase(actor),binding=await p.store.authorizeDispatch(actor.token,actor.id,p.order.id),provider=randomUUID();
    const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);await intents.authorize(binding);await intents.bindProvider(binding,provider);
@@ -77,6 +103,11 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    for(const actor of [host,guest]){const result=await plan(actor);assert.equal(result.counts.openBookings,'1');assert.equal(result.decision,'manual-review');}
    await db.transaction(async tx=>{await tx.query("select set_config('blizhniy.booking_actor',$1,true)",[guest.id]);await tx.query("update app.booking_requests set status='cancelled',revision=revision+1,cancelled_by=$2,cancellation_reason='Синтетическая отмена' where id=$1",[booking,guest.id]);});
    const result=await plan(guest);assert.equal(result.counts.openBookings,'0');assert.equal(result.counts.bookings,'1');assert.equal(result.decision,'storage-policy-review');
+   const guestExport=await readAccountExport(db,guest.token,guest.id),hostExport=await readAccountExport(db,host.token,host.id);
+   assert.equal(guestExport.bookings[0].side,'guest');
+   assert.equal(guestExport.bookings[0].cancellation_reason,'Синтетическая отмена');
+   assert.equal(hostExport.bookings[0].side,'host');
+   assert.equal(hostExport.bookings[0].cancellation_reason,null);
   });
   await suite.test('an incoming response purchase belongs to the requester preflight even when another user paid',async()=>{
    const recipient=await person(),payer=await person();
@@ -98,6 +129,11 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    await new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(db,p.merchant,{postmoderation:true,renewals:true}).fulfill(p.order.id);
    await owner.query('insert into app.payment_refund_reservations(id,payment_intent_id,provider_payment_id,merchant_shop_id,is_test,amount) values($1,$2,$3,$4,true,$5)',[randomUUID(),p.order.id,provider,p.merchant.shopId,p.order.amount]);
    const result=await plan(actor);assert.equal(result.counts.openPayments,'0');assert.equal(result.counts.openRefunds,'1');assert.equal(result.decision,'manual-review');
+   const exported=await readAccountExport(db,actor.token,actor.id);
+   assert.equal(exported.refunds.length,1);
+   assert.equal(exported.refunds[0].payment_intent_id,p.order.id);
+   assert.equal(exported.refunds[0].amount,p.order.amount);
+   assert.ok(!JSON.stringify(exported).includes(provider));
   });
   await suite.test('a coherent advisory snapshot does not authorize acting on a case changed concurrently',async()=>{
    const actor=await person(),moderator=await person('admin'),store=new(load('postgres-account-deletion').PostgresAccountDeletionStore)(db);let changed=false;
