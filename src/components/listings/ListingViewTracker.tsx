@@ -21,12 +21,13 @@ export function ListingViewTracker({ initialViews, listingId }: { initialViews?:
     async function trackView() {
       // Vacancy/request/specialist and demo keys have no listing-table row.
       // Keep their existing browser-local counts without a doomed API request.
-      if (!isStoredListingViewId(listingId)) {
+      const primary = hasPrimaryListingCount(listingId);
+      if (!primary && !isStoredListingViewId(listingId)) {
         emitListingViewsUpdated(listingId, incrementListingViews(listingId, initialViews));
         return;
       }
 
-      if (hasPrimaryListingCount(listingId)) {
+      if (primary) {
         if (document.querySelector('meta[name="blizhniy-listing-views"]')?.getAttribute("content") !== "enabled") return;
         const send = (signal: AbortSignal) => fetch(`/api/listings/${encodeURIComponent(listingId)}/views`, {
           method: "POST", credentials: "same-origin", signal, headers: { "Content-Type": "application/json", "X-Blizhniy-Request": "1" }, body: "{}",

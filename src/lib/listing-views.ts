@@ -1,9 +1,10 @@
-export function isStoredListingViewId(seed: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(seed);
+export function isStoredListingViewId(seed: string, allowVersion8 = false) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-58][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(seed) &&
+    (allowVersion8 || seed[14] !== "8");
 }
 
 export function hasPrimaryListingCount(listingId: string) {
-  return isStoredListingViewId(listingId) && typeof document !== "undefined" &&
+  return isStoredListingViewId(listingId, true) && typeof document !== "undefined" &&
     document.querySelector('meta[name="blizhniy-auth-backend"]')?.getAttribute("content") === "postgres";
 }
 
