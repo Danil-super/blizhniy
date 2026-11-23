@@ -35,6 +35,7 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    await source.owner.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[id,{name:'Синтетическая проверка восстановления',city:'Краснодар'}]);await source.owner.query('insert into app.sessions(token_hash,user_id,auth_version) values($1,$2,0)',[hash(token),id]);return{id,token,request:(await requests.request(token,id)).request};
   }
   const admin=await person('admin'),peer=await person('admin'),targets=[await person(),await person()],untouched=await person(),command=(actor,operationId)=>({operationId,requestId:actor.request.id,expectedOwnerId:actor.id,expectedAuthVersion:'0',expectedRevision:'1'});
+  const draft=(await source.owner.query("insert into app.listings(author_id,listing_type,title) values($1,'sell','Черновик до восстановления') returning id",[targets[0].id])).rows[0].id;
   const empty=await exportBasicErasureLedger(source.db,key,sourceId);assert.equal(verifyBasicErasureLedger(empty.document,key,empty.checkpoint).records.length,0);
   const beforeAcl=await acls(source.owner),beforeData=await dataDigest(source.owner);
   const bytes=await docker(['exec',source.id,'pg_dump','--username=postgres','--format=custom','--no-owner',database],{encoding:'buffer'});assert.ok(bytes.length>10000);const backupSha256=sha(bytes);await durable('before.dump',bytes);
@@ -61,6 +62,7 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
   for(const actor of [admin,peer]){const token=randomBytes(32).toString('hex');await clone.owner.query('insert into app.sessions(token_hash,user_id,auth_version) select $1,id,auth_version from app.users where id=$2',[hash(token),actor.id]);sessions.set(actor.id,token);}
   const present=async()=>(await clone.owner.query('select count(*)::int n from app.users where id=any($1::uuid[])',[targets.map(row=>row.id)])).rows[0].n;
   await check('old backup really resurrects both deleted identities and original sessions',async()=>{assert.equal(await present(),2);for(const target of targets)assert.ok(await new(load('identity').IdentityStore)(clone.db).resolveSession(target.token));});
+  assert.equal((await clone.owner.query('select id from app.listings where id=$1',[draft])).rowCount,1);
   await check('old signed checkpoint, changed signature and missing actor credential stop before mutation',async()=>{
    await assert.rejects(reapplyBasicErasureLedger(clone.db,empty.document,key,ledger.checkpoint,sessions,clone.id));
    const forged=JSON.parse(ledger.document);forged.signature='0'.repeat(64);const text=JSON.stringify(forged);await assert.rejects(reapplyBasicErasureLedger(clone.db,text,key,{...ledger.checkpoint,sha256:sha(text)},sessions,clone.id));
@@ -68,6 +70,12 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
    for(const invalid of ['0'.repeat(64),sessions.get(admin.id)]){const bad=new Map(sessions);bad.set(peer.id,invalid);await assert.rejects(reapplyBasicErasureLedger(clone.db,ledger.document,key,ledger.checkpoint,bad,clone.id));assert.equal(await present(),2);}
    await clone.owner.query('update app.users set is_blocked=true where id=$1',[peer.id]);await assert.rejects(reapplyBasicErasureLedger(clone.db,ledger.document,key,ledger.checkpoint,sessions,clone.id));await clone.owner.query('update app.users set is_blocked=false where id=$1',[peer.id]);assert.equal(await present(),2);
   });
+  await clone.owner.query("update app.listings set status='pending_payment' where id=$1",[draft]);
+  try{
+   await assert.rejects(reapplyBasicErasureLedger(clone.db,ledger.document,key,ledger.checkpoint,sessions,clone.id),
+    error=>error.name==='ErasureRestoreIncompleteError'&&error.confirmedOperations===0&&error.reopenAuthorized===false);
+   assert.equal(await present(),2);
+  }finally{await clone.owner.query("update app.listings set status='draft' where id=$1",[draft]);}
   await check('lost acknowledgement in a partially replayed batch keeps restoration closed',async()=>{
    let calls=0;const interrupted={readTransaction:clone.db.readTransaction.bind(clone.db),transaction:async work=>{const result=await clone.db.transaction(work);if(++calls===2)throw Error('Synthetic lost COMMIT response');return result;}};
    await assert.rejects(reapplyBasicErasureLedger(interrupted,ledger.document,key,ledger.checkpoint,sessions,clone.id),error=>error.name==='ErasureRestoreIncompleteError'&&error.confirmedOperations===1&&error.reopenAuthorized===false);assert.equal(await present(),0);
@@ -75,6 +83,7 @@ test('a signed erasure ledger removes resurrected basic identities after real ba
   await check('explicit repeat recovers two receipts; no identities/sessions return and third user survives',async()=>{
    const result=await reapplyBasicErasureLedger(clone.db,ledger.document,key,ledger.checkpoint,sessions,clone.id);assert.equal(result.listedOperations,2);assert.equal(result.reopenAuthorized,false);assert.deepEqual(await reapplyBasicErasureLedger(clone.db,ledger.document,key,ledger.checkpoint,sessions,clone.id),result);
    assert.equal(await present(),0);for(const target of targets){assert.equal(await new(load('identity').IdentityStore)(clone.db).resolveSession(target.token),null);assert.equal((await clone.owner.query('select count(*)::int n from app.account_deletion_events where request_id=$1',[target.request.id])).rows[0].n,3);}
+   assert.equal((await clone.owner.query('select id from app.listings where id=$1',[draft])).rowCount,0);
    assert.equal((await clone.owner.query('select count(*)::int n from app.users where id=$1',[untouched.id])).rows[0].n,1);assert.equal((await clone.owner.query('select count(*)::int n from app_admin.basic_account_erasures')).rows[0].n,2);
   });
   await check('an older backup missing an entire case remains incomplete rather than skipping evidence',async()=>{

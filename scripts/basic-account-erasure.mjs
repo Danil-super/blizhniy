@@ -13,6 +13,7 @@ export function parseBasicErasure(input){
 const erasable=new Set(['app.users.id','app.cabinet_profiles.user_id','app.sessions.user_id','app.email_confirmations.user_id','app.password_recoveries.user_id',
  'app.registration_legal.user_id','app.telegram_phone_attempts.user_id','app.telegram_phone_bindings.user_id','app.mail_outbox.user_id','app.notifications.user_id',
  'app.account_deletion_requests.user_id']);
+const draftTables=new Set(['listings','work_publications','service_publications']);
 function receipt(row,input){return{requestId:input.requestId,operationId:input.operationId,subjectId:input.expectedOwnerId,
  requestRevision:row.revision,completedAt:row.completedAt,primaryAccountErased:true,completeErasure:false,retained:['pseudonymous-case-audit','erasure-receipt','external-copies-unverified']};}
 
@@ -80,24 +81,44 @@ export async function eraseBasicAccount(db,token,expectedAdminId,value,container
    // Lock every owned mail row before checking state so a queued dispatch cannot cross erasure.
    const mail=(await tx.query('select state from app.mail_outbox where user_id=$1 order by id for update',[subject.id])).rows;
    if(mail.some(row=>['reserved','sending','unknown'].includes(row.state)))throw new BasicErasureReviewRequired();
+   const drafts=(await tx.query(`select id,status='draft' and not is_paid and published_at is null and expires_at is null and fresh as eligible
+    from (
+     select id,status,is_paid,published_at,expires_at,view_count=0 as fresh from app.listings where author_id=$1
+     union all select id,status,is_paid,published_at,expires_at,deleted_at is null from app.work_publications where author_id=$1
+     union all select id,status,is_paid,published_at,expires_at,deleted_at is null from app.service_publications where author_id=$1
+    ) owned limit 101`,[subject.id])).rows;
+   const draftIds=drafts.map(draft=>draft.id);
+   if(drafts.length>100||drafts.some(draft=>draft.eligible!==true||draft.id===subject.id)||new Set(draftIds).size!==drafts.length)throw new BasicErasureReviewRequired();
    const columns=(await tx.query(`select n.nspname as schema,c.relname as relation,a.attname as column
     from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
     where n.nspname in ('app','app_admin','local_primary') and c.relkind in ('r','p') and a.attnum>0 and not a.attisdropped and a.atttypid='uuid'::regtype
     order by 1,2,3`)).rows;
    assert.ok(columns.length>=150);
-   const predicates=columns.filter(row=>!erasable.has(`${row.schema}.${row.relation}.${row.column}`)).map(row=>{
+   const predicates=columns.flatMap(row=>{
     const table=pg.escapeIdentifier(row.schema)+'.'+pg.escapeIdentifier(row.relation),column=pg.escapeIdentifier(row.column);
+    const draftTable=row.schema==='app'&&draftTables.has(row.relation);
     const ownRequestAudit=row.schema==='app'&&row.relation==='account_deletion_events'&&row.column==='actor_id'
      ?" and not(t.status='requested' and t.request_id in(select id from app.account_deletion_requests where user_id=$1))":'';
-    return`exists(select 1 from ${table} t where t.${column}=$1${ownRequestAudit})`;
+    const conditions=[];
+    if(!erasable.has(`${row.schema}.${row.relation}.${row.column}`)&&!(draftTable&&row.column==='author_id'))
+     conditions.push(`(t.${column}=$1${ownRequestAudit})`);
+    if(draftIds.length){
+     const ownDraft=draftTable&&row.column==='id'?' and t.author_id<>$1':'';
+     conditions.push(`(t.${column}=any($2::uuid[])${ownDraft})`);
+    }
+    return conditions.length?[`exists(select 1 from ${table} t where ${conditions.join(' or ')})`]:[];
    });
-   // UUID equality is deliberately conservative: even an unrelated ID collision requires review.
-   if((await tx.query(`select (${predicates.join(' or ')}) as blocked`,[subject.id])).rows[0]?.blocked!==false)throw new BasicErasureReviewRequired();
+   // Draft references need review even where the database has no foreign key.
+   const identifiers=draftIds.length?[subject.id,draftIds]:[subject.id];
+   if((await tx.query(`select (${predicates.join(' or ')}) as blocked`,identifiers)).rows[0]?.blocked!==false)throw new BasicErasureReviewRequired();
    await tx.query("select set_config('blizhniy.deletion_actor',$1,true)",[admin.id]);
    if(row.status==='requested')await tx.query("update app.account_deletion_requests set status='in_review' where id=$1",[row.id]);
    await tx.query("update app.account_deletion_requests set status='resolved',resolution='partly_retained',case_reference=$2 where id=$1",[row.id,reference]);
    await tx.query('insert into app_admin.basic_account_erasures(operation_id,request_id,subject_id,actor_id,expected_auth_version,expected_request_revision) values($1,$2,$3,$4,$5,$6)',[input.operationId,row.id,subject.id,admin.id,input.expectedAuthVersion,input.expectedRevision]);
    if((await tx.query("delete from app.users where id=$1 and role='user' and auth_version=$2 returning id",[subject.id,input.expectedAuthVersion])).rowCount!==1)throw new DeletionConflictError();
+   if(draftIds.length)assert.equal((await tx.query(`select 1 from app.listings where author_id=$1
+     union all select 1 from app.work_publications where author_id=$1
+     union all select 1 from app.service_publications where author_id=$1 limit 1`,[subject.id])).rowCount,0);
    row=(await tx.query(`select user_id,status,revision::text,resolution,case_reference,
     to_char(resolved_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "completedAt" from app.account_deletion_requests where id=$1`,[row.id])).rows[0];
    assert.ok(row?.user_id===null&&row.status==='resolved'&&row.resolution==='partly_retained'&&row.case_reference===reference&&row.completedAt);

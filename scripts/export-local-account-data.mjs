@@ -61,7 +61,7 @@ export async function readAccountExport(db,token,confirmedOwnerId){
  if(!hash)throw new DeletionAccessError();
  return db.readTransaction(async tx=>{
   const context=(await tx.query(`select current_user='postgres' and session_user='postgres'
-    and current_database() in ('blizhniy_test','blizhniy_prod')
+    and current_database() in ('blizhniy_test','blizhniy_prod','blizhniy_erasure_test')
     and current_setting('transaction_read_only')='on' and current_setting('transaction_isolation')='repeatable read' as allowed`)).rows[0];
   assert.equal(context?.allowed,true);
   const account=(await tx.query(`select u.id,u.email,u.is_blocked as "isBlocked",u.email_verified_at,u.created_at,
