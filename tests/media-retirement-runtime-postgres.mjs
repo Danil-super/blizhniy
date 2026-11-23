@@ -9,6 +9,8 @@ import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {loadMediaModule} from './media-module.mjs';
 import {fileWorkerModule} from './media-file-worker-module.mjs';
+import {getAdminUserAccessMigration} from '../scripts/admin-user-access-release.mjs';
+import {getAdminTariffMigration} from '../scripts/admin-tariff-release.mjs';
 const rootProject=path.resolve(fileURLToPath(new URL('..',import.meta.url)));
 const {MediaMetadataRepository}=loadMediaModule('media-metadata'),{LocalMediaWriter}=loadMediaModule('media-write'),{LocalMediaRetirement}=loadMediaModule('media-retirement'),{LocalMediaUpload}=loadMediaModule('media-upload');
 const bytes=Buffer.from('524946460400000057454250','hex'),image={mimeType:'image/webp',width:1,height:1,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
@@ -113,5 +115,70 @@ export async function testMediaRetirementRuntime(suite,{admin,holder,clock,day})
   assert.equal((await admin.query('select count(*)::int n from app.media_retirement_requests where media_id=$1',[f.pending.id])).rows[0].n,1);
   assert.equal((await admin.query('select count(*)::int n from app.media_retirement_completions where media_id=$1',[f.pending.id])).rows[0].n,0);
   await assert.rejects(f.repo.reserve(f.token,f.intent,image),{code:'MEDIA_INTENT_CONFLICT'});
+ });
+ await suite.test('an approved account erasure detaches only photos already removed by the filesystem worker',async t=>{
+  const migration=await fs.readFile(new URL('../database/candidates/0068-erasure-retired-media.sql',import.meta.url),'utf8');
+  try{await assert.rejects(holder.query(migration),error=>['3F000','42P01'].includes(error.code));}
+  finally{await holder.query('rollback');}
+  await admin.query(getAdminUserAccessMigration().source);
+  await admin.query(getAdminTariffMigration().source);
+  await admin.query(await fs.readFile(new URL('../database/candidates/0063-basic-account-erasure.sql',import.meta.url),'utf8'));
+  await admin.query(migration);
+  const f=await fixture(t),other=await fixture(t);
+  await new LocalMediaWriter(f.repo,f.worker).write(f.token,f.pending.id,{...image,bytes});
+  await new LocalMediaWriter(other.repo,other.worker).write(other.token,other.pending.id,{...image,bytes});
+  const photo=f.pending.id,pathToPhoto=path.join(f.root,photo+'.webp');
+  const draft=(await admin.query("insert into app.listings(author_id,listing_type,title) values($1,'sell','Черновик с фотографией') returning id",[f.owner])).rows[0].id;
+  await admin.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[draft,photo]);
+  const operator=(await admin.query("insert into app.users(email,password_hash,email_verified_at,role) values($1,$2,clock_timestamp(),'admin') returning id",
+   ['operator-'+randomUUID()+'@example.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)])).rows[0].id;
+  const request=await f.db.transaction(async tx=>{
+   await tx.query("select set_config('blizhniy.deletion_actor',$1,true)",[f.owner]);
+   return (await tx.query('insert into app.account_deletion_requests(user_id) values($1) returning id',[f.owner])).rows[0].id;
+  });
+  const operation=randomUUID(),ownerOf=async id=>(await admin.query('select owner_id from app.media_objects where id=$1',[id])).rows[0].owner_id;
+  const reference='B1_'+operation.replaceAll('-','')+'_0_1';
+  const erase=(caseReference=reference)=>f.db.transaction(async tx=>{
+   await tx.query("select set_config('blizhniy.deletion_actor',$1,true)",[operator]);
+   await tx.query("update app.account_deletion_requests set status='in_review' where id=$1",[request]);
+   await tx.query("update app.account_deletion_requests set status='resolved',resolution='partly_retained',case_reference=$2 where id=$1",
+    [request,caseReference]);
+   await tx.query('insert into app_admin.basic_account_erasures(operation_id,request_id,subject_id,actor_id,expected_auth_version,expected_request_revision) values($1,$2,$3,$4,0,1)',
+    [operation,request,f.owner,operator]);
+   assert.equal((await tx.query('delete from app.users where id=$1',[f.owner])).rowCount,1);
+  });
+  await assert.rejects(erase(),{code:'BL003'});
+  await clock(7*day);
+  const cleanup=new LocalMediaRetirement(f.db,f.worker);
+  await assert.rejects(cleanup.retire(photo),{code:'MEDIA_RETIREMENT_DENIED'});
+  assert.equal((await admin.query('select 1 from app.listing_photos where listing_id=$1 and media_id=$2',[draft,photo])).rowCount,1);
+  await admin.query('delete from app.listing_photos where listing_id=$1 and media_id=$2',[draft,photo]);
+  await assert.rejects(cleanup.retire(photo),{code:'MEDIA_RETIREMENT_DENIED'});
+  await clock(14*day);
+  await admin.query('insert into app.media_retirement_requests(media_id,operation_id) values($1,$2)',[photo,randomUUID()]);
+  await assert.rejects(erase(),{code:'BL003'});
+  assert.deepEqual(await fs.readFile(pathToPhoto),bytes);
+  assert.equal(await ownerOf(photo),f.owner);
+  const completed=await cleanup.retire(photo);
+  assert.equal(completed.status,'completed');
+  await assert.rejects(fs.stat(pathToPhoto),{code:'ENOENT'});
+  await assert.rejects(admin.query('delete from app.users where id=$1',[f.owner]),{code:'BL003'});
+  await assert.rejects(erase('WRONG_CASE_REFERENCE'),{code:'BL003'});
+  await assert.rejects(admin.query('update app.media_objects set owner_id=null where id=$1',[photo]),{code:'BL003'});
+  await assert.rejects(admin.query("insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256) values(null,$1,'image/webp',1,1,$2,$3)",
+   [randomUUID(),image.size,image.sha256]),{code:'23514'});
+  assert.equal((await admin.query("select status from app.account_deletion_requests where id=$1",[request])).rows[0].status,'requested');
+  assert.equal((await admin.query('select 1 from app_admin.basic_account_erasures where subject_id=$1',[f.owner])).rowCount,0);
+  const accounting=await budget();
+  await erase();
+  assert.equal((await admin.query('select 1 from app.users where id=$1',[f.owner])).rowCount,0);
+  assert.equal((await admin.query('select 1 from app.listings where id=$1',[draft])).rowCount,0);
+  assert.equal(await ownerOf(photo),null);
+  assert.equal(await ownerOf(other.pending.id),other.owner);
+  assert.deepEqual((await other.repo.readOwned(other.token,other.pending.id)).bytes,bytes);
+  assert.deepEqual(await budget(),accounting);
+  assert.equal((await admin.query('select operation_id from app.media_retirement_completions where media_id=$1',[photo])).rows[0].operation_id,completed.operationId);
+  await assert.rejects(admin.query('update app.media_objects set owner_id=$1 where id=$2',[other.owner,photo]),{code:'BL003'});
+  await assert.rejects(admin.query('delete from app.media_objects where id=$1',[photo]),{code:'BL003'});
  });
 }
