@@ -83,6 +83,43 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[actor.id]);
    await assert.rejects(read(),{name:'DeletionAccessError'});
   });
+  await suite.test('the synthetic export works with a dedicated column-level reader',async t=>{
+   const actor=await person(),other=await person(),own=await purchase(actor),foreign=await purchase(other);
+   const hashToken=load('identity').hashSessionToken;
+   for(const user of [actor,other])await owner.query(`insert into app.telegram_phone_attempts(user_id,session_hash,state_hash,client_id,nonce,verifier,return_path)
+    values($1,$2,$3,'12345678',$4,$5,'/cabinet')`,
+    [user.id,hashToken(user.token),randomBytes(32).toString('hex'),randomBytes(32).toString('hex'),randomBytes(32).toString('base64url')]);
+   await owner.query(await readFile(new URL('../database/permissions/local-account-export-reader.sql',import.meta.url),'utf8'));
+   await owner.query('alter role blizhniy_local_export_reader login password '+pg.escapeLiteral(password));
+   const pool=new pg.Pool({...config,user:'blizhniy_local_export_reader',max:1});
+   const reader=new(load('postgres').PostgresDatabase)(pool);
+   t.after(()=>reader.close());
+   const actual=await readAccountExport(reader,actor.token,actor.id);
+   const baseline=await readAccountExport(db,actor.token,actor.id);
+   assert.deepEqual({...actual,snapshot:null},{...baseline,snapshot:null});
+   assert.deepEqual(actual.listings.map(row=>row.id),[own.id]);
+   assert.deepEqual(actual.phoneBindings.map(row=>row.phone),[actor.phone]);
+   assert.deepEqual(actual.phoneVerification.map(row=>row.state),['pending']);
+   assert.equal(JSON.stringify(actual).includes(foreign.id),false);
+   assert.equal(JSON.stringify(actual).includes(other.phone),false);
+   await assert.rejects(readAccountExport(reader,other.token,actor.id),{name:'DeletionAccessError'});
+   for(const table of ['telegram_phone_bindings','telegram_phone_attempts'])
+    assert.deepEqual((await pool.query('select user_id from app.'+table)).rows,[]);
+   const directory=await mkdtemp(join(tmpdir(),'blizhniy-export-reader-'));
+   t.after(()=>rm(directory,{recursive:true}));
+   assert.equal(await writeAccountExportFiles(actual,directory,join(directory,'storage')),0);
+   const saved=JSON.parse(await readFile(join(directory,'account.json'),'utf8'));
+   assert.deepEqual(saved,JSON.parse(JSON.stringify(actual)));
+   for(const sql of [
+    'select password_hash from app.users',
+    'select payload from app.mail_outbox',
+    'select request_body from app.payment_checkout_intents',
+    'select verifier from app.telegram_phone_attempts',
+    'update app.users set is_blocked=true where false',
+    'delete from app.notifications where false',
+    'set role postgres',
+   ])await assert.rejects(pool.query(sql),{code:'42501'});
+  });
   await suite.test('an export fails if the verified session is revoked during snapshot reads',async()=>{
    for(const revoke of ['session','auth version']){
     const actor=await person();

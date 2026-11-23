@@ -93,14 +93,16 @@ export async function readAccountExport(db,token,confirmedOwnerId){
  if(!hash)throw new DeletionAccessError();
  const credentials=[hash,ownerId],timeoutMs=5000,options={timeoutMs,deadline:performance.now()+timeoutMs};
  const data=await db.readTransaction(async tx=>{
-  const context=(await tx.query(`select current_user='postgres' and session_user='postgres'
-    and current_database() in ('blizhniy_test','blizhniy_prod','blizhniy_erasure_test')
+  const context=(await tx.query(`select current_user='blizhniy_local_export_reader' as reader,current_user=session_user and (
+    (current_user='postgres' and current_database() in ('blizhniy_test','blizhniy_prod','blizhniy_erasure_test'))
+    or (current_user='blizhniy_local_export_reader' and current_database()='blizhniy_test'))
     and current_setting('transaction_read_only')='on' and current_setting('transaction_isolation')='repeatable read' as allowed`)).rows[0];
   assert.equal(context?.allowed,true);
   const account=(await tx.query(`select u.id,u.email,u.is_blocked as "isBlocked",u.email_verified_at,u.created_at,
     to_char(transaction_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as snapshot
     ${verifiedSession}`,credentials)).rows[0];
   if(!account)throw new DeletionAccessError();
+  if(context.reader)await tx.query("select set_config('blizhniy.account_export_owner',$1,true)",[ownerId]);
   const stored=(await tx.query('select profile from app.cabinet_profiles where user_id=$1',[ownerId])).rows[0];
   const profile=stored?load('postgres-profile').parseProductionProfile(stored.profile):null;
   const result={version:1,snapshot:account.snapshot,account:{id:account.id,email:account.email,isBlocked:account.isBlocked,
