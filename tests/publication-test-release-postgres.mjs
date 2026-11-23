@@ -8,7 +8,7 @@ import {readFile,readdir,mkdtemp,symlink,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,getInboxPreferenceMigration} from '../scripts/publication-test-release-plan.mjs';
+import {getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,getInboxPreferenceMigration,getPaidResponseMigrations} from '../scripts/publication-test-release-plan.mjs';
 import {getPaymentReconciliationRolePlan,verifyPaymentReconciliationDatabase} from '../scripts/payment-reconciliation-role.mjs';
 import {getSpecialistCheckoutMigration,specialistCheckoutRuntimeGrants} from '../scripts/specialist-checkout-release.mjs';
 import {buildPaymentWorker} from '../scripts/build-payment-worker.mjs';
@@ -181,6 +181,27 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
     try{await copiedGuard.verifyPaymentReconciliationDatabase(restored,{database,publicationTest:true,specialistAccountTest:true});}
     finally{await restored.close();}
+   });
+   if(inbox)await suite.test('paid response service also accepts the exact combined bookings and views release',async()=>{
+    const verify=(db=workerDb,database=config.database)=>copiedGuard.verifyPaymentReconciliationDatabase(db,{database,publicationTest:true,specialistAccountTest:true});
+    for(const migration of getPaidResponseMigrations()){
+     await admin.query(migration.sql);
+     await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[migration.name,migration.sha256]);
+    }
+    assert.equal(await verify(),true);
+    await admin.query('alter table app.booking_requests disable trigger booking_lifecycle_guard');
+    try{await assert.rejects(verify());}finally{await admin.query('alter table app.booking_requests enable always trigger booking_lifecycle_guard');}
+    await admin.query('grant select(viewer_digest) on app_stats.listing_views to blizhniy_runtime');
+    try{await assert.rejects(verify());}finally{await admin.query('revoke select(viewer_digest) on app_stats.listing_views from blizhniy_runtime');}
+    assert.equal(await verify(),true);
+    const database='paid_response_bookings_views_restored';
+    await admin.query('create database paid_response_bookings_views_restored template template0');
+    await admin.query('revoke all on database paid_response_bookings_views_restored from public;grant connect on database paid_response_bookings_views_restored to blizhniy_payment_reconciler');
+    await docker(['exec',container,'bash','-euo','pipefail','-c',
+     'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+     'restore-fixture',config.database,database]);
+    const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+    try{assert.equal(await verify(restored,database),true);}finally{await restored.close();}
    });
    return;
   }
