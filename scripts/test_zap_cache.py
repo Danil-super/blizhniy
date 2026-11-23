@@ -2,7 +2,7 @@ import copy
 import unittest
 from itertools import count
 
-from check_zap_cache import DISCOVERY, ORIGIN, HOST, REDIRECTS, check_policy, verify_scan
+from check_zap_cache import DISCOVERY, ORIGIN, HOST, REDIRECTS, SERVICE_REDIRECT, check_policy, verify_scan
 
 PATHS = ("", *DISCOVERY, *REDIRECTS)
 ITEMS = [dict(uri=ORIGIN + p, method="GET", evidence="308" if p in REDIRECTS else "no-store") for p in PATHS]
@@ -24,7 +24,7 @@ def responses():
         if path in DISCOVERY:
             mime = "text/plain" if path == "/robots.txt" else "application/xml"
             return 200, {"Cache-Control": "no-store, no-cache, must-revalidate", "Content-Type": mime}, b"document"
-        if path in REDIRECTS:
+        if path in (*REDIRECTS, SERVICE_REDIRECT):
             return 308, {"Location": path[:-1]}, b""
         nonce = f"n{next(serial)}"
         body = f'<link rel="stylesheet" href="{CSS}"><script nonce="{nonce}"></script>'.encode()
@@ -41,6 +41,15 @@ class CacheTests(unittest.TestCase):
         verify_scan(self.report([ALERT]), LOG, 2)
         verify_scan(self.report([]), "Total of 20 URLs\n" + SUMMARY.replace("WARN-NEW: 1", "WARN-NEW: 0"), 0)
         check_policy(responses())
+
+    def test_service_redirect_report(self):
+        alert = copy.deepcopy(ALERT)
+        alert["instances"][-1]["uri"] = ORIGIN + SERVICE_REDIRECT
+        verify_scan(self.report([alert]), LOG, 2)
+        for replacement in (ORIGIN + REDIRECTS[1], ORIGIN + SERVICE_REDIRECT, ORIGIN + "/unknown/"):
+            alert["instances"][-2]["uri"] = replacement
+            with self.subTest(replacement=replacement), self.assertRaises(ValueError):
+                verify_scan(self.report([alert]), LOG, 2)
 
     def test_unreviewed_report(self):
         for field, value in [("pluginid", "10015"), ("riskcode", "1"), ("alertRef", "10049-3"), ("count", "6"),
@@ -74,6 +83,7 @@ class CacheTests(unittest.TestCase):
             ("/cabinet", 503, {}), ("/robots.txt", 200, {"Cache-Control": "public"}),
             ("/sitemap.xml", 200, {"Content-Type": "text/html"}), (REDIRECTS[0], 302, {}),
             (REDIRECTS[0], 308, {"Location": "https://example.org/"}), (REDIRECTS[1], 308, {"Set-Cookie": "x=1"}),
+            (SERVICE_REDIRECT, 308, {"Location": "/other"}), (SERVICE_REDIRECT, 308, {"Set-Cookie": "x=1"}),
             (CSS, 200, {"Cache-Control": "no-store"}), (CSS, 200, {"ETag": ""}),
         ]
         for target, status, override in cases:

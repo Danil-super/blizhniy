@@ -10,6 +10,7 @@ HOST = "xn----9sbphbgks4a4a.xn--p1ai"
 ORIGIN = "https://" + HOST
 DISCOVERY = ("/robots.txt", "/sitemap.xml")
 REDIRECTS = ("/api/listings/*/photos/", "/api/work-publications/*/photos/")
+SERVICE_REDIRECT = "/api/service-publications/*/photos/"
 
 
 def require(condition, reason):
@@ -38,7 +39,10 @@ def verify_scan(report, log, code):
             ("10049", "10049-1", "0"), "Unreviewed ZAP finding")
     instances = alert["instances"]
     expected = {ORIGIN + path: "no-store" for path in ("", *DISCOVERY)}
-    expected.update({ORIGIN + path: "308" for path in REDIRECTS})
+    listing, work = REDIRECTS
+    reported_urls = {item["uri"] for item in instances}
+    second_redirect = SERVICE_REDIRECT if ORIGIN + SERVICE_REDIRECT in reported_urls else work
+    expected.update({ORIGIN + path: "308" for path in (listing, second_redirect)})
     require(len(instances) == len(expected) and int(alert["count"]) == len(expected),
             "Unexpected or missing cache observations")
     require(warnings == [f"WARN-NEW: Non-Storable Content [10049] x {len(expected)}"],
@@ -104,7 +108,7 @@ def check_policy(get=fetch):
         require(status == 200 and body and headers.get("Content-Type", "").split(";")[0] == mime and
                 "Set-Cookie" not in headers and sorted(directives(headers)) ==
                 ["must-revalidate", "no-cache", "no-store"], path)
-    for path in REDIRECTS:
+    for path in (*REDIRECTS, SERVICE_REDIRECT):
         status, headers, _ = get(path)
         require(status == 308 and headers.get("Location") == path[:-1] and
                 "Set-Cookie" not in headers and "Cache-Control" not in headers, path)
