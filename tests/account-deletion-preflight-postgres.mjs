@@ -117,7 +117,7 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    const before=(await owner.query('select request_body from app.payment_checkout_intents where id=$1',[p.order.id])).rows[0];await plan(actor);assert.deepEqual((await owner.query('select request_body from app.payment_checkout_intents where id=$1',[p.order.id])).rows[0],before);
   });
   await suite.test('the approved archive is served only to the matching live PostgreSQL principal',async t=>{
-   const actor=await person(),peer=await person(),own=await purchase(actor);
+   const actor=await person(),peer=await person(),reviewer=await person('admin'),own=await purchase(actor);
    const binding=await own.store.authorizeDispatch(actor.token,actor.id,own.order.id),provider=randomUUID();
    const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);
    await intents.authorize(binding);await intents.bindProvider(binding,provider);
@@ -158,6 +158,19 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    const workForm=load('work-publication-contract').parseWorkPublicationForm('workRequest',{title:'Синтетический заказ',description:'Синтетический заказ для проверки архива'});
    const work=(await owner.query("insert into app.work_publications(author_id,kind,creation_key,form) values($1,'workRequest',$2,$3) returning id",
     [actor.id,randomUUID(),workForm])).rows[0].id;
+   const serviceForm=load('service-publication-contract').parseServicePublicationForm('specialist',{title:'Синтетическая анкета'});
+   const service=(await owner.query("insert into app.service_publications(author_id,kind,creation_key,form) values($1,'specialist',$2,$3) returning id",
+    [actor.id,randomUUID(),serviceForm])).rows[0].id;
+   const foreign=await purchase(peer);
+   const foreignNote='Решение по чужому объявлению',blockReason='Причина блокировки собственного объявления';
+   await owner.query(`insert into app.listing_moderation(listing_id,revision,state,decided_at,decided_by,decision_note)
+    values($1,1,'rejected',clock_timestamp()+interval '1 second',$3,'Правки объявления'),
+     ($2,1,'rejected',clock_timestamp()+interval '1 second',$3,$4)`,[own.id,foreign.id,reviewer.id,foreignNote]);
+   await owner.query("insert into app.work_moderation(publication_id,revision) values($1,1)",[work]);
+   await owner.query(`insert into app.service_moderation(publication_id,revision,state,decided_at,decided_by)
+    values($1,1,'approved',clock_timestamp()+interval '1 second',$2)`,[service,reviewer.id]);
+   await owner.query('insert into app.listing_blocks(listing_id,blocked_by,blocked_revision,reason) values($1,$2,1,$3)',[own.id,reviewer.id,blockReason]);
+   await owner.query('insert into app.listing_owner_removals(listing_id,owner_id,removed_revision) values($1,$2,1)',[own.id,actor.id]);
    const peerMessage='Текст отклика другой стороны';
    const application=(await owner.query(`insert into app.applications(applicant_id,work_publication_id,creation_key,target_revision,specialist_revision,snapshot,message,status,is_paid,sent_at,created_at)
     values($1,$2,$3,1,1,$4,$5,'sent',true,statement_timestamp(),statement_timestamp()) returning id`,
@@ -191,6 +204,11 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    assert.deepEqual(exported.payments.map(row=>[row.is_test,row.status,row.verification_status,row.captured_at]),[[true,'succeeded','succeeded',capturedAt]]);
    assert.ok(exported.payments[0].fulfilled_at);
    assert.deepEqual(exported.listings.map(row=>row.id).sort(),[own.id,rental].sort());
+   assert.deepEqual(exported.publicationReviews.map(row=>[row.kind,row.publication_id,row.revision,row.state,row.decision_note]),[
+    ['listing',own.id,'1','rejected','Правки объявления'],['service',service,'1','approved',null],['work',work,'1','pending',null]
+   ]);
+   assert.deepEqual(exported.listingBlocks.map(row=>[row.listing_id,row.blocked_revision,row.reason]),[[own.id,'1',blockReason]]);
+   assert.deepEqual(exported.listingRemovals.map(row=>[row.listing_id,row.removed_revision]),[[own.id,'1']]);
    assert.deepEqual(exported.bookings.map(row=>[row.id,row.side]),[[booking,'host']]);
    assert.deepEqual(exported.bookingEvents.map(row=>[row.booking_id,row.status,row.actor_is_owner]),[[booking,'pending',false],[booking,'accepted',true]]);
    assert.deepEqual(exported.applications.map(row=>[row.id,row.side,row.message,row.profile]),[[application,'recipient',null,null]]);
@@ -203,7 +221,8 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    assert.deepEqual(listed.sort(),['account.json','processing.json','media/',mediaPath].sort());
    assert.deepEqual((await run('/usr/bin/tar',['-xOzf',copy,'--',mediaPath],{encoding:'buffer'})).stdout,bytes);
    const json=JSON.stringify(exported);
-   for(const privateValue of [peer.id,peer.phone,peerMessage,peerBookingNote,photos[1],provider])assert.equal(json.includes(privateValue),false);
+   for(const privateValue of [peer.id,peer.phone,peerMessage,peerBookingNote,photos[1],provider,reviewer.id,foreign.id,foreignNote])
+    assert.equal(json.includes(privateValue),false);
    await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[actor.id]);
    assert.equal((await download(actor.token)).status,401);
   });

@@ -26,6 +26,21 @@ const records={
   from app.work_publications where author_id=$1 order by created_at,id`,
  services:`select id,kind,form,city_id,profession_id,revision::text,status,is_paid,created_at,updated_at,published_at,expires_at,deleted_at
   from app.service_publications where author_id=$1 order by created_at,id`,
+ publicationReviews:`select kind,publication_id,revision::text,state,submitted_at,decided_at,decision_note from (
+  select 'listing' as kind,m.listing_id as publication_id,m.revision,m.state,m.submitted_at,m.decided_at,m.decision_note
+  from app.listing_moderation m join app.listings l on l.id=m.listing_id where l.author_id=$1
+  union all
+  select 'work',m.publication_id,m.revision,m.state,m.submitted_at,m.decided_at,m.decision_note
+  from app.work_moderation m join app.work_publications w on w.id=m.publication_id where w.author_id=$1
+  union all
+  select 'service',m.publication_id,m.revision,m.state,m.submitted_at,m.decided_at,m.decision_note
+  from app.service_moderation m join app.service_publications s on s.id=m.publication_id where s.author_id=$1
+ ) as reviews order by kind,publication_id,reviews.revision`,
+ listingBlocks:`select b.listing_id,b.blocked_revision::text,b.reason,b.blocked_at
+  from app.listing_blocks b join app.listings l on l.id=b.listing_id where l.author_id=$1 order by b.blocked_at,b.listing_id`,
+ listingRemovals:`select r.listing_id,r.removed_revision::text,r.removed_at
+  from app.listing_owner_removals r join app.listings l on l.id=r.listing_id
+  where r.owner_id=$1 and l.author_id=$1 order by r.removed_at,r.listing_id`,
  applications:`select a.id,a.work_publication_id,a.specialist_publication_id,case when a.applicant_id=$1 then 'applicant' else 'recipient' end as side,
   case when a.applicant_id=$1 then a.message end as message,case when a.applicant_id=$1 then a.snapshot end as profile,
   a.status,a.is_paid,a.sent_at,a.created_at,a.updated_at,a.revision::text
