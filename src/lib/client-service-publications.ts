@@ -13,6 +13,7 @@ export class ServiceClientError extends Error{
  readonly code:string;
  constructor(code:string){super(code==='CHECKOUT_ACTIVE'?'Для анкеты уже начата оплата. Вернитесь к ней в личном кабинете; после её завершения повторите сохранение.':code==='PHONE_REQUIRED'?'Подтвердите номер телефона, чтобы разместить публикацию.':code==='UNAUTHENTICATED'?'Войдите в аккаунт повторно.':code==='ADMIN_REQUIRED'?'Недостаточно прав для модерации.':
   code==='PUBLICATION_CHANGED'?'Материал изменён. Сверьте сохранённую версию.':code==='PUBLICATION_NOT_FOUND'?'Материал недоступен.':
+  code==='PROFILE_NAME_REQUIRED'?'Укажите имя в настройках кабинета. Допустимы буквы, пробелы, дефис и апостроф.':
   code==='INVALID_INPUT'?'Проверьте поля формы и фотографии.':code==='RATE_LIMITED'?'Слишком много запросов. Попробуйте позже.':
   'Не удалось подтвердить результат. Проверьте сохранённую версию перед повторной отправкой.');this.code=code;}
 }
@@ -57,7 +58,8 @@ function transportRequest(transport:typeof fetch){
    const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
    if(image&&response.status===200){if(response.headers.get('content-type')!=='image/webp'||length<12)throw Error();return new Blob([bytes],{type:'image/webp'});}
    const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));if(response.status!==200){const codes:Record<string,number>={CHECKOUT_ACTIVE:409,PHONE_REQUIRED:403,UNAUTHENTICATED:401,ADMIN_REQUIRED:403,PUBLICATION_NOT_FOUND:404,PUBLICATION_CHANGED:409,INVALID_INPUT:422,RATE_LIMITED:429},code=value?.error?.code;
-    throw new ServiceClientError(typeof code==='string'&&Object.hasOwn(codes,code)&&codes[code]===response.status?code:'UNKNOWN');}return value;
+    if(typeof code!=='string'||!Object.hasOwn(codes,code)||codes[code]!==response.status)throw new ServiceClientError('UNKNOWN');
+    throw new ServiceClientError(code==='INVALID_INPUT'&&value.error.reason==='PROFILE_NAME_REQUIRED'?'PROFILE_NAME_REQUIRED':code);}return value;
   }catch(error){if(error instanceof ServiceClientError)throw error;throw new ServiceClientError('UNKNOWN');}
  };
 }

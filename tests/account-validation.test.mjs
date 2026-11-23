@@ -18,3 +18,9 @@ test('registration names are bounded printable text, not a mandatory full legal 
     assert.equal(normalizeRegistrationName(value), null);
   }
 });
+
+test('registration rejects names that cannot be saved in a specialist profile', () => {
+  for (const value of ['Тест 2', 'Анна @ example', 'А\u202eБ', 'Имя <b>']) {
+    assert.equal(normalizeRegistrationName(value), null);
+  }
+});

@@ -43,3 +43,11 @@ test('specialist save preserves the checkout conflict code and explains how to c
  await assert.rejects(client.update(owner,'specialist',id,'1',snapshot('specialist').form),error=>error instanceof ServiceClientError&&error.code==='CHECKOUT_ACTIVE'&&/оплат/.test(error.message));
  assert.equal(writes,1);
 });
+
+test('service client recognizes the profile name reason on the compatible invalid-input response',async()=>{
+ const error={code:'INVALID_INPUT',reason:'PROFILE_NAME_REQUIRED'};
+ const client=createServicePublicationClient(async()=>Response.json({error},{status:422}));
+ await assert.rejects(client.update(owner,'specialist',id,'1',snapshot('specialist').form),error=>error.code==='PROFILE_NAME_REQUIRED');
+ const badStatus=createServicePublicationClient(async()=>Response.json({error},{status:500}));
+ await assert.rejects(badStatus.update(owner,'specialist',id,'1',snapshot('specialist').form),error=>error.code==='UNKNOWN');
+});

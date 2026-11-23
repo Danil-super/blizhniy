@@ -53,6 +53,7 @@ import { normalizeMessengerHref } from "@/lib/messenger-url";
 import { CabinetProfileFailure, useCookieCabinetProfile } from "./CookieCabinetProfileProvider";
 import {CabinetFormValidation} from '@/components/CabinetFormValidation';
 import {containDialogTab,openDialog} from '@/lib/dialog-keyboard';
+import { PROFILE_NAME_MAX_LENGTH, profileNamePattern } from '@/lib/cabinet-field-validation';
 
 type UserCabinetState = {
   identity: ClientUserIdentity | null;
@@ -872,7 +873,7 @@ function toRussianPhoneE164(value: string) {
 }
 
 function sanitizePersonName(value: string) {
-  return value.replace(/[^\p{L}\p{M} .'’–-]/gu, "").replace(/\s{2,}/g, " ").replace(/-{2,}/g, "-").slice(0, 60);
+  return value.replace(/[^\p{L}\p{M} .'’–-]/gu, "").replace(/\s{2,}/g, " ").replace(/-{2,}/g, "-").slice(0, PROFILE_NAME_MAX_LENGTH);
 }
 
 function sanitizeCityQuery(value: string) {
@@ -2923,10 +2924,9 @@ export function SettingsPanel({ identity, profile, onClose, saveProfile }: { ide
               value={form.name}
               name="name"
               onChange={(event) => setForm({ ...form, name: sanitizePersonName(event.target.value) })}
-              minLength={2}
-              maxLength={60}
-              pattern="[\p{L}\p{M}][\p{L}\p{M} .'’\-–]{1,59}"
-              title="Имя: буквы, пробелы, дефис и апостроф. Длина от 2 до 60 символов."
+              maxLength={PROFILE_NAME_MAX_LENGTH}
+              pattern={profileNamePattern}
+              title="Введите имя буквами. Допустимы пробелы, дефис и апостроф."
               required
             />
           </label>

@@ -1,6 +1,6 @@
 import {parseServicePublicationForm,checkServicePublicationForm,type ServicePublicationKind} from './service-publication-contract.ts';
 import {parseListingDraftId} from './listing-draft-contract.ts';import type {SpecialistProfile,FairApplication} from './types';
-import {validPersonName} from './cabinet-field-validation.ts';
+import {validProfileName} from './cabinet-field-validation.ts';
 import {checkSpecialistApplicationForm,specialistAbout} from './specialist-application-profile.ts';
 export type PublicServiceRow={testPublication?:boolean;id:string;kind:ServicePublicationKind;form:unknown;professionId?:string|null;mediaIds:string[];status:string;paid:boolean;createdAt:string;publishedAt:string|null;expiresAt:string|null;profileIdentity?:{name:string;avatarDataUrl:string}|null};
 export type PublicMarquee={id:string;text:string;href?:string};
@@ -24,7 +24,7 @@ export function mapPublicServicePublication(row:PublicServiceRow,now:number):Pub
   let name=form.title,specialistImages=images;
   if(Object.hasOwn(row,'profileIdentity')){
    const identity=row.profileIdentity;
-   if(!identity||typeof identity.name!=='string'||!validPersonName(identity.name)||typeof identity.avatarDataUrl!=='string'||identity.avatarDataUrl.length>409623||
+   if(!identity||!validProfileName(identity.name)||typeof identity.avatarDataUrl!=='string'||identity.avatarDataUrl.length>409623||
     identity.avatarDataUrl&&!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(identity.avatarDataUrl))return null;
    name=identity.name;specialistImages=identity.avatarDataUrl?[identity.avatarDataUrl]:[];
   }

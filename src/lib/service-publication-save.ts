@@ -30,7 +30,7 @@ export function createServicePublicationSave(owner:string,kind:ServicePublicatio
    try{for(const item of uploads)item.ready??=await dependencies.upload(owner,item.intent,item.file,options);
     unknown=true;const row=base?await dependencies.update(owner,kind,base.id,base.revision,payload(),options):await dependencies.create(owner,kind,creationKey,payload(),options);
     if(!matches(row))throw Error('Сохранена другая версия. Проверьте результат.');complete=row;unknown=false;return row;
-   }catch(error){if(error instanceof ServiceClientError&&error.code==='INVALID_INPUT')unknown=false;throw error;}
+   }catch(error){if(error instanceof ServiceClientError&&(error.code==='INVALID_INPUT'||error.code==='PROFILE_NAME_REQUIRED'))unknown=false;throw error;}
    finally{busy=false;}
   },
   async readback(options?:Options){if(busy)throw Error('Дождитесь завершения запроса.');busy=true;

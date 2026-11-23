@@ -8,6 +8,14 @@ export const personNamePattern="[\\p{L}\\p{M}][\\p{L}\\p{M} .'’\\-–]{1,119}"
 export function validPersonName(value:string):boolean {
  return value.length>=2&&value.length<=120&&new RegExp(`^(?:${personNamePattern})$`,'u').test(value)&&validPlainText(value);
 }
+export const PROFILE_NAME_MAX_LENGTH=120;
+export const profileNamePattern=`\\p{L}|${personNamePattern}`;
+const profileNameRegex=new RegExp(`^(?:${profileNamePattern})$`,'u');
+
+export function validProfileName(value:unknown):value is string {
+ return typeof value==='string'&&value.length<=PROFILE_NAME_MAX_LENGTH&&profileNameRegex.test(value)&&validPlainText(value);
+}
+
 export function validPhone(value:string):boolean {
  if(!value)return true;
  const digits=value.replace(/\D/g,'');
