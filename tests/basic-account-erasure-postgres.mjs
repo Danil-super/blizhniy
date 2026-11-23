@@ -1,10 +1,12 @@
 // Destructive candidate acceptance on one owned disposable synthetic database only.
 import assert from 'node:assert/strict';import{test}from'node:test';
 import{execFile}from'node:child_process';import{promisify}from'node:util';import{randomBytes,randomUUID}from'node:crypto';
-import{readFile}from'node:fs/promises';import{createHash}from'node:crypto';import{createRequire}from'node:module';import pg from'pg';
+import{lstat,mkdir,readFile,rm,unlink,writeFile}from'node:fs/promises';import{createHash}from'node:crypto';import{createRequire}from'node:module';
+import{tmpdir}from'node:os';import{join}from'node:path';import pg from'pg';
 import{getUserAccessRolePlan}from'../scripts/user-access-role.mjs';import{getAdminUserAccessMigration}from'../scripts/admin-user-access-release.mjs';import{getAdminTariffMigration}from'../scripts/admin-tariff-release.mjs';
-import{localPrimaryImage}from'../scripts/local-primary-config.mjs';import{eraseBasicAccount,readBasicErasureSchema}from'../scripts/basic-account-erasure.mjs';
+import{localPrimaryImage}from'../scripts/local-primary-config.mjs';import{eraseAccountWithRetiredMedia,eraseBasicAccount,readBasicErasureSchema}from'../scripts/basic-account-erasure.mjs';
 import{readAccountExport}from'../scripts/export-local-account-data.mjs';
+import{loadMediaModule}from'./media-module.mjs';import{fileWorkerModule}from'./media-file-worker-module.mjs';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,run=promisify(execFile);
 test('basic erasure is atomic, replayable and refuses domain history on disposable PG18',{timeout:90000},async suite=>{
  const name='blizhniy-erasure-'+randomBytes(6).toString('hex'),password=randomBytes(32).toString('hex'),label='blizhniy.erasure-test',database='blizhniy_erasure_test';let container,owner,db;
@@ -176,6 +178,67 @@ test('basic erasure is atomic, replayable and refuses domain history on disposab
    await assert.rejects(eraseBasicAccount(db,admin.token,admin.id,input(target),'0'.repeat(64)));assert.equal(await exists(target),1);
    const nonSynthetic=await person();await owner.query("update app.users set email='contact@example.invalid' where id=$1",[nonSynthetic.id]);
    await assert.rejects(erase({...input(nonSynthetic),expectedAuthVersion:'1'}),{name:'BasicErasureReviewRequired'});assert.equal(await exists(nonSynthetic),1);
+  });
+  await suite.test('the erasure executor checks restored files before closing the case for a retired draft photo',async t=>{
+   const eraseWithMedia=value=>eraseAccountWithRetiredMedia(db,admin.token,admin.id,value,container);
+   await assert.rejects(eraseWithMedia(input(await person())),{name:'AssertionError'});
+   const migration68=await readFile(new URL('../database/candidates/0068-erasure-retired-media.sql',import.meta.url));
+   const migrationSha256=createHash('sha256').update(migration68).digest('hex');
+   await owner.query(migration68.toString('utf8'));
+   await owner.query('insert into app_admin.migrations values($1,$2)',['0068-erasure-retired-media.sql',migrationSha256]);
+   const candidate={migrationSha256,schema:await readBasicErasureSchema(owner)};
+   assert.deepEqual(candidate,JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema68.json',import.meta.url),'utf8')));
+
+   const root=join(tmpdir(),'blizhniy-erasure-media-'+container),bytes=Buffer.from('524946460400000057454250','hex');
+   await mkdir(root,{mode:0o700});
+   const owned=await lstat(root,{bigint:true});
+   t.after(async()=>{
+    const current=await lstat(root,{bigint:true});
+    assert.equal(current.ino,owned.ino);assert.equal(current.dev,owned.dev);assert.equal(current.uid,BigInt(process.getuid()));
+    assert.ok(current.isDirectory());
+    await rm(root,{recursive:true});
+   });
+   await writeFile(join(root,'.writer.lock'),'',{mode:0o600,flag:'wx'});
+   const target=await person(),value=input(target);
+   const badJournal=wrapping((sql,result)=>{
+    if(sql==='select name,sha256 from app_admin.migrations order by name')result.rows.at(-1).sha256='0'.repeat(64);
+   });
+   await assert.rejects(eraseAccountWithRetiredMedia(badJournal,admin.token,admin.id,value,container),{name:'AssertionError'});
+   const files=await loadMediaModule('media-files').createLocalMediaFileStore(root);
+   const worker=await fileWorkerModule().createLocalMediaFileWorker(process.cwd(),root);
+   const repo=new(loadMediaModule('media-metadata').MediaMetadataRepository)(db,files,true);
+   const writer=new(loadMediaModule('media-write').LocalMediaWriter)(repo,worker);
+   const clock=(await owner.query("select pg_get_functiondef('app.media_retention_clock()'::regprocedure) ddl")).rows[0].ddl;
+   const image={mimeType:'image/webp',width:1,height:1,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
+   let photo,draft;
+   try{
+    await owner.query("create or replace function app.media_retention_clock() returns timestamptz language sql volatile set search_path=pg_catalog,pg_temp as $$select pg_catalog.clock_timestamp()-interval '8 days'$$");
+    photo=(await repo.reserve(target.token,randomUUID(),image)).id;
+    await writer.write(target.token,photo,{...image,bytes});
+    draft=(await owner.query("insert into app.listings(author_id,listing_type) values($1,'sell') returning id",[target.id])).rows[0].id;
+    await owner.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[draft,photo]);
+    await owner.query('delete from app.listing_photos where listing_id=$1 and media_id=$2',[draft,photo]);
+   }finally{await owner.query(clock);}
+   await assert.rejects(erase(value),{name:'AssertionError'});
+   await assert.rejects(eraseWithMedia(value),{name:'BasicErasureReviewRequired'});
+   const retirement=new(loadMediaModule('media-retirement').LocalMediaRetirement)(db,worker);
+   await retirement.retire(photo);
+   const final=join(root,photo+'.webp');
+   await writeFile(final,bytes,{mode:0o600,flag:'wx'});
+   await assert.rejects(eraseWithMedia(value),{name:'BasicErasureReviewRequired'});
+   assert.deepEqual(await readFile(final),bytes);assert.equal(await exists(target),1);assert.equal(await events(target),1);
+   await unlink(final);
+   const {rows:[{id:attemptId}]}=await owner.query('select id from app.media_write_attempts where media_id=$1',[photo]);
+   const temporary=join(root,'.pending-'+attemptId);
+   await writeFile(temporary,bytes,{mode:0o600,flag:'wx'});
+   await assert.rejects(eraseWithMedia(value),{name:'BasicErasureReviewRequired'});
+   assert.deepEqual(await readFile(temporary),bytes);assert.equal(await exists(target),1);
+   await unlink(temporary);
+   const completed=await eraseWithMedia(value);
+   assert.equal(await exists(target),0);
+   assert.equal((await owner.query('select owner_id from app.media_objects where id=$1',[photo])).rows[0].owner_id,null);
+   assert.equal((await owner.query('select id from app.listings where id=$1',[draft])).rowCount,0);
+   assert.deepEqual(await eraseWithMedia(value),completed);
   });
  }finally{
   await db?.close();await owner?.end();if(container){const meta=JSON.parse(await docker(['inspect',container]))[0];assert.equal(meta.Config.Labels[label],name);await docker(['rm','--force',container]);}

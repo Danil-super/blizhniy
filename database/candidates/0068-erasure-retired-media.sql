@@ -4,6 +4,9 @@ set local lock_timeout='3s';
 set local statement_timeout='10s';
 
 lock table app.media_retirement_completions,app_admin.basic_account_erasures in access share mode;
+alter table app_admin.migrations drop constraint migrations_name_check;
+alter table app_admin.migrations add constraint migrations_name_check
+ check(name in ('0061-admin-user-access.sql','0062-admin-tariffs.sql','0063-basic-account-erasure.sql','0068-erasure-retired-media.sql'));
 alter table app.media_objects alter column owner_id drop not null;
 alter table app.media_objects drop constraint media_objects_owner_id_fkey;
 alter table app.media_objects add constraint media_objects_owner_id_fkey
