@@ -7,6 +7,7 @@ import {pathToFileURL} from 'node:url';
 import pg from 'pg';
 import {docker,localPrimaryDatabaseConfig,stateDirectory,stateFile} from './local-primary-fixture.mjs';
 import {readLocalPrimaryState,validateLocalPrimaryContainer} from './local-primary-config.mjs';
+import {archiveRoot,localArchiveMaximumBytes,publishLocalAccountArchive} from './local-account-export-delivery.mjs';
 
 const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
 const {DeletionAccessError,deletionId}=load('account-deletion-contract');
@@ -101,7 +102,7 @@ export async function readAccountExport(db,token,confirmedOwnerId){
  },{timeoutMs:5000});
 }
 
-async function writeLocalExport(ownerId,token){
+async function writeLocalExport(ownerId,token,notice){
  assert.equal(process.env.NODE_ENV,'test');
  const info=await lstat(stateDirectory);
  assert.ok(info.isDirectory()&&info.uid===process.getuid()&&(info.mode&0o777)===0o700&&await realpath(stateDirectory)===stateDirectory);
@@ -119,6 +120,8 @@ async function writeLocalExport(ownerId,token){
   const media=join(directory,'media');await mkdir(media,{mode:0o700});
   const retired=new Set(data.mediaRetirement?.map(row=>row.media_id));
   const ready=data.media.filter(row=>row.state==='ready'&&!retired.has(row.id));
+  if(notice&&Buffer.byteLength(JSON.stringify(data,null,2))+ready.reduce((total,row)=>total+row.size,0)>localArchiveMaximumBytes)
+   throw Error('Export needs an offline handoff');
   if(ready.length){
    const files=await load('media-files').createLocalMediaFileStore(join(stateDirectory,'media'));
    for(const row of ready){
@@ -128,6 +131,13 @@ async function writeLocalExport(ownerId,token){
    }
   }
   await writeFile(join(directory,'account.json'),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
+  if(notice){
+   const delivery=archiveRoot(stateDirectory,state.containerId);
+   await mkdir(delivery,{recursive:true,mode:0o700});
+   const receipt=await publishLocalAccountArchive(directory,delivery,ownerId,notice);
+   await rm(directory,{recursive:true});
+   return {...receipt,verifiedFiles:ready.length};
+  }
   return {directory,verifiedFiles:ready.length};
  }catch(error){
   await rm(directory,{recursive:true,force:true});
@@ -137,11 +147,16 @@ async function writeLocalExport(ownerId,token){
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  try{
-  assert.equal(process.argv.length,4);
+  assert.ok(process.argv.length===4||process.argv.length===6&&process.argv[4]==='--delivery-notice');
   assert.equal(process.argv[2],'--owner');
+  const noticePath=process.argv[5];let notice;
+  if(noticePath){
+   const info=await lstat(noticePath);assert.ok(info.isFile()&&info.size>0&&info.size<=32768);
+   notice=JSON.parse(await readFile(noticePath,'utf8'));assert.ok(notice&&typeof notice==='object');
+  }
   let token='';
   process.stdin.setEncoding('utf8');
   for await(const chunk of process.stdin){token+=chunk;if(token.length>65)throw new DeletionAccessError();}
-  console.log(JSON.stringify(await writeLocalExport(deletionId(process.argv[3]),token.trimEnd())));
+  console.log(JSON.stringify(await writeLocalExport(deletionId(process.argv[3]),token.trimEnd(),notice)));
  }catch{console.error('Local account export failed');process.exitCode=1;}
 }

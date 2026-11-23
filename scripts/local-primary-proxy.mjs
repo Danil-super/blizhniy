@@ -4,6 +4,7 @@ import {readMediaRetentionEnabled} from '../src/lib/media-retention-config.ts';
 import {createServer} from 'node:https';
 import {request as httpRequest} from 'node:http';
 import {serveLocalUserAccessRequest} from './local-user-access-request.mjs';
+import {archiveRoot,createLocalAccountExportHandler,exportDownloadCsp,exportDownloadForm,exportDownloadScript} from './local-account-export-delivery.mjs';
 import {readFile,writeFile,readdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createRequire} from 'node:module';
@@ -42,8 +43,11 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
  await load('production-auth-database').verifyProductionAuthDatabase(runtimeDb);
  const limiter=new(load('auth-http').AuthRateLimiter)(runtimeDb,state.rateSecret);
  const identity=new(load('identity').IdentityStore)(runtimeDb);
+ const deletionStore=new(load('postgres-account-deletion').PostgresAccountDeletionStore)(runtimeDb);
+ const accountExport=createLocalAccountExportHandler({origin:canonical,delivery:archiveRoot(stateDirectory,state.containerId),
+  session:token=>deletionStore.session(token),allow:ip=>limiter.allowProduction('session',ip)});
  const deletion=load('account-deletion-http').createAccountDeletionHandler({origin:canonical,rateSecret:state.rateSecret,mailKeyFile:join(stateDirectory,'mail-key.bin'),rememberedCaptcha:true},()=>({
-  store:new(load('postgres-account-deletion').PostgresAccountDeletionStore)(runtimeDb),identity,limiter,verifyCaptcha:async()=>false,
+  store:deletionStore,identity,limiter,verifyCaptcha:async()=>false,
  }));
  // Use the same backend handler with the canonical Request constructed below.
  // Next's loopback transport URL is not the externally registered callback URL.
@@ -92,6 +96,13 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
   command:(token,command,signal)=>load('local-refund-operator-client').callLocalRefundOperator(refundOperatorSocket,token,command,signal),
  }));
  const localPage=async path=>{
+  if(path==='/__local/account-export'){
+   const page=html(exportDownloadForm);
+   page.headers.set('Content-Security-Policy',page.headers.get('Content-Security-Policy')+'; '+exportDownloadCsp);
+   return page;
+  }
+  if(path==='/__local/account-export.js')return new Response(exportDownloadScript,{headers:{'Content-Type':'text/javascript; charset=utf-8',
+   'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   if(path==='/__local'){
    const accounts=JSON.parse(await readFile(join(stateDirectory,'accounts.json'),'utf8'));
    return html(`<h1>Локальный стенд БЛИЖНИЙ</h1><p>Текущий PostgreSQL backend. Отдельные синтетические данные. Настоящих писем и списаний нет.</p><nav><a href="/">Главная</a><a href="/auth">Вход</a><a href="/auth/register">Регистрация</a><a href="/cabinet/obyavleniya">Мои объявления</a><a href="/admin">Админка</a><a href="/__local/mail">Письма</a></nav>${accounts.map(a=>`<article><h2>${a.role==='admin'?'Администратор':'Пользователь'}</h2><p>Email: <code>${escape(a.email)}</code></p><p>Пароль: <code>${escape(a.password)}</code></p></article>`).join('')}<p>Для проверки регистрации используйте адрес вида test1@local.invalid. Письма подтверждения и восстановления открываются в разделе «Письма».</p>`);
@@ -119,8 +130,10 @@ export async function createLocalPrimaryProxy(state,{paymentHandler,refundOperat
    if(req.headers.origin)headers.set('origin',canonical);
    if(tariffAdmin&&path==='/api/admin/tariff-management'){await serveLocalUserAccessRequest(req,res,headers,tariffAdmin,canonical+req.url);return;}
    if(userAccess&&path==='/api/admin/user-access'){await serveLocalUserAccessRequest(req,res,headers,userAccess,canonical+req.url);return;}
-   const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req,...(refundAdmin&&path==='/api/admin/refunds'?[4096,2000]:[]));
+   const shortBody=(refundAdmin&&path==='/api/admin/refunds')||path==='/api/account/export';
+   const body=['GET','HEAD'].includes(req.method)?undefined:await readBody(req,...(shortBody?[4096,2000]:[]));
    const request=new Request(canonical+req.url,{method:req.method,headers,...(body?{body}:{}),redirect:'error'});
+   if(!response&&path==='/api/account/export')response=await accountExport(request);
    if(!response&&phoneCallback&&path==='/api/account/phone/telegram/callback')response=await phoneCallback(request,'callback');
    const deletionMatch=/^\/api\/(account|admin)\/deletion\/([a-z]+)$/.exec(path);
    if(!response&&deletionMatch)response=await deletion(request,deletionMatch[2],deletionMatch[1]==='admin');

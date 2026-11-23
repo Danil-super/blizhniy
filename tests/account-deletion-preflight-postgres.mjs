@@ -2,10 +2,12 @@
 import assert from 'node:assert/strict';import{test}from'node:test';
 import{execFile}from'node:child_process';import{promisify}from'node:util';import{randomBytes,randomUUID,randomInt}from'node:crypto';
 import{readFile}from'node:fs/promises';import{createRequire}from'node:module';import pg from'pg';
+import{mkdtemp,mkdir,rm,writeFile}from'node:fs/promises';import{tmpdir}from'node:os';import{join}from'node:path';
 import{getRefundWorkerRolePlan}from'../scripts/refund-worker-role.mjs';
 import{getAdminUserAccessMigration}from'../scripts/admin-user-access-release.mjs';import{getAdminTariffMigration}from'../scripts/admin-tariff-release.mjs';
 import{localPrimaryImage}from'../scripts/local-primary-config.mjs';
 import{readAccountExport}from'../scripts/export-local-account-data.mjs';
+import{createLocalAccountExportHandler,publishLocalAccountArchive}from'../scripts/local-account-export-delivery.mjs';
 import{inspectAccountDeletionCase}from'../src/lib/account-deletion-preflight.ts';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,run=promisify(execFile);
 
@@ -87,6 +89,33 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    await new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(db,p.merchant,{postmoderation:true,renewals:true}).fulfill(p.order.id);
    const result=await plan(actor);assert.equal(result.counts.openPayments,'0');assert.equal(result.decision,'storage-policy-review');
    const before=(await owner.query('select request_body from app.payment_checkout_intents where id=$1',[p.order.id])).rows[0];await plan(actor);assert.deepEqual((await owner.query('select request_body from app.payment_checkout_intents where id=$1',[p.order.id])).rows[0],before);
+  });
+  await suite.test('the approved archive is served only to the matching live PostgreSQL principal',async t=>{
+   const actor=await person(),peer=await person(),own=await purchase(actor);
+   const root=await mkdtemp(join(tmpdir(),'blizhniy-export-db-'));
+   t.after(()=>rm(root,{recursive:true}));
+   const input=join(root,'input'),delivery=join(root,'delivery');
+   await mkdir(input,{mode:0o700});await mkdir(delivery,{mode:0o700});await mkdir(join(input,'media'),{mode:0o700});
+   const data=await readAccountExport(db,actor.token,actor.id);
+   await writeFile(join(input,'account.json'),JSON.stringify(data),{mode:0o600});
+   const disclosure={purpose:'Синтетическая проверка',basis:'Стендовое дело',sources:'Тестовые записи',
+    recipients:'Владелец',retention:'На время репетиции'};
+   const {id}=await publishLocalAccountArchive(input,delivery,actor.id,disclosure);
+   const origin='https://example.invalid',store=new(load('postgres-account-deletion').PostgresAccountDeletionStore)(db);
+   const handler=createLocalAccountExportHandler({origin,delivery,session:token=>store.session(token),allow:async()=>true});
+   const download=token=>handler(new Request(origin+'/api/account/export',{method:'POST',headers:{
+    host:'example.invalid',origin,'x-real-ip':'127.0.0.1','x-blizhniy-request':'1','content-type':'application/json',
+    cookie:'__Host-blizhniy_session='+token},body:JSON.stringify({access:'account',id})}));
+   assert.equal((await download(peer.token)).status,404);
+   const response=await download(actor.token);
+   assert.equal(response.status,200);
+   const copy=join(root,'download.tar.gz');
+   await writeFile(copy,Buffer.from(await response.arrayBuffer()),{mode:0o600});
+   const exported=JSON.parse((await run('/usr/bin/tar',['-xOzf',copy,'--','account.json'])).stdout);
+   assert.equal(exported.account.id,actor.id);
+   assert.deepEqual(exported.payments.map(row=>row.id),[own.order.id]);
+   await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[actor.id]);
+   assert.equal((await download(actor.token)).status,401);
   });
   await suite.test('pending media and unknown mail are operational blockers and admin accounts require manual review',async()=>{
    const actor=await person();await owner.query("insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256) values($1,$2,'image/webp',2,2,12,$3)",[actor.id,randomUUID(),'a'.repeat(64)]);
