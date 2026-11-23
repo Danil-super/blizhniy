@@ -24,7 +24,30 @@ export function classifyDeletionPreflight(input:unknown,role:unknown){
  return{counts,blockers,retentionReview,decision:blockers.length?'manual-review':retentionReview.length?'storage-policy-review':'no-operational-blocker',executionAuthorized:false as const};
 }
 
-const factsSql=`with owned_targets as (
+const optionalAudit=[
+ ['app_admin.user_changes','actor_id=$1 or target_id=$1'],
+ ['app_admin.tariff_changes','actor_id=$1'],
+ ['app.payment_checkout_cancellations','owner_id=$1'],
+ ['app.payment_refund_recovery_actions','operator_id=$1'],
+ ['app.application_contact_views','recipient_id=$1'],
+ ['app.application_selection_events','recipient_id=$1'],
+] as const;
+const optionalPairs=[
+ ['app.payment_refund_reservations','app.payment_refund_effects'],
+ ['app.application_compensation_cases','app.application_compensation_refunds'],
+ ['app.media_retirement_requests','app.media_retirement_completions'],
+] as const;
+const optionalRelations=[...optionalPairs.flat(),...optionalAudit.map(([table])=>table)];
+
+function factsSql(installed:ReadonlySet<string>){
+ const [refunds,compensations,mediaRetirement]=optionalPairs.map(([first,second])=>{
+  const available=installed.has(first);
+  if(available!==installed.has(second))throw new DeletionPreflightUnavailableError();
+  return available;
+ });
+ const extraAudit=optionalAudit.filter(([table])=>installed.has(table))
+  .map(([table,predicate])=>`+(select count(*) from ${table} where ${predicate})`).join('');
+ return `with owned_targets as (
  select id,'listing'::text target_type from app.listings where author_id=$1
  union all select id,kind from app.work_publications where author_id=$1
  union all select id,case kind when 'fair' then 'fair_application' when 'marquee' then 'ad_marquee' else kind end from app.service_publications where author_id=$1
@@ -38,10 +61,11 @@ const factsSql=`with owned_targets as (
  where i.owner_id=$1 or o.owner_id=$1 or exists(select 1 from owned_targets t where (t.id=i.target_id and t.target_type=i.target_type) or (t.id=o.target_id and t.target_type=o.target_type))
   or exists(select 1 from related_applications a where (i.target_type='application' and i.target_id=a.id) or (o.target_type='application' and o.target_id=a.id))
 ), related_refunds as (
- select r.id,r.payment_intent_id from app.payment_refund_reservations r join related_payments p on p.id=r.payment_intent_id
+ ${refunds?'select r.id,r.payment_intent_id from app.payment_refund_reservations r join related_payments p on p.id=r.payment_intent_id':
+ 'select null::uuid as id,null::uuid as payment_intent_id where false'}
 ), related_compensations as (
- select c.payment_intent_id from app.application_compensation_cases c where c.payment_intent_id in(select id from related_payments)
-  or c.application_id in(select id from related_applications)
+ ${compensations?`select c.payment_intent_id from app.application_compensation_cases c where c.payment_intent_id in(select id from related_payments)
+  or c.application_id in(select id from related_applications)`:'select null::uuid as payment_intent_id where false'}
 ), related_bookings as (
  select b.* from app.booking_requests b where b.guest_id=$1 or b.host_id=$1 or b.cancelled_by=$1 or b.listing_id in(select id from owned_targets where target_type='listing')
 ), owned_media as (select id,state from app.media_objects where owner_id=$1)
@@ -55,22 +79,23 @@ select
  (select count(*)::text from related_bookings) as bookings,(select count(*)::text from owned_media) as media,
  (select count(*)::text from app.mail_outbox where user_id=$1) as mail,(select count(*)::text from related_payments) as payments,
  (select count(*)::text from related_refunds) as refunds,(select count(*)::text from related_compensations) as compensations,
- ((select count(*) from app_admin.user_changes where actor_id=$1 or target_id=$1)+(select count(*) from app_admin.tariff_changes where actor_id=$1)+
-  (select count(*) from app.listing_blocks where blocked_by=$1)+(select count(*) from app.listing_moderation where decided_by=$1)+
+ ((select count(*) from app.listing_blocks where blocked_by=$1)+(select count(*) from app.listing_moderation where decided_by=$1)+
   (select count(*) from app.work_moderation where decided_by=$1)+(select count(*) from app.service_moderation where decided_by=$1)+
-  (select count(*) from app.work_owner_actions where owner_id=$1)+(select count(*) from app.payment_checkout_cancellations where owner_id=$1)+
-  (select count(*) from app.payment_refund_recovery_actions where operator_id=$1)+(select count(*) from app.application_contact_views where recipient_id=$1)+
-  (select count(*) from app.application_selection_events where recipient_id=$1)+(select count(*) from app.booking_events where actor_id=$1))::text as "externalAudit",
+  (select count(*) from app.work_owner_actions where owner_id=$1)+(select count(*) from app.booking_events where actor_id=$1)
+  ${extraAudit})::text as "externalAudit",
  (select count(*)::text from app.account_deletion_events e left join app.account_deletion_requests r on r.id=e.request_id where r.user_id=$1 or e.actor_id=$1) as "caseAudit",
  (select count(*)::text from related_payments p where inconsistent or status in ('created','pending') or status='succeeded' and
   case when target_type='application' then not exists(select 1 from app.applications a where a.id=p.target_id and a.is_paid and a.sent_at is not null)
   else not exists(select 1 from app.payment_fulfillments f where f.intent_id=p.id) end) as "openPayments",
- (select count(*)::text from related_refunds r where not exists(select 1 from app.payment_refund_effects e where e.operation_id=r.id)
-  and not exists(select 1 from app.application_compensation_refunds c where c.payment_intent_id=r.payment_intent_id)) as "openRefunds",
- (select count(*)::text from related_compensations c where not exists(select 1 from app.application_compensation_refunds r where r.payment_intent_id=c.payment_intent_id)) as "openCompensations",
+ (select count(*)::text from related_refunds r where ${refunds?'not exists(select 1 from app.payment_refund_effects e where e.operation_id=r.id)':'true'}
+  ${compensations?'and not exists(select 1 from app.application_compensation_refunds c where c.payment_intent_id=r.payment_intent_id)':''}) as "openRefunds",
+ (select count(*)::text from related_compensations c
+  ${compensations?'where not exists(select 1 from app.application_compensation_refunds r where r.payment_intent_id=c.payment_intent_id)':''}) as "openCompensations",
  (select count(*)::text from related_bookings where status in ('pending','accepted')) as "openBookings",
- (select count(*)::text from owned_media m where state='pending' and not exists(select 1 from app.media_retirement_completions c where c.media_id=m.id)) as "openUploads",
+ (select count(*)::text from owned_media m where state='pending'
+  ${mediaRetirement?'and not exists(select 1 from app.media_retirement_completions c where c.media_id=m.id)':''}) as "openUploads",
  (select count(*)::text from app.mail_outbox where user_id=$1 and state in ('reserved','sending','unknown')) as "openMail"`;
+}
 
 /** Caller supplies a bounded, owned-local repeatable-read transaction. No writes or session touching. */
 export async function inspectAccountDeletionCase(tx:PostgresQueries,caseId:unknown,expectedRevision:unknown){
@@ -84,7 +109,9 @@ export async function inspectAccountDeletionCase(tx:PostgresQueries,caseId:unkno
   if(!subject||subject.revision!==revision||!['requested','in_review'].includes(subject.status))throw new DeletionPreflightCaseError();
   const subjectId=deletionId(subject.subjectId),authVersion=count(subject.authVersion);
   if(typeof subject.blocked!=='boolean'||typeof subject.observedAt!=='string'||!Number.isFinite(Date.parse(subject.observedAt)))throw new DeletionPreflightUnavailableError();
-  const facts=(await tx.query(factsSql,[subjectId])).rows[0],result=classifyDeletionPreflight(facts,subject.role);
+  const relations=(await tx.query<{name:string}>(`select name from unnest($1::text[]) as known(name)
+   where to_regclass(name) is not null`,[optionalRelations])).rows;
+  const facts=(await tx.query(factsSql(new Set(relations.map(row=>row.name))),[subjectId])).rows[0],result=classifyDeletionPreflight(facts,subject.role);
   return{version:1,requestId:id,requestRevision:revision,subject:{id:subjectId,authVersion,role:subject.role,blocked:subject.blocked},observedAt:subject.observedAt,...result};
  }catch(error){if(error instanceof DeletionInputError||error instanceof DeletionPreflightCaseError)throw error;throw new DeletionPreflightUnavailableError();}
 }
