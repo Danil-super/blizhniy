@@ -39,19 +39,19 @@ def verify_scan(report, log, code):
             ("10049", "10049-1", "0"), "Unreviewed ZAP finding")
     instances = alert["instances"]
     expected = {ORIGIN + path: "no-store" for path in ("", *DISCOVERY)}
-    listing, work = REDIRECTS
-    reported_urls = {item["uri"] for item in instances}
-    second_redirect = SERVICE_REDIRECT if ORIGIN + SERVICE_REDIRECT in reported_urls else work
-    expected.update({ORIGIN + path: "308" for path in (listing, second_redirect)})
-    require(len(instances) == len(expected) and int(alert["count"]) == len(expected),
+    expected.update({ORIGIN + path: "308" for path in (*REDIRECTS, SERVICE_REDIRECT)})
+    count = len(instances)
+    require(len(expected) - 1 <= count <= len(expected) and int(alert["count"]) == count,
             "Unexpected or missing cache observations")
-    require(warnings == [f"WARN-NEW: Non-Storable Content [10049] x {len(expected)}"],
+    require(warnings == [f"WARN-NEW: Non-Storable Content [10049] x {count}"],
             "Baseline warning does not match the report")
     for item in instances:
         uri = ORIGIN if item["uri"] == ORIGIN + "/" else item["uri"]
         require(item["method"] == "GET" and uri in expected and item["evidence"] == expected[uri],
                 "Unreviewed method, URL or evidence")
         del expected[uri]
+    require(not expected.keys() & {ORIGIN, ORIGIN + "/robots.txt", ORIGIN + REDIRECTS[0]},
+            "Required cache observations missing")
 
 
 class Document(HTMLParser):

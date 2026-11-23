@@ -51,6 +51,22 @@ class CacheTests(unittest.TestCase):
             with self.subTest(replacement=replacement), self.assertRaises(ValueError):
                 verify_scan(self.report([alert]), LOG, 2)
 
+    def test_partial_and_complete_cache_sample(self):
+        alert = copy.deepcopy(ALERT)
+        alert["instances"].append(dict(uri=ORIGIN + SERVICE_REDIRECT, method="GET", evidence="308"))
+        alert["count"] = "6"
+        verify_scan(self.report([alert]), LOG.replace("x 5", "x 6"), 2)
+        alert["count"] = "5"
+        for omitted in ("", *DISCOVERY, *REDIRECTS, SERVICE_REDIRECT):
+            example = {**alert, "instances": [item for item in alert["instances"]
+                                              if item["uri"] != ORIGIN + omitted]}
+            with self.subTest(omitted=omitted):
+                if omitted in ("", "/robots.txt", REDIRECTS[0]):
+                    with self.assertRaisesRegex(ValueError, "Required cache observations"):
+                        verify_scan(self.report([example]), LOG, 2)
+                else:
+                    verify_scan(self.report([example]), LOG, 2)
+
     def test_unreviewed_report(self):
         for field, value in [("pluginid", "10015"), ("riskcode", "1"), ("alertRef", "10049-3"), ("count", "6"),
                              ("instances", ITEMS[:-1]), ("instances", ITEMS + ITEMS[:1]),
