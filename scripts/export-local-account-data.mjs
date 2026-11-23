@@ -12,7 +12,7 @@ import {archiveRoot,localArchiveMaximumBytes,publishLocalAccountArchive} from '.
 const load=createRequire(import.meta.url)('./local-primary-modules.cjs').loadLocalPrimaryModule;
 const {DeletionAccessError,deletionId}=load('account-deletion-contract');
 const {hashSessionToken}=load('identity');
-const maxRows=500;
+const exportBatchSize=500;
 const records={
  consents:'select document,version,recorded_at from app.registration_legal where user_id=$1 order by document',
  sessions:'select scope,created_at,expires_at,last_seen_at from app.sessions where user_id=$1 order by created_at,scope',
@@ -101,9 +101,15 @@ export async function readAccountExport(db,token,confirmedOwnerId){
     left join app.media_retirement_completions c on c.media_id=r.media_id
     where m.owner_id=$1 order by r.requested_at,r.media_id`;
   for(const [name,sql] of Object.entries(queries)){
-   const {rows}=await tx.query(sql+' limit '+(maxRows+1),[ownerId]);
-   if(rows.length>maxRows)throw Error('Account export needs a larger offline job');
-   result[name]=rows;
+   await tx.query(`declare account_export_rows no scroll cursor for ${sql}`,[ownerId]);
+   const sectionRows=[];
+   for(;;){
+    const {rows}=await tx.query(`fetch forward ${exportBatchSize} from account_export_rows`);
+    sectionRows.push(...rows);
+    if(rows.length<exportBatchSize)break;
+   }
+   await tx.query('close account_export_rows');
+   result[name]=sectionRows;
   }
   for(const row of result.applications){
    if(row.profile)row.profile=Object.fromEntries(applicationProfileKeys.filter(key=>Object.hasOwn(row.profile,key)).map(key=>[key,row.profile[key]]));

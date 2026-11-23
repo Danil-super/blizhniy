@@ -83,6 +83,30 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    await owner.query('update app.users set auth_version=auth_version+1 where id=$1',[actor.id]);
    await assert.rejects(read(),{name:'DeletionAccessError'});
   });
+  await suite.test('the archive includes every notification across multiple batches from one snapshot',async()=>{
+   const actor=await person(),peer=await person(),count=1103;
+   const insert=async(id,first,last)=>owner.query(`insert into app.notifications(user_id,event_key,category,tone,title,body,created_at)
+    select $1,'export-'||n,'system','info','Notification '||n,'Synthetic message',
+      timestamp with time zone '2026-01-01 00:00:00+00'+n*interval '1 second'
+    from generate_series($2::int,$3::int) as n`,[id,first,last]);
+   await insert(actor.id,1,count);
+   await insert(peer.id,1,1);
+   let changed=false;
+   const concurrentDb={readTransaction:(read,options)=>db.readTransaction(tx=>read({query:async(sql,values)=>{
+    const result=await tx.query(sql,values);
+    if(!changed&&sql.includes('from app.notifications')){
+     await insert(actor.id,count+1,count+1);
+     changed=true;
+    }
+    return result;
+   }}),options)};
+   const before=await readAccountExport(concurrentDb,actor.token,actor.id);
+   assert.equal(changed,true);
+   assert.deepEqual(before.notifications.map(row=>row.title),Array.from({length:count},(_,index)=>'Notification '+(index+1)));
+   const after=await readAccountExport(db,actor.token,actor.id);
+   assert.equal(after.notifications.length,count+1);
+   assert.equal(after.notifications.at(-1).title,'Notification '+(count+1));
+  });
   await suite.test('completed publication stays in retention review without an unfinished payment',async()=>{
    const actor=await person(),p=await purchase(actor),binding=await p.store.authorizeDispatch(actor.token,actor.id,p.order.id),provider=randomUUID();
    const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);await intents.authorize(binding);await intents.bindProvider(binding,provider);
