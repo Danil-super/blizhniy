@@ -106,6 +106,7 @@ export async function readAccountExport(db,token,confirmedOwnerId){
   const result={version:1,snapshot:account.snapshot,account:{id:account.id,email:account.email,isBlocked:account.isBlocked,
    emailVerifiedAt:account.email_verified_at,createdAt:account.created_at},profile};
   const optional=(await tx.query(`select to_regclass('app.payment_refund_reservations') is not null as refunds,
+    to_regclass('app.payment_renewals') is not null as renewals,
     to_regclass('app.media_retirement_requests') is not null as media_retirement,
     to_regclass('app.application_contact_views') is not null as contact_views,
     to_regclass('app.application_selection_events') is not null as selections`)).rows[0];
@@ -120,6 +121,10 @@ export async function readAccountExport(db,token,confirmedOwnerId){
     (select o.status from app.payment_refund_observations o where o.operation_id=r.id order by o.observed_at desc,o.status limit 1) as status
     from app.payment_refund_reservations r join app.payment_checkout_intents i on i.id=r.payment_intent_id
     where i.owner_id=$1 order by r.created_at,r.id`;
+  if(optional.renewals)queries.paymentRenewals=`select r.intent_id,r.previous_intent_id,r.additional_starts_at,r.additional_expires_at,r.recorded_at
+    from app.payment_checkout_intents i join app.payment_renewals r on r.intent_id=i.id
+    join app.payment_checkout_intents previous on previous.id=r.previous_intent_id and previous.owner_id=i.owner_id
+    where i.owner_id=$1 order by i.created_at,i.id`;
   if(optional.media_retirement)queries.mediaRetirement=`select r.media_id,r.requested_at,c.completed_at
     from app.media_retirement_requests r join app.media_objects m on m.id=r.media_id
     left join app.media_retirement_completions c on c.media_id=r.media_id

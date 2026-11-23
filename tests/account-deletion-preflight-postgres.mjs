@@ -168,6 +168,37 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    const result=await plan(actor);assert.equal(result.counts.openPayments,'0');assert.equal(result.decision,'storage-policy-review');
    const before=(await owner.query('select request_body from app.payment_checkout_intents where id=$1',[p.order.id])).rows[0];await plan(actor);assert.deepEqual((await owner.query('select request_body from app.payment_checkout_intents where id=$1',[p.order.id])).rows[0],before);
   });
+  await suite.test('the account export includes the paid extension of only its own placements',async()=>{
+   const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);
+   async function renewPlacement(actor){
+    const {id,order,store,merchant}=await purchase(actor);
+    const fulfill=new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(db,merchant,{postmoderation:true,renewals:true});
+    async function capture(paymentId){
+     const binding=await store.authorizeDispatch(actor.token,actor.id,paymentId),provider=randomUUID();
+     await intents.authorize(binding);await intents.bindProvider(binding,provider);
+     await owner.query("update app.payment_orders set status='succeeded' where id=$1",[paymentId]);
+     await owner.query(`insert into app.payment_verifications(intent_id,provider_payment_id,status,captured_at)
+      values($1,$2,'succeeded',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))`,[paymentId,provider]);
+     assert.equal((await fulfill.fulfill(paymentId)).state,'fulfilled');
+     return provider;
+    }
+    await capture(order.id);
+    const first=await store.readOrder(actor.token,actor.id,order.id);
+    const quote=await store.preview(actor.token,actor.id,id,'1');
+    const renewal=await store.prepare(actor.token,actor.id,{listingId:id,expectedRevision:'1',creationKey:randomUUID(),
+     expectedTariffId:quote.tariff.id,expectedAmount:quote.tariff.amount,expectedDurationDays:quote.tariff.durationDays});
+    const provider=await capture(renewal.id),second=await store.readOrder(actor.token,actor.id,renewal.id);
+    assert.equal(second.fulfillment.publishedAt,first.fulfillment.expiresAt);
+    return {firstId:order.id,renewalId:renewal.id,period:second.fulfillment,provider};
+   }
+   const actor=await person(),own=await renewPlacement(actor),other=await renewPlacement(await person());
+   const exported=await readAccountExport(db,actor.token,actor.id);
+   assert.deepEqual(exported.paymentRenewals?.map(row=>[row.intent_id,row.previous_intent_id,
+    row.additional_starts_at.toISOString(),row.additional_expires_at.toISOString()]),
+    [[own.renewalId,own.firstId,new Date(own.period.publishedAt).toISOString(),new Date(own.period.expiresAt).toISOString()]]);
+   for(const privateValue of [own.provider,other.firstId,other.renewalId,other.provider])
+    assert.equal(JSON.stringify(exported).includes(privateValue),false);
+  });
   await suite.test('the approved archive is served only to the matching live PostgreSQL principal',async t=>{
    const actor=await person(),peer=await person(),reviewer=await person('admin'),own=await purchase(actor);
    const binding=await own.store.authorizeDispatch(actor.token,actor.id,own.order.id),provider=randomUUID();
