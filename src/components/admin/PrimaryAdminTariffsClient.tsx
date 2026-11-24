@@ -59,26 +59,33 @@ function TariffEditor({actor,initial,onChanged,onRefresh,onClose,visible=true}:{
   {history.length>0&&<details className="mt-4 border-t border-slate-200 pt-3"><summary className="cursor-pointer text-sm font-bold text-slate-700">Последние изменения ({history.length})</summary><ol className="mt-3 space-y-3">{history.map(item=><li key={item.id} className="rounded-lg bg-slate-50 p-3 text-sm"><p className="font-bold">{item.next.price} ₽ · {item.next.durationDays===null?'Разово':`${item.next.durationDays} дн.`} · {item.next.active?'Активен':'Отключён'}</p><p className="mt-1 break-words">{item.reason}</p><p className="mt-1 break-all text-xs text-slate-500"><time dateTime={item.createdAt}>{new Intl.DateTimeFormat('ru-RU',{dateStyle:'short',timeStyle:'short',timeZone:'Europe/Moscow'}).format(new Date(item.createdAt))}</time> · Администратор: {item.actorId}</p></li>)}</ol></details>}
  </section>;
 }
-function TariffList({actor,visible}:{actor:string;visible:boolean}){
+function TariffList({actor,visible,editable}:{actor:string;visible:boolean;editable:boolean}){
  const [rows,setRows]=useState<ManagedTariff[]|null>(null),[error,setError]=useState(''),[selected,setSelected]=useState<string|null>(null),[reload,setReload]=useState(0);
  useEffect(()=>{let active=true;const controller=new AbortController();setRows(null);setSelected(null);setError('');
-  adminTariffs.execute({resource:'tariffs',action:'list',expectedAdminId:actor},{signal:controller.signal}).then(result=>{if(active)setRows(result.tariffs);}).catch(cause=>{if(!active)return;setError(cause instanceof AdminTariffError?cause.message:'Не удалось загрузить тарифы.');if(cause instanceof AdminTariffError&&cause.code==='ADMIN_REQUIRED')notifyAccountSessionChange(false);});
+  adminTariffs.execute({resource:'tariffs',action:'list',expectedAdminId:actor},{signal:controller.signal}).then(result=>{
+   if(active)setRows(result.tariffs);
+  }).catch(cause=>{
+   if(!active)return;
+   const failure=cause instanceof AdminTariffError?cause:null;
+   setError(failure&&failure.code!=='TARIFF_UNAVAILABLE'?failure.message:'Не удалось загрузить тарифы.');
+   if(failure?.code==='ADMIN_REQUIRED')notifyAccountSessionChange(false);
+  });
   return()=>{active=false;controller.abort();};
  },[actor,reload]);
  const current=rows?.find(row=>row.id===selected);
- return <div>{visible&&<p className="text-sm leading-6 text-slate-600">Изменения применяются к новым оплатам. Суммы и сроки сохранённых заказов остаются прежними.</p>}
+ return <div>{visible&&editable&&<p className="text-sm leading-6 text-slate-600">Изменения применяются к новым оплатам. Суммы и сроки сохранённых заказов остаются прежними.</p>}
   {visible&&error&&<div role="alert" className="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-800"><p>{error}</p><button type="button" className={`${button} mt-3`} onClick={()=>setReload(value=>value+1)}>Повторить загрузку</button></div>}
   {visible&&!rows&&!error&&<p role="status" className="mt-4 text-sm text-slate-600">Загружаем тарифы…</p>}
-  {current&&<TariffEditor key={`${actor}:${current.id}`} actor={actor} initial={current} visible={visible} onChanged={next=>setRows(items=>items?.map(item=>item.id===next.id?next:item)??null)} onRefresh={()=>setReload(value=>value+1)} onClose={()=>{setSelected(null);document.getElementById('tariff-'+current.id)?.focus();}}/>}
+  {editable&&current&&<TariffEditor key={`${actor}:${current.id}`} actor={actor} initial={current} visible={visible} onChanged={next=>setRows(items=>items?.map(item=>item.id===next.id?next:item)??null)} onRefresh={()=>setReload(value=>value+1)} onClose={()=>{setSelected(null);document.getElementById('tariff-'+current.id)?.focus();}}/>}
   {visible&&rows?.length===0&&<p role="status" className="mt-4 text-sm text-slate-600">Тарифы пока не настроены.</p>}
-  {visible&&<ul className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">{rows?.map(row=><li key={row.id} className="flex flex-wrap items-start justify-between gap-4 p-4"><div className="min-w-0 flex-1"><h2 className="break-words font-bold text-slate-950">{row.name}</h2><p className="mt-1 text-sm text-slate-700">{row.price} ₽ · {row.durationDays===null?'Разовая оплата':`${row.durationDays} дн.`}</p><p className="mt-1 break-all text-xs text-slate-500">{row.id}</p>{tariffCheckoutNotice(row)&&<p className="mt-2 text-sm text-amber-900">{tariffCheckoutNotice(row)}</p>}</div><div className="flex flex-wrap items-center gap-3"><span className={`rounded-full border px-3 py-1 text-xs font-bold ${row.active?'border-emerald-200 bg-emerald-50 text-emerald-800':'border-slate-200 bg-slate-50 text-slate-600'}`}>{row.active?'Активен':'Отключён'}</span><button type="button" id={'tariff-'+row.id} className={button} disabled={selected!==null} onClick={()=>setSelected(row.id)}>Изменить</button></div></li>)}</ul>}
+  {visible&&<ul className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">{rows?.map(row=><li key={row.id} className="flex flex-wrap items-start justify-between gap-4 p-4"><div className="min-w-0 flex-1"><h2 className="break-words font-bold text-slate-950">{row.name}</h2><p className="mt-1 text-sm text-slate-700">{row.price} ₽ · {row.durationDays===null?'Разовая оплата':`${row.durationDays} дн.`}</p><p className="mt-1 break-all text-xs text-slate-500">{row.id}</p>{tariffCheckoutNotice(row)&&<p className="mt-2 text-sm text-amber-900">{tariffCheckoutNotice(row)}</p>}</div><div className="flex flex-wrap items-center gap-3"><span className={`rounded-full border px-3 py-1 text-xs font-bold ${row.active?'border-emerald-200 bg-emerald-50 text-emerald-800':'border-slate-200 bg-slate-50 text-slate-600'}`}>{row.active?'Активен':'Отключён'}</span>{editable&&<button type="button" id={'tariff-'+row.id} className={button} disabled={selected!==null} onClick={()=>setSelected(row.id)}>Изменить</button>}</div></li>)}</ul>}
  </div>;
 }
-export function PrimaryAdminTariffsClient(){
+export function PrimaryAdminTariffsClient({editable=true}:{editable?:boolean}={}){
  const auth=usePrimaryAccountAuth(),actor=auth?.state==='admin'?auth.userId:null,[scope,setScope]=useState(actor);
  if(actor&&actor!==scope)setScope(actor);
  if((auth?.state==='signed-out'||auth?.state==='signed-in')&&scope)setScope(null);
  const visible=actor!==null&&actor===scope;
  return <>{!visible&&<p role="status" className="text-sm text-slate-600">{auth?.state==='loading'?'Проверяем права администратора…':'Доступ администратора не подтверждён.'}</p>}
-  {scope&&<TariffList key={scope} actor={scope} visible={visible}/>}</>;
+  {scope&&<TariffList key={scope} actor={scope} visible={visible} editable={editable}/>}</>;
 }
