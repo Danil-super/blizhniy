@@ -1,0 +1,11 @@
+[Unit]
+Description=Remove expired approved account archives
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemd-tmpfiles --clean /etc/tmpfiles.d/blizhniy-account-export.conf
+TimeoutStartSec=15s
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/blizhniy-account-export /run/blizhniy-account-export-work
+PrivateTmp=yes

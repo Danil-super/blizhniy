@@ -14,6 +14,7 @@ grant select(id,email,is_blocked,email_verified_at,created_at,auth_version) on a
 grant select(token_hash,user_id,auth_version,scope,created_at,expires_at,last_seen_at) on app.sessions to blizhniy_local_export_reader;
 grant select(user_id,profile) on app.cabinet_profiles to blizhniy_local_export_reader;
 grant select(user_id,document,version,recorded_at) on app.registration_legal to blizhniy_local_export_reader;
+grant select(user_id,created_at,expires_at) on app.email_confirmations,app.password_recoveries to blizhniy_local_export_reader;
 grant select(user_id,phone,source,confirmed_at) on app.telegram_phone_bindings to blizhniy_local_export_reader;
 grant select(user_id,id,state,created_at,expires_at) on app.telegram_phone_attempts to blizhniy_local_export_reader;
 create policy local_export_phone_owner on app.telegram_phone_bindings for select to blizhniy_local_export_reader
@@ -44,14 +45,20 @@ grant select(id,owner_id,target_type,target_id,tariff_id,amount,duration_days,is
 grant select(id,owner_id,status) on app.payment_orders to blizhniy_local_export_reader;
 grant select(intent_id,status,captured_at) on app.payment_verifications to blizhniy_local_export_reader;
 grant select(intent_id,fulfilled_at) on app.payment_fulfillments to blizhniy_local_export_reader;
-grant select(id,user_id,category,tone,title,body,action_href,read_at,created_at) on app.notifications to blizhniy_local_export_reader;
+grant select(id,user_id,category,tone,title,body,action_href,read_at,dismissed_at,created_at) on app.notifications to blizhniy_local_export_reader;
 grant select(id,user_id,status,revision,requested_at,review_started_at,resolved_at,resolution)
  on app.account_deletion_requests to blizhniy_local_export_reader;
+grant select(id,request_id,actor_id,status,resolution,created_at)
+ on app.account_deletion_events to blizhniy_local_export_reader;
 grant select(id,owner_id,mime_type,width,height,size,sha256,state,created_at,ready_at) on app.media_objects to blizhniy_local_export_reader;
 grant select(listing_id,media_id,position) on app.listing_photos to blizhniy_local_export_reader;
 grant select(publication_id,media_id,position) on app.work_publication_photos,app.service_publication_photos to blizhniy_local_export_reader;
 do $$
 begin
+ if to_regclass('app_stats.listing_views') is not null then
+  grant usage on schema app_stats to blizhniy_local_export_reader;
+  grant select(listing_id,viewer_digest) on app_stats.listing_views to blizhniy_local_export_reader;
+ end if;
  if to_regclass('app.application_contact_views') is not null then
   grant select(application_id,recipient_id,evidence,recorded_at) on app.application_contact_views to blizhniy_local_export_reader;
  end if;

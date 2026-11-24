@@ -1,5 +1,5 @@
 import "server-only";
-import { createHmac, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { authJson, AuthRequestError, readAuthJson } from "./auth-http";
 import { readAccountSessionToken } from "./account-cookie";
 import { AppSessionAccessError, withAppSessionTransaction } from "./app-session-transaction";
@@ -9,6 +9,7 @@ import { getTrustedProxyIp } from "./trusted-proxy-ip";
 import { readPostmoderationEnabled } from "./listing-workflow-config";
 import { PostgresPublicListingStore } from "./postgres-public-listings";
 import type { PostgresQueries } from "./postgres";
+import { listingViewDigest } from "./listing-view-history";
 
 const guestCookieName = "__Host-blizhniy_listing_viewer";
 const guestIdPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -48,8 +49,7 @@ export async function handlePrimaryListingView(request: Request, listingId: stri
 
     const postmoderation = readPostmoderationEnabled();
     const record = async (tx: PostgresQueries, viewer: string) => {
-      const digest = createHmac("sha256", config.rateSecret)
-        .update(`listing-view:${listingId.toLowerCase()}:${viewer}`).digest();
+      const digest = listingViewDigest(config.rateSecret, listingId, viewer);
       const { rows: [row] } = await tx.query<{ views: number | null }>(
         "select app_stats.record_listing_view($1,$2,$3) as views", [listingId, digest, postmoderation],
       );

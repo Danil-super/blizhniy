@@ -1,6 +1,6 @@
 // Disposable synthetic PostgreSQL only. The planner itself always runs read-only.
 import assert from 'node:assert/strict';import{test}from'node:test';
-import{execFile}from'node:child_process';import{promisify}from'node:util';import{createHash,randomBytes,randomUUID,randomInt}from'node:crypto';
+import{execFile}from'node:child_process';import{promisify}from'node:util';import{createHash,createHmac,randomBytes,randomUUID,randomInt}from'node:crypto';
 import{readFile}from'node:fs/promises';import{createRequire}from'node:module';import pg from'pg';
 import{mkdtemp,mkdir,rm,writeFile}from'node:fs/promises';import{tmpdir}from'node:os';import{join}from'node:path';
 import{getRefundWorkerRolePlan}from'../scripts/refund-worker-role.mjs';
@@ -86,6 +86,20 @@ test('deletion advisory plans bind one request and observe real domain blockers 
   await suite.test('the synthetic export works with a dedicated column-level reader',async t=>{
    const actor=await person(),other=await person(),own=await purchase(actor),foreign=await purchase(other);
    const hashToken=load('identity').hashSessionToken;
+   const lifecycle={
+    emailConfirmations:['email_confirmations','1 hour'],
+    passwordRecoveries:['password_recoveries','30 minutes'],
+   };
+   const moments=['2026-01-04T10:00:00.000Z','2026-01-04T11:00:00.000Z'];
+   const tokenDigests=[];
+   for(const [table,lifetime] of Object.values(lifecycle)){
+    for(const [index,user] of [actor,other].entries()){
+     const tokenDigest=randomBytes(32).toString('hex');
+     tokenDigests.push(tokenDigest);
+     await owner.query(`insert into app.${table}(token_hash,user_id,email,auth_version,created_at,expires_at)
+      values($1,$2,$3,0,$4::timestamptz,$4::timestamptz+$5::interval)`,[tokenDigest,user.id,user.id+'@deletion.invalid',moments[index],lifetime]);
+    }
+   }
    for(const user of [actor,other])await owner.query(`insert into app.telegram_phone_attempts(user_id,session_hash,state_hash,client_id,nonce,verifier,return_path)
     values($1,$2,$3,'12345678',$4,$5,'/cabinet')`,
     [user.id,hashToken(user.token),randomBytes(32).toString('hex'),randomBytes(32).toString('hex'),randomBytes(32).toString('base64url')]);
@@ -100,6 +114,8 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    assert.deepEqual(actual.listings.map(row=>row.id),[own.id]);
    assert.deepEqual(actual.phoneBindings.map(row=>row.phone),[actor.phone]);
    assert.deepEqual(actual.phoneVerification.map(row=>row.state),['pending']);
+   assert.deepEqual(actual.emailConfirmations,[{created_at:new Date(moments[0]),expires_at:new Date(moments[1])}]);
+   assert.deepEqual(actual.passwordRecoveries,[{created_at:new Date(moments[0]),expires_at:new Date('2026-01-04T10:30:00.000Z')}]);
    assert.equal(JSON.stringify(actual).includes(foreign.id),false);
    assert.equal(JSON.stringify(actual).includes(other.phone),false);
    await assert.rejects(readAccountExport(reader,other.token,actor.id),{name:'DeletionAccessError'});
@@ -110,6 +126,13 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    assert.equal(await writeAccountExportFiles(actual,directory,join(directory,'storage')),0);
    const saved=JSON.parse(await readFile(join(directory,'account.json'),'utf8'));
    assert.deepEqual(saved,JSON.parse(JSON.stringify(actual)));
+   const serialized=JSON.stringify(saved);
+   for(const secret of [...tokenDigests,other.id,'token_hash','auth_version','2026-01-04T11:30:00.000Z'])
+    assert.equal(serialized.includes(secret),false);
+   for(const [table] of Object.values(lifecycle)){
+    for(const privateColumn of ['token_hash','email','auth_version'])
+     await assert.rejects(pool.query(`select ${privateColumn} from app.${table}`),{code:'42501'});
+   }
    for(const sql of [
     'select password_hash from app.users',
     'select payload from app.mail_outbox',
@@ -418,6 +441,46 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    const latest=await db.readTransaction(tx=>inspectAccountDeletionCase(tx,actor.request.id,'2'),{timeoutMs:5000});assert.equal(latest.requestRevision,'2');
    await store.resolve(moderator.token,moderator.id,actor.request.id,'2',{resolution:'declined',caseReference:'SYNTHETIC_CASE_0001',confirmedManualDecision:true});
    await assert.rejects(db.readTransaction(tx=>inspectAccountDeletionCase(tx,actor.request.id,'3'),{timeoutMs:5000}),{name:'DeletionPreflightCaseError'});
+  });
+  await suite.test('the archive contains only the account views recorded in migration 0066 across listing pages',async t=>{
+   const actor=await person(),peer=await person(),publisher=await person();
+   const secret=randomBytes(32).toString('hex');
+   await owner.query(await readFile(new URL('../database/candidates/0066-listing-views.sql',import.meta.url),'utf8'));
+   const {rows:listings}=await owner.query(`insert into app.listings(author_id,listing_type,category_id,city_id,title,description,
+    status,is_paid,published_at,expires_at)
+    select $1,'sell',$2,$3,'Синтетическая карточка просмотров','Проверка истории просмотров.',
+      'published',true,now(),now()+interval '1 day' from generate_series(1,503) returning id`,[publisher.id,category,city]);
+   const ids=listings.map(row=>row.id).sort(),ownIds=[ids[0],ids.at(-1)],peerId=ids[1],guestId=ids[2];
+   const save=async(id,viewer)=>{
+    const digest=createHmac('sha256',secret).update(`listing-view:${id}:${viewer}`).digest();
+    const result=await owner.query('select app_stats.record_listing_view($1,$2,true) as total',[id,digest]);
+    assert.equal(result.rows[0].total,1);
+    return digest.toString('hex');
+   };
+   const privateDigests=[];
+   for(const id of ownIds)privateDigests.push(await save(id,'user:'+actor.id));
+   privateDigests.push(await save(peerId,'user:'+peer.id),await save(guestId,'guest:'+actor.id));
+   await assert.rejects(readAccountExport(db,actor.token,actor.id),/listing view key/i);
+   const options={listingViewRateSecret:secret};
+   const actual=await readAccountExport(db,actor.token,actor.id,undefined,options);
+   assert.deepEqual(actual.listingViews,ownIds.map(listing_id=>({listing_id})));
+   assert.deepEqual((await readAccountExport(db,peer.token,peer.id,undefined,options)).listingViews,[{listing_id:peerId}]);
+   await assert.rejects(readAccountExport(db,peer.token,actor.id,undefined,options),{name:'DeletionAccessError'});
+   const directory=await mkdtemp(join(tmpdir(),'blizhniy-export-listing-views-'));
+   t.after(()=>rm(directory,{recursive:true}));
+   await writeAccountExportFiles(actual,directory,join(directory,'storage'));
+   const serialized=await readFile(join(directory,'account.json'),'utf8');
+   assert.deepEqual(JSON.parse(serialized).listingViews,actual.listingViews);
+   for(const value of [...privateDigests,secret,peer.id,peerId,guestId,'viewer_digest'])
+    assert.equal(serialized.includes(value),false);
+   const inspect=(subject,config)=>db.readTransaction(tx=>inspectAccountDeletionCase(tx,subject.request.id,subject.request.revision,config),{timeoutMs:5000});
+   await assert.rejects(inspect(actor),{name:'DeletionPreflightUnavailableError'});
+   const advisory=await inspect(actor,options);
+   assert.equal(advisory.counts.listingViews,'2');
+   assert.deepEqual(advisory.retentionReview,[{code:'LISTING_VIEW_HISTORY',count:'2'}]);
+   assert.equal(advisory.decision,'storage-policy-review');
+   assert.equal(advisory.executionAuthorized,false);
+   assert.equal((await inspect(peer,options)).counts.listingViews,'1');
   });
  }finally{
   await db?.close();await owner?.end();if(container){const meta=JSON.parse(await docker(['inspect',container]))[0];assert.equal(meta.Config.Labels[label],name);await docker(['rm','--force',container]);}

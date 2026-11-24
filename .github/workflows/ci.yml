@@ -127,6 +127,7 @@ jobs:
             tests/checkout-cancellation-postgres.mjs \
             tests/publication-test-postgres.mjs \
             tests/publication-test-release-postgres.mjs \
+            tests/approved-account-export-postgres.mjs \
             tests/specialist-checkout-postgres.mjs \
             tests/specialist-checkout-guards-postgres.mjs
           do

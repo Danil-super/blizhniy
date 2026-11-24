@@ -23,7 +23,7 @@ export async function inspectLocalDeletionCase(caseId,revision){
    assert.deepEqual((await tx.query('select name,sha256 from app_admin.migrations order by name')).rows,plan.journal);
    await assertRefundSchema(tx,60,{localPrimary:true});
    assert.deepEqual(await readRefundSchema(tx,{namespace:'app_admin'}),JSON.parse(await readFile(new URL('../database/admin-user-access-schema-v2.json',import.meta.url),'utf8')));
-   return inspectAccountDeletionCase(tx,caseId,revision);
+   return inspectAccountDeletionCase(tx,caseId,revision,{listingViewRateSecret:state.rateSecret});
   },{timeoutMs:5000});
   const directory=await mkdtemp(join(stateDirectory,'deletion-case62-'));
   const report=join(directory,'report.json');await writeFile(report,JSON.stringify({...result,project:root,productionTouched:false},null,2)+'\n',{mode:0o600,flag:'wx'});

@@ -16,6 +16,7 @@ import {createRequire} from 'node:module';
 import {checkSpecialistServiceStartup} from './specialist-service-startup-cases.mjs';
 import {readAccountExport} from '../scripts/export-local-account-data.mjs';
 import {inspectAccountDeletionCase} from '../src/lib/account-deletion-preflight.ts';
+import {listingViewDigest} from '../src/lib/listing-view-history.ts';
 import pg from 'pg';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
@@ -212,6 +213,7 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     assert.deepEqual(schema,{migrations:43,cancelled_payment_relation:null,renewal_relation:null});
     const subject=randomUUID(),peer=randomUUID();
     const token=randomBytes(32).toString('hex'),peerToken=randomBytes(32).toString('hex');
+    const options={listingViewRateSecret:randomBytes(32).toString('hex')};
     const hash=load('identity').hashSessionToken;
     const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);
     const payments=[];
@@ -230,8 +232,16 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     }
     const previous=process.env.NODE_ENV;process.env.NODE_ENV='test';
     t.after(()=>{if(previous===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=previous;});
-    const baseline=await readAccountExport(db,token,subject);
+    const category=(await admin.query("insert into app.categories(slug,name) values('export-view-fixture','Тестовая категория') returning id")).rows[0].id;
+    const region=(await admin.query("insert into app.regions(slug,name) values('export-view-region','Тестовый регион') returning id")).rows[0].id;
+    const city=(await admin.query("insert into app.cities(region_id,slug,name) values($1,'export-view-city','Тестовый город') returning id",[region])).rows[0].id;
+    const listing=(await admin.query(`insert into app.listings(author_id,category_id,city_id,listing_type,title,description,status,is_paid,published_at,expires_at)
+     values($1,$2,$3,'sell','Синтетическое объявление','Стендовая проверка просмотров','published',true,now(),now()+interval '1 day') returning id`,[peer,category,city])).rows[0].id;
+    const fingerprint=listingViewDigest(options.listingViewRateSecret,listing,'user:'+subject);
+    assert.equal((await admin.query('select app_stats.record_listing_view($1,$2,true) as total',[listing,fingerprint])).rows[0].total,1);
+    const baseline=await readAccountExport(db,token,subject,undefined,options);
     assert.equal(baseline.account.id,subject);
+    assert.deepEqual(baseline.listingViews,[{listing_id:listing}]);
     assert.deepEqual(baseline.notifications.map(row=>row.body),[subject]);
     assert.deepEqual(baseline.payments.map(row=>[row.id,row.cancelled_at]),[[payments[0],null]]);
     assert.equal(JSON.stringify(baseline).includes(payments[1]),false);
@@ -241,9 +251,10 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     await admin.query('alter role blizhniy_local_export_reader login password '+pg.escapeLiteral(readerPassword));
     const reader=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:'blizhniy_local_export_reader',password:readerPassword,max:1}));
     t.after(()=>reader.close());
-    const actual=await readAccountExport(reader,token,subject);
+    const actual=await readAccountExport(reader,token,subject,undefined,options);
     assert.deepEqual({...actual,snapshot:null},{...baseline,snapshot:null});
     await assert.rejects(readAccountExport(reader,peerToken,subject),{name:'DeletionAccessError'});
+    await assert.rejects(readAccountExport(reader,peerToken,subject,undefined,options),{name:'DeletionAccessError'});
    });
    if(inbox)await suite.test('deletion preflight detects hosted bookings and unfinished payments without staging journals',async()=>{
     const host=randomUUID(),guest=randomUUID(),token=randomBytes(32).toString('hex');
@@ -264,7 +275,8 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);
     await db.transaction(tx=>intents.persistInTransaction(tx,{id:paymentId,ownerId:host,targetType:'listing',targetId:listing,
      targetRevision:'1',tariffId,amount,durationDays:30,shopId:'publication-fixture',isTest:true,requestBody}));
-    const preflight=()=>db.readTransaction(tx=>inspectAccountDeletionCase(tx,request.id,request.revision),{timeoutMs:5000});
+    const options={listingViewRateSecret:randomBytes(32).toString('hex')};
+    const preflight=()=>db.readTransaction(tx=>inspectAccountDeletionCase(tx,request.id,request.revision,options),{timeoutMs:5000});
     const open=await preflight();
     assert.equal(open.subject.id,host);assert.equal(open.decision,'manual-review');assert.equal(open.executionAuthorized,false);
     assert.equal(open.counts.openBookings,'1');assert.equal(open.counts.openPayments,'1');

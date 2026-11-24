@@ -20,6 +20,10 @@ const archiveEntries=['report.pdf','account.json','processing.json','media'];
 
 export async function writeLocalAccountReport(directory,data,caseId,disclosure){
  assert.equal(process.env.NODE_ENV,'test');
+ return writeAccountReport(directory,data,caseId,disclosure);
+}
+
+export async function writeAccountReport(directory,data,caseId,disclosure){
  assert.match(caseId,/^[A-Za-z0-9_-]{1,80}$/);
  const notice=validateLocalExportNotice(disclosure);
  const {chromium}=await import('playwright');
@@ -69,6 +73,15 @@ export async function readReviewedAccountReport(directory,stateDirectory,ownerId
   }finally{await media.close();}
   return validateLocalExportNotice(JSON.parse((await readPrivateFile(join(anchor,'processing.json'),65536)).toString()));
  }finally{await root.close();}
+}
+
+export async function packReviewedAccountReport(directory,stateDirectory,ownerId,email){
+ await readReviewedAccountReport(directory,stateDirectory,ownerId,email);
+ const {stdout}=await run('/usr/bin/tar',['-czf','-','-C',directory,'--',...archiveEntries],{
+  encoding:'buffer',timeout:10000,maxBuffer:localArchiveMaximumBytes,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8'},
+ });
+ assert.ok(Buffer.isBuffer(stdout)&&stdout.length>0&&stdout.length<=localArchiveMaximumBytes);
+ return stdout;
 }
 
 export async function prepareLocalAccountEmail(directory,stateDirectory,email){
