@@ -243,6 +243,9 @@ async function verifyPlacementRefund({admin,config,load,operator,worker,ca,city,
    assert.deepEqual(await ads.services.fulfill(next.id),nextResult);
    assert.equal((await ads.services.fulfill(later.id)).state,'queued');
    assert.deepEqual(await ads.active(),[...ads.original.slice(1).map(row=>row.targetId),next.targetId]);
+   const count=(await admin.query(`select count(*)::int active from app.service_publications where kind='marquee'
+    and status='published' and is_paid and deleted_at is null and published_at<=clock_timestamp() and expires_at>clock_timestamp()`)).rows[0].active;
+   assert.equal(count,5);
   }
   await admin.query('update app.users set auth_version=auth_version+1 where id=$1',[reviewer.id]);
   assert.equal((await invoke(normal,'recover',recovery)).status,503);
