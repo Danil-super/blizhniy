@@ -14,6 +14,7 @@ grant select(id,email,is_blocked,email_verified_at,created_at,auth_version) on a
 grant select(token_hash,user_id,auth_version,scope,created_at,expires_at,last_seen_at) on app.sessions to blizhniy_local_export_reader;
 grant select(user_id,profile) on app.cabinet_profiles to blizhniy_local_export_reader;
 grant select(user_id,document,version,recorded_at) on app.registration_legal to blizhniy_local_export_reader;
+grant select(user_id,created_at,expires_at) on app.email_confirmations,app.password_recoveries to blizhniy_local_export_reader;
 grant select(user_id,phone,source,confirmed_at) on app.telegram_phone_bindings to blizhniy_local_export_reader;
 grant select(user_id,id,state,created_at,expires_at) on app.telegram_phone_attempts to blizhniy_local_export_reader;
 create policy local_export_phone_owner on app.telegram_phone_bindings for select to blizhniy_local_export_reader

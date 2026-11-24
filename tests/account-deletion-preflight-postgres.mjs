@@ -86,6 +86,20 @@ test('deletion advisory plans bind one request and observe real domain blockers 
   await suite.test('the synthetic export works with a dedicated column-level reader',async t=>{
    const actor=await person(),other=await person(),own=await purchase(actor),foreign=await purchase(other);
    const hashToken=load('identity').hashSessionToken;
+   const lifecycle={
+    emailConfirmations:['email_confirmations','1 hour'],
+    passwordRecoveries:['password_recoveries','30 minutes'],
+   };
+   const moments=['2026-01-04T10:00:00.000Z','2026-01-04T11:00:00.000Z'];
+   const tokenDigests=[];
+   for(const [table,lifetime] of Object.values(lifecycle)){
+    for(const [index,user] of [actor,other].entries()){
+     const tokenDigest=randomBytes(32).toString('hex');
+     tokenDigests.push(tokenDigest);
+     await owner.query(`insert into app.${table}(token_hash,user_id,email,auth_version,created_at,expires_at)
+      values($1,$2,$3,0,$4::timestamptz,$4::timestamptz+$5::interval)`,[tokenDigest,user.id,user.id+'@deletion.invalid',moments[index],lifetime]);
+    }
+   }
    for(const user of [actor,other])await owner.query(`insert into app.telegram_phone_attempts(user_id,session_hash,state_hash,client_id,nonce,verifier,return_path)
     values($1,$2,$3,'12345678',$4,$5,'/cabinet')`,
     [user.id,hashToken(user.token),randomBytes(32).toString('hex'),randomBytes(32).toString('hex'),randomBytes(32).toString('base64url')]);
@@ -100,6 +114,8 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    assert.deepEqual(actual.listings.map(row=>row.id),[own.id]);
    assert.deepEqual(actual.phoneBindings.map(row=>row.phone),[actor.phone]);
    assert.deepEqual(actual.phoneVerification.map(row=>row.state),['pending']);
+   assert.deepEqual(actual.emailConfirmations,[{created_at:new Date(moments[0]),expires_at:new Date(moments[1])}]);
+   assert.deepEqual(actual.passwordRecoveries,[{created_at:new Date(moments[0]),expires_at:new Date('2026-01-04T10:30:00.000Z')}]);
    assert.equal(JSON.stringify(actual).includes(foreign.id),false);
    assert.equal(JSON.stringify(actual).includes(other.phone),false);
    await assert.rejects(readAccountExport(reader,other.token,actor.id),{name:'DeletionAccessError'});
@@ -110,6 +126,13 @@ test('deletion advisory plans bind one request and observe real domain blockers 
    assert.equal(await writeAccountExportFiles(actual,directory,join(directory,'storage')),0);
    const saved=JSON.parse(await readFile(join(directory,'account.json'),'utf8'));
    assert.deepEqual(saved,JSON.parse(JSON.stringify(actual)));
+   const serialized=JSON.stringify(saved);
+   for(const secret of [...tokenDigests,other.id,'token_hash','auth_version','2026-01-04T11:30:00.000Z'])
+    assert.equal(serialized.includes(secret),false);
+   for(const [table] of Object.values(lifecycle)){
+    for(const privateColumn of ['token_hash','email','auth_version'])
+     await assert.rejects(pool.query(`select ${privateColumn} from app.${table}`),{code:'42501'});
+   }
    for(const sql of [
     'select password_hash from app.users',
     'select payload from app.mail_outbox',
