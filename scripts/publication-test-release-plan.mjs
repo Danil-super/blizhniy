@@ -4,6 +4,7 @@ import {getBootstrapPlan} from './postgres-migration-plan.mjs';
 import {getCabinetMigrationPlan} from './cabinet-release-plan.mjs';
 import {getSpecialistCheckoutMigration,verifySpecialistCheckoutRuntimeAccess} from './specialist-checkout-release.mjs';
 import {readRefundSchema} from './refund-worker-schema.mjs';
+import {assertPaidResponseSchema} from './paid-response-schema.mjs';
 const suffix=[
  ['0033-account-deletion.sql','8d0159c6af65c4c66aabb123695110f402fd5eac268fa2a879d97c85e628ed2f'],
  ['0034-checkout-edit-fence.sql','365cdd4a850aa67d334cff3dbed68cbfd6eff69e5c06643740bc1be02ad63df3'],
@@ -74,12 +75,19 @@ export function getHostedRefundMigrationPlan(){
  return hostedRefundSuffix.map(([name,hash])=>readReleaseMigration(name,hash));
 }
 
+function hostedRefundBaseline(){
+ return [...getPublicationTestMigrationPlan(),getSpecialistCheckoutMigration(),getInboxPreferenceMigration(),
+  getSpecialistAccountTestMigration(),getBookingLifecycleMigration(),getListingViewsMigration(),...getPaidResponseMigrations(),
+  ...getCheckoutCancellationMigrations(),getPaymentReconciliationRecoveryMigration(),getPaymentReconciliationAlertMigration()];
+}
+
+export function getHostedRefundReleasePlan(){
+ return [...hostedRefundBaseline(),...getHostedRefundMigrationPlan()].sort((a,b)=>a.name.localeCompare(b.name,'en'));
+}
+
 // Preserve the published migration bytes and commit the compatibility definitions and journal together.
 export function getHostedRefundMigrationSql(){
- const baseline=[...getPublicationTestMigrationPlan(),getSpecialistCheckoutMigration(),getInboxPreferenceMigration(),
-  getSpecialistAccountTestMigration(),getBookingLifecycleMigration(),getListingViewsMigration(),...getPaidResponseMigrations(),
-  ...getCheckoutCancellationMigrations(),getPaymentReconciliationRecoveryMigration(),getPaymentReconciliationAlertMigration()]
-  .sort((a,b)=>a.name.localeCompare(b.name,'en')).map(({name,sha256})=>[name,sha256]);
+ const baseline=hostedRefundBaseline().sort((a,b)=>a.name.localeCompare(b.name,'en')).map(({name,sha256})=>[name,sha256]);
  const plan=getHostedRefundMigrationPlan();
  const body=plan.map(({sql})=>{
   if(!/^begin;$/m.test(sql)||!/^commit;\s*$/m.test(sql))throw Error('Invalid hosted refund migration transaction');
@@ -103,6 +111,14 @@ insert into blizhniy_meta.migrations(name,sha256) values
 ${entries};
 commit;
 `;
+}
+
+export async function assertHostedRefundRelease(tx,journal){
+ const expected=getHostedRefundReleasePlan().map(({name,sha256})=>({name,sha256}));
+ if(JSON.stringify(journal)!==JSON.stringify(expected))throw Error('Invalid hosted refund journal');
+ await assertPaidResponseSchema(tx);
+ await assertExtendedPublicationTestSchema(tx,{specialist:true,inbox:true,enrollment:true,bookings:true,views:true,
+  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true});
 }
 export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
  const definitions=new Map();

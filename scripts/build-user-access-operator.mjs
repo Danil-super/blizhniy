@@ -23,7 +23,7 @@ export function buildUserAccessOperator(destination,{tariffs=false}={}){
  if(program.emit().emitSkipped)throw Error('User operator compilation failed');
  for(const folder of ['scripts','database','database/migrations','database/candidates'])mkdirSync(join(destination,folder));
  for(const name of ['admin-user-access-release.mjs','admin-tariff-release.mjs','user-access-role.mjs','local-user-access-runtime.mjs','local-primary-refund-target.mjs','local-primary-config.mjs',
-  'financial-catalog-privileges.mjs','refund-worker-schema.mjs','refund-worker-role.mjs','postgres-migration-plan.mjs','cabinet-release-plan.mjs','media-retention-release.mjs','specialist-checkout-release.mjs'])
+  'financial-catalog-privileges.mjs','refund-worker-schema.mjs','refund-worker-role.mjs','publication-test-release-plan.mjs','paid-response-schema.mjs','postgres-migration-plan.mjs','cabinet-release-plan.mjs','media-retention-release.mjs','specialist-checkout-release.mjs'])
   copyFileSync(join(root,'scripts',name),join(destination,'scripts',name));
  const server=readFileSync(join(root,'scripts/local-user-access-operator.mjs'),'utf8'),dependency="'../src/lib/admin-user-access-contract.ts'";
  if(server.split(dependency).length!==2)throw Error('User operator server dependency drift');

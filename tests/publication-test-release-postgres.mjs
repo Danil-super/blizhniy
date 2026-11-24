@@ -19,6 +19,8 @@ import {inspectAccountDeletionCase} from '../src/lib/account-deletion-preflight.
 import {listingViewDigest} from '../src/lib/listing-view-history.ts';
 import {testAdminPaymentJournal} from './admin-payment-journal-integration.mjs';
 import {getHostedRefundMigrationPlan,getHostedRefundMigrationSql} from '../scripts/publication-test-release-plan.mjs';
+import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
+import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
 import pg from 'pg';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
@@ -468,6 +470,42 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
     try{assert.equal(await verify(restored,database),true);}finally{await restored.close();}
     assert.equal(await verify(),true);
+   });
+   if(inbox)await suite.test('separate hosted TEST refund artifacts admit only their own restricted database roles',async()=>{
+    const PostgresDatabase=load('postgres').PostgresDatabase;
+    const entries=[
+     {kind:'operator',build:buildRefundOperator,plan:'getRefundOperatorRolePlan',verify:'verifyRefundOperatorDatabase'},
+     {kind:'worker',build:buildRefundWorker,plan:'getRefundWorkerRolePlan',verify:'verifyRefundWorkerDatabase'},
+    ];
+    try{
+     for(const entry of entries){
+      const destination=join(artifactDirectory,'refund-'+entry.kind);
+      assert.equal(entry.build(destination,{schema:75}).schema,75);
+      const api=await import(pathToFileURL(join(destination,'scripts/refund-'+entry.kind+'-role.mjs')).href);
+      const plan=api[entry.plan](config.database,{schema:75}),password=randomBytes(32).toString('hex');
+      assert.equal(plan.journal.length,67);assert.equal(plan.journal.at(-1).name,'0075-hosted-refund-compatibility.sql');
+      await admin.query(plan.createRole);
+      await admin.query('alter role '+plan.role+' login password '+pg.escapeLiteral(password));
+      for(const grant of plan.grants)await admin.query(grant);
+      entry.db=new PostgresDatabase(new pg.Pool({...config,user:plan.role,password,max:2}));
+      const options={database:config.database,merchant:{shopId:'hosted-refund-fixture',isTest:true}};
+      entry.admit=connection=>api[entry.verify](connection,{...options,hostedRefunds:true});
+      await entry.admit(entry.db);
+      await assert.rejects(api[entry.verify](entry.db,options));
+      await assert.rejects(api[entry.verify](entry.db,{...options,hostedRefunds:true,merchant:{...options.merchant,isTest:false}}));
+      await assert.rejects(api[entry.verify](entry.db,{...options,hostedRefunds:true,localPrimary:true}));
+     }
+     const [operator,worker]=entries;
+     await assert.rejects(operator.admit(worker.db));
+     await assert.rejects(worker.admit(operator.db));
+     await assert.rejects(operator.db.query('select app.claim_placement_refund_job($1)',['hosted-refund-fixture']),{code:'42501'});
+     assert.equal((await worker.db.query("select has_column_privilege('app.payment_refund_approvals','id','INSERT') as approve")).rows[0].approve,false);
+     await admin.query('grant insert(operation_id) on app.payment_refund_dispatch_anchors to blizhniy_refund_operator');
+     try{await assert.rejects(operator.admit(operator.db));}
+     finally{await admin.query('revoke insert(operation_id) on app.payment_refund_dispatch_anchors from blizhniy_refund_operator');}
+     await operator.admit(operator.db);
+     assert.equal(await check(),true);
+    }finally{for(const entry of entries)await entry.db?.close();}
    });
    return;
   }
