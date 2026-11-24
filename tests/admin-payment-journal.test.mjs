@@ -29,3 +29,17 @@ test('journal validates independent server facts, rejects private fields, other 
  assert.throws(() => parseAdminPaymentJournalPage(query, { items: [item], nextAfter: { id, createdAt } }));
  assert.throws(() => parseAdminPaymentJournalPage({ ...query, after: { id, createdAt } }, page));
 });
+
+test('refund action hints are restricted to the appropriate order and verified refund stages',()=>{
+ const filter={...query,status:'succeeded'};
+ const paid={...item,orderStatus:'succeeded',providerStatus:'succeeded',capturedAt:createdAt,refund:'none'};
+ const approve={...paid,refundAction:{kind:'approve'}};
+ const recover={...paid,refund:'unknown',refundAction:{kind:'recover',operationId:id,providerRefundId:null}};
+ const parse=(row,kind='listing')=>parseAdminPaymentJournalPage({...filter,kind},{items:[row],nextAfter:null}).items[0];
+ assert.deepEqual(parse(approve),approve);
+ assert.deepEqual(parse(recover),recover);
+ assert.throws(()=>parse({...approve,targetType:'fair_application'},'fair_application'));
+ assert.throws(()=>parse({...approve,refundAction:{kind:'approve',amount:'1.00'}}));
+ assert.throws(()=>parse({...recover,refund:'canceled'}));
+ assert.throws(()=>parse({...recover,refundAction:{kind:'recover',operationId:'invalid',providerRefundId:null}}));
+});

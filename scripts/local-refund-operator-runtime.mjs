@@ -74,7 +74,7 @@ async function createRuntime(environment,options,database,certificate){
     },kind==='approve');
    }catch{return Promise.reject(unavailable());}
   }
-  return{preflight:()=>execute(async()=>undefined,true),listForAdmin:(...args)=>command('list',...args),approve:(...args)=>command('approve',...args),readForAdmin:(...args)=>command('read',...args),recover:(...args)=>command('recover',...args),
+  return{...(hostedRefunds?{shopId:merchant.shopId}:{}),preflight:()=>execute(async()=>undefined,true),listForAdmin:(...args)=>command('list',...args),approve:(...args)=>command('approve',...args),readForAdmin:(...args)=>command('read',...args),recover:(...args)=>command('recover',...args),
    close:()=>closing??=(async()=>{closed=true;try{await active;}catch{ /* Drain the current command before closing its pool. */ }try{await db.close();}catch{throw unavailable();}})()};
  }catch{
   try{if(db)await db.close();else if(pool)await pool.end();}catch{ /* Preserve the redacted error. */ }

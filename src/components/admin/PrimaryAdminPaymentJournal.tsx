@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { usePrimaryAccountAuth } from '@/components/auth/AccountAuthProvider';
+import { refundButton, useAdminRefundActions } from './AdminRefundActions';
 import { loadAdminPaymentJournal } from '@/lib/client-admin-payment-journal';
 import {
  journalOrderStatuses, journalTargetTypes, type AdminPaymentJournalItem,
@@ -30,7 +31,7 @@ const date = (value: string) => new Intl.DateTimeFormat('ru-RU', { dateStyle:'me
 function StatusTime({ value }: { value: string | null }) {
  return value && <time dateTime={value} className="block text-xs text-slate-600">{date(value)}</time>;
 }
-function JournalEntry({ row }: { row: AdminPaymentJournalItem }) {
+function JournalEntry({ row, actions }: { row: AdminPaymentJournalItem; actions?:ReactNode }) {
  return <li className="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
   <div className="flex flex-wrap justify-between gap-2"><div><h3 className="font-bold text-slate-950">{kinds[row.targetType]}</h3><StatusTime value={row.createdAt}/></div>
    <p className="font-bold text-slate-950">{money.format(Number(row.amount))}</p></div>
@@ -45,12 +46,19 @@ function JournalEntry({ row }: { row: AdminPaymentJournalItem }) {
   </dl>
   <details className="text-sm text-slate-700"><summary className="cursor-pointer py-2">Идентификаторы заказа и назначения</summary>
    <p className="break-all">Заказ {row.id}</p><p className="break-all">Назначение {row.targetId}</p></details>
+  {actions && <div className="mt-2">{actions}</div>}
  </li>;
 }
-function Journal({ actor }: { actor: string }) {
+function Journal({ actor, refundActions }: { actor: string; refundActions:boolean }) {
  const [query, setQuery] = useState<AdminPaymentJournalQuery>({ expectedAdminId:actor, kind:null, status:null, after:null });
  const [completed, setCompleted] = useState<{ query:AdminPaymentJournalQuery; page?:AdminPaymentJournalPage; error?:string } | null>(null);
  const view = completed?.query === query ? completed : null;
+ const actions = useAdminRefundActions(actor, refundActions, () => setQuery(current => ({ ...current })));
+ function navigate(next:AdminPaymentJournalQuery) {
+  if (actions.working.current) return;
+  actions.select(null);
+  setQuery(next);
+ }
  useEffect(() => {
   const controller = new AbortController();
   void loadAdminPaymentJournal(query, controller.signal).then(result => {
@@ -60,29 +68,39 @@ function Journal({ actor }: { actor: string }) {
   });
   return () => controller.abort();
  }, [query]);
- return <section aria-label="Журнал TEST-платежей" aria-busy={!view}>
+ return <section aria-label="Журнал TEST-платежей" aria-busy={!view || actions.busy}>
   <div className="flex flex-wrap gap-3">
-   <label className="grid gap-1 text-sm font-semibold text-slate-700">Тип платежа<select className={control} value={query.kind ?? ''}
-    onChange={event => setQuery({ ...query, kind:(event.target.value || null) as AdminPaymentJournalQuery['kind'], after:null })}>
+   <label className="grid gap-1 text-sm font-semibold text-slate-700">Тип платежа<select className={control} value={query.kind ?? ''} disabled={actions.busy}
+    onChange={event => navigate({ ...query, kind:(event.target.value || null) as AdminPaymentJournalQuery['kind'], after:null })}>
     <option value="">Все виды</option>{journalTargetTypes.map(kind => <option key={kind} value={kind}>{kinds[kind]}</option>)}
    </select></label>
-   <label className="grid gap-1 text-sm font-semibold text-slate-700">Статус заказа<select className={control} value={query.status ?? ''}
-    onChange={event => setQuery({ ...query, status:(event.target.value || null) as AdminPaymentJournalQuery['status'], after:null })}>
+   <label className="grid gap-1 text-sm font-semibold text-slate-700">Статус заказа<select className={control} value={query.status ?? ''} disabled={actions.busy}
+    onChange={event => navigate({ ...query, status:(event.target.value || null) as AdminPaymentJournalQuery['status'], after:null })}>
     <option value="">Все статусы</option>{journalOrderStatuses.map(status => <option key={status} value={status}>{orderStatuses[status]}</option>)}
    </select></label>
-   <button type="button" className={control + ' self-end'} onClick={() => setQuery({ ...query, after:null })}>Обновить журнал</button>
+   <button type="button" className={control + ' self-end'} disabled={actions.busy} onClick={() => navigate({ ...query, after:null })}>Обновить журнал</button>
   </div>
   {!view && <p role="status" className="mt-4 text-sm text-slate-600">Загружаем журнал…</p>}
   {view?.error && <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{view.error}</p>}
+  {view?.page && actions.panel}
   {view?.page && (view.page.items.length === 0
    ? <p className="mt-4 text-sm text-slate-600">По выбранным условиям платежей нет.</p>
-   : <ul className="mt-4 grid gap-3">{view.page.items.map(row => <JournalEntry key={row.id} row={row}/>)}</ul>)}
-  {view?.page?.nextAfter && <button type="button" className={control + ' mt-4'} onClick={() => setQuery({ ...query, after:view.page!.nextAfter })}>Следующие платежи</button>}
+   : <ul className="mt-4 grid gap-3">{view.page.items.map(row => {
+    const action = refundActions ? row.refundAction : null;
+    const button = action && <button type="button" className={refundButton} disabled={actions.disabled} onClick={() => {
+     const recovery = action.kind === 'recover' ? action : null;
+     actions.select({kind:action.kind,row:{id:row.id,amount:row.amount,operationId:recovery?.operationId??null,
+      providerRefundId:recovery?.providerRefundId??null}});
+    }}>{action.kind === 'approve' ? 'Вернуть плату' : action.providerRefundId ? 'Сверить возврат' : 'Сверить по номеру ЮKassa'}</button>;
+    return <JournalEntry key={row.id} row={row} actions={button}/>;
+   })}</ul>)}
+  {view?.page?.nextAfter && <button type="button" className={control + ' mt-4'} disabled={actions.busy}
+   onClick={() => navigate({ ...query, after:view.page!.nextAfter })}>Следующие платежи</button>}
  </section>;
 }
-export function PrimaryAdminPaymentJournal() {
+export function PrimaryAdminPaymentJournal({refundActions=false}:{refundActions?:boolean}) {
  const auth = usePrimaryAccountAuth();
  if (auth?.state !== 'admin' || !auth.userId) return <p role="status" className="text-sm text-slate-600">
   {auth?.state === 'loading' ? 'Проверяем права администратора…' : 'Доступ администратора не подтверждён.'}</p>;
- return <Journal key={auth.userId} actor={auth.userId}/>;
+ return <Journal key={auth.userId} actor={auth.userId} refundActions={refundActions}/>;
 }

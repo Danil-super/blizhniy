@@ -3,6 +3,7 @@ import { createAdminPaymentJournalHandler } from '@/lib/admin-payment-journal-ht
 import { readAdminPaymentJournal } from '@/lib/postgres-admin-payment-journal';
 import { readProductionAuthConfig } from '@/lib/production-auth-config';
 import { getProductionAccountDatabase } from '@/lib/production-auth-runtime';
+import { readLocalRefundJournalConfig } from '@/lib/local-refund-admin-config';
 
 export const runtime = 'nodejs';
 
@@ -14,9 +15,10 @@ async function handle(request: Request) {
       process.env.BLIZHNIY_PAYMENT_MODE !== 'test' || !shop || !/^[a-zA-Z0-9_-]{1,64}$/.test(shop)) {
    return authJson({ error: { code: 'PAYMENT_JOURNAL_UNAVAILABLE' } }, 503);
   }
+  const refundActions = readLocalRefundJournalConfig() !== null;
   return await createAdminPaymentJournalHandler(config, async () => {
    const { db, limiter } = await getProductionAccountDatabase(config);
-   return { limiter, read: (token, command) => readAdminPaymentJournal(db, shop, token, command) };
+   return { limiter, read: (token, command) => readAdminPaymentJournal(db, shop, token, command, refundActions) };
   })(request);
  } catch { return authJson({ error: { code: 'PAYMENT_JOURNAL_UNAVAILABLE' } }, 503); }
 }

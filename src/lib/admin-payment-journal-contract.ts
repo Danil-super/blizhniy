@@ -34,6 +34,19 @@ export function parseAdminPaymentJournalQuery(value: unknown) {
 export type AdminPaymentJournalQuery = ReturnType<typeof parseAdminPaymentJournalQuery>;
 export type AdminPaymentJournalCursor = ReturnType<typeof cursor>;
 
+type RefundAction = { kind:'approve' } | { kind:'recover'; operationId:string; providerRefundId:string|null };
+
+function refundAction(value: unknown): RefundAction | null {
+ if (value === null) return null;
+ if (value && typeof value === 'object' && 'kind' in value && value.kind === 'recover') {
+  const row = fields(value, ['kind','operationId','providerRefundId']);
+  return { kind:'recover', operationId:parseListingDraftId(row.operationId),
+   providerRefundId:row.providerRefundId === null ? null : parseListingDraftId(row.providerRefundId) };
+ }
+ if (fields(value, ['kind']).kind !== 'approve') rejected();
+ return { kind:'approve' };
+}
+
 function capture(value: unknown) {
  if (value === null) return null;
  if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/.test(value) ||
@@ -42,8 +55,9 @@ function capture(value: unknown) {
 }
 
 function item(value: unknown) {
+ const hasAction = !!value && typeof value === 'object' && Object.hasOwn(value, 'refundAction');
  const row = fields(value, ['id','targetId','targetType','amount','createdAt','orderStatus','providerStatus','capturedAt',
-  'reconciliation','reconciliationCode','fulfillment','fulfilledAt','refund','refundedAt','compensation']);
+  'reconciliation','reconciliationCode','fulfillment','fulfilledAt','refund','refundedAt','compensation',...(hasAction ? ['refundAction'] : [])]);
  const { id, createdAt } = cursor({ id: row.id, createdAt: row.createdAt });
  const { amount } = row;
  if (typeof amount !== 'string' || !/^(?:0|[1-9]\d{0,9})\.\d{2}$/.test(amount) || amount === '0.00') rejected();
@@ -58,6 +72,15 @@ function item(value: unknown) {
   ['provider_pending','capture_required','processing_unavailable','publication_blocked','attempts_exhausted','phone_required'] as const);
  const targetType = choice(row.targetType, paymentHistoryTargets);
  const compensation = choice(row.compensation, ['not_applicable','unavailable','none','eligible','queued','processing','completed','blocked','applied'] as const);
+ const orderStatus = choice(row.orderStatus, paymentHistoryStatuses);
+ const action = hasAction ? refundAction(row.refundAction) : null;
+ if (action) {
+  const placement = ['listing','vacancy','workRequest','ad_marquee'].includes(targetType);
+  if (orderStatus !== 'succeeded' || providerStatus !== 'succeeded' || capturedAt === null ||
+      (action.kind === 'approve' && (!placement || refund !== 'none')) ||
+      (action.kind === 'recover' && ((!placement && targetType !== 'application') ||
+       !['unknown','awaiting_verification','pending','succeeded'].includes(refund)))) rejected();
+ }
  if ((capturedAt !== null && providerStatus !== 'succeeded') ||
      (fulfilledAt !== null) !== (fulfillment === 'fulfilled' || fulfillment === 'delivered') ||
      (refundedAt !== null) !== (refund === 'applied') ||
@@ -65,8 +88,9 @@ function item(value: unknown) {
      (reconciliation === null && reconciliationCode !== null) ||
      (targetType === 'application') === (compensation === 'not_applicable')) rejected();
  return { id, createdAt, amount, targetType, targetId: parseListingDraftId(row.targetId),
-  orderStatus: choice(row.orderStatus, paymentHistoryStatuses), providerStatus, capturedAt,
-  fulfillment, fulfilledAt, reconciliation, reconciliationCode, refund, refundedAt, compensation };
+  orderStatus, providerStatus, capturedAt,
+  fulfillment, fulfilledAt, reconciliation, reconciliationCode, refund, refundedAt, compensation,
+  ...(hasAction ? { refundAction:action } : {}) };
 }
 export type AdminPaymentJournalItem = ReturnType<typeof item>;
 

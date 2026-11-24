@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {randomBytes,randomUUID} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import pg from 'pg';
@@ -9,6 +10,9 @@ import {provider} from './refund-worker-role-cases.mjs';
 export async function testHostedRefundWorkflow({admin,config,load,operator,worker,docker,container,directory}){
  const ca=join(directory,'refund-ca.crt'),key=join(directory,'refund-key.pem');
  await enableRefundFixtureTls(admin,{docker,container},ca,key);
+ for(const file of ['candidates/0077-admin-refund-actions.sql','permissions/admin-refund-actions.sql']){
+  await admin.query(await readFile(new URL('../database/'+file,import.meta.url),'utf8'));
+ }
  const deadline=Date.now()+5000;
  while((await admin.query("select current_setting('ssl') as ssl")).rows[0].ssl!=='on'){
   assert.ok(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,20));
@@ -84,7 +88,8 @@ export async function testHostedRefundWorkflow({admin,config,load,operator,worke
   assert.ok(tls.some(row=>row.usename===operator.role));assert.ok(tls.some(row=>row.usename===worker.role));
   assert.ok(tls.every(row=>row.ssl));
   operatorSocket=await startLocalRefundOperatorServer(operatorRuntime);
-  const bridge=(token,command,signal)=>load('local-refund-operator-client').callLocalRefundOperator(operatorSocket.socketPath,token,command,signal);
+  const forward=(token,command,signal,shop)=>load('local-refund-operator-client').callLocalRefundOperator(operatorSocket.socketPath,token,command,signal,shop);
+  const bridge=(token,command,signal)=>forward(token,command,signal,merchant.shopId);
   const {createAdminRefundHandler}=load('admin-refund-http');
   const handler=command=>createAdminRefundHandler({origin},()=>({limiter:{allowProduction:async()=>true},command}),()=>{});
   const normal=handler(bridge),lost=handler(async(...args)=>{await bridge(...args);throw Error('Synthetic lost approval response after commit');});
@@ -98,7 +103,14 @@ export async function testHostedRefundWorkflow({admin,config,load,operator,worke
   await admin.query('alter role blizhniy_runtime login password '+pg.escapeLiteral(password));
   webDb=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:'blizhniy_runtime',password,max:2}));
   const journal=async status=>(await load('postgres-admin-payment-journal').readAdminPaymentJournal(webDb,merchant.shopId,reviewer.token,
-   {expectedAdminId:reviewer.id,kind:'listing',status,after:null})).items.find(item=>item.id===id);
+   {expectedAdminId:reviewer.id,kind:'listing',status,after:null},true)).items.find(item=>item.id===id);
+  assert.deepEqual((await journal('succeeded'))?.refundAction,{kind:'approve'});
+  await assert.rejects(webDb.query('select app_payment_admin.refund_action($1,$2)',['{}',merchant.shopId]),{code:'42501'});
+  await assert.rejects(webDb.query('select app_payment_admin.list_orders_with_refund_actions($1,$2,$3,null,null,null,null)',
+   [hashSessionToken(payer.token),payer.id,merchant.shopId]),{code:'42501'});
+  assert.equal((await invoke(handler(forward),'approve',approval)).status,503);
+  assert.equal((await invoke(handler((...args)=>forward(...args,'another-shop')),'approve',approval)).status,503);
+  assert.equal((await admin.query('select count(*)::int n from app.payment_refund_approvals where payment_intent_id=$1',[id])).rows[0].n,0);
   assert.equal((await invoke(normal,'approve',approval,payer)).status,503);
   assert.equal((await invoke(lost,'approve',approval)).status,503);
   const read=await invoke(normal,'read',approvalId);
@@ -111,11 +123,13 @@ export async function testHostedRefundWorkflow({admin,config,load,operator,worke
   assert.equal(remote.posts(),3);assert.ok(refundId);
   assert.deepEqual(await row(),{status:'succeeded',is_paid:true,listing:'published'});
   assert.equal((await journal('succeeded'))?.refund,'unknown');
+  assert.deepEqual((await journal('succeeded'))?.refundAction,{kind:'recover',operationId:approvalId,providerRefundId:null});
   const observing={id:randomUUID(),operationId:approvalId,providerRefundId:refundId,reason:'Сверка исходного возврата.'};
   const waiting=await invoke(normal,'recover',observing);
   assert.equal(waiting.status,200);assert.equal((await waiting.json()).state,'pending');
   assert.deepEqual(await row(),{status:'succeeded',is_paid:true,listing:'published'});
   assert.equal((await journal('succeeded'))?.refund,'pending');
+  assert.deepEqual((await journal('succeeded'))?.refundAction,{kind:'recover',operationId:approvalId,providerRefundId:refundId});
   assert.equal((await admin.query('select count(*)::int n from app.payment_refund_effects where payment_intent_id=$1',[id])).rows[0].n,0);
   refundStatus='succeeded';
   const recovery={...observing,id:randomUUID()};
@@ -128,7 +142,9 @@ export async function testHostedRefundWorkflow({admin,config,load,operator,worke
   assert.deepEqual(await row(),{status:'refunded',is_paid:false,listing:'archived'});
   assert.equal((await admin.query('select count(*)::int n from app.payment_refund_effects where payment_intent_id=$1',[id])).rows[0].n,1);
   assert.equal((await admin.query('select count(*)::int n from app.notifications where event_key=$1',['placement_refund:'+id])).rows[0].n,1);
-  assert.equal((await journal('refunded'))?.refund,'applied');
+  const applied=await journal('refunded');
+  assert.equal(applied?.refund,'applied');
+  assert.equal(applied?.refundAction,null);
   await admin.query('update app.users set auth_version=auth_version+1 where id=$1',[reviewer.id]);
   assert.equal((await invoke(normal,'recover',recovery)).status,503);
   await assert.rejects(journal('refunded'),{name:'AppSessionAccessError'});

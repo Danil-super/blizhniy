@@ -5,10 +5,11 @@ import {tmpdir} from 'node:os';
 import {AdminRefundRejectedError,parseAdminRefundCommand,parseAdminRefundResult} from './admin-refund-contract.ts';
 import {hashSessionToken} from './identity';
 /** No network host/redirect/retry. A timeout may hide a committed action; reuse its original ID explicitly. */
-export async function callLocalRefundOperator(socketPath:string,token:string,value:unknown,signal?:AbortSignal){
+export async function callLocalRefundOperator(socketPath:string,token:string,value:unknown,signal?:AbortSignal,shopId?:string){
  try{
   const command=parseAdminRefundCommand(value);if(!hashSessionToken(token))throw Error();
-  const body=JSON.stringify({token,command});if(Buffer.byteLength(body)>4096)throw Error();
+  if(shopId!==undefined&&!/^[a-zA-Z0-9_-]{1,64}$/.test(shopId))throw Error();
+  const body=JSON.stringify({token,command,...(shopId===undefined?{}:{shopId})});if(Buffer.byteLength(body)>4096)throw Error();
   if(typeof process.getuid!=='function'||!isAbsolute(socketPath)||Buffer.byteLength(socketPath)>100||basename(socketPath)!=='operator.sock'||
    !/^blizhniy-refund-operator-[a-zA-Z0-9]+$/.test(basename(dirname(socketPath)))||dirname(dirname(socketPath))!==tmpdir())throw Error();
   signal?.throwIfAborted();const [parent,socket]=await Promise.all([lstat(dirname(socketPath)),lstat(socketPath)]);
