@@ -1,4 +1,4 @@
-import {readServiceCheckoutEnabled} from './service-checkout-config.ts';
+import {readLocalCheckoutCancellationPolicy,type CheckoutCancellationPolicy} from './checkout-cancellation-policy.ts';
 import {withAppSessionTransaction,AppSessionAccessError} from './app-session-transaction';
 import {hashSessionToken} from './identity';
 import {parseListingDraftId} from './listing-draft-contract.ts';
@@ -6,14 +6,20 @@ import {parseCheckoutCancellation,type CheckoutCancellationResult} from './check
 import type {PostgresDatabase} from './postgres';
 export class CheckoutCancellationError extends Error{constructor(readonly code:'CHECKOUT_NOT_FOUND'|'CHECKOUT_STARTED'|'CHECKOUT_BUSY'){super('Checkout cancellation unavailable');this.name='CheckoutCancellationError';}}
 export class PostgresCheckoutCancellation {
- constructor(private readonly db:Pick<PostgresDatabase,'transaction'>){}
+ constructor(private readonly db:Pick<PostgresDatabase,'transaction'>,private readonly policy:CheckoutCancellationPolicy=readLocalCheckoutCancellationPolicy()){}
  private async perform(token:string,expectedOwner:unknown,value:unknown,write:boolean):Promise<CheckoutCancellationResult|null>{
-  const owner=parseListingDraftId(expectedOwner),input=parseCheckoutCancellation(value,{services:readServiceCheckoutEnabled()});
+  const owner=parseListingDraftId(expectedOwner),input=parseCheckoutCancellation(value,{
+   services:!!(this.policy.fair_application||this.policy.ad_marquee),specialist:!!this.policy.specialist,
+  });
+  const admission=this.policy[input.targetType];
   try{return await withAppSessionTransaction(this.db,token,async(tx,user)=>{
    if(user.id!==owner)throw new AppSessionAccessError();
+   if(!admission||(admission.ownerId!==undefined&&admission.ownerId!==owner))throw new CheckoutCancellationError('CHECKOUT_NOT_FOUND');
    if((await tx.query(`select o.id from app.payment_orders o join app.payment_checkout_intents i on i.id=o.id
     where o.id=$1 and o.owner_id=$2 and o.target_type=$3 and i.owner_id=o.owner_id and i.target_type=o.target_type
-     and i.target_id=o.target_id and i.target_revision=o.target_revision and i.merchant_shop_id='local-fixture-shop' and i.is_test`,[input.paymentId,owner,input.targetType])).rowCount!==1)throw new CheckoutCancellationError('CHECKOUT_NOT_FOUND');
+     and i.target_id=o.target_id and i.target_revision=o.target_revision and i.merchant_shop_id=$4 and i.is_test
+     and (i.request_body::jsonb#>>'{metadata,publicationMode}') is not distinct from $5::text`,
+    [input.paymentId,owner,input.targetType,admission.shopId,admission.publicationMode??null])).rowCount!==1)throw new CheckoutCancellationError('CHECKOUT_NOT_FOUND');
    if(write){await tx.query("select set_config('blizhniy.checkout_cancel_session',$1,true)",[hashSessionToken(token)]);
     await tx.query('insert into app.payment_checkout_cancellations(payment_id) values($1) on conflict(payment_id) do nothing',[input.paymentId]);}
    const row=(await tx.query('select payment_id from app.payment_checkout_cancellations where payment_id=$1 and owner_id=$2 and target_type=$3',[input.paymentId,owner,input.targetType])).rows[0];

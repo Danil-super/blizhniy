@@ -36,6 +36,8 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
  },[owner,paymentId,visible,retry,vacancy,workRequest,specialist,cancellationPending]);
  const localSimulation=useLocalPaymentSimulation(),account=usePrimaryAccountAuth();
  const hostedSpecialist=specialist&&account?.userId===owner&&account?.specialistTest===true&&snapshot?.canResumeSpecialist===true;
+ const localOrEnrolled=localSimulation||(specialist?account?.specialistTest
+  :account?.workPublicationTest||(!vacancy&&!workRequest&&account?.listingVerificationTest));
  const verificationOnly=!!snapshot&&(snapshot.testOnly||testCheckout)&&!snapshot.testPublication&&!localSimulation;
  const confirmed=!!snapshot&&snapshot.order.status==='succeeded'&&(verificationOnly||!!snapshot.fulfillment);
  const terminal=confirmed||snapshot?.order.status==='failed'||snapshot?.order.status==='refunded';
@@ -52,7 +54,7 @@ function StatusReader({owner,paymentId,visible,testCheckout,vacancy,workRequest,
   {error&&<p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm leading-6 text-rose-800">{error}</p>}
   {snapshot&&<>{(localSimulation||snapshot.testOnly||snapshot.testPublication)&&<p className="mb-3 text-sm font-semibold text-amber-800">Тестовый платёж · Без списания денег</p>}{(error||busy)&&<p className="mb-3 text-sm text-slate-700">Последний полученный статус. Актуальность пока не подтверждена.</p>}<ListingPaymentStatus checkingAutomatically={visible&&!error&&!cancellationPending&&(busy||automaticChecks<statusCheckDelaysMs.length)} snapshot={snapshot} testMode={verificationOnly} target={specialist?'specialist':workRequest?'workRequest':vacancy?'vacancy':'listing'}/></>}
   {(testCheckout||hostedSpecialist)&&snapshot&&(snapshot.order.status==='created'||snapshot.order.status==='pending')&&<TestPaymentLaunch publishes={snapshot.testPublication} disabled={cancellationPending||busy||!!error} owner={owner} paymentId={paymentId} visible={visible} vacancy={vacancy} workRequest={workRequest} specialist={specialist}/>}
-  {cancellationEnabled&&!specialist&&snapshot?.order.status==='created'&&!busy&&!error&&<CheckoutCancellation owner={owner} paymentId={paymentId} targetType={workRequest?'workRequest':vacancy?'vacancy':'listing'} visible={visible} onPendingChange={setCancellationPending} onCancelled={()=>{setSnapshot(null);setLoaded(false);setRetry(value=>value+1);}}/>}
+  {cancellationEnabled&&localOrEnrolled&&snapshot?.order.status==='created'&&!busy&&!error&&<CheckoutCancellation owner={owner} paymentId={paymentId} targetType={specialist?'specialist':workRequest?'workRequest':vacancy?'vacancy':'listing'} visible={visible} onPendingChange={setCancellationPending} onCancelled={()=>{setSnapshot(null);setLoaded(false);setRetry(value=>value+1);}}/>}
   {snapshot?.order.status==='succeeded'&&!verificationOnly&&!snapshot.fulfillment&&<PhonePaymentNotice owner={owner} onVerified={()=>setRetry(value=>value+1)}/>}
   {loaded&&!snapshot&&!error&&!busy&&<p role="status" className="text-sm leading-6 text-slate-700">Платёж недоступен. Проверьте ссылку и убедитесь, что вошли в аккаунт, из которого оформляли заказ.</p>}
   {confirmed&&!error&&<p role="status" className="mt-4 text-sm text-slate-600">Возвращаем в личный кабинет…</p>}

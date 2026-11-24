@@ -18,15 +18,23 @@ test('local checkout cancellation serializes with dispatch and preserves immutab
    grant select on app.users,app.sessions,app.payment_checkout_intents,app.payment_orders,app.payment_checkout_cancellations to checkout_cancel_runtime;
    grant update(id) on app.users to checkout_cancel_runtime;grant update(last_seen_at) on app.sessions to checkout_cancel_runtime;
    grant insert(payment_id) on app.payment_checkout_cancellations to checkout_cancel_runtime`);
+  const policySql=await readFile(new URL('../database/candidates/0071-checkout-cancellation-test-policy.sql',import.meta.url),'utf8');
   const {PostgresPaymentIntentStore}=load('postgres-payment-intents');const {PostgresDatabase}=load('postgres');db=new PostgresDatabase(new pg.Pool({...config,user:'checkout_cancel_runtime',max:5}));ownerDb=new PostgresDatabase(new pg.Pool({...config,max:5}));
   const {hashSessionToken}=load('identity');
   async function actor(){const id=randomUUID(),token=randomBytes(32).toString('hex'),hash=hashSessionToken(token);
    await admin.query('insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())',[id,id+'@cancel.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
    await admin.query("insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at) values($1,$2,'app',0,clock_timestamp()+interval '1 hour')",[hash,id]);return{id,token,hash};}
   const owner=await actor(),other=await actor(),intents=new PostgresPaymentIntentStore(ownerDb);
- async function purchase({actor=owner,targetType='listing',targetId=randomUUID(),shopId='local-fixture-shop',isTest=true}={}){
-   const binding={id:randomUUID(),ownerId:actor.id,targetType,targetId,targetRevision:'1',tariffId:'local-checkout',amount:'199.00',durationDays:targetType==='application'?null:30,shopId,isTest};
-   const requestBody=JSON.stringify({amount:{value:binding.amount,currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:'https://fixture.example.invalid/return'},metadata:{localPaymentId:binding.id,targetId:binding.targetId,targetType,tariffId:binding.tariffId}});
+ async function purchase({actor=owner,targetType='listing',targetId=randomUUID(),shopId='local-fixture-shop',isTest=true,publicationMode,tariffId='local-checkout'}={}){
+   const binding={id:randomUUID(),ownerId:actor.id,targetType,targetId,targetRevision:'1',tariffId,amount:'199.00',durationDays:targetType==='application'?null:30,shopId,isTest};
+   const amount={value:binding.amount,currency:'RUB'},description='Синтетическое размещение';
+   const hosted=shopId!=='local-fixture-shop';
+   const returnUrl=hosted?'https://xn----9sbphbgks4a4a.xn--p1ai/oplata/'+binding.id+(targetType==='listing'?'':'?type='+targetType):'https://fixture.example.invalid/return';
+   const requestBody=JSON.stringify({amount,capture:true,confirmation:{type:'redirect',return_url:returnUrl},
+    metadata:{localPaymentId:binding.id,targetId:binding.targetId,targetType,tariffId:binding.tariffId,...(publicationMode?{publicationMode}:{})},
+    ...(hosted?{description,receipt:{customer:{email:actor.id+'@cancel.invalid'},internet:true,items:[
+     {amount,description,payment_mode:'full_payment',payment_subject:'service',quantity:1,vat_code:1}
+    ]}}:{})});
    await ownerDb.transaction(async tx=>{await intents.persistInTransaction(tx,{...binding,requestBody});await tx.query('insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision) values($1,$2,$3,$4,$5,1)',[binding.id,actor.id,randomUUID(),targetType,binding.targetId]);});return binding;
   }
   const cancel=(actor,binding)=>db.transaction(async tx=>{await tx.query("select set_config('blizhniy.checkout_cancel_session',$1,true)",[actor.hash]);await tx.query('insert into app.payment_checkout_cancellations(payment_id) values($1) on conflict(payment_id) do nothing',[binding.id]);return(await tx.query('select owner_id,target_type,cancelled_at::text from app.payment_checkout_cancellations where payment_id=$1',[binding.id])).rows[0];});
@@ -162,6 +170,7 @@ test('local checkout cancellation serializes with dispatch and preserves immutab
    await admin.query('create database checkout_cancel_sparse');const pool=new pg.Pool({...config,database:'checkout_cancel_sparse'}),sparse=new PostgresDatabase(pool);
    try{const names=files.filter(file=>Number(file.slice(0,4))<=35||[41,44,46,47].includes(Number(file.slice(0,4))));assert.equal(names.length,39);
     for(const file of names)await pool.query(await readFile(new URL('../database/migrations/'+file,import.meta.url),'utf8'));
+    await pool.query(policySql);
     assert.equal((await pool.query("select to_regclass('app.payment_refund_effects') as name")).rows[0].name,null);
     const identity=randomUUID(),hash=randomBytes(32).toString('hex'),payment=randomUUID(),target=randomUUID();
     await pool.query('insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())',[identity,'sparse@cancel.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
@@ -174,5 +183,73 @@ test('local checkout cancellation serializes with dispatch and preserves immutab
    }finally{await sparse.close();}
   });
   await testUnpaidDraftRemoval(suite,{admin,config,owner,other,purchase,intents,cancel,load});
+  await admin.query(policySql);
+  await suite.test('provider evidence keeps a created order fenced against cancellation',async()=>{
+   const binding=await purchase();
+   await assert.rejects(admin.query('insert into app.payment_provider_links(intent_id,provider_payment_id) values($1,$2)',[binding.id,randomUUID()]),{code:'23503'});
+   await admin.query('insert into app.payment_dispatch_anchors(intent_id) values($1)',[binding.id]);
+   await admin.query('insert into app.payment_provider_links(intent_id,provider_payment_id) values($1,$2)',[binding.id,randomUUID()]);
+   await assert.rejects(store.cancel(owner.token,owner.id,{paymentId:binding.id,targetType:binding.targetType}),{code:'CHECKOUT_STARTED'});
+   assert.equal(await status(binding.id),'created');
+  });
+  await suite.test('hosted publication TEST cancellation requires both owner and shop enrollment',async()=>{
+   const shopId='12345678',publicationMode='account-test-v1';
+   const hostedStore=new PostgresCheckoutCancellation(db,{listing:{shopId,ownerId:owner.id,publicationMode}});
+   const binding=await purchase({shopId,publicationMode}),input={paymentId:binding.id,targetType:'listing'};
+   await assert.rejects(store.cancel(owner.token,owner.id,input),{code:'CHECKOUT_NOT_FOUND'});
+   await assert.rejects(hostedStore.cancel(owner.token,owner.id,input),{code:'CHECKOUT_NOT_FOUND'});
+   await assert.rejects(cancel(owner,binding),{code:'PCA01'});
+   assert.equal(await status(binding.id),'created');
+   await admin.query("insert into app.checkout_cancellation_test_enrollment(owner_id,shop_id,target_type) values($1,$2,'listing')",[owner.id,shopId]);
+   for(const refused of [await purchase({actor:other,shopId,publicationMode}),await purchase({shopId:'87654321',publicationMode}),
+    await purchase({shopId,isTest:false}),await purchase({shopId,targetType:'vacancy',publicationMode})]){
+    await assert.rejects(cancel(refused.ownerId===owner.id?owner:other,refused),{code:'PCA01'});
+    assert.equal(await status(refused.id),'created');
+   }
+   await assert.rejects(db.query('select * from app.checkout_cancellation_test_enrollment'),{code:'42501'});
+   await assert.rejects(db.query("insert into app.checkout_cancellation_test_enrollment(owner_id,shop_id,target_type) values($1,$2,'workRequest')",[owner.id,shopId]),{code:'42501'});
+   const receipt={...input,state:'cancelled'};
+   assert.deepEqual(await hostedStore.cancel(owner.token,owner.id,input),receipt);
+   assert.deepEqual(await hostedStore.read(owner.token,owner.id,input),receipt);
+   assert.deepEqual(await hostedStore.cancel(owner.token,owner.id,input),receipt);
+   assert.equal(await status(binding.id),'failed');
+   let posts=0;
+   const dispatcher=load('primary-payment-dispatch').createPrimaryPaymentDispatcher(ownerDb,{shopId,isTest:true,secretKey:'test_synthetic'},async()=>{posts++;throw Error('No transport expected');});
+   await assert.rejects(dispatcher.dispatch(binding),{code:'PCA02'});
+   assert.equal(posts,0);
+   for(const targetType of ['vacancy','workRequest','application']){
+    await admin.query('insert into app.checkout_cancellation_test_enrollment(owner_id,shop_id,target_type) values($1,$2,$3)',[owner.id,shopId,targetType]);
+    const order=await purchase({shopId,targetType,publicationMode:targetType==='application'?undefined:publicationMode});
+    if(targetType==='application'){
+     await assert.rejects(cancel(owner,order),{code:'PCA01'}); // Paid response admission schema is optional.
+    }else{
+     const unmarked=await purchase({shopId,targetType});
+     await assert.rejects(cancel(owner,unmarked),{code:'PCA01'});
+     assert.equal((await cancel(owner,order)).target_type,targetType);
+    }
+   }
+  });
+  await suite.test('a paid response requires the original immutable admission and keeps the draft after cancellation',async()=>{
+   await admin.query('create role blizhniy_payment_reconciler nologin');
+   await admin.query(await readFile(new URL('../database/candidates/0067-paid-response-test.sql',import.meta.url),'utf8'));
+   const shopId='12345678',targetType='application',phone='+79990000001';
+   await admin.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2)',[owner.id,{name:'Синтетический участник',phone}]);
+   await admin.query('insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)',[owner.id,phone,'synthetic-cancel']);
+   await admin.query("insert into app.tariffs(id,action,name,price,duration_days,active) values('job-response','job_response','Синтетический отклик',199,null,true) on conflict(id) do update set price=excluded.price,active=true");
+   await admin.query('insert into app_response.enrollment(singleton,owner_id,shop_id,vat_code) values(true,$1,$2,1)',[owner.id,shopId]);
+   const job=(await admin.query("insert into app.work_publications(author_id,kind,creation_key,form) values($1,'vacancy',$2,$3) returning id",
+    [other.id,randomUUID(),{kind:'vacancy',title:'Синтетическая вакансия'}])).rows[0].id;
+   const targetId=(await admin.query("insert into app.applications(applicant_id,work_publication_id,creation_key,target_revision,specialist_revision,snapshot) values($1,$2,$3,1,1,'{}') returning id",
+    [owner.id,job,randomUUID()])).rows[0].id;
+   const binding=await purchase({shopId,targetType,targetId,tariffId:'job-response'}),input={paymentId:binding.id,targetType};
+   const responses=new PostgresCheckoutCancellation(db,{application:{ownerId:owner.id,shopId}});
+   await assert.rejects(responses.cancel(owner.token,owner.id,input),{code:'CHECKOUT_NOT_FOUND'});
+   assert.equal((await admin.query('select app_response.admit($1,$2) allowed',[binding.id,owner.hash])).rows[0].allowed,true);
+   assert.deepEqual(await responses.cancel(owner.token,owner.id,input),{...input,state:'cancelled'});
+   assert.deepEqual((await admin.query('select status,is_paid,sent_at from app.applications where id=$1',[targetId])).rows[0],
+    {status:'pending_payment',is_paid:false,sent_at:null});
+   const replacement=await purchase({shopId,targetType,targetId,tariffId:'job-response'});
+   assert.notEqual(replacement.id,binding.id);
+  });
  }finally{await db?.close();await ownerDb?.close();await admin?.end();if(container){const meta=JSON.parse(await docker(['inspect',container]))[0];assert.equal(meta.Id,container);assert.equal(meta.Config.Labels['blizhniy.checkout-cancel'],name);await docker(['rm','--force','--volumes',container]);}}
 });

@@ -191,6 +191,18 @@ test('service event terms and advertising slots are authoritative and once only'
    await assert.rejects(admin.query(await readFile(new URL('../database/migrations/0057-service-payment-terms.down.sql',import.meta.url),'utf8')),e=>e.code==='23514');await admin.query('rollback');
    assert.ok((await admin.query('select count(*)::int n from app.service_payment_terms')).rows[0].n>0);
   });
+  await suite.test('the new policy also admits local advertisements with the existing service terms',async()=>{
+   await admin.query(await readFile(new URL('../database/candidates/0071-checkout-cancellation-test-policy.sql',import.meta.url),'utf8'));
+   const f=await fixture('marquee'),store=new(load('postgres-service-checkout').PostgresServiceCheckoutStore)(db,{
+    shopId:'local-fixture-shop',isTest:true,siteOrigin:'https://fixture.example.invalid',receiptVatCode:1,
+   },'marquee'),quote=await store.preview(f.token,f.owner,f.target,'1');
+   const order=await store.prepare(f.token,f.owner,{publicationId:f.target,expectedRevision:'1',creationKey:randomUUID(),
+    expectedTariffId:quote.tariff.id,expectedAmount:quote.tariff.amount,expectedDurationDays:quote.tariff.durationDays,expectedFairDate:null});
+   const cancellation=new(load('postgres-checkout-cancellation').PostgresCheckoutCancellation)(db);
+   const input={paymentId:order.id,targetType:'ad_marquee'};
+   assert.deepEqual(await cancellation.cancel(f.token,f.owner,input),{...input,state:'cancelled'});
+   assert.equal((await store.readOrder(f.token,f.owner,order.id)).order.status,'failed');
+  });
  }finally{
   for(const [key,value] of Object.entries(savedEnv)){if(value===undefined)delete process.env[key];else process.env[key]=value;}globalThis.fetch=previousFetch;if(db)await db.close();if(admin)await admin.end();
   if(container){const m=JSON.parse(await docker(['inspect',container]))[0];assert.equal(m.Config.Labels[label],name);assert.equal(m.Id,container);await docker(['rm','--force',container]);}

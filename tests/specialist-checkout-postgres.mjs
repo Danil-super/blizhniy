@@ -448,6 +448,27 @@ for(const full of [false,true])test('specialist synthetic checkout on '+(full?'f
     await assert.rejects(restored.query('insert into app.payment_dispatch_anchors(intent_id) values($1)',[preparedBeforeClosure.binding.id]),{code:'PSP01'});
    }finally{await restored.end();}
    const last=await draft();await assert.rejects(web.transaction(tx=>insert(tx,last,make(last))),{code:'PSP01'});
+   await admission.test('a separately enrolled hosted specialist can cancel and edit an undispatched draft',async()=>{
+    if(!full)await admin.query(await readFile(new URL('../database/migrations/0047-checkout-cancellation.sql',import.meta.url),'utf8'));
+    await admin.query(await readFile(new URL('../database/candidates/0071-checkout-cancellation-test-policy.sql',import.meta.url),'utf8'));
+    await admin.query('grant select on app.payment_checkout_cancellations to specialist_web;grant insert(payment_id) on app.payment_checkout_cancellations to specialist_web');
+    const fresh=await draft(),purchase=make(fresh),input={paymentId:purchase.binding.id,targetType:'specialist'};
+    await enroll(fresh);await web.transaction(tx=>insert(tx,fresh,purchase));
+    const store=new(load('postgres-checkout-cancellation').PostgresCheckoutCancellation)(web,{
+     specialist:{ownerId:fresh.owner,shopId,publicationMode:mode},
+    });
+    await assert.rejects(store.cancel(fresh.token,fresh.owner,input),{code:'CHECKOUT_NOT_FOUND'});
+    await admin.query("insert into app.checkout_cancellation_test_enrollment(target_type,owner_id,shop_id) values('specialist',$1,$2)",[fresh.owner,shopId]);
+    await assert.rejects(web.query('select * from app.checkout_cancellation_test_enrollment'),{code:'42501'});
+    const cancelled={...input,state:'cancelled'};
+    assert.deepEqual(await store.cancel(fresh.token,fresh.owner,input),cancelled);
+    assert.deepEqual(await store.read(fresh.token,fresh.owner,input),cancelled);
+    await assert.rejects(web.query('insert into app.payment_dispatch_anchors(intent_id) values($1)',[purchase.binding.id]),{code:'PCA02'});
+    const updated=await fresh.forms.update(fresh.token,fresh.owner,'specialist',fresh.id,fresh.revision,
+     {...(await fresh.forms.read(fresh.token,fresh.owner,'specialist',fresh.id)).form,description:'Обновлённое синтетическое описание услуги.'});
+    assert.notEqual(updated.revision,fresh.revision);
+   });
+
   });
 
  }finally{
