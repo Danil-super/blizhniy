@@ -333,6 +333,14 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
    await assert.rejects(admin.query(`update app.${table} set ${kind==='listing'?"title='Попытка изменения'":"form=jsonb_set(form,'{title}','\"Попытка изменения\"')"} where id=$1`,[d.id]),{code:'PBL01'});
    await assert.rejects(admin.query(`insert into app.${kind==='listing'?'listing_photos(listing_id':'work_publication_photos(publication_id'},media_id,position) values($1,$2,0)`,[d.id,randomUUID()]),{code:'PBL01'});
    const raw=(await admin.query('select request_body from app.payment_checkout_intents where id=$1',[order.id])).rows[0].request_body;assert.equal(JSON.parse(raw).metadata.publicationMode,'account-test-v1');
+   if(kind==='vacancy'){
+    const readVacancy=async()=>(await admin.query('select form,revision::text from app.work_publications where id=$1',[d.id])).rows[0];
+    const snapshot=await readVacancy();
+    await admin.query("update app.cabinet_profiles set profile=jsonb_set(profile,'{organizationName}',to_jsonb($2::text)) where user_id=$1",[d.owner,'Обновлённая организация']);
+    assert.deepEqual(await readVacancy(),snapshot);
+    assert.deepEqual(await s.prepare(d.token,d.owner,input),order);
+    assert.equal((await admin.query('select request_body from app.payment_checkout_intents where id=$1',[order.id])).rows[0].request_body,raw);
+   }
    await assert.rejects(s.preview(other.token,other.owner,d.id,d.revision));
    const payment=load('account-test-listing-payment').createAccountTestListingPayment(db,s,{...merchant,ownerId:current.owner},fetcher);
    const previousPosts=posts;

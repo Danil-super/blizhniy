@@ -10,7 +10,7 @@ import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {rootCertificates} from 'node:tls';
-import {randomBytes} from 'node:crypto';
+import {createHash,randomBytes} from 'node:crypto';
 import {chromium} from 'playwright';
 import sharp from 'sharp';
 import {parseWorkPublicationForm} from '../src/lib/work-publication-contract.ts';
@@ -23,6 +23,12 @@ const chosen={vacancy:{path:'/rabota/vakansii/sozdat',cabinet:'/cabinet/vakansii
  workRequest:{path:'/rabota/zakazy/sozdat',cabinet:'/cabinet/zakazy',id:'42345678-1234-4321-8765-123456789abc',title:'Синтетический заказ'}};
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return{promise,resolve};};
 const render=page=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+const profileRevision=profile=>profile?createHash('sha256').update(JSON.stringify(profile)).digest('hex'):null;
+const employerField=(page,name)=>page.locator(`input[name="${name}"]`);
+async function selectEmployer(page,label){
+ await page.getByRole('button',{name:label}).click();
+ await page.getByRole('button',{name:'Продолжить',exact:true}).click();
+}
 
 async function fillWorkForm(page,kind,pixels){
  if(kind==='vacancy'){
@@ -75,8 +81,9 @@ test('work publication production pages preserve complete forms and use Russian 
    BLIZHNIY_DB_PASSWORD:'synthetic-ui-db-password',BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:ca,BLIZHNIY_AUTH_MAIL_KEY_FILE:key,
    BLIZHNIY_AUTH_RATE_SECRET:'synthetic-ui-only-rate-secret-not-used-by-api',BLIZHNIY_MAIL_MODE:'timeweb',BLIZHNIY_SMTP_USER:'notifications@ближний-ру.рф',
    BLIZHNIY_SMTP_PASSWORD:'synthetic-ui-smtp-password',TURNSTILE_SECRET_KEY:'synthetic-ui-captcha-secret',NEXT_PUBLIC_TURNSTILE_SITE_KEY:''};
-  app=spawn(process.execPath,['--experimental-strip-types','--require','./tests/listing-form-browser-pg.cjs','node_modules/next/dist/bin/next','start','-H','127.0.0.1','-p',String(port)],
-   {env,detached:true,stdio:['ignore','pipe','pipe']});
+  const launch=workflow=>spawn(process.execPath,['--experimental-strip-types','--require','./tests/listing-form-browser-pg.cjs','node_modules/next/dist/bin/next','start','-H','127.0.0.1','-p',String(port)],
+   {env:{...env,BLIZHNIY_LISTING_WORKFLOW:workflow},detached:true,stdio:['ignore','pipe','pipe']});
+  app=launch('pre-moderation');
   app.stdout.on('data',chunk=>{output=(output+chunk).slice(-16000);});app.stderr.on('data',chunk=>{output=(output+chunk).slice(-16000);});
   const deadline=Date.now()+20000;
   for(;;){
@@ -93,6 +100,7 @@ test('work publication production pages preserve complete forms and use Russian 
     const context=await browser.newContext({viewport:{width:1440,height:900}}),page=await context.newPage();
     page.setDefaultTimeout(10000);
     const state={active:owner,sessionGate:null,loseCreate:false,records:new Map(),intents:new Map(),media:new Map(),moderation:new Map(),
+     profiles:new Map(),profileGates:new Map(),profileReads:[],
      workCalls:[],moderationCalls:[],uploads:[],sequence:[],foreign:[],legacy:[],errors:[],sessionReads:0};
     const collection=()=>{const key=state.active+':'+kind;if(!state.records.has(key))state.records.set(key,new Map());return state.records.get(key);};
     context.on('page',item=>item.on('pageerror',()=>state.errors.push('pageerror')));page.on('pageerror',()=>state.errors.push('pageerror'));
@@ -120,8 +128,17 @@ test('work publication production pages preserve complete forms and use Russian 
      }
      const body=request.postDataJSON();
      if(url.pathname==='/api/account/profile'){
+      const actor=state.active,profile=state.profiles.get(actor),revision=profileRevision(profile);
+      if(request.method()==='PUT'){
+       assert.equal(body.expectedOwnerId,actor);assert.equal(body.expectedRevision,revision);
+       const saved={...body.profile,email:actor===owner?'first@example.invalid':'second@example.invalid',phoneVerified:false,verifiedPhone:''};
+       state.profiles.set(actor,saved);
+       return route.fulfill({json:{profile:saved,revision:profileRevision(saved)}});
+      }
       assert.equal(request.method(),'POST');assert.deepEqual(body,{expectedOwnerId:state.active});
-      return route.fulfill({json:{exists:false,profile:createDefaultCabinetProfile({name:'Технический',email:'fixture@example.invalid'}),revision:null}});
+      state.profileReads.push(actor);
+      await state.profileGates.get(actor)?.promise;
+      return route.fulfill({json:{exists:!!profile,profile:profile??createDefaultCabinetProfile({name:'Технический',email:'fixture@example.invalid'}),revision}});
      }
      if(body.expectedOwnerId!==state.active)return route.fulfill({status:404,json:{error:{code:'PUBLICATION_NOT_FOUND'}}});
      if(url.pathname==='/api/account/work-cabinet'){
@@ -181,6 +198,7 @@ test('work publication production pages preserve complete forms and use Russian 
     await page.goto(origin+chosen[kind].path);
     if(kind==='vacancy'){
      await page.getByRole('button',{name:/Частное лицо/}).click();await page.getByRole('button',{name:'Продолжить',exact:true}).click();
+     assert.equal(await employerField(page,'organization').inputValue(),'');
      await page.locator('input[name="organization"]').fill('Синтетический');
     }
     await page.locator('input[name="title"]').fill('Незавершённый рабочий черновик');
@@ -257,6 +275,137 @@ test('work publication production pages preserve complete forms and use Russian 
     assert.equal((await page.locator('main').textContent()).includes('Буфер первого владельца'),false);
    });
   }
+  await run('a new vacancy uses saved employer requisites and retains its own snapshot after the profile changes','vacancy',async({page,state,collection})=>{
+   state.profiles.set(owner,{...createDefaultCabinetProfile({name:'Анна Тестовая',email:'first@example.invalid'}),phone:'+79990001234'});
+   const saveOrganization=async(name,inn,ogrn,site)=>{
+    await page.goto(origin+'/cabinet/organization');
+    await page.getByLabel('Название организации или ИП',{exact:true}).fill(name);
+    await page.getByLabel('ИНН',{exact:true}).fill(inn);
+    await page.getByLabel('ОГРН / ОГРНИП',{exact:true}).fill(ogrn);
+    await page.getByLabel('Сайт или профиль',{exact:true}).fill(site);
+    await page.getByRole('button',{name:'Сохранить профиль организации',exact:true}).click();
+    await page.getByText('Профиль организации сохранен.',{exact:true}).waitFor();
+   };
+   await saveOrganization('Синтетическая мастерская','1234567890','1234567890123','https://first.example.invalid');
+   await page.goto(origin+chosen.vacancy.path);
+   await selectEmployer(page,/^Организация/);
+   await page.waitForFunction(()=>document.querySelector('input[name="organization"]')?.value==='Синтетическая мастерская');
+   assert.equal(await employerField(page,'inn').inputValue(),'1234567890');
+   assert.equal(await employerField(page,'ogrn').inputValue(),'1234567890123');
+   assert.equal(await employerField(page,'contactPerson').inputValue(),'Анна Тестовая');
+   assert.equal(await employerField(page,'emailOrMessenger').inputValue(),'first@example.invalid');
+   assert.equal((await employerField(page,'phone').inputValue()).replace(/\D/g,''),'79990001234');
+   assert.equal(await employerField(page,'website').inputValue(),'https://first.example.invalid');
+   await employerField(page,'title').fill(chosen.vacancy.title);
+   await page.locator('input[name="profession"][data-reference-state="empty"]').waitFor();
+   state.loseCreate=true;
+   await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
+   await page.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();
+   await page.waitForURL(origin+chosen.vacancy.cabinet);
+   const saved=collection().get(chosen.vacancy.id);
+   assert.equal(saved.form.organization,'Синтетическая мастерская');
+   assert.equal(saved.form.inn,'1234567890');
+   assert.equal(saved.form.ogrn,'1234567890123');
+   assert.equal(saved.form.email,'first@example.invalid');
+   assert.equal(state.workCalls.filter(row=>row.body.action==='create').length,1);
+   assert.equal(state.workCalls.filter(row=>row.body.action==='intent').length,1);
+   await saveOrganization('Обновлённая мастерская','2234567890','2234567890123','https://updated.example.invalid');
+   await page.goto(origin+chosen.vacancy.cabinet);
+   await page.getByRole('link',{name:chosen.vacancy.title,exact:true}).click();
+   assert.equal(await employerField(page,'organization').inputValue(),'Синтетическая мастерская');
+   assert.equal(await employerField(page,'website').inputValue(),'https://first.example.invalid');
+   assert.deepEqual(collection().get(saved.id),saved);
+   await page.goto(origin+chosen.vacancy.path);
+   await selectEmployer(page,/^Организация/);
+   await page.waitForFunction(()=>document.querySelector('input[name="organization"]')?.value==='Обновлённая мастерская');
+   assert.equal(await employerField(page,'inn').inputValue(),'2234567890');
+  });
+  await run('late profile data fills only untouched employer fields for the selected employer type','vacancy',async({page,state})=>{
+   const gate=deferred();
+   state.profiles.set(owner,{...createDefaultCabinetProfile({name:'Анна Тестовая',email:'first@example.invalid'}),
+    organizationName:'Тестовый предприниматель',organizationInn:'123456789012',organizationOgrn:'123456789012345',organizationWebsite:'https://ip.example.invalid'});
+   state.profileGates.set(owner,gate);
+   try{
+    await page.goto(origin+chosen.vacancy.path);
+    await selectEmployer(page,/^ИП/);
+    await employerField(page,'organization').fill('Имя введено вручную');
+    await employerField(page,'emailOrMessenger').fill('temporary@example.invalid');
+    await employerField(page,'emailOrMessenger').fill('');
+    gate.resolve();
+    await page.waitForFunction(()=>document.querySelector('input[name="inn"]')?.value==='123456789012');
+    assert.equal(await employerField(page,'organization').inputValue(),'Имя введено вручную');
+    assert.equal(await employerField(page,'ogrnip').inputValue(),'123456789012345');
+    assert.equal(await employerField(page,'website').inputValue(),'https://ip.example.invalid');
+    assert.equal(await employerField(page,'emailOrMessenger').inputValue(),'');
+    assert.equal(await employerField(page,'phone').inputValue(),'');
+    await page.getByRole('button',{name:'Изменить',exact:true}).click();
+    await selectEmployer(page,/^Организация/);
+    assert.equal(await employerField(page,'inn').inputValue(),'');
+    assert.equal(await employerField(page,'ogrn').inputValue(),'');
+    assert.equal(await employerField(page,'organization').inputValue(),'');
+    await page.getByRole('button',{name:'Изменить',exact:true}).click();
+    await selectEmployer(page,/^Частное лицо/);
+    assert.equal(await employerField(page,'organization').inputValue(),'Анна Тестовая');
+    assert.equal(await employerField(page,'inn').count(),0);
+   }finally{gate.resolve();}
+  });
+  await run('a delayed profile from another owner cannot fill the new vacancy','vacancy',async({page,state})=>{
+   const gate=deferred();
+   const profile=(name,email,organizationName)=>({...createDefaultCabinetProfile({name,email}),organizationName});
+   state.profiles.set(owner,profile('Первый Владелец','first@example.invalid','Данные первого владельца'));
+   state.profiles.set(other,profile('Второй Владелец','second@example.invalid','Данные второго владельца'));
+   state.profileGates.set(owner,gate);
+   try{
+    const firstRead=page.waitForRequest(request=>new URL(request.url()).pathname==='/api/account/profile');
+    await page.goto(origin+chosen.vacancy.path);
+    await firstRead;
+    await selectEmployer(page,/^Организация/);
+    await employerField(page,'organization').fill('Первый частный черновик');
+    state.active=other;
+    const rechecked=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/account/session');
+    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+    await rechecked;
+    await selectEmployer(page,/^Организация/);
+    await page.waitForFunction(()=>document.querySelector('input[name="organization"]')?.value==='Данные второго владельца');
+    gate.resolve();await render(page);
+    assert.equal(await employerField(page,'organization').inputValue(),'Данные второго владельца');
+    assert.equal((await page.locator('main').textContent()).includes('Первый частный черновик'),false);
+    assert.deepEqual(state.profileReads,[owner,other]);
+    assert.equal(state.workCalls.length,0);
+   }finally{gate.resolve();}
+  });
+  process.kill(-app.pid,'SIGTERM');await once(app,'exit');
+  app=launch('postmoderation');
+  app.stdout.resume();app.stderr.resume();
+  const postmoderationDeadline=Date.now()+20000;
+  for(;;){
+   assert.equal(app.exitCode,null,'owned postmoderation process is running');
+   const response=await fetch(origin+'/api/health',{signal:AbortSignal.timeout(1000)}).catch(()=>null);
+   if(response?.ok)break;
+   assert.ok(Date.now()<postmoderationDeadline,'owned postmoderation app starts');
+   await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  await run('the stepped vacancy form prefills its employer and keeps manual edits when returning to that step','vacancy',async({page,state})=>{
+   const profile=createDefaultCabinetProfile({name:'Анна Тестовая',email:'first@example.invalid'});
+   const registration='100000000000',ogrn=registration+String(BigInt(registration)%11n%10n);
+   state.profiles.set(owner,{...profile,organizationName:'Синтетическая мастерская',organizationInn:'1000000002',organizationOgrn:ogrn,
+    organizationWebsite:'https://first.example.invalid',phone:'+79990001234'});
+   await page.goto(origin+chosen.vacancy.path);
+   assert.equal(await page.locator('meta[name="blizhniy-listing-workflow"]').getAttribute('content'),'postmoderation');
+   const employer=page.getByRole('region',{name:'Данные работодателя',exact:true});
+   await employer.getByRole('button',{name:/^Организация/}).click();
+   await page.waitForFunction(()=>document.querySelector('input[name="organization"]:not(:disabled)')?.value==='Синтетическая мастерская');
+   const field=name=>employer.locator(`input[name="${name}"]:visible`);
+   assert.equal(await field('inn').inputValue(),'1000000002');
+   assert.equal(await field('ogrn').inputValue(),ogrn);
+   assert.equal(await field('website').inputValue(),'https://first.example.invalid');
+   await field('organization').fill('Название для этой вакансии');
+   await employer.getByRole('button',{name:'Продолжить к вакансии',exact:true}).click();
+   await employerField(page,'title').waitFor();
+   await page.getByRole('button',{name:'Изменить работодателя',exact:true}).click();
+   assert.equal(await field('organization').inputValue(),'Название для этой вакансии');
+   assert.equal(state.workCalls.length,0);
+  });
  }finally{
   await browser?.close();if(app&&app.exitCode===null){process.kill(-app.pid,'SIGTERM');await once(app,'exit');}await rm(directory,{recursive:true});
  }

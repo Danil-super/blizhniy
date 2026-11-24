@@ -3,6 +3,9 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {createPostgresDatabase} from '../src/lib/postgres.ts';
 import {hashSessionToken} from '../src/lib/identity.ts';
 import {parseWorkPublicationForm,WorkPublicationInputError} from '../src/lib/work-publication-contract.ts';
+import {readWorkPublicationFormData} from '../src/lib/work-publication-form-data.ts';
+import {vacancyEmployerPrefill} from '../src/lib/vacancy-employer-defaults.ts';
+import {loadProfileModule} from './production-profile-module.mjs';
 import {workPublicationModule} from './work-publication-module.mjs';
 const {PostgresWorkPublicationStore,WorkPublicationAccessError,WorkPublicationConflictError}=workPublicationModule('postgres-work-publications');
 
@@ -85,6 +88,34 @@ export async function testWorkPublications(suite,admin,config,credentials){
    assert.equal(first.items.length,20);assert.match(first.nextCursor.updatedAt,/\.\d{6}Z$/);
    const second=await store.list(token,owner,'workRequest',first.nextCursor),ids=[...first.items,...second.items].map(row=>row.id);
    assert.equal(ids.length,26);assert.equal(new Set(ids).size,26);assert.equal(second.nextCursor,null);
+  });
+  await suite.test('employer profile updates leave a saved vacancy snapshot and a retried creation intent unchanged',async()=>{
+   const {PostgresProfileStore,parseProductionProfile}=loadProfileModule('postgres-profile');
+   const profiles=new PostgresProfileStore(db),createForm=profile=>{
+    const employer=vacancyEmployerPrefill(profile).organization,data=new FormData();
+    for(const [field,value] of Object.entries({title:'Вакансия из реквизитов',employerType:'organization',organization:employer.organization,
+     inn:employer.inn,ogrn:employer.ogrn,contactPerson:employer.contactPerson,phone:employer.phone,emailOrMessenger:employer.email,website:employer.website})){
+     if(value!==undefined)data.set(field,value);
+    }
+    return readWorkPublicationFormData('vacancy',data);
+   };
+   const initial=await profiles.read(token,owner);
+   const profile=await profiles.write(token,owner,parseProductionProfile({name:'Анна Тестовая',organizationName:'Мастерская до изменений',
+    organizationInn:'1234567890',organizationOgrn:'1234567890123',phone:'+79990001234',organizationWebsite:'https://first.example.invalid'}),initial.revision);
+   const key=randomUUID(),form=createForm(profile.profile);
+   const [first,concurrent]=await Promise.all([store.create(token,owner,'vacancy',key,form),store.create(token,owner,'vacancy',key,form)]);
+   assert.deepEqual(concurrent,first);
+   assert.equal(first.form.organization,'Мастерская до изменений');
+   assert.equal(first.form.ogrn,'1234567890123');
+   const updated=await profiles.write(token,owner,parseProductionProfile({...profile.profile,organizationName:'Мастерская после изменений',
+    organizationWebsite:'https://second.example.invalid'}),profile.revision);
+   assert.deepEqual(await store.readIntent(token,owner,'vacancy',key),first);
+   assert.deepEqual(await store.read(token,owner,'vacancy',first.id),first);
+   const fresh=await store.create(token,owner,'vacancy',randomUUID(),createForm(updated.profile));
+   assert.notEqual(fresh.id,first.id);
+   assert.equal(fresh.form.organization,'Мастерская после изменений');
+   assert.equal(fresh.form.website,'https://second.example.invalid');
+   assert.deepEqual(await store.read(token,owner,'vacancy',first.id),first);
   });
  }finally{
   // The parent destroys its verified, disposable container. Do not bypass the
