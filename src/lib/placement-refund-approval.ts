@@ -1,4 +1,4 @@
-import {servicePlacementRefundTarget} from './service-checkout-config.ts';
+import {servicePlacementRefundTarget,type ServiceRefundScope} from './service-checkout-config.ts';
 import {validPlainText} from './cabinet-field-validation.ts';
 import {parseListingDraftId} from './listing-draft-contract.ts';
 import {parsePaymentIntent} from './postgres-payment-intents.ts';
@@ -19,10 +19,10 @@ export function parsePlacementRefundApproval(value:unknown):PlacementRefundAppro
  * Full refunds reuse the original receipt automatically in the supported YooKassa receipt flow.
  * https://yookassa.ru/developers/payment-acceptance/receipts/54fz/yoomoney/refunds
  */
-export function describeFullPlacementRefund(value:unknown,merchant:{shopId:string;isTest:boolean}):{policyVersion:'placement-full-admin-v1';fiscalMode:PlacementRefundFiscalMode;amount:string} {
+export function describeFullPlacementRefund(value:unknown,merchant:{shopId:string;isTest:boolean}&ServiceRefundScope):{policyVersion:'placement-full-admin-v1';fiscalMode:PlacementRefundFiscalMode;amount:string} {
  try{
   const original=parsePaymentIntent(value);
-  if(!merchant||merchant.isTest!==true||!original.isTest||original.shopId!==merchant.shopId||!(['listing','vacancy','workRequest'].includes(original.targetType)&&original.durationDays!==null||servicePlacementRefundTarget(original)))throw Error();
+  if(!merchant||merchant.isTest!==true||!original.isTest||original.shopId!==merchant.shopId||!(['listing','vacancy','workRequest'].includes(original.targetType)&&original.durationDays!==null||servicePlacementRefundTarget(original,merchant)))throw Error();
   const body=JSON.parse(original.requestBody);
   // The site's server-generated return URL uses an ASCII DNS authority. Keep
   // the same deliberately bounded subset in the independent SQL approval gate.

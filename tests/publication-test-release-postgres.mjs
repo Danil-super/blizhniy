@@ -18,10 +18,10 @@ import {readAccountExport} from '../scripts/export-local-account-data.mjs';
 import {inspectAccountDeletionCase} from '../src/lib/account-deletion-preflight.ts';
 import {listingViewDigest} from '../src/lib/listing-view-history.ts';
 import {testAdminPaymentJournal} from './admin-payment-journal-integration.mjs';
-import {getHostedRefundMigrationPlan,getHostedRefundMigrationSql,getHostedRefundUpgradeSql,getUndeliveredResponseCompensationMigration} from '../scripts/publication-test-release-plan.mjs';
+import {getHostedRefundMigrationPlan,getHostedRefundMigrationSql,getHostedRefundUpgradeSql,getHostedMarqueeRefundUpgradeSql,getHostedMarqueeRefundRecoveryMigration,getUndeliveredResponseCompensationMigration} from '../scripts/publication-test-release-plan.mjs';
 import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
 import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
-import {testHostedRefundWorkflow} from './hosted-refund-workflow-cases.mjs';
+import {testHostedMarqueeRefund,testHostedRefundWorkflow} from './hosted-refund-workflow-cases.mjs';
 import {testHostedUndeliveredCompensation} from './hosted-undelivered-compensation-cases.mjs';
 import pg from 'pg';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
@@ -561,6 +561,53 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
       }
       await testHostedUndeliveredCompensation({admin,config,workerDb,compiledWorker,load,refundWorker:worker,
        artifact:worker.compensationArtifact,directory:artifactDirectory});
+     });
+     await t.test('exact marquee refund upgrade preserves financial roles and frees one verified advertising slot',async()=>{
+      const options={database:config.database,merchant:{shopId:'hosted-refund-fixture',isTest:true,marqueeRefunds:true},hostedRefunds:true};
+      const marqueeArtifacts=[];
+      for(const entry of entries){
+       const destination=join(artifactDirectory,'marquee-'+entry.kind);
+       assert.equal(entry.build(destination,{schema:78}).schema,78);
+       const api=await import(pathToFileURL(join(destination,'scripts/refund-'+entry.kind+'-role.mjs')).href);
+       const plan=api[entry.plan](config.database,{schema:78});
+       assert.equal(plan.journal.length,69);assert.equal(plan.journal.at(-1).name,getHostedMarqueeRefundRecoveryMigration().name);
+       await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(destination,'node_modules'),'dir');
+       await assert.rejects(api[entry.verify](entry.db,options));
+       marqueeArtifacts.push({...entry,destination,verify:api[entry.verify]});
+      }
+      const apply=async()=>{
+       const client=await admin.connect();
+       try{await client.query(getHostedMarqueeRefundUpgradeSql());}
+       catch(error){await client.query('rollback');throw error;}
+       finally{client.release();}
+      };
+      await apply();
+      await assert.rejects(apply(),{code:'55000'});
+      const database='marquee_refund_restored';
+      await admin.query('create database marquee_refund_restored template template0');
+      await admin.query(`revoke all on database marquee_refund_restored from public;
+       grant connect on database marquee_refund_restored to blizhniy_payment_reconciler,blizhniy_reconciliation_operator,
+        blizhniy_reconciliation_monitor,blizhniy_refund_operator,blizhniy_refund_worker`);
+      await docker(['exec',container,'bash','-euo','pipefail','-c',
+       'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+       'restore-fixture',config.database,database]);
+      const restored=new PostgresDatabase(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+      try{assert.equal(await copiedGuard.verifyPaymentReconciliationDatabase(restored,{database,publicationTest:true}),true);}
+      finally{await restored.close();}
+      assert.equal(await check(),true);
+      for(const entry of marqueeArtifacts){
+       await entry.verify(entry.db,options);
+       await assert.rejects(entry.verify(entry.db,{...options,merchant:{...options.merchant,marqueeRefunds:false}}));
+       const recovered=new PostgresDatabase(new pg.Pool({...config,database,user:entry.role,password:entry.password,max:2}));
+       try{await entry.verify(recovered,{...options,database});}
+       finally{await recovered.close();}
+      }
+      await admin.query('alter function app.lock_refund_recovery_source(uuid,uuid) set search_path=pg_catalog');
+      try{
+       await assert.rejects(check());
+       for(const entry of marqueeArtifacts)await assert.rejects(entry.verify(entry.db,options));
+      }finally{await admin.query("alter function app.lock_refund_recovery_source(uuid,uuid) set search_path=''");}
+      await testHostedMarqueeRefund({admin,config,load,operator:marqueeArtifacts[0],worker:marqueeArtifacts[1],directory:artifactDirectory});
      });
     }finally{for(const entry of entries)await entry.db?.close();}
    });

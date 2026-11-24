@@ -1,4 +1,4 @@
-import {servicePlacementRefundTarget} from './service-checkout-config.ts';
+import {servicePlacementRefundTarget,type ServiceRefundScope} from './service-checkout-config.ts';
 import {applicationRefundAdmitted} from './postgres-refund-requests.ts';
 import {createHash} from 'node:crypto';
 import {PostgresPaymentIntentStore, PaymentIntentError} from './postgres-payment-intents.ts';
@@ -10,7 +10,7 @@ import type {PostgresDatabase, PostgresQueries} from './postgres.ts';
 export class RefundJournalError extends Error {
   constructor() { super('Refund journal requires reconciliation'); this.name = 'RefundJournalError'; }
 }
-type Merchant = Parameters<typeof createPrimaryYooKassaRefundReader>[0];
+type Merchant = Parameters<typeof createPrimaryYooKassaRefundReader>[0] & ServiceRefundScope;
 export type StoredRefundVerification = {
   operationId: string; paymentIntentId: string; providerRefundId: string; providerPaymentId: string;
   amount: string; currency: 'RUB'; status: VerifiedYooKassaRefund['status']; createdAt: string;
@@ -24,11 +24,13 @@ function fail(): never { throw new RefundJournalError(); }
 export class PostgresRefundJournalStore {
   private readonly db: Pick<PostgresDatabase, 'transaction'>;
   private readonly shopId: string;
+  private readonly serviceScope: ServiceRefundScope;
   private readonly intents: PostgresPaymentIntentStore;
   private readonly reader: ReturnType<typeof createPrimaryYooKassaRefundReader>;
   constructor(db: Pick<PostgresDatabase, 'transaction'>, merchant: Merchant, fetcher: typeof fetch = globalThis.fetch) {
     if (!merchant || merchant.isTest !== true) fail();
     this.db = db; this.shopId = merchant.shopId;
+    this.serviceScope = {marqueeRefunds:merchant.marqueeRefunds};
     this.reader = createPrimaryYooKassaRefundReader(merchant, fetcher);
     this.intents = new PostgresPaymentIntentStore(db);
   }
@@ -53,7 +55,7 @@ export class PostgresRefundJournalStore {
       join app.payment_verifications v on v.intent_id=r.payment_intent_id and v.provider_payment_id=r.provider_payment_id
       where r.id=$1`, [operationId])).rows[0];
     if (!order || !['succeeded', 'refunded'].includes(order.status) || !source || source.verifiedStatus !== 'succeeded' || typeof source.capturedAt !== 'string' ||
-        !purchase.isTest || purchase.shopId !== this.shopId || !(['listing','vacancy','workRequest'].includes(purchase.targetType)&&purchase.durationDays!==null||servicePlacementRefundTarget(purchase)||
+        !purchase.isTest || purchase.shopId !== this.shopId || !(['listing','vacancy','workRequest'].includes(purchase.targetType)&&purchase.durationDays!==null||servicePlacementRefundTarget(purchase,this.serviceScope)||
     purchase.targetType==='application'&&purchase.durationDays===null&&await applicationRefundAdmitted(tx,purchase.id,operationId)) ||
         source.providerPaymentId !== purchase.providerPaymentId || source.amount !== purchase.amount || source.shopId !== purchase.shopId || source.isTest !== true) fail();
     const request = buildPlacementRefundRequest({operationId, paymentIntentId: purchase.id, providerPaymentId: purchase.providerPaymentId, amount: purchase.amount});

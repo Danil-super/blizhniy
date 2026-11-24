@@ -1,4 +1,4 @@
-import {readServiceCheckoutEnabled} from './service-checkout-config.ts';
+import {serviceRefundKindEnabled,type ServiceRefundScope} from './service-checkout-config.ts';
 import {
   assertPrimaryYooKassaBinding, validatePrimaryYooKassaPayment, validateCaptureTime, YooKassaBoundaryError,
   type PrimaryYooKassaBinding,
@@ -8,7 +8,7 @@ import {mergePaymentVerification} from './payment-verification-contract.ts';
 import {createYooKassaTransport, type YooKassaRequestBudget} from './yookassa-transport.ts';
 
 type KnownPayment = PrimaryYooKassaBinding & {providerPaymentId: string; paymentCapturedAt?: string};
-type Merchant = {shopId: string; isTest: boolean; secretKey: string};
+type Merchant = {shopId: string; isTest: boolean; secretKey: string} & ServiceRefundScope;
 export type RefundInspectionEvidence = {
   paymentId: string;
   amount: string;
@@ -98,7 +98,7 @@ export function createPrimaryYooKassaRefundInspection(config: Merchant, fetcher:
       assertPrimaryYooKassaBinding(expected, Date.now());
       if (expected.paymentCapturedAt !== undefined) validateCaptureTime(expected.paymentCapturedAt, 'succeeded', Date.now());
       if (!expected.providerPaymentId || expected.shopId !== merchant.shopId || expected.isTest !== true ||
-          !(compensation ? expected.targetType === 'application' : (['listing', 'vacancy', 'workRequest'].includes(expected.targetType)||readServiceCheckoutEnabled()&&['fair_application','ad_marquee'].includes(expected.targetType)))) invalid();
+          !(compensation ? expected.targetType === 'application' : (['listing', 'vacancy', 'workRequest'].includes(expected.targetType)||serviceRefundKindEnabled(expected.targetType,merchant)))) invalid();
       return budget ? inspectKnown(expected, budget) : transport.withYooKassaRequestBudget(shared => inspectKnown(expected, shared));
   }
   return {

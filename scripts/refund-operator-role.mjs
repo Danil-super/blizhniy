@@ -32,7 +32,7 @@ const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.tes
 const journal=(schema=55)=>getRefundWorkerRolePlan('operator',{schema,localPrimary:[58,60].includes(schema)}).journal;
 
 export function getRefundOperatorRolePlan(database,{schema=55,localPrimary=false}={}){
- if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||((schema===75||schema===76)&&localPrimary)||!validDatabase(database)||![55,56,57,58,60,75,76].includes(schema))throw Error('Invalid refund database');
+ if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||([75,76,78].includes(schema)&&localPrimary)||!validDatabase(database)||![55,56,57,58,60,75,76,78].includes(schema))throw Error('Invalid refund database');
  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(schema),
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
    ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`)),
@@ -62,7 +62,10 @@ export async function verifyRefundOperatorDatabase(db,{database,merchant,localPr
     identity.readonly!=='on'||identity.replication!=='origin'||identity.rolcanlogin!==true||identity.rolconnlimit!==4||identity.connect!==true||
     ['rolsuper','rolcreatedb','rolcreaterole','rolinherit','rolreplication','rolbypassrls','membership','database_extra','replication_override'].some(key=>identity[key]!==false))throw Error('Invalid refund role');
    const actualJournal=(await tx.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
-   if(hostedRefunds)await assertHostedRefundRelease(tx,actualJournal);
+   if(hostedRefunds){
+    const hostedSchema=await assertHostedRefundRelease(tx,actualJournal);
+    if(merchant.marqueeRefunds!==undefined&&merchant.marqueeRefunds!==(hostedSchema===78))throw Error('Marquee refund configuration does not match schema');
+   }
    else{
     const schema=localPrimary&&actualJournal.length===59?60:localPrimary&&[56,57,58].includes(actualJournal.length)?actualJournal.length:55;
     if(JSON.stringify(actualJournal)!==JSON.stringify(journal(schema)))throw Error('Invalid refund journal');

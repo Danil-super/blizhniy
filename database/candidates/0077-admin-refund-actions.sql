@@ -10,6 +10,8 @@ declare kind text:=item->>'targetType';stage text:=item->>'refund';
 begin
  if item->>'orderStatus'<>'succeeded' or item->>'providerStatus'<>'succeeded'
   or item->>'capturedAt' is null or kind not in ('listing','vacancy','workRequest','ad_marquee','application') then return null;end if;
+ if kind='ad_marquee' and not exists(select 1 from blizhniy_meta.migrations
+  where name='0078-hosted-marquee-refund-recovery.sql') then return null;end if;
  if stage='none' and kind<>'application' and app.refund_target_admitted(payment_id,payment_id) then
   return pg_catalog.jsonb_build_object('kind','approve');
  end if;

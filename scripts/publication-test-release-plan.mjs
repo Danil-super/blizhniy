@@ -34,7 +34,7 @@ const hostedRefundSuffix=[
  ['0075-hosted-refund-compatibility.sql','45ef880212da7927092fb91f82b113ec4ac73e8973b38fb150a051c32509a262'],
 ];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65|66|67|71|72|73|75|76)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66|67|71|72|73|75|76|78)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -79,6 +79,10 @@ export function getUndeliveredResponseCompensationMigration(){
  return readReleaseMigration('0076-undelivered-response-compensation.sql','a150c8149f7cf84edf38fba6d36ad9a8b331c270cbec3e8db2db249e48c61dc9');
 }
 
+export function getHostedMarqueeRefundRecoveryMigration(){
+ return readReleaseMigration('0078-hosted-marquee-refund-recovery.sql','3a633729d07a135cbf243127639aba765464976531e8aad2cd6f77144df8e6bc');
+}
+
 function hostedRefundBaseline(){
  return [...getPublicationTestMigrationPlan(),getSpecialistCheckoutMigration(),getInboxPreferenceMigration(),
   getSpecialistAccountTestMigration(),getBookingLifecycleMigration(),getListingViewsMigration(),...getPaidResponseMigrations(),
@@ -86,9 +90,10 @@ function hostedRefundBaseline(){
 }
 
 export function getHostedRefundReleasePlan(schema=75){
- if(schema!==75&&schema!==76)throw Error('Invalid hosted refund schema');
+ if(![75,76,78].includes(schema))throw Error('Invalid hosted refund schema');
  const plan=[...hostedRefundBaseline(),...getHostedRefundMigrationPlan()];
- if(schema===76)plan.push(getUndeliveredResponseCompensationMigration());
+ if(schema>=76)plan.push(getUndeliveredResponseCompensationMigration());
+ if(schema===78)plan.push(getHostedMarqueeRefundRecoveryMigration());
  return plan.sort((a,b)=>a.name.localeCompare(b.name,'en'));
 }
 
@@ -99,6 +104,10 @@ export function getHostedRefundMigrationSql(){
 
 export function getHostedRefundUpgradeSql(){
  return composeHostedRefundSql(getHostedRefundReleasePlan(),[getUndeliveredResponseCompensationMigration()]);
+}
+
+export function getHostedMarqueeRefundUpgradeSql(){
+ return composeHostedRefundSql(getHostedRefundReleasePlan(76),[getHostedMarqueeRefundRecoveryMigration()]);
 }
 
 function composeHostedRefundSql(previous,plan){
@@ -128,12 +137,14 @@ commit;
 }
 
 export async function assertHostedRefundRelease(tx,journal){
- const undeliveredCompensation=journal.at(-1)?.name==='0076-undelivered-response-compensation.sql';
- const expected=getHostedRefundReleasePlan(undeliveredCompensation?76:75).map(({name,sha256})=>({name,sha256}));
+ const last=journal.at(-1)?.name,marqueeRefunds=last==='0078-hosted-marquee-refund-recovery.sql';
+ const schema=marqueeRefunds?78:last==='0076-undelivered-response-compensation.sql'?76:75;
+ const expected=getHostedRefundReleasePlan(schema).map(({name,sha256})=>({name,sha256}));
  if(JSON.stringify(journal)!==JSON.stringify(expected))throw Error('Invalid hosted refund journal');
  await assertPaidResponseSchema(tx);
  await assertExtendedPublicationTestSchema(tx,{specialist:true,inbox:true,enrollment:true,bookings:true,views:true,
-  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation});
+  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation:schema>=76,marqueeRefunds});
+ return schema;
 }
 export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
  const definitions=new Map();
@@ -169,6 +180,10 @@ export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
 // PostgreSQL 18 emits different parentheses for six existing CHECK constraints after a logical restore.
 // Each pair pins the full installed and restored app catalog for exactly one reviewed journal.
 const fingerprints={
+ hostedRefundsWithMarquee:[
+  '15c6959aa9a0cb646f1cf16990b229b570da4a1b8cbf195cc5c38615bf6e3b7f',
+  '4591d186a888bc7b14ff4e3e976ca77ecbc50128351c5b1204bcc8c33a1d98e8',
+ ],
  hostedRefundsWithUndeliveredCompensation:[
   'e0fb46d76167c2b79dd90fc70cca501db1ad6e957a4b1253867c73bd70ffd4ac',
   '7ca68364fe8ca3185495e45b4556ef47ffd536cf8dbcae7a22962c0e6c6f4a09',
@@ -325,7 +340,7 @@ async function assertReconciliationCommandAccess(tx,monitor=false){
  if(result?.valid!==true)throw Error('Unexpected reconciliation command access');
 }
 
-export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false}){
+export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false,marqueeRefunds=false}){
  const catalog=await readRefundSchema(tx);
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  const key=enrollment?(inbox?'specialistTestInbox':'specialistTest'):specialist&&inbox?'both':specialist?'specialist':'inbox';
@@ -356,6 +371,10 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
  if(undeliveredCompensation){
   if(!hostedRefunds)throw Error('Unsupported undelivered compensation deployment');
   accepted=fingerprints.hostedRefundsWithUndeliveredCompensation;
+ }
+ if(marqueeRefunds){
+  if(!undeliveredCompensation)throw Error('Unsupported marquee refund deployment');
+  accepted=fingerprints.hostedRefundsWithMarquee;
  }
  if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
  if(cancellations)await assertCheckoutCancellationAccess(tx);
