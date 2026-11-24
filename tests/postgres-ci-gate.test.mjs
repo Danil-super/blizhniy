@@ -17,6 +17,7 @@ const suites=[
  'checkout-cancellation-postgres.mjs',
  'publication-test-postgres.mjs',
  'publication-test-release-postgres.mjs',
+ 'approved-account-export-postgres.mjs',
  'specialist-checkout-postgres.mjs',
  'specialist-checkout-guards-postgres.mjs',
 ];

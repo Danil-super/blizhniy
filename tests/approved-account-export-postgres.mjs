@@ -3,13 +3,12 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
 import pg from 'pg';
 import * as exporter from '../scripts/export-local-account-data.mjs';
-import { localPrimaryImage } from '../scripts/local-primary-config.mjs';
 import { assertListingViewsAccess, getBookingLifecycleMigration, getInboxPreferenceMigration, getListingViewsMigration, getPaidResponseMigrations, getPublicationTestMigrationPlan, getSpecialistAccountTestMigration } from '../scripts/publication-test-release-plan.mjs';
 import { getSpecialistCheckoutMigration, specialistCheckoutRuntimeGrants } from '../scripts/specialist-checkout-release.mjs';
 import { getPaymentReconciliationRolePlan, verifyPaymentReconciliationDatabase } from '../scripts/payment-reconciliation-role.mjs';
@@ -17,6 +16,7 @@ import { listingViewDigest } from '../src/lib/listing-view-history.ts';
 
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile), role='blizhniy_account_export_reader', database='blizhniy_prod';
+const postgresImage='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
 const digest=value=>createHash('sha256').update(value).digest('hex');
 
 test('approved operator exports only the confirmed owner in a disposable production-shaped database',{timeout:45000},async t=>{
@@ -25,7 +25,7 @@ test('approved operator exports only the confirmed owner in a disposable product
  const docker=async args=>(await run('/usr/bin/docker',['--host','unix:///var/run/docker.sock',...args],
   {timeout:15000,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',POSTGRES_PASSWORD:password}})).stdout.trim();
  const container=await docker(['run','--detach','--pull','never','--name',name,'--label',label+'='+name,'--memory','512m','--cpus','1',
-  '--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB='+database,localPrimaryImage]);
+  '--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB='+database,postgresImage]);
  const meta=JSON.parse(await docker(['inspect',container]))[0],binding=meta.NetworkSettings.Ports['5432/tcp'][0];
  assert.equal(meta.Config.Labels[label],name);assert.equal(meta.Id,container);assert.equal(binding.HostIp,'127.0.0.1');
  let owner, reader, worker;
@@ -92,7 +92,8 @@ test('approved operator exports only the confirmed owner in a disposable product
  assert.equal(web.access,false);
  const readerPassword=randomBytes(32).toString('hex');
  await owner.query('alter role '+role+' login password '+pg.escapeLiteral(readerPassword));
- reader=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:role,password:readerPassword,max:1}));
+ const readerConfig={...config,user:role,password:readerPassword,max:1};
+ reader=new(load('postgres').PostgresDatabase)(new pg.Pool(readerConfig));
  const hash=load('identity').hashSessionToken;
  async function person(accountRole='user'){
   const id=randomUUID(),email=id+'@synthetic.invalid',token=randomBytes(32).toString('hex');
@@ -178,9 +179,43 @@ test('approved operator exports only the confirmed owner in a disposable product
  assert.deepEqual(account.media.map(item=>item.file),['media/'+image+'.webp']);
  assert.deepEqual(await readFile(join(packageResult.directory,account.media[0].file)),photo);
 
- const reports=await import('../scripts/local-account-export-report.mjs');
+ const operator=await import('../scripts/prepare-approved-account-export.mjs');
  const publisher=await import('../scripts/stage-approved-account-export.mjs');
- const archive=await reports.packReviewedAccountReport(packageResult.directory,outputRoot,subject.id,subject.email);
+ const approvalRequest={operatorToken:administrator.token,approval,disclosure};
+ const operatorOptions={outputRoot,mediaRoot,listingViewRateSecret};
+ const beforeInvalid=await readdir(outputRoot);
+ await assert.rejects(operator.prepareOperatorArchive(reader,{...approvalRequest,unexpected:true},operatorOptions));
+ await assert.rejects(operator.prepareOperatorArchive(reader,{...approvalRequest,operatorToken:other.token},operatorOptions));
+ assert.deepEqual(await readdir(outputRoot),beforeInvalid);
+ const {buildApprovedAccountExportOperator}=await import('../scripts/build-approved-account-export-operator.mjs');
+ const artifact=join(root,'operator');
+ const browserCache=process.env.PLAYWRIGHT_BROWSERS_PATH??join(homedir(),'.cache','ms-playwright');
+ const manifest=buildApprovedAccountExportOperator(artifact,browserCache);
+ assert.ok(manifest.sources.includes('lib/postgres.js')&&manifest.browserRevision);
+ assert.equal((await readdir(join(artifact,'node_modules'))).includes('typescript'),false);
+ await reader.close();
+ reader=undefined;
+ const child=run(process.execPath,['--input-type=module','--eval',`
+  import {readFileSync} from 'node:fs';
+  import {createRequire} from 'node:module';
+  import pg from 'pg';
+  import {prepareOperatorArchive} from './scripts/prepare-approved-account-export.mjs';
+  const {PostgresDatabase}=createRequire(import.meta.url)('./compiled/lib/postgres.js');
+  const data=JSON.parse(readFileSync(0,'utf8'));
+  const db=new PostgresDatabase(new pg.Pool(data.readerConfig));
+  try{console.log(JSON.stringify(await prepareOperatorArchive(db,data.approvalRequest,data.operatorOptions)));}
+  finally{await db.close();}
+ `],{cwd:artifact,timeout:25000,env:{PATH:'/usr/bin:/bin',LANG:'C.UTF-8',NODE_ENV:'test',PLAYWRIGHT_BROWSERS_PATH:join(artifact,'browser')}});
+ child.child.stdin.end(JSON.stringify({readerConfig,approvalRequest,operatorOptions}));
+ const prepared=JSON.parse((await child).stdout);
+ reader=new(load('postgres').PostgresDatabase)(new pg.Pool(readerConfig));
+ const stagedPath=join(outputRoot,prepared.directory,'archive.tar.gz');
+ const archive=await readFile(stagedPath);
+ assert.deepEqual(await readdir(join(outputRoot,prepared.directory)),['archive.tar.gz']);
+ assert.equal(prepared.archiveSha256,digest(archive));
+ assert.equal(prepared.verifiedFiles,1);
+ assert.equal(JSON.stringify(prepared).includes(administrator.token),false);
+ assert.equal(JSON.stringify(prepared).includes(subject.email),false);
  const delivery=join(root,'delivery');
  await mkdir(delivery,{mode:0o750});
  await chmod(delivery,0o750);
@@ -212,14 +247,19 @@ test('approved operator exports only the confirmed owner in a disposable product
 
  const cleanupConfig=await readFile(new URL('../deploy/blizhniy-account-export-tmpfiles.conf',import.meta.url),'utf8');
  const configPath=join(root,'cleanup.conf');
- await writeFile(configPath,cleanupConfig.replace('/run/blizhniy-account-export',delivery)
-  .replace('root blizhniy-web',process.getuid()+' '+process.getgid()),{mode:0o600});
+ const localOwner=process.getuid()+' '+process.getgid();
+ await writeFile(configPath,cleanupConfig.replace('/run/blizhniy-account-export ',delivery+' ')
+  .replace('/run/blizhniy-account-export-work ',outputRoot+' ')
+  .replace('root blizhniy-web',localOwner).replace('blizhniy-web blizhniy-web',localOwner),{mode:0o600});
  const expired=new Date(Date.now()-16*60_000);
  await utimes(join(delivery,published),expired,expired);
+ await utimes(stagedPath,expired,expired);
+ await utimes(join(outputRoot,prepared.directory),expired,expired);
  const fresh=join(delivery,'fresh');
  await writeFile(fresh,'not an expired file',{mode:0o440});
  await run('/usr/bin/systemd-tmpfiles',['--clean',configPath],{timeout:5000});
  assert.deepEqual(await readdir(delivery),['fresh']);
+ assert.deepEqual(await readdir(outputRoot),[packageResult.directory.split('/').at(-1)]);
  assert.equal((await handle(request('download',subject))).status,404);
 
 

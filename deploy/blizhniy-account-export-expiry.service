@@ -7,5 +7,5 @@ ExecStart=/usr/bin/systemd-tmpfiles --clean /etc/tmpfiles.d/blizhniy-account-exp
 TimeoutStartSec=15s
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/run/blizhniy-account-export
+ReadWritePaths=/run/blizhniy-account-export /run/blizhniy-account-export-work
 PrivateTmp=yes
