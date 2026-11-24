@@ -1,0 +1,11 @@
+[Unit]
+Description=Prepare a reviewed account archive from the administrator session
+
+[Socket]
+ListenStream=/run/blizhniy-account-export-prepare.sock
+SocketUser=root
+SocketGroup=blizhniy-web
+SocketMode=0660
+Accept=yes
+MaxConnections=1
+RemoveOnStop=yes
