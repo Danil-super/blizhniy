@@ -334,7 +334,16 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
    await assert.rejects(admin.query(`insert into app.${kind==='listing'?'listing_photos(listing_id':'work_publication_photos(publication_id'},media_id,position) values($1,$2,0)`,[d.id,randomUUID()]),{code:'PBL01'});
    const raw=(await admin.query('select request_body from app.payment_checkout_intents where id=$1',[order.id])).rows[0].request_body;assert.equal(JSON.parse(raw).metadata.publicationMode,'account-test-v1');
    await assert.rejects(s.preview(other.token,other.owner,d.id,d.revision));
-   const payment=load('account-test-listing-payment').createAccountTestListingPayment(db,s,{...merchant,ownerId:current.owner},fetcher);await payment.dispatch(d.token,d.owner,order.id);
+   const payment=load('account-test-listing-payment').createAccountTestListingPayment(db,s,{...merchant,ownerId:current.owner},fetcher);
+   const previousPosts=posts;
+   await admin.query('update app.tariffs set price=price+0.01 where id=$1',[quote.tariff.id]);
+   try{
+    await assert.rejects(payment.dispatch(d.token,d.owner,order.id),{name:'ListingCheckoutConflictError'});
+    assert.equal(posts,previousPosts);
+    assert.equal((await admin.query('select count(*)::int n from app.payment_dispatch_anchors where intent_id=$1',[order.id])).rows[0].n,0);
+    assert.equal((await s.readOrder(d.token,d.owner,order.id)).order.amount,quote.tariff.amount);
+   }finally{await admin.query('update app.tariffs set price=$2 where id=$1',[quote.tariff.id,quote.tariff.amount]);}
+   await payment.dispatch(d.token,d.owner,order.id);
    assert.deepEqual(await worker.tick(),{state:'completed'});const read=await s.readOrder(d.token,d.owner,order.id);assert.equal(read.order.status,'succeeded');assert.ok(read.fulfillment);
    const fulfillment=new(load('postgres-listing-payment-fulfillment').PostgresListingPaymentFulfillmentStore)(workerDb,merchant,{postmoderation:true,publicationTestOwner:current.owner,...(kind==='listing'?{}:{targetType:kind})});assert.equal((await fulfillment.fulfill(order.id)).state,'fulfilled');assert.deepEqual(await s.readOrder(d.token,d.owner,order.id),read);
    assert.equal((await admin.query('select count(*)::int n from app.payment_fulfillments where intent_id=$1',[order.id])).rows[0].n,1);

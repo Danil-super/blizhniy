@@ -68,6 +68,7 @@ function decode(row:Row|undefined,binding:PaymentIntentBinding):PaymentIntent{
  return parsed;
 }
 export type PaymentDispatch={decision:'post';requestBody:string;remainingMs:number}|{decision:'recover';providerId:string};
+export type PaymentDispatchAttempt=(tx:PostgresQueries)=>Promise<PaymentDispatch>;
 /** Private financial storage, NOT a user-facing checkout API or target-eligibility authorizer.
  * No production runtime grants. Caller must atomically authorize the target before persistInTransaction.
  */
@@ -92,18 +93,27 @@ export class PostgresPaymentIntentStore{
   // The concurrent loser adopts the winner's exact receipt, not its own freshly rebuilt body.
   return decode(row,intent);
  }
+ private async readDispatchInTransaction(tx:PostgresQueries,binding:PaymentIntentBinding){
+  checkBinding(binding);
+  const row=(await tx.query<Row>(`select ${columns} from app.payment_checkout_intents where id=$1 for update`,[binding.id])).rows[0];
+  const intent=decode(row,binding);
+  const provider=(await tx.query<{id:string}>('select provider_payment_id as id from app.payment_provider_links where intent_id=$1',[binding.id])).rows[0];
+  return provider?{decision:'recover',providerId:provider.id} as const:{decision:'post',requestBody:intent.requestBody} as const;
+ }
+ inspectDispatch(binding:PaymentIntentBinding){
+  return this.db.transaction(tx=>this.readDispatchInTransaction(tx,binding));
+ }
+ async authorizeInTransaction(tx:PostgresQueries,binding:PaymentIntentBinding):Promise<PaymentDispatch>{
+  const dispatch=await this.readDispatchInTransaction(tx,binding);
+  if(dispatch.decision==='recover')return dispatch;
+  await tx.query('insert into app.payment_dispatch_anchors(intent_id) values($1) on conflict(intent_id) do nothing',[binding.id]);
+  const clock=(await tx.query<{remaining:string}>(`select floor(extract(epoch from (authorized_at+interval '23 hours 55 minutes'-clock_timestamp()))*1000)::text as remaining from app.payment_dispatch_anchors where intent_id=$1`,[binding.id])).rows[0];
+  if(!clock||!/^\d+$/.test(clock.remaining)||Number(clock.remaining)<=0)fail();
+  return{...dispatch,remainingMs:Number(clock.remaining)};
+ }
  async authorize(binding:PaymentIntentBinding):Promise<PaymentDispatch>{
-  checkBinding(binding);const started=performance.now();
-  const result=await this.db.transaction(async tx=>{
-   const row=(await tx.query<Row>(`select ${columns} from app.payment_checkout_intents where id=$1 for update`,[binding.id])).rows[0];
-   const intent=decode(row,binding);
-   const provider=(await tx.query<{id:string}>('select provider_payment_id as id from app.payment_provider_links where intent_id=$1',[binding.id])).rows[0];
-   if(provider)return{decision:'recover',providerId:provider.id} as const;
-   await tx.query('insert into app.payment_dispatch_anchors(intent_id) values($1) on conflict(intent_id) do nothing',[binding.id]);
-   const clock=(await tx.query<{remaining:string}>(`select floor(extract(epoch from (authorized_at+interval '23 hours 55 minutes'-clock_timestamp()))*1000)::text as remaining from app.payment_dispatch_anchors where intent_id=$1`,[binding.id])).rows[0];
-   if(!clock||!/^\d+$/.test(clock.remaining)||Number(clock.remaining)<=0)fail();
-   return{decision:'post',requestBody:intent.requestBody,remainingMs:Number(clock.remaining)} as const;
-  });
+  const started=performance.now();
+  const result=await this.db.transaction(tx=>this.authorizeInTransaction(tx,binding));
   if(result.decision==='recover')return result;
   const remainingMs=result.remainingMs-Math.max(0,performance.now()-started);
   if(!Number.isFinite(remainingMs)||remainingMs<=0)fail();

@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {withAppSessionTransaction,AppSessionAccessError} from './app-session-transaction';
 import {PostgresServicePublicationStore,ServicePublicationAccessError} from './postgres-service-publications';
-import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentIntent,type PaymentIntentBinding} from './postgres-payment-intents';
+import {PostgresPaymentIntentStore,parsePaymentIntent,type PaymentDispatch,type PaymentDispatchAttempt,type PaymentIntent,type PaymentIntentBinding} from './postgres-payment-intents';
 import {parseListingDraftId,parseListingDraftRevision} from './listing-draft-contract.ts';
 import {parseServiceCheckout,ServiceCheckoutConflictError,ServiceCheckoutUnavailableError,type PaidServiceKind,type ServiceCheckoutInput} from './service-checkout-contract.ts';
 import type {ListingCheckoutConfig} from './postgres-listing-checkout';
@@ -62,18 +62,21 @@ export class PostgresServiceCheckoutStore{
    return{order:display(order),eventEnded,fulfillment:publishedAt&&expiresAt?{publishedAt,expiresAt}:null};
   });
  }
- authorizeDispatch(token:string,owner:string,paymentId:unknown,requireCurrent=false):Promise<PaymentIntentBinding>{
+ authorizeDispatch(token:string,owner:string,paymentId:unknown,requireCurrent?:boolean):Promise<PaymentIntentBinding>;
+ authorizeDispatch(token:string,owner:string,paymentId:unknown,requireCurrent:true,attempt:PaymentDispatchAttempt):Promise<PaymentDispatch>;
+ authorizeDispatch(token:string,owner:string,paymentId:unknown,requireCurrent=false,attempt?:PaymentDispatchAttempt){
   const id=parseListingDraftId(paymentId);return this.owner(token,owner,async(tx,actor)=>{
+   const permitted=await attempt?.(tx);
    const row=(await tx.query<PaymentIntent&{status:string;fairDate:string|null}>(`select i.id,i.owner_id as "ownerId",i.target_type as "targetType",i.target_id as "targetId",i.target_revision::text as "targetRevision",
     i.tariff_id as "tariffId",i.amount::text,i.duration_days as "durationDays",i.merchant_shop_id as "shopId",i.is_test as "isTest",i.request_body as "requestBody",o.status,terms.fair_date::text as "fairDate"
     ${source} where o.id=$1 and o.owner_id=$2 and o.target_type=$3 and i.merchant_shop_id=$4 and i.is_test`,[id,actor,this.targetType,this.config.shopId])).rows[0];
    if(!row)throw new ServicePublicationAccessError();const {status,fairDate,...value}=row,intent=parsePaymentIntent(value);
-   if(requireCurrent&&(await tx.query('select intent_id from app.payment_provider_links where intent_id=$1',[id])).rowCount!==1){
+   if((requireCurrent||attempt)&&(await tx.query('select intent_id from app.payment_provider_links where intent_id=$1',[id])).rowCount!==1){
     if(status!=='created'||!JSON.parse(intent.requestBody).receipt)throw new ServiceCheckoutUnavailableError();
     const offer=await this.inspected(tx,actor,intent.targetId,intent.targetRevision);
     if(offer.tariff.id!==intent.tariffId||offer.tariff.amount!==intent.amount||offer.tariff.durationDays!==intent.durationDays||(offer.fairEvent?.date??null)!==fairDate)throw new ServiceCheckoutConflictError();
    }
-   const {requestBody,...binding}=intent;void requestBody;return binding;
+   const {requestBody,...binding}=intent;void requestBody;return permitted??binding;
   });
  }
  private async intent(tx:PostgresQueries,owner:string,id:string,input:ServiceCheckoutInput,offer:Offer):Promise<PaymentIntent>{

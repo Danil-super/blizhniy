@@ -44,6 +44,49 @@ test('local checkout cancellation serializes with dispatch and preserves immutab
    await assert.rejects(dispatcher.dispatch(binding),{code:'PCA02'});assert.equal(calls,0);
    assert.equal((await admin.query('select count(*)::int as n from app.payment_dispatch_anchors where intent_id=$1',[binding.id])).rows[0].n,0);
   });
+  await suite.test('a changed tariff rejects dispatch without committing an anchor and the owner can still cancel',async()=>{
+   const binding=await purchase(),input={paymentId:binding.id,targetType:binding.targetType};
+   await admin.query("insert into app.tariffs(id,action,name,price,duration_days,active) values($1,'listing_publication','Тестовый тариф',199,30,true)",[binding.tariffId]);
+   await admin.query('update app.tariffs set price=249.51 where id=$1',[binding.tariffId]);
+   let calls=0;
+   const {withAppSessionTransaction}=load('app-session-transaction');
+   const dispatcher=load('primary-payment-dispatch').createPrimaryPaymentDispatcher(ownerDb,
+    {shopId:binding.shopId,isTest:true,secretKey:'test_fixture_only'},async()=>{calls++;throw Error('Provider must not be called');});
+   const refuse=Error('Current tariff differs');
+   await assert.rejects(dispatcher.dispatch(binding,work=>withAppSessionTransaction(ownerDb,owner.token,async tx=>{
+    const permitted=await work(tx);
+    const price=(await tx.query('select price::text from app.tariffs where id=$1',[binding.tariffId])).rows[0].price;
+    if(price!==binding.amount)throw refuse;
+    return permitted;
+   })),error=>error===refuse);
+   assert.equal(calls,0);
+   assert.equal((await admin.query('select count(*)::int as n from app.payment_dispatch_anchors where intent_id=$1',[binding.id])).rows[0].n,0);
+   assert.equal(await status(binding.id),'created');
+   assert.deepEqual(await store.cancel(owner.token,owner.id,input),{...input,state:'cancelled'});
+   assert.equal((await admin.query('select amount::text from app.payment_checkout_intents where id=$1',[binding.id])).rows[0].amount,'199.00');
+  });
+  await suite.test('refusing a later attempt keeps the anchor when the first POST may have reached the provider',async()=>{
+   const binding=await purchase(),input={paymentId:binding.id,targetType:binding.targetType};
+   const refuse=Error('Current admission has changed');
+   const {withAppSessionTransaction}=load('app-session-transaction');
+   let calls=0;
+   const dispatcher=load('primary-payment-dispatch').createPrimaryPaymentDispatcher(ownerDb,
+    {shopId:binding.shopId,isTest:true,secretKey:'test_fixture_only'},async(_url,init)=>{
+     assert.equal(init.method,'POST');
+     assert.equal(init.headers['Idempotence-Key'],binding.id);
+     calls++;
+     return Response.json({},{status:503});
+    });
+   await assert.rejects(dispatcher.dispatch(binding,work=>withAppSessionTransaction(ownerDb,owner.token,async tx=>{
+    const permitted=await work(tx);
+    if(calls>0)throw refuse;
+    return permitted;
+   })),error=>error===refuse);
+   assert.equal(calls,1);
+   assert.equal((await admin.query('select count(*)::int as n from app.payment_dispatch_anchors where intent_id=$1',[binding.id])).rows[0].n,1);
+   await assert.rejects(store.cancel(owner.token,owner.id,input),{code:'CHECKOUT_STARTED'});
+   assert.equal(await status(binding.id),'created');
+  });
   await suite.test('the actual owner store binds owner/type, recovers lost COMMIT acknowledgement and refuses expired authority',async()=>{
    const binding=await purchase(),input={paymentId:binding.id,targetType:binding.targetType};assert.equal(await store.read(owner.token,owner.id,input),null);
    await assert.rejects(store.cancel(other.token,other.id,input),error=>error.code==='CHECKOUT_NOT_FOUND');
