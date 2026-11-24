@@ -23,4 +23,7 @@ test('cabinet entry displays the same listings section without dropping the sett
  assert.equal(out.CabinetPage().type,out.CabinetListingsPage);
  const list=out.CabinetListingsPage();assert.equal(list.props.activeHref,'/cabinet/obyavleniya');
  assert.ok(list.props.children.props.footer,'The account-deletion link must remain reachable after removing overview');
+ const footer=renderToStaticMarkup(list.props.children.props.footer);
+ assert.match(footer,/<a[^>]+href="\/cabinet\/moi-dannye"[^>]*>Мои персональные данные<\/a>/);
+ assert.match(footer,/<a[^>]+href="\/cabinet\/udalit-akkaunt"[^>]*>Запросить удаление аккаунта<\/a>/);
 });
