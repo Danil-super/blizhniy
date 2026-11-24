@@ -110,15 +110,24 @@ export async function readApprovedProductionAccountExport(db,token,value,{listin
 const productionReaderContext=`select true as reader,
  current_database()='blizhniy_prod' and current_user=session_user and current_user='blizhniy_account_export_reader'
  and current_setting('transaction_read_only')='on' and current_setting('transaction_isolation')='repeatable read'
- and exists(select 1 from pg_roles r where r.rolname=current_user and r.rolcanlogin
+ and not has_column_privilege('app.users','password_hash','SELECT')
+ and not has_column_privilege('app.sessions','token_hash','SELECT')
+ and not has_schema_privilege('app_stats','USAGE')
+ and exists(select 1 from pg_roles r where r.rolname=current_user and r.rolcanlogin and r.rolconnlimit=1
   and not (r.rolsuper or r.rolinherit or r.rolcreatedb or r.rolcreaterole or r.rolreplication or r.rolbypassrls)
   and not exists(select 1 from pg_auth_members m where m.member=r.oid)) as allowed`;
+
+const approvedPhoneQueries={
+ phoneBindings:'select phone,source,confirmed_at from app_export.phone_bindings($1,$2,$3)',
+ phoneVerification:'select state,created_at,expires_at from app_export.phone_attempts($1,$2,$3)',
+};
 
 async function readAccountSnapshot(db,token,confirmedOwnerId,operatorId,listingViewRateSecret,emailSha256){
  const ownerId=deletionId(confirmedOwnerId),hash=hashSessionToken(token);
  if(!hash)throw new DeletionAccessError();
  const credentials=operatorId===undefined?[hash,ownerId]:[hash,ownerId,deletionId(operatorId)];
- const access=operatorId===undefined?verifiedSession:verifiedOperator;
+ const access=emailSha256?'from app_export.approved_account($1,$2,$3) u':
+  operatorId===undefined?verifiedSession:verifiedOperator;
  const timeoutMs=5000,options={timeoutMs,deadline:performance.now()+timeoutMs};
  const data=await db.readTransaction(async tx=>{
   const context=(await tx.query(emailSha256?productionReaderContext:`select current_user='blizhniy_local_export_reader' as reader,current_user=session_user and (
@@ -131,7 +140,7 @@ async function readAccountSnapshot(db,token,confirmedOwnerId,operatorId,listingV
     ${access}`,credentials)).rows[0];
   if(!account||emailSha256&&createHash('sha256').update(account.email).digest('hex')!==emailSha256)
    throw new DeletionAccessError();
-  if(context.reader)await tx.query("select set_config('blizhniy.account_export_owner',$1,true)",[ownerId]);
+  if(context.reader&&!emailSha256)await tx.query("select set_config('blizhniy.account_export_owner',$1,true)",[ownerId]);
   const stored=(await tx.query('select profile from app.cabinet_profiles where user_id=$1',[ownerId])).rows[0];
   const profile=stored?load('postgres-profile').parseProductionProfile(stored.profile):null;
   const result={version:1,snapshot:account.snapshot,account:{id:account.id,email:account.email,isBlocked:account.isBlocked,
@@ -172,7 +181,8 @@ async function readAccountSnapshot(db,token,confirmedOwnerId,operatorId,listingV
     left join app.media_retirement_completions c on c.media_id=r.media_id
     where m.owner_id=$1 order by r.requested_at,r.media_id`;
   for(const [name,sql] of Object.entries(queries)){
-   await tx.query(`declare account_export_rows no scroll cursor for ${sql}`,[ownerId]);
+   const approvedPhoneQuery=emailSha256?approvedPhoneQueries[name]:undefined;
+   await tx.query(`declare account_export_rows no scroll cursor for ${approvedPhoneQuery??sql}`,approvedPhoneQuery?credentials:[ownerId]);
    const sectionRows=[];
    for(;;){
     const {rows}=await tx.query(`fetch forward ${exportBatchSize} from account_export_rows`);

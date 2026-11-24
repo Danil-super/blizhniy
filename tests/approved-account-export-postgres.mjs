@@ -10,7 +10,9 @@ import { test } from 'node:test';
 import pg from 'pg';
 import * as exporter from '../scripts/export-local-account-data.mjs';
 import { localPrimaryImage } from '../scripts/local-primary-config.mjs';
-import { assertListingViewsAccess, getBookingLifecycleMigration, getListingViewsMigration, getPublicationTestMigrationPlan } from '../scripts/publication-test-release-plan.mjs';
+import { assertListingViewsAccess, getBookingLifecycleMigration, getInboxPreferenceMigration, getListingViewsMigration, getPaidResponseMigrations, getPublicationTestMigrationPlan, getSpecialistAccountTestMigration } from '../scripts/publication-test-release-plan.mjs';
+import { getSpecialistCheckoutMigration, specialistCheckoutRuntimeGrants } from '../scripts/specialist-checkout-release.mjs';
+import { getPaymentReconciliationRolePlan, verifyPaymentReconciliationDatabase } from '../scripts/payment-reconciliation-role.mjs';
 import { listingViewDigest } from '../src/lib/listing-view-history.ts';
 
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
@@ -26,9 +28,9 @@ test('approved operator exports only the confirmed owner in a disposable product
   '--tmpfs','/var/lib/postgresql:rw,size=268435456','--publish','127.0.0.1::5432','--env','POSTGRES_PASSWORD','--env','POSTGRES_DB='+database,localPrimaryImage]);
  const meta=JSON.parse(await docker(['inspect',container]))[0],binding=meta.NetworkSettings.Ports['5432/tcp'][0];
  assert.equal(meta.Config.Labels[label],name);assert.equal(meta.Id,container);assert.equal(binding.HostIp,'127.0.0.1');
- let owner, reader;
+ let owner, reader, worker;
  t.after(async()=>{
-  await reader?.close();await owner?.end();
+  await reader?.close();await worker?.close();await owner?.end();
   assert.equal(JSON.parse(await docker(['inspect',container]))[0].Config.Labels[label],name);
   await docker(['rm','--force',container]);
  });
@@ -37,28 +39,59 @@ test('approved operator exports only the confirmed owner in a disposable product
   catch{assert.ok(Date.now()<deadline);await new Promise(resolve=>setTimeout(resolve,100));}
  }
  const config={host:'127.0.0.1',port:Number(binding.HostPort),database,user:'postgres',password,ssl:false,connectionTimeoutMillis:1500};
- owner=new pg.Client(config);
+
+ const ownerPassword=randomBytes(32).toString('hex');
+ const bootstrap=new pg.Client(config);
+ await bootstrap.connect();
+ try{
+  await bootstrap.query('create role gen_user login createrole password '+pg.escapeLiteral(ownerPassword));
+  await bootstrap.query('create role blizhniy_runtime nologin');
+  await bootstrap.query('alter database '+database+' owner to gen_user');
+  await bootstrap.query('revoke all on database '+database+' from public; revoke all on schema public from public');
+ }finally{await bootstrap.end();}
+ owner=new pg.Client({...config,user:'gen_user',password:ownerPassword});
  await owner.connect();
- for(const migration of getPublicationTestMigrationPlan())await owner.query(migration.sql);
- await owner.query(getBookingLifecycleMigration().sql);
- await owner.query(getListingViewsMigration().sql);
- await owner.query('create role blizhniy_runtime nologin');
- await owner.query(await readFile(new URL('../database/permissions/listing-views.sql',import.meta.url),'utf8'));
- await assertListingViewsAccess(owner);
- const fixtureGrants=await readFile(new URL('../database/permissions/local-account-export-reader.sql',import.meta.url),'utf8');
- await owner.query(fixtureGrants.replace(/^  grant .* on app_stats\.listing_views .*;\n|^  grant usage on schema app_stats .*;\n/gm,'')
-  .replaceAll('blizhniy_test',database).replaceAll('blizhniy_local_export_reader',role));
- const viewLookup=await readFile(new URL('../database/permissions/account-export-listing-view-lookup.sql',import.meta.url),'utf8');
+ await owner.query('create schema blizhniy_meta; create table blizhniy_meta.migrations(name text primary key,sha256 text not null); revoke all on schema blizhniy_meta from public');
+ const journal=async ({name,sha256})=>owner.query('insert into blizhniy_meta.migrations values($1,$2)',[name,sha256]);
+ for(const migration of getPublicationTestMigrationPlan()){
+  await owner.query(migration.sql);await journal(migration);
+ }
+ const workerPlan=getPaymentReconciliationRolePlan(database,{cabinet:true,publicationTest:true});
+ const workerPassword=randomBytes(32).toString('hex');
+ await owner.query(workerPlan.createRole);
+ for(const grant of workerPlan.grants)await owner.query(grant);
+ await owner.query('alter role '+workerPlan.role+' login password '+pg.escapeLiteral(workerPassword));
+ worker=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:workerPlan.role,password:workerPassword,max:1}));
+ for(const file of ['telegram-phone','booking-lifecycle','listing-views']){
+  if(file==='booking-lifecycle'){const migration=getBookingLifecycleMigration(); await owner.query(migration.sql);await journal(migration);}
+  if(file==='listing-views'){const migration=getListingViewsMigration(); await owner.query(migration.sql);await journal(migration);}
+  await owner.query(await readFile(new URL('../database/permissions/'+file+'.sql',import.meta.url),'utf8'));
+ }
+ const terms=getSpecialistCheckoutMigration();
+ await owner.query(terms.source);await journal(terms);
+ for(const grant of specialistCheckoutRuntimeGrants)await owner.query(grant);
+ await owner.query('grant select(intent_id) on app.specialist_checkout_terms to '+workerPlan.role);
+ for(const migration of [getInboxPreferenceMigration(),getSpecialistAccountTestMigration(),...getPaidResponseMigrations()]){
+  await owner.query(migration.sql);await journal(migration);
+ }
+ const verifyWorker=()=>verifyPaymentReconciliationDatabase(worker,{database,publicationTest:true,specialistAccountTest:true});
+ assert.equal(await verifyWorker(),true);
+
+ const install=await readFile(new URL('../database/permissions/approved-account-export.sql',import.meta.url),'utf8');
  await owner.query('create role unrelated_export_fixture nologin');
  await owner.query('alter default privileges grant execute on functions to unrelated_export_fixture');
- await assert.rejects(owner.query(viewLookup),/Unexpected listing view export permissions/);
+ await assert.rejects(owner.query(install),/Unexpected account export permissions/);
  await owner.query('rollback');
+ assert.equal((await owner.query("select to_regnamespace('app_export') is null and to_regrole($1) is null as clean",[role])).rows[0].clean,true);
  await owner.query('alter default privileges revoke execute on functions from unrelated_export_fixture');
- await owner.query(viewLookup);
+ await owner.query(install);
+ assert.equal((await owner.query('select rolcanlogin from pg_roles where rolname=$1',[role])).rows[0].rolcanlogin,false);
+ assert.equal(await verifyWorker(),true);
  await assertListingViewsAccess(owner);
+ const web=(await owner.query("select has_schema_privilege('blizhniy_runtime','app_export','USAGE') as access")).rows[0];
+ assert.equal(web.access,false);
  const readerPassword=randomBytes(32).toString('hex');
  await owner.query('alter role '+role+' login password '+pg.escapeLiteral(readerPassword));
- await owner.query('grant select(role) on app.users to '+role);
  reader=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:role,password:readerPassword,max:1}));
  const hash=load('identity').hashSessionToken;
  async function person(accountRole='user'){
@@ -69,6 +102,10 @@ test('approved operator exports only the confirmed owner in a disposable product
   return{id,email,token};
  }
  const administrator=await person('admin'),subject=await person(),other=await person();
+ for(const [actor,phone] of [[subject,'+79995550101'],[other,'+79995550102']]){
+  await owner.query("insert into app.telegram_phone_bindings(user_id,phone,telegram_subject) values($1,$2,$3)",[actor.id,phone,actor.email]);
+ }
+
  await owner.query('insert into app.cabinet_profiles(user_id,profile) values($1,$2),($3,$4)',
   [subject.id,{name:'Имя владельца',phone:'+79995550101',city:'Краснодар'},other.id,{name:'Чужое имя',phone:'+79995550102',city:'Краснодар'}]);
  for(const actor of [subject,other]){
@@ -97,6 +134,8 @@ test('approved operator exports only the confirmed owner in a disposable product
  assert.equal(result.data.account.email,subject.email);
  assert.equal(result.data.profile.name,'Имя владельца');
  assert.equal(result.data.profile.phone,'+79995550101');
+ assert.deepEqual(result.data.phoneBindings.map(row=>row.phone),['+79995550101']);
+ assert.equal(JSON.stringify(result).includes('+79995550102'),false);
  assert.deepEqual(result.data.notifications.map(row=>row.body),[subject.email]);
  assert.ok(result.data.notifications[0].dismissed_at);
  assert.deepEqual(result.data.deletionEvents.map(row=>[row.request_id,row.status,row.actor_is_owner]),
@@ -142,11 +181,19 @@ test('approved operator exports only the confirmed owner in a disposable product
  await assert.rejects(read(other.token),{name:'DeletionAccessError'});
  await assert.rejects(read(administrator.token,{...approval,ownerId:other.id}),{name:'DeletionAccessError'});
  await assert.rejects(read(administrator.token,{...approval,emailSha256:digest(other.email)}),{name:'DeletionAccessError'});
- await assert.rejects(reader.readTransaction(tx=>tx.query('select password_hash from app.users'),{timeoutMs:5000}),{code:'42501'});
+ for(const protectedField of ['password_hash from app.users','token_hash from app.sessions','phone from app.telegram_phone_bindings']){
+  await assert.rejects(reader.readTransaction(tx=>tx.query('select '+protectedField),{timeoutMs:5000}),{code:'42501'});
+ }
+ assert.deepEqual(await reader.readTransaction(async tx=>(await tx.query(
+  'select phone from app_export.phone_bindings($1,$2,$3)',[hash(other.token),subject.id,administrator.id])).rows,{timeoutMs:5000}),[]);
  await assert.rejects(reader.readTransaction(tx=>tx.query('select viewer_digest from app_stats.listing_views'),{timeoutMs:5000}),{code:'42501'});
- await owner.query('alter role '+role+' bypassrls');
+ await assert.rejects(reader.transaction(async tx=>{
+  await tx.query('set transaction read write');
+  await tx.query('update app.cabinet_profiles set profile=profile where user_id=$1',[subject.id]);
+ }),{code:'42501'});
+ await owner.query('grant unrelated_export_fixture to '+role);
  await assert.rejects(read(),{name:'AssertionError'});
- await owner.query('alter role '+role+' nobypassrls');
+ await owner.query('revoke unrelated_export_fixture from '+role);
  await owner.query('delete from app.sessions where token_hash=$1',[hash(administrator.token)]);
  await assert.rejects(read(),{name:'DeletionAccessError'});
 });
