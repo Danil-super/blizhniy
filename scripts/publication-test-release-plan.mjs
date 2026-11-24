@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {getBootstrapPlan} from './postgres-migration-plan.mjs';
 import {getCabinetMigrationPlan} from './cabinet-release-plan.mjs';
-import {verifySpecialistCheckoutRuntimeAccess} from './specialist-checkout-release.mjs';
+import {getSpecialistCheckoutMigration,verifySpecialistCheckoutRuntimeAccess} from './specialist-checkout-release.mjs';
 import {readRefundSchema} from './refund-worker-schema.mjs';
 const suffix=[
  ['0033-account-deletion.sql','8d0159c6af65c4c66aabb123695110f402fd5eac268fa2a879d97c85e628ed2f'],
@@ -10,8 +10,30 @@ const suffix=[
  ['0044-work-owner-actions.sql','4e3f137c8dbc2e98ceece3ca4025e64f0270467c69774bd890c20f28d5c1a04f'],
  ['0059-test-placement-guards.sql','8a9402d87aa417242f8cfb8e9200f61b15e9613e35e86de19811d8e8815c6c3c'],
 ];
+const hostedRefundSuffix=[
+ ['0035-application-contact-views.sql','b1fa39ecfda0d9bcfb7dce27650e7950fc652db58af88b9756ed5979636ac937'],
+ ['0036-placement-refund-reservations.sql','3ec8c25243195d8b9d9c36e2c738249c815060c436dbcc4860eb263faf48ef16'],
+ ['0037-refund-requests.sql','6914c52b6f50153c63068f01ad14fad69a54b121c10d977986766249593742c3'],
+ ['0038-refund-journal.sql','fbab09446f30129bbc4fe59fbd4432f0e5d1ec76429b16bc5220cca7f15da240'],
+ ['0039-refund-dispatch.sql','e29f2cecbf97930c9c8c7be9aaa6d6031902ef44c232cabfd1517c839f285bd4'],
+ ['0040-placement-refund-effects.sql','470b5106cf78ad96f5005eda6744e962c557c4cff2582fbf1adeca6cc5cb9b41'],
+ ['0042-placement-refund-approvals.sql','99defa302ee7201e5a0968005c3aab04a9fa95a13fee8c1e7620925ac595959d'],
+ ['0043-application-compensation-cases.sql','a6d295cde1792350ebceca844a5999f9ff7ec56949bc180081ea001dc4aee39e'],
+ ['0045-customer-closure-compensation.sql','6fd9cef91fff541cb8dc8c67500ef467e93c594e3ae145d3f500d4cc93ce9621'],
+ ['0048-application-compensation-refunds.sql','69ee78403b4a7f1ac40366b4802d0930b8f9919f2f5a93cd30a9b1946c3afe77'],
+ ['0049-application-compensation-queue.sql','7840ca52cb4dda2285baf9bf117fa465f5903994902888a9963c98d51b748959'],
+ ['0050-application-compensation-discovery.sql','70f8b364629be26a61758e8de0e0a05d4094d512094c968a1e03a4be0987054d'],
+ ['0051-refund-recovery.sql','e24c75dc7183483c041e1679482968767a34aea04d1706464d1cf20e0c30a164'],
+ ['0052-placement-refund-queue.sql','d075baa1eef117dc9b2db0588c6886af7fb7a0b3ed14482a0a1989b4110aedc4'],
+ ['0053-application-compensation-lease.sql','fae70f623c932cccf8b3af5b0db6bcc02d362be804ffda3ba04ef8a3c54bb12d'],
+ ['0054-refund-worker-locks.sql','58e0541d6519d37ade73c8b1cf14e28aaeb4846266c4618bad7186a52c3ec43b'],
+ ['0055-refund-operator-locks.sql','eccf6f5c4208cbe48fa8d97e67528a14a8b169929ba19605422000385ffda79c'],
+ ['0056-placement-renewals.sql','da97d79898e6f0b1471824822c60dead94a5f92c33f526127b230616d09c12e0'],
+ ['0057-service-payment-terms.sql','564a485f53754b34293ccd25d664d4dfeea94379c149381218ff69bc728731da'],
+ ['0075-hosted-refund-compatibility.sql','45ef880212da7927092fb91f82b113ec4ac73e8973b38fb150a051c32509a262'],
+];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65|66|67|71|72|73)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66|67|71|72|73|75)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -47,11 +69,52 @@ export function getInboxPreferenceMigration(){
 export function getPublicationTestMigrationPlan(){
  return [...getBootstrapPlan({includeListingContactMethod:true}),...getCabinetMigrationPlan(),...suffix.map(([name,hash])=>readReleaseMigration(name,hash))];
 }
-export async function assertPublicationTestSchema(tx){
+
+export function getHostedRefundMigrationPlan(){
+ return hostedRefundSuffix.map(([name,hash])=>readReleaseMigration(name,hash));
+}
+
+// Preserve the published migration bytes and commit the compatibility definitions and journal together.
+export function getHostedRefundMigrationSql(){
+ const baseline=[...getPublicationTestMigrationPlan(),getSpecialistCheckoutMigration(),getInboxPreferenceMigration(),
+  getSpecialistAccountTestMigration(),getBookingLifecycleMigration(),getListingViewsMigration(),...getPaidResponseMigrations(),
+  ...getCheckoutCancellationMigrations(),getPaymentReconciliationRecoveryMigration(),getPaymentReconciliationAlertMigration()]
+  .sort((a,b)=>a.name.localeCompare(b.name,'en')).map(({name,sha256})=>[name,sha256]);
+ const plan=getHostedRefundMigrationPlan();
+ const body=plan.map(({sql})=>{
+  if(!/^begin;$/m.test(sql)||!/^commit;\s*$/m.test(sql))throw Error('Invalid hosted refund migration transaction');
+  return sql.replace(/^begin;$/m,'').replace(/\ncommit;\s*$/,'');
+ }).join('\n');
+ const entries=plan.map(({name,sha256})=>`('${name}','${sha256}')`).join(',\n');
+ return `begin;
+set local lock_timeout='3s';
+set local statement_timeout='10s';
+set local search_path=pg_catalog;
+lock table blizhniy_meta.migrations in share row exclusive mode;
+do $baseline$
+begin
+ if (select jsonb_agg(jsonb_build_array(name,sha256) order by name collate "C") from blizhniy_meta.migrations)
+  is distinct from '${JSON.stringify(baseline)}'::jsonb then
+  raise exception 'Unexpected hosted refund baseline' using errcode='55000';
+ end if;
+end $baseline$;
+${body}
+insert into blizhniy_meta.migrations(name,sha256) values
+${entries};
+commit;
+`;
+}
+export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
  const definitions=new Map();
  for(const migration of getPublicationTestMigrationPlan().filter(({name})=>name.startsWith('0044-')||name.startsWith('0059-')))
   for(const match of migration.sql.matchAll(/create (?:or replace )?function app\.([a-z_]+)\(\) returns trigger[\s\S]*?as \$\$([\s\S]*?)\$\$;/g))definitions.set(match[1],match[2]);
  if(definitions.size!==4)throw Error('Publication TEST guard source unavailable');
+ if(hostedRefunds){
+  const renewal=getHostedRefundMigrationPlan().find(item=>item.name==='0056-placement-renewals.sql');
+  const body=renewal?.sql.match(/create or replace function app\.apply_work_owner_action\(\) returns trigger[\s\S]*?as \$\$([\s\S]*?)\$\$;/)?.[1];
+  if(!body)throw Error('Renewal guard source unavailable');
+  definitions.set('apply_work_owner_action',body);
+ }
  const expected=new Map([
   ['listings.listing_checkout_edit_fence',['guard_checkout_edit',19]],['work_publications.work_checkout_edit_fence',['guard_checkout_edit',19]],
   ['listing_photos.listing_checkout_photo_fence',['guard_checkout_photo_edit',31]],['work_publication_photos.work_checkout_photo_fence',['guard_checkout_photo_edit',31]],
@@ -75,6 +138,10 @@ export async function assertPublicationTestSchema(tx){
 // PostgreSQL 18 emits different parentheses for six existing CHECK constraints after a logical restore.
 // Each pair pins the full installed and restored app catalog for exactly one reviewed journal.
 const fingerprints={
+ hostedRefunds:[
+  '05c41875cb2a2c427355006772ce1dd06e3553b72165d2ca76b160aa7fe315ee',
+  'ef648b63d1b29212e690b44ccba7fcdc89f4561f9d0c0cbde862e789ce52d611',
+ ],
  reconciliationAlert:[
   '958422d3803782550bba09ab98477bec184658ae0dfaed37ba5974d53baef867',
   '397c41f8fdf0adaea3fac474611afaa3260fbebe10d68d48e640a5e8e598483d',
@@ -223,7 +290,7 @@ async function assertReconciliationCommandAccess(tx,monitor=false){
  if(result?.valid!==true)throw Error('Unexpected reconciliation command access');
 }
 
-export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false}){
+export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false}){
  const catalog=await readRefundSchema(tx);
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  const key=enrollment?(inbox?'specialistTestInbox':'specialistTest'):specialist&&inbox?'both':specialist?'specialist':'inbox';
@@ -246,6 +313,10 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
  if(reconciliationAlert){
   if(!recovery)throw Error('Unsupported reconciliation alert deployment');
   accepted=fingerprints.reconciliationAlert;
+ }
+ if(hostedRefunds){
+  if(!reconciliationAlert)throw Error('Unsupported hosted refund deployment');
+  accepted=fingerprints.hostedRefunds;
  }
  if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
  if(cancellations)await assertCheckoutCancellationAccess(tx);

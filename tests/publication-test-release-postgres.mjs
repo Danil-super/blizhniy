@@ -18,6 +18,7 @@ import {readAccountExport} from '../scripts/export-local-account-data.mjs';
 import {inspectAccountDeletionCase} from '../src/lib/account-deletion-preflight.ts';
 import {listingViewDigest} from '../src/lib/listing-view-history.ts';
 import {testAdminPaymentJournal} from './admin-payment-journal-integration.mjs';
+import {getHostedRefundMigrationPlan,getHostedRefundMigrationSql} from '../scripts/publication-test-release-plan.mjs';
 import pg from 'pg';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
@@ -416,6 +417,58 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     try{assert.equal(await verify(restored,database),true);}finally{await restored.close();}
    });
    if(inbox){await testAdminPaymentJournal(suite,{admin,config,load,full:false});assert.equal(await check(),true);}
+   if(inbox)await suite.test('the hosted refund package is atomic, preserves cancellation and is admitted by the packaged reconciler',async()=>{
+    const verify=(connection=workerDb,database=config.database)=>copiedGuard.verifyPaymentReconciliationDatabase(connection,{
+     database,publicationTest:true,specialistAccountTest:true,
+    });
+    const definitions=async()=>(await admin.query(`select pg_get_functiondef('app.guard_checkout_cancellation()'::regprocedure) as guard,
+     pg_get_constraintdef(oid) as kinds from pg_constraint where conrelid='app.payment_checkout_cancellations'::regclass
+      and conname='payment_checkout_cancellations_target_type_check'`)).rows[0];
+    const before=await definitions(),sql=getHostedRefundMigrationSql(),plan=getHostedRefundMigrationPlan();
+    const apply=async(text)=>{
+     const client=await admin.connect();
+     try{return await client.query(text);}
+     catch(error){await client.query('rollback');throw error;}
+     finally{client.release();}
+    };
+    const journal=async()=>(await admin.query('select name,sha256 from blizhniy_meta.migrations order by name')).rows;
+    const initial=await journal(), altered=initial[0];
+    assert.equal(await verify(),true);
+    await admin.query('update blizhniy_meta.migrations set sha256=repeat(\'0\',64) where name=$1',[altered.name]);
+    try{await assert.rejects(apply(sql),{code:'55000'});}
+    finally{await admin.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[altered.name,altered.sha256]);}
+    await assert.rejects(apply(sql.replace(/\ncommit;\n$/,"\nselect 1/0;\ncommit;\n")),{code:'22012'});
+    assert.deepEqual(await journal(),initial);
+    assert.deepEqual(await definitions(),before);
+    assert.equal((await admin.query("select to_regclass('app.payment_refund_reservations') as refunds")).rows[0].refunds,null);
+    assert.equal(await verify(),true);
+    await apply(sql);
+    assert.deepEqual(await definitions(),before);
+    assert.deepEqual(await journal(),[...initial,...plan.map(({name,sha256})=>({name,sha256}))].sort((a,b)=>a.name.localeCompare(b.name,'en')));
+    await assert.rejects(apply(sql),{code:'55000'});
+    assert.equal(await verify(),true);
+    const candidate=join(artifact,'database/candidates/0075-hosted-refund-compatibility.sql'),bytes=await readFile(candidate);
+    await writeFile(candidate,Buffer.concat([bytes,Buffer.from('\n-- changed bytes\n')]));
+    try{await assert.rejects(verify());}finally{await writeFile(candidate,bytes);}
+    for(const [change,restore] of [
+     ['grant select(payment_intent_id) on app.payment_refund_reservations to blizhniy_payment_reconciler',
+      'revoke select(payment_intent_id) on app.payment_refund_reservations from blizhniy_payment_reconciler'],
+     ['alter table app.payment_refund_reservations disable trigger placement_refund_reservation_guard',
+      'alter table app.payment_refund_reservations enable trigger placement_refund_reservation_guard'],
+    ]){
+     await admin.query(change);try{await assert.rejects(verify());}finally{await admin.query(restore);}
+     assert.equal(await verify(),true);
+    }
+    const database='hosted_refunds_restored';
+    await admin.query('create database hosted_refunds_restored template template0');
+    await admin.query('revoke all on database hosted_refunds_restored from public;grant connect on database hosted_refunds_restored to blizhniy_payment_reconciler,blizhniy_reconciliation_operator,blizhniy_reconciliation_monitor');
+    await docker(['exec',container,'bash','-euo','pipefail','-c',
+     'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+     'restore-fixture',config.database,database]);
+    const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+    try{assert.equal(await verify(restored,database),true);}finally{await restored.close();}
+    assert.equal(await verify(),true);
+   });
    return;
   }
   await admin.query("insert into app.regions(slug,name) values('krasnodarskiy-kray','Краснодарский край');insert into app.cities(region_id,slug,name) select id,'krasnodar','Краснодар' from app.regions;insert into app.categories(slug,name) values('otdyh','Хобби и отдых');insert into app.specialist_categories(slug,name,parent_name) values('plumber','Сантехник','Строительство');insert into app.tariffs(id,action,name,price,duration_days) values('listing-publication','listing_publication','Объявление',199,30),('vacancy-publication','vacancy_publication','Вакансия',199,30),('work-request-publication','work_request_publication','Заказ',199,30)");
