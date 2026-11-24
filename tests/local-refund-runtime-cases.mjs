@@ -7,26 +7,30 @@ import {tmpdir} from 'node:os';
 import {pathToFileURL} from 'node:url';
 import {promisify} from 'node:util';
 
+export async function enableRefundFixtureTls(admin,{docker,container},ca,key){
+ await promisify(execFile)('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=local-refund-test',
+  '-addext','subjectAltName=IP:127.0.0.1','-addext','basicConstraints=critical,CA:TRUE','-keyout',key,'-out',ca],{timeout:10000});
+ await chmod(ca,0o644);
+ for(const [source,name]of [[ca,'server.crt'],[key,'server.key']]){
+  await docker(['cp',source,`${container}:/tmp/refund-${name}`]);
+  await docker(['exec','--user','0',container,'cp','/tmp/refund-'+name,'/var/lib/postgresql/refund-'+name]);
+ }
+ await docker(['exec','--user','0',container,'chown','postgres:postgres','/var/lib/postgresql/refund-server.key']);
+ await docker(['exec','--user','0',container,'chmod','600','/var/lib/postgresql/refund-server.key']);
+ await admin.query("alter system set ssl_cert_file='/var/lib/postgresql/refund-server.crt'");
+ await admin.query("alter system set ssl_key_file='/var/lib/postgresql/refund-server.key'");
+ await admin.query("alter system set ssl='on'");await admin.query('select pg_reload_conf()');
+}
+
 // Only the parent fixture's inspected, labelled disposable container reaches this helper.
 export async function testLocalRefundRuntime(suite,{admin,config,ownerDb,purchase,load,operator,merchant,provider,artifact,tls}){
  assert.equal(config.host,'127.0.0.1');assert.equal(config.database,'blizhniy_test');
  const owned=await mkdtemp(join(tmpdir(),'blizhniy-refund-runtime-tls-')),ca=join(owned,'server.crt'),key=join(owned,'server.key');
  const {createLocalRefundWorkerRuntime}=await import(pathToFileURL(join(artifact,'scripts/local-refund-worker-runtime.mjs')).href);
  const {runRefundWorkerService}=await import(pathToFileURL(join(artifact,'scripts/refund-worker-service.mjs')).href);
- const run=promisify(execFile);let runtime;
+ let runtime;
  try{
-  await run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=local-refund-test',
-   '-addext','subjectAltName=IP:127.0.0.1','-addext','basicConstraints=critical,CA:TRUE','-keyout',key,'-out',ca],{timeout:10000});
-  await chmod(ca,0o644);
-  for(const [source,name]of [[ca,'server.crt'],[key,'server.key']]){
-   await tls.docker(['cp',source,`${tls.container}:/tmp/refund-${name}`]);
-   await tls.docker(['exec','--user','0',tls.container,'cp','/tmp/refund-'+name,'/var/lib/postgresql/refund-'+name]);
-  }
-  await tls.docker(['exec','--user','0',tls.container,'chown','postgres:postgres','/var/lib/postgresql/refund-server.key']);
-  await tls.docker(['exec','--user','0',tls.container,'chmod','600','/var/lib/postgresql/refund-server.key']);
-  await admin.query("alter system set ssl_cert_file='/var/lib/postgresql/refund-server.crt'");
-  await admin.query("alter system set ssl_key_file='/var/lib/postgresql/refund-server.key'");
-  await admin.query("alter system set ssl='on'");await admin.query('select pg_reload_conf()');
+  await enableRefundFixtureTls(admin,tls,ca,key);
   const deadline=Date.now()+5000;
   while((await admin.query("select current_setting('ssl') as ssl")).rows[0].ssl!=='on'){
    assert.ok(Date.now()<deadline);await new Promise(r=>setTimeout(r,20));

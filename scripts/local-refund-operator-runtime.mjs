@@ -29,7 +29,8 @@ async function createRuntime(environment,options,database,certificate){
  try{
   const {loadModules=loadCompiledModules,fetcher=globalThis.fetch}=options;
   const env={...environment};
-  if(typeof window!=='undefined'||env.NODE_ENV!=='production'||env.BLIZHNIY_REFUND_OPERATOR!=='local-test'||env.BLIZHNIY_PAYMENT_MODE!=='test'||
+  const hostedRefunds=env.BLIZHNIY_REFUND_OPERATOR==='hosted-schema-local-test'&&database==='blizhniy_test'&&certificate===undefined;
+  if(typeof window!=='undefined'||env.NODE_ENV!=='production'||(env.BLIZHNIY_REFUND_OPERATOR!=='local-test'&&!hostedRefunds)||env.BLIZHNIY_PAYMENT_MODE!=='test'||
    env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!==database||env.BLIZHNIY_DB_USER!=='blizhniy_refund_operator'||
    !/^\d{1,5}$/.test(env.BLIZHNIY_DB_PORT??'')||Number(env.BLIZHNIY_DB_PORT)<1||Number(env.BLIZHNIY_DB_PORT)>65535||!env.BLIZHNIY_DB_PASSWORD||
    env.BLIZHNIY_DB_SSL_MODE!=='verify-full'||!env.BLIZHNIY_DB_CA_FILE||!isAbsolute(env.BLIZHNIY_DB_CA_FILE)||
@@ -42,7 +43,9 @@ async function createRuntime(environment,options,database,certificate){
   const readOnlyFetch=(url,init)=>{if(closed||init?.method!=='GET')throw unavailable();init.signal?.throwIfAborted();return fetcher(url,init);};
   const config=modules.readPostgresConfig(env);if(certificate!==undefined)assertLocalPrimaryRefundTrust(config,certificate);pool=new modules.Pool({...config,max:2,application_name:'blizhniy-local-refund-operator'});db=new modules.PostgresDatabase(pool);
   const journal=new modules.PostgresAdminRefundJournal(db,merchant),approvals=new modules.PostgresRefundApprovalStore(db,merchant),recovery=modules.createPrimaryRefundRecovery(db,merchant,readOnlyFetch);
-  const verify=()=>modules.verifyRefundOperatorDatabase(db,{database:config.database,merchant,...(certificate!==undefined?{localPrimary:true}:{})}),probe=modules.createRefundMerchantPreflight(merchant,readOnlyFetch);
+  const verify=()=>modules.verifyRefundOperatorDatabase(db,{database:config.database,merchant,
+   ...(hostedRefunds?{hostedRefunds:true}:certificate!==undefined?{localPrimary:true}:{})});
+  const probe=modules.createRefundMerchantPreflight(merchant,readOnlyFetch);
   async function admitMerchant(){await probe();if(closed)throw unavailable();await verify();if(closed)throw unavailable();}
   function execute(work,merchantAdmission=false){
    if(closed||active)return Promise.reject(unavailable());

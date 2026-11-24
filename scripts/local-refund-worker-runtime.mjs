@@ -28,7 +28,8 @@ async function createRuntime(environment,options,database,certificate){
  try{
   const {loadModules=loadCompiledModules,fetcher=globalThis.fetch}=options;
   const env={...environment};
-  if(typeof window!=='undefined'||env.NODE_ENV!=='production'||env.BLIZHNIY_REFUND_WORKER!=='local-test'||env.BLIZHNIY_PAYMENT_MODE!=='test'||
+  const hostedRefunds=env.BLIZHNIY_REFUND_WORKER==='hosted-schema-local-test'&&database==='blizhniy_test'&&certificate===undefined;
+  if(typeof window!=='undefined'||env.NODE_ENV!=='production'||(env.BLIZHNIY_REFUND_WORKER!=='local-test'&&!hostedRefunds)||env.BLIZHNIY_PAYMENT_MODE!=='test'||
    env.BLIZHNIY_DB_HOST!=='127.0.0.1'||env.BLIZHNIY_DB_NAME!==database||env.BLIZHNIY_DB_USER!=='blizhniy_refund_worker'||
    !/^\d{1,5}$/.test(env.BLIZHNIY_DB_PORT??'')||Number(env.BLIZHNIY_DB_PORT)<1||Number(env.BLIZHNIY_DB_PORT)>65535||!env.BLIZHNIY_DB_PASSWORD||
    env.BLIZHNIY_DB_SSL_MODE!=='verify-full'||!env.BLIZHNIY_DB_CA_FILE||!isAbsolute(env.BLIZHNIY_DB_CA_FILE)||
@@ -41,7 +42,9 @@ async function createRuntime(environment,options,database,certificate){
   if(certificate!==undefined)assertLocalPrimaryRefundTrust(config,certificate);
   pool=new modules.Pool({...config,max:2,application_name:'blizhniy-local-refund-worker'});db=new modules.PostgresDatabase(pool);
   const placement=modules.createPlacementRefundWorker(db,merchant,fetcher),application=modules.createApplicationCompensationWorker(db,merchant,fetcher);
-  const verify=()=>modules.verifyRefundWorkerDatabase(db,{database:config.database,merchant,...(certificate!==undefined?{localPrimary:true}:{})}),probe=modules.createRefundMerchantPreflight(merchant,fetcher);
+  const verify=()=>modules.verifyRefundWorkerDatabase(db,{database:config.database,merchant,
+   ...(hostedRefunds?{hostedRefunds:true}:certificate!==undefined?{localPrimary:true}:{})});
+  const probe=modules.createRefundMerchantPreflight(merchant,fetcher);
   let admitted=false,closed=false,active,closing;
   function exclusive(task,admission=false){
    if(closed||active||(!admission&&!admitted))return Promise.reject(Error('Local refund runtime unavailable'));

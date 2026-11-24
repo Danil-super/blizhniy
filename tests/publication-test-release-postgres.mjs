@@ -21,6 +21,7 @@ import {testAdminPaymentJournal} from './admin-payment-journal-integration.mjs';
 import {getHostedRefundMigrationPlan,getHostedRefundMigrationSql} from '../scripts/publication-test-release-plan.mjs';
 import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
 import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
+import {testHostedRefundWorkflow} from './hosted-refund-workflow-cases.mjs';
 import pg from 'pg';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
@@ -471,7 +472,7 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     try{assert.equal(await verify(restored,database),true);}finally{await restored.close();}
     assert.equal(await verify(),true);
    });
-   if(inbox)await suite.test('separate hosted TEST refund artifacts admit only their own restricted database roles',async()=>{
+   if(inbox)await suite.test('separate hosted TEST refund artifacts admit only their own restricted database roles',async t=>{
     const PostgresDatabase=load('postgres').PostgresDatabase;
     const entries=[
      {kind:'operator',build:buildRefundOperator,plan:'getRefundOperatorRolePlan',verify:'verifyRefundOperatorDatabase'},
@@ -487,6 +488,8 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
       await admin.query(plan.createRole);
       await admin.query('alter role '+plan.role+' login password '+pg.escapeLiteral(password));
       for(const grant of plan.grants)await admin.query(grant);
+      await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(destination,'node_modules'),'dir');
+      Object.assign(entry,{destination,role:plan.role,password});
       entry.db=new PostgresDatabase(new pg.Pool({...config,user:plan.role,password,max:2}));
       const options={database:config.database,merchant:{shopId:'hosted-refund-fixture',isTest:true}};
       entry.admit=connection=>api[entry.verify](connection,{...options,hostedRefunds:true});
@@ -505,6 +508,8 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
      finally{await admin.query('revoke insert(operation_id) on app.payment_refund_dispatch_anchors from blizhniy_refund_operator');}
      await operator.admit(operator.db);
      assert.equal(await check(),true);
+     await t.test('real TLS roles approve and recover one original refund over IPC after both lost responses',
+      ()=>testHostedRefundWorkflow({admin,config,load,operator,worker,docker,container,directory:artifactDirectory}));
     }finally{for(const entry of entries)await entry.db?.close();}
    });
    return;
