@@ -15,7 +15,7 @@ export class PostgresAdminOverviewStore {
       const {rows: [row]} = await tx.query<Record<string, string>>(`select
         (select count(*) from app.users)::text as users_total,
         (select count(*) from app.users where is_blocked)::text as users_blocked,
-        ((select count(*) from app.listings)+(select count(*) from app.work_publications where deleted_at is null)
+        ((select count(*) from app.listings where status<>'removed')+(select count(*) from app.work_publications where deleted_at is null)
           +(select count(*) from app.service_publications where kind<>'marquee' and deleted_at is null))::text as publications_total,
         (${this.options.postmoderation===true?'0':`(select count(*) from app.listings l join app.listing_moderation m on m.listing_id=l.id and m.revision=l.revision
             join app.users u on u.id=l.author_id where m.state='pending' and l.status='draft' and not u.is_blocked and u.email_verified_at is not null)`}

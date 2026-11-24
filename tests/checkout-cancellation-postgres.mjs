@@ -1,6 +1,7 @@
 // Owned disposable PostgreSQL only; synthetic identities and fake provider HTTP.
 import assert from 'node:assert/strict';import {test} from 'node:test';import {execFile} from 'node:child_process';import {promisify} from 'node:util';
 import {readFile,readdir} from 'node:fs/promises';import {randomBytes,randomUUID} from 'node:crypto';import {createRequire} from 'node:module';import pg from 'pg';
+import {testUnpaidDraftRemoval} from './unpaid-draft-removal-integration.mjs';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,run=promisify(execFile);
 const image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873',name='blizhniy-checkout-cancel-'+randomBytes(8).toString('hex'),password=randomBytes(24).toString('hex');
 const docker=async args=>(await run('docker',['--host','unix:///var/run/docker.sock',...args],{env:{PATH:process.env.PATH,LANG:'C.UTF-8',POSTGRES_PASSWORD:password},timeout:20000,maxBuffer:1024*1024})).stdout.trim();
@@ -23,8 +24,8 @@ test('local checkout cancellation serializes with dispatch and preserves immutab
    await admin.query('insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())',[id,id+'@cancel.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
    await admin.query("insert into app.sessions(token_hash,user_id,scope,auth_version,expires_at) values($1,$2,'app',0,clock_timestamp()+interval '1 hour')",[hash,id]);return{id,token,hash};}
   const owner=await actor(),other=await actor(),intents=new PostgresPaymentIntentStore(ownerDb);
-  async function purchase({actor=owner,targetType='listing',shopId='local-fixture-shop',isTest=true}={}){
-   const binding={id:randomUUID(),ownerId:actor.id,targetType,targetId:randomUUID(),targetRevision:'1',tariffId:'local-checkout',amount:'199.00',durationDays:targetType==='application'?null:30,shopId,isTest};
+ async function purchase({actor=owner,targetType='listing',targetId=randomUUID(),shopId='local-fixture-shop',isTest=true}={}){
+   const binding={id:randomUUID(),ownerId:actor.id,targetType,targetId,targetRevision:'1',tariffId:'local-checkout',amount:'199.00',durationDays:targetType==='application'?null:30,shopId,isTest};
    const requestBody=JSON.stringify({amount:{value:binding.amount,currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:'https://fixture.example.invalid/return'},metadata:{localPaymentId:binding.id,targetId:binding.targetId,targetType,tariffId:binding.tariffId}});
    await ownerDb.transaction(async tx=>{await intents.persistInTransaction(tx,{...binding,requestBody});await tx.query('insert into app.payment_orders(id,owner_id,creation_key,target_type,target_id,target_revision) values($1,$2,$3,$4,$5,1)',[binding.id,actor.id,randomUUID(),targetType,binding.targetId]);});return binding;
   }
@@ -172,5 +173,6 @@ test('local checkout cancellation serializes with dispatch and preserves immutab
     await assert.rejects(new PostgresPaymentIntentStore(sparse).authorize({id:payment,ownerId:identity,targetType:'listing',targetId:target,targetRevision:'1',tariffId:'local-checkout',amount:'199.00',durationDays:30,shopId:'local-fixture-shop',isTest:true}),{code:'PCA02'});
    }finally{await sparse.close();}
   });
+  await testUnpaidDraftRemoval(suite,{admin,config,owner,other,purchase,intents,cancel,load});
  }finally{await db?.close();await ownerDb?.close();await admin?.end();if(container){const meta=JSON.parse(await docker(['inspect',container]))[0];assert.equal(meta.Id,container);assert.equal(meta.Config.Labels['blizhniy.checkout-cancel'],name);await docker(['rm','--force','--volumes',container]);}}
 });

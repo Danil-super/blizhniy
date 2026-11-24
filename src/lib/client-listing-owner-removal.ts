@@ -1,13 +1,15 @@
 "use client";
-import {parseListingOwnerRemovalRequest,parseListingOwnerRemovalResult,type ListingOwnerRemovalResult} from './listing-owner-removal-contract.ts';
-const codes={UNAUTHENTICATED:401,INVALID_INPUT:422,RATE_LIMITED:429,DRAFT_NOT_FOUND:404,DRAFT_CHANGED:409} as const;
+import {parseListingOwnerRemovalRequest,parseListingOwnerRemovalResult,type DraftRemovalTarget,type ListingOwnerRemovalResult} from './listing-owner-removal-contract.ts';
+const codes={UNAUTHENTICATED:401,INVALID_INPUT:422,RATE_LIMITED:429,DRAFT_NOT_FOUND:404,DRAFT_CHANGED:409,CHECKOUT_ACTIVE:409} as const;
+type Options={signal?:AbortSignal;target?:DraftRemovalTarget};
 export class ListingOwnerRemovalClientError extends Error{
  constructor(readonly code:keyof typeof codes|'UNKNOWN'){super('Не удалось подтвердить удаление объявления.');this.name='ListingOwnerRemovalClientError';}
 }
 export function createListingOwnerRemovalClient(transport:typeof fetch){
- async function call(action:'read'|'remove',owner:string,id:string,revision:string,options:{signal?:AbortSignal}={}):Promise<ListingOwnerRemovalResult>{
+ async function call(action:'read'|'remove',owner:string,id:string,revision:string,options:Options={}):Promise<ListingOwnerRemovalResult>{
   try{
-   const body=parseListingOwnerRemovalRequest({action,expectedOwnerId:owner,listingId:id,expectedRevision:revision});
+   const body=parseListingOwnerRemovalRequest({action,expectedOwnerId:owner,listingId:id,expectedRevision:revision,
+    ...(options.target===undefined?{}:{target:options.target})});
    const timeout=AbortSignal.timeout(10000),signal=options.signal?AbortSignal.any([options.signal,timeout]):timeout;
    signal.throwIfAborted();
    const response=await transport('/api/account/listing-removal',{method:'POST',credentials:'same-origin',redirect:'error',cache:'no-store',signal,
@@ -21,7 +23,7 @@ export function createListingOwnerRemovalClient(transport:typeof fetch){
    if(action==='remove'&&!result.removed)throw Error();return result;
   }catch(error){if(error instanceof ListingOwnerRemovalClientError)throw error;throw new ListingOwnerRemovalClientError('UNKNOWN');}
  }
- return{read:(owner:string,id:string,revision:string,options?:{signal?:AbortSignal})=>call('read',owner,id,revision,options),
-  remove:(owner:string,id:string,revision:string,options?:{signal?:AbortSignal})=>call('remove',owner,id,revision,options)};
+ return{read:(owner:string,id:string,revision:string,options?:Options)=>call('read',owner,id,revision,options),
+  remove:(owner:string,id:string,revision:string,options?:Options)=>call('remove',owner,id,revision,options)};
 }
 export const listingOwnerRemoval=createListingOwnerRemovalClient((...args)=>fetch(...args));

@@ -15,3 +15,7 @@ export function readPostmoderationEnabled(env:NodeJS.ProcessEnv=process.env):boo
  if(Number(parsed.port)<1024||Number(parsed.port)>65535||parsed.origin!==origin)throw Error('Invalid local primary origin');
  return true;
 }
+
+export function readDraftRemovalsEnabled(env:NodeJS.ProcessEnv=process.env):boolean{
+ return env.BLIZHNIY_AUTH_MODE==='postgres'&&env.BLIZHNIY_DRAFT_REMOVALS==='enabled';
+}

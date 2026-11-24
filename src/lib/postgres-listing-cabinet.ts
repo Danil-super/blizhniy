@@ -25,7 +25,7 @@ export class PostgresListingCabinetStore{
     to_char(l.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "updatedAt"
     from app.listings l left join app.cities city on city.id=l.city_id
     ${this.postmoderation?'left join app.listing_blocks block on block.listing_id=l.id':''}
-    where l.author_id=$1 ${this.postmoderation?'and not exists(select 1 from app.listing_owner_removals removed where removed.listing_id=l.id)':''} ${cursor?'and (l.updated_at,l.id)<($2::timestamptz,$3::uuid)':''}
+    where l.author_id=$1 and l.status<>'removed' ${this.postmoderation?'and not exists(select 1 from app.listing_owner_removals removed where removed.listing_id=l.id)':''} ${cursor?'and (l.updated_at,l.id)<($2::timestamptz,$3::uuid)':''}
     order by l.updated_at desc,l.id desc limit 21`,cursor?[user.id,cursor.updatedAt,cursor.id]:[user.id])).rows;
    const page=rows.slice(0,20),last=page.at(-1);
    return parseListingCabinetPage({items:page.map(row=>({id:row.id,revision:row.revision,kind:row.kind,title:row.title,price:row.price,card:{city:row.city,district:row.district,coverPhotoId:row.coverPhotoId,status:row.status,blockReason:row.blockReason}})),nextCursor:rows.length>20&&last?{id:last.id,updatedAt:last.updatedAt}:null,workflow:this.postmoderation?'postmoderation':'pre-moderation'});

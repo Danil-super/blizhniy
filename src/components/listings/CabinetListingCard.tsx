@@ -11,7 +11,7 @@ import type {ListingCabinetSummary} from '@/lib/listing-cabinet-contract';
 import {ListingKindBadge, StatusBadge} from './ListingBadges';
 import {ListingOwnerVisibilityButton} from './ListingOwnerVisibilityButton';
 import {ListingOwnerRemoveButton} from './ListingOwnerRemoveButton';
-import {usePlacementRenewals} from './ListingWorkflowProvider';
+import {useDraftRemovals,usePlacementRenewals} from './ListingWorkflowProvider';
 
 const action = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-blue-800 transition hover:border-blue-300 hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700';
 const readThumbnail = createListingThumbnailQueue(productionListingMedia.read);
@@ -46,7 +46,7 @@ function CabinetThumbnail({owner, photoId, title}: {owner: string; photoId: stri
 export function CabinetListingCard({owner, item, open, onToggle, children,managePublication=false,onChanged=()=>{}}: {
   owner: string; item: ListingCabinetSummary; open: boolean; onToggle: () => void; children: ReactNode;managePublication?:boolean;onChanged?:()=>void;
 }) {
-  const renewals=usePlacementRenewals();
+  const renewals=usePlacementRenewals(),draftRemovals=useDraftRemovals();
   const dialog=useRef<HTMLDialogElement>(null);
   const opener=useRef<HTMLButtonElement>(null);
   const close=()=>{dialog.current?.close();onToggle();opener.current?.focus({preventScroll:true});};
@@ -79,6 +79,7 @@ export function CabinetListingCard({owner, item, open, onToggle, children,manage
     </p>:<p className="mt-2 min-h-10 text-xs leading-5 text-slate-500">{item.card.status==='published'?'Объявление доступно в каталоге.':item.card.status==='archived'?'Снято с публикации. Срок размещения продолжает идти.':item.card.status==='pending_payment'?'Продолжите оплату, чтобы разместить объявление.':item.card.status==='draft'?'Черновик сохранён. Можно продолжить заполнение.':item.card.status==='paid'?'Оплата подтверждена. Объявление не опубликовано.':'Объявление не показывается в каталоге.'}</p>}
     <div className="mt-auto flex flex-wrap gap-2 pt-3">
       {!managePublication&&editable && <Link href={`/razmestit/obyavlenie?draft=${item.id}`} className={action}>Редактировать</Link>}
+      {!managePublication&&editable&&draftRemovals&&<ListingOwnerRemoveButton owner={owner} id={item.id} revision={item.revision} target="listing" onChanged={onChanged}/>}
       {!managePublication&&item.card.status === 'published' && <Link href={`/obyavlenie/${item.id}`} className={action}>Посмотреть</Link>}
       {['draft','pending_payment','paid'].includes(item.card.status)&&<button ref={opener} type="button" className={action} aria-haspopup="dialog" aria-expanded={open} aria-controls={detailsId} onClick={onToggle}>Статус и оплата</button>}
       {managePublication&&<details data-listing-actions name={`listing-actions-${owner}`} className="relative min-w-0 flex-1"><summary className={`${action} w-full cursor-pointer list-none`}>Действия</summary>
@@ -88,6 +89,7 @@ export function CabinetListingCard({owner, item, open, onToggle, children,manage
         {renewals&&['published','expired'].includes(item.card.status)&&<Link href={`/cabinet/prodlit?type=listing&id=${item.id}&revision=${item.revision}`} className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-blue-800 hover:bg-blue-50">Продлить размещение</Link>}
         {['published','archived'].includes(item.card.status)&&<ListingOwnerVisibilityButton owner={owner} id={item.id} revision={item.revision} restore={item.card.status==='archived'} onChanged={onChanged}/>}
         {item.card.status==='blocked'&&<ListingOwnerRemoveButton owner={owner} id={item.id} revision={item.revision} onChanged={onChanged}/>}
+        {editable&&draftRemovals&&<ListingOwnerRemoveButton owner={owner} id={item.id} revision={item.revision} target="listing" onChanged={onChanged}/>}
         {!['draft','published','archived','blocked'].includes(item.card.status)&&<p className="px-3 py-2 text-sm text-slate-600">Статус объявления указан в карточке.</p>}
        </div>
       </details>}

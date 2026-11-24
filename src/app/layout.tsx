@@ -12,7 +12,7 @@ import { BookingLegacyStorageCleanup } from "@/components/BookingLegacyStorageCl
 import { getPublicSiteUrl } from "@/lib/site-url";
 import { getTurnstileSiteKey } from "@/lib/turnstile-public-config";
 import { getPublicRuntimeSetting } from "@/lib/public-runtime-config";
-import {readPostmoderationEnabled} from '@/lib/listing-workflow-config';
+import {readDraftRemovalsEnabled,readPostmoderationEnabled} from '@/lib/listing-workflow-config';
 import {ListingWorkflowProvider} from '@/components/listings/ListingWorkflowProvider';
 import {readTelegramPhoneConfig} from '@/lib/telegram-phone-config';
 import {PhonePlacementProvider} from '@/components/phone/PhonePlacementProvider';
@@ -62,7 +62,7 @@ export default async function RootLayout({
       </head>
       <body className="antialiased">
         <AccountAuthProvider backend={backend}>
-        <ListingWorkflowProvider postmoderation={postmoderation} localSimulation={postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'} workOwnerActions={readWorkOwnerActionsEnabled()} renewals={readPlacementRenewalsEnabled()} serviceCheckout={readServiceCheckoutEnabled()} specialistCheckout={readSpecialistCheckoutEnabled()}>
+        <ListingWorkflowProvider postmoderation={postmoderation} localSimulation={postmoderation&&process.env.BLIZHNIY_LOCAL_PRIMARY==='enabled'} workOwnerActions={readWorkOwnerActionsEnabled()} renewals={readPlacementRenewalsEnabled()} serviceCheckout={readServiceCheckoutEnabled()} specialistCheckout={readSpecialistCheckoutEnabled()} draftRemovals={readDraftRemovalsEnabled()}>
         <AccountCaptchaProvider expiresAt={proofExpiry}>
         <PhonePlacementProvider>
         <BookingLegacyStorageCleanup />

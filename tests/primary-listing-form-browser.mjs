@@ -27,7 +27,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   const origin=`http://127.0.0.1:${port}`,owner='12345678-1234-4321-8765-123456789abc',id='22345678-1234-4321-8765-123456789abc';
   const fixture=join(directory,'draft.json');await writeFile(fixture,JSON.stringify({owner,active:owner,snapshot:null}),{mode:0o600});
   const env={PATH:process.env.PATH,LANG:'C.UTF-8',NODE_ENV:'production',__NEXT_PROCESSED_ENV:'true',NEXT_TELEMETRY_DISABLED:'1',BLIZHNIY_AUTH_MODE:'postgres',
-   BLIZHNIY_LISTING_CHECKOUT:'prepare-only',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_PAYMENT_SHOP_ID:'fixture',BLIZHNIY_PAYMENT_RECEIPT_VAT:'none',
+   BLIZHNIY_LISTING_CHECKOUT:'prepare-only',BLIZHNIY_PAYMENT_MODE:'test',BLIZHNIY_PAYMENT_SHOP_ID:'fixture',BLIZHNIY_PAYMENT_RECEIPT_VAT:'none',BLIZHNIY_DRAFT_REMOVALS:'enabled',
    BLIZHNIY_AUTH_ORIGIN:'https://xn----9sbphbgks4a4a.xn--p1ai',BLIZHNIY_LISTING_PAYMENT:'account-test',BLIZHNIY_LISTING_CONTACT_METHOD:'enabled',BLIZHNIY_BROWSER_DRAFT_FIXTURE:fixture,BLIZHNIY_DB_HOST:'17e86f80f26733d39ef4b84d.twc1.net',BLIZHNIY_DB_PORT:'5432',BLIZHNIY_DB_NAME:'blizhniy_prod',BLIZHNIY_DB_USER:'blizhniy_runtime',
    BLIZHNIY_DB_PASSWORD:'synthetic-ui-db-password',BLIZHNIY_DB_SSL_MODE:'verify-full',BLIZHNIY_DB_CA_FILE:ca,BLIZHNIY_AUTH_MAIL_KEY_FILE:key,BLIZHNIY_AUTH_RATE_SECRET:'synthetic-ui-only-rate-secret-not-used-by-api',
    BLIZHNIY_MAIL_MODE:'timeweb',BLIZHNIY_SMTP_USER:'notifications@ближний-ру.рф',BLIZHNIY_SMTP_PASSWORD:'synthetic-ui-smtp-password',TURNSTILE_SECRET_KEY:'synthetic-ui-captcha-secret',NEXT_PUBLIC_TURNSTILE_SITE_KEY:''};
@@ -40,6 +40,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   page.setDefaultTimeout(12000);page.on('pageerror',()=>errors.push('pageerror'));let saved=null,lose=false,sessionGate=null,active=owner,creates=0,rejectWrite=false;
   const persist=()=>writeFile(fixture,JSON.stringify({owner,active,snapshot:saved}),{mode:0o600});
   let moderation={id:null,revision:null,state:'not_submitted',note:null},loseSubmission=false,submissions=0;
+  const removalCalls=[];let removedRevision=null;
   const pixels=await sharp({create:{width:80,height:40,channels:3,background:'red'}}).png().toBuffer();
   const webPixels=await sharp(pixels).webp().toBuffer();
   await context.route('**/*',async route=>{
@@ -55,6 +56,12 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
    if(url.pathname==='/api/account/profile'){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');return route.fulfill({json:{exists:false,profile:createDefaultCabinetProfile({name:'Технический',email:'fixture@example.invalid'}),revision:null}});}
    if(active!==owner){assert.equal(request.postDataJSON().expectedOwnerId,active);assert.equal(request.method(),'POST');assert.ok(url.pathname.endsWith('/collection'));return route.fulfill({json:{items:[],nextCursor:null}});}
    const body=request.postDataJSON();assert.equal(body.expectedOwnerId,owner);
+   if(url.pathname==='/api/account/listing-removal'){
+    assert.equal(body.target,'listing');assert.equal(body.listingId,id);
+    removalCalls.push(body);
+    if(body.action==='remove'){removedRevision=saved.revision;saved=null;await persist();return route.abort('connectionreset');}
+    return route.fulfill({json:{id,revision:removedRevision,removed:true}});
+   }
    if(url.pathname==='/api/account/listing-moderation'){
     assert.deepEqual(Object.keys(body).sort(),['expectedOwnerId','expectedRevision','listingId']);assert.equal(body.expectedRevision,saved.revision);
     if(request.method()==='PUT'){submissions++;moderation={id:'42345678-1234-4321-8765-123456789abc',revision:saved.revision,state:'pending',note:null};if(loseSubmission){loseSubmission=false;return route.abort();}}
@@ -355,6 +362,25 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
   moderation={...moderation,state:'approved'};
   await testAccountCheckoutBrowser({context,page,origin,owner,id,revision:saved.revision,title:saved.form.title});
+  await t.test('a lost removal response keeps the draft until readback, with no write retry',async()=>{
+   const editor=await context.newPage();
+   try{
+    const title=saved.form.title,revision=saved.revision;
+    await editor.goto(origin+'/cabinet/obyavleniya');
+    const remove=editor.getByRole('button',{name:'Удалить черновик',exact:true});
+    await answerLeave(editor,()=>remove.click());
+    assert.equal(removalCalls.length,0);
+    await answerLeave(editor,()=>remove.click(),{leave:true});
+    await editor.getByText('Результат пока неизвестен. Сначала проверьте удаление.',{exact:true}).waitFor();
+    assert.ok(await remove.isDisabled());
+    assert.ok(await editor.getByRole('link',{name:title,exact:true}).isVisible());
+    await editor.getByRole('button',{name:'Проверить удаление',exact:true}).click();
+    await editor.getByText('Вы ещё не создали объявлений.',{exact:true}).waitFor();
+    assert.deepEqual(removalCalls.map(call=>[call.action,call.expectedRevision]),[['remove',revision],['read',revision]]);
+    const staleUrl=await editor.goto(origin+`/razmestit/obyavlenie?draft=${id}`);
+    assert.equal(staleUrl.status(),404);
+   }finally{await editor.close();}
+  });
   assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
  }finally{await browser?.close();if(app&&app.exitCode===null){process.kill(-app.pid,'SIGTERM');await once(app,'exit');}await rm(directory,{recursive:true});}
 });

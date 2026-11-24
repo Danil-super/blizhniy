@@ -61,6 +61,7 @@ test('specialist tab routes to a single questionnaire while fair retains its ind
   '@/components/auth/AccountAuthProvider':{usePrimaryAccountAuth:()=>({state:'signed-in',userId:owner})},
   '@/lib/local-account':{notifyAccountSessionChange(){}},'@/lib/client-service-publications':{servicePublications:{}},
   '@/lib/service-publication-navigation':load('service-publication-navigation'),'@/components/listings/PrivateDraftEditor':{draftButton:'min-h-11'},
+  '@/components/listings/ListingWorkflowProvider':{useDraftRemovals:()=>false},'@/components/listings/ListingOwnerRemoveButton':{ListingOwnerRemoveButton:()=>null},
   './ServicePublicationForm':{serviceFormLabels:{specialist:'Анкета специалиста',fair:'Заявка на ярмарку',marquee:'Рекламный текст'}},
   './ServiceModerationStatus':{ServiceModerationStatus:()=>null},'./PrimaryServicePublicationEditor':{PrimaryServicePublicationEditor:()=>null},
   './SpecialistProfilePanel':{SpecialistProfilePanel:()=>React.createElement('div',{'data-single-questionnaire':true})},

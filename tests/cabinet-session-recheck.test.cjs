@@ -27,6 +27,8 @@ function fixture(code, paginated = false) {
     './PrivateListingCheckout': {PrivateListingCheckout: () => null},
     './PrivateDraftEditor': {draftButton: 'border'},
     './CabinetListingCard': {CabinetListingCard: ({item, open}) => React.createElement('article', {'data-open':open}, item.title)},
+    './ListingOwnerRemoveButton': {ListingOwnerRemoveButton: () => null},
+    './ListingWorkflowProvider': {useDraftRemovals: () => false},
   };
   const exports = {};
   new Function('require', 'exports', ts.transpileModule(readFileSync(new URL('../src/components/listings/ListingCabinetList.tsx', `file://${__filename}`), 'utf8'), {

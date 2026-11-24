@@ -18,15 +18,16 @@ function load(relative,{openService=false}={}){
  new Function('require','exports',code)(name=>{
   if(name==='react')return {...React,useEffect(){},useRef:value=>({current:value}),useState:value=>{
    const index=stateIndex++;
-   if(openService&&index===1)return [{items:[service],nextCursor:null},()=>{}];
-   if(openService&&index===2)return [service,()=>{}];
+   if(openService&&index===2)return [{items:[service],nextCursor:null},()=>{}];
+   if(openService&&index===3)return [service,()=>{}];
    return [typeof value==='function'?value():value,()=>{}];
   }};
   if(name.endsWith('/TwoRowCardViewport'))return require('./load-two-row-viewport.cjs')(require('react/jsx-runtime'));
   if(name==='next/link')return {__esModule:true,default:({children,...props})=>{delete props.prefetch;return React.createElement('a',props,children);}};
   if(name.endsWith('/AccountAuthProvider'))return {usePrimaryAccountAuth:()=>({state:'signed-in',userId:owner})};
   if(name.endsWith('/CookieCabinetProfileProvider'))return {CookieCabinetProfileProvider:({children})=>React.createElement('div',{'data-profile-provider':true},children)};
-  if(name.endsWith('/ListingWorkflowProvider'))return {useListingPostmoderation:()=>true,useLocalPaymentSimulation:()=>true,useWorkOwnerActions:()=>false};
+  if(name.endsWith('/ListingWorkflowProvider'))return {useListingPostmoderation:()=>true,useLocalPaymentSimulation:()=>true,useWorkOwnerActions:()=>false,useDraftRemovals:()=>false};
+  if(name.endsWith('/ListingOwnerRemoveButton'))return {ListingOwnerRemoveButton:()=>null};
   if(name==='./WorkOwnerActions')return {WorkOwnerActions:()=>null};
   if(name.endsWith('/PrivateDraftEditor'))return {draftButton:'button'};
   if(name.endsWith('/local-account'))return {notifyAccountSessionChange(){}};
