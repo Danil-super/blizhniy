@@ -275,6 +275,37 @@ test('new paid periods preserve historical purchases and undo only the latest ex
     assert.equal((await admin.query('select count(*)::int n from app.payment_refund_effects where payment_intent_id=$1',[original.id])).rows[0].n,1);
    }
   });
+  await suite.test('withdrawing a listing preserves its refund and a concurrent restore cannot reopen a refunded listing',async()=>{
+   const {PostgresListingOwnerActions}=load('postgres-listing-owner-actions');
+   const {PostgresPlacementRefundEffectStore}=load('postgres-placement-refund-effect');
+   for(const action of ['withdraw','restore']){
+    const f=await fixture(),original=await initial(f),oldReceipt=await receipt(original.id),before=await window(f);
+    const ownerAction=(connection,revision,kind)=>new PostgresListingOwnerActions(connection).change(f.token,f.owner,f.target,revision,kind);
+    if(action==='restore')assert.equal((await ownerAction(db,'1','withdraw')).revision,'2');
+    const operation=await refund(original,randomUUID(),{verifyOnly:true});
+    const apply=connection=>new PostgresPlacementRefundEffectStore(connection,merchant).apply(operation);
+    if(action==='withdraw'){
+     const withdrawn=await beforeCommit(connection=>ownerAction(connection,'1','withdraw'),async(pid,release)=>{
+      const applying=apply(db);applying.catch(()=>{});
+      try{await waitForBlocked(pid);release();assert.equal((await applying).effect,'revoked');}
+      finally{release();await applying.catch(()=>{});}
+     });
+     assert.deepEqual(withdrawn,{id:f.target,revision:'2',status:'archived'});
+    }else{
+     const refunded=await beforeCommit(apply,async(pid,release)=>{
+      const refused=assert.rejects(ownerAction(db,'2','restore'),{name:'ListingDraftAccessError'});refused.catch(()=>{});
+      try{await waitForBlocked(pid);release();await refused;}
+      finally{release();await refused.catch(()=>{});}
+     });
+     assert.equal(refunded.effect,'revoked');
+    }
+    assert.equal((await apply(db)).effect,'revoked');
+    assert.deepEqual(await window(f),{...before,status:'archived',is_paid:false});
+    assert.deepEqual(await receipt(original.id),oldReceipt);
+    assert.equal((await admin.query('select status from app.payment_orders where id=$1',[original.id])).rows[0].status,'refunded');
+    assert.equal((await admin.query('select count(*)::int n from app.payment_refund_effects where payment_intent_id=$1',[original.id])).rows[0].n,1);
+   }
+  });
   await suite.test('renewing an expired period starts at new availability and refund preserves the expired original receipt',async()=>{
    for(const kind of ['listing','vacancy','workRequest']){
     const f=await fixture(kind),a=await initial(f,{expired:true}),before=await window(f),old=await receipt(a.id),b=await buy(f),extra=await renew(b,a),current=await window(f);
