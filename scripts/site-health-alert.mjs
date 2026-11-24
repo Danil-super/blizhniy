@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFile, rename, writeFile } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as wait } from 'node:timers/promises';
 import { checkSiteHealth } from './check-site-health.mjs';
@@ -11,13 +11,17 @@ const reasons = {
 };
 const maxAttempts = 3;
 
-export async function deliverSiteAlert(result, { load, save, send }) {
+export function deliverSiteAlert(result, dependencies) {
+  return deliverOperationalAlert(result, dependencies, reasons);
+}
+
+export async function deliverOperationalAlert(result, { load, save, send }, incidentReasons) {
   const previous = await load();
   if (result === 'healthy') {
     if (previous) await save(null);
     return 'healthy';
   }
-  if (!Object.hasOwn(reasons, result)) throw new Error('Unexpected probe result');
+  if (!Object.hasOwn(incidentReasons, result)) throw new Error('Unexpected probe result');
   if (previous?.delivery === 'sending') return 'unknown';
   if (previous && previous.delivery !== 'retry') return previous.delivery;
 
@@ -40,6 +44,27 @@ export async function deliverSiteAlert(result, { load, save, send }) {
   return delivery;
 }
 
+export function alertStateFile(file, incidentReasons) {
+  return {
+    async load() {
+      let state;
+      try { state = JSON.parse(await readFile(file, 'utf8')); }
+      catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
+      if (state === null) return null;
+      if (!state || !Object.hasOwn(incidentReasons, state.result) || typeof state.id !== 'string' ||
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(state.id) || !Number.isInteger(state.attempts) || state.attempts < 1 ||
+        state.attempts > maxAttempts || !['sending', 'accepted', 'retry', 'blocked', 'unknown'].includes(state.delivery) ||
+        state.delivery === 'retry' && state.attempts >= maxAttempts) throw new Error('Invalid alert state');
+      return state;
+    },
+    async save(state) {
+      const temporary = join(dirname(file), randomUUID() + '.tmp');
+      await writeFile(temporary, JSON.stringify(state) + '\n', { flag: 'wx', mode: 0o600 });
+      await rename(temporary, file);
+    }
+  };
+}
+
 async function main() {
   const { createTimewebMailer, normalizeMailAddress } = await import('../src/lib/timeweb-mail.ts');
   const directory = process.env.STATE_DIRECTORY;
@@ -57,22 +82,7 @@ async function main() {
     result = await checkSiteHealth();
   }
   const delivery = await deliverSiteAlert(result, {
-    async load() {
-      let state;
-      try { state = JSON.parse(await readFile(file, 'utf8')); }
-      catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
-      if (state === null) return null;
-      if (!state || !Object.hasOwn(reasons, state.result) || typeof state.id !== 'string' ||
-        !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(state.id) || !Number.isInteger(state.attempts) || state.attempts < 1 ||
-        state.attempts > maxAttempts || !['sending', 'accepted', 'retry', 'blocked', 'unknown'].includes(state.delivery) ||
-        state.delivery === 'retry' && state.attempts >= maxAttempts) throw new Error('Invalid alert state');
-      return state;
-    },
-    async save(state) {
-      const temporary = join(directory, randomUUID() + '.tmp');
-      await writeFile(temporary, JSON.stringify(state) + '\n', { flag: 'wx', mode: 0o600 });
-      await rename(temporary, file);
-    },
+    ...alertStateFile(file, reasons),
     send(id, reason) {
       return mailer.send({
         id,

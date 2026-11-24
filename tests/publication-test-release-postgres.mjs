@@ -377,6 +377,43 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
     try{assert.equal(await verify(restored,database),true);}finally{await restored.close();}
    });
+   if(inbox)await suite.test('the packaged worker accepts the alert probe with a separate read-only monitor after restore',async()=>{
+    const verify=(connection=workerDb,database=config.database)=>copiedGuard.verifyPaymentReconciliationDatabase(connection,{
+     database,publicationTest:true,specialistAccountTest:true,
+    });
+    assert.equal(await verify(),true);
+    const name='0073-payment-reconciliation-alert.sql';
+    const sql=await readFile(new URL('../database/candidates/'+name,import.meta.url),'utf8');
+    await admin.query(sql);
+    await assert.rejects(verify());
+    await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[name,createHash('sha256').update(sql).digest('hex')]);
+    await admin.query('create role blizhniy_reconciliation_monitor login noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls;grant connect on database blizhniy_test to blizhniy_reconciliation_monitor');
+    await admin.query(await readFile(new URL('../database/permissions/payment-reconciliation-alert.sql',import.meta.url),'utf8'));
+    assert.equal(await verify(),true);
+    const sourceFile=join(artifact,'database','candidates',name),sourceBytes=await readFile(sourceFile);
+    await writeFile(sourceFile,Buffer.concat([sourceBytes,Buffer.from('\n-- changed bytes\n')]));
+    try{await assert.rejects(verify());}finally{await writeFile(sourceFile,sourceBytes);}
+    assert.equal(await verify(),true);
+    for(const [change,restore] of [
+     ['grant select(intent_id) on app.payment_reconciliation_jobs to blizhniy_reconciliation_monitor',
+      'revoke select(intent_id) on app.payment_reconciliation_jobs from blizhniy_reconciliation_monitor'],
+     ['grant execute on function app.payment_reconciliation_alert_needed(text) to blizhniy_runtime',
+      'revoke execute on function app.payment_reconciliation_alert_needed(text) from blizhniy_runtime'],
+     ['revoke execute on function app.payment_reconciliation_alert_needed(text) from blizhniy_reconciliation_monitor',
+      'grant execute on function app.payment_reconciliation_alert_needed(text) to blizhniy_reconciliation_monitor'],
+    ]){
+     await admin.query(change);try{await assert.rejects(verify());}finally{await admin.query(restore);}
+     assert.equal(await verify(),true);
+    }
+    const database='reconciliation_alert_release_restored';
+    await admin.query('create database reconciliation_alert_release_restored template template0');
+    await admin.query('revoke all on database reconciliation_alert_release_restored from public;grant connect on database reconciliation_alert_release_restored to blizhniy_payment_reconciler,blizhniy_reconciliation_operator,blizhniy_reconciliation_monitor');
+    await docker(['exec',container,'bash','-euo','pipefail','-c',
+     'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+     'restore-fixture',config.database,database]);
+    const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+    try{assert.equal(await verify(restored,database),true);}finally{await restored.close();}
+   });
    return;
   }
   await admin.query("insert into app.regions(slug,name) values('krasnodarskiy-kray','Краснодарский край');insert into app.cities(region_id,slug,name) select id,'krasnodar','Краснодар' from app.regions;insert into app.categories(slug,name) values('otdyh','Хобби и отдых');insert into app.specialist_categories(slug,name,parent_name) values('plumber','Сантехник','Строительство');insert into app.tariffs(id,action,name,price,duration_days) values('listing-publication','listing_publication','Объявление',199,30),('vacancy-publication','vacancy_publication','Вакансия',199,30),('work-request-publication','work_request_publication','Заказ',199,30)");

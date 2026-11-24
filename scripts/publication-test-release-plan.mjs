@@ -11,7 +11,7 @@ const suffix=[
  ['0059-test-placement-guards.sql','8a9402d87aa417242f8cfb8e9200f61b15e9613e35e86de19811d8e8815c6c3c'],
 ];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65|66|67|71|72)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66|67|71|72|73)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -30,6 +30,9 @@ export function getCheckoutCancellationMigrations(){return [
 ];}
 export function getPaymentReconciliationRecoveryMigration(){
  return readReleaseMigration('0072-payment-reconciliation-recovery.sql','6861077937975d37c1eea75a1c9af325d749092fc22eab76ef612476ccbd3635');
+}
+export function getPaymentReconciliationAlertMigration(){
+ return readReleaseMigration('0073-payment-reconciliation-alert.sql','113e66843caf8bf854b9ffe7deab4e6715e00c3c08171c6f2f3f804045b0a046');
 }
 export function getListingViewsMigration(){
  return readReleaseMigration('0066-listing-views.sql','8528c22082f00fe5340f0c9480dec383e7999d75d90c65142f22e5472f83481c');
@@ -72,6 +75,10 @@ export async function assertPublicationTestSchema(tx){
 // PostgreSQL 18 emits different parentheses for six existing CHECK constraints after a logical restore.
 // Each pair pins the full installed and restored app catalog for exactly one reviewed journal.
 const fingerprints={
+ reconciliationAlert:[
+  '958422d3803782550bba09ab98477bec184658ae0dfaed37ba5974d53baef867',
+  '397c41f8fdf0adaea3fac474611afaa3260fbebe10d68d48e640a5e8e598483d',
+ ],
  reconciliationRecovery:[
   '5f7177acdb04430728b95703839408ef9a88515f7983477a631fb5f8ffdb6207',
   'cdff5fa4d8959407f4506a207bc770fad44424b8af7215b3d0943ef6cb89c92e',
@@ -172,16 +179,20 @@ async function assertCheckoutCancellationAccess(tx){
  if(result?.valid!==true)throw Error('Unexpected checkout cancellation access');
 }
 
-async function assertReconciliationRecoveryAccess(tx){
+async function assertReconciliationCommandAccess(tx,monitor=false){
+ const login=monitor?'blizhniy_reconciliation_monitor':'blizhniy_reconciliation_operator';
+ const commands=monitor?['app.payment_reconciliation_alert_needed(text)']:[
+  'app.recover_payment_reconciliation(text,uuid,uuid,uuid,text,text,boolean)',
+  'app.read_payment_reconciliation_recovery_status(text,uuid,text)',
+ ];
+ const protectedNames=commands.map(signature=>signature.slice(4,signature.indexOf('(')));
+ if(!monitor)protectedNames.push('require_reconciliation_administrator','preserve_reconciliation_recovery_budget');
  const result=(await tx.query(`with operator as (
-  select oid from pg_roles r where rolname='blizhniy_reconciliation_operator' and rolcanlogin
+  select oid from pg_roles r where rolname=$1 and rolcanlogin
    and not (rolsuper or rolcreatedb or rolcreaterole or rolinherit or rolreplication or rolbypassrls)
    and not exists(select 1 from pg_auth_members m where m.member=r.oid or m.roleid=r.oid)
  ), commands as (
-  select oid from pg_proc where oid in (
-   'app.recover_payment_reconciliation(text,uuid,uuid,uuid,text,text,boolean)'::regprocedure,
-   'app.read_payment_reconciliation_recovery_status(text,uuid,text)'::regprocedure
-  )
+  select to_regprocedure(signature)::oid as oid from unnest($2::text[]) signature
  ), private_audit as (
   select oid,relowner,relacl from pg_class where oid='app.payment_reconciliation_recoveries'::regclass
  ), forbidden as (
@@ -189,10 +200,7 @@ async function assertReconciliationRecoveryAccess(tx){
   union all select 1 from private_audit r join pg_attribute c on c.attrelid=r.oid cross join lateral aclexplode(c.attacl) a
    where a.grantee<>r.relowner
   union all select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
-   where p.pronamespace='app'::regnamespace and p.proname in (
-    'recover_payment_reconciliation','read_payment_reconciliation_recovery_status',
-    'require_reconciliation_administrator','preserve_reconciliation_recovery_budget'
-   ) and a.grantee<>p.proowner and not (
+   where p.pronamespace='app'::regnamespace and p.proname=any($3::text[]) and a.grantee<>p.proowner and not (
     a.grantee=(select oid from operator) and p.oid in (select oid from commands) and a.privilege_type='EXECUTE' and not a.is_grantable)
  ) select exists(select 1 from operator o
   where has_database_privilege(o.oid,current_database(),'CONNECT')
@@ -201,7 +209,7 @@ async function assertReconciliationRecoveryAccess(tx){
    and not exists(select 1 from pg_namespace n where
     has_schema_privilege(o.oid,n.oid,'CREATE,USAGE WITH GRANT OPTION') or
     (n.nspname not in ('app','pg_catalog','information_schema','public') and has_schema_privilege(o.oid,n.oid,'USAGE')))
-   and not exists(select 1 from commands c where not has_function_privilege(o.oid,c.oid,'EXECUTE'))
+   and not exists(select 1 from commands c where has_function_privilege(o.oid,c.oid,'EXECUTE') is distinct from true)
    and not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname not in ('pg_catalog','information_schema') and p.oid not in(select oid from commands)
      and has_function_privilege(o.oid,p.oid,'EXECUTE'))
@@ -211,11 +219,11 @@ async function assertReconciliationRecoveryAccess(tx){
      has_any_column_privilege(o.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') or
      has_table_privilege(o.oid,c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN')))
      or (c.relkind='S' and has_sequence_privilege(o.oid,c.oid,'USAGE,SELECT,UPDATE'))))
- ) and not exists(select 1 from forbidden) as valid`)).rows[0];
- if(result?.valid!==true)throw Error('Unexpected reconciliation recovery access');
+ ) and not exists(select 1 from forbidden) as valid`,[login,commands,protectedNames])).rows[0];
+ if(result?.valid!==true)throw Error('Unexpected reconciliation command access');
 }
 
-export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false}){
+export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false}){
  const catalog=await readRefundSchema(tx);
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  const key=enrollment?(inbox?'specialistTestInbox':'specialistTest'):specialist&&inbox?'both':specialist?'specialist':'inbox';
@@ -235,9 +243,14 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
   if(!cancellations)throw Error('Unsupported reconciliation recovery deployment');
   accepted=fingerprints.reconciliationRecovery;
  }
+ if(reconciliationAlert){
+  if(!recovery)throw Error('Unsupported reconciliation alert deployment');
+  accepted=fingerprints.reconciliationAlert;
+ }
  if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
  if(cancellations)await assertCheckoutCancellationAccess(tx);
- if(recovery)await assertReconciliationRecoveryAccess(tx);
+ if(recovery)await assertReconciliationCommandAccess(tx);
+ if(reconciliationAlert)await assertReconciliationCommandAccess(tx,true);
  if(views)await assertListingViewsAccess(tx);
  if(specialist)await verifySpecialistCheckoutRuntimeAccess(tx);
  if(enrollment){

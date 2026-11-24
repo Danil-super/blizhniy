@@ -3,6 +3,7 @@ import {randomUUID,randomBytes} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import pg from 'pg';
+import {reconciliationAlertFixture} from './payment-reconciliation-alert-integration.mjs';
 
 export async function testPaymentReconciliationRecovery(suite,{admin,config,ownerDb,actor,purchase,intents,load}){
  await suite.test('an exhausted TEST order can receive one audited recovery and fulfill without a second POST',async t=>{
@@ -40,6 +41,14 @@ export async function testPaymentReconciliationRecovery(suite,{admin,config,owne
   assert.deepEqual(methods,Array(12).fill('GET'));
   await assert.rejects(admin.query("update app.payment_reconciliation_jobs set state='queued',attempts=9 where intent_id=$1",[order.id]),{code:'23514'});
   await admin.query(await readFile(new URL('../database/candidates/0072-payment-reconciliation-recovery.sql',import.meta.url),'utf8'));
+  const alert=await reconciliationAlertFixture(t,{admin,config,load,shop:order.shopId});
+  assert.deepEqual(await alert.run(),{result:'reconciliation-blocked',delivery:'accepted'});
+  assert.deepEqual(await alert.run(),{result:'reconciliation-blocked',delivery:'accepted'});
+  assert.equal(alert.messages.length,1);
+  assert.equal(alert.messages[0].to,'RCPT TO:<'+alert.recipient+'>');
+  assert.match(alert.messages[0].raw,/Message-ID:\s+<[0-9a-f-]+@xn----9sbphbgks4a4a.xn--p1ai>/i);
+  assert.equal(alert.messages[0].raw.includes(order.id),false);
+  assert.equal(alert.messages[0].raw.includes(providerId),false);
   const login='blizhniy_reconciliation_operator',password=randomBytes(24).toString('hex');
   await admin.query(`create role ${login} login nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls password ${pg.escapeLiteral(password)};
    grant connect on database blizhniy_test to ${login}`);
@@ -121,17 +130,19 @@ export async function testPaymentReconciliationRecovery(suite,{admin,config,owne
    assert.deepEqual(await worker.tick(),{state:'idle'});
    assert.deepEqual(methods,Array(14).fill('GET'));
    assert.deepEqual((await admin.query('select to_jsonb(f) as value from app.payment_fulfillments f where intent_id=$1',[order.id])).rows,[{value:receipt}]);
+   assert.deepEqual(await alert.run(),{result:'healthy',delivery:'healthy'});
+   assert.equal(alert.messages.length,1);
    assert.deepEqual(await recover(false,winner),record);
    await admin.query('update app.users set auth_version=auth_version+1 where id=$1',[winner[1]]);
    await assert.rejects(recover(false,winner),{code:'42501'});
 
    await t.test('recovery rejects closed or blocked targets, LIVE and reserved refunds, and has only three retries',async()=>{
-    async function blockOrder(kind){
+    async function blockOrder(kind,shopId='recovery-'+kind){
      const actorForOrder=await actor();
      const targetId=(await admin.query(`insert into app.listings(author_id,category_id,city_id,listing_type,title,description,contact_phone,status)
       values($1,$2,$3,'sell','Синтетическое объявление','Синтетическое описание для проверки очереди платежей.','+79990000000',$4)
       returning id`,[actorForOrder.id,category,city,kind==='closed'?'archived':'draft'])).rows[0].id;
-     const original=await purchase({actor:actorForOrder,targetId,isTest:kind!=='live',shopId:'recovery-'+kind});
+     const original=await purchase({actor:actorForOrder,targetId,isTest:kind!=='live',shopId});
      const providerId=randomUUID(),queue=new(load('postgres-payment-reconciliation').PostgresPaymentReconciliationQueue)(ownerDb,original);
      await intents.authorize(original);await intents.bindProvider(original,providerId);
      await queue.enqueue(providerId);
@@ -160,6 +171,14 @@ export async function testPaymentReconciliationRecovery(suite,{admin,config,owne
      assert.equal((await admin.query('select state from app.payment_reconciliation_jobs where intent_id=$1',[original.id])).rows[0].state,'blocked');
      assert.equal((await admin.query('select count(*)::int as n from app.payment_reconciliation_recoveries where intent_id=$1',[original.id])).rows[0].n,0);
     }
+    await blockOrder('live',order.shopId);
+    assert.deepEqual(await alert.run(),{result:'healthy',delivery:'healthy'});
+    await blockOrder('content',order.shopId);
+    assert.deepEqual(await alert.run(),{result:'reconciliation-blocked',delivery:'accepted'});
+    assert.deepEqual(await alert.run(),{result:'reconciliation-blocked',delivery:'accepted'});
+    assert.equal(alert.messages.length,2);
+    const messageIds=alert.messages.map(message=>message.raw.match(/Message-ID:\s+(<[^>]+>)/i)?.[1]);
+    assert.ok(messageIds.every(Boolean));assert.notEqual(messageIds[0],messageIds[1]);
     const {original,queue}=await blockOrder('budget');
     const bounded=[...loser.slice(0,2),randomUUID(),original.id,original.shopId,loser[5]];
     const scheduled=await command(activeAdmin,bounded,'schedule');
