@@ -6,7 +6,7 @@ import {getSpecialistCheckoutMigration,hasSpecialistCheckoutObjects} from './spe
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 import {assertRefundSchema} from './refund-worker-schema.mjs';
 import {assertPaidResponseSchema} from './paid-response-schema.mjs';
-import {getPaidResponseMigrations,getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,assertPublicationTestSchema,assertExtendedPublicationTestSchema,hasInboxPreferenceObjects,getInboxPreferenceMigration,getSpecialistAccountTestMigration} from './publication-test-release-plan.mjs';
+import {getCheckoutCancellationMigrations,getPaidResponseMigrations,getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,assertPublicationTestSchema,assertExtendedPublicationTestSchema,hasInboxPreferenceObjects,getInboxPreferenceMigration,getSpecialistAccountTestMigration} from './publication-test-release-plan.mjs';
 
 const role='blizhniy_payment_reconciler';
 const locks=['users','payment_checkout_intents','categories','cities','media_objects','listing_moderation'];
@@ -95,8 +95,10 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
    const extensions=publicationTest?(await tx.query(`select to_regclass('app.specialist_test_enrollment') is not null
     or exists(select 1 from pg_proc where pronamespace='app'::regnamespace and proname in ('check_specialist_test_dispatch','require_specialist_test_terms')) as enrollment,
     to_regclass('app.booking_events') is not null as bookings,
-    to_regnamespace('app_stats') is not null as views, to_regnamespace('app_response') is not null as responses`)).rows[0]:{};
-   const {enrollment,bookings,views,responses}=extensions;
+    to_regnamespace('app_stats') is not null as views, to_regnamespace('app_response') is not null as responses,
+    (to_regclass('app.payment_checkout_cancellations') is not null or
+     to_regclass('app.checkout_cancellation_test_enrollment') is not null) as cancellations`)).rows[0]:{};
+   const {enrollment,bookings,views,responses,cancellations}=extensions;
    if(views&&(!specialistTerms||!inbox||!enrollment))throw Error('Listing views need the hosted publication schema');
    if(bookings){
     if(!specialistTerms||!inbox||!enrollment)throw Error('Booking lifecycle needs the hosted publication schema');
@@ -113,10 +115,15 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
     expectedJournal.sort((left,right)=>left.name.localeCompare(right.name,'en'));
     await assertPaidResponseSchema(tx);
    }
+   if(cancellations){
+    if(!specialistTerms||!enrollment||!inbox||!bookings||!views||!responses)throw Error('Unsupported checkout cancellation deployment');
+    expectedJournal.push(...getCheckoutCancellationMigrations());
+    expectedJournal.sort((left,right)=>left.name.localeCompare(right.name,'en'));
+   }
    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
    if(refundSchema)await assertRefundSchema(tx,schema);
    if(publicationTest)await assertPublicationTestSchema(tx);
-   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment,bookings,views,responses});
+   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment,bookings,views,responses,cancellations});
    await assertFinancialCatalogPrivileges(tx,{paidResponses:responses===true});
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable

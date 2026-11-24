@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {randomBytes,randomUUID,randomInt} from 'node:crypto';
+import {createHash,randomBytes,randomUUID,randomInt} from 'node:crypto';
 import {readFile,readdir,mkdtemp,symlink,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -250,7 +250,10 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     const readerPassword=randomBytes(32).toString('hex');
     await admin.query('alter role blizhniy_local_export_reader login password '+pg.escapeLiteral(readerPassword));
     const reader=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:'blizhniy_local_export_reader',password:readerPassword,max:1}));
-    t.after(()=>reader.close());
+    t.after(async()=>{
+     await reader.close();
+     await admin.query('drop policy local_export_phone_owner on app.telegram_phone_bindings;drop policy local_export_phone_owner on app.telegram_phone_attempts;drop owned by blizhniy_local_export_reader;drop role blizhniy_local_export_reader');
+    });
     const actual=await readAccountExport(reader,token,subject,undefined,options);
     assert.deepEqual({...actual,snapshot:null},{...baseline,snapshot:null});
     await assert.rejects(readAccountExport(reader,peerToken,subject),{name:'DeletionAccessError'});
@@ -297,6 +300,47 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     await admin.query('create table app.payment_refund_reservations(id uuid,payment_intent_id uuid)');
     try{await assert.rejects(preflight(),{name:'DeletionPreflightUnavailableError'});}
     finally{await admin.query('drop table app.payment_refund_reservations');}
+   });
+   if(inbox)await suite.test('the packaged worker starts on the exact checkout cancellation release and its restore',async()=>{
+    const verify=(db=workerDb,database=config.database)=>copiedGuard.verifyPaymentReconciliationDatabase(db,{
+     database,publicationTest:true,specialistAccountTest:true,
+    });
+    assert.equal(await verify(),true);
+    for(const path of ['migrations/0047-checkout-cancellation.sql','candidates/0071-checkout-cancellation-test-policy.sql']){
+     const name=path.split('/').at(-1),sql=await readFile(new URL('../database/'+path,import.meta.url),'utf8');
+     await admin.query(sql);
+     await assert.rejects(verify());
+     await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[name,createHash('sha256').update(sql).digest('hex')]);
+    }
+    await admin.query(await readFile(new URL('../database/permissions/checkout-cancellation.sql',import.meta.url),'utf8'));
+    assert.equal(await verify(),true);
+    const candidate=join(artifact,'database/candidates/0071-checkout-cancellation-test-policy.sql'),bytes=await readFile(candidate);
+    await writeFile(candidate,Buffer.concat([bytes,Buffer.from('\n-- changed bytes\n')]));
+    try{await assert.rejects(verify());}finally{await writeFile(candidate,bytes);}
+    assert.equal(await verify(),true);
+    for(const [change,restore] of [
+     ['revoke insert(payment_id) on app.payment_checkout_cancellations from blizhniy_runtime',
+      'grant insert(payment_id) on app.payment_checkout_cancellations to blizhniy_runtime'],
+     ['alter table app.payment_dispatch_anchors disable trigger checkout_cancellation_dispatch_fence',
+      'alter table app.payment_dispatch_anchors enable always trigger checkout_cancellation_dispatch_fence'],
+     ['grant select(shop_id) on app.checkout_cancellation_test_enrollment to blizhniy_runtime',
+      'revoke select(shop_id) on app.checkout_cancellation_test_enrollment from blizhniy_runtime'],
+     ['grant update(status) on app.payment_orders to blizhniy_runtime',
+      'revoke update(status) on app.payment_orders from blizhniy_runtime'],
+     ['grant select on app.payment_checkout_cancellations to blizhniy_payment_reconciler',
+      'revoke select on app.payment_checkout_cancellations from blizhniy_payment_reconciler'],
+    ]){
+     await admin.query(change);try{await assert.rejects(verify());}finally{await admin.query(restore);}
+     assert.equal(await verify(),true);
+    }
+    const database='checkout_cancellation_release_restored';
+    await admin.query('create database checkout_cancellation_release_restored template template0');
+    await admin.query('revoke all on database checkout_cancellation_release_restored from public;grant connect on database checkout_cancellation_release_restored to blizhniy_payment_reconciler');
+    await docker(['exec',container,'bash','-euo','pipefail','-c',
+     'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+     'restore-fixture',config.database,database]);
+    const restoredWorker=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+    try{assert.equal(await verify(restoredWorker,database),true);}finally{await restoredWorker.close();}
    });
    return;
   }

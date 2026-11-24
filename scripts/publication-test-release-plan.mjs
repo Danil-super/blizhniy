@@ -11,7 +11,7 @@ const suffix=[
  ['0059-test-placement-guards.sql','8a9402d87aa417242f8cfb8e9200f61b15e9613e35e86de19811d8e8815c6c3c'],
 ];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65|66|67)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66|67|71)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -24,6 +24,10 @@ export function getSpecialistAccountTestMigration(){
 }
 export function getPaidResponseMigrations(){return [readReleaseMigration('0046-response-checkout-fence.sql','d3313c7bc349ec8c93d7927bc0b69ed9fbb1a19c69b169af4181f482d03c8d5f'),
   readReleaseMigration('0067-paid-response-test.sql','c8cf0612d68fe541dc05d74c904b6d855b64166940bc12db1f316ca77c33bd29')];}
+export function getCheckoutCancellationMigrations(){return [
+ readReleaseMigration('0047-checkout-cancellation.sql','345d57e5b76bb36784260fdd49c56820323eda97bbc19e61bee06179cdf19d3d'),
+ readReleaseMigration('0071-checkout-cancellation-test-policy.sql','45e1419181ce42bbd62a15f0511dfc7c6580c006fd0b6448d36a19935210a353'),
+];}
 export function getListingViewsMigration(){
  return readReleaseMigration('0066-listing-views.sql','8528c22082f00fe5340f0c9480dec383e7999d75d90c65142f22e5472f83481c');
 }
@@ -65,6 +69,10 @@ export async function assertPublicationTestSchema(tx){
 // PostgreSQL 18 emits different parentheses for six existing CHECK constraints after a logical restore.
 // Each pair pins the full installed and restored app catalog for exactly one reviewed journal.
 const fingerprints={
+ checkoutCancellation:[
+  '1cce0943295d08fc90d8a0ba871a0ef59aaa24f0431ce682f6dc298442deebf4',
+  'e0585855492f7cd06c46b3895bcd40360555671b8cf9e800628f38984cffbcff',
+ ],
  hostedViews:[
   'c073b3831838b1e1f636ed7ffa9eb6151b1b66c09a8bdfeb8c33c345aa34a134',
   '87309c9a47de7cbfe8067d5565dac20cbd1fdf6be8eb82bbb29e856da16d4c47',
@@ -136,7 +144,28 @@ export async function assertListingViewsAccess(tx){
  if(access?.same_owner!==true||access.clean_defaults!==true||access.clean_grants!==true||
     JSON.stringify(access.runtime)!==JSON.stringify(['function:EXECUTE','namespace:USAGE']))throw Error('Unexpected listing views permissions');
 }
-export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false}){
+async function assertCheckoutCancellationAccess(tx){
+ const result=(await tx.query(`with relations as (
+  select oid,relowner,relacl,relname='payment_checkout_cancellations' as journal from pg_class
+  where oid in ('app.payment_checkout_cancellations'::regclass,'app.checkout_cancellation_test_enrollment'::regclass)
+ ), unexpected as (
+  select 1 from relations r cross join lateral aclexplode(coalesce(r.relacl,acldefault('r',r.relowner))) a
+   where a.grantee<>r.relowner and not (r.journal and a.grantee='blizhniy_runtime'::regrole and a.privilege_type='SELECT' and not a.is_grantable)
+  union all select 1 from relations r join pg_attribute c on c.attrelid=r.oid cross join lateral aclexplode(c.attacl) a
+   where a.grantee<>r.relowner and not (
+    r.journal and c.attname='payment_id' and a.grantee='blizhniy_runtime'::regrole and a.privilege_type='INSERT' and not a.is_grantable)
+  union all select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+   where p.pronamespace='app'::regnamespace and p.proname in (
+    'guard_checkout_cancellation','apply_checkout_cancellation','guard_cancelled_checkout_dispatch','checkout_cancellation_admitted'
+   ) and a.grantee<>p.proowner
+ ) select not exists(select 1 from unexpected)
+  and has_table_privilege('blizhniy_runtime','app.payment_checkout_cancellations','SELECT')
+  and has_column_privilege('blizhniy_runtime','app.payment_checkout_cancellations','payment_id','INSERT')
+  and not has_column_privilege('blizhniy_runtime','app.payment_orders','status','UPDATE') as valid`)).rows[0];
+ if(result?.valid!==true)throw Error('Unexpected checkout cancellation access');
+}
+
+export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false}){
  const catalog=await readRefundSchema(tx);
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  const key=enrollment?(inbox?'specialistTestInbox':'specialistTest'):specialist&&inbox?'both':specialist?'specialist':'inbox';
@@ -148,7 +177,12 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
   accepted=bookings?fingerprints.hostedResponsesWithBookingsAndViews:
    ['2579247a7ee000f9f19ca48ecd7840943e59ace243fc593d4eb75b911f690193','22da33391304b83654362983c0b4c5cd4953a7c08e859347aa5a5d53e7116ade'];
  }
+ if(cancellations){
+  if(!specialist||!enrollment||!inbox||!bookings||!views||!responses)throw Error('Unsupported checkout cancellation deployment');
+  accepted=fingerprints.checkoutCancellation;
+ }
  if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
+ if(cancellations)await assertCheckoutCancellationAccess(tx);
  if(views)await assertListingViewsAccess(tx);
  if(specialist)await verifySpecialistCheckoutRuntimeAccess(tx);
  if(enrollment){
