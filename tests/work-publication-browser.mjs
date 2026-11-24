@@ -17,6 +17,7 @@ import {parseWorkPublicationForm} from '../src/lib/work-publication-contract.ts'
 import {createDefaultCabinetProfile} from '../src/lib/cabinet-profile.ts';
 
 const owner='12345678-1234-4321-8765-123456789abc',other='32345678-1234-4321-8765-123456789abc';
+const profession={id:'62345678-1234-4321-8765-123456789abc',slug:'santehnik',name:'Сантехник',parent:'Ремонт',active:true};
 const stamp='2026-10-18T12:00:00.123456Z';
 const chosen={vacancy:{path:'/rabota/vakansii/sozdat',cabinet:'/cabinet/vakansii',id:'22345678-1234-4321-8765-123456789abc',title:'Синтетическая вакансия'},
  workRequest:{path:'/rabota/zakazy/sozdat',cabinet:'/cabinet/zakazy',id:'42345678-1234-4321-8765-123456789abc',title:'Синтетический заказ'}};
@@ -40,6 +41,7 @@ async function fillWorkForm(page,kind,pixels){
  await page.locator('input[name="title"]').fill(chosen[kind].title);
  assert.equal(await page.locator('input[name="profession"]').count(),1,'the migrated work form must expose the profession field');
  await page.locator('input[name="profession"]').fill('Сантехник');
+ await page.getByRole('option',{name:/Сантехник/}).click();
  await page.locator('input[name="phone"]').fill('+79990000000');
  await page.locator('input[name="messengerUrl"]').fill('@fixture_user');
  await page.locator('textarea[name="description"]').fill('Синтетическое описание задачи для изолированной проверки переноса формы.');
@@ -97,6 +99,10 @@ test('work publication production pages preserve complete forms and use Russian 
     await context.route('**/*',async route=>{
      const request=route.request(),url=new URL(request.url());
      if(['http:','https:'].includes(url.protocol)&&url.origin!==origin){state.foreign.push(url.host);return route.abort();}
+     if(url.pathname==='/api/reference/professions'){
+      assert.equal(request.method(),'GET');assert.equal(url.search,'');assert.equal(request.headers().authorization,undefined);
+      return route.fulfill({json:{items:[profession]}});
+     }
      if(url.pathname.startsWith('/api/')&&!url.pathname.startsWith('/api/account/')){state.legacy.push(url.pathname);return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});}
      if(!url.pathname.startsWith('/api/account/'))return route.continue();
      assert.equal(request.headers().authorization,undefined,'work publication never sends Bearer/legacy authority');
@@ -118,6 +124,16 @@ test('work publication production pages preserve complete forms and use Russian 
       return route.fulfill({json:{exists:false,profile:createDefaultCabinetProfile({name:'Технический',email:'fixture@example.invalid'}),revision:null}});
      }
      if(body.expectedOwnerId!==state.active)return route.fulfill({status:404,json:{error:{code:'PUBLICATION_NOT_FOUND'}}});
+     if(url.pathname==='/api/account/work-cabinet'){
+      assert.equal(request.method(),'POST');assert.deepEqual(body,{kind,expectedOwnerId:state.active,after:null});
+      state.workCalls.push({method:request.method(),body:{...body,action:'list'}});
+      const items=[...collection().values()].map(({id,kind,revision,status,paid,updatedAt,form,photos})=>({
+       id,kind,revision,status,paid,updatedAt,title:form.title,amount:kind==='vacancy'?form.salary:form.budget,
+       organization:form.organization??null,city:form.cityName,district:form.district,profession:form.professionName,
+       schedule:form.schedule??null,workFormat:form.workFormat??null,coverPhotoId:photos[0]?.id??null,
+      }));
+      return route.fulfill({json:{items,nextCursor:null}});
+     }
      if(url.pathname==='/api/account/media/read'){
       assert.equal(request.method(),'POST');if(state.media.get(body.fileId)?.owner!==state.active)return route.fulfill({status:404,json:{error:{code:'MEDIA_NOT_FOUND'}}});
       return route.fulfill({contentType:'image/webp',body:webp});
@@ -168,6 +184,7 @@ test('work publication production pages preserve complete forms and use Russian 
      await page.locator('input[name="organization"]').fill('Синтетический');
     }
     await page.locator('input[name="title"]').fill('Незавершённый рабочий черновик');
+    await page.locator('input[name="profession"][data-reference-state="empty"]').waitFor();
     const created=page.waitForRequest(request=>new URL(request.url()).pathname==='/api/account/work-publications'&&request.method()==='PUT'&&request.postDataJSON()?.action==='create',{timeout:3000}).catch(()=>null);
     await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
     assert.ok(await created,'saving a work draft must reach PUT /api/account/work-publications action=create; the legacy-only form currently sends no such request');
@@ -178,36 +195,43 @@ test('work publication production pages preserve complete forms and use Russian 
    await run(kind+' complete form survives focus, recovers lost create acknowledgement by intent and edits through cabinet CAS',kind,async({page,state,collection})=>{
     const response=await page.goto(origin+chosen[kind].path,{waitUntil:'domcontentloaded'});assert.equal(response.status(),200,output);
     await fillWorkForm(page,kind,pixels);
+    const focused=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/account/session');
+    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+    assert.equal((await focused).status(),200);
+    assert.equal(await page.locator('input[name="title"]').inputValue(),chosen[kind].title);
     const gate=deferred();state.sessionGate=gate;
     const read=page.waitForRequest(request=>new URL(request.url()).pathname==='/api/account/session');
-    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await read;await render(page);
+    await page.evaluate(()=>window.dispatchEvent(new Event('blizhniy-account-changed')));await read;await render(page);
     assert.equal(await page.locator('input[name="title"]').isVisible(),false,'unknown identity temporarily hides the private form');
     gate.resolve();state.sessionGate=null;await page.locator('input[name="title"]').waitFor();
     assert.equal(await page.locator('input[name="title"]').inputValue(),chosen[kind].title);
     assert.equal(await page.locator('input[name="profession"]').inputValue(),'Сантехник');
     assert.equal(await page.locator('input[name="photos"]').evaluate(input=>input.files.length),1);
+    await page.locator('input[name="profession"][data-reference-state="selected"]').waitFor();
     state.loseCreate=true;await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
     await page.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).waitFor();
     assert.equal(state.workCalls.filter(row=>row.method==='PUT').length,1);assert.equal(state.uploads.length,1);
     assert.ok(state.sequence.indexOf('upload')<state.sequence.indexOf('work:create'),'photos are uploaded before creating the publication');
     const create=state.workCalls.find(row=>row.body.action==='create').body;
     assert.equal(create.form.professionName,'Сантехник');assert.equal(create.form.cityName,'Краснодар');
+    assert.equal(create.form.professionId,profession.id);
     assert.equal(create.form.photoIds.length,1);assert.equal(create.form.messengerUrl,'https://t.me/fixture_user');
     assert.equal(create.form[kind==='vacancy'?'salary':'budget'],kind==='vacancy'?'12000.00':'15000.00');
     if(kind==='vacancy')assert.equal(create.form.employerType,'person');
     await checkLayout(page,'form');
     await page.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();await page.waitForURL(origin+chosen[kind].cabinet);
-    await page.getByRole('button',{name:chosen[kind].title,exact:true}).waitFor();
+    await page.getByRole('link',{name:chosen[kind].title,exact:true}).waitFor();
     assert.equal(state.workCalls.filter(row=>row.method==='PUT').length,1);assert.equal(state.workCalls.filter(row=>row.body.action==='intent').length,1);
     assert.equal(state.uploads.length,1);assert.ok(state.workCalls.some(row=>row.body.action==='list'));
-    await page.getByRole('button',{name:chosen[kind].title,exact:true}).click();
+    await page.getByRole('link',{name:chosen[kind].title,exact:true}).click();
     await page.locator('input[name="title"]').waitFor();assert.equal(await page.locator('input[name="title"]').inputValue(),chosen[kind].title);
     const nextTitle=chosen[kind].title+' исправлена';await page.locator('input[name="title"]').fill(nextTitle);
-    const updated=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/account/work-publications'&&response.request().postDataJSON()?.action==='update');
+    const updated=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/account/work-publications'&&response.request().postDataJSON()?.action==='update')
+     .then(async response=>{await page.waitForURL(origin+chosen[kind].cabinet);return response;});
     await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();assert.equal((await updated).status(),200);await render(page);
     assert.equal(state.workCalls.find(row=>row.body.action==='update').body.expectedRevision,'9007199254740993');
     assert.equal(collection().get(chosen[kind].id).revision,'9007199254740994');assert.equal(collection().get(chosen[kind].id).form.title,nextTitle);
-    await page.reload();await page.getByRole('button',{name:nextTitle,exact:true}).click();await page.locator('input[name="title"]').waitFor();
+    await page.reload();await page.getByRole('link',{name:nextTitle,exact:true}).click();await page.locator('input[name="title"]').waitFor();
     assert.equal(await page.locator('input[name="title"]').inputValue(),nextTitle);await checkLayout(page,'form');
     await page.getByRole('button',{name:'Отправить на модерацию',exact:true}).click();await page.getByText('На модерации',{exact:true}).waitFor();
     assert.equal(state.moderationCalls.filter(row=>row.method==='PUT').length,1);
