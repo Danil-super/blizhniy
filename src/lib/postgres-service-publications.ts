@@ -3,13 +3,16 @@ import {parseServicePublicationForm,checkServicePublicationForm,ServicePublicati
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor} from './listing-draft-contract.ts';
 import {maxListingMediaTotalSize} from './media-limits.ts';
 import type {PostgresDatabase,PostgresQueries} from './postgres';import type {ListingDraftPhoto} from './listing-photo-contract';
-import {validPersonName} from './cabinet-field-validation.ts';
+import {validProfileName} from './cabinet-field-validation.ts';
 import {specialistAbout,checkSpecialistApplicationForm} from './specialist-application-profile.ts';
 import {effectivePublicationStatusSql} from './publication-effective-status';
 import {resolveProfession,professionFormSql,ProfessionReferenceError} from './profession-reference';
 export class ServicePublicationAccessError extends Error{constructor(){super('Service publication not found');}}
 export class ServicePublicationConflictError extends Error{constructor(){super('Service publication changed');}}
 export class ServicePublicationCheckoutActiveError extends Error{constructor(){super('Service publication checkout active');this.name='ServicePublicationCheckoutActiveError';}}
+export class ServicePublicationProfileNameError extends ServicePublicationInputError{
+ constructor(){super();this.name='ServicePublicationProfileNameError';}
+}
 export type ServicePublicationSnapshot={id:string;kind:ServicePublicationKind;form:ServicePublicationForm;photos:ListingDraftPhoto[];revision:string;status:typeof servicePublicationStatuses[number];paid:boolean;professionId?:string|null;
  createdAt:string;updatedAt:string;publishedAt:string|null;expiresAt:string|null};
 type Row=Omit<ServicePublicationSnapshot,'form'|'photos'>&{form:unknown};
@@ -26,7 +29,7 @@ export class PostgresServicePublicationStore{
  private async profileBoundForm(tx:PostgresQueries,owner:string,form:ServicePublicationForm):Promise<ServicePublicationForm>{
   if(form.kind!=='specialist'||!this.options.specialistProfileIdentity)return form;
   const profile=(await tx.query<{name:string}>("select profile->>'name' as name from app.cabinet_profiles where user_id=$1",[owner])).rows[0];
-  if(!profile||!validPersonName(profile.name))throw new ServicePublicationInputError();
+  if(!validProfileName(profile?.name))throw new ServicePublicationProfileNameError();
   return parseServicePublicationForm('specialist',{...form,title:profile.name,description:specialistAbout(form),skills:null,experience:null,district:null,videoUrl:null,photoIds:[]});
  }
  private async snapshot(tx:PostgresQueries,owner:string,kind:ServicePublicationKind,id:string):Promise<ServicePublicationSnapshot>{

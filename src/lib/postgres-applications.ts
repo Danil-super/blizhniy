@@ -3,7 +3,7 @@ import {parseApplicationCreate,parseApplicationEdit,parseApplicationKind,Applica
 import {parseListingDraftId,parseListingDraftRevision,parseListingDraftCursor,type ListingDraftCursor} from './listing-draft-contract.ts';
 import {parseServicePublicationForm,type ServicePublicationForm} from './service-publication-contract.ts';
 import {checkSpecialistApplicationForm,specialistAbout} from './specialist-application-profile.ts';
-import {validPersonName} from './cabinet-field-validation.ts';
+import {validProfileName} from './cabinet-field-validation.ts';
 import {professionFormSql} from './profession-reference';
 import {hashSessionToken} from './identity';
 import {readPostmoderationEnabled} from './listing-workflow-config';
@@ -89,7 +89,7 @@ export class PostgresApplicationStore{
   let about:string|undefined;
   if(this.policy.specialistApplicationReady){
    const profile=(await tx.query<{name:string}>("select profile->>'name' as name from app.cabinet_profiles where user_id=$1",[actor])).rows[0];
-   if(!profile||typeof profile.name!=='string'||!validPersonName(profile.name))throw new ApplicationEligibilityError();
+   if(!validProfileName(profile?.name))throw new ApplicationEligibilityError();
    form={...form,title:profile.name};
    if(checkSpecialistApplicationForm(form).length)throw new ApplicationEligibilityError();
    const references=await tx.query(`select s.id from app.service_publications s

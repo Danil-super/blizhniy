@@ -13,6 +13,7 @@ import {useListingPostmoderation,useLocalPaymentSimulation} from '@/components/l
 type Intent={input:ApplicationCreateInput;phase:'unknown'|'retry'};
 function Workspace({owner,kind,targetId,visible,hosted}:{owner:string;kind:ApplicationKind;targetId:string;visible:boolean;hosted:boolean}){
  const local=useListingPostmoderation(),simulation=useLocalPaymentSimulation();
+ const canPay=local&&(hosted||simulation);
  const [review,setReview]=useState<ApplicationPreview|null>(null),[fresh,setFresh]=useState(false),[text,setText]=useState(''),[issue,setIssue]=useState<string|null>(null);
   const [saved,setSaved]=useState<ApplicationSnapshot|null>(null),[intent,setIntent]=useState<Intent|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[needsProfile,setNeedsProfile]=useState(false);
   const [payAfterSave,setPayAfterSave]=useState(false);
@@ -56,12 +57,14 @@ function Workspace({owner,kind,targetId,visible,hosted}:{owner:string;kind:Appli
    {!fresh&&!busy&&<button type="button" className={`${applicationButton} mb-3`} disabled={!!intent} onClick={()=>{if(visible&&!intent)void run(load);}}>Обновить данные отклика</button>}
    {review&&<form noValidate className="grid min-w-0 gap-3" onSubmit={event=>{event.preventDefault();submit();}}>
     <p className="break-words text-sm text-slate-800">В отклик попадёт ваша сохранённая анкета: <strong>{review.specialist.snapshot.name}</strong>, {review.specialist.snapshot.profession}.</p>
-     <p className="text-sm text-slate-700">После подтверждения оплаты отклик автоматически уйдёт заказчику вместе с вашей анкетой.</p>
+     <p className="text-sm text-slate-700">{canPay
+      ? 'После подтверждения TEST-оплаты отклик автоматически получит автор публикации вместе с вашей анкетой.'
+      : 'Отклик можно сохранить в кабинете. Оплата и отправка пока недоступны.'}</p>
      <div className="grid min-w-0 gap-1"><label htmlFor={`${prefix}-message`} className="text-sm font-semibold text-slate-950">Сообщение</label><textarea id={`${prefix}-message`} name="message" maxLength={500} ref={message} value={text} disabled={locked} aria-invalid={!!issue} aria-describedby={`${prefix}-hint${issue?` ${prefix}-error`:''}`} onChange={event=>{if(!visible||locked)return;setText(event.target.value);setIssue(null);setError(null);}} className="min-h-28 w-full min-w-0 resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-700 disabled:bg-slate-100"/></div>
      <p id={`${prefix}-hint`} className="text-sm text-slate-600">{text.length} / 500 символов. Контакты будут взяты из вашей анкеты.</p>
     {issue&&<p id={`${prefix}-error`} className="text-sm text-rose-800">{issue}</p>}
      {intent?.phase==='unknown'?<><p className="text-sm text-slate-800">Результат сохранения не подтверждён. Сначала проверьте его, чтобы не создавать повторный отклик.</p><button type="button" className={applicationButton} disabled={busy} onClick={recover}>Проверить сохранение</button></>:<div className="flex flex-wrap gap-2"><button type="submit" disabled={busy||!fresh} className={applicationButton} onClick={()=>{if(!intent)setPayAfterSave(false);}}>{intent?'Повторить то же сохранение':'Сохранить отклик'}</button>
-      {local&&!intent&&<button type="submit" disabled={busy||!fresh||(!simulation&&!hosted)} className={`${applicationButton} border-blue-700 bg-blue-50`} onClick={()=>setPayAfterSave(true)}>Оплатить и отправить</button>}</div>}
+      {local&&!intent&&<button type="submit" disabled={busy||!fresh||!canPay} className={`${applicationButton} border-blue-700 bg-blue-50`} onClick={()=>setPayAfterSave(true)}>Оплатить и отправить</button>}</div>}
    </form>}
   </>}
  </div>;

@@ -76,7 +76,8 @@ export interface TransactionalMailer {
 }
 
 export function createTimewebMailer(env: NodeJS.ProcessEnv = process.env,
-  factory: (options: SMTPTransportOptions) => MailTransport = nodemailer.createTransport): TransactionalMailer | null {
+  factory: (options: SMTPTransportOptions) => MailTransport = nodemailer.createTransport):
+  (TransactionalMailer & { sendAccountTrialArchive(message: TransactionalMail, zip: Buffer): Promise<void> }) | null {
   const config = readTimewebMailConfig(env);
   if (!config) return null;
   // Sources: https://timeweb.cloud/docs/mail/email-clients-configuration and https://nodemailer.com/smtp
@@ -85,14 +86,7 @@ export function createTimewebMailer(env: NodeJS.ProcessEnv = process.env,
     tls: { servername: "smtp.timeweb.ru", rejectUnauthorized: true, minVersion: "TLSv1.2" },
     connectionTimeout: 5000, greetingTimeout: 5000, socketTimeout: 15000, dnsTimeout: 5000,
     logger: false, debug: false, disableFileAccess: true, disableUrlAccess: true });
-  return {
-    async verify(): Promise<void> {
-      assertServer();
-      try {
-        if (await transport.verify() !== true) throw new MailError();
-      } catch (error) { throw providerError(error); }
-    },
-    async send(message: TransactionalMail): Promise<void> {
+  async function send(message: TransactionalMail, attachment?: Buffer): Promise<void> {
       assertServer();
       const to = mailbox(message?.to);
       if (!message || Object.keys(message).some((key) => !["id", "to", "subject", "text"].includes(key)) || !to ||
@@ -106,11 +100,26 @@ export function createTimewebMailer(env: NodeJS.ProcessEnv = process.env,
       try {
         const result = await transport.sendMail({ from: { name: "БЛИЖНИЙ", address: sender }, to: { address: to },
           envelope: { from: sender, to: [to] }, subject: message.subject, text: message.text,
-          messageId: `<${message.id}@${domain}>` });
+          messageId: `<${message.id}@${domain}>`,
+          ...(attachment ? { attachments: [{ filename: "blizhniy-account.zip", content: attachment, contentType: "application/zip" }] } : {}) });
         const response = result as { accepted?: unknown; rejected?: unknown } | null;
         if (!response || !Array.isArray(response.accepted) || response.accepted.length !== 1 || response.accepted[0] !== to ||
             !Array.isArray(response.rejected) || response.rejected.length !== 0) throw new MailError();
       } catch (error) { throw providerError(error); }
+  }
+  return {
+    async verify(): Promise<void> {
+      assertServer();
+      try {
+        if (await transport.verify() !== true) throw new MailError();
+      } catch (error) { throw providerError(error); }
+    },
+    send: (message) => send(message),
+    async sendAccountTrialArchive(message, zip) {
+      if (env.BLIZHNIY_APPLICATION_PAYMENT !== "account-response-test" || !Buffer.isBuffer(zip) ||
+          zip.length < 30 || zip.length > 1024 * 1024 || zip.readUInt32LE(0) !== 0x04034b50 ||
+          (zip.readUInt16LE(6) & 1) !== 1 || zip.readUInt16LE(8) !== 99) throw new Error("Invalid TEST attachment");
+      await send(message, zip);
     },
   };
 }

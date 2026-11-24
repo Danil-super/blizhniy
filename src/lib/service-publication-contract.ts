@@ -1,6 +1,6 @@
 import {parseListingFormDraft} from './listing-form-contract.ts';
 import {fairCategories} from './data.ts';
-import {validPlainText,validEmail,validWebUrl} from './cabinet-field-validation.ts';
+import {validPlainText,validEmail,validWebUrl,validProfileName} from './cabinet-field-validation.ts';
 import {parseListingDraftId} from './listing-draft-contract.ts';
 export const servicePublicationStatuses = ['draft','pending_payment','paid','published','archived','expired','rejected'] as const;
 export type ServicePublicationKind='specialist'|'fair'|'marquee';
@@ -44,7 +44,9 @@ export function parseServicePublicationForm(kind:ServicePublicationKind,value:un
 }
 export function checkServicePublicationForm(form:ServicePublicationForm):string[]{
  const issues:string[]=[];
- if(form.title.trim().length<(form.kind==='marquee'?10:2))issues.push(form.kind==='marquee'?'Введите рекламный текст от 10 до 140 символов.':'Укажите имя или название от 2 символов.');
+ const title=form.title.trim();
+ if(title.length<(form.kind==='marquee'?10:2)&&!(form.kind==='specialist'&&validProfileName(title)))
+  issues.push(form.kind==='marquee'?'Введите рекламный текст от 10 до 140 символов.':form.kind==='specialist'?'Укажите имя специалиста.':'Укажите имя или название от 2 символов.');
  if(!form.placementRightConfirmed)issues.push('Подтвердите право размещать публикацию, фотографии и контактные данные.');
  if(form.kind==='marquee')return issues;
  if(form.description.trim().length<(form.kind==='specialist'?20:1)||form.description.length>3000)issues.push('Добавьте содержательное описание до 3000 символов.');

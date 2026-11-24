@@ -1,16 +1,16 @@
 const assert=require('node:assert/strict'),test=require('node:test');
 const {loadLocalPrimaryModule:load}=require('../scripts/local-primary-modules.cjs');
-const {PostgresServicePublicationStore}=load('postgres-service-publications');
+const {PostgresServicePublicationStore,ServicePublicationProfileNameError}=load('postgres-service-publications');
 const {mapPublicServicePublication}=load('public-service-publications');
 const {parseServicePublicationForm}=load('service-publication-contract');
 const owner='11111111-1111-4111-8111-111111111111',id='22222222-2222-4222-8222-222222222222';
 const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
-function fixture(){
+function fixture(name='Анна-Мария'){
  let stored;const calls=[];
  const db={transaction:work=>work({query:async(sql,args=[])=>{
   calls.push([sql,args]);
   if(sql.startsWith('select u.id'))return{rows:[{id:owner,verified:true,isBlocked:false,role:'user',authVersion:'0'}],rowCount:1};
-  if(sql.includes('from app.cabinet_profiles'))return{rows:[{name:'Анна-Мария'}],rowCount:1};
+  if(sql.includes('from app.cabinet_profiles'))return{rows:[{name}],rowCount:1};
   if(sql.startsWith('insert into app.service_publications')){stored=JSON.parse(args[3]);return{rows:[{id}],rowCount:1};}
   if(sql.startsWith('select id,kind,form'))return{rows:[{id,kind:'specialist',form:stored,revision:'1',status:'draft',paid:false}],rowCount:1};
   if(sql.startsWith(`select id,kind,case when kind in ('vacancy','workRequest','specialist') and profession_id is not null
@@ -74,4 +74,23 @@ test('public specialist uses only allowlisted current profile identity/avatar, n
  assert.equal(Object.hasOwn(dto,'district'),false);assert.equal(Object.hasOwn(dto,'videoUrl'),false);
  row.profileIdentity={name:'Анна-Мария',avatarDataUrl:''};assert.deepEqual(mapPublicServicePublication(row,now).images,[]);
  row.profileIdentity={name:'Анна-Мария',avatarDataUrl:'data:image/svg+xml;base64,PHN2Zz4='};assert.equal(mapPublicServicePublication(row,now),null);
+});
+
+test('a one-letter profile name survives profile validation, specialist save and a paid catalogue read',async()=>{
+ const {parseProductionProfile}=load('postgres-profile');
+ const profile=parseProductionProfile({name:'李'});
+ const f=fixture(profile.name);
+ await f.store.create('a'.repeat(64),owner,'specialist',id,{description:'Выполняю монтаж и ремонт сантехники.'});
+ assert.equal(f.form.title,'李');
+ const form=parseServicePublicationForm('specialist',{...f.form,cityName:'Краснодар',professionName:'Сантехник',price:'1500',contactPhone:'+79990000000',placementRightConfirmed:true});
+ const {checkSpecialistApplicationForm}=load('specialist-application-profile');
+ assert.deepEqual(checkSpecialistApplicationForm(form),[]);
+ const row={id,kind:'specialist',form,mediaIds:[],status:'published',paid:true,createdAt:'2026-10-01T00:00:00Z',publishedAt:'2026-10-01T00:00:00Z',expiresAt:'2027-01-01T00:00:00Z',profileIdentity:{name:profile.name,avatarDataUrl:''}};
+ assert.equal(mapPublicServicePublication(row,Date.parse('2026-10-25T12:00:00Z'))?.name,'李');
+});
+
+test('a legacy profile with digits returns a correctable failure before writing the draft',async()=>{
+ const f=fixture('Тест 2');
+ await assert.rejects(f.store.create('a'.repeat(64),owner,'specialist',id,{title:'Клиент'}),ServicePublicationProfileNameError);
+ assert.equal(f.form,undefined);
 });

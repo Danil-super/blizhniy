@@ -8,12 +8,14 @@ import {readFile,readdir,mkdtemp,symlink,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,getInboxPreferenceMigration} from '../scripts/publication-test-release-plan.mjs';
+import {getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,getInboxPreferenceMigration,getPaidResponseMigrations} from '../scripts/publication-test-release-plan.mjs';
 import {getPaymentReconciliationRolePlan,verifyPaymentReconciliationDatabase} from '../scripts/payment-reconciliation-role.mjs';
 import {getSpecialistCheckoutMigration,specialistCheckoutRuntimeGrants} from '../scripts/specialist-checkout-release.mjs';
 import {buildPaymentWorker} from '../scripts/build-payment-worker.mjs';
 import {createRequire} from 'node:module';
 import {checkSpecialistServiceStartup} from './specialist-service-startup-cases.mjs';
+import {readAccountExport} from '../scripts/export-local-account-data.mjs';
+import {inspectAccountDeletionCase} from '../src/lib/account-deletion-preflight.ts';
 import pg from 'pg';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
@@ -181,6 +183,108 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
     const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
     try{await copiedGuard.verifyPaymentReconciliationDatabase(restored,{database,publicationTest:true,specialistAccountTest:true});}
     finally{await restored.close();}
+   });
+   if(inbox)await suite.test('paid response service also accepts the exact combined bookings and views release',async()=>{
+    const verify=(db=workerDb,database=config.database)=>copiedGuard.verifyPaymentReconciliationDatabase(db,{database,publicationTest:true,specialistAccountTest:true});
+    for(const migration of getPaidResponseMigrations()){
+     await admin.query(migration.sql);
+     await admin.query('insert into blizhniy_meta.migrations(name,sha256) values($1,$2)',[migration.name,migration.sha256]);
+    }
+    assert.equal(await verify(),true);
+    await admin.query('alter table app.booking_requests disable trigger booking_lifecycle_guard');
+    try{await assert.rejects(verify());}finally{await admin.query('alter table app.booking_requests enable always trigger booking_lifecycle_guard');}
+    await admin.query('grant select(viewer_digest) on app_stats.listing_views to blizhniy_runtime');
+    try{await assert.rejects(verify());}finally{await admin.query('revoke select(viewer_digest) on app_stats.listing_views from blizhniy_runtime');}
+    assert.equal(await verify(),true);
+    const database='paid_response_bookings_views_restored';
+    await admin.query('create database paid_response_bookings_views_restored template template0');
+    await admin.query('revoke all on database paid_response_bookings_views_restored from public;grant connect on database paid_response_bookings_views_restored to blizhniy_payment_reconciler');
+    await docker(['exec',container,'bash','-euo','pipefail','-c',
+     'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+     'restore-fixture',config.database,database]);
+    const restored=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+    try{assert.equal(await verify(restored,database),true);}finally{await restored.close();}
+   });
+   if(inbox)await suite.test('account export reads the hosted release without staging financial relations',async t=>{
+    const {rows:[schema]}=await admin.query(`select (select count(*)::int from blizhniy_meta.migrations) as migrations,
+     to_regclass('app.payment_checkout_cancellations') as cancelled_payment_relation,
+     to_regclass('app.payment_renewals') as renewal_relation`);
+    assert.deepEqual(schema,{migrations:43,cancelled_payment_relation:null,renewal_relation:null});
+    const subject=randomUUID(),peer=randomUUID();
+    const token=randomBytes(32).toString('hex'),peerToken=randomBytes(32).toString('hex');
+    const hash=load('identity').hashSessionToken;
+    const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);
+    const payments=[];
+    for(const [id,key] of [[subject,token],[peer,peerToken]]){
+     await admin.query('insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())',
+      [id,id+'@publication.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
+     await admin.query('insert into app.sessions(token_hash,user_id,auth_version) values($1,$2,0)',[hash(key),id]);
+     await admin.query("insert into app.notifications(user_id,event_key,category,tone,title,body) values($1,'export-fixture','system','info','Проверка',$2)",[id,id]);
+     const paymentId=randomUUID(),targetId=randomUUID(),tariffId='listing-publication',amount='199.00';
+     const requestBody=JSON.stringify({amount:{value:amount,currency:'RUB'},capture:true,
+      confirmation:{type:'redirect',return_url:'https://example.invalid/'},
+      metadata:{localPaymentId:paymentId,targetType:'listing',targetId,tariffId}});
+     await db.transaction(tx=>intents.persistInTransaction(tx,{id:paymentId,ownerId:id,targetType:'listing',targetId,
+      targetRevision:'1',tariffId,amount,durationDays:30,shopId:'publication-fixture',isTest:true,requestBody}));
+     payments.push(paymentId);
+    }
+    const previous=process.env.NODE_ENV;process.env.NODE_ENV='test';
+    t.after(()=>{if(previous===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=previous;});
+    const baseline=await readAccountExport(db,token,subject);
+    assert.equal(baseline.account.id,subject);
+    assert.deepEqual(baseline.notifications.map(row=>row.body),[subject]);
+    assert.deepEqual(baseline.payments.map(row=>[row.id,row.cancelled_at]),[[payments[0],null]]);
+    assert.equal(JSON.stringify(baseline).includes(payments[1]),false);
+    assert.equal(JSON.stringify(baseline).includes(peer),false);
+    await admin.query(await readFile(new URL('../database/permissions/local-account-export-reader.sql',import.meta.url),'utf8'));
+    const readerPassword=randomBytes(32).toString('hex');
+    await admin.query('alter role blizhniy_local_export_reader login password '+pg.escapeLiteral(readerPassword));
+    const reader=new(load('postgres').PostgresDatabase)(new pg.Pool({...config,user:'blizhniy_local_export_reader',password:readerPassword,max:1}));
+    t.after(()=>reader.close());
+    const actual=await readAccountExport(reader,token,subject);
+    assert.deepEqual({...actual,snapshot:null},{...baseline,snapshot:null});
+    await assert.rejects(readAccountExport(reader,peerToken,subject),{name:'DeletionAccessError'});
+   });
+   if(inbox)await suite.test('deletion preflight detects hosted bookings and unfinished payments without staging journals',async()=>{
+    const host=randomUUID(),guest=randomUUID(),token=randomBytes(32).toString('hex');
+    for(const id of [host,guest])await admin.query('insert into app.users(id,email,password_hash,email_verified_at) values($1,$2,$3,clock_timestamp())',
+     [id,id+'@publication.invalid','scrypt$131072$8$1$'+'a'.repeat(32)+'$'+'b'.repeat(128)]);
+    await admin.query('insert into app.sessions(token_hash,user_id,auth_version) values($1,$2,0)',[load('identity').hashSessionToken(token),host]);
+    const {request}=await new(load('postgres-account-deletion').PostgresAccountDeletionStore)(db).request(token,host);
+    const listing=(await admin.query("insert into app.listings(author_id,listing_type,title,description) values($1,'rent','Синтетическая аренда','Стендовая проверка заявки на удаление') returning id",[host])).rows[0].id;
+    const booking=await db.transaction(async tx=>{
+     await tx.query("select set_config('blizhniy.booking_actor',$1,true)",[guest]);
+     return(await tx.query(`insert into app.booking_requests(listing_id,guest_id,creation_key,mode,start_date,end_date,guests,total,details_snapshot)
+      values($1,$2,$3,'stay',current_date+2,current_date+3,1,100,'{}') returning id`,[listing,guest,randomUUID()])).rows[0].id;
+    });
+    const paymentId=randomUUID(),tariffId='listing-publication',amount='199.00';
+    const requestBody=JSON.stringify({amount:{value:amount,currency:'RUB'},capture:true,
+     confirmation:{type:'redirect',return_url:'https://example.invalid/'},
+     metadata:{localPaymentId:paymentId,targetType:'listing',targetId:listing,tariffId}});
+    const intents=new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db);
+    await db.transaction(tx=>intents.persistInTransaction(tx,{id:paymentId,ownerId:host,targetType:'listing',targetId:listing,
+     targetRevision:'1',tariffId,amount,durationDays:30,shopId:'publication-fixture',isTest:true,requestBody}));
+    const preflight=()=>db.readTransaction(tx=>inspectAccountDeletionCase(tx,request.id,request.revision),{timeoutMs:5000});
+    const open=await preflight();
+    assert.equal(open.subject.id,host);assert.equal(open.decision,'manual-review');assert.equal(open.executionAuthorized,false);
+    assert.equal(open.counts.openBookings,'1');assert.equal(open.counts.openPayments,'1');
+    assert.deepEqual(open.blockers.map(blocker=>blocker.code),['PAYMENT_UNSETTLED','BOOKING_OPEN']);
+    await db.transaction(async tx=>{
+     await tx.query("select set_config('blizhniy.booking_actor',$1,true)",[guest]);
+     await tx.query("update app.booking_requests set status='cancelled',revision=revision+1,cancelled_by=$2,cancellation_reason='Синтетическая отмена' where id=$1",[booking,guest]);
+    });
+    const cancelled=await preflight();
+    assert.equal(cancelled.counts.bookings,'1');assert.equal(cancelled.counts.openBookings,'0');
+    assert.deepEqual(cancelled.blockers.map(blocker=>blocker.code),['PAYMENT_UNSETTLED']);
+    assert.equal(cancelled.executionAuthorized,false);
+    await admin.query("insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256) values($1,$2,'image/webp',2,2,12,$3)",
+     [host,randomUUID(),'a'.repeat(64)]);
+    const uploading=await preflight();
+    assert.equal(uploading.counts.openUploads,'1');
+    assert.deepEqual(uploading.blockers.map(blocker=>blocker.code),['PAYMENT_UNSETTLED','UPLOAD_UNSETTLED']);
+    await admin.query('create table app.payment_refund_reservations(id uuid,payment_intent_id uuid)');
+    try{await assert.rejects(preflight(),{name:'DeletionPreflightUnavailableError'});}
+    finally{await admin.query('drop table app.payment_refund_reservations');}
    });
    return;
   }

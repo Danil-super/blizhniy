@@ -101,7 +101,19 @@ test('candidate media reference journal tracks actual transitions without cleanu
    }finally{await holder.query('reset role');}
    assert.equal((await events(ids[1],'work_publications')).at(-1).event_type,'attached');
   });
-  await testMediaRetirementCandidate(suite,{admin,holder,waiter,owner,ids,legacyIntent});
+  async function backupMediaDatabase(){
+   const target='blizhniy_media_restore_'+randomBytes(8).toString('hex'),archive='/tmp/'+target+'.dump';
+   await docker(['exec',container,'pg_dump','--username=postgres','--format=custom','--file='+archive,config.database]);
+   return async work=>{
+    await docker(['exec',container,'createdb','--username=postgres','--template=template0',target]);
+    const restored=new pg.Pool({...config,database:target,max:2});
+    try{
+     await docker(['exec',container,'pg_restore','--username=postgres','--dbname='+target,'--single-transaction','--exit-on-error',archive]);
+     await work(restored);
+    }finally{await restored.end();}
+   };
+  }
+  await testMediaRetirementCandidate(suite,{admin,holder,waiter,owner,ids,legacyIntent,backupMediaDatabase});
   await testMediaRetentionActivation(suite,{admin,config});
  }finally{
   if(holder)await holder.end();if(waiter)await waiter.end();if(admin)await admin.end();

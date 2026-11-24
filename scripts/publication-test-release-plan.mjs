@@ -73,6 +73,10 @@ const fingerprints={
   '0dd61d32c5ed846eedee8523f6a488c6b0a16b10cff7108cb330aa7c8badcb02',
   '9cd81b97983d0d711868826900d536d6f2137814fae50913770a9359f017c534',
  ],
+ hostedResponsesWithBookingsAndViews:[
+  '9cb2c59fa1ac914d8d52a04f06f3f92564211f8147dc80f3357f6db3c27cc44e',
+  '9852fdc714d49d8aa741fe332403ad8fa3a227ee2d8499e72243adbf2e709db8',
+ ],
  // Installed booking lifecycle on the hosted specialist + inbox schema with both Telegram policies.
  hostedBookings:[
   '8862e3be03ed77e651f0dc57895efcc4770a9489af23d57e93c0059f134fb0af',
@@ -140,8 +144,9 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
  if(bookings)accepted=fingerprints.hostedBookings;
  if(views)accepted=bookings?fingerprints.hostedBookingsAndViews:fingerprints.hostedViews;
  if(responses){
-  if(!enrollment||!inbox||bookings||views)throw Error('Unsupported paid response deployment');
-  accepted=['2579247a7ee000f9f19ca48ecd7840943e59ace243fc593d4eb75b911f690193','22da33391304b83654362983c0b4c5cd4953a7c08e859347aa5a5d53e7116ade'];
+  if(!enrollment||!inbox||bookings!==views)throw Error('Unsupported paid response deployment');
+  accepted=bookings?fingerprints.hostedResponsesWithBookingsAndViews:
+   ['2579247a7ee000f9f19ca48ecd7840943e59ace243fc593d4eb75b911f690193','22da33391304b83654362983c0b4c5cd4953a7c08e859347aa5a5d53e7116ade'];
  }
  if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
  if(views)await assertListingViewsAccess(tx);

@@ -1,3 +1,7 @@
+import { PROFILE_NAME_MAX_LENGTH, validPlainText, validProfileName } from './cabinet-field-validation.ts';
+
+export { PROFILE_NAME_MAX_LENGTH };
+
 // Shared browser/server policy. Never normalize, trim or persist a password here.
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 128;
@@ -11,7 +15,7 @@ export function isValidAccountPassword(value: unknown): value is string {
 }
 
 export function normalizeRegistrationName(value: unknown): string | null {
-  if (typeof value !== 'string' || value.length > 120 || !value.isWellFormed() ||
-      /[\u0000-\u001f\u007f]/.test(value)) return null;
-  return value.trim() || null;
+  if (typeof value !== 'string' || value.length > PROFILE_NAME_MAX_LENGTH || !validPlainText(value)) return null;
+  const name = value.trim();
+  return validProfileName(name) ? name : null;
 }

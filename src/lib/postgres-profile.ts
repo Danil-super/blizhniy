@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createDefaultCabinetProfile, type CabinetProfile } from "./cabinet-profile";
 import { withAppSessionTransaction } from "./app-session-transaction";
 import type { PostgresDatabase, PostgresQueries } from "./postgres";
-import {validPlainText,validPersonName,validWebUrl} from './cabinet-field-validation.ts';
+import {PROFILE_NAME_MAX_LENGTH,validPlainText,validProfileName,validWebUrl} from './cabinet-field-validation.ts';
 import {normalizeProfilePhone} from './phone-verification-contract.ts';
 
 export class ProfileInputError extends Error {
@@ -15,7 +15,7 @@ export class ProfileConflictError extends Error {
   constructor() { super("Profile content changed"); this.name = "ProfileConflictError"; }
 }
 export type StoredCabinetProfile = Omit<CabinetProfile, "email" | "phoneVerified" | "verifiedPhone">;
-const textLimits = { name: 120, phone: 40, city: 80, organizationName: 120, organizationInn: 12,
+const textLimits = { name: PROFILE_NAME_MAX_LENGTH, phone: 40, city: 80, organizationName: 120, organizationInn: 12,
   organizationOgrn: 15, organizationAddress: 160, organizationWebsite: 120, organizationDescription: 500 } as const;
 const ranges = { avatarZoom: [1, 5], avatarPositionX: [0, 100], avatarPositionY: [0, 100] } as const;
 const booleans = ["notifyBookings", "notifyMessages", "notifyPayments", "notifyPublicationStatus", "notifySystem",
@@ -39,7 +39,7 @@ export function parseProductionProfile(value: unknown): StoredCabinetProfile {
     result[field] = text.trim();
   }
   result.name ||= defaults.name;
-  if(!validPersonName(result.name)||(result.phone&&!normalizeProfilePhone(result.phone))||!validWebUrl(result.organizationWebsite))throw new ProfileInputError();
+  if(!validProfileName(result.name)||(result.phone&&!normalizeProfilePhone(result.phone))||!validWebUrl(result.organizationWebsite))throw new ProfileInputError();
   for (const field of booleans) {
     if (!Object.hasOwn(input, field)) continue;
     if (typeof input[field] !== "boolean") throw new ProfileInputError();

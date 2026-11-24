@@ -1,9 +1,12 @@
 // Destructive candidate acceptance on one owned disposable synthetic database only.
 import assert from 'node:assert/strict';import{test}from'node:test';
 import{execFile}from'node:child_process';import{promisify}from'node:util';import{randomBytes,randomUUID}from'node:crypto';
-import{readFile}from'node:fs/promises';import{createHash}from'node:crypto';import{createRequire}from'node:module';import pg from'pg';
+import{lstat,mkdir,readFile,rm,unlink,writeFile}from'node:fs/promises';import{createHash}from'node:crypto';import{createRequire}from'node:module';
+import{tmpdir}from'node:os';import{join}from'node:path';import pg from'pg';
 import{getUserAccessRolePlan}from'../scripts/user-access-role.mjs';import{getAdminUserAccessMigration}from'../scripts/admin-user-access-release.mjs';import{getAdminTariffMigration}from'../scripts/admin-tariff-release.mjs';
-import{localPrimaryImage}from'../scripts/local-primary-config.mjs';import{eraseBasicAccount,readBasicErasureSchema}from'../scripts/basic-account-erasure.mjs';
+import{localPrimaryImage}from'../scripts/local-primary-config.mjs';import{eraseAccountWithRetiredMedia,eraseBasicAccount,readBasicErasureSchema}from'../scripts/basic-account-erasure.mjs';
+import{readAccountExport}from'../scripts/export-local-account-data.mjs';
+import{loadMediaModule}from'./media-module.mjs';import{fileWorkerModule}from'./media-file-worker-module.mjs';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule,run=promisify(execFile);
 test('basic erasure is atomic, replayable and refuses domain history on disposable PG18',{timeout:90000},async suite=>{
  const name='blizhniy-erasure-'+randomBytes(6).toString('hex'),password=randomBytes(32).toString('hex'),label='blizhniy.erasure-test',database='blizhniy_erasure_test';let container,owner,db;
@@ -35,6 +38,9 @@ test('basic erasure is atomic, replayable and refuses domain history on disposab
   const admin=await person('admin'),input=actor=>({requestId:actor.request.id,expectedRevision:actor.request.revision,expectedOwnerId:actor.id,expectedAuthVersion:'0',operationId:randomUUID()}),erase=(value,connection=db,token=admin.token,actor=admin.id)=>eraseBasicAccount(connection,token,actor,value,container);
   const exists=async actor=>(await owner.query('select count(*)::int n from app.users where id=$1',[actor.id])).rows[0].n;
   const events=async actor=>(await owner.query('select count(*)::int n from app.account_deletion_events where request_id=$1',[actor.request.id])).rows[0].n;
+  const application=async(actor,workId,specialistId=null)=>(await owner.query(`insert into app.applications
+   (applicant_id,work_publication_id,specialist_publication_id,creation_key,target_revision,specialist_revision,snapshot,message)
+   values($1,$2,$3,$4,1,1,'{}','Синтетический отклик') returning id`,[actor.id,workId,specialistId,randomUUID()])).rows[0].id;
   const wrapping=hook=>({transaction:work=>db.transaction(tx=>work({query:async(sql,values)=>{const result=await tx.query(sql,values);await hook(sql,result);return result;}}))});
   await suite.test('ordinary, mismatched, blocked and self principals cannot erase',async()=>{
    const ordinary=await person(),target=await person(),blocked=await person('admin'),value=input(target);
@@ -69,14 +75,81 @@ test('basic erasure is atomic, replayable and refuses domain history on disposab
    const closed=await person();await requests.begin(admin.token,admin.id,closed.request.id,'1');await requests.resolve(admin.token,admin.id,closed.request.id,'2',{resolution:'declined',caseReference:'SYNTHETIC_DECLINED',confirmedManualDecision:true});
    await assert.rejects(erase({...input(closed),expectedRevision:'3'}));assert.equal(await exists(closed),1);assert.equal(await events(closed),3);
   });
-  await suite.test('administrator, publication, immutable payment identity and unknown mail require review',async()=>{
+  await suite.test('private drafts are exported and erased with their account and unrelated drafts survive',async()=>{
+   const target=await person(),other=await person();
+   const add=async actor=>{
+    const listing=(await owner.query("insert into app.listings(author_id,listing_type,title,description) values($1,'sell','Синтетический черновик','Проверка удаления черновика.') returning id",[actor.id])).rows[0].id;
+    const work=(await owner.query("insert into app.work_publications(author_id,kind,creation_key,form) values($1,'workRequest',$2,$3) returning id",[actor.id,randomUUID(),load('work-publication-contract').parseWorkPublicationForm('workRequest',{title:'Синтетический заказ'})])).rows[0].id;
+    const service=(await owner.query("insert into app.service_publications(author_id,kind,creation_key,form) values($1,'specialist',$2,$3) returning id",[actor.id,randomUUID(),load('service-publication-contract').parseServicePublicationForm('specialist',{title:'Синтетическая анкета'})])).rows[0].id;
+    return {listing,work,service};
+   };
+   const own=await add(target),foreign=await add(other),value=input(target);
+   const outgoing=await application(target,foreign.work,own.service);
+   const unrelatedOwner=await person(),unrelated=await application(unrelatedOwner,foreign.work);
+   for(const [applicant,id] of [[target,outgoing],[unrelatedOwner,unrelated]])await db.transaction(async tx=>{
+    await tx.query("select set_config('blizhniy.application_session',$1,true)",[hash(applicant.token)]);
+    await tx.query('insert into app.application_withdrawals(application_id,owner_id,withdrawn_revision) values($1,$2,1)',[id,applicant.id]);
+   });
+   const exported=await readAccountExport(db,target.token,target.id);
+   for(const [group,key] of [['listings','listing'],['work','work'],['services','service']])assert.deepEqual(exported[group].map(row=>row.id),[own[key]]);
+   assert.deepEqual(exported.applications.map(row=>row.id),[outgoing]);
+   assert.deepEqual(exported.applicationWithdrawals.map(row=>row.application_id),[outgoing]);
+   const result=await erase(value);
+   assert.equal(await exists(target),0);assert.equal(await exists(other),1);
+   await assert.rejects(readAccountExport(db,target.token,target.id),{name:'DeletionAccessError'});
+   for(const [table,key] of [['listings','listing'],['work_publications','work'],['service_publications','service']]){
+    assert.deepEqual((await owner.query('select id from app.'+table+' where id=any($1::uuid[])',[[own[key],foreign[key]]])).rows,[{id:foreign[key]}]);
+   }
+   assert.deepEqual((await owner.query('select id from app.applications where id=any($1::uuid[])',[[outgoing,unrelated]])).rows,[{id:unrelated}]);
+   assert.deepEqual((await owner.query('select application_id from app.application_withdrawals where application_id=any($1::uuid[])',[[outgoing,unrelated]])).rows,[{application_id:unrelated}]);
+   assert.deepEqual(await erase(value),result);
+  });
+  await suite.test('delivered applications, payment intents and another applicant’s references keep deletion cases open',async()=>{
+   const peer=await person(),paid=await person(),withIntent=await person(),linked=await person();
+   const form=load('work-publication-contract').parseWorkPublicationForm('workRequest',{title:'Синтетический заказ'});
+   const work=(await owner.query("insert into app.work_publications(author_id,kind,creation_key,form) values($1,'workRequest',$2,$3) returning id",[peer.id,randomUUID(),form])).rows[0].id;
+   const delivered=await application(paid,work),draft=await application(withIntent,work);
+   await owner.query("update app.applications set status='sent',is_paid=true,sent_at=clock_timestamp() where id=$1",[delivered]);
+   await db.transaction(async tx=>{
+    await tx.query("select set_config('blizhniy.application_session',$1,true)",[hash(withIntent.token)]);
+    await tx.query('insert into app.application_withdrawals(application_id,owner_id,withdrawn_revision) values($1,$2,1)',[draft,withIntent.id]);
+   });
+   const id=randomUUID(),body=JSON.stringify({amount:{value:'99.00',currency:'RUB'},capture:true,
+    confirmation:{type:'redirect',return_url:'https://example.invalid/'},metadata:{localPaymentId:id,targetId:draft,targetType:'application',tariffId:'job-response'}});
+   await db.transaction(tx=>new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db).persistInTransaction(tx,{id,ownerId:peer.id,targetId:draft,
+    targetType:'application',targetRevision:'1',tariffId:'job-response',amount:'99.00',durationDays:null,shopId:'fixture-shop',isTest:true,requestBody:body}));
+   const specialistForm=load('service-publication-contract').parseServicePublicationForm('specialist',{title:'Синтетическая анкета'});
+   const specialist=(await owner.query("insert into app.service_publications(author_id,kind,creation_key,form) values($1,'specialist',$2,$3) returning id",
+    [linked.id,randomUUID(),specialistForm])).rows[0].id;
+   const foreign=await application(await person(),work,specialist);
+   for(const target of [paid,withIntent,linked]){
+    await assert.rejects(erase(input(target)),{name:'BasicErasureReviewRequired'});
+    assert.equal(await exists(target),1);
+    assert.equal(await events(target),1);
+   }
+   assert.equal((await owner.query('select id from app.applications where id=any($1::uuid[])',[[delivered,draft,foreign]])).rowCount,3);
+   assert.equal((await owner.query('select application_id from app.application_withdrawals where application_id=$1',[draft])).rowCount,1);
+  });
+  await suite.test('administrator, non-draft publication, immutable payment identity and unknown mail require review',async()=>{
    await assert.rejects(erase(input(await person('admin'))),{name:'BasicErasureReviewRequired'});
-   const publication=await person();await owner.query("insert into app.work_publications(author_id,kind,creation_key,form) values($1,'workRequest',$2,$3)",[publication.id,randomUUID(),load('work-publication-contract').parseWorkPublicationForm('workRequest',{title:'Синтетический заказ',description:'Синтетическая проверка отказа удаления.'})]);
+   const publication=await person();await owner.query("insert into app.work_publications(author_id,kind,creation_key,form,status) values($1,'workRequest',$2,$3,'pending_payment')",[publication.id,randomUUID(),load('work-publication-contract').parseWorkPublicationForm('workRequest',{title:'Синтетический заказ',description:'Синтетическая проверка отказа удаления.'})]);
    await assert.rejects(erase(input(publication)),{name:'BasicErasureReviewRequired'});assert.equal(await exists(publication),1);
    const financial=await person(),id=randomUUID();
    const targetId=randomUUID(),body=JSON.stringify({amount:{value:'199.00',currency:'RUB'},capture:true,confirmation:{type:'redirect',return_url:'https://example.invalid/'},metadata:{localPaymentId:id,targetId,targetType:'listing',tariffId:'listing-publication'}});
    await db.transaction(tx=>new(load('postgres-payment-intents').PostgresPaymentIntentStore)(db).persistInTransaction(tx,{id,ownerId:financial.id,targetType:'listing',targetId,targetRevision:'1',tariffId:'listing-publication',amount:'199.00',durationDays:30,shopId:'fixture-shop',isTest:true,requestBody:body}));
    await assert.rejects(erase(input(financial)),{name:'BasicErasureReviewRequired'});assert.equal((await owner.query('select request_body from app.payment_checkout_intents where id=$1',[id])).rows[0].request_body,body);assert.equal(await events(financial),1);
+   const draft=await person();
+   await owner.query("insert into app.listings(id,author_id,listing_type) values($1,$2,'sell')",[targetId,draft.id]);
+   await assert.rejects(erase(input(draft)),{name:'BasicErasureReviewRequired'});
+   assert.equal(await exists(draft),1);
+   const withPhoto=await person();
+   const photoDraft=(await owner.query("insert into app.listings(author_id,listing_type) values($1,'sell') returning id",[withPhoto.id])).rows[0].id;
+   const media=(await owner.query("insert into app.media_objects(owner_id,intent_id,mime_type,width,height,size,sha256) values($1,$2,'image/webp',2,2,12,$3) returning id",[withPhoto.id,randomUUID(),'c'.repeat(64)])).rows[0].id;
+   await owner.query("update app.media_objects set state='ready',ready_at=clock_timestamp() where id=$1",[media]);
+   await owner.query("insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)",[photoDraft,media]);
+   await assert.rejects(erase(input(withPhoto)),{name:'BasicErasureReviewRequired'});
+   assert.equal(await exists(withPhoto),1);
+   assert.equal((await owner.query('select 1 from app.listing_photos where listing_id=$1 and media_id=$2',[photoDraft,media])).rowCount,1);
    const mail=await person();await owner.query("insert into app.mail_outbox(id,user_id,purpose,key_id,payload,created_at,expires_at,state) values($1,$2,'confirm',$3,$4,date_trunc('milliseconds',clock_timestamp()),date_trunc('milliseconds',clock_timestamp())+interval '30 minutes','unknown')",[randomUUID(),mail.id,'a'.repeat(32),Buffer.concat([Buffer.from([1]),Buffer.alloc(29)])]);
    await assert.rejects(erase(input(mail)),{name:'BasicErasureReviewRequired'});assert.equal(await exists(mail),1);
   });
@@ -144,6 +217,78 @@ test('basic erasure is atomic, replayable and refuses domain history on disposab
    await assert.rejects(eraseBasicAccount(db,admin.token,admin.id,input(target),'0'.repeat(64)));assert.equal(await exists(target),1);
    const nonSynthetic=await person();await owner.query("update app.users set email='contact@example.invalid' where id=$1",[nonSynthetic.id]);
    await assert.rejects(erase({...input(nonSynthetic),expectedAuthVersion:'1'}),{name:'BasicErasureReviewRequired'});assert.equal(await exists(nonSynthetic),1);
+  });
+  await suite.test('the erasure executor checks restored files before closing the case for a retired draft photo',async t=>{
+   const eraseWithMedia=value=>eraseAccountWithRetiredMedia(db,admin.token,admin.id,value,container);
+   await assert.rejects(eraseWithMedia(input(await person())),{name:'AssertionError'});
+   const migration68=await readFile(new URL('../database/candidates/0068-erasure-retired-media.sql',import.meta.url));
+   const migrationSha256=createHash('sha256').update(migration68).digest('hex');
+   await owner.query(migration68.toString('utf8'));
+   await owner.query('insert into app_admin.migrations values($1,$2)',['0068-erasure-retired-media.sql',migrationSha256]);
+   const candidate={migrationSha256,schema:await readBasicErasureSchema(owner)};
+   assert.deepEqual(candidate,JSON.parse(await readFile(new URL('../database/basic-account-erasure-schema68.json',import.meta.url),'utf8')));
+
+   const root=join(tmpdir(),'blizhniy-erasure-media-'+container),bytes=Buffer.from('524946460400000057454250','hex');
+   await mkdir(root,{mode:0o700});
+   const owned=await lstat(root,{bigint:true});
+   t.after(async()=>{
+    const current=await lstat(root,{bigint:true});
+    assert.equal(current.ino,owned.ino);assert.equal(current.dev,owned.dev);assert.equal(current.uid,BigInt(process.getuid()));
+    assert.ok(current.isDirectory());
+    await rm(root,{recursive:true});
+   });
+   await writeFile(join(root,'.writer.lock'),'',{mode:0o600,flag:'wx'});
+   const target=await person(),value=input(target);
+   const badJournal=wrapping((sql,result)=>{
+    if(sql==='select name,sha256 from app_admin.migrations order by name')result.rows.at(-1).sha256='0'.repeat(64);
+   });
+   await assert.rejects(eraseAccountWithRetiredMedia(badJournal,admin.token,admin.id,value,container),{name:'AssertionError'});
+   const files=await loadMediaModule('media-files').createLocalMediaFileStore(root);
+   const worker=await fileWorkerModule().createLocalMediaFileWorker(process.cwd(),root);
+   const repo=new(loadMediaModule('media-metadata').MediaMetadataRepository)(db,files,true);
+   const writer=new(loadMediaModule('media-write').LocalMediaWriter)(repo,worker);
+   const clock=(await owner.query("select pg_get_functiondef('app.media_retention_clock()'::regprocedure) ddl")).rows[0].ddl;
+   const image={mimeType:'image/webp',width:1,height:1,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
+   let photo,draft;
+   try{
+    await owner.query("create or replace function app.media_retention_clock() returns timestamptz language sql volatile set search_path=pg_catalog,pg_temp as $$select pg_catalog.clock_timestamp()-interval '8 days'$$");
+    photo=(await repo.reserve(target.token,randomUUID(),image)).id;
+    await writer.write(target.token,photo,{...image,bytes});
+    draft=(await owner.query("insert into app.listings(author_id,listing_type) values($1,'sell') returning id",[target.id])).rows[0].id;
+    await owner.query('insert into app.listing_photos(listing_id,media_id,position) values($1,$2,0)',[draft,photo]);
+    await owner.query('delete from app.listing_photos where listing_id=$1 and media_id=$2',[draft,photo]);
+   }finally{await owner.query(clock);}
+   await assert.rejects(erase(value),{name:'AssertionError'});
+   await assert.rejects(eraseWithMedia(value),{name:'BasicErasureReviewRequired'});
+   const retirement=new(loadMediaModule('media-retirement').LocalMediaRetirement)(db,worker);
+   await retirement.retire(photo);
+   const final=join(root,photo+'.webp');
+   await writeFile(final,bytes,{mode:0o600,flag:'wx'});
+   await assert.rejects(eraseWithMedia(value),{name:'BasicErasureReviewRequired'});
+   assert.deepEqual(await readFile(final),bytes);assert.equal(await exists(target),1);assert.equal(await events(target),1);
+   await unlink(final);
+   const {rows:[{id:attemptId}]}=await owner.query('select id from app.media_write_attempts where media_id=$1',[photo]);
+   const temporary=join(root,'.pending-'+attemptId);
+   await writeFile(temporary,bytes,{mode:0o600,flag:'wx'});
+   await assert.rejects(eraseWithMedia(value),{name:'BasicErasureReviewRequired'});
+   assert.deepEqual(await readFile(temporary),bytes);assert.equal(await exists(target),1);
+   await unlink(temporary);
+   const completed=await eraseWithMedia(value);
+   assert.deepEqual((await owner.query('select media_id from app_admin.account_erasure_media where operation_id=$1',[value.operationId])).rows,[{media_id:photo}]);
+   await assert.rejects(owner.query('update app_admin.account_erasure_media set media_id=media_id'),{code:'42501'});
+   await assert.rejects(owner.query('delete from app_admin.account_erasure_media'),{code:'42501'});
+   await assert.rejects(owner.query('truncate app_admin.account_erasure_media'),{code:'42501'});
+   assert.equal(await exists(target),0);
+   assert.equal((await owner.query('select owner_id from app.media_objects where id=$1',[photo])).rows[0].owner_id,null);
+   assert.equal((await owner.query('select id from app.listings where id=$1',[draft])).rowCount,0);
+   assert.deepEqual(await eraseWithMedia(value),completed);
+   for(const restored of [final,temporary]){
+    await writeFile(restored,bytes,{mode:0o600,flag:'wx'});
+    await assert.rejects(eraseWithMedia(value),{name:'BasicErasureReviewRequired'});
+    assert.deepEqual(await readFile(restored),bytes);
+    await unlink(restored);
+   }
+   assert.deepEqual(await eraseWithMedia(value),completed);
   });
  }finally{
   await db?.close();await owner?.end();if(container){const meta=JSON.parse(await docker(['inspect',container]))[0];assert.equal(meta.Config.Labels[label],name);await docker(['rm','--force',container]);}

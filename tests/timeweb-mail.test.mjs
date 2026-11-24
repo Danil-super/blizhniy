@@ -93,6 +93,25 @@ test("send uses one canonical recipient, a fixed sender and a stable message ID"
   assert.equal(sent[0].attachments, undefined);
 });
 
+test("only the explicit TEST transport call attaches inline ZIP bytes", async () => {
+  const { mailer, sent } = fixture();
+  const zip = Buffer.alloc(30);
+  zip.writeUInt32LE(0x04034b50, 0);
+  zip.writeUInt16LE(1, 6);
+  zip.writeUInt16LE(99, 8);
+  await assert.rejects(mailer.sendAccountTrialArchive(message, zip), { message: "Invalid TEST attachment" });
+  assert.equal(sent.length, 0);
+  const enabled = createTimewebMailer({ ...env, BLIZHNIY_APPLICATION_PAYMENT: "account-response-test" }, () => ({
+    verify: async () => true,
+    sendMail: async (mail) => { sent.push(mail); return { accepted: mail.envelope.to, rejected: [] }; },
+  }));
+  await assert.rejects(enabled.sendAccountTrialArchive(message, "/etc/passwd"), { message: "Invalid TEST attachment" });
+  await assert.rejects(enabled.sendAccountTrialArchive(message, Buffer.alloc(30)), { message: "Invalid TEST attachment" });
+  await enabled.sendAccountTrialArchive(message, zip);
+  assert.deepEqual(sent[0].envelope.to, [message.to]);
+  assert.deepEqual(sent[0].attachments, [{ filename: "blizhniy-account.zip", content: zip, contentType: "application/zip" }]);
+});
+
 for (const patch of [
   { to: "victim@example.invalid,attacker@example.invalid" }, { to: "Test <victim@example.invalid>" },
   { to: "test@example.invalid\nBcc: attacker@example.invalid" }, { to: "test@localhost" },

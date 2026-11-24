@@ -47,3 +47,10 @@ test('service HTTP reports an active specialist checkout as a conflict without r
  const response=await f.handler(f.request(value,{},'PUT'));
  assert.equal(response.status,409);assert.deepEqual(await response.json(),{error:{code:'CHECKOUT_ACTIVE'}});assert.equal(f.calls.length,1);
 });
+
+test('service HTTP directs legacy accounts with an invalid profile name to correct their settings',async()=>{
+ const f=fixture(new storage.ServicePublicationProfileNameError());
+ const value={action:'create',kind:'specialist',expectedOwnerId:owner,creationKey:key,form:{}};
+ const response=await f.handler(f.request(value,{},'PUT'));
+ assert.equal(response.status,422);assert.deepEqual(await response.json(),{error:{code:'INVALID_INPUT',reason:'PROFILE_NAME_REQUIRED'}});
+});
