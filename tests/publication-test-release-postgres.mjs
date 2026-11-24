@@ -18,10 +18,11 @@ import {readAccountExport} from '../scripts/export-local-account-data.mjs';
 import {inspectAccountDeletionCase} from '../src/lib/account-deletion-preflight.ts';
 import {listingViewDigest} from '../src/lib/listing-view-history.ts';
 import {testAdminPaymentJournal} from './admin-payment-journal-integration.mjs';
-import {getHostedRefundMigrationPlan,getHostedRefundMigrationSql} from '../scripts/publication-test-release-plan.mjs';
+import {getHostedRefundMigrationPlan,getHostedRefundMigrationSql,getHostedRefundUpgradeSql,getUndeliveredResponseCompensationMigration} from '../scripts/publication-test-release-plan.mjs';
 import {buildRefundOperator} from '../scripts/build-refund-operator.mjs';
 import {buildRefundWorker} from '../scripts/build-refund-worker.mjs';
 import {testHostedRefundWorkflow} from './hosted-refund-workflow-cases.mjs';
+import {testHostedUndeliveredCompensation} from './hosted-undelivered-compensation-cases.mjs';
 import pg from 'pg';
 const load=createRequire(import.meta.url)('../scripts/local-primary-modules.cjs').loadLocalPrimaryModule;
 const run=promisify(execFile),image='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
@@ -510,6 +511,57 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
      assert.equal(await check(),true);
      await t.test('real TLS roles approve and recover one original refund over IPC after both lost responses',
       ()=>testHostedRefundWorkflow({admin,config,load,operator,worker,docker,container,directory:artifactDirectory}));
+     await t.test('the undelivered response upgrade preserves the old release and is admitted after restore',async()=>{
+      const sql=getHostedRefundUpgradeSql(),migration=getUndeliveredResponseCompensationMigration();
+      assert.equal(await check(),true);
+      const apply=async()=>{
+       const client=await admin.connect();
+       try{await client.query(sql);}
+       catch(error){await client.query('rollback');throw error;}
+       finally{client.release();}
+      };
+      await apply();
+      await assert.rejects(apply(),{code:'55000'});
+      const database='undelivered_compensation_restored';
+      await admin.query('create database undelivered_compensation_restored template template0');
+      await admin.query(`revoke all on database undelivered_compensation_restored from public;
+       grant connect on database undelivered_compensation_restored to blizhniy_payment_reconciler,blizhniy_reconciliation_operator,
+        blizhniy_reconciliation_monitor,blizhniy_refund_operator,blizhniy_refund_worker`);
+      await docker(['exec',container,'bash','-euo','pipefail','-c',
+       'pg_dump --format=custom --username=postgres --dbname="$1" | pg_restore --single-transaction --exit-on-error --username=postgres --dbname="$2"',
+       'restore-fixture',config.database,database]);
+      const restored=new PostgresDatabase(new pg.Pool({...config,database,user:rolePlan.role,password:workerPassword,max:2}));
+      try{
+       assert.equal(await copiedGuard.verifyPaymentReconciliationDatabase(restored,{database,publicationTest:true}),true);
+      }finally{await restored.close();}
+      assert.equal(await check(),true);
+      await admin.query('update blizhniy_meta.migrations set sha256=repeat(\'0\',64) where name=$1',[migration.name]);
+      try{await assert.rejects(check());}
+      finally{await admin.query('update blizhniy_meta.migrations set sha256=$2 where name=$1',[migration.name,migration.sha256]);}
+      await admin.query('alter table app.payment_orders disable trigger compensated_response_order_guard');
+      try{await assert.rejects(check());}
+      finally{await admin.query('alter table app.payment_orders enable always trigger compensated_response_order_guard');}
+      assert.equal(await check(),true);
+     });
+     await t.test('separate roles process a terminally undelivered response exactly once',async()=>{
+      const options={database:config.database,merchant:{shopId:'9201',isTest:true},hostedRefunds:true};
+      for(const entry of entries){
+       const destination=join(artifactDirectory,'compensation-'+entry.kind);
+       assert.equal(entry.build(destination,{schema:76}).schema,76);
+       const api=await import(pathToFileURL(join(destination,'scripts/refund-'+entry.kind+'-role.mjs')).href);
+       const plan=api[entry.plan](config.database,{schema:76});
+       assert.equal(plan.journal.length,68);assert.equal(plan.journal.at(-1).name,'0076-undelivered-response-compensation.sql');
+       await symlink(fileURLToPath(new URL('../node_modules',import.meta.url)),join(destination,'node_modules'),'dir');
+       await api[entry.verify](entry.db,options);
+       const database='undelivered_compensation_restored';
+       const restored=new PostgresDatabase(new pg.Pool({...config,database,user:entry.role,password:entry.password,max:2}));
+       try{await api[entry.verify](restored,{...options,database});}
+       finally{await restored.close();}
+       entry.compensationArtifact=destination;
+      }
+      await testHostedUndeliveredCompensation({admin,config,workerDb,compiledWorker,load,refundWorker:worker,
+       artifact:worker.compensationArtifact,directory:artifactDirectory});
+     });
     }finally{for(const entry of entries)await entry.db?.close();}
    });
    return;

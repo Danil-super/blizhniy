@@ -3,9 +3,12 @@ import {assessApplicationCompensation,type ApplicationCompensationFacts,type App
 import type {PostgresDatabase,PostgresQueries} from './postgres.ts';
 export class ApplicationCompensationAccessError extends Error {constructor(){super('Application compensation requires reconciliation');this.name='ApplicationCompensationAccessError';}}
 export class ApplicationCompensationBusyError extends Error {constructor(){super('Application compensation participant is busy');this.name='ApplicationCompensationBusyError';}}
-export type ApplicationCompensationCase={paymentIntentId:string;applicationId:string;shopId:string;policyVersion:'paid-response-unread-v1';amount:string;
- fiscalMode:'provider-automatic-full'|'test-without-receipt';reason:'unread-five-days'|'other-selected-unread'|'customer-closed-unread';eligibleAt:string;deliveredAt:string;
- contactViewAt:string|null;selectedApplicationId:string|null;createdAt:string};
+export type ApplicationCompensationCase={paymentIntentId:string;applicationId:string;shopId:string;amount:string;
+ fiscalMode:'provider-automatic-full'|'test-without-receipt';eligibleAt:string;createdAt:string}
+ & ({policyVersion:'paid-response-unread-v1';reason:'unread-five-days'|'other-selected-unread'|'customer-closed-unread';
+     deliveredAt:string;contactViewAt:string|null;selectedApplicationId:string|null}
+  | {policyVersion:'paid-response-undelivered-v1';reason:'delivery-blocked';
+     deliveredAt:null;contactViewAt:null;selectedApplicationId:null});
 type Source={facts:ApplicationCompensationFacts;observedAt:string};
 const columns=`payment_intent_id as "paymentIntentId",application_id as "applicationId",merchant_shop_id as "shopId",policy_version as "policyVersion",amount::text,
  fiscal_mode as "fiscalMode",reason,to_char(eligible_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "eligibleAt",

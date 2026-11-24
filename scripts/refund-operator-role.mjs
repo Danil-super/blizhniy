@@ -32,7 +32,7 @@ const validDatabase=value=>typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,63}$/.tes
 const journal=(schema=55)=>getRefundWorkerRolePlan('operator',{schema,localPrimary:[58,60].includes(schema)}).journal;
 
 export function getRefundOperatorRolePlan(database,{schema=55,localPrimary=false}={}){
- if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||(schema===75&&localPrimary)||!validDatabase(database)||![55,56,57,58,60,75].includes(schema))throw Error('Invalid refund database');
+ if(typeof localPrimary!=='boolean'||([58,60].includes(schema)&&!localPrimary)||((schema===75||schema===76)&&localPrimary)||!validDatabase(database)||![55,56,57,58,60,75,76].includes(schema))throw Error('Invalid refund database');
  return{role,createRole:`create role ${role} nologin nosuperuser nocreatedb nocreaterole noinherit noreplication nobypassrls connection limit 4`,journal:journal(schema),
   grants:[`grant connect on database "${database}" to ${role}`,`grant usage on schema app,blizhniy_meta to ${role}`,
    ...Object.entries(policy).flatMap(([table,access])=>Object.entries(access).map(([privilege,names])=>`grant ${privilege}(${names.join(',')}) on ${table} to ${role}`)),

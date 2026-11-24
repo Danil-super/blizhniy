@@ -12,6 +12,15 @@ test('response compensation waits exactly120 hours from delivery with microsecon
  assert.deepEqual(check(facts(),deadline),{state:'eligible',reason:'unread-five-days',eligibleAt:deadline});
  assert.deepEqual(check(facts({kind:'vacancy'})),{state:'eligible',reason:'unread-five-days',eligibleAt:deadline});
 });
+test('terminally blocked delivery qualifies only with an untouched response and no delivery evidence',()=>{
+ const undelivered=facts({paid:false,status:'pending_payment',sentAt:null,deliveryBlocked:true});
+ assert.deepEqual(check(undelivered),{state:'eligible',reason:'delivery-blocked',eligibleAt:now});
+ assert.deepEqual(check({...undelivered,deliveryBlocked:undefined}),{state:'ineligible',reason:'not-delivered'});
+ for(const patch of [
+  {paid:true},{status:'paid'},{sentAt},{contactViews:[{evidence:'recipient_read',recordedAt:sentAt}]},
+  {selected:{applicationId:otherId,selectedAt}},{customerClosedAt:selectedAt},{deliveryBlocked:false},
+ ])assert.throws(()=>check({...undelivered,...patch}),{name:'ApplicationCompensationInputError'});
+});
 test('first disclosure at or before the qualifying event excludes compensation; a late view preserves accrued eligibility',()=>{
  for(const recordedAt of [sentAt,'2026-11-06T10:00:00.000000Z',deadline])assert.deepEqual(check(facts({contactViews:[{evidence:'recipient_read',recordedAt}]})),{state:'ineligible',reason:'viewed'});
  assert.deepEqual(check(facts({status:'viewed',contactViews:[{evidence:'recipient_read',recordedAt:'2026-11-06T10:00:00.000002Z'}]})),{state:'eligible',reason:'unread-five-days',eligibleAt:deadline});

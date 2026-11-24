@@ -6,7 +6,7 @@ import {getSpecialistCheckoutMigration,hasSpecialistCheckoutObjects} from './spe
 import {getRefundWorkerRolePlan} from './refund-worker-role.mjs';
 import {assertRefundSchema} from './refund-worker-schema.mjs';
 import {assertPaidResponseSchema} from './paid-response-schema.mjs';
-import {getHostedRefundMigrationPlan,getPaymentReconciliationAlertMigration,getPaymentReconciliationRecoveryMigration,getCheckoutCancellationMigrations,getPaidResponseMigrations,getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,assertPublicationTestSchema,assertExtendedPublicationTestSchema,hasInboxPreferenceObjects,getInboxPreferenceMigration,getSpecialistAccountTestMigration} from './publication-test-release-plan.mjs';
+import {getUndeliveredResponseCompensationMigration,getHostedRefundMigrationPlan,getPaymentReconciliationAlertMigration,getPaymentReconciliationRecoveryMigration,getCheckoutCancellationMigrations,getPaidResponseMigrations,getListingViewsMigration,getBookingLifecycleMigration,getPublicationTestMigrationPlan,assertPublicationTestSchema,assertExtendedPublicationTestSchema,hasInboxPreferenceObjects,getInboxPreferenceMigration,getSpecialistAccountTestMigration} from './publication-test-release-plan.mjs';
 
 const role='blizhniy_payment_reconciler';
 const locks=['users','payment_checkout_intents','categories','cities','media_objects','listing_moderation'];
@@ -131,15 +131,17 @@ export async function verifyPaymentReconciliationDatabase(db,{database,publicati
     if(!recovery)throw Error('Unsupported reconciliation alert deployment');
     expectedJournal.push(getPaymentReconciliationAlertMigration());
    }
+   const undeliveredCompensation=hostedRefunds&&journal.at(-1)?.name==='0076-undelivered-response-compensation.sql';
    if(hostedRefunds){
     if(!reconciliationAlert)throw new Error('Unsupported hosted refund deployment');
     expectedJournal.push(...getHostedRefundMigrationPlan());
+    if(undeliveredCompensation)expectedJournal.push(getUndeliveredResponseCompensationMigration());
     expectedJournal.sort((a,b)=>a.name.localeCompare(b.name,'en'));
    }
    if(journal.length!==expectedJournal.length||journal.some((item,index)=>item.name!==expectedJournal[index].name||item.sha256!==expectedJournal[index].sha256))throw new Error('Invalid journal');
    if(refundSchema)await assertRefundSchema(tx,schema);
    if(publicationTest)await assertPublicationTestSchema(tx,{hostedRefunds});
-   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment,bookings,views,responses,cancellations,recovery,reconciliationAlert,hostedRefunds});
+   if(specialistTerms||inbox)await assertExtendedPublicationTestSchema(tx,{specialist:specialistTerms,inbox,enrollment,bookings,views,responses,cancellations,recovery,reconciliationAlert,hostedRefunds,undeliveredCompensation});
    await assertFinancialCatalogPrivileges(tx,{paidResponses:responses===true});
    const actual=(await tx.query(`select n.nspname||'.'||c.relname||'.'||a.attname||':'||p.privilege as key,
     has_column_privilege(c.oid,a.attnum,p.privilege||' WITH GRANT OPTION') as grantable

@@ -34,7 +34,7 @@ const hostedRefundSuffix=[
  ['0075-hosted-refund-compatibility.sql','45ef880212da7927092fb91f82b113ec4ac73e8973b38fb150a051c32509a262'],
 ];
 export function paymentMigrationDirectory(name){
- return /^00(?:59|60|64|65|66|67|71|72|73|75)-/.test(name)?'candidates':'migrations';
+ return /^00(?:59|60|64|65|66|67|71|72|73|75|76)-/.test(name)?'candidates':'migrations';
 }
 function readReleaseMigration(name,sha256){
  const directory=paymentMigrationDirectory(name);
@@ -75,20 +75,34 @@ export function getHostedRefundMigrationPlan(){
  return hostedRefundSuffix.map(([name,hash])=>readReleaseMigration(name,hash));
 }
 
+export function getUndeliveredResponseCompensationMigration(){
+ return readReleaseMigration('0076-undelivered-response-compensation.sql','a150c8149f7cf84edf38fba6d36ad9a8b331c270cbec3e8db2db249e48c61dc9');
+}
+
 function hostedRefundBaseline(){
  return [...getPublicationTestMigrationPlan(),getSpecialistCheckoutMigration(),getInboxPreferenceMigration(),
   getSpecialistAccountTestMigration(),getBookingLifecycleMigration(),getListingViewsMigration(),...getPaidResponseMigrations(),
   ...getCheckoutCancellationMigrations(),getPaymentReconciliationRecoveryMigration(),getPaymentReconciliationAlertMigration()];
 }
 
-export function getHostedRefundReleasePlan(){
- return [...hostedRefundBaseline(),...getHostedRefundMigrationPlan()].sort((a,b)=>a.name.localeCompare(b.name,'en'));
+export function getHostedRefundReleasePlan(schema=75){
+ if(schema!==75&&schema!==76)throw Error('Invalid hosted refund schema');
+ const plan=[...hostedRefundBaseline(),...getHostedRefundMigrationPlan()];
+ if(schema===76)plan.push(getUndeliveredResponseCompensationMigration());
+ return plan.sort((a,b)=>a.name.localeCompare(b.name,'en'));
 }
 
 // Preserve the published migration bytes and commit the compatibility definitions and journal together.
 export function getHostedRefundMigrationSql(){
- const baseline=hostedRefundBaseline().sort((a,b)=>a.name.localeCompare(b.name,'en')).map(({name,sha256})=>[name,sha256]);
- const plan=getHostedRefundMigrationPlan();
+ return composeHostedRefundSql(hostedRefundBaseline(),getHostedRefundMigrationPlan());
+}
+
+export function getHostedRefundUpgradeSql(){
+ return composeHostedRefundSql(getHostedRefundReleasePlan(),[getUndeliveredResponseCompensationMigration()]);
+}
+
+function composeHostedRefundSql(previous,plan){
+ const baseline=previous.sort((a,b)=>a.name.localeCompare(b.name,'en')).map(({name,sha256})=>[name,sha256]);
  const body=plan.map(({sql})=>{
   if(!/^begin;$/m.test(sql)||!/^commit;\s*$/m.test(sql))throw Error('Invalid hosted refund migration transaction');
   return sql.replace(/^begin;$/m,'').replace(/\ncommit;\s*$/,'');
@@ -114,11 +128,12 @@ commit;
 }
 
 export async function assertHostedRefundRelease(tx,journal){
- const expected=getHostedRefundReleasePlan().map(({name,sha256})=>({name,sha256}));
+ const undeliveredCompensation=journal.at(-1)?.name==='0076-undelivered-response-compensation.sql';
+ const expected=getHostedRefundReleasePlan(undeliveredCompensation?76:75).map(({name,sha256})=>({name,sha256}));
  if(JSON.stringify(journal)!==JSON.stringify(expected))throw Error('Invalid hosted refund journal');
  await assertPaidResponseSchema(tx);
  await assertExtendedPublicationTestSchema(tx,{specialist:true,inbox:true,enrollment:true,bookings:true,views:true,
-  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true});
+  responses:true,cancellations:true,recovery:true,reconciliationAlert:true,hostedRefunds:true,undeliveredCompensation});
 }
 export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
  const definitions=new Map();
@@ -154,6 +169,10 @@ export async function assertPublicationTestSchema(tx,{hostedRefunds=false}={}){
 // PostgreSQL 18 emits different parentheses for six existing CHECK constraints after a logical restore.
 // Each pair pins the full installed and restored app catalog for exactly one reviewed journal.
 const fingerprints={
+ hostedRefundsWithUndeliveredCompensation:[
+  'e0fb46d76167c2b79dd90fc70cca501db1ad6e957a4b1253867c73bd70ffd4ac',
+  '7ca68364fe8ca3185495e45b4556ef47ffd536cf8dbcae7a22962c0e6c6f4a09',
+ ],
  hostedRefunds:[
   '05c41875cb2a2c427355006772ce1dd06e3553b72165d2ca76b160aa7fe315ee',
   'ef648b63d1b29212e690b44ccba7fcdc89f4561f9d0c0cbde862e789ce52d611',
@@ -306,7 +325,7 @@ async function assertReconciliationCommandAccess(tx,monitor=false){
  if(result?.valid!==true)throw Error('Unexpected reconciliation command access');
 }
 
-export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false}){
+export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,enrollment=false,bookings=false,views=false,responses=false,cancellations=false,recovery=false,reconciliationAlert=false,hostedRefunds=false,undeliveredCompensation=false}){
  const catalog=await readRefundSchema(tx);
  const hash=createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
  const key=enrollment?(inbox?'specialistTestInbox':'specialistTest'):specialist&&inbox?'both':specialist?'specialist':'inbox';
@@ -333,6 +352,10 @@ export async function assertExtendedPublicationTestSchema(tx,{specialist,inbox,e
  if(hostedRefunds){
   if(!reconciliationAlert)throw Error('Unsupported hosted refund deployment');
   accepted=fingerprints.hostedRefunds;
+ }
+ if(undeliveredCompensation){
+  if(!hostedRefunds)throw Error('Unsupported undelivered compensation deployment');
+  accepted=fingerprints.hostedRefundsWithUndeliveredCompensation;
  }
  if(!accepted.includes(hash))throw Error('Unexpected extended publication TEST schema');
  if(cancellations)await assertCheckoutCancellationAccess(tx);

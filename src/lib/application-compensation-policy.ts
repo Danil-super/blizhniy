@@ -10,8 +10,9 @@ export type ApplicationCompensationFacts={
  selected:{applicationId:string;selectedAt:string}|null;
  /** Verified customer withdrawal/removal event, never inferred from current publication status. */
  customerClosedAt:string|null;
+ deliveryBlocked?:true;
 };
-type Reason='unread-five-days'|'other-selected-unread'|'customer-closed-unread';
+type Reason='unread-five-days'|'other-selected-unread'|'customer-closed-unread'|'delivery-blocked';
 export type ApplicationCompensationAssessment=
  |{state:'eligible';reason:Reason;eligibleAt:string}
  |{state:'waiting';eligibleAt:string}
@@ -37,6 +38,11 @@ export function assessApplicationCompensation(facts:ApplicationCompensationFacts
   const at=instant(now),applicationId=parseListingDraftId(facts.applicationId);
   if(!['vacancy','workRequest'].includes(facts.kind)||typeof facts.paid!=='boolean'||
    !['pending_payment','paid','sent','viewed','selected','rejected'].includes(facts.status)||!Array.isArray(facts.contactViews)||facts.contactViews.length>2)throw Error();
+  if(facts.deliveryBlocked!==undefined){
+   if(facts.deliveryBlocked!==true||facts.paid||facts.status!=='pending_payment'||facts.sentAt!==null||
+    facts.contactViews.length!==0||facts.selected!==null||facts.customerClosedAt!==null)throw Error();
+   return{state:'eligible',reason:'delivery-blocked',eligibleAt:now};
+  }
   const sent=facts.sentAt===null?null:instant(facts.sentAt);
   if(sent!==null&&sent>at)throw Error();
   const seen=new Set<string>();let viewed:bigint|null=null,legacy=false;
