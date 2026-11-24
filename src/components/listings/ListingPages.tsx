@@ -21,6 +21,7 @@ import { BrandName } from "@/components/BrandName";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { CapitalizedTextarea } from "@/components/CapitalizedTextarea";
 import {CabinetFormValidation} from '@/components/CabinetFormValidation';
+import {ListingFormLeaveGuard} from './ListingFormLeaveGuard';
 import { DropdownOption, DropdownSelect } from "@/components/DropdownSelect";
 import { HomeHero } from "@/components/HomeHero";
 import { LocationMap } from "@/components/LocationMap";
@@ -2000,6 +2001,7 @@ export async function ListingFormPage({ slug, adminMode = false, defaults, error
 
           <form action={adminMode ? publishWithoutPaymentAction : undefined} className="listing-create-form mt-6 grid min-w-0 max-w-full gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <CabinetFormValidation/>
+            {process.env.BLIZHNIY_AUTH_MODE === "postgres" && <ListingFormLeaveGuard/>}
             {savedDraft&&<input type="hidden" name="district" value={savedDraft.snapshot.form.district??''}/>}
             <div className="listing-create-primary-grid adaptive-field-grid">
               <ListingKindAndCategoryFields

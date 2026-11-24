@@ -7,6 +7,18 @@ import {parseListingFormDraft} from '../src/lib/listing-form-contract.ts';
 import {createDefaultCabinetProfile} from '../src/lib/cabinet-profile.ts';
 import {testCachedCabinetScreen} from './cabinet-history-cache-browser-cases.mjs';
 import {testAccountCheckoutBrowser} from './account-test-checkout-browser-cases.mjs';
+
+async function answerLeave(page,action,{type='confirm',leave=false}={}){
+ const opening=page.waitForEvent('dialog',{timeout:3500});
+ const navigating=action();
+ navigating.catch(()=>{});
+ const dialog=await opening;
+ const actualType=dialog.type();
+ if(leave)await dialog.accept();else await dialog.dismiss();
+ await navigating;
+ assert.equal(actualType,type);
+}
+
 test('ordinary placement form saves all existing fields/photos with cookie API and preserves input through account rechecks', {timeout:90000},async t=>{
  const directory=await mkdtemp(join(tmpdir(),'blizhniy-form-browser-'));let app,browser;
  try{
@@ -65,6 +77,71 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
    }
    return route.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});
   });
+  await t.test('first text, checkbox and photo edits each protect the listing before save',async()=>{
+   const editor=await context.newPage(),target=origin+'/razmestit/obyavlenie';
+   const title=editor.locator('input[name="title"]'),back=editor.getByRole('link',{name:'Назад',exact:true});
+   try{
+    await editor.goto(target);
+    await back.click();
+    await editor.waitForURL(origin+'/cabinet/obyavleniya');
+    await editor.goto(target);
+    await title.fill('Несохранённое объявление');
+    await answerLeave(editor,()=>back.click());
+    assert.equal(editor.url(),target);
+    assert.equal(await title.inputValue(),'Несохранённое объявление');
+    await answerLeave(editor,()=>back.click(),{leave:true});
+    await editor.waitForURL(origin+'/cabinet/obyavleniya');
+
+    await editor.goto(target);
+    await editor.locator('.listing-kind-field').getByRole('button').click();
+    await editor.getByRole('option',{name:'Куплю',exact:true}).click();
+    await answerLeave(editor,()=>back.click());
+    assert.equal(await editor.locator('input[name="kind"]').inputValue(),'kuplyu');
+    await answerLeave(editor,()=>back.click(),{leave:true});
+    await editor.waitForURL(origin+'/cabinet/obyavleniya');
+
+    await editor.goto(target);
+    const checkbox=editor.locator('input[name="placementRightsAccepted"]');
+    await checkbox.check();
+    await answerLeave(editor,()=>back.click());
+    assert.equal(await checkbox.isChecked(),true);
+    await answerLeave(editor,()=>back.click(),{leave:true});
+    await editor.waitForURL(origin+'/cabinet/obyavleniya');
+
+    await editor.goto(target);
+    const photo=editor.locator('input[name="photos"]');
+    await photo.setInputFiles({name:'draft-guard.png',mimeType:'image/png',buffer:pixels});
+    await editor.getByRole('img',{name:'draft-guard.png',exact:true}).waitFor();
+    await answerLeave(editor,()=>back.click());
+    assert.equal(await photo.evaluate(input=>input.files.length),1);
+    assert.equal(creates,0);
+   }finally{await editor.close();}
+  });
+  await t.test('same-document browser Back and native tab close can keep unpublished input',async()=>{
+   const editor=await context.newPage(),target=origin+'/razmestit/obyavlenie';
+   try{
+    await editor.goto(target);
+    await editor.evaluate(()=>history.pushState(history.state,'',location.pathname+'?from=leave-test'));
+    const title=editor.locator('input[name="title"]');
+    await title.click();
+    await title.fill('Сохранить поле после отмены');
+    await answerLeave(editor,async()=>{await editor.goBack({timeout:3000}).catch(()=>null);});
+    assert.equal(editor.url(),target+'?from=leave-test');
+    assert.equal(await title.inputValue(),'Сохранить поле после отмены');
+    await title.click();
+    await answerLeave(editor,()=>editor.close({runBeforeUnload:true}),{type:'beforeunload'});
+    assert.equal(editor.isClosed(),false);
+    assert.equal(await title.inputValue(),'Сохранить поле после отмены');
+    await title.click();
+    await answerLeave(editor,()=>editor.goBack(),{leave:true});
+    await editor.waitForURL(target);
+    await title.click();
+    await title.fill('Эту правку можно закрыть');
+    const closed=editor.waitForEvent('close');
+    await answerLeave(editor,()=>editor.close({runBeforeUnload:true}),{type:'beforeunload',leave:true});
+    await closed;
+   }finally{await editor.close();}
+  });
   const response=await page.goto(origin+'/razmestit/obyavlenie',{waitUntil:'domcontentloaded'});assert.equal(response.status(),200,output);
   await page.getByRole('heading',{name:'Создать объявление',exact:true}).waitFor();
   assert.equal(await page.getByRole('heading',{name:'Создать объявление',exact:true}).count(),1);
@@ -85,7 +162,11 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   // Keep the test on the form so all source fields and error-state layout remain inspectable.
   for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('body').evaluate(node=>node.scrollWidth>innerWidth),false);}
   await page.screenshot({path:'/tmp/blizhniy-full-form-browser.png',fullPage:true});
+  const savePrompts=[],onSavePrompt=async dialog=>{savePrompts.push(dialog.type());await dialog.accept();};
+  page.on('dialog',onSavePrompt);
   await page.getByRole('button',{name:'Проверить сохранённую форму',exact:true}).click();await page.waitForURL(origin+'/cabinet/obyavleniya');
+  page.off('dialog',onSavePrompt);
+  assert.deepEqual(savePrompts,[],'confirmed save redirects without a leave warning');
   assert.equal(writes.length,1);assert.equal(intents.length,1);assert.deepEqual(errors,[]);assert.deepEqual(foreign,[]);
   // The cabinet offers cards and status only: editing always reopens the original complete form.
   const firstCard=page.getByRole('link',{name:'Полная форма',exact:true}).locator('xpath=ancestor::li[1]');
@@ -133,6 +214,7 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   rejectWrite=true;await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
   await page.getByRole('button',{name:'Вернуться к исправлению полей',exact:true}).click();
   await page.getByText('Поля доступны для исправления. Изменения ещё не сохранены.',{exact:true}).waitFor();
+  await answerLeave(page,()=>page.getByRole('link',{name:'Назад',exact:true}).click());
   assert.equal(await page.locator('input[name="title"]').isDisabled(),false);assert.equal(writes.length,2);assert.equal(intents.length,2);
   await page.locator('input[name="title"]').fill('Исправленное объявление');lose=true;
   await page.getByRole('button',{name:'Сохранить черновик',exact:true}).click();
@@ -143,6 +225,24 @@ test('ordinary placement form saves all existing fields/photos with cookie API a
   assert.equal(saved.form.price,'199.99');assert.equal(saved.form.contactMethod,'messenger');assert.equal(saved.form.district,'Мой район');
   assert.equal(saved.form.address,'Улица 1');assert.equal(saved.form.latitude,43.6);assert.equal(saved.form.longitude,39.7);assert.equal(saved.form.showExactAddress,false);
   assert.equal(saved.form.title,'Исправленное объявление');assert.equal(saved.form.photoIds.length,2);assert.equal(saved.form.photoIds[0],firstPhoto);
+  await t.test('changing a saved photo cover or removing a saved photo arms the guard independently',async()=>{
+   const editor=await context.newPage(),back=editor.getByRole('link',{name:'Назад',exact:true});
+   const photoIds=()=>editor.locator('form.listing-create-form').evaluate(form=>new FormData(form).getAll('savedPhotoIds'));
+   const original=saved.form.photoIds;
+   try{
+    await editor.goto(origin+editHref);
+    await editor.getByRole('button',{name:'Сделать обложкой Фото 2',exact:true}).click();
+    await answerLeave(editor,()=>back.click());
+    assert.deepEqual(await photoIds(),[original[1],original[0]]);
+    await answerLeave(editor,()=>back.click(),{leave:true});
+    await editor.waitForURL(origin+'/cabinet/obyavleniya');
+    await editor.goto(origin+editHref);
+    await editor.getByRole('button',{name:'Убрать Фото 1',exact:true}).click();
+    await answerLeave(editor,()=>back.click());
+    assert.deepEqual(await photoIds(),[original[1]]);
+    assert.deepEqual(saved.form.photoIds,original);
+   }finally{await editor.close();}
+  });
   await page.getByRole('link',{name:'Исправленное объявление',exact:true}).click();
   await page.locator('input[name="title"]').fill('Моя полная правка');await page.locator('input[name="placementRightsAccepted"]').check();
   saved={...saved,revision:'9007199254740993',form:{...saved.form,title:'Другая вкладка',district:'Серверный район',photoIds:[]},photos:[]};await persist();

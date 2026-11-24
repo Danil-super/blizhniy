@@ -12,7 +12,7 @@ import {checkListingFormContent} from '@/lib/listing-publication-check';
 import {readListingFormData} from '@/lib/listing-form-data';
 import type {ListingFormSnapshot} from '@/lib/listing-form-contract';
 import {ListingDraftInputError} from '@/lib/listing-draft-contract';
-import {useDraftLeaveGuard} from './useDraftLeaveGuard';
+import {listingFormSaveConfirmed,listingFormSaveStarted} from './ListingFormLeaveGuard';
 import {draftButton} from './PrivateDraftEditor';
 import {canStartListingTest} from '@/lib/account-session-state';
 import {useListingPostmoderation,useLocalPaymentSimulation} from './ListingWorkflowProvider';
@@ -33,7 +33,6 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
  const [rejected,setRejected]=useState(false);
  const checkout=useRef<ListingCheckoutAttempt>({input:null,uncertain:false}),paymentId=useRef<string|null>(null);
  const [paymentUncertain,setPaymentUncertain]=useState(false);
- useDraftLeaveGuard(active&&!done);
  useEffect(()=>{const scope=new AbortController();controller.current=scope;const generation=++epoch.current;
   return()=>{epoch.current=generation+1;scope.abort();};
  },[]);
@@ -45,7 +44,11 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
   controls.forEach(({control})=>{control.disabled=true;});
   return()=>{controls.forEach(({control,disabled})=>{control.disabled=disabled;});};
  },[active,done]);
- useEffect(()=>{if(done)window.location.assign(paymentId.current?`/oplata/${paymentId.current}`:returnHref);},[done,returnHref]);
+ useEffect(()=>{
+  if(!done)return;
+  formRef.current?.dispatchEvent(new Event(listingFormSaveConfirmed));
+  window.location.assign(paymentId.current?`/oplata/${paymentId.current}`:returnHref);
+ },[done,returnHref]);
  async function finish(){
   if(!draft)await ensurePhoneForPlacement(owner!);
   if(!draft&&postmoderation){
@@ -98,7 +101,9 @@ export function PrimaryListingFormButton({draft,label,returnHref,className,exist
     attempt.current=createListingFormSave(owner!,input,files,{create:productionDrafts.createEmpty,upload:async(user,intent,file,options)=>{
      const cached=editor.readyFiles.get(file);if(cached)return cached;
      const uploaded=await productionListingMedia.upload(user,intent,file,options);editor.readyFiles.set(file,uploaded);return uploaded;
-    },read:productionListingForm.read,write:productionListingForm.write},editor.baseline,data.get('photoOrder'));form.dataset.primaryIntent=intentKey;setActive(true);
+    },read:productionListingForm.read,write:productionListingForm.write},editor.baseline,data.get('photoOrder'));
+    form.dataset.primaryIntent=intentKey;setActive(true);
+    form.dispatchEvent(new Event(listingFormSaveStarted));
    }
    await attempt.current.save({signal:controller.current?.signal});await finish();
   },!attempt.current);
