@@ -509,8 +509,8 @@ for(const {name:layout,specialistTerms,inbox,account} of layouts)test((account?'
      finally{await admin.query('revoke insert(operation_id) on app.payment_refund_dispatch_anchors from blizhniy_refund_operator');}
      await operator.admit(operator.db);
      assert.equal(await check(),true);
-     await t.test('real TLS roles approve and recover one original refund over IPC after both lost responses',
-      ()=>testHostedRefundWorkflow({admin,config,load,operator,worker,docker,container,directory:artifactDirectory}));
+     await t.test('real TLS roles approve and recover original refunds over IPC after both lost responses',
+      workflow=>testHostedRefundWorkflow(workflow,{admin,config,load,operator,worker,docker,container,directory:artifactDirectory}));
      await t.test('the undelivered response upgrade preserves the old release and is admitted after restore',async()=>{
       const sql=getHostedRefundUpgradeSql(),migration=getUndeliveredResponseCompensationMigration();
       assert.equal(await check(),true);
